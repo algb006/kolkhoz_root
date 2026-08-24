@@ -1,0 +1,52 @@
+# Everything the /claude_backup archive covers stays out of git.
+# The archive in ../backup/ is the only copy of these files.
+CLAUDE.md
+**/CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.local.md
+claude/
+**/claude/
+.claude/
+**/.claude/
+
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Compiled artifacts
+*.o
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.pdb
+
+# Python bytecode from the balance simulations
+__pycache__/
+*.pyc
+
+# CMake in-source leftovers and tooling output
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+.cache/
+Testing/
+install_manifest.txt
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and stray temporaries
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
