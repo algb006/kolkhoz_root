@@ -7,8 +7,40 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+# ---------------------------------------------------------------------------
+# Versions — read from files, never hardcoded here
+# ---------------------------------------------------------------------------
+#
+#   VERSION       the core library, semantic versioning
+#   VERSION_SAVE  the on-disk layout of a saved game, a plain integer
+#
+# They are separate on purpose: a save format outlives many library releases,
+# and a save-breaking change has to be visible on its own. Rules for bumping
+# them are in manual/setup/57-versioning.md.
+#
+# The game has no version here. It does not exist yet and will be versioned by
+# the UE side, on its own scale — the core version is not the game's version.
+
+file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" KOLKHOZ_VERSION)
+string(STRIP "${KOLKHOZ_VERSION}" KOLKHOZ_VERSION)
+if(NOT KOLKHOZ_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "VERSION must be major.minor.patch, got '${KOLKHOZ_VERSION}'")
+endif()
+
+file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION_SAVE" KOLKHOZ_SAVE_VERSION)
+string(STRIP "${KOLKHOZ_SAVE_VERSION}" KOLKHOZ_SAVE_VERSION)
+if(NOT KOLKHOZ_SAVE_VERSION MATCHES "^[0-9]+$")
+  message(FATAL_ERROR "VERSION_SAVE must be a plain integer, got '${KOLKHOZ_SAVE_VERSION}'")
+endif()
+
+# Editing either file must re-run configure, otherwise the generated header
+# keeps the old numbers and the build looks fine while shipping a lie.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_LIST_DIR}/VERSION"
+             "${CMAKE_CURRENT_LIST_DIR}/VERSION_SAVE")
+
 project(kolkhoz_core
-        VERSION 0.1.0
+        VERSION ${KOLKHOZ_VERSION}
         DESCRIPTION "Kolkhoz Chairman simulation core"
         LANGUAGES C CXX)  # C only for third-party sources in depends/
 
@@ -70,9 +102,20 @@ endif()
 # Shared interface targets
 # ---------------------------------------------------------------------------
 
-# Public headers shared by every module.
+# Public headers shared by every module, plus the generated ones.
+#
+# The version header is generated rather than tracked: two copies of the same
+# number drift, and the one nobody edits is always the stale one. No git hash
+# and no build timestamp go in — they would rewrite the header on every commit,
+# defeat ccache and make builds non-reproducible for no gain.
+configure_file("${CMAKE_SOURCE_DIR}/include/core_common/version.h.in"
+               "${CMAKE_BINARY_DIR}/generated/include/core_common/version.h"
+               @ONLY)
+
 add_library(core_headers INTERFACE)
-target_include_directories(core_headers INTERFACE "${CMAKE_SOURCE_DIR}/include")
+target_include_directories(core_headers INTERFACE
+                           "${CMAKE_SOURCE_DIR}/include"
+                           "${CMAKE_BINARY_DIR}/generated/include")
 
 # Warnings, standard and sanitizer flags applied to our own code only.
 add_library(core_options INTERFACE)
@@ -166,6 +209,7 @@ endif()
 
 add_subdirectory(src)          # game executable, phase 2
 
-message(STATUS "kolkhoz_core ${PROJECT_VERSION} | ${CMAKE_CXX_COMPILER_ID} "
+message(STATUS "kolkhoz_core ${PROJECT_VERSION} save=${KOLKHOZ_SAVE_VERSION} "
+               "| ${CMAKE_CXX_COMPILER_ID} "
                "| ${CMAKE_BUILD_TYPE} | tests=${KOLKHOZ_BUILD_TESTS} "
                "game=${KOLKHOZ_BUILD_GAME}")

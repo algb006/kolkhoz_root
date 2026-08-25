@@ -5,7 +5,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit \
-        check-tests format format-check tidy docs sync win hooks deps info
+        check-tests format format-check tidy docs sync win hooks deps info version
 
 # --- Settings ---------------------------------------------------------------
 
@@ -40,6 +40,7 @@ help:
 	@echo '  make test           прогнать все тесты через ctest'
 	@echo '  make unit           только обязательные unit-тесты модулей'
 	@echo '  make check-tests    проверить, что на каждый модуль есть unit-тест'
+	@echo '  make version        версии ядра и формата сохранений'
 	@echo '  make asan           собрать с санитайзерами address+undefined'
 	@echo '  make clean          удалить объектные файлы, конфигурацию оставить'
 	@echo '  make distclean      удалить каталог сборки целиком'
@@ -88,6 +89,12 @@ unit: build
 
 check-tests:
 	@./scripts/check_module_tests.sh
+
+version:
+	@echo 'Версия ядра            : '$$(cat VERSION)'   (файл VERSION)'
+	@echo 'Формат сохранений      : '$$(cat VERSION_SAVE)'       (файл VERSION_SAVE)'
+	@echo 'Заголовок для кода     : core_common/version.h, генерируется при настройке'
+	@echo 'Когда что поднимать    : manual/setup/57-versioning.md'
 
 # --- Code hygiene -----------------------------------------------------------
 
@@ -144,6 +151,7 @@ deps:
 	@echo 'Проверка после установки: make info'
 
 info:
+	@echo 'Версия ядра    : '$$(cat VERSION)' (сохранения: '$$(cat VERSION_SAVE)')'
 	@echo 'Каталог сборки : $(BUILD_DIR)'
 	@echo 'Тип сборки     : $(TYPE)'
 	@echo 'Генератор      : $(GENERATOR)'
