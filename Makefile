@@ -5,7 +5,8 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit \
-        check-tests format format-check tidy docs sync win hooks deps info version
+        check-tests format format-check tidy docs sync win hooks deps info version \
+        bump-patch bump-minor bump-major
 
 # --- Settings ---------------------------------------------------------------
 
@@ -41,6 +42,8 @@ help:
 	@echo '  make unit           только обязательные unit-тесты модулей'
 	@echo '  make check-tests    проверить, что на каждый модуль есть unit-тест'
 	@echo '  make version        версии ядра и формата сохранений'
+	@echo '  make bump-patch     поднять версию: сдан модуль'
+	@echo '  make bump-minor     поднять версию: сдан этап плана'
 	@echo '  make asan           собрать с санитайзерами address+undefined'
 	@echo '  make clean          удалить объектные файлы, конфигурацию оставить'
 	@echo '  make distclean      удалить каталог сборки целиком'
@@ -89,6 +92,17 @@ unit: build
 
 check-tests:
 	@./scripts/check_module_tests.sh
+
+# Bumping is the closing step of a delivery cycle, run in the same commit as the
+# work being delivered. VERSION_SAVE is not bumped here — see 57-versioning.md.
+bump-patch:
+	@./scripts/bump_version.sh patch
+
+bump-minor:
+	@./scripts/bump_version.sh minor
+
+bump-major:
+	@./scripts/bump_version.sh major
 
 version:
 	@echo 'Версия ядра            : '$$(cat VERSION)'   (файл VERSION)'
