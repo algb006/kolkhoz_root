@@ -78,6 +78,15 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.ClassConstantPrefix
     value: k
+  # `const` on locals is a project rule, not a statement about constant-ness,
+  # so const locals stay snake_case. A local constexpr is a named constant and
+  # keeps the k prefix through ConstexprVariable* above.
+  - key: readability-identifier-naming.LocalConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalConstantPointerCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalVariableCase
+    value: lower_case
   - key: readability-identifier-naming.EnumConstantCase
     value: CamelCase
   - key: readability-identifier-naming.EnumConstantPrefix
