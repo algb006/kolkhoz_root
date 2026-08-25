@@ -4,8 +4,8 @@
 # spells the commands so nobody has to remember them. See README.txt.
 
 .DEFAULT_GOAL := help
-.PHONY: help configure build release rebuild asan clean distclean test format \
-        format-check tidy docs sync win hooks deps info
+.PHONY: help configure build release rebuild asan clean distclean test unit \
+        check-tests format format-check tidy docs sync win hooks deps info
 
 # --- Settings ---------------------------------------------------------------
 
@@ -37,7 +37,9 @@ help:
 	@echo '  make build          собрать (Debug), настроив при необходимости'
 	@echo '  make release        собрать Release'
 	@echo '  make rebuild        собрать с нуля — при странном поведении первым делом'
-	@echo '  make test           прогнать тесты через ctest'
+	@echo '  make test           прогнать все тесты через ctest'
+	@echo '  make unit           только обязательные unit-тесты модулей'
+	@echo '  make check-tests    проверить, что на каждый модуль есть unit-тест'
 	@echo '  make asan           собрать с санитайзерами address+undefined'
 	@echo '  make clean          удалить объектные файлы, конфигурацию оставить'
 	@echo '  make distclean      удалить каталог сборки целиком'
@@ -79,6 +81,13 @@ distclean:
 
 test: build
 	ctest --test-dir $(BUILD_DIR) --output-on-failure -j $(JOBS)
+
+# Only the obligatory per-module tests, without the long simulation runs.
+unit: build
+	ctest --test-dir $(BUILD_DIR) --output-on-failure -j $(JOBS) -L unit
+
+check-tests:
+	@./scripts/check_module_tests.sh
 
 # --- Code hygiene -----------------------------------------------------------
 

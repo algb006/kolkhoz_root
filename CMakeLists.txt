@@ -122,13 +122,34 @@ function(kolkhoz_add_module module_name)
 endfunction()
 
 # @brief Declares a console application under tests/ and registers it with CTest.
+#        Label defaults to "run"; the unit-test helper below passes "unit".
 function(kolkhoz_add_test_app app_name)
-  add_executable(${app_name} ${ARGN})
+  set(one_value_args LABEL)
+  cmake_parse_arguments(arg "" "${one_value_args}" "" ${ARGN})
+  if(NOT arg_LABEL)
+    set(arg_LABEL run)
+  endif()
+
+  add_executable(${app_name} ${arg_UNPARSED_ARGUMENTS})
   kolkhoz_configure_target(${app_name})
+  target_include_directories(${app_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
   if(TARGET core)
     target_link_libraries(${app_name} PRIVATE core)
   endif()
+
   add_test(NAME ${app_name} COMMAND ${app_name})
+  set_tests_properties(${app_name} PROPERTIES LABELS "${arg_LABEL}")
+endfunction()
+
+# @brief Declares the mandatory unit test of one module.
+#        Call from tests/unit/<module>/CMakeLists.txt; the application is named
+#        unit_<module> and carries the CTest label "unit", so `ctest -L unit`
+#        runs exactly the obligatory set.
+function(kolkhoz_add_unit_test module_name)
+  kolkhoz_add_test_app(unit_${module_name} LABEL unit ${ARGN})
+  if(TARGET ${module_name})
+    target_link_libraries(unit_${module_name} PRIVATE ${module_name})
+  endif()
 endfunction()
 
 # ---------------------------------------------------------------------------
