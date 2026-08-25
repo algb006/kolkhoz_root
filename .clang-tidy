@@ -19,6 +19,7 @@ Checks: >
   -cppcoreguidelines-pro-type-union-access,
   -misc-non-private-member-variables-in-classes,
   -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
   -readability-magic-numbers,
   -readability-identifier-length
 
@@ -27,6 +28,11 @@ HeaderFilterRegex: '.*/(include|subprojects|src|tests)/.*\.h$'
 FormatStyle: file
 
 CheckOptions:
+  # An interface declares only a virtual destructor; that is not a rule-of-five
+  # violation.
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: true
+
   # Types
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
@@ -40,6 +46,11 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.TypeTemplateParameterCase
     value: CamelCase
+  # An abstract class is a subsystem interface: IUnitRegistry, ICropTable.
+  - key: readability-identifier-naming.AbstractClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.AbstractClassPrefix
+    value: I
   # Functions
   - key: readability-identifier-naming.FunctionCase
     value: CamelCase
@@ -91,8 +102,21 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.EnumConstantPrefix
     value: k
+  # Mutable globals carry g_ so they cannot hide. Global constants keep the k
+  # prefix from GlobalConstant* above and are not affected.
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.GlobalVariablePrefix
+    value: g_
+  - key: readability-identifier-naming.GlobalPointerCase
+    value: lower_case
+  - key: readability-identifier-naming.GlobalPointerPrefix
+    value: g_
   # Namespaces and macros
   - key: readability-identifier-naming.NamespaceCase
     value: lower_case
   - key: readability-identifier-naming.MacroDefinitionCase
     value: UPPER_CASE
+  # Include guards end with an underscore per Google style: PROBE_PROBE_H_
+  - key: readability-identifier-naming.MacroDefinitionIgnoredRegexp
+    value: '^[A-Z0-9]+(_[A-Z0-9]+)*_H_$'
