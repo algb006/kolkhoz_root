@@ -48,15 +48,15 @@
 
 | Тема ядра | Документ |
 |---|---|
-| Метрики жителей | `manual/design/people/07-metrics.md` |
-| Демография | `manual/design/people/52-demography.md`, `02-gameplay-mechanics.md` §9 |
-| Время, скорости, рабочий день | `manual/design/overview/02-gameplay-mechanics.md` §3 |
-| Поля, урожай, плодородие | `manual/design/infrastructure/28-fields-and-crops.md` |
-| Юниты, уровни, износ | `manual/design/world/14-map-and-units.md` |
-| Производство | `manual/design/world/44-production-units.md` |
-| Жильё и семьи | `manual/design/world/43-housing.md` |
-| Образование | `manual/design/people/12-education.md` |
-| Труд и трудодни | `manual/design/economy/20-labor-payment.md` |
+| Метрики жителей | [Метрики](../../manual/design/people/metrics.md) |
+| Демография | [Демография](../../manual/design/people/demography.md), [Жизненный цикл §1](../../manual/design/people/life-cycle.md#1-люди) |
+| Время, скорости, рабочий день | [Время и рабочий день](../../manual/design/core/time.md) |
+| Поля, урожай, плодородие | [Поля и культуры](../../manual/design/economy/farming.md) |
+| Юниты, уровни, износ | [Общие правила юнитов](../../manual/design/world/units/rules.md) |
+| Производство | [Производственные юниты](../../manual/design/world/units/production.md) |
+| Жильё и семьи | [Жильё](../../manual/design/world/units/housing.md), [Семьи и свадьбы](../../manual/design/people/families.md) |
+| Образование | [Образование](../../manual/design/people/education.md) |
+| Труд и трудодни | [Оплата труда](../../manual/design/economy/labor-payment.md) |
 | Что уже решено | `manual/process/09-open-questions.md` — **реестр решений** |
 
 ---
