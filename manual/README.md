@@ -58,7 +58,7 @@
 | Жильё и семьи | [Жильё](../../manual/design/world/units/housing.md), [Семьи и свадьбы](../../manual/design/people/families.md) |
 | Образование | [Образование](../../manual/design/people/education.md) |
 | Труд и трудодни | [Оплата труда](../../manual/design/economy/labor-payment.md) |
-| Что уже решено | `manual/process/09-open-questions.md` — **реестр решений** |
+| Что уже решено | [Реестр решений](../../manual/process/09-open-questions.md) — **что решено и где описано** |
 
 ---
 
