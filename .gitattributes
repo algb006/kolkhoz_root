@@ -1,0 +1,38 @@
+# Line endings: LF in the repository, LF in the working tree.
+# The core is edited on Linux and built on Windows over rsync — mixed endings
+# would show up as spurious diffs and confuse MSVC.
+* text=auto eol=lf
+
+# Windows-only wrappers must keep CRLF: cmd.exe chokes on LF in some cases.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Explicit text types
+*.c        text
+*.cc       text
+*.cpp      text
+*.h        text
+*.hpp      text
+*.inl      text
+*.cmake    text
+*.txt      text
+*.md       text
+*.py       text
+*.sh       text eol=lf
+*.json     text
+*.csv      text
+Makefile   text
+Doxyfile   text
+
+# Binaries: never convert, never diff as text
+*.a        binary
+*.lib      binary
+*.so       binary
+*.dll      binary
+*.exe      binary
+*.pdb      binary
+*.obj      binary
+*.o        binary
+*.png      binary
+*.jpg      binary
+*.zip      binary

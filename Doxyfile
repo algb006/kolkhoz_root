@@ -1,0 +1,37 @@
+# Kolkhoz core — Doxygen configuration.
+# Only non-default settings are listed. Generate with: make docs
+
+PROJECT_NAME           = "Kolkhoz core"
+PROJECT_BRIEF          = "Simulation core of the Kolkhoz Chairman game"
+PROJECT_NUMBER         = 0.1.0
+
+OUTPUT_DIRECTORY       = build/doc
+INPUT                  = include subprojects src
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.hpp *.inl *.cpp
+EXCLUDE_PATTERNS       = */build/* */depends/* */libs/*
+
+# An interface digest, not a dump of every private detail.
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+
+# @threading is our own tag; make it a visible section (CLAUDE.md section 10).
+ALIASES                = "threading=\par Threading model:\n"
+
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+BUILTIN_STL_SUPPORT    = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = YES
+QUIET                  = YES
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+SOURCE_BROWSER         = YES
+ALPHABETICAL_INDEX     = YES
+
+HAVE_DOT               = NO

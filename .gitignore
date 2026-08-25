@@ -9,10 +9,11 @@ claude/
 .claude/
 **/.claude/
 
-# Build output
-build/
-out/
-cmake-build-*/
+# Build output (root of the core project only — manual/ may use these words)
+/build/
+/build-*/
+/out/
+/cmake-build-*/
 
 # Compiled artifacts
 *.o
@@ -50,3 +51,10 @@ Thumbs.db
 *.bak
 *.orig
 *.rej
+
+# Artifacts pulled back from the Windows host
+/artifacts/
+
+# Doxygen output when generated outside build/
+doc/html/
+doc/xml/

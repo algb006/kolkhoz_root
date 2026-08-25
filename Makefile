@@ -1,0 +1,148 @@
+# Kolkhoz Chairman — simulation core.
+#
+# Thin driver over CMake + Ninja. The build system is CMake; this file only
+# spells the commands so nobody has to remember them. See README.txt.
+
+.DEFAULT_GOAL := help
+.PHONY: help configure build release rebuild asan clean distclean test format \
+        format-check tidy docs sync win hooks deps info
+
+# --- Settings ---------------------------------------------------------------
+
+BUILD_DIR   ?= build
+TYPE        ?= Debug
+GENERATOR   ?= Ninja
+CXX_COMPILER?= clang++
+C_COMPILER  ?= clang
+JOBS        ?= $(shell nproc 2>/dev/null || echo 4)
+SANITIZERS  ?=
+
+# Windows host for the MSVC build (see CLAUDE.md section 12).
+WIN_HOST    ?= win
+WIN_DIR     ?= /c/dev/core-msvc
+
+CMAKE_FLAGS = -S . -B $(BUILD_DIR) -G $(GENERATOR) \
+              -DCMAKE_BUILD_TYPE=$(TYPE) \
+              -DCMAKE_C_COMPILER=$(C_COMPILER) \
+              -DCMAKE_CXX_COMPILER=$(CXX_COMPILER) \
+              -DKOLKHOZ_SANITIZERS="$(SANITIZERS)"
+
+SOURCE_GLOBS = include src subprojects tests
+
+# --- Targets ----------------------------------------------------------------
+
+help:
+	@echo 'Ядро симуляции — сборка и обслуживание проекта.'
+	@echo ''
+	@echo '  make build          собрать (Debug), настроив при необходимости'
+	@echo '  make release        собрать Release'
+	@echo '  make rebuild        собрать с нуля — при странном поведении первым делом'
+	@echo '  make test           прогнать тесты через ctest'
+	@echo '  make asan           собрать с санитайзерами address+undefined'
+	@echo '  make clean          удалить объектные файлы, конфигурацию оставить'
+	@echo '  make distclean      удалить каталог сборки целиком'
+	@echo ''
+	@echo '  make format         применить .clang-format ко всем исходникам'
+	@echo '  make format-check   проверить форматирование, ничего не меняя'
+	@echo '  make tidy           статический анализ clang-tidy'
+	@echo '  make docs           выжимка Doxygen в $(BUILD_DIR)/doc'
+	@echo ''
+	@echo '  make sync           отправить исходники на Windows-хост ($(WIN_HOST))'
+	@echo '  make win            собрать на хосте под MSVC'
+	@echo ''
+	@echo '  make hooks          включить git-хуки из scripts/git-hooks'
+	@echo '  make deps           показать, что доустановить в системе'
+	@echo '  make info           текущие настройки сборки'
+	@echo ''
+	@echo 'Переменные: TYPE=Debug|Release  BUILD_DIR=$(BUILD_DIR)  JOBS=$(JOBS)'
+
+configure:
+	cmake $(CMAKE_FLAGS)
+
+build: configure
+	cmake --build $(BUILD_DIR) -j $(JOBS)
+
+release:
+	@$(MAKE) --no-print-directory TYPE=Release build
+
+rebuild: distclean build
+
+asan:
+	@$(MAKE) --no-print-directory SANITIZERS='address;undefined' rebuild
+
+clean:
+	@test -d $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target clean || \
+	  echo 'Каталог сборки отсутствует — чистить нечего.'
+
+distclean:
+	rm -rf $(BUILD_DIR)
+
+test: build
+	ctest --test-dir $(BUILD_DIR) --output-on-failure -j $(JOBS)
+
+# --- Code hygiene -----------------------------------------------------------
+
+format:
+	@files=$$(find $(SOURCE_GLOBS) -type f \( -name '*.h' -o -name '*.cpp' \
+	  -o -name '*.inl' \) 2>/dev/null); \
+	if [ -z "$$files" ]; then echo 'Исходников пока нет.'; else \
+	  echo "$$files" | xargs clang-format -i --style=file && echo 'Отформатировано.'; fi
+
+format-check:
+	@files=$$(find $(SOURCE_GLOBS) -type f \( -name '*.h' -o -name '*.cpp' \
+	  -o -name '*.inl' \) 2>/dev/null); \
+	if [ -z "$$files" ]; then echo 'Исходников пока нет.'; else \
+	  echo "$$files" | xargs clang-format --dry-run --Werror --style=file && \
+	  echo 'Форматирование в порядке.'; fi
+
+tidy: configure
+	@files=$$(find $(SOURCE_GLOBS) -type f -name '*.cpp' 2>/dev/null); \
+	if [ -z "$$files" ]; then echo 'Исходников пока нет.'; else \
+	  echo "$$files" | xargs clang-tidy -p $(BUILD_DIR); fi
+
+docs:
+	@command -v doxygen >/dev/null || { echo 'doxygen не установлен: make deps'; exit 1; }
+	@mkdir -p $(BUILD_DIR)/doc
+	doxygen Doxyfile
+	@echo 'Готово: $(BUILD_DIR)/doc/html/index.html'
+
+# --- Windows host -----------------------------------------------------------
+
+sync:
+	rsync -az --checksum --delete \
+	  --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
+	  --exclude 'claude/' --exclude 'artifacts/' \
+	  ./ $(WIN_HOST):$(WIN_DIR)/
+
+win: sync
+	ssh $(WIN_HOST) "build-core.bat"
+
+# --- Environment ------------------------------------------------------------
+
+hooks:
+	git config core.hooksPath scripts/git-hooks
+	@chmod +x scripts/git-hooks/* 2>/dev/null || true
+	@echo 'Git-хуки включены: scripts/git-hooks'
+
+deps:
+	@echo 'AlmaLinux 10 — подключить EPEL и CRB, затем:'
+	@echo ''
+	@echo '  sudo dnf install -y epel-release'
+	@echo '  sudo dnf config-manager --set-enabled crb'
+	@echo '  sudo dnf install -y clang clang-tools-extra lld cmake ninja-build \'
+	@echo '                      ccache doxygen git rsync'
+	@echo ''
+	@echo 'Проверка после установки: make info'
+
+info:
+	@echo 'Каталог сборки : $(BUILD_DIR)'
+	@echo 'Тип сборки     : $(TYPE)'
+	@echo 'Генератор      : $(GENERATOR)'
+	@echo 'Компилятор     : $(CXX_COMPILER)'
+	@echo 'Параллельность : $(JOBS)'
+	@echo 'Санитайзеры    : $(if $(SANITIZERS),$(SANITIZERS),нет)'
+	@echo 'Windows-хост   : $(WIN_HOST):$(WIN_DIR)'
+	@echo ''
+	@for tool in $(CXX_COMPILER) cmake ninja ccache clang-format clang-tidy doxygen; do \
+	  if command -v $$tool >/dev/null; then printf '  %-14s есть\n' $$tool; \
+	  else printf '  %-14s НЕТ\n' $$tool; fi; done

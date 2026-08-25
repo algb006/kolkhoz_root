@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Formats staged C++ sources with clang-format before the commit is recorded.
+# Formatting is applied automatically (CLAUDE.md section 3), not argued about
+# in review. Missing clang-format is a warning, never a blocked commit.
+
+set -euo pipefail
+
+if ! command -v clang-format >/dev/null 2>&1; then
+  echo "pre-commit: clang-format не найден, форматирование пропущено" >&2
+  exit 0
+fi
+
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR \
+                      -- '*.h' '*.hpp' '*.inl' '*.cpp' '*.cc')
+
+if [ ${#staged[@]} -eq 0 ]; then
+  exit 0
+fi
+
+changed=0
+for file in "${staged[@]}"; do
+  [ -f "$file" ] || continue
+  before="$(git hash-object "$file")"
+  clang-format -i --style=file "$file"
+  after="$(git hash-object "$file")"
+  if [ "$before" != "$after" ]; then
+    git add "$file"
+    echo "pre-commit: отформатирован $file"
+    changed=1
+  fi
+done
+
+[ "$changed" -eq 1 ] && echo "pre-commit: изменения добавлены в коммит"
+exit 0
