@@ -2,7 +2,8 @@
 
 > Этап 0 первой фазы — инфраструктура. План: [`../plan/51-phase1-plan.md`](../plan/51-phase1-plan.md) §2.
 > Правила написания кода — [`../../CLAUDE.md`](../../CLAUDE.md).
-> Общая архитектура — [`../../../manual/technical/50-architecture.md`](../../../manual/technical/50-architecture.md) §7г, §7д.
+> Общая архитектура — [Архитектура §7г](../../../manual/technical/50-architecture.md#7г-pipeline-разработки)
+> и [§7д](../../../manual/technical/50-architecture.md#7д-требования-к-коду).
 
 Документ отвечает на два вопроса: **куда класть файл** и **какой командой это собрать**.
 
