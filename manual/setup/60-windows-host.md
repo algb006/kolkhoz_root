@@ -32,6 +32,11 @@
 | **MSYS2** | Даёт `rsync` и POSIX-оболочку. **Без неё перенос не работает** — см. §5 |
 | **Visual Studio Build Tools**, набор C++ | MSVC, Windows SDK, CMake и Ninja. Студия целиком не нужна |
 
+Установлены **Build Tools 2026** (`C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools`,
+MSVC 19.51). Номер года в пути меняется от выпуска к выпуску, поэтому
+[`build-core.bat`](../../scripts/build-core.bat) ищет установку через `vswhere`, а не по пути;
+CMake и Ninja берутся из самих Build Tools — в `PATH` их нет.
+
 ### Каталоги на хосте
 
 **Общая папка игры — `C:\MyGames\Kolkhoz`**, по папке на часть проекта. Ядру принадлежит
@@ -158,6 +163,11 @@ make win                                         # перенос и сборк�
 Ключ `--delete` убирает с хоста то, чего в исходниках больше нет, — иначе удалённый модуль
 продолжает собираться там ещё долго.
 
+**Привычного `-a` здесь нет, и это не оплошность.** Он включает `-p -o -g`, а права POSIX на
+NTFS через MSYS2 не ставятся: файл доезжает, а следом падает
+`failed to set permissions ... Permission denied`. Берётся `-rltz` — то, что хосту
+действительно нужно.
+
 Из переноса исключены каталоги сборки, `.git/`, `claude/` и `artifacts/`: сборка хоста своя,
 остальное на хосте не нужно.
 
@@ -173,4 +183,6 @@ make win                                         # перенос и сборк�
 | `rsync: command not found` | `DefaultShellCommandOption` не `-lc`: без `/etc/profile` в `PATH` нет `/usr/bin` |
 | `cmd` жалуется на `C:/c` | Потерялся двойной слэш в `cmd //c` |
 | `vswhere not found` | Build Tools не установлены или встали без набора C++ |
+| `failed to set permissions ... Permission denied` | В `rsync` вернулся ключ `-a` (§7) |
+| `'scriptsbuild-core.bat' is not recognized` | Оболочка хоста съела обратный слэш: имя `.bat` должно быть в одинарных кавычках |
 | Собралось, а библиотека старая | Инкрементальная сборка. `make win-clean` |

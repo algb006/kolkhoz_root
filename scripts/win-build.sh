@@ -32,7 +32,11 @@ done
 echo "==> ${host}:${remote_dir}"
 ssh "${host}" "echo ok" >/dev/null
 
-rsync -az --checksum --delete \
+# Deliberately not -a: it implies -p -o -g, and POSIX permissions cannot be
+# set on NTFS through MSYS2 — every file arrives and then fails with
+# "failed to set permissions ... Permission denied". -rlt carries what the
+# host actually needs, and content comparison is what --checksum is for.
+rsync -rltz --checksum --delete --omit-dir-times \
       --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
       --exclude 'claude/' --exclude 'artifacts/' \
       "${project_dir}/" "${host}:${remote_dir}/"
@@ -42,9 +46,11 @@ if [ "${sync_only}" -eq 1 ]; then
   exit 0
 fi
 
-# The host shell is MSYS2 bash, so the batch file goes through cmd. Doubling
-# the slash in //c is what stops MSYS from rewriting the switch into a path.
-ssh "${host}" "cd '${remote_dir}' && cmd //c scripts\\build-core.bat ${build_type} ${clean_arg}"
+# The host shell is MSYS2 bash, so the batch file goes through cmd. Two habits
+# of that shell have to be worked around at once: //c keeps MSYS from
+# rewriting the switch into a path, and the single quotes keep bash from
+# eating the backslash before cmd ever sees the name.
+ssh "${host}" "cd '${remote_dir}' && cmd //c 'scripts\\build-core.bat' ${build_type} ${clean_arg}"
 
 mkdir -p "${project_dir}/artifacts"
 if scp -q "${host}:${remote_dir}/build-msvc/lib/core.lib" "${project_dir}/artifacts/" 2>/dev/null; then

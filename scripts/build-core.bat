@@ -10,7 +10,8 @@ rem and Cyrillic would arrive as garbage on the VM side.
 
 setlocal enableextensions
 
-set "PROJECT_DIR=%~dp0.."
+rem %~dp0 ends in a slash, so ..\ would show up in every path printed below.
+for %%i in ("%~dp0..") do set "PROJECT_DIR=%%~fi"
 set "BUILD_TYPE=%~1"
 if "%BUILD_TYPE%"=="" set "BUILD_TYPE=Debug"
 set "BUILD_DIR=%PROJECT_DIR%\build-msvc"
