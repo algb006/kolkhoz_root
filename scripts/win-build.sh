@@ -2,16 +2,32 @@
 # Builds the core on the Windows host with MSVC.
 #
 # Sources are pushed with rsync --checksum: timestamps drift between the VM and
-# the host, content comparison does not. build-core.bat must exist on the host
-# and set up the MSVC environment through vcvarsall before calling CMake.
+# the host, content comparison does not. The host needs MSYS2 (for rsync and a
+# POSIX shell behind sshd) and Visual Studio Build Tools; scripts/win-setup.ps1
+# puts both in place, manual/setup/60-windows-host.md explains why.
 #
-# Usage: scripts/win-build.sh [host] [remote-dir]
+# Usage: scripts/win-build.sh [--sync-only] [--clean] [--release]
+# Host and directory come from WIN_HOST and WIN_DIR.
 
 set -euo pipefail
 
-host="${1:-${WIN_HOST:-win}}"
-remote_dir="${2:-${WIN_DIR:-/c/dev/core-msvc}}"
+host="${WIN_HOST:-win}"
+remote_dir="${WIN_DIR:-/c/MyGames/Kolkhoz/core-msvc}"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+sync_only=0
+build_type=Debug
+clean_arg=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --sync-only) sync_only=1 ;;
+    --clean)     clean_arg="clean" ;;
+    --release)   build_type=Release ;;
+    *) echo "Неизвестный ключ: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 echo "==> ${host}:${remote_dir}"
 ssh "${host}" "echo ok" >/dev/null
@@ -21,8 +37,18 @@ rsync -az --checksum --delete \
       --exclude 'claude/' --exclude 'artifacts/' \
       "${project_dir}/" "${host}:${remote_dir}/"
 
-ssh "${host}" "build-core.bat"
+if [ "${sync_only}" -eq 1 ]; then
+  echo "Исходники на хосте, сборка не запускалась."
+  exit 0
+fi
+
+# The host shell is MSYS2 bash, so the batch file goes through cmd. Doubling
+# the slash in //c is what stops MSYS from rewriting the switch into a path.
+ssh "${host}" "cd '${remote_dir}' && cmd //c scripts\\build-core.bat ${build_type} ${clean_arg}"
 
 mkdir -p "${project_dir}/artifacts"
-scp "${host}:${remote_dir}/build/lib/core.lib" "${project_dir}/artifacts/" || \
+if scp -q "${host}:${remote_dir}/build-msvc/lib/core.lib" "${project_dir}/artifacts/" 2>/dev/null; then
+  echo "Забрана artifacts/core.lib"
+else
   echo "core.lib не найдена — модулей пока нет, это ожидаемо"
+fi

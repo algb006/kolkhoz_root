@@ -5,8 +5,8 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit \
-        check-tests format format-check tidy docs sync win hooks deps info version \
-        bump-patch bump-minor bump-major
+        check-tests format format-check tidy docs sync win win-release win-clean \
+        win-setup hooks deps info version bump-patch bump-minor bump-major
 
 # --- Settings ---------------------------------------------------------------
 
@@ -20,7 +20,7 @@ SANITIZERS  ?=
 
 # Windows host for the MSVC build (see CLAUDE.md section 12).
 WIN_HOST    ?= win
-WIN_DIR     ?= /c/dev/core-msvc
+WIN_DIR     ?= /c/MyGames/Kolkhoz/core-msvc
 
 CMAKE_FLAGS = -S . -B $(BUILD_DIR) -G $(GENERATOR) \
               -DCMAKE_BUILD_TYPE=$(TYPE) \
@@ -55,6 +55,9 @@ help:
 	@echo ''
 	@echo '  make sync           отправить исходники на Windows-хост ($(WIN_HOST))'
 	@echo '  make win            собрать на хосте под MSVC'
+	@echo '  make win-release    то же, Release'
+	@echo '  make win-clean      снести каталог сборки на хосте и собрать заново'
+	@echo '  make win-setup      что и как настроить на хосте в первый раз'
 	@echo ''
 	@echo '  make hooks          включить git-хуки из scripts/git-hooks'
 	@echo '  make deps           показать, что доустановить в системе'
@@ -138,14 +141,38 @@ docs:
 
 # --- Windows host -----------------------------------------------------------
 
-sync:
-	rsync -az --checksum --delete \
-	  --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
-	  --exclude 'claude/' --exclude 'artifacts/' \
-	  ./ $(WIN_HOST):$(WIN_DIR)/
+# All four go through one script: the rsync flags and the remote invocation are
+# fiddly enough that a second copy of them would drift.
+WIN_ENV = WIN_HOST=$(WIN_HOST) WIN_DIR=$(WIN_DIR)
 
-win: sync
-	ssh $(WIN_HOST) "build-core.bat"
+sync:
+	@$(WIN_ENV) ./scripts/win-build.sh --sync-only
+
+win:
+	@$(WIN_ENV) ./scripts/win-build.sh
+
+win-release:
+	@$(WIN_ENV) ./scripts/win-build.sh --release
+
+win-clean:
+	@$(WIN_ENV) ./scripts/win-build.sh --clean
+
+win-setup:
+	@echo 'Первичная настройка Windows-хоста — manual/setup/60-windows-host.md.'
+	@echo ''
+	@echo 'Скрипт: scripts/win-setup.ps1, запускается на хосте из PowerShell'
+	@echo 'от администратора. Переносится так — на виртуалке:'
+	@echo ''
+	@echo '  python3 -m http.server 8000 --directory scripts'
+	@echo ''
+	@echo 'на хосте, в PowerShell от администратора:'
+	@echo ''
+	@echo '  irm http://$(shell hostname -I 2>/dev/null | awk "{print \$$1}"):8000/win-setup.ps1 -OutFile $$env:TEMP\win-setup.ps1'
+	@echo '  powershell -NoProfile -ExecutionPolicy Bypass -File $$env:TEMP\win-setup.ps1 -PublicKey "<ключ ниже>"'
+	@echo ''
+	@echo 'Публичный ключ этой машины:'
+	@if [ -f ~/.ssh/id_ed25519_win.pub ]; then cat ~/.ssh/id_ed25519_win.pub; \
+	 else echo '  НЕТ — создать: ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_win -N ""'; fi
 
 # --- Environment ------------------------------------------------------------
 
