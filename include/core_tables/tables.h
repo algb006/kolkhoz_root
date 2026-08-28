@@ -93,6 +93,9 @@ class ITableSet {
 };
 
 /// @brief Loads every *.csv in `directory` into an immutable table set.
+/// Call from the setup/sim thread only, never concurrently: the file-level
+/// PARALLEL_READONLY covers the returned set, not the act of loading (the
+/// failure path also logs, and core_log is single-threaded by contract).
 /// Fails as a whole: one malformed file, duplicate key or oversized table
 /// and the load returns nullptr — a partially loaded balance is worse than
 /// none. Details go to the log; the first error is also written to `error`
