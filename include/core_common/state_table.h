@@ -23,8 +23,8 @@
 /// and never pointers: rows move on removal, buffers are copied, and a save
 /// is just the tables written out. Ids are the only names that survive.
 ///
-/// This header fixes the layout; Find/Append/Remove operations are free
-/// functions of the core_common implementation (stage 1, task O1).
+/// This header fixes the layout; the operations — FindRow, AppendRow,
+/// RemoveRow, RebuildLookup — are free functions in state_table_ops.h.
 
 #ifndef CORE_COMMON_STATE_TABLE_H_
 #define CORE_COMMON_STATE_TABLE_H_
@@ -56,9 +56,11 @@ inline constexpr std::uint32_t kNoRow = 0xFFFFFFFFu;
 ///   * Iteration is by row index over the dense arrays; per-id lookup is the
 ///     exception, not the loop body.
 ///
-/// Saves store rows and row_ids; row_by_id and next_id_value are rebuilt on
-/// load (next_id_value = max stored id + 1), so the lookup array can never
-/// disagree with the data it indexes.
+/// Saves store rows, row_ids and next_id_value; only row_by_id is rebuilt on
+/// load, so the lookup array can never disagree with the data it indexes.
+/// next_id_value must be saved, not recomputed: the maximum live id says
+/// nothing about ids issued to entities that died before the save, and
+/// recomputing would re-issue them — breaking the never-reused invariant.
 template <typename IdT, typename RowT>
 struct StateTable {
   /// Per-entity state, dense. The unit of parallel work.

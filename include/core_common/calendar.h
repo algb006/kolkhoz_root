@@ -116,10 +116,11 @@ struct Date {
 // ---------------------------------------------------------------------------
 
 /// @brief Current time of the simulated world.
-/// `tick` and `day` are the authority; `date`, `weekday` and `season` are
-/// caches derived from `day`, refreshed by the time phase so that no other
-/// phase repeats the arithmetic. Which weekday day 0 falls on is a campaign
-/// setup parameter (tables), applied once when the cache is computed.
+/// `tick` is the authority; `day`, `date`, `weekday` and `season` are caches
+/// derived from it, refreshed by the time phase (RefreshCalendarCaches) so
+/// that no other phase repeats the arithmetic. Which weekday day 0 falls on
+/// is a campaign setup parameter (tables), applied once when the cache is
+/// computed.
 struct CalendarState {
   Tick tick = 0;
 
@@ -131,6 +132,51 @@ struct CalendarState {
 
   Season season = Season::kWinter;
 };
+
+// ---------------------------------------------------------------------------
+// Calendar arithmetic — pure functions of the clocks
+// ---------------------------------------------------------------------------
+
+constexpr SimDay SimDayFromTick(Tick tick) {
+  return static_cast<SimDay>(tick / kTicksPerDay);
+}
+
+/// @brief Hour within the day, 0..23. Hour 0 is the start of the day.
+constexpr std::uint32_t HourFromTick(Tick tick) {
+  return static_cast<std::uint32_t>(tick % kTicksPerDay);
+}
+
+/// @brief Broken-down date of a day. Year is uint16: fine for any campaign.
+constexpr Date DateFromDay(SimDay day) {
+  const std::uint32_t day_of_year = day % kDaysPerYear;
+  return Date{
+      .year = static_cast<std::uint16_t>(1 + day / kDaysPerYear),
+      .month = static_cast<Month>(day_of_year / kDaysPerMonth),
+      .day_in_month = static_cast<std::uint8_t>(day_of_year % kDaysPerMonth),
+  };
+}
+
+/// @brief Weekday of a day. The week runs independently of months: it is
+/// plain modulo-7 from the campaign's day-zero weekday.
+constexpr Weekday WeekdayFromDay(SimDay day, Weekday day_zero_weekday) {
+  return static_cast<Weekday>((static_cast<std::uint32_t>(day_zero_weekday) + day) % kDaysPerWeek);
+}
+
+/// @brief Season of a month: December–February is winter, and so on by threes.
+constexpr Season SeasonOfMonth(Month month) {
+  return static_cast<Season>(((static_cast<std::uint32_t>(month) + 1) / kMonthsPerSeason) %
+                             kSeasonsPerYear);
+}
+
+/// @brief Recomputes every cached field of `calendar` from its tick.
+/// The time phase calls this once per step after advancing the tick; tests
+/// and world setup call it after setting the tick directly.
+constexpr void RefreshCalendarCaches(CalendarState& calendar, Weekday day_zero_weekday) {
+  calendar.day = SimDayFromTick(calendar.tick);
+  calendar.date = DateFromDay(calendar.day);
+  calendar.weekday = WeekdayFromDay(calendar.day, day_zero_weekday);
+  calendar.season = SeasonOfMonth(calendar.date.month);
+}
 
 }  // namespace core
 

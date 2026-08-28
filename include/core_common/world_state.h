@@ -28,6 +28,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
+#include "core_common/random.h"
 
 namespace core {
 
@@ -58,19 +59,6 @@ struct WeatherState {
   float daylight_hours = 12.0f;
 
   Precipitation precipitation = Precipitation::kNone;
-};
-
-/// @brief Deterministic random-number generator state, 128 bits.
-/// The world owns exactly one sequential RNG, advanced only in
-/// single-threaded phases. Parallel phases never touch it: any randomness
-/// inside a parallel pass is computed counter-style from (seed, tick, entity
-/// id), so the result cannot depend on worker scheduling. The concrete
-/// algorithm behind these bits is the core_common implementation's choice
-/// (stage 1, task O1); the state is opaque to everyone else.
-struct RngState {
-  std::uint64_t state = 0;
-
-  std::uint64_t stream = 0;
 };
 
 /// @brief The chairman's standing. He is an abstract figure without a body or
@@ -128,6 +116,8 @@ struct WorldState {
   /// derived counter-style random draw. Same seed, same commands — same world.
   std::uint64_t world_seed = 0;
 
+  /// The one sequential RNG of the world (random.h): advanced only in
+  /// single-threaded phases; parallel code uses counter hashes instead.
   RngState rng;
 
   ChairmanState chairman;
