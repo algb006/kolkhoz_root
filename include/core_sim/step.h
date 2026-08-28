@@ -1,0 +1,181 @@
+/// @file
+/// @brief The step-cycle contract: phase order, barriers, double buffering.
+/// @threading SINGLE_THREADED
+/// The whole public surface of core_sim is driven from one thread — the sim
+/// thread calls AdvanceStep() and reads CompletedState() between calls, and
+/// nothing here is reentrant. Worker threads exist only inside the engine and
+/// touch user code solely through IParallelPhase::RunItemRange under the
+/// buffer law below; a phase implementation marked for a parallel slot must
+/// be safe under exactly that law and nothing more.
+///
+/// One step advances game time by one tick and runs seven phases in a fixed
+/// order with a barrier after each (architecture, §7е). Sequential slots run
+/// on the sim thread; parallel slots are split over rows of that phase's unit
+/// of parallelism (state model doc, §4). The order never changes at run time
+/// and is not configurable — determinism rests on it.
+///
+/// THE BUFFER LAW — the one set of rules every phase obeys:
+///   1. Two WorldState buffers exist: `previous` (the completed last step,
+///      immutable for the whole step) and `current` (being built).
+///   2. At step start the engine makes `current` an exact copy of `previous`;
+///      external commands are applied to `current` before phase 1, in arrival
+///      order (their format is a phase-2 boundary decision, not this one).
+///   3. A sequential phase may read `previous` and `current` freely and write
+///      any block of `current` it owns.
+///   4. A parallel phase invocation owns rows [begin_item, end_item) of the
+///      phase's unit of parallelism. In `current` it may write only those
+///      rows, and may read only those rows plus blocks finalized by earlier
+///      phases of this step (e.g. calendar and weather after phase 1).
+///      Everything else it reads from `previous`. No locks, no atomics.
+///   5. Parallel phases keep no cross-row accumulators; any aggregate over
+///      rows is computed later, sequentially, in row order (float determinism
+///      rule of the state model).
+///   6. Rows are appended or removed only in sequential phases. A parallel
+///      phase never changes the shape of any table.
+///   7. The sequential world RNG advances only in sequential phases; parallel
+///      code draws counter-style from (world_seed, tick, entity id).
+///   8. After phase 7 the buffers swap; the just-built state becomes the
+///      completed one.
+///
+/// Under rules 4–7 the result cannot depend on worker count, chunk size or
+/// which worker ran which chunk: writes are disjoint and everything read is
+/// immutable while it is read. That is why the single-thread run is required
+/// to match the multi-thread run bit for bit — a divergence is a violated
+/// rule, not noise (core rules, §10).
+
+#ifndef CORE_SIM_STEP_H_
+#define CORE_SIM_STEP_H_
+
+#include <cstdint>
+
+#include "core_common/world_state.h"
+
+namespace core {
+
+// ---------------------------------------------------------------------------
+// The seven phases
+// ---------------------------------------------------------------------------
+
+/// @brief The phases of one simulation step, in their fixed execution order.
+/// The enum value is the execution index. The unit of parallelism of each
+/// parallel slot is fixed by the state model (manual/52-state-model.md, §4)
+/// and repeated in StepPhaseSet's field docs.
+enum class StepPhase : std::uint8_t {
+  kTimeAndWeather = 0,  ///< Sequential. Advances calendar and weather.
+  kNeeds = 1,           ///< Parallel over families: food, rest, cold, mood.
+  kDecisions = 2,       ///< Sequential. Assignments, births/deaths, structure.
+  kProduction = 3,      ///< Parallel over units and fields: cycles, growth.
+  kLogistics = 4,       ///< Parallel over units. Phase-1 stub: instant delivery.
+  kMetrics = 5,         ///< Parallel over families: satisfaction aggregates.
+  kEvents = 6,          ///< Sequential. Checks, incidents, extension point.
+};
+
+inline constexpr std::uint32_t kStepPhaseCount = 7;
+
+// ---------------------------------------------------------------------------
+// Phase plug-in contracts
+// ---------------------------------------------------------------------------
+
+/// @brief Contract of a phase that runs on the sim thread, alone.
+/// One implementation fills one sequential slot of StepPhaseSet. The engine
+/// calls RunSequential exactly once per step, between the barriers of the
+/// neighboring phases.
+class ISequentialPhase {
+ public:
+  virtual ~ISequentialPhase() = default;
+
+  /// @brief Runs the phase's whole work for this step.
+  /// @param previous The completed last step; immutable, read anything.
+  /// @param current  The step being built; read and write per the buffer law
+  ///                 (rules 3, 6, 7 of the file header).
+  virtual void RunSequential(const WorldState& previous, WorldState& current) = 0;
+};
+
+/// @brief Contract of a phase whose work is split over rows of one table.
+/// One implementation fills one parallel slot of StepPhaseSet. Per step the
+/// engine calls ParallelItemCount once, then covers [0, count) with
+/// RunItemRange invocations from its workers — each range exactly once,
+/// ranges disjoint, chunking chosen by the engine. Correctness must not
+/// depend on chunk boundaries or on which worker runs which chunk; under the
+/// buffer law it cannot.
+class IParallelPhase {
+ public:
+  virtual ~IParallelPhase() = default;
+
+  /// @brief Number of parallel items this step: the row count of the phase's
+  /// unit of parallelism, read from `previous` (table shape cannot change
+  /// during parallel phases — buffer-law rule 6).
+  virtual std::uint32_t ParallelItemCount(const WorldState& previous) const = 0;
+
+  /// @brief Processes rows [begin_item, end_item) of the phase's table.
+  /// @param previous The completed last step; immutable, read anything.
+  /// @param current  The step being built. Write only the owned rows; read
+  ///                 the owned rows and blocks finalized by earlier phases
+  ///                 (buffer-law rules 4, 5, 7).
+  /// @note Called from worker threads. No locks, no atomics, no shape
+  ///       changes, no cross-row accumulation, no sequential RNG.
+  virtual void RunItemRange(const WorldState& previous,
+                            WorldState& current,
+                            std::uint32_t begin_item,
+                            std::uint32_t end_item) = 0;
+};
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+
+/// @brief The seven phase implementations of one simulation, by slot.
+/// Typed by slot so a parallel implementation cannot land in a sequential
+/// slot or vice versa. Pointers are non-owning: the wiring code (stage 1,
+/// task O2) owns the subsystem objects and must keep them alive for the
+/// simulation's lifetime. Every slot must be filled — a subsystem that does
+/// not exist yet plugs in a STUB implementation, never a null (plan, §11а).
+struct StepPhaseSet {
+  ISequentialPhase* time_and_weather = nullptr;
+
+  IParallelPhase* needs = nullptr;
+
+  ISequentialPhase* decisions = nullptr;
+
+  IParallelPhase* production = nullptr;
+
+  IParallelPhase* logistics = nullptr;
+
+  IParallelPhase* metrics = nullptr;
+
+  ISequentialPhase* events = nullptr;
+};
+
+// ---------------------------------------------------------------------------
+// The simulation engine
+// ---------------------------------------------------------------------------
+
+/// @brief The step engine: owns the two state buffers and turns the crank.
+/// Constructed by a factory of the core_sim implementation (stage 1, task O2)
+/// from an initial WorldState, a StepPhaseSet and a worker count. A worker
+/// count of 1 is the mandatory verification mode: its results must equal any
+/// other worker count's exactly, and the balance runs compare the two.
+class ISimulation {
+ public:
+  virtual ~ISimulation() = default;
+
+  /// @brief Runs one full step: copy forward, phases 1–7 with barriers, swap.
+  /// Advances game time by exactly one tick (kTicksPerDay ticks make a day —
+  /// core_common/calendar.h). Blocks until the step is complete.
+  virtual void AdvanceStep() = 0;
+
+  /// @brief The last completed state.
+  /// Valid until the next AdvanceStep() or ResetWorld() call. This is what
+  /// tests, the balance run and (later, through the boundary queue) the
+  /// presentation read between steps.
+  virtual const WorldState& CompletedState() const = 0;
+
+  /// @brief Replaces the world entirely: both buffers become `initial`.
+  /// The way tests and the balance run seed or rewind a world. In-game state
+  /// changes go through commands at the step boundary, never through this.
+  virtual void ResetWorld(const WorldState& initial) = 0;
+};
+
+}  // namespace core
+
+#endif  // CORE_SIM_STEP_H_

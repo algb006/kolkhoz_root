@@ -12,9 +12,9 @@
 /// the state keeps the full breakdown because mechanics count in days.
 ///
 /// Two clocks, one counter:
-///   * Tick  — the fixed simulation step, the only monotone clock. How many
-///     ticks make one day is decided by the step-cycle contract (stage 1,
-///     task F2), not here.
+///   * Tick  — the fixed simulation step, the only monotone clock. One tick
+///     is one game hour (kTicksPerDay = 24) — decided by the step-cycle
+///     contract, rationale in manual/53-step-cycle.md.
 ///   * SimDay — whole days since campaign start; every calendar value below
 ///     is a pure function of it. Day 0 is the first day of year 1.
 ///
@@ -52,6 +52,16 @@ inline constexpr std::uint32_t kDaysPerWeek = 7;
 inline constexpr std::uint32_t kMonthsPerSeason = 3;
 inline constexpr std::uint32_t kSeasonsPerYear = 4;
 inline constexpr std::uint32_t kDaysPerSeason = kDaysPerMonth * kMonthsPerSeason;  // 12
+
+/// @brief Simulation ticks per day: one tick is one game hour.
+/// Fixed by the step-cycle contract (core_sim/step.h): every in-day mechanic
+/// the design names — the working day by the sun, the hour-long commute
+/// limit, the fatigue walk-off, skip-ahead presets — resolves in hours, and
+/// nothing decides at finer grain. Structural like kDaysPerMonth: changing it
+/// re-times every schedule and breaks saves (VERSION_SAVE).
+inline constexpr std::uint32_t kTicksPerDay = 24;
+
+inline constexpr std::uint32_t kTicksPerYear = kTicksPerDay * kDaysPerYear;  // 1152
 
 /// @brief Calendar month. Values are 0-based so the enum doubles as an index.
 enum class Month : std::uint8_t {
