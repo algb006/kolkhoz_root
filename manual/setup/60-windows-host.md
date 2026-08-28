@@ -185,4 +185,5 @@ NTFS через MSYS2 не ставятся: файл доезжает, а сл�
 | `vswhere not found` | Build Tools не установлены или встали без набора C++ |
 | `failed to set permissions ... Permission denied` | В `rsync` вернулся ключ `-a` (§7) |
 | `'scriptsbuild-core.bat' is not recognized` | Оболочка хоста съела обратный слэш: имя `.bat` должно быть в одинарных кавычках |
+| `scp: Connection closed` | С bash в роли оболочки sshd подсистема sftp не работает, а `scp -O` не находит на хосте `scp.exe`. **`scp` к этому хосту не использовать** — файлы ходят через `ssh cat`, как в `win-build.sh` |
 | Собралось, а библиотека старая | Инкрементальная сборка. `make win-clean` |

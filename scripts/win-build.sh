@@ -52,8 +52,13 @@ fi
 # eating the backslash before cmd ever sees the name.
 ssh "${host}" "cd '${remote_dir}' && cmd //c 'scripts\\build-core.bat' ${build_type} ${clean_arg}"
 
+# Not scp: with MSYS2 bash as the sshd shell the SFTP subsystem is broken
+# ("Connection closed") and legacy scp -O finds no scp.exe in PATH. A cat
+# over the ssh pipe needs nothing on the host and moves binaries fine.
 mkdir -p "${project_dir}/artifacts"
-if scp -q "${host}:${remote_dir}/build-msvc/lib/core.lib" "${project_dir}/artifacts/" 2>/dev/null; then
+if ssh "${host}" "test -f '${remote_dir}/build-msvc/lib/core.lib'"; then
+  ssh "${host}" "cat '${remote_dir}/build-msvc/lib/core.lib'" \
+    > "${project_dir}/artifacts/core.lib"
   echo "Забрана artifacts/core.lib"
 else
   echo "core.lib не найдена — модулей пока нет, это ожидаемо"

@@ -4,16 +4,21 @@
 # target through kolkhoz_add_module(). Every such target is archived into the
 # single static library `core`.
 #
-# Rules (CLAUDE.md §7):
-#   * core_common is the base — types, identifiers, math. Everyone may use it.
-#   * modules never link to each other directly, only through interfaces;
-#     dependencies are declared explicitly with target_link_libraries().
-#   * if two modules reach for each other, the boundary is wrong — report it,
-#     do not add the dependency.
+# Rules (CLAUDE.md §7; the module map is manual/54-modules.md):
+#   * core_common is the base — types, identifiers, math, the world state as
+#     plain data. Everyone may use it.
+#   * three tiers: infrastructure (core_common, core_log, core_tables,
+#     core_sim) may be used by any module; subject modules (core_time,
+#     core_residents, core_production, core_logistics, core_labor) never name
+#     each other — data flows between them through the state in core_common;
+#     core_world is the composition root and the only module that may name
+#     everyone.
+#   * dependencies are declared explicitly with target_link_libraries().
+#   * if two subject modules reach for each other, the boundary is wrong —
+#     report it, do not add the dependency.
 #
 # Folders are picked up automatically in sorted order, so link order is
-# deterministic. Nothing here yet: the skeleton arrives in stage 1 of the plan
-# (manual/plan/51-phase1-plan.md §3).
+# deterministic.
 
 file(GLOB kolkhoz_module_dirs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*")
