@@ -5,7 +5,7 @@
 # core_residents, by design.
 
 kolkhoz_add_module(core_production
-    placeholder.cpp)
+    production_system.cpp)
 
 target_link_libraries(core_production
     PUBLIC core_common core_sim

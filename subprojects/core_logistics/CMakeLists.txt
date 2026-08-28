@@ -3,7 +3,7 @@
 # slot has an owner and project phase 2 fills the body without rewiring.
 
 kolkhoz_add_module(core_logistics
-    placeholder.cpp)
+    logistics_system.cpp)
 
 target_link_libraries(core_logistics
     PUBLIC core_common core_sim

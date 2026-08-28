@@ -5,7 +5,7 @@
 # sequential decisions phase through the subsystem interface (task F4).
 
 kolkhoz_add_module(core_residents
-    placeholder.cpp)
+    residents_system.cpp)
 
 target_link_libraries(core_residents
     PUBLIC core_common core_sim

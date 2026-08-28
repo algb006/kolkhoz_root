@@ -8,7 +8,7 @@
 # the executables in tests/ and src/.
 
 kolkhoz_add_module(core_world
-    placeholder.cpp)
+    world.cpp)
 
 target_link_libraries(core_world
     PUBLIC core_common core_sim
