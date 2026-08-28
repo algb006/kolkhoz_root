@@ -43,6 +43,7 @@
 
 | Решение | Что выбрано | Где записано |
 |---|---|---|
+| **Модель состояния** | Состояние — данные в `core_common`, модули — логика; таблицы `StateTable`, id не переиспользуются; **массы — целые граммы**, метрики — float 0–100 | [`52-state-model.md`](52-state-model.md) |
 | **Система сборки ядра** | **CMake плюс Ninja**, Clang в виртуалке, MSVC на хосте | [`setup/55-project-layout.md`](setup/55-project-layout.md) |
 | Раскладка каталогов | `include/<модуль>/`, `subprojects/<модуль>/`, `tests/unit/`, `tests/run/` | Там же |
 | Версии | `VERSION` и `VERSION_SAVE`, заголовок генерируется | [`setup/57-versioning.md`](setup/57-versioning.md) |
