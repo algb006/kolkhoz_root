@@ -11,8 +11,11 @@
 ///
 /// What the phase does each step: advances tick and day, refreshes the
 /// calendar caches (date, weekday, season) and writes the day's weather —
-/// temperature, daylight, precipitation (stage 2 of the plan). Everything
-/// else in the step reads calendar and weather as frozen.
+/// temperature and precipitation from the per-season weather table, daylight
+/// from the solar curve at the fixed campaign latitude (structural, in
+/// code). Weather is a pure function of (world_seed, day): counter-hashed,
+/// never drawn from the sequential RNG. Everything else in the step reads
+/// calendar and weather as frozen.
 
 #ifndef CORE_TIME_TIME_SYSTEM_H_
 #define CORE_TIME_TIME_SYSTEM_H_
@@ -37,12 +40,15 @@ class ITimeSystem {
 };
 
 /// @brief Creates the time subsystem.
-/// @param tables Balance tables (weather by season); non-owning, must
-///               outlive the returned object. Daylight needs no table: it
+/// @param tables Balance tables; non-owning, must outlive the returned
+///               object. Reads `weather` (per-season temperature and
+///               precipitation parameters); a set without that table gets
+///               documented STUB defaults. Daylight needs no table: it
 ///               follows the solar curve at the fixed campaign latitude —
-///               structural, computed in code (stage 2 of the plan).
-/// Implemented in core_time (stage 2 of the plan; a STUB that only advances
-/// the calendar arrives with task O0).
+///               structural, computed in code.
+/// @return nullptr when a present weather table is malformed (missing
+///         season row or column, non-numeric cell) — logged, never patched
+///         over silently.
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables);
 
 }  // namespace core

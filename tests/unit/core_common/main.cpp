@@ -66,7 +66,8 @@ int TestCalendar() {
   // The refresh helper fills every cache from the tick.
   core::CalendarState calendar;
   calendar.tick = static_cast<core::Tick>(core::kTicksPerYear) + 5 * core::kTicksPerDay + 7;
-  core::RefreshCalendarCaches(calendar, core::Weekday::kThursday);
+  calendar.day_zero_weekday = core::Weekday::kThursday;
+  core::RefreshCalendarCaches(calendar);
   failures += Expect(calendar.day == core::kDaysPerYear + 5, "refresh derives the day");
   failures += Expect(calendar.date.year == 2, "refresh derives the year");
   failures += Expect(calendar.date.month == core::Month::kFebruary, "refresh derives the month");

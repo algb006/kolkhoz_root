@@ -1,0 +1,3 @@
+key,value
+# campaign setup: read once at world genesis (core_world)
+day_zero_weekday,monday

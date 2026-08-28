@@ -39,7 +39,7 @@ class TestClockPhase final : public core::ISequentialPhase {
  public:
   void RunSequential(const core::WorldState& previous, core::WorldState& current) override {
     current.calendar.tick = previous.calendar.tick + 1;
-    core::RefreshCalendarCaches(current.calendar, core::Weekday::kMonday);
+    core::RefreshCalendarCaches(current.calendar);
   }
 };
 

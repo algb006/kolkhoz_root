@@ -1,0 +1,8 @@
+key,speed_kmh,load_tonnes,note
+# real-world speeds (transport design, section 1); the core divides by
+# kClockScale = 12 for effective game-hour speeds. Consumers arrive with
+# the labor and logistics systems.
+pedestrian,5,,
+jog,8.5,,running state: fire and similar events
+horse_trot,12,,
+cart_loaded,9,0.75,horse cart; winter sled hauling uses the same speed

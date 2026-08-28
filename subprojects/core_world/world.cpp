@@ -4,17 +4,22 @@
 
 #include "core_world/world.h"
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string_view>
+#include <utility>
 
 #include "core_common/calendar.h"
 #include "core_common/random.h"
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
+#include "core_log/log.h"
 #include "core_logistics/logistics_system.h"
 #include "core_production/production_system.h"
 #include "core_residents/residents_system.h"
+#include "core_tables/tables.h"
 #include "core_time/time_system.h"
 
 namespace core {
@@ -62,12 +67,17 @@ class EventsSlotStub final : public ISequentialPhase {
 /// engine's own reset is the whole story.
 class StandardSimulation final : public ISimulation {
  public:
-  explicit StandardSimulation(const StandardSimulationConfig& config)
-      : time_(CreateTimeSystem(*config.tables)),
-        residents_(CreateResidentsSystem(*config.tables)),
-        production_(CreateProductionSystem(*config.tables)),
-        logistics_(CreateLogisticsSystem(*config.tables)),
-        labor_(CreateLaborSystem(*config.tables)),
+  StandardSimulation(const StandardSimulationConfig& config,
+                     std::unique_ptr<ITimeSystem> time,
+                     std::unique_ptr<IResidentsSystem> residents,
+                     std::unique_ptr<IProductionSystem> production,
+                     std::unique_ptr<ILogisticsSystem> logistics,
+                     std::unique_ptr<ILaborSystem> labor)
+      : time_(std::move(time)),
+        residents_(std::move(residents)),
+        production_(std::move(production)),
+        logistics_(std::move(logistics)),
+        labor_(std::move(labor)),
         decisions_slot_(*labor_, *residents_, *production_) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
@@ -108,21 +118,79 @@ class StandardSimulation final : public ISimulation {
 
 }  // namespace
 
-WorldState CreateStartWorld(const ITableSet& /*tables*/, std::uint64_t world_seed) {
+namespace {
+
+/// @brief Weekday by its lowercase English name; `valid` reports success.
+Weekday ParseWeekdayName(std::string_view name, bool& valid) {
+  constexpr std::array<std::string_view, kDaysPerWeek> kNames = {
+      "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
+  for (std::uint32_t index = 0; index < kNames.size(); ++index) {
+    if (kNames[index] == name) {
+      valid = true;
+      return static_cast<Weekday>(index);
+    }
+  }
+  valid = false;
+  return Weekday::kMonday;
+}
+
+/// @brief The campaign-setup weekday of day 0 (tables/campaign.csv, row
+/// `day_zero_weekday`, column `value`). No campaign table is legal while the
+/// setup grows (STUB default: Monday); a present but unreadable value is
+/// logged as an error and falls back — genesis returns a value and has no
+/// error channel until the real genesis of stage 3.
+Weekday CampaignDayZeroWeekday(const ITableSet& tables) {
+  const ITable* campaign = tables.FindTable("campaign");
+  if (campaign == nullptr) {
+    return Weekday::kMonday;
+  }
+  const std::uint32_t row = campaign->FindRowByKey("day_zero_weekday");
+  const std::uint32_t value_column = campaign->FindColumn("value");
+  if (row == kNoTableRow || value_column == kNoTableColumn) {
+    LogError("campaign: no day_zero_weekday row or value column; using monday");
+    return Weekday::kMonday;
+  }
+  bool valid = false;
+  const Weekday weekday = ParseWeekdayName(campaign->CellText(row, value_column), valid);
+  if (!valid) {
+    LogError("campaign: day_zero_weekday is not a weekday name; using monday");
+    return Weekday::kMonday;
+  }
+  return weekday;
+}
+
+}  // namespace
+
+WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
   // STUB until stage 3: no resident, family, field or unit rows — the empty
-  // world of the stage-1 criterion. Tables are not read yet; the genesis of
-  // the designed start (80 residents, 21 yards, 160 ha) is built here at
-  // stage 3.
+  // world of the stage-1 criterion. Of the tables only the campaign setup is
+  // read; the genesis of the designed start (80 residents, 21 yards, 160 ha)
+  // is built here at stage 3.
   WorldState world;
   world.world_seed = world_seed;
   world.rng = SeedRngState(world_seed, kWorldRngStream);
-  RefreshCalendarCaches(world.calendar, Weekday::kMonday);
+  world.calendar.day_zero_weekday = CampaignDayZeroWeekday(tables);
+  RefreshCalendarCaches(world.calendar);
   return world;
 }
 
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config) {
   assert(config.tables != nullptr);
-  return std::make_unique<StandardSimulation>(config);
+  auto time = CreateTimeSystem(*config.tables);
+  auto residents = CreateResidentsSystem(*config.tables);
+  auto production = CreateProductionSystem(*config.tables);
+  auto logistics = CreateLogisticsSystem(*config.tables);
+  auto labor = CreateLaborSystem(*config.tables);
+  if (!time || !residents || !production || !logistics || !labor) {
+    // A factory refused its configuration (it already logged why).
+    return nullptr;
+  }
+  return std::make_unique<StandardSimulation>(config,
+                                              std::move(time),
+                                              std::move(residents),
+                                              std::move(production),
+                                              std::move(logistics),
+                                              std::move(labor));
 }
 
 }  // namespace core

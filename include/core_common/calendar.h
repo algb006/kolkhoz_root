@@ -63,6 +63,13 @@ inline constexpr std::uint32_t kTicksPerDay = 24;
 
 inline constexpr std::uint32_t kTicksPerYear = kTicksPerDay * kDaysPerYear;  // 1152
 
+/// @brief The unified chronometer (time design, §3): the game clock runs
+/// this many times faster than real time, and visible movement is always
+/// real. Effective speeds in game hours are therefore real speeds divided
+/// by this constant; balance tables keep the real, human-readable numbers
+/// (tables/transport.csv). Structural, not balance.
+inline constexpr std::uint32_t kClockScale = 12;
+
 /// @brief Calendar month. Values are 0-based so the enum doubles as an index.
 enum class Month : std::uint8_t {
   kJanuary = 0,
@@ -131,6 +138,11 @@ struct CalendarState {
   Weekday weekday = Weekday::kMonday;
 
   Season season = Season::kWinter;
+
+  /// Which weekday day 0 falls on. Campaign setup: written once at genesis
+  /// from the campaign table (world genesis, core_world), read by every
+  /// cache refresh afterwards — the one home of this fact.
+  Weekday day_zero_weekday = Weekday::kMonday;
 };
 
 // ---------------------------------------------------------------------------
@@ -168,13 +180,14 @@ constexpr Season SeasonOfMonth(Month month) {
                              kSeasonsPerYear);
 }
 
-/// @brief Recomputes every cached field of `calendar` from its tick.
-/// The time phase calls this once per step after advancing the tick; tests
-/// and world setup call it after setting the tick directly.
-constexpr void RefreshCalendarCaches(CalendarState& calendar, Weekday day_zero_weekday) {
+/// @brief Recomputes every cached field of `calendar` from its tick and its
+/// stored day-zero weekday. The time phase calls this once per step after
+/// advancing the tick; tests and world setup call it after setting the tick
+/// directly.
+constexpr void RefreshCalendarCaches(CalendarState& calendar) {
   calendar.day = SimDayFromTick(calendar.tick);
   calendar.date = DateFromDay(calendar.day);
-  calendar.weekday = WeekdayFromDay(calendar.day, day_zero_weekday);
+  calendar.weekday = WeekdayFromDay(calendar.day, calendar.day_zero_weekday);
   calendar.season = SeasonOfMonth(calendar.date.month);
 }
 

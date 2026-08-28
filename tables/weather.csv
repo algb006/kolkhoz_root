@@ -1,0 +1,7 @@
+key,temp_mean_c,temp_spread_c,precipitation_chance_percent,note
+# ASSUMPTION: placeholder numbers inside the design bounds (-15..+30);
+# real values come from the balance runs at stages 4-6
+winter,-10,5,35
+spring,5,7,35
+summer,19,5,25
+autumn,6,7,45

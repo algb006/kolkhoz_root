@@ -35,7 +35,9 @@ class ITableSet;  // Defined in core_tables (stage 1, task F5).
 /// @param world_seed Campaign seed; stored in the returned state.
 /// @note STUB until stage 3: returns a world at day 0 with weather, epoch,
 /// seed and plan defaults but no resident, family, field or unit rows —
-/// exactly enough for the empty-world criterion of stage 1.
+/// exactly enough for the empty-world criterion of stage 1. Of the tables
+/// only the campaign setup is read (day-zero weekday); a missing campaign
+/// table means the documented defaults.
 WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed);
 
 /// @brief Everything CreateStandardSimulation needs.
@@ -62,6 +64,8 @@ struct StandardSimulationConfig {
 /// CompletedState to observe, ResetWorld to rewind — subsystems hold no
 /// world state, so rewinding needs no notification (subsystem law,
 /// manual/52-state-model.md).
+/// @return nullptr when a subsystem factory refuses its configuration (a
+///         malformed balance table — the refusing factory logs why).
 /// Implemented in core_world (stage 1, task O2 wires the stubs of task O0).
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config);
 
