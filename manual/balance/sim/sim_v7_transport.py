@@ -76,10 +76,12 @@ for window in [6, 12, 18]:
 # --- Scenario B: fixes applied (K=12) ---
 print("\n=== Сценарий Б: K=12, телега 0.75 т, 16 лошадей, навоз и дрова зимой санями ===")
 CART_B = 0.75; HORSES_B = 16
+MANURE_B = 540.0   # feedback: 16 horses raise yearly manure from 486 to ~540 t (49-simulations §2)
 v_eff = CART_KMH/12
 winter = {"Навоз: куча → поля", "Дрова: лес → село"}
 tot_summer = tot_winter = 0.0
 for name, tons, km, window in FLOWS:
+    if name.startswith("Навоз"): tons = MANURE_B
     trips = tons/CART_B
     trip_h = 2*km/v_eff + LOAD_UNLOAD_H
     hours = trips*trip_h
