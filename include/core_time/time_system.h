@@ -37,8 +37,10 @@ class ITimeSystem {
 };
 
 /// @brief Creates the time subsystem.
-/// @param tables Balance tables (weather by season, daylight); non-owning,
-///               must outlive the returned object.
+/// @param tables Balance tables (weather by season); non-owning, must
+///               outlive the returned object. Daylight needs no table: it
+///               follows the solar curve at the fixed campaign latitude —
+///               structural, computed in code (stage 2 of the plan).
 /// Implemented in core_time (stage 2 of the plan; a STUB that only advances
 /// the calendar arrives with task O0).
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables);

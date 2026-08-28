@@ -55,7 +55,7 @@ inline constexpr std::uint32_t kDaysPerSeason = kDaysPerMonth * kMonthsPerSeason
 
 /// @brief Simulation ticks per day: one tick is one game hour.
 /// Fixed by the step-cycle contract (core_sim/step.h): every in-day mechanic
-/// the design names — the working day by the sun, the hour-long commute
+/// the design names — the working day by the sun, the two-hour commute
 /// limit, the fatigue walk-off, skip-ahead presets — resolves in hours, and
 /// nothing decides at finer grain. Structural like kDaysPerMonth: changing it
 /// re-times every schedule and breaks saves (VERSION_SAVE).
