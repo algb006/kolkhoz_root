@@ -13,7 +13,7 @@ namespace {
 /// STUB slot for phase 4: no unit or field table exists until stage 4.
 class ProductionStubPhase final : public IParallelPhase {
  public:
-  std::uint32_t ParallelItemCount(const WorldState& /*previous*/) const override { return 0; }
+  std::uint32_t ParallelItemCount(const WorldState& /*current*/) const override { return 0; }
 
   void RunItemRange(const WorldState& /*previous*/,
                     WorldState& /*current*/,

@@ -8,6 +8,7 @@
 # the executables in tests/ and src/.
 
 kolkhoz_add_module(core_world
+    genesis.cpp
     world.cpp)
 
 target_link_libraries(core_world

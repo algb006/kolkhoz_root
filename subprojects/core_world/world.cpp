@@ -8,9 +8,11 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 
+#include "campaign_tables.h"
 #include "core_common/calendar.h"
 #include "core_common/random.h"
 #include "core_common/world_state.h"
@@ -25,10 +27,6 @@
 namespace core {
 
 namespace {
-
-/// Stream id of the world's sequential RNG. Other streams derived from the
-/// same seed (per-subsystem, if ever needed) must pick distinct ids.
-constexpr std::uint64_t kWorldRngStream = 0;
 
 /// The composite decisions slot (phase 3): the subsystems' sequential
 /// sub-steps in the fixed order of manual/54-modules.md §3 — assignments,
@@ -121,7 +119,7 @@ class StandardSimulation final : public ISimulation {
 namespace {
 
 /// @brief Weekday by its lowercase English name; `valid` reports success.
-Weekday ParseWeekdayName(std::string_view name, bool& valid) {
+Weekday ParseWeekdayNameInternal(std::string_view name, bool& valid) {
   constexpr std::array<std::string_view, kDaysPerWeek> kNames = {
       "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
   for (std::uint32_t index = 0; index < kNames.size(); ++index) {
@@ -134,12 +132,14 @@ Weekday ParseWeekdayName(std::string_view name, bool& valid) {
   return Weekday::kMonday;
 }
 
-/// @brief The campaign-setup weekday of day 0 (tables/campaign.csv, row
-/// `day_zero_weekday`, column `value`). No campaign table is legal while the
-/// setup grows (STUB default: Monday); a present but unreadable value is
-/// logged as an error and falls back — genesis returns a value and has no
-/// error channel until the real genesis of stage 3.
+}  // namespace
+
+// Campaign-table readers, shared with genesis.cpp (campaign_tables.h).
+
 Weekday CampaignDayZeroWeekday(const ITableSet& tables) {
+  // No campaign table is legal while the setup grows (STUB default: Monday);
+  // a present but unreadable value is logged and falls back — genesis
+  // returns a value and has no error channel.
   const ITable* campaign = tables.FindTable("campaign");
   if (campaign == nullptr) {
     return Weekday::kMonday;
@@ -151,7 +151,7 @@ Weekday CampaignDayZeroWeekday(const ITableSet& tables) {
     return Weekday::kMonday;
   }
   bool valid = false;
-  const Weekday weekday = ParseWeekdayName(campaign->CellText(row, value_column), valid);
+  const Weekday weekday = ParseWeekdayNameInternal(campaign->CellText(row, value_column), valid);
   if (!valid) {
     LogError("campaign: day_zero_weekday is not a weekday name; using monday");
     return Weekday::kMonday;
@@ -159,19 +159,35 @@ Weekday CampaignDayZeroWeekday(const ITableSet& tables) {
   return weekday;
 }
 
-}  // namespace
+float CampaignValue(const ITableSet& tables, std::string_view key, float fallback) {
+  const ITable* campaign = tables.FindTable("campaign");
+  if (campaign == nullptr) {
+    return fallback;
+  }
+  const std::uint32_t row = campaign->FindRowByKey(key);
+  const std::uint32_t value_column = campaign->FindColumn("value");
+  if (row == kNoTableRow || value_column == kNoTableColumn) {
+    return fallback;
+  }
+  const std::optional<float> value = campaign->CellReal(row, value_column);
+  if (!value) {
+    LogError("campaign: value of '" + std::string(key) + "' is not a number");
+    return fallback;
+  }
+  return *value;
+}
 
-WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
-  // STUB until stage 3: no resident, family, field or unit rows — the empty
-  // world of the stage-1 criterion. Of the tables only the campaign setup is
-  // read; the genesis of the designed start (80 residents, 21 yards, 160 ha)
-  // is built here at stage 3.
-  WorldState world;
-  world.world_seed = world_seed;
-  world.rng = SeedRngState(world_seed, kWorldRngStream);
-  world.calendar.day_zero_weekday = CampaignDayZeroWeekday(tables);
-  RefreshCalendarCaches(world.calendar);
-  return world;
+float LifeSpeedupFromTables(const ITableSet& tables) {
+  const ITable* life = tables.FindTable("life");
+  if (life == nullptr) {
+    return 4.0F;
+  }
+  const std::uint32_t row = life->FindRowByKey("life_speedup");
+  const std::uint32_t value_column = life->FindColumn("value");
+  if (row == kNoTableRow || value_column == kNoTableColumn) {
+    return 4.0F;
+  }
+  return life->CellReal(row, value_column).value_or(4.0F);
 }
 
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config) {

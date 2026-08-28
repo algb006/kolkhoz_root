@@ -27,8 +27,10 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/family_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
+#include "core_common/resident_state.h"
 
 namespace core {
 
@@ -99,8 +101,6 @@ struct PlanState {
 /// is this struct advanced 10 000 times and compared.
 ///
 /// Growth plan (do not restructure, only append):
-///   stage 3:  StateTable<ResidentId, ...> residents;
-///             StateTable<FamilyId, ...> families;
 ///   stage 4:  StateTable<FieldId, ...> fields;
 ///             StateTable<UnitId, ...> units;
 ///             StateTable<HerdId, ...> herds;
@@ -111,6 +111,12 @@ struct WorldState {
   WeatherState weather;
 
   Epoch epoch = Epoch::kOne;
+
+  /// Every person of the settlement (stage 3). Row layout: resident_state.h.
+  ResidentTable residents;
+
+  /// Every household (stage 3). Row layout: family_state.h.
+  FamilyTable families;
 
   /// Campaign seed: fixed at world creation, never changes, drives every
   /// derived counter-style random draw. Same seed, same commands — same world.

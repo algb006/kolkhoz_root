@@ -25,11 +25,17 @@
 ///      order (their format is a phase-2 boundary decision, not this one).
 ///   3. A sequential phase may read `previous` and `current` freely and write
 ///      any block of `current` it owns.
-///   4. A parallel phase invocation owns rows [begin_item, end_item) of the
-///      phase's unit of parallelism. In `current` it may write only those
-///      rows, and may read only those rows plus blocks finalized by earlier
-///      phases of this step (e.g. calendar and weather after phase 1).
-///      Everything else it reads from `previous`. No locks, no atomics.
+///   4. A parallel phase invocation owns items [begin_item, end_item) of the
+///      phase's unit of parallelism — and with each item every row that
+///      BELONGS to it, in any table (a family item owns its family row and
+///      the resident rows of its members). In `current` it may write only
+///      what it owns, and may read what it owns plus blocks finalized by
+///      earlier phases of this step (e.g. calendar and weather after
+///      phase 1). The ONE legal read of an unowned current row is a field
+///      that is structurally frozen for the whole step — such as
+///      ResidentRow::family, used to discover membership; any other field of
+///      an unowned row is being written concurrently and must come from
+///      `previous`. No locks, no atomics.
 ///   5. Parallel phases keep no cross-row accumulators; any aggregate over
 ///      rows is computed later, sequentially, in row order (float determinism
 ///      rule of the state model).
@@ -107,9 +113,13 @@ class IParallelPhase {
   virtual ~IParallelPhase() = default;
 
   /// @brief Number of parallel items this step: the row count of the phase's
-  /// unit of parallelism, read from `previous` (table shape cannot change
-  /// during parallel phases — buffer-law rule 6).
-  virtual std::uint32_t ParallelItemCount(const WorldState& previous) const = 0;
+  /// unit of parallelism, read from `current` — the step being built. Its
+  /// table shapes are final for this phase: parallel phases never change
+  /// shape (buffer-law rule 6), and the sequential phases that run earlier
+  /// in the step (e.g. demography in the decisions slot) have already made
+  /// their structural changes. Counting from the previous step would
+  /// mis-size any phase that runs after a structural one.
+  virtual std::uint32_t ParallelItemCount(const WorldState& current) const = 0;
 
   /// @brief Processes rows [begin_item, end_item) of the phase's table.
   /// @param previous The completed last step; immutable, read anything.

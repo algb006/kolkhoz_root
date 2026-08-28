@@ -1,3 +1,6 @@
 key,value
 # campaign setup: read once at world genesis (core_world)
 day_zero_weekday,monday
+# the designed start (start canon: 80 residents, 21 yards)
+start_population,80
+start_households,21

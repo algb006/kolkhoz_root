@@ -97,9 +97,11 @@ class StepEngine final : public ISimulation {
 
  private:
   /// One parallel slot, barrier included: WaitforTask returns only when
-  /// every partition has run (the calling thread helps execute).
+  /// every partition has run (the calling thread helps execute). The item
+  /// count comes from the state being built: earlier sequential phases may
+  /// have changed table shapes this step (step.h, ParallelItemCount doc).
   void RunParallelPhase(IParallelPhase& phase) {
-    const std::uint32_t item_count = phase.ParallelItemCount(previous_);
+    const std::uint32_t item_count = phase.ParallelItemCount(current_);
     if (item_count == 0) {
       return;
     }

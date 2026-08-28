@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "core_common/calendar.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -57,6 +58,28 @@ int main() {
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
 
+  // Stage-3 genesis: the designed start, deterministic from the seed.
+  failures += Expect(world.residents.rows.size() == 80, "genesis seats 80 residents");
+  failures += Expect(world.families.rows.size() == 21, "genesis builds 21 yards");
+  failures +=
+      Expect(same_seed.residents.rows.size() == world.residents.rows.size() &&
+                 same_seed.residents.rows[10].birth_day == world.residents.rows[10].birth_day,
+             "genesis is reproducible from the seed");
+  std::uint32_t children = 0;
+  std::uint32_t old_timers = 0;
+  bool links_hold = true;
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    const core::ResidentRow& resident = world.residents.rows[row];
+    links_hold = links_hold && core::FindRow(world.families, resident.family) != core::kNoRow;
+    // Life speedup 4: one biological year is 12 game days.
+    const float age_years = static_cast<float>(-resident.birth_day) / 12.0F;
+    children += age_years < 16.0F ? 1 : 0;
+    old_timers += age_years >= 60.0F ? 1 : 0;
+  }
+  failures += Expect(links_hold, "every starting resident's family exists");
+  failures += Expect(children >= 25 && children <= 35, "about 30 children at the start");
+  failures += Expect(old_timers >= 8 && old_timers <= 14, "about 11 old-timers at the start");
+
   // The stage-1 criterion: the empty world ticks 10 000 steps, and the
   // result is identical with one worker and with many.
   constexpr std::uint32_t kCriterionSteps = 10000;
@@ -93,6 +116,12 @@ int main() {
                          many_state.rng.stream == state.rng.stream &&
                          many_state.world_seed == state.world_seed,
                      "one worker and three workers agree after 10 000 steps");
+  failures +=
+      Expect(many_state.residents.rows.size() == state.residents.rows.size() &&
+                 many_state.residents.next_id_value == state.residents.next_id_value &&
+                 many_state.families.rows.size() == state.families.rows.size() &&
+                 many_state.families.rows[0].satisfaction == state.families.rows[0].satisfaction,
+             "the population and its metrics agree across worker counts");
 
   if (failures == 0) {
     std::cout << "unit_core_world: all checks passed\n";

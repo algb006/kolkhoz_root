@@ -1,0 +1,5 @@
+key,children_per_family,child_mortality_percent,outflow_percent_per_year
+# per-epoch demography (demography design section 4; reference run demography.py)
+epoch_1,6.5,28,0
+epoch_2,4.0,12,0
+epoch_3,2.2,4,1.5

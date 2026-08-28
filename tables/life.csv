@@ -1,0 +1,21 @@
+key,value
+# the biological clock and its thresholds (demography design section 2;
+# life-cycle section 1). Ages are BIOLOGICAL years; life_speedup maps them
+# to game years. Mortality bands and rates mirror demography.py.
+life_speedup,4
+adult_age_years,16
+marriage_age_years,18
+fertility_from_years,18
+fertility_to_years,40
+mortality_age_mid_years,45
+mortality_age_old_years,60
+mortality_young_percent_per_year,0.3
+mortality_mid_percent_per_year,1.5
+mortality_old_percent_per_year,20
+migration_per_year,8
+epoch2_population,500
+epoch3_population,1200
+# ASSUMPTION until playtests: singles marry within days once eligible, and
+# the newborn sex draw leans toward the under-represented sex this strongly
+marriage_chance_percent_per_day,25
+sex_balance_gain,0.3

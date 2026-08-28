@@ -48,8 +48,8 @@ class TestClockPhase final : public core::ISequentialPhase {
 /// parallel workload of the buffer law.
 class TestHashWritePhase final : public core::IParallelPhase {
  public:
-  std::uint32_t ParallelItemCount(const core::WorldState& previous) const override {
-    return static_cast<std::uint32_t>(previous.plan.due.size());
+  std::uint32_t ParallelItemCount(const core::WorldState& current) const override {
+    return static_cast<std::uint32_t>(current.plan.due.size());
   }
 
   void RunItemRange(const core::WorldState& /*previous*/,
@@ -74,7 +74,7 @@ class TestNoopSequential final : public core::ISequentialPhase {
 
 class TestNoopParallel final : public core::IParallelPhase {
  public:
-  std::uint32_t ParallelItemCount(const core::WorldState& /*previous*/) const override { return 0; }
+  std::uint32_t ParallelItemCount(const core::WorldState& /*current*/) const override { return 0; }
 
   void RunItemRange(const core::WorldState& /*previous*/,
                     core::WorldState& /*current*/,

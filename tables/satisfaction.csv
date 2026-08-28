@@ -1,0 +1,5 @@
+key,weight_satiety,weight_common_cause,weight_needs,weight_rest
+# per-epoch component weights of family satisfaction (metrics design section 7)
+epoch_1,45,20,25,10
+epoch_2,30,20,30,20
+epoch_3,15,15,40,30
