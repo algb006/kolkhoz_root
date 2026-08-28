@@ -51,7 +51,7 @@
 ## 3. Слоты фаз: кто владеет
 
 **Каждый параллельный слот принадлежит ровно одному модулю.** Однопоточные составные слоты —
-у точки сборки, которая в жёстком порядке зовёт профильные интерфейсы модулей (их проектирует F4).
+у точки сборки, которая в жёстком порядке зовёт профильные интерфейсы модулей.
 
 | Слот | Владелец |
 |---|---|
@@ -65,6 +65,27 @@
 
 Отсюда и зависимость: владельцы слотов держат `core_sim` в PUBLIC — их граница и есть
 интерфейс слота. `core_labor` слотом не владеет и `core_sim` не знает.
+
+### Интерфейсы подсистем (задача F4)
+
+**Один интерфейс на подсистему.** Владельцы слотов отдают реализации фаз ссылкой, участники
+слота решений — именованные под-шаги; создание — через фабрику. **Подсистемы не хранят
+состояние мира** — только конфигурацию; всё изменяемое живёт в `WorldState`, поэтому
+`ResetWorld` не требует ни одного обратного вызова.
+
+| Модуль | Интерфейс | Заголовок |
+|---|---|---|
+| `core_sim` | `ISimulation`, фабрика `CreateStepEngine` | `include/core_sim/step.h` |
+| `core_time` | `ITimeSystem` | `include/core_time/time_system.h` |
+| `core_residents` | `IResidentsSystem`: две фазы + `RunDemographyDecisions` | `include/core_residents/residents_system.h` |
+| `core_production` | `IProductionSystem`: фаза + `RunProductionDecisions` | `include/core_production/production_system.h` |
+| `core_logistics` | `ILogisticsSystem` (заглушка «мгновенно») | `include/core_logistics/logistics_system.h` |
+| `core_labor` | `ILaborSystem`: `RunAssignmentDecisions` | `include/core_labor/labor_system.h` |
+| `core_world` | Фабрики `CreateStartWorld`, `CreateStandardSimulation` | `include/core_world/world.h` |
+
+Под-шаги слота решений зовутся каждый тик; суточную работу реализация сама привязывает к
+границе суток. Порядок в слоте 3 закреплён: **назначения → демография → номенклатура** —
+расстановка людей происходит до того, как на неё посмотрят остальные.
 
 ---
 

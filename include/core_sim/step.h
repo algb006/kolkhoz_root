@@ -47,6 +47,7 @@
 #define CORE_SIM_STEP_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "core_common/world_state.h"
 
@@ -175,6 +176,21 @@ class ISimulation {
   /// changes go through commands at the step boundary, never through this.
   virtual void ResetWorld(const WorldState& initial) = 0;
 };
+
+/// @brief Creates the step engine over an initial world.
+/// @param initial      The starting world; copied into both buffers.
+/// @param phases       One implementation per slot, all seven non-null; the
+///                     caller owns the phase objects and keeps them alive for
+///                     the engine's lifetime (the set itself is copied).
+/// @param worker_count 0 = one worker per hardware core minus one; 1 = the
+///                     mandatory verification mode. Results are identical for
+///                     every value — see the buffer law above.
+/// Implemented in core_sim (stage 1, task O2). Most callers want the wired
+/// core_world factory instead (core_world/world.h); this one exists for unit
+/// tests of the engine itself and for custom phase sets.
+std::unique_ptr<ISimulation> CreateStepEngine(const WorldState& initial,
+                                              const StepPhaseSet& phases,
+                                              std::uint32_t worker_count);
 
 }  // namespace core
 
