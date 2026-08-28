@@ -57,6 +57,43 @@ int main() {
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
 
+  // The stage-1 criterion: the empty world ticks 10 000 steps, and the
+  // result is identical with one worker and with many.
+  constexpr std::uint32_t kCriterionSteps = 10000;
+  core::StandardSimulationConfig config_single;
+  config_single.tables = &tables;
+  config_single.world_seed = 7;
+  config_single.worker_count = 1;
+  const auto single = core::CreateStandardSimulation(config_single);
+  for (std::uint32_t step = 0; step < kCriterionSteps; ++step) {
+    single->AdvanceStep();
+  }
+  const core::WorldState& state = single->CompletedState();
+  failures += Expect(state.calendar.tick == kCriterionSteps, "10 000 steps advance 10 000 ticks");
+  const core::SimDay expected_day = kCriterionSteps / core::kTicksPerDay;
+  failures += Expect(state.calendar.day == expected_day, "the day matches the tick count");
+  const core::Date expected_date = core::DateFromDay(expected_day);
+  failures += Expect(state.calendar.date.year == expected_date.year &&
+                         state.calendar.date.month == expected_date.month,
+                     "the date matches the calendar arithmetic");
+  failures +=
+      Expect(state.calendar.weekday == core::WeekdayFromDay(expected_day, core::Weekday::kMonday),
+             "the weekday matches the calendar arithmetic");
+
+  core::StandardSimulationConfig config_many = config_single;
+  config_many.worker_count = 3;
+  const auto many = core::CreateStandardSimulation(config_many);
+  for (std::uint32_t step = 0; step < kCriterionSteps; ++step) {
+    many->AdvanceStep();
+  }
+  const core::WorldState& many_state = many->CompletedState();
+  failures += Expect(many_state.calendar.tick == state.calendar.tick &&
+                         many_state.calendar.day == state.calendar.day &&
+                         many_state.rng.state == state.rng.state &&
+                         many_state.rng.stream == state.rng.stream &&
+                         many_state.world_seed == state.world_seed,
+                     "one worker and three workers agree after 10 000 steps");
+
   if (failures == 0) {
     std::cout << "unit_core_world: all checks passed\n";
   }

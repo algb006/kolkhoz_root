@@ -1,12 +1,15 @@
 /// @file
 /// @brief The step-cycle contract: phase order, barriers, double buffering.
 /// @threading SINGLE_THREADED
-/// The whole public surface of core_sim is driven from one thread — the sim
-/// thread calls AdvanceStep() and reads CompletedState() between calls, and
-/// nothing here is reentrant. Worker threads exist only inside the engine and
-/// touch user code solely through IParallelPhase::RunItemRange under the
+/// The label describes the public surface: the sim thread calls
+/// AdvanceStep() and reads CompletedState() between calls, and nothing here
+/// is reentrant. Worker threads exist only inside the engine implementation
+/// and touch user code solely through IParallelPhase::RunItemRange under the
 /// buffer law below; a phase implementation marked for a parallel slot must
-/// be safe under exactly that law and nothing more.
+/// be safe under exactly that law and nothing more. The implementation's
+/// scheduler internals deliberately trip the analysis scoping's
+/// label-vs-code check, so the engine module always gets the full
+/// RACE/DEADLOCK analysis despite this label — the safe direction.
 ///
 /// One step advances game time by one tick and runs seven phases in a fixed
 /// order with a barrier after each (architecture, §7е). Sequential slots run
@@ -185,6 +188,9 @@ class ISimulation {
 /// @param worker_count 0 = one worker per hardware core minus one; 1 = the
 ///                     mandatory verification mode. Results are identical for
 ///                     every value — see the buffer law above.
+/// @note Create the engine on the thread that will drive it: the scheduler
+/// binds its thread 0 to the creating thread, and AdvanceStep must be called
+/// from that same (sim) thread.
 /// Implemented in core_sim (stage 1, task O2). Most callers want the wired
 /// core_world factory instead (core_world/world.h); this one exists for unit
 /// tests of the engine itself and for custom phase sets.

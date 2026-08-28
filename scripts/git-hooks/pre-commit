@@ -10,8 +10,11 @@ if ! command -v clang-format >/dev/null 2>&1; then
   exit 0
 fi
 
+# depends/ and libs/ hold foreign code, vendored byte-for-byte: reformatting
+# it would break diffing against upstream. Our style applies to our files.
 mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR \
-                      -- '*.h' '*.hpp' '*.inl' '*.cpp' '*.cc')
+                      -- '*.h' '*.hpp' '*.inl' '*.cpp' '*.cc' \
+                      ':(exclude)depends/**' ':(exclude)libs/**')
 
 if [ ${#staged[@]} -eq 0 ]; then
   exit 0

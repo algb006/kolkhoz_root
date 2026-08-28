@@ -54,6 +54,9 @@ struct StandardSimulationConfig {
 };
 
 /// @brief Creates the fully wired simulation: subsystems, phases, engine.
+/// @pre config.tables != nullptr — the caller supplies a loaded table set;
+/// the default-constructed config is a template to fill in, not a valid
+/// input (asserted in Debug).
 /// The returned object owns the subsystems and the step engine; destroying
 /// it releases everything. World lifecycle from here on: AdvanceStep to run,
 /// CompletedState to observe, ResetWorld to rewind — subsystems hold no
