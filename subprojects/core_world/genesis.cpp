@@ -117,9 +117,9 @@ UnitId PlaceUnit(WorldState& world, UnitTypeId type, float x_meters, float y_met
 }
 
 FieldId PlaceField(
-    WorldState& world, float area_ga, CropId rotation, float x_meters, Metric fertility) {
+    WorldState& world, float area_ga, CropId rotation, Vec2 center, Metric fertility) {
   FieldRow field;
-  field.center = Vec2{.x = x_meters, .y = 2000.0F};
+  field.center = center;
   field.area_ga = area_ga;
   field.fertility = fertility;
   field.rotation_year0 = rotation;
@@ -156,12 +156,22 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   PlaceUnit(world, TypeByKey(unit_types, "clay_heap"), 200, 50);
   const UnitId compost = PlaceUnit(world, TypeByKey(unit_types, "compost_heap"), 400, 200);
 
-  // One decrepit house per starting family.
+  // One decrepit house per starting family, in a compact village south of
+  // the yard: three rows of seven, 40 m between houses and 80 m between
+  // rows. ~5 ha of built-up land, the share the start map gives it
+  // (49-simulations §2в). Distances matter from stage 5 on: every worker's
+  // day is measured from his own door.
+  constexpr std::uint32_t kHousesPerRow = 7;
+  constexpr float kHouseStepMeters = 40.0F;
+  constexpr float kRowStepMeters = 80.0F;
   const UnitTypeId old_house = TypeByKey(unit_types, "old_house");
   for (std::uint32_t family_row = 0; family_row < world.families.rows.size(); ++family_row) {
     UnitRow house;
     house.type = old_house;
-    house.position = Vec2{.x = static_cast<float>(family_row) * 40.0F, .y = -100.0F};
+    const std::uint32_t village_row = family_row / kHousesPerRow;
+    const std::uint32_t place_in_row = family_row % kHousesPerRow;
+    house.position = Vec2{.x = -120.0F + (static_cast<float>(place_in_row) * kHouseStepMeters),
+                          .y = -80.0F - (static_cast<float>(village_row) * kRowStepMeters)};
     house.household = world.families.row_ids[family_row];
     world.families.rows[family_row].house = AppendRow(world.units, house);
   }
@@ -178,21 +188,41 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
            250000);
 
   // 160 ha of arable land: the reference first-year mix sown, the rest
-  // fallow; 80 ha of meadows in permanent grass.
-  PlaceField(world, 20.0F, CropByKey(crops, "oats"), 0, kStartFertility);
-  PlaceField(world, 13.4F, CropByKey(crops, "barley"), 700, kStartFertility);
-  PlaceField(world, 10.0F, CropByKey(crops, "wheat_spring"), 1400, kStartFertility);
-  PlaceField(world, 12.6F, CropByKey(crops, "potato"), 2100, kStartFertility);
-  PlaceField(world, 5.6F, CropByKey(crops, "flax"), 2800, kStartFertility);
-  PlaceField(world, 8.4F, CropByKey(crops, "root_fodder"), 3500, kStartFertility);
-  PlaceField(world, 45.0F, CropId{}, 4200, kStartFertility);
-  PlaceField(world, 45.0F, CropId{}, 4900, kStartFertility);
+  // fallow; 80 ha of meadows in permanent grass. The land lies in a half
+  // ring north of the village, 0.5-1.5 km out — the radius the start map
+  // demands (49-simulations §2в: 160 ha at ~45% arable in the ring make a
+  // half circle of 1.5 km), with the potato patch nearest, as the crop that
+  // is walked to most often. Coordinates are written out rather than
+  // computed: genesis must land bit for bit on every compiler, and trig
+  // library results do not (daylight_table.h says the same).
+  PlaceField(
+      world, 20.0F, CropByKey(crops, "oats"), Vec2{.x = 564.0F, .y = 205.0F}, kStartFertility);
+  PlaceField(
+      world, 13.4F, CropByKey(crops, "barley"), Vec2{.x = 450.0F, .y = 536.0F}, kStartFertility);
+  PlaceField(world,
+             10.0F,
+             CropByKey(crops, "wheat_spring"),
+             Vec2{.x = 130.0F, .y = 739.0F},
+             kStartFertility);
+  PlaceField(
+      world, 12.6F, CropByKey(crops, "potato"), Vec2{.x = -171.0F, .y = 470.0F}, kStartFertility);
+  PlaceField(
+      world, 5.6F, CropByKey(crops, "flax"), Vec2{.x = -613.0F, .y = 514.0F}, kStartFertility);
+  PlaceField(world,
+             8.4F,
+             CropByKey(crops, "root_fodder"),
+             Vec2{.x = -611.0F, .y = 222.0F},
+             kStartFertility);
+  PlaceField(world, 45.0F, CropId{}, Vec2{.x = 1065.0F, .y = 746.0F}, kStartFertility);
+  PlaceField(world, 45.0F, CropId{}, Vec2{.x = -746.0F, .y = 1065.0F}, kStartFertility);
+  constexpr std::array<Vec2, 4> kMeadowCenters = {{{.x = 1449.0F, .y = 388.0F},
+                                                   {.x = 750.0F, .y = 1299.0F},
+                                                   {.x = -750.0F, .y = 1299.0F},
+                                                   {.x = -1449.0F, .y = 388.0F}}};
   const CropId grasses = CropByKey(crops, "grasses");
-  for (std::uint32_t meadow = 0; meadow < 4; ++meadow) {
-    const float x_meters = 5600.0F + 700.0F * static_cast<float>(meadow);
+  for (const Vec2 center : kMeadowCenters) {
     FieldRow& field =
-        world.fields
-            .rows[FindRow(world.fields, PlaceField(world, 20.0F, grasses, x_meters, 55.0F))];
+        world.fields.rows[FindRow(world.fields, PlaceField(world, 20.0F, grasses, center, 55.0F))];
     // Meadows are standing grass from day one: no sowing year needed.
     field.crop = grasses;
     field.phase = FieldPhase::kGrowing;

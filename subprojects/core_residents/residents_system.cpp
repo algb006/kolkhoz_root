@@ -133,6 +133,7 @@ class FamilyMetricsPhase final : public IParallelPhase {
     const SatisfactionWeights& weights = config_->weights[EpochIndex(current.epoch)];
     for (std::uint32_t item = begin_item; item < end_item; ++item) {
       FamilyRow& family = current.families.rows[item];
+      UpdateRestComponent(current, item, family);
       const float weighted =
           (family.component_satiety * weights.satiety +
            family.component_common_cause * weights.common_cause +
@@ -149,6 +150,29 @@ class FamilyMetricsPhase final : public IParallelPhase {
   }
 
  private:
+  /// The family's rest component is its working members' own rest, averaged
+  /// (metrics design §11: one number seen from two sides — the man's
+  /// fatigue and the household's "is there life beyond work"). Labor moves
+  /// resident rest in the decisions slot of this very step, and that block
+  /// is finalized before the metrics phase runs (buffer-law rule 4).
+  /// A household with nobody of working age keeps its previous value.
+  static void UpdateRestComponent(const WorldState& current,
+                                  std::uint32_t family_item,
+                                  FamilyRow& family) {
+    const FamilyId id = current.families.row_ids[family_item];
+    float total = 0.0F;
+    std::uint32_t counted = 0;
+    for (const ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value == id.value) {
+        total += resident.rest;
+        ++counted;
+      }
+    }
+    if (counted > 0) {
+      family.component_rest = total / static_cast<float>(counted);
+    }
+  }
+
   const LifeConfig* config_;
 };
 

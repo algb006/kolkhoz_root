@@ -63,10 +63,10 @@ constexpr float FatigueDiscount(Metric rest) {
 }
 
 /// One-way travel between a home and a work place, in game hours.
-float TravelHours(const Vec2& home, const Vec2& place, const AssignmentParams& params) {
+float TravelHours(const Vec2& home, const Vec2& place, float hours_per_km) {
   const float dx_km = (home.x - place.x) / 1000.0F;
   const float dy_km = (home.y - place.y) / 1000.0F;
-  return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * params.walk_hours_per_km;
+  return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
 }
 
 /// Deterministic job order: urgency, then kind, then target id. Input
@@ -124,12 +124,17 @@ bool ConsiderCandidate(const AssignmentJob& job,
   if (candidate.horse_locked && !horse_work) {
     return false;  // The start-canon lock: only horse works may take him.
   }
-  const float travel = TravelHours(candidate.home, job.position, params);
+  // One shoulder, two uses (decision 103): the same travel decides whether
+  // he may be sent at all and how much of his day is left to work.
+  const float travel =
+      TravelHours(candidate.home,
+                  job.position,
+                  horse_work ? params.harness_hours_per_km : params.walk_hours_per_km);
   if (travel > params.travel_limit_hours) {
     return false;  // The road limit is a game rule, not accountant quality.
   }
   const float usable_hours = params.window_hours - (2.0F * travel);
-  if (usable_hours <= 0.0F) {
+  if (usable_hours < params.min_usable_hours) {
     return false;
   }
   const float daily_norm = usable_hours * candidate.efficiency / params.standard_day_hours;

@@ -70,6 +70,13 @@ inline constexpr std::uint32_t kTicksPerYear = kTicksPerDay * kDaysPerYear;  // 
 /// (tables/transport.csv). Structural, not balance.
 inline constexpr std::uint32_t kClockScale = 12;
 
+/// @brief Real man-days behind one GAME man-day of work (root rules §9:
+/// "real man-days / 7 = game days"). Balance tables keep the real,
+/// human-readable norms of the agronomy books; every consumer divides by this
+/// once at parse time and works in game man-days afterwards. Structural like
+/// kClockScale — it follows from the 48-day year, not from balance.
+inline constexpr float kRealDaysPerGameDay = 7.0F;
+
 /// @brief Calendar month. Values are 0-based so the enum doubles as an index.
 enum class Month : std::uint8_t {
   kJanuary = 0,
@@ -162,7 +169,7 @@ constexpr std::uint32_t HourFromTick(Tick tick) {
 constexpr Date DateFromDay(SimDay day) {
   const std::uint32_t day_of_year = day % kDaysPerYear;
   return Date{
-      .year = static_cast<std::uint16_t>(1 + day / kDaysPerYear),
+      .year = static_cast<std::uint16_t>(1 + (day / kDaysPerYear)),
       .month = static_cast<Month>(day_of_year / kDaysPerMonth),
       .day_in_month = static_cast<std::uint8_t>(day_of_year % kDaysPerMonth),
   };

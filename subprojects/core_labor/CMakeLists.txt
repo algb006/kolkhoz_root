@@ -5,6 +5,8 @@
 
 kolkhoz_add_module(core_labor
     assignment.cpp
+    labor_config.cpp
+    labor_day.cpp
     labor_system.cpp)
 
 target_link_libraries(core_labor

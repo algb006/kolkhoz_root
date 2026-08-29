@@ -84,16 +84,29 @@ struct AssignmentParams {
   /// his travel.
   float window_hours = 10.0F;
 
-  /// Game hours of one-way walking per kilometre of straight-line
-  /// distance: path factor / (real walking speed / kClockScale). The
-  /// canonical 5 km/h and factor 1.3 give ~3.1 — which puts the 2-hour
-  /// limit at ~640 m straight-line, the design's "on foot that is ~800 m"
-  /// of path (time design §7).
-  float walk_hours_per_km = 3.1F;
+  /// Game hours of one-way travel per kilometre of straight-line distance
+  /// for a HAND order: path factor / (real walking speed / kClockScale).
+  /// The canonical 5 km/h at factor 1.0 gives 2.4 — which puts a 2-hour
+  /// limit at ~830 m, the design's "on foot that is ~800 m" (time §7).
+  float walk_hours_per_km = 2.4F;
 
-  /// One-way travel limit in game hours (~2, time design §7): a job
-  /// farther than this from a worker's home cannot take him at all.
-  float travel_limit_hours = 2.0F;
+  /// The same for a HARNESSED order: the plowman rides out with his horse
+  /// instead of walking (decision 103), so plowing and harrowing reach
+  /// farther in the same hours. 12 km/h at factor 1.0 gives 1.0.
+  float harness_hours_per_km = 1.0F;
+
+  /// One-way travel limit in game hours (time design §7): a job farther
+  /// than this from a worker's home cannot take him at all. The threshold
+  /// and the day's output measure the SAME shoulder (boss parcel
+  /// decisions-101-103-104, seq 2), which is why the two speeds above serve
+  /// both. The VALUE is a tuning knob and the design's "~2 hours" does not
+  /// admit the canonical start radius on foot — see
+  /// manual/65-labor-model.md §4.
+  float travel_limit_hours = 4.0F;
+
+  /// Less daylight than this left after the road, and the job is not worth
+  /// walking to at all. ASSUMPTION.
+  float min_usable_hours = 1.0F;
 
   /// Hours of work behind one norm man-day: delivered norm-days =
   /// worked hours x efficiency / this.

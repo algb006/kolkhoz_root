@@ -6,11 +6,13 @@
 // feeding stage; horse offspring is additionally capacity-blocked until a
 // stable exists (start rework parcel).
 //
-// Labor does not exist yet (stage 5): working phases pass instantly at
-// their calendar windows — FieldRow::work_days_remaining is the hook labor
-// will drain. Deliveries are instant (the phase-1 logistics stub): harvest
-// lands in storage directly, hay at the stock yard, manure at the compost
-// heap.
+// Stage 5 wired the labor seam into it: a working phase is OPENED here with
+// its demand (area x the phase's norm in game man-days) and closed here when
+// the crew has drained FieldRow::work_days_remaining to zero. Production
+// never calls labor and labor never calls production — the field row carries
+// the whole contract (manual/65-labor-model.md §2). Deliveries stay instant
+// (the phase-1 logistics stub): harvest lands in storage directly, hay at
+// the stock yard, manure at the compost heap.
 
 #include "core_production/production_system.h"
 
@@ -162,8 +164,15 @@ class ProductionSystem final : public IProductionSystem {
   IParallelPhase& ProductionPhase() override { return phase_; }
 
   void RunProductionDecisions(const WorldState& previous, WorldState& current) override {
-    if (current.calendar.day == previous.calendar.day || config_.crops.empty()) {
-      return;  // daily work; a table-less world idles (STUB)
+    if (config_.crops.empty()) {
+      return;  // a table-less world idles (STUB)
+    }
+    // Finished work is picked up the same hour the crew finishes it: labor
+    // runs earlier in this very slot, so a field ploughed by noon opens its
+    // harrowing at noon instead of losing the afternoon.
+    AdvanceFinishedPhases(current);
+    if (current.calendar.day == previous.calendar.day) {
+      return;  // everything below is daily work
     }
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
@@ -173,6 +182,70 @@ class ProductionSystem final : public IProductionSystem {
   }
 
  private:
+  /// The labor seam, seen from the production side (land_state.h): a field
+  /// stands in a working phase until its crew has drained
+  /// work_days_remaining, and only then moves on. No workers, no progress —
+  /// deliberately.
+  void AdvanceFinishedPhases(WorldState& current) {
+    for (FieldRow& field : current.fields.rows) {
+      if (KindOfWorkingPhase(field.phase) == FieldPhase::kIdle ||
+          field.work_days_remaining > 0.0F) {
+        continue;
+      }
+      field.work_days_remaining = 0.0F;
+      switch (field.phase) {
+        case FieldPhase::kPlowing:
+          OpenPhase(field, FieldPhase::kHarrowing);
+          break;
+        case FieldPhase::kHarrowing:
+          OpenPhase(field, FieldPhase::kSowing);
+          break;
+        case FieldPhase::kSowing:
+          FinishSowing(current, field);
+          break;
+        case FieldPhase::kHarvest:
+          FinishHarvest(current, field);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /// @brief kIdle for a phase that needs no work, the phase itself for the
+  /// four working ones.
+  static constexpr FieldPhase KindOfWorkingPhase(FieldPhase phase) {
+    switch (phase) {
+      case FieldPhase::kPlowing:
+      case FieldPhase::kHarrowing:
+      case FieldPhase::kSowing:
+      case FieldPhase::kHarvest:
+        return phase;
+      case FieldPhase::kIdle:
+      case FieldPhase::kGrowing:
+        return FieldPhase::kIdle;
+    }
+    return FieldPhase::kIdle;
+  }
+
+  /// @brief Moves the field into a working phase and sizes its demand:
+  /// area x the phase's norm. The crop is the one in the ground or, while
+  /// the field is still being prepared, the one this year's rotation plans.
+  void OpenPhase(FieldRow& field, FieldPhase phase) const {
+    field.phase = phase;
+    const CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
+    float norm = 0.0F;
+    if (phase == FieldPhase::kPlowing) {
+      norm = config_.farming.plow_days_per_ha;
+    } else if (phase == FieldPhase::kHarrowing) {
+      norm = config_.farming.harrow_days_per_ha;
+    } else if (crop.value < config_.crops.size()) {
+      norm = phase == FieldPhase::kSowing ? config_.crops[crop.value].sow_days_per_ha
+                                          : config_.crops[crop.value].harvest_days_per_ha;
+    }
+    field.work_days_remaining = norm * field.area_ga;
+  }
+
   /// January 1: the rotation plan advances one year, and fallow that stood
   /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
@@ -206,36 +279,49 @@ class ProductionSystem final : public IProductionSystem {
     for (FieldRow& field : current.fields.rows) {
       if (field.phase == FieldPhase::kIdle) {
         TrySow(current, field, month, temperature);
-      } else if (field.phase == FieldPhase::kGrowing) {
-        if (field.crop.value >= config_.crops.size()) {
-          continue;  // a crop this config does not know: leave the row alone
-        }
-        const CropDef& crop = config_.crops[field.crop.value];
-        // Snow on an unharvested annual is the one total loss (§6); winter
-        // crops and perennials winter under it by design.
-        if (snowing && !crop.is_winter && !crop.is_perennial) {
-          field.last_crop = field.crop;
-          field.repeat_years = 0;
-          field.crop = CropId{};
-          field.phase = FieldPhase::kIdle;
-          field.weather_stress = 0.0F;
-          field.manure_applied = 0;
-          LogWarning("field lost to snow before harvest");
-          continue;
-        }
-        const bool in_window = month >= crop.harvest_from_month && month <= crop.harvest_to_month;
-        // A perennial stand stays growing after its cut, so gate it to one
-        // cut a year — the first day of its window; an annual leaves the
-        // growing phase at harvest and cannot double-fire.
-        const bool cut_today = !crop.is_perennial || (month == crop.harvest_from_month &&
-                                                      current.calendar.date.day_in_month == 0);
-        if (in_window && cut_today) {
-          Harvest(current, field, crop);
-        }
+        continue;
+      }
+      const bool standing =
+          field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
+      if (!standing || field.crop.value >= config_.crops.size()) {
+        continue;  // being prepared, or a crop this config does not know
+      }
+      const CropDef& crop = config_.crops[field.crop.value];
+      // Snow on an unharvested annual is the one total loss (§6) — and it
+      // takes a field the crew is still reaping, which is exactly why the
+      // harvest window outranks every other job (assignment.cpp). Winter
+      // crops and perennials winter under snow by design.
+      if (snowing && !crop.is_winter && !crop.is_perennial) {
+        field.last_crop = field.crop;
+        field.repeat_years = 0;
+        field.crop = CropId{};
+        field.phase = FieldPhase::kIdle;
+        field.work_days_remaining = 0.0F;
+        field.weather_stress = 0.0F;
+        field.manure_applied = 0;
+        LogWarning("field lost to snow before harvest");
+        continue;
+      }
+      if (field.phase != FieldPhase::kGrowing) {
+        continue;  // already being reaped
+      }
+      const bool in_window = month >= crop.harvest_from_month && month <= crop.harvest_to_month;
+      // A perennial stand stays growing after its cut, so gate it to one
+      // cut a year — the first day of its window; an annual leaves the
+      // growing phase at harvest and cannot double-fire.
+      const bool cut_today = !crop.is_perennial || (month == crop.harvest_from_month &&
+                                                    current.calendar.date.day_in_month == 0);
+      if (in_window && cut_today) {
+        OpenPhase(field, FieldPhase::kHarvest);
       }
     }
   }
 
+  /// The field year opens here: the sowing window and the temperature say
+  /// "go", and the field enters plowing. What follows — harrowing, sowing —
+  /// is paced by the crew, so the seed may well go into the ground after
+  /// the window has closed. That is the point of the seam: the window is
+  /// when the work STARTS, the crew decides when it ends.
   void TrySow(WorldState& current, FieldRow& field, std::uint8_t month, float temperature) {
     if (field.rotation_year0.value >= config_.crops.size()) {
       return;  // fallow year
@@ -245,17 +331,8 @@ class ProductionSystem final : public IProductionSystem {
         temperature < crop.sow_min_temp_c) {
       return;
     }
-    // Sowing consumes ordinary produce of the same crop (§7); partial seed
-    // sows the whole field anyway — the shortfall alarm is a UI concern.
-    if (crop.sowing_norm_kg_per_ha > 0.0F) {
-      const auto need =
-          static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
-      const Grams got = TakeFromStorage(current, config_, crop.resource, need);
-      if (got < need) {
-        LogWarning("sowing short of seed; sown anyway (STUB until alarms)");
-      }
-    }
-    // Manure is plowed in before sowing when the heap has a full dose (§8).
+    // Manure is plowed in, never spread separately (§8): the dose leaves
+    // the heap when the plowing starts.
     const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
     if (heap != kNoRow) {
       const auto dose = static_cast<Grams>(config_.farming.manure_norm_kg_per_ha * field.area_ga) *
@@ -265,11 +342,39 @@ class ProductionSystem final : public IProductionSystem {
         field.manure_applied = 1;
       }
     }
-    // Plowing, harrowing and sowing pass instantly until labor exists
-    // (stage 5 drains work_days_remaining instead).
-    field.crop = field.rotation_year0;
+    OpenPhase(field, FieldPhase::kPlowing);
+  }
+
+  /// The seed goes into the ground when the sowing phase is worked through.
+  void FinishSowing(WorldState& current, FieldRow& field) {
+    const CropId crop_id = field.rotation_year0;
+    if (crop_id.value < config_.crops.size()) {
+      const CropDef& crop = config_.crops[crop_id.value];
+      // Sowing consumes ordinary produce of the same crop (§7); partial
+      // seed sows the whole field anyway — the shortfall alarm is a UI
+      // concern.
+      if (crop.sowing_norm_kg_per_ha > 0.0F) {
+        const auto need =
+            static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
+        const Grams got = TakeFromStorage(current, config_, crop.resource, need);
+        if (got < need) {
+          LogWarning("sowing short of seed; sown anyway (STUB until alarms)");
+        }
+      }
+    }
+    field.crop = crop_id;
     field.phase = FieldPhase::kGrowing;
+    field.work_days_remaining = 0.0F;
     field.weather_stress = 0.0F;
+  }
+
+  /// The reaped field pays out and leaves the harvest phase.
+  void FinishHarvest(WorldState& current, FieldRow& field) {
+    if (field.crop.value >= config_.crops.size()) {
+      field.phase = FieldPhase::kIdle;
+      return;
+    }
+    Harvest(current, field, config_.crops[field.crop.value]);
   }
 
   void Harvest(WorldState& current, FieldRow& field, const CropDef& crop) {
@@ -318,8 +423,10 @@ class ProductionSystem final : public IProductionSystem {
     field.manure_applied = 0;
     field.last_crop = field.crop;
     field.weather_stress = 0.0F;
+    field.work_days_remaining = 0.0F;
     if (crop.is_perennial) {
-      return;  // the stand keeps growing; next summer it yields again
+      field.phase = FieldPhase::kGrowing;  // the stand yields again next summer
+      return;
     }
     field.crop = CropId{};
     field.phase = FieldPhase::kIdle;
@@ -431,7 +538,7 @@ bool ParseCrops(const ITable& table,
 
   // Months are 1..12 here, so the shift to the core's 0-based Month enum
   // below can never produce a negative value.
-  constexpr std::array<Column, 13> kColumns = {{{"is_winter", 0, 0, 1},
+  constexpr std::array<Column, 15> kColumns = {{{"is_winter", 0, 0, 1},
                                                 {"is_perennial", 0, 0, 1},
                                                 {"sow_from_month", 1, 1, 12},
                                                 {"sow_to_month", 1, 1, 12},
@@ -443,7 +550,13 @@ bool ParseCrops(const ITable& table,
                                                 {"sowing_norm_kg_per_ha", 0, 0, 1e6F},
                                                 {"fertility_delta", 0, -100, 100},
                                                 {"drought_sensitivity", 0, 0, 1},
-                                                {"wet_sensitivity", 0, 0, 1}}};
+                                                {"wet_sensitivity", 0, 0, 1},
+                                                // REAL man-days per hectare, as the
+                                                // agronomy books write them; the grain
+                                                // anchor 3 + 8 is the default until the
+                                                // columns exist.
+                                                {"sow_days_per_ha", 3, 0, 1000},
+                                                {"harvest_days_per_ha", 8, 0, 1000}}};
   std::array<std::uint32_t, kColumns.size()> columns{};
   for (std::uint32_t index = 0; index < kColumns.size(); ++index) {
     columns[index] = table.FindColumn(kColumns[index].name);
@@ -480,6 +593,8 @@ bool ParseCrops(const ITable& table,
     crop.fertility_delta = values[10];
     crop.drought_sensitivity = values[11];
     crop.wet_sensitivity = values[12];
+    crop.sow_days_per_ha = values[13] / kRealDaysPerGameDay;
+    crop.harvest_days_per_ha = values[14] / kRealDaysPerGameDay;
   }
   return true;
 }
@@ -550,6 +665,23 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
       return false;
     }
     *entry.value = *cell;
+  }
+  // The two labor norms are optional while the column set grows: their
+  // defaults are the canonical 10 and 3 real man-days per hectare.
+  const Entry optional[] = {{"plow_days_per_ha", &farming.plow_days_per_ha},
+                            {"harrow_days_per_ha", &farming.harrow_days_per_ha}};
+  for (const Entry& entry : optional) {
+    const std::uint32_t row = table.FindRowByKey(entry.key);
+    if (row == kNoTableRow) {
+      continue;
+    }
+    const std::optional<float> cell = table.CellReal(row, value_col);
+    const bool sane = cell && *cell >= 0.0F && *cell <= 1000.0F;
+    if (!sane) {
+      error = std::string("farming: value of '") + entry.key + "' is missing or out of range";
+      return false;
+    }
+    *entry.value = *cell / kRealDaysPerGameDay;  // the table keeps REAL man-days
   }
   if (!(farming.fertility_neutral > 0.0F)) {
     error = "farming: fertility_neutral must be positive";

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
 
 namespace core {
@@ -39,6 +40,16 @@ struct CropDef {
 
   float sowing_norm_kg_per_ha = 0.0F;  ///< 0 = sowing consumes no material.
 
+  /// Labor norms of the two crop-specific working phases, in GAME man-days
+  /// per hectare (the table keeps REAL man-days; parsing divides by
+  /// kRealDaysPerGameDay once). They size FieldRow::work_days_remaining when
+  /// production opens the phase — the seam labor then drains
+  /// (manual/65-labor-model.md §2). Grain anchor, real man-days per hectare:
+  /// plow 10 + harrow 3 + sow 3 + harvest 8 = 24 (49-simulations §2).
+  float sow_days_per_ha = 3.0F / kRealDaysPerGameDay;
+
+  float harvest_days_per_ha = 8.0F / kRealDaysPerGameDay;
+
   float fertility_delta = 0.0F;  ///< Applied at harvest.
 
   float drought_sensitivity = 0.0F;  ///< 0..1 scale on the stress rate.
@@ -62,6 +73,13 @@ struct UnitTypeDef {
 
 struct FarmingConfig {
   float fertility_neutral = 50.0F;
+
+  /// Plowing and harrowing norms in GAME man-days per hectare: one norm for
+  /// any land and any crop (farming design §5). Same conversion as the crop
+  /// norms above.
+  float plow_days_per_ha = 10.0F / kRealDaysPerGameDay;
+
+  float harrow_days_per_ha = 3.0F / kRealDaysPerGameDay;
 
   float manure_norm_kg_per_ha = 20000.0F;
 

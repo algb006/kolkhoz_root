@@ -161,6 +161,16 @@ int main() {
     current.families.rows[1].component_common_cause = 90.0F;
     current.families.rows[1].component_needs = 90.0F;
     current.families.rows[1].component_rest = 90.0F;
+    // The rest component is no longer free-standing: since labor exists it
+    // is the members' own rest, averaged, and the metrics phase recomputes
+    // it (stage 5). Set the people, not the component.
+    for (core::ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value == current.families.row_ids[0].value) {
+        resident.rest = 60.0F;
+      } else if (resident.family.value == current.families.row_ids[1].value) {
+        resident.rest = 90.0F;
+      }
+    }
     core::IParallelPhase& metrics = system->MetricsPhase();
     const std::uint32_t count = metrics.ParallelItemCount(current);
     failures += Expect(count == static_cast<std::uint32_t>(current.families.rows.size()),

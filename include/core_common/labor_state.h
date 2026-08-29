@@ -67,6 +67,14 @@ struct WorkAssignment {
   /// trudodni on the family account at day close (rate x delivered), then
   /// reset. Survives a mid-day walk-off: partial output is still paid.
   float worked_norm_days_today = 0.0F;
+
+  /// Game hours spent away from home today: the round trip is added at the
+  /// first worked hour, the worked hours accumulate on top. The family's
+  /// household_hours are 24 - sleep - the average of this over the members
+  /// who went out (household design §1), so it must survive a walk-off,
+  /// which clears `kind` and with it the target the road could be recomputed
+  /// from. Reset at day close together with the assignment.
+  float hours_away_today = 0.0F;
 };
 
 }  // namespace core
