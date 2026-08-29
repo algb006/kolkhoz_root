@@ -11,8 +11,10 @@
 /// is 1/2/3 (wild/poultry/cattle), ONLY ADULTS produce — milk, wool, eggs,
 /// draught and manure are computed from adult_count; no growth curves or
 /// per-age feed norms exist by design. Disease is a bare STUB degree
-/// (0 = healthy, 1 vulnerable, 2 obvious, 3 down): the mechanics are an
-/// open design topic and must not be invented here.
+/// (0 = healthy, 1 vulnerable, 2 obvious, 3 down): an Era II+ mechanic
+/// (design question 99 closed 2026-08-29 — Era I animals never get sick;
+/// its cold ladder is freeze -> productivity drop -> death, no disease
+/// step). The field stays a STUB for all of phase 1.
 ///
 /// A herd stands either at a unit (the stock-yard's cows) or at a family's
 /// yard (the start keeps all 16 kolkhoz horses in private yards until the
