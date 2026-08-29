@@ -19,6 +19,12 @@
 /// A herd stands either at a unit (the stock-yard's cows) or at a family's
 /// yard (the start keeps all 16 kolkhoz horses in private yards until the
 /// kolkhoz yard is built) — exactly one of `unit`/`household` is valid.
+///
+/// Labor seam (stage 5, manual/65-labor-model.md): unit-standing herds are
+/// a daily work source — the labor sub-step refills care_days_remaining
+/// each morning from the kind's care norm and drains it with assigned barn
+/// workers. A household-standing herd generates NO kolkhoz job: its care is
+/// the owner's leak (livestock design §5), never assigned labor.
 
 #ifndef CORE_COMMON_HERD_STATE_H_
 #define CORE_COMMON_HERD_STATE_H_
@@ -51,6 +57,13 @@ struct HerdRow {
   /// STUB: disease degree 0-3. The field exists so saves and interfaces are
   /// final; no mechanics reads or writes it in phase 1.
   std::uint8_t disease_stage = 0;
+
+  /// Game man-days of barn work left today (stage 5). Refilled every morning
+  /// by the labor sub-step from the kind's yearly care norm (real man-days
+  /// / 7 / days per year x heads), drained by assigned kHerdCare workers.
+  /// Unmet care has no consequence yet — that STUB ties into feeding
+  /// (stage 6). Zero for household-standing herds (see @file).
+  float care_days_remaining = 0.0F;
 };
 
 /// @brief The herds table type used by WorldState.

@@ -23,17 +23,18 @@
 ///
 /// Stage plan for the fields (everything is laid out now; later stages only
 /// start WRITING what stage 3 keeps at neutral defaults):
-///   stage 5: rest and skills move with work;  stage 6: satiety and cold
-///   move with food and heating;  project phases 2-3: statuses, offenses,
-///   attitude, traits, passport get their mechanics.
+///   stage 5 (labor): the `work` block and `rest` move daily; earned skills
+///   creep with practice;  stage 6: satiety and cold move with food and
+///   heating;  project phases 2-3: statuses, offenses, attitude, traits,
+///   passport get their mechanics.
 
 #ifndef CORE_COMMON_RESIDENT_STATE_H_
 #define CORE_COMMON_RESIDENT_STATE_H_
 
 #include <cstdint>
 
-#include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/labor_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
 
@@ -91,6 +92,13 @@ struct ResidentRow {
   Metric cold = 0.0F;  ///< 0 = warm; appears only when freezing (stage 6).
 
   Metric mood = 60.0F;
+
+  // -- today's work (labor_state.h; stage 5) -------------------------------
+  /// Written only by the labor sub-step of the decisions slot: assigned in
+  /// the morning, drained hourly, closed out at day end. kind == kNone means
+  /// idle today — including a fatigue walk-off, which clears the kind but
+  /// keeps worked_norm_days_today until the close-out pays it.
+  WorkAssignment work;
 
   // -- education (education design §2, §4, §5) -----------------------------
   EducationStage education_stage = EducationStage::kNone;

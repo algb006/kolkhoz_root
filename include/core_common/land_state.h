@@ -16,16 +16,18 @@
 /// multiplier 1.3 is fertility 65. The scale choice is the core's
 /// (manual/64-land-model.md); what changes fertility is the design's.
 ///
-/// Phase durations are labor-driven by design (§5). Until the labor system
-/// exists (stage 5), transitions are instant at the calendar windows —
-/// work_days_remaining is the STUB hook labor will start filling.
+/// Phase durations are labor-driven by design (§5): work_days_remaining is
+/// the seam between production and labor (manual/65-labor-model.md).
+/// Production opens a working phase by setting it to the phase's norm
+/// (area x man-days per hectare); the labor sub-step drains it with the
+/// crew's hourly output; production advances the phase when it reaches 0.
+/// The two modules never call each other — the state carries the contract.
 
 #ifndef CORE_COMMON_LAND_STATE_H_
 #define CORE_COMMON_LAND_STATE_H_
 
 #include <cstdint>
 
-#include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -83,9 +85,11 @@ struct FieldRow {
   /// (drought and waterlogging, §6); scales the harvest down, never to zero.
   float weather_stress = 0.0F;
 
-  /// STUB: game days of work left in the current working phase. The labor
-  /// system (stage 5) computes and drains this; until then it stays 0 and
-  /// working phases pass instantly.
+  /// Game man-days of work left in the current working phase — the
+  /// production/labor seam (see @file). Set by production at phase open,
+  /// drained by labor's assigned crew, phase advances at 0. A phase set
+  /// wired without the labor sub-step therefore never finishes a working
+  /// phase — deliberately: work does not happen without workers.
   float work_days_remaining = 0.0F;
 };
 

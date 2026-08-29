@@ -4,6 +4,7 @@
 # owns no slot of its own and does not depend on core_sim.
 
 kolkhoz_add_module(core_labor
+    assignment.cpp
     labor_system.cpp)
 
 target_link_libraries(core_labor
