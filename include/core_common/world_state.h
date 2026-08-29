@@ -24,6 +24,7 @@
 #ifndef CORE_COMMON_WORLD_STATE_H_
 #define CORE_COMMON_WORLD_STATE_H_
 
+#include <array>
 #include <cstdint>
 
 #include "core_common/calendar.h"
@@ -85,6 +86,31 @@ struct ChairmanState {
   Metric shadow_reputation = 0.0f;
 };
 
+/// @brief Settlement-wide vital statistics (design decision 105).
+/// Life expectancy = 60 + medicine(0..+8) + nutrition(-4..+4) + living
+/// conditions(0..+4) + working conditions(-2..+2), factors averaged over
+/// 3 years, recomputed once a year. Phase 1 keeps medicine and living
+/// conditions at zero and working conditions constant; only nutrition is
+/// alive (stage 6). Its derivatives — the aging threshold (LE - 20) and the
+/// last-birth median — are computed from the value, never stored.
+/// Written only in the sequential demography sub-step.
+struct VitalsState {
+  /// Current life expectancy, biological years. Starts at the canonical 60.
+  float life_expectancy_years = 60.0F;
+
+  /// Mean settlement satiety of each of the last 3 finished years, oldest
+  /// first — the nutrition factor's 3-year window. Neutral 70 start: the
+  /// mapping knob turns 70 into a zero nutrition contribution.
+  std::array<float, 3> satiety_year_means = {70.0F, 70.0F, 70.0F};
+
+  /// Running mean accumulation of the CURRENT year: daily settlement mean
+  /// satiety summed, and the number of days summed. Folded into
+  /// satiety_year_means at the year turn, then reset.
+  float satiety_running_sum = 0.0F;
+
+  std::uint32_t satiety_running_days = 0;
+};
+
 /// @brief The yearly delivery plan, reduced to numbers.
 /// Phase 1 of the project models the district as "the plan is just a number
 /// per resource" (plan, §11): no mechanics, only the target and how much has
@@ -138,6 +164,9 @@ struct WorldState {
   ChairmanState chairman;
 
   PlanState plan;
+
+  /// Life expectancy and its factor window (stage 6, decision 105).
+  VitalsState vitals;
 };
 
 }  // namespace core

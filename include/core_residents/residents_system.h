@@ -43,12 +43,17 @@ class IResidentsSystem {
   /// Valid for the lifetime of the system; wired into StepPhaseSet::metrics.
   virtual IParallelPhase& MetricsPhase() = 0;
 
-  /// @brief Demography: the residents' sub-step of the decisions slot.
+  /// @brief The residents' sub-step of the decisions slot: demography and,
+  /// from stage 6 on, the family-kolkhoz food exchange.
   /// Called by core_world every step (phase 3, sim thread), second in the
   /// fixed order of that slot (manual/54-modules.md, §3). The only place
   /// where resident and family rows are appended or removed — births,
-  /// deaths, marriages, migration. Runs every tick; the implementation
-  /// itself gates daily work to day boundaries.
+  /// deaths, marriages, migration — and, per manual/66-food-model.md, where
+  /// warehouse stock moves into family pantries (the monthly distribution
+  /// against trudodni, the minimum ration) and the settlement vitals
+  /// (life expectancy) are maintained. The name keeps its stage-3 form for
+  /// interface stability; the contract is the whole sub-step. Runs every
+  /// tick; the implementation itself gates daily and monthly work.
   virtual void RunDemographyDecisions(const WorldState& previous, WorldState& current) = 0;
 };
 

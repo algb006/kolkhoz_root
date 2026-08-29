@@ -63,6 +63,43 @@ struct LivestockDef {
   float hay_kg_per_day_winter = 0.0F;
 
   float grain_kg_per_day = 0.0F;
+
+  // -- stage 6: breeding, aging, produce (manual/66-food-model.md §6) ------
+  // Ages run on the BIOLOGICAL clock (boss rules 2026-08-29 §2.2: biology
+  // / 4), so rung durations are biological; produce and birth rates are
+  // per GAME year — that is what the settlement's yearly balance eats.
+  // Poultry is sexless and two-runged (newborn_bio_days = 0 skips the rung).
+
+  /// 0/1: the kind has sexes; breeding then needs an adult male present.
+  std::uint8_t sexed = 1;
+
+  float newborn_bio_days = 0.0F;
+
+  float juvenile_bio_days = 0.0F;
+
+  /// Adult lifespan from adulthood, biological years: the age-death draw
+  /// ramps up as the cohort mean passes it (threshold with randomness).
+  float adult_life_bio_years = 0.0F;
+
+  float births_per_female_year = 0.0F;  ///< Litters per adult female per game year.
+
+  float litter_heads = 1.0F;  ///< Newborns per litter.
+
+  /// Adult males the herd keeps; males maturing beyond it are slaughtered
+  /// (meat) — one bull serves the barn, extra mouths do not overwinter.
+  std::uint8_t males_kept_per_herd = 1;
+
+  /// Produce per adult head per game year, into the housing unit's stock
+  /// (kolkhoz herds) or the family pantry (household herds). Milk counts
+  /// females only; eggs and wool count every adult.
+  float milk_kg_per_year = 0.0F;
+
+  float egg_kg_per_year = 0.0F;
+
+  float wool_kg_per_year = 0.0F;
+
+  /// Slaughter yield per head, by rung share of adult weight for the young.
+  float meat_kg_per_head = 0.0F;
 };
 
 struct UnitTypeDef {
@@ -94,6 +131,20 @@ struct FarmingConfig {
   float stress_per_day = 0.02F;
 
   float stress_cap = 0.3F;
+
+  // -- stage 6: herd-wide knobs (tables/farming.csv scalar rows) -----------
+  /// Age death: expected deaths/day = adults x max(0, mean age - lifespan)
+  /// / (spread x days per year); the spread is the "randomness" width
+  /// around the threshold. ASSUMPTION.
+  float herd_age_death_spread_years = 2.0F;
+
+  /// Underfeeding: produce multiplier while unfed, and when deaths start.
+  /// ASSUMPTION until the feeding runs.
+  float unfed_produce_factor = 0.5F;
+
+  float unfed_death_after_days = 8.0F;
+
+  float unfed_death_percent_per_day = 5.0F;
 };
 
 struct ProductionConfig {
@@ -109,7 +160,20 @@ struct ProductionConfig {
 
   ResourceId hay_resource;  ///< resources.csv "hay" row.
 
+  // -- stage 6: where herd produce lands (invalid = kind yields none) ------
+  ResourceId milk_resource;  ///< resources.csv "milk" row.
+
+  ResourceId egg_resource;  ///< resources.csv "egg" row.
+
+  ResourceId wool_resource;  ///< resources.csv "wool" row.
+
+  ResourceId meat_resource;  ///< resources.csv "meat" row.
+
   UnitTypeId compost_heap_type;  ///< unit_types.csv "compost_heap".
+
+  /// unit_types.csv "stable": the closed housing horse breeding requires
+  /// (boss rules 2026-08-29 §2.2); other kinds breed under any roof.
+  UnitTypeId stable_type;
 };
 
 }  // namespace core
