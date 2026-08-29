@@ -5,11 +5,13 @@
 /// discipline: parallel phases 2 and 6 are split by FAMILY, and a worker
 /// owning a family owns the resident rows of its members — disjoint sets,
 /// interleaved in the dense table, which is race-free (distinct objects).
-/// Membership is discovered through the `family` field, which is
-/// structurally frozen for the whole step: it is the one field of an
-/// unowned current row a worker may read (buffer-law rule 4). Structural
-/// changes (births, deaths, departures) happen only in the demography
-/// sub-step of the sequential decisions slot.
+/// Membership is discovered through the `family` field, which is the one
+/// field of an unowned current row a worker may read (buffer-law rule 4).
+/// What makes that legal is not that it never changes — a wedding moves a
+/// resident to a new household — but that it is written ONLY in the
+/// sequential decisions slot, so it stands still for the whole of every
+/// parallel phase. Structural changes (births, deaths, departures,
+/// marriages) happen there and nowhere else.
 ///
 /// Design sources: metrics design §2 (two rows: current state and
 /// inclinations), life-cycle §1 (attributes and derived values), education

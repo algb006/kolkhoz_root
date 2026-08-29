@@ -32,10 +32,11 @@
 ///      what it owns, and may read what it owns plus blocks finalized by
 ///      earlier phases of this step (e.g. calendar and weather after
 ///      phase 1). The ONE legal read of an unowned current row is a field
-///      that is structurally frozen for the whole step — such as
-///      ResidentRow::family, used to discover membership; any other field of
-///      an unowned row is being written concurrently and must come from
-///      `previous`. No locks, no atomics.
+///      that no parallel phase writes — such as ResidentRow::family, used to
+///      discover membership: the sequential decisions slot may move a
+///      resident to another household, but nothing moves while a parallel
+///      phase runs. Any other field of an unowned row is being written
+///      concurrently and must come from `previous`. No locks, no atomics.
 ///   5. Parallel phases keep no cross-row accumulators; any aggregate over
 ///      rows is computed later, sequentially, in row order (float determinism
 ///      rule of the state model).
