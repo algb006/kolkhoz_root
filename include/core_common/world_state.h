@@ -28,9 +28,12 @@
 
 #include "core_common/calendar.h"
 #include "core_common/family_state.h"
+#include "core_common/herd_state.h"
+#include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/resident_state.h"
+#include "core_common/unit_state.h"
 
 namespace core {
 
@@ -101,9 +104,6 @@ struct PlanState {
 /// is this struct advanced 10 000 times and compared.
 ///
 /// Growth plan (do not restructure, only append):
-///   stage 4:  StateTable<FieldId, ...> fields;
-///             StateTable<UnitId, ...> units;
-///             StateTable<HerdId, ...> herds;
 ///   stage 5+: labor assignments live inside resident rows, not here.
 struct WorldState {
   CalendarState calendar;
@@ -117,6 +117,15 @@ struct WorldState {
 
   /// Every household (stage 3). Row layout: family_state.h.
   FamilyTable families;
+
+  /// Every field (stage 4). Row layout: land_state.h.
+  FieldTable fields;
+
+  /// Every unit (stage 4; construction itself is deferred). unit_state.h.
+  UnitTable units;
+
+  /// Every herd (stage 4; sizes static until feeding). herd_state.h.
+  HerdTable herds;
 
   /// Campaign seed: fixed at world creation, never changes, drives every
   /// derived counter-style random draw. Same seed, same commands — same world.

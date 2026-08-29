@@ -12,6 +12,8 @@
 #include <array>
 #include <cstdint>
 
+#include "core_common/ids.h"
+
 namespace core {
 
 /// Per-epoch demography parameters (demography design §4).
@@ -37,6 +39,10 @@ struct SatisfactionWeights {
 /// The biological clock and its thresholds (tables/life.csv). Ages are
 /// biological years; life_speedup maps them to game years.
 struct LifeConfig {
+  /// unit_types.csv "house" row: what the wedding STUB builds (invalid in a
+  /// table-less world — the unit is appended with an invalid type then).
+  UnitTypeId house_type;
+
   float life_speedup = 4.0F;
 
   float adult_age_years = 16.0F;

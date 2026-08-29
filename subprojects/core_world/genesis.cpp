@@ -12,6 +12,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include "campaign_tables.h"
 #include "core_common/calendar.h"
@@ -74,6 +75,157 @@ FamilyRow RollFamily(RngState& rng) {
   return family;
 }
 
+UnitTypeId TypeByKey(const ITable* unit_types, std::string_view key) {
+  if (unit_types == nullptr) {
+    return UnitTypeId{};
+  }
+  const std::uint32_t row = unit_types->FindRowByKey(key);
+  return row == kNoTableRow ? UnitTypeId{} : UnitTypeId{static_cast<std::uint16_t>(row)};
+}
+
+ResourceId GenesisResource(const ITable* resources, std::string_view key) {
+  if (resources == nullptr) {
+    return ResourceId{};
+  }
+  const std::uint32_t row = resources->FindRowByKey(key);
+  return row == kNoTableRow ? ResourceId{} : ResourceId{static_cast<std::uint16_t>(row)};
+}
+
+CropId CropByKey(const ITable* crops, std::string_view key) {
+  if (crops == nullptr) {
+    return CropId{};
+  }
+  const std::uint32_t row = crops->FindRowByKey(key);
+  return row == kNoTableRow ? CropId{} : CropId{static_cast<std::uint16_t>(row)};
+}
+
+void PutStock(UnitRow& unit, ResourceId resource, float kilograms) {
+  if (resource.value == kInvalidDefIdValue) {
+    return;
+  }
+  if (unit.stock.size() <= resource.value) {
+    unit.stock.resize(resource.value + 1U, 0);
+  }
+  unit.stock[resource.value] = static_cast<Grams>(kilograms) * kGramsPerKilogram;
+}
+
+UnitId PlaceUnit(WorldState& world, UnitTypeId type, float x_meters, float y_meters) {
+  UnitRow unit;
+  unit.type = type;
+  unit.position = Vec2{.x = x_meters, .y = y_meters};
+  return AppendRow(world.units, unit);
+}
+
+FieldId PlaceField(
+    WorldState& world, float area_ga, CropId rotation, float x_meters, Metric fertility) {
+  FieldRow field;
+  field.center = Vec2{.x = x_meters, .y = 2000.0F};
+  field.area_ga = area_ga;
+  field.fertility = fertility;
+  field.rotation_year0 = rotation;
+  field.rotation_year1 = rotation;
+  field.rotation_year2 = rotation;
+  return AppendRow(world.fields, field);
+}
+
+/// @brief The start economy of the canon (start.md §10-§11): the surviving
+/// units with the stores in the church, 160 ha of arable land with the
+/// suggested first-year plan of the reference run (70 ha sown: 62% grain,
+/// 18% potatoes, 8% flax, 12% fodder), 80 ha of meadows, 39 cows at the
+/// stock yard and 16 kolkhoz horses at the first family yards. A table-less
+/// world (unit tests) gets none of this and stays people-only.
+/// Start fertility 65 = soil factor 1.3 of the reference runs; stock
+/// amounts are ASSUMPTION sized to the first sowing plus a food margin.
+void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
+  const ITable* unit_types = tables.FindTable("unit_types");
+  const ITable* resources = tables.FindTable("resources");
+  const ITable* crops = tables.FindTable("crops");
+  if (unit_types == nullptr || resources == nullptr || crops == nullptr) {
+    return;  // people-only world until the tables exist
+  }
+  constexpr Metric kStartFertility = 65.0F;
+
+  // Units of the start set. The kolkhoz yard is deliberately absent — the
+  // first build of the campaign (construction system pending).
+  const UnitId church = PlaceUnit(world, TypeByKey(unit_types, "church_warehouse"), 0, 0);
+  PlaceUnit(world, TypeByKey(unit_types, "well"), 50, 0);
+  const UnitId stock_yard = PlaceUnit(world, TypeByKey(unit_types, "stock_yard"), 200, 100);
+  PlaceUnit(world, TypeByKey(unit_types, "build_yard"), 300, 0);
+  PlaceUnit(world, TypeByKey(unit_types, "log_heap"), 100, 50);
+  PlaceUnit(world, TypeByKey(unit_types, "stone_heap"), 150, 50);
+  PlaceUnit(world, TypeByKey(unit_types, "clay_heap"), 200, 50);
+  const UnitId compost = PlaceUnit(world, TypeByKey(unit_types, "compost_heap"), 400, 200);
+
+  // One decrepit house per starting family.
+  const UnitTypeId old_house = TypeByKey(unit_types, "old_house");
+  for (std::uint32_t family_row = 0; family_row < world.families.rows.size(); ++family_row) {
+    UnitRow house;
+    house.type = old_house;
+    house.position = Vec2{.x = static_cast<float>(family_row) * 40.0F, .y = -100.0F};
+    house.household = world.families.row_ids[family_row];
+    world.families.rows[family_row].house = AppendRow(world.units, house);
+  }
+
+  // The stores in the church and the inherited compost (start.md §7).
+  UnitRow& church_row = world.units.rows[FindRow(world.units, church)];
+  PutStock(church_row, GenesisResource(resources, "grain_oats"), 5000);
+  PutStock(church_row, GenesisResource(resources, "grain_barley"), 3500);
+  PutStock(church_row, GenesisResource(resources, "grain_wheat"), 2500);
+  PutStock(church_row, GenesisResource(resources, "grain_rye"), 8000);
+  PutStock(church_row, GenesisResource(resources, "potato"), 35000);
+  PutStock(world.units.rows[FindRow(world.units, compost)],
+           GenesisResource(resources, "manure"),
+           250000);
+
+  // 160 ha of arable land: the reference first-year mix sown, the rest
+  // fallow; 80 ha of meadows in permanent grass.
+  PlaceField(world, 20.0F, CropByKey(crops, "oats"), 0, kStartFertility);
+  PlaceField(world, 13.4F, CropByKey(crops, "barley"), 700, kStartFertility);
+  PlaceField(world, 10.0F, CropByKey(crops, "wheat_spring"), 1400, kStartFertility);
+  PlaceField(world, 12.6F, CropByKey(crops, "potato"), 2100, kStartFertility);
+  PlaceField(world, 5.6F, CropByKey(crops, "flax"), 2800, kStartFertility);
+  PlaceField(world, 8.4F, CropByKey(crops, "root_fodder"), 3500, kStartFertility);
+  PlaceField(world, 45.0F, CropId{}, 4200, kStartFertility);
+  PlaceField(world, 45.0F, CropId{}, 4900, kStartFertility);
+  const CropId grasses = CropByKey(crops, "grasses");
+  for (std::uint32_t meadow = 0; meadow < 4; ++meadow) {
+    const float x_meters = 5600.0F + 700.0F * static_cast<float>(meadow);
+    FieldRow& field =
+        world.fields
+            .rows[FindRow(world.fields, PlaceField(world, 20.0F, grasses, x_meters, 55.0F))];
+    // Meadows are standing grass from day one: no sowing year needed.
+    field.crop = grasses;
+    field.phase = FieldPhase::kGrowing;
+  }
+
+  // Herds: cows at the stock yard; every kolkhoz horse stands at a private
+  // yard until the kolkhoz yard is built (start rework canon).
+  const ITable* livestock = tables.FindTable("livestock");
+  if (livestock != nullptr) {
+    const std::uint32_t cow_row = livestock->FindRowByKey("cow");
+    const std::uint32_t horse_row = livestock->FindRowByKey("horse");
+    if (cow_row != kNoTableRow) {
+      HerdRow cows;
+      cows.kind = LivestockKindId{static_cast<std::uint16_t>(cow_row)};
+      cows.unit = stock_yard;
+      cows.adult_count = 39;
+      AppendRow(world.herds, cows);
+    }
+    if (horse_row != kNoTableRow) {
+      const std::uint32_t yards = world.families.rows.size() < 16
+                                      ? static_cast<std::uint32_t>(world.families.rows.size())
+                                      : 16U;
+      for (std::uint32_t yard = 0; yard < yards; ++yard) {
+        HerdRow horse;
+        horse.kind = LivestockKindId{static_cast<std::uint16_t>(horse_row)};
+        horse.household = world.families.row_ids[yard];
+        horse.adult_count = 1;
+        AppendRow(world.herds, horse);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
@@ -83,11 +235,27 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
   world.calendar.day_zero_weekday = CampaignDayZeroWeekday(tables);
   RefreshCalendarCaches(world.calendar);
 
-  const auto population =
-      static_cast<std::uint32_t>(CampaignValue(tables, "start_population", 80.0F));
-  const auto households =
-      static_cast<std::uint32_t>(CampaignValue(tables, "start_households", 21.0F));
-  const float life_speedup = LifeSpeedupFromTables(tables);
+  // Value validation (UB-002): the float-to-uint cast of a negative or huge
+  // table value is UB — validate before casting, fall back loudly.
+  float population_value = CampaignValue(tables, "start_population", 80.0F);
+  if (!(population_value >= 1.0F && population_value <= 100000.0F)) {
+    LogError("campaign: start_population out of range; using 80");
+    population_value = 80.0F;
+  }
+  float households_value = CampaignValue(tables, "start_households", 21.0F);
+  if (!(households_value >= 1.0F && households_value <= 10000.0F)) {
+    LogError("campaign: start_households out of range; using 21");
+    households_value = 21.0F;
+  }
+  const auto population = static_cast<std::uint32_t>(population_value);
+  const auto households = static_cast<std::uint32_t>(households_value);
+  float life_speedup = LifeSpeedupFromTables(tables);
+  // Positive test so that NaN falls back too, and a floor that keeps the
+  // age-to-day division from producing values no int32 can hold.
+  if (!(life_speedup >= 0.1F && life_speedup <= 1000.0F)) {
+    LogError("life: life_speedup out of range; using 4");
+    life_speedup = 4.0F;
+  }
   RngState& rng = world.rng;
 
   // The pyramid in whole people.
@@ -173,6 +341,7 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
     LogWarning("genesis: start parameters rounded population to " +
                std::to_string(world.residents.rows.size()));
   }
+  BuildStartEconomy(world, tables);
   return world;
 }
 

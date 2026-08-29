@@ -1,0 +1,15 @@
+key,value
+# land constants (farming.md sections 2, 6-8). ASSUMPTION values marked;
+# fertility scale: 50 is the neutral yield factor (core decision,
+# 64-land-model.md)
+fertility_neutral,50
+# P30aw: manure application norm and its fertility bonus
+manure_norm_kg_per_ha,20000
+manure_fertility_bonus,6
+fallow_recovery,6
+repeat_penalty_per_year,3
+# weather stress while growing: hot dry days and rainy days add stress up
+# to the cap; the worst year still yields (farming.md section 6)
+drought_temp_c,25
+stress_per_day,0.02
+stress_cap,0.3

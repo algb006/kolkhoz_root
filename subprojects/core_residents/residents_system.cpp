@@ -94,6 +94,12 @@ void RemoveResident(WorldState& current, ResidentId id) {
     }
   }
   RemoveRow(current.families, family);
+  // The emptied family's house stands free again (families design §2).
+  for (UnitRow& unit : current.units.rows) {
+    if (unit.household.value == family.value) {
+      unit.household = FamilyId{};
+    }
+  }
 }
 
 /// The needs slot (phase 2). STUB: nothing to compute until food and
@@ -275,37 +281,69 @@ class ResidentsSystem final : public IResidentsSystem {
     }
   }
 
+  /// @brief Close kin may not marry: same household, a shared parent
+  /// (maternal or paternal half-siblings included), or a direct
+  /// parent-child pair (possible after remarriage).
+  static bool AreCloseKin(const ResidentRow& bride,
+                          ResidentId bride_id,
+                          const ResidentRow& groom,
+                          ResidentId groom_id) {
+    if (groom.family.value == bride.family.value) {
+      return true;
+    }
+    const bool shared_mother =
+        groom.mother.value != kInvalidEntityIdValue && groom.mother.value == bride.mother.value;
+    const bool shared_father =
+        groom.father.value != kInvalidEntityIdValue && groom.father.value == bride.father.value;
+    const bool parent_child =
+        groom.mother.value == bride_id.value || bride.father.value == groom_id.value ||
+        bride.mother.value == groom_id.value || groom.father.value == bride_id.value;
+    return shared_mother || shared_father || parent_child;
+  }
+
   void RunMarriages(WorldState& current, SimDay day) {
-    // Eligible singles marry quickly (the housing gate arrives with units,
-    // stage 4 — STUB: houses are not required yet). Brides draw the daily
-    // chance in row order; the groom is the first eligible bachelor who is
-    // not close kin.
+    // Brides draw the daily chance in row order; the groom is the first
+    // eligible bachelor who is not close kin. The design's housing gate
+    // ("no free house — no wedding", families design §2) is a STUB until
+    // construction exists: every wedding instantly gets a free house unit,
+    // so the gate never blocks — but the house and the family-house link
+    // are real from here on.
     const float daily_chance = config_.marriage_chance_percent_per_day / 100.0F;
     for (std::uint32_t bride_row = 0; bride_row < current.residents.rows.size(); ++bride_row) {
-      ResidentRow& bride = current.residents.rows[bride_row];
-      if (bride.sex != Sex::kFemale || bride.spouse.value != kInvalidEntityIdValue ||
-          BiologicalAgeYears(config_, bride.birth_day, day) < config_.marriage_age_years) {
+      if (current.residents.rows[bride_row].sex != Sex::kFemale ||
+          current.residents.rows[bride_row].spouse.value != kInvalidEntityIdValue ||
+          BiologicalAgeYears(config_, current.residents.rows[bride_row].birth_day, day) <
+              config_.marriage_age_years) {
         continue;
       }
       if (NextRandomUnitFloat(current.rng) >= daily_chance) {
         continue;
       }
+      const ResidentId bride_id = current.residents.row_ids[bride_row];
       for (std::uint32_t groom_row = 0; groom_row < current.residents.rows.size(); ++groom_row) {
-        ResidentRow& groom = current.residents.rows[groom_row];
+        const ResidentRow& groom = current.residents.rows[groom_row];
         const bool eligible =
             groom.sex == Sex::kMale && groom.spouse.value == kInvalidEntityIdValue &&
             BiologicalAgeYears(config_, groom.birth_day, day) >= config_.marriage_age_years &&
-            groom.family.value != bride.family.value &&
-            (groom.mother.value == kInvalidEntityIdValue ||
-             groom.mother.value != bride.mother.value);
+            !AreCloseKin(current.residents.rows[bride_row],
+                         bride_id,
+                         groom,
+                         current.residents.row_ids[groom_row]);
         if (!eligible) {
           continue;
         }
-        const FamilyId home = AppendRow(current.families, FamilyRow{});
-        bride.spouse = current.residents.row_ids[groom_row];
-        bride.family = home;
-        groom.spouse = current.residents.row_ids[bride_row];
-        groom.family = home;
+        FamilyRow household;
+        UnitRow house;
+        house.type = config_.house_type;
+        household.house = AppendRow(current.units, house);
+        const FamilyId home = AppendRow(current.families, household);
+        const std::uint32_t house_row = FindRow(current.units, household.house);
+        current.units.rows[house_row].household = home;
+        const ResidentId groom_id = current.residents.row_ids[groom_row];
+        current.residents.rows[bride_row].spouse = groom_id;
+        current.residents.rows[bride_row].family = home;
+        current.residents.rows[groom_row].spouse = bride_id;
+        current.residents.rows[groom_row].family = home;
         break;
       }
     }
@@ -388,6 +426,15 @@ bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error)
   if (!ok) {
     return false;
   }
+  // Value validation: a float-to-uint cast of a negative, NaN or huge value
+  // is UB, and a non-positive life speed divides to infinity. Written as
+  // positive tests so that NaN fails them — NaN compares false against
+  // everything, so the earlier `<= 0 || > 1e9` form let it through.
+  if (!(config.life_speedup > 0.0F) || !(epoch2 >= 1.0F && epoch2 <= 1.0e9F) ||
+      !(epoch3 >= 1.0F && epoch3 <= 1.0e9F)) {
+    error = "life: life_speedup must be positive and epoch thresholds sane";
+    return false;
+  }
   config.epoch2_population = static_cast<std::uint32_t>(epoch2);
   config.epoch3_population = static_cast<std::uint32_t>(epoch3);
   return true;
@@ -467,6 +514,12 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables)
     if (!ParseWeightRows(*satisfaction, config, error)) {
       LogError(error);
       return nullptr;
+    }
+  }
+  if (const ITable* unit_types = tables.FindTable("unit_types")) {
+    const std::uint32_t house = unit_types->FindRowByKey("house");
+    if (house != kNoTableRow) {
+      config.house_type = UnitTypeId{static_cast<std::uint16_t>(house)};
     }
   }
   return std::make_unique<ResidentsSystem>(config);

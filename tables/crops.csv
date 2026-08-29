@@ -1,0 +1,20 @@
+key,title,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,wet_sensitivity
+# windows and temperature thresholds are canon (farming.md section 4);
+# yields and norms are ASSUMPTION anchored to the reference runs: grain
+# 850 kg/ha at neutral fertility 50 reproduces sim_v6 (0.85 t/ha x factor)
+rye_winter,Рожь озимая,grain_rye,1,0,8,9,8,4,7,7,5,850,180,-1,0.2,0.3
+wheat_winter,Пшеница озимая,grain_wheat,1,0,8,9,10,5,7,7,5,850,180,-3,0.3,0.3
+wheat_spring,Пшеница яровая,grain_wheat,0,0,4,5,5,5,8,9,2,850,180,-3,0.4,0.3
+oats,Овёс,grain_oats,0,0,4,4,4,4,8,8,2,850,180,-1,0.2,0.2
+barley,Ячмень,grain_barley,0,0,4,5,5,5,8,8,2,850,180,-2,0.3,0.3
+buckwheat,Гречиха,grain_buckwheat,0,0,5,5,12,10,9,9,5,600,80,-1,0.7,0.3
+pea,Горох,grain_pea,0,0,4,4,4,4,7,8,2,700,180,2,0.3,0.3
+potato,Картофель,potato,0,0,5,5,8,8,9,9,5,2500,2500,-2,0.8,0.8
+cabbage,Капуста,vegetables,0,0,5,5,8,5,10,10,-3,3000,0,-2,0.8,0.6
+root_veg,"Морковь, свёкла",vegetables,0,0,5,5,5,5,9,10,0,2200,0,-2,0.6,0.7
+onion,"Лук, чеснок",vegetables,0,0,4,5,5,5,8,8,2,1200,0,-1,0.4,0.4
+flax,Лён,flax_fiber,0,0,5,5,7,6,8,8,2,400,0,-4,0.3,0.2
+root_fodder,"Кормовая свёкла, турнепс",silage,0,0,5,5,5,5,10,10,0,3000,0,-2,0.6,0.7
+clover,Клевер,hay,0,1,4,5,5,4,6,8,2,2200,0,4,0.3,0.2
+grasses,"Тимофеевка, травосмеси",hay,0,1,4,5,5,4,6,8,2,2000,0,3,0.3,0.2
+corn_silage,Кукуруза на силос,silage,0,0,5,5,12,10,9,9,5,4000,0,-3,0.5,0.4

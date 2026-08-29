@@ -1,0 +1,9 @@
+key,title,manure_kg_per_year,hay_kg_per_day_winter,grain_kg_per_day,note
+# manure anchors reproduce 49-simulations section 2 (39 cows ~351 t/year,
+# 16 horses ~112 t/year); feed rates are ASSUMPTION until the feeding stage
+cow,Корова,9000,12,0,
+horse,Лошадь,7000,8,3,at private yards until the kolkhoz yard exists
+sheep,Овца,900,2,0,summer pasture and winter hay; never private
+pig,Свинья,1500,0,1.5,
+chicken,Курица,45,0,0.05,two ages only; never sick
+duck,Утка,55,0,0.06,two ages only; never sick

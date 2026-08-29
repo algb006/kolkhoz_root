@@ -1,0 +1,14 @@
+key,title,storage_capacity_kg,livestock_capacity_head,note
+# the start canon set (start.md sections 10-11) plus what early stages need;
+# capacities are ASSUMPTION except the barn anchor (production.md section 10)
+church_warehouse,Церковь-склад,150000,,everything starts here
+well,Колодец,,,
+stock_yard,Скотный двор,20000,30,primitive; does not fit the whole herd
+build_yard,Строительный двор,30000,,
+kolkhoz_yard,Колхозный двор,20000,20,the first build of the campaign; not at start
+log_heap,Куча брёвен,60000,,
+stone_heap,Куча камня,40000,,
+clay_heap,Куча глины,40000,,
+compost_heap,Компостная куча,540000,,capacity anchored to the yearly manure flow
+old_house,Старый дом,,,decrepit start housing
+house,Дом,,,
