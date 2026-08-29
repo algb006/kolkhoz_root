@@ -1,9 +1,12 @@
-key,title,manure_kg_per_year,hay_kg_per_day_winter,grain_kg_per_day,note
+key,title,manure_kg_per_year,hay_kg_per_day_winter,grain_kg_per_day,care_days_per_year,note
 # manure anchors reproduce 49-simulations section 2 (39 cows ~351 t/year,
-# 16 horses ~112 t/year); feed rates are ASSUMPTION until the feeding stage
-cow,Корова,9000,12,0,
-horse,Лошадь,7000,8,3,at private yards until the kolkhoz yard exists
-sheep,Овца,900,2,0,summer pasture and winter hay; never private
-pig,Свинья,1500,0,1.5,
-chicken,Курица,45,0,0.05,two ages only; never sick
-duck,Утка,55,0,0.06,two ages only; never sick
+# 16 horses ~112 t/year); feed rates are ASSUMPTION until the feeding stage.
+# care_days_per_year — РЕАЛЬНЫЕ чел-дни на взрослую голову в год (sim_v8:
+# корова 32, лошадь 22, овца 4, свинья 8); птица — ASSUMPTION. Ядро делит на 7.
+# Уход за стадом при дворе семьи колхозной работы не рождает (Животноводство §5)
+cow,Корова,9000,12,0,32,
+horse,Лошадь,7000,8,3,22,at private yards until the kolkhoz yard exists
+sheep,Овца,900,2,0,4,summer pasture and winter hay; never private
+pig,Свинья,1500,0,1.5,8,
+chicken,Курица,45,0,0.05,0.3,two ages only; never sick
+duck,Утка,55,0,0.06,0.3,two ages only; never sick

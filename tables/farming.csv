@@ -3,6 +3,10 @@ key,value
 # fertility scale: 50 is the neutral yield factor (core decision,
 # 64-land-model.md)
 fertility_neutral,50
+# нормы вспашки и боронования — РЕАЛЬНЫЕ чел-дни на гектар, одна норма на любую
+# землю и любую культуру (Поля §5); ядро делит на 7
+plow_days_per_ha,10
+harrow_days_per_ha,3
 # P30aw: manure application norm and its fertility bonus
 manure_norm_kg_per_ha,20000
 manure_fertility_bonus,6

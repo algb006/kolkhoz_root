@@ -47,7 +47,7 @@ struct AssignmentJob {
   /// harvest before snow). Smaller = more urgent; the placement fills
   /// urgent jobs first. Daily work that expires tonight — barn care —
   /// passes 0; windowless seasonal work passes 255. At equal urgency the
-  /// kind decides (harvest > sowing > plowing > harrowing > care).
+  /// kind decides (care > harvest > sowing > plowing > harrowing).
   std::uint8_t window_days_left = 255;
 };
 
@@ -95,13 +95,11 @@ struct AssignmentParams {
   /// farther in the same hours. 12 km/h at factor 1.0 gives 1.0.
   float harness_hours_per_km = 1.0F;
 
-  /// One-way travel limit in game hours (time design §7): a job farther
-  /// than this from a worker's home cannot take him at all. The threshold
-  /// and the day's output measure the SAME shoulder (boss parcel
-  /// decisions-101-103-104, seq 2), which is why the two speeds above serve
-  /// both. The VALUE is a tuning knob and the design's "~2 hours" does not
-  /// admit the canonical start radius on foot — see
-  /// manual/65-labor-model.md §4.
+  /// One-way travel limit in game hours: a job farther than this from a
+  /// worker's home cannot take him at all. Four hours by decision 109, one
+  /// rule for a unit's staff and an open field alike (time design §7); the
+  /// threshold and the day's output measure the SAME shoulder, which is why
+  /// the two speeds above serve both (decision 103).
   float travel_limit_hours = 4.0F;
 
   /// Less daylight than this left after the road, and the job is not worth

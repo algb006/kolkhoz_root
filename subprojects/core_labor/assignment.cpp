@@ -18,19 +18,23 @@
 namespace core {
 namespace {
 
-/// Kind order at equal window urgency: permanent-loss work first, daily
-/// care last (a missed harvest day is gone; a hungry cow catches up).
+/// Kind order at equal window urgency: the barn first, then the field work
+/// that loses most by waiting. The barn leads because its demand is small,
+/// daily and alive — an unfed cow is not a delayed job — and because the
+/// tie only ever happens when a field's window has ALSO run out, and then
+/// the reaping crew would otherwise swallow every hand in the village
+/// (found by the labor_year run: day 31 left the cows unserved).
 constexpr std::uint8_t KindPriority(WorkKind kind) {
   switch (kind) {
-    case WorkKind::kHarvest:
-      return 0;
-    case WorkKind::kSowing:
-      return 1;
-    case WorkKind::kPlowing:
-      return 2;
-    case WorkKind::kHarrowing:
-      return 3;
     case WorkKind::kHerdCare:
+      return 0;
+    case WorkKind::kHarvest:
+      return 1;
+    case WorkKind::kSowing:
+      return 2;
+    case WorkKind::kPlowing:
+      return 3;
+    case WorkKind::kHarrowing:
       return 4;
     case WorkKind::kNone:
       return 5;

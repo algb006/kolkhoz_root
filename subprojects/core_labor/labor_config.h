@@ -144,12 +144,11 @@ struct LaborConfig {
   /// Hours of work behind one norm man-day.
   float standard_day_hours = 10.0F;
 
-  /// One-way commute limit in game hours (time design §7). The threshold
-  /// and the day's output measure the same shoulder, each order by what it
-  /// travels on (decision 103). The design says "~2 hours", which on foot
-  /// is ~640 m — less than the canonical start's own arable radius of
-  /// 1.5 km, so phase 1 runs a wider default and the question is with the
-  /// designers (manual/65-labor-model.md §4, polish P43ac1). ASSUMPTION.
+  /// One-way commute limit in game hours: CANON since decision 109 — four
+  /// hours, one rule for a unit's staff and for an open field alike (time
+  /// design §7). The threshold and the day's output measure the same
+  /// shoulder, each order by what it travels on (decision 103), and both
+  /// use today's road: the mowers do not walk to the meadow in January.
   float travel_limit_hours = 4.0F;
 
   /// Below this much daylight left after the road, a job is not worth

@@ -189,36 +189,39 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
 
   // 160 ha of arable land: the reference first-year mix sown, the rest
   // fallow; 80 ha of meadows in permanent grass. The land lies in a half
-  // ring north of the village, 0.5-1.5 km out — the radius the start map
-  // demands (49-simulations §2в: 160 ha at ~45% arable in the ring make a
-  // half circle of 1.5 km), with the potato patch nearest, as the crop that
-  // is walked to most often. Coordinates are written out rather than
-  // computed: genesis must land bit for bit on every compiler, and trig
-  // library results do not (daylight_table.h says the same).
+  // ring north of the village, and the radii reproduce the start map's own
+  // measurements (49-simulations §2в): the arable averages 1.0 km from the
+  // village and nothing lies farther than 1.5 km, which is what makes the
+  // road eat 37-56% of a spring day there. The potato patch sits nearest,
+  // being the crop walked to most often. Coordinates are written out rather
+  // than computed — genesis must land bit for bit on every compiler and trig
+  // library results do not (daylight_table.h says the same) — and they are
+  // polar around the village centre (0, -160), which is why the y values
+  // look shifted.
   PlaceField(
-      world, 20.0F, CropByKey(crops, "oats"), Vec2{.x = 564.0F, .y = 205.0F}, kStartFertility);
+      world, 20.0F, CropByKey(crops, "oats"), Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility);
   PlaceField(
-      world, 13.4F, CropByKey(crops, "barley"), Vec2{.x = 450.0F, .y = 536.0F}, kStartFertility);
+      world, 13.4F, CropByKey(crops, "barley"), Vec2{.x = 611.0F, .y = 568.0F}, kStartFertility);
   PlaceField(world,
              10.0F,
              CropByKey(crops, "wheat_spring"),
-             Vec2{.x = 130.0F, .y = 739.0F},
+             Vec2{.x = 182.0F, .y = 874.0F},
              kStartFertility);
   PlaceField(
-      world, 12.6F, CropByKey(crops, "potato"), Vec2{.x = -171.0F, .y = 470.0F}, kStartFertility);
+      world, 12.6F, CropByKey(crops, "potato"), Vec2{.x = -222.0F, .y = 451.0F}, kStartFertility);
   PlaceField(
-      world, 5.6F, CropByKey(crops, "flax"), Vec2{.x = -613.0F, .y = 514.0F}, kStartFertility);
+      world, 5.6F, CropByKey(crops, "flax"), Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility);
   PlaceField(world,
              8.4F,
              CropByKey(crops, "root_fodder"),
-             Vec2{.x = -611.0F, .y = 222.0F},
+             Vec2{.x = -799.0F, .y = 131.0F},
              kStartFertility);
-  PlaceField(world, 45.0F, CropId{}, Vec2{.x = 1065.0F, .y = 746.0F}, kStartFertility);
-  PlaceField(world, 45.0F, CropId{}, Vec2{.x = -746.0F, .y = 1065.0F}, kStartFertility);
-  constexpr std::array<Vec2, 4> kMeadowCenters = {{{.x = 1449.0F, .y = 388.0F},
-                                                   {.x = 750.0F, .y = 1299.0F},
-                                                   {.x = -750.0F, .y = 1299.0F},
-                                                   {.x = -1449.0F, .y = 388.0F}}};
+  PlaceField(world, 45.0F, CropId{}, Vec2{.x = 1106.0F, .y = 614.0F}, kStartFertility);
+  PlaceField(world, 45.0F, CropId{}, Vec2{.x = -774.0F, .y = 946.0F}, kStartFertility);
+  constexpr std::array<Vec2, 4> kMeadowCenters = {{{.x = 1401.0F, .y = 215.0F},
+                                                   {.x = 725.0F, .y = 1096.0F},
+                                                   {.x = -725.0F, .y = 1096.0F},
+                                                   {.x = -1401.0F, .y = 215.0F}}};
   const CropId grasses = CropByKey(crops, "grasses");
   for (const Vec2 center : kMeadowCenters) {
     FieldRow& field =
