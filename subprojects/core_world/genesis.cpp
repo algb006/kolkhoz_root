@@ -262,11 +262,21 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // in January, and a live herd in January has been eating something since
   // the autumn — a start with empty mangers would kill the cows before the
   // first cut, which is not hardship but an unwinnable opening.
-  // ASSUMPTION on the amount: one meadow's cut, enough to reach the spring
-  // pasture with the herd thin rather than dead. The fodder base does not
-  // close over a whole year even so — that is a real finding of the balance
-  // run and a question standing with the design (thread fodder-balance).
-  PutStock(church_row, GenesisResource(resources, "hay"), 60000);
+  // How much: measured from the first cut, not rounded (difficulty design
+  // §4, boss answer 2026-08-31). The farm is handed over in March, the
+  // scythes go out in June, and everything the herd eats between those dates
+  // was put in the barn before the chairman arrived. On the normal level
+  // that is EXACTLY enough to reach the cut, which the run measures at about
+  // 165 t: the herd eats 7.3 t a game day and the scythes go out on day 22.
+  // Sixty was a round number, and round numbers lie here because they do not
+  // know when help arrives: at sixty the herd lost eight cows to a decision
+  // the player never made, and a hundred still left it nine days short.
+  //
+  // The rule generalises, and it is worth keeping: the size of any start
+  // stock that gets consumed is measured from the nearest moment the farm
+  // replenishes it itself — the cut for fodder, the harvest for food, the
+  // first felling for firewood.
+  PutStock(church_row, GenesisResource(resources, "hay"), 165000);
 
   // What the households still have of their own. The village was living
   // before the kolkhoz was declared, and it is declared in January: yards

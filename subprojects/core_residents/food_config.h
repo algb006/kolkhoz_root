@@ -219,6 +219,20 @@ struct PlotConfig {
 
   std::uint8_t garden_harvest_month = 8;  ///< September.
 
+  /// Hay the yard mows for ITSELF, kilograms a year at full attention, and
+  /// the month it is carried in. This is the one fodder a household does not
+  /// get from the kolkhoz (household design §2, boss answer 2026-08-31):
+  /// mowing is not kolkhoz work, so a yard with nobody on the farm's books
+  /// still keeps its goats — while its hens, which eat grain the yard does
+  /// not grow, still depend on the issue. A coarse asymmetry and the right
+  /// one: the goat survives without the kolkhoz, the hen does not.
+  ///
+  /// Two goats winter on about two tonnes, which is a hectare at 8 real
+  /// man-days and a few days with a scythe.
+  float hay_kg_per_yard_year = 2000.0F;
+
+  std::uint8_t hay_harvest_month = 7;  ///< August, 0-based: the mowing is done.
+
   /// Net fishing, per epoch (household design §2, boss answer of
   /// 2026-08-30): a plain epoch constant into the pantry — no unit, no work
   /// order, no mechanic. It is help ON TOP of the designed coverage, never
@@ -259,6 +273,8 @@ struct FoodConfig {
   ResourceId vegetables_resource;  ///< resources.csv "vegetables".
 
   ResourceId fish_resource;  ///< resources.csv "fish": the nets.
+
+  ResourceId hay_resource;  ///< resources.csv "hay": what the yard mows itself.
 };
 
 /// @brief Parses tables/food.csv against the resource roster.

@@ -216,7 +216,7 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
   }
   // The tail sits outside the run above only because the knob array has a
   // fixed size; these are the same kind of knob.
-  const std::array<ScalarKnob, 3> tail = {{
+  const std::array<ScalarKnob, 4> tail = {{
       {.key = "fish_kg_per_yard_year_epoch_3",
        .value = &plot.fish_kg_per_yard_year[2],
        .low = 0.0F,
@@ -235,7 +235,8 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
          ReadMonth(table, "plot_summer_to_month", plot.summer_to_month, error) &&
          ReadMonth(table, "growing_from_month", plot.growing_from_month, error) &&
          ReadMonth(table, "growing_to_month", plot.growing_to_month, error) &&
-         ReadMonth(table, "garden_harvest_month", plot.garden_harvest_month, error);
+         ReadMonth(table, "garden_harvest_month", plot.garden_harvest_month, error) &&
+         ReadMonth(table, "hay_harvest_month", plot.hay_harvest_month, error);
 }
 
 /// One row per edible resource. The roster is resources.csv; a food.csv row
@@ -363,6 +364,7 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   config.potato_resource = ResourceByKey(resources, "potato");
   config.vegetables_resource = ResourceByKey(resources, "vegetables");
   config.fish_resource = ResourceByKey(resources, "fish");
+  config.hay_resource = ResourceByKey(resources, "hay");
   return config;
 }
 

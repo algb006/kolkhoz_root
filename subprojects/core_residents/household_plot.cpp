@@ -112,14 +112,26 @@ void AddToPantry(FamilyRow& family, ResourceId resource, float kilograms) {
   family.pantry[resource.value] += amount;
 }
 
+/// @brief The season's attention so far, as the harvests scale by it.
+float SeasonRatio(const FamilyRow& family) {
+  return family.plot_ratio_days > 0
+             ? family.plot_ratio_sum / static_cast<float>(family.plot_ratio_days)
+             : 0.0F;
+}
+
+/// The yard's own haymaking. It is carried in a month before the garden and
+/// does NOT reset the season's accumulators — the garden closes the season,
+/// the scythe only interrupts it.
+void MowHay(const FoodConfig& config, FamilyRow& family) {
+  AddToPantry(family, config.hay_resource, config.plot.hay_kg_per_yard_year * SeasonRatio(family));
+}
+
 /// The garden pays out on the last day of its month, so that the whole month
 /// has been counted into the season's average first. Snow does not ruin a
 /// garden (farming design §6): the harvest always lands, the only question
-/// is how much attention it got.
+/// is how much attention it got. This is also where the season closes.
 void HarvestGarden(const FoodConfig& config, FamilyRow& family) {
-  const float ratio = family.plot_ratio_days > 0
-                          ? family.plot_ratio_sum / static_cast<float>(family.plot_ratio_days)
-                          : 0.0F;
+  const float ratio = SeasonRatio(family);
   AddToPantry(family, config.potato_resource, config.plot.potato_kg_per_yard_year * ratio);
   AddToPantry(family, config.vegetables_resource, config.plot.vegetables_kg_per_yard_year * ratio);
   family.plot_ratio_sum = 0.0F;
@@ -156,8 +168,13 @@ void RunHouseholdPlot(const FoodConfig& config,
     family.plot_ratio_sum += ratio < 1.0F ? ratio : 1.0F;
     family.plot_ratio_days += 1;
   }
-  if (month == plot.garden_harvest_month &&
-      current.calendar.date.day_in_month == kDaysPerMonth - 1U) {
+  if (current.calendar.date.day_in_month != kDaysPerMonth - 1U) {
+    return;
+  }
+  if (month == plot.hay_harvest_month) {
+    MowHay(config, family);
+  }
+  if (month == plot.garden_harvest_month) {
     HarvestGarden(config, family);
   }
 }
