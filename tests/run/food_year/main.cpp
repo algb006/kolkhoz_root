@@ -197,6 +197,10 @@ int main() {
 
   // And it does go hungry when the kolkhoz hands out nothing.
   //
+  // The head count at the end of the run is a poor witness: it lands
+  // wherever the season left it, and after a good harvest even a badly run
+  // village looks fed. The YEAR is what the claim is about.
+  //
   // Note what this run will NOT show, and why that is the design and not a
   // weakness: the private plot is the main source of food in the early years
   // (household design §1), and no chairman can take it away. Two goats, eight
@@ -207,8 +211,8 @@ int main() {
   // handing out nothing would be a model that had forgotten the yards.
   failures +=
       Expect(bad.mean_satiety < good.mean_satiety - 5.0F, "striking out the issue norms is felt");
-  failures +=
-      Expect(bad.hungry >= good.hungry * 3U + 3U, "and it is felt by many more people at once");
+  failures += Expect(bad.worst_year_satiety < good.worst_year_satiety - 15.0F,
+                     "and the lean season is a different animal without the issue");
   failures += Expect(bad.mean_health < good.mean_health,
                      "hunger reaches health, which is the only way it reaches anyone");
   failures += Expect(bad.life_expectancy < good.life_expectancy,

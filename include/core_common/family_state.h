@@ -20,15 +20,22 @@
 /// sources — stage 5 (rest, trudodni), stage 6 (pantry, satiety, variety,
 /// plot time), project phase 2+ (needs inflation).
 ///
-/// Stage-6 write map (manual/66-food-model.md): the pantry is written from
-/// two places that never overlap in time — the sequential decisions slot
-/// (distribution, ration, household-herd produce, the garden harvest) and
-/// the parallel needs phase (the family eating from its OWN row). Every
-/// other field stage 6 moves — the satiety component, the variety mask,
-/// plot hours and its season accumulators — is written only by the metrics
-/// or needs phase of the worker owning the family row, under the buffer
-/// law. `household_hours` changes its writer at stage 6: the labor close-out
-/// stops writing it, the metrics phase computes it with the plot factors.
+/// Stage-6 write map (manual/66-food-model.md). The pantry is written from
+/// THREE places, and no two of them can overlap in time:
+///   * the sequential decisions slot — the monthly distribution, the ration,
+///     the nets, and the produce of the family's own herd;
+///   * the parallel NEEDS phase, hour 23 — the family eating from its OWN
+///     row;
+///   * the parallel METRICS phase, hour 22 — the garden's autumn harvest,
+///     again into its own row only.
+/// The two parallel writers are separated from each other by an hour gate
+/// and from the sequential slot by the phase barrier, and each touches only
+/// the family row its worker owns. Every other field stage 6 moves — the
+/// satiety component, its yearly mean, the variety mask, plot hours and the
+/// season accumulators — is written by the metrics or needs phase of that
+/// same owning worker, under the buffer law. `household_hours` changes its
+/// writer at stage 6: the labor close-out stops writing it, the metrics
+/// phase computes it with the plot factors.
 
 #ifndef CORE_COMMON_FAMILY_STATE_H_
 #define CORE_COMMON_FAMILY_STATE_H_

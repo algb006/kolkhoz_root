@@ -92,6 +92,14 @@ struct HerdRow {
   /// it, a herd that matures one head a day would never cull anyone.
   float cull_progress = 0.0F;
 
+  /// Accumulated fractional heads owed to hunger. Death is a flow like the
+  /// others and needs the same carry: five percent of a fifteen-head barn is
+  /// three quarters of an animal, and a rule that truncates that to zero
+  /// takes NOBODY from any herd under twenty head — which at the start
+  /// canon's sizes is the ordinary case, not the corner one. A barn would
+  /// have starved for ever at half milk and no deaths at all.
+  float hunger_progress = 0.0F;
+
   /// Sum of the adult heads' ages in GAME years — total age, not years since
   /// adulthood, because that is what the lifespan band of livestock.csv
   /// measures. Maintained by the same flows (daily aging, +adult-entry age

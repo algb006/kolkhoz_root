@@ -387,8 +387,13 @@ void RunMaturation(const ProductionConfig& config,
       males_target > herd.adult_male_count ? males_target - herd.adult_male_count : 0);
   const std::uint16_t culled =
       DrawFlow(herd.cull_progress, (static_cast<float>(grown) * 0.5F) - room_for_males);
-  herd.adult_male_count = males_target;
   const std::uint16_t gone = TakeHeads(herd.adult_count, culled);
+  // The male count is derived AFTER the cull, not before it: taking the
+  // surplus out of adult_count would otherwise leave a target computed on
+  // the larger herd, and adult_male_count could stand above adult_count —
+  // breaking the invariant herd_state.h states and making "females" come
+  // out negative for a step.
+  herd.adult_male_count = TargetMales(kind, herd.adult_count);
   if (gone > 0) {
     herd.adult_age_game_years_total -=
         static_cast<float>(gone) * kind.adult_from_game_months / kGameMonthsPerYear;
@@ -490,19 +495,25 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, WorldState& world) {
 /// design's: produce drops from the first hungry day, deaths only after the
 /// threshold. The cold ladder of question 99 is NOT here — every phase-1
 /// herd stands under a roof and unit temperatures do not exist.
-void RunHungerDeaths(const ProductionConfig& config, HerdRow& herd) {
+void RunHungerDeaths(const ProductionConfig& config, const LivestockDef& kind, HerdRow& herd) {
   if (herd.unfed_days <= config.farming.unfed_death_after_days) {
     return;
   }
+  // Death is a flow like every other one in this file and carries its
+  // fraction the same way (HerdRow::hunger_progress). Truncating instead —
+  // the shape this had until the delivery cycle caught it — took nobody at
+  // all from a herd of under twenty head, and twenty is above the size of
+  // most herds at the start. A starving barn stood for ever at half milk and
+  // full strength: not a gentler rule, an absent one.
+  //
+  // The rate is the share of the WHOLE herd, and the toll falls on the young
+  // first. That ordering is a choice this code has to make and the design
+  // does not; it is the one a farm makes.
   const float share = config.farming.unfed_death_percent_per_day / 100.0F;
-  herd.newborn_count = static_cast<std::uint16_t>(
-      herd.newborn_count -
-      TakeHeads(herd.newborn_count, AsHeads(static_cast<float>(herd.newborn_count) * share)));
-  herd.juvenile_count = static_cast<std::uint16_t>(
-      herd.juvenile_count -
-      TakeHeads(herd.juvenile_count, AsHeads(static_cast<float>(herd.juvenile_count) * share)));
-  const std::uint16_t adults_gone =
-      TakeHeads(herd.adult_count, AsHeads(static_cast<float>(herd.adult_count) * share));
+  std::uint16_t owed = DrawFlow(herd.hunger_progress, static_cast<float>(TotalHeads(herd)) * share);
+  owed = static_cast<std::uint16_t>(owed - TakeHeads(herd.newborn_count, owed));
+  owed = static_cast<std::uint16_t>(owed - TakeHeads(herd.juvenile_count, owed));
+  const std::uint16_t adults_gone = TakeHeads(herd.adult_count, owed);
   if (adults_gone > 0 && herd.adult_count > 0) {
     const float mean =
         herd.adult_age_game_years_total / static_cast<float>(herd.adult_count + adults_gone);
@@ -510,6 +521,13 @@ void RunHungerDeaths(const ProductionConfig& config, HerdRow& herd) {
   } else if (adults_gone > 0) {
     herd.adult_age_game_years_total = 0.0F;
   }
+  // Re-derive the sires, like every other culler here does. Without it a
+  // herd starved down to one or two adults and then rescued keeps a male
+  // count from its fat years: females comes out non-positive, so it gives no
+  // milk and bears nothing, for ever. The carry above is what made that
+  // reachable — the old truncating rule could never take an adult rung down
+  // into the range where it matters.
+  herd.adult_male_count = TargetMales(kind, herd.adult_count);
 }
 
 /// The autumn pig slaughter (livestock design §6): everything but the sows
@@ -562,11 +580,14 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     const bool fed =
         RunFeeding(config, herd.kind, place, FeedNeedUnits(config, kind, herd, month), current);
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
+    if (fed) {
+      herd.hunger_progress = 0.0F;  // a fed day clears the debt, not just the count
+    }
     RunProduce(config, kind, herd, place, current);
     RunMaturation(config, kind, place, herd, current);
     RunBirths(config, kind, herd.kind, herd, month);
     RunAgeDeaths(kind, herd, current);
-    RunHungerDeaths(config, herd);
+    RunHungerDeaths(config, kind, herd);
     RunAutumnSlaughter(config, kind, herd.kind, place, herd, current, current.calendar);
   }
 }
