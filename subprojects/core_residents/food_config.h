@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/ids.h"
 
 namespace core {
 
@@ -200,12 +201,32 @@ struct PlotConfig {
   std::uint8_t growing_to_month = 8;  ///< Inclusive: September.
 
   std::uint8_t garden_harvest_month = 8;  ///< September.
+
+  /// Net fishing, per epoch (household design §2, boss answer of
+  /// 2026-08-30): a plain epoch constant into the pantry — no unit, no work
+  /// order, no mechanic. It is help ON TOP of the designed coverage, never
+  /// inside it. The numbers themselves are polish question P22m.
+  std::array<float, 3> fish_kg_per_yard_year = {400.0F, 250.0F, 100.0F};
+};
+
+/// @brief What the next sowing of one crop needs, per crop row of
+/// tables/crops.csv. Read here rather than borrowed from core_production:
+/// a module parses the cells it needs itself and never depends on another
+/// module's parsed configuration (the labor precedent, labor_config.cpp).
+struct SeedNormDef {
+  ResourceId resource;  ///< What the seed of this crop is.
+
+  float sowing_norm_kg_per_ha = 0.0F;  ///< 0 = the crop needs no seed stock.
 };
 
 /// @brief The parsed stage-6 food configuration of core_residents.
 struct FoodConfig {
   /// Dense by ResourceId, sized to the resource roster.
   std::vector<FoodResourceDef> resources;
+
+  /// Dense by CropId, sized to the crop roster: what the seed fund holds
+  /// back before the distribution runs.
+  std::vector<SeedNormDef> seed_norms;
 
   ConsumptionConfig consumption;
 
@@ -214,6 +235,13 @@ struct FoodConfig {
   DistributionConfig distribution;
 
   PlotConfig plot;
+
+  // -- resources the household side names by hand (invalid = absent) -------
+  ResourceId potato_resource;  ///< resources.csv "potato": the garden's half.
+
+  ResourceId vegetables_resource;  ///< resources.csv "vegetables".
+
+  ResourceId fish_resource;  ///< resources.csv "fish": the nets.
 };
 
 /// @brief Parses tables/food.csv against the resource roster.

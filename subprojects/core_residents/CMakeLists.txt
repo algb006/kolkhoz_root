@@ -5,7 +5,11 @@
 # sequential decisions phase through the subsystem interface (task F4).
 
 kolkhoz_add_module(core_residents
-    residents_system.cpp)
+    residents_system.cpp
+    life_config.cpp
+    food_config.cpp
+    family_exchange.cpp
+    vitals.cpp)
 
 target_link_libraries(core_residents
     PUBLIC core_common core_sim

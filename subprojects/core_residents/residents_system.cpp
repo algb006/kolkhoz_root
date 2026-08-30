@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -24,7 +25,10 @@
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
+#include "family_exchange.h"
+#include "food_config.h"
 #include "life_config.h"
+#include "vitals.h"
 
 namespace core {
 namespace {
@@ -178,12 +182,21 @@ class FamilyMetricsPhase final : public IParallelPhase {
 
 class ResidentsSystem final : public IResidentsSystem {
  public:
-  explicit ResidentsSystem(const LifeConfig& config) : config_(config), metrics_phase_(config_) {}
+  ResidentsSystem(const LifeConfig& config, FoodConfig food)
+      : config_(config), food_(std::move(food)), metrics_phase_(config_) {}
 
   IParallelPhase& NeedsPhase() override { return needs_phase_; }
 
   IParallelPhase& MetricsPhase() override { return metrics_phase_; }
 
+  /// The whole residents sub-step of the decisions slot, not demography
+  /// alone: the name is kept because the interface is a contract, and
+  /// manual/66-food-model.md §1 records what it now covers — demography,
+  /// then the family/kolkhoz exchange, then the vital statistics.
+  ///
+  /// The order is deliberate. Demography settles who is alive today before
+  /// the exchange counts eaters and hands out food, and the vitals window
+  /// closes the day last, over the settlement demography has just finalized.
   void RunDemographyDecisions(const WorldState& previous, WorldState& current) override {
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
@@ -196,6 +209,8 @@ class ResidentsSystem final : public IResidentsSystem {
     RunBirths(current, epoch, day);
     RunMarriages(current, day);
     RunMigration(current, day);
+    RunFamilyExchange(food_, config_.life_speedup, current);
+    AccumulateVitals(current);
   }
 
  private:
@@ -398,155 +413,33 @@ class ResidentsSystem final : public IResidentsSystem {
 
   LifeConfig config_;
 
+  FoodConfig food_;
+
   NeedsStubPhase needs_phase_;
 
   FamilyMetricsPhase metrics_phase_;
 };
 
-/// @brief Reads one key's value cell from a key/value table.
-bool ReadValue(const ITable& table, std::string_view key, float& value, std::string& error) {
-  const std::uint32_t row = table.FindRowByKey(key);
-  const std::uint32_t column = table.FindColumn("value");
-  if (row == kNoTableRow || column == kNoTableColumn) {
-    error = "life: no row '" + std::string(key) + "' or no value column";
-    return false;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    error = "life: value of '" + std::string(key) + "' is not a number";
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
-bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error) {
-  float epoch2 = 0.0F;
-  float epoch3 = 0.0F;
-  const bool ok =
-      ReadValue(table, "life_speedup", config.life_speedup, error) &&
-      ReadValue(table, "adult_age_years", config.adult_age_years, error) &&
-      ReadValue(table, "marriage_age_years", config.marriage_age_years, error) &&
-      ReadValue(table, "fertility_from_years", config.fertility_from_years, error) &&
-      ReadValue(table, "fertility_to_years", config.fertility_to_years, error) &&
-      ReadValue(table, "mortality_age_mid_years", config.mortality_age_mid_years, error) &&
-      ReadValue(table, "mortality_age_old_years", config.mortality_age_old_years, error) &&
-      ReadValue(table,
-                "mortality_young_percent_per_year",
-                config.mortality_young_percent_per_year,
-                error) &&
-      ReadValue(
-          table, "mortality_mid_percent_per_year", config.mortality_mid_percent_per_year, error) &&
-      ReadValue(
-          table, "mortality_old_percent_per_year", config.mortality_old_percent_per_year, error) &&
-      ReadValue(table, "migration_per_year", config.migration_per_year, error) &&
-      ReadValue(table, "epoch2_population", epoch2, error) &&
-      ReadValue(table, "epoch3_population", epoch3, error) &&
-      ReadValue(table,
-                "marriage_chance_percent_per_day",
-                config.marriage_chance_percent_per_day,
-                error) &&
-      ReadValue(table, "sex_balance_gain", config.sex_balance_gain, error);
-  if (!ok) {
-    return false;
-  }
-  // Value validation: a float-to-uint cast of a negative, NaN or huge value
-  // is UB, and a non-positive life speed divides to infinity. Written as
-  // positive tests so that NaN fails them — NaN compares false against
-  // everything, so the earlier `<= 0 || > 1e9` form let it through.
-  if (!(config.life_speedup > 0.0F) || !(epoch2 >= 1.0F && epoch2 <= 1.0e9F) ||
-      !(epoch3 >= 1.0F && epoch3 <= 1.0e9F)) {
-    error = "life: life_speedup must be positive and epoch thresholds sane";
-    return false;
-  }
-  config.epoch2_population = static_cast<std::uint32_t>(epoch2);
-  config.epoch3_population = static_cast<std::uint32_t>(epoch3);
-  return true;
-}
-
-bool ParseEpochRows(const ITable& table, LifeConfig& config, std::string& error) {
-  constexpr std::array<std::string_view, 3> kKeys = {"epoch_1", "epoch_2", "epoch_3"};
-  const std::uint32_t children_column = table.FindColumn("children_per_family");
-  const std::uint32_t mortality_column = table.FindColumn("child_mortality_percent");
-  const std::uint32_t outflow_column = table.FindColumn("outflow_percent_per_year");
-  if (children_column == kNoTableColumn || mortality_column == kNoTableColumn ||
-      outflow_column == kNoTableColumn) {
-    error = "demography: a required column is missing";
-    return false;
-  }
-  for (std::uint32_t index = 0; index < kKeys.size(); ++index) {
-    const std::uint32_t row = table.FindRowByKey(kKeys[index]);
-    const auto children = table.CellReal(row, children_column);
-    const auto mortality = table.CellReal(row, mortality_column);
-    const auto outflow = table.CellReal(row, outflow_column);
-    if (row == kNoTableRow || !children || !mortality || !outflow) {
-      error = "demography: row '" + std::string(kKeys[index]) + "' is missing or not numeric";
-      return false;
-    }
-    config.epochs[index] = {.children_per_family = *children,
-                            .child_mortality_percent = *mortality,
-                            .outflow_percent_per_year = *outflow};
-  }
-  return true;
-}
-
-bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error) {
-  constexpr std::array<std::string_view, 3> kKeys = {"epoch_1", "epoch_2", "epoch_3"};
-  const std::uint32_t satiety_column = table.FindColumn("weight_satiety");
-  const std::uint32_t common_column = table.FindColumn("weight_common_cause");
-  const std::uint32_t needs_column = table.FindColumn("weight_needs");
-  const std::uint32_t rest_column = table.FindColumn("weight_rest");
-  if (satiety_column == kNoTableColumn || common_column == kNoTableColumn ||
-      needs_column == kNoTableColumn || rest_column == kNoTableColumn) {
-    error = "satisfaction: a required column is missing";
-    return false;
-  }
-  for (std::uint32_t index = 0; index < kKeys.size(); ++index) {
-    const std::uint32_t row = table.FindRowByKey(kKeys[index]);
-    const auto satiety = table.CellReal(row, satiety_column);
-    const auto common = table.CellReal(row, common_column);
-    const auto needs = table.CellReal(row, needs_column);
-    const auto rest = table.CellReal(row, rest_column);
-    if (row == kNoTableRow || !satiety || !common || !needs || !rest) {
-      error = "satisfaction: row '" + std::string(kKeys[index]) + "' is missing or not numeric";
-      return false;
-    }
-    config.weights[index] = {
-        .satiety = *satiety, .common_cause = *common, .needs = *needs, .rest = *rest};
-  }
-  return true;
-}
-
 }  // namespace
 
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables) {
-  LifeConfig config;
+  LifeConfig life;
   std::string error;
-  if (const ITable* life = tables.FindTable("life")) {
-    if (!ParseLifeTable(*life, config, error)) {
-      LogError(error);
-      return nullptr;
-    }
+  if (!ParseLifeConfig(tables, life, error)) {
+    LogError(error);
+    return nullptr;
   }
-  if (const ITable* demography = tables.FindTable("demography")) {
-    if (!ParseEpochRows(*demography, config, error)) {
-      LogError(error);
-      return nullptr;
-    }
+  FoodConfig food = ParseFoodConfig(tables, &error);
+  if (!error.empty()) {
+    LogError(error);
+    return nullptr;
   }
-  if (const ITable* satisfaction = tables.FindTable("satisfaction")) {
-    if (!ParseWeightRows(*satisfaction, config, error)) {
-      LogError(error);
-      return nullptr;
-    }
-  }
-  if (const ITable* unit_types = tables.FindTable("unit_types")) {
-    const std::uint32_t house = unit_types->FindRowByKey("house");
-    if (house != kNoTableRow) {
-      config.house_type = UnitTypeId{static_cast<std::uint16_t>(house)};
-    }
-  }
-  return std::make_unique<ResidentsSystem>(config);
+  // The cold metric is not "zero cold", it is "cold is not counted": phase 1
+  // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
+  // never moves. Said out loud at world creation so that a run showing
+  // suspiciously even health through the winter explains itself.
+  LogInfo("cold is not simulated in phase 1 (STUB): ResidentRow::cold stays at its default");
+  return std::make_unique<ResidentsSystem>(life, std::move(food));
 }
 
 }  // namespace core

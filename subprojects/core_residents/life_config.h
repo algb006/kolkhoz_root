@@ -14,10 +14,13 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 #include "core_common/ids.h"
 
 namespace core {
+
+class ITableSet;  // Defined in core_tables.
 
 /// Life expectancy and its factors (decision 105; manual/66-food-model.md
 /// §7). LE = base + medicine + nutrition + living + working conditions,
@@ -146,6 +149,13 @@ struct LifeConfig {
 
   BirthConditionsConfig birth_conditions;  ///< Stage 6, decision 106.
 };
+
+/// @brief Parses life.csv, demography.csv, satisfaction.csv and the one row
+/// core_residents needs from unit_types.csv into `config`.
+/// @param error Receives a human-readable message on failure.
+/// @return false when a PRESENT table cannot be understood; a missing table
+/// keeps the defaults and succeeds. Call once, at factory time.
+bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& error);
 
 }  // namespace core
 

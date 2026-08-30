@@ -19,3 +19,33 @@ epoch3_population,1200
 # the newborn sex draw leans toward the under-represented sex this strongly
 marriage_chance_percent_per_day,25
 sex_balance_gain,0.3
+# --- продолжительность жизни (решение 105, этап 6) -------------------------
+# ПЖ = база + медицина + питание + быт + условия труда, факторы усредняются
+# за 3 года и пересчитываются раз в год. В фазе 1 живо только питание:
+# медицина и быт держат ноль, условия труда — константа.
+vitals_base_years,60
+# средняя сытость села, дающая нулевой вклад питания, и наклон отображения:
+# вклад = clamp((сытость − нейтраль) × наклон, min, max). ASSUMPTION: ±4 на ±30
+vitals_satiety_neutral,70
+vitals_satiety_to_years_slope,0.1333
+vitals_nutrition_years_min,-4
+vitals_nutrition_years_max,4
+# заглушки дремлющих факторов: их источники — вторая фаза проекта
+vitals_medicine_years,0
+vitals_living_years,0
+# ASSUMPTION: константа в пределах −2…+2
+vitals_working_conditions_years,0
+# --- рождаемость от условий (решение 106, этап 6) --------------------------
+# полосы по довольству семьи: границы ASSUMPTION, множители — канон
+birth_satisfaction_bound_1,30
+birth_satisfaction_bound_2,45
+birth_satisfaction_bound_3,60
+birth_satisfaction_bound_4,75
+birth_multiplier_1,0.75
+birth_multiplier_2,0.9
+birth_multiplier_3,1
+birth_multiplier_4,1.1
+birth_multiplier_5,1.15
+# стопоры — канон: голод в семье и здоровье женщины
+birth_satiety_stop,40
+birth_mother_health_stop,40
