@@ -64,7 +64,7 @@
 | Поля, урожай, плодородие | [Поля и культуры](../../manual/design/economy/farming.md) |
 | Юниты, уровни, износ | [Общие правила юнитов](../../manual/design/world/units/rules.md) |
 | Производство | [Производственные юниты](../../manual/design/world/units/production.md) |
-| Жильё и семьи | [Жильё](../../manual/design/world/units/housing.md), [Семьи и свадьбы](../../manual/design/people/families.md) |
+| Жильё и семьи | [Жильё](../../manual/design/world/units/housing.md), [Жизненный цикл §11–14](../../manual/design/people/life-cycle.md#11-одна-семья--один-дом) |
 | Образование | [Образование](../../manual/design/people/education.md) |
 | Труд и трудодни | [Оплата труда](../../manual/design/economy/labor-payment.md) |
 | Что уже решено | [Реестр решений](../../manual/process/09-open-questions.md) — **что решено и где описано** |

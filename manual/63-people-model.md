@@ -6,7 +6,7 @@
 > [`family_state.h`](../include/core_common/family_state.h); демография —
 > `core_residents`; генезис — `core_world/genesis.cpp`. Дизайн-источники:
 > [Метрики](../../manual/design/people/metrics.md), [Демография](../../manual/design/people/demography.md),
-> [Жизненный цикл](../../manual/design/people/life-cycle.md), [Семьи и свадьбы](../../manual/design/people/families.md).
+> [Жизненный цикл](../../manual/design/people/life-cycle.md) — там же семьи и свадьбы (§11–14).
 
 ---
 
