@@ -178,10 +178,10 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
 
   // The stores in the church and the inherited compost (start.md §7).
   UnitRow& church_row = world.units.rows[FindRow(world.units, church)];
-  PutStock(church_row, GenesisResource(resources, "grain_oats"), 5000);
-  PutStock(church_row, GenesisResource(resources, "grain_barley"), 3500);
-  PutStock(church_row, GenesisResource(resources, "grain_wheat"), 2500);
-  PutStock(church_row, GenesisResource(resources, "grain_rye"), 8000);
+  PutStock(church_row, GenesisResource(resources, "oat"), 5000);
+  PutStock(church_row, GenesisResource(resources, "barley"), 3500);
+  PutStock(church_row, GenesisResource(resources, "wheat"), 2500);
+  PutStock(church_row, GenesisResource(resources, "rye"), 8000);
   PutStock(church_row, GenesisResource(resources, "potato"), 35000);
   PutStock(world.units.rows[FindRow(world.units, compost)],
            GenesisResource(resources, "manure"),
@@ -199,7 +199,7 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // polar around the village centre (0, -160), which is why the y values
   // look shifted.
   PlaceField(
-      world, 20.0F, CropByKey(crops, "oats"), Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility);
+      world, 20.0F, CropByKey(crops, "oat"), Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility);
   PlaceField(
       world, 13.4F, CropByKey(crops, "barley"), Vec2{.x = 611.0F, .y = 568.0F}, kStartFertility);
   PlaceField(world,
@@ -213,7 +213,7 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
       world, 5.6F, CropByKey(crops, "flax"), Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility);
   PlaceField(world,
              8.4F,
-             CropByKey(crops, "root_fodder"),
+             CropByKey(crops, "fodder_beet"),
              Vec2{.x = -799.0F, .y = 131.0F},
              kStartFertility);
   PlaceField(world, 45.0F, CropId{}, Vec2{.x = 1106.0F, .y = 614.0F}, kStartFertility);
@@ -222,12 +222,12 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
                                                    {.x = 725.0F, .y = 1096.0F},
                                                    {.x = -725.0F, .y = 1096.0F},
                                                    {.x = -1401.0F, .y = 215.0F}}};
-  const CropId grasses = CropByKey(crops, "grasses");
+  const CropId timothy = CropByKey(crops, "timothy");
   for (const Vec2 center : kMeadowCenters) {
     FieldRow& field =
-        world.fields.rows[FindRow(world.fields, PlaceField(world, 20.0F, grasses, center, 55.0F))];
+        world.fields.rows[FindRow(world.fields, PlaceField(world, 20.0F, timothy, center, 55.0F))];
     // Meadows are standing grass from day one: no sowing year needed.
-    field.crop = grasses;
+    field.crop = timothy;
     field.phase = FieldPhase::kGrowing;
   }
 

@@ -1,14 +1,14 @@
 key,title,note
 # grain is per culture (farming.md: you cannot sow oats with rye); storage is shared
-grain_rye,Рожь,
-grain_wheat,Пшеница,winter and spring wheat share the resource
-grain_oats,Овёс,
-grain_barley,Ячмень,
-grain_buckwheat,Гречиха,
-grain_pea,Горох,
+rye,Рожь,
+wheat,Пшеница,winter and spring wheat share the resource
+oat,Овёс,
+barley,Ячмень,
+buckwheat,Гречиха,
+pea,Горох,
 potato,Картофель,
 vegetables,Овощи,cabbage and roots and onion together
-flax_fiber,Лён,
+flax,Лён,
 hay,Сено,
 silage,Силос,epoch II
 manure,Навоз,single resource from any animal
@@ -19,6 +19,6 @@ wool,Шерсть,
 honey,Мёд,
 fish,Рыба,
 firewood,Дрова,
-logs,Брёвна,
+log,Брёвна,
 stone,Камень,
 clay,Глина,

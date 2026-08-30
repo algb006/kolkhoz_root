@@ -71,13 +71,13 @@ int main() {
     }
     return total;
   };
-  const std::uint32_t oats = resources->FindRowByKey("grain_oats");
-  const std::uint32_t barley = resources->FindRowByKey("grain_barley");
-  const std::uint32_t wheat = resources->FindRowByKey("grain_wheat");
+  const std::uint32_t oat = resources->FindRowByKey("oat");
+  const std::uint32_t barley = resources->FindRowByKey("barley");
+  const std::uint32_t wheat = resources->FindRowByKey("wheat");
   const std::uint32_t hay = resources->FindRowByKey("hay");
   const std::uint32_t manure = resources->FindRowByKey("manure");
   const double grain_tonnes =
-      static_cast<double>(stock_of(oats) + stock_of(barley) + stock_of(wheat)) / 1.0e6;
+      static_cast<double>(stock_of(oat) + stock_of(barley) + stock_of(wheat)) / 1.0e6;
   const double hay_tonnes = static_cast<double>(stock_of(hay)) / 1.0e6;
   const double manure_tonnes = static_cast<double>(stock_of(manure)) / 1.0e6;
 
