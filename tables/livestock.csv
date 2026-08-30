@@ -5,7 +5,7 @@
 # yields are per adult head: per year for milk, eggs, wool, manure;
 # at slaughter for meat, hide, pelt and down
 key,title,sexed,kolkhoz_only,household_only,feed_units_per_real_day,care_days_per_real_year,pasture_coverage_summer,newborn_game_months,adult_from_game_months,life_game_years_min,life_game_years_max,births_per_game_year,litter_heads,males_share,milk_l_per_year,egg_kg_per_year,wool_kg_per_year,manure_kg_per_year,meat_kg_per_head,hide_pieces_per_head,pelt_pieces_per_head,down_kg_per_head
-cow,Коровы,1,0,0,9,32,0.65,2,8,3,4,1,1,0.04,1800,,,9000,200,1,,
+cow,Коровы,1,0,0,9,32,0.65,2,8,3,4,1,1,0.04,1550,,,9000,200,1,,
 sheep,Овцы,1,1,0,2,4,0.85,1,5,2.5,3,1,1.5,0.04,,,3,900,20,,,
 pig,Свиньи,1,0,0,3,8,0,1,2,1.5,1.5,1,8,0.1,,,,1500,70,,,
 horse,Лошади,1,0,0,10,22,0.5,2,12,6,8,1,1,0.07,,,,7000,,,,
