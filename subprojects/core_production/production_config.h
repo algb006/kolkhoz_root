@@ -2,7 +2,8 @@
 //
 // CropDef mirrors tables/crops.csv (indexed by CropId = row), LivestockDef
 // mirrors tables/livestock.csv, UnitTypeDef mirrors tables/unit_types.csv,
-// FarmingConfig mirrors tables/farming.csv. A world without these tables
+// FarmingConfig mirrors tables/farming.csv, FeedLinkDef mirrors
+// tables/feed_links.csv (stage 6). A world without these tables
 // (unit tests, early runs) gets empty rosters and the subsystem idles;
 // present-but-malformed tables refuse the factory.
 
@@ -60,9 +61,26 @@ struct CropDef {
 struct LivestockDef {
   float manure_kg_per_year = 0.0F;
 
+  /// Stage-4 interim feeding, replaced by the feed-unit model below at
+  /// stage-6 task O3; the fields and their livestock.csv columns leave
+  /// together with the winter-hay block in production_system.cpp.
   float hay_kg_per_day_winter = 0.0F;
 
   float grain_kg_per_day = 0.0F;
+
+  /// Daily need of an adult head, kilogram feed units per GAME day
+  /// (oat = 1.0). The table column feed_need_units_per_real_day keeps the
+  /// REAL reference number (design db, question 133: horse 10, cow 9,
+  /// pig 3); parsing multiplies by 365 / kDaysPerYear once so the yearly
+  /// feed mass holds. Juveniles eat juvenile_feed_factor of it, newborns
+  /// at the dam eat nothing (canon, feed rules §11).
+  float feed_need_units_per_day = 0.0F;
+
+  /// Share of the daily need summer pasture and free-ranging cover in the
+  /// pasture months (the norm is about need, not mandatory store spending).
+  /// ASSUMPTION defaults mirror the stage-4 seasonal shape: grazers eat
+  /// stores only in winter, pigs and poultry eat stores all year.
+  float pasture_coverage_summer = 0.0F;
 
   // -- stage 6: breeding, aging, produce (manual/66-food-model.md §6) ------
   // Ages run on the BIOLOGICAL clock (boss rules 2026-08-29 §2.2: biology
@@ -100,6 +118,18 @@ struct LivestockDef {
 
   /// Slaughter yield per head, by rung share of adult weight for the young.
   float meat_kg_per_head = 0.0F;
+};
+
+/// @brief One feeding-order row (tables/feed_links.csv, question 133):
+/// which kind eats which resource. Row order IS the priority — regular
+/// ration before reserve, fodder grain before bread grain; the exported
+/// file keeps that order, so no sorting happens in code.
+struct FeedLinkDef {
+  LivestockKindId kind;
+
+  ResourceId resource;
+
+  std::uint8_t reserve = 0;  ///< 1 = reserve ration with a lowered effect.
 };
 
 struct UnitTypeDef {
@@ -145,6 +175,15 @@ struct FarmingConfig {
   float unfed_death_after_days = 8.0F;
 
   float unfed_death_percent_per_day = 5.0F;
+
+  // -- stage 6: feeding by feed units (question 133) -----------------------
+  /// Juveniles eat this share of the adult norm (canon: one half).
+  float juvenile_feed_factor = 0.5F;
+
+  /// Feed units from reserve rows (FeedLinkDef::reserve) count into the
+  /// covered need with this multiplier — the design says "reserve with a
+  /// lowered effect" but names no number. ASSUMPTION until the balance pass.
+  float reserve_feed_factor = 0.8F;
 };
 
 struct ProductionConfig {
@@ -155,6 +194,14 @@ struct ProductionConfig {
   std::vector<UnitTypeDef> unit_types;  ///< Indexed by UnitTypeId row.
 
   FarmingConfig farming;
+
+  /// Dense by ResourceId: feed value in kilogram feed units per kilogram
+  /// (oat = 1.0); 0 = the resource is not feed. Source: the resources.csv
+  /// feed_value column (design db resource.feed_value, question 133).
+  std::vector<float> feed_values;
+
+  /// Feeding-order rows in file (= priority) order; see FeedLinkDef.
+  std::vector<FeedLinkDef> feed_links;
 
   ResourceId manure_resource;  ///< resources.csv "manure" row.
 
