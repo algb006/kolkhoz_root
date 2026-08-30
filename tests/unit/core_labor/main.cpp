@@ -6,7 +6,8 @@
 //     order travels on, the reference worker's efficiency, and a whole day
 //     driven through the subsystem interface: placement, the seam draining,
 //     trudodni on the family account, household hours, the walk-off, the
-//     day off and the year's burn.
+//     day off. (The economic year's burn moved to core_residents with the
+//     distribution it pays for — stage 6, task O1.)
 
 #include <charconv>
 #include <cstdint>
@@ -508,21 +509,6 @@ int TestBarnRunsOnTheDayOff() {
   return failures;
 }
 
-int TestYearlyBurn() {
-  int failures = 0;
-  const EmptyTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
-  if (labor == nullptr) {
-    return Expect(false, "factory yields a system");
-  }
-  DayWorld day(1);
-  day.world.families.rows[0].trudodni_account = 12345;
-  day.RunDay(*labor, core::kDaysPerYear);  // the first day of the next year
-  failures += Expect(day.world.families.rows[0].trudodni_account == 0,
-                     "the economic year closes and unspent trudodni burn");
-  return failures;
-}
-
 }  // namespace
 
 /// The factory's contract on tables: a missing one keeps the canonical
@@ -598,7 +584,6 @@ int main() {
   failures += TestWholeWorkingDay();
   failures += TestWalkOffPaysAndStops();
   failures += TestBarnRunsOnTheDayOff();
-  failures += TestYearlyBurn();
   failures += TestLaborTableParsing();
   failures += TestBarnLeadsTheClosedWindow();
   if (failures == 0) {

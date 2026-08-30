@@ -113,14 +113,14 @@ class LaborSystem final : public ILaborSystem {
  private:
   // -- the morning ---------------------------------------------------------
 
+  // The economic year's burn used to stand here, as a placeholder for the
+  // distribution it pays for. That distribution exists since stage 6, and
+  // the burn moved with it into the family/kolkhoz exchange
+  // (core_residents/family_exchange.cpp): both counters have to burn, and
+  // only after the year's last issue has been made against them. Labor runs
+  // BEFORE residents in the decisions slot, so burning here would have
+  // emptied the account the exchange was about to spend.
   void StartDay(WorldState& current) const {
-    if (current.calendar.day % kDaysPerYear == 0) {
-      // The economic year closes: unspent trudodni burn (labor-payment §2;
-      // the distribution they pay for arrives with stage 6).
-      for (FamilyRow& family : current.families.rows) {
-        family.trudodni_account = 0;
-      }
-    }
     for (ResidentRow& resident : current.residents.rows) {
       resident.work = WorkAssignment{};
     }
