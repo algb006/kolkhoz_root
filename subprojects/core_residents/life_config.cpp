@@ -225,7 +225,7 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     }
   }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
-    const std::uint32_t house = unit_types->FindRowByKey("house");
+    const std::uint32_t house = unit_types->FindRowByKey("wooden_house");
     if (house != kNoTableRow) {
       config.house_type = UnitTypeId{static_cast<std::uint16_t>(house)};
     }

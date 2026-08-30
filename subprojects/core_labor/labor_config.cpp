@@ -238,7 +238,14 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
 }
 
 bool ParseLivestock(const ITable& table, LaborConfig& config, std::string& error) {
-  const std::uint32_t care_column = table.FindColumn("care_days_per_year");
+  // The design db calls the column care_days_per_real_year, and says the unit
+  // out loud for a reason: what is SPENT is real, what AGES is game. The
+  // older hand-written name is read too, so the switch to the export cannot
+  // silently hand every kind the cow's default.
+  std::uint32_t care_column = table.FindColumn("care_days_per_real_year");
+  if (care_column == kNoTableColumn) {
+    care_column = table.FindColumn("care_days_per_year");
+  }
   // The cow anchor of 49-simulations §2, in REAL man-days a year; the same
   // default stands in for every kind until the column exists.
   constexpr float kDefaultCareRealDaysPerYear = 32.0F;

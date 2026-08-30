@@ -11,12 +11,15 @@
 #define CORE_PRODUCTION_PRODUCTION_CONFIG_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 
 namespace core {
+
+class ITableSet;  // Defined in core_tables.
 
 struct CropDef {
   ResourceId resource;  ///< What the harvest and the seed are.
@@ -53,71 +56,100 @@ struct CropDef {
 
   float fertility_delta = 0.0F;  ///< Applied at harvest.
 
+  /// Kilograms of straw per kilogram of grain reaped (design db
+  /// crop.straw_ratio: rye 1.5, wheat 1.3, oat 1.1, barley 1.0). Straw is a
+  /// reserve feed — own and free, and plainly there in a winter ration.
+  /// 0 = the crop leaves nothing behind.
+  float straw_ratio = 0.0F;
+
   float drought_sensitivity = 0.0F;  ///< 0..1 scale on the stress rate.
 
   float wet_sensitivity = 0.0F;
 };
 
+/// @brief One row of tables/livestock.csv (design db export).
+///
+/// THE UNIT TRAP, and it is the whole reason these names are this long.
+/// The table mixes two clocks on purpose, and the rule is: **what is spent
+/// is real, what ages is game**.
+///   * Feed and care are REAL rates — a cow eats nine fodder units a day of
+///     a real day, and its keeper spends 32 real man-days a year on it.
+///     Parsing converts them once (x 365 / 48 for feed, / 7 for care) so
+///     the yearly mass and the yearly labor both come out right.
+///   * Ages are GAME units with the x4 life acceleration ALREADY APPLIED by
+///     the design (livestock design §6, boss parcel 2026-08-30). "A cow is
+///     adult at eight months" means eight GAME months, which is 2.67 years
+///     of the animal's life. Dividing them again would make her adult at
+///     eight months of life and a horse at one year.
 struct LivestockDef {
+  /// Manure per adult head per game year, kilograms.
   float manure_kg_per_year = 0.0F;
 
-  /// Stage-4 interim feeding, replaced by the feed-unit model below at
-  /// stage-6 task O3; the fields and their livestock.csv columns leave
-  /// together with the winter-hay block in production_system.cpp.
-  float hay_kg_per_day_winter = 0.0F;
-
-  float grain_kg_per_day = 0.0F;
-
-  /// Daily need of an adult head, kilogram feed units per GAME day
-  /// (oat = 1.0). The table column feed_need_units_per_real_day keeps the
-  /// REAL reference number (design db, question 133: horse 10, cow 9,
-  /// pig 3); parsing multiplies by 365 / kDaysPerYear once so the yearly
-  /// feed mass holds. Juveniles eat juvenile_feed_factor of it, newborns
-  /// at the dam eat nothing (canon, feed rules §11).
-  float feed_need_units_per_day = 0.0F;
+  /// Daily need of an adult head, fodder units per GAME day (oat = 1.0).
+  /// The column feed_units_per_real_day keeps the REAL reference number
+  /// (horse 10, cow 9, pig 3, sheep and goat 2); parsing multiplies by
+  /// 365 / kDaysPerYear once so the yearly feed mass holds. Juveniles eat
+  /// FarmingConfig::juvenile_feed_factor of it, newborns at the dam eat
+  /// nothing (livestock design §11).
+  float feed_units_per_game_day = 0.0F;
 
   /// Share of the daily need summer pasture and free-ranging cover in the
   /// pasture months (the norm is about need, not mandatory store spending).
-  /// ASSUMPTION defaults mirror the stage-4 seasonal shape: grazers eat
-  /// stores only in winter, pigs and poultry eat stores all year.
+  /// Canon: sheep 0.85, goat 0.8, cow 0.65, horse 0.5, duck 0.5 (reeds),
+  /// hens 0.35, pigs and mink 0.
   float pasture_coverage_summer = 0.0F;
 
-  // -- stage 6: breeding, aging, produce (manual/66-food-model.md §6) ------
-  // Ages run on the BIOLOGICAL clock (boss rules 2026-08-29 §2.2: biology
-  // / 4), so rung durations are biological; produce and birth rates are
-  // per GAME year — that is what the settlement's yearly balance eats.
-  // Poultry is sexless and two-runged (newborn_bio_days = 0 skips the rung).
-
   /// 0/1: the kind has sexes; breeding then needs an adult male present.
+  /// Poultry is sexless and has no newborn rung.
   std::uint8_t sexed = 1;
 
-  float newborn_bio_days = 0.0F;
+  /// 0/1: the kind lives only at family yards (goats) or only at kolkhoz
+  /// units (sheep). Both zero = either place.
+  std::uint8_t household_only = 0;
 
-  float juvenile_bio_days = 0.0F;
+  std::uint8_t kolkhoz_only = 0;
 
-  /// Adult lifespan from adulthood, biological years: the age-death draw
-  /// ramps up as the cohort mean passes it (threshold with randomness).
-  float adult_life_bio_years = 0.0F;
+  // -- ages, GAME units (see the unit trap above) --------------------------
+  /// Length of the newborn rung, game months; 0 = the kind has no such rung.
+  float newborn_game_months = 0.0F;
 
-  float births_per_female_year = 0.0F;  ///< Litters per adult female per game year.
+  /// Age at which a head becomes an adult, game months, counted from birth.
+  /// The juvenile rung therefore lasts this minus the newborn rung.
+  float adult_from_game_months = 0.0F;
+
+  /// The band of adult lifespan, game years: the age-death hazard is zero
+  /// at the lower end and certain at the upper one (livestock design §6).
+  float life_game_years_min = 0.0F;
+
+  float life_game_years_max = 0.0F;
+
+  /// Litters per adult female per GAME year — once a year, in its season,
+  /// which is the canon of the yearly cycle.
+  float births_per_game_year = 0.0F;
 
   float litter_heads = 1.0F;  ///< Newborns per litter.
 
-  /// Adult males the herd keeps; males maturing beyond it are slaughtered
-  /// (meat) — one bull serves the barn, extra mouths do not overwinter.
-  std::uint8_t males_kept_per_herd = 1;
+  /// Share of the adults kept as males; a sexed herd always keeps at least
+  /// one sire. Males beyond the share are slaughtered — a share, not a
+  /// count, because "one bull" stops being right as the herd grows.
+  float males_share = 0.0F;
 
-  /// Produce per adult head per game year, into the housing unit's stock
-  /// (kolkhoz herds) or the family pantry (household herds). Milk counts
-  /// females only; eggs and wool count every adult.
-  float milk_kg_per_year = 0.0F;
+  // -- produce: per adult head per game year, or per head at slaughter -----
+  /// Milk is in LITRES in the table and roughly a kilogram a litre in the
+  /// store (quantities.h); parsing does not convert, the flow does.
+  float milk_l_per_year = 0.0F;
 
   float egg_kg_per_year = 0.0F;
 
   float wool_kg_per_year = 0.0F;
 
-  /// Slaughter yield per head, by rung share of adult weight for the young.
   float meat_kg_per_head = 0.0F;
+
+  float hide_pieces_per_head = 0.0F;
+
+  float pelt_pieces_per_head = 0.0F;
+
+  float down_kg_per_head = 0.0F;
 };
 
 /// @brief One feeding-order row (tables/feed_links.csv, question 133):
@@ -130,12 +162,28 @@ struct FeedLinkDef {
   ResourceId resource;
 
   std::uint8_t reserve = 0;  ///< 1 = reserve ration with a lowered effect.
+
+  /// The largest share of the day's need this feed may cover. Order says
+  /// what to spend FIRST; this says how much of it the animal can actually
+  /// eat, and without it the model lies: a ruminant does not live on grain
+  /// however much of it there is, and the first horse eats the village's
+  /// whole year of oats (design db feed_link.max_share, boss 2026-08-30 —
+  /// horse: oats 0.5, hay 1.0). Defaults to the whole need, so a table set
+  /// without the column behaves as the order alone would.
+  float max_share = 1.0F;
 };
 
 struct UnitTypeDef {
   float storage_capacity_kg = 0.0F;  ///< 0 = stores nothing.
 
   float livestock_capacity_head = 0.0F;
+
+  /// 0/1: the capacity is the outline the PLAYER draws, so there is no
+  /// number to read (manure heap, silage trench, hay stack, the log, stone
+  /// and clay piles, the threshing floor). An empty capacity cell next to
+  /// this flag means "by area", not "not written down yet" — the design db
+  /// carries the flag for exactly that reason.
+  std::uint8_t capacity_by_plot = 0;
 };
 
 struct FarmingConfig {
@@ -163,11 +211,6 @@ struct FarmingConfig {
   float stress_cap = 0.3F;
 
   // -- stage 6: herd-wide knobs (tables/farming.csv scalar rows) -----------
-  /// Age death: expected deaths/day = adults x max(0, mean age - lifespan)
-  /// / (spread x days per year); the spread is the "randomness" width
-  /// around the threshold. ASSUMPTION.
-  float herd_age_death_spread_years = 2.0F;
-
   /// Underfeeding: produce multiplier while unfed, and when deaths start.
   /// ASSUMPTION until the feeding runs.
   float unfed_produce_factor = 0.5F;
@@ -182,8 +225,43 @@ struct FarmingConfig {
 
   /// Feed units from reserve rows (FeedLinkDef::reserve) count into the
   /// covered need with this multiplier — the design says "reserve with a
-  /// lowered effect" but names no number. ASSUMPTION until the balance pass.
+  /// lowered effect" but names no number. ASSUMPTION until the balance pass
+  /// and polish question P22n, which asks whether one multiplier can stand
+  /// for three different penalties at all.
   float reserve_feed_factor = 0.8F;
+
+  /// The pasture season, 0-based months inclusive: outside it a head takes
+  /// nothing from the grass and its whole norm comes out of the stores.
+  /// ASSUMPTION — the design names summer grazing but no month band.
+  std::uint8_t pasture_from_month = 4;  ///< May.
+
+  std::uint8_t pasture_to_month = 8;  ///< Inclusive: September.
+
+  // -- stage 6: billeting (livestock design §6, boss answer 2026-08-30) ----
+  /// A head with no room under the roof is BILLETED at private yards, never
+  /// slaughtered. It stays kolkhoz property — the milk is the farm's — and
+  /// the farm sees one number, not an allocation per household. Billeting
+  /// is paid for in leakage: this is the produce multiplier on the billeted
+  /// share of the herd. ASSUMPTION.
+  float billet_yield_factor = 0.6F;
+
+  /// The month the autumn pig slaughter falls in, 0-based. Everything but
+  /// the sows and the sire goes to meat then (livestock design §6).
+  std::uint8_t pig_slaughter_month = 9;  ///< October.
+
+  /// Share of the adult pigs kept over the winter as sows. The design names
+  /// the rule ("everything but the sows") but not the number, so this is the
+  /// one knob the rule needs. ASSUMPTION until the balance run.
+  float sow_keep_share = 0.25F;
+
+  /// The calving season, 0-based months inclusive. Births are once a game
+  /// year in their own season (canon of the yearly cycle); livestock.csv
+  /// gives the yearly rate but names no month, so the band is ASSUMPTION and
+  /// the rate is spread inside it — the yearly total is what the balance
+  /// eats, and it holds either way.
+  std::uint8_t birth_from_month = 2;  ///< March.
+
+  std::uint8_t birth_to_month = 4;  ///< Inclusive: May.
 };
 
 struct ProductionConfig {
@@ -207,6 +285,8 @@ struct ProductionConfig {
 
   ResourceId hay_resource;  ///< resources.csv "hay" row.
 
+  ResourceId straw_resource;  ///< resources.csv "straw" row: the grain's by-product.
+
   // -- stage 6: where herd produce lands (invalid = kind yields none) ------
   ResourceId milk_resource;  ///< resources.csv "milk" row.
 
@@ -216,12 +296,44 @@ struct ProductionConfig {
 
   ResourceId meat_resource;  ///< resources.csv "meat" row.
 
+  ResourceId hide_resource;  ///< resources.csv "hide" row.
+
+  ResourceId pelt_resource;  ///< resources.csv "mink_pelt" row.
+
+  ResourceId down_resource;  ///< resources.csv "down" row.
+
   UnitTypeId compost_heap_type;  ///< unit_types.csv "compost_heap".
 
   /// unit_types.csv "stable": the closed housing horse breeding requires
   /// (boss rules 2026-08-29 §2.2); other kinds breed under any roof.
+  /// @note STUB: no such unit type exists in phase 1, so the id stays
+  /// invalid and horse breeding stays blocked — which is what the start
+  /// canon asks for.
   UnitTypeId stable_type;
+
+  LivestockKindId horse_kind;  ///< livestock.csv "horse": the only kind the stable gates.
+
+  LivestockKindId pig_kind;  ///< livestock.csv "pig": the only kind with an autumn slaughter.
+
+  /// The share of the year's grain harvest the district expects
+  /// (campaign.csv plan_grain_share_percent, v4 anchor 28). The plan is
+  /// "just a number" in phase 1 (plan §11): it accrues as grain is reaped
+  /// and is handed over at the year's turn, with no district mechanics.
+  float plan_grain_share = 0.0F;
+
+  /// Which resources the plan counts, by key of the roster: the six bread
+  /// grains. Named here rather than derived, for the same reason manure and
+  /// hay are named here — the core has no notion of a resource category, and
+  /// inventing one to hold six rows would be the expensive kind of guess.
+  std::vector<ResourceId> plan_grain_resources;
 };
+
+/// @brief Parses every table core_production reads into `config`.
+/// @param error Receives a human-readable message on failure.
+/// @return false when a PRESENT table cannot be understood; a missing table
+/// keeps the defaults and succeeds — a world without tables idles rather
+/// than refusing to exist. Call once, at factory time.
+bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error);
 
 }  // namespace core
 

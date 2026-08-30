@@ -10,7 +10,10 @@
 //
 // What is checked here, against sim_v8_start.py / 49-simulations §2:
 //   * man-days by operation over year 1 (plowing, harrowing, sowing, harvest,
-//     barn care) against the norms of the tables, each within a band;
+//     barn care) against the norms of the tables, each within a band. The
+//     hay share is stage 6's: the meadows are the canon's 15% of the map,
+//     not the reference runs' "half the arable", and mowing them fills a
+//     summer that used to stand idle;
 //   * the barn is served every day — undone care would be silent otherwise;
 //   * the road eats 37-56% of a spring day for the mean and the far field,
 //     the numbers the v9 start-map run measured;
@@ -207,10 +210,24 @@ int main() {
   // Harvest is the heavy half: grain 8, potato 25, flax 60, hay 8 per hectare.
   // A field lost to snow takes its own harvest with it, so the band is wide
   // downward.
-  failures += ExpectBand(harvest, 200.0, 245.0, "the harvest of the mix plus 80 ha of hay");
+  //
+  // The hay share doubled at stage 6, and not because anything broke. The
+  // reference runs mowed 80 ha because they took the meadow area as half the
+  // arable; the design does no such thing — the map gives about 15% of its
+  // hundred square kilometres to grass (terrain design §1), and the herd
+  // needs some 190 ha mown to be fed at all. Genesis now lays out 200 ha, so
+  // haymaking takes the summer the reference run left idle. That is the
+  // design's own reading of it: hay is a decision, not a given.
+  failures += ExpectBand(harvest, 340.0, 400.0, "the harvest of the mix plus 200 ha of hay");
   // 39 cows at 32 real man-days a head a year.
-  failures += ExpectBand(care, 170.0, 180.0, "the barn costs the cow herd's yearly norm");
-  failures += ExpectBand(total, 540.0, 620.0, "the year's labor matches the reference run");
+  // 39 cows at 32 real man-days a year is 178 game man-days — the norm the
+  // barn WOULD cost a herd that never changed. Since stage 6 the herd is
+  // alive: it eats, it calves, it loses heads to age and to a hungry winter,
+  // and the year's care follows the heads that actually stood there. The
+  // band's floor is therefore the honest one, not the arithmetic one.
+  failures += ExpectBand(care, 150.0, 180.0, "the barn costs the cow herd's yearly norm");
+  failures += ExpectBand(
+      total, 650.0, 760.0, "the year's labor matches the reference run plus the meadows");
   std::cout << "labor_year: " << care_left << " game man-days of barn care left undone\n";
   failures += ExpectBand(care_left, 0.0, 2.0, "the barn is served, day in and day out");
 

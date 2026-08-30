@@ -1,12 +1,15 @@
-key,title,manure_kg_per_year,hay_kg_per_day_winter,grain_kg_per_day,care_days_per_year,note
-# manure anchors reproduce 49-simulations section 2 (39 cows ~351 t/year,
-# 16 horses ~112 t/year); feed rates are ASSUMPTION until the feeding stage.
-# care_days_per_year — РЕАЛЬНЫЕ чел-дни на взрослую голову в год (sim_v8:
-# корова 32, лошадь 22, овца 4, свинья 8); птица — ASSUMPTION. Ядро делит на 7.
-# Уход за стадом при дворе семьи колхозной работы не рождает (Животноводство §5)
-cow,Корова,9000,12,0,32,
-horse,Лошадь,7000,8,3,22,at private yards until the kolkhoz yard exists
-sheep,Овца,900,2,0,4,summer pasture and winter hay; never private
-pig,Свинья,1500,0,1.5,8,
-chicken,Курица,45,0,0.05,0.3,two ages only; never sick
-duck,Утка,55,0,0.06,0.3,two ages only; never sick
+# generated from db/design.db — do not edit by hand
+# feed and care are REAL rates: fodder units a day, man-days a year
+# ages are GAME units — the x4 life acceleration is already applied,
+# do not divide them again; a game year is four years of life
+# yields are per adult head: per year for milk, eggs, wool, manure;
+# at slaughter for meat, hide, pelt and down
+key,title,sexed,kolkhoz_only,household_only,feed_units_per_real_day,care_days_per_real_year,pasture_coverage_summer,newborn_game_months,adult_from_game_months,life_game_years_min,life_game_years_max,births_per_game_year,litter_heads,males_share,milk_l_per_year,egg_kg_per_year,wool_kg_per_year,manure_kg_per_year,meat_kg_per_head,hide_pieces_per_head,pelt_pieces_per_head,down_kg_per_head
+cow,Коровы,1,0,0,9,32,0.65,2,8,3,4,1,1,0.04,1800,,,9000,200,1,,
+sheep,Овцы,1,1,0,2,4,0.85,1,5,2.5,3,1,1.5,0.04,,,3,900,20,,,
+pig,Свиньи,1,0,0,3,8,0,1,2,1.5,1.5,1,8,0.1,,,,1500,70,,,
+horse,Лошади,1,0,0,10,22,0.5,2,12,6,8,1,1,0.07,,,,7000,,,,
+chicken,Куры,0,0,0,0.12,0.3,0.35,,1,1.5,2,1,8,0,,7.5,,45,1.2,,,
+duck,Утки,0,0,0,0.18,0.3,0.5,,1,1.5,2,1,8,0,,8,,55,1.8,,,0.15
+mink,Норки,1,0,0,0.15,0.8,0,1,3,1,1.5,1,4,0.25,,,,,,,1,
+goat,Козы,1,0,1,2,2,0.8,1,5,2.5,3,1,2,0,600,,0.4,,,,,

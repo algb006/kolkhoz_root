@@ -128,12 +128,74 @@ FieldId PlaceField(
   return AppendRow(world.fields, field);
 }
 
+/// @brief Appends one herd; returns nothing, because genesis never needs the
+/// id back.
+void AddHerd(WorldState& world,
+             const ITable& livestock,
+             std::string_view key,
+             std::uint16_t adults,
+             std::uint16_t males,
+             UnitId unit,
+             FamilyId household,
+             bool household_owned) {
+  const std::uint32_t row = livestock.FindRowByKey(key);
+  if (row == kNoTableRow) {
+    return;  // a table set without this kind simply has none of it
+  }
+  HerdRow herd;
+  herd.kind = LivestockKindId{static_cast<std::uint16_t>(row)};
+  herd.unit = unit;
+  herd.household = household;
+  herd.household_owned = household_owned ? 1U : 0U;
+  herd.adult_count = adults;
+  herd.adult_male_count = males;
+  // Adults start at the age they became adults: the start herd is a young
+  // working herd, not one about to die of old age.
+  AppendRow(world.herds, herd);
+}
+
+/// The start's animals (start canon §10-§11 and the household canon of
+/// livestock design §2, boss answer 2026-08-30 to registry question 148).
+///
+/// Two lines that look alike and are not: the cows stand at the stock yard
+/// and the horses stand in private yards, and BOTH are the kolkhoz's. The
+/// horses are billeted, not given away — the farm feeds them and the farm
+/// works them. What the families own is what the canon gives them: two goats
+/// and eight hens each, a pig at every twentieth yard, and no cow at all
+/// ("the cows are handed over, every last one"). The canonical ~1.2 t of
+/// milk a yard is TWO GOATS, which is what made the coverage figure add up
+/// all along.
+void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
+  const ITable* livestock = tables.FindTable("livestock");
+  if (livestock == nullptr) {
+    return;
+  }
+  // Two bulls to 37 cows is the 4% the design keeps; without a sire the barn
+  // could never grow, and growing it is the whole first-epoch arc.
+  AddHerd(world, *livestock, "cow", 39, 2, stock_yard, FamilyId{}, false);
+  const auto yards = static_cast<std::uint32_t>(world.families.rows.size());
+  const std::uint32_t horse_yards = yards < 16 ? yards : 16U;
+  for (std::uint32_t yard = 0; yard < horse_yards; ++yard) {
+    AddHerd(world, *livestock, "horse", 1, 0, UnitId{}, world.families.row_ids[yard], false);
+  }
+  for (std::uint32_t yard = 0; yard < yards; ++yard) {
+    const FamilyId home = world.families.row_ids[yard];
+    AddHerd(world, *livestock, "goat", 2, 0, UnitId{}, home, true);
+    AddHerd(world, *livestock, "chicken", 8, 0, UnitId{}, home, true);
+  }
+  // A pig at every twentieth yard: "only the well-off, and no more than a
+  // fifth of the yards" — a sow and a boar, or it is not a herd.
+  for (std::uint32_t yard = 0; yard + 1U < yards; yard += 20U) {
+    AddHerd(world, *livestock, "pig", 2, 1, UnitId{}, world.families.row_ids[yard], true);
+  }
+}
+
 /// @brief The start economy of the canon (start.md §10-§11): the surviving
 /// units with the stores in the church, 160 ha of arable land with the
 /// suggested first-year plan of the reference run (70 ha sown: 62% grain,
-/// 18% potatoes, 8% flax, 12% fodder), 80 ha of meadows, 39 cows at the
-/// stock yard and 16 kolkhoz horses at the first family yards. A table-less
-/// world (unit tests) gets none of this and stays people-only.
+/// 18% potatoes, 8% flax, 12% fodder), 80 ha of meadows and the animals of
+/// PlaceHerds above. A table-less world (unit tests) gets none of this and
+/// stays people-only.
 /// Start fertility 65 = soil factor 1.3 of the reference runs; stock
 /// amounts are ASSUMPTION sized to the first sowing plus a food margin.
 void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
@@ -145,16 +207,18 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   }
   constexpr Metric kStartFertility = 65.0F;
 
-  // Units of the start set. The kolkhoz yard is deliberately absent — the
-  // first build of the campaign (construction system pending).
-  const UnitId church = PlaceUnit(world, TypeByKey(unit_types, "church_warehouse"), 0, 0);
+  // Units of the start set, by the keys of the design db. The kolkhoz yard
+  // (horse_yard) is deliberately absent — the first build of the campaign,
+  // and its SECOND level is the stable, which is why horse breeding stays
+  // blocked at the start exactly as the canon asks.
+  const UnitId church = PlaceUnit(world, TypeByKey(unit_types, "church_store"), 0, 0);
   PlaceUnit(world, TypeByKey(unit_types, "well"), 50, 0);
-  const UnitId stock_yard = PlaceUnit(world, TypeByKey(unit_types, "stock_yard"), 200, 100);
+  const UnitId stock_yard = PlaceUnit(world, TypeByKey(unit_types, "cattle_yard"), 200, 100);
   PlaceUnit(world, TypeByKey(unit_types, "build_yard"), 300, 0);
-  PlaceUnit(world, TypeByKey(unit_types, "log_heap"), 100, 50);
-  PlaceUnit(world, TypeByKey(unit_types, "stone_heap"), 150, 50);
-  PlaceUnit(world, TypeByKey(unit_types, "clay_heap"), 200, 50);
-  const UnitId compost = PlaceUnit(world, TypeByKey(unit_types, "compost_heap"), 400, 200);
+  PlaceUnit(world, TypeByKey(unit_types, "log_pile"), 100, 50);
+  PlaceUnit(world, TypeByKey(unit_types, "stone_pile"), 150, 50);
+  PlaceUnit(world, TypeByKey(unit_types, "clay_pile"), 200, 50);
+  const UnitId compost = PlaceUnit(world, TypeByKey(unit_types, "manure_pile"), 400, 200);
 
   // One decrepit house per starting family, in a compact village south of
   // the yard: three rows of seven, 40 m between houses and 80 m between
@@ -183,6 +247,15 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   PutStock(church_row, GenesisResource(resources, "wheat"), 2500);
   PutStock(church_row, GenesisResource(resources, "rye"), 8000);
   PutStock(church_row, GenesisResource(resources, "potato"), 35000);
+  // Fodder in the barn on day zero. The canon hands the kolkhoz a live herd
+  // in January, and a live herd in January has been eating something since
+  // the autumn — a start with empty mangers would kill the cows before the
+  // first cut, which is not hardship but an unwinnable opening.
+  // ASSUMPTION on the amount: one meadow's cut, enough to reach the spring
+  // pasture with the herd thin rather than dead. The fodder base does not
+  // close over a whole year even so — that is a real finding of the balance
+  // run and a question standing with the design (thread fodder-balance).
+  PutStock(church_row, GenesisResource(resources, "hay"), 60000);
   PutStock(world.units.rows[FindRow(world.units, compost)],
            GenesisResource(resources, "manure"),
            250000);
@@ -218,10 +291,23 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
              kStartFertility);
   PlaceField(world, 45.0F, CropId{}, Vec2{.x = 1106.0F, .y = 614.0F}, kStartFertility);
   PlaceField(world, 45.0F, CropId{}, Vec2{.x = -774.0F, .y = 946.0F}, kStartFertility);
-  constexpr std::array<Vec2, 4> kMeadowCenters = {{{.x = 1401.0F, .y = 215.0F},
-                                                   {.x = 725.0F, .y = 1096.0F},
-                                                   {.x = -725.0F, .y = 1096.0F},
-                                                   {.x = -1401.0F, .y = 215.0F}}};
+  // Meadows and pasture. The map gives about 15% of its hundred square
+  // kilometres to grass (terrain design §1) — some fifteen hundred hectares
+  // — so the fodder base is not limited by LAND at all. It is limited by
+  // hands and by the mowing window: 8 real man-days a hectare means the
+  // village mows what it has crews and days for, and hay becomes a decision
+  // rather than a given. Two hundred hectares are laid out here, which is
+  // more than the first years can cut and rather less than the map holds.
+  constexpr std::array<Vec2, 10> kMeadowCenters = {{{.x = 1401.0F, .y = 215.0F},
+                                                    {.x = 725.0F, .y = 1096.0F},
+                                                    {.x = -725.0F, .y = 1096.0F},
+                                                    {.x = -1401.0F, .y = 215.0F},
+                                                    {.x = 1300.0F, .y = -160.0F},
+                                                    {.x = 1032.0F, .y = 631.0F},
+                                                    {.x = 170.0F, .y = 1129.0F},
+                                                    {.x = -170.0F, .y = 1129.0F},
+                                                    {.x = -1032.0F, .y = 631.0F},
+                                                    {.x = -1300.0F, .y = -160.0F}}};
   const CropId timothy = CropByKey(crops, "timothy");
   for (const Vec2 center : kMeadowCenters) {
     FieldRow& field =
@@ -231,32 +317,7 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     field.phase = FieldPhase::kGrowing;
   }
 
-  // Herds: cows at the stock yard; every kolkhoz horse stands at a private
-  // yard until the kolkhoz yard is built (start rework canon).
-  const ITable* livestock = tables.FindTable("livestock");
-  if (livestock != nullptr) {
-    const std::uint32_t cow_row = livestock->FindRowByKey("cow");
-    const std::uint32_t horse_row = livestock->FindRowByKey("horse");
-    if (cow_row != kNoTableRow) {
-      HerdRow cows;
-      cows.kind = LivestockKindId{static_cast<std::uint16_t>(cow_row)};
-      cows.unit = stock_yard;
-      cows.adult_count = 39;
-      AppendRow(world.herds, cows);
-    }
-    if (horse_row != kNoTableRow) {
-      const std::uint32_t yards = world.families.rows.size() < 16
-                                      ? static_cast<std::uint32_t>(world.families.rows.size())
-                                      : 16U;
-      for (std::uint32_t yard = 0; yard < yards; ++yard) {
-        HerdRow horse;
-        horse.kind = LivestockKindId{static_cast<std::uint16_t>(horse_row)};
-        horse.household = world.families.row_ids[yard];
-        horse.adult_count = 1;
-        AppendRow(world.herds, horse);
-      }
-    }
-  }
+  PlaceHerds(world, tables, stock_yard);
 }
 
 }  // namespace

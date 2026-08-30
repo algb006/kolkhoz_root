@@ -11,7 +11,8 @@
 /// Design sources: livestock design §6 and the mobs parcel: the age ladder
 /// is 1/2/3 (wild/poultry/cattle), ONLY ADULTS produce — milk, wool, eggs,
 /// draught and manure are computed from adult_count; no growth curves or
-/// per-age feed norms exist by design. Disease is a bare STUB degree
+/// per-age feed norms exist by design (a juvenile eats a fixed half of the
+/// adult norm, a newborn at the dam nothing). Disease is a bare STUB degree
 /// (0 = healthy, 1 vulnerable, 2 obvious, 3 down): an Era II+ mechanic
 /// (design question 99 closed 2026-08-29 — Era I animals never get sick;
 /// its cold ladder is freeze -> productivity drop -> death, no disease
@@ -48,6 +49,15 @@ struct HerdRow {
   /// The family yard housing the herd; invalid when it stands at a unit.
   FamilyId household;
 
+  /// 0/1: WHOSE the herd is, which is a different question from where it
+  /// stands (livestock design §6, boss answer 2026-08-30: "billeting is
+  /// placement, not ownership"). A kolkhoz herd is fed from the stores and
+  /// delivers to them wherever it stands — the sixteen start horses live in
+  /// private yards and are still the farm's, and so is a cow with no room in
+  /// the barn. A household herd is the family's own: it eats out of that
+  /// family's pantry and its milk and eggs land there.
+  std::uint8_t household_owned = 0;
+
   std::uint16_t newborn_count = 0;
 
   std::uint16_t juvenile_count = 0;
@@ -76,11 +86,32 @@ struct HerdRow {
   /// Accumulated fractional births (adult females x kind birth rate).
   float birth_progress = 0.0F;
 
-  /// Sum of the adult heads' biological ages, years. Maintained by the same
-  /// flows (daily aging, +adult-entry age per maturation, -mean per death);
-  /// the mean age drives the age-death draw — the "threshold with
-  /// randomness" of the boss rules over a count-only cohort.
-  float adult_age_years_total = 0.0F;
+  /// Accumulated fractional heads culled as surplus males. Half of what
+  /// matures is male and the herd keeps only its share of sires, so the cull
+  /// is a fractional flow like the rest and needs its own carry — without
+  /// it, a herd that matures one head a day would never cull anyone.
+  float cull_progress = 0.0F;
+
+  /// Sum of the adult heads' ages in GAME years — total age, not years since
+  /// adulthood, because that is what the lifespan band of livestock.csv
+  /// measures. Maintained by the same flows (daily aging, +adult-entry age
+  /// per maturation, -mean per death); the mean drives the age-death draw —
+  /// the "threshold with randomness" of the boss rules over a count-only
+  /// cohort.
+  ///
+  /// GAME years, and the name says so on purpose: the design's livestock
+  /// ages already have the x4 life acceleration applied to them, so nothing
+  /// here may divide by it a second time (boss parcel 2026-08-30).
+  float adult_age_game_years_total = 0.0F;
+
+  /// Adult heads with no room under the roof, BILLETED at private yards
+  /// (livestock design §6, boss answer 2026-08-30). They are not slaughtered
+  /// and they stay kolkhoz property — the milk is the farm's, not the
+  /// family's. One number, not an allocation per household: who took the
+  /// billet decides nothing, and modelling it would cost memory and an
+  /// explanation the player never needs. Billeting is paid for in leakage,
+  /// never in deaths.
+  std::uint16_t billeted_count = 0;
 
   /// Consecutive days the herd went underfed (stage 6): produce drops at
   /// once, deaths begin past the config threshold. Reset by a fed day.

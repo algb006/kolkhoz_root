@@ -17,3 +17,26 @@ repeat_penalty_per_year,3
 drought_temp_c,25
 stress_per_day,0.02
 stress_cap,0.3
+# --- стада, этап 6 (core/manual/66-food-model.md §6) ----------------------
+# ASSUMPTION до балансового прохода: некормленый день сразу режет продукцию,
+# падёж начинается только после порога
+unfed_produce_factor,0.5
+unfed_death_after_days,8
+unfed_death_percent_per_day,5
+# подросток ест половину взрослой нормы — КАНОН (Животноводство §11)
+juvenile_feed_factor,0.5
+# «резерв с пониженным эффектом» числа в каноне не имеет — ASSUMPTION,
+# и полировка P22n спрашивает, можно ли вообще одним множителем
+reserve_feed_factor,0.8
+# постой: голова сверх вместимости стоит по дворам и даёт меньше (ASSUMPTION)
+billet_yield_factor,0.6
+# сезон выпаса и сезон отёла, месяцы человеческие 1..12. Оба ASSUMPTION:
+# канон называет летний выпас и годовой цикл приплода, но не месяцы
+pasture_from_month,5
+pasture_to_month,9
+birth_from_month,3
+birth_to_month,5
+# осенний забой свиней, кроме маток (Животноводство §6). Долю маток канон
+# не называет — это единственное число, которого правилу не хватает
+pig_slaughter_month,10
+sow_keep_share,0.25

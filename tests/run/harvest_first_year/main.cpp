@@ -43,6 +43,16 @@ void PrintVillageCondition(const core::WorldState& state) {
       pantry_tonnes += static_cast<double>(amount) / 1.0e6;
     }
   }
+  std::uint32_t cattle = 0;
+  std::uint32_t billeted = 0;
+  std::uint32_t starving = 0;
+  for (const core::HerdRow& herd : state.herds.rows) {
+    cattle += herd.newborn_count + herd.juvenile_count + herd.adult_count;
+    billeted += herd.billeted_count;
+    starving += herd.unfed_days > 0.0F ? 1U : 0U;
+  }
+  std::cout << "harvest_first_year: " << cattle << " head in " << state.herds.rows.size()
+            << " herds, " << billeted << " billeted, " << starving << " herds hungry today\n";
   std::cout << "harvest_first_year: mean satiety "
             << (people > 0.0F ? satiety_total / people : 0.0F) << ", " << hungry << " of "
             << state.residents.rows.size() << " under 40, pantries hold " << pantry_tonnes
@@ -129,38 +139,59 @@ int main() {
   }
 
   const core::WorldState& start = simulation->CompletedState();
-  failures += Expect(start.fields.rows.size() == 12, "genesis lays out 12 fields");
+  // Six sown, two fallow, ten meadows: the grass is not scarce, the
+  // hands and the mowing window are (terrain design §1).
+  failures += Expect(start.fields.rows.size() == 18, "genesis lays out the arable and the meadows");
   failures += Expect(start.units.rows.size() >= 29, "genesis places the start units");
-  failures += Expect(start.herds.rows.size() == 17, "39 cows plus 16 horse yards");
+  // 39 cows, 16 billeted horses, and every yard's own goats and hens.
+  failures += Expect(start.herds.rows.size() == 60, "genesis places the kolkhoz and yard herds");
 
-  // One full year.
-  for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
-    simulation->AdvanceStep();
-  }
-  const core::WorldState& state = simulation->CompletedState();
+  const std::uint32_t oat = resources->FindRowByKey("oat");
+  const std::uint32_t barley = resources->FindRowByKey("barley");
+  const std::uint32_t wheat = resources->FindRowByKey("wheat");
+  const std::uint32_t hay = resources->FindRowByKey("hay");
+  const std::uint32_t manure = resources->FindRowByKey("manure");
 
-  // Sum the grain across all storage.
-  auto stock_of = [&state](std::uint32_t resource_row) {
+  auto stock_of = [](const core::WorldState& world, std::uint32_t resource_row) {
     core::Grams total = 0;
-    for (const core::UnitRow& unit : state.units.rows) {
+    for (const core::UnitRow& unit : world.units.rows) {
       if (unit.stock.size() > resource_row) {
         total += unit.stock[resource_row];
       }
     }
     return total;
   };
-  const std::uint32_t oat = resources->FindRowByKey("oat");
-  const std::uint32_t barley = resources->FindRowByKey("barley");
-  const std::uint32_t wheat = resources->FindRowByKey("wheat");
-  const std::uint32_t hay = resources->FindRowByKey("hay");
-  const std::uint32_t manure = resources->FindRowByKey("manure");
-  const double grain_tonnes =
-      static_cast<double>(stock_of(oat) + stock_of(barley) + stock_of(wheat)) / 1.0e6;
-  const double hay_tonnes = static_cast<double>(stock_of(hay)) / 1.0e6;
-  const double manure_tonnes = static_cast<double>(stock_of(manure)) / 1.0e6;
 
-  std::cout << "harvest_first_year: grain " << grain_tonnes << " t, hay " << hay_tonnes
-            << " t, manure in heap " << manure_tonnes << " t\n";
+  // One full year, watching the stores rise and fall. Since stage 6 the
+  // herds eat for real and the district takes its share, so the year's END
+  // is no longer a measure of the HARVEST — the peak is. That peak is what
+  // the sim_v6 anchor is about, and it is sampled here rather than inferred.
+  core::Grams grain_peak = 0;
+  core::Grams hay_peak = 0;
+  for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
+    simulation->AdvanceStep();
+    const core::WorldState& day = simulation->CompletedState();
+    if (core::HourFromTick(day.calendar.tick) != 0) {
+      continue;
+    }
+    const core::Grams grain = stock_of(day, oat) + stock_of(day, barley) + stock_of(day, wheat);
+    grain_peak = grain > grain_peak ? grain : grain_peak;
+    const core::Grams cut = stock_of(day, hay);
+    hay_peak = cut > hay_peak ? cut : hay_peak;
+  }
+  const core::WorldState& state = simulation->CompletedState();
+
+  const double grain_tonnes = static_cast<double>(grain_peak) / 1.0e6;
+  const double hay_tonnes = static_cast<double>(hay_peak) / 1.0e6;
+  const double manure_tonnes = static_cast<double>(stock_of(state, manure)) / 1.0e6;
+  const double grain_left =
+      static_cast<double>(stock_of(state, oat) + stock_of(state, barley) + stock_of(state, wheat)) /
+      1.0e6;
+  const double hay_left = static_cast<double>(stock_of(state, hay)) / 1.0e6;
+
+  std::cout << "harvest_first_year: grain peaked at " << grain_tonnes << " t and ended at "
+            << grain_left << " t, hay " << hay_tonnes << " -> " << hay_left << " t, manure in heap "
+            << manure_tonnes << " t\n";
 
   PrintVillageCondition(state);
 
@@ -171,9 +202,11 @@ int main() {
   failures += Expect(grain_tonnes > 33.0 && grain_tonnes < 53.0,
                      "first-year grain matches the sim_v6 anchor (~48 t, weather may shave)");
 
-  // Meadows delivered hay (80 ha x 2 t/ha, minus winter feeding).
-  failures += Expect(hay_tonnes > 120.0 && hay_tonnes < 200.0,
-                     "meadows delivered on the order of 160 t of hay");
+  // The meadows delivered: 200 ha at about 2 t/ha, which is what it takes to
+  // winter the herd (terrain design §1 — grass is 15% of the map, so the
+  // fodder base is bounded by hands and by the mowing window, never by land).
+  failures +=
+      Expect(hay_tonnes > 300.0 && hay_tonnes < 430.0, "the meadows delivered the herd's winter");
 
   // The manure loop runs: cows fill the heap (~351 t/year at full herd,
   // minus the spring doses plowed into the sown fields).

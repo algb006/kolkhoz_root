@@ -27,91 +27,12 @@
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
+#include "herd_system.h"
 #include "production_config.h"
+#include "stock_ops.h"
 
 namespace core {
 namespace {
-
-/// @brief Grows a stock vector on demand and adds grams (may be negative;
-/// clamps at zero).
-void AddToStock(ResourceAmounts& stock, ResourceId resource, Grams amount) {
-  if (resource.value == kInvalidDefIdValue) {
-    return;
-  }
-  if (stock.size() <= resource.value) {
-    stock.resize(resource.value + 1U, 0);
-  }
-  Grams& cell = stock[resource.value];
-  cell += amount;
-  cell = cell < 0 ? 0 : cell;
-}
-
-Grams StockOf(const ResourceAmounts& stock, ResourceId resource) {
-  if (resource.value == kInvalidDefIdValue || stock.size() <= resource.value) {
-    return 0;
-  }
-  return stock[resource.value];
-}
-
-/// @brief First unit able to store goods (storage capacity > 0); kNoRow if
-/// none. Phase-1 routing: one shared storage pool, capacity overflow is a
-/// logged STUB until real logistics.
-std::uint32_t FindStorageRow(const WorldState& world, const ProductionConfig& config) {
-  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    const UnitRow& unit = world.units.rows[row];
-    if (unit.type.value < config.unit_types.size() &&
-        config.unit_types[unit.type.value].storage_capacity_kg > 0.0F) {
-      return row;
-    }
-  }
-  return kNoRow;
-}
-
-/// @brief First unit of the given type; kNoRow if none. An invalid type
-/// matches nothing: otherwise it would match every unit whose type is also
-/// unset (a table-less world's houses) and index the config out of bounds.
-std::uint32_t FindUnitRowOfType(const WorldState& world, UnitTypeId type) {
-  if (type.value == kInvalidDefIdValue) {
-    return kNoRow;
-  }
-  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    if (world.units.rows[row].type.value == type.value) {
-      return row;
-    }
-  }
-  return kNoRow;
-}
-
-/// @brief Storage capacity of a unit in grams; 0 when its type is unknown
-/// to the config (a hand-built world, or a table set without unit types).
-Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& config) {
-  if (unit.type.value >= config.unit_types.size()) {
-    return 0;
-  }
-  return static_cast<Grams>(config.unit_types[unit.type.value].storage_capacity_kg) *
-         kGramsPerKilogram;
-}
-
-/// @brief Takes up to `wanted` grams of `resource` from any storing unit;
-/// returns what was actually taken.
-Grams TakeFromStorage(WorldState& world,
-                      const ProductionConfig& config,
-                      ResourceId resource,
-                      Grams wanted) {
-  Grams taken = 0;
-  for (std::uint32_t row = 0; row < world.units.rows.size() && taken < wanted; ++row) {
-    UnitRow& unit = world.units.rows[row];
-    if (unit.type.value >= config.unit_types.size() ||
-        config.unit_types[unit.type.value].storage_capacity_kg <= 0.0F) {
-      continue;
-    }
-    const Grams here = StockOf(unit.stock, resource);
-    const Grams take = here < wanted - taken ? here : wanted - taken;
-    AddToStock(unit.stock, resource, -take);
-    taken += take;
-  }
-  return taken;
-}
 
 /// The production slot (phase 4), parallel by field: accumulates the
 /// growth-season weather stress. Reads the calendar and the day's weather
@@ -178,7 +99,7 @@ class ProductionSystem final : public IProductionSystem {
       RunYearStart(current);
     }
     RunFields(current);
-    RunHerds(current);
+    RunHerdDay(config_, current);
   }
 
  private:
@@ -248,7 +169,32 @@ class ProductionSystem final : public IProductionSystem {
 
   /// January 1: the rotation plan advances one year, and fallow that stood
   /// the whole year pays out its recovery.
+  /// @brief Is this one of the six bread grains the plan counts?
+  bool IsPlanGrain(ResourceId resource) const {
+    for (const ResourceId grain : config_.plan_grain_resources) {
+      if (grain.value == resource.value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// The year's delivery: what the plan asked for leaves the stores and is
+  /// recorded as delivered. A shortfall is simply a smaller delivery — the
+  /// district has no mechanics in phase 1, and inventing consequences for it
+  /// would be inventing the district.
+  void DeliverPlan(WorldState& current) const {
+    current.plan.delivered.assign(current.plan.due.size(), 0);
+    for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+      const ResourceId resource{static_cast<std::uint16_t>(index)};
+      const Grams taken = TakeFromStorage(current, config_, resource, current.plan.due[index]);
+      current.plan.delivered[index] = taken;
+    }
+    current.plan.due.assign(current.plan.due.size(), 0);
+  }
+
   void RunYearStart(WorldState& current) const {
+    DeliverPlan(current);
     for (FieldRow& field : current.fields.rows) {
       if (field.phase == FieldPhase::kIdle && field.rotation_year0.value == kInvalidDefIdValue) {
         field.fertility += config_.farming.fallow_recovery;
@@ -402,6 +348,25 @@ class ProductionSystem final : public IProductionSystem {
     if (destination != kNoRow) {
       AddToStock(current.units.rows[destination].stock, crop.resource, yield_grams);
     }
+    // Straw is what the field leaves behind, and it is a feed of its own —
+    // own and free, a reserve ration with a lowered effect but plainly there
+    // in a winter manger (design db crop.straw_ratio).
+    if (crop.straw_ratio > 0.0F) {
+      const std::uint32_t straw_store = FindStorageRow(current, config_);
+      if (straw_store != kNoRow) {
+        AddToStock(current.units.rows[straw_store].stock,
+                   config_.straw_resource,
+                   static_cast<Grams>(static_cast<float>(yield_grams) * crop.straw_ratio));
+      }
+    }
+    // The district's plan accrues as the grain is reaped: it is "just a
+    // number" in phase 1 (plan §11), a share of the year's own harvest,
+    // handed over at the year's turn with no district mechanics behind it.
+    if (config_.plan_grain_share > 0.0F && IsPlanGrain(crop.resource)) {
+      AddToStock(current.plan.due,
+                 crop.resource,
+                 static_cast<Grams>(static_cast<float>(yield_grams) * config_.plan_grain_share));
+    }
     // Fertility bookkeeping (§2, §7, §8): the crop's delta, the manure
     // bonus, the growing repeat penalty.
     if (crop.is_perennial) {
@@ -432,300 +397,20 @@ class ProductionSystem final : public IProductionSystem {
     field.phase = FieldPhase::kIdle;
   }
 
-  /// Feeding and manure, daily. Herds at units eat from their unit's stock
-  /// (shortage has no consequence yet — a stage-6 STUB); herds at family
-  /// yards feed themselves and their manure leaks to the owners (start
-  /// canon), so neither is booked. Manure flows to the compost heap,
-  /// clamped at its capacity.
-  void RunHerds(WorldState& current) const {
-    const bool winter = current.calendar.season == Season::kWinter;
-    const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
-    for (const HerdRow& herd : current.herds.rows) {
-      if (herd.unit.value == kInvalidEntityIdValue || herd.kind.value >= config_.livestock.size()) {
-        continue;
-      }
-      const LivestockDef& kind = config_.livestock[herd.kind.value];
-      const std::uint32_t home = FindRow(current.units, herd.unit);
-      if (home == kNoRow) {
-        continue;
-      }
-      const auto heads = static_cast<float>(herd.adult_count);
-      if (winter && kind.hay_kg_per_day_winter > 0.0F) {
-        const auto need =
-            static_cast<Grams>(kind.hay_kg_per_day_winter * heads) * kGramsPerKilogram;
-        const Grams have = StockOf(current.units.rows[home].stock, config_.hay_resource);
-        AddToStock(
-            current.units.rows[home].stock, config_.hay_resource, -(have < need ? have : need));
-      }
-      if (heap != kNoRow && kind.manure_kg_per_year > 0.0F) {
-        // Multiply into grams BEFORE the cast: a hen makes far less than a
-        // kilogram a day, and casting kilograms first truncated her to zero
-        // forever.
-        const auto daily =
-            static_cast<Grams>(kind.manure_kg_per_year * heads / static_cast<float>(kDaysPerYear) *
-                               static_cast<float>(kGramsPerKilogram));
-        UnitRow& compost = current.units.rows[heap];
-        const Grams capacity = StorageCapacityGrams(compost, config_);
-        const Grams held = StockOf(compost.stock, config_.manure_resource);
-        const Grams room = capacity > held ? capacity - held : 0;
-        AddToStock(compost.stock, config_.manure_resource, daily < room ? daily : room);
-      }
-    }
-  }
-
   ProductionConfig config_;
 
   FieldGrowthPhase phase_;
 };
-
-/// @brief ResourceId by key of the resources table; invalid when absent.
-ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
-  if (resources == nullptr) {
-    return ResourceId{};
-  }
-  const std::uint32_t row = resources->FindRowByKey(key);
-  return row == kNoTableRow ? ResourceId{} : ResourceId{static_cast<std::uint16_t>(row)};
-}
-
-/// @brief Reads a cell as float with `fallback` for an empty cell; a present
-/// non-numeric cell fails the parse. The value is range-checked here, at
-/// parse time: everything downstream casts these numbers to integers or
-/// multiplies them into grams, and a NaN, an infinity or an absurd
-/// magnitude would be undefined behaviour there instead of a clear error.
-bool CellOrDefault(const ITable& table,
-                   std::uint32_t row,
-                   std::uint32_t column,
-                   float fallback,
-                   float low,
-                   float high,
-                   float& value,
-                   std::string& error) {
-  if (column == kNoTableColumn || table.CellText(row, column).empty()) {
-    value = fallback;
-    return true;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    error = "a cell is not a number";
-    return false;
-  }
-  // Written as a positive test so that NaN fails it: NaN compares false
-  // against everything, including itself.
-  if (!(*cell >= low && *cell <= high)) {
-    error = "a cell is out of range";
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
-bool ParseCrops(const ITable& table,
-                const ITable* resources,
-                std::vector<CropDef>& crops,
-                std::string& error) {
-  const std::uint32_t resource_col = table.FindColumn("resource");
-  if (resource_col == kNoTableColumn) {
-    error = "crops: no resource column";
-    return false;
-  }
-
-  struct Column {
-    const char* name;
-    float fallback;
-    float low;  ///< Inclusive bounds, checked at parse time.
-    float high;
-  };
-
-  // Months are 1..12 here, so the shift to the core's 0-based Month enum
-  // below can never produce a negative value.
-  constexpr std::array<Column, 15> kColumns = {{{"is_winter", 0, 0, 1},
-                                                {"is_perennial", 0, 0, 1},
-                                                {"sow_from_month", 1, 1, 12},
-                                                {"sow_to_month", 1, 1, 12},
-                                                {"sow_min_temp_c", 0, -50, 50},
-                                                {"harvest_from_month", 1, 1, 12},
-                                                {"harvest_to_month", 1, 1, 12},
-                                                {"harvest_min_temp_c", 0, -50, 50},
-                                                {"yield_kg_per_ha", 0, 0, 1e6F},
-                                                {"sowing_norm_kg_per_ha", 0, 0, 1e6F},
-                                                {"fertility_delta", 0, -100, 100},
-                                                {"drought_sensitivity", 0, 0, 1},
-                                                {"wet_sensitivity", 0, 0, 1},
-                                                // REAL man-days per hectare, as the
-                                                // agronomy books write them; the grain
-                                                // anchor 3 + 8 is the default until the
-                                                // columns exist.
-                                                {"sow_days_per_ha", 3, 0, 1000},
-                                                {"harvest_days_per_ha", 8, 0, 1000}}};
-  std::array<std::uint32_t, kColumns.size()> columns{};
-  for (std::uint32_t index = 0; index < kColumns.size(); ++index) {
-    columns[index] = table.FindColumn(kColumns[index].name);
-  }
-  crops.resize(table.RowCount());
-  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    std::array<float, kColumns.size()> values{};
-    for (std::uint32_t index = 0; index < kColumns.size(); ++index) {
-      if (!CellOrDefault(table,
-                         row,
-                         columns[index],
-                         kColumns[index].fallback,
-                         kColumns[index].low,
-                         kColumns[index].high,
-                         values[index],
-                         error)) {
-        error = "crops: " + error;
-        return false;
-      }
-    }
-    CropDef& crop = crops[row];
-    crop.resource = ResourceByKey(resources, table.CellText(row, resource_col));
-    crop.is_winter = values[0] != 0.0F;
-    crop.is_perennial = values[1] != 0.0F;
-    // Table months are human 1..12; the core's Month enum is 0-based.
-    crop.sow_from_month = static_cast<std::uint8_t>(values[2] - 1.0F);
-    crop.sow_to_month = static_cast<std::uint8_t>(values[3] - 1.0F);
-    crop.sow_min_temp_c = values[4];
-    crop.harvest_from_month = static_cast<std::uint8_t>(values[5] - 1.0F);
-    crop.harvest_to_month = static_cast<std::uint8_t>(values[6] - 1.0F);
-    crop.harvest_min_temp_c = values[7];
-    crop.yield_kg_per_ha = values[8];
-    crop.sowing_norm_kg_per_ha = values[9];
-    crop.fertility_delta = values[10];
-    crop.drought_sensitivity = values[11];
-    crop.wet_sensitivity = values[12];
-    crop.sow_days_per_ha = values[13] / kRealDaysPerGameDay;
-    crop.harvest_days_per_ha = values[14] / kRealDaysPerGameDay;
-  }
-  return true;
-}
-
-bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, std::string& error) {
-  const std::uint32_t manure_col = table.FindColumn("manure_kg_per_year");
-  const std::uint32_t hay_col = table.FindColumn("hay_kg_per_day_winter");
-  const std::uint32_t grain_col = table.FindColumn("grain_kg_per_day");
-  livestock.resize(table.RowCount());
-  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    LivestockDef& kind = livestock[row];
-    if (!CellOrDefault(table, row, manure_col, 0, 0, 1e6F, kind.manure_kg_per_year, error) ||
-        !CellOrDefault(table, row, hay_col, 0, 0, 1e4F, kind.hay_kg_per_day_winter, error) ||
-        !CellOrDefault(table, row, grain_col, 0, 0, 1e4F, kind.grain_kg_per_day, error)) {
-      error = "livestock: " + error;
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::string& error) {
-  const std::uint32_t storage_col = table.FindColumn("storage_capacity_kg");
-  const std::uint32_t livestock_col = table.FindColumn("livestock_capacity_head");
-  types.resize(table.RowCount());
-  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    UnitTypeDef& type = types[row];
-    if (!CellOrDefault(table, row, storage_col, 0, 0, 1e9F, type.storage_capacity_kg, error) ||
-        !CellOrDefault(
-            table, row, livestock_col, 0, 0, 1e6F, type.livestock_capacity_head, error)) {
-      error = "unit_types: " + error;
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& error) {
-  const std::uint32_t value_col = table.FindColumn("value");
-  if (value_col == kNoTableColumn) {
-    error = "farming: no value column";
-    return false;
-  }
-
-  struct Entry {
-    const char* key;
-    float* value;
-  };
-
-  const Entry entries[] = {{"fertility_neutral", &farming.fertility_neutral},
-                           {"manure_norm_kg_per_ha", &farming.manure_norm_kg_per_ha},
-                           {"manure_fertility_bonus", &farming.manure_fertility_bonus},
-                           {"fallow_recovery", &farming.fallow_recovery},
-                           {"repeat_penalty_per_year", &farming.repeat_penalty_per_year},
-                           {"drought_temp_c", &farming.drought_temp_c},
-                           {"stress_per_day", &farming.stress_per_day},
-                           {"stress_cap", &farming.stress_cap}};
-  for (const Entry& entry : entries) {
-    const std::uint32_t row = table.FindRowByKey(entry.key);
-    const std::optional<float> cell = table.CellReal(row, value_col);
-    if (row == kNoTableRow || !cell) {
-      error = std::string("farming: row '") + entry.key + "' is missing or not numeric";
-      return false;
-    }
-    // Positive test: NaN and the infinities fail it (see CellOrDefault).
-    if (!(*cell >= -1.0e6F && *cell <= 1.0e6F)) {
-      error = std::string("farming: value of '") + entry.key + "' is out of range";
-      return false;
-    }
-    *entry.value = *cell;
-  }
-  // The two labor norms are optional while the column set grows: their
-  // defaults are the canonical 10 and 3 real man-days per hectare.
-  const Entry optional[] = {{"plow_days_per_ha", &farming.plow_days_per_ha},
-                            {"harrow_days_per_ha", &farming.harrow_days_per_ha}};
-  for (const Entry& entry : optional) {
-    const std::uint32_t row = table.FindRowByKey(entry.key);
-    if (row == kNoTableRow) {
-      continue;
-    }
-    const std::optional<float> cell = table.CellReal(row, value_col);
-    const bool sane = cell && *cell >= 0.0F && *cell <= 1000.0F;
-    if (!sane) {
-      error = std::string("farming: value of '") + entry.key + "' is missing or out of range";
-      return false;
-    }
-    *entry.value = *cell / kRealDaysPerGameDay;  // the table keeps REAL man-days
-  }
-  if (!(farming.fertility_neutral > 0.0F)) {
-    error = "farming: fertility_neutral must be positive";
-    return false;
-  }
-  return true;
-}
 
 }  // namespace
 
 std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables) {
   ProductionConfig config;
   std::string error;
-  const ITable* resources = tables.FindTable("resources");
-  if (const ITable* crops = tables.FindTable("crops")) {
-    if (!ParseCrops(*crops, resources, config.crops, error)) {
-      LogError(error);
-      return nullptr;
-    }
+  if (!ParseProductionConfig(tables, config, error)) {
+    LogError(error);
+    return nullptr;
   }
-  if (const ITable* livestock = tables.FindTable("livestock")) {
-    if (!ParseLivestock(*livestock, config.livestock, error)) {
-      LogError(error);
-      return nullptr;
-    }
-  }
-  if (const ITable* unit_types = tables.FindTable("unit_types")) {
-    if (!ParseUnitTypes(*unit_types, config.unit_types, error)) {
-      LogError(error);
-      return nullptr;
-    }
-    const std::uint32_t heap = unit_types->FindRowByKey("compost_heap");
-    if (heap != kNoTableRow) {
-      config.compost_heap_type = UnitTypeId{static_cast<std::uint16_t>(heap)};
-    }
-  }
-  if (const ITable* farming = tables.FindTable("farming")) {
-    if (!ParseFarming(*farming, config.farming, error)) {
-      LogError(error);
-      return nullptr;
-    }
-  }
-  config.manure_resource = ResourceByKey(resources, "manure");
-  config.hay_resource = ResourceByKey(resources, "hay");
   return std::make_unique<ProductionSystem>(config);
 }
 

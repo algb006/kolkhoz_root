@@ -4,3 +4,7 @@ day_zero_weekday,monday
 # the designed start (start canon: 80 residents, 21 yards)
 start_population,80
 start_households,21
+# доля сбора зерна, которую забирает район (Оплата труда, план §11).
+# Якорь v4: 28%. Механики района в фазе 1 нет — план это просто число:
+# копится по мере уборки, сдаётся на обороте года
+plan_grain_share_percent,28
