@@ -190,26 +190,40 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
     }
     *entry.value = *cell;
   }
-  // The two labor norms are optional while the column set grows: their
-  // defaults are the canonical 10 and 3 real man-days per hectare.
-  const Entry optional[] = {{"plow_days_per_ha", &farming.plow_days_per_ha},
-                            {"harrow_days_per_ha", &farming.harrow_days_per_ha}};
-  for (const Entry& entry : optional) {
-    const std::uint32_t row = table.FindRowByKey(entry.key);
-    if (row == kNoTableRow) {
-      continue;
-    }
-    const std::optional<float> cell = table.CellReal(row, value_col);
-    const bool sane = cell && *cell >= 0.0F && *cell <= 1000.0F;
-    if (!sane) {
-      error = std::string("farming: value of '") + entry.key + "' is missing or out of range";
-      return false;
-    }
-    *entry.value = *cell / kRealDaysPerGameDay;  // the table keeps REAL man-days
-  }
   if (!(farming.fertility_neutral > 0.0F)) {
     error = "farming: fertility_neutral must be positive";
     return false;
+  }
+  return true;
+}
+
+/// Ploughing and harrowing, from the design db's own table of field phases.
+///
+/// They lived in the hand-written farming.csv for a month, and only because
+/// they belong to no crop: sowing and harvest are per culture, but breaking
+/// the sod is the same work on any land. A number that is COMMON is the kind
+/// that goes missing — the specific gets written down, the general gets
+/// taken for granted and ends up in a CSV comment (boss parcel 2026-08-31).
+///
+/// A phase whose `from_crop` is set takes its norm from the crop row instead
+/// and is skipped here; ploughing and harrowing are the only two that do not.
+bool ParseFieldPhases(const ITable& table, FarmingConfig& farming, std::string& error) {
+  struct Phase {
+    const char* key;
+    float* value;
+  };
+
+  const std::array<Phase, 2> phases = {
+      {{"plough", &farming.plow_days_per_ha}, {"harrow", &farming.harrow_days_per_ha}}};
+  const std::uint32_t days_col = table.FindColumn("labor_days_per_ha");
+  for (const Phase& phase : phases) {
+    float days = *phase.value * kRealDaysPerGameDay;  // back to REAL for the read
+    if (!CellOrDefault(
+            table, table.FindRowByKey(phase.key), days_col, days, 0.0F, 1000.0F, days, error)) {
+      error = std::string("field_phases: ") + phase.key + ": " + error;
+      return false;
+    }
+    *phase.value = days / kRealDaysPerGameDay;  // the table keeps REAL man-days
   }
   return true;
 }
@@ -518,6 +532,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   if (const ITable* farming = tables.FindTable("farming")) {
     if (!ParseFarming(*farming, config.farming, error) ||
         !ParseHerdKnobs(*farming, config.farming, error)) {
+      return false;
+    }
+  }
+  if (const ITable* field_phases = tables.FindTable("field_phases")) {
+    if (!ParseFieldPhases(*field_phases, config.farming, error)) {
       return false;
     }
   }

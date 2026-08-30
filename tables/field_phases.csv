@@ -1,0 +1,11 @@
+# generated from db/design.db — do not edit by hand
+# REAL man-days per hectare, the same on any land and any crop
+# from_crop=1: the norm comes from the crop row instead (sowing, harvest)
+# grain costs 10 + 3 + 3 + 8 = 24 man-days a hectare over a year
+key,title,labor_days_per_ha,from_crop
+plough,Вспашка,10,0
+harrow,Боронование,3,0
+sow,Посев,,1
+grow,Рост,0,0
+harvest,Уборка,,1
+idle,Простой,0,0
