@@ -48,6 +48,16 @@ struct Outcome {
   float mean_health = 0.0F;
   float worst_year_satiety = 100.0F;
   float last_year_satiety = 0.0F;
+
+  /// The leanest day the settlement saw, and the most people it ever had
+  /// under the health threshold at once. THESE are what the criterion is
+  /// measured on: a peasant year is not level, and its average describes
+  /// neither the plenty after the harvest nor the empty spring (metrics
+  /// design §8, rule of 2026-08-31). A LEVEL satiety curve is a symptom, not
+  /// a success — it means food arrives faster than it is eaten and is
+  /// piling up somewhere.
+  float leanest_day_satiety = 100.0F;
+  std::uint32_t most_hungry_at_once = 0;
   float life_expectancy = 0.0F;
   std::uint32_t people = 0;
   std::uint32_t hungry = 0;   ///< Under the health-loss threshold at the end.
@@ -132,6 +142,26 @@ Outcome RunYears(const std::filesystem::path& tables_root, std::uint32_t years) 
     }
     const auto people = static_cast<std::uint32_t>(day.residents.rows.size());
     outcome.lowest_people = people < outcome.lowest_people ? people : outcome.lowest_people;
+    float today_total = 0.0F;
+    std::uint32_t today_hungry = 0;
+    for (const core::ResidentRow& resident : day.residents.rows) {
+      today_total += resident.satiety;
+      today_hungry += resident.satiety < 40.0F ? 1U : 0U;
+    }
+    // The FIRST year is excluded from the lean-season measures on purpose.
+    // The farm is handed over as a ruin in the winter, with a larder that
+    // reaches the first cut and no further; its first spring is meant to
+    // hurt, and the design says so (difficulty design §4). What the criterion
+    // asks about is a working kolkhoz, not the year it stopped being a ruin.
+    if (day.calendar.date.year > 1) {
+      if (people > 0) {
+        const float today_mean = today_total / static_cast<float>(people);
+        outcome.leanest_day_satiety =
+            today_mean < outcome.leanest_day_satiety ? today_mean : outcome.leanest_day_satiety;
+      }
+      outcome.most_hungry_at_once =
+          today_hungry > outcome.most_hungry_at_once ? today_hungry : outcome.most_hungry_at_once;
+    }
     for (const float year_mean : day.vitals.satiety_year_means) {
       outcome.worst_year_satiety =
           year_mean < outcome.worst_year_satiety ? year_mean : outcome.worst_year_satiety;
@@ -158,8 +188,10 @@ void Report(const char* label, const Outcome& outcome) {
   std::cout << "food_year: " << label << " — " << outcome.people << " residents, mean satiety "
             << outcome.mean_satiety << ", mean health " << outcome.mean_health << ", worst year "
             << outcome.worst_year_satiety << ", last year " << outcome.last_year_satiety
-            << ", life expectancy " << outcome.life_expectancy << ", " << outcome.hungry
-            << " under 40, population never below " << outcome.lowest_people << '\n';
+            << ", life expectancy " << outcome.life_expectancy << ", leanest day "
+            << outcome.leanest_day_satiety << ", worst " << outcome.most_hungry_at_once
+            << " hungry at once, " << outcome.hungry << " under 40 at the end, population never "
+            << "below " << outcome.lowest_people << '\n';
 }
 
 }  // namespace
@@ -179,9 +211,21 @@ int main() {
   const Outcome bad = RunYears(bad_root, kYears);
   Report("nothing issued", bad);
 
-  // The village feeds itself under sound management.
+  // WHAT THIS CRITERION IS MEASURED ON, and it changed on 2026-08-31 after
+  // the arithmetic of the whole balance was added up for the first time.
+  //
+  // Not the yearly mean. A peasant year is not level: after the harvest the
+  // plenty is real, by spring the bins are empty, and the average between
+  // them describes neither. The design's claim is about the LEAN SEASON —
+  // how deep it goes and how many households it reaches (metrics design §8).
+  // The mean is printed and not asserted on.
+  //
+  // A LEVEL satiety curve would be a symptom rather than a success: it would
+  // mean food arrives faster than it is eaten and is piling up somewhere.
+  // That is not a hypothetical — a level curve is exactly what 241 tonnes of
+  // hay in the larders looked like before anyone added the numbers up.
   failures += Expect(good.mean_satiety >= 65.0F,
-                     "with the shipped tables the village is fed (mean satiety >= 65)");
+                     "with the shipped tables the village is fed on the year (reference)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -192,8 +236,12 @@ int main() {
                      "no single year averages into a collapse, spring gap and all");
   failures += Expect(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                      "and the settlement is not sliding year on year");
+  failures +=
+      Expect(good.leanest_day_satiety >= 25.0F, "the lean season is a dip and not a collapse");
+  failures += Expect(good.most_hungry_at_once * 10U <= good.people * 7U,
+                     "and it never takes the whole village at once");
   failures += Expect(good.hungry * 20U <= good.people,
-                     "and hardly anyone is left under the health threshold");
+                     "the year ends with hardly anyone under the threshold");
 
   // And it does go hungry when the kolkhoz hands out nothing.
   //
@@ -211,8 +259,10 @@ int main() {
   // handing out nothing would be a model that had forgotten the yards.
   failures +=
       Expect(bad.mean_satiety < good.mean_satiety - 5.0F, "striking out the issue norms is felt");
-  failures += Expect(bad.worst_year_satiety < good.worst_year_satiety - 15.0F,
+  failures += Expect(bad.leanest_day_satiety < good.leanest_day_satiety - 8.0F,
                      "and the lean season is a different animal without the issue");
+  failures += Expect(bad.most_hungry_at_once > good.most_hungry_at_once,
+                     "reaching households the shipped tables spare");
   failures += Expect(bad.mean_health < good.mean_health,
                      "hunger reaches health, which is the only way it reaches anyone");
   failures += Expect(bad.life_expectancy < good.life_expectancy,
