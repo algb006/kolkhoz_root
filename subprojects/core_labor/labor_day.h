@@ -80,7 +80,19 @@ float FieldSkillBlend(const LaborConfig& config, const ResidentRow& resident);
 /// @note Satiety and alcoholism belong in this product by design
 /// (life-cycle §1) and are left out on purpose while they are STUB
 /// constants — a constant factor would only rescale the balance.
-float ResidentEfficiency(const LaborConfig& config, const ResidentRow& resident, float age_years);
+/// @brief The age at which output starts to decline: the settlement's life
+/// expectancy less labor's own margin (decision 105). A derivative, never a
+/// stored field — one fact, one home, and the home of life expectancy is
+/// WorldState::vitals.
+float AgingFromYears(const LaborConfig& config, const WorldState& world);
+
+/// @brief A worker's output as a multiple of the reference worker's day.
+/// @param aging_from_years From AgingFromYears above; passed in rather than
+///        read here, so that this stays a pure function of its arguments.
+float ResidentEfficiency(const LaborConfig& config,
+                         const ResidentRow& resident,
+                         float age_years,
+                         float aging_from_years);
 
 /// @brief Rest lost for `norm_days` of delivered work of `kind`, in metric
 /// points. Stamina and sportiness soften it; they never raise output.

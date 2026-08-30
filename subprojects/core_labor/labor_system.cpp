@@ -232,6 +232,7 @@ class LaborSystem final : public ILaborSystem {
   /// left out entirely: child labor (life-cycle §7) is deferred.
   std::vector<AssignmentCandidate> CollectCandidates(const WorldState& current) const {
     const std::vector<bool> horse_locked = MarkHorseHosts(current);
+    const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;
     candidates.reserve(current.residents.rows.size());
     for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
@@ -244,7 +245,7 @@ class LaborSystem final : public ILaborSystem {
       AssignmentCandidate candidate;
       candidate.resident_row = row;
       candidate.home = home;
-      candidate.efficiency = ResidentEfficiency(config_, resident, age);
+      candidate.efficiency = ResidentEfficiency(config_, resident, age, aging_from);
       candidate.rest = resident.rest;
       candidate.skill = FieldSkillBlend(config_, resident);
       candidate.horse_locked = horse_locked[row];
@@ -349,7 +350,8 @@ class LaborSystem final : public ILaborSystem {
       }
       resident.work.hours_away_today += worked;
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
-      const float efficiency = ResidentEfficiency(config_, resident, age);
+      const float efficiency =
+          ResidentEfficiency(config_, resident, age, AgingFromYears(config_, current));
       float delivered = worked * efficiency / config_.standard_day_hours;
       delivered = delivered > *seam ? *seam : delivered;
       if (delivered <= 0.0F) {

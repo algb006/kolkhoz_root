@@ -110,14 +110,14 @@ fish_kg_per_yard_year_epoch_3,100,,,,
 # трудодней (Оплата труда §5: хлеб, картошка, немного молока). ~2.7 кг
 # зерн. экв. против взрослой нормы 6.25 — это «не умереть», а не «поесть».
 rye,,3.3,bread,,
-wheat,,3.3,bread,4,
-oat,,3.3,bread,6,2
-barley,,3.3,bread,4,
+wheat,,3.3,bread,,
+oat,,3.3,bread,,2
+barley,,3.3,bread,,
 buckwheat,,3.3,bread,,
 pea,,3.3,bread,,
-potato,,0.77,potato,8,3
+potato,,0.77,potato,14,3
 vegetables,,0.25,vegetables,,
-milk,,0.64,dairy,,
+milk,,0.64,dairy,28,1
 meat,,2.5,meat_and_egg,,
 egg,,1.4,meat_and_egg,,
 fish,,0.9,fish,,

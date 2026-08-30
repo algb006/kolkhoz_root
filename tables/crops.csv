@@ -2,20 +2,21 @@
 # months are human 1..12; temperatures in degrees Celsius
 # sow_days_per_ha and harvest_days_per_ha are REAL man-days
 # greenhouse crops are left out: they obey no field calendar
-key,title,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,wet_sensitivity,sow_days_per_ha,harvest_days_per_ha
-rye_winter,Рожь озимая,rye,1,0,8,9,8,4,7,7,5,850,180,-1,0.2,0.3,3,8
-wheat_winter,Пшеница озимая,wheat,1,0,8,9,10,5,7,7,5,850,180,-3,0.3,0.3,3,8
-wheat_spring,Пшеница яровая,wheat,0,0,4,5,5,5,8,9,2,850,180,-3,0.4,0.3,3,8
-oat,Овёс,oat,0,0,4,4,4,4,8,8,2,850,180,-1,0.2,0.2,3,8
-barley,Ячмень,barley,0,0,4,5,5,5,8,8,2,850,180,-2,0.3,0.3,3,8
-buckwheat,Гречиха,buckwheat,0,0,5,5,12,10,9,9,5,600,80,-1,0.7,0.3,3,8
-pea,Горох,pea,0,0,4,4,4,4,7,8,2,700,180,2,0.3,0.3,3,8
-potato,Картофель,potato,0,0,5,5,8,8,9,9,5,2500,2500,-2,0.8,0.8,12,25
-cabbage,Капуста,vegetables,0,0,5,5,8,5,10,10,-3,3000,0,-2,0.8,0.6,5,25
-carrot_beet,"Морковь, свёкла столовая",vegetables,0,0,5,5,5,5,9,10,0,2200,0,-2,0.6,0.7,5,25
-onion_garlic,"Лук, чеснок",vegetables,0,0,4,5,5,5,8,8,2,1200,0,-1,0.4,0.4,5,20
-flax,Лён,flax,0,0,5,5,7,6,8,8,2,400,0,-4,0.3,0.2,2,60
-clover,Клевер,hay,0,1,4,5,5,4,6,8,2,2200,0,4,0.3,0.2,2,8
-timothy,Тимофеевка и травосмеси,hay,0,1,4,5,5,4,6,8,2,2000,0,3,0.3,0.2,2,8
-fodder_beet,"Кормовая свёкла, турнепс",fodder_beet,0,0,5,5,5,5,10,10,0,3000,0,-2,0.6,0.7,2,6
-maize_silage,Кукуруза на силос,green_mass,0,0,5,5,12,10,9,9,5,4000,0,-3,0.5,0.4,2,6
+# straw_ratio: kilograms of straw per kilogram of grain, 0 for the rest
+key,title,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio
+rye_winter,Рожь озимая,rye,1,0,8,9,8,4,7,7,5,850,180,-1,0.2,0.3,3,8,1.5
+wheat_winter,Пшеница озимая,wheat,1,0,8,9,10,5,7,7,5,850,180,-3,0.3,0.3,3,8,1.3
+wheat_spring,Пшеница яровая,wheat,0,0,4,5,5,5,8,9,2,850,180,-3,0.4,0.3,3,8,1.3
+oat,Овёс,oat,0,0,4,4,4,4,8,8,2,850,180,-1,0.2,0.2,3,8,1.1
+barley,Ячмень,barley,0,0,4,5,5,5,8,8,2,850,180,-2,0.3,0.3,3,8,1
+buckwheat,Гречиха,buckwheat,0,0,5,5,12,10,9,9,5,600,80,-1,0.7,0.3,3,8,0.8
+pea,Горох,pea,0,0,4,4,4,4,7,8,2,700,180,2,0.3,0.3,3,8,0
+potato,Картофель,potato,0,0,5,5,8,8,9,9,5,2500,2500,-2,0.8,0.8,12,25,
+cabbage,Капуста,vegetables,0,0,5,5,8,5,10,10,-3,3000,0,-2,0.8,0.6,5,25,
+carrot_beet,"Морковь, свёкла столовая",vegetables,0,0,5,5,5,5,9,10,0,2200,0,-2,0.6,0.7,5,25,
+onion_garlic,"Лук, чеснок",vegetables,0,0,4,5,5,5,8,8,2,1200,0,-1,0.4,0.4,5,20,
+flax,Лён,flax,0,0,5,5,7,6,8,8,2,400,0,-4,0.3,0.2,2,60,
+clover,Клевер,hay,0,1,4,5,5,4,6,8,2,2200,0,4,0.3,0.2,2,8,
+timothy,Тимофеевка и травосмеси,hay,0,1,4,5,5,4,6,8,2,2000,0,3,0.3,0.2,2,8,
+fodder_beet,"Кормовая свёкла, турнепс",fodder_beet,0,0,5,5,5,5,10,10,0,3000,0,-2,0.6,0.7,2,6,
+maize_silage,Кукуруза на силос,green_mass,0,0,5,5,12,10,9,9,5,4000,0,-3,0.5,0.4,2,6,

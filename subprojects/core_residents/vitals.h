@@ -13,23 +13,29 @@
 /// nutrition moves — and nutrition is the settlement's mean satiety, which
 /// has to be accumulated day by day before any year can be averaged.
 ///
-/// Stage 6 task O1 lays the bookkeeping; the recompute that turns the window
-/// into VitalsState::life_expectancy_years is task O4.
+/// Stage 6 task O1 laid the bookkeeping; task O4 added the yearly recompute
+/// that turns the window into VitalsState::life_expectancy_years.
 
 #ifndef CORE_RESIDENTS_VITALS_H_
 #define CORE_RESIDENTS_VITALS_H_
 
 #include "core_common/world_state.h"
+#include "life_config.h"
 
 namespace core {
 
-/// @brief Folds one day into the vitals window: the finished year is
-/// averaged into VitalsState::satiety_year_means on the year's first day,
-/// then today's settlement mean satiety joins the running sum.
+/// @brief Folds one day into the vitals window and, on the year's first day,
+/// recomputes life expectancy from it.
+///
+/// The order inside is the calendar's: the finished year is averaged into
+/// VitalsState::satiety_year_means, life expectancy is recomputed over the
+/// three-year window that now includes it, and only then does today — the
+/// first day of the new year — join the running sum.
+///
 /// @pre Called once per day boundary, from the sequential decisions slot.
 /// @note A settlement with nobody in it contributes no day at all, rather
 ///       than a zero: an empty village is not a starving one.
-void AccumulateVitals(WorldState& current);
+void AccumulateVitals(const LifeConfig& config, WorldState& current);
 
 }  // namespace core
 

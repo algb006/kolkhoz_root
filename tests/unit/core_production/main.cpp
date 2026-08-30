@@ -162,6 +162,52 @@ int CheckFeeding() {
   return failures;
 }
 
+/// The two checks the design asked for by name once the cap existed: a horse
+/// takes half its ration in oats and the rest in hay, and a cow with no hay
+/// cannot be fed at all however much grain is standing in the barn.
+int CheckFeedCaps() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  // Resource 0 keeps its feed value of 1; add hay as resource 1 with the
+  // same value so the arithmetic stays exact and the shares are readable.
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};  // no produce in the way
+  config.feed_links = {core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                         .resource = core::ResourceId{0},
+                                         .reserve = 0,
+                                         .max_share = 0.5F},
+                       core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                         .resource = core::ResourceId{1},
+                                         .reserve = 0,
+                                         .max_share = 1.0F}};
+
+  // Four heads need four units; the oats may cover only two of them.
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.units.rows[0].stock[1] = 100 * kKilo;
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    failures += Expect(StoreOf(world, 0) == 98 * kKilo,
+                       "the capped feed covers only its half of the ration");
+    failures += Expect(StoreOf(world, 1) == 98 * kKilo, "and the uncapped feed covers the rest");
+    failures += Expect(world.herds.rows[0].unfed_days == 0.0F, "so the herd is fed");
+  }
+
+  // A full granary and an empty hayloft: the herd goes hungry anyway. That
+  // is a winter without hay, and it is meant to hurt.
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    failures +=
+        Expect(StoreOf(world, 0) == 998 * kKilo, "the capped feed still gives only its half");
+    failures += Expect(world.herds.rows[0].unfed_days == 1.0F,
+                       "and no amount of it makes up for the missing half");
+  }
+  return failures;
+}
+
 int CheckBilletingAndProduce() {
   int failures = 0;
   const core::ProductionConfig config = MakeHerdConfig();
@@ -301,6 +347,7 @@ int main() {
              "stubs leave the world unchanged");
 
   failures += CheckFeeding();
+  failures += CheckFeedCaps();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();

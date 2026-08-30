@@ -248,7 +248,7 @@ class ResidentsSystem final : public IResidentsSystem {
     RunMarriages(current, day);
     RunMigration(current, day);
     RunFamilyExchange(food_, config_.life_speedup, current);
-    AccumulateVitals(current);
+    AccumulateVitals(config_, current);
   }
 
  private:
@@ -310,6 +310,43 @@ class ResidentsSystem final : public IResidentsSystem {
     }
   }
 
+  /// The band multiplier of decision 106: a household's satisfaction scales
+  /// how readily it has children. The multipliers are canon; where the bands
+  /// fall is ASSUMPTION and lives in life.csv.
+  float BirthMultiplier(Metric satisfaction) const {
+    const BirthConditionsConfig& births = config_.birth_conditions;
+    for (std::uint32_t band = 0; band < births.satisfaction_bounds.size(); ++band) {
+      if (satisfaction < births.satisfaction_bounds[band]) {
+        return births.multipliers[band];
+      }
+    }
+    return births.multipliers.back();
+  }
+
+  /// The two hard stops of decision 106. They are STOPS, not scales: a
+  /// hungry household and a sick woman do not have fewer children, they have
+  /// none until the condition lifts. Pregnancy itself is not modelled (the
+  /// cohort model has no room for it), so the stop simply cancels the draw.
+  ///
+  /// Family satiety here is the members' own, averaged — not the satiety
+  /// COMPONENT, which the variety ceiling cuts down: a family living on
+  /// nothing but bread is monotonous, not starving.
+  bool BirthsStopped(const WorldState& current, const ResidentRow& mother) const {
+    const BirthConditionsConfig& births = config_.birth_conditions;
+    if (mother.health < births.mother_health_stop) {
+      return true;
+    }
+    float total = 0.0F;
+    std::uint32_t counted = 0;
+    for (const ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value == mother.family.value) {
+        total += resident.satiety;
+        ++counted;
+      }
+    }
+    return counted > 0 && total / static_cast<float>(counted) < births.satiety_stop;
+  }
+
   void RunBirths(WorldState& current, const EpochDemography& epoch, SimDay day) {
     // Children per family are spread over the fertile window, as in the
     // reference run: rate per game year = children / fertile game years.
@@ -324,8 +361,18 @@ class ResidentsSystem final : public IResidentsSystem {
         continue;
       }
       const float age = BiologicalAgeYears(config_, resident.birth_day, day);
-      if (age >= config_.fertility_from_years && age < config_.fertility_to_years &&
-          NextRandomUnitFloat(current.rng) < daily_chance) {
+      if (age < config_.fertility_from_years || age >= config_.fertility_to_years) {
+        continue;
+      }
+      // Decision 106: conditions scale the rate and hunger stops it outright.
+      // The draw is taken either way so that the RNG sequence does not depend
+      // on how many households happen to be hungry — determinism first.
+      const std::uint32_t family_row = FindRow(current.families, resident.family);
+      const float multiplier =
+          family_row == kNoRow ? 1.0F
+                               : BirthMultiplier(current.families.rows[family_row].satisfaction);
+      const bool drawn = NextRandomUnitFloat(current.rng) < daily_chance * multiplier;
+      if (drawn && !BirthsStopped(current, resident)) {
         mothers.push_back(row);
       }
     }
@@ -378,6 +425,37 @@ class ResidentsSystem final : public IResidentsSystem {
     return shared_mother || shared_father || parent_child;
   }
 
+  /// A new household is not conjured out of nothing. The couple comes from
+  /// two existing yards, and food comes with them — the dowry is the oldest
+  /// mechanism there is, and here it is also the difference between a
+  /// village that grows and one that does not.
+  ///
+  /// Without it every wedding created a family with an EMPTY larder, living
+  /// on the nets and the monthly issue until the garden paid in September.
+  /// Those families sat under the hunger stop of decision 106 through most
+  /// of their fertile years, and since the newly-weds are exactly the people
+  /// who would have children, the settlement's whole curve halved: 672 by
+  /// year 33 against the reference run's 1500. The share is ASSUMPTION; that
+  /// something must move is not.
+  static void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
+    const std::uint32_t source = FindRow(current.families, from);
+    const std::uint32_t target = FindRow(current.families, to);
+    if (source == kNoRow || target == kNoRow || source == target) {
+      return;
+    }
+    constexpr float kDowryShare = 0.25F;
+    ResourceAmounts& parents = current.families.rows[source].pantry;
+    ResourceAmounts& newlyweds = current.families.rows[target].pantry;
+    if (newlyweds.size() < parents.size()) {
+      newlyweds.resize(parents.size(), 0);
+    }
+    for (std::uint32_t index = 0; index < parents.size(); ++index) {
+      const auto share = static_cast<Grams>(static_cast<float>(parents[index]) * kDowryShare);
+      parents[index] -= share;
+      newlyweds[index] += share;
+    }
+  }
+
   void RunMarriages(WorldState& current, SimDay day) {
     // Brides draw the daily chance in row order; the groom is the first
     // eligible bachelor who is not close kin. The design's housing gate
@@ -417,6 +495,8 @@ class ResidentsSystem final : public IResidentsSystem {
         const std::uint32_t house_row = FindRow(current.units, household.house);
         current.units.rows[house_row].household = home;
         const ResidentId groom_id = current.residents.row_ids[groom_row];
+        PassDowry(current, current.residents.rows[bride_row].family, home);
+        PassDowry(current, groom.family, home);
         current.residents.rows[bride_row].spouse = groom_id;
         current.residents.rows[bride_row].family = home;
         current.residents.rows[groom_row].spouse = bride_id;

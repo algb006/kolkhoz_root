@@ -148,53 +148,91 @@ Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, Reso
 }
 
 /// The monthly distribution (labor-payment §3, §7). The family trades its
-/// outstanding trudodni for the whole basket at once, and the basket
-/// advances by its WORST position: if the stores can cover only two thirds
-/// of the potatoes, two thirds of every position is issued and two thirds of
-/// the debt is redeemed. The rest waits for next month — that is what makes
-/// a shortfall visible as a debt rather than as silence.
+/// outstanding trudodni for a basket, and the basket advances by its WORST
+/// position, exactly as the design writes it: if the stores can cover only
+/// two thirds of the potatoes, two thirds of every position is issued and
+/// two thirds of the debt is redeemed. The rest waits for next month — that
+/// is what makes a shortfall visible as a debt rather than as silence.
 ///
-/// Families are served in row order, each against what is still in the
-/// stores. Order matters when the stores run dry mid-round; it is the same
-/// order every run, which is what determinism asks of it.
+/// TWO baskets, not one, and the run is what taught us the difference. The
+/// food basket is the design's own "связка продуктов". Fodder for the yard's
+/// own animals is issued in the same monthly hand-out (livestock design §11)
+/// but is NOT part of that bundle: it has no calories, nobody eats it, and
+/// putting it under the same worst-position rule meant that an empty hayloft
+/// in June stopped the bread as well — families went months without grain
+/// while their bins held potatoes. Fodder has its own coverage, capped by
+/// the share of the debt actually being redeemed so that a family whose
+/// bread is short is not paid its hay over and over against a debt that
+/// never clears.
+///
+/// The coverage is worked out ONCE for the whole village and applied to every
+/// household alike. Serving families in row order against a shrinking store
+/// would let the first rows eat and the last rows starve, and nothing in the
+/// design says the accountant's list is a queue.
 void RunDistribution(const FoodConfig& config,
                      const std::vector<Grams>& reserve,
                      WorldState& current) {
+  const auto roster = static_cast<std::uint32_t>(config.resources.size());
+  std::vector<Grams> wanted(roster, 0);
+  TrudodniHundredths outstanding_total = 0;
+  for (const FamilyRow& family : current.families.rows) {
+    const TrudodniHundredths outstanding = family.trudodni_account - family.trudodni_redeemed;
+    if (outstanding <= 0) {
+      continue;
+    }
+    outstanding_total += outstanding;
+    const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
+    for (std::uint32_t index = 0; index < roster; ++index) {
+      const float norm = config.resources[index].issue_kg_per_trudoden;
+      if (norm > 0.0F) {
+        wanted[index] += KilogramsToGrams(norm * trudodni);
+      }
+    }
+  }
+  if (outstanding_total <= 0) {
+    return;
+  }
+  float food_coverage = 1.0F;
+  std::vector<float> coverage(roster, 1.0F);
+  for (std::uint32_t index = 0; index < roster; ++index) {
+    if (wanted[index] <= 0) {
+      continue;
+    }
+    const ResourceId resource{static_cast<std::uint16_t>(index)};
+    const float share = static_cast<float>(FreeStock(current, reserve, resource)) /
+                        static_cast<float>(wanted[index]);
+    coverage[index] = share < 1.0F ? share : 1.0F;
+    if (config.resources[index].kcal_per_gram > 0.0F) {
+      food_coverage = coverage[index] < food_coverage ? coverage[index] : food_coverage;
+    }
+  }
+  // Every position advances by the share of the debt that is actually being
+  // redeemed. Food positions all move together, by the worst of them; fodder
+  // may fall below that share when the hayloft is empty, never above it.
+  for (std::uint32_t index = 0; index < roster; ++index) {
+    if (config.resources[index].kcal_per_gram > 0.0F) {
+      coverage[index] = food_coverage;
+    } else {
+      coverage[index] = coverage[index] < food_coverage ? coverage[index] : food_coverage;
+    }
+  }
   for (FamilyRow& family : current.families.rows) {
     const TrudodniHundredths outstanding = family.trudodni_account - family.trudodni_redeemed;
     if (outstanding <= 0) {
       continue;
     }
     const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
-    float coverage = 1.0F;
-    for (std::uint32_t index = 0; index < config.resources.size(); ++index) {
+    for (std::uint32_t index = 0; index < roster; ++index) {
       const float norm = config.resources[index].issue_kg_per_trudoden;
-      if (norm <= 0.0F) {
+      if (norm <= 0.0F || !(coverage[index] > 0.0F)) {
         continue;
       }
       const ResourceId resource{static_cast<std::uint16_t>(index)};
-      const Grams wanted = KilogramsToGrams(norm * trudodni);
-      if (wanted <= 0) {
-        continue;
-      }
-      const float share =
-          static_cast<float>(FreeStock(current, reserve, resource)) / static_cast<float>(wanted);
-      coverage = share < coverage ? share : coverage;
-    }
-    if (!(coverage > 0.0F)) {
-      continue;  // nothing in the stores; the debt stands
-    }
-    for (std::uint32_t index = 0; index < config.resources.size(); ++index) {
-      const float norm = config.resources[index].issue_kg_per_trudoden;
-      if (norm <= 0.0F) {
-        continue;
-      }
-      const ResourceId resource{static_cast<std::uint16_t>(index)};
-      const Grams issue = KilogramsToGrams(norm * trudodni * coverage);
+      const Grams issue = KilogramsToGrams(norm * trudodni * coverage[index]);
       AddToPantry(family, resource, TakeFromUnits(current, resource, issue));
     }
     family.trudodni_redeemed +=
-        static_cast<TrudodniHundredths>(static_cast<float>(outstanding) * coverage);
+        static_cast<TrudodniHundredths>(static_cast<float>(outstanding) * food_coverage);
   }
 }
 

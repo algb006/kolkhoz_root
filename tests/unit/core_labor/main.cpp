@@ -417,15 +417,18 @@ int TestReferenceWorkerDeliversOneNorm() {
   reference.mood = 60.0F;
   reference.stamina = 50.0F;
   reference.education_stage = core::EducationStage::kPrimary;
-  const float efficiency = core::ResidentEfficiency(config, reference, 30.0F);
+  // The plateau ends at life expectancy less labor's margin: 60 - 20.
+  constexpr float kAgingFrom = 40.0F;
+  const float efficiency = core::ResidentEfficiency(config, reference, 30.0F, kAgingFrom);
   failures += Expect(efficiency > 0.97F && efficiency < 1.03F,
                      "the reference worker is worth exactly one norm day");
 
   core::ResidentRow illiterate = reference;
   illiterate.education_stage = core::EducationStage::kNone;
-  failures += Expect(core::ResidentEfficiency(config, illiterate, 30.0F) < efficiency * 0.9F,
-                     "illiteracy costs the canonical 15% (education design §6)");
-  failures += Expect(core::ResidentEfficiency(config, reference, 70.0F) < efficiency,
+  failures +=
+      Expect(core::ResidentEfficiency(config, illiterate, 30.0F, kAgingFrom) < efficiency * 0.9F,
+             "illiteracy costs the canonical 15% (education design §6)");
+  failures += Expect(core::ResidentEfficiency(config, reference, 70.0F, kAgingFrom) < efficiency,
                      "past the aging threshold output falls");
 
   core::ResidentRow tough = reference;

@@ -109,6 +109,17 @@ void PutStock(UnitRow& unit, ResourceId resource, float kilograms) {
   unit.stock[resource.value] = static_cast<Grams>(kilograms) * kGramsPerKilogram;
 }
 
+/// @brief Puts kilograms of a resource into a family's own larder.
+void PutPantry(FamilyRow& family, ResourceId resource, float kilograms) {
+  if (resource.value == kInvalidDefIdValue) {
+    return;
+  }
+  if (family.pantry.size() <= resource.value) {
+    family.pantry.resize(resource.value + 1U, 0);
+  }
+  family.pantry[resource.value] = static_cast<Grams>(kilograms) * kGramsPerKilogram;
+}
+
 UnitId PlaceUnit(WorldState& world, UnitTypeId type, float x_meters, float y_meters) {
   UnitRow unit;
   unit.type = type;
@@ -256,6 +267,20 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // close over a whole year even so — that is a real finding of the balance
   // run and a question standing with the design (thread fodder-balance).
   PutStock(church_row, GenesisResource(resources, "hay"), 60000);
+
+  // What the households still have of their own. The village was living
+  // before the kolkhoz was declared, and it is declared in January: yards
+  // with bare shelves would spend the whole first spring on nothing at all,
+  // because trudodni are earned by work and there is no field work until
+  // April. That is not a hard start, it is an empty one.
+  // ASSUMPTION on the amounts: potatoes as the peasant staple, a little
+  // grain and what is left of the cellar — about two months to the first
+  // issue (start canon §7 gives the stores, not the larders).
+  for (FamilyRow& family : world.families.rows) {
+    PutPantry(family, GenesisResource(resources, "potato"), 400);
+    PutPantry(family, GenesisResource(resources, "oat"), 80);
+    PutPantry(family, GenesisResource(resources, "vegetables"), 60);
+  }
   PutStock(world.units.rows[FindRow(world.units, compost)],
            GenesisResource(resources, "manure"),
            250000);

@@ -43,8 +43,9 @@ rest_step_tired,40,,
 rest_step_spent,20,,
 rest_factor_tired,0.9,,
 rest_factor_spent,0.75,,
-# порог старения = ПЖ − 20 (решение 105), стартовая ПЖ 60
-aging_from_years,40,,
+# запас до порога старения: порог = ПЖ − запас (решение 105). Саму ПЖ
+# труд читает из состояния мира, а не держит своей копией
+aging_margin_years,20,,
 # ASSUMPTION: кривые спада — полировка P25t
 age_decline_per_year,0.02,,
 age_decline_floor,0.5,,

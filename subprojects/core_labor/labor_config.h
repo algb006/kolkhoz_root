@@ -91,7 +91,12 @@ struct EfficiencyFactors {
   /// Decision 105: the aging threshold is life expectancy minus 20, and the
   /// starting expectancy is 60 — so 40 while the expectancy formula itself
   /// is a STUB (it needs the food system, stage 6).
-  float aging_from_years = 40.0F;
+  /// Years of the margin between life expectancy and the age at which work
+  /// starts to decline (decision 105: the threshold is LE - 20). The MARGIN
+  /// is labor's knowledge; the life expectancy is the world's, and labor
+  /// reads it from WorldState::vitals rather than keeping a copy — one fact,
+  /// one home.
+  float aging_margin_years = 20.0F;
 
   /// Output lost per biological year past the threshold, and the floor it
   /// never falls through (an old man still mows, just slowly).

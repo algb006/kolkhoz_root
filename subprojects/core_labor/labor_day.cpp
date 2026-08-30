@@ -37,15 +37,20 @@ float RestFactor(const EfficiencyFactors& factors, Metric rest) {
   return rest >= factors.rest_step_spent ? factors.rest_factor_tired : factors.rest_factor_spent;
 }
 
-/// @brief The age curve of life-cycle §1: full strength on the plateau,
-/// a slow decline afterwards. Everyone below working age is filtered out
+/// @brief The age curve of life-cycle §1: full strength on the plateau, a
+/// slow decline afterwards. Everyone below working age is filtered out
 /// before this is called, so the growing part of the curve (7-18) has no
 /// effect in phase 1 and is deliberately not modelled.
-float AgeFactor(const EfficiencyFactors& factors, float age_years) {
-  if (age_years <= factors.aging_from_years) {
+///
+/// The plateau ENDS where the settlement's own life expectancy says it does
+/// (decision 105: the threshold is LE minus labor's margin). A village that
+/// eats well therefore works longer, and one that starves ages at the bench
+/// — which is the whole point of making life expectancy a live number.
+float AgeFactor(const EfficiencyFactors& factors, float age_years, float aging_from_years) {
+  if (age_years <= aging_from_years) {
     return 1.0F;
   }
-  const float lost = (age_years - factors.aging_from_years) * factors.age_decline_per_year;
+  const float lost = (age_years - aging_from_years) * factors.age_decline_per_year;
   const float factor = 1.0F - lost;
   return factor < factors.age_decline_floor ? factors.age_decline_floor : factor;
 }
@@ -81,7 +86,15 @@ float FieldSkillBlend(const LaborConfig& config, const ResidentRow& resident) {
   return blended > 100.0F ? 100.0F : blended;
 }
 
-float ResidentEfficiency(const LaborConfig& config, const ResidentRow& resident, float age_years) {
+float AgingFromYears(const LaborConfig& config, const WorldState& world) {
+  const float threshold = world.vitals.life_expectancy_years - config.efficiency.aging_margin_years;
+  return threshold > 1.0F ? threshold : 1.0F;
+}
+
+float ResidentEfficiency(const LaborConfig& config,
+                         const ResidentRow& resident,
+                         float age_years,
+                         float aging_from_years) {
   const EfficiencyFactors& factors = config.efficiency;
   const auto stage = static_cast<std::uint32_t>(resident.education_stage);
   const float education =
@@ -89,7 +102,7 @@ float ResidentEfficiency(const LaborConfig& config, const ResidentRow& resident,
   const float self_taught =
       1.0F + (config.self_education_max_bonus * (resident.self_education / 100.0F));
   const float efficiency =
-      AgeFactor(factors, age_years) *
+      AgeFactor(factors, age_years, aging_from_years) *
       PivotFactor(resident.health, factors.health_pivot, factors.health_slope) *
       RestFactor(factors, resident.rest) *
       PivotFactor(resident.mood, factors.mood_pivot, factors.mood_slope) * education * self_taught *

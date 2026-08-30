@@ -20,12 +20,14 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_log/log.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -452,6 +454,29 @@ LivestockKindId KindByKey(const ITable* livestock, std::string_view key) {
   return row == kNoTableRow ? LivestockKindId{} : LivestockKindId{static_cast<std::uint16_t>(row)};
 }
 
+/// @brief Says out loud which optional columns a table set does not carry.
+///
+/// An absent optional column takes its default, which is the right behaviour
+/// and a quiet one: the run stays green and the world is simply a different
+/// world. That is how max_share and straw_ratio sat inert for a while —
+/// present in the design db, absent from the export, and nothing said so.
+/// A table set that predates a column is legitimate; a table set that lost
+/// one is a bug, and only a line in the log tells them apart.
+void ReportMissingColumns(const ITable& table,
+                          std::string_view name,
+                          std::span<const std::string_view> columns) {
+  std::string missing;
+  for (const std::string_view column : columns) {
+    if (table.FindColumn(column) == kNoTableColumn) {
+      missing += missing.empty() ? "" : ", ";
+      missing += std::string(column);
+    }
+  }
+  if (!missing.empty()) {
+    LogWarning(std::string(name) + ": optional columns absent, defaults used: " + missing);
+  }
+}
+
 /// @brief UnitTypeId by key; invalid when the roster has no such type.
 UnitTypeId UnitTypeByKey(const ITable* unit_types, std::string_view key) {
   if (unit_types == nullptr) {
@@ -471,6 +496,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     if (!ParseCrops(*crops, resources, config.crops, error)) {
       return false;
     }
+    constexpr std::array<std::string_view, 2> kOptional = {"straw_ratio", "sow_days_per_ha"};
+    ReportMissingColumns(*crops, "crops", kOptional);
   }
   if (livestock != nullptr && !ParseLivestock(*livestock, config.livestock, error)) {
     return false;
@@ -485,6 +512,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     if (!ParseFeedLinks(*feed_links, livestock, resources, config.feed_links, error)) {
       return false;
     }
+    constexpr std::array<std::string_view, 1> kOptional = {"max_share"};
+    ReportMissingColumns(*feed_links, "feed_links", kOptional);
   }
   if (const ITable* farming = tables.FindTable("farming")) {
     if (!ParseFarming(*farming, config.farming, error) ||

@@ -226,6 +226,7 @@ int CheckExchange() {
 
 int CheckVitals() {
   int failures = 0;
+  const core::LifeConfig life;
   core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 80.0F);
   core::ResidentRow second;
   second.family = world.families.row_ids[0];
@@ -235,12 +236,30 @@ int CheckVitals() {
   for (std::uint32_t day = 0; day <= core::kDaysPerYear; ++day) {
     world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
-    core::AccumulateVitals(world);
+    core::AccumulateVitals(life, world);
   }
   failures += Expect(world.vitals.satiety_year_means.back() == 70.0F,
                      "the finished year's mean satiety enters the window last");
   failures += Expect(world.vitals.satiety_running_days == 1,
                      "and the new year starts counting from its first day");
+  // Life expectancy over that window: the neutral point is 70 and the year
+  // came in at 70, but the two years before it were the neutral 70 as well,
+  // so nutrition contributes nothing and the base stands.
+  failures += Expect(world.vitals.life_expectancy_years == life.vitals.base_years,
+                     "a settlement fed at the neutral point lives its base span");
+
+  // A settlement that ate badly for three years loses the band's worth.
+  {
+    core::WorldState hungry = MakeExchangeWorld(0.0F, 0.0F, 0, 20.0F);
+    for (std::uint32_t day = 0; day <= 3U * core::kDaysPerYear; ++day) {
+      hungry.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(hungry.calendar);
+      core::AccumulateVitals(life, hungry);
+    }
+    failures += Expect(hungry.vitals.life_expectancy_years ==
+                           life.vitals.base_years + life.vitals.nutrition_years_min,
+                       "three starving years cost the whole nutrition band");
+  }
   return failures;
 }
 
