@@ -328,23 +328,20 @@ class ResidentsSystem final : public IResidentsSystem {
   /// none until the condition lifts. Pregnancy itself is not modelled (the
   /// cohort model has no room for it), so the stop simply cancels the draw.
   ///
-  /// Family satiety here is the members' own, averaged — not the satiety
-  /// COMPONENT, which the variety ceiling cuts down: a family living on
-  /// nothing but bread is monotonous, not starving.
+  /// The hunger stop reads the family's YEAR, not its day — canon since
+  /// 2026-08-30 (life-cycle design §4), and the run is what settled it.
+  /// Satiety is a fast, seasonal metric on purpose; read daily as a
+  /// prohibition it says "this season forbids children" rather than "this
+  /// hunger does", and it closed the village from July to November every
+  /// year. Health needs no such care because health is already slow.
   bool BirthsStopped(const WorldState& current, const ResidentRow& mother) const {
     const BirthConditionsConfig& births = config_.birth_conditions;
     if (mother.health < births.mother_health_stop) {
       return true;
     }
-    float total = 0.0F;
-    std::uint32_t counted = 0;
-    for (const ResidentRow& resident : current.residents.rows) {
-      if (resident.family.value == mother.family.value) {
-        total += resident.satiety;
-        ++counted;
-      }
-    }
-    return counted > 0 && total / static_cast<float>(counted) < births.satiety_stop;
+    const std::uint32_t family_row = FindRow(current.families, mother.family);
+    return family_row != kNoRow &&
+           current.families.rows[family_row].satiety_year_mean < births.satiety_stop;
   }
 
   void RunBirths(WorldState& current, const EpochDemography& epoch, SimDay day) {

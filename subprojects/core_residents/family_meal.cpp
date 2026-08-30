@@ -206,6 +206,21 @@ void RunFamilyMeal(const FoodConfig& config,
   // from the pantry — is fed by definition rather than starving on zero.
   const float target = need_kcal > 0.0F ? kMetricMax * (eaten_kcal / need_kcal) : kMetricMax;
   MoveSatietyAndHealth(config, current, id, target);
+  // And the slow reading of it, for the mechanics that must not mistake a
+  // season for a hardship (family_state.h, FamilyRow::satiety_year_mean).
+  float total = 0.0F;
+  std::uint32_t counted = 0;
+  for (const ResidentRow& resident : current.residents.rows) {
+    if (resident.family.value == id.value) {
+      total += resident.satiety;
+      ++counted;
+    }
+  }
+  if (counted > 0) {
+    const float today = total / static_cast<float>(counted);
+    family.satiety_year_mean +=
+        (today - family.satiety_year_mean) / static_cast<float>(kDaysPerYear);
+  }
 }
 
 Metric SatietyComponent(const FoodConfig& config,

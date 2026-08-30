@@ -68,6 +68,22 @@ struct FamilyRow {
   /// by the family eating (needs phase). Empty vector = holds nothing yet.
   ResourceAmounts pantry;
 
+  /// The family's mean satiety over the last year, as a running average.
+  ///
+  /// A SLOW reading of a fast metric, and the distinction is the point.
+  /// Satiety swings by design — it has to, or February could not be told
+  /// from September — so a mechanic that asks "is this household hungry?"
+  /// as a yes-or-no question must not ask it of today's value. Read daily,
+  /// the hunger stop on births (decision 106) closed the whole village's
+  /// fertility from July to November every year and halved the settlement's
+  /// thirty-three-year curve; read over a year, it says what it means.
+  /// Canon since 2026-08-30 (life-cycle design §4).
+  ///
+  /// Kept as an exponential mean with a one-year time constant rather than a
+  /// ring of days: one float instead of forty-eight, and the difference
+  /// between them is not a difference a household would notice.
+  Metric satiety_year_mean = 70.0F;
+
   /// Product categories actually eaten this season, one bit per
   /// FoodCategory (core_residents/food_config.h). Written by the needs
   /// phase as the family eats; cleared at season start. Its population

@@ -162,15 +162,21 @@ int CheckExchange() {
     failures += Expect(PantryOf(world, 2) == 10 * kKilo, "the nets bring the epoch's daily share");
   }
 
-  // Half the grain in the store: the basket advances by its worst position.
+  // Half the grain in the store: every position issues what it can, and the
+  // debt is redeemed by the share of the bundle's VALUE actually handed over
+  // (labor-payment §3, canon of 2026-08-30). Wanted: 2 kg of grain at 3.3
+  // kcal/g and 4 kg of potatoes at 0.77 — 6600 + 3080 = 9680 kcal. The store
+  // has one kilogram of grain, so 3300 + 3080 = 6380 lands: 65.9%.
   {
     core::WorldState world = MakeExchangeWorld(1.0F, 100.0F, 200, 70.0F);
     core::RunFamilyExchange(config, 4.0F, world);
     failures += Expect(PantryOf(world, 0) == 1 * kKilo, "the short position issues what there is");
-    failures += Expect(PantryOf(world, 1) == 2 * kKilo,
-                       "and every other position issues the same share, not its own");
-    failures += Expect(world.families.rows[0].trudodni_redeemed == 100,
-                       "half a basket redeems half the debt; the rest waits for next month");
+    failures += Expect(PantryOf(world, 1) == 4 * kKilo,
+                       "and a position the store CAN cover is issued whole — an empty bin no "
+                       "longer stops the rest of the basket");
+    const core::TrudodniHundredths redeemed = world.families.rows[0].trudodni_redeemed;
+    failures += Expect(redeemed >= 129 && redeemed <= 133,
+                       "and the debt is redeemed by the share of the bundle's value received");
   }
 
   // The seed fund is off-limits to the automatic issue.
@@ -184,8 +190,8 @@ int CheckExchange() {
     core::RunFamilyExchange(config, 4.0F, world);
     failures +=
         Expect(PantryOf(world, 0) == 0, "next sowing's seed is not handed out for trudodni");
-    failures += Expect(world.families.rows[0].trudodni_redeemed == 0,
-                       "and the debt is not redeemed against food that was never issued");
+    failures += Expect(world.families.rows[0].trudodni_redeemed < 100,
+                       "and the debt is redeemed only for the value that WAS issued");
 
     core::FoodConfig unguarded = config;
     unguarded.distribution.reserve_seed_fund = 0;

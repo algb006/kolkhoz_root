@@ -147,23 +147,27 @@ Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, Reso
   return free_stock > 0 ? free_stock : 0;
 }
 
-/// The monthly distribution (labor-payment §3, §7). The family trades its
-/// outstanding trudodni for a basket, and the basket advances by its WORST
-/// position, exactly as the design writes it: if the stores can cover only
-/// two thirds of the potatoes, two thirds of every position is issued and
-/// two thirds of the debt is redeemed. The rest waits for next month — that
-/// is what makes a shortfall visible as a debt rather than as silence.
+/// The monthly distribution (labor-payment §3, §7): the family trades its
+/// outstanding trudodni for a basket of goods.
 ///
-/// TWO baskets, not one, and the run is what taught us the difference. The
-/// food basket is the design's own "связка продуктов". Fodder for the yard's
-/// own animals is issued in the same monthly hand-out (livestock design §11)
-/// but is NOT part of that bundle: it has no calories, nobody eats it, and
-/// putting it under the same worst-position rule meant that an empty hayloft
-/// in June stopped the bread as well — families went months without grain
-/// while their bins held potatoes. Fodder has its own coverage, capped by
-/// the share of the debt actually being redeemed so that a family whose
-/// bread is short is not paid its hay over and over against a debt that
-/// never clears.
+/// HOW A SHORT MONTH SETTLES, canon since 2026-08-30 and rewritten because
+/// the run showed what the older wording did. The rule used to be "the
+/// bundle advances by its worst position", whose purpose is sound — a family
+/// must not clear its whole debt for half a bundle. Taken literally, one
+/// empty position cancelled the hand-out entirely: potatoes run out every
+/// summer before the new crop, so the whole issue stopped for five months a
+/// year while a hundred and forty tonnes of milk stood in the store.
+///
+/// Now: each position issues what the store can actually give, and the DEBT
+/// is redeemed by the share of the bundle's VALUE that was handed over,
+/// counted in the same grain equivalent as everything else. A family that
+/// received two thirds of what its trudodni were worth redeems two thirds of
+/// them; the rest waits for next month. The old rule's purpose survives
+/// whole, its accident does not.
+///
+/// Fodder rides along without touching that share: it has no calories, it is
+/// for the yard's animals (livestock design §11), and an empty hayloft has
+/// no business stopping the bread.
 ///
 /// The coverage is worked out ONCE for the whole village and applied to every
 /// household alike. Serving families in row order against a shrinking store
@@ -192,8 +196,12 @@ void RunDistribution(const FoodConfig& config,
   if (outstanding_total <= 0) {
     return;
   }
-  float food_coverage = 1.0F;
-  std::vector<float> coverage(roster, 1.0F);
+  // What each position can cover, and what share of the bundle's food VALUE
+  // that comes to. Value is in kilocalories — the one unit in which a litre
+  // of milk and a kilogram of potatoes are comparable at all.
+  std::vector<float> coverage(roster, 0.0F);
+  float wanted_kcal = 0.0F;
+  float covered_kcal = 0.0F;
   for (std::uint32_t index = 0; index < roster; ++index) {
     if (wanted[index] <= 0) {
       continue;
@@ -202,20 +210,14 @@ void RunDistribution(const FoodConfig& config,
     const float share = static_cast<float>(FreeStock(current, reserve, resource)) /
                         static_cast<float>(wanted[index]);
     coverage[index] = share < 1.0F ? share : 1.0F;
-    if (config.resources[index].kcal_per_gram > 0.0F) {
-      food_coverage = coverage[index] < food_coverage ? coverage[index] : food_coverage;
+    const float kcal = config.resources[index].kcal_per_gram;
+    if (kcal > 0.0F) {
+      const float position = static_cast<float>(wanted[index]) * kcal;
+      wanted_kcal += position;
+      covered_kcal += position * coverage[index];
     }
   }
-  // Every position advances by the share of the debt that is actually being
-  // redeemed. Food positions all move together, by the worst of them; fodder
-  // may fall below that share when the hayloft is empty, never above it.
-  for (std::uint32_t index = 0; index < roster; ++index) {
-    if (config.resources[index].kcal_per_gram > 0.0F) {
-      coverage[index] = food_coverage;
-    } else {
-      coverage[index] = coverage[index] < food_coverage ? coverage[index] : food_coverage;
-    }
-  }
+  const float redeemed_share = wanted_kcal > 0.0F ? covered_kcal / wanted_kcal : 0.0F;
   for (FamilyRow& family : current.families.rows) {
     const TrudodniHundredths outstanding = family.trudodni_account - family.trudodni_redeemed;
     if (outstanding <= 0) {
@@ -232,7 +234,7 @@ void RunDistribution(const FoodConfig& config,
       AddToPantry(family, resource, TakeFromUnits(current, resource, issue));
     }
     family.trudodni_redeemed +=
-        static_cast<TrudodniHundredths>(static_cast<float>(outstanding) * food_coverage);
+        static_cast<TrudodniHundredths>(static_cast<float>(outstanding) * redeemed_share);
   }
 }
 
