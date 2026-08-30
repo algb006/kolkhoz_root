@@ -1,24 +1,106 @@
-key,title,note
-# grain is per culture (farming.md: you cannot sow oats with rye); storage is shared
-rye,Рожь,
-wheat,Пшеница,winter and spring wheat share the resource
-oat,Овёс,
-barley,Ячмень,
-buckwheat,Гречиха,
+# generated from db/design.db — do not edit by hand
+# feed_value in fodder units per kg; empty means not a feed
+key,title,feed_value
+rye,Рожь,1.15
+wheat,Пшеница,1.2
+oat,Овёс,1
+barley,Ячмень,1.15
+buckwheat,Гречиха,0.95
 pea,Горох,
-potato,Картофель,
-vegetables,Овощи,cabbage and roots and onion together
+potato,Картофель,0.3
+vegetables,Овощи,
 flax,Лён,
-hay,Сено,
-silage,Силос,epoch II
-manure,Навоз,single resource from any animal
-milk,Молоко,
-meat,Мясо,single resource without sorts
-egg,Яйцо,
-wool,Шерсть,
+hay,Сено,0.45
+straw,Солома,0.2
+green_mass,Зелёная масса,
+silage,Силос,0.2
+fodder_beet,Кормовая свёкла и турнепс,0.12
+hops,Хмель,
+fruit,Фрукты и ягоды,
 honey,Мёд,
-fish,Рыба,
-firewood,Дрова,
+milk,Молоко,
+cheese,Сыр,
+meat,Мясо и сало,
+fish,Рыба,0.5
+egg,Яйцо,
+forest_forage,Дичь и дары леса,
+wool,Шерсть,
+hide,Шкуры,
+down,Пух и перо,
+mink_pelt,Норковые шкурки,
+offal,Субпродукты,0.35
+reed,Камыш,0.15
+manure,Навоз и перегной,
+compound_feed,Комбикорм,1
 log,Брёвна,
+board,Доски,
+firewood,Дрова,
+pole_and_chip,Жерди и щепа,
 stone,Камень,
 clay,Глина,
+sand,Песок,
+motor_fuel,ГСМ,
+kerosene,Керосин,
+coal,Уголь,
+bottled_gas,Газ в баллонах,
+brick,Кирпич,
+roofing,Шифер и кровля,
+glass,Стекло,
+cement,Цемент,
+steel,Железо и сталь,
+reinforced_concrete,Железобетон,
+insulation,Утеплитель,
+lime,Известь,
+gravel,Щебень,
+mineral_fertilizer,Минеральные удобрения,
+paint,Краска,
+spare_part,Запчасти,
+industrial_equipment,Промышленное оборудование,
+consumer_goods,Товары первой необходимости (промтовары),
+factory_textile,Фабричное сырьё модных цехов,
+grocery,Бакалея,
+match,Спички,
+container,Тара,
+gun_and_tackle,Ружья и снасти,
+school_uniform,Школьная форма,
+watch,Часы,
+bicycle,Велосипед,
+radio,Радиоприёмник,
+television,Телевизор,
+refrigerator,Холодильник,
+washing_machine,Стиральная машина,
+carpet,Ковёр,
+furniture_set,Мебельный гарнитур,
+flour,Мука,
+groats,Крупы,
+bread,Хлеб,
+smoked_meat,Копчёности,
+smoked_fish,Копчёная рыба,
+sausage,Колбасы,
+pastry,Выпечка,
+cloth,Своя ткань и пряжа,
+leather,Кожа,
+dyed_cloth,Крашеная ткань,
+dyed_leather,Крашеная кожа,
+clothes_summer,Одежда летняя,
+clothes_midseason,Одежда демисезонная,
+clothes_winter,Одежда зимняя,
+shoes_summer,Обувь летняя,
+shoes_midseason,Обувь демисезонная (сапоги),
+shoes_winter,Обувь зимняя (валенки),
+dyed_clothes_summer,Крашеная одежда летняя,
+dyed_clothes_midseason,Крашеная одежда демисезонная,
+dyed_clothes_winter,Крашеная одежда зимняя,
+dyed_shoes_midseason,Крашеная обувь (сапоги),
+fashion_clothes_summer,Модная одежда летняя,
+fashion_clothes_midseason,Модная одежда демисезонная,
+fashion_clothes_winter,Модная одежда зимняя,
+fashion_shoes_summer,Модная обувь летняя,
+fashion_shoes_midseason,Модная обувь демисезонная,
+fashion_shoes_winter,Модная обувь зимняя,
+fur_coat,Шубы,
+wine,Вино,
+beer,Пиво,
+spirits,Крепкий алкоголь,
+woodwork,Мебель и столярные изделия,
+tool,Инструмент,
