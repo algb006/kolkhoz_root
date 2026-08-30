@@ -17,7 +17,8 @@
 ///     productivity, family standing, "living signals" — is NOT stored here.
 ///     If it can be derived, it is derived (architecture, §4).
 ///   * The struct grows by plan stages: stage 2 fills weather, stage 3 adds
-///     resident and family tables, stage 4 land and herds, stage 5 labor.
+///     resident and family tables, stage 4 land and herds, stage 5 labor,
+///     stage 7 the ledger of yearly flows — the one block nothing reads.
 ///     Adding a member is the expected, cheap extension (architecture, §7ж);
 ///     reshaping existing members is the expensive event.
 
@@ -31,6 +32,7 @@
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
+#include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/resident_state.h"
@@ -167,6 +169,10 @@ struct WorldState {
 
   /// Life expectancy and its factor window (stage 6, decision 105).
   VitalsState vitals;
+
+  /// The accountant's yearly book of flows (stage 7). Nothing in the
+  /// simulation reads it; the run report does. ledger_state.h.
+  LedgerState ledger;
 };
 
 }  // namespace core
