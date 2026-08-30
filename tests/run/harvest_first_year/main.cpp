@@ -24,6 +24,84 @@ int Expect(bool condition, const char* label) {
   return 1;
 }
 
+/// How the village itself came through the year (stage 6). A diagnostic, not
+/// a criterion — the criterion is the food_year run of task O4 — but the
+/// numbers must never be a mystery when a later change moves them. This is
+/// the only run that loads the real tables/, so it is the only one in which
+/// the food roster exists at all.
+void PrintVillageCondition(const core::WorldState& state) {
+  float satiety_total = 0.0F;
+  std::uint32_t hungry = 0;
+  for (const core::ResidentRow& resident : state.residents.rows) {
+    satiety_total += resident.satiety;
+    hungry += resident.satiety < 40.0F ? 1U : 0U;
+  }
+  const auto people = static_cast<float>(state.residents.rows.size());
+  double pantry_tonnes = 0.0;
+  for (const core::FamilyRow& family : state.families.rows) {
+    for (const core::Grams amount : family.pantry) {
+      pantry_tonnes += static_cast<double>(amount) / 1.0e6;
+    }
+  }
+  std::cout << "harvest_first_year: mean satiety "
+            << (people > 0.0F ? satiety_total / people : 0.0F) << ", " << hungry << " of "
+            << state.residents.rows.size() << " under 40, pantries hold " << pantry_tonnes
+            << " t\n";
+}
+
+/// The determinism criterion on a world that actually exercises the parallel
+/// phases: the same year with three workers must land bit for bit on the
+/// same world (RACE-003 — the empty-world check could not see these phases
+/// at all, since a world without fields or families dispatches nothing).
+///
+/// Stage 6 widened the surface: the needs and metrics phases now write FAMILY
+/// rows from workers — the pantry, the variety mask, the plot hours, the
+/// members' satiety — so those get their own comparison rather than riding
+/// on the fields'.
+int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& many) {
+  int failures = 0;
+  failures += Expect(many.fields.rows.size() == one.fields.rows.size(),
+                     "worker count does not change the field table");
+  bool fields_identical = many.fields.rows.size() == one.fields.rows.size();
+  for (std::uint32_t row = 0; row < many.fields.rows.size() && fields_identical; ++row) {
+    const core::FieldRow& one_worker = one.fields.rows[row];
+    const core::FieldRow& three_workers = many.fields.rows[row];
+    fields_identical = one_worker.fertility == three_workers.fertility &&
+                       one_worker.weather_stress == three_workers.weather_stress &&
+                       one_worker.phase == three_workers.phase &&
+                       one_worker.crop.value == three_workers.crop.value &&
+                       one_worker.repeat_years == three_workers.repeat_years;
+  }
+  failures += Expect(fields_identical, "1 worker and 3 workers agree on every field, bit for bit");
+  bool stores_identical = many.units.rows.size() == one.units.rows.size();
+  for (std::uint32_t row = 0; row < many.units.rows.size() && stores_identical; ++row) {
+    stores_identical = many.units.rows[row].stock == one.units.rows[row].stock;
+  }
+  failures += Expect(stores_identical, "1 worker and 3 workers agree on every store");
+  failures += Expect(
+      many.residents.rows.size() == one.residents.rows.size() && many.rng.state == one.rng.state,
+      "the people and the RNG agree across worker counts");
+  bool households_identical = many.families.rows.size() == one.families.rows.size();
+  for (std::uint32_t row = 0; row < many.families.rows.size() && households_identical; ++row) {
+    const core::FamilyRow& one_worker = one.families.rows[row];
+    const core::FamilyRow& three_workers = many.families.rows[row];
+    households_identical = one_worker.pantry == three_workers.pantry &&
+                           one_worker.food_variety_mask == three_workers.food_variety_mask &&
+                           one_worker.household_hours == three_workers.household_hours &&
+                           one_worker.plot_ratio_sum == three_workers.plot_ratio_sum &&
+                           one_worker.component_satiety == three_workers.component_satiety;
+  }
+  failures += Expect(households_identical,
+                     "1 worker and 3 workers agree on every pantry, mask, hour and component");
+  bool satiety_identical = many.residents.rows.size() == one.residents.rows.size();
+  for (std::uint32_t row = 0; row < many.residents.rows.size() && satiety_identical; ++row) {
+    satiety_identical = many.residents.rows[row].satiety == one.residents.rows[row].satiety &&
+                        many.residents.rows[row].health == one.residents.rows[row].health;
+  }
+  failures += Expect(satiety_identical, "and on every person's satiety and health");
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -84,6 +162,8 @@ int main() {
   std::cout << "harvest_first_year: grain " << grain_tonnes << " t, hay " << hay_tonnes
             << " t, manure in heap " << manure_tonnes << " t\n";
 
+  PrintVillageCondition(state);
+
   // The reference anchor: ~48 t minus what was eaten as seed for the sown
   // 43.4 ha (7.8 t came from the start stores, so the net gain is what
   // matters: harvest itself lands whole). Weather stress can shave up to
@@ -120,28 +200,7 @@ int main() {
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     parallel->AdvanceStep();
   }
-  const core::WorldState& many = parallel->CompletedState();
-  failures += Expect(many.fields.rows.size() == state.fields.rows.size(),
-                     "worker count does not change the field table");
-  bool fields_identical = many.fields.rows.size() == state.fields.rows.size();
-  for (std::uint32_t row = 0; row < many.fields.rows.size() && fields_identical; ++row) {
-    const core::FieldRow& one_worker = state.fields.rows[row];
-    const core::FieldRow& three_workers = many.fields.rows[row];
-    fields_identical = one_worker.fertility == three_workers.fertility &&
-                       one_worker.weather_stress == three_workers.weather_stress &&
-                       one_worker.phase == three_workers.phase &&
-                       one_worker.crop.value == three_workers.crop.value &&
-                       one_worker.repeat_years == three_workers.repeat_years;
-  }
-  failures += Expect(fields_identical, "1 worker and 3 workers agree on every field, bit for bit");
-  bool stores_identical = many.units.rows.size() == state.units.rows.size();
-  for (std::uint32_t row = 0; row < many.units.rows.size() && stores_identical; ++row) {
-    stores_identical = many.units.rows[row].stock == state.units.rows[row].stock;
-  }
-  failures += Expect(stores_identical, "1 worker and 3 workers agree on every store");
-  failures += Expect(many.residents.rows.size() == state.residents.rows.size() &&
-                         many.rng.state == state.rng.state,
-                     "the people and the RNG agree across worker counts");
+  failures += CompareWorkerCounts(state, parallel->CompletedState());
 
   if (failures == 0) {
     std::cout << "harvest_first_year: all checks passed\n";

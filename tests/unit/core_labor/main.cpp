@@ -5,7 +5,7 @@
 //   * the working day (task O1) — the solar window, the road by what the
 //     order travels on, the reference worker's efficiency, and a whole day
 //     driven through the subsystem interface: placement, the seam draining,
-//     trudodni on the family account, household hours, the walk-off, the
+//     trudodni on the family account, the walk-off, the
 //     day off. (The economic year's burn moved to core_residents with the
 //     distribution it pays for — stage 6, task O1.)
 
@@ -455,8 +455,6 @@ int TestWholeWorkingDay() {
       day.world.families.rows[core::FindRow(day.world.families, day.family)];
   failures += Expect(household.trudodni_account >= 95 && household.trudodni_account <= 110,
                      "one norm day of sowing paid about one trudoden to the family");
-  failures += Expect(household.household_hours > 0.0F && household.household_hours < 16.0F,
-                     "the day out left the family less than the whole waking day");
   bool cleared = true;
   for (const core::ResidentRow& resident : day.world.residents.rows) {
     cleared = cleared && resident.work.kind == core::WorkKind::kNone &&

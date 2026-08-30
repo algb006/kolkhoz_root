@@ -68,7 +68,7 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
   ConsumptionConfig& eat = config.consumption;
   SatietyConfig& satiety = config.satiety;
   auto heavy_mask = static_cast<float>(eat.heavy_kinds_mask);
-  const std::array<ScalarKnob, 17> knobs = {{
+  const std::array<ScalarKnob, 18> knobs = {{
       {.key = "adult_kg_grain_eq_per_year",
        .value = &eat.adult_kg_grain_eq_per_year,
        .low = 1.0F,
@@ -85,6 +85,10 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
       {.key = "elderly_factor", .value = &eat.elderly_factor, .low = 0.1F, .high = 2.0F},
       {.key = "heavy_work_factor", .value = &eat.heavy_work_factor, .low = 1.0F, .high = 3.0F},
       {.key = "heavy_kinds_mask", .value = &heavy_mask, .low = 0.0F, .high = 4.0e9F},
+      {.key = "grain_reference_kcal_per_gram",
+       .value = &eat.grain_reference_kcal_per_gram,
+       .low = 0.1F,
+       .high = 10.0F},
       {.key = "satiety_drift_per_day",
        .value = &satiety.drift_per_day,
        .low = 0.0F,
@@ -210,13 +214,21 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
   if (!ReadKnobs(table, "food", knobs, error)) {
     return false;
   }
-  // The third epoch's nets sit outside the run above only because the knob
-  // array has a fixed size; it is the same kind of knob.
-  const std::array<ScalarKnob, 1> tail = {{
+  // The tail sits outside the run above only because the knob array has a
+  // fixed size; these are the same kind of knob.
+  const std::array<ScalarKnob, 3> tail = {{
       {.key = "fish_kg_per_yard_year_epoch_3",
        .value = &plot.fish_kg_per_yard_year[2],
        .low = 0.0F,
        .high = 1.0e5F},
+      {.key = "plot_schoolchild_from_bio_years",
+       .value = &plot.schoolchild_from_bio_years,
+       .low = 0.0F,
+       .high = 30.0F},
+      {.key = "plot_schoolchild_to_bio_years",
+       .value = &plot.schoolchild_to_bio_years,
+       .low = 0.0F,
+       .high = 30.0F},
   }};
   return ReadKnobs(table, "food", tail, error) &&
          ReadMonth(table, "plot_summer_from_month", plot.summer_from_month, error) &&
@@ -329,6 +341,19 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   }
   if (const ITable* crops = tables.FindTable("crops")) {
     if (!ParseSeedNorms(*crops, resources, config, message)) {
+      if (error != nullptr) {
+        *error = message;
+      }
+      return FoodConfig{};
+    }
+  }
+  // Sleep is labor's number, read where it lives rather than copied into a
+  // second table (the labor precedent: labor reads life.csv the same way).
+  if (const ITable* labor = tables.FindTable("labor")) {
+    const std::array<ScalarKnob, 1> knobs = {{
+        {.key = "sleep_hours", .value = &config.plot.sleep_hours, .low = 0.0F, .high = 16.0F},
+    }};
+    if (!ReadKnobs(*labor, "labor", knobs, message)) {
       if (error != nullptr) {
         *error = message;
       }

@@ -1,4 +1,4 @@
-// Unit test of core_residents. Three parts, as the module has:
+// Unit test of core_residents. Four parts, as the module has:
 //   * stage-3 demography on a hand-built world — births only in fertile
 //     marriages, deaths by age, marriages of singles, migration arithmetic,
 //     link integrity — plus the family-satisfaction metrics phase with the
@@ -7,7 +7,10 @@
 //     rule, the seed fund guard, the minimum ration, the nets, and the burn
 //     of both trudodni counters at the economic year's close;
 //   * stage-6 vitals bookkeeping — the yearly fold of the settlement's mean
-//     satiety into the three-year window decision 105 reads.
+//     satiety into the three-year window decision 105 reads;
+//   * stage-6 meal and plot (task O2) — the norm on the table, the
+//     proportional burn of the bins, the season's variety mask and its
+//     ceiling, the plot hours with their factors and the garden they pay.
 
 #include <cstdint>
 #include <iostream>
@@ -22,7 +25,9 @@
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "family_exchange.h"
+#include "family_meal.h"
 #include "food_config.h"
+#include "household_plot.h"
 #include "vitals.h"
 
 static_assert(std::is_abstract_v<core::IResidentsSystem>, "IResidentsSystem is a contract");
@@ -78,11 +83,11 @@ void RunDays(core::IResidentsSystem& system, core::WorldState& world, std::uint3
 
 // --- stage 6: the family/kolkhoz exchange and the vitals window ------------
 
-/// Three resources: 0 grain, 1 potato, 2 fish. Norms are round numbers so
-/// that every expectation below is exact integer arithmetic in grams.
+/// Four resources: 0 grain, 1 potato, 2 fish, 3 vegetables. Norms are round
+/// numbers so that every expectation below is exact integer arithmetic.
 core::FoodConfig MakeExchangeConfig() {
   core::FoodConfig config;
-  config.resources.assign(3, core::FoodResourceDef{});
+  config.resources.assign(4, core::FoodResourceDef{});
   config.resources[0] = {.kcal_per_gram = 3.3F,
                          .category = core::FoodCategory::kBread,
                          .issue_kg_per_trudoden = 1.0F,
@@ -95,9 +100,15 @@ core::FoodConfig MakeExchangeConfig() {
                          .category = core::FoodCategory::kFish,
                          .issue_kg_per_trudoden = 0.0F,
                          .ration_kg_per_day = 0.0F};
+  config.resources[3] = {.kcal_per_gram = 0.25F,
+                         .category = core::FoodCategory::kVegetables,
+                         .issue_kg_per_trudoden = 0.0F,
+                         .ration_kg_per_day = 0.0F};
   config.seed_norms.assign(
       1, core::SeedNormDef{.resource = core::ResourceId{0}, .sowing_norm_kg_per_ha = 180.0F});
   config.fish_resource = core::ResourceId{2};
+  config.potato_resource = core::ResourceId{1};
+  config.vegetables_resource = core::ResourceId{3};
   config.plot.fish_kg_per_yard_year = {480.0F, 0.0F, 0.0F};  // 10 kg a game day
   return config;
 }
@@ -111,7 +122,7 @@ core::WorldState MakeExchangeWorld(float grain_kg,
   core::WorldState world;
   core::RefreshCalendarCaches(world.calendar);
   core::UnitRow store;
-  store.stock.assign(3, 0);
+  store.stock.assign(4, 0);
   store.stock[0] = static_cast<core::Grams>(grain_kg) * core::kGramsPerKilogram;
   store.stock[1] = static_cast<core::Grams>(potato_kg) * core::kGramsPerKilogram;
   AppendRow(world.units, store);
@@ -233,6 +244,156 @@ int CheckVitals() {
   return failures;
 }
 
+// --- stage 6, task O2: the meal, the satiety component and the plot -------
+
+/// Sets the world to the given day and hour without running any phase.
+void SetClock(core::WorldState& world, core::SimDay day, std::uint32_t hour) {
+  world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay + hour;
+  core::RefreshCalendarCaches(world.calendar);
+}
+
+/// Puts kilograms of a resource straight into the yard's pantry.
+void FillPantry(core::WorldState& world, std::uint32_t resource, float kilograms) {
+  core::ResourceAmounts& pantry = world.families.rows[0].pantry;
+  if (pantry.size() <= resource) {
+    pantry.resize(resource + 1U, 0);
+  }
+  pantry[resource] = static_cast<core::Grams>(kilograms) * core::kGramsPerKilogram;
+}
+
+int CheckMeal() {
+  int failures = 0;
+  const core::FoodConfig config = MakeExchangeConfig();
+  // One adult of 30 biological years owes the whole adult norm: 300 kg
+  // grain-eq a game year is 6.25 kg a day, and at 3.3 kcal/g that is
+  // 20 625 kcal on the table.
+  constexpr float kNeedKcal = 20625.0F;
+
+  // A full pantry covers the norm exactly once and no more: what is eaten
+  // is the need, not the stock.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    FillPantry(world, 0, 10.0F);  // 33 000 kcal of grain
+    SetClock(world, 4, core::kTicksPerDay - 1U);
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    const core::Grams left = world.families.rows[0].pantry[0];
+    const float eaten_kcal =
+        static_cast<float>(10 * core::kGramsPerKilogram - left) * config.resources[0].kcal_per_gram;
+    failures += Expect(eaten_kcal > kNeedKcal * 0.99F && eaten_kcal < kNeedKcal * 1.01F,
+                       "the family eats its norm and leaves the rest in the bin");
+    failures += Expect(world.residents.rows[0].satiety == 74.0F,
+                       "a fed day drifts satiety toward 100 by one day's drift");
+    failures += Expect(world.families.rows[0].food_variety_mask == 0b1,
+                       "the variety mask records the one category that was on the table");
+    failures += Expect(world.residents.rows[0].health > 70.0F,
+                       "and a satiety above the recovery threshold mends health");
+  }
+
+  // Two bins, one meal: the burn is proportional to what is stored, so
+  // neither bin is emptied while the other stands full.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    FillPantry(world, 0, 10.0F);
+    FillPantry(world, 1, 10.0F);
+    SetClock(world, 4, core::kTicksPerDay - 1U);
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(world.families.rows[0].pantry[0] == world.families.rows[0].pantry[1],
+                       "equal stocks are eaten in equal measure");
+    failures +=
+        Expect(world.families.rows[0].food_variety_mask == 0b11, "both categories reach the mask");
+  }
+
+  // An empty pantry: satiety falls by the day's drift and, once under the
+  // threshold, health follows it down.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 30.0F);
+    SetClock(world, 4, core::kTicksPerDay - 1U);
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(world.residents.rows[0].satiety == 26.0F,
+                       "an empty pantry drifts satiety toward zero");
+    failures += Expect(world.residents.rows[0].health < 70.0F,
+                       "and hunger under the threshold costs health, a point a week");
+  }
+
+  // The mask is a SEASON's table, not a day's: it clears when the season
+  // turns and fills again from that day's meal.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    world.families.rows[0].food_variety_mask = 0b1111;
+    FillPantry(world, 0, 10.0F);
+    SetClock(world, 8, core::kTicksPerDay - 1U);  // 1 March: spring begins
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(world.families.rows[0].food_variety_mask == 0b1,
+                       "the season's first meal starts the mask over");
+  }
+  return failures;
+}
+
+int CheckSatietyComponent() {
+  int failures = 0;
+  const core::FoodConfig config = MakeExchangeConfig();
+  core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 80.0F);
+  world.families.rows[0].food_variety_mask = 0b1;  // bread alone
+  failures += Expect(core::SatietyComponent(config, world, 0) == 50.0F,
+                     "one category in Epoch I caps the component at 50, as the design says");
+  world.families.rows[0].food_variety_mask = 0b111;
+  failures += Expect(core::SatietyComponent(config, world, 0) == 80.0F,
+                     "the epoch's three categories lift the ceiling off the mean");
+  return failures;
+}
+
+int CheckPlot() {
+  int failures = 0;
+  const core::FoodConfig config = MakeExchangeConfig();
+  constexpr std::uint32_t kPlotHour = core::kTicksPerDay - 2U;
+
+  // A yard with nobody at kolkhoz work: the no-worker base, less what the
+  // absence of an elder costs it.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    SetClock(world, 4, kPlotHour);
+    core::RunHouseholdPlot(config, 4.0F, world, 0);
+    failures += Expect(world.families.rows[0].household_hours == 5.0F - 1.3F,
+                       "an elderless yard with nobody out works its base less the elders' worth");
+  }
+
+  // A yard whose worker spent ten hours away: the exact remainder of the
+  // day, sleep and the road already taken out of it.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    world.residents.rows[0].work.hours_away_today = 10.0F;
+    SetClock(world, 4, kPlotHour);
+    core::RunHouseholdPlot(config, 4.0F, world, 0);
+    failures += Expect(world.families.rows[0].household_hours == 24.0F - 8.0F - 10.0F - 1.3F,
+                       "a day out leaves the yard what the day actually left it");
+  }
+
+  // A whole growing season at full attention pays the yard's whole yield.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    core::ResidentRow granny;
+    granny.family = world.families.row_ids[0];
+    granny.birth_day = -780;  // 65 biological years: an elder in the yard
+    AppendRow(world.residents, granny);
+    // 1 April to 30 September, the growing season of the model.
+    for (core::SimDay day = 12; day <= 35; ++day) {
+      SetClock(world, day, kPlotHour);
+      core::RunHouseholdPlot(config, 4.0F, world, 0);
+    }
+    failures += Expect(world.families.rows[0].household_hours > config.plot.full_yield_hours,
+                       "an elder at home keeps the yard above the full-yield hours");
+    failures += Expect(
+        world.families.rows[0].pantry[1] == static_cast<core::Grams>(900) * core::kGramsPerKilogram,
+        "September pays the yard's whole potato crop for a season of full days");
+    failures += Expect(world.families.rows[0].pantry[3] ==
+                           static_cast<core::Grams>(1200) * core::kGramsPerKilogram,
+                       "and its whole vegetable crop");
+    failures += Expect(world.families.rows[0].plot_ratio_days == 0,
+                       "the season's accumulators reset after the harvest");
+  }
+  return failures;
+}
+
 int CheckFoodConfigDefaults(const core::ITableSet& tables) {
   int failures = 0;
   std::string error;
@@ -338,22 +499,25 @@ int main() {
   {
     core::WorldState previous = world;
     core::WorldState current = world;
-    current.families.rows[0].component_satiety = 60.0F;
     current.families.rows[0].component_common_cause = 60.0F;
     current.families.rows[0].component_needs = 60.0F;
-    current.families.rows[0].component_rest = 60.0F;
-    current.families.rows[1].component_satiety = 10.0F;  // starving
     current.families.rows[1].component_common_cause = 90.0F;
     current.families.rows[1].component_needs = 90.0F;
-    current.families.rows[1].component_rest = 90.0F;
-    // The rest component is no longer free-standing: since labor exists it
-    // is the members' own rest, averaged, and the metrics phase recomputes
-    // it (stage 5). Set the people, not the component.
+    // Two of the four components are no longer free-standing: rest is the
+    // members' own rest averaged (stage 5) and satiety is their satiety
+    // under the variety ceiling (stage 6). Set the people, not the
+    // components — and give both yards a varied enough table that the
+    // ceiling of Epoch I (three categories) does not bite.
+    constexpr std::uint16_t kThreeCategories = 0b111;
+    current.families.rows[0].food_variety_mask = kThreeCategories;
+    current.families.rows[1].food_variety_mask = kThreeCategories;
     for (core::ResidentRow& resident : current.residents.rows) {
       if (resident.family.value == current.families.row_ids[0].value) {
         resident.rest = 60.0F;
+        resident.satiety = 60.0F;
       } else if (resident.family.value == current.families.row_ids[1].value) {
         resident.rest = 90.0F;
+        resident.satiety = 10.0F;  // starving
       }
     }
     core::IParallelPhase& metrics = system->MetricsPhase();
@@ -368,6 +532,9 @@ int main() {
   }
 
   failures += CheckFoodConfigDefaults(tables);
+  failures += CheckMeal();
+  failures += CheckSatietyComponent();
+  failures += CheckPlot();
   failures += CheckExchange();
   failures += CheckVitals();
 

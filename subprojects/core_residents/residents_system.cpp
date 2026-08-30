@@ -1,8 +1,17 @@
 // Implementation of the core_residents boundary
-// (include/core_residents/residents_system.h). Stage 3: demography — births,
-// deaths, marriages, migration, outflow — in the sequential demography
-// sub-step, and family satisfaction in the metrics phase. The needs phase
-// stays a zero-item STUB until food exists (stage 6).
+// (include/core_residents/residents_system.h): the module's three slots and
+// the demography that has been in it since stage 3 — births, deaths,
+// marriages, migration, outflow.
+//
+// What each slot holds after stage 6 (manual/66-food-model.md §1):
+//   needs      the family's daily meal out of its own pantry (family_meal);
+//   decisions  demography, then the family/kolkhoz exchange
+//              (family_exchange), then the vitals window (vitals);
+//   metrics    the plot and its garden (household_plot), the satiety and
+//              rest components, and the satisfaction aggregate.
+//
+// The heavy lifting lives in those files; what is left here is the
+// demography itself, the phase objects and the factory.
 //
 // The demography model mirrors the cohort reference run
 // (manual/balance/sim/demography.py) at per-person granularity: per-day
@@ -26,7 +35,9 @@
 #include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "family_exchange.h"
+#include "family_meal.h"
 #include "food_config.h"
+#include "household_plot.h"
 #include "life_config.h"
 #include "vitals.h"
 
@@ -106,16 +117,32 @@ void RemoveResident(WorldState& current, ResidentId id) {
   }
 }
 
-/// The needs slot (phase 2). STUB: nothing to compute until food and
-/// heating exist (stage 6); zero items keeps the phase a no-op.
-class NeedsStubPhase final : public IParallelPhase {
+/// The needs slot (phase 2), parallel by family: the household's daily meal
+/// out of its own pantry, and what it does to its people (stage 6, task O2).
+/// Heating is still absent from phase 1, so cold is not part of this phase —
+/// see the STUB notice the factory logs.
+class FamilyNeedsPhase final : public IParallelPhase {
  public:
-  std::uint32_t ParallelItemCount(const WorldState& /*current*/) const override { return 0; }
+  FamilyNeedsPhase(const FoodConfig& food, float life_speedup)
+      : food_(&food), life_speedup_(life_speedup) {}
 
-  void RunItemRange(const WorldState& /*previous*/,
-                    WorldState& /*current*/,
-                    std::uint32_t /*begin_item*/,
-                    std::uint32_t /*end_item*/) override {}
+  std::uint32_t ParallelItemCount(const WorldState& current) const override {
+    return static_cast<std::uint32_t>(current.families.rows.size());
+  }
+
+  void RunItemRange(const WorldState& previous,
+                    WorldState& current,
+                    std::uint32_t begin_item,
+                    std::uint32_t end_item) override {
+    for (std::uint32_t item = begin_item; item < end_item; ++item) {
+      RunFamilyMeal(*food_, life_speedup_, previous, current, item);
+    }
+  }
+
+ private:
+  const FoodConfig* food_;
+
+  float life_speedup_;
 };
 
 /// The metrics slot (phase 6): family satisfaction from its four components
@@ -123,7 +150,8 @@ class NeedsStubPhase final : public IParallelPhase {
 /// Parallel by family; each invocation owns its family rows.
 class FamilyMetricsPhase final : public IParallelPhase {
  public:
-  explicit FamilyMetricsPhase(const LifeConfig& config) : config_(&config) {}
+  FamilyMetricsPhase(const LifeConfig& config, const FoodConfig& food)
+      : config_(&config), food_(&food) {}
 
   std::uint32_t ParallelItemCount(const WorldState& current) const override {
     return static_cast<std::uint32_t>(current.families.rows.size());
@@ -136,7 +164,12 @@ class FamilyMetricsPhase final : public IParallelPhase {
     // current.epoch is finalized by the decisions slot (buffer-law rule 4).
     const SatisfactionWeights& weights = config_->weights[EpochIndex(current.epoch)];
     for (std::uint32_t item = begin_item; item < end_item; ++item) {
+      // The plot goes first: the day's hours are an input to nothing here
+      // yet, but the garden it pays out feeds tomorrow's meal, and both
+      // belong to the same owned row.
+      RunHouseholdPlot(*food_, config_->life_speedup, current, item);
       FamilyRow& family = current.families.rows[item];
+      family.component_satiety = SatietyComponent(*food_, current, item);
       UpdateRestComponent(current, item, family);
       const float weighted =
           (family.component_satiety * weights.satiety +
@@ -178,12 +211,17 @@ class FamilyMetricsPhase final : public IParallelPhase {
   }
 
   const LifeConfig* config_;
+
+  const FoodConfig* food_;
 };
 
 class ResidentsSystem final : public IResidentsSystem {
  public:
   ResidentsSystem(const LifeConfig& config, FoodConfig food)
-      : config_(config), food_(std::move(food)), metrics_phase_(config_) {}
+      : config_(config),
+        food_(std::move(food)),
+        needs_phase_(food_, config_.life_speedup),
+        metrics_phase_(config_, food_) {}
 
   IParallelPhase& NeedsPhase() override { return needs_phase_; }
 
@@ -415,7 +453,7 @@ class ResidentsSystem final : public IResidentsSystem {
 
   FoodConfig food_;
 
-  NeedsStubPhase needs_phase_;
+  FamilyNeedsPhase needs_phase_;
 
   FamilyMetricsPhase metrics_phase_;
 };

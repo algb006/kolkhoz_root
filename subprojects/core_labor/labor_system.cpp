@@ -1,7 +1,7 @@
 // Implementation of the core_labor boundary
 // (include/core_labor/labor_system.h). Stage 5: the working day itself —
 // the morning placement, the hourly grind inside the daylight window, the
-// fatigue walk-off and the day's close with trudodni and household hours.
+// fatigue walk-off and the day's close with trudodni.
 //
 // The day, in the order it happens:
 //   hour 0        the year's account burns on New Year, barn care is
@@ -11,8 +11,9 @@
 //                 road, both ends) delivers norm-days into the job's seam
 //                 and loses rest; below the critical rest he goes home and
 //                 is paid for what he did;
-//   hour 23       the rest are paid, families get their household hours
-//                 back, rest recovers, assignments are cleared.
+//   hour 23       the rest are paid, rest recovers, assignments are
+//                 cleared. (Household hours moved to core_residents with
+//                 the plot factors — stage 6, task O2.)
 //
 // Nothing here calls production: the two seams in the state carry the whole
 // contract (FieldRow::work_days_remaining, HerdRow::care_days_remaining —
@@ -400,7 +401,6 @@ class LaborSystem final : public ILaborSystem {
         PayDay(current, resident);
       }
     }
-    SettleHouseholdHours(current);
     const bool day_off = IsDayOff(current.calendar.weekday, current.epoch);
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
@@ -444,26 +444,11 @@ class LaborSystem final : public ILaborSystem {
     resident.work.worked_norm_days_today = 0.0F;
   }
 
-  /// Household hours (household design §1): what the day leaves the family
-  /// for its own yard — 24 hours minus sleep minus the average day spent
-  /// out by those who went out. A family that stayed home keeps the lot.
-  void SettleHouseholdHours(WorldState& current) const {
-    std::vector<float> hours(current.families.rows.size(), 0.0F);
-    std::vector<std::uint32_t> workers(current.families.rows.size(), 0);
-    for (const ResidentRow& resident : current.residents.rows) {
-      const std::uint32_t family_row = FindRow(current.families, resident.family);
-      if (family_row == kNoRow || resident.work.hours_away_today <= 0.0F) {
-        continue;
-      }
-      hours[family_row] += resident.work.hours_away_today;
-      ++workers[family_row];
-    }
-    for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
-      const float away = workers[row] > 0 ? hours[row] / static_cast<float>(workers[row]) : 0.0F;
-      const float left = static_cast<float>(kTicksPerDay) - config_.sleep_hours - away;
-      current.families.rows[row].household_hours = left > 0.0F ? left : 0.0F;
-    }
-  }
+  // Household hours used to be settled here, as the bare remainder of the
+  // day. Since stage 6 the whole number — remainder plus the factors of
+  // household design §1 — is computed in the metrics phase
+  // (core_residents/household_plot.cpp), at hour 22, while the day's orders
+  // are still alive. One writer, one place of truth.
 
   LaborConfig config_;
 };

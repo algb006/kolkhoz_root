@@ -79,6 +79,13 @@ struct ConsumptionConfig {
   /// ASSUMPTION until the stage criterion run.
   float adult_kg_grain_eq_per_year = 300.0F;
 
+  /// What one gram of the grain the norm is stated in is worth, kcal. The
+  /// norm above is an EQUIVALENT, and this is the thing it is equivalent to:
+  /// a resource converts by kcal_per_gram / this. Named as a knob rather
+  /// than taken from some row of the roster, so that the reference cannot
+  /// drift when the roster is reordered (sim_v4's KKAL['зерно']).
+  float grain_reference_kcal_per_gram = 3.3F;
+
   float eat_from_bio_years = 1.5F;
 
   float adult_from_bio_years = 16.0F;
@@ -158,14 +165,24 @@ struct PlotConfig {
   /// the day remainder of someone who stayed home. ASSUMPTION.
   float no_worker_base_hours = 5.0F;
 
+  /// Game hours of sleep, subtracted from the day before anything else.
+  /// Read from tables/labor.csv, where that fact lives for every consumer —
+  /// duplicating it into food.csv would be two homes for one number.
+  float sleep_hours = 8.0F;
+
   /// Elders in the yard: +bonus when present, -bonus when absent (the
   /// design table carries both signs around the same base).
   float elders_hours = 1.3F;
 
   float elder_from_bio_years = 60.0F;
 
-  /// Schoolchildren (bio 7..16): each adds hours up to the cap; the summer
-  /// value applies in the school-holiday months.
+  /// Schoolchildren: each adds hours up to the cap; the summer value applies
+  /// in the school-holiday months. The band is school age itself — from the
+  /// first school year (education design §2) to adulthood.
+  float schoolchild_from_bio_years = 7.0F;
+
+  float schoolchild_to_bio_years = 16.0F;
+
   float schoolchild_hours = 0.4F;
 
   float schoolchild_summer_hours = 0.6F;

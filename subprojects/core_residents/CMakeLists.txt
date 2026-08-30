@@ -9,6 +9,8 @@ kolkhoz_add_module(core_residents
     life_config.cpp
     food_config.cpp
     family_exchange.cpp
+    family_meal.cpp
+    household_plot.cpp
     vitals.cpp)
 
 target_link_libraries(core_residents
