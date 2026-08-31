@@ -13,6 +13,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
+#include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_production/production_system.h"
@@ -92,8 +93,15 @@ core::ProductionConfig MakeHerdConfig() {
 }
 
 /// A world with one store holding `hay_kg`, and one barn.
+///
+/// THE RNG IS SEEDED, and it has to be: a default RngState is all zeros, and
+/// a zero-state generator returns zero for ever — so every fractional flow
+/// (a death, a birth, a head maturing) would fire on every single draw. The
+/// checks below that exercise age deaths measured one a day out of a herd
+/// that should have lost one a year.
 core::WorldState MakeHerdWorld(float hay_kg) {
   core::WorldState world;
+  world.rng = core::SeedRngState(20260831, 0);
   core::RefreshCalendarCaches(world.calendar);
   core::UnitRow store;
   store.type = core::UnitTypeId{0};
@@ -328,6 +336,194 @@ int CheckAutumnPigs() {
   return failures;
 }
 
+// --- stage 7, task O2b: what the reconciliation's fixes changed -----------
+
+/// The yard's own birds and pig eat nothing from any store (question Q1),
+/// and the kolkhoz herd of the same kind still eats by the norm.
+int CheckSelfFedYard() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].household_self_fed = 1;
+  config.milk_resource = core::ResourceId{};  // no produce in the way
+
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    const core::HerdId id = AddHerd(world, 0, 4, 2, false);
+    core::HerdRow& herd = world.herds.rows[FindRow(world.herds, id)];
+    herd.household_owned = 1;
+    core::RunHerdDay(config, world);
+    failures += Expect(StoreOf(world, 0) == 100 * core::kGramsPerKilogram,
+                       "a self-fed yard herd takes nothing off the store");
+    failures += Expect(world.herds.rows[0].unfed_days == 0.0F,
+                       "and it is fed, not starving: range and scraps are its ration");
+  }
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    failures += Expect(StoreOf(world, 0) == 96 * core::kGramsPerKilogram,
+                       "the same kind in a kolkhoz unit eats by the norm — a farm is not a yard");
+  }
+  return failures;
+}
+
+/// A work-only feed is the WAGE of a working day (question Q2): none of it
+/// on a day the team stands, all of its share on a day the team is out.
+int CheckWorkOnlyFeed() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.horse_kind = core::LivestockKindId{0};
+  // Oats (resource 1) are the wage and may cover half the need; hay
+  // (resource 0) carries the rest and is never work-only.
+  config.feed_links = {
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{1},
+                        .max_share = 0.5F,
+                        .work_only = 1},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .max_share = 1.0F}};
+
+  const auto run_with_workers = [&](std::uint32_t workers) {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.units.rows[0].stock[1] = 100 * kKilo;
+    AddHerd(world, 0, 4, 2, true);
+    for (std::uint32_t worker = 0; worker < workers; ++worker) {
+      core::ResidentRow hand;
+      hand.work.kind = core::WorkKind::kPlowing;
+      hand.work.worked_norm_days_today = 1.0F;
+      AppendRow(world.residents, hand);
+    }
+    core::RunHerdDay(config, world);
+    return world;
+  };
+
+  {
+    const core::WorldState idle = run_with_workers(0);
+    failures +=
+        Expect(idle.units.rows[0].stock[1] == 100 * kKilo, "a standing team gets no oats at all");
+    failures += Expect(idle.units.rows[0].stock[0] == 96 * kKilo,
+                       "hay carries the whole ration on a day of rest");
+    failures += Expect(idle.herds.rows[0].unfed_days == 0.0F, "and the team is fed all the same");
+  }
+  {
+    const core::WorldState working = run_with_workers(4);
+    failures += Expect(working.units.rows[0].stock[1] == 98 * kKilo,
+                       "a working team takes its half in oats");
+    failures += Expect(working.units.rows[0].stock[0] == 98 * kKilo, "and the other half in hay");
+  }
+  {
+    // Two hands out of four heads: the wage ration is spread, because a work
+    // order names a field and a worker, never an animal.
+    const core::WorldState half = run_with_workers(2);
+    failures +=
+        Expect(half.units.rows[0].stock[1] == 99 * kKilo, "half the team out means half the oats");
+  }
+  return failures;
+}
+
+/// The manger of the settlement is reachable from any barn: hay is delivered
+/// to the ONE stock yard, and a herd standing elsewhere must still reach it.
+int CheckMangerReach() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.milk_resource = core::ResourceId{};
+  config.unit_types.resize(2);
+  config.unit_types[1].storage_capacity_kg = 0.0F;  // a barn, not a store
+  config.unit_types[1].livestock_capacity_head = 10.0F;
+
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  // Row 0 is the stock yard where the cut lands; row 1 is another barn with
+  // an empty manger, and neither is a "storing" unit.
+  core::UnitRow stock_yard;
+  stock_yard.type = core::UnitTypeId{1};
+  stock_yard.stock.assign(3, 0);
+  stock_yard.stock[0] = 100 * core::kGramsPerKilogram;
+  AppendRow(world.units, stock_yard);
+  core::UnitRow other_barn;
+  other_barn.type = core::UnitTypeId{1};
+  other_barn.stock.assign(3, 0);
+  const core::UnitId barn = AppendRow(world.units, other_barn);
+
+  core::HerdRow herd;
+  herd.kind = core::LivestockKindId{0};
+  herd.adult_count = 4;
+  herd.adult_male_count = 2;
+  herd.unit = barn;
+  AppendRow(world.herds, herd);
+  core::RunHerdDay(config, world);
+  failures += Expect(world.units.rows[0].stock[0] == 96 * core::kGramsPerKilogram,
+                     "a herd at an empty barn eats from the settlement's manger");
+  failures += Expect(world.herds.rows[0].unfed_days == 0.0F,
+                     "and does not starve two hundred metres from the hay");
+  return failures;
+}
+
+/// No foals without a roof: the stable is the SECOND step of the yard, and
+/// until it stands the team only ages (livestock design §5).
+int CheckStableGate() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{0};
+  config.stable_type = core::UnitTypeId{0};
+
+  const auto foals_at_level = [&](std::uint8_t level) {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    world.units.rows[0].level = level;
+    AddHerd(world, 0, 6, 2, true);
+    for (std::uint32_t day = 0; day < 20; ++day) {
+      world.calendar.tick += core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      core::RunHerdDay(config, world);
+    }
+    const core::HerdRow& herd = world.herds.rows[0];
+    return static_cast<std::uint32_t>(herd.newborn_count + herd.juvenile_count);
+  };
+  failures += Expect(foals_at_level(1) == 0, "a summer yard brings no foals");
+  failures += Expect(foals_at_level(2) > 0, "a stable does");
+  return failures;
+}
+
+/// The age hazard is read over the ages the herd HOLDS, not at its mean.
+int CheckAgeSpread() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.milk_resource = core::ResourceId{};
+  config.livestock[0].life_game_years_min = 3.0F;
+  config.livestock[0].life_game_years_max = 4.0F;
+  config.livestock[0].births_per_game_year = 0.0F;  // ageing alone, no calves
+
+  const auto survivors_after = [&](float mean_age, std::uint32_t years) {
+    core::WorldState world = MakeHerdWorld(100000.0F);
+    const core::HerdId id = AddHerd(world, 0, 40, 2, true);
+    core::HerdRow& herd = world.herds.rows[FindRow(world.herds, id)];
+    herd.adult_age_game_years_total = 40.0F * mean_age;
+    for (std::uint32_t day = 0; day < years * core::kDaysPerYear; ++day) {
+      world.calendar.tick += core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      core::RunHerdDay(config, world);
+    }
+    return world.herds.rows.empty() ? 0U
+                                    : static_cast<std::uint32_t>(world.herds.rows[0].adult_count);
+  };
+
+  // A herd whose MEAN is below the band still loses heads, because part of
+  // it is past its years. At the mean alone this was exactly zero.
+  failures += Expect(survivors_after(1.5F, 1) < 40 && survivors_after(1.5F, 1) > 30,
+                     "a young herd buries a few of its eldest, not none and not many");
+  // And a herd inside the band does not lose half of itself in a year.
+  failures +=
+      Expect(survivors_after(3.5F, 1) > 20, "an old herd thins, it does not collapse in one year");
+  // The spiral: with the dead removed at the mean, the mean never fell and
+  // any herd that could not breed emptied itself. It must not.
+  failures +=
+      Expect(survivors_after(3.5F, 4) > 0, "and four years on there is still a herd to speak of");
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -351,6 +547,11 @@ int main() {
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();
+  failures += CheckSelfFedYard();
+  failures += CheckWorkOnlyFeed();
+  failures += CheckMangerReach();
+  failures += CheckStableGate();
+  failures += CheckAgeSpread();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

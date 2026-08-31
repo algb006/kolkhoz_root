@@ -68,6 +68,27 @@ inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionCon
   return kNoRow;
 }
 
+/// @brief First unit that houses livestock; kNoRow if none.
+///
+/// This is the MANGER of the settlement, and it is one lookup on purpose:
+/// the harvest delivers hay here, and a kolkhoz herd eats here. When the two
+/// were written separately they drifted apart, and the sixteen billeted
+/// horses — a herd with no unit of its own — could not reach the hay at all.
+/// They lived five years on the village's bread grain and then starved
+/// beside two thousand tonnes of it (manual/balance/69-reconciliation.md
+/// §3 D1). A stock yard is not a "storing" unit: its table capacity is in
+/// HEADS, which is exactly why FindStorageRow does not find it.
+inline std::uint32_t FindStockYardRow(const WorldState& world, const ProductionConfig& config) {
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.type.value < config.unit_types.size() &&
+        config.unit_types[unit.type.value].livestock_capacity_head > 0.0F) {
+      return row;
+    }
+  }
+  return kNoRow;
+}
+
 /// @brief First unit of the given type; kNoRow if none. An invalid type
 /// matches nothing: otherwise it would match every unit whose type is also
 /// unset (a table-less world's houses) and index the config out of bounds.

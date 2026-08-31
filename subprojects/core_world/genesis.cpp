@@ -127,22 +127,68 @@ UnitId PlaceUnit(WorldState& world, UnitTypeId type, float x_meters, float y_met
   return AppendRow(world.units, unit);
 }
 
-FieldId PlaceField(
-    WorldState& world, float area_ga, CropId rotation, Vec2 center, Metric fertility) {
+/// @brief One ploughed field with its three-year rotation (farming design
+/// §7). An invalid slot is a fallow year.
+FieldId PlaceField(WorldState& world,
+                   float area_ga,
+                   Vec2 center,
+                   Metric fertility,
+                   CropId year0,
+                   CropId year1,
+                   CropId year2) {
   FieldRow field;
   field.center = center;
   field.area_ga = area_ga;
   field.fertility = fertility;
-  field.rotation_year0 = rotation;
-  field.rotation_year1 = rotation;
-  field.rotation_year2 = rotation;
+  field.rotation_year0 = year0;
+  field.rotation_year1 = year1;
+  field.rotation_year2 = year2;
   return AppendRow(world.fields, field);
+}
+
+/// @brief One meadow: standing grass from day one, mown once a season.
+/// No crop, no rotation, no fertility — a meadow is land, not a sowing
+/// (land_state.h, LandKind; boss answer Q6, 2026-08-31).
+void PlaceMeadow(WorldState& world, float area_ga, Vec2 center) {
+  FieldRow meadow;
+  meadow.kind = LandKind::kMeadow;
+  meadow.center = center;
+  meadow.area_ga = area_ga;
+  meadow.phase = FieldPhase::kGrowing;
+  AppendRow(world.fields, meadow);
+}
+
+/// @brief Reads one numeric cell of the livestock roster; `fallback` when the
+/// column or the value is missing.
+float LivestockValue(const ITable& livestock,
+                     std::uint32_t row,
+                     std::string_view column,
+                     float fallback) {
+  const std::uint32_t index = livestock.FindColumn(column);
+  if (index == kNoTableColumn) {
+    return fallback;
+  }
+  const std::optional<float> value = livestock.CellReal(row, index);
+  return value.has_value() ? *value : fallback;
 }
 
 /// @brief Appends one herd; returns nothing, because genesis never needs the
 /// id back.
+///
+/// THE AGES ARE DRAWN, HEAD BY HEAD, and that is canon rather than colour:
+/// "the age of every head is rolled at the founding — the herd and the team
+/// are not the same age, or they would die out all at once" (start canon §11,
+/// livestock design §6). The core kept them all at the age of adulthood, and
+/// the thirty-year run showed exactly the disaster the canon named: thirty-
+/// nine cows crossed their age threshold together and twenty-two of them died
+/// in one year, then twenty-one the next (69-reconciliation.md §3 D2).
+///
+/// Each adult is drawn uniformly across the whole adult band — from the age
+/// it becomes an adult to the top of its lifespan — and the row keeps the
+/// SUM, which is what the age model reads.
 void AddHerd(WorldState& world,
              const ITable& livestock,
+             RngState& rng,
              std::string_view key,
              std::uint16_t adults,
              std::uint16_t males,
@@ -160,8 +206,13 @@ void AddHerd(WorldState& world,
   herd.household_owned = household_owned ? 1U : 0U;
   herd.adult_count = adults;
   herd.adult_male_count = males;
-  // Adults start at the age they became adults: the start herd is a young
-  // working herd, not one about to die of old age.
+  const float adult_from_years = LivestockValue(livestock, row, "adult_from_game_months", 0.0F) /
+                                 static_cast<float>(kMonthsPerYear);
+  const float oldest = LivestockValue(livestock, row, "life_game_years_max", adult_from_years);
+  const float youngest = adult_from_years < oldest ? adult_from_years : oldest;
+  for (std::uint16_t head = 0; head < adults; ++head) {
+    herd.adult_age_game_years_total += DrawInRange(rng, youngest, oldest);
+  }
   AppendRow(world.herds, herd);
 }
 
@@ -181,23 +232,24 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
   if (livestock == nullptr) {
     return;
   }
+  RngState& rng = world.rng;
   // Two bulls to 37 cows is the 4% the design keeps; without a sire the barn
   // could never grow, and growing it is the whole first-epoch arc.
-  AddHerd(world, *livestock, "cow", 39, 2, stock_yard, FamilyId{}, false);
+  AddHerd(world, *livestock, rng, "cow", 39, 2, stock_yard, FamilyId{}, false);
   const auto yards = static_cast<std::uint32_t>(world.families.rows.size());
   const std::uint32_t horse_yards = yards < 16 ? yards : 16U;
   for (std::uint32_t yard = 0; yard < horse_yards; ++yard) {
-    AddHerd(world, *livestock, "horse", 1, 0, UnitId{}, world.families.row_ids[yard], false);
+    AddHerd(world, *livestock, rng, "horse", 1, 0, UnitId{}, world.families.row_ids[yard], false);
   }
   for (std::uint32_t yard = 0; yard < yards; ++yard) {
     const FamilyId home = world.families.row_ids[yard];
-    AddHerd(world, *livestock, "goat", 2, 0, UnitId{}, home, true);
-    AddHerd(world, *livestock, "chicken", 8, 0, UnitId{}, home, true);
+    AddHerd(world, *livestock, rng, "goat", 2, 0, UnitId{}, home, true);
+    AddHerd(world, *livestock, rng, "chicken", 8, 0, UnitId{}, home, true);
   }
   // A pig at every twentieth yard: "only the well-off, and no more than a
   // fifth of the yards" — a sow and a boar, or it is not a herd.
   for (std::uint32_t yard = 0; yard + 1U < yards; yard += 20U) {
-    AddHerd(world, *livestock, "pig", 2, 1, UnitId{}, world.families.row_ids[yard], true);
+    AddHerd(world, *livestock, rng, "pig", 2, 1, UnitId{}, world.families.row_ids[yard], true);
   }
 }
 
@@ -290,42 +342,75 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     PutPantry(family, GenesisResource(resources, "potato"), 400);
     PutPantry(family, GenesisResource(resources, "oat"), 80);
     PutPantry(family, GenesisResource(resources, "vegetables"), 60);
+    // And hay for the goats, by the same rule that measures the kolkhoz's
+    // own fodder: from the start to the nearest moment the yard replenishes
+    // it itself, which for a yard is its OWN cut in August (food.csv,
+    // hay_harvest_month) — two months after the kolkhoz's.
+    //
+    // Two goats eat 2 fodder units a real day each: 1460 units over a real
+    // year, of which January to August is a third at the full rate and the
+    // four pasture months a fifth of it — about 584 units, and hay carries
+    // 0.45 units to the kilogram. Hence 1.3 t.
+    //
+    // Without it the yards' goats starved from day one and died before the
+    // first cut, and no path in phase 1 brings them back: private herds do
+    // not breed by canon (69-reconciliation.md §3 D3). That made the first
+    // year irreversible, which the design forbids outright.
+    PutPantry(family, GenesisResource(resources, "hay"), 1300);
   }
   PutStock(world.units.rows[FindRow(world.units, compost)],
            GenesisResource(resources, "manure"),
            250000);
 
-  // 160 ha of arable land: the reference first-year mix sown, the rest
-  // fallow; 80 ha of meadows in permanent grass. The land lies in a half
-  // ring north of the village, and the radii reproduce the start map's own
-  // measurements (49-simulations §2в): the arable averages 1.0 km from the
-  // village and nothing lies farther than 1.5 km, which is what makes the
-  // road eat 37-56% of a spring day there. The potato patch sits nearest,
-  // being the crop walked to most often. Coordinates are written out rather
-  // than computed — genesis must land bit for bit on every compiler and trig
-  // library results do not (daylight_table.h says the same) — and they are
-  // polar around the village centre (0, -160), which is why the y values
-  // look shifted.
+  // 160 ha of arable land with the SUGGESTED THREE-YEAR ROTATION the start
+  // canon hands the player along with the field outlines (start canon §8,
+  // boss answer to question Q3, 2026-08-31). It is a suggestion, not a law:
+  // the player may redo it, and in phase 1 nobody does, which is exactly why
+  // it has to be a sound rotation rather than one crop per field forever.
+  // The old genesis sowed each field its single crop in all three slots, and
+  // the run showed what that costs: the wheat field went from 65 fertility
+  // to 2 in six years, and "the village does not go hungry under sound
+  // management" cannot be tested on management that is not sound.
+  //
+  // Shares of the RAISED land, from the canon: potatoes 30%, spring grain
+  // 25%, oats 15%, grasses 15%, vegetables 10%, fallow 5% — 70 ha of the
+  // 160, the rest still lying derelict. The first spring is spring crops
+  // only: winter rye goes into the ground that autumn and the ring starts
+  // turning in the second year. No field carries the same crop two years
+  // running, across the wrap of the three slots included.
+  //
+  // The land lies in a half ring north of the village, and the radii
+  // reproduce the start map's own measurements (49-simulations §2в): the
+  // arable averages 1.0 km from the village and nothing lies farther than
+  // 1.5 km, which is what makes the road eat 37-56% of a spring day there.
+  // The potato patch sits nearest, being the crop walked to most often.
+  // Coordinates are written out rather than computed — genesis must land bit
+  // for bit on every compiler and trig library results do not
+  // (daylight_table.h says the same) — and they are polar around the village
+  // centre (0, -160), which is why the y values look shifted.
+  const CropId potato = CropByKey(crops, "potato");
+  const CropId wheat = CropByKey(crops, "wheat_spring");
+  const CropId barley = CropByKey(crops, "barley");
+  const CropId oat = CropByKey(crops, "oat");
+  const CropId timothy = CropByKey(crops, "timothy");
+  const CropId cabbage = CropByKey(crops, "cabbage");
+  const CropId fodder_beet = CropByKey(crops, "fodder_beet");
+  const CropId rye = CropByKey(crops, "rye_winter");
+  const CropId fallow;
   PlaceField(
-      world, 20.0F, CropByKey(crops, "oat"), Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility);
+      world, 21.0F, Vec2{.x = -222.0F, .y = 451.0F}, kStartFertility, potato, wheat, timothy);
+  PlaceField(world, 10.0F, Vec2{.x = 182.0F, .y = 874.0F}, kStartFertility, wheat, timothy, rye);
   PlaceField(
-      world, 13.4F, CropByKey(crops, "barley"), Vec2{.x = 611.0F, .y = 568.0F}, kStartFertility);
-  PlaceField(world,
-             10.0F,
-             CropByKey(crops, "wheat_spring"),
-             Vec2{.x = 182.0F, .y = 874.0F},
-             kStartFertility);
+      world, 7.5F, Vec2{.x = 611.0F, .y = 568.0F}, kStartFertility, barley, fodder_beet, wheat);
+  PlaceField(world, 10.5F, Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility, oat, timothy, potato);
+  PlaceField(world, 10.5F, Vec2{.x = -799.0F, .y = 131.0F}, kStartFertility, timothy, rye, potato);
+  PlaceField(world, 7.0F, Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility, cabbage, oat, timothy);
+  PlaceField(world, 3.5F, Vec2{.x = -500.0F, .y = 200.0F}, kStartFertility, fallow, rye, potato);
+  // The derelict remainder: ninety hectares nobody has raised yet.
   PlaceField(
-      world, 12.6F, CropByKey(crops, "potato"), Vec2{.x = -222.0F, .y = 451.0F}, kStartFertility);
+      world, 45.0F, Vec2{.x = 1106.0F, .y = 614.0F}, kStartFertility, fallow, fallow, fallow);
   PlaceField(
-      world, 5.6F, CropByKey(crops, "flax"), Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility);
-  PlaceField(world,
-             8.4F,
-             CropByKey(crops, "fodder_beet"),
-             Vec2{.x = -799.0F, .y = 131.0F},
-             kStartFertility);
-  PlaceField(world, 45.0F, CropId{}, Vec2{.x = 1106.0F, .y = 614.0F}, kStartFertility);
-  PlaceField(world, 45.0F, CropId{}, Vec2{.x = -774.0F, .y = 946.0F}, kStartFertility);
+      world, 45.0F, Vec2{.x = -774.0F, .y = 946.0F}, kStartFertility, fallow, fallow, fallow);
   // Meadows and pasture. The map gives about 15% of its hundred square
   // kilometres to grass (terrain design §1) — some fifteen hundred hectares
   // — so the fodder base is not limited by LAND at all. It is limited by
@@ -333,6 +418,11 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // village mows what it has crews and days for, and hay becomes a decision
   // rather than a given. Two hundred hectares are laid out here, which is
   // more than the first years can cut and rather less than the map holds.
+  //
+  // They are MEADOWS, not fields of timothy: grass is mown where it grew,
+  // and it neither improves nor exhausts the ground under it. Sown as a
+  // perennial crop they gained three points of fertility a cut, and thirty
+  // years of that doubled the hay off land nobody had touched.
   constexpr std::array<Vec2, 10> kMeadowCenters = {{{.x = 1401.0F, .y = 215.0F},
                                                     {.x = 725.0F, .y = 1096.0F},
                                                     {.x = -725.0F, .y = 1096.0F},
@@ -343,13 +433,8 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
                                                     {.x = -170.0F, .y = 1129.0F},
                                                     {.x = -1032.0F, .y = 631.0F},
                                                     {.x = -1300.0F, .y = -160.0F}}};
-  const CropId timothy = CropByKey(crops, "timothy");
   for (const Vec2 center : kMeadowCenters) {
-    FieldRow& field =
-        world.fields.rows[FindRow(world.fields, PlaceField(world, 20.0F, timothy, center, 55.0F))];
-    // Meadows are standing grass from day one: no sowing year needed.
-    field.crop = timothy;
-    field.phase = FieldPhase::kGrowing;
+    PlaceMeadow(world, 20.0F, center);
   }
 
   PlaceHerds(world, tables, stock_yard);

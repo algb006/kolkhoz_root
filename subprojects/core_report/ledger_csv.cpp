@@ -176,6 +176,9 @@ float MeanFertility(const WorldState& state) {
   float area = 0.0F;
   float weighted = 0.0F;
   for (const FieldRow& field : state.fields.rows) {
+    if (field.kind != LandKind::kArable) {
+      continue;  // a meadow has no fertility to average in (land_state.h)
+    }
     area += field.area_ga;
     weighted += field.fertility * field.area_ga;
   }

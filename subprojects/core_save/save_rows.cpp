@@ -26,6 +26,10 @@ namespace {
 static_assert(sizeof(ResidentRow) == 152,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(FamilyRow) == 80, "FamilyRow changed — update the codec and VERSION_SAVE");
+// FieldRow took LandKind into a padding byte it already had, so sizeof did
+// NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
+// see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
+// what has to notice.
 static_assert(sizeof(FieldRow) == 40, "FieldRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(UnitRow) == 48, "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
@@ -43,6 +47,7 @@ constexpr std::uint8_t kMaxEducationStage = static_cast<std::uint8_t>(EducationS
 constexpr std::uint8_t kMaxSocialStatus = static_cast<std::uint8_t>(SocialStatus::kParty);
 
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kHarvest);
+constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kFloodplainMeadow);
 
 template <typename IdT>
 void WriteEntityId(ByteWriter& out, IdT id) {
@@ -245,6 +250,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
 
   out.WriteU8(row.repeat_years);
   out.WriteU8(row.manure_applied);
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
   out.WriteFloat(row.weather_stress);
   out.WriteFloat(row.work_days_remaining);
 }
@@ -265,6 +271,7 @@ FieldRow ReadFieldRow(LoadSource& source) {
 
   row.repeat_years = in.ReadU8();
   row.manure_applied = in.ReadU8();
+  row.kind = static_cast<LandKind>(source.ReadEnumValue(0, kMaxLandKind, "land kind"));
   row.weather_stress = in.ReadFloat();
   row.work_days_remaining = in.ReadFloat();
   return row;

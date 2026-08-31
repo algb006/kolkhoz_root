@@ -243,7 +243,11 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   float pig_month = static_cast<float>(farming.pig_slaughter_month) + 1.0F;
   float birth_from = static_cast<float>(farming.birth_from_month) + 1.0F;
   float birth_to = static_cast<float>(farming.birth_to_month) + 1.0F;
-  const std::array<Knob, 12> knobs = {{
+  float mow_month = static_cast<float>(farming.meadow_cut_month) + 1.0F;
+  // Real man-days in the file, game man-days in the config — the same
+  // conversion the crop and field-phase norms get, done once at parse.
+  float mow_days = farming.meadow_mow_days_per_ha * kRealDaysPerGameDay;
+  const std::array<Knob, 18> knobs = {{
       {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
       {"unfed_death_after_days", &farming.unfed_death_after_days, 0.0F, 1000.0F},
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
@@ -254,6 +258,12 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"pasture_to_month", &pasture_to, 1.0F, 12.0F},
       {"pig_slaughter_month", &pig_month, 1.0F, 12.0F},
       {"sow_keep_share", &farming.sow_keep_share, 0.0F, 1.0F},
+      {"repeat_penalty_max_years", &farming.repeat_penalty_max_years, 0.0F, 250.0F},
+      {"fertility_floor", &farming.fertility_floor, 0.0F, 100.0F},
+      {"meadow_yield_kg_per_ha", &farming.meadow_yield_kg_per_ha, 0.0F, 1e5F},
+      {"meadow_floodplain_yield_kg_per_ha", &farming.meadow_floodplain_yield_kg_per_ha, 0.0F, 1e5F},
+      {"meadow_mow_days_per_ha", &mow_days, 0.0F, 1000.0F},
+      {"meadow_cut_month", &mow_month, 1.0F, 12.0F},
       {"birth_from_month", &birth_from, 1.0F, 12.0F},
       {"birth_to_month", &birth_to, 1.0F, 12.0F},
   }};
@@ -275,6 +285,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.pasture_from_month = static_cast<std::uint8_t>(pasture_from - 1.0F);
   farming.pasture_to_month = static_cast<std::uint8_t>(pasture_to - 1.0F);
   farming.pig_slaughter_month = static_cast<std::uint8_t>(pig_month - 1.0F);
+  farming.meadow_cut_month = static_cast<std::uint8_t>(mow_month - 1.0F);
+  farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
   farming.birth_from_month = static_cast<std::uint8_t>(birth_from - 1.0F);
   farming.birth_to_month = static_cast<std::uint8_t>(birth_to - 1.0F);
   return true;
@@ -314,6 +326,9 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
   }
   const std::uint32_t pelt_col = table.FindColumn("pelt_pieces_per_head");
   const std::uint32_t down_col = table.FindColumn("down_kg_per_head");
+  const std::uint32_t self_fed_col = table.FindColumn("household_self_fed");
+  const std::uint32_t cap_col = table.FindColumn("household_cap_heads");
+  const std::uint32_t group_col = table.FindColumn("household_group");
   livestock.resize(table.RowCount());
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     std::array<float, kColumns.size()> values{};
@@ -351,11 +366,21 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
     kind.manure_kg_per_year = values[15];
     kind.meat_kg_per_head = values[16];
     kind.hide_pieces_per_head = values[17];
+    float self_fed = 0.0F;
     if (!CellOrDefault(table, row, pelt_col, 0, 0, 100, kind.pelt_pieces_per_head, error) ||
-        !CellOrDefault(table, row, down_col, 0, 0, 100, kind.down_kg_per_head, error)) {
+        !CellOrDefault(table, row, down_col, 0, 0, 100, kind.down_kg_per_head, error) ||
+        !CellOrDefault(table, row, self_fed_col, 0, 0, 1, self_fed, error)) {
       error = "livestock: " + error;
       return false;
     }
+    kind.household_self_fed = static_cast<std::uint8_t>(self_fed);
+    if (!CellOrDefault(table, row, cap_col, 0, 0, 1000, kind.household_cap_heads, error)) {
+      error = "livestock: " + error;
+      return false;
+    }
+    const std::string_view group =
+        group_col == kNoTableColumn ? std::string_view{} : table.CellText(row, group_col);
+    kind.household_group = group == "stock" ? 1U : (group == "bird" ? 2U : 0U);
     // A band that is empty or inverted would make the age hazard nonsense.
     if (kind.life_game_years_max < kind.life_game_years_min) {
       kind.life_game_years_max = kind.life_game_years_min;
@@ -430,6 +455,7 @@ bool ParseFeedLinks(const ITable& table,
   const std::uint32_t resource_col = table.FindColumn("resource");
   const std::uint32_t reserve_col = table.FindColumn("reserve");
   const std::uint32_t share_col = table.FindColumn("max_share");
+  const std::uint32_t work_only_col = table.FindColumn("work_only");
   if (kind_col == kNoTableColumn || resource_col == kNoTableColumn) {
     error = "feed_links: no livestock or resource column";
     return false;
@@ -446,15 +472,18 @@ bool ParseFeedLinks(const ITable& table,
     }
     float reserve = 0.0F;
     float max_share = 1.0F;
+    float work_only = 0.0F;
     if (!CellOrDefault(table, row, reserve_col, 0, 0, 1, reserve, error) ||
-        !CellOrDefault(table, row, share_col, 1, 0, 1, max_share, error)) {
+        !CellOrDefault(table, row, share_col, 1, 0, 1, max_share, error) ||
+        !CellOrDefault(table, row, work_only_col, 0, 0, 1, work_only, error)) {
       error = "feed_links: " + error;
       return false;
     }
     links.push_back(FeedLinkDef{.kind = LivestockKindId{static_cast<std::uint16_t>(kind_row)},
                                 .resource = ResourceId{static_cast<std::uint16_t>(resource_row)},
                                 .reserve = static_cast<std::uint8_t>(reserve),
-                                .max_share = max_share});
+                                .max_share = max_share,
+                                .work_only = static_cast<std::uint8_t>(work_only)});
   }
   return true;
 }
@@ -579,7 +608,12 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // kolkhoz yard (boss 2026-08-30), and phase 1 keeps every unit at its
   // genesis level. So the id stays invalid and horse breeding stays blocked
   // — the start canon's own rule, arrived at by the canon's own route.
-  config.stable_type = UnitTypeId{};
+  // The stable is the SECOND step of the kolkhoz yard, and foals come only
+  // under its roof (livestock design §5). The type is resolved here; whether
+  // one is BUILT is a question about the world, asked once a day in
+  // herd_system.cpp. Phase 1 has no construction, so core_world raises it as
+  // a stub at the turn of the first year — see world.cpp, RaiseKolkhozYard.
+  config.stable_type = UnitTypeByKey(unit_types, "horse_yard");
   config.horse_kind = KindByKey(livestock, "horse");
   config.pig_kind = KindByKey(livestock, "pig");
   return true;

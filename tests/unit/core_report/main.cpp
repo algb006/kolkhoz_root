@@ -101,6 +101,13 @@ int main() {
   field.area_ga = 30.0F;
   field.fertility = 80.0F;
   core::AppendRow(state.fields, field);  // area-weighted mean is 75, not 70
+  // A meadow has no fertility to average in: 200 ha of grass at the neutral
+  // default would drag the mean of the ARABLE to something nobody sowed.
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.area_ga = 200.0F;
+  meadow.fertility = 50.0F;
+  core::AppendRow(state.fields, meadow);
 
   core::UnitRow store;
   store.stock = core::ResourceAmounts{1'000'000, 0, 0, 5'000'000};
@@ -149,7 +156,8 @@ int main() {
   failures += Expect(cell("population") == "0" && cell("families") == "1",
                      "the state columns describe the world, not the book");
   failures += Expect(cell("epoch") == "2", "the epoch prints as its number");
-  failures += Expect(cell("fertility_mean") == "75", "fertility is weighted by area");
+  failures += Expect(cell("fertility_mean") == "75",
+                     "fertility is weighted by area, and meadows are not in it");
   failures += Expect(cell("births") == "12" && cell("deaths") == "5", "the people flows");
   failures += Expect(cell("satiety_mean") == "70.5", "the yearly mean is the sum over the days");
   failures += Expect(cell("satiety_day_min") == "31.25" && cell("hungry_at_once_max") == "9",

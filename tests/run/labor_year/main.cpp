@@ -150,6 +150,7 @@ int main() {
   LaborTally tally;
   double care_left = 0.0;
   double accounts_before_burn = 0.0;
+  double accrued_before_burn = 0.0;
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
     const core::WorldState& world = simulation->CompletedState();
@@ -168,6 +169,8 @@ int main() {
           accounts_before_burn += static_cast<double>(family.trudodni_account) /
                                   static_cast<double>(core::kTrudodniScale);
         }
+        accrued_before_burn = static_cast<double>(world.ledger.current.trudodni_accrued) /
+                              static_cast<double>(core::kTrudodniScale);
       }
     }
   }
@@ -187,8 +190,13 @@ int main() {
   // are one norm for any land — 70 x 10/7 and 70 x 3/7 game man-days.
   failures += ExpectBand(plowing, 90.0, 105.0, "plowing costs the 70 sown hectares' norm");
   failures += ExpectBand(harrowing, 27.0, 32.0, "harrowing costs its norm on the same land");
-  // Sowing is per crop: grain 3, potato 12, flax 2, fodder 2 real man-days/ha.
-  failures += ExpectBand(sowing, 40.0, 48.0, "sowing costs the crop mix's norm");
+  // Sowing is per crop, and the mix is the start canon's suggested rotation
+  // (start canon §8, in the core since task O2b): potatoes 21 ha x 12 real
+  // man-days, wheat 10 x 3, barley 7.5 x 3, oats 10.5 x 3, grasses 10.5 x 2,
+  // cabbage 7 x 5 — 392 real man-days, 56 game ones. It costs more than the
+  // old genesis mix because the canon sows three times the potatoes, and
+  // potatoes are the crop that takes hands.
+  failures += ExpectBand(sowing, 52.0, 60.0, "sowing costs the crop mix's norm");
   // Harvest is the heavy half: grain 8, potato 25, flax 60, hay 8 per hectare.
   // A field lost to snow takes its own harvest with it, so the band is wide
   // downward.
@@ -221,12 +229,25 @@ int main() {
     after_burn +=
         static_cast<double>(family.trudodni_account) / static_cast<double>(core::kTrudodniScale);
   }
-  std::cout << "labor_year: " << accounts_before_burn << " trudodni on the accounts the last "
-            << "evening, " << after_burn << " after the year's turn\n";
-  failures += ExpectBand(accounts_before_burn,
-                         total * 0.95,
+  std::cout << "labor_year: " << accrued_before_burn << " trudodni accrued over the year, "
+            << accounts_before_burn << " still on the accounts the last evening, " << after_burn
+            << " after the year's turn\n";
+  // THE LEDGER IS THE WITNESS, not the sum of the accounts. A household's
+  // account is a GROSS counter of what that household ever earned this year,
+  // and a household can dissolve: its people marry out, its last member dies.
+  // What it is owed passes to the neighbours (residents_system.cpp), but the
+  // history of what it once earned goes with the row, so the accounts add up
+  // to a little less than the year delivered — by a tenth in the first year,
+  // which is a village of young households marrying.
+  //
+  // The ledger's own accrual counter has no rows to lose, which is exactly
+  // why the reconciliation is done on it.
+  failures += ExpectBand(accrued_before_burn,
+                         total * 0.98,
                          total * 1.02,
-                         "the family accounts hold the year's delivered man-days");
+                         "the ledger's accrual holds the year's delivered man-days");
+  failures += run::Expect(accounts_before_burn > total * 0.85,
+                          "and the accounts hold all of it but the dissolved households' history");
   failures += run::Expect(after_burn == 0.0, "the economic year's turn burns what was not spent");
 
   // --- the same year with three workers ------------------------------------

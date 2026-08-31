@@ -46,6 +46,21 @@ enum class FieldPhase : std::uint8_t {
   kHarvest,  ///< The heaviest phase of the year.
 };
 
+/// @brief What kind of land the row is (boss answer to question Q6,
+/// 2026-08-31). A MEADOW IS NOT A CROP: grass is mown where it grew, it is
+/// not sown into a rotation, and it has no fertility to improve or exhaust.
+/// Modelling it as a perennial crop field gave the run 200 hectares whose
+/// fertility climbed from 55 to 100 and whose hay doubled over thirty years
+/// with nobody doing anything (manual/balance/69-reconciliation.md §3 D5).
+///
+/// The two hay rates live in FarmingConfig, not in a crop row: the design
+/// keeps them in prose until a land registry exists.
+enum class LandKind : std::uint8_t {
+  kArable = 0,        ///< Ploughed land: rotation, fertility, sowing, manure.
+  kMeadow,            ///< Natural grassland, mown once a season.
+  kFloodplainMeadow,  ///< The best grass of the farm; STUB until terrain zones.
+};
+
 /// @brief One field. Plain data.
 struct FieldRow {
   /// Center of the contour. The shape itself is presentation/routing data
@@ -80,6 +95,14 @@ struct FieldRow {
   /// Manure was plowed in for the current cycle (§8): one fertility bonus
   /// at the year's close, then the flag resets.
   std::uint8_t manure_applied = 0;
+
+  /// Arable land or meadow (see LandKind). A meadow ignores every field
+  /// above it except `area_ga` and `phase`: no crop, no rotation, no
+  /// fertility, no manure. It sits in the padding byte the row already had,
+  /// so sizeof(FieldRow) is unchanged — but the SAVE STREAM grew by a byte
+  /// per field, which the sizeof tripwire cannot see and VERSION_SAVE must
+  /// (manual/67-save-format.md §7).
+  LandKind kind = LandKind::kArable;
 
   /// Growth-season weather stress, 0..1 accumulated daily while growing
   /// (drought and waterlogging, §6); scales the harvest down, never to zero.

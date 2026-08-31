@@ -139,10 +139,12 @@ int main() {
   }
 
   const core::WorldState& start = simulation->CompletedState();
-  // Six sown, two fallow, ten meadows: the grass is not scarce, the
-  // hands and the mowing window are (terrain design §1).
+  // Six sown fields, a fallow one, two derelict, ten meadows: the start
+  // canon's suggested three-year rotation on 70 raised hectares of the 160
+  // (start canon §8), and grass that is not scarce — the hands and the
+  // mowing window are (terrain design §1).
   failures +=
-      run::Expect(start.fields.rows.size() == 18, "genesis lays out the arable and the meadows");
+      run::Expect(start.fields.rows.size() == 19, "genesis lays out the arable and the meadows");
   failures += run::Expect(start.units.rows.size() >= 29, "genesis places the start units");
   // 39 cows, 16 billeted horses, and every yard's own goats and hens.
   failures +=
@@ -204,10 +206,13 @@ int main() {
   failures += run::Expect(grain_tonnes > 33.0 && grain_tonnes < 53.0,
                           "first-year grain matches the sim_v6 anchor (~48 t, weather may shave)");
 
-  // The meadows delivered: 200 ha at about 2 t/ha, which is what it takes to
-  // winter the herd (terrain design §1 — grass is 15% of the map, so the
-  // fodder base is bounded by hands and by the mowing window, never by land).
-  failures += run::Expect(hay_tonnes > 300.0 && hay_tonnes < 430.0,
+  // The meadows delivered: 200 ha at the canon's 1.5 t/ha for a natural
+  // meadow's whole season (boss answer Q6, 2026-08-31 — farming.csv,
+  // meadow_yield_kg_per_ha), so 300 t if every hectare is mown and less by
+  // whatever the crews could not reach in the window. Grass is 15% of the
+  // map, so the fodder base is bounded by hands and by the mowing window,
+  // never by land (terrain design §1).
+  failures += run::Expect(hay_tonnes > 250.0 && hay_tonnes < 320.0,
                           "the meadows delivered the herd's winter");
 
   // The manure loop runs: cows fill the heap (~351 t/year at full herd,

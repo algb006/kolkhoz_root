@@ -36,6 +36,7 @@ bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
 /// What the household looks like today, as the plot table asks about it.
 struct YardToday {
   float away_hours_total = 0.0F;
+  std::uint32_t members = 0;
   std::uint32_t workers = 0;
   std::uint32_t schoolchildren = 0;
   bool has_elder = false;
@@ -53,6 +54,7 @@ YardToday SurveyYard(const PlotConfig& plot,
     if (resident.family.value != id.value) {
       continue;
     }
+    ++yard.members;
     const float age = BiologicalAgeYears(life_speedup, resident.birth_day, day);
     if (resident.work.hours_away_today > 0.0F) {
       yard.away_hours_total += resident.work.hours_away_today;
@@ -79,6 +81,9 @@ YardToday SurveyYard(const PlotConfig& plot,
 /// the yard with them and the yard without them as two rows, so their
 /// absence costs exactly what their presence is worth.
 float PlotHours(const PlotConfig& plot, const YardToday& yard, std::uint8_t month) {
+  if (yard.members == 0) {
+    return 0.0F;  // nobody lives here: an empty yard digs no garden
+  }
   float hours = plot.no_worker_base_hours;
   if (yard.workers > 0) {
     const float away = yard.away_hours_total / static_cast<float>(yard.workers);

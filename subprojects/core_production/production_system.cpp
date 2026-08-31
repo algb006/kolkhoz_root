@@ -155,6 +155,14 @@ class ProductionSystem final : public IProductionSystem {
   /// the field is still being prepared, the one this year's rotation plans.
   void OpenPhase(FieldRow& field, FieldPhase phase) const {
     field.phase = phase;
+    if (field.kind != LandKind::kArable) {
+      // Grass is mown, never ploughed, harrowed or sown: the meadow has one
+      // working phase in the year and one norm to size it.
+      field.work_days_remaining = phase == FieldPhase::kHarvest
+                                      ? config_.farming.meadow_mow_days_per_ha * field.area_ga
+                                      : 0.0F;
+      return;
+    }
     const CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
     float norm = 0.0F;
     if (phase == FieldPhase::kPlowing) {
@@ -198,6 +206,9 @@ class ProductionSystem final : public IProductionSystem {
   void RunYearStart(WorldState& current) const {
     DeliverPlan(current);
     for (FieldRow& field : current.fields.rows) {
+      if (field.kind != LandKind::kArable) {
+        continue;  // no rotation to shift, no fallow to pay out
+      }
       if (field.phase == FieldPhase::kIdle && field.rotation_year0.value == kInvalidDefIdValue) {
         field.fertility += config_.farming.fallow_recovery;
         field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
@@ -225,6 +236,10 @@ class ProductionSystem final : public IProductionSystem {
     const float temperature = current.weather.air_temperature_celsius;
     const bool snowing = current.weather.precipitation == Precipitation::kSnow;
     for (FieldRow& field : current.fields.rows) {
+      if (field.kind != LandKind::kArable) {
+        RunMeadow(current, field, month);
+        continue;
+      }
       if (field.phase == FieldPhase::kIdle) {
         TrySow(current, field, month, temperature);
         continue;
@@ -264,6 +279,51 @@ class ProductionSystem final : public IProductionSystem {
         OpenPhase(field, FieldPhase::kHarvest);
       }
     }
+  }
+
+  /// The meadow's whole year: it stands, and once a season the scythes go
+  /// out. No sowing window, no temperature gate, no snow loss (grass winters
+  /// where it grew), no fertility — a meadow is land, not a crop
+  /// (land_state.h, LandKind; boss answer Q6).
+  void RunMeadow(const WorldState& current, FieldRow& field, std::uint8_t month) const {
+    if (field.phase != FieldPhase::kGrowing) {
+      return;  // already being mown, and one cut a year is all there is
+    }
+    if (month == config_.farming.meadow_cut_month && current.calendar.date.day_in_month == 0) {
+      OpenPhase(field, FieldPhase::kHarvest);
+    }
+  }
+
+  /// @brief Puts a harvested load where it belongs: hay at the manger, the
+  /// rest in the shared store (the phase-1 logistics stub).
+  /// @return kNoRow when the settlement has nowhere at all to put it.
+  std::uint32_t DeliverHarvest(WorldState& current, ResourceId resource, Grams amount) const {
+    std::uint32_t destination = kNoRow;
+    if (resource.value == config_.hay_resource.value) {
+      destination = FindStockYardRow(current, config_);
+    }
+    if (destination == kNoRow) {
+      destination = FindStorageRow(current, config_);
+    }
+    if (destination != kNoRow) {
+      AddToStock(current.units.rows[destination].stock, resource, amount);
+    }
+    return destination;
+  }
+
+  /// The season's cut. The yield is the land's own rate for the WHOLE
+  /// season, which is why one cut a year is not a simplification: the
+  /// second cut is inside the number (farming.csv, meadow_yield_kg_per_ha).
+  void MowMeadow(WorldState& current, FieldRow& field) const {
+    const float rate = field.kind == LandKind::kFloodplainMeadow
+                           ? config_.farming.meadow_floodplain_yield_kg_per_ha
+                           : config_.farming.meadow_yield_kg_per_ha;
+    const Grams hay = KilogramsToGrams(rate * field.area_ga);
+    DeliverHarvest(current, config_.hay_resource, hay);
+    AddLedgerAmount(current.ledger.current.harvest, config_.hay_resource, hay);
+    current.ledger.current.area_harvested_ha += field.area_ga;
+    field.work_days_remaining = 0.0F;
+    field.phase = FieldPhase::kGrowing;  // the grass stands again next summer
   }
 
   /// The field year opens here: the sowing window and the temperature say
@@ -323,6 +383,10 @@ class ProductionSystem final : public IProductionSystem {
 
   /// The reaped field pays out and leaves the harvest phase.
   void FinishHarvest(WorldState& current, FieldRow& field) {
+    if (field.kind != LandKind::kArable) {
+      MowMeadow(current, field);
+      return;
+    }
     if (field.crop.value >= config_.crops.size()) {
       field.phase = FieldPhase::kIdle;
       return;
@@ -338,23 +402,7 @@ class ProductionSystem final : public IProductionSystem {
         kGramsPerKilogram;
     // Instant delivery (logistics stub): hay feeds the stock yard, the rest
     // goes to shared storage.
-    std::uint32_t destination = kNoRow;
-    if (crop.resource.value == config_.hay_resource.value) {
-      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-        const UnitRow& unit = current.units.rows[row];
-        if (unit.type.value < config_.unit_types.size() &&
-            config_.unit_types[unit.type.value].livestock_capacity_head > 0.0F) {
-          destination = row;
-          break;
-        }
-      }
-    }
-    if (destination == kNoRow) {
-      destination = FindStorageRow(current, config_);
-    }
-    if (destination != kNoRow) {
-      AddToStock(current.units.rows[destination].stock, crop.resource, yield_grams);
-    }
+    DeliverHarvest(current, crop.resource, yield_grams);
     // Booked whether or not a store took it in: what the field gave is what
     // the reconciliation compares against the yield tables, and a settlement
     // with nowhere to put its grain is a different finding entirely.
@@ -391,11 +439,20 @@ class ProductionSystem final : public IProductionSystem {
     } else {
       field.repeat_years = 0;
     }
-    field.fertility +=
-        crop.fertility_delta +
-        (field.manure_applied != 0 ? config_.farming.manure_fertility_bonus : 0.0F) -
-        static_cast<float>(field.repeat_years) * config_.farming.repeat_penalty_per_year;
-    field.fertility = field.fertility < 0.0F ? 0.0F : field.fertility;
+    // The repeat penalty has a ceiling (boss answer Q3): the third year in a
+    // row is the limit of the punishment, so a rotation mistake costs the
+    // year and never the game. Uncapped it took a monocropped field from 65
+    // to 2 in six years while the manure heap was still working.
+    const auto repeated = static_cast<float>(field.repeat_years);
+    const float charged = repeated < config_.farming.repeat_penalty_max_years
+                              ? repeated
+                              : config_.farming.repeat_penalty_max_years;
+    field.fertility += crop.fertility_delta +
+                       (field.manure_applied != 0 ? config_.farming.manure_fertility_bonus : 0.0F) -
+                       charged * config_.farming.repeat_penalty_per_year;
+    // And a floor under it: an exhausted field bears little, but it bears.
+    const float floor_value = config_.farming.fertility_floor;
+    field.fertility = field.fertility < floor_value ? floor_value : field.fertility;
     field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
     field.manure_applied = 0;
     field.last_crop = field.crop;

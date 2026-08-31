@@ -441,6 +441,74 @@ int CheckFoodConfigDefaults(const core::ITableSet& tables) {
   return failures;
 }
 
+/// Stage 7, task O2b: a yard that empties out is struck off, and what it
+/// leaves goes to the neighbours (defect D4, boss answer Q5).
+int CheckEmptiedYard(core::IResidentsSystem& system) {
+  int failures = 0;
+  core::WorldState world;
+  world.world_seed = 31;
+  world.rng = core::SeedRngState(31, 0);
+
+  // Two households of ONE — the shape a migrant arrives in, and the shape a
+  // widower is left in. When they marry each other, both yards empty.
+  const core::FamilyId her_yard = AppendRow(world.families, core::FamilyRow{});
+  const core::FamilyId his_yard = AppendRow(world.families, core::FamilyRow{});
+  AddAdult(world, her_yard, core::Sex::kFemale, 22.0F);
+  AddAdult(world, his_yard, core::Sex::kMale, 24.0F);
+  // A third household that stays: the neighbour who inherits. A MARRIED
+  // couple, so that it cannot itself marry out and empty in its turn — the
+  // check is about what happens to a yard that empties, not about who does.
+  const core::FamilyId neighbour_yard = AppendRow(world.families, core::FamilyRow{});
+  const core::ResidentId neighbour_wife =
+      AddAdult(world, neighbour_yard, core::Sex::kFemale, 44.0F);
+  const core::ResidentId neighbour_husband =
+      AddAdult(world, neighbour_yard, core::Sex::kMale, 46.0F);
+  Marry(world, neighbour_wife, neighbour_husband);
+
+  // What the bride's yard holds: a larder, two goats and a month of trudodni.
+  const std::uint32_t her_row = FindRow(world.families, her_yard);
+  world.families.rows[her_row].pantry.assign(2, 0);
+  world.families.rows[her_row].pantry[1] = 400 * core::kGramsPerKilogram;
+  world.families.rows[her_row].trudodni_account = 1200;
+  core::HerdRow goats;
+  goats.household = her_yard;
+  goats.household_owned = 1;
+  goats.adult_count = 2;
+  AppendRow(world.herds, goats);
+
+  RunDays(system, world, 30);
+
+  failures += Expect(FindRow(world.families, her_yard) == core::kNoRow &&
+                         FindRow(world.families, his_yard) == core::kNoRow,
+                     "a yard emptied by a wedding is struck off, not left on the books");
+  // The invariant D4 is really about, and it survives the migrants who keep
+  // arriving as households of one throughout: NOT ONE HOUSEHOLD IS EMPTY.
+  std::uint32_t empty_yards = 0;
+  for (const core::FamilyId id : world.families.row_ids) {
+    bool lived_in = false;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      lived_in = lived_in || resident.family.value == id.value;
+    }
+    empty_yards += lived_in ? 0U : 1U;
+  }
+  failures += Expect(empty_yards == 0, "and no household anywhere is left standing empty");
+
+  core::Grams potatoes = 0;
+  core::TrudodniHundredths earned = 0;
+  for (const core::FamilyRow& family : world.families.rows) {
+    potatoes += family.pantry.size() > 1 ? family.pantry[1] : 0;
+    earned += family.trudodni_account;
+  }
+  failures += Expect(potatoes == 400 * core::kGramsPerKilogram,
+                     "the larder went to the neighbours, to the gram");
+  failures += Expect(earned >= 1200, "and so did what the yard had earned");
+  failures += Expect(world.herds.rows.size() == 1 &&
+                         world.herds.rows[0].household.value != her_yard.value &&
+                         world.herds.rows[0].household.value != core::kInvalidEntityIdValue,
+                     "the goats stand in a living yard, the way a neighbour's gift arrives");
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -562,6 +630,7 @@ int main() {
   }
 
   failures += CheckFoodConfigDefaults(tables);
+  failures += CheckEmptiedYard(*system);
   failures += CheckMeal();
   failures += CheckSatietyComponent();
   failures += CheckPlot();

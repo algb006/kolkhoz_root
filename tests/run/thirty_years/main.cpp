@@ -67,8 +67,9 @@ void PrintHerdFinding(const core::WorldState& state) {
   std::cout << "thirty_years: at the end — " << kolkhoz << " head of kolkhoz livestock, " << yard
             << " in the yards\n";
   if (yard == 0 || kolkhoz == 0) {
-    std::cout << "thirty_years: FINDING — a whole herd is gone. Private herds do not breed in "
-                 "phase 1 by design, so a yard that loses its animals never gets them back.\n";
+    std::cout << "thirty_years: FINDING — a whole herd is gone. A private yard's animals do not "
+                 "breed in the core yet, so once the last of them ages out the yard is empty for "
+                 "good — and with it the milk that is a third of the village's table.\n";
   }
 }
 
@@ -96,7 +97,10 @@ int main() {
   double eaten_tonnes = 0.0;
   std::uint32_t rows_written = 0;
   std::uint16_t last_year = 0;
-  std::uint32_t years_with_a_death_from_hunger = 0;
+  double hungry_head_days = 0.0;
+  double lived_head_days = 0.0;
+  std::uint32_t years_without_plowing = 0;
+  float lowest_fertility = 100.0F;
 
   for (std::uint32_t year = 0; year < kYears; ++year) {
     run::AdvanceYear(*world);
@@ -116,7 +120,20 @@ int main() {
     for (const core::Grams grams : state.ledger.closed.eaten) {
       eaten_tonnes += static_cast<double>(grams) / 1.0e6;
     }
-    years_with_a_death_from_hunger += state.ledger.closed.herd_deaths_hunger > 0 ? 1U : 0U;
+    hungry_head_days += static_cast<double>(state.ledger.closed.herd_hungry_head_days);
+    for (const core::HerdRow& herd : state.herds.rows) {
+      lived_head_days +=
+          static_cast<double>(herd.newborn_count + herd.juvenile_count + herd.adult_count) *
+          core::kDaysPerYear;
+    }
+    const float plowed =
+        state.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)];
+    years_without_plowing += plowed > 0.0F ? 0U : 1U;
+    for (const core::FieldRow& field : state.fields.rows) {
+      if (field.kind == core::LandKind::kArable) {
+        lowest_fertility = field.fertility < lowest_fertility ? field.fertility : lowest_fertility;
+      }
+    }
   }
   sheet.close();
 
@@ -138,6 +155,32 @@ int main() {
       run::Expect(state.residents.rows.size() > 100, "the settlement is alive after thirty years");
   failures += run::Expect(state.families.rows.size() > 20, "and it has households");
 
+  // -- what task O2b made structural, and what the first pass had none of ---
+  // These are not balance bands. They are the three ways the farm used to
+  // stop being a farm, and every one of them was a rule of the canon the
+  // core was not keeping (manual/balance/69-reconciliation.md).
+  //
+  // The plough is the load-bearing one. Ploughing is horse work; the team
+  // ages out by the sixth year unless a stable stands, and phase 1 has no
+  // construction — so from year seven the old core sowed nothing, ever
+  // again, and three hundred adults stood idle beside six fields frozen in
+  // the ploughing phase.
+  failures += run::Expect(years_without_plowing == 0, "the farm ploughs in every year of the run");
+  std::cout << "thirty_years: the leanest arable field ended at " << lowest_fertility
+            << " fertility\n";
+  failures += run::Expect(lowest_fertility >= 15.0F,
+                          "and no field is worked into desert: the repeat penalty has a ceiling "
+                          "and fertility has a floor");
+  std::uint32_t kolkhoz_heads = 0;
+  for (const core::HerdRow& herd : state.herds.rows) {
+    if (herd.household_owned == 0) {
+      kolkhoz_heads +=
+          static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count + herd.adult_count;
+    }
+  }
+  failures +=
+      run::Expect(kolkhoz_heads > 10, "the kolkhoz herds are still standing after thirty years");
+
   // The two halves of the food year must both be real. A run where nothing
   // is harvested, or nothing is eaten, would still satisfy every count above
   // — and both have happened during this phase's development.
@@ -146,8 +189,18 @@ int main() {
 
   // The herd is the part of the balance that goes wrong quietly: a barn can
   // starve for years at half milk without a single count moving.
-  failures += run::Expect(years_with_a_death_from_hunger < kYears / 2,
-                          "the herd is not starving year in, year out");
+  // NOT "did anything anywhere starve this year". That reading was written
+  // when the settlement had four herds; it now has one for every yard in the
+  // village, and a single household that let its plot go and mowed too
+  // little hay would trip it — which is the design working, not failing
+  // (household design §1: the plot's hours are what the yard's animals live
+  // on). What must not happen is CHRONIC hunger, so the measure is a rate:
+  // the head-days of hunger against the head-days the settlement's animals
+  // lived at all.
+  const double hungry_share = lived_head_days > 0.0 ? hungry_head_days / lived_head_days : 0.0;
+  std::cout << "thirty_years: " << (hungry_share * 100.0) << "% of the animals' head-days were "
+            << "hungry ones\n";
+  failures += run::Expect(hungry_share < 0.05, "the herds are not chronically underfed");
 
   // The ledger is state like any other, so a book that never closed, or a
   // year counted twice, shows up as a satiety day count that is not a year.

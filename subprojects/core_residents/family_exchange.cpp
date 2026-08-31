@@ -116,32 +116,55 @@ std::uint32_t EaterCount(const FoodConfig& config,
   return eaters;
 }
 
-/// @brief Grams of each resource the next sowing needs and the automatic
-/// issue may not touch (resources design §2), dense by ResourceId.
+/// @brief Grams of each resource the automatic issue may not touch, dense by
+/// ResourceId: the two FUNDS the design names outright plus the fodder.
 ///
-/// Only fields that still have to be sown are counted: a field already in
-/// the ground took its seed when its sowing phase closed, and reserving for
-/// it a second time would freeze grain the settlement has already spent.
-std::vector<Grams> SeedReserve(const FoodConfig& config, const WorldState& world) {
+/// "The plan reserve and the seed fund are not touched by the automatic
+/// issue; eating them takes a deliberate decision to break the fund open"
+/// (labor-payment design §4, resources design §2). To that, boss's answer to
+/// question Q4 adds the feed: what the bundle may carry is what is left over
+/// PLAN, SEED FUND AND FODDER.
+///
+/// Three sources, one vector:
+///   * seed — the sowing still to come. Only fields that have yet to be sown
+///     count: a field already in the ground took its seed when its sowing
+///     phase closed, and reserving for it twice would freeze grain the
+///     settlement has already spent.
+///   * plan — WorldState::plan.due, which accrues as the grain is reaped and
+///     is handed over at the turn of the year. Its absence here is what let
+///     the issue eat the district's share all summer.
+///   * fodder — what the kolkhoz herds ATE LAST YEAR, straight off the
+///     closed book. It needs no forecast and no second copy of the feeding
+///     order, and it corrects itself as the herd grows or shrinks. In the
+///     first year there is no closed book and nothing is held back — which
+///     is right, because the first year's fodder is the start stock, and
+///     that was measured from the first cut for exactly this reason.
+std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
   std::vector<Grams> reserve(config.resources.size(), 0);
-  if (config.distribution.reserve_seed_fund == 0) {
-    return reserve;
+  if (config.distribution.reserve_seed_fund != 0) {
+    for (const FieldRow& field : world.fields.rows) {
+      if (field.phase != FieldPhase::kIdle ||
+          field.rotation_year0.value >= config.seed_norms.size()) {
+        continue;
+      }
+      const SeedNormDef& seed = config.seed_norms[field.rotation_year0.value];
+      if (seed.resource.value >= reserve.size() || seed.sowing_norm_kg_per_ha <= 0.0F) {
+        continue;
+      }
+      reserve[seed.resource.value] += KilogramsToGrams(seed.sowing_norm_kg_per_ha * field.area_ga);
+    }
   }
-  for (const FieldRow& field : world.fields.rows) {
-    if (field.phase != FieldPhase::kIdle ||
-        field.rotation_year0.value >= config.seed_norms.size()) {
-      continue;
-    }
-    const SeedNormDef& seed = config.seed_norms[field.rotation_year0.value];
-    if (seed.resource.value >= reserve.size() || seed.sowing_norm_kg_per_ha <= 0.0F) {
-      continue;
-    }
-    reserve[seed.resource.value] += KilogramsToGrams(seed.sowing_norm_kg_per_ha * field.area_ga);
+  for (std::uint32_t index = 0; index < world.plan.due.size() && index < reserve.size(); ++index) {
+    reserve[index] += world.plan.due[index];
+  }
+  const ResourceAmounts& fodder = world.ledger.closed.feed;
+  for (std::uint32_t index = 0; index < fodder.size() && index < reserve.size(); ++index) {
+    reserve[index] += fodder[index];
   }
   return reserve;
 }
 
-/// @brief What is free to hand out: what lies in the stores minus the fund.
+/// @brief What is free to hand out: what lies in the stores minus the funds.
 Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
   const Grams free_stock = VillageStock(world, resource) - held;
@@ -208,8 +231,16 @@ void RunDistribution(const FoodConfig& config,
       continue;
     }
     const ResourceId resource{static_cast<std::uint16_t>(index)};
-    const float share = static_cast<float>(FreeStock(current, reserve, resource)) /
-                        static_cast<float>(wanted[index]);
+    // HALF THE MILK, and only half (boss answer Q4): the bundle carries a
+    // share of what the farm holds, the rest stays the kolkhoz's. The share
+    // is per resource and lives in the table — it is one for everything the
+    // farm hands out whole. It applies to the BUNDLE only: the ration below
+    // sees the full free stock, because holding milk back from a starving
+    // household would be the very "full barn beside a hungry village" this
+    // rule exists to forbid.
+    const float pool = static_cast<float>(FreeStock(current, reserve, resource)) *
+                       config.resources[index].issue_share_of_stock;
+    const float share = pool / static_cast<float>(wanted[index]);
     coverage[index] = share < 1.0F ? share : 1.0F;
     const float kcal = config.resources[index].kcal_per_gram;
     if (kcal > 0.0F) {
@@ -335,7 +366,7 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
   RunNets(config, current);
   const SimDay day = current.calendar.day;
   if (config.distribution.period_days > 0 && day % config.distribution.period_days == 0) {
-    const std::vector<Grams> reserve = SeedReserve(config, current);
+    const std::vector<Grams> reserve = IssueReserve(config, current);
     RunDistribution(config, reserve, current);
     RunRation(config, life_speedup, reserve, current);
   }

@@ -67,6 +67,12 @@ struct FoodResourceDef {
   /// triggers (labor-payment §5: bread, potato, a little milk). 0 = not in
   /// the ration.
   float ration_kg_per_day = 0.0F;
+
+  /// How much of the free stock the ISSUE BUNDLE may draw on, 0..1 (boss
+  /// answer to question Q4, 2026-08-31: "half the milk goes into the
+  /// bundle"). 1 = the farm hands the position out whole. The rest stays the
+  /// kolkhoz's — for the plan, the calves and what the district asks next.
+  float issue_share_of_stock = 1.0F;
 };
 
 /// @brief How much a person eats (metrics design §8): nothing until 1.5

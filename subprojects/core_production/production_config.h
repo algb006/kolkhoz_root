@@ -109,6 +109,35 @@ struct LivestockDef {
 
   std::uint8_t kolkhoz_only = 0;
 
+  /// 0/1: AT A FAMILY YARD this kind eats nothing from any store (boss
+  /// answer to question Q1, 2026-08-31). Hens, ducks and the yard pig live
+  /// on range, scraps and the garden; the winter handful of grain comes out
+  /// of the family's own ration, which the meal already counts. Feeding
+  /// eight hens a full concentrate ration cost 350 kg of grain a year to
+  /// return 60 kg of eggs, which no householder ever traded for.
+  /// THE KOLKHOZ HERD OF THE SAME KIND IS UNAFFECTED: a poultry farm is a
+  /// production unit and eats off the store by the norm.
+  std::uint8_t household_self_fed = 0;
+
+  /// How many head of this kind ONE YARD may keep (canon: cow 1, pig 1,
+  /// goats 2, hens or ducks 10; 0 = a yard does not keep this animal at
+  /// all, and the zero is a decision rather than a blank). Boss answer to
+  /// question Q7, 2026-08-31.
+  ///
+  /// THE CAP IS WHAT STOPS A YARD'S BREEDING, and nothing else may: a goat
+  /// lives two and a half game years and a hen one and a half, so a yard
+  /// that cannot breed stands empty by the eighth year, taking with it the
+  /// tonne of milk a year that is part of the canon's 59% coverage. The core
+  /// blocked yard breeding outright at stage 6 — a stopgap for the missing
+  /// cap, in the wrong place.
+  float household_cap_heads = 0.0F;
+
+  /// A yard keeps ONE kind of stock and ONE kind of bird (household design
+  /// §2): 0 = neither, 1 = stock (cow, pig, goats), 2 = bird (hens, ducks).
+  /// Without the group the cap is leaky — it would allow a cow AND a pig AND
+  /// two goats at the same yard, four times the canon's household.
+  std::uint8_t household_group = 0;
+
   // -- ages, GAME units (see the unit trap above) --------------------------
   /// Length of the newborn rung, game months; 0 = the kind has no such rung.
   float newborn_game_months = 0.0F;
@@ -171,6 +200,14 @@ struct FeedLinkDef {
   /// horse: oats 0.5, hay 1.0). Defaults to the whole need, so a table set
   /// without the column behaves as the order alone would.
   float max_share = 1.0F;
+
+  /// 0/1: fed on WORKING DAYS ONLY (boss answer to question Q2,
+  /// 2026-08-31). Oats are the horse's wage, not its keep: hay carries the
+  /// ration all year round and grain goes out when the team goes out. At a
+  /// full ration sixteen horses need 29 t of oats a year — more than the
+  /// whole starting oat field yields — and the run duly fed them the
+  /// village's bread grain until both ran out.
+  std::uint8_t work_only = 0;
 };
 
 struct UnitTypeDef {
@@ -203,6 +240,37 @@ struct FarmingConfig {
   float fallow_recovery = 6.0F;
 
   float repeat_penalty_per_year = 3.0F;
+
+  /// The repeat penalty stops growing after this many years in a row (boss
+  /// answer to question Q3, 2026-08-31): "the second year is felt, the
+  /// third is hard" — and there it ends. Uncapped, the penalty took a
+  /// monocropped field from 65 fertility to 2 in six years WITH manure, so
+  /// a rotation mistake cost the game rather than the year.
+  float repeat_penalty_max_years = 3.0F;
+
+  /// Fertility never falls below this: an exhausted field bears little but
+  /// it bears (same answer). No arrangement of crops turns ploughland into
+  /// desert. ASSUMPTION on the value — the rule is canon, the number is
+  /// polish.
+  float fertility_floor = 20.0F;
+
+  // -- meadows (boss answer to question Q6, 2026-08-31) --------------------
+  /// Hay off a hectare of grassland for the whole season's cuts, kilograms.
+  /// Canon numbers, not knobs: natural meadow 1500, floodplain 2500. A
+  /// meadow has no fertility and no crop row — grass is mown where it grew
+  /// (land_state.h, LandKind).
+  float meadow_yield_kg_per_ha = 1500.0F;
+
+  float meadow_floodplain_yield_kg_per_ha = 2500.0F;
+
+  /// Mowing, GAME man-days per hectare (the table keeps the design's 8 REAL
+  /// man-days, 49-simulations §2).
+  float meadow_mow_days_per_ha = 8.0F / kRealDaysPerGameDay;
+
+  /// The month the scythes go out, 0-based. One cut a year carrying the
+  /// season's whole yield: the core does not model a second cut, and the
+  /// yield above is the season's total precisely so that it need not.
+  std::uint8_t meadow_cut_month = 5;  ///< June.
 
   float drought_temp_c = 25.0F;
 
@@ -306,9 +374,10 @@ struct ProductionConfig {
 
   /// unit_types.csv "stable": the closed housing horse breeding requires
   /// (boss rules 2026-08-29 §2.2); other kinds breed under any roof.
-  /// @note STUB: no such unit type exists in phase 1, so the id stays
-  /// invalid and horse breeding stays blocked — which is what the start
-  /// canon asks for.
+  /// The kolkhoz yard, whose SECOND step is the stable. Foals come only
+  /// under a roof, so a team with no built stable ages out and takes the
+  /// ploughing with it — which is a deadline, not a balance
+  /// (livestock design §5, boss answer 2026-08-31).
   UnitTypeId stable_type;
 
   LivestockKindId horse_kind;  ///< livestock.csv "horse": the only kind the stable gates.

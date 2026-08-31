@@ -89,6 +89,120 @@ Metric BlendInclination(RngState& rng,
   return parents_mid * parent_pull + DrawInRange(rng, 0.0F, 100.0F) * (1.0F - parent_pull);
 }
 
+/// @brief Drops a household that has nobody left in it, and settles what it
+/// leaves behind.
+///
+/// THE ROW MUST GO, and until now only death and departure took it: a yard
+/// emptied by a WEDDING stayed on the books for ever — a migrant arrives as
+/// a household of one and marries, a widower marries again — and an empty
+/// household is not inert. It draws the no-worker plot hours, so it gardens,
+/// mows and fishes, and its pantry fills with food nobody can eat. By the
+/// twelfth year of the run 136 of 255 households were empty and held 95% of
+/// the settlement's food while the living went hungry beside it
+/// (manual/balance/69-reconciliation.md §3 D4).
+///
+/// What it leaves goes to the NEIGHBOURS (boss answer to question Q5): the
+/// pantry and the animals, by the same neighbourly hand the canon uses to
+/// explain how a yard comes by its first cow. The garden goes with the house,
+/// and the house stands free (families design §2, life-cycle §11).
+///
+/// The heir is the first surviving household in row order. Which neighbour it
+/// is decides nothing — there is no proximity in the design and no choice for
+/// the player here — and row order is the one rule that is the same on every
+/// machine.
+void DropFamilyIfEmpty(WorldState& current, FamilyId family) {
+  if (family.value == kInvalidEntityIdValue) {
+    return;
+  }
+  for (const ResidentRow& row : current.residents.rows) {
+    if (row.family.value == family.value) {
+      return;  // somebody still lives here
+    }
+  }
+  const std::uint32_t leaving = FindRow(current.families, family);
+  if (leaving == kNoRow) {
+    return;
+  }
+  std::uint32_t heir = kNoRow;
+  for (std::uint32_t row = 0; row < current.families.rows.size() && heir == kNoRow; ++row) {
+    if (row == leaving) {
+      continue;
+    }
+    for (const ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value == current.families.row_ids[row].value) {
+        heir = row;
+        break;
+      }
+    }
+  }
+  // What the yard has EARNED goes with what it owns. A household of one that
+  // marries out is not a household that stopped existing: its trudodni were
+  // worked for, and dropping the row with an outstanding account destroyed
+  // them silently — the year's books stopped closing, which is how the labor
+  // run caught it. With no heir at all they are booked as burned, so the
+  // ledger's own identity holds either way.
+  const TrudodniHundredths outstanding = current.families.rows[leaving].trudodni_account -
+                                         current.families.rows[leaving].trudodni_redeemed;
+  if (heir != kNoRow) {
+    const ResourceAmounts left = current.families.rows[leaving].pantry;
+    ResourceAmounts& taken = current.families.rows[heir].pantry;
+    if (taken.size() < left.size()) {
+      taken.resize(left.size(), 0);
+    }
+    for (std::uint32_t index = 0; index < left.size(); ++index) {
+      taken[index] += left[index];
+    }
+    if (outstanding > 0) {
+      current.families.rows[heir].trudodni_account += outstanding;
+    }
+    // The animals go to the neighbour's yard — INTO its own flock, not
+    // beside it. A yard keeps one herd of a kind (household design §2), and
+    // stacking a second row on it quietly doubled the ceiling: every row
+    // holds its own cap, so an heir that inherited twice kept twenty hens
+    // where the canon allows ten. The herd day trims whatever the merge puts
+    // over the limit, by the canon's own three paths.
+    const FamilyId home = current.families.row_ids[heir];
+    std::vector<HerdId> merged;
+    for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+      HerdRow& herd = current.herds.rows[row];
+      if (herd.household_owned == 0 || herd.household.value != family.value) {
+        continue;
+      }
+      std::uint32_t into = kNoRow;
+      for (std::uint32_t other = 0; other < current.herds.rows.size(); ++other) {
+        const HerdRow& theirs = current.herds.rows[other];
+        if (other != row && theirs.household_owned != 0 && theirs.household.value == home.value &&
+            theirs.kind.value == herd.kind.value) {
+          into = other;
+          break;
+        }
+      }
+      if (into == kNoRow) {
+        herd.household = home;
+        continue;
+      }
+      HerdRow& flock = current.herds.rows[into];
+      flock.adult_count = static_cast<std::uint16_t>(flock.adult_count + herd.adult_count);
+      flock.juvenile_count = static_cast<std::uint16_t>(flock.juvenile_count + herd.juvenile_count);
+      flock.newborn_count = static_cast<std::uint16_t>(flock.newborn_count + herd.newborn_count);
+      flock.adult_age_game_years_total += herd.adult_age_game_years_total;
+      merged.push_back(current.herds.row_ids[row]);
+    }
+    for (const HerdId id : merged) {
+      RemoveRow(current.herds, id);
+    }
+  } else if (outstanding > 0) {
+    current.ledger.current.trudodni_burned += outstanding;
+  }
+  RemoveRow(current.families, family);
+  // The emptied family's house stands free again (families design §2).
+  for (UnitRow& unit : current.units.rows) {
+    if (unit.household.value == family.value) {
+      unit.household = FamilyId{};
+    }
+  }
+}
+
 /// @brief Removes a resident and repairs links: the spouse becomes widowed,
 /// an emptied family disappears.
 void RemoveResident(WorldState& current, ResidentId id) {
@@ -103,18 +217,7 @@ void RemoveResident(WorldState& current, ResidentId id) {
   if (spouse_row != kNoRow) {
     current.residents.rows[spouse_row].spouse = ResidentId{};
   }
-  for (const ResidentRow& row : current.residents.rows) {
-    if (row.family.value == family.value) {
-      return;  // somebody still lives here
-    }
-  }
-  RemoveRow(current.families, family);
-  // The emptied family's house stands free again (families design §2).
-  for (UnitRow& unit : current.units.rows) {
-    if (unit.household.value == family.value) {
-      unit.household = FamilyId{};
-    }
-  }
+  DropFamilyIfEmpty(current, family);
 }
 
 /// The needs slot (phase 2), parallel by family: the household's daily meal
@@ -502,11 +605,17 @@ class ResidentsSystem final : public IResidentsSystem {
         const ResidentId groom_id = current.residents.row_ids[groom_row];
         PassDowry(current, current.residents.rows[bride_row].family, home);
         PassDowry(current, groom.family, home);
+        const FamilyId bride_was = current.residents.rows[bride_row].family;
+        const FamilyId groom_was = groom.family;
         current.residents.rows[bride_row].spouse = groom_id;
         current.residents.rows[bride_row].family = home;
         current.residents.rows[groom_row].spouse = bride_id;
         current.residents.rows[groom_row].family = home;
         current.ledger.current.weddings += 1;
+        // Both parents' yards may now stand empty — a household of one that
+        // married out leaves nothing behind but its books.
+        DropFamilyIfEmpty(current, bride_was);
+        DropFamilyIfEmpty(current, groom_was);
         break;
       }
     }

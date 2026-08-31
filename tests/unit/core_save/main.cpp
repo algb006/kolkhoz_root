@@ -141,6 +141,17 @@ core::WorldState MakeWorld() {
   field.weather_stress = 0.125F;
   core::AppendRow(world.fields, field);
 
+  // And one meadow: a different LandKind, so the byte the row gained in task
+  // O2b travels through the codec too. Its sizeof did not move — the kind
+  // went into padding the row already had — which is precisely why the round
+  // trip has to carry a row of each kind (manual/67-save-format.md §7).
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.center = core::Vec2{.x = -900.0F, .y = 1100.0F};
+  meadow.area_ga = 20.0F;
+  meadow.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(world.fields, meadow);
+
   core::UnitRow barn;
   barn.type = core::UnitTypeId{0};
   barn.position = core::Vec2{.x = 10.0F, .y = 20.0F};

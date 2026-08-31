@@ -256,6 +256,7 @@ bool ParseResourceRows(const ITable& food,
   const std::uint32_t category_column = food.FindColumn("category");
   const std::uint32_t issue_column = food.FindColumn("issue_kg_per_trudoden");
   const std::uint32_t ration_column = food.FindColumn("ration_kg_per_day");
+  const std::uint32_t issue_share_column = food.FindColumn("issue_share_of_stock");
   for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
     const std::uint32_t food_row = food.FindRowByKey(resources.CellText(row, key_column));
     if (food_row == kNoTableRow) {
@@ -265,7 +266,9 @@ bool ParseResourceRows(const ITable& food,
     if (!OptionalCell(food, food_row, kcal_column, 0.0F, 10.0F, def.kcal_per_gram, error) ||
         !OptionalCell(
             food, food_row, issue_column, 0.0F, 100.0F, def.issue_kg_per_trudoden, error) ||
-        !OptionalCell(food, food_row, ration_column, 0.0F, 100.0F, def.ration_kg_per_day, error)) {
+        !OptionalCell(food, food_row, ration_column, 0.0F, 100.0F, def.ration_kg_per_day, error) ||
+        !OptionalCell(
+            food, food_row, issue_share_column, 0.0F, 1.0F, def.issue_share_of_stock, error)) {
       PrefixError("food", resources.CellText(row, key_column), error);
       return false;
     }
