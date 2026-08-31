@@ -59,6 +59,8 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kPauseUnit:
     case OrderKind::kResumeUnit:
     case OrderKind::kDemolishUnit:
+    case OrderKind::kStartBuild:
+    case OrderKind::kUpgradeUnit:
       return has_unit;
     case OrderKind::kSetRotation:
       // The three crops may all be invalid: that is three years of fallow,
@@ -162,8 +164,8 @@ class Session final : public ISession {
     // appends the batch in staging order, so the counter can be read ahead
     // (order_state.h, THE ONE APPENDER). This is why a cancel never removes
     // an entry from the batch — every id promised after it would move.
-    const OrderId promised{StagedIdBase() + static_cast<std::uint32_t>(staged_issued_.size())};
-    staged_issued_.push_back(staged);
+    const OrderId promised{StagedIdBase() + static_cast<std::uint32_t>(staged_.issued.size())};
+    staged_.issued.push_back(staged);
     Record(JournalVerb::kIssue, staged, promised);
     return promised;
   }
@@ -184,7 +186,7 @@ class Session final : public ISession {
     } else if (!IsStagedIssue(order)) {
       return false;  // an id this session never promised and the book never had
     }
-    staged_cancelled_.push_back(order);
+    staged_.cancelled.push_back(order);
     Record(JournalVerb::kCancel, OrderRow{}, order);
     return true;
   }
@@ -213,14 +215,26 @@ class Session final : public ISession {
     // The staged batch named entities of the world being replaced, so it
     // goes; so does everything the old world said about itself. The journal
     // stays: a replay that spans a load is the caller's to cut (session.h).
-    staged_issued_.clear();
-    staged_cancelled_.clear();
+    staged_.issued.clear();
+    staged_.cancelled.clear();
     events_.clear();
     batch_sequence_ = 0;
     serial_ = 0;
     simulation_->ResetWorld(initial);
     CollectAlarms(State(), alarms_);
   }
+
+  void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) override {
+    ReplaceWorld(initial);
+    // The batch a save carried beside the world: put back exactly as it was,
+    // and NOT journaled — these were recorded when they were first issued,
+    // in the journal that went with that save (session.h).
+    assert(staged.issued.empty() ||
+           initial.orders.next_id_value + staged.issued.size() >= initial.orders.next_id_value);
+    staged_ = staged;
+  }
+
+  const StagedOrders& StagedBatch() const override { return staged_; }
 
  private:
   /// @brief The id the next staged row would be given if the batch were
@@ -233,7 +247,7 @@ class Session final : public ISession {
   bool IsStagedIssue(OrderId order) const {
     const std::uint32_t base = StagedIdBase();
     return order.value >= base &&
-           order.value < base + static_cast<std::uint32_t>(staged_issued_.size());
+           order.value < base + static_cast<std::uint32_t>(staged_.issued.size());
   }
 
   void Record(JournalVerb verb, const OrderRow& order, OrderId id) {
@@ -253,10 +267,10 @@ class Session final : public ISession {
   ///         and event-target checks look at, and the reason they never
   ///         re-examine events of earlier steps.
   std::size_t RunOneStep() {
-    if (!staged_issued_.empty() || !staged_cancelled_.empty()) {
-      simulation_->StageOrders(staged_issued_, staged_cancelled_);
-      staged_issued_.clear();
-      staged_cancelled_.clear();
+    if (!staged_.issued.empty() || !staged_.cancelled.empty()) {
+      simulation_->StageOrders(staged_.issued, staged_.cancelled);
+      staged_.issued.clear();
+      staged_.cancelled.clear();
     }
     simulation_->AdvanceStep();
     ++serial_;
@@ -313,9 +327,9 @@ class Session final : public ISession {
   /// Position of the next journal entry within this tick's batch.
   std::uint32_t batch_sequence_ = 0;
 
-  std::vector<OrderRow> staged_issued_;
-
-  std::vector<OrderId> staged_cancelled_;
+  /// What is staged and not yet applied — handed to the engine at the next
+  /// step, saved beside the world, restored by the second ReplaceWorld.
+  StagedOrders staged_;
 
   /// Everything emitted since the last acknowledgement, oldest first.
   std::vector<SimEvent> events_;

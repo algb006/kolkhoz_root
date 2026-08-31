@@ -35,7 +35,7 @@ namespace {
 // otherwise, and it was right. See save_blocks.cpp for the same reckoning.
 constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
-static_assert(sizeof(ResidentRow) == 152,
+static_assert(sizeof(ResidentRow) == 156,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
@@ -44,18 +44,21 @@ static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
 // see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
 // what has to notice.
 static_assert(sizeof(FieldRow) == 40, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(UnitRow) == 24 + kAmountsSize,
+static_assert(sizeof(UnitRow) == 40 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(WorkAssignment) == 20,
+static_assert(sizeof(WorkAssignment) == 24,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 
 /// Highest valid value of each u8 enum a row carries. The reader refuses
 /// anything above (LoadSource::ReadEnumValue) — see its docs for why.
 constexpr std::uint8_t kMaxSex = static_cast<std::uint8_t>(Sex::kMale);
 
-constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kHerdCare);
+constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kConstruction);
+
+constexpr std::uint8_t kMaxConstructionPhase =
+    static_cast<std::uint8_t>(ConstructionPhase::kDemolishing);
 
 constexpr std::uint8_t kMaxEducationStage = static_cast<std::uint8_t>(EducationStage::kHigher);
 
@@ -114,6 +117,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
   WriteEntityId(out, row.work.field);
   WriteEntityId(out, row.work.herd);
+  WriteEntityId(out, row.work.unit);
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
 
@@ -164,6 +168,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));
   row.work.field = ReadEntityId<FieldId>(in);
   row.work.herd = ReadEntityId<HerdId>(in);
+  row.work.unit = ReadEntityId<UnitId>(in);
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
 
@@ -307,6 +312,14 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteU8(row.level);
   WriteEntityId(out, row.household);
   sink.WriteAmounts(DefKind::kResource, row.stock);
+
+  // The site block (task A2): a unit under construction is a unit row, so
+  // its site is fields of this row and saves with it.
+  out.WriteU8(static_cast<std::uint8_t>(row.construction.phase));
+  out.WriteU8(row.construction.target_level);
+  out.WriteFloat(row.construction.labor_days_total);
+  out.WriteFloat(row.construction.labor_days_remaining);
+  out.WriteU8(row.construction.max_crew);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -317,6 +330,13 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.level = in.ReadU8();
   row.household = ReadEntityId<FamilyId>(in);
   row.stock = source.ReadAmounts(DefKind::kResource);
+
+  row.construction.phase = static_cast<ConstructionPhase>(
+      source.ReadEnumValue(0, kMaxConstructionPhase, "construction phase"));
+  row.construction.target_level = in.ReadU8();
+  row.construction.labor_days_total = in.ReadFloat();
+  row.construction.labor_days_remaining = in.ReadFloat();
+  row.construction.max_crew = in.ReadU8();
   return row;
 }
 

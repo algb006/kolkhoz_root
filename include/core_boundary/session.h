@@ -22,7 +22,7 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — thirteen methods, two codec
+/// concrete, and it is deliberately small — fifteen methods, two codec
 /// functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
@@ -30,7 +30,11 @@
 ///               ActiveAlarms
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents
-///     record    TakeJournal, ReplaceWorld
+///     record    TakeJournal, ReplaceWorld (two forms), StagedBatch
+///
+/// (Fifteen methods since task A2 added the two that let a save carry the
+/// staged batch — an addition, which is what the contract's minor number
+/// is for; 70-boundary.md §6.)
 ///
 /// The read model is WorldState itself — the core's public data, already
 /// plain structs by the state-model law — plus the handful of DERIVED
@@ -515,6 +519,27 @@ class ISession {
   /// The loaded world's order book is whatever the save carried; its outbox is empty by the save
   /// format's rule.
   virtual void ReplaceWorld(const WorldState& initial) = 0;
+
+  /// @brief ReplaceWorld, and then the batch the save carried beside the
+  /// world becomes the staged batch — as if every IssueOrder and
+  /// CancelOrder of it had just been made again, in order, with the ids
+  /// they were promised. That is exactly what a campaign saved on pause
+  /// after the day's orders looks like when it resumes (order_state.h,
+  /// StagedOrders). The journal records nothing for them: they were
+  /// recorded when they were first issued, in the journal that went with
+  /// that save.
+  /// @pre `staged` was saved with `initial`: its promised ids follow
+  ///      initial.orders.next_id_value. A batch from another world is a
+  ///      caller error (asserted in Debug; otherwise applied as it is).
+  virtual void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) = 0;
+
+  /// @brief What is staged and not yet applied — the batch the next step
+  /// will hand to the engine. A save made between steps writes this beside
+  /// State() (core_save::EncodeWorld with a batch) so that nothing the
+  /// player ordered on pause is lost; a session with nothing staged returns
+  /// an empty batch. Valid until the next IssueOrder, CancelOrder, step or
+  /// ReplaceWorld.
+  virtual const StagedOrders& StagedBatch() const = 0;
 };
 
 /// @brief Creates the session over an assembled simulation.

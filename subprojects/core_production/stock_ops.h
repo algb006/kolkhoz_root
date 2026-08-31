@@ -50,9 +50,12 @@ inline Grams KilogramsToGrams(float kilograms) {
 }
 
 /// @brief True when the unit type stores goods by a number rather than by
-/// the outline the player draws.
+/// the outline the player draws — and the unit is BUILT. A level-0 row is a
+/// construction site: it holds the materials of its own building and stores
+/// nothing for anybody (unit_state.h, task A2). One rule, checked wherever
+/// a level is read, is what replaces a flag in every table.
 inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
-  return unit.type.value < config.unit_types.size() &&
+  return unit.level > 0 && unit.type.value < config.unit_types.size() &&
          config.unit_types[unit.type.value].storage_capacity_kg > 0.0F;
 }
 
@@ -81,7 +84,7 @@ inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionCon
 inline std::uint32_t FindStockYardRow(const WorldState& world, const ProductionConfig& config) {
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (unit.type.value < config.unit_types.size() &&
+    if (unit.level > 0 && unit.type.value < config.unit_types.size() &&
         config.unit_types[unit.type.value].livestock_capacity_head > 0.0F) {
       return row;
     }
@@ -97,7 +100,7 @@ inline std::uint32_t FindUnitRowOfType(const WorldState& world, UnitTypeId type)
     return kNoRow;
   }
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    if (world.units.rows[row].type.value == type.value) {
+    if (world.units.rows[row].level > 0 && world.units.rows[row].type.value == type.value) {
       return row;
     }
   }
@@ -120,8 +123,19 @@ inline Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& c
   return static_cast<Grams>(type.storage_capacity_kg) * kGramsPerKilogram;
 }
 
-/// @brief Takes up to `wanted` grams of `resource` from any storing unit, in
-/// row order; returns what was actually taken.
+/// @brief Takes up to `wanted` grams of `resource` from anywhere the
+/// settlement keeps it, in row order; returns what was actually taken.
+///
+/// TAKING IS WIDER THAN DELIVERING, and deliberately so. A delivery needs a
+/// destination with a number to clamp against, so FindStorageRow asks for
+/// StoresGoods. Taking needs nothing of the sort: what lies in a heap or a
+/// haystack is there whether or not the table gives that heap a tonnage.
+/// The narrow rule made the start's hay INVISIBLE the day the start stock
+/// moved out of the church and into the haystack the canon actually
+/// describes (start_stock.csv, task A2) — a hundred and sixty-five tonnes of
+/// fodder beside a herd that starved. A level-0 unit is skipped all the
+/// same: an unbuilt site holds materials for its own building and stores
+/// nothing for anybody (unit_state.h).
 inline Grams TakeFromStorage(WorldState& world,
                              const ProductionConfig& config,
                              ResourceId resource,
@@ -129,8 +143,11 @@ inline Grams TakeFromStorage(WorldState& world,
   Grams taken = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size() && taken < wanted; ++row) {
     UnitRow& unit = world.units.rows[row];
-    if (!StoresGoods(unit, config)) {
-      continue;
+    if (unit.level == 0) {
+      continue;  // a site: what is on it belongs to its own building
+    }
+    if (!StoresGoods(unit, config) && StorageCapacityGrams(unit, config) >= 0) {
+      continue;  // neither a numbered store nor an outline the player drew
     }
     const Grams here = StockOf(unit.stock, resource);
     const Grams take = here < wanted - taken ? here : wanted - taken;

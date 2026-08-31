@@ -248,7 +248,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   // Real man-days in the file, game man-days in the config — the same
   // conversion the crop and field-phase norms get, done once at parse.
   float mow_days = farming.meadow_mow_days_per_ha * kRealDaysPerGameDay;
-  const std::array<Knob, 19> knobs = {{
+  const auto knobs = std::to_array<Knob>({
       {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
       {"unfed_death_after_days", &farming.unfed_death_after_days, 0.0F, 1000.0F},
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
@@ -261,14 +261,12 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"sow_keep_share", &farming.sow_keep_share, 0.0F, 1.0F},
       {"repeat_penalty_max_years", &farming.repeat_penalty_max_years, 0.0F, 250.0F},
       {"fertility_floor", &farming.fertility_floor, 0.0F, 100.0F},
-      {"meadow_yield_kg_per_ha", &farming.meadow_yield_kg_per_ha, 0.0F, 1e5F},
-      {"meadow_floodplain_yield_kg_per_ha", &farming.meadow_floodplain_yield_kg_per_ha, 0.0F, 1e5F},
       {"meadow_mow_days_per_ha", &mow_days, 0.0F, 1000.0F},
       {"meadow_cut_month", &mow_month, 1.0F, 12.0F},
       {"fallow_plow_month", &fallow_month, 1.0F, 12.0F},
       {"birth_from_month", &birth_from, 1.0F, 12.0F},
       {"birth_to_month", &birth_to, 1.0F, 12.0F},
-  }};
+  });
   const std::uint32_t value_col = table.FindColumn("value");
   for (const Knob& knob : knobs) {
     if (!CellOrDefault(table,
@@ -290,6 +288,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.meadow_cut_month = static_cast<std::uint8_t>(mow_month - 1.0F);
   farming.fallow_plow_month = static_cast<std::uint8_t>(fallow_month - 1.0F);
   farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
+
   farming.birth_from_month = static_cast<std::uint8_t>(birth_from - 1.0F);
   farming.birth_to_month = static_cast<std::uint8_t>(birth_to - 1.0F);
   return true;
@@ -534,6 +533,33 @@ UnitTypeId UnitTypeByKey(const ITable* unit_types, std::string_view key) {
 
 }  // namespace
 
+/// @brief The two hay rates, from their own registry (meadow_kinds.csv).
+///
+/// They used to sit in farming.csv, and the floodplain one sat there unused
+/// for a whole stage — a canon number with no consumer is a canon number
+/// nobody notices is wrong. A meadow kind is a row with a yield now, and the
+/// start layout says which contour is which (terrain design §8).
+bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& error) {
+  const std::uint32_t yield_col = table.FindColumn("yield_kg_per_ha");
+  if (yield_col == kNoTableColumn) {
+    error = "meadow_kinds: no yield_kg_per_ha column";
+    return false;
+  }
+  const auto rate_of = [&](std::string_view key, float& into) {
+    const std::uint32_t row = table.FindRowByKey(key);
+    if (row == kNoTableRow) {
+      return true;  // a kind the tables do not carry keeps its default
+    }
+    return CellOrDefault(table, row, yield_col, into, 0.0F, 1e5F, into, error);
+  };
+  if (!rate_of("upland", farming.meadow_yield_kg_per_ha) ||
+      !rate_of("floodplain", farming.meadow_floodplain_yield_kg_per_ha)) {
+    error = "meadow_kinds: " + error;
+    return false;
+  }
+  return true;
+}
+
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
   const ITable* resources = tables.FindTable("resources");
   const ITable* livestock = tables.FindTable("livestock");
@@ -560,6 +586,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     }
     constexpr std::array<std::string_view, 1> kOptional = {"max_share"};
     ReportMissingColumns(*feed_links, "feed_links", kOptional);
+  }
+  if (const ITable* meadow_kinds = tables.FindTable("meadow_kinds")) {
+    if (!ParseMeadowKinds(*meadow_kinds, config.farming, error)) {
+      return false;
+    }
   }
   if (const ITable* farming = tables.FindTable("farming")) {
     if (!ParseFarming(*farming, config.farming, error) ||

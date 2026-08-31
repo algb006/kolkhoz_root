@@ -1,0 +1,6 @@
+# the construction subsystem's own knobs (core_construction). The recipes,
+# ladders, crews and plots come from unit_types / unit_levels / unit_level_cost.
+# demolition costs labour days as this share of the level's build norm:
+# noticeably less than building (construction design section 12). ASSUMPTION
+key,value
+demolition_labor_share,0.25

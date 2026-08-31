@@ -11,8 +11,11 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "campaign_tables.h"
 #include "core_common/calendar.h"
@@ -149,9 +152,14 @@ FieldId PlaceField(WorldState& world,
 /// @brief One meadow: standing grass from day one, mown once a season.
 /// No crop, no rotation, no fertility — a meadow is land, not a sowing
 /// (land_state.h, LandKind; boss answer Q6, 2026-08-31).
-void PlaceMeadow(WorldState& world, float area_ga, Vec2 center) {
+void PlaceMeadow(WorldState& world, float area_ga, Vec2 center, bool floodplain) {
   FieldRow meadow;
-  meadow.kind = LandKind::kMeadow;
+  // Upland or floodplain: the best grass of the farm is the wet meadow by
+  // the river, and it yields two and a half tonnes a hectare against one
+  // and a half for the same cut and the same days (terrain design §8;
+  // meadow_kinds.csv). Which contour is which comes from the layout — the
+  // scene knows where the floodplain is, and the core never guesses it.
+  meadow.kind = floodplain ? LandKind::kFloodplainMeadow : LandKind::kMeadow;
   meadow.center = center;
   meadow.area_ga = area_ga;
   meadow.phase = FieldPhase::kGrowing;
@@ -253,6 +261,140 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The start layout, read rather than invented (task A2)
+// ---------------------------------------------------------------------------
+//
+// The central zone is a hand-designed scene: every house, heap and field
+// outline was placed by hand in the map editor and exported through
+// db/design.db into tables/start_layout.csv and tables/start_stock.csv
+// (start canon §2). Genesis reads them the way it reads crops and unit
+// types. What used to stand here was a grid of invented coordinates,
+// marked STUB; the two tables replace it entirely, and with them the
+// scene and the simulation share ONE set of places.
+//
+// Genesis places EVERY row of the layout, including the ones the core has
+// no rule for — the water mill, the manor ruins. A row that is in the
+// scene and not in the state would leave the graphics layer holding a key
+// with no id behind it, and one shared vocabulary of keys is worth more
+// than the handful of idle rows it costs.
+
+/// One row of start_layout.csv, in the columns this function reads.
+struct LayoutRow {
+  std::string_view key;
+  std::string_view kind;
+  std::string_view unit_type;
+  float x_meters = 0.0F;
+  float y_meters = 0.0F;
+  float area_ga = 0.0F;
+  std::array<std::string_view, 3> rotation;
+  bool derelict = false;
+};
+
+/// @brief Reads one cell as a number; an empty or unreadable cell is 0.
+float LayoutNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
+  if (column == kNoTableColumn) {
+    return 0.0F;
+  }
+  const std::optional<float> cell = table.CellReal(row, column);
+  return cell ? *cell : 0.0F;
+}
+
+/// @brief Fills the units, fields and meadows of the start from the layout
+/// table, and remembers which unit each row's key became so that the stock
+/// table can find it.
+/// @return false when the table is absent or has no usable columns — the
+///         world then stays people-only, exactly as it does without the
+///         other tables.
+bool PlaceStartLayout(WorldState& world,
+                      const ITable& layout,
+                      const ITable* unit_types,
+                      const ITable* crops,
+                      Metric start_fertility,
+                      std::vector<std::pair<std::string_view, UnitId>>& placed) {
+  const std::uint32_t key_col = layout.FindColumn("key");
+  const std::uint32_t kind_col = layout.FindColumn("kind");
+  const std::uint32_t type_col = layout.FindColumn("unit_type");
+  const std::uint32_t x_col = layout.FindColumn("x_m");
+  const std::uint32_t y_col = layout.FindColumn("y_m");
+  const std::uint32_t area_col = layout.FindColumn("area_ha");
+  const std::uint32_t derelict_col = layout.FindColumn("is_derelict");
+  const std::uint32_t meadow_kind_col = layout.FindColumn("meadow_kind");
+  const std::array<std::uint32_t, 3> rotation_cols = {layout.FindColumn("rotation_year0"),
+                                                      layout.FindColumn("rotation_year1"),
+                                                      layout.FindColumn("rotation_year2")};
+  if (key_col == kNoTableColumn || kind_col == kNoTableColumn) {
+    return false;
+  }
+
+  for (std::uint32_t row = 0; row < layout.RowCount(); ++row) {
+    const std::string_view kind = layout.CellText(row, kind_col);
+    const Vec2 place{.x = LayoutNumber(layout, row, x_col), .y = LayoutNumber(layout, row, y_col)};
+    if (kind == "unit") {
+      const UnitTypeId type = TypeByKey(unit_types, layout.CellText(row, type_col));
+      if (type.value == kInvalidDefIdValue) {
+        continue;  // a type the core's tables do not carry: nothing to place
+      }
+      placed.emplace_back(layout.CellText(row, key_col), PlaceUnit(world, type, place.x, place.y));
+      continue;
+    }
+    const float area = LayoutNumber(layout, row, area_col);
+    if (kind == "meadow") {
+      PlaceMeadow(world, area, place, layout.CellText(row, meadow_kind_col) == "floodplain");
+      continue;
+    }
+    // Arable, and the reserve field held back for building on: both are
+    // field rows, and the reserve is derelict like the rest of the ninety
+    // hectares nobody has raised (start canon §2).
+    const bool derelict = LayoutNumber(layout, row, derelict_col) > 0.5F;
+    std::array<CropId, 3> rotation;
+    for (std::size_t slot = 0; slot < rotation.size(); ++slot) {
+      rotation[slot] = CropByKey(crops, layout.CellText(row, rotation_cols[slot]));
+    }
+    const FieldId field =
+        PlaceField(world, area, place, start_fertility, rotation[0], rotation[1], rotation[2]);
+    if (derelict) {
+      world.fields.rows[FindRow(world.fields, field)].kind = LandKind::kDerelict;
+    }
+  }
+  return true;
+}
+
+/// @brief Puts the start stock where the layout says it lies (start_stock.csv,
+/// boss numbers of 2026-08-31). Amounts are in each resource's own measure
+/// and the row carries the mass of one, so the conversion to grams needs no
+/// second table — the same one rule the recipes use.
+void PlaceStartStock(WorldState& world,
+                     const ITable& stock,
+                     const ITable* resources,
+                     const std::vector<std::pair<std::string_view, UnitId>>& placed) {
+  const std::uint32_t place_col = stock.FindColumn("place");
+  const std::uint32_t resource_col = stock.FindColumn("resource");
+  const std::uint32_t amount_col = stock.FindColumn("amount");
+  const std::uint32_t mass_col = stock.FindColumn("kg_per_unit");
+  if (place_col == kNoTableColumn || resource_col == kNoTableColumn) {
+    return;
+  }
+  for (std::uint32_t row = 0; row < stock.RowCount(); ++row) {
+    const std::string_view where = stock.CellText(row, place_col);
+    UnitId unit;
+    for (const std::pair<std::string_view, UnitId>& entry : placed) {
+      if (entry.first == where) {
+        unit = entry.second;
+        break;
+      }
+    }
+    const std::uint32_t unit_row = FindRow(world.units, unit);
+    const ResourceId resource = GenesisResource(resources, stock.CellText(row, resource_col));
+    if (unit_row == kNoRow || resource.value == kInvalidDefIdValue) {
+      continue;
+    }
+    PutStock(world.units.rows[unit_row],
+             resource,
+             LayoutNumber(stock, row, amount_col) * LayoutNumber(stock, row, mass_col));
+  }
+}
+
 /// @brief The start economy of the canon (start.md §10-§11): the surviving
 /// units with the stores in the church, 160 ha of arable land with the
 /// suggested first-year plan of the reference run (70 ha sown: 62% grain,
@@ -269,95 +411,76 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     return;  // people-only world until the tables exist
   }
   constexpr Metric kStartFertility = 65.0F;
+  const UnitTypeId house_type = TypeByKey(unit_types, "old_house");
 
-  // STUB — EVERY COORDINATE BELOW. The start layout is not ours to invent:
-  // the central zone is a hand-designed scene, every old house placed by
-  // hand, assembled in the map editor (start canon §2). It will arrive as a
-  // table — unit key and metres, the twenty-one houses one by one, the field
-  // outlines — through db/design.db into core/tables/, and this function will
-  // read it the way it already reads crops and unit types. Until that export
-  // exists these are a placeholder that only has to be plausible and stable:
-  // a compact village laid out on a grid.
-  //
-  // Two things must survive the move and are the reason the placeholder is
-  // marked rather than left to look decided:
-  //   * THE AREAS ARE RIGHT — nine outlines summing to exactly 160.0 ha, 70
-  //     raised and 90 derelict, reconciled against the canon. They are to be
-  //     carried over as they are, never recomputed.
-  //   * THE DISTANCES ARE THE POINT — from stage 5 a worker's day is measured
-  //     from his own door, so real coordinates are worth having; a grid is
-  //     only a stand-in for them.
-  //
-  // The placeholder also BREAKS the contract of core_common/geometry.h, which
-  // puts the origin at the map's south-west corner and valid positions in
-  // [0, kMapSizeMeters] on both axes: the church sits at (0, 0) and houses and
-  // two fields run negative. The header is the rule — an origin in the church
-  // moves the day the church moves, a map corner never does — and the table
-  // fixes this by carrying non-negative metres. Do not "fix" it by shifting
-  // the grid: that would bake a second invented layout in place of the first.
-
-  // Units of the start set, by the keys of the design db. The kolkhoz yard
-  // (horse_yard) is deliberately absent — the first build of the campaign,
-  // and its SECOND level is the stable, which is why horse breeding stays
-  // blocked at the start exactly as the canon asks.
-  const UnitId church = PlaceUnit(world, TypeByKey(unit_types, "church_store"), 0, 0);
-  PlaceUnit(world, TypeByKey(unit_types, "well"), 50, 0);
-  const UnitId stock_yard = PlaceUnit(world, TypeByKey(unit_types, "cattle_yard"), 200, 100);
-  PlaceUnit(world, TypeByKey(unit_types, "build_yard"), 300, 0);
-  PlaceUnit(world, TypeByKey(unit_types, "log_pile"), 100, 50);
-  PlaceUnit(world, TypeByKey(unit_types, "stone_pile"), 150, 50);
-  PlaceUnit(world, TypeByKey(unit_types, "clay_pile"), 200, 50);
-  const UnitId compost = PlaceUnit(world, TypeByKey(unit_types, "manure_pile"), 400, 200);
-
-  // One decrepit house per starting family. STUB, see the note at the top of
-  // this function: the canon places all twenty-one by hand in the map editor,
-  // and until that export arrives they stand in a compact village south of
-  // the yard — three rows of seven, 40 m between houses and 80 m between
-  // rows. ~5 ha of built-up land, the share the start map gives it
-  // (49-simulations §2в). Distances matter from stage 5 on: every worker's
-  // day is measured from his own door, which is exactly why a grid is a
-  // placeholder and not an answer.
-  constexpr std::uint32_t kHousesPerRow = 7;
-  constexpr float kHouseStepMeters = 40.0F;
-  constexpr float kRowStepMeters = 80.0F;
-  const UnitTypeId old_house = TypeByKey(unit_types, "old_house");
-  for (std::uint32_t family_row = 0; family_row < world.families.rows.size(); ++family_row) {
-    UnitRow house;
-    house.type = old_house;
-    const std::uint32_t village_row = family_row / kHousesPerRow;
-    const std::uint32_t place_in_row = family_row % kHousesPerRow;
-    house.position = Vec2{.x = -120.0F + (static_cast<float>(place_in_row) * kHouseStepMeters),
-                          .y = -80.0F - (static_cast<float>(village_row) * kRowStepMeters)};
-    house.household = world.families.row_ids[family_row];
-    world.families.rows[family_row].house = AppendRow(world.units, house);
+  // WHERE EVERYTHING STANDS COMES FROM THE TABLE, not from this function.
+  // The layout is the hand-designed scene of the start canon, exported from
+  // the design db; the areas and rotations in it are the core's own, carried
+  // over unchanged from the reconciliation (69-reconciliation.md). Without
+  // the table there is no scene to build, and the world stays people-only —
+  // the same answer genesis gives without any other table.
+  const ITable* const layout = tables.FindTable("start_layout");
+  if (layout == nullptr) {
+    LogError("genesis: no start_layout table — the world stays people-only");
+    return;
+  }
+  std::vector<std::pair<std::string_view, UnitId>> placed;
+  if (!PlaceStartLayout(world, *layout, unit_types, crops, kStartFertility, placed)) {
+    LogError("genesis: start_layout has no key or kind column");
+    return;
   }
 
-  // The stores in the church and the inherited compost (start.md §7).
-  UnitRow& church_row = world.units.rows[FindRow(world.units, church)];
-  PutStock(church_row, GenesisResource(resources, "oat"), 5000);
-  PutStock(church_row, GenesisResource(resources, "barley"), 3500);
-  PutStock(church_row, GenesisResource(resources, "wheat"), 2500);
-  PutStock(church_row, GenesisResource(resources, "rye"), 8000);
-  PutStock(church_row, GenesisResource(resources, "potato"), 35000);
-  // Fodder in the barn on day zero. The canon hands the kolkhoz a live herd
-  // in January, and a live herd in January has been eating something since
-  // the autumn — a start with empty mangers would kill the cows before the
-  // first cut, which is not hardship but an unwinnable opening.
-  // How much: measured from the first cut, not rounded (difficulty design
-  // §4, boss answer 2026-08-31). The farm is handed over in March, the
-  // scythes go out in June, and everything the herd eats between those dates
-  // was put in the barn before the chairman arrived. On the normal level
-  // that is EXACTLY enough to reach the cut, which the run measures at about
-  // 165 t: the herd eats 7.3 t a game day and the scythes go out on day 22.
-  // Sixty was a round number, and round numbers lie here because they do not
-  // know when help arrives: at sixty the herd lost eight cows to a decision
-  // the player never made, and a hundred still left it nine days short.
+  // The units the rest of this function needs by name. A layout without one
+  // of them is not an error here: the herd simply has nowhere to stand, and
+  // that shows up as a herd with no unit rather than as a crash.
+  const auto unit_by_key = [&placed](std::string_view key) {
+    for (const std::pair<std::string_view, UnitId>& entry : placed) {
+      if (entry.first == key) {
+        return entry.second;
+      }
+    }
+    return UnitId{};
+  };
+  const UnitId stock_yard = unit_by_key("cattle_yard");
+  const UnitId compost = unit_by_key("manure_pile");
+
+  // One decrepit house per starting family, and the houses are the layout's
+  // own yard_01..yard_21 in the order it lists them — the canon places every
+  // one of them by hand (start canon §2). Families take them in row order:
+  // the twenty-one yards and the twenty-one starting families are the same
+  // twenty-one households seen from two sides.
+  std::uint32_t family_row = 0;
+  for (const std::pair<std::string_view, UnitId>& entry : placed) {
+    if (family_row >= world.families.rows.size()) {
+      break;
+    }
+    const std::uint32_t unit_row = FindRow(world.units, entry.second);
+    if (unit_row == kNoRow || world.units.rows[unit_row].type.value != house_type.value) {
+      continue;
+    }
+    world.units.rows[unit_row].household = world.families.row_ids[family_row];
+    world.families.rows[family_row].house = entry.second;
+    ++family_row;
+  }
+
+  // WHAT LIES WHERE comes from the table too (start_stock.csv, boss numbers
+  // of 2026-08-31). It is written by places, not by one store, and that is
+  // the point: 165 t of hay never fitted in a church that holds 60, and the
+  // canon's "all the start resources are in the church" turned out to be
+  // unimplementable as written. The fodder lies in a haystack, the building
+  // materials on the build yard and in the manor ruins — where the stone is
+  // the only stone there is until a quarry, so that "while the ruins stand,
+  // stone building is closed" is finally true.
   //
-  // The rule generalises, and it is worth keeping: the size of any start
-  // stock that gets consumed is measured from the nearest moment the farm
-  // replenishes it itself — the cut for fodder, the harvest for food, the
-  // first felling for firewood.
-  PutStock(church_row, GenesisResource(resources, "hay"), 165000);
+  // The sizes themselves follow one rule worth keeping: a start stock that
+  // gets consumed is measured from the nearest moment the farm replenishes
+  // it itself — the cut for fodder, the harvest for food, the first felling
+  // for firewood. That is why the hay is 165 t and not a round 100: the herd
+  // eats 7.3 t a game day and the scythes go out on day 22.
+  const ITable* const start_stock = tables.FindTable("start_stock");
+  if (start_stock != nullptr) {
+    PlaceStartStock(world, *start_stock, resources, placed);
+  }
 
   // What the households still have of their own. The village was living
   // before the kolkhoz was declared, and it is declared in January: yards
@@ -391,97 +514,22 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
            GenesisResource(resources, "manure"),
            250000);
 
-  // 160 ha of arable land with the SUGGESTED THREE-YEAR ROTATION the start
-  // canon hands the player along with the field outlines (start canon §8,
-  // boss answer to question Q3, 2026-08-31). It is a suggestion, not a law:
-  // the player may redo it, and in phase 1 nobody does, which is exactly why
-  // it has to be a sound rotation rather than one crop per field forever.
-  // The old genesis sowed each field its single crop in all three slots, and
-  // the run showed what that costs: the wheat field went from 65 fertility
-  // to 2 in six years, and "the village does not go hungry under sound
-  // management" cannot be tested on management that is not sound.
+  // The land is in the layout table too, and its numbers are the core's own
+  // going the other way: the areas and the three-year rotation were
+  // reconciled here (69-reconciliation.md) and exported into the registry,
+  // so what comes back is what was agreed — 160.0 ha of arable to the
+  // hectare, 200.0 of meadow, plus the 3 ha reserve held back for building
+  // on, which the 160 deliberately does not count (start canon §2).
   //
-  // Shares of the RAISED land, from the canon: potatoes 30%, spring grain
-  // 25%, oats 15%, grasses 15%, vegetables 10%, fallow 5% — 70 ha of the
-  // 160, the rest still lying derelict. The first spring is spring crops
-  // only: winter rye goes into the ground that autumn and the ring starts
-  // turning in the second year. No field carries the same crop two years
-  // running, across the wrap of the three slots included.
-  //
-  // The land lies in a half ring north of the village, and the radii
-  // reproduce the start map's own measurements (49-simulations §2в): the
-  // arable averages 1.0 km from the village and nothing lies farther than
-  // 1.5 km, which is what makes the road eat 37-56% of a spring day there.
-  // The potato patch sits nearest, being the crop walked to most often.
-  // Coordinates are written out rather than computed — genesis must land bit
-  // for bit on every compiler and trig library results do not
-  // (daylight_table.h says the same) — and they are polar around the village
-  // centre (0, -160), which is why the y values look shifted.
-  const CropId potato = CropByKey(crops, "potato");
-  const CropId wheat = CropByKey(crops, "wheat_spring");
-  const CropId barley = CropByKey(crops, "barley");
-  const CropId oat = CropByKey(crops, "oat");
-  const CropId timothy = CropByKey(crops, "timothy");
-  const CropId cabbage = CropByKey(crops, "cabbage");
-  const CropId rye = CropByKey(crops, "rye_winter");
-  const CropId fallow;
-  // Field POSITIONS are STUB (the note at the top of this function); their
-  // AREAS and their rotations are not — those are reconciled against the
-  // canon and move to the table unchanged.
-  //
-  // The rings are STAGGERED so that every year has potatoes, vegetables,
-  // grain, oats and grass — the first layout put potatoes in two slots of
-  // three and cabbage in one, and the kolkhoz table went without them every
-  // other year (69-reconciliation.md §9). GRASS STANDS TWO SLOTS: a stand
-  // sown in spring is not cut that year (the canon's "full circle only in
-  // the first year"), so a one-year slot of grass gives no hay at all, and
-  // the winter rye that follows grass must follow a stand that has been
-  // cut — sown in the autumn after that cut. Rye therefore stands only after
-  // a two-year stand or after fallow, and never after a late crop like
-  // cabbage, when there is no autumn left.
-  PlaceField(
-      world, 21.0F, Vec2{.x = -222.0F, .y = 451.0F}, kStartFertility, potato, wheat, cabbage);
-  PlaceField(
-      world, 10.0F, Vec2{.x = 182.0F, .y = 874.0F}, kStartFertility, wheat, timothy, timothy);
-  PlaceField(world, 7.5F, Vec2{.x = 611.0F, .y = 568.0F}, kStartFertility, barley, cabbage, potato);
-  PlaceField(world, 10.5F, Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility, oat, potato, barley);
-  PlaceField(world, 10.5F, Vec2{.x = -799.0F, .y = 131.0F}, kStartFertility, timothy, timothy, rye);
-  PlaceField(world, 7.0F, Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility, cabbage, oat, potato);
-  PlaceField(world, 3.5F, Vec2{.x = -500.0F, .y = 200.0F}, kStartFertility, fallow, rye, potato);
-  // The derelict remainder: ninety hectares nobody has raised yet. Not
-  // fallow — fallow is ploughed every year it stands — but land that has
-  // rested and waits for the player to raise it (LandKind::kDerelict).
-  const FieldId east = PlaceField(
-      world, 45.0F, Vec2{.x = 1106.0F, .y = 614.0F}, kStartFertility, fallow, fallow, fallow);
-  const FieldId west = PlaceField(
-      world, 45.0F, Vec2{.x = -774.0F, .y = 946.0F}, kStartFertility, fallow, fallow, fallow);
-  world.fields.rows[FindRow(world.fields, east)].kind = LandKind::kDerelict;
-  world.fields.rows[FindRow(world.fields, west)].kind = LandKind::kDerelict;
-  // Meadows and pasture. The map gives about 15% of its hundred square
-  // kilometres to grass (terrain design §1) — some fifteen hundred hectares
-  // — so the fodder base is not limited by LAND at all. It is limited by
-  // hands and by the mowing window: 8 real man-days a hectare means the
-  // village mows what it has crews and days for, and hay becomes a decision
-  // rather than a given. Two hundred hectares are laid out here, which is
-  // more than the first years can cut and rather less than the map holds.
-  //
-  // They are MEADOWS, not fields of timothy: grass is mown where it grew,
-  // and it neither improves nor exhausts the ground under it. Sown as a
-  // perennial crop they gained three points of fertility a cut, and thirty
-  // years of that doubled the hay off land nobody had touched.
-  constexpr std::array<Vec2, 10> kMeadowCenters = {{{.x = 1401.0F, .y = 215.0F},
-                                                    {.x = 725.0F, .y = 1096.0F},
-                                                    {.x = -725.0F, .y = 1096.0F},
-                                                    {.x = -1401.0F, .y = 215.0F},
-                                                    {.x = 1300.0F, .y = -160.0F},
-                                                    {.x = 1032.0F, .y = 631.0F},
-                                                    {.x = 170.0F, .y = 1129.0F},
-                                                    {.x = -170.0F, .y = 1129.0F},
-                                                    {.x = -1032.0F, .y = 631.0F},
-                                                    {.x = -1300.0F, .y = -160.0F}}};
-  for (const Vec2 center : kMeadowCenters) {
-    PlaceMeadow(world, 20.0F, center);
-  }
+  // Why the rotation had to be sound rather than one crop per field: the old
+  // genesis sowed each field its single crop in all three slots, and the run
+  // showed what that costs — the wheat field went from 65 fertility to 2 in
+  // six years, and "the village does not go hungry under sound management"
+  // cannot be tested on management that is not sound. The rings are
+  // staggered so every year has potatoes, vegetables, grain, oats and grass;
+  // grass stands two slots, because a stand sown in spring is not cut that
+  // year and the winter rye that follows it must follow a stand that HAS
+  // been cut.
 
   PlaceHerds(world, tables, stock_yard);
 }

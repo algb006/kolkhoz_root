@@ -60,6 +60,7 @@ constexpr const char* kSectionUnits = "units";
 constexpr const char* kSectionHerds = "herds";
 constexpr const char* kSectionOrders = "orders";
 constexpr const char* kSectionLedger = "ledger";
+constexpr const char* kSectionStaged = "staged";
 
 void Refuse(std::string* error, const std::string& reason) {
   const std::string message = "save: " + reason;
@@ -273,7 +274,9 @@ std::vector<std::byte> ReadWholeFile(std::string_view file_path, bool* ok) {
 // The public four
 // ---------------------------------------------------------------------------
 
-std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tables) {
+std::vector<std::byte> EncodeWorld(const WorldState& world,
+                                   const StagedOrders& staged,
+                                   const ITableSet& tables) {
   const DefDictionaries dictionaries = ReadLiveDictionaries(tables);
   SaveSink sink(dictionaries);
   ByteWriter& out = sink.Out();
@@ -318,6 +321,22 @@ std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tab
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
 
+  // The one section that is not the WorldState: what the session had staged
+  // and the engine had not applied when the save was made. A campaign is
+  // saved on pause, after the day's orders have been handed out, and losing
+  // them would punish the player for the unforeseeable (order_state.h,
+  // StagedOrders; boss decision of 2026-08-31).
+  length_offset = OpenSection(out);
+  out.WriteU32(static_cast<std::uint32_t>(staged.issued.size()));
+  for (const OrderRow& row : staged.issued) {
+    WriteOrderRow(sink, row);
+  }
+  out.WriteU32(static_cast<std::uint32_t>(staged.cancelled.size()));
+  for (const OrderId id : staged.cancelled) {
+    out.WriteU32(id.value);
+  }
+  CloseSection(out, length_offset);
+
   if (!sink.Valid()) {
     // The world does not match the tables it is being saved with. That is a
     // caller error, not a corrupt file: assert in Debug so it is found where
@@ -335,9 +354,14 @@ std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tab
   return bytes;
 }
 
+std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tables) {
+  return EncodeWorld(world, StagedOrders{}, tables);
+}
+
 bool DecodeWorld(std::span<const std::byte> bytes,
                  const ITableSet& tables,
                  WorldState* world,
+                 StagedOrders* staged,
                  std::string* error) {
   assert(world != nullptr);
   SaveInfo info;
@@ -428,13 +452,65 @@ bool DecodeWorld(std::span<const std::byte> bytes,
     return false;
   }
 
+  StagedOrders loaded_staged;
+  if (!OpenSection(in, kSectionStaged, &section_end, error)) {
+    return false;
+  }
+  const std::uint32_t issued_count = in.ReadU32();
+  // Bounded against the bytes left before a single row is read, the same
+  // guard ReadTable makes: a damaged count cannot ask for a gigabyte of rows.
+  if (!in.Valid() || issued_count > in.Remaining() / kMinBytesPerRow) {
+    Refuse(error,
+           std::string("section '") + kSectionStaged + "' claims " + std::to_string(issued_count) +
+               " staged orders");
+    return false;
+  }
+  loaded_staged.issued.reserve(issued_count);
+  for (std::uint32_t index = 0; index < issued_count && source.Valid(); ++index) {
+    loaded_staged.issued.push_back(ReadOrderRow(source));
+  }
+  const std::uint32_t cancelled_count = in.ReadU32();
+  constexpr std::size_t kBytesPerId = 4;
+  if (!in.Valid() || cancelled_count > in.Remaining() / kBytesPerId) {
+    Refuse(error,
+           std::string("section '") + kSectionStaged + "' claims " +
+               std::to_string(cancelled_count) + " cancellations");
+    return false;
+  }
+  loaded_staged.cancelled.reserve(cancelled_count);
+  for (std::uint32_t index = 0; index < cancelled_count; ++index) {
+    loaded_staged.cancelled.push_back(OrderId{in.ReadU32()});
+  }
+  if (!source.Valid()) {
+    Refuse(error, std::string("section '") + kSectionStaged + "': " + source.Error());
+    return false;
+  }
+  if (!CloseSection(in, kSectionStaged, section_end, error)) {
+    return false;
+  }
+
   if (in.Remaining() != 0) {
     Refuse(error, std::to_string(in.Remaining()) + " bytes follow the last section");
     return false;
   }
 
   *world = std::move(loaded);
+  if (staged != nullptr) {
+    *staged = std::move(loaded_staged);
+  } else if (!loaded_staged.issued.empty() || !loaded_staged.cancelled.empty()) {
+    // A caller with no session to resume them into: refuse rather than drop.
+    // Those were the player's orders (save.h, DecodeWorld).
+    Refuse(error, "the save carries staged orders and this caller cannot resume them");
+    return false;
+  }
   return true;
+}
+
+bool DecodeWorld(std::span<const std::byte> bytes,
+                 const ITableSet& tables,
+                 WorldState* world,
+                 std::string* error) {
+  return DecodeWorld(bytes, tables, world, nullptr, error);
 }
 
 std::optional<SaveInfo> PeekSaveInfo(std::span<const std::byte> bytes) {
@@ -447,10 +523,11 @@ std::optional<SaveInfo> PeekSaveInfo(std::span<const std::byte> bytes) {
 }
 
 bool SaveWorldToFile(const WorldState& world,
+                     const StagedOrders& staged,
                      const ITableSet& tables,
                      std::string_view file_path,
                      std::string* error) {
-  const std::vector<std::byte> bytes = EncodeWorld(world, tables);
+  const std::vector<std::byte> bytes = EncodeWorld(world, staged, tables);
   if (bytes.empty()) {
     Refuse(error, "the world could not be encoded");
     return false;
@@ -469,9 +546,17 @@ bool SaveWorldToFile(const WorldState& world,
   return true;
 }
 
+bool SaveWorldToFile(const WorldState& world,
+                     const ITableSet& tables,
+                     std::string_view file_path,
+                     std::string* error) {
+  return SaveWorldToFile(world, StagedOrders{}, tables, file_path, error);
+}
+
 bool LoadWorldFromFile(std::string_view file_path,
                        const ITableSet& tables,
                        WorldState* world,
+                       StagedOrders* staged,
                        std::string* error) {
   bool ok = true;
   const std::vector<std::byte> bytes = ReadWholeFile(file_path, &ok);
@@ -479,7 +564,14 @@ bool LoadWorldFromFile(std::string_view file_path,
     Refuse(error, "cannot read '" + std::string(file_path) + "'");
     return false;
   }
-  return DecodeWorld(bytes, tables, world, error);
+  return DecodeWorld(bytes, tables, world, staged, error);
+}
+
+bool LoadWorldFromFile(std::string_view file_path,
+                       const ITableSet& tables,
+                       WorldState* world,
+                       std::string* error) {
+  return LoadWorldFromFile(file_path, tables, world, nullptr, error);
 }
 
 std::optional<SaveInfo> PeekSaveFile(std::string_view file_path) {

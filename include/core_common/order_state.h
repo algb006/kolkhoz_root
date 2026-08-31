@@ -72,6 +72,7 @@
 #define CORE_COMMON_ORDER_STATE_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
@@ -114,13 +115,35 @@ enum class OrderKind : std::uint8_t {
   /// design §7). Consumer: core_production.
   kSetRotation,
 
-  /// Open a construction site: a unit of `unit_type` at `position` (task A2;
-  /// construction design). Refused with kNoConsumer until A2 lands.
+  /// MARK a new unit of `unit_type` at `position`: pegs and string, the
+  /// plot taken, nothing spent (construction design §6). The row appears at
+  /// level 0 with ConstructionPhase::kMarked and waits for kStartBuild.
+  /// Refused with kGateClosed when the type's gate is shut, kTooClose when
+  /// another unit's plot overlaps (unit rules §9), kNoSuchSubject for an
+  /// unknown type. Consumer: core_construction.
   kBuildUnit,
 
-  /// Demolish `unit` (unit rules §14: empty it first — the consumer refuses
-  /// a unit with stock or residents). Consumer: A2.
+  /// Demolish `unit`. A marked site goes at once and for free; a built
+  /// unit is emptied first (unit rules §14 — its stock goes to the stores
+  /// by the instant-delivery stub, the rest is lost, as the design says)
+  /// and then dismantled with labour (construction design §12). Refused
+  /// with kNotEmpty while a household lives or a herd stands there.
+  /// Consumer: core_construction.
   kDemolishUnit,
+
+  /// START the works on a marked site (`unit`): construction design §6 —
+  /// "the works begin only on the chairman's command", never by themselves
+  /// when materials appear. Refused with kRuleForbids unless the unit is
+  /// kMarked. Consumer: core_construction.
+  kStartBuild,
+
+  /// Raise `unit` to its next level (unit rules §11). No marking phase — the
+  /// plot is already there — so the site starts delivering at once. The
+  /// unit keeps working at its current level meanwhile. Refused with
+  /// kRuleForbids at the top of the ladder or while another site is in
+  /// progress on it, kGateClosed when the next level's era has not come.
+  /// Consumer: core_construction.
+  kUpgradeUnit,
 
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
@@ -147,6 +170,24 @@ enum class OrderRefusal : std::uint8_t {
   kNotEligible,          ///< The subject may not do this (a child at the plough).
   kConflictsWithActive,  ///< The one-active-task rule (time design §11).
   kRuleForbids,          ///< Some other rule of the consumer; its event says which.
+
+  /// The unit type's gate is shut (unlocks design §1): its era has not
+  /// come, or it opens by an event, quest or unit that has not happened.
+  /// The presentation names the reason in words FROM ITS OWN COPY of
+  /// unit_types.csv — the refused order's unit_type says which type, the
+  /// type's `gate` and `gate_ref` say what opens it. The core carries no
+  /// text and no dictionary (unlocks design §4; 70-boundary.md §7).
+  kGateClosed,
+
+  /// The plot would overlap another unit's: two units cannot stand closer
+  /// than the sum of their radii (unit rules §9). The refusal event names
+  /// the neighbour in SimEvent::unit.
+  kTooClose,
+
+  /// Demolition refused because something lives here: a household in a
+  /// house, a herd at a barn (unit rules §14 — "the living is not
+  /// demolished"; the stock, by contrast, is moved out, not refused).
+  kNotEmpty,
 };
 
 /// @brief One order. Plain data; `kind` says which target fields are read,
@@ -189,6 +230,22 @@ struct OrderRow {
 
 /// @brief The order book type used by WorldState.
 using OrderTable = StateTable<OrderId, OrderRow>;
+
+/// @brief The batch the session has staged and the engine has not applied
+/// yet: issued rows in issue order, then ids to cancel. Between two steps
+/// this is the ONLY state that is neither in the completed world nor in
+/// the journal — and a campaign is saved between steps, on pause, after
+/// the player has handed out the day's orders. A save that dropped it would
+/// punish the player for the unforeseeable (root principle), so the save
+/// format carries it as a section beside the world (core_save/save.h) and
+/// the session hands it back on load (core_boundary/session.h,
+/// StagedBatch / ReplaceWorld). Boss decision of 2026-08-31, project phase
+/// 2; the same struct is what ISimulation::StageOrders takes, as two spans.
+struct StagedOrders {
+  std::vector<OrderRow> issued;
+
+  std::vector<OrderId> cancelled;
+};
 
 }  // namespace core
 

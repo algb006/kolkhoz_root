@@ -36,7 +36,7 @@ constexpr const char* kKilogramSuffix = "_kg";
 /// The work kinds that carry a column: everything but kNone, which is the
 /// absence of an assignment and delivers nothing by definition.
 constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {
-    "none", "plowing", "harrowing", "sowing", "harvest", "herd_care"};
+    "none", "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction"};
 
 /// Grams as kilograms with three decimals — exact, and it reads back to the
 /// same gram. Written by hand rather than through a float, which would lose

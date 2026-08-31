@@ -181,22 +181,26 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
       Expect(session->State().orders.rows.empty(), "staging alone puts nothing in the book");
 
   session->AdvanceStep();
-  const core::WorldState& after = session->State();
-  failures += Expect(after.orders.rows.size() == 2, "the batch is applied in one step");
   failures +=
       Expect(session->Stamp().tick == 1 && session->Stamp().serial == 1, "one step, one serial");
-  const std::uint32_t first_row = core::FindRow(after.orders, first);
-  const std::uint32_t second_row = core::FindRow(after.orders, second);
-  failures += Expect(first_row != core::kNoRow && second_row != core::kNoRow,
-                     "the promised ids name the rows the engine made");
-  if (first_row != core::kNoRow && second_row != core::kNoRow) {
-    failures += Expect(after.orders.rows[first_row].kind == core::OrderKind::kAssignWork &&
-                           after.orders.rows[second_row].kind == core::OrderKind::kSetRotation,
-                       "the rows arrive in staging order");
-    failures += Expect(after.orders.rows[first_row].status == core::OrderStatus::kPending &&
-                           after.orders.rows[first_row].issued_tick == 0,
-                       "a fresh row is pending and stamped with the tick it was issued after");
+  // The batch was applied before phase 1 and answered before the step ended:
+  // no wired subsystem consumes these two kinds, so the events slot refused
+  // them with kNoConsumer and swept the rows (order_state.h). The proof that
+  // the promised ids named the rows the engine made is in the answers.
+  failures += Expect(session->State().orders.rows.empty(),
+                     "an order nobody consumes does not outlive its step");
+  const std::span<const core::SimEvent> answered = session->Events();
+  failures += Expect(answered.size() == 2, "both orders were answered");
+  if (answered.size() == 2) {
+    failures +=
+        Expect(answered[0].order.value == first.value && answered[1].order.value == second.value,
+               "the answers name the promised ids, in staging order");
+    failures +=
+        Expect(answered[0].kind == core::EventKind::kOrderRefused &&
+                   answered[0].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer),
+               "an order kind with no consumer is refused, never met with silence");
   }
+  session->AcknowledgeEvents(answered.size());
 
   // The journal recorded both, in one batch of tick 0.
   const std::vector<core::JournalEntry> journal = session->TakeJournal();
@@ -214,29 +218,43 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   }
   failures += Expect(session->TakeJournal().empty(), "taking the journal empties it");
 
-  // A cancel of a pending row reaches exactly that row.
-  failures += Expect(session->CancelOrder(first), "a pending order can be cancelled");
-  failures += Expect(!session->CancelOrder(core::OrderId{999}), "an unknown id cannot");
-  failures += Expect(!session->CancelOrder(core::OrderId{}), "the invalid id cannot");
-  session->AdvanceStep();
-  const core::WorldState& cancelled = session->State();
-  failures += Expect(cancelled.orders.rows[core::FindRow(cancelled.orders, first)].status ==
-                         core::OrderStatus::kCancelled,
-                     "the cancel marked its row");
-  failures += Expect(cancelled.orders.rows[core::FindRow(cancelled.orders, second)].status ==
-                         core::OrderStatus::kPending,
-                     "and left the other one alone");
+  failures +=
+      Expect(!session->CancelOrder(core::OrderId{999}), "an unknown id cannot be cancelled");
+  failures += Expect(!session->CancelOrder(core::OrderId{}), "nor can the invalid id");
 
   // Issued and cancelled between the same two steps: the row is still born,
-  // and it is born cancelled (session.h, CancelOrder).
+  // and it is born cancelled (session.h, CancelOrder) — which is exactly why
+  // a cancel stages a cancellation instead of dropping the entry.
   const core::OrderId short_lived = session->IssueOrder(PauseOrder(5));
   failures += Expect(session->CancelOrder(short_lived), "a staged order can be cancelled");
   session->AdvanceStep();
-  const core::WorldState& born = session->State();
-  const std::uint32_t born_row = core::FindRow(born.orders, short_lived);
-  failures += Expect(born_row != core::kNoRow &&
-                         born.orders.rows[born_row].status == core::OrderStatus::kCancelled,
-                     "an order cancelled in its own batch is born cancelled");
+  bool cancelled_answer = false;
+  for (const core::SimEvent& event : session->Events()) {
+    cancelled_answer = cancelled_answer || (event.kind == core::EventKind::kOrderCancelled &&
+                                            event.order.value == short_lived.value);
+  }
+  failures +=
+      Expect(cancelled_answer,
+             "an order cancelled in its own batch is still born, and answered as cancelled");
+
+  // The staged batch is what a save carries beside the world, and a load
+  // hands back (session.h, StagedBatch / ReplaceWorld).
+  const core::OrderId pending = session->IssueOrder(RotationOrder(3));
+  failures +=
+      Expect(session->StagedBatch().issued.size() == 1 &&
+                 session->StagedBatch().issued.front().kind == core::OrderKind::kSetRotation,
+             "what is staged is readable before the step that applies it");
+  const core::WorldState saved = session->State();
+  const core::StagedOrders saved_batch = session->StagedBatch();
+  session->ReplaceWorld(saved, saved_batch);
+  failures +=
+      Expect(session->StagedBatch().issued.size() == 1, "a load puts the batch back where it was");
+  session->AdvanceStep();
+  bool resumed = false;
+  for (const core::SimEvent& event : session->Events()) {
+    resumed = resumed || event.order.value == pending.value;
+  }
+  failures += Expect(resumed, "and the resumed batch reaches the engine like any other");
   return failures;
 }
 
@@ -573,6 +591,12 @@ int TestJournalCodec() {
 
 int TestWorkerIndependence(const core::ITableSet& tables) {
   int failures = 0;
+
+  struct RunResult {
+    std::vector<core::SimEvent> events;
+    std::uint32_t next_order_id = 0;
+  };
+
   const auto run = [&tables](std::uint32_t worker_count) {
     core::StandardSimulationConfig sim_config;
     sim_config.tables = &tables;
@@ -582,9 +606,9 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
     config.tables = &tables;
     config.simulation = core::CreateStandardSimulation(sim_config);
     std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
-    core::OrderTable book;
+    RunResult result;
     if (!session) {
-      return book;
+      return result;
     }
     for (std::uint32_t step = 0; step < 6; ++step) {
       session->IssueOrder(RotationOrder(step + 1));
@@ -594,22 +618,27 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
       }
       session->AdvanceStep();
     }
-    book = session->State().orders;
-    return book;
+    const std::span<const core::SimEvent> events = session->Events();
+    result.events.assign(events.begin(), events.end());
+    result.next_order_id = session->State().orders.next_id_value;
+    return result;
   };
 
-  const core::OrderTable single = run(1);
-  const core::OrderTable parallel = run(4);
-  bool same =
-      single.rows.size() == parallel.rows.size() && single.next_id_value == parallel.next_id_value;
-  for (std::size_t row = 0; same && row < single.rows.size(); ++row) {
-    same = single.row_ids[row].value == parallel.row_ids[row].value &&
-           single.rows[row].kind == parallel.rows[row].kind &&
-           single.rows[row].status == parallel.rows[row].status &&
-           single.rows[row].issued_tick == parallel.rows[row].issued_tick;
+  // The book itself is swept empty every step — an order nobody consumes is
+  // refused and removed in the step it was applied (order_state.h). What
+  // survives is the ANSWER, and that is what has to be worker-independent.
+  const RunResult single = run(1);
+  const RunResult parallel = run(4);
+  bool same = single.events.size() == parallel.events.size() &&
+              single.next_order_id == parallel.next_order_id;
+  for (std::size_t index = 0; same && index < single.events.size(); ++index) {
+    same = single.events[index].tick == parallel.events[index].tick &&
+           single.events[index].kind == parallel.events[index].kind &&
+           single.events[index].order.value == parallel.events[index].order.value &&
+           single.events[index].amount == parallel.events[index].amount;
   }
-  failures += Expect(!single.rows.empty(), "the run produced a book at all");
-  failures += Expect(same, "one worker and four give the same order book");
+  failures += Expect(!single.events.empty(), "the run answered anything at all");
+  failures += Expect(same, "one worker and four answer identically, in the same order");
   return failures;
 }
 

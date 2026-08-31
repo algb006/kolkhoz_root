@@ -21,6 +21,7 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_construction/construction_system.h"
 #include "core_labor/labor_system.h"
 #include "core_log/log.h"
 #include "core_logistics/logistics_system.h"
@@ -39,13 +40,25 @@ namespace {
 /// design contract, not a wiring accident.
 class DecisionsSlot final : public ISequentialPhase {
  public:
-  DecisionsSlot(ILaborSystem& labor, IResidentsSystem& residents, IProductionSystem& production)
-      : labor_(&labor), residents_(&residents), production_(&production) {}
+  DecisionsSlot(ILaborSystem& labor,
+                IResidentsSystem& residents,
+                IProductionSystem& production,
+                IConstructionSystem& construction)
+      : labor_(&labor),
+        residents_(&residents),
+        production_(&production),
+        construction_(&construction) {}
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     labor_->RunAssignmentDecisions(previous, current);
     residents_->RunDemographyDecisions(previous, current);
     production_->RunProductionDecisions(previous, current);
+    // Construction last (task A2, manual/71-construction.md §6): a unit
+    // finished here is seen by everybody from the next tick, and a site
+    // started here gets its crew at tomorrow's placement — which is the
+    // design's own rule that a change of assignment takes effect the next
+    // day.
+    construction_->RunConstructionDecisions(previous, current);
   }
 
  private:
@@ -54,6 +67,8 @@ class DecisionsSlot final : public ISequentialPhase {
   IResidentsSystem* residents_;
 
   IProductionSystem* production_;
+
+  IConstructionSystem* construction_;
 };
 
 /// The events slot (phase 7). The event system itself is still a STUB — it
@@ -82,8 +97,58 @@ class EventsSlot final : public ISequentialPhase {
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
+    SweepOrderBook(current);
     RaiseKolkhozYard(current);
     RotateLedger(current);
+  }
+
+  /// The events slot's half of the order book's life (order_state.h): every
+  /// row that reached a terminal status this step gets its event and is
+  /// removed, and a row still kPending after every consumer has looked at it
+  /// is refused with kNoConsumer — an order kind whose mechanic has not
+  /// arrived answers with a refusal the presentation can show, never with
+  /// silence.
+  ///
+  /// Removal is by id and after the sweep, because removing rows moves the
+  /// ones behind them (state_table.h: swap-with-last).
+  static void SweepOrderBook(WorldState& current) {
+    std::vector<OrderId> done;
+    for (std::uint32_t row = 0; row < current.orders.rows.size(); ++row) {
+      OrderRow& order = current.orders.rows[row];
+      if (order.status == OrderStatus::kPending) {
+        order.status = OrderStatus::kRefused;
+        order.refusal = OrderRefusal::kNoConsumer;
+      }
+      EventKind kind = EventKind::kNone;
+      switch (order.status) {
+        case OrderStatus::kDone:
+          kind = EventKind::kOrderDone;
+          break;
+        case OrderStatus::kRefused:
+          kind = EventKind::kOrderRefused;
+          break;
+        case OrderStatus::kCancelled:
+          kind = EventKind::kOrderCancelled;
+          break;
+        default:
+          continue;  // accepted or active: still the consumer's
+      }
+      SimEvent event;
+      event.tick = current.calendar.tick;
+      event.kind = kind;
+      event.severity = EventSeverity::kNotable;
+      event.order = current.orders.row_ids[row];
+      event.unit = order.unit;
+      event.resident = order.resident;
+      event.field = order.field;
+      event.herd = order.herd;
+      event.amount = static_cast<std::int64_t>(order.refusal);
+      current.step_events.push_back(event);
+      done.push_back(current.orders.row_ids[row]);
+    }
+    for (const OrderId id : done) {
+      RemoveRow(current.orders, id);
+    }
   }
 
  private:
@@ -222,13 +287,15 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<IResidentsSystem> residents,
                      std::unique_ptr<IProductionSystem> production,
                      std::unique_ptr<ILogisticsSystem> logistics,
-                     std::unique_ptr<ILaborSystem> labor)
+                     std::unique_ptr<ILaborSystem> labor,
+                     std::unique_ptr<IConstructionSystem> construction)
       : time_(std::move(time)),
         residents_(std::move(residents)),
         production_(std::move(production)),
         logistics_(std::move(logistics)),
         labor_(std::move(labor)),
-        decisions_slot_(*labor_, *residents_, *production_),
+        construction_(std::move(construction)),
+        decisions_slot_(*labor_, *residents_, *production_, *construction_),
         events_slot_(YardType(*config.tables), HorseKind(*config.tables)) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
@@ -263,6 +330,8 @@ class StandardSimulation final : public ISimulation {
   std::unique_ptr<ILogisticsSystem> logistics_;
 
   std::unique_ptr<ILaborSystem> labor_;
+
+  std::unique_ptr<IConstructionSystem> construction_;
 
   DecisionsSlot decisions_slot_;
 
@@ -368,7 +437,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   auto production = CreateProductionSystem(*config.tables);
   auto logistics = CreateLogisticsSystem(*config.tables);
   auto labor = CreateLaborSystem(*config.tables);
-  if (!time || !residents || !production || !logistics || !labor) {
+  auto construction = CreateConstructionSystem(*config.tables);
+  if (!time || !residents || !production || !logistics || !labor || !construction) {
     // A factory refused its configuration (it already logged why).
     return nullptr;
   }
@@ -377,7 +447,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(residents),
                                               std::move(production),
                                               std::move(logistics),
-                                              std::move(labor));
+                                              std::move(labor),
+                                              std::move(construction));
 }
 
 }  // namespace core

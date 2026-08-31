@@ -28,19 +28,24 @@ namespace core {
 
 /// @brief What a resident is assigned to today. The four field kinds mirror
 /// the working phases of FieldPhase (land_state.h); kHerdCare is the daily
-/// barn work at a unit-standing herd. Values are also the row keys of the
+/// barn work at a unit-standing herd; kConstruction is a day on a site
+/// (unit_state.h, ConstructionState). Values are also the row keys of the
 /// work-rate table (tables/labor.csv): the trudoden rate and the hardness of
-/// each kind are balance data, never code.
+/// each kind are balance data, never code. Kinds are APPENDED, never
+/// renumbered: the value is saved (VERSION_SAVE) and indexes the rate
+/// table, the ledger's per-kind array and the report's name list — a kind
+/// added here is added in those three places in the same commit.
 enum class WorkKind : std::uint8_t {
-  kNone = 0,   ///< Not assigned today (or walked off; see ResidentRow docs).
-  kPlowing,    ///< Horse work: needs an adult kolkhoz horse teamed in.
-  kHarrowing,  ///< Horse work, like plowing.
-  kSowing,     ///< By hand in Epoch I.
-  kHarvest,    ///< By hand in Epoch I; the heaviest window of the year.
-  kHerdCare,   ///< Feeding, milking, mucking at a unit-standing herd.
+  kNone = 0,      ///< Not assigned today (or walked off; see ResidentRow docs).
+  kPlowing,       ///< Horse work: needs an adult kolkhoz horse teamed in.
+  kHarrowing,     ///< Horse work, like plowing.
+  kSowing,        ///< By hand in Epoch I.
+  kHarvest,       ///< By hand in Epoch I; the heaviest window of the year.
+  kHerdCare,      ///< Feeding, milking, mucking at a unit-standing herd.
+  kConstruction,  ///< Building, raising or taking down a unit (task A2).
 };
 
-inline constexpr std::uint32_t kWorkKindCount = 6;
+inline constexpr std::uint32_t kWorkKindCount = 7;
 
 /// @brief True for kinds that harness a horse: the crew is capped by adult
 /// kolkhoz horses, and residents hosting a kolkhoz horse at their yard are
@@ -51,16 +56,18 @@ constexpr bool IsHorseWork(WorkKind kind) {
 
 /// @brief The assignment block of one resident. Plain data.
 /// Exactly one target id is valid, matching the kind: a field for the four
-/// field kinds, a herd for kHerdCare, neither for kNone. Travel time and
-/// eligibility are NOT stored — they are pure functions of positions and
-/// state (state model law: derived values are recomputed, never cached in
-/// state).
+/// field kinds, a herd for kHerdCare, a unit for kConstruction, none for
+/// kNone. Travel time and eligibility are NOT stored — they are pure
+/// functions of positions and state (state model law: derived values are
+/// recomputed, never cached in state).
 struct WorkAssignment {
   WorkKind kind = WorkKind::kNone;
 
   FieldId field;  ///< Valid for the field kinds; invalid otherwise.
 
   HerdId herd;  ///< Valid for kHerdCare; invalid otherwise.
+
+  UnitId unit;  ///< Valid for kConstruction: the site; invalid otherwise.
 
   /// Norm-days of output delivered since the day started, in game man-days
   /// of the assigned kind. Accumulated hourly while working; converted into

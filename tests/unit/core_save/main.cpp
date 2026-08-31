@@ -168,6 +168,21 @@ core::WorldState MakeWorld() {
   house.level = 2;
   core::AppendRow(world.units, house);
 
+  // And a construction site (task A2): a unit row at level 0 with its site
+  // block filled. A campaign saved mid-build must resume mid-build — the
+  // progress bar is state, not a screen.
+  core::UnitRow site;
+  site.type = core::UnitTypeId{0};
+  site.position = core::Vec2{.x = 300.5F, .y = -12.25F};
+  site.level = 0;
+  site.stock = Amounts({0, 4'000'000, 0, 0, 0, 0});
+  site.construction.phase = core::ConstructionPhase::kBuilding;
+  site.construction.target_level = 1;
+  site.construction.labor_days_total = 17.5F;
+  site.construction.labor_days_remaining = 6.25F;
+  site.construction.max_crew = 8;
+  core::AppendRow(world.units, site);
+
   core::HerdRow herd;
   herd.kind = core::LivestockKindId{0};
   herd.unit = core::UnitId{1};
@@ -319,6 +334,47 @@ int main() {
   failures += Expect(loaded.orders.rows[2].position.x == -12.5F &&
                          loaded.orders.rows[3].refusal == core::OrderRefusal::kRuleForbids,
                      "the build order's position and the refusal reason survived");
+
+  // The site came back mid-build, every field of it.
+  const core::UnitRow& site_back = loaded.units.rows[2];
+  failures += Expect(site_back.level == 0 &&
+                         site_back.construction.phase == core::ConstructionPhase::kBuilding &&
+                         site_back.construction.target_level == 1 &&
+                         site_back.construction.labor_days_total == 17.5F &&
+                         site_back.construction.labor_days_remaining == 6.25F &&
+                         site_back.construction.max_crew == 8,
+                     "a half-built unit resumes half-built, crew ceiling included");
+
+  // -- the staged batch ----------------------------------------------------
+  //
+  // The one section that is not the WorldState. A campaign is saved on pause,
+  // after the day's orders have been handed out, and those orders are not in
+  // the book yet — the engine applies them at the next step (order_state.h).
+  core::StagedOrders staged;
+  core::OrderRow waiting;
+  waiting.kind = core::OrderKind::kSetRotation;
+  waiting.field = core::FieldId{2};
+  waiting.rotation_year0 = core::CropId{1};
+  waiting.issued_tick = 96;
+  staged.issued.push_back(waiting);
+  staged.cancelled.push_back(core::OrderId{7});
+
+  const std::vector<std::byte> with_batch = core::EncodeWorld(world, staged, *tables);
+  core::WorldState batch_world;
+  core::StagedOrders batch_back;
+  failures += Expect(core::DecodeWorld(with_batch, *tables, &batch_world, &batch_back, &error),
+                     "a save with a staged batch decodes");
+  failures +=
+      Expect(batch_back.issued.size() == 1 && batch_back.cancelled.size() == 1 &&
+                 batch_back.issued[0].kind == core::OrderKind::kSetRotation &&
+                 batch_back.issued[0].field.value == 2 && batch_back.issued[0].issued_tick == 96 &&
+                 batch_back.cancelled[0].value == 7,
+             "and hands the batch back exactly as it was staged");
+  core::WorldState no_batch_world;
+  failures += Expect(!core::DecodeWorld(with_batch, *tables, &no_batch_world, &error),
+                     "a caller with no session to resume them into refuses, never drops them");
+  failures += Expect(core::DecodeWorld(bytes, *tables, &no_batch_world, &error),
+                     "and a save with an empty batch loads for such a caller");
 
   // -- the header ----------------------------------------------------------
   const auto info = core::PeekSaveInfo(bytes);

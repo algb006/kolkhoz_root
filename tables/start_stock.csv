@@ -1,0 +1,27 @@
+# generated from db/design.db — do not edit by hand
+# what already lies in a start placement on the first morning: the scene says WHERE a thing stands, this says HOW MUCH is in it
+# place is a key of start_layout.csv; amount is in the resource's own unit, and kg_per_unit is repeated here so a loader never has to join to weigh the pile
+# a placement with no row here starts EMPTY, and that is a statement: the stone heap is empty because the manor ruins are the only stone until a quarry is opened (start design §7)
+# the numbers are the NORMAL difficulty; how the other levels scale them is the difficulty design's business, not this table's
+place,resource,amount,kg_per_unit
+build_yard,board,70,600
+build_yard,brick,2000,3.5
+build_yard,glass,60,8
+build_yard,steel,2,1000
+build_yard,spare_part,20,5
+build_yard,tool,120,3
+church_store,rye,8,1000
+church_store,wheat,2.5,1000
+church_store,oat,5,1000
+church_store,barley,3.5,1000
+church_store,potato,35,1000
+clay_pile,clay,40,1000
+hay_stack,hay,165,1000
+hay_stack,straw,40,1000
+log_pile,log,600,200
+manor_ruins,log,90,200
+manor_ruins,board,12,600
+manor_ruins,firewood,40,500
+manor_ruins,stone,60,1000
+manor_ruins,brick,4000,3.5
+manor_ruins,tool,25,3

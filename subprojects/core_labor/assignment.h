@@ -37,11 +37,31 @@ struct AssignmentJob {
 
   HerdId herd;  ///< Valid for kHerdCare; copied into WorkAssignment.
 
+  UnitId unit;  ///< Valid for kConstruction: the site. Copied into WorkAssignment.
+
+  /// At most this many workers on this job at once; 0 = no cap beyond the
+  /// demand ceiling below. Only construction sites carry one — the build
+  /// class's brigade (unit_levels.csv max_crew): without it a 250-day site
+  /// takes every free hand in the village and "a couple of weeks for a
+  /// brigade" becomes three days (construction design §8).
+
   Vec2 position;  ///< Where the work is; drives travel time.
 
   /// Game man-days of demand left (the seam value at morning). Caps the
   /// useful crew: nobody is placed beyond what the day can consume.
   float work_days_remaining = 0.0F;
+
+  std::uint8_t max_crew = 0;
+
+  /// True when this job goes out WITH A HORSE although its kind is not one
+  /// of the two horse works: the meadow cut, mown and raked with the horse
+  /// implements the district issued at the start (livestock design §5,
+  /// farming design §5 — "scythes, sickles, HORSE MOWERS"). It changes two
+  /// things and only two: the shoulder is measured at harness speed (time
+  /// design §7 — "whoever rides out with a horse reaches farther than the
+  /// man on foot"), and each worker placed takes one horse from the day's
+  /// pool, like ploughing.
+  bool harnessed = false;
 
   /// Whole days until this job's calendar window closes (sowing window,
   /// harvest before snow). Smaller = more urgent; the placement fills

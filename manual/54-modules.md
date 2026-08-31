@@ -14,7 +14,7 @@
    СБОРКА                 core_world — генезис мира, StepPhaseSet, слоты 3 и 7
         │ видит всех
    ПРЕДМЕТНЫЕ             core_time   core_residents   core_production
-                          core_logistics   core_labor
+                          core_logistics   core_labor   core_construction
         │ только вниз                 ↑ друг о друге НЕ знают
    ИНФРАСТРУКТУРА         core_common   core_log   core_tables   core_sim
                           core_save   core_report   core_boundary  ← листья: их зовут только исполняемые
@@ -42,6 +42,7 @@
 | **core_production** | Земля и производство: поля, плодородие, циклы юнитов, буферы, стада | Этап 4 |
 | **core_logistics** | Слот логистики. **Заглушка «мгновенная доставка»** до второй фазы проекта | Вторая фаза |
 | **core_labor** | Труд: назначения, учётчик, рабочий день, трудодни | Этап 5 |
+| **core_construction** | Стройка: разметка, доставка, ступени, снос — площадка как строка юнита, шов труда `labor_days_remaining` ([`71-construction.md`](71-construction.md)) | Вторая фаза: А2 (контракт 31.08.2026 → реализация) |
 | **core_world** | Генезис стартового поселения, сборка фаз, составные слоты 3 и 7 | По мере этапов |
 | **core_save** | Формат сохранений: `WorldState` в байты и обратно, перепривязка `DefId` по ключам ([`67-save-format.md`](67-save-format.md)) | Этап 7: Ф1 → O1 |
 | **core_report** | Ведомость прогона: `WorldState::ledger` и состояние на повороте года в CSV ([`68-run-ledger.md`](68-run-ledger.md)) | Этап 7: Ф2 → O2 |
@@ -65,14 +66,14 @@
 |---|---|
 | 1. Время и погода | `core_time` |
 | 2. Потребности (по семьям) | `core_residents` |
-| **3. Решения** | **`core_world`**: учётчик из labor → демография из residents → номенклатура из production |
+| **3. Решения** | **`core_world`**: учётчик из labor → демография из residents → номенклатура из production → **стройка из construction** |
 | 4. Производство (по юнитам и полям) | `core_production` |
 | 5. Логистика | `core_logistics` (заглушка) |
 | 6. Метрики (по семьям) | `core_residents` |
 | **7. События** | **`core_world`** (заглушка до `core_events`; с этапа 7 здесь же свёртка и ротация ведомости — [`68-run-ledger.md` §3](68-run-ledger.md#3-кто-что-пишет)) |
 
 Отсюда и зависимость: владельцы слотов держат `core_sim` в PUBLIC — их граница и есть
-интерфейс слота. `core_labor` слотом не владеет и `core_sim` не знает.
+интерфейс слота. `core_labor` и `core_construction` слотом не владеют и `core_sim` не знают.
 
 ### Интерфейсы подсистем (задача F4)
 
@@ -89,12 +90,15 @@
 | `core_production` | `IProductionSystem`: фаза + `RunProductionDecisions` | `include/core_production/production_system.h` |
 | `core_logistics` | `ILogisticsSystem` (заглушка «мгновенно») | `include/core_logistics/logistics_system.h` |
 | `core_labor` | `ILaborSystem`: `RunAssignmentDecisions` | `include/core_labor/labor_system.h` |
+| `core_construction` | `IConstructionSystem`: `RunConstructionDecisions` (А2 — контракт) | `include/core_construction/construction_system.h` |
 | `core_world` | Фабрики `CreateStartWorld`, `CreateStandardSimulation` | `include/core_world/world.h` |
 | `core_boundary` | `ISession`, фабрика `CreateSession`, кодек журнала (А1 — контракт, O2 — реализация) | `include/core_boundary/session.h` |
 
 Под-шаги слота решений зовутся каждый тик; суточную работу реализация сама привязывает к
-границе суток. Порядок в слоте 3 закреплён: **назначения → демография → номенклатура** —
-расстановка людей происходит до того, как на неё посмотрят остальные.
+границе суток. Порядок в слоте 3 закреплён: **назначения → демография → номенклатура →
+стройка** — расстановка людей происходит до того, как на неё посмотрят остальные, а стройка
+идёт последней, чтобы достроенный юнит увидели все со следующего тика, а начатая площадка
+получила бригаду следующим утром ([`71-construction.md` §6](71-construction.md#6-порядок-в-слоте-решений-стройка-последней)).
 
 ---
 

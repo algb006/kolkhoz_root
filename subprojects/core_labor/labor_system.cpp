@@ -146,6 +146,7 @@ class LaborSystem final : public ILaborSystem {
       work.kind = job.kind;
       work.field = job.field;
       work.herd = job.herd;
+      work.unit = job.unit;
     }
   }
 
@@ -185,6 +186,11 @@ class LaborSystem final : public ILaborSystem {
         job.position = field.center;
         job.work_days_remaining = field.work_days_remaining;
         job.window_days_left = FieldWindow(current.calendar, field, kind);
+        // The meadow cut rides out: horse mower, horse rake, hay carted home
+        // (farming design §5; the start canon issues both implements). The
+        // crop harvest stays hand work — sickles and scythes on the strips.
+        job.harnessed =
+            field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow;
         jobs.push_back(job);
       }
     }
@@ -201,6 +207,26 @@ class LaborSystem final : public ILaborSystem {
       job.work_days_remaining = herd.care_days_remaining;
       job.window_days_left = 0;  // undone barn work expires tonight
       jobs.push_back(job);
+    }
+    // Construction sites (task A2). The seam is the same shape as a field's,
+    // and so is this loop: core_construction sets labor_days_remaining when
+    // a site starts and reads it back at zero; the two never call each other
+    // (manual/65-labor-model.md §2). No calendar window — a site waits —
+    // and the crew cap rides with the site so no table is opened here.
+    if (!day_off) {
+      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+        const UnitRow& unit = current.units.rows[row];
+        if (unit.construction.labor_days_remaining <= 0.0F) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kConstruction;
+        job.unit = current.units.row_ids[row];
+        job.position = unit.position;
+        job.work_days_remaining = unit.construction.labor_days_remaining;
+        job.max_crew = unit.construction.max_crew;
+        jobs.push_back(job);
+      }
     }
     return jobs;
   }
@@ -377,6 +403,13 @@ class LaborSystem final : public ILaborSystem {
       const std::uint32_t row = FindRow(current.herds, work.herd);
       return row == kNoRow ? nullptr : &current.herds.rows[row].care_days_remaining;
     }
+    if (work.kind == WorkKind::kConstruction) {
+      const std::uint32_t row = FindRow(current.units, work.unit);
+      // A site that finished or was demolished since the morning: the crew
+      // simply has nothing to drain, exactly as with a field production has
+      // moved on.
+      return row == kNoRow ? nullptr : &current.units.rows[row].construction.labor_days_remaining;
+    }
     const std::uint32_t row = FindRow(current.fields, work.field);
     if (row == kNoRow || KindOfPhase(current.fields.rows[row].phase) != work.kind) {
       return nullptr;  // production has moved the field on since the morning
@@ -388,6 +421,14 @@ class LaborSystem final : public ILaborSystem {
     if (work.kind == WorkKind::kHerdCare) {
       const std::uint32_t row = FindRow(current.herds, work.herd);
       return row != kNoRow && HerdPosition(current, current.herds.rows[row], place);
+    }
+    if (work.kind == WorkKind::kConstruction) {
+      const std::uint32_t row = FindRow(current.units, work.unit);
+      if (row == kNoRow) {
+        return false;
+      }
+      place = current.units.rows[row].position;
+      return true;
     }
     const std::uint32_t row = FindRow(current.fields, work.field);
     if (row == kNoRow) {

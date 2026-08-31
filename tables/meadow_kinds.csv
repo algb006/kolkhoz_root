@@ -1,0 +1,7 @@
+# generated from db/design.db — do not edit by hand
+# hayland: an upland meadow gives 1.5 t of hay per hectare, a floodplain one 2.5 — canon, not a knob (terrain design §8)
+# the floodplain meadow is the farm's MAIN winter fodder, and it costs nothing: no ploughing, no sowing, no fertiliser
+# which contour is which is in start_layout.csv, because it follows from where the contour lies on the map
+key,title,yield_kg_per_ha
+upland,Суходольный луг,1500
+floodplain,Пойменный луг,2500

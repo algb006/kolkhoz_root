@@ -57,7 +57,7 @@
 ///     tick             u64      copy of WorldState::calendar.tick
 ///     payload_size     u64      bytes after the header
 ///     payload_hash     u64      FNV-1a 64 of the payload
-///   payload, nine sections in this fixed order, each prefixed by its byte
+///   payload, ten sections in this fixed order, each prefixed by its byte
 ///   length (u64) so that a malformed section is NAMED in the error and a
 ///   truncated file is caught before a single field is read:
 ///     "dictionaries"   resources, crops, unit_types, livestock — each
@@ -72,6 +72,17 @@
 ///                      the outbox describes one step and the engine
 ///                      empties it at the start of the next
 ///     "ledger"         ledger.current, then ledger.closed
+///     "staged"         the batch the session had staged and the engine
+///                      had not applied when the save was made
+///                      (order_state.h, StagedOrders): u32 issued count,
+///                      the rows as OrderRow — DefIds remapped like every
+///                      row's — then u32 cancelled count and the ids. A
+///                      save made without a session (the run tool) writes
+///                      an empty batch. The one section that is not the
+///                      WorldState: a campaign is saved on pause, after
+///                      the day's orders, and dropping them would punish
+///                      the player for the unforeseeable (boss decision
+///                      2026-08-31; VERSION_SAVE 4 with task A2)
 ///   No section is optional and none may be skipped: the reader knows
 ///   exactly one layout, this one, and a file that deviates is refused —
 ///   including a file with bytes glued after the last section.
@@ -151,6 +162,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/order_state.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -186,24 +198,40 @@ struct SaveInfo {
   std::uint64_t payload_size = 0;
 };
 
-/// @brief Encodes a world into the save format, in memory.
+/// @brief Encodes a world and the session's staged batch into the save
+/// format, in memory — the form a game saves in (ISession::State() and
+/// ISession::StagedBatch()).
 /// @param world  The completed state of a simulation between steps.
+/// @param staged The batch staged and not yet applied (order_state.h);
+///               its rows are remapped by key like the book's, its ids are
+///               written as they are.
 /// @param tables The live definition tables: their keys are written as the
 ///               dictionaries the loader remaps by. Must be the set the
 ///               world was created with — a DefId in `world` that exceeds
 ///               a table's row count is a caller error (asserted in Debug,
 ///               refused with an empty result otherwise).
 /// @return The bytes of the save, header included; empty on refusal. The
-///         encoding is deterministic: the same world and tables give the
-///         same bytes, so two saves of one state are byte-identical.
+///         encoding is deterministic: the same world, batch and tables
+///         give the same bytes, so two saves of one state are
+///         byte-identical.
+std::vector<std::byte> EncodeWorld(const WorldState& world,
+                                   const StagedOrders& staged,
+                                   const ITableSet& tables);
+
+/// @brief EncodeWorld with an empty batch — what a caller without a session
+/// (the run tool, a test) saves. Byte-identical to the form above with an
+/// empty StagedOrders.
 std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tables);
 
-/// @brief Decodes a save into a world, remapping definition ids by key.
+/// @brief Decodes a save into a world and its staged batch, remapping
+/// definition ids by key.
 /// @param bytes  A whole save as EncodeWorld produced it.
 /// @param tables The live definition tables to remap onto — the set the
 ///               resumed simulation will be created with.
 /// @param world  Receives the decoded state on success; UNTOUCHED on any
 ///               failure (all or nothing).
+/// @param staged Receives the batch the save carried; UNTOUCHED on failure.
+///               Hand it to ISession::ReplaceWorld(world, staged).
 /// @param error  If non-null, receives a human-readable reason on failure:
 ///               which check refused — magic, version (both numbers named),
 ///               size, hash, a named section, a named missing key — so a
@@ -211,6 +239,18 @@ std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tab
 ///               logged.
 /// @return true on success. The loaded world has every row_by_id rebuilt
 ///         and is ready for ISimulation::ResetWorld.
+bool DecodeWorld(std::span<const std::byte> bytes,
+                 const ITableSet& tables,
+                 WorldState* world,
+                 StagedOrders* staged,
+                 std::string* error);
+
+/// @brief DecodeWorld for a caller that has no session to hand a batch to.
+/// The section is still read and checked — a save is all or nothing — and
+/// a NON-EMPTY batch is a refusal, not a silent drop: those were the
+/// player's orders, and a caller that cannot resume them must not pretend
+/// the save loaded whole. The run tool never meets one; a game always uses
+/// the form above.
 bool DecodeWorld(std::span<const std::byte> bytes,
                  const ITableSet& tables,
                  WorldState* world,
@@ -224,16 +264,31 @@ bool DecodeWorld(std::span<const std::byte> bytes,
 std::optional<SaveInfo> PeekSaveInfo(std::span<const std::byte> bytes);
 
 /// @brief EncodeWorld plus writing the bytes to `file_path` (created or
-/// truncated, binary).
+/// truncated, binary). Two forms, mirroring EncodeWorld: with the session's
+/// batch, and without one (an empty batch).
 /// @return false if encoding refused or the file could not be written; the
 ///         reason goes to `error` when non-null, and to the log.
+bool SaveWorldToFile(const WorldState& world,
+                     const StagedOrders& staged,
+                     const ITableSet& tables,
+                     std::string_view file_path,
+                     std::string* error);
+
 bool SaveWorldToFile(const WorldState& world,
                      const ITableSet& tables,
                      std::string_view file_path,
                      std::string* error);
 
 /// @brief Reads `file_path` whole and DecodeWorld's it. Same all-or-nothing
-/// contract: `world` is untouched unless the whole file decoded.
+/// contract: `world` and `staged` are untouched unless the whole file
+/// decoded. The form without `staged` refuses a file whose batch is not
+/// empty, for the reason DecodeWorld gives.
+bool LoadWorldFromFile(std::string_view file_path,
+                       const ITableSet& tables,
+                       WorldState* world,
+                       StagedOrders* staged,
+                       std::string* error);
+
 bool LoadWorldFromFile(std::string_view file_path,
                        const ITableSet& tables,
                        WorldState* world,

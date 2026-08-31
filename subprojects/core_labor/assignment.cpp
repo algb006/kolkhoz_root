@@ -36,15 +36,26 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
       return 3;
     case WorkKind::kHarrowing:
       return 4;
-    case WorkKind::kNone:
+    // Building comes after every field work on purpose: "full speed in
+    // spring and autumn, but the people are needed in the fields"
+    // (construction design §8). A site waits; a sowing window does not.
+    case WorkKind::kConstruction:
       return 5;
+    case WorkKind::kNone:
+      return 6;
   }
-  return 5;
+  return 6;
 }
 
 /// The stable identity of a job's target, for deterministic tie-breaks.
 constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
-  return job.kind == WorkKind::kHerdCare ? job.herd.value : job.field.value;
+  if (job.kind == WorkKind::kHerdCare) {
+    return job.herd.value;
+  }
+  if (job.kind == WorkKind::kConstruction) {
+    return job.unit.value;
+  }
+  return job.field.value;
 }
 
 /// How much the skill blend lifts a pick: 0.7 at skill 0, 1.0 at 100.
@@ -124,7 +135,7 @@ bool ConsiderCandidate(const AssignmentJob& job,
                        std::uint32_t candidate_index,
                        const AssignmentParams& params,
                        RankedPick& pick) {
-  const bool horse_work = IsHorseWork(job.kind);
+  const bool horse_work = IsHorseWork(job.kind) || job.harnessed;
   if (candidate.horse_locked && !horse_work) {
     return false;  // The start-canon lock: only horse works may take him.
   }
@@ -211,8 +222,14 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // consume — the surplus idles and earns nothing (digest 2026-08-29
     // §2.4: a trudoden is a work norm, not attendance).
     float expected_output = 0.0F;
+    std::uint32_t placed = 0;
     for (const RankedPick& pick : RankCandidates(job, candidates, result, params)) {
       if (expected_output >= job.work_days_remaining) {
+        break;
+      }
+      // The job's own ceiling, where it has one: a build class's brigade
+      // caps a site regardless of how much work is left on it.
+      if (job.max_crew != 0 && placed >= job.max_crew) {
         break;
       }
       if (horse_work) {
@@ -223,6 +240,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       }
       result[pick.candidate_index] = job_index;
       expected_output += pick.daily_norm;
+      ++placed;
     }
   }
 
