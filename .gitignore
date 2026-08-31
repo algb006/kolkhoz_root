@@ -52,8 +52,14 @@ Thumbs.db
 *.orig
 *.rej
 
-# Artifacts pulled back from the Windows host
+# Artifacts pulled back from the Windows host, per configuration
 /artifacts/
+
+# The Windows host's own trees: one build directory per configuration and the
+# published result. They live on the host, not here, but the host tree is an
+# rsync of this one and a stray copy should not look tracked.
+/build-msvc-*/
+/publish/
 
 # Doxygen output when generated outside build/
 doc/html/

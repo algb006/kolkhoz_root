@@ -54,9 +54,9 @@ help:
 	@echo '  make docs           выжимка Doxygen в $(BUILD_DIR)/doc'
 	@echo ''
 	@echo '  make sync           отправить исходники на Windows-хост ($(WIN_HOST))'
-	@echo '  make win            собрать на хосте под MSVC'
-	@echo '  make win-release    то же, Release'
-	@echo '  make win-clean      снести каталог сборки на хосте и собрать заново'
+	@echo '  make win            собрать и опубликовать на хосте под MSVC (Debug)'
+	@echo '  make win-release    то же, Release — это берёт слой графики'
+	@echo '  make win-clean      снести каталог сборки Debug на хосте и собрать заново'
 	@echo '  make win-setup      что и как настроить на хосте в первый раз'
 	@echo ''
 	@echo '  make hooks          включить git-хуки из scripts/git-hooks'
@@ -144,6 +144,11 @@ docs:
 
 # All four go through one script: the rsync flags and the remote invocation are
 # fiddly enough that a second copy of them would drift.
+#
+# Each configuration has its own build directory on the host and its own
+# publish/<Config>/ folder — include, lib/core.lib (enkiTS merged in) and
+# VERSION beside it. The graphics layer takes Release; Debug is for our runs.
+# manual/setup/60-windows-host.md §6а.
 WIN_ENV = WIN_HOST=$(WIN_HOST) WIN_DIR=$(WIN_DIR)
 
 sync:

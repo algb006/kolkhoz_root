@@ -6,6 +6,12 @@
 # POSIX shell behind sshd) and Visual Studio Build Tools; scripts/win-setup.ps1
 # puts both in place, manual/setup/60-windows-host.md explains why.
 #
+# What comes back is the PUBLISHED library, not the build directory's: each
+# configuration builds into build-msvc-<Config> and publishes into
+# publish/<Config>/{include,lib,VERSION}, so Debug and Release can sit on the
+# host at once and are told apart from outside. The graphics layer takes
+# Release; the Debug one is for our own runs.
+#
 # Usage: scripts/win-build.sh [--sync-only] [--clean] [--release]
 # Host and directory come from WIN_HOST and WIN_DIR.
 
@@ -38,7 +44,7 @@ ssh "${host}" "echo ok" >/dev/null
 # host actually needs, and content comparison is what --checksum is for.
 rsync -rltz --checksum --delete --omit-dir-times \
       --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
-      --exclude 'claude/' --exclude 'artifacts/' \
+      --exclude 'claude/' --exclude 'artifacts/' --exclude 'publish/' \
       "${project_dir}/" "${host}:${remote_dir}/"
 
 if [ "${sync_only}" -eq 1 ]; then
@@ -55,11 +61,28 @@ ssh "${host}" "cd '${remote_dir}' && cmd //c 'scripts\\build-core.bat' ${build_t
 # Not scp: with MSYS2 bash as the sshd shell the SFTP subsystem is broken
 # ("Connection closed") and legacy scp -O finds no scp.exe in PATH. A cat
 # over the ssh pipe needs nothing on the host and moves binaries fine.
-mkdir -p "${project_dir}/artifacts"
-if ssh "${host}" "test -f '${remote_dir}/build-msvc/lib/core.lib'"; then
-  ssh "${host}" "cat '${remote_dir}/build-msvc/lib/core.lib'" \
-    > "${project_dir}/artifacts/core.lib"
-  echo "Забрана artifacts/core.lib"
+#
+# Taken from publish/, not from the build directory: the workshop holds the
+# wreckage of interrupted builds, and the published copy is the one this
+# project promises to anybody. Artifacts land per configuration for the same
+# reason the host does — one name for two libraries is how the wrong one gets
+# linked.
+publish_dir="${remote_dir}/publish/${build_type}"
+local_artifacts="${project_dir}/artifacts/${build_type}"
+mkdir -p "${local_artifacts}"
+if ssh "${host}" "test -f '${publish_dir}/lib/core.lib'"; then
+  ssh "${host}" "cat '${publish_dir}/lib/core.lib'" > "${local_artifacts}/core.lib"
+  published=$(ssh "${host}" "cat '${publish_dir}/VERSION'" | tr -d '\r\n')
+  local_version=$(tr -d '\r\n' < "${project_dir}/VERSION")
+  echo "Забрана artifacts/${build_type}/core.lib — версия ${published}"
+  echo "Опубликовано на хосте: ${publish_dir}"
+  # Cannot normally differ: the host built the tree that was just synced from
+  # here. If it does, something wrote into the host tree behind our back, and
+  # that is exactly the silent staleness the published VERSION exists to catch.
+  if [ "${published}" != "${local_version}" ]; then
+    echo "ВНИМАНИЕ: на хосте ${published}, в дереве ${local_version} — кто-то писал в каталог хоста мимо этого скрипта" >&2
+    exit 1
+  fi
 else
   echo "core.lib не найдена — модулей пока нет, это ожидаемо"
 fi
