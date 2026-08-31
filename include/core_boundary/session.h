@@ -423,11 +423,26 @@ class ISession {
   ///         in which case nothing was staged or journaled.
   virtual OrderId IssueOrder(const OrderRow& order) = 0;
 
-  /// @brief Cancels an order. One staged and not yet applied is dropped
-  /// from the batch and never reaches the book; one in the book is marked
-  /// for the engine to cancel before the next phase 1, which succeeds only
-  /// while the row is kPending or kAccepted (order_state.h). Either way
-  /// the journal records the cancel.
+  /// @brief Cancels an order. Both the staged-and-not-yet-applied case and
+  /// the one already in the book are STAGED AS A CANCELLATION — nothing is
+  /// ever dropped from the batch — and the engine marks the row before the
+  /// next phase 1, which succeeds only while it is kPending or kAccepted
+  /// (order_state.h). An order issued and cancelled between the same two
+  /// steps therefore still becomes a row: it appears kCancelled and the
+  /// events slot removes it in the step it was born in. Either way the
+  /// journal records the cancel.
+  /// @note Dropping it from the batch instead would break the two promises
+  /// above it. IssueOrder hands out the id the row WILL carry, predictable
+  /// only because the engine appends in staging order — remove one entry
+  /// and every id promised after it names a different order, which is the
+  /// one thing entity ids exist to prevent. And the authoritative outcome
+  /// of a cancel is its EVENT: with no row there is no kOrderCancelled, so
+  /// a caller written to the paragraph below would wait for ever, and a
+  /// cancel would have two protocols instead of one. The cost of keeping
+  /// it — a row that lives for one step — buys a single path for both
+  /// cases; a boss decision of 2026-08-31, and no trace survives it (the
+  /// row never reaches a save, so "cancelled without trace", time design
+  /// §11, still holds).
   /// @return false when the id is unknown or the row (as of State()) is
   ///         already kActive or terminal; nothing is staged then. true
   ///         means staged; the authoritative outcome is the event
