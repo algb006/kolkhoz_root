@@ -3,6 +3,9 @@ key,value
 # life-cycle section 1). Ages are BIOLOGICAL years; life_speedup maps them
 # to game years. Mortality bands and rates mirror demography.py.
 life_speedup,4
+# up to this BIOLOGICAL age a person is an infant (life-cycle section 1:
+# eighteen months) - the diapers the boundary counts on a household's line
+infant_age_months,18
 adult_age_years,16
 marriage_age_years,18
 fertility_from_years,18

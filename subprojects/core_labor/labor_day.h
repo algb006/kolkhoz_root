@@ -1,6 +1,7 @@
 /// @file
-/// @brief The day arithmetic of core_labor: the solar window, the road, a
-/// worker's efficiency and what work costs him in rest.
+/// @brief The day arithmetic of core_labor: the working hour, the road, a
+/// worker's efficiency and what work costs him in rest. The solar window
+/// itself is shared with the boundary and lives in core_common/day_window.h.
 /// @threading SINGLE_THREADED
 /// Pure functions of their arguments, called from the labor sub-step of the
 /// decisions slot on the sim thread. No world state, no tables, no RNG — the
@@ -20,6 +21,7 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/day_window.h"  // DayWindow / SolarWindow: shared with the boundary.
 #include "core_common/geometry.h"
 #include "core_common/labor_state.h"
 #include "core_common/resident_state.h"
@@ -27,20 +29,6 @@
 #include "labor_config.h"
 
 namespace core {
-
-/// @brief Today's daylight, as hours from midnight. The core's clock has no
-/// timezone, so the window is centred on noon: what matters is its length
-/// and that everyone shares it.
-struct DayWindow {
-  float sunrise = 6.0F;
-
-  float sunset = 18.0F;
-};
-
-constexpr DayWindow SolarWindow(float daylight_hours) {
-  const float half = daylight_hours * 0.5F;
-  return DayWindow{.sunrise = 12.0F - half, .sunset = 12.0F + half};
-}
 
 /// @brief How much of the tick's hour [hour, hour + 1) lies inside
 /// [from, to]. 0 when the hour is outside it entirely.

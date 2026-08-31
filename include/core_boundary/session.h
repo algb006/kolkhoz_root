@@ -259,10 +259,12 @@ struct FastForwardTarget {
 enum class FastForwardOutcome : std::uint8_t {
   kTargetReached = 0,
 
-  /// An event of EventSeverity::kInterrupting was emitted: the last
-  /// element of Events() at return. The presentation lands the player in
-  /// the world next to it (office design §14) and decides whether to call
-  /// again.
+  /// An event of EventSeverity::kInterrupting was emitted. It is among the
+  /// events of the LAST step run — scan Events() back from the end to find
+  /// it; the step may have emitted routine events after it, and dropping or
+  /// reordering those to make it the very last element would lose facts the
+  /// summary needs. The presentation lands the player in the world next to
+  /// it (office design §14) and decides whether to call again.
   kInterrupted,
 
   /// The step budget ran out first. Call again next frame with the same
@@ -314,8 +316,13 @@ inline constexpr std::string_view kJournalMagic = "KLHZJRNL";
 /// (an OrderRow is a state row, so the save format's number governs its
 /// layout), the entry count, then the entries field by field with the save
 /// codec's encoding rules (core_save/save.h). Deterministic: the same
-/// entries give the same bytes. Implemented by the boundary's implementing
-/// task.
+/// entries give the same bytes.
+/// @note A journal carries NO dictionaries and remaps nothing: definition
+/// ids go out as they are. It is replayed against the save it was written
+/// beside, and therefore against the same tables. A table reordered between
+/// writing and replay is a case the save survives (core_save remaps by key)
+/// and the journal does not — which is why a journal is a replay and
+/// debugging artifact and never a second save.
 std::vector<std::byte> EncodeJournal(std::span<const JournalEntry> entries);
 
 /// @brief Decodes a journal; refuses a wrong magic or format number with
@@ -333,8 +340,11 @@ bool DecodeJournal(std::span<const std::byte> bytes,
 struct SessionConfig {
   /// Balance tables; non-owning — the caller keeps them alive for the
   /// whole lifetime of the session, as it already does for the simulation
-  /// (core_world/world.h). Read for the knobs behind the derived signals:
-  /// the life speed-up and the infant age (tables/life.csv).
+  /// (core_world/world.h). Read for the two knobs behind the derived
+  /// signals: tables/life.csv, keys `life_speedup` and `infant_age_months`.
+  /// A table set without them keeps the canonical defaults (four times the
+  /// calendar, eighteen months); a present but malformed cell refuses the
+  /// session.
   const ITableSet* tables = nullptr;
 
   /// The assembled simulation, usually CreateStandardSimulation's; owned by
@@ -368,9 +378,30 @@ class ISession {
   /// how the ≤2 s-per-day norm is kept.
   /// @param step_budget Maximum steps this call; 0 = no budget (the
   ///        headless tool). The game passes a per-frame budget and calls
-  ///        again on kBudgetSpent.
+  ///        again on kBudgetSpent. With no budget a kFirstEventOf target
+  ///        runs until that event comes — which is what the caller asked
+  ///        for, and why the game passes a budget.
   /// @return What stopped it and how many steps ran. steps_run may be 0
-  ///         when the target is already met.
+  ///         when the target is already met, which only a kTick target in
+  ///         the past can be: the other three are all "the next one" and
+  ///         always cost at least one step.
+  /// @note The target is checked BEFORE the interrupt: a step that both
+  /// reaches the target and emits an interrupting event returns
+  /// kTargetReached, because the fast-forward is over either way and
+  /// kInterrupted would send the caller back for a run it has finished.
+  /// The event is in Events() regardless.
+  /// @note Events ACCUMULATE across the whole call — nothing is drained per
+  /// step, which is what keeps the per-step cost the simulation's alone — so
+  /// a long unbudgeted run holds every event of every step it ran until the
+  /// caller acknowledges them. A year of steps is a few thousand events, and
+  /// the presentation that folds them into a summary acknowledges at once;
+  /// a caller that never does is asking the session to remember a campaign.
+  /// @note kFirstEventOf counts only the events of THIS call's steps — a
+  /// kind already in the log from before is not what "until the first event
+  /// of" asks about — and EventKind::kNone matches nothing. kNextSunrise
+  /// and kNextSunset stop at the tick that CONTAINS sunrise or sunset for
+  /// that day's daylight (core_common/day_window.h), the same window the
+  /// working day is cut from.
   virtual FastForwardReport AdvanceUntil(const FastForwardTarget& target,
                                          std::uint32_t step_budget) = 0;
 
@@ -476,11 +507,13 @@ class ISession {
 
   /// @brief Replaces the world entirely — the way a load lands
   /// (core_save::LoadWorldFromFile, then this). Forwards to
-  /// ISimulation::ResetWorld; drops the staged batch, the event log and
-  /// the alarms; starts a new stamp serial from 0; the journal is NOT
-  /// cleared — a replay that spans a load is the caller's to cut. The
-  /// loaded world's order book is whatever the save carried; its outbox
-  /// is empty by the save format's rule.
+  /// ISimulation::ResetWorld; drops the staged batch and the event log —
+  /// both described the world being replaced — and recomputes the alarms
+  /// for the new one, because ActiveAlarms names the conditions standing in
+  /// State() and must never describe a different world; starts a new stamp
+  /// serial from 0; the journal is NOT cleared — a replay that spans a load is the caller's to cut.
+  /// The loaded world's order book is whatever the save carried; its outbox is empty by the save
+  /// format's rule.
   virtual void ReplaceWorld(const WorldState& initial) = 0;
 };
 

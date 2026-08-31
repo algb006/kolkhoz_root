@@ -14,7 +14,10 @@
 # the core depends on it; the executables and the UE side do.
 
 kolkhoz_add_module(core_boundary
-    placeholder.cpp)
+    boundary_config.cpp
+    journal_codec.cpp
+    session.cpp
+    signals.cpp)
 
 target_link_libraries(core_boundary
     PUBLIC core_common core_sim

@@ -256,7 +256,7 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
 /// @brief The start economy of the canon (start.md §10-§11): the surviving
 /// units with the stores in the church, 160 ha of arable land with the
 /// suggested first-year plan of the reference run (70 ha sown: 62% grain,
-/// 18% potatoes, 8% flax, 12% fodder), 80 ha of meadows and the animals of
+/// 18% potatoes, 8% flax, 12% fodder), 200 ha of meadows and the animals of
 /// PlaceHerds above. A table-less world (unit tests) gets none of this and
 /// stays people-only.
 /// Start fertility 65 = soil factor 1.3 of the reference runs; stock

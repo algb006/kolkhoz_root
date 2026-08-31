@@ -1,7 +1,8 @@
 # Модель состояния ядра
 
 > Задача F1 этапа 1 ([план §3](plan/51-phase1-plan.md#3-этап-1-скелет-ядра)). Заголовки — `include/core_common/`:
-> `quantities.h`, `ids.h`, `calendar.h`, `geometry.h`, `state_table.h`, `world_state.h`.
+> `quantities.h`, `ids.h`, `calendar.h`, `geometry.h`, `state_table.h`, `world_state.h`;
+> рядом с ними — `day_window.h`, чистая арифметика солнечного окна, общая у труда и границы.
 > Здесь — решения и карта «что где лежит, кто читает»; подробности каждого типа — в Doxygen
 > самих заголовков.
 
