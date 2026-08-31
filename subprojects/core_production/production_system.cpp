@@ -16,6 +16,7 @@
 
 #include "core_production/production_system.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -93,6 +94,12 @@ class ProductionSystem final : public IProductionSystem {
     // runs earlier in this very slot, so a field ploughed by noon opens its
     // harrowing at noon instead of losing the afternoon.
     AdvanceFinishedPhases(current);
+    if (current.calendar.tick == 1) {
+      // The first winter's plan: genesis hands over a heap and a January, and
+      // day zero is no year's turn for the daily bookkeeping below. Without
+      // this the inherited 250 t lay untouched through the whole first year.
+      PlanManure(current);
+    }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work
     }
@@ -217,6 +224,12 @@ class ProductionSystem final : public IProductionSystem {
           field.phase == FieldPhase::kGrowing && field.crop.value == kInvalidDefIdValue;
       if (bare) {
         field.phase = FieldPhase::kIdle;  // the ploughed fallow stood its year
+        if (field.manure_applied != 0) {
+          // A fallow has no harvest to settle its manure at: it settles here.
+          field.fertility += ManureBonus(field);
+          field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
+          field.manure_applied = 0;
+        }
       }
       if ((field.phase == FieldPhase::kIdle) && field.rotation_year0.value == kInvalidDefIdValue) {
         field.fertility += config_.farming.fallow_recovery;
@@ -238,6 +251,7 @@ class ProductionSystem final : public IProductionSystem {
         field.weather_stress = 0.0F;
       }
     }
+    PlanManure(current);
   }
 
   void RunFields(WorldState& current) {
@@ -362,13 +376,19 @@ class ProductionSystem final : public IProductionSystem {
       return;
     }
     const CropDef& crop = config_.crops[field.rotation_year0.value];
-    if (crop.is_winter) {
-      // A winter crop in THIS year's slot was meant to go in last autumn
-      // (TrySowWinter). If the field is idle now, that autumn was missed —
-      // the previous crop came off too late — and the crop is still sown in
-      // its window as the fallback: a year late, and it costs the slot after
-      // it, but a winter crop that is never sown costs the plan its bread.
+    if (crop.is_winter && field.last_crop.value == field.rotation_year0.value) {
+      // This year's winter crop was sown last autumn and is already off:
+      // the field is idle because it was HARVESTED, not because the sowing
+      // was missed. Sowing it again in August would put the same rye in two
+      // years running and eat the next slot with it — the field sheet caught
+      // exactly that. Only the next slot's winter crop may go in now.
+      TrySowWinter(current, field, month, temperature);
+      return;
     }
+    // Otherwise a winter crop in THIS year's slot is the fallback path: it
+    // was meant to go in last autumn (TrySowWinter) and that autumn was
+    // missed, so it is sown in its window a year late. That costs the slot
+    // after it, but a winter crop never sown costs the plan its bread.
     if (month < crop.sow_from_month || month > crop.sow_to_month ||
         temperature < crop.sow_min_temp_c) {
       TrySowWinter(current, field, month, temperature);
@@ -394,24 +414,92 @@ class ProductionSystem final : public IProductionSystem {
     OpenPlowing(current, field, field.rotation_year1);
   }
 
-  /// @brief Opens the ploughing for `crop` (invalid = bare fallow) and ploughs
-  /// the manure in with it.
+  /// @brief Opens the ploughing for `crop` (invalid = bare fallow). The
+  /// manure, if the winter's plan gave this field any, is already on the
+  /// row (PlanManure) and goes in with the plough (§8).
   void OpenPlowing(WorldState& current, FieldRow& field, CropId crop) {
     field.crop = crop;
-    // Manure is plowed in, never spread separately (§8): the dose leaves
-    // the heap when the plowing starts.
-    const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
-    if (heap != kNoRow) {
-      const auto dose = static_cast<Grams>(config_.farming.manure_norm_kg_per_ha * field.area_ga) *
-                        kGramsPerKilogram;
-      if (StockOf(current.units.rows[heap].stock, config_.manure_resource) >= dose) {
-        AddToStock(current.units.rows[heap].stock, config_.manure_resource, -dose);
-        field.manure_applied = 1;
-        current.ledger.current.manure_plowed_in += dose;
-        current.ledger.current.area_manured_ha += field.area_ga;
-      }
+    if (field.manure_applied != 0) {
+      const float share = static_cast<float>(field.manure_applied) / 100.0F;
+      const auto dose =
+          static_cast<Grams>(config_.farming.manure_norm_kg_per_ha * field.area_ga * share) *
+          kGramsPerKilogram;
+      current.ledger.current.manure_plowed_in += dose;
+      current.ledger.current.area_manured_ha += field.area_ga * share;
     }
     OpenPhase(field, FieldPhase::kPlowing);
+  }
+
+  /// THE WINTER'S MANURE PLAN, made at the year's turn: the heap is dealt out
+  /// in full doses to the fields that will be ploughed this year, POOREST
+  /// FIELD FIRST, until it runs out. What the herd makes during the year
+  /// waits for next winter's plan.
+  ///
+  /// It used to be first come, first served at the plough: a field took a
+  /// full dose if the heap held one that morning, or nothing. The field sheet
+  /// of the fifth reconciliation pass showed what that does — the twenty-one
+  /// hectare potato field never once qualified in thirty years, because its
+  /// dose is 420 t and the heap never holds that, while the ten-hectare field
+  /// next to it was manured twenty-seven years out of thirty and stood at a
+  /// hundred. The canon's "a hectare gets manure every four or five years"
+  /// is a rotation of the manure. NOT a player's decision and not a stub for
+  /// one: "the manure norm is a number, not a decision" (farming design §9,
+  /// closed), and a yearly allocation of the heap across the fields is the
+  /// agronomist's work — the very micromanagement the game removes epoch by
+  /// epoch. The player's lever in this loop is how much livestock to keep.
+  void PlanManure(WorldState& current) const {
+    const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
+    if (heap == kNoRow) {
+      return;
+    }
+    Grams held = StockOf(current.units.rows[heap].stock, config_.manure_resource);
+    std::vector<std::uint32_t> candidates;
+    for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+      const FieldRow& field = current.fields.rows[row];
+      // Ploughed this year: idle arable, whether a crop is in the slot or it
+      // is fallow. A winter crop already standing was manured when IT was
+      // ploughed, last autumn.
+      if (field.kind == LandKind::kArable && field.phase == FieldPhase::kIdle &&
+          field.manure_applied == 0) {
+        candidates.push_back(row);
+      }
+    }
+    // Poorest first; equal fertility keeps row order, so the plan is the
+    // same on every machine.
+    std::stable_sort(candidates.begin(), candidates.end(), [&](std::uint32_t a, std::uint32_t b) {
+      return current.fields.rows[a].fertility < current.fields.rows[b].fertility;
+    });
+    for (const std::uint32_t row : candidates) {
+      if (held <= 0) {
+        break;
+      }
+      FieldRow& field = current.fields.rows[row];
+      const auto dose = static_cast<Grams>(config_.farming.manure_norm_kg_per_ha * field.area_ga) *
+                        kGramsPerKilogram;
+      if (dose <= 0) {
+        continue;
+      }
+      // A PARTIAL DOSE IS A DOSE. The poorest field takes what the heap has,
+      // up to its full norm, and its bonus scales with the share it got.
+      // Whole doses or nothing meant the biggest field could never be
+      // manured at all: 420 t for twenty-one hectares, and a herd of twenty
+      // cows makes 250 a year.
+      const Grams given = held < dose ? held : dose;
+      held -= given;
+      AddToStock(current.units.rows[heap].stock, config_.manure_resource, -given);
+      const float share = static_cast<float>(given) / static_cast<float>(dose);
+      field.manure_applied = static_cast<std::uint8_t>(share * 100.0F + 0.5F);
+      if (field.manure_applied == 0) {
+        field.manure_applied = 1;  // a dribble still counts as touched
+      }
+    }
+  }
+
+  /// @brief The manure bonus this field has coming, by the share of its dose
+  /// it received (FieldRow::manure_applied is that share in percent).
+  float ManureBonus(const FieldRow& field) const {
+    return config_.farming.manure_fertility_bonus * static_cast<float>(field.manure_applied) /
+           100.0F;
   }
 
   /// The seed goes into the ground when the sowing phase is worked through.
@@ -512,8 +600,7 @@ class ProductionSystem final : public IProductionSystem {
     const float charged = repeated < config_.farming.repeat_penalty_max_years
                               ? repeated
                               : config_.farming.repeat_penalty_max_years;
-    field.fertility += crop.fertility_delta +
-                       (field.manure_applied != 0 ? config_.farming.manure_fertility_bonus : 0.0F) -
+    field.fertility += crop.fertility_delta + ManureBonus(field) -
                        charged * config_.farming.repeat_penalty_per_year;
     // And a floor under it: an exhausted field bears little, but it bears.
     const float floor_value = config_.farming.fertility_floor;

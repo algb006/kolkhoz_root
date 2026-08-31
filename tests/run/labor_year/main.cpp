@@ -186,22 +186,24 @@ int main() {
             << ", sowing " << sowing << ", harvest " << harvest << ", barn " << care << ", total "
             << total << "; " << tally.hours_away << " hours away from home\n";
 
-  // The first year ploughs 80.5 ha: 66.5 sown in spring, the 3.5 ha of
-  // rotation fallow (fallow is ploughed, farming design §7), and 10.5 ha
-  // again in the autumn for the winter rye that follows the grass (start
-  // canon §8 — "winter rye goes in the autumn of the same year"). Plowing
-  // and harrowing are one norm for any land: 80.5 x 10/7 and 80.5 x 3/7.
-  // The derelict ninety hectares get nothing: they are not fallow.
-  failures += ExpectBand(plowing, 108.0, 122.0, "plowing costs the raised land's norm");
-  failures += ExpectBand(harrowing, 32.0, 37.0, "harrowing costs its norm on the same land");
+  // The first year ploughs 73.5 ha: 66.5 sown in spring, the 3.5 ha of
+  // rotation fallow (fallow is ploughed, farming design §7), and the same
+  // 3.5 again in the autumn for the winter rye that follows the fallow
+  // (start canon §8 — "winter rye goes in the autumn of the same year").
+  // The rye after grass waits for the second year: a stand sown in spring
+  // is not cut until next June. Plowing and harrowing are one norm for any
+  // land: 73.5 x 10/7 and 73.5 x 3/7. The derelict ninety hectares get
+  // nothing: they are not fallow.
+  failures += ExpectBand(plowing, 100.0, 110.0, "plowing costs the raised land's norm");
+  failures += ExpectBand(harrowing, 30.0, 33.0, "harrowing costs its norm on the same land");
   // Sowing is per crop, and the mix is the start canon's suggested rotation
   // (start canon §8, in the core since task O2b): potatoes 21 ha x 12 real
   // man-days, wheat 10 x 3, barley 7.5 x 3, oats 10.5 x 3, grasses 10.5 x 2,
   // cabbage 7 x 5 — 392 real man-days, 56 game ones. It costs more than the
   // old genesis mix because the canon sows three times the potatoes, and
   // potatoes are the crop that takes hands.
-  // ...plus the autumn's 10.5 ha of winter rye at 3 real man-days, another 4.5.
-  failures += ExpectBand(sowing, 56.0, 64.0, "sowing costs the crop mix's norm");
+  // ...plus the autumn's 3.5 ha of winter rye at 3 real man-days.
+  failures += ExpectBand(sowing, 55.0, 61.0, "sowing costs the crop mix's norm");
   // Harvest is the heavy half: grain 8, potato 25, flax 60, hay 8 per hectare.
   // A field lost to snow takes its own harvest with it, so the band is wide
   // downward.

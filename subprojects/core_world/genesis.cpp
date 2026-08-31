@@ -399,16 +399,21 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // The rings are STAGGERED so that every year has potatoes, vegetables,
   // grain, oats and grass — the first layout put potatoes in two slots of
   // three and cabbage in one, and the kolkhoz table went without them every
-  // other year (69-reconciliation.md §9). Winter rye follows grass or fallow
-  // only, as the canon's ring has it: it is sown in the autumn after the last
-  // cut, and after a late crop like cabbage there is no autumn left.
+  // other year (69-reconciliation.md §9). GRASS STANDS TWO SLOTS: a stand
+  // sown in spring is not cut that year (the canon's "full circle only in
+  // the first year"), so a one-year slot of grass gives no hay at all, and
+  // the winter rye that follows grass must follow a stand that has been
+  // cut — sown in the autumn after that cut. Rye therefore stands only after
+  // a two-year stand or after fallow, and never after a late crop like
+  // cabbage, when there is no autumn left.
   PlaceField(
       world, 21.0F, Vec2{.x = -222.0F, .y = 451.0F}, kStartFertility, potato, wheat, cabbage);
-  PlaceField(world, 10.0F, Vec2{.x = 182.0F, .y = 874.0F}, kStartFertility, wheat, timothy, rye);
+  PlaceField(
+      world, 10.0F, Vec2{.x = 182.0F, .y = 874.0F}, kStartFertility, wheat, timothy, timothy);
   PlaceField(world, 7.5F, Vec2{.x = 611.0F, .y = 568.0F}, kStartFertility, barley, cabbage, potato);
-  PlaceField(world, 10.5F, Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility, oat, potato, timothy);
-  PlaceField(world, 10.5F, Vec2{.x = -799.0F, .y = 131.0F}, kStartFertility, timothy, rye, potato);
-  PlaceField(world, 7.0F, Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility, cabbage, oat, timothy);
+  PlaceField(world, 10.5F, Vec2{.x = 752.0F, .y = 114.0F}, kStartFertility, oat, potato, barley);
+  PlaceField(world, 10.5F, Vec2{.x = -799.0F, .y = 131.0F}, kStartFertility, timothy, timothy, rye);
+  PlaceField(world, 7.0F, Vec2{.x = -843.0F, .y = 547.0F}, kStartFertility, cabbage, oat, potato);
   PlaceField(world, 3.5F, Vec2{.x = -500.0F, .y = 200.0F}, kStartFertility, fallow, rye, potato);
   // The derelict remainder: ninety hectares nobody has raised yet. Not
   // fallow — fallow is ploughed every year it stands — but land that has

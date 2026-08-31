@@ -93,8 +93,11 @@ struct FieldRow {
 
   std::uint8_t repeat_years = 0;
 
-  /// Manure was plowed in for the current cycle (§8): one fertility bonus
-  /// at the year's close, then the flag resets.
+  /// The share of the manure norm this field received for the current cycle,
+  /// in PERCENT (§8): the bonus at the harvest — or at the year's turn for a
+  /// bare fallow — scales by it, then it resets. It was a 0/1 flag until the
+  /// fifth reconciliation pass: whole doses or nothing left the biggest field
+  /// unmanured for thirty years.
   std::uint8_t manure_applied = 0;
 
   /// Arable land, meadow or derelict (see LandKind). A meadow ignores every

@@ -17,6 +17,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
@@ -32,6 +33,35 @@ constexpr std::uint64_t kSeed = 1929;
 
 /// Where the sheet goes. Relative to the repository root, which is this
 /// test's working directory (its CMakeLists sets it).
+/// The second sheet: one row per arable field per year — fertility at the
+/// year's turn, the crop and whether manure went in. The ledger keeps only
+/// the settlement's mean, and the fourth reconciliation pass asked a
+/// question the mean cannot answer: does a field that GOT the manure grow
+/// its fertility, as the canon promises for a sound rotation, while one that
+/// did not merely holds? Fields are few, so the sheet stays small.
+std::filesystem::path FieldSheetPath() {
+  return std::filesystem::path("claude") / "analysis" /
+         ("fields_" + std::to_string(kSeed) + ".csv");
+}
+
+std::string CropKey(const core::ITableSet& tables, core::CropId crop) {
+  const core::ITable* crops = tables.FindTable("crops");
+  if (crops == nullptr || crop.value == core::kInvalidDefIdValue) {
+    return "-";
+  }
+  return std::string(crops->CellText(crop.value, crops->FindColumn("key")));
+}
+
+/// Written at the TURN of the year, when the crop of the ending year is off
+/// and the manure flag has already been consumed by the harvest. So the
+/// crop and the manure are remembered from midsummer (`sampled`), when both
+/// are still on the row; the fertility is the turn's, after the harvest
+/// settled it.
+struct FieldSample {
+  std::string crop;
+  bool manured = false;
+};
+
 std::filesystem::path SheetPath() {
   return std::filesystem::path("claude") / "analysis" /
          ("ledger_" + std::to_string(kSeed) + ".csv");
@@ -102,9 +132,34 @@ int main() {
   std::uint32_t years_without_plowing = 0;
   float lowest_fertility = 100.0F;
 
+  std::ofstream field_sheet(FieldSheetPath(), std::ios::binary | std::ios::trunc);
+  field_sheet << "year,field,kind,area_ha,crop,manured,fertility\n";
+  std::vector<FieldSample> sampled;
+
   for (std::uint32_t year = 0; year < kYears; ++year) {
-    run::AdvanceYear(*world);
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      run::AdvanceDays(*world, 1);
+      const core::WorldState& mid = world.State();
+      if (mid.calendar.date.month == core::Month::kJuly && mid.calendar.date.day_in_month == 0) {
+        sampled.assign(mid.fields.rows.size(), FieldSample{});
+        for (std::size_t field = 0; field < mid.fields.rows.size(); ++field) {
+          sampled[field].crop = CropKey(*world.tables, mid.fields.rows[field].crop);
+          sampled[field].manured = mid.fields.rows[field].manure_applied != 0;
+        }
+      }
+    }
     const core::WorldState& state = world.State();
+    for (std::size_t field = 0; field < state.fields.rows.size(); ++field) {
+      const core::FieldRow& row = state.fields.rows[field];
+      if (row.kind == core::LandKind::kMeadow || row.kind == core::LandKind::kFloodplainMeadow) {
+        continue;
+      }
+      const FieldSample sample = field < sampled.size() ? sampled[field] : FieldSample{};
+      field_sheet << (year + 1) << ',' << field << ','
+                  << (row.kind == core::LandKind::kDerelict ? "derelict" : "arable") << ','
+                  << row.area_ga << ',' << sample.crop << ',' << (sample.manured ? 1 : 0) << ','
+                  << row.fertility << '\n';
+    }
     // The book closes on the first tick of the new year, so a whole year of
     // ticks always leaves exactly one new closed book to take.
     if (state.ledger.closed.year == last_year) {

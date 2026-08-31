@@ -215,9 +215,22 @@ int main() {
   failures += run::Expect(hay_tonnes > 250.0 && hay_tonnes < 320.0,
                           "the meadows delivered the herd's winter");
 
-  // The manure loop runs: cows fill the heap (~351 t/year at full herd,
-  // minus the spring doses plowed into the sown fields).
-  failures += run::Expect(manure_tonnes > 150.0, "the cow manure flow filled the heap");
+  // The manure loop runs: the cows fill the heap (~351 t a year at full
+  // herd) and the heap is dealt out to the fields. The HEAP is the wrong
+  // thing to look at here: it is dealt out at the year's turn, poorest field
+  // first, partial doses and all (production_system.cpp, PlanManure), so at
+  // this moment it is nearly empty by design. The year's two FLOWS are what
+  // say the loop is closed, and the ledger keeps both.
+  const core::YearLedger& book = state.ledger.closed;
+  const double made_tonnes = manure < book.herd_produce.size()
+                                 ? static_cast<double>(book.herd_produce[manure]) / 1.0e6
+                                 : 0.0;
+  const double plowed_tonnes = static_cast<double>(book.manure_plowed_in) / 1.0e6;
+  std::cout << "harvest_first_year: the herd made " << made_tonnes << " t of manure, "
+            << plowed_tonnes << " t went in with the plough, " << book.area_manured_ha
+            << " ha manured\n";
+  failures += run::Expect(made_tonnes > 150.0, "the cow manure flow filled the heap");
+  failures += run::Expect(plowed_tonnes > 150.0, "and the heap went into the fields");
 
   // Fields cycled: the sown six are idle again (harvested), fertility moved.
   std::uint32_t idle_fields = 0;
