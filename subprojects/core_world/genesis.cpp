@@ -270,6 +270,32 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   }
   constexpr Metric kStartFertility = 65.0F;
 
+  // STUB — EVERY COORDINATE BELOW. The start layout is not ours to invent:
+  // the central zone is a hand-designed scene, every old house placed by
+  // hand, assembled in the map editor (start canon §2). It will arrive as a
+  // table — unit key and metres, the twenty-one houses one by one, the field
+  // outlines — through db/design.db into core/tables/, and this function will
+  // read it the way it already reads crops and unit types. Until that export
+  // exists these are a placeholder that only has to be plausible and stable:
+  // a compact village laid out on a grid.
+  //
+  // Two things must survive the move and are the reason the placeholder is
+  // marked rather than left to look decided:
+  //   * THE AREAS ARE RIGHT — nine outlines summing to exactly 160.0 ha, 70
+  //     raised and 90 derelict, reconciled against the canon. They are to be
+  //     carried over as they are, never recomputed.
+  //   * THE DISTANCES ARE THE POINT — from stage 5 a worker's day is measured
+  //     from his own door, so real coordinates are worth having; a grid is
+  //     only a stand-in for them.
+  //
+  // The placeholder also BREAKS the contract of core_common/geometry.h, which
+  // puts the origin at the map's south-west corner and valid positions in
+  // [0, kMapSizeMeters] on both axes: the church sits at (0, 0) and houses and
+  // two fields run negative. The header is the rule — an origin in the church
+  // moves the day the church moves, a map corner never does — and the table
+  // fixes this by carrying non-negative metres. Do not "fix" it by shifting
+  // the grid: that would bake a second invented layout in place of the first.
+
   // Units of the start set, by the keys of the design db. The kolkhoz yard
   // (horse_yard) is deliberately absent — the first build of the campaign,
   // and its SECOND level is the stable, which is why horse breeding stays
@@ -283,11 +309,14 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   PlaceUnit(world, TypeByKey(unit_types, "clay_pile"), 200, 50);
   const UnitId compost = PlaceUnit(world, TypeByKey(unit_types, "manure_pile"), 400, 200);
 
-  // One decrepit house per starting family, in a compact village south of
-  // the yard: three rows of seven, 40 m between houses and 80 m between
+  // One decrepit house per starting family. STUB, see the note at the top of
+  // this function: the canon places all twenty-one by hand in the map editor,
+  // and until that export arrives they stand in a compact village south of
+  // the yard — three rows of seven, 40 m between houses and 80 m between
   // rows. ~5 ha of built-up land, the share the start map gives it
   // (49-simulations §2в). Distances matter from stage 5 on: every worker's
-  // day is measured from his own door.
+  // day is measured from his own door, which is exactly why a grid is a
+  // placeholder and not an answer.
   constexpr std::uint32_t kHousesPerRow = 7;
   constexpr float kHouseStepMeters = 40.0F;
   constexpr float kRowStepMeters = 80.0F;
@@ -396,6 +425,10 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   const CropId cabbage = CropByKey(crops, "cabbage");
   const CropId rye = CropByKey(crops, "rye_winter");
   const CropId fallow;
+  // Field POSITIONS are STUB (the note at the top of this function); their
+  // AREAS and their rotations are not — those are reconciled against the
+  // canon and move to the table unchanged.
+  //
   // The rings are STAGGERED so that every year has potatoes, vegetables,
   // grain, oats and grass — the first layout put potatoes in two slots of
   // three and cabbage in one, and the kolkhoz table went without them every
