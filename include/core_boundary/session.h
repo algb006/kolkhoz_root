@@ -1,0 +1,484 @@
+/// @file
+/// @brief ISession — the boundary of the core: the one object through which
+/// a presentation drives a campaign. Time in, orders in; state, signals and
+/// events out. Project phase 2, task A1 (manual/70-boundary.md).
+/// @threading SINGLE_THREADED
+/// Every method is called from ONE thread — the thread that created the
+/// session, which is the sim thread: the step engine binds its scheduler to
+/// it (core_sim/step.h), and in the game that thread is the engine's game
+/// thread. Orders are issued, state is read and events are drained between
+/// steps on that same thread, so the session needs no queue and no lock, and
+/// the analysis may skip RACE and DEADLOCK here. This is a decision, not an
+/// omission: the fast-forward norm (a game day in ≤2 s without rendering,
+/// phase-2 plan §1) is met by slicing steps over frames on the game thread
+/// (AdvanceUntil's budget), which is an order of magnitude cheaper than a
+/// second thread with a state queue between them. Should the simulation
+/// ever move to its own thread, this label changes — an event, like any
+/// interface change — and the queue the architecture names (§7е, moodycamel)
+/// goes behind these same signatures: IssueOrder becomes the producer side,
+/// State() the consumer's snapshot. Nothing a caller writes today changes.
+///
+/// WHAT THE BOUNDARY IS. Architecture §4 fixes the shape: state and events
+/// go down, commands come up through a queue, data crosses and objects do
+/// not, the core computes and the presentation reads, and nothing calls
+/// back into the core from the renderer. This header is that shape made
+/// concrete, and it is deliberately small — thirteen methods, two codec
+/// functions, one factory:
+///
+///     time      AdvanceStep, AdvanceUntil
+///     read      Stamp, State, SignalsOfUnit, SignalsOfField, WhereaboutsOf,
+///               ActiveAlarms
+///     orders    IssueOrder, CancelOrder
+///     events    Events, AcknowledgeEvents
+///     record    TakeJournal, ReplaceWorld
+///
+/// The read model is WorldState itself — the core's public data, already
+/// plain structs by the state-model law — plus the handful of DERIVED
+/// projections the presentation must not compute for itself (architecture
+/// §4: "what the core must hand over"; the living-signals catalogue,
+/// manual/design/presentation/live-signals.md §11, names the sources): the
+/// living signals of a unit and of a field, where a resident is, which
+/// alarms stand. Those are pure functions of the state and the balance
+/// tables; they are methods here because two of them need a table knob
+/// (the life speed-up, the infant age), and a subsystem holds
+/// configuration. Everything else the catalogue lists is a raw field of the
+/// state — a pantry, a herd row, a field's phase — and is read from State()
+/// as it is; the fields that later phase-2 tasks add (wear, capacity,
+/// construction progress, a logistics task) arrive the same way.
+///
+/// ORDERS, NOT CALLS. A command does nothing; it puts a row in the order
+/// book (core_common/order_state.h) and the subsystem whose rules apply
+/// picks it up in its own sub-step. The session stages issued rows and
+/// cancellations, and hands them to the step engine at the next
+/// AdvanceStep, which applies them to `current` before phase 1 in arrival
+/// order — buffer-law rule 2, and the ONE extension of ISimulation this
+/// boundary asks for (manual/70-boundary.md §8: ISimulation::StageOrders).
+/// The presentation never sees a subsystem, and a subsystem never sees the
+/// presentation: the book is the seam, and it is state.
+///
+/// DETERMINISM. Same seed, same tables, same orders at the same ticks —
+/// same world, bit for bit. The session stamps each issued order with the
+/// completed tick it was issued after and its position in that tick's
+/// batch, records both in the journal, and applies the batch in that order.
+/// A journal replayed against the save it started from reproduces the
+/// campaign step for step; the run tool is its first user, a bug report
+/// its second. The journal is optional: a session that never calls
+/// TakeJournal is exactly as deterministic, it merely cannot be replayed.
+///
+/// LIFETIMES, stated once. Everything a reader gets back — the state
+/// reference, the spans of events and alarms — is valid until the next
+/// call to AdvanceStep, AdvanceUntil or ReplaceWorld (and the events span
+/// also until AcknowledgeEvents). The presentation copies out what it
+/// keeps and holds nothing across a step; the UE side's own rule ("no
+/// pointers into the core", ue/CLAUDE.md §2) is the same rule seen from
+/// the other bank.
+
+#ifndef CORE_BOUNDARY_SESSION_H_
+#define CORE_BOUNDARY_SESSION_H_
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "core_common/calendar.h"
+#include "core_common/event_state.h"
+#include "core_common/geometry.h"
+#include "core_common/ids.h"
+#include "core_common/order_state.h"
+#include "core_common/quantities.h"
+#include "core_common/world_state.h"
+#include "core_sim/step.h"
+
+namespace core {
+
+class ITableSet;  // core_tables/tables.h — the live balance tables.
+
+// ---------------------------------------------------------------------------
+// Read side: the stamp and the derived projections
+// ---------------------------------------------------------------------------
+
+/// @brief Names a completed state, so a reader can tell whether anything
+/// changed since it last looked without comparing worlds.
+struct StateStamp {
+  /// The calendar tick of the completed state (WorldState::calendar.tick).
+  Tick tick = 0;
+
+  /// Steps completed since the session was created or the world replaced,
+  /// monotone. Two stamps with equal serials name the same state; a tick
+  /// alone would not, because ReplaceWorld may land on any tick.
+  std::uint64_t serial = 0;
+};
+
+/// @brief The living signals of one unit — the facts the presentation draws
+/// from and must not compute for itself (architecture §4; metrics design
+/// §15; unit rules §15; housing design §19). Every field is derived from
+/// the completed state each time it is asked for; nothing here is stored.
+/// The catalogue of signals (phase-2 plan, task В3) grows this struct by
+/// APPENDING fields; a field whose source system has not arrived is a
+/// STUB at its neutral value and says so.
+struct UnitSignals {
+  UnitId unit;
+
+  /// Members of the household that lives here (house-kind units): the
+  /// laundry on the line, two pieces per resident (housing design §19).
+  /// Zero for units nobody lives in.
+  std::uint16_t residents_living = 0;
+
+  /// Residents assigned to work here today — the barn crew, through the
+  /// herd that stands here. A field is not a unit: its crew is
+  /// FieldSignals::residents_working.
+  std::uint16_t residents_working = 0;
+
+  /// Residents of the household under the infant age (life-cycle design
+  /// §1: eighteen biological months) — the diapers on the line.
+  std::uint8_t infants = 0;
+
+  /// Wear, 0..100 (unit rules §15). STUB: 0 until task A5 makes wear grow;
+  /// the field exists so the presentation codes against it now.
+  Metric wear = 0.0F;
+
+  /// Air temperature inside, degrees Celsius. STUB: equals the outdoor
+  /// temperature until heating exists (heating design; a later task).
+  float indoor_temperature_celsius = 0.0F;
+
+  /// 0/1: production stopped by a kPauseUnit order (unit rules §5). STUB:
+  /// 0 until the consumer of that order lands in core_production.
+  std::uint8_t paused = 0;
+
+  /// Fresh marks of children's pranks — the broken panes that do not move
+  /// the wear scale (crime design §3). STUB: 0 until project phase 3.
+  std::uint8_t prank_marks = 0;
+};
+
+/// @brief The living signals of one field — "people on the field or none"
+/// (live-signals catalogue §7): whether the order stands or is being
+/// worked. The field's own facts — phase, crop, land kind, work left — are
+/// its row in State(); this is only what has to be counted across rows.
+struct FieldSignals {
+  FieldId field;
+
+  /// Residents assigned to this field today (ResidentRow::work).
+  std::uint16_t residents_working = 0;
+};
+
+/// @brief Where a resident is, as far as the core knows.
+enum class Whereabouts : std::uint8_t {
+  kUnknown = 0,  ///< No such resident, or nothing recorded (STUB value).
+  kAtHome,       ///< At the household's house.
+  kAtWork,       ///< At the assignment's place: a field, a herd's unit.
+  kOnTheRoad,    ///< Between `from` and `to`; the leg's ticks say when.
+  kAway,         ///< Out of the settlement (a later phase: trips, school).
+};
+
+/// @brief The unified chronometer seen from the presentation's side (time
+/// design §3): the core says "left at t0, arrives at t1, from here to
+/// there", and the frame draws the walk between them. Derived on request;
+/// the movement facts themselves are the labor model's (a phase-2 task
+/// records departure and arrival on the assignment). STUB until then: the
+/// session answers kAtHome outside the assignment's hours and kAtWork
+/// inside them, never kOnTheRoad.
+struct ResidentWhereabouts {
+  ResidentId resident;
+
+  Whereabouts place = Whereabouts::kUnknown;
+
+  /// The place, by kind: the house or the barn (`unit`), the field
+  /// (`field`), the herd (`herd`). Ids the place does not need stay invalid.
+  UnitId unit;
+
+  FieldId field;
+
+  HerdId herd;
+
+  /// For kOnTheRoad: the leg. Positions in map metres; ticks on the
+  /// calendar clock. For every other place `to` is where the resident is
+  /// and the rest is unused.
+  Vec2 from;
+
+  Vec2 to;
+
+  Tick departed = 0;
+
+  Tick arrives = 0;
+};
+
+/// @brief What an alarm is about. STUB roster: the kinds are named by task
+/// A3 (stores with a ceiling and alarms, phase-2 plan §4), which also
+/// retires the LogWarning calls inside phases that DEADLOCK-001 found —
+/// an alarm is the sanctioned way out of a phase. Kinds are appended.
+enum class AlarmKind : std::uint8_t {
+  kNone = 0,
+};
+
+/// @brief A standing condition the player should see until it passes
+/// (office design §13: an alarm hangs in its group while the trouble
+/// lasts, and clears itself). Derived from the completed state on request,
+/// never stored, never an event — see core_common/event_state.h.
+struct Alarm {
+  AlarmKind kind = AlarmKind::kNone;
+
+  ResidentId resident;
+
+  FamilyId family;
+
+  UnitId unit;
+
+  FieldId field;
+
+  HerdId herd;
+};
+
+// ---------------------------------------------------------------------------
+// Fast-forward
+// ---------------------------------------------------------------------------
+
+/// @brief Where a fast-forward stops on its own (time design §1: until
+/// dark, until morning, N days, until an event). No hourly preset by
+/// design.
+enum class FastForwardTargetKind : std::uint8_t {
+  kTick = 0,      ///< Until the completed tick reaches `tick`.
+  kNextSunrise,   ///< Until the next sunrise as the core lays the day out.
+  kNextSunset,    ///< Until the next sunset.
+  kFirstEventOf,  ///< Until an event of `event_kind` is emitted.
+};
+
+/// @brief The stop condition of one AdvanceUntil.
+struct FastForwardTarget {
+  FastForwardTargetKind kind = FastForwardTargetKind::kTick;
+
+  Tick tick = 0;  ///< For kTick.
+
+  EventKind event_kind = EventKind::kNone;  ///< For kFirstEventOf.
+};
+
+/// @brief Why AdvanceUntil returned.
+enum class FastForwardOutcome : std::uint8_t {
+  kTargetReached = 0,
+
+  /// An event of EventSeverity::kInterrupting was emitted: the last
+  /// element of Events() at return. The presentation lands the player in
+  /// the world next to it (office design §14) and decides whether to call
+  /// again.
+  kInterrupted,
+
+  /// The step budget ran out first. Call again next frame with the same
+  /// target: the slicing that keeps the game thread responsive.
+  kBudgetSpent,
+};
+
+struct FastForwardReport {
+  FastForwardOutcome outcome = FastForwardOutcome::kTargetReached;
+
+  std::uint32_t steps_run = 0;
+};
+
+// ---------------------------------------------------------------------------
+// The journal
+// ---------------------------------------------------------------------------
+
+enum class JournalVerb : std::uint8_t {
+  kIssue = 0,
+  kCancel,
+};
+
+/// @brief One thing the presentation did, as the session recorded it:
+/// enough to do it again at the same moment. Replay is "advance until the
+/// stamp's tick equals `tick`, then IssueOrder / CancelOrder in `sequence`
+/// order" — the run tool does that; the session only records.
+struct JournalEntry {
+  /// The completed tick the action was taken after (StateStamp::tick at
+  /// the time of the call).
+  Tick tick = 0;
+
+  /// Position within that tick's batch, from 0. Issue and cancel share
+  /// one counter, so the batch order is total.
+  std::uint32_t sequence = 0;
+
+  JournalVerb verb = JournalVerb::kIssue;
+
+  /// For kIssue: the row as staged (status kPending, issued_tick set).
+  OrderRow order;
+
+  /// For kIssue: the id the row was promised; for kCancel: the id cancelled.
+  OrderId order_id;
+};
+
+/// @brief The eight magic bytes every journal file begins with.
+inline constexpr std::string_view kJournalMagic = "KLHZJRNL";
+
+/// @brief Encodes journal entries into bytes: the magic, kSaveFormatVersion
+/// (an OrderRow is a state row, so the save format's number governs its
+/// layout), the entry count, then the entries field by field with the save
+/// codec's encoding rules (core_save/save.h). Deterministic: the same
+/// entries give the same bytes. Implemented by the boundary's implementing
+/// task.
+std::vector<std::byte> EncodeJournal(std::span<const JournalEntry> entries);
+
+/// @brief Decodes a journal; refuses a wrong magic or format number with
+/// the reason in `error` (when non-null) and leaves `entries` untouched.
+/// All or nothing, like a load.
+bool DecodeJournal(std::span<const std::byte> bytes,
+                   std::vector<JournalEntry>* entries,
+                   std::string* error);
+
+// ---------------------------------------------------------------------------
+// The session
+// ---------------------------------------------------------------------------
+
+/// @brief Everything CreateSession needs.
+struct SessionConfig {
+  /// Balance tables; non-owning — the caller keeps them alive for the
+  /// whole lifetime of the session, as it already does for the simulation
+  /// (core_world/world.h). Read for the knobs behind the derived signals:
+  /// the life speed-up and the infant age (tables/life.csv).
+  const ITableSet* tables = nullptr;
+
+  /// The assembled simulation, usually CreateStandardSimulation's; owned by
+  /// the session from here on. The session drives it and nothing else
+  /// may: a caller that keeps calling AdvanceStep on the simulation behind
+  /// the session's back desynchronises the stamp and the journal.
+  std::unique_ptr<ISimulation> simulation;
+};
+
+/// @brief A running campaign as the presentation sees it. One per
+/// simulation; created on the sim thread and used only there (see @file).
+class ISession {
+ public:
+  virtual ~ISession() = default;
+
+  // -- time -------------------------------------------------------------------
+
+  /// @brief Runs one step: stages the orders issued and cancelled since
+  /// the last step into the engine, then ISimulation::AdvanceStep — copy,
+  /// orders applied before phase 1, phases 1–7, swap. Then moves the
+  /// completed step's outbox into the event log and refreshes the alarms.
+  /// Blocks until done. Game speed is the caller's business: speed changes
+  /// how often this is called, never what it computes (time design §1).
+  virtual void AdvanceStep() = 0;
+
+  /// @brief Runs steps until `target` is met, an interrupting event is
+  /// emitted or `step_budget` steps have run, whichever comes first — the
+  /// fast-forward (time design §1). Nothing is read and nothing is drained
+  /// per step: events accumulate in the log, the state is refreshed once
+  /// at return, and the per-step cost is the simulation's alone, which is
+  /// how the ≤2 s-per-day norm is kept.
+  /// @param step_budget Maximum steps this call; 0 = no budget (the
+  ///        headless tool). The game passes a per-frame budget and calls
+  ///        again on kBudgetSpent.
+  /// @return What stopped it and how many steps ran. steps_run may be 0
+  ///         when the target is already met.
+  virtual FastForwardReport AdvanceUntil(const FastForwardTarget& target,
+                                         std::uint32_t step_budget) = 0;
+
+  // -- read -------------------------------------------------------------------
+
+  /// @brief The stamp of the completed state: compare serials to know
+  /// whether a re-read is needed.
+  virtual StateStamp Stamp() const = 0;
+
+  /// @brief The completed state — ISimulation::CompletedState through the
+  /// session. Valid until the next AdvanceStep, AdvanceUntil or
+  /// ReplaceWorld; never held across them (see @file, LIFETIMES). The
+  /// presentation reads tables and rows straight from it — the office's
+  /// lists, the map's units and fields — and copies what it keeps.
+  virtual const WorldState& State() const = 0;
+
+  /// @brief The living signals of `unit`, derived from State() now.
+  /// @return A default UnitSignals (invalid id) for a unit that does not
+  ///         exist; every field at its neutral value.
+  virtual UnitSignals SignalsOfUnit(UnitId unit) const = 0;
+
+  /// @brief The living signals of `field`, derived from State() now.
+  /// @return A default FieldSignals (invalid id) for a field that does not
+  ///         exist.
+  virtual FieldSignals SignalsOfField(FieldId field) const = 0;
+
+  /// @brief Where `resident` is, derived from State() now.
+  /// @return place == kUnknown for a resident that does not exist.
+  virtual ResidentWhereabouts WhereaboutsOf(ResidentId resident) const = 0;
+
+  /// @brief The conditions standing in the completed state, recomputed
+  /// after every step, in a deterministic order (by kind, then by subject
+  /// id). Valid until the next step or ReplaceWorld.
+  virtual std::span<const Alarm> ActiveAlarms() const = 0;
+
+  // -- orders -----------------------------------------------------------------
+
+  /// @brief Stages an order for the next step. The session fills the
+  /// bookkeeping (status kPending, refusal kNone, issued_tick = the
+  /// current stamp's tick), records the entry in the journal and promises
+  /// the id: the one the engine WILL give the row when it appends it —
+  /// predictable because the engine is the book's only appender and
+  /// appends in staging order (order_state.h).
+  /// @param order The request: `kind` and the targets that kind reads.
+  ///        The session checks only SHAPE — kind is not kNone, the ids the
+  ///        kind requires are not the invalid id; whether the order makes
+  ///        sense is the consumer's verdict and comes back as an event
+  ///        (kOrderAccepted / kOrderRefused) after the step.
+  /// @return The promised id; the invalid id when the shape check failed,
+  ///         in which case nothing was staged or journaled.
+  virtual OrderId IssueOrder(const OrderRow& order) = 0;
+
+  /// @brief Cancels an order. One staged and not yet applied is dropped
+  /// from the batch and never reaches the book; one in the book is marked
+  /// for the engine to cancel before the next phase 1, which succeeds only
+  /// while the row is kPending or kAccepted (order_state.h). Either way
+  /// the journal records the cancel.
+  /// @return false when the id is unknown or the row (as of State()) is
+  ///         already kActive or terminal; nothing is staged then. true
+  ///         means staged; the authoritative outcome is the event
+  ///         (kOrderCancelled, or nothing if the consumer started it in
+  ///         the same step — the race the design accepts, time design §11).
+  virtual bool CancelOrder(OrderId order) = 0;
+
+  // -- events -----------------------------------------------------------------
+
+  /// @brief Everything emitted since the last acknowledgement, oldest
+  /// first, across as many steps as have run: the material of a HUD line
+  /// (kNotable), of the summary after a fast-forward (all of them), of the
+  /// interruption (the last one, kInterrupting). Valid until the next
+  /// step, ReplaceWorld or AcknowledgeEvents.
+  virtual std::span<const SimEvent> Events() const = 0;
+
+  /// @brief Drops the first `count` events of Events() — the ones the
+  /// presentation has shown or folded into its summary. `count` above the
+  /// size drops everything.
+  virtual void AcknowledgeEvents(std::size_t count) = 0;
+
+  // -- record -----------------------------------------------------------------
+
+  /// @brief Moves the journal out: every IssueOrder and CancelOrder since
+  /// the session was created, the world replaced or the journal last
+  /// taken, in order. The presentation writes it beside its save with
+  /// EncodeJournal; a session that never calls this keeps growing it by a
+  /// few dozen bytes per order, which is nothing for a campaign and
+  /// something for a bot run — the run tool takes it every year.
+  virtual std::vector<JournalEntry> TakeJournal() = 0;
+
+  /// @brief Replaces the world entirely — the way a load lands
+  /// (core_save::LoadWorldFromFile, then this). Forwards to
+  /// ISimulation::ResetWorld; drops the staged batch, the event log and
+  /// the alarms; starts a new stamp serial from 0; the journal is NOT
+  /// cleared — a replay that spans a load is the caller's to cut. The
+  /// loaded world's order book is whatever the save carried; its outbox
+  /// is empty by the save format's rule.
+  virtual void ReplaceWorld(const WorldState& initial) = 0;
+};
+
+/// @brief Creates the session over an assembled simulation.
+/// @pre config.tables != nullptr and config.simulation != nullptr — both
+///      asserted in Debug; the default-constructed config is a template.
+/// @note Create it on the thread that created the simulation and drive it
+/// only from there (see @file). The session reads its two knobs from the
+/// tables once, here; a missing life table means the documented defaults,
+/// a malformed one is refused like every subsystem factory refuses.
+/// @return nullptr on refusal; the reason is logged.
+std::unique_ptr<ISession> CreateSession(SessionConfig config);
+
+}  // namespace core
+
+#endif  // CORE_BOUNDARY_SESSION_H_

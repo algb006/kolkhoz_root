@@ -18,7 +18,9 @@
 ///     If it can be derived, it is derived (architecture, §4).
 ///   * The struct grows by plan stages: stage 2 fills weather, stage 3 adds
 ///     resident and family tables, stage 4 land and herds, stage 5 labor,
-///     stage 7 the ledger of yearly flows — the one block nothing reads.
+///     stage 7 the ledger of yearly flows — the one block nothing reads;
+///     project phase 2 the order book and the step's event outbox, the
+///     two blocks the boundary writes and reads (manual/70-boundary.md).
 ///     Adding a member is the expected, cheap extension (architecture, §7ж);
 ///     reshaping existing members is the expensive event.
 
@@ -29,10 +31,12 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/resident_state.h"
@@ -173,6 +177,17 @@ struct WorldState {
   /// The accountant's yearly book of flows (stage 7). Nothing in the
   /// simulation reads it; the run report does. ledger_state.h.
   LedgerState ledger;
+
+  /// The chairman's order book (project phase 2, the boundary): commands
+  /// that came across the boundary, waiting for or being executed by the
+  /// subsystem whose rules apply. Appended only by the step engine before
+  /// phase 1; SAVED — a waiting order survives a load. order_state.h.
+  OrderTable orders;
+
+  /// This step's outbox (project phase 2, the boundary): what happened,
+  /// for the presentation. Cleared by the step engine after the copy,
+  /// appended by sequential code only, NOT SAVED. event_state.h.
+  StepEventLog step_events;
 };
 
 }  // namespace core

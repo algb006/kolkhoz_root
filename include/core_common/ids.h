@@ -61,6 +61,8 @@ struct FieldIdTag {};
 
 struct HerdIdTag {};
 
+struct OrderIdTag {};
+
 /// @brief One person. The central entity of the game (stage 3 of the plan).
 using ResidentId = EntityId<ResidentIdTag>;
 
@@ -75,6 +77,12 @@ using FieldId = EntityId<FieldIdTag>;
 
 /// @brief One herd: animals of one kind kept at one unit (stage 4).
 using HerdId = EntityId<HerdIdTag>;
+
+/// @brief One standing order of the chairman: a command that came across the
+/// boundary and lives in the order book until it is done (project phase 2,
+/// core_common/order_state.h). Issued by the step engine alone, so the
+/// boundary can name the id the row will carry before the row exists.
+using OrderId = EntityId<OrderIdTag>;
 
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
