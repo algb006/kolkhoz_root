@@ -59,6 +59,7 @@ enum class LandKind : std::uint8_t {
   kArable = 0,        ///< Ploughed land: rotation, fertility, sowing, manure.
   kMeadow,            ///< Natural grassland, mown once a season.
   kFloodplainMeadow,  ///< The best grass of the farm; STUB until terrain zones.
+  kDerelict,          ///< Arable nobody has raised: weeds and sod, no work until it is (phase 2).
 };
 
 /// @brief One field. Plain data.
@@ -96,12 +97,17 @@ struct FieldRow {
   /// at the year's close, then the flag resets.
   std::uint8_t manure_applied = 0;
 
-  /// Arable land or meadow (see LandKind). A meadow ignores every field
-  /// above it except `area_ga` and `phase`: no crop, no rotation, no
-  /// fertility, no manure. It sits in the padding byte the row already had,
-  /// so sizeof(FieldRow) is unchanged — but the SAVE STREAM grew by a byte
-  /// per field, which the sizeof tripwire cannot see and VERSION_SAVE must
-  /// (manual/67-save-format.md §7).
+  /// Arable land, meadow or derelict (see LandKind). A meadow ignores every
+  /// field above it except `area_ga` and `phase`: no crop, no rotation, no
+  /// fertility, no manure. Derelict land is arable that nobody has raised
+  /// yet — the start's ninety hectares of weeds and sod: it keeps its
+  /// fertility ("the land has rested", start canon §8) and gets no work of
+  /// any kind until construction raises it. It is NOT rotation fallow, which
+  /// is ploughed every year it stands (defect D11 taught the difference:
+  /// ploughing the derelict cost 150 man-days a year nobody had asked for).
+  /// The byte sits in the padding the row already had, so sizeof(FieldRow)
+  /// is unchanged — but the SAVE STREAM grew by a byte per field, which the
+  /// sizeof tripwire cannot see and VERSION_SAVE must (manual/67-save-format.md §7).
   LandKind kind = LandKind::kArable;
 
   /// Growth-season weather stress, 0..1 accumulated daily while growing

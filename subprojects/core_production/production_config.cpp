@@ -244,10 +244,11 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   float birth_from = static_cast<float>(farming.birth_from_month) + 1.0F;
   float birth_to = static_cast<float>(farming.birth_to_month) + 1.0F;
   float mow_month = static_cast<float>(farming.meadow_cut_month) + 1.0F;
+  float fallow_month = static_cast<float>(farming.fallow_plow_month) + 1.0F;
   // Real man-days in the file, game man-days in the config — the same
   // conversion the crop and field-phase norms get, done once at parse.
   float mow_days = farming.meadow_mow_days_per_ha * kRealDaysPerGameDay;
-  const std::array<Knob, 18> knobs = {{
+  const std::array<Knob, 19> knobs = {{
       {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
       {"unfed_death_after_days", &farming.unfed_death_after_days, 0.0F, 1000.0F},
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
@@ -264,6 +265,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"meadow_floodplain_yield_kg_per_ha", &farming.meadow_floodplain_yield_kg_per_ha, 0.0F, 1e5F},
       {"meadow_mow_days_per_ha", &mow_days, 0.0F, 1000.0F},
       {"meadow_cut_month", &mow_month, 1.0F, 12.0F},
+      {"fallow_plow_month", &fallow_month, 1.0F, 12.0F},
       {"birth_from_month", &birth_from, 1.0F, 12.0F},
       {"birth_to_month", &birth_to, 1.0F, 12.0F},
   }};
@@ -286,6 +288,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.pasture_to_month = static_cast<std::uint8_t>(pasture_to - 1.0F);
   farming.pig_slaughter_month = static_cast<std::uint8_t>(pig_month - 1.0F);
   farming.meadow_cut_month = static_cast<std::uint8_t>(mow_month - 1.0F);
+  farming.fallow_plow_month = static_cast<std::uint8_t>(fallow_month - 1.0F);
   farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
   farming.birth_from_month = static_cast<std::uint8_t>(birth_from - 1.0F);
   farming.birth_to_month = static_cast<std::uint8_t>(birth_to - 1.0F);

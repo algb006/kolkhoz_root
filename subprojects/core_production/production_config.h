@@ -239,6 +239,11 @@ struct FarmingConfig {
 
   float fallow_recovery = 6.0F;
 
+  /// The month a fallow field is ploughed, 0-based (farming design §7:
+  /// "fallow is ploughed" — with the manure, which is the point of it).
+  /// ASSUMPTION: after the spring sowings are in.
+  std::uint8_t fallow_plow_month = 4;  ///< May.
+
   float repeat_penalty_per_year = 3.0F;
 
   /// The repeat penalty stops growing after this many years in a row (boss

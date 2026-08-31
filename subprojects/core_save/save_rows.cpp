@@ -47,7 +47,7 @@ constexpr std::uint8_t kMaxEducationStage = static_cast<std::uint8_t>(EducationS
 constexpr std::uint8_t kMaxSocialStatus = static_cast<std::uint8_t>(SocialStatus::kParty);
 
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kHarvest);
-constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kFloodplainMeadow);
+constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerelict);
 
 template <typename IdT>
 void WriteEntityId(ByteWriter& out, IdT id) {

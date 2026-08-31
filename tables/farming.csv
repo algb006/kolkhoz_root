@@ -19,6 +19,10 @@ repeat_penalty_per_year,3
 # севооборота стоила партии. Сама величина дна — ASSUMPTION, полировка
 repeat_penalty_max_years,3
 fertility_floor,20
+# пар пашут (Поля §7, D11 сверки): навоз запахивается, земля стоит чёрным
+# паром до нового года или до озими следующего слота. Месяц — ASSUMPTION:
+# после весеннего сева
+fallow_plow_month,5
 # weather stress while growing: hot dry days and rainy days add stress up
 # to the cap; the worst year still yields (farming.md section 6)
 drought_temp_c,25

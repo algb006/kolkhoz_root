@@ -120,7 +120,11 @@ class ProductionSystem final : public IProductionSystem {
           OpenPhase(field, FieldPhase::kHarrowing);
           break;
         case FieldPhase::kHarrowing:
-          OpenPhase(field, FieldPhase::kSowing);
+          if (field.crop.value == kInvalidDefIdValue) {
+            FinishSowing(current, field);  // bare fallow: nothing to sow
+          } else {
+            OpenPhase(field, FieldPhase::kSowing);
+          }
           break;
         case FieldPhase::kSowing:
           FinishSowing(current, field);
@@ -163,7 +167,7 @@ class ProductionSystem final : public IProductionSystem {
                                       : 0.0F;
       return;
     }
-    const CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
+    const CropId crop = field.crop;
     float norm = 0.0F;
     if (phase == FieldPhase::kPlowing) {
       norm = config_.farming.plow_days_per_ha;
@@ -207,9 +211,14 @@ class ProductionSystem final : public IProductionSystem {
     DeliverPlan(current);
     for (FieldRow& field : current.fields.rows) {
       if (field.kind != LandKind::kArable) {
-        continue;  // no rotation to shift, no fallow to pay out
+        continue;  // no rotation to shift, no fallow to pay out; derelict rests as it is
       }
-      if (field.phase == FieldPhase::kIdle && field.rotation_year0.value == kInvalidDefIdValue) {
+      const bool bare =
+          field.phase == FieldPhase::kGrowing && field.crop.value == kInvalidDefIdValue;
+      if (bare) {
+        field.phase = FieldPhase::kIdle;  // the ploughed fallow stood its year
+      }
+      if ((field.phase == FieldPhase::kIdle) && field.rotation_year0.value == kInvalidDefIdValue) {
         field.fertility += config_.farming.fallow_recovery;
         field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
         field.last_crop = CropId{};
@@ -236,6 +245,9 @@ class ProductionSystem final : public IProductionSystem {
     const float temperature = current.weather.air_temperature_celsius;
     const bool snowing = current.weather.precipitation == Precipitation::kSnow;
     for (FieldRow& field : current.fields.rows) {
+      if (field.kind == LandKind::kDerelict) {
+        continue;  // unraised land: nothing happens here until it is raised
+      }
       if (field.kind != LandKind::kArable) {
         RunMeadow(current, field, month);
         continue;
@@ -246,6 +258,13 @@ class ProductionSystem final : public IProductionSystem {
       }
       const bool standing =
           field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
+      if (standing && field.crop.value == kInvalidDefIdValue) {
+        // Black fallow: ploughed this spring and standing bare (D11). It is
+        // sown only from the NEXT slot, and only with a winter crop — the
+        // canon's "fallow, then winter rye" — never re-ploughed as fallow.
+        TrySowWinter(current, field, month, temperature);
+        continue;
+      }
       if (!standing || field.crop.value >= config_.crops.size()) {
         continue;  // being prepared, or a crop this config does not know
       }
@@ -333,13 +352,52 @@ class ProductionSystem final : public IProductionSystem {
   /// when the work STARTS, the crew decides when it ends.
   void TrySow(WorldState& current, FieldRow& field, std::uint8_t month, float temperature) {
     if (field.rotation_year0.value >= config_.crops.size()) {
-      return;  // fallow year
-    }
-    const CropDef& crop = config_.crops[field.rotation_year0.value];
-    if (month < crop.sow_from_month || month > crop.sow_to_month ||
-        temperature < crop.sow_min_temp_c) {
+      // A FALLOW YEAR IS PLOUGHED (farming design §7, "fallow is ploughed";
+      // defect D11 of the reconciliation): the manure goes in with the
+      // plough and the ground stands bare until the year turns, or until the
+      // next slot's winter crop goes into it in the autumn (TrySowWinter).
+      if (month == config_.farming.fallow_plow_month && temperature >= 0.0F) {
+        OpenPlowing(current, field, CropId{});
+      }
       return;
     }
+    const CropDef& crop = config_.crops[field.rotation_year0.value];
+    if (crop.is_winter) {
+      // A winter crop in THIS year's slot was meant to go in last autumn
+      // (TrySowWinter). If the field is idle now, that autumn was missed —
+      // the previous crop came off too late — and the crop is still sown in
+      // its window as the fallback: a year late, and it costs the slot after
+      // it, but a winter crop that is never sown costs the plan its bread.
+    }
+    if (month < crop.sow_from_month || month > crop.sow_to_month ||
+        temperature < crop.sow_min_temp_c) {
+      TrySowWinter(current, field, month, temperature);
+      return;
+    }
+    OpenPlowing(current, field, field.rotation_year0);
+  }
+
+  /// The autumn sowing (defect D12). A winter crop is harvested the summer
+  /// AFTER it is sown, so the slot it belongs to is next year's — "winter rye
+  /// goes into the ground in the autumn of the same year, and the ring starts
+  /// turning in the second" (start canon §8). Sown from this year's slot it
+  /// arrived a year late and ate the following spring as well.
+  void TrySowWinter(WorldState& current, FieldRow& field, std::uint8_t month, float temperature) {
+    if (field.rotation_year1.value >= config_.crops.size()) {
+      return;
+    }
+    const CropDef& next = config_.crops[field.rotation_year1.value];
+    if (!next.is_winter || month < next.sow_from_month || month > next.sow_to_month ||
+        temperature < next.sow_min_temp_c) {
+      return;
+    }
+    OpenPlowing(current, field, field.rotation_year1);
+  }
+
+  /// @brief Opens the ploughing for `crop` (invalid = bare fallow) and ploughs
+  /// the manure in with it.
+  void OpenPlowing(WorldState& current, FieldRow& field, CropId crop) {
+    field.crop = crop;
     // Manure is plowed in, never spread separately (§8): the dose leaves
     // the heap when the plowing starts.
     const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
@@ -358,7 +416,14 @@ class ProductionSystem final : public IProductionSystem {
 
   /// The seed goes into the ground when the sowing phase is worked through.
   void FinishSowing(WorldState& current, FieldRow& field) {
-    const CropId crop_id = field.rotation_year0;
+    const CropId crop_id = field.crop;
+    if (crop_id.value == kInvalidDefIdValue) {
+      // Bare fallow: ploughed and harrowed, nothing goes in. It stands as
+      // ground with no crop until the year turns or a winter crop takes it.
+      field.phase = FieldPhase::kGrowing;
+      field.work_days_remaining = 0.0F;
+      return;
+    }
     if (crop_id.value < config_.crops.size()) {
       const CropDef& crop = config_.crops[crop_id.value];
       // Sowing consumes ordinary produce of the same crop (§7); partial
@@ -458,9 +523,16 @@ class ProductionSystem final : public IProductionSystem {
     field.last_crop = field.crop;
     field.weather_stress = 0.0F;
     field.work_days_remaining = 0.0F;
-    if (crop.is_perennial) {
+    if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
       field.phase = FieldPhase::kGrowing;  // the stand yields again next summer
       return;
+    }
+    // A perennial whose next slot is something else ends at this cut, not at
+    // the year's turn: the field must be free in the autumn for the winter
+    // crop the canon's ring puts after grass ("fallow or grass, then winter
+    // rye"). Left standing till January it could only be sown a year late.
+    if (crop.is_perennial) {
+      field.last_crop = field.crop;
     }
     field.crop = CropId{};
     field.phase = FieldPhase::kIdle;

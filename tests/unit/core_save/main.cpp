@@ -151,6 +151,11 @@ core::WorldState MakeWorld() {
   meadow.area_ga = 20.0F;
   meadow.phase = core::FieldPhase::kGrowing;
   core::AppendRow(world.fields, meadow);
+  core::FieldRow derelict;
+  derelict.kind = core::LandKind::kDerelict;  // the top of the enum: its bound is checked too
+  derelict.area_ga = 45.0F;
+  derelict.fertility = 65.0F;
+  core::AppendRow(world.fields, derelict);
 
   core::UnitRow barn;
   barn.type = core::UnitTypeId{0};
