@@ -3,114 +3,116 @@
 # player_built=0: it stands or appears on its own, the player never builds it
 # gate: what opens the type — era (the default), event, quest, unit, or start; gate_ref names the event, quest or unit and is empty for era and start (design/core/unlocks.md)
 # a refusal to build a closed type carries the gate and its ref: the presentation turns them into a sentence, the core carries no text
+# plot_radius_m: the circle the unit occupies, metres, taken from the build class of its LAST step so the plot holds every future expansion (unit rules §9). Two units may not be closer than the sum of their radii — the refusal is the point of the number
+# an empty radius means there is no fixed plot: the player draws the outline himself (orchard, apiary, heaps, trenches) or the thing has no footprint at all (a lamp, a line, a board)
 # storage is tonnes, the unit the warehouse itself counts in
 # capacity_by_plot=1: the player draws the outline and the capacity
 # follows the area — there is no number to read (manure heap, silage
 # trench, hay stack, log and stone piles, threshing floor)
-key,title,class,era,level,storage_capacity_t,livestock_capacity_head,capacity_by_plot,player_built,gate,gate_ref
-threshing_floor,Ток,production,1,1,,,1,1,era,
-slaughterhouse,Бойня,production,1,1,,,0,1,era,
-food_yard,Продуктовый двор,production,1,1,,,0,1,era,
-granary,Амбар,production,1,1,150,,0,1,era,
-food_store,Продуктовый склад,production,1,1,60,,0,1,era,
-icehouse,Ледник,production,1,1,10,,0,1,era,
-bakery,Пекарня,production,1,1,,,0,1,era,
-smokehouse,Коптильня,production,1,1,,,0,1,era,
-sausage_shop,Колбасный цех,production,2,1,,,0,1,era,
-elevator,Элеватор,production,2,1,800,,0,1,era,
-log_pile,Куча брёвен,production,1,1,,,1,1,era,
-stone_pile,Куча камня,production,1,1,,,1,1,era,
-clay_pile,Куча глины,production,1,1,,,1,1,era,
-build_yard,Строительный двор,production,1,1,,,0,1,era,
-manure_pile,Навозная куча,production,1,1,,,1,1,era,
-dryer,Сушилка,production,2,1,,,0,1,era,
-water_mill,Водяная мельница,production,1,1,,,0,0,start,
-utility_yard,Хозяйственный двор,production,1,1,,,0,1,era,
-goods_store,Товарный склад,production,1,1,80,,0,1,era,
-workshops,Мастерские,production,1,1,,,0,1,era,
-sawmill,Лесопилка,production,1,1,,,0,1,era,
-firewood_yard,Дровяной участок,production,1,1,,,1,1,era,
-fuel_point,Пункт заправки,production,2,1,5,,0,1,era,
-crafts_yard,Промысловый двор,production,1,1,,,0,1,era,
-weaving_shop,Ткацкая мастерская,production,1,1,,,0,1,era,
-sewing_shop,Швейная мастерская,production,1,1,,,0,1,era,
-shoemaking_shop,Сапожная мастерская,production,1,1,,,0,1,era,
-furrier_shop,Скорняжная мастерская,production,3,1,,,0,1,era,
-dye_house,Красильня,production,2,1,,,0,1,era,
-tannery,Дубильня,production,1,1,,,0,1,era,
-garment_factory,Швейный цех,production,3,1,,,0,1,era,
-shoe_factory,Обувной цех,production,3,1,,,0,1,era,
-winery,Винодельня,production,2,1,,,0,1,era,
-brewery,Пивоварня,production,2,1,,,0,1,era,
-greenhouse,Теплица,production,3,1,,,0,1,era,
-orchard,Колхозный сад,production,1,1,,,0,1,era,
-fishery,Рыболовная артель,production,2,1,,,0,1,era,
-apiary,Пасека,production,1,1,,,0,1,era,
-silage_trench,Силосная траншея,production,1,1,,,1,1,era,
-hop_yard,Хмельник,production,2,1,,,0,1,era,
-silage_tower,Силосная башня,production,3,1,200,,0,1,era,
-hunting_lodge,Охотничий домик,production,1,1,,,0,1,era,
-hay_stack,Скирда,production,1,1,,,1,1,era,
-cattle_yard,Скотный двор,livestock,1,1,,24,0,1,era,
-barn,Хлев,livestock,1,1,,50,0,1,era,
-chicken_farm,Куриная ферма,livestock,1,1,,200,0,1,era,
-duck_farm,Утиная ферма,livestock,1,1,,150,0,1,era,
-fur_farm,Звероферма,livestock,3,1,,200,0,1,era,
-summer_camp,Летний лагерь для скота,livestock,1,1,,,1,1,era,
-school,Школа,social,1,1,,,0,1,era,
-boarding_wing,Интернат,social,2,1,,,0,1,era,
-culture_house,Учреждение культуры,social,1,1,,,0,1,era,
-feldsher_post,ФАП,social,2,1,,,0,1,era,
-hospital,Больница,social,3,1,,,0,1,era,
-kindergarten,Детский сад и ясли,social,2,1,,,0,1,era,
-selpo,Сельпо,social,1,1,,,0,1,era,
-canteen,Колхозная столовая,social,2,1,,,0,1,era,
-buffet,Буфет,social,2,1,,,0,1,era,
-restaurant,Ресторан,social,3,1,,,0,1,era,
-summer_veranda,Летняя веранда,social,3,1,,,0,1,era,
-small_canteen,Малая колхозная столовая,social,2,1,,,0,1,era,
-field_canteen,Полевая столовая,social,1,1,,,0,1,era,
-beer_stall,Пивной ларёк,social,2,1,,,0,1,era,
-road_canteen,Дорожная столовая,social,3,1,,,0,1,era,
-bathhouse,Баня,social,1,1,,,0,1,era,
-barter_place,Место обмена,social,1,1,,,0,1,era,
-kolkhoz_market,Колхозный рынок,social,2,1,,,0,1,era,
-roadside_market,Стихийный рынок у трассы,social,3,1,,,0,0,era,
-school_sports_ground,Спортплощадка при школе,social,2,1,,,0,1,era,
-stadium,Стадион,social,1,1,,,0,1,era,
-pioneer_camp,Пионерский лагерь,social,2,1,,,0,1,era,
-rest_house,Дом отдыха,social,3,1,,,0,1,era,
-ski_slope,Лыжный склон,social,3,1,,,0,1,era,
-registry_office,ЗАГС,social,2,1,,,0,1,era,
-police_post,Участковый пункт милиции,social,2,1,,,0,1,era,
-agricultural_college,Сельхозтехникум,social,3,1,,,0,1,era,
-horse_yard,Колхозный двор,logistics,1,1,,20,0,1,era,
-mts,МТС,logistics,2,1,,,0,1,event,event_04
-machine_park,Стоянка техники,logistics,2,1,,,0,1,era,
-bus_stop,Автобусная остановка,infrastructure,3,1,,,0,1,era,
-farm_stop,Остановка колхозного транспорта,infrastructure,1,1,,,0,1,era,
-well,Колодец,infrastructure,1,1,,,0,1,era,
-substation,Трансформаторная подстанция,infrastructure,1,1,,,0,1,event,event_01
-power_line,Линии электропередачи,infrastructure,1,1,,,0,1,event,event_01
-road,Дорога,infrastructure,1,1,,,0,1,era,
-bridge,Мост,infrastructure,1,1,,,0,1,era,
-phone_line,Телефонная линия и коммутатор,infrastructure,2,1,,,0,1,event,event_02
-call_office,Переговорный пункт,infrastructure,2,1,,,0,1,era,
-street_lamp,Уличные лампы на столбах,infrastructure,2,1,,,0,1,era,
-household_yard,Жилой двор,housing,1,1,,,0,1,era,
-old_house,Старый дом,housing,1,1,,,0,0,start,
-wooden_house,Деревянный дом,housing,1,1,,,0,1,era,
-brick_house,Кирпичный дом,housing,2,1,,,0,1,era,
-barrack,Барак,housing,1,1,,,0,1,era,
-specialist_dorm,Общежитие специалистов,housing,2,1,,,0,1,era,
-builder_dorm,Общежитие строителей,housing,2,1,,,0,1,era,
-visitor_dorm,Общежитие для приезжих,housing,2,1,,,0,1,era,
-fire_post,Пожарный пост,service,2,1,,,0,1,era,
-farm_office,Контора,service,1,1,,,0,1,era,
-village_council,Сельсовет,service,2,1,,,0,1,era,
-cemetery,Кладбище,service,1,1,,,0,1,era,
-propaganda,Элементы наглядной агитации,service,1,1,,,0,1,era,
-honour_board,Доска почёта,service,1,1,,,0,1,era,
-church_store,Церковь — склад и кабинет,service,1,1,60,,0,0,start,
-manor_ruins,Развалины усадьбы,service,1,1,,,0,0,start,
-water_intake,Водозаборный узел,infrastructure,2,1,,,0,1,event,event_01
+key,title,class,era,level,storage_capacity_t,livestock_capacity_head,capacity_by_plot,player_built,gate,gate_ref,plot_radius_m
+threshing_floor,Ток,production,1,1,,,1,1,era,,25
+slaughterhouse,Бойня,production,1,1,,,0,1,era,,25
+food_yard,Продуктовый двор,production,1,1,,,0,1,era,,25
+granary,Амбар,production,1,1,150,,0,1,era,,25
+food_store,Продуктовый склад,production,1,1,60,,0,1,era,,25
+icehouse,Ледник,production,1,1,10,,0,1,era,,25
+bakery,Пекарня,production,1,1,,,0,1,era,,25
+smokehouse,Коптильня,production,1,1,,,0,1,era,,25
+sausage_shop,Колбасный цех,production,2,1,,,0,1,era,,30
+elevator,Элеватор,production,2,1,800,,0,1,era,,70
+log_pile,Куча брёвен,production,1,1,,,1,1,era,,25
+stone_pile,Куча камня,production,1,1,,,1,1,era,,25
+clay_pile,Куча глины,production,1,1,,,1,1,era,,25
+build_yard,Строительный двор,production,1,1,,,0,1,era,,45
+manure_pile,Навозная куча,production,1,1,,,1,1,era,,25
+dryer,Сушилка,production,2,1,,,0,1,era,,30
+water_mill,Водяная мельница,production,1,1,,,0,0,start,,20
+utility_yard,Хозяйственный двор,production,1,1,,,0,1,era,,25
+goods_store,Товарный склад,production,1,1,80,,0,1,era,,25
+workshops,Мастерские,production,1,1,,,0,1,era,,25
+sawmill,Лесопилка,production,1,1,,,0,1,era,,15
+firewood_yard,Дровяной участок,production,1,1,,,1,1,era,,25
+fuel_point,Пункт заправки,production,2,1,5,,0,1,era,,15
+crafts_yard,Промысловый двор,production,1,1,,,0,1,era,,45
+weaving_shop,Ткацкая мастерская,production,1,1,,,0,1,era,,25
+sewing_shop,Швейная мастерская,production,1,1,,,0,1,era,,25
+shoemaking_shop,Сапожная мастерская,production,1,1,,,0,1,era,,25
+furrier_shop,Скорняжная мастерская,production,3,1,,,0,1,era,,45
+dye_house,Красильня,production,2,1,,,0,1,era,,30
+tannery,Дубильня,production,1,1,,,0,1,era,,
+garment_factory,Швейный цех,production,3,1,,,0,1,era,,45
+shoe_factory,Обувной цех,production,3,1,,,0,1,era,,45
+winery,Винодельня,production,2,1,,,0,1,era,,30
+brewery,Пивоварня,production,2,1,,,0,1,era,,30
+greenhouse,Теплица,production,3,1,,,0,1,era,,45
+orchard,Колхозный сад,production,1,1,,,0,1,era,,
+fishery,Рыболовная артель,production,2,1,,,0,1,era,,15
+apiary,Пасека,production,1,1,,,0,1,era,,
+silage_trench,Силосная траншея,production,1,1,,,1,1,era,,30
+hop_yard,Хмельник,production,2,1,,,0,1,era,,
+silage_tower,Силосная башня,production,3,1,200,,0,1,era,,45
+hunting_lodge,Охотничий домик,production,1,1,,,0,1,era,,25
+hay_stack,Скирда,production,1,1,,,1,1,era,,25
+cattle_yard,Скотный двор,livestock,1,1,,24,0,1,era,,60
+barn,Хлев,livestock,1,1,,50,0,1,era,,25
+chicken_farm,Куриная ферма,livestock,1,1,,200,0,1,era,,15
+duck_farm,Утиная ферма,livestock,1,1,,150,0,1,era,,15
+fur_farm,Звероферма,livestock,3,1,,200,0,1,era,,45
+summer_camp,Летний лагерь для скота,livestock,1,1,,,1,1,era,,25
+school,Школа,social,1,1,,,0,1,era,,45
+boarding_wing,Интернат,social,2,1,,,0,1,era,,30
+culture_house,Учреждение культуры,social,1,1,,,0,1,era,,60
+feldsher_post,ФАП,social,2,1,,,0,1,era,,30
+hospital,Больница,social,3,1,,,0,1,era,,45
+kindergarten,Детский сад и ясли,social,2,1,,,0,1,era,,45
+selpo,Сельпо,social,1,1,,,0,1,era,,25
+canteen,Колхозная столовая,social,2,1,,,0,1,era,,60
+buffet,Буфет,social,2,1,,,0,1,era,,30
+restaurant,Ресторан,social,3,1,,,0,1,era,,45
+summer_veranda,Летняя веранда,social,3,1,,,0,1,era,,45
+small_canteen,Малая колхозная столовая,social,2,1,,,0,1,era,,30
+field_canteen,Полевая столовая,social,1,1,,,0,1,era,,25
+beer_stall,Пивной ларёк,social,2,1,,,0,1,era,,30
+road_canteen,Дорожная столовая,social,3,1,,,0,1,era,,45
+bathhouse,Баня,social,1,1,,,0,1,era,,25
+barter_place,Место обмена,social,1,1,,,0,1,era,,25
+kolkhoz_market,Колхозный рынок,social,2,1,,,0,1,era,,30
+roadside_market,Стихийный рынок у трассы,social,3,1,,,0,0,era,,
+school_sports_ground,Спортплощадка при школе,social,2,1,,,0,1,era,,
+stadium,Стадион,social,1,1,,,0,1,era,,25
+pioneer_camp,Пионерский лагерь,social,2,1,,,0,1,era,,45
+rest_house,Дом отдыха,social,3,1,,,0,1,era,,70
+ski_slope,Лыжный склон,social,3,1,,,0,1,era,,
+registry_office,ЗАГС,social,2,1,,,0,1,era,,30
+police_post,Участковый пункт милиции,social,2,1,,,0,1,era,,45
+agricultural_college,Сельхозтехникум,social,3,1,,,0,1,era,,45
+horse_yard,Колхозный двор,logistics,1,1,,20,0,1,era,,45
+mts,МТС,logistics,2,1,,,0,1,event,event_04,45
+machine_park,Стоянка техники,logistics,2,1,,,0,1,era,,17
+bus_stop,Автобусная остановка,infrastructure,3,1,,,0,1,era,,45
+farm_stop,Остановка колхозного транспорта,infrastructure,1,1,,,0,1,era,,25
+well,Колодец,infrastructure,1,1,,,0,1,era,,
+substation,Трансформаторная подстанция,infrastructure,1,1,,,0,1,event,event_01,30
+power_line,Линии электропередачи,infrastructure,1,1,,,0,1,event,event_01,
+road,Дорога,infrastructure,1,1,,,0,1,era,,30
+bridge,Мост,infrastructure,1,1,,,0,1,era,,25
+phone_line,Телефонная линия и коммутатор,infrastructure,2,1,,,0,1,event,event_02,30
+call_office,Переговорный пункт,infrastructure,2,1,,,0,1,era,,30
+street_lamp,Уличные лампы на столбах,infrastructure,2,1,,,0,1,era,,
+household_yard,Жилой двор,housing,1,1,,,0,1,era,,25
+old_house,Старый дом,housing,1,1,,,0,0,start,,25
+wooden_house,Деревянный дом,housing,1,1,,,0,1,era,,25
+brick_house,Кирпичный дом,housing,2,1,,,0,1,era,,30
+barrack,Барак,housing,1,1,,,0,1,era,,25
+specialist_dorm,Общежитие специалистов,housing,2,1,,,0,1,era,,30
+builder_dorm,Общежитие строителей,housing,2,1,,,0,1,era,,30
+visitor_dorm,Общежитие для приезжих,housing,2,1,,,0,1,era,,30
+fire_post,Пожарный пост,service,2,1,,,0,1,era,,45
+farm_office,Контора,service,1,1,,,0,1,era,,60
+village_council,Сельсовет,service,2,1,,,0,1,era,,30
+cemetery,Кладбище,service,1,1,,,0,1,era,,25
+propaganda,Элементы наглядной агитации,service,1,1,,,0,1,era,,
+honour_board,Доска почёта,service,1,1,,,0,1,era,,
+church_store,Церковь — склад и кабинет,service,1,1,60,,0,0,start,,35
+manor_ruins,Развалины усадьбы,service,1,1,,,0,0,start,,35
+water_intake,Водозаборный узел,infrastructure,2,1,,,0,1,event,event_01,30
