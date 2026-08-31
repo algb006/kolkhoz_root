@@ -38,6 +38,12 @@ struct SeasonWeather {
 
   float temperature_spread_celsius = 5.0F;
 
+  /// Half the diurnal swing: day = mean + amplitude, night = mean - amplitude
+  /// (camera design §4). The stored weather stays ONE number, the daily mean;
+  /// the readers that want the afternoon (heat, drought) or the night
+  /// (frost) add or subtract this themselves.
+  float temperature_amplitude_celsius = 0.0F;
+
   float precipitation_chance_percent = 30.0F;
 };
 
@@ -147,6 +153,8 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
   const std::uint32_t mean_column = table.FindColumn("temp_mean_c");
   const std::uint32_t spread_column = table.FindColumn("temp_spread_c");
   const std::uint32_t chance_column = table.FindColumn("precipitation_chance_percent");
+  // Optional: a table from before the diurnal swing keeps an amplitude of 0.
+  const std::uint32_t amplitude_column = table.FindColumn("temp_amplitude_c");
   if (mean_column == kNoTableColumn || spread_column == kNoTableColumn ||
       chance_column == kNoTableColumn) {
     error = "weather: a required column is missing";
@@ -166,8 +174,27 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
               "' is empty or not a number";
       return false;
     }
+    float amplitude = 0.0F;
+    if (amplitude_column != kNoTableColumn) {
+      const std::optional<float> cell = table.CellReal(row, amplitude_column);
+      if (!cell) {
+        error = "weather: temp_amplitude_c of season '" + std::string(kSeasonKeys[season]) +
+                "' is empty or not a number";
+        return false;
+      }
+      amplitude = *cell;
+    }
+    // THE BOUNDS ARE THERMOMETER READINGS, not means: the hottest afternoon
+    // and the coldest night must fit the scale (camera design §4).
+    if (*mean + *spread + amplitude > kTemperatureMaxCelsius ||
+        *mean - *spread - amplitude < kTemperatureMinCelsius) {
+      error = "weather: season '" + std::string(kSeasonKeys[season]) +
+              "' swings past the -15..+30 scale (mean +- spread +- amplitude)";
+      return false;
+    }
     seasons[season] = {.temperature_mean_celsius = *mean,
                        .temperature_spread_celsius = *spread,
+                       .temperature_amplitude_celsius = amplitude,
                        .precipitation_chance_percent = *chance};
   }
   return true;

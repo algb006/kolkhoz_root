@@ -10,6 +10,7 @@
 #ifndef CORE_PRODUCTION_PRODUCTION_CONFIG_H_
 #define CORE_PRODUCTION_PRODUCTION_CONFIG_H_
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -277,7 +278,17 @@ struct FarmingConfig {
   /// yield above is the season's total precisely so that it need not.
   std::uint8_t meadow_cut_month = 5;  ///< June.
 
+  /// Drought threshold on the DAY temperature (heat design: "above +25 is
+  /// heat"). Until the diurnal swing existed this read the daily MEAN, whose
+  /// summer ceiling is 24 — so in every run before 2026-08-31 the drought
+  /// branch was dead and no field ever burned.
   float drought_temp_c = 25.0F;
+
+  /// Half the diurnal swing per season, indexed by Season, from
+  /// weather.csv temp_amplitude_c. Read here as well as by core_time: the
+  /// weather state keeps one number a day by design, and the afternoon is
+  /// the mean plus this. 0 when the table has no such column.
+  std::array<float, 4> temp_amplitude_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
 
   float stress_per_day = 0.02F;
 

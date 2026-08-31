@@ -65,9 +65,17 @@ class FieldGrowthPhase final : public IParallelPhase {
       }
       const CropDef& crop = config_->crops[field.crop.value];
       float stress = 0.0F;
+      // Drought is a matter of the AFTERNOON: the mean plus the season's
+      // half-swing (camera design §4). On the mean alone the summer never
+      // reached +25 and this branch was dead in every run before it.
+      const auto season = static_cast<std::size_t>(current.calendar.season);
+      const float afternoon =
+          weather.air_temperature_celsius + (season < farming.temp_amplitude_by_season.size()
+                                                 ? farming.temp_amplitude_by_season[season]
+                                                 : 0.0F);
       if (weather.precipitation == Precipitation::kRain) {
         stress = farming.stress_per_day * crop.wet_sensitivity;
-      } else if (weather.air_temperature_celsius >= farming.drought_temp_c) {
+      } else if (afternoon >= farming.drought_temp_c) {
         stress = farming.stress_per_day * crop.drought_sensitivity;
       }
       field.weather_stress += stress;

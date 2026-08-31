@@ -6,7 +6,10 @@
 //     the cohort flows of maturation and birth, and the autumn pigs.
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -524,6 +527,63 @@ int CheckAgeSpread() {
   return failures;
 }
 
+/// The drought branch, which was DEAD in every run before the diurnal swing:
+/// heat is read on the afternoon (mean + the season's amplitude), and the
+/// summer mean tops out at 24 against a threshold of 25. Built over a real
+/// table set, because the field cycle lives behind the factory.
+int CheckDroughtReadsTheAfternoon() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_drought";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,850,180,-1,1,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n";
+  std::ofstream(root / "weather.csv")
+      << "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+         "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the drought table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  const auto stress_after_a_day = [&](float mean_celsius) {
+    core::WorldState world;
+    world.calendar.tick = 30 * core::kTicksPerDay;  // late July: summer
+    core::RefreshCalendarCaches(world.calendar);
+    world.weather.air_temperature_celsius = mean_celsius;
+    world.weather.precipitation = core::Precipitation::kNone;
+    core::FieldRow field;
+    field.area_ga = 10.0F;
+    field.phase = core::FieldPhase::kGrowing;
+    field.crop = core::CropId{0};
+    core::AppendRow(world.fields, field);
+    const core::WorldState previous = world;
+    system->ProductionPhase().RunItemRange(previous, world, 0, 1);
+    return world.fields.rows[0].weather_stress;
+  };
+  failures += Expect(stress_after_a_day(18.0F) == 0.0F,
+                     "a summer day with a mean of 18 reads 24 in the afternoon: no drought");
+  failures += Expect(stress_after_a_day(19.0F) > 0.0F,
+                     "a mean of 19 reads 25 in the afternoon, and the field starts to burn");
+  failures += Expect(stress_after_a_day(24.0F) == stress_after_a_day(19.0F),
+                     "hotter is not more stress a day: the rate is the crop's, the gate is heat");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -552,6 +612,7 @@ int main() {
   failures += CheckMangerReach();
   failures += CheckStableGate();
   failures += CheckAgeSpread();
+  failures += CheckDroughtReadsTheAfternoon();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

@@ -1,7 +1,13 @@
-key,temp_mean_c,temp_spread_c,precipitation_chance_percent,note
-# ASSUMPTION: placeholder numbers inside the design bounds (-15..+30);
-# real values come from the balance runs at stages 4-6
-winter,-10,5,35
-spring,5,7,35
-summer,19,5,25
-autumn,6,7,45
+key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent,note
+# Одно число на сутки — среднесуточная: сезонная средняя + шум в пределах
+# разброса. Рядом — АМПЛИТУДА суточного хода (Камера и визуал §4, решение
+# человека 31.08.2026): днём = среднесуточная + амплитуда, ночью = минус.
+# Границы −15…+30 — показания градусника: +30 — самый жаркий день лета
+# (19 + 5 + 6), −15 — самая холодная ночь зимы (−10 − 2 − 3); зимний разброс
+# сужен с 5 до 2, чтобы ночь не пробивала шкалу. Дневную читают жара и
+# засуха; всё остальное — среднесуточную, как и было. Числа — полировка,
+# границы шкалы — нет
+winter,-10,2,3,35
+spring,5,7,5,35
+summer,19,5,6,25
+autumn,6,7,5,45

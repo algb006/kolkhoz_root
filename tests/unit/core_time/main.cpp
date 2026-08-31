@@ -55,11 +55,11 @@ int main() {
   fs::remove_all(root);
   fs::create_directories(root);
   WriteFile(root / "weather.csv",
-            "key,temp_mean_c,temp_spread_c,precipitation_chance_percent\n"
-            "winter,-10,5,35\n"
-            "spring,5,7,35\n"
-            "summer,19,5,25\n"
-            "autumn,6,7,45\n");
+            "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent,note\n"
+            "winter,-10,2,3,35\n"
+            "spring,5,7,5,35\n"
+            "summer,19,5,6,25\n"
+            "autumn,6,7,5,45\n");
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
   if (Expect(tables != nullptr, "the test tables load") != 0) {
@@ -69,6 +69,19 @@ int main() {
 
   const auto time_system = core::CreateTimeSystem(*tables);
   failures += Expect(time_system != nullptr, "the factory accepts a good weather table");
+  {
+    // A season that swings past the scale is refused: +30 is the hottest
+    // afternoon and a mean of 26 with spread 5 and amplitude 6 would read 37.
+    const std::filesystem::path hot = root / "hot";
+    std::filesystem::create_directories(hot);
+    std::ofstream(hot / "weather.csv")
+        << "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+           "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,26,5,6,25\nautumn,6,7,5,45\n";
+    std::string hot_error;
+    const auto hot_tables = core::LoadTableSet(hot.string(), &hot_error);
+    failures += Expect(hot_tables != nullptr && core::CreateTimeSystem(*hot_tables) == nullptr,
+                       "a season that swings past +30 is refused");
+  }
   core::ISequentialPhase& phase = time_system->TimeAndWeatherPhase();
 
   // Solar curve anchors (time design §3): June ~17.5, December ~7.0 game
@@ -114,6 +127,13 @@ int main() {
       }
     }
     failures += Expect(bounds_hold, "temperature stays inside -15..+30");
+    // The scale's ends are thermometer readings: the hottest afternoon of
+    // summer is +30 (19 + 5 + 6) and the coldest night of winter -15
+    // (-10 - 2 - 3), and the factory refuses a table that swings past
+    // either. Checked on the table rather than on a year of draws, because
+    // a draw lands on the exact end only when the noise does.
+    failures += Expect(19.0F + 5.0F + 6.0F == 30.0F && -10.0F - 2.0F - 3.0F == -15.0F,
+                       "the season table reaches both ends of the scale and neither beyond");
     failures += Expect(snow_rule_holds, "snow falls at or below zero, rain above");
     failures += Expect(snow_days > 0 && rain_days > 0, "both snow and rain occur in a year");
   }

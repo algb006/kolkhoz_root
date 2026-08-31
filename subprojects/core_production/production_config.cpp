@@ -617,6 +617,24 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // herd_system.cpp. Phase 1 has no construction, so core_world raises it as
   // a stub at the turn of the first year — see world.cpp, RaiseKolkhozYard.
   config.stable_type = UnitTypeByKey(unit_types, "horse_yard");
+  if (const ITable* weather = tables.FindTable("weather"); weather != nullptr) {
+    constexpr std::array<std::string_view, 4> kSeasons = {"winter", "spring", "summer", "autumn"};
+    const std::uint32_t amplitude_col = weather->FindColumn("temp_amplitude_c");
+    for (std::uint32_t season = 0; season < kSeasons.size(); ++season) {
+      const std::uint32_t row = weather->FindRowByKey(kSeasons[season]);
+      if (!CellOrDefault(*weather,
+                         row,
+                         amplitude_col,
+                         0,
+                         0,
+                         30,
+                         config.farming.temp_amplitude_by_season[season],
+                         error)) {
+        error = "weather: temp_amplitude_c: " + error;
+        return false;
+      }
+    }
+  }
   config.horse_kind = KindByKey(livestock, "horse");
   config.pig_kind = KindByKey(livestock, "pig");
   return true;

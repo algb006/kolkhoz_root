@@ -60,6 +60,7 @@ std::string CropKey(const core::ITableSet& tables, core::CropId crop) {
 struct FieldSample {
   std::string crop;
   bool manured = false;
+  float stress = 0.0F;  ///< Weather stress accumulated by midsummer.
 };
 
 std::filesystem::path SheetPath() {
@@ -133,7 +134,7 @@ int main() {
   float lowest_fertility = 100.0F;
 
   std::ofstream field_sheet(FieldSheetPath(), std::ios::binary | std::ios::trunc);
-  field_sheet << "year,field,kind,area_ha,crop,manured,fertility\n";
+  field_sheet << "year,field,kind,area_ha,crop,manured,fertility,stress_july\n";
   std::vector<FieldSample> sampled;
 
   for (std::uint32_t year = 0; year < kYears; ++year) {
@@ -145,6 +146,7 @@ int main() {
         for (std::size_t field = 0; field < mid.fields.rows.size(); ++field) {
           sampled[field].crop = CropKey(*world.tables, mid.fields.rows[field].crop);
           sampled[field].manured = mid.fields.rows[field].manure_applied != 0;
+          sampled[field].stress = mid.fields.rows[field].weather_stress;
         }
       }
     }
@@ -158,7 +160,7 @@ int main() {
       field_sheet << (year + 1) << ',' << field << ','
                   << (row.kind == core::LandKind::kDerelict ? "derelict" : "arable") << ','
                   << row.area_ga << ',' << sample.crop << ',' << (sample.manured ? 1 : 0) << ','
-                  << row.fertility << '\n';
+                  << row.fertility << ',' << sample.stress << '\n';
     }
     // The book closes on the first tick of the new year, so a whole year of
     // ticks always leaves exactly one new closed book to take.
