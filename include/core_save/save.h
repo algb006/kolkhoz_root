@@ -54,16 +54,19 @@
 ///     tick             u64      copy of WorldState::calendar.tick
 ///     payload_size     u64      bytes after the header
 ///     payload_hash     u64      FNV-1a 64 of the payload
-///   payload, sections in this fixed order, each prefixed by its byte
+///   payload, eight sections in this fixed order, each prefixed by its byte
 ///   length (u64) so that a malformed section is NAMED in the error and a
 ///   truncated file is caught before a single field is read:
-///     dictionaries     resources, crops, unit_types, livestock — each
+///     "dictionaries"   resources, crops, unit_types, livestock — each
 ///                      u16 count, then count keys as u16 length + UTF-8
-///     calendar, weather, epoch, world_seed, rng, chairman, plan, vitals
-///     residents, families, fields, units, herds     (StateTable sections)
-///     ledger
+///     "world"          calendar, weather, epoch, world_seed, rng,
+///                      chairman, plan, vitals
+///     "residents", "families", "fields", "units", "herds"
+///                      one StateTable section each
+///     "ledger"         ledger.current, then ledger.closed
 ///   No section is optional and none may be skipped: the reader knows
-///   exactly one layout, this one, and a file that deviates is refused.
+///   exactly one layout, this one, and a file that deviates is refused —
+///   including a file with bytes glued after the last section.
 ///
 /// ENCODING RULES, the same for every field:
 ///   * u8/u16/u32/u64/i32/i64  little-endian, the declared width
@@ -106,6 +109,10 @@
 ///     silently — removing an unused resource must not kill a campaign.
 ///   * a live key absent from the save (a resource added since) simply
 ///     gets zero everywhere. Adding a row is the expected cheap change.
+///   * an EMPTY vector stays empty in either mode. There is nothing to
+///     place, and an empty pantry is how the state says "holds nothing
+///     yet" — inflating it to the table's length would be a different
+///     value, not the same one.
 ///
 /// AFTER DECODING the loader rebuilds every row_by_id (RebuildLookup) and
 /// checks the StateTable invariants it can: unique ids, every id below
@@ -113,6 +120,17 @@
 /// that exists, a herd's males within its adults) are the simulation's
 /// business, not the loader's — a save is trusted on those, as the buffer
 /// it came from was.
+///
+/// TWO CHECKS THAT ARE ABOUT MEMORY, NOT ABOUT THE GAME, and are therefore
+/// the loader's after all:
+///   * every u8 enum is range-checked, because several of them are ARRAY
+///     INDICES downstream — WorkKind into the work-rate table, Epoch into
+///     the per-epoch configs — so a corrupt byte would read out of bounds
+///     in a phase, far from here and with nothing pointing back at the
+///     file;
+///   * next_id_value is capped, because the lookup array is sized to it: a
+///     four-billion counter in a damaged file would ask for sixteen
+///     gigabytes before a single row was read.
 
 #ifndef CORE_SAVE_SAVE_H_
 #define CORE_SAVE_SAVE_H_

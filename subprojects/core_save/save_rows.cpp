@@ -1,0 +1,353 @@
+// The five row codecs (save_rows.h). Fields go out and come back in the
+// DECLARATION ORDER of the state header that defines each row, and the two
+// directions of one row sit next to each other so that a field added to one
+// and forgotten in the other is visible in the diff.
+//
+// The static_asserts below are the tripwire for the case neither direction
+// was touched: a new field changes sizeof(RowT) and the build stops until
+// the writer, the reader and the assert are all updated — and the human
+// bumps VERSION_SAVE (manual/67-save-format.md §7). If a size ever fails on
+// a new target, that is the format telling the truth at compile time, which
+// is still the right moment to hear it.
+
+#include "save_rows.h"
+
+#include <cstdint>
+
+#include "core_common/geometry.h"
+#include "core_common/ids.h"
+#include "core_common/labor_state.h"
+#include "save_stream.h"
+
+namespace core {
+namespace {
+
+// Sizes measured for save format 1 on x86-64, Clang and MSVC agreeing.
+static_assert(sizeof(ResidentRow) == 152,
+              "ResidentRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(FamilyRow) == 80, "FamilyRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(FieldRow) == 40, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(UnitRow) == 48, "UnitRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(WorkAssignment) == 20,
+              "WorkAssignment changed — update the codec and VERSION_SAVE");
+
+/// Highest valid value of each u8 enum a row carries. The reader refuses
+/// anything above (LoadSource::ReadEnumValue) — see its docs for why.
+constexpr std::uint8_t kMaxSex = static_cast<std::uint8_t>(Sex::kMale);
+
+constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kHerdCare);
+
+constexpr std::uint8_t kMaxEducationStage = static_cast<std::uint8_t>(EducationStage::kHigher);
+
+constexpr std::uint8_t kMaxSocialStatus = static_cast<std::uint8_t>(SocialStatus::kParty);
+
+constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kHarvest);
+
+template <typename IdT>
+void WriteEntityId(ByteWriter& out, IdT id) {
+  out.WriteU32(id.value);
+}
+
+template <typename IdT>
+IdT ReadEntityId(ByteReader& in) {
+  return IdT{in.ReadU32()};
+}
+
+void WriteVec2(ByteWriter& out, Vec2 value) {
+  out.WriteFloat(value.x);
+  out.WriteFloat(value.y);
+}
+
+Vec2 ReadVec2(ByteReader& in) {
+  Vec2 value;
+  value.x = in.ReadFloat();
+  value.y = in.ReadFloat();
+  return value;
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// ResidentRow — resident_state.h
+// ---------------------------------------------------------------------------
+
+void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteEntityId(out, row.family);
+  WriteEntityId(out, row.mother);
+  WriteEntityId(out, row.father);
+  WriteEntityId(out, row.spouse);
+  out.WriteU8(static_cast<std::uint8_t>(row.sex));
+  out.WriteI32(row.birth_day);
+
+  out.WriteFloat(row.satiety);
+  out.WriteFloat(row.health);
+  out.WriteFloat(row.rest);
+  out.WriteFloat(row.cold);
+  out.WriteFloat(row.mood);
+
+  out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
+  WriteEntityId(out, row.work.field);
+  WriteEntityId(out, row.work.herd);
+  out.WriteFloat(row.work.worked_norm_days_today);
+  out.WriteFloat(row.work.hours_away_today);
+
+  out.WriteU8(static_cast<std::uint8_t>(row.education_stage));
+  out.WriteFloat(row.education_grade);
+  out.WriteFloat(row.current_grade);
+  out.WriteFloat(row.self_education);
+
+  out.WriteFloat(row.skill_agriculture_schooled);
+  out.WriteFloat(row.skill_agriculture_earned);
+  out.WriteFloat(row.skill_technic_schooled);
+  out.WriteFloat(row.skill_technic_earned);
+  out.WriteFloat(row.skill_admin_schooled);
+  out.WriteFloat(row.skill_admin_earned);
+
+  out.WriteFloat(row.intellect);
+  out.WriteFloat(row.stamina);
+  out.WriteFloat(row.optimism);
+  out.WriteFloat(row.ideology);
+  out.WriteFloat(row.sportiness);
+  out.WriteFloat(row.sport_inclination);
+
+  out.WriteU8(static_cast<std::uint8_t>(row.social_status));
+  out.WriteFloat(row.alcoholism);
+  out.WriteFloat(row.crime_inclination);
+  out.WriteU16(row.offense_count);
+  out.WriteFloat(row.attitude_to_chairman);
+  out.WriteU8(row.has_passport);
+  out.WriteU16(row.traits);
+}
+
+ResidentRow ReadResidentRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  ResidentRow row;
+  row.family = ReadEntityId<FamilyId>(in);
+  row.mother = ReadEntityId<ResidentId>(in);
+  row.father = ReadEntityId<ResidentId>(in);
+  row.spouse = ReadEntityId<ResidentId>(in);
+  row.sex = static_cast<Sex>(source.ReadEnumValue(0, kMaxSex, "resident sex"));
+  row.birth_day = in.ReadI32();
+
+  row.satiety = in.ReadFloat();
+  row.health = in.ReadFloat();
+  row.rest = in.ReadFloat();
+  row.cold = in.ReadFloat();
+  row.mood = in.ReadFloat();
+
+  row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));
+  row.work.field = ReadEntityId<FieldId>(in);
+  row.work.herd = ReadEntityId<HerdId>(in);
+  row.work.worked_norm_days_today = in.ReadFloat();
+  row.work.hours_away_today = in.ReadFloat();
+
+  row.education_stage =
+      static_cast<EducationStage>(source.ReadEnumValue(0, kMaxEducationStage, "education stage"));
+  row.education_grade = in.ReadFloat();
+  row.current_grade = in.ReadFloat();
+  row.self_education = in.ReadFloat();
+
+  row.skill_agriculture_schooled = in.ReadFloat();
+  row.skill_agriculture_earned = in.ReadFloat();
+  row.skill_technic_schooled = in.ReadFloat();
+  row.skill_technic_earned = in.ReadFloat();
+  row.skill_admin_schooled = in.ReadFloat();
+  row.skill_admin_earned = in.ReadFloat();
+
+  row.intellect = in.ReadFloat();
+  row.stamina = in.ReadFloat();
+  row.optimism = in.ReadFloat();
+  row.ideology = in.ReadFloat();
+  row.sportiness = in.ReadFloat();
+  row.sport_inclination = in.ReadFloat();
+
+  row.social_status =
+      static_cast<SocialStatus>(source.ReadEnumValue(0, kMaxSocialStatus, "social status"));
+  row.alcoholism = in.ReadFloat();
+  row.crime_inclination = in.ReadFloat();
+  row.offense_count = in.ReadU16();
+  row.attitude_to_chairman = in.ReadFloat();
+  row.has_passport = in.ReadU8();
+  row.traits = in.ReadU16();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// FamilyRow — family_state.h
+// ---------------------------------------------------------------------------
+
+void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteEntityId(out, row.house);
+
+  out.WriteFloat(row.satisfaction);
+  out.WriteFloat(row.component_satiety);
+  out.WriteFloat(row.component_common_cause);
+  out.WriteFloat(row.component_needs);
+  out.WriteFloat(row.component_rest);
+
+  sink.WriteAmounts(DefKind::kResource, row.pantry);
+  out.WriteFloat(row.satiety_year_mean);
+  out.WriteU16(row.food_variety_mask);
+
+  out.WriteFloat(row.household_hours);
+  out.WriteFloat(row.plot_ratio_sum);
+  out.WriteU16(row.plot_ratio_days);
+  out.WriteFloat(row.private_plot_share);
+
+  out.WriteI32(row.trudodni_account);
+  out.WriteI32(row.trudodni_redeemed);
+}
+
+FamilyRow ReadFamilyRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  FamilyRow row;
+  row.house = ReadEntityId<UnitId>(in);
+
+  row.satisfaction = in.ReadFloat();
+  row.component_satiety = in.ReadFloat();
+  row.component_common_cause = in.ReadFloat();
+  row.component_needs = in.ReadFloat();
+  row.component_rest = in.ReadFloat();
+
+  row.pantry = source.ReadAmounts(DefKind::kResource);
+  row.satiety_year_mean = in.ReadFloat();
+  row.food_variety_mask = in.ReadU16();
+
+  row.household_hours = in.ReadFloat();
+  row.plot_ratio_sum = in.ReadFloat();
+  row.plot_ratio_days = in.ReadU16();
+  row.private_plot_share = in.ReadFloat();
+
+  row.trudodni_account = in.ReadI32();
+  row.trudodni_redeemed = in.ReadI32();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// FieldRow — land_state.h
+// ---------------------------------------------------------------------------
+
+void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteVec2(out, row.center);
+  out.WriteFloat(row.area_ga);
+  out.WriteFloat(row.fertility);
+  out.WriteU8(static_cast<std::uint8_t>(row.phase));
+
+  sink.WriteDefId(DefKind::kCrop, row.crop.value);
+  sink.WriteDefId(DefKind::kCrop, row.rotation_year0.value);
+  sink.WriteDefId(DefKind::kCrop, row.rotation_year1.value);
+  sink.WriteDefId(DefKind::kCrop, row.rotation_year2.value);
+  sink.WriteDefId(DefKind::kCrop, row.last_crop.value);
+
+  out.WriteU8(row.repeat_years);
+  out.WriteU8(row.manure_applied);
+  out.WriteFloat(row.weather_stress);
+  out.WriteFloat(row.work_days_remaining);
+}
+
+FieldRow ReadFieldRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  FieldRow row;
+  row.center = ReadVec2(in);
+  row.area_ga = in.ReadFloat();
+  row.fertility = in.ReadFloat();
+  row.phase = static_cast<FieldPhase>(source.ReadEnumValue(0, kMaxFieldPhase, "field phase"));
+
+  row.crop = CropId{source.ReadDefId(DefKind::kCrop)};
+  row.rotation_year0 = CropId{source.ReadDefId(DefKind::kCrop)};
+  row.rotation_year1 = CropId{source.ReadDefId(DefKind::kCrop)};
+  row.rotation_year2 = CropId{source.ReadDefId(DefKind::kCrop)};
+  row.last_crop = CropId{source.ReadDefId(DefKind::kCrop)};
+
+  row.repeat_years = in.ReadU8();
+  row.manure_applied = in.ReadU8();
+  row.weather_stress = in.ReadFloat();
+  row.work_days_remaining = in.ReadFloat();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// UnitRow — unit_state.h
+// ---------------------------------------------------------------------------
+
+void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
+  ByteWriter& out = sink.Out();
+  sink.WriteDefId(DefKind::kUnitType, row.type.value);
+  WriteVec2(out, row.position);
+  out.WriteU8(row.level);
+  WriteEntityId(out, row.household);
+  sink.WriteAmounts(DefKind::kResource, row.stock);
+}
+
+UnitRow ReadUnitRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  UnitRow row;
+  row.type = UnitTypeId{source.ReadDefId(DefKind::kUnitType)};
+  row.position = ReadVec2(in);
+  row.level = in.ReadU8();
+  row.household = ReadEntityId<FamilyId>(in);
+  row.stock = source.ReadAmounts(DefKind::kResource);
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// HerdRow — herd_state.h
+// ---------------------------------------------------------------------------
+
+void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
+  ByteWriter& out = sink.Out();
+  sink.WriteDefId(DefKind::kLivestock, row.kind.value);
+  WriteEntityId(out, row.unit);
+  WriteEntityId(out, row.household);
+  out.WriteU8(row.household_owned);
+
+  out.WriteU16(row.newborn_count);
+  out.WriteU16(row.juvenile_count);
+  out.WriteU16(row.adult_count);
+  out.WriteU16(row.adult_male_count);
+
+  out.WriteFloat(row.newborn_progress);
+  out.WriteFloat(row.juvenile_progress);
+  out.WriteFloat(row.birth_progress);
+  out.WriteFloat(row.cull_progress);
+  out.WriteFloat(row.hunger_progress);
+  out.WriteFloat(row.adult_age_game_years_total);
+
+  out.WriteU16(row.billeted_count);
+  out.WriteFloat(row.unfed_days);
+  out.WriteU8(row.disease_stage);
+  out.WriteFloat(row.care_days_remaining);
+}
+
+HerdRow ReadHerdRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  HerdRow row;
+  row.kind = LivestockKindId{source.ReadDefId(DefKind::kLivestock)};
+  row.unit = ReadEntityId<UnitId>(in);
+  row.household = ReadEntityId<FamilyId>(in);
+  row.household_owned = in.ReadU8();
+
+  row.newborn_count = in.ReadU16();
+  row.juvenile_count = in.ReadU16();
+  row.adult_count = in.ReadU16();
+  row.adult_male_count = in.ReadU16();
+
+  row.newborn_progress = in.ReadFloat();
+  row.juvenile_progress = in.ReadFloat();
+  row.birth_progress = in.ReadFloat();
+  row.cull_progress = in.ReadFloat();
+  row.hunger_progress = in.ReadFloat();
+  row.adult_age_game_years_total = in.ReadFloat();
+
+  row.billeted_count = in.ReadU16();
+  row.unfed_days = in.ReadFloat();
+  row.disease_stage = in.ReadU8();
+  row.care_days_remaining = in.ReadFloat();
+  return row;
+}
+
+}  // namespace core

@@ -6,6 +6,7 @@
 // one exported symbol keeps MSVC from warning about an empty archive
 // member (LNK4221), so it must have external linkage.
 
+#include "core_common/labor_state.h"
 #include "core_report/ledger_csv.h"  // IWYU pragma: keep
 
 namespace core::internal {
