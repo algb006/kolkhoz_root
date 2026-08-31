@@ -87,8 +87,8 @@ machine_park,Стоянка техники,logistics,2,1,,,0
 bus_stop,Автобусная остановка,infrastructure,3,1,,,0
 farm_stop,Остановка колхозного транспорта,infrastructure,1,1,,,0
 well,Колодец,infrastructure,1,1,,,0
-substation,Трансформаторная подстанция,infrastructure,2,1,,,0
-power_line,Линии электропередачи,infrastructure,2,1,,,0
+substation,Трансформаторная подстанция,infrastructure,1,1,,,0
+power_line,Линии электропередачи,infrastructure,1,1,,,0
 road,Дорога,infrastructure,1,1,,,0
 bridge,Мост,infrastructure,1,1,,,0
 phone_line,Телефонная линия и коммутатор,infrastructure,2,1,,,0
@@ -110,3 +110,4 @@ propaganda,Элементы наглядной агитации,service,1,1,,,0
 honour_board,Доска почёта,service,1,1,,,0
 church_store,Церковь — склад и кабинет,service,1,1,60,,0
 manor_ruins,Развалины усадьбы,service,1,1,,,0
+water_intake,Водозаборный узел,infrastructure,2,1,,,0
