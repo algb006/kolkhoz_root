@@ -83,7 +83,11 @@ enum class OrderKind : std::uint8_t {
   /// Put `resident` on `work` at `field` / `herd` from the next working day
   /// (time design §11: one job per day, a change takes effect after the
   /// current day). The chairman's standing order outranks the accountant's
-  /// morning placement for that resident. Consumer: core_labor.
+  /// morning placement for that resident — a boss decision of 2026-08-31
+  /// grounded in delegation design §7 (management by exception), with its
+  /// bounds fixed there: the order holds until kDone or a kReleaseWork,
+  /// not for one day; and it revokes nothing — one overridden placement
+  /// leaves the accountant's delegation as it was. Consumer: core_labor.
   kAssignWork,
 
   /// Release `resident` from a standing kAssignWork order: back to the

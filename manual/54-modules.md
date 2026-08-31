@@ -45,7 +45,7 @@
 | **core_world** | Генезис стартового поселения, сборка фаз, составные слоты 3 и 7 | По мере этапов |
 | **core_save** | Формат сохранений: `WorldState` в байты и обратно, перепривязка `DefId` по ключам ([`67-save-format.md`](67-save-format.md)) | Этап 7: Ф1 → O1 |
 | **core_report** | Ведомость прогона: `WorldState::ledger` и состояние на повороте года в CSV ([`68-run-ledger.md`](68-run-ledger.md)) | Этап 7: Ф2 → O2 |
-| **core_boundary** | Граница ядра и графики: сессия над собранной симуляцией — время, чтение, распоряжения, события, журнал ([`70-boundary.md`](70-boundary.md)) | Вторая фаза: А1 (контракт, **предложение**) → реализация |
+| **core_boundary** | Граница ядра и графики: сессия над собранной симуляцией — время, чтение, распоряжения, события, журнал ([`70-boundary.md`](70-boundary.md)) | Вторая фаза: А1 (контракт принят 31.08.2026) → реализация |
 
 `core_save`, `core_report` и `core_boundary` — **листья инфраструктурного яруса**: зависят от
 `core_common`, `core_tables` (и `core_sim` у границы), подсистем не называют, и от них не зависит
@@ -90,7 +90,7 @@
 | `core_logistics` | `ILogisticsSystem` (заглушка «мгновенно») | `include/core_logistics/logistics_system.h` |
 | `core_labor` | `ILaborSystem`: `RunAssignmentDecisions` | `include/core_labor/labor_system.h` |
 | `core_world` | Фабрики `CreateStartWorld`, `CreateStandardSimulation` | `include/core_world/world.h` |
-| `core_boundary` | `ISession`, фабрика `CreateSession` — **предложение А1** | `include/core_boundary/session.h` |
+| `core_boundary` | `ISession`, фабрика `CreateSession` (А1, принят) | `include/core_boundary/session.h` |
 
 Под-шаги слота решений зовутся каждый тик; суточную работу реализация сама привязывает к
 границе суток. Порядок в слоте 3 закреплён: **назначения → демография → номенклатура** —
