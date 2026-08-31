@@ -64,3 +64,14 @@ if [ "$level" = major ]; then
     echo "ВНИМАНИЕ: major означает сломанную границу с UE — слой графики надо пересобрать."
 fi
 echo "Заголовок core_common/version.h перегенерируется при следующей настройке."
+
+# The published library on the Windows host now carries a number this tree no
+# longer has, and the consumer's version pin is what discovers it — an hour
+# later, in somebody else's build. That happened once (1.0.0, 2026-08-31): the
+# delivery cycle checks the MSVC build in DEBUG, while the graphics layer takes
+# the RELEASE publication, and the two are different commands. The divergence
+# is created here, in one second, so it is named here.
+if [ -f "$project_dir/artifacts/Release/core.lib" ]; then
+    echo "НАПОМИНАНИЕ: на хосте опубликована $current — выложи 'make win-release',"
+    echo "             иначе слой графики упрётся в несовпадение версий."
+fi
