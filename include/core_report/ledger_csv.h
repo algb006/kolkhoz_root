@@ -34,8 +34,10 @@
 ///   year                              ledger.closed.year
 ///   -- state at the turn --
 ///   population, families, epoch, life_expectancy_years,
-///   fertility_mean                    mean over fields with a crop
-///                                     rotation; 0 if none
+///   fertility_mean                    AREA-WEIGHTED over every field, which
+///                                     is the mean the balance calculations
+///                                     use ("плодородие по участкам —
+///                                     считается среднее"); 0 with no land
 ///   -- people flows --
 ///   births, deaths, arrivals, departures, weddings
 ///   -- satiety --
@@ -74,6 +76,17 @@
 /// table (no `livestock`, no `resources`) leaves its group out of the
 /// header and the row alike, in both places — the two functions always
 /// agree on the column count.
+///
+/// They agree BY CONSTRUCTION, not by discipline: both are one pass over
+/// one list of column sites, run in name mode or in value mode. A column
+/// cannot be added to one and forgotten in the other, because there is only
+/// one of it.
+///
+/// The sheet is wide — a dozen blocks over the whole resource registry, and
+/// the registry carries the later epochs' goods too, so many columns are
+/// structurally zero in phase 1. That is deliberate: a column set that
+/// depended on which resources happened to move would give two runs two
+/// different headers, and the sheet is read by a spreadsheet, not by eye.
 
 #ifndef CORE_REPORT_LEDGER_CSV_H_
 #define CORE_REPORT_LEDGER_CSV_H_

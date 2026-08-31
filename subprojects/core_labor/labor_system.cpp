@@ -36,6 +36,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
+#include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
@@ -364,6 +365,7 @@ class LaborSystem final : public ILaborSystem {
       if (resident.rest <= config_.rest_walkoff_threshold) {
         // The critical fatigue limit (unit rules §8): his own decision, and
         // it ends his working day — so his day is settled here and now.
+        current.ledger.current.walk_offs += 1;
         PayDay(current, resident);
       }
     }
@@ -431,13 +433,22 @@ class LaborSystem final : public ILaborSystem {
   /// he did deliver is paid.
   void PayDay(WorldState& current, ResidentRow& resident) const {
     const auto kind_index = static_cast<std::uint32_t>(resident.work.kind);
+    // The ledger books the DELIVERED work whatever becomes of the pay:
+    // man-days per kind are what the reconciliation compares against the
+    // agronomy norms, and a worker whose household has since dissolved
+    // still ploughed.
+    if (kind_index < current.ledger.current.work_days_by_kind.size()) {
+      current.ledger.current.work_days_by_kind[kind_index] += resident.work.worked_norm_days_today;
+    }
     if (kind_index < config_.rates.size() && resident.work.worked_norm_days_today > 0.0F) {
       const float trudodni =
           config_.rates[kind_index].trudodni_rate * resident.work.worked_norm_days_today;
       const std::uint32_t family_row = FindRow(current.families, resident.family);
       if (family_row != kNoRow) {
-        current.families.rows[family_row].trudodni_account +=
+        const auto hundredths =
             static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
+        current.families.rows[family_row].trudodni_account += hundredths;
+        current.ledger.current.trudodni_accrued += hundredths;
       }
     }
     resident.work.kind = WorkKind::kNone;

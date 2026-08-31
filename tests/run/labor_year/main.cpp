@@ -27,20 +27,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
 namespace {
-
-int Expect(bool condition, const char* label) {
-  if (condition) {
-    return 0;
-  }
-  std::cout << "FAIL: " << label << '\n';
-  return 1;
-}
 
 int ExpectBand(double value, double low, double high, const char* label) {
   if (value >= low && value <= high) {
@@ -108,7 +101,7 @@ int CheckTheRoad(const core::WorldState& start) {
       ++houses;
     }
   }
-  failures += Expect(houses == 21, "the start village is 21 households");
+  failures += run::Expect(houses == 21, "the start village is 21 households");
   if (houses > 0) {
     village.x /= static_cast<float>(houses);
     village.y /= static_cast<float>(houses);
@@ -144,22 +137,11 @@ int CheckTheRoad(const core::WorldState& start) {
 
 int main() {
   int failures = 0;
-  std::string error;
-  const auto tables = core::LoadTableSet("tables", &error);
-  if (tables == nullptr) {
-    std::cout << "FAIL: tables/ did not load (" << error << ") — run from the repo root\n";
+  const run::Simulation started = run::Start(1930);
+  if (!started) {
     return 1;
   }
-
-  core::StandardSimulationConfig config;
-  config.tables = tables.get();
-  config.world_seed = 1930;
-  config.worker_count = 1;
-  const auto simulation = core::CreateStandardSimulation(config);
-  if (simulation == nullptr) {
-    std::cout << "FAIL: the simulation did not assemble\n";
-    return 1;
-  }
+  core::ISimulation* simulation = started.simulation.get();
 
   failures += CheckTheRoad(simulation->CompletedState());
 
@@ -245,34 +227,31 @@ int main() {
                          total * 0.95,
                          total * 1.02,
                          "the family accounts hold the year's delivered man-days");
-  failures += Expect(after_burn == 0.0, "the economic year's turn burns what was not spent");
+  failures += run::Expect(after_burn == 0.0, "the economic year's turn burns what was not spent");
 
   // --- the same year with three workers ------------------------------------
-  core::StandardSimulationConfig parallel_config = config;
-  parallel_config.worker_count = 3;
-  const auto parallel = core::CreateStandardSimulation(parallel_config);
-  if (parallel == nullptr) {
-    std::cout << "FAIL: the parallel simulation did not assemble\n";
+  const run::Simulation parallel = run::Start(1930, 3);
+  if (!parallel) {
     return failures + 1;
   }
   std::unordered_map<std::uint32_t, LastSeen> parallel_seen;
   LaborTally parallel_tally;
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     parallel->AdvanceStep();
-    SampleDay(parallel->CompletedState(), parallel_seen, parallel_tally);
+    SampleDay(parallel.State(), parallel_seen, parallel_tally);
   }
   bool same = true;
   for (std::uint32_t kind = 0; kind < tally.by_kind.size(); ++kind) {
     same = same && tally.by_kind[kind] == parallel_tally.by_kind[kind];
   }
-  failures += Expect(same, "1 worker and 3 workers deliver the same man-days, bit for bit");
+  failures += run::Expect(same, "1 worker and 3 workers deliver the same man-days, bit for bit");
   const core::WorldState& many = parallel->CompletedState();
   bool people_same = many.residents.rows.size() == state.residents.rows.size();
   for (std::uint32_t row = 0; row < many.residents.rows.size() && people_same; ++row) {
     people_same = many.residents.rows[row].rest == state.residents.rows[row].rest &&
                   many.residents.rows[row].health == state.residents.rows[row].health;
   }
-  failures += Expect(people_same, "and leave every worker in the same state");
+  failures += run::Expect(people_same, "and leave every worker in the same state");
 
   if (failures == 0) {
     std::cout << "labor_year: all checks passed\n";

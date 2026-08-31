@@ -36,6 +36,11 @@ static_assert(std::has_virtual_destructor_v<core::IResidentsSystem>,
 
 namespace {
 
+/// The ledger's "hungry" line, as the food config draws it: the health-loss
+/// threshold. Nothing in this test asserts on it — it only has to be a
+/// number AccumulateVitals can count against.
+constexpr float kHungryBelow = 40.0F;
+
 int Expect(bool condition, const char* label) {
   if (condition) {
     return 0;
@@ -242,7 +247,7 @@ int CheckVitals() {
   for (std::uint32_t day = 0; day <= core::kDaysPerYear; ++day) {
     world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
-    core::AccumulateVitals(life, world);
+    core::AccumulateVitals(life, kHungryBelow, world);
   }
   failures += Expect(world.vitals.satiety_year_means.back() == 70.0F,
                      "the finished year's mean satiety enters the window last");
@@ -260,7 +265,7 @@ int CheckVitals() {
     for (std::uint32_t day = 0; day <= 3U * core::kDaysPerYear; ++day) {
       hungry.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
       core::RefreshCalendarCaches(hungry.calendar);
-      core::AccumulateVitals(life, hungry);
+      core::AccumulateVitals(life, kHungryBelow, hungry);
     }
     failures += Expect(hungry.vitals.life_expectancy_years ==
                            life.vitals.base_years + life.vitals.nutrition_years_min,

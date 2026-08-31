@@ -32,10 +32,22 @@ namespace core {
 /// three-year window that now includes it, and only then does today — the
 /// first day of the new year — join the running sum.
 ///
+/// Since stage 7 the same daily pass also feeds the run ledger's satiety
+/// extremes (core_common/ledger_state.h): the leanest day the year saw and
+/// the most people it ever had hungry at once. They ride here because they
+/// need exactly the loop this function already runs — one sweep over every
+/// resident — and because the extremes of a seasonal metric are precisely
+/// what a yearly mean cannot be asked for afterwards.
+///
+/// @param hungry_satiety_threshold Satiety below which a resident counts as
+///        hungry for the ledger — the food config's health-loss threshold,
+///        so "hungry" means the same thing here as it does to health.
 /// @pre Called once per day boundary, from the sequential decisions slot.
 /// @note A settlement with nobody in it contributes no day at all, rather
 ///       than a zero: an empty village is not a starving one.
-void AccumulateVitals(const LifeConfig& config, WorldState& current);
+void AccumulateVitals(const LifeConfig& config,
+                      float hungry_satiety_threshold,
+                      WorldState& current);
 
 }  // namespace core
 

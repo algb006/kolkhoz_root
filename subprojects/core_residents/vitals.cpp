@@ -6,17 +6,24 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/ledger_state.h"
 
 namespace core {
 namespace {
 
 /// @brief Mean satiety over every resident; the count is returned separately
-/// so an empty settlement can be told from a satiety of zero.
-float SettlementMeanSatiety(const WorldState& world, std::uint32_t& counted) {
+/// so an empty settlement can be told from a satiety of zero, and the hungry
+/// are counted in the same sweep for the ledger.
+float SettlementMeanSatiety(const WorldState& world,
+                            float hungry_threshold,
+                            std::uint32_t& counted,
+                            std::uint32_t& hungry) {
   float total = 0.0F;
   counted = 0;
+  hungry = 0;
   for (const ResidentRow& resident : world.residents.rows) {
     total += resident.satiety;
+    hungry += resident.satiety < hungry_threshold ? 1U : 0U;
     ++counted;
   }
   return counted == 0 ? 0.0F : total / static_cast<float>(counted);
@@ -56,7 +63,9 @@ void RecomputeLifeExpectancy(const VitalsConfig& config, VitalsState& vitals) {
 
 }  // namespace
 
-void AccumulateVitals(const LifeConfig& config, WorldState& current) {
+void AccumulateVitals(const LifeConfig& config,
+                      float hungry_satiety_threshold,
+                      WorldState& current) {
   VitalsState& vitals = current.vitals;
   // The year turns before today is counted: today belongs to the new year.
   if (current.calendar.day > 0 && current.calendar.day % kDaysPerYear == 0) {
@@ -69,12 +78,23 @@ void AccumulateVitals(const LifeConfig& config, WorldState& current) {
     RecomputeLifeExpectancy(config.vitals, vitals);
   }
   std::uint32_t counted = 0;
-  const float mean = SettlementMeanSatiety(current, counted);
+  std::uint32_t hungry = 0;
+  const float mean = SettlementMeanSatiety(current, hungry_satiety_threshold, counted, hungry);
   if (counted == 0) {
     return;
   }
   vitals.satiety_running_sum += mean;
   vitals.satiety_running_days += 1;
+
+  // The ledger's own fold. Its running sum duplicates the vitals one on
+  // purpose: the vitals window is a three-year memory that survives the
+  // year's turn, the ledger's is a single year that is zeroed with the book,
+  // and a counter shared between two lifetimes belongs to neither.
+  YearLedger& book = current.ledger.current;
+  book.satiety_day_mean_sum += mean;
+  book.satiety_days += 1;
+  book.satiety_day_mean_min = mean < book.satiety_day_mean_min ? mean : book.satiety_day_mean_min;
+  book.hungry_at_once_max = hungry > book.hungry_at_once_max ? hungry : book.hungry_at_once_max;
 }
 
 }  // namespace core

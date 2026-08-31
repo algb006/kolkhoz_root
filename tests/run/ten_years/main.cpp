@@ -9,20 +9,13 @@
 #include <iostream>
 #include <string>
 
+#include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
 namespace {
-
-int Expect(bool condition, const char* label) {
-  if (condition) {
-    return 0;
-  }
-  std::cout << "FAIL: " << label << '\n';
-  return 1;
-}
 
 void WriteFile(const std::filesystem::path& path, std::string_view content) {
   std::ofstream file(path, std::ios::binary);
@@ -45,22 +38,11 @@ int main() {
   WriteFile(root / "weather.csv",
             "key,temp_mean_c,temp_spread_c,precipitation_chance_percent\n"
             "winter,-10,5,35\nspring,5,7,35\nsummer,19,5,25\nautumn,6,7,45\n");
-  std::string error;
-  const auto tables = core::LoadTableSet(root.string(), &error);
-  if (tables == nullptr) {
-    std::cout << "FAIL: tables did not load: " << error << '\n';
+  const run::Simulation world = run::Start(1929, 1, root.string());
+  if (!world) {
     return 1;
   }
-
-  core::StandardSimulationConfig config;
-  config.tables = tables.get();
-  config.world_seed = 1929;
-  config.worker_count = 1;
-  const auto simulation = core::CreateStandardSimulation(config);
-  if (simulation == nullptr) {
-    std::cout << "FAIL: the simulation did not assemble\n";
-    return 1;
-  }
+  core::ISimulation* simulation = world.simulation.get();
 
   // Walk ten years, counting per-day facts at each day boundary (hour 0).
   std::array<std::uint32_t, core::kSeasonsPerYear> season_days = {};
@@ -94,32 +76,32 @@ int main() {
   }
 
   const core::WorldState& final_state = simulation->CompletedState();
-  failures += Expect(final_state.calendar.tick == kTicks, "ten years is 11 520 ticks");
-  failures += Expect(final_state.calendar.day == kDays, "ten years is 480 days");
-  failures +=
-      Expect(final_state.calendar.date.year == kYears + 1, "the run ends at the start of year 11");
-  failures += Expect(year_rollovers == kYears, "ten year boundaries were crossed");
+  failures += run::Expect(final_state.calendar.tick == kTicks, "ten years is 11 520 ticks");
+  failures += run::Expect(final_state.calendar.day == kDays, "ten years is 480 days");
+  failures += run::Expect(final_state.calendar.date.year == kYears + 1,
+                          "the run ends at the start of year 11");
+  failures += run::Expect(year_rollovers == kYears, "ten year boundaries were crossed");
 
   const std::uint32_t total_days =
       season_days[0] + season_days[1] + season_days[2] + season_days[3];
-  failures += Expect(total_days == kDays, "every day was visited exactly once");
+  failures += run::Expect(total_days == kDays, "every day was visited exactly once");
   bool seasons_even = true;
   for (const std::uint32_t days : season_days) {
     seasons_even = seasons_even && days == kDays / core::kSeasonsPerYear;
   }
-  failures += Expect(seasons_even, "each season holds 12 days per year");
+  failures += run::Expect(seasons_even, "each season holds 12 days per year");
 
   // The week runs independently of months: 480 days from a Monday hold 68
   // Sundays, so the working count is ~41 days a year before holidays
   // (holidays arrive with the event system).
-  failures += Expect(sundays == 68, "480 days from a Monday hold 68 Sundays");
+  failures += run::Expect(sundays == 68, "480 days from a Monday hold 68 Sundays");
   const std::uint32_t working_days = kDays - sundays;
-  failures += Expect(working_days / kYears == 41, "about 41 working days per year");
+  failures += run::Expect(working_days / kYears == 41, "about 41 working days per year");
 
-  failures += Expect(june_daylight > 17.2F && june_daylight < 17.8F,
-                     "June daylight matches the design anchor");
-  failures += Expect(december_daylight > 6.8F && december_daylight < 7.2F,
-                     "December daylight matches the design anchor");
+  failures += run::Expect(june_daylight > 17.2F && june_daylight < 17.8F,
+                          "June daylight matches the design anchor");
+  failures += run::Expect(december_daylight > 6.8F && december_daylight < 7.2F,
+                          "December daylight matches the design anchor");
 
   std::cout << "ten_years: " << kTicks << " ticks, " << total_days << " days, " << sundays
             << " Sundays, " << working_days / kYears << " working days/year, June " << june_daylight

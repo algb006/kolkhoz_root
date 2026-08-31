@@ -248,7 +248,7 @@ class ResidentsSystem final : public IResidentsSystem {
     RunMarriages(current, day);
     RunMigration(current, day);
     RunFamilyExchange(food_, config_.life_speedup, current);
-    AccumulateVitals(config_, current);
+    AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
   }
 
  private:
@@ -283,6 +283,7 @@ class ResidentsSystem final : public IResidentsSystem {
     for (const ResidentId id : dead) {
       RemoveResident(current, id);
     }
+    current.ledger.current.deaths += static_cast<std::uint32_t>(dead.size());
   }
 
   /// Epoch-III outflow (demography design; reference run): the young and
@@ -308,6 +309,9 @@ class ResidentsSystem final : public IResidentsSystem {
     for (const ResidentId id : leaving) {
       RemoveResident(current, id);
     }
+    // Booked apart from deaths, and that is the whole reason the ledger
+    // exists: from the outside both are one row fewer in the table.
+    current.ledger.current.departures += static_cast<std::uint32_t>(leaving.size());
   }
 
   /// The band multiplier of decision 106: a household's satisfaction scales
@@ -399,6 +403,10 @@ class ResidentsSystem final : public IResidentsSystem {
       child.satiety = 70.0F;
       child.health = DrawInRange(current.rng, 70.0F, 95.0F);
       AppendRow(current.residents, child);
+      // Counted here and not from `mothers`: the child-mortality draw above
+      // skips some of them, and a birth nobody survived is not a birth the
+      // village saw.
+      current.ledger.current.births += 1;
     }
   }
 
@@ -498,6 +506,7 @@ class ResidentsSystem final : public IResidentsSystem {
         current.residents.rows[bride_row].family = home;
         current.residents.rows[groom_row].spouse = bride_id;
         current.residents.rows[groom_row].family = home;
+        current.ledger.current.weddings += 1;
         break;
       }
     }
@@ -523,6 +532,7 @@ class ResidentsSystem final : public IResidentsSystem {
       migrant.optimism = DrawInRange(current.rng, 20.0F, 80.0F);
       migrant.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
       AppendRow(current.residents, migrant);
+      current.ledger.current.arrivals += 1;
     }
   }
 

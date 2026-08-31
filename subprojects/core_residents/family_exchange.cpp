@@ -14,6 +14,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 
 namespace core {
@@ -231,7 +232,11 @@ void RunDistribution(const FoodConfig& config,
       }
       const ResourceId resource{static_cast<std::uint16_t>(index)};
       const Grams issue = KilogramsToGrams(norm * trudodni * coverage[index]);
-      AddToPantry(family, resource, TakeFromUnits(current, resource, issue));
+      // What the store could actually give, not what the norm asked for:
+      // the ledger records the hand-out, not the intention.
+      const Grams given = TakeFromUnits(current, resource, issue);
+      AddToPantry(family, resource, given);
+      AddLedgerAmount(current.ledger.current.issued, resource, given);
     }
     family.trudodni_redeemed +=
         static_cast<TrudodniHundredths>(static_cast<float>(outstanding) * redeemed_share);
@@ -274,7 +279,9 @@ void RunRation(const FoodConfig& config,
       const Grams wanted = KilogramsToGrams(norm * static_cast<float>(eaters) * days);
       const Grams free_stock = FreeStock(current, reserve, resource);
       const Grams issue = wanted < free_stock ? wanted : free_stock;
-      AddToPantry(current.families.rows[row], resource, TakeFromUnits(current, resource, issue));
+      const Grams given = TakeFromUnits(current, resource, issue);
+      AddToPantry(current.families.rows[row], resource, given);
+      AddLedgerAmount(current.ledger.current.ration, resource, given);
     }
   }
 }
@@ -297,6 +304,7 @@ void RunNets(const FoodConfig& config, WorldState& current) {
   }
   for (FamilyRow& family : current.families.rows) {
     AddToPantry(family, config.fish_resource, daily);
+    AddLedgerAmount(current.ledger.current.nets, config.fish_resource, daily);
   }
 }
 
@@ -306,6 +314,13 @@ void RunNets(const FoodConfig& config, WorldState& current) {
 /// and it is why the distribution above runs BEFORE the burn on this day.
 void BurnTrudodni(WorldState& current) {
   for (FamilyRow& family : current.families.rows) {
+    // What burns is what was earned and never covered. Recorded into the
+    // book this turn is CLOSING (ledger_state.h): the burn is the ending
+    // year's last piece of business, not the new year's first.
+    const TrudodniHundredths unspent = family.trudodni_account - family.trudodni_redeemed;
+    if (unspent > 0) {
+      current.ledger.current.trudodni_burned += unspent;
+    }
     family.trudodni_account = 0;
     family.trudodni_redeemed = 0;
   }

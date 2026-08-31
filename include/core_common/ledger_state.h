@@ -43,6 +43,7 @@
 #include <array>
 #include <cstdint>
 
+#include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/quantities.h"
 
@@ -169,6 +170,23 @@ struct LedgerState {
 
   YearLedger closed;
 };
+
+/// @brief Adds grams under `resource` to a ledger column, growing the dense
+/// vector as it goes. The one way to touch a column: a counter written with
+/// a bare index would be a counter that stops matching its resource the
+/// first time the table is edited.
+/// @param column   Dense by ResourceId; may be shorter than the table.
+/// @param resource An invalid id or a non-positive amount is a no-op, so a
+///                 caller need not guard a resource its tables lack.
+inline void AddLedgerAmount(ResourceAmounts& column, ResourceId resource, Grams amount) {
+  if (resource.value == kInvalidDefIdValue || amount <= 0) {
+    return;
+  }
+  if (column.size() <= resource.value) {
+    column.resize(static_cast<std::size_t>(resource.value) + 1U, 0);
+  }
+  column[resource.value] += amount;
+}
 
 }  // namespace core
 

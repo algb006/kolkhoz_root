@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
@@ -189,6 +190,7 @@ class ProductionSystem final : public IProductionSystem {
       const ResourceId resource{static_cast<std::uint16_t>(index)};
       const Grams taken = TakeFromStorage(current, config_, resource, current.plan.due[index]);
       current.plan.delivered[index] = taken;
+      AddLedgerAmount(current.ledger.current.delivered, resource, taken);
     }
     current.plan.due.assign(current.plan.due.size(), 0);
   }
@@ -245,6 +247,7 @@ class ProductionSystem final : public IProductionSystem {
         field.work_days_remaining = 0.0F;
         field.weather_stress = 0.0F;
         field.manure_applied = 0;
+        current.ledger.current.area_lost_ha += field.area_ga;
         LogWarning("field lost to snow before harvest");
         continue;
       }
@@ -286,6 +289,8 @@ class ProductionSystem final : public IProductionSystem {
       if (StockOf(current.units.rows[heap].stock, config_.manure_resource) >= dose) {
         AddToStock(current.units.rows[heap].stock, config_.manure_resource, -dose);
         field.manure_applied = 1;
+        current.ledger.current.manure_plowed_in += dose;
+        current.ledger.current.area_manured_ha += field.area_ga;
       }
     }
     OpenPhase(field, FieldPhase::kPlowing);
@@ -303,11 +308,13 @@ class ProductionSystem final : public IProductionSystem {
         const auto need =
             static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
         const Grams got = TakeFromStorage(current, config_, crop.resource, need);
+        AddLedgerAmount(current.ledger.current.seed, crop.resource, got);
         if (got < need) {
           LogWarning("sowing short of seed; sown anyway (STUB until alarms)");
         }
       }
     }
+    current.ledger.current.area_sown_ha += field.area_ga;
     field.crop = crop_id;
     field.phase = FieldPhase::kGrowing;
     field.work_days_remaining = 0.0F;
@@ -348,16 +355,21 @@ class ProductionSystem final : public IProductionSystem {
     if (destination != kNoRow) {
       AddToStock(current.units.rows[destination].stock, crop.resource, yield_grams);
     }
+    // Booked whether or not a store took it in: what the field gave is what
+    // the reconciliation compares against the yield tables, and a settlement
+    // with nowhere to put its grain is a different finding entirely.
+    AddLedgerAmount(current.ledger.current.harvest, crop.resource, yield_grams);
+    current.ledger.current.area_harvested_ha += field.area_ga;
     // Straw is what the field leaves behind, and it is a feed of its own —
     // own and free, a reserve ration with a lowered effect but plainly there
     // in a winter manger (design db crop.straw_ratio).
     if (crop.straw_ratio > 0.0F) {
       const std::uint32_t straw_store = FindStorageRow(current, config_);
+      const auto straw = static_cast<Grams>(static_cast<float>(yield_grams) * crop.straw_ratio);
       if (straw_store != kNoRow) {
-        AddToStock(current.units.rows[straw_store].stock,
-                   config_.straw_resource,
-                   static_cast<Grams>(static_cast<float>(yield_grams) * crop.straw_ratio));
+        AddToStock(current.units.rows[straw_store].stock, config_.straw_resource, straw);
       }
+      AddLedgerAmount(current.ledger.current.harvest, config_.straw_resource, straw);
     }
     // The district's plan accrues as the grain is reaped: it is "just a
     // number" in phase 1 (plan §11), a share of the year's own harvest,

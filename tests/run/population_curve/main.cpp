@@ -9,61 +9,37 @@
 #include <iostream>
 #include <string>
 
+#include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
-namespace {
-
-int Expect(bool condition, const char* label) {
-  if (condition) {
-    return 0;
-  }
-  std::cout << "FAIL: " << label << '\n';
-  return 1;
-}
-
-}  // namespace
+namespace {}  // namespace
 
 int main() {
   int failures = 0;
 
   // The shipped tables are the reference configuration for this run.
-  std::string error;
-  const auto tables = core::LoadTableSet("tables", &error);
-  if (tables == nullptr) {
-    // The run is started from the repository root by ctest; a stray cwd is
-    // a usage problem, not a simulation failure.
-    std::cout << "FAIL: tables/ did not load (" << error << ") — run from the repo root\n";
+  const run::Simulation world = run::Start(1931);
+  if (!world) {
     return 1;
   }
-
-  core::StandardSimulationConfig config;
-  config.tables = tables.get();
-  config.world_seed = 1931;
-  config.worker_count = 1;
-  const auto simulation = core::CreateStandardSimulation(config);
-  if (simulation == nullptr) {
-    std::cout << "FAIL: the simulation did not assemble\n";
-    return 1;
-  }
+  core::ISimulation* simulation = world.simulation.get();
 
   const std::uint32_t start_population =
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());
-  failures += Expect(start_population == 80, "genesis seats 80 residents");
-  failures +=
-      Expect(simulation->CompletedState().families.rows.size() == 21, "genesis builds 21 yards");
+  failures += run::Expect(start_population == 80, "genesis seats 80 residents");
+  failures += run::Expect(simulation->CompletedState().families.rows.size() == 21,
+                          "genesis builds 21 yards");
 
   constexpr std::uint32_t kYears = 33;
   std::uint32_t population_year7 = 0;
   std::uint32_t population_year14 = 0;
   core::Epoch epoch_year14 = core::Epoch::kOne;
   for (std::uint32_t year = 1; year <= kYears; ++year) {
-    for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
-      simulation->AdvanceStep();
-    }
+    run::AdvanceYear(*world);
     const core::WorldState& state = simulation->CompletedState();
     const auto population = static_cast<std::uint32_t>(state.residents.rows.size());
     if (year == 7) {
@@ -82,12 +58,12 @@ int main() {
   const auto final_population = static_cast<std::uint32_t>(final_state.residents.rows.size());
 
   // Reference milestones: 199 (year 7), ~500 (year 14), ~1500 (year 33).
-  failures +=
-      Expect(population_year7 >= 150 && population_year7 <= 260, "about 200 residents by year 7");
-  failures += Expect(population_year14 >= 380 && population_year14 <= 650,
-                     "about 500 residents by year 14");
-  failures += Expect(final_population >= 1150 && final_population <= 1950,
-                     "about 1500 residents by year 33");
+  failures += run::Expect(population_year7 >= 150 && population_year7 <= 260,
+                          "about 200 residents by year 7");
+  failures += run::Expect(population_year14 >= 380 && population_year14 <= 650,
+                          "about 500 residents by year 14");
+  failures += run::Expect(final_population >= 1150 && final_population <= 1950,
+                          "about 1500 residents by year 33");
   // The epoch switch is a population-threshold STUB (residents_system.cpp:
   // the designed era events — the readiness index, the ceremonies — are a
   // later phase). It flips at exactly 500, so asserting it at year 14 is a
@@ -97,9 +73,11 @@ int main() {
   // run at 447 satisfies "about 500" and fails "the threshold was crossed".
   // What survives is the claim that matters — the settlement reaches Epoch II
   // on the way, not that it does so in a particular year of a stubbed rule.
-  failures += Expect(epoch_year14 >= core::Epoch::kOne && final_state.epoch >= core::Epoch::kTwo,
-                     "Epoch II is reached on the way");
-  failures += Expect(final_state.epoch == core::Epoch::kThree, "Epoch III has come by year 33");
+  failures +=
+      run::Expect(epoch_year14 >= core::Epoch::kOne && final_state.epoch >= core::Epoch::kTwo,
+                  "Epoch II is reached on the way");
+  failures +=
+      run::Expect(final_state.epoch == core::Epoch::kThree, "Epoch III has come by year 33");
 
   // Integrity after three decades of births, deaths, weddings and moves:
   // every resident's family exists, spouses point at each other.
@@ -116,8 +94,8 @@ int main() {
                          final_state.residents.row_ids[row].value;
     }
   }
-  failures += Expect(families_hold, "every resident's family exists");
-  failures += Expect(spouses_hold, "spouse links are symmetric");
+  failures += run::Expect(families_hold, "every resident's family exists");
+  failures += run::Expect(spouses_hold, "spouse links are symmetric");
 
   // The sex balance held (the self-correcting draw): no lasting skew.
   std::uint32_t men = 0;
@@ -125,7 +103,7 @@ int main() {
     men += resident.sex == core::Sex::kMale ? 1 : 0;
   }
   const float male_share = static_cast<float>(men) / static_cast<float>(final_population);
-  failures += Expect(male_share > 0.42F && male_share < 0.58F, "the sex balance held");
+  failures += run::Expect(male_share > 0.42F && male_share < 0.58F, "the sex balance held");
 
   std::cout << "population_curve: year 7 = " << population_year7
             << ", year 14 = " << population_year14 << ", year 33 = " << final_population

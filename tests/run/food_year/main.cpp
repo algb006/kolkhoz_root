@@ -27,20 +27,13 @@
 #include <string>
 #include <vector>
 
+#include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
 namespace {
-
-int Expect(bool condition, const char* label) {
-  if (condition) {
-    return 0;
-  }
-  std::cout << "FAIL: " << label << '\n';
-  return 1;
-}
 
 /// What a run had to say about the village at the end of it.
 struct Outcome {
@@ -117,21 +110,11 @@ void CopyTables(const std::filesystem::path& root, std::string_view drop_column)
 
 Outcome RunYears(const std::filesystem::path& tables_root, std::uint32_t years) {
   Outcome outcome;
-  std::string error;
-  const auto tables = core::LoadTableSet(tables_root.string(), &error);
-  if (tables == nullptr) {
-    std::cout << "FAIL: tables did not load (" << error << ")\n";
+  const run::Simulation world = run::Start(1931, 1, tables_root.string());
+  if (!world) {
     return outcome;
   }
-  core::StandardSimulationConfig config;
-  config.tables = tables.get();
-  config.world_seed = 1931;
-  config.worker_count = 1;
-  const auto simulation = core::CreateStandardSimulation(config);
-  if (simulation == nullptr) {
-    std::cout << "FAIL: the simulation did not assemble\n";
-    return outcome;
-  }
+  core::ISimulation* simulation = world.simulation.get();
   outcome.lowest_people =
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());
   for (std::uint32_t tick = 0; tick < years * core::kTicksPerYear; ++tick) {
@@ -224,24 +207,24 @@ int main() {
   // mean food arrives faster than it is eaten and is piling up somewhere.
   // That is not a hypothetical — a level curve is exactly what 241 tonnes of
   // hay in the larders looked like before anyone added the numbers up.
-  failures += Expect(good.mean_satiety >= 65.0F,
-                     "with the shipped tables the village is fed on the year (reference)");
+  failures += run::Expect(good.mean_satiety >= 65.0F,
+                          "with the shipped tables the village is fed on the year (reference)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
   // is months away and the trudodni that buy the issue have not been earned
   // yet. What the criterion asks is that the lean season stays a lean season
   // and never becomes a collapse.
-  failures += Expect(good.worst_year_satiety >= 45.0F,
-                     "no single year averages into a collapse, spring gap and all");
-  failures += Expect(good.last_year_satiety > good.worst_year_satiety - 5.0F,
-                     "and the settlement is not sliding year on year");
+  failures += run::Expect(good.worst_year_satiety >= 45.0F,
+                          "no single year averages into a collapse, spring gap and all");
+  failures += run::Expect(good.last_year_satiety > good.worst_year_satiety - 5.0F,
+                          "and the settlement is not sliding year on year");
   failures +=
-      Expect(good.leanest_day_satiety >= 25.0F, "the lean season is a dip and not a collapse");
-  failures += Expect(good.most_hungry_at_once * 10U <= good.people * 7U,
-                     "and it never takes the whole village at once");
-  failures += Expect(good.hungry * 20U <= good.people,
-                     "the year ends with hardly anyone under the threshold");
+      run::Expect(good.leanest_day_satiety >= 25.0F, "the lean season is a dip and not a collapse");
+  failures += run::Expect(good.most_hungry_at_once * 10U <= good.people * 7U,
+                          "and it never takes the whole village at once");
+  failures += run::Expect(good.hungry * 20U <= good.people,
+                          "the year ends with hardly anyone under the threshold");
 
   // And it does go hungry when the kolkhoz hands out nothing.
   //
@@ -257,23 +240,23 @@ int main() {
   // times as many hungry people, health and life expectancy both down — and
   // not a famine. A model in which the kolkhoz could starve the village by
   // handing out nothing would be a model that had forgotten the yards.
-  failures +=
-      Expect(bad.mean_satiety < good.mean_satiety - 5.0F, "striking out the issue norms is felt");
-  failures += Expect(bad.leanest_day_satiety < good.leanest_day_satiety - 8.0F,
-                     "and the lean season is a different animal without the issue");
-  failures += Expect(bad.most_hungry_at_once > good.most_hungry_at_once,
-                     "reaching households the shipped tables spare");
-  failures += Expect(bad.mean_health < good.mean_health,
-                     "hunger reaches health, which is the only way it reaches anyone");
-  failures += Expect(bad.life_expectancy < good.life_expectancy,
-                     "and lean years cost the settlement years of life");
+  failures += run::Expect(bad.mean_satiety < good.mean_satiety - 5.0F,
+                          "striking out the issue norms is felt");
+  failures += run::Expect(bad.leanest_day_satiety < good.leanest_day_satiety - 8.0F,
+                          "and the lean season is a different animal without the issue");
+  failures += run::Expect(bad.most_hungry_at_once > good.most_hungry_at_once,
+                          "reaching households the shipped tables spare");
+  failures += run::Expect(bad.mean_health < good.mean_health,
+                          "hunger reaches health, which is the only way it reaches anyone");
+  failures += run::Expect(bad.life_expectancy < good.life_expectancy,
+                          "and lean years cost the settlement years of life");
 
   // The red line: hunger never kills. It works through health and nothing
   // else (food model §2), so a starved village is smaller only by the
   // ordinary deaths of its ordinary mortality ladder.
-  failures += Expect(bad.people > 0, "a starved village is still a village");
-  failures += Expect(bad.people * 2U > good.people,
-                     "hunger costs no lives of its own: no famine deaths exist to model");
+  failures += run::Expect(bad.people > 0, "a starved village is still a village");
+  failures += run::Expect(bad.people * 2U > good.people,
+                          "hunger costs no lives of its own: no famine deaths exist to model");
 
   fs::remove_all(good_root);
   fs::remove_all(bad_root);

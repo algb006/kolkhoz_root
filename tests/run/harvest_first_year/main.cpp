@@ -8,21 +8,15 @@
 #include <iostream>
 #include <string>
 
+#include "../common/run_harness.h"
 #include "core_common/calendar.h"
+#include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
 namespace {
-
-int Expect(bool condition, const char* label) {
-  if (condition) {
-    return 0;
-  }
-  std::cout << "FAIL: " << label << '\n';
-  return 1;
-}
 
 /// How the village itself came through the year (stage 6). A diagnostic, not
 /// a criterion — the criterion is the food_year run of task O4 — but the
@@ -70,8 +64,8 @@ void PrintVillageCondition(const core::WorldState& state) {
 /// on the fields'.
 int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& many) {
   int failures = 0;
-  failures += Expect(many.fields.rows.size() == one.fields.rows.size(),
-                     "worker count does not change the field table");
+  failures += run::Expect(many.fields.rows.size() == one.fields.rows.size(),
+                          "worker count does not change the field table");
   bool fields_identical = many.fields.rows.size() == one.fields.rows.size();
   for (std::uint32_t row = 0; row < many.fields.rows.size() && fields_identical; ++row) {
     const core::FieldRow& one_worker = one.fields.rows[row];
@@ -82,13 +76,14 @@ int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& man
                        one_worker.crop.value == three_workers.crop.value &&
                        one_worker.repeat_years == three_workers.repeat_years;
   }
-  failures += Expect(fields_identical, "1 worker and 3 workers agree on every field, bit for bit");
+  failures +=
+      run::Expect(fields_identical, "1 worker and 3 workers agree on every field, bit for bit");
   bool stores_identical = many.units.rows.size() == one.units.rows.size();
   for (std::uint32_t row = 0; row < many.units.rows.size() && stores_identical; ++row) {
     stores_identical = many.units.rows[row].stock == one.units.rows[row].stock;
   }
-  failures += Expect(stores_identical, "1 worker and 3 workers agree on every store");
-  failures += Expect(
+  failures += run::Expect(stores_identical, "1 worker and 3 workers agree on every store");
+  failures += run::Expect(
       many.residents.rows.size() == one.residents.rows.size() && many.rng.state == one.rng.state,
       "the people and the RNG agree across worker counts");
   bool households_identical = many.families.rows.size() == one.families.rows.size();
@@ -101,14 +96,30 @@ int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& man
                            one_worker.plot_ratio_sum == three_workers.plot_ratio_sum &&
                            one_worker.component_satiety == three_workers.component_satiety;
   }
-  failures += Expect(households_identical,
-                     "1 worker and 3 workers agree on every pantry, mask, hour and component");
+  failures += run::Expect(households_identical,
+                          "1 worker and 3 workers agree on every pantry, mask, hour and component");
   bool satiety_identical = many.residents.rows.size() == one.residents.rows.size();
   for (std::uint32_t row = 0; row < many.residents.rows.size() && satiety_identical; ++row) {
     satiety_identical = many.residents.rows[row].satiety == one.residents.rows[row].satiety &&
                         many.residents.rows[row].health == one.residents.rows[row].health;
   }
-  failures += Expect(satiety_identical, "and on every person's satiety and health");
+  failures += run::Expect(satiety_identical, "and on every person's satiety and health");
+  // The ledger (stage 7) is state like any other and must agree too. It is
+  // the strictest of these comparisons in one respect: two of its columns
+  // are FOLDED by the events slot out of what the parallel phases left in
+  // the pantries, so a ledger that differs across worker counts would mean
+  // the parallel phases themselves disagreed — even if the pantries above
+  // happened to land equal.
+  const core::YearLedger& one_book = one.ledger.current;
+  const core::YearLedger& many_book = many.ledger.current;
+  failures += run::Expect(
+      one_book.births == many_book.births && one_book.deaths == many_book.deaths &&
+          one_book.harvest == many_book.harvest && one_book.eaten == many_book.eaten &&
+          one_book.plot_harvest == many_book.plot_harvest && one_book.feed == many_book.feed &&
+          one_book.work_days_by_kind == many_book.work_days_by_kind &&
+          one_book.trudodni_accrued == many_book.trudodni_accrued &&
+          one_book.satiety_day_mean_sum == many_book.satiety_day_mean_sum,
+      "1 worker and 3 workers write the same ledger");
   return failures;
 }
 
@@ -116,35 +127,26 @@ int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& man
 
 int main() {
   int failures = 0;
-  std::string error;
-  const auto tables = core::LoadTableSet("tables", &error);
-  if (tables == nullptr) {
-    std::cout << "FAIL: tables/ did not load (" << error << ") — run from the repo root\n";
+  const run::Simulation world = run::Start(1930);
+  if (!world) {
     return 1;
   }
-  const core::ITable* resources = tables->FindTable("resources");
+  core::ISimulation* simulation = world.simulation.get();
+  const core::ITable* resources = world.tables->FindTable("resources");
   if (resources == nullptr) {
     std::cout << "FAIL: no resources table\n";
-    return 1;
-  }
-
-  core::StandardSimulationConfig config;
-  config.tables = tables.get();
-  config.world_seed = 1930;
-  config.worker_count = 1;
-  const auto simulation = core::CreateStandardSimulation(config);
-  if (simulation == nullptr) {
-    std::cout << "FAIL: the simulation did not assemble\n";
     return 1;
   }
 
   const core::WorldState& start = simulation->CompletedState();
   // Six sown, two fallow, ten meadows: the grass is not scarce, the
   // hands and the mowing window are (terrain design §1).
-  failures += Expect(start.fields.rows.size() == 18, "genesis lays out the arable and the meadows");
-  failures += Expect(start.units.rows.size() >= 29, "genesis places the start units");
+  failures +=
+      run::Expect(start.fields.rows.size() == 18, "genesis lays out the arable and the meadows");
+  failures += run::Expect(start.units.rows.size() >= 29, "genesis places the start units");
   // 39 cows, 16 billeted horses, and every yard's own goats and hens.
-  failures += Expect(start.herds.rows.size() == 60, "genesis places the kolkhoz and yard herds");
+  failures +=
+      run::Expect(start.herds.rows.size() == 60, "genesis places the kolkhoz and yard herds");
 
   const std::uint32_t oat = resources->FindRowByKey("oat");
   const std::uint32_t barley = resources->FindRowByKey("barley");
@@ -199,41 +201,36 @@ int main() {
   // 43.4 ha (7.8 t came from the start stores, so the net gain is what
   // matters: harvest itself lands whole). Weather stress can shave up to
   // the cap (30%); fertility deltas land after harvest.
-  failures += Expect(grain_tonnes > 33.0 && grain_tonnes < 53.0,
-                     "first-year grain matches the sim_v6 anchor (~48 t, weather may shave)");
+  failures += run::Expect(grain_tonnes > 33.0 && grain_tonnes < 53.0,
+                          "first-year grain matches the sim_v6 anchor (~48 t, weather may shave)");
 
   // The meadows delivered: 200 ha at about 2 t/ha, which is what it takes to
   // winter the herd (terrain design §1 — grass is 15% of the map, so the
   // fodder base is bounded by hands and by the mowing window, never by land).
-  failures +=
-      Expect(hay_tonnes > 300.0 && hay_tonnes < 430.0, "the meadows delivered the herd's winter");
+  failures += run::Expect(hay_tonnes > 300.0 && hay_tonnes < 430.0,
+                          "the meadows delivered the herd's winter");
 
   // The manure loop runs: cows fill the heap (~351 t/year at full herd,
   // minus the spring doses plowed into the sown fields).
-  failures += Expect(manure_tonnes > 150.0, "the cow manure flow filled the heap");
+  failures += run::Expect(manure_tonnes > 150.0, "the cow manure flow filled the heap");
 
   // Fields cycled: the sown six are idle again (harvested), fertility moved.
   std::uint32_t idle_fields = 0;
   for (const core::FieldRow& field : state.fields.rows) {
     idle_fields += field.phase == core::FieldPhase::kIdle ? 1 : 0;
   }
-  failures += Expect(idle_fields >= 6, "the annual fields returned to idle after harvest");
+  failures += run::Expect(idle_fields >= 6, "the annual fields returned to idle after harvest");
 
   // The determinism criterion on a world that actually exercises the
   // parallel field phase: the same year with three workers must land bit
   // for bit on the same world (RACE-003 — the empty-world check could not
   // see this phase at all, since a world without fields dispatches nothing).
-  core::StandardSimulationConfig parallel_config = config;
-  parallel_config.worker_count = 3;
-  const auto parallel = core::CreateStandardSimulation(parallel_config);
-  if (parallel == nullptr) {
-    std::cout << "FAIL: the parallel simulation did not assemble\n";
+  const run::Simulation parallel = run::Start(1930, 3);
+  if (!parallel) {
     return failures + 1;
   }
-  for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
-    parallel->AdvanceStep();
-  }
-  failures += CompareWorkerCounts(state, parallel->CompletedState());
+  run::AdvanceYear(*parallel);
+  failures += CompareWorkerCounts(state, parallel.State());
 
   if (failures == 0) {
     std::cout << "harvest_first_year: all checks passed\n";

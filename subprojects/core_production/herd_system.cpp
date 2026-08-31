@@ -12,6 +12,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
@@ -111,6 +112,10 @@ HerdPlace PlaceOf(WorldState& world, const HerdRow& herd) {
   return place;
 }
 
+/// Only the KOLKHOZ herds' fodder is booked as `feed`: what a family's goat
+/// eats came out of that family's pantry, and the pantry side of the year is
+/// already counted as `eaten` and `issued`. Booking it twice would make the
+/// settlement's food balance stop closing.
 Grams TakeFeed(WorldState& world,
                const ProductionConfig& config,
                const HerdPlace& place,
@@ -124,9 +129,12 @@ Grams TakeFeed(WorldState& world,
   }
   const Grams from_barn =
       place.unit_stock != nullptr ? TakeFromAmounts(*place.unit_stock, resource, wanted) : 0;
-  return from_barn >= wanted
-             ? from_barn
-             : from_barn + TakeFromStorage(world, config, resource, wanted - from_barn);
+  const Grams taken =
+      from_barn >= wanted
+          ? from_barn
+          : from_barn + TakeFromStorage(world, config, resource, wanted - from_barn);
+  AddLedgerAmount(world.ledger.current.feed, resource, taken);
+  return taken;
 }
 
 void DeliverProduce(WorldState& world,
@@ -139,8 +147,10 @@ void DeliverProduce(WorldState& world,
   }
   if (place.pantry != nullptr) {
     AddToStock(*place.pantry, resource, amount);
+    AddLedgerAmount(world.ledger.current.yard_produce, resource, amount);
     return;
   }
+  AddLedgerAmount(world.ledger.current.herd_produce, resource, amount);
   const std::uint32_t store = FindStorageRow(world, config);
   if (store != kNoRow) {
     AddToStock(world.units.rows[store].stock, resource, amount);
@@ -314,11 +324,14 @@ void RunProduce(const ProductionConfig& config,
   const Grams capacity = StorageCapacityGrams(compost, config);
   if (capacity < 0) {
     AddToStock(compost.stock, config.manure_resource, daily);
+    AddLedgerAmount(world.ledger.current.herd_produce, config.manure_resource, daily);
     return;
   }
   const Grams held = StockOf(compost.stock, config.manure_resource);
   const Grams room = capacity > held ? capacity - held : 0;
-  AddToStock(compost.stock, config.manure_resource, daily < room ? daily : room);
+  const Grams added = daily < room ? daily : room;
+  AddToStock(compost.stock, config.manure_resource, added);
+  AddLedgerAmount(world.ledger.current.herd_produce, config.manure_resource, added);
 }
 
 /// Pays out a slaughter: meat, and whatever else the carcass gives.
@@ -397,6 +410,7 @@ void RunMaturation(const ProductionConfig& config,
   if (gone > 0) {
     herd.adult_age_game_years_total -=
         static_cast<float>(gone) * kind.adult_from_game_months / kGameMonthsPerYear;
+    world.ledger.current.herd_culled += gone;
     Slaughter(config, kind, place, gone, world);
   }
 }
@@ -404,11 +418,15 @@ void RunMaturation(const ProductionConfig& config,
 /// Offspring. Four gates, and every one of them is canon: an adult male for
 /// a sexed kind, a roof (horses need a stable, which phase 1 does not have),
 /// ROOM under that roof, and the calving season.
+/// @param book The year's ledger. Passed rather than the whole world: this
+/// function has no business reaching anywhere else in the state, and the
+/// narrow parameter says so.
 void RunBirths(const ProductionConfig& config,
                const LivestockDef& kind,
                LivestockKindId kind_id,
                HerdRow& herd,
-               std::uint8_t month) {
+               std::uint8_t month,
+               YearLedger& book) {
   if (herd.household_owned != 0) {
     // A private yard does not grow on its own in phase 1. The canon says a
     // family's own cow arrives later — by a calf from the kolkhoz young, by
@@ -444,6 +462,7 @@ void RunBirths(const ProductionConfig& config,
   if (born == 0) {
     return;
   }
+  book.herd_births += born;
   // A kind with no newborn rung (poultry) hatches straight into juveniles.
   if (kind.newborn_game_months > 0.0F) {
     herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count + born);
@@ -483,6 +502,7 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, WorldState& world) {
   if (gone == 0) {
     return;
   }
+  world.ledger.current.herd_deaths_age += gone;
   herd.adult_age_game_years_total -= static_cast<float>(gone) * mean_age;
   herd.adult_age_game_years_total =
       herd.adult_age_game_years_total < 0.0F ? 0.0F : herd.adult_age_game_years_total;
@@ -495,7 +515,10 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, WorldState& world) {
 /// design's: produce drops from the first hungry day, deaths only after the
 /// threshold. The cold ladder of question 99 is NOT here — every phase-1
 /// herd stands under a roof and unit temperatures do not exist.
-void RunHungerDeaths(const ProductionConfig& config, const LivestockDef& kind, HerdRow& herd) {
+void RunHungerDeaths(const ProductionConfig& config,
+                     const LivestockDef& kind,
+                     HerdRow& herd,
+                     YearLedger& book) {
   if (herd.unfed_days <= config.farming.unfed_death_after_days) {
     return;
   }
@@ -510,10 +533,15 @@ void RunHungerDeaths(const ProductionConfig& config, const LivestockDef& kind, H
   // first. That ordering is a choice this code has to make and the design
   // does not; it is the one a farm makes.
   const float share = config.farming.unfed_death_percent_per_day / 100.0F;
-  std::uint16_t owed = DrawFlow(herd.hunger_progress, static_cast<float>(TotalHeads(herd)) * share);
+  const std::uint16_t owed_at_first =
+      DrawFlow(herd.hunger_progress, static_cast<float>(TotalHeads(herd)) * share);
+  std::uint16_t owed = owed_at_first;
   owed = static_cast<std::uint16_t>(owed - TakeHeads(herd.newborn_count, owed));
   owed = static_cast<std::uint16_t>(owed - TakeHeads(herd.juvenile_count, owed));
   const std::uint16_t adults_gone = TakeHeads(herd.adult_count, owed);
+  // What the hunger actually took, not what it asked for: a herd with fewer
+  // heads than the day owed loses only the heads it had.
+  book.herd_deaths_hunger += static_cast<std::uint32_t>(owed_at_first - owed) + adults_gone;
   if (adults_gone > 0 && herd.adult_count > 0) {
     const float mean =
         herd.adult_age_game_years_total / static_cast<float>(herd.adult_count + adults_gone);
@@ -558,6 +586,7 @@ void RunAutumnSlaughter(const ProductionConfig& config,
     herd.adult_age_game_years_total -= static_cast<float>(surplus) * mean;
     herd.adult_male_count = TargetMales(kind, herd.adult_count);
   }
+  world.ledger.current.herd_culled += gone;
   Slaughter(config, kind, place, gone, world);
 }
 
@@ -582,12 +611,14 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
     if (fed) {
       herd.hunger_progress = 0.0F;  // a fed day clears the debt, not just the count
+    } else {
+      current.ledger.current.herd_hungry_head_days += static_cast<float>(TotalHeads(herd));
     }
     RunProduce(config, kind, herd, place, current);
     RunMaturation(config, kind, place, herd, current);
-    RunBirths(config, kind, herd.kind, herd, month);
+    RunBirths(config, kind, herd.kind, herd, month, current.ledger.current);
     RunAgeDeaths(kind, herd, current);
-    RunHungerDeaths(config, kind, herd);
+    RunHungerDeaths(config, kind, herd, current.ledger.current);
     RunAutumnSlaughter(config, kind, herd.kind, place, herd, current, current.calendar);
   }
 }
