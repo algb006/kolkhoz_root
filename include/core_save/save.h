@@ -43,7 +43,10 @@
 /// exists would be maintained for nobody. A refused load leaves the output
 /// world untouched: a load is all or nothing, like a table set load.
 ///
-/// FORMAT 1 — the byte layout, fixed for VERSION_SAVE = 1:
+/// THE BYTE LAYOUT of the format this build reads and writes — the number
+/// is kSaveFormatVersion, from the VERSION_SAVE file. Every change below is
+/// a bump of that number and a refusal for every older file (§6 of
+/// manual/67-save-format.md); there are no migrations:
 ///
 ///   header (fixed 52 bytes, everything little-endian)
 ///     magic            8 bytes  "KLHZSAVE"
@@ -54,15 +57,20 @@
 ///     tick             u64      copy of WorldState::calendar.tick
 ///     payload_size     u64      bytes after the header
 ///     payload_hash     u64      FNV-1a 64 of the payload
-///   payload, eight sections in this fixed order, each prefixed by its byte
+///   payload, nine sections in this fixed order, each prefixed by its byte
 ///   length (u64) so that a malformed section is NAMED in the error and a
 ///   truncated file is caught before a single field is read:
 ///     "dictionaries"   resources, crops, unit_types, livestock — each
 ///                      u16 count, then count keys as u16 length + UTF-8
 ///     "world"          calendar, weather, epoch, world_seed, rng,
 ///                      chairman, plan, vitals
-///     "residents", "families", "fields", "units", "herds"
-///                      one StateTable section each
+///     "residents", "families", "fields", "units", "herds", "orders"
+///                      one StateTable section each; "orders" is the
+///                      chairman's order book — an order that waits is
+///                      state and must survive a load (70-boundary.md §2).
+///                      WorldState::step_events is deliberately absent:
+///                      the outbox describes one step and the engine
+///                      empties it at the start of the next
 ///     "ledger"         ledger.current, then ledger.closed
 ///   No section is optional and none may be skipped: the reader knows
 ///   exactly one layout, this one, and a file that deviates is refused —

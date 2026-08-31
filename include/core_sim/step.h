@@ -20,9 +20,14 @@
 /// THE BUFFER LAW — the one set of rules every phase obeys:
 ///   1. Two WorldState buffers exist: `previous` (the completed last step,
 ///      immutable for the whole step) and `current` (being built).
-///   2. At step start the engine makes `current` an exact copy of `previous`;
-///      external commands are applied to `current` before phase 1, in arrival
-///      order (their format is a phase-2 boundary decision, not this one).
+///   2. At step start the engine makes `current` an exact copy of `previous`,
+///      and then — before phase 1, in arrival order — applies what the
+///      boundary staged (StageOrders below). A command from the presentation
+///      is a ROW OF THE ORDER BOOK, `WorldState::orders`: issued rows are
+///      appended, cancellations marked (core_common/order_state.h,
+///      manual/70-boundary.md). In the same place the outbox
+///      `WorldState::step_events` is emptied — it describes the step just
+///      completed, and the step being built fills it anew.
 ///   3. A sequential phase may read `previous` and `current` freely and write
 ///      any block of `current` it owns.
 ///   4. A parallel phase invocation owns items [begin_item, end_item) of the
@@ -58,7 +63,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 
+#include "core_common/ids.h"
+#include "core_common/order_state.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -178,6 +186,17 @@ class ISimulation {
   /// Advances game time by exactly one tick (kTicksPerDay ticks make a day —
   /// core_common/calendar.h). Blocks until the step is complete.
   virtual void AdvanceStep() = 0;
+
+  /// @brief Stages what the next AdvanceStep applies to `current` before
+  /// phase 1, in this order: `issued` rows appended to the order book (ids
+  /// issued by the table, in order), then `cancelled` ids marked kCancelled
+  /// where the row is kPending or kAccepted. Buffer-law rule 2.
+  /// @note Called between steps on the sim thread; the spans are copied, so
+  /// the caller's storage may go away at once. Repeated calls accumulate in
+  /// call order and are applied together by the next step. ResetWorld drops
+  /// whatever is staged — those rows named entities of the replaced world.
+  virtual void StageOrders(std::span<const OrderRow> issued,
+                           std::span<const OrderId> cancelled) = 0;
 
   /// @brief The last completed state.
   /// Valid until the next AdvanceStep() or ResetWorld() call. This is what

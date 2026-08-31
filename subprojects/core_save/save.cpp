@@ -1,5 +1,5 @@
 // The save format's top level (include/core_save/save.h): the header, the
-// section framing, the five entity tables, and the file wrappers.
+// section framing, the six saved tables, and the file wrappers.
 //
 // All or nothing, in both directions. EncodeWorld builds the payload first
 // and only then the header that describes it; DecodeWorld fills a LOCAL
@@ -58,6 +58,7 @@ constexpr const char* kSectionFamilies = "families";
 constexpr const char* kSectionFields = "fields";
 constexpr const char* kSectionUnits = "units";
 constexpr const char* kSectionHerds = "herds";
+constexpr const char* kSectionOrders = "orders";
 constexpr const char* kSectionLedger = "ledger";
 
 void Refuse(std::string* error, const std::string& reason) {
@@ -305,6 +306,14 @@ std::vector<std::byte> EncodeWorld(const WorldState& world, const ITableSet& tab
   WriteTable(sink, world.herds, WriteHerdRow);
   CloseSection(out, length_offset);
 
+  // The chairman's order book: state like any other table (the boundary,
+  // manual/70-boundary.md §2). WorldState::step_events is deliberately NOT
+  // here — the outbox describes one step, and the engine empties it at the
+  // start of the next one.
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.orders, WriteOrderRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -402,7 +411,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionFamilies, &loaded.families, ReadFamilyRow) ||
       !read_table_section(kSectionFields, &loaded.fields, ReadFieldRow) ||
       !read_table_section(kSectionUnits, &loaded.units, ReadUnitRow) ||
-      !read_table_section(kSectionHerds, &loaded.herds, ReadHerdRow)) {
+      !read_table_section(kSectionHerds, &loaded.herds, ReadHerdRow) ||
+      !read_table_section(kSectionOrders, &loaded.orders, ReadOrderRow)) {
     return false;
   }
 

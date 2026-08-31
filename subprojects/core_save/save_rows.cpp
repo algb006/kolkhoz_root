@@ -1,4 +1,4 @@
-// The five row codecs (save_rows.h). Fields go out and come back in the
+// The six row codecs (save_rows.h). Fields go out and come back in the
 // DECLARATION ORDER of the state header that defines each row, and the two
 // directions of one row sit next to each other so that a field added to one
 // and forgotten in the other is visible in the diff.
@@ -47,6 +47,7 @@ static_assert(sizeof(FieldRow) == 40, "FieldRow changed — update the codec and
 static_assert(sizeof(UnitRow) == 24 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 20,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 
@@ -62,6 +63,10 @@ constexpr std::uint8_t kMaxSocialStatus = static_cast<std::uint8_t>(SocialStatus
 
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kHarvest);
 constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerelict);
+
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDemolishUnit);
+constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
+constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kRuleForbids);
 
 template <typename IdT>
 void WriteEntityId(ByteWriter& out, IdT id) {
@@ -368,6 +373,60 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.unfed_days = in.ReadFloat();
   row.disease_stage = in.ReadU8();
   row.care_days_remaining = in.ReadFloat();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// OrderRow — order_state.h
+// ---------------------------------------------------------------------------
+//
+// The order book is saved because an order that waits is state: the design
+// defers nearly everything the chairman decides, shows it as pending and
+// lets it be taken back (manual/70-boundary.md §2). A campaign saved with
+// an order waiting must resume with it waiting.
+
+void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  out.WriteU8(static_cast<std::uint8_t>(row.status));
+  out.WriteU8(static_cast<std::uint8_t>(row.refusal));
+  out.WriteU8(static_cast<std::uint8_t>(row.work));
+  out.WriteU64(row.issued_tick);
+
+  WriteEntityId(out, row.resident);
+  WriteEntityId(out, row.unit);
+  WriteEntityId(out, row.field);
+  WriteEntityId(out, row.herd);
+
+  sink.WriteDefId(DefKind::kUnitType, row.unit_type.value);
+  sink.WriteDefId(DefKind::kCrop, row.rotation_year0.value);
+  sink.WriteDefId(DefKind::kCrop, row.rotation_year1.value);
+  sink.WriteDefId(DefKind::kCrop, row.rotation_year2.value);
+
+  WriteVec2(out, row.position);
+}
+
+OrderRow ReadOrderRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  OrderRow row;
+  row.kind = static_cast<OrderKind>(source.ReadEnumValue(0, kMaxOrderKind, "order kind"));
+  row.status = static_cast<OrderStatus>(source.ReadEnumValue(0, kMaxOrderStatus, "order status"));
+  row.refusal =
+      static_cast<OrderRefusal>(source.ReadEnumValue(0, kMaxOrderRefusal, "order refusal"));
+  row.work = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "order work kind"));
+  row.issued_tick = in.ReadU64();
+
+  row.resident = ReadEntityId<ResidentId>(in);
+  row.unit = ReadEntityId<UnitId>(in);
+  row.field = ReadEntityId<FieldId>(in);
+  row.herd = ReadEntityId<HerdId>(in);
+
+  row.unit_type = UnitTypeId{source.ReadDefId(DefKind::kUnitType)};
+  row.rotation_year0 = CropId{source.ReadDefId(DefKind::kCrop)};
+  row.rotation_year1 = CropId{source.ReadDefId(DefKind::kCrop)};
+  row.rotation_year2 = CropId{source.ReadDefId(DefKind::kCrop)};
+
+  row.position = ReadVec2(in);
   return row;
 }
 

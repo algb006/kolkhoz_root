@@ -9,10 +9,16 @@
 // code.
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
+#include <span>
 #include <utility>
+#include <vector>
 
 #include "TaskScheduler.h"
+#include "core_common/order_state.h"
+#include "core_common/state_table.h"
+#include "core_common/state_table_ops.h"
 #include "core_sim/step.h"
 
 namespace core {
@@ -73,10 +79,10 @@ class StepEngine final : public ISimulation {
   }
 
   void AdvanceStep() override {
-    // Buffer law, rule 2: current starts as an exact copy of previous.
-    // (External commands are applied here once their format exists —
-    // a phase-2 boundary decision, STUB for now.)
+    // Buffer law, rule 2: current starts as an exact copy of previous, then
+    // takes what the boundary staged, before any phase sees it.
     current_ = previous_;
+    ApplyStaged();
     phases_.time_and_weather->RunSequential(previous_, current_);
     RunParallelPhase(*phases_.needs);
     phases_.decisions->RunSequential(previous_, current_);
@@ -88,14 +94,52 @@ class StepEngine final : public ISimulation {
     std::swap(previous_, current_);
   }
 
+  void StageOrders(std::span<const OrderRow> issued, std::span<const OrderId> cancelled) override {
+    staged_issued_.insert(staged_issued_.end(), issued.begin(), issued.end());
+    staged_cancelled_.insert(staged_cancelled_.end(), cancelled.begin(), cancelled.end());
+  }
+
   const WorldState& CompletedState() const override { return previous_; }
 
   void ResetWorld(const WorldState& initial) override {
     previous_ = initial;
     current_ = initial;
+    // Staged rows name residents, units and fields of the world being
+    // replaced; carrying them over would aim them at whatever id happens to
+    // sit there now. A reset is a new campaign or a load — the book that
+    // comes with it is the whole truth.
+    staged_issued_.clear();
+    staged_cancelled_.clear();
   }
 
  private:
+  /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
+  /// completed, append the issued rows in arrival order (the table issues the
+  /// ids, so they are exactly the ones the boundary promised the caller),
+  /// then mark the cancellations. Issues come first on purpose — an order
+  /// staged and taken back before the same step is still cancellable.
+  /// A cancellation of an id that is gone, or of a row already kActive or
+  /// terminal, is silently nothing: the order outran the chairman, and
+  /// "work that began is finished, never taken back" (time design §11).
+  void ApplyStaged() {
+    current_.step_events.clear();
+    for (const OrderRow& row : staged_issued_) {
+      AppendRow(current_.orders, row);
+    }
+    for (const OrderId id : staged_cancelled_) {
+      const std::uint32_t row = FindRow(current_.orders, id);
+      if (row == kNoRow) {
+        continue;
+      }
+      OrderStatus& status = current_.orders.rows[row].status;
+      if (status == OrderStatus::kPending || status == OrderStatus::kAccepted) {
+        status = OrderStatus::kCancelled;
+      }
+    }
+    staged_issued_.clear();
+    staged_cancelled_.clear();
+  }
+
   /// One parallel slot, barrier included: WaitforTask returns only when
   /// every partition has run (the calling thread helps execute). The item
   /// count comes from the state being built: earlier sequential phases may
@@ -122,6 +166,11 @@ class StepEngine final : public ISimulation {
   StepPhaseSet phases_;
 
   std::uint32_t worker_count_;
+
+  /// What the boundary staged since the last step, in call order.
+  std::vector<OrderRow> staged_issued_;
+
+  std::vector<OrderId> staged_cancelled_;
 
   enki::TaskScheduler scheduler_;
 

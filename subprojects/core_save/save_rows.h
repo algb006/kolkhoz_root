@@ -1,5 +1,5 @@
 /// @file
-/// @brief The row codecs: one write/read pair per entity table.
+/// @brief The row codecs: one write/read pair per saved table.
 /// @threading SINGLE_THREADED
 /// Internal to core_save; called from the single encode/decode path.
 ///
@@ -20,6 +20,7 @@
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
+#include "core_common/order_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/unit_state.h"
 #include "save_dictionary.h"
@@ -40,6 +41,9 @@ UnitRow ReadUnitRow(LoadSource& source);
 
 void WriteHerdRow(SaveSink& sink, const HerdRow& row);
 HerdRow ReadHerdRow(LoadSource& source);
+
+void WriteOrderRow(SaveSink& sink, const OrderRow& row);
+OrderRow ReadOrderRow(LoadSource& source);
 
 }  // namespace core
 

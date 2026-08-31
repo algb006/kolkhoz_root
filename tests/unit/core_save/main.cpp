@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version.h"
 #include "core_common/world_state.h"
@@ -177,6 +178,44 @@ core::WorldState MakeWorld() {
   herd.hunger_progress = 0.375F;
   core::AppendRow(world.herds, herd);
 
+  // The chairman's order book (the boundary, manual/70-boundary.md §2): one
+  // order still waiting, one already refused, and two that carry the parts
+  // of the row nothing else reaches — the definition ids, which the remap
+  // must move, and the position.
+  core::OrderRow assign;
+  assign.kind = core::OrderKind::kAssignWork;
+  assign.status = core::OrderStatus::kAccepted;
+  assign.work = core::WorkKind::kHarvest;
+  assign.issued_tick = 71;
+  assign.resident = first_id;
+  assign.field = core::FieldId{1};
+  core::AppendRow(world.orders, assign);
+
+  core::OrderRow rotation;
+  rotation.kind = core::OrderKind::kSetRotation;
+  rotation.issued_tick = 72;
+  rotation.field = core::FieldId{1};
+  rotation.rotation_year0 = core::CropId{1};
+  rotation.rotation_year1 = core::CropId{0};
+  rotation.rotation_year2 = core::CropId{};  // invalid = fallow, passes through
+  core::AppendRow(world.orders, rotation);
+
+  core::OrderRow build;
+  build.kind = core::OrderKind::kBuildUnit;
+  build.issued_tick = 73;
+  build.unit_type = core::UnitTypeId{1};
+  build.position = core::Vec2{.x = -12.5F, .y = 0.125F};
+  core::AppendRow(world.orders, build);
+
+  core::OrderRow refused;
+  // The top of each enum: their bounds are checked on the way in.
+  refused.kind = core::OrderKind::kDemolishUnit;
+  refused.status = core::OrderStatus::kCancelled;
+  refused.refusal = core::OrderRefusal::kRuleForbids;
+  refused.issued_tick = 69;
+  refused.unit = core::UnitId{1};
+  core::AppendRow(world.orders, refused);
+
   world.ledger.closed.year = 2;
   world.ledger.closed.births = 6;
   world.ledger.closed.deaths = 3;
@@ -265,6 +304,21 @@ int main() {
       Expect(loaded.ledger.closed.year == 2 && loaded.ledger.closed.trudodni_burned == 4200 &&
                  loaded.ledger.current.births == 1,
              "both ledger books came back");
+
+  // The order book: a campaign saved with an order waiting resumes with it
+  // waiting, and the waiting row keeps every field the consumer will read.
+  failures += Expect(
+      loaded.orders.rows.size() == 4 && loaded.orders.next_id_value == world.orders.next_id_value,
+      "the order book came back whole");
+  failures += Expect(loaded.orders.rows[0].kind == core::OrderKind::kAssignWork &&
+                         loaded.orders.rows[0].status == core::OrderStatus::kAccepted &&
+                         loaded.orders.rows[0].work == core::WorkKind::kHarvest &&
+                         loaded.orders.rows[0].issued_tick == 71 &&
+                         loaded.orders.rows[0].resident.value == 1,
+                     "a waiting order kept its status, its target and the tick it was issued on");
+  failures += Expect(loaded.orders.rows[2].position.x == -12.5F &&
+                         loaded.orders.rows[3].refusal == core::OrderRefusal::kRuleForbids,
+                     "the build order's position and the refusal reason survived");
 
   // -- the header ----------------------------------------------------------
   const auto info = core::PeekSaveInfo(bytes);

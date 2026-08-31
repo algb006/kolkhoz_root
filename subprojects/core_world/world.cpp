@@ -8,13 +8,16 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "campaign_tables.h"
 #include "core_common/calendar.h"
+#include "core_common/ids.h"
 #include "core_common/ledger_state.h"
+#include "core_common/order_state.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -241,6 +244,10 @@ class StandardSimulation final : public ISimulation {
   }
 
   void AdvanceStep() override { engine_->AdvanceStep(); }
+
+  void StageOrders(std::span<const OrderRow> issued, std::span<const OrderId> cancelled) override {
+    engine_->StageOrders(issued, cancelled);
+  }
 
   const WorldState& CompletedState() const override { return engine_->CompletedState(); }
 

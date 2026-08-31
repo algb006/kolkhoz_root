@@ -3,13 +3,20 @@
 /// boundary as a command, and how far the simulation has taken it.
 /// @threading PARALLEL_READONLY
 /// Rows live in WorldState::orders under the double-buffer discipline, and
-/// every write is sequential. The step engine APPENDS issued rows and MARKS
-/// cancellations before phase 1, in arrival order (buffer-law rule 2,
-/// core_sim/step.h); the one subsystem that consumes a kind moves its rows
-/// through the statuses below inside its own sub-step of the decisions slot
-/// (phase 3); the events slot (phase 7) emits the order's events and REMOVES
-/// rows that reached a terminal status. Parallel phases never touch the
-/// table — an order is a structural fact, and structure changes only in
+/// every write is sequential.
+///
+/// WHO WRITES, and what is wired TODAY. The step engine APPENDS issued rows
+/// and MARKS cancellations before phase 1, in arrival order — that half
+/// exists (buffer-law rule 2, core_sim/step.h). The other half is the plan
+/// this layout is built for and is NOT wired yet (task O3 of project phase
+/// 2): the one subsystem that consumes a kind will move its rows through the
+/// statuses below inside its own sub-step of the decisions slot (phase 3),
+/// and the events slot (phase 7) will emit the order's events and REMOVE
+/// rows that reached a terminal status. Until then NOTHING reads the book
+/// and nothing sweeps it: rows accumulate for the life of the campaign, and
+/// the refusal described below is a rule waiting for its enforcer, not
+/// behaviour you can observe. Parallel phases never touch the table in
+/// either era — an order is a structural fact, and structure changes only in
 /// sequential slots (buffer-law rule 6).
 ///
 /// WHY AN ORDER IS STATE AND NOT A MESSAGE (project phase 2, task A1;
@@ -43,10 +50,11 @@
 ///                  matching event and removes the row in the same step.
 ///
 /// A row still kPending when the events slot of the step it was applied in
-/// runs has NO consumer in the wired simulation: the events slot refuses it
-/// with OrderRefusal::kNoConsumer. That is how an order kind whose mechanic
-/// has not arrived yet (construction before task A2) answers — with a
-/// refusal the presentation can show, never with silence.
+/// runs has no consumer: the events slot refuses it with
+/// OrderRefusal::kNoConsumer. That is how an order kind whose mechanic has
+/// not arrived yet (construction before task A2) is to answer — with a
+/// refusal the presentation can show, never with silence. Task O3 wires it;
+/// today the events slot does none of this.
 ///
 /// THE ONE APPENDER. Only the step engine appends to this table, and it
 /// appends the staged rows in the order they were staged. Ids are therefore
@@ -57,8 +65,8 @@
 /// would need a different table; this one is the chairman's.
 ///
 /// SAVED. A campaign saved with an order waiting must resume with it
-/// waiting: the row is part of the save format (VERSION_SAVE moves when the
-/// codec learns it — the implementing task's first line of work).
+/// waiting: the row is a section of the save format, learned by the codec in
+/// task O1 of project phase 2 (VERSION_SAVE 3, core_save/save_rows.cpp).
 
 #ifndef CORE_COMMON_ORDER_STATE_H_
 #define CORE_COMMON_ORDER_STATE_H_
