@@ -216,7 +216,13 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
   }
   // The tail sits outside the run above only because the knob array has a
   // fixed size; these are the same kind of knob.
-  const std::array<ScalarKnob, 4> tail = {{
+  //
+  // UB-001 fix: this was `std::array<ScalarKnob, 4>` over three initialisers.
+  // The fourth element was value-initialised, so its `value` was null, and
+  // ReadKnobs binds `float&` to `*knob.value` for every knob it walks — UB on
+  // every ParsePlot call, not in some corner case. `to_array` deduces the
+  // size from the initialisers, so the count can no longer disagree.
+  const auto tail = std::to_array<ScalarKnob>({
       {.key = "fish_kg_per_yard_year_epoch_3",
        .value = &plot.fish_kg_per_yard_year[2],
        .low = 0.0F,
@@ -229,7 +235,7 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
        .value = &plot.schoolchild_to_bio_years,
        .low = 0.0F,
        .high = 30.0F},
-  }};
+  });
   return ReadKnobs(table, "food", tail, error) &&
          ReadMonth(table, "plot_summer_from_month", plot.summer_from_month, error) &&
          ReadMonth(table, "plot_summer_to_month", plot.summer_to_month, error) &&

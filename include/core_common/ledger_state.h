@@ -2,9 +2,10 @@
 /// @brief LedgerState — the accountant's yearly book: the FLOWS of the
 /// economic year, counted where they happen.
 /// @threading SINGLE_THREADED
-/// Written only in sequential slots: each counter has exactly one writer,
-/// named in the write map below, and that writer is a sequential sub-step
-/// (decisions, phase 3) or the events slot (phase 7). Parallel phases never
+/// Written only in sequential slots: every writer is named in the write map
+/// below, and every one of them is a sequential sub-step (decisions, phase 3)
+/// or the events slot (phase 7). Nearly every counter has exactly one; where
+/// a counter has two, the map says so and says why the sum stays exact. Parallel phases never
 /// touch the ledger — what they produce is folded into it afterwards, in row
 /// order, by the events slot (buffer-law rule 5). Read by anyone between
 /// steps; the run harness and the report writer are the intended readers.
@@ -53,7 +54,7 @@ namespace core {
 /// ResourceId and may be shorter than the resource table (empty = nothing
 /// moved yet), exactly as a pantry is.
 ///
-/// WRITE MAP — one writer per block, all sequential:
+/// WRITE MAP — all writers sequential, one per block except where said:
 ///   people, satiety ......... core_residents, demography sub-step
 ///   issued, ration, nets .... core_residents, the family exchange
 ///   yard_produce ............ core_production, herd day (household herds)
@@ -64,8 +65,18 @@ namespace core {
 ///                             pantry difference between `previous` and
 ///                             `current` at that hour IS that flow
 ///   land, herds, delivered .. core_production, production decisions
-///   labor ................... core_labor, the day close-out; the burn is
-///                             written by the exchange at the year turn
+///   labor ................... core_labor, the day close-out. The BURN has
+///                             TWO writers, and this is the one block that
+///                             does: the exchange burns the unspent accounts
+///                             at the year turn, and demography burns what a
+///                             household took with it when its last member
+///                             died with no heir (residents_system.cpp,
+///                             DropFamilyIfEmpty). Both are sequential and
+///                             their order within the step is fixed —
+///                             demography runs before the exchange — and
+///                             they touch disjoint families, so the sum is
+///                             exact; but a third writer would need the same
+///                             argument made again, not assumed
 ///   year, the rotation ...... core_world, events slot
 struct YearLedger {
   /// Campaign year these counters belong to, counted from 1. Written when

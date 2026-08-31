@@ -4,6 +4,7 @@
 
 #include "save_blocks.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
@@ -17,7 +18,19 @@ namespace core {
 namespace {
 
 // Sizes measured for save format 1 on x86-64.
-static_assert(sizeof(YearLedger) == 392, "YearLedger changed — update the codec and VERSION_SAVE");
+//
+// A ResourceAmounts is a std::vector, and sizeof(std::vector) belongs to the
+// standard library and its debug level — 24 bytes under libc++, 32 under the
+// MSVC STL with iterator debugging — not to the save format, which writes the
+// vector element by element. Counting the vectors out leaves the block's own
+// fields, which is what adding a field actually moves. The first MSVC build
+// of this module is what taught us: the three blocks that hold amounts
+// tripped at once while the nine that do not held, which is a compiler
+// telling the truth about its layout, not a format that changed.
+constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
+
+static_assert(sizeof(YearLedger) == 128 + (11 * kAmountsSize),
+              "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
 static_assert(sizeof(WeatherState) == 12, "WeatherState changed — update the codec");

@@ -6,12 +6,15 @@
 // The static_asserts below are the tripwire for the case neither direction
 // was touched: a new field changes sizeof(RowT) and the build stops until
 // the writer, the reader and the assert are all updated — and the human
-// bumps VERSION_SAVE (manual/67-save-format.md §7). If a size ever fails on
-// a new target, that is the format telling the truth at compile time, which
-// is still the right moment to hear it.
+// bumps VERSION_SAVE (manual/67-save-format.md §7). A size that fails on a
+// NEW TARGET, though, is a different animal: there the layout moved and the
+// format did not, and an assert that cannot tell the two apart cries wolf.
+// Hence the reckoning below — anything whose size belongs to the standard
+// library rather than to us is counted out of the expected total.
 
 #include "save_rows.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #include "core_common/geometry.h"
@@ -22,16 +25,27 @@
 namespace core {
 namespace {
 
-// Sizes measured for save format 1 on x86-64, Clang and MSVC agreeing.
+// Sizes measured for save format 1 on x86-64.
+//
+// The rows that carry a ResourceAmounts — a std::vector — count it out: its
+// sizeof is a property of the standard library and its debug level (24 bytes
+// under libc++, 32 under the MSVC STL with iterator debugging), not of the
+// format, which writes the vector element by element. The line above used to
+// claim "Clang and MSVC agreeing"; the first MSVC build of this module said
+// otherwise, and it was right. See save_blocks.cpp for the same reckoning.
+constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
+
 static_assert(sizeof(ResidentRow) == 152,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(FamilyRow) == 80, "FamilyRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
+              "FamilyRow changed — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
 // see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
 // what has to notice.
 static_assert(sizeof(FieldRow) == 40, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(UnitRow) == 48, "UnitRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(UnitRow) == 24 + kAmountsSize,
+              "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 20,
               "WorkAssignment changed — update the codec and VERSION_SAVE");

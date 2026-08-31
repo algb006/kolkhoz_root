@@ -16,6 +16,7 @@
 #ifndef CORE_RESIDENTS_TABLE_READ_H_
 #define CORE_RESIDENTS_TABLE_READ_H_
 
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -91,11 +92,18 @@ inline bool OptionalValue(const ITable& table,
 }
 
 /// @brief Reads a whole run of scalar knobs, naming the offender on failure.
+/// @pre Every knob's `value` points at a real float. A knob array declared
+///      larger than its initialiser list leaves the tail value-initialised
+///      with a null `value`, and the dereference below is then UB on every
+///      call — the defect UB-001 found in food_config.cpp. The assert names
+///      it at the first run instead of letting it read as a parser bug;
+///      `std::to_array` at the declaration prevents it outright.
 inline bool ReadKnobs(const ITable& table,
                       std::string_view table_name,
                       std::span<const ScalarKnob> knobs,
                       std::string& error) {
   for (const ScalarKnob& knob : knobs) {
+    assert(knob.value != nullptr && "ScalarKnob with no destination — array declared too large");
     if (!OptionalValue(table, knob.key, knob.low, knob.high, *knob.value, error)) {
       PrefixError(table_name, knob.key, error);
       return false;
