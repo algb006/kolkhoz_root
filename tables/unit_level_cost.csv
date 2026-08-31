@@ -209,6 +209,8 @@ dye_house,1,cement,5
 dye_house,1,insulation,8
 dye_house,1,spare_part,6
 dye_house,1,industrial_equipment,1
+tannery,1,straw,2
+tannery,1,log,25
 garment_factory,1,board,25
 garment_factory,1,stone,20
 garment_factory,1,sand,35

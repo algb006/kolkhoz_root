@@ -41,7 +41,7 @@ sewing_shop,Швейная мастерская,production,1,1,,,0,1,era,,,25
 shoemaking_shop,Сапожная мастерская,production,1,1,,,0,1,era,,,25
 furrier_shop,Скорняжная мастерская,production,3,1,,,0,1,era,,,45
 dye_house,Красильня,production,2,1,,,0,1,era,,,30
-tannery,Дубильня,production,1,1,,,0,1,era,,1,
+tannery,Дубильня,production,1,1,,,0,1,era,,1,20
 garment_factory,Швейный цех,production,3,1,,,0,1,era,,,45
 shoe_factory,Обувной цех,production,3,1,,,0,1,era,,,45
 winery,Винодельня,production,2,1,,,0,1,era,,1,30
