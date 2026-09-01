@@ -589,13 +589,16 @@ class ResidentsSystem final : public IResidentsSystem {
   /// start"), and it is how a yard emptied by a death or a marrying-out
   /// comes to be lived in again.
   ///
-  /// Failing that, STUB: a new house is raised on the spot, standing in for
-  /// the player who has not built one (the same figure as the kolkhoz yard
-  /// in world.cpp; boss answer of 2026-08-31), so the housing gate never
-  /// blocks a wedding. It stands BESIDE THE PARENTS — at the groom's house,
-  /// or the bride's, or amid the village when neither has one (a migrant
-  /// couple). It used to be appended with no position at all, which is the
-  /// map's origin: inside the old ten-kilometre village and twelve
+  /// Failing that, STUB: a new house is raised on the spot, so the housing
+  /// gate never blocks a wedding. This stub is NOT the kolkhoz yard's kind
+  /// (boss, 2026-09-02): the yard fills a gap — it does what the player would
+  /// have done — while this one OVERRIDES a rule: the canon says no free
+  /// house, no wedding (life-cycle §12), and living with the parents is not
+  /// in it. It stays only until a run can build houses for the player; the
+  /// thirty-year population it buys is an upper bound, not the curve. It
+  /// stands BESIDE THE PARENTS — at the groom's house, or the bride's, or
+  /// amid the village when neither has one (a migrant couple). It used to be appended with no
+  /// position at all, which is the map's origin: inside the old ten-kilometre village and twelve
   /// kilometres from the new one, so every household founded after the
   /// start walked all day and worked nothing, and the farm stopped mowing
   /// by its seventh year. A position belongs to the scene, never to a
