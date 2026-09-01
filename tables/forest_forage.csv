@@ -1,0 +1,25 @@
+# generated from db/design.db — do not edit by hand
+# what the forest gives to anyone with a basket, and WHERE. The seasons were prose until now, and prose cannot be joined to a contour
+# yield_rel is relative within a kind: 1.0 is the stand where that kind is at its best. The absolute rate is polish, not design
+# a kind missing from a biome does not grow there. Nuts are the sharp case: hazel stands in the oak grove's understorey and nowhere else, so nuts come from the oak grove or not at all
+# the groupings are the canon's own — strawberry with raspberry, cowberry with cranberry: splitting them adds rows and no decisions
+forage,title,month_from,month_to,biome,yield_rel
+strawberry_raspberry,"Земляника, малина",6,7,birch_mixed,0.9
+strawberry_raspberry,"Земляника, малина",6,7,oak_grove,0.4
+strawberry_raspberry,"Земляника, малина",6,7,spruce_dark,0.2
+strawberry_raspberry,"Земляника, малина",6,7,pine_bor,0.2
+strawberry_raspberry,"Земляника, малина",6,7,alder_wet,0.2
+blueberry,Черника,7,7,spruce_dark,1
+blueberry,Черника,7,7,pine_bor,0.5
+blueberry,Черника,7,7,birch_mixed,0.3
+mushroom,Грибы,8,10,birch_mixed,1
+mushroom,Грибы,8,10,spruce_dark,0.9
+mushroom,Грибы,8,10,pine_bor,0.8
+mushroom,Грибы,8,10,oak_grove,0.6
+mushroom,Грибы,8,10,alder_wet,0.3
+cowberry_cranberry,"Брусника, клюква",9,10,pine_bor,1
+cowberry_cranberry,"Брусника, клюква",9,10,alder_wet,1
+cowberry_cranberry,"Брусника, клюква",9,10,spruce_dark,0.3
+cowberry_cranberry,"Брусника, клюква",9,10,birch_mixed,0.2
+nuts,Орехи,9,10,oak_grove,1
+nuts,Орехи,9,10,birch_mixed,0.2

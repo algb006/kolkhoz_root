@@ -1,0 +1,26 @@
+# generated from db/design.db — do not edit by hand
+# the species the world grows. plantable is the design's PLANTING list (terrain §7): what the player is offered as a sapling
+# forest_forming says a species can dominate a stand — that is what a biome is named after; alder and aspen are forest-forming and not plantable, which is why the two are separate columns
+# log_yield: canon names both ends — pine and oak give logs, willow and shrub almost only firewood — and the rest sits between them
+key,title,form,plantable,forest_forming,log_yield
+spruce,Ель,conifer,1,1,full
+pine,Сосна,conifer,1,1,full
+birch,Берёза,broadleaf,1,1,part
+aspen,Осина,broadleaf,0,1,part
+alder,Ольха,broadleaf,0,1,part
+oak,Дуб,broadleaf,1,1,full
+linden,Липа,broadleaf,1,1,part
+maple,Клён,broadleaf,1,1,part
+ash,Ясень,broadleaf,1,1,part
+poplar,Тополь,broadleaf,1,0,part
+willow,Ива,broadleaf,1,1,none
+rowan,Рябина,broadleaf,1,0,none
+bird_cherry,Черёмуха,broadleaf,1,0,none
+hazel,Орешник,shrub,1,0,none
+apple,Яблоня,broadleaf,1,0,none
+pear,Груша,broadleaf,1,0,none
+cherry,Вишня,broadleaf,1,0,none
+plum,Слива,broadleaf,1,0,none
+currant,Смородина,shrub,1,0,none
+gooseberry,Крыжовник,shrub,1,0,none
+raspberry,Малина,shrub,1,0,none
