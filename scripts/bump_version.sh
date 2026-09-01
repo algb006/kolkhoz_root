@@ -6,9 +6,13 @@
 # detach the number from what it names. Rules: manual/setup/57-versioning.md.
 #
 #   scripts/bump_version.sh patch     module delivered
-#   scripts/bump_version.sh minor     stage of the phase plan delivered
-#   scripts/bump_version.sh major     the boundary to UE broke
+#   scripts/bump_version.sh minor     stage delivered, or the boundary to UE broke
 #   scripts/bump_version.sh patch --dry-run
+#
+# There is no major bump. The major is frozen at zero until the game ships (the
+# human's rule, 2026-09-01): a breaking change to the boundary is a minor, the
+# way 0.y.z is read everywhere. The check lives here and not only in the manual
+# because a rule kept on paper alone is broken silently.
 #
 # VERSION_SAVE is deliberately NOT touched here. It is not a delivery number: a
 # bump means existing saves stopped opening, which is an event to announce, not
@@ -26,8 +30,13 @@ dry_run=0
 [ "${2:-}" = "--dry-run" ] && dry_run=1
 
 case "$level" in
-    patch|minor|major) ;;
-    *) echo "usage: bump_version.sh {patch|minor|major} [--dry-run]" >&2; exit 2 ;;
+    patch|minor) ;;
+    major)
+        echo "ОТКАЗ: major заморожен на нуле, пока идёт разработка игры." >&2
+        echo "       Слом границы с UE — это minor: manual/setup/57-versioning.md §2." >&2
+        exit 1
+        ;;
+    *) echo "usage: bump_version.sh {patch|minor} [--dry-run]" >&2; exit 2 ;;
 esac
 
 [ -f "$version_file" ] || { echo "НЕТ ФАЙЛА: $version_file" >&2; exit 1; }
@@ -41,10 +50,15 @@ major="${BASH_REMATCH[1]}"
 minor="${BASH_REMATCH[2]}"
 patch="${BASH_REMATCH[3]}"
 
+if [ "$major" -ne 0 ]; then
+    echo "VERSION: major = $major, а он должен быть нулём до выхода игры" >&2
+    echo "         (manual/setup/57-versioning.md §2). Откати номер, потом бампай." >&2
+    exit 1
+fi
+
 case "$level" in
     # Lower components reset: 0.1.3 -> 0.2.0, not 0.2.3. A stage hand-over does
     # not inherit the patch count of the modules inside it.
-    major) major=$((major + 1)); minor=0; patch=0 ;;
     minor) minor=$((minor + 1)); patch=0 ;;
     patch) patch=$((patch + 1)) ;;
 esac
@@ -58,10 +72,11 @@ fi
 printf '%s\n' "$next" > "$version_file"
 echo "VERSION: $current -> $next   ($level)"
 
-# Bumping major means the core/presentation boundary broke. Say it out loud:
-# the UE side has to be rebuilt against the new contract.
-if [ "$level" = major ]; then
-    echo "ВНИМАНИЕ: major означает сломанную границу с UE — слой графики надо пересобрать."
+# A minor may mean the core/presentation boundary broke — the number no longer
+# separates that from a delivered stage. Say it out loud either way: the UE side
+# pins the full string and has to move its pin and rebuild.
+if [ "$level" = minor ]; then
+    echo "ВНИМАНИЕ: слой графики пришпилен к полной строке — подвинь ue/CORE_VERSION и пересобери."
 fi
 echo "Заголовок core_common/version.h перегенерируется при следующей настройке."
 

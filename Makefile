@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit \
         check-tests format format-check tidy docs sync win win-release win-clean \
-        win-setup hooks deps info version bump-patch bump-minor bump-major
+        win-setup hooks deps info version bump-patch bump-minor
 
 # --- Settings ---------------------------------------------------------------
 
@@ -43,7 +43,7 @@ help:
 	@echo '  make check-tests    проверить, что на каждый модуль есть unit-тест'
 	@echo '  make version        версии ядра и формата сохранений'
 	@echo '  make bump-patch     поднять версию: сдан модуль'
-	@echo '  make bump-minor     поднять версию: сдан этап плана'
+	@echo '  make bump-minor     поднять версию: сдан этап плана либо сломана граница с UE'
 	@echo '  make asan           собрать с санитайзерами address+undefined'
 	@echo '  make clean          удалить объектные файлы, конфигурацию оставить'
 	@echo '  make distclean      удалить каталог сборки целиком'
@@ -105,8 +105,8 @@ bump-patch:
 bump-minor:
 	@./scripts/bump_version.sh minor
 
-bump-major:
-	@./scripts/bump_version.sh major
+# There is no bump-major target: the major is frozen at zero until the game
+# ships (manual/setup/57-versioning.md §2). A broken boundary is a minor.
 
 version:
 	@echo 'Версия ядра            : '$$(cat VERSION)'   (файл VERSION)'
