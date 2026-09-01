@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "core_common/ids.h"
 
@@ -93,9 +94,17 @@ struct SatisfactionWeights {
 /// The biological clock and its thresholds (tables/life.csv). Ages are
 /// biological years; life_speedup maps them to game years.
 struct LifeConfig {
-  /// unit_types.csv "house" row: what the wedding STUB builds (invalid in a
-  /// table-less world — the unit is appended with an invalid type then).
+  /// unit_types.csv "wooden_house" row: what the wedding STUB builds
+  /// (invalid in a table-less world — the unit is appended with an invalid
+  /// type then).
   UnitTypeId house_type;
+
+  /// Indexed by UnitTypeId value: 1 for every unit type of the housing class
+  /// (unit_types.csv `class`). A unit of one of these types with no household
+  /// in it is a FREE HOUSE, and a free house is what a wedding needs first
+  /// (life-cycle §12: "a free house — new, freed, or one the farm got at the
+  /// start"). Empty in a table-less world: then nothing is ever free.
+  std::vector<std::uint8_t> type_is_housing;
 
   float life_speedup = 4.0F;
 

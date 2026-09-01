@@ -152,27 +152,6 @@ class EventsSlot final : public ISequentialPhase {
   }
 
  private:
-  /// STUB, and the one that stands in for the PLAYER rather than for a rule
-  /// (boss answer of 2026-08-31; the wedding house in residents_system.cpp is
-  /// the same figure).
-  ///
-  /// The deadline is real and it is the canon's own: a horse lives 6-8 game
-  /// years, the start team's ages are drawn across that whole band, and foals
-  /// come only under a stable's roof. So the team is gone by the sixth year
-  /// unless somebody builds the yard — and since ploughing is horse work,
-  /// the farm then stops ploughing for ever. The thirty-year run measured
-  /// exactly that: from year seven, six fields standing in the ploughing
-  /// phase and three hundred adults with nothing to do.
-  ///
-  /// Phase 1 has no construction, so nobody can build it. What is missing is
-  /// the BUILDER, not the rule, and this stub supplies only that: the yard
-  /// appears when a player would have raised it — the canon calls it the
-  /// first building of the campaign — at the turn of the first year, and at
-  /// its SECOND step, because the summer yard has no roof for foals.
-  ///
-  /// The horses come in from the private yards all at once and in one herd,
-  /// which is what the canon describes: it also frees the sixteen householders
-  /// who were tied to them, since nobody hosts a kolkhoz horse any more.
   /// Where the stubbed yard stands. It used to be the literal Vec2{150, 150},
   /// which was inside the old ten-kilometre map's village and is the empty
   /// south-west corner of the twelve-kilometre one — twelve kilometres from
@@ -194,6 +173,27 @@ class EventsSlot final : public ISequentialPhase {
     return Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
   }
 
+  /// STUB, and the one that stands in for the PLAYER rather than for a rule
+  /// (boss answer of 2026-08-31; the wedding house in residents_system.cpp is
+  /// the same figure).
+  ///
+  /// The deadline is real and it is the canon's own: a horse lives 6-8 game
+  /// years, the start team's ages are drawn across that whole band, and foals
+  /// come only under a stable's roof. So the team is gone by the sixth year
+  /// unless somebody builds the yard — and since ploughing is horse work,
+  /// the farm then stops ploughing for ever. The thirty-year run measured
+  /// exactly that: from year seven, six fields standing in the ploughing
+  /// phase and three hundred adults with nothing to do.
+  ///
+  /// Phase 1 has no construction, so nobody can build it. What is missing is
+  /// the BUILDER, not the rule, and this stub supplies only that: the yard
+  /// appears when a player would have raised it — the canon calls it the
+  /// first building of the campaign — at the turn of the first year, and at
+  /// its SECOND step, because the summer yard has no roof for foals.
+  ///
+  /// The horses come in from the private yards all at once and in one herd,
+  /// which is what the canon describes: it also frees the sixteen householders
+  /// who were tied to them, since nobody hosts a kolkhoz horse any more.
   void RaiseKolkhozYard(WorldState& current) const {
     if (yard_type_.value == kInvalidDefIdValue || horse_kind_.value == kInvalidDefIdValue) {
       return;

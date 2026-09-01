@@ -98,9 +98,14 @@ void PrintHerdFinding(const core::WorldState& state) {
   std::cout << "thirty_years: at the end — " << kolkhoz << " head of kolkhoz livestock, " << yard
             << " in the yards\n";
   if (yard == 0 || kolkhoz == 0) {
-    std::cout << "thirty_years: FINDING — a whole herd is gone. A private yard's animals do not "
-                 "breed in the core yet, so once the last of them ages out the yard is empty for "
-                 "good — and with it the milk that is a third of the village's table.\n";
+    // No diagnosis is printed here on purpose: the last one this line
+    // carried ("a private yard's animals do not breed") outlived its truth
+    // by a stage and sent the next reader the wrong way. The ledger has the
+    // columns that tell the story — the herd's hunger deaths, the hay
+    // harvest and store, the walk-offs — and that is where to look.
+    std::cout << "thirty_years: FINDING — a whole herd is gone. Read the ledger sheet: the "
+                 "herd_deaths_* columns say whether it starved or aged out, harvest_hay_kg and "
+                 "store_hay_kg whether the fodder held, and walk_offs whether the hands did.\n";
   }
 }
 

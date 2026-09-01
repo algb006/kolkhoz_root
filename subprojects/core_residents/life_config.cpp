@@ -27,6 +27,9 @@
 namespace core {
 namespace {
 
+/// unit_types.csv `class` of every kind of dwelling.
+constexpr std::string_view kHousingClass = "housing";
+
 /// @brief Reads one key's value cell; a missing key is an error (see the
 /// file comment: the stage-3 keys are required).
 bool RequiredValue(const ITable& table, std::string_view key, float& value, std::string& error) {
@@ -228,6 +231,15 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     const std::uint32_t house = unit_types->FindRowByKey("wooden_house");
     if (house != kNoTableRow) {
       config.house_type = UnitTypeId{static_cast<std::uint16_t>(house)};
+    }
+    const std::uint32_t class_column = unit_types->FindColumn("class");
+    config.type_is_housing.assign(unit_types->RowCount(), 0);
+    if (class_column != kNoTableColumn) {
+      for (std::uint32_t row = 0; row < unit_types->RowCount(); ++row) {
+        if (unit_types->CellText(row, class_column) == kHousingClass) {
+          config.type_is_housing[row] = 1;
+        }
+      }
     }
   }
   return true;

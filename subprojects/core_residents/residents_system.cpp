@@ -564,13 +564,87 @@ class ResidentsSystem final : public IResidentsSystem {
     }
   }
 
+  /// Where a family lives, or false when it has no house standing.
+  static bool FamilyHousePosition(const WorldState& current, FamilyId family, Vec2& position) {
+    const std::uint32_t family_row =
+        family.value == kInvalidEntityIdValue ? kNoRow : FindRow(current.families, family);
+    if (family_row == kNoRow) {
+      return false;
+    }
+    const UnitId house = current.families.rows[family_row].house;
+    const std::uint32_t house_row =
+        house.value == kInvalidEntityIdValue ? kNoRow : FindRow(current.units, house);
+    if (house_row == kNoRow) {
+      return false;
+    }
+    position = current.units.rows[house_row].position;
+    return true;
+  }
+
+  /// @brief The house a new household moves into.
+  ///
+  /// A FREE house first — one nobody lives in, of a housing type, standing
+  /// (level 0 is a site, not a roof). That is the canon's own order
+  /// (life-cycle §12: "a free house — new, freed, or one the farm got at the
+  /// start"), and it is how a yard emptied by a death or a marrying-out
+  /// comes to be lived in again.
+  ///
+  /// Failing that, STUB: a new house is raised on the spot, standing in for
+  /// the player who has not built one (the same figure as the kolkhoz yard
+  /// in world.cpp; boss answer of 2026-08-31), so the housing gate never
+  /// blocks a wedding. It stands BESIDE THE PARENTS — at the groom's house,
+  /// or the bride's, or amid the village when neither has one (a migrant
+  /// couple). It used to be appended with no position at all, which is the
+  /// map's origin: inside the old ten-kilometre village and twelve
+  /// kilometres from the new one, so every household founded after the
+  /// start walked all day and worked nothing, and the farm stopped mowing
+  /// by its seventh year. A position belongs to the scene, never to a
+  /// default.
+  UnitId SettleHouse(WorldState& current, FamilyId groom_family, FamilyId bride_family) const {
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      const UnitRow& unit = current.units.rows[row];
+      if (unit.household.value != kInvalidEntityIdValue || unit.level == 0 ||
+          unit.type.value >= config_.type_is_housing.size() ||
+          config_.type_is_housing[unit.type.value] == 0) {
+        continue;
+      }
+      return current.units.row_ids[row];
+    }
+    UnitRow house;
+    house.type = config_.house_type;
+    if (!FamilyHousePosition(current, groom_family, house.position) &&
+        !FamilyHousePosition(current, bride_family, house.position)) {
+      house.position = VillagePosition(current);
+    }
+    return AppendRow(current.units, house);
+  }
+
+  /// The mean position of the houses people live in; the origin only in a
+  /// world with no houses at all (a table-less test).
+  static Vec2 VillagePosition(const WorldState& current) {
+    Vec2 sum{.x = 0.0F, .y = 0.0F};
+    std::uint32_t seen = 0;
+    for (const UnitRow& unit : current.units.rows) {
+      if (unit.household.value == kInvalidEntityIdValue) {
+        continue;
+      }
+      sum.x += unit.position.x;
+      sum.y += unit.position.y;
+      ++seen;
+    }
+    if (seen == 0) {
+      return Vec2{.x = 0.0F, .y = 0.0F};
+    }
+    return Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
+  }
+
   void RunMarriages(WorldState& current, SimDay day) {
     // Brides draw the daily chance in row order; the groom is the first
     // eligible bachelor who is not close kin. The design's housing gate
-    // ("no free house — no wedding", families design §2) is a STUB until
-    // construction exists: every wedding instantly gets a free house unit,
-    // so the gate never blocks — but the house and the family-house link
-    // are real from here on.
+    // ("no free house — no wedding", life-cycle §12) never blocks: a free
+    // house is taken when there is one, and SettleHouse raises a STUB one
+    // when there is none — but the house and the family-house link are real
+    // from here on.
     const float daily_chance = config_.marriage_chance_percent_per_day / 100.0F;
     for (std::uint32_t bride_row = 0; bride_row < current.residents.rows.size(); ++bride_row) {
       if (current.residents.rows[bride_row].sex != Sex::kFemale ||
@@ -596,9 +670,8 @@ class ResidentsSystem final : public IResidentsSystem {
           continue;
         }
         FamilyRow household;
-        UnitRow house;
-        house.type = config_.house_type;
-        household.house = AppendRow(current.units, house);
+        household.house =
+            SettleHouse(current, groom.family, current.residents.rows[bride_row].family);
         const FamilyId home = AppendRow(current.families, household);
         const std::uint32_t house_row = FindRow(current.units, household.house);
         current.units.rows[house_row].household = home;
@@ -629,7 +702,14 @@ class ResidentsSystem final : public IResidentsSystem {
                           static_cast<std::int32_t>(static_cast<float>(day - 1) * rate_per_day);
     for (std::int32_t arrival = 0; arrival < arrivals; ++arrival) {
       ResidentRow migrant;
-      migrant.family = AppendRow(current.families, FamilyRow{});
+      // A migrant is settled the way a couple is: a free house, or a STUB
+      // one amid the village. Left without a house he would have no place
+      // for his day to start from, and would never work at all.
+      FamilyRow household;
+      household.house = SettleHouse(current, FamilyId{}, FamilyId{});
+      migrant.family = AppendRow(current.families, household);
+      const std::uint32_t house_row = FindRow(current.units, household.house);
+      current.units.rows[house_row].household = migrant.family;
       migrant.sex = DrawNewbornSex(config_, current, current.rng, day);
       const float age =
           DrawInRange(current.rng, config_.marriage_age_years, config_.fertility_to_years);

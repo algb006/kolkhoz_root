@@ -15,8 +15,10 @@
 //     not the reference runs' "half the arable", and mowing them fills a
 //     summer that used to stand idle;
 //   * the barn is served every day — undone care would be silent otherwise;
-//   * the road eats 37-56% of a spring day for the mean and the far field,
-//     the numbers the v9 start-map run measured;
+//   * the road costs what the twelve-kilometre layout says it costs: the
+//     arable lies inside the walking leg and the meadows inside the harness
+//     leg (the land-placement rule of 1 September 2026), and the share of a
+//     spring day each takes follows from that;
 //   * worker count does not change any of it (the sub-step is sequential, and
 //     that must stay true through the parallel phases around it).
 
@@ -29,6 +31,7 @@
 
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
+#include "core_common/land_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -90,6 +93,20 @@ constexpr double kWalkHoursPerKm = 2.4;
 
 constexpr double kSpringDayHours = 13.0;  // sim_v9_startmap.py DAY_H
 
+/// 12 km/h in harness under the same chronometer: one game hour per
+/// straight-line kilometre. Hay is carted, not carried (labor model §4).
+constexpr double kHarnessHoursPerKm = 1.0;
+
+/// The two legs of the land-placement rule (decision of 1 September 2026,
+/// measured the same way by `tools/db.py check`): the arable is reached on
+/// foot within 1.5 km of the village, the meadows in harness within 3.3 km.
+/// The 200 ha of hay do not fit inside the walking ring on this map — the
+/// ring holds 394 ha of dry usable land and the arable takes 160 of it — so
+/// the walking anchor on hay was a surplus requirement, not canon.
+constexpr double kArableLegKm = 1.5;
+
+constexpr double kMeadowLegKm = 3.3;
+
 int CheckTheRoad(const core::WorldState& start) {
   int failures = 0;
   core::Vec2 village{.x = 0.0F, .y = 0.0F};
@@ -106,30 +123,51 @@ int CheckTheRoad(const core::WorldState& start) {
     village.x /= static_cast<float>(houses);
     village.y /= static_cast<float>(houses);
   }
+  // The arable is walked to, the meadows are ridden to: two legs, two
+  // speeds, measured apart (the land-placement rule; land_state.h LandKind).
   double total_km = 0.0;
-  double far_km = 0.0;
+  double far_arable_km = 0.0;
+  double far_meadow_km = 0.0;
   std::uint32_t arable = 0;
   for (const core::FieldRow& field : start.fields.rows) {
     const double km = DistanceKm(village, field.center);
-    far_km = km > far_km ? km : far_km;
-    // The meadows are the standing grass; the arable is everything else.
-    if (field.phase != core::FieldPhase::kGrowing) {
-      total_km += km;
-      ++arable;
+    const bool meadow =
+        field.kind == core::LandKind::kMeadow || field.kind == core::LandKind::kFloodplainMeadow;
+    if (meadow) {
+      far_meadow_km = km > far_meadow_km ? km : far_meadow_km;
+      continue;
     }
+    far_arable_km = km > far_arable_km ? km : far_arable_km;
+    total_km += km;
+    ++arable;
   }
   const double mean_km = arable > 0 ? total_km / arable : 0.0;
   const double mean_share = 2.0 * mean_km * kWalkHoursPerKm / kSpringDayHours;
-  const double far_share = 2.0 * far_km * kWalkHoursPerKm / kSpringDayHours;
-  std::cout << "labor_year: mean arable " << mean_km << " km, farthest " << far_km
-            << " km; the road takes " << 100.0 * mean_share << "% and " << 100.0 * far_share
-            << "% of a spring day\n";
-  failures += ExpectBand(mean_km, 0.9, 1.1, "the arable averages the start map's 1.0 km");
-  failures += ExpectBand(far_km, 1.3, 1.5, "nothing lies beyond the start map's 1.5 km");
+  const double far_arable_share = 2.0 * far_arable_km * kWalkHoursPerKm / kSpringDayHours;
+  const double far_meadow_share = 2.0 * far_meadow_km * kHarnessHoursPerKm / kSpringDayHours;
+  std::cout << "labor_year: mean arable " << mean_km << " km, farthest arable " << far_arable_km
+            << " km on foot, farthest meadow " << far_meadow_km << " km in harness; the road takes "
+            << 100.0 * mean_share << "%, " << 100.0 * far_arable_share << "% and "
+            << 100.0 * far_meadow_share << "% of a spring day\n";
+  // The mean has no canon number of its own: the twelve-kilometre layout
+  // packs the arable by mask inside the walking leg and measures 0.81 km,
+  // nearer than the ten-kilometre map's 1.0. The band says "under a
+  // kilometre and not on the doorstep"; the legs are the rule itself.
+  failures += ExpectBand(mean_km, 0.6, 1.1, "the arable averages under a kilometre");
   failures += ExpectBand(
-      mean_share, 0.33, 0.42, "the road to the mean field costs the v9 share of a spring day");
+      far_arable_km, 0.5, kArableLegKm, "every arable contour lies inside the walking leg");
+  failures +=
+      ExpectBand(far_meadow_km, 0.5, kMeadowLegKm, "every meadow lies inside the harness leg");
   failures += ExpectBand(
-      far_share, 0.50, 0.60, "the road to the far field costs the v9 share of a spring day");
+      mean_share, 0.22, 0.41, "the road to the mean field costs its share of a spring day");
+  failures += ExpectBand(far_arable_share,
+                         0.1,
+                         2.0 * kArableLegKm * kWalkHoursPerKm / kSpringDayHours,
+                         "the road to the far field costs at most the walking leg's share");
+  failures += ExpectBand(far_meadow_share,
+                         0.1,
+                         2.0 * kMeadowLegKm * kHarnessHoursPerKm / kSpringDayHours,
+                         "the road to the far meadow costs at most the harness leg's share");
   return failures;
 }
 

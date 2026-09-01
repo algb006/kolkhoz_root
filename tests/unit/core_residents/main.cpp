@@ -14,9 +14,12 @@
 
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
@@ -56,6 +59,73 @@ class EmptyTableSet final : public core::ITableSet {
   std::uint32_t TableCount() const override { return 0; }
 
   std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
+};
+
+/// One in-memory table: a header and its rows, text only.
+class FakeTable final : public core::ITable {
+ public:
+  FakeTable(std::vector<std::string_view> columns, std::vector<std::vector<std::string_view>> rows)
+      : columns_(std::move(columns)), rows_(std::move(rows)) {}
+
+  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
+
+  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(columns_.size()); }
+
+  std::uint32_t FindColumn(std::string_view name) const override {
+    for (std::uint32_t index = 0; index < columns_.size(); ++index) {
+      if (columns_[index] == name) {
+        return index;
+      }
+    }
+    return core::kNoTableColumn;
+  }
+
+  std::uint32_t FindRowByKey(std::string_view key) const override {
+    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
+      if (!rows_[row].empty() && rows_[row][0] == key) {
+        return row;
+      }
+    }
+    return core::kNoTableRow;
+  }
+
+  std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
+    if (row >= rows_.size() || column >= rows_[row].size()) {
+      return {};
+    }
+    return rows_[row][column];
+  }
+
+  std::optional<std::int64_t> CellInteger(std::uint32_t /*row*/,
+                                          std::uint32_t /*column*/) const override {
+    return std::nullopt;  // the housing test reads keys and classes only
+  }
+
+  std::optional<float> CellReal(std::uint32_t /*row*/, std::uint32_t /*column*/) const override {
+    return std::nullopt;
+  }
+
+ private:
+  std::vector<std::string_view> columns_;
+
+  std::vector<std::vector<std::string_view>> rows_;
+};
+
+/// A table set with unit types alone: two kinds of dwelling and a barn, so
+/// that the housing class is something the config has to read, not assume.
+class HousingTables final : public core::ITableSet {
+ public:
+  const core::ITable* FindTable(std::string_view name) const override {
+    return name == "unit_types" ? &types_ : nullptr;
+  }
+
+  std::uint32_t TableCount() const override { return 1; }
+
+  std::string_view TableName(std::uint32_t /*index*/) const override { return "unit_types"; }
+
+ private:
+  FakeTable types_{{"key", "class"},
+                   {{"old_house", "housing"}, {"barn", "livestock"}, {"wooden_house", "housing"}}};
 };
 
 /// Appends an adult of the given biological age (life speedup 4).
@@ -511,6 +581,117 @@ int CheckEmptiedYard(core::IResidentsSystem& system) {
 
 }  // namespace
 
+/// A house with a household in it, at a place.
+core::UnitId AddHouse(core::WorldState& world, core::FamilyId family, core::Vec2 at) {
+  core::UnitRow house;
+  house.type = core::UnitTypeId{0};  // old_house
+  house.position = at;
+  house.household = family;
+  const core::UnitId id = AppendRow(world.units, house);
+  world.families.rows[FindRow(world.families, family)].house = id;
+  return id;
+}
+
+/// A yard of two married parents and one grown child, housed at `at`.
+core::FamilyId AddParentsWithChild(core::WorldState& world, core::Sex child_sex, core::Vec2 at) {
+  const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+  const core::ResidentId mother = AddAdult(world, yard, core::Sex::kFemale, 46.0F);
+  const core::ResidentId father = AddAdult(world, yard, core::Sex::kMale, 48.0F);
+  Marry(world, mother, father);
+  AddAdult(world, yard, child_sex, 22.0F);
+  AddHouse(world, yard, at);
+  return yard;
+}
+
+/// Runs the village until a wedding founds a household, or gives up.
+/// @return The new household's id, or invalid.
+core::FamilyId RunUntilWedding(core::IResidentsSystem& system, core::WorldState& world) {
+  const std::uint32_t first_new_id = world.families.next_id_value;
+  const std::size_t yards_before = world.families.rows.size();
+  for (std::uint32_t day = 1; day <= 3 * core::kDaysPerYear; ++day) {
+    RunDays(system, world, 1);
+    if (world.families.rows.size() > yards_before) {
+      break;
+    }
+  }
+  for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
+    if (world.families.row_ids[row].value >= first_new_id) {
+      return world.families.row_ids[row];
+    }
+  }
+  return core::FamilyId{};
+}
+
+/// The wedding's house (life-cycle §12): a free one first, else a STUB one
+/// raised beside the parents — never at the map's origin, which is where an
+/// unplaced unit lands and which on the twelve-kilometre map is twelve
+/// kilometres from the village (the thirty-year run stopped mowing by its
+/// seventh year over exactly that).
+int CheckSettleHouse() {
+  int failures = 0;
+  const HousingTables tables;
+  const auto system = core::CreateResidentsSystem(tables);
+  failures += Expect(system != nullptr, "a system over the housing tables");
+
+  // A free house of a housing type stands in the village: the wedding takes it.
+  {
+    core::WorldState world;
+    world.world_seed = 12;
+    world.rng = core::SeedRngState(12, 0);
+    const core::Vec2 hers{.x = 5000.0F, .y = 6000.0F};
+    const core::Vec2 his{.x = 5200.0F, .y = 6000.0F};
+    AddParentsWithChild(world, core::Sex::kFemale, hers);
+    AddParentsWithChild(world, core::Sex::kMale, his);
+    core::UnitRow free_house;
+    free_house.type = core::UnitTypeId{2};  // wooden_house, nobody in it
+    free_house.position = core::Vec2{.x = 5400.0F, .y = 6000.0F};
+    const core::UnitId free_id = AppendRow(world.units, free_house);
+    core::UnitRow barn;
+    barn.type = core::UnitTypeId{1};  // free of households too, but not a dwelling
+    AppendRow(world.units, barn);
+    const auto units_before = static_cast<std::uint32_t>(world.units.rows.size());
+    const core::FamilyId home = RunUntilWedding(*system, world);
+    failures += Expect(home.value != core::kInvalidEntityIdValue, "a wedding founded a household");
+    if (home.value != core::kInvalidEntityIdValue) {
+      const core::FamilyRow& family = world.families.rows[FindRow(world.families, home)];
+      failures += Expect(family.house.value == free_id.value, "and it moved into the free house");
+      failures += Expect(world.units.rows.size() == units_before,
+                         "so no house was raised: the free one was there");
+      const core::UnitRow& house = world.units.rows[FindRow(world.units, free_id)];
+      failures += Expect(house.household.value == home.value, "the free house now has a household");
+    }
+  }
+
+  // No free house: the STUB raises one, and raises it beside the parents.
+  {
+    core::WorldState world;
+    world.world_seed = 12;
+    world.rng = core::SeedRngState(12, 0);
+    const core::Vec2 hers{.x = 5000.0F, .y = 6000.0F};
+    const core::Vec2 his{.x = 5200.0F, .y = 6000.0F};
+    AddParentsWithChild(world, core::Sex::kFemale, hers);
+    AddParentsWithChild(world, core::Sex::kMale, his);
+    const auto units_before = static_cast<std::uint32_t>(world.units.rows.size());
+    const core::FamilyId home = RunUntilWedding(*system, world);
+    failures += Expect(home.value != core::kInvalidEntityIdValue, "a wedding founded a household");
+    if (home.value != core::kInvalidEntityIdValue) {
+      const core::FamilyRow& family = world.families.rows[FindRow(world.families, home)];
+      failures += Expect(world.units.rows.size() == units_before + 1, "a house was raised for it");
+      const std::uint32_t house_row = FindRow(world.units, family.house);
+      failures += Expect(house_row != core::kNoRow, "and the household is linked to it");
+      if (house_row != core::kNoRow) {
+        const core::UnitRow& house = world.units.rows[house_row];
+        failures += Expect(house.type.value == 2, "of the wooden_house type");
+        failures += Expect(house.household.value == home.value, "with the household in it");
+        const bool beside_parents =
+            (house.position.x == hers.x || house.position.x == his.x) && house.position.y == hers.y;
+        failures += Expect(beside_parents, "standing beside the parents, not at the origin");
+      }
+    }
+  }
+  return failures;
+}
+
 int main() {
   int failures = 0;
   const EmptyTableSet tables;  // canonical defaults compiled into the config
@@ -636,6 +817,7 @@ int main() {
   failures += CheckPlot();
   failures += CheckExchange();
   failures += CheckVitals();
+  failures += CheckSettleHouse();
 
   if (failures == 0) {
     std::cout << "unit_core_residents: all checks passed\n";
