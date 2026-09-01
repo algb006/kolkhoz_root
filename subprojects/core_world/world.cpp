@@ -173,6 +173,27 @@ class EventsSlot final : public ISequentialPhase {
   /// The horses come in from the private yards all at once and in one herd,
   /// which is what the canon describes: it also frees the sixteen householders
   /// who were tied to them, since nobody hosts a kolkhoz horse any more.
+  /// Where the stubbed yard stands. It used to be the literal Vec2{150, 150},
+  /// which was inside the old ten-kilometre map's village and is the empty
+  /// south-west corner of the twelve-kilometre one — twelve kilometres from
+  /// the houses, so no horse could reach a field inside the four-hour leg and
+  /// the farm stopped ploughing for ever. A position is not a constant of the
+  /// core: it belongs to the scene, so it is taken from the scene the layout
+  /// actually laid out.
+  static Vec2 VillagePosition(const WorldState& current) {
+    Vec2 sum{.x = 0.0F, .y = 0.0F};
+    std::uint32_t seen = 0;
+    for (const UnitRow& unit : current.units.rows) {
+      sum.x += unit.position.x;
+      sum.y += unit.position.y;
+      ++seen;
+    }
+    if (seen == 0) {
+      return Vec2{.x = 150.0F, .y = 150.0F};  // an empty world: harmless
+    }
+    return Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
+  }
+
   void RaiseKolkhozYard(WorldState& current) const {
     if (yard_type_.value == kInvalidDefIdValue || horse_kind_.value == kInvalidDefIdValue) {
       return;
@@ -189,7 +210,7 @@ class EventsSlot final : public ISequentialPhase {
     UnitRow yard;
     yard.type = yard_type_;
     yard.level = 2;  // the stable: the step at which foals become possible
-    yard.position = Vec2{.x = 150.0F, .y = 150.0F};
+    yard.position = VillagePosition(current);
     const UnitId built = AppendRow(current.units, yard);
 
     std::uint32_t gathered = kNoRow;

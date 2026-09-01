@@ -1,0 +1,10 @@
+# generated from db/design.db — do not edit by hand
+# the four levels, and what each does to the start (difficulty design §1 and §4)
+# start_stock.csv holds the NORMAL level only; stock_scale is what the other levels multiply every amount by
+# fodder is not a flat multiple: the design sizes it from the date of the first cut, so fodder_weeks is the slack against that date — positive is surplus, negative is short
+# an EMPTY cell means the design has not written that number yet. Reading it as 1.0 would quietly make every level the normal one: refuse the level instead, or fall back to normal and say so
+key,title,stock_scale,fodder_weeks
+easy,Лёгкий,,
+normal,Обычный,,0
+hard,Трудный,,
+brutal,Тяжёлый,,
