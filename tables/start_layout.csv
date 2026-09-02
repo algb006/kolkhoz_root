@@ -1,6 +1,6 @@
 # generated from db/design.db — do not edit by hand
 # the hand-designed start: metres from the map's SOUTH-WEST corner, never negative (core_common/geometry.h)
-# where each thing stands comes from the map editor; how much land it is comes from the registry, and the scene never sets it
+# both where a thing stands and how much land it covers are measured off db/map.db: the size of a contour is a property of the contour, and a second copy of it had already drifted once
 # kind unit: unit_type is the registry key, area and rotation empty
 # kind field/meadow: area_ha is set, unit_type empty; an empty rotation slot is a fallow year
 # is_derelict: land that has rested and waits to be raised, not ploughed fallow
@@ -52,7 +52,7 @@ yard_18,unit,old_house,8879,9240,,,,,0,
 yard_19,unit,old_house,8991,9240,,,,,0,
 yard_20,unit,old_house,9103,9240,,,,,0,
 yard_21,unit,old_house,9215,9240,,,,,0,
-field_reserve,reserve_field,,8612.5,8867.5,3.04,,,,1,
+field_reserve,reserve_field,,8600,8875,3,,,,1,
 cemetery,unit,cemetery,8120,10480,,,,,0,
 meadow_06,meadow,,9626.2,8309.3,20,,,,0,upland
 meadow_07,meadow,,8626.2,7759.3,20,,,,0,upland

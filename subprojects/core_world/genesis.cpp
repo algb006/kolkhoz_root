@@ -360,6 +360,19 @@ bool PlaceStartLayout(WorldState& world,
   for (std::uint32_t row = 0; row < layout.RowCount(); ++row) {
     const std::string_view kind = layout.CellText(row, kind_col);
     const Vec2 place{.x = LayoutNumber(layout, row, x_col), .y = LayoutNumber(layout, row, y_col)};
+    // The map bounds ARE checked somewhere — on the positions the chairman
+    // orders a building at (core_construction) — and were never checked on
+    // the scene the core ships with. So when the layout moved to the twelve
+    // kilometre map and kMapSizeMeters stayed at ten, nothing said a word,
+    // and the graphics layer found it by building a landscape too small for
+    // the farm. A check that looks only where the danger is expected is how
+    // that happens. The row is still placed: the scene is the scene, and
+    // dropping a cemetery because a constant is stale would be worse.
+    if (!(place.x >= 0.0F && place.x <= kMapSizeMeters && place.y >= 0.0F &&
+          place.y <= kMapSizeMeters)) {
+      LogWarning("genesis: layout row '" + std::string(layout.CellText(row, key_col)) +
+                 "' lies outside the map; kMapSizeMeters is stale or the layout is another map's");
+    }
     if (kind == "unit") {
       const UnitTypeId type = TypeByKey(unit_types, layout.CellText(row, type_col));
       if (type.value == kInvalidDefIdValue) {
