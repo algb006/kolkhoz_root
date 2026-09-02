@@ -21,27 +21,16 @@ namespace core {
 /// @brief A distance or coordinate, in metres.
 using Meters = float;
 
-/// @brief Side length of the square map, in metres.
-///
-/// TWELVE kilometres since the human's decision of 1 September 2026. It was
-/// ten, and the start layout moved to the new map while this line did not —
-/// so the core carried a scene reaching y = 10934 inside a world it declared
-/// 10000 wide, and the graphics layer, which takes its terrain size from
-/// here, would have built a 10 x 10 landscape under a 12 x 12 map and left
-/// the cemetery, the north forest and two contours off the edge.
-///
-/// THIS IS A COPY, and the only reason it is a constant is that nothing
-/// exports the side yet. The one home of the number is `db/map.db`, table
-/// `map`, column `side_m`: maps differ in size and the limits are measured
-/// against whichever is loaded. When the side arrives in a core table this
-/// constant goes away — until then, a map of another size means editing this
-/// line, and PlaceStartLayout says so out loud when a layout row falls
-/// outside it (core_world/genesis.cpp).
-inline constexpr Meters kMapSizeMeters = 12'000.0f;
-
 /// @brief A point or displacement on the map plane, in metres.
-/// Origin is the map's south-west corner; x grows east, y grows north. Valid
-/// world positions lie in [0, kMapSizeMeters] on both axes.
+/// Origin is the map's south-west corner; x grows east, y grows north; a
+/// coordinate is never negative. HOW BIG THE MAP IS IS NOT HERE and is not a
+/// constant of the core: it is `side_m` of tables/map.csv, exported from
+/// db/map.db, and maps differ in size. It used to be `kMapSizeMeters` here
+/// as well; the map grew from ten kilometres to twelve, the copy did not,
+/// and for a day the core carried a scene reaching past the edge it
+/// declared. Read the side, never hold it: the world reads it at genesis,
+/// construction validates against it, and the presentation asks the session
+/// (core_boundary/session.h, MapSideMeters).
 /// Plain data: arithmetic helpers are free functions of the core_common
 /// implementation, not members, so the type stays a trivially copyable
 /// aggregate.

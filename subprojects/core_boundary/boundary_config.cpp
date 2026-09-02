@@ -55,6 +55,17 @@ bool OptionalValue(const ITable& table,
 }  // namespace
 
 bool ParseBoundaryConfig(const ITableSet& tables, BoundaryConfig& config, std::string& error) {
+  if (const ITable* const map = tables.FindTable("map")) {
+    const std::uint32_t side_col = map->FindColumn("side_m");
+    if (map->RowCount() > 0 && side_col != kNoTableColumn) {
+      const std::optional<float> side = map->CellReal(0, side_col);
+      if (!side || !(*side > 0.0F && *side <= 1e7F)) {
+        error = "map: side_m is missing or out of range";
+        return false;
+      }
+      config.map_side_m = *side;
+    }
+  }
   const ITable* const life = tables.FindTable("life");
   if (life == nullptr) {
     return true;  // no table: the defaults above are the canonical values

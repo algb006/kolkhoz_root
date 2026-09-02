@@ -1,0 +1,7 @@
+# generated from db/design.db — do not edit by hand
+# the map the campaign starts on, and how big it is
+# side_m is the ONE home of the map's size. It was a constant in the core as well (kMapSizeMeters), the map grew from 10 to 12 km, and the two disagreed for a day while the layout drove past the edge the core still declared
+# a second map may be a different square, so nothing downstream may hold this number: read it, do not copy it
+# origin south-west: metres from that corner, x east, y north, never negative (core_common/geometry.h)
+key,title,side_m,origin
+rodniki,Родники — стартовая карта,12000,south-west

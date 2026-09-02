@@ -135,6 +135,8 @@ class Session final : public ISession {
 
   const WorldState& State() const override { return simulation_->CompletedState(); }
 
+  float MapSideMeters() const override { return config_.map_side_m; }
+
   UnitSignals SignalsOfUnit(UnitId unit) const override {
     return DeriveUnitSignals(config_, State(), unit);
   }

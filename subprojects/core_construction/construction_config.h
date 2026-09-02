@@ -93,6 +93,15 @@ struct ConstructionConfig {
   /// (construction design §12: "noticeably less than building"). ASSUMPTION.
   float demolition_labor_share = 0.25F;
 
+  /// Side of the square map in metres, from tables/map.csv `side_m`. ZERO
+  /// MEANS THE TABLE SET HAS NO MAP, and then no position is out of bounds:
+  /// a world with no map declared has no edge to fall off, and refusing
+  /// every build in a table-less test would be inventing a rule out of a
+  /// missing file. Never defaulted to a number — a wrong edge is worse than
+  /// no edge, which is exactly how the ten-kilometre constant survived the
+  /// move to twelve.
+  float map_side_m = 0.0F;
+
   /// By UnitTypeId value. Sized to the unit_types table; a type the tables
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;

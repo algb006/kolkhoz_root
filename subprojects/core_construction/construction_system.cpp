@@ -111,8 +111,11 @@ class ConstructionSystem final : public IConstructionSystem {
     if (!GateIsOpen(type.gate, type.era, current.epoch)) {
       return OrderRefusal::kGateClosed;
     }
-    if (!(order.position.x >= 0.0F && order.position.x <= kMapSizeMeters &&
-          order.position.y >= 0.0F && order.position.y <= kMapSizeMeters)) {
+    // The edge is data (construction_config.h): zero means the table set
+    // declares no map, and then there is nothing to be outside of.
+    if (config_.map_side_m > 0.0F &&
+        !(order.position.x >= 0.0F && order.position.x <= config_.map_side_m &&
+          order.position.y >= 0.0F && order.position.y <= config_.map_side_m)) {
       return OrderRefusal::kRuleForbids;
     }
     if (PlotOverlaps(current, order.position, type.plot_radius_m, UnitId{})) {

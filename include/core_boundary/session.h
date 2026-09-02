@@ -22,19 +22,19 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — fifteen methods, two codec
+/// concrete, and it is deliberately small — sixteen methods, two codec
 /// functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
-///     read      Stamp, State, SignalsOfUnit, SignalsOfField, WhereaboutsOf,
-///               ActiveAlarms
+///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
+///               WhereaboutsOf, ActiveAlarms
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents
 ///     record    TakeJournal, ReplaceWorld (two forms), StagedBatch
 ///
-/// (Fifteen methods since task A2 added the two that let a save carry the
-/// staged batch — an addition, which is what the contract's minor number
-/// is for; 70-boundary.md §6.)
+/// (Sixteen since task A2 added the two that let a save carry the staged
+/// batch and the map's side stopped being a constant — all three additions,
+/// which is what the contract's minor number is for; 70-boundary.md §6.)
 ///
 /// The read model is WorldState itself — the core's public data, already
 /// plain structs by the state-model law — plus the handful of DERIVED
@@ -414,6 +414,19 @@ class ISession {
   /// @brief The stamp of the completed state: compare serials to know
   /// whether a re-read is needed.
   virtual StateStamp Stamp() const = 0;
+
+  /// @brief Side of the square map in metres, from tables/map.csv — what
+  /// the presentation sizes its terrain from.
+  ///
+  /// A METHOD AND NOT A CONSTANT, and the reason is worth the line: the core
+  /// used to export `kMapSizeMeters`, the map grew from ten kilometres to
+  /// twelve, and the header kept saying ten while the start layout drove
+  /// past the edge. Maps differ in size, so the number belongs to the loaded
+  /// data and not to the build. The one home of it is db/map.db.
+  /// @return 0 when the table set declares no map. Zero is not a size: it
+  ///         says the session does not know, so that a caller cannot be
+  ///         handed a plausible wrong number.
+  virtual float MapSideMeters() const = 0;
 
   /// @brief The completed state — ISimulation::CompletedState through the
   /// session. Valid until the next AdvanceStep, AdvanceUntil or

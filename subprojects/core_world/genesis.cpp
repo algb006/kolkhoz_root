@@ -341,6 +341,7 @@ bool PlaceStartLayout(WorldState& world,
                       const ITable* unit_types,
                       const ITable* crops,
                       Metric start_fertility,
+                      float map_side_m,
                       std::vector<std::pair<std::string_view, UnitId>>& placed) {
   const std::uint32_t key_col = layout.FindColumn("key");
   const std::uint32_t kind_col = layout.FindColumn("kind");
@@ -363,15 +364,17 @@ bool PlaceStartLayout(WorldState& world,
     // The map bounds ARE checked somewhere — on the positions the chairman
     // orders a building at (core_construction) — and were never checked on
     // the scene the core ships with. So when the layout moved to the twelve
-    // kilometre map and kMapSizeMeters stayed at ten, nothing said a word,
-    // and the graphics layer found it by building a landscape too small for
-    // the farm. A check that looks only where the danger is expected is how
-    // that happens. The row is still placed: the scene is the scene, and
-    // dropping a cemetery because a constant is stale would be worse.
-    if (!(place.x >= 0.0F && place.x <= kMapSizeMeters && place.y >= 0.0F &&
-          place.y <= kMapSizeMeters)) {
+    // kilometre map and the core's own copy of the side stayed at ten,
+    // nothing said a word, and the graphics layer found it by building a
+    // landscape too small for the farm. A check that looks only where the
+    // danger is expected is how that happens. The row is still placed: the
+    // scene is the scene, and dropping a cemetery because a number
+    // disagrees would be worse. A side of zero means the table set declares
+    // no map, and then there is no edge to be outside of.
+    if (map_side_m > 0.0F &&
+        !(place.x >= 0.0F && place.x <= map_side_m && place.y >= 0.0F && place.y <= map_side_m)) {
       LogWarning("genesis: layout row '" + std::string(layout.CellText(row, key_col)) +
-                 "' lies outside the map; kMapSizeMeters is stale or the layout is another map's");
+                 "' lies outside the map declared by tables/map.csv");
     }
     if (kind == "unit") {
       const UnitTypeId type = TypeByKey(unit_types, layout.CellText(row, type_col));
@@ -468,7 +471,16 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     return;
   }
   std::vector<std::pair<std::string_view, UnitId>> placed;
-  if (!PlaceStartLayout(world, *layout, unit_types, crops, kStartFertility, placed)) {
+  // The side of the map is data and lives in exactly one place — map.csv,
+  // exported from db/map.db. Zero when the table set has none.
+  float map_side_m = 0.0F;
+  if (const ITable* const map = tables.FindTable("map")) {
+    const std::uint32_t side_col = map->FindColumn("side_m");
+    if (map->RowCount() > 0) {
+      map_side_m = LayoutNumber(*map, 0, side_col);
+    }
+  }
+  if (!PlaceStartLayout(world, *layout, unit_types, crops, kStartFertility, map_side_m, placed)) {
     LogError("genesis: start_layout has no key or kind column");
     return;
   }

@@ -315,6 +315,15 @@ bool ParseConstructionConfig(const ITableSet& tables,
     }
   }
 
+  if (const ITable* const map = tables.FindTable("map")) {
+    const std::uint32_t column = map->FindColumn("side_m");
+    if (map->RowCount() > 0 && column != kNoTableColumn &&
+        !CellOrDefault(*map, 0, column, 0.0F, 1e7F, 0.0F, config.map_side_m)) {
+      Fail(error, "map", "side_m is out of range");
+      return false;
+    }
+  }
+
   const ITable* const unit_types = tables.FindTable("unit_types");
   const ITable* const resources = tables.FindTable("resources");
   if (unit_types == nullptr || resources == nullptr) {

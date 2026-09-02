@@ -39,6 +39,11 @@ struct BoundaryConfig {
   /// Kept in years because that is the unit every age comparison uses; the
   /// table states it in months, which is how the design says it.
   float infant_age_bio_years = 1.5F;
+
+  /// Side of the square map in metres (tables/map.csv, `side_m`). ZERO when
+  /// the table set declares no map — the presentation must then take the
+  /// size from somewhere else rather than be handed a plausible lie.
+  float map_side_m = 0.0F;
 };
 
 /// @brief Reads the knobs out of `tables`.
