@@ -67,9 +67,17 @@ constexpr std::uint8_t kMaxSocialStatus = static_cast<std::uint8_t>(SocialStatus
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kHarvest);
 constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerelict);
 
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDemolishUnit);
+// MEM-002 fix: these two were left at the enumerators of before task A2
+// while order_state.h grew kStartBuild, kUpgradeUnit and three refusals
+// past them. The error was in the safe direction — nothing read out of
+// range — but it broke loading: a staged kStartBuild is exactly what a save
+// taken between steps carries, and DecodeWorld threw the whole world away
+// over "order kind holds 8, outside 0..7". Both names are the LAST
+// enumerator of their enum, and order_state.h says so where a new one gets
+// appended.
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kUpgradeUnit);
 constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
-constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kRuleForbids);
+constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNotEmpty);
 
 template <typename IdT>
 void WriteEntityId(ByteWriter& out, IdT id) {

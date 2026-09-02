@@ -226,7 +226,7 @@ core::WorldState MakeWorld() {
   // The top of each enum: their bounds are checked on the way in.
   refused.kind = core::OrderKind::kDemolishUnit;
   refused.status = core::OrderStatus::kCancelled;
-  refused.refusal = core::OrderRefusal::kRuleForbids;
+  refused.refusal = core::OrderRefusal::kNotEmpty;
   refused.issued_tick = 69;
   refused.unit = core::UnitId{1};
   core::AppendRow(world.orders, refused);
@@ -332,7 +332,7 @@ int main() {
                          loaded.orders.rows[0].resident.value == 1,
                      "a waiting order kept its status, its target and the tick it was issued on");
   failures += Expect(loaded.orders.rows[2].position.x == -12.5F &&
-                         loaded.orders.rows[3].refusal == core::OrderRefusal::kRuleForbids,
+                         loaded.orders.rows[3].refusal == core::OrderRefusal::kNotEmpty,
                      "the build order's position and the refusal reason survived");
 
   // The site came back mid-build, every field of it.
@@ -351,12 +351,26 @@ int main() {
   // after the day's orders have been handed out, and those orders are not in
   // the book yet — the engine applies them at the next step (order_state.h).
   core::StagedOrders staged;
+  //
+  // TWO ROWS, AND THE SECOND IS THE TOP OF ITS ENUM. The codec validates
+  // every enum byte it reads against an upper bound written by hand in
+  // save_rows.cpp, and that bound was left behind when task A2 appended
+  // kStartBuild, kUpgradeUnit and three refusals: a save carrying a staged
+  // build order was refused whole, over a byte "outside 0..7". A guard that
+  // stages anything below the top cannot see the bound slip back by one, so
+  // one row carries kUpgradeUnit — the last kind there is — and the refused
+  // row on the order book above carries kNotEmpty, the last refusal. The
+  // other row is the ordinary case that first broke.
   core::OrderRow waiting;
-  waiting.kind = core::OrderKind::kSetRotation;
-  waiting.field = core::FieldId{2};
-  waiting.rotation_year0 = core::CropId{1};
+  waiting.kind = core::OrderKind::kStartBuild;
+  waiting.unit = core::UnitId{2};
   waiting.issued_tick = 96;
   staged.issued.push_back(waiting);
+  core::OrderRow upgrading;
+  upgrading.kind = core::OrderKind::kUpgradeUnit;
+  upgrading.unit = core::UnitId{3};
+  upgrading.issued_tick = 97;
+  staged.issued.push_back(upgrading);
   staged.cancelled.push_back(core::OrderId{7});
 
   const std::vector<std::byte> with_batch = core::EncodeWorld(world, staged, *tables);
@@ -365,11 +379,13 @@ int main() {
   failures += Expect(core::DecodeWorld(with_batch, *tables, &batch_world, &batch_back, &error),
                      "a save with a staged batch decodes");
   failures +=
-      Expect(batch_back.issued.size() == 1 && batch_back.cancelled.size() == 1 &&
-                 batch_back.issued[0].kind == core::OrderKind::kSetRotation &&
-                 batch_back.issued[0].field.value == 2 && batch_back.issued[0].issued_tick == 96 &&
+      Expect(batch_back.issued.size() == 2 && batch_back.cancelled.size() == 1 &&
+                 batch_back.issued[0].kind == core::OrderKind::kStartBuild &&
+                 batch_back.issued[0].unit.value == 2 && batch_back.issued[0].issued_tick == 96 &&
+                 batch_back.issued[1].kind == core::OrderKind::kUpgradeUnit &&
+                 batch_back.issued[1].unit.value == 3 && batch_back.issued[1].issued_tick == 97 &&
                  batch_back.cancelled[0].value == 7,
-             "and hands the batch back exactly as it was staged");
+             "and hands the batch back exactly as it was staged, in order");
   core::WorldState no_batch_world;
   failures += Expect(!core::DecodeWorld(with_batch, *tables, &no_batch_world, &error),
                      "a caller with no session to resume them into refuses, never drops them");

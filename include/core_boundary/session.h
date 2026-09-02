@@ -531,6 +531,13 @@ class ISession {
   /// @pre `staged` was saved with `initial`: its promised ids follow
   ///      initial.orders.next_id_value. A batch from another world is a
   ///      caller error (asserted in Debug; otherwise applied as it is).
+  /// @pre `staged` DOES NOT ALIAS StagedBatch(). The reset empties the
+  ///      session's own batch before the argument is copied, so passing that
+  ///      batch back in — the natural spelling of "reload the world and keep
+  ///      what is staged" — would copy an already emptied one and lose the
+  ///      orders silently. Copy it into a local first. Recorded as an open
+  ///      item: the implementation should take its copy before the reset and
+  ///      make the call correct instead of forbidden.
   virtual void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) = 0;
 
   /// @brief What is staged and not yet applied — the batch the next step

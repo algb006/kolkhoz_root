@@ -102,8 +102,27 @@ CropId CropByKey(const ITable* crops, std::string_view key) {
   return row == kNoTableRow ? CropId{} : CropId{static_cast<std::uint16_t>(row)};
 }
 
+/// The widest a start stock amount may be, in kilograms. Generous by three
+/// orders of magnitude against the largest thing the canon puts anywhere
+/// (600 t of logs) and small enough that grams stay far inside int64.
+constexpr float kMaxStockKilograms = 1e9F;
+
+/// The same idea for a layout cell: coordinates, areas and flags. A map
+/// twelve kilometres on a side leaves this six orders of magnitude of room.
+constexpr float kLayoutNumberLimit = 1e9F;
+
 void PutStock(UnitRow& unit, ResourceId resource, float kilograms) {
   if (resource.value == kInvalidDefIdValue) {
+    return;
+  }
+  // UB-002 fix, and it belongs HERE rather than only at the reader: the cast
+  // below is undefined for nan, for inf and for anything whose truncation
+  // does not fit the destination ([conv.fpint]/1), the multiply overflows
+  // int64 above 9.2e15 kg — and the number comes off a hand-editable table.
+  // The comparison is written positively so that nan fails it, the way every
+  // other table reader in the core tests its cells.
+  if (!(kilograms >= 0.0F && kilograms <= kMaxStockKilograms)) {
+    LogWarning("genesis: a start stock amount is not a usable number; that row is skipped");
     return;
   }
   if (unit.stock.size() <= resource.value) {
@@ -291,13 +310,24 @@ struct LayoutRow {
   bool derelict = false;
 };
 
-/// @brief Reads one cell as a number; an empty or unreadable cell is 0.
+/// @brief Reads one cell as a number; an empty, unreadable, non-finite or
+/// absurd cell is 0 and says so. std::from_chars accepts "inf" and "nan",
+/// and these tables are exported and then hand-edited, so the reader refuses
+/// them here instead of passing them on to a cast (UB-002). Written
+/// positively for the same reason as everywhere else: nan fails the test.
 float LayoutNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
   if (column == kNoTableColumn) {
     return 0.0F;
   }
   const std::optional<float> cell = table.CellReal(row, column);
-  return cell ? *cell : 0.0F;
+  if (!cell) {
+    return 0.0F;
+  }
+  if (!(*cell >= -kLayoutNumberLimit && *cell <= kLayoutNumberLimit)) {
+    LogWarning("genesis: a layout cell is not a usable number; it is read as zero");
+    return 0.0F;
+  }
+  return *cell;
 }
 
 /// @brief Fills the units, fields and meadows of the start from the layout
@@ -510,9 +540,18 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     // year irreversible, which the design forbids outright.
     PutPantry(family, GenesisResource(resources, "hay"), 1300);
   }
-  PutStock(world.units.rows[FindRow(world.units, compost)],
-           GenesisResource(resources, "manure"),
-           250000);
+  // Guarded like every other lookup on this path: unit_by_key answers with
+  // an invalid id when the layout carries no such row, FindRow turns that
+  // into kNoRow, and indexing the vector with kNoRow writes four gigabytes
+  // past its end. The shipped layout has the heap; a doctored table set for
+  // a test need not, and a start without manure is a table problem, not a
+  // crash. MEM-001 fix.
+  const std::uint32_t compost_row = FindRow(world.units, compost);
+  if (compost_row != kNoRow) {
+    PutStock(world.units.rows[compost_row], GenesisResource(resources, "manure"), 250000);
+  } else {
+    LogWarning("genesis: the layout has no manure_pile; the start begins without compost");
+  }
 
   // The land is in the layout table too, and its numbers are the core's own
   // going the other way: the areas and the three-year rotation were

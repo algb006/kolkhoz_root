@@ -6,18 +6,20 @@
 /// every write is sequential.
 ///
 /// WHO WRITES, and what is wired TODAY. The step engine APPENDS issued rows
-/// and MARKS cancellations before phase 1, in arrival order — that half
-/// exists (buffer-law rule 2, core_sim/step.h). The other half is the plan
-/// this layout is built for and is NOT wired yet (task O3 of project phase
-/// 2): the one subsystem that consumes a kind will move its rows through the
-/// statuses below inside its own sub-step of the decisions slot (phase 3),
-/// and the events slot (phase 7) will emit the order's events and REMOVE
-/// rows that reached a terminal status. Until then NOTHING reads the book
-/// and nothing sweeps it: rows accumulate for the life of the campaign, and
-/// the refusal described below is a rule waiting for its enforcer, not
-/// behaviour you can observe. Parallel phases never touch the table in
-/// either era — an order is a structural fact, and structure changes only in
-/// sequential slots (buffer-law rule 6).
+/// and MARKS cancellations before phase 1, in arrival order (buffer-law
+/// rule 2, core_sim/step.h). The consuming half is wired for the
+/// construction kinds and only for those (project phase 2, task A2):
+/// core_construction reads the book in its sub-step of the decisions slot
+/// (phase 3) and settles kBuildUnit, kStartBuild, kUpgradeUnit and
+/// kDemolishUnit — each to kDone or kRefused IN THE STEP IT IS READ, never
+/// to kAccepted or kActive. The events slot (phase 7) then emits every
+/// terminal row's event and REMOVES the row, so the book is empty again by
+/// the end of the step that settled it. The work kinds are still
+/// unconsumed: kAssignWork, kReleaseWork, kPauseUnit, kResumeUnit and
+/// kSetRotation have no subsystem reading them (task O3), and the sweep
+/// refuses them with kNoConsumer rather than letting them accumulate.
+/// Parallel phases never touch the table — an order is a structural fact,
+/// and structure changes only in sequential slots (buffer-law rule 6).
 ///
 /// WHY AN ORDER IS STATE AND NOT A MESSAGE (project phase 2, task A1;
 /// manual/70-boundary.md). The design defers almost everything the chairman
@@ -51,10 +53,10 @@
 ///
 /// A row still kPending when the events slot of the step it was applied in
 /// runs has no consumer: the events slot refuses it with
-/// OrderRefusal::kNoConsumer. That is how an order kind whose mechanic has
-/// not arrived yet (construction before task A2) is to answer — with a
-/// refusal the presentation can show, never with silence. Task O3 wires it;
-/// today the events slot does none of this.
+/// OrderRefusal::kNoConsumer (core_world/world.cpp, SweepOrderBook). That is
+/// how an order kind whose mechanic has not arrived yet answers — with a
+/// refusal the presentation can show, never with silence. It is live, and
+/// the work kinds meet it every time they are issued until task O3.
 ///
 /// THE ONE APPENDER. Only the step engine appends to this table, and it
 /// appends the staged rows in the order they were staged. Ids are therefore
@@ -148,6 +150,14 @@ enum class OrderKind : std::uint8_t {
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
+  //
+  // APPENDING A KIND MEANS RAISING kMaxOrderKind in core_save/save_rows.cpp:
+  // the save codec validates the byte it read against the last enumerator,
+  // and a guard left behind refuses every save carrying the new kind. There
+  // is no sentinel to derive it from on purpose — ShapeIsValid in
+  // core_boundary/session.cpp switches over this enum WITHOUT a default, so
+  // a new kind is a compile error there until it is handled, and a sentinel
+  // would have to be handled too. The same note stands over OrderRefusal.
 };
 
 /// @brief Where an order stands. Terminal statuses are removed by the events
@@ -188,6 +198,9 @@ enum class OrderRefusal : std::uint8_t {
   /// house, a herd at a barn (unit rules §14 — "the living is not
   /// demolished"; the stock, by contrast, is moved out, not refused).
   kNotEmpty,
+
+  // Appending a refusal means raising kMaxOrderRefusal in
+  // core_save/save_rows.cpp — see the note over OrderKind above.
 };
 
 /// @brief One order. Plain data; `kind` says which target fields are read,

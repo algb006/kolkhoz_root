@@ -4,8 +4,15 @@
 /// The assignment block is embedded in ResidentRow (resident_state.h) and
 /// follows its discipline: in phase 1 every write is sequential — the labor
 /// sub-step of the decisions slot assigns in the morning, drains hourly and
-/// closes accrual at day end, all on the sim thread. Parallel phases may
-/// read it from `previous` like any resident field.
+/// closes accrual at day end, all on the sim thread. WHICH BUFFER A PARALLEL
+/// PHASE READS IT FROM follows from where that phase sits relative to the
+/// decisions slot (phase 3), and both answers are in use: the needs phase
+/// (2) runs BEFORE the block is written this step and must read `previous`,
+/// or it would see the previous step's values under a name that promises
+/// today's (core_residents/family_meal.cpp takes WorkedHeavy that way and
+/// says why); the metrics phase (6) runs AFTER, and reads `current` for the
+/// rows its own item owns (core_residents/household_plot.cpp reads
+/// hours_away_today), which is buffer-law rule 4 and not an exception to it.
 ///
 /// Design sources: time design §6-§8 and §11 (the workday by the sun, the
 /// road limit, the fatigue walk-off), society design §1 (the accountant's
