@@ -108,9 +108,12 @@ OrderRefusal CheckAppointment(const LaborConfig& config,
   }
   const std::uint32_t unit_row = FindRow(world.units, order.unit);
   if (unit_row == kNoRow) {
-    // The unit is a qualifier of the appointment and not its subject, so a
-    // missing one answers by rule and not by subject (order_state.h).
-    return OrderRefusal::kRuleForbids;
+    // "There is no such unit" and "that unit takes no groom" are two
+    // different sentences for the presentation to say, and it cannot build
+    // them from one code (boss, 2026-09-03). A named thing that is gone
+    // answers kNoSuchSubject here exactly as it does in construction: the
+    // same case gets the same answer whichever book it lies in.
+    return OrderRefusal::kNoSuchSubject;
   }
   const UnitRow& unit = world.units.rows[unit_row];
   if (FindStaffSlot(config, unit.type, unit.level, order.profession) == nullptr) {

@@ -103,11 +103,6 @@ CropId CropByKey(const ITable* crops, std::string_view key) {
   return row == kNoTableRow ? CropId{} : CropId{static_cast<std::uint16_t>(row)};
 }
 
-/// The widest a start stock amount may be, in kilograms. Generous by three
-/// orders of magnitude against the largest thing the canon puts anywhere
-/// (600 t of logs) and small enough that grams stay far inside int64.
-constexpr float kMaxStockKilograms = 1e9F;
-
 /// The same idea for a layout cell: coordinates, areas and flags. A map
 /// twelve kilometres on a side leaves this six orders of magnitude of room.
 constexpr float kLayoutNumberLimit = 1e9F;
@@ -127,20 +122,31 @@ void PutStock(UnitRow& unit, ResourceId resource, float kilograms) {
   if (resource.value == kInvalidDefIdValue) {
     return;
   }
-  // UB-002 fix, and it belongs HERE rather than only at the reader: the cast
-  // below is undefined for nan, for inf and for anything whose truncation
-  // does not fit the destination ([conv.fpint]/1), the multiply overflows
-  // int64 above 9.2e15 kg — and the number comes off a hand-editable table.
-  // The comparison is written positively so that nan fails it, the way every
-  // other table reader in the core tests its cells.
-  if (!(kilograms >= 0.0F && kilograms <= kMaxStockKilograms)) {
+  // The conversion refuses nan, inf, negatives and overflow on its own
+  // (quantities.h, the named cast pass) — but genesis SAYS SO as well,
+  // because here a refused number is a start stock the campaign was
+  // supposed to have and now has not. A silent zero at the founding is the
+  // kind of thing found thirty years later.
+  //
+  // The two refusals are told apart, and NEITHER of them is "the amount
+  // truncated to zero grams": half a gram of salt is a legitimate zero and
+  // must still land in the vector. The first draft of this guard skipped
+  // that case as well, and skipping it meant the row was never resized —
+  // which the overfill trim below then wrote past (MEM-001). A guard that
+  // refuses more than it was asked to is how a fix becomes a defect.
+  if (!(kilograms >= 0.0F)) {  // positive test: nan fails it, and so do negatives
     LogWarning("genesis: a start stock amount is not a usable number; that row is skipped");
+    return;
+  }
+  const Grams grams = GramsFromKilograms(kilograms);
+  if (grams == 0 && kilograms >= 1.0F) {
+    LogWarning("genesis: a start stock amount is too large to be a mass; that row is skipped");
     return;
   }
   if (unit.stock.size() <= resource.value) {
     unit.stock.resize(resource.value + 1U, 0);
   }
-  unit.stock[resource.value] = static_cast<Grams>(kilograms) * kGramsPerKilogram;
+  unit.stock[resource.value] = grams;
 }
 
 /// @brief Puts kilograms of a resource into a family's own larder.
@@ -148,10 +154,13 @@ void PutPantry(FamilyRow& family, ResourceId resource, float kilograms) {
   if (resource.value == kInvalidDefIdValue) {
     return;
   }
+  // Guarded like PutStock since the named cast pass: the two differed only
+  // because PutPantry's four callers happened to pass literals, and "safe
+  // because of who calls it today" is not a property of a function.
   if (family.pantry.size() <= resource.value) {
     family.pantry.resize(resource.value + 1U, 0);
   }
-  family.pantry[resource.value] = static_cast<Grams>(kilograms) * kGramsPerKilogram;
+  family.pantry[resource.value] = GramsFromKilograms(kilograms);
 }
 
 UnitId PlaceUnit(WorldState& world, UnitTypeId type, float x_meters, float y_meters) {
@@ -459,12 +468,17 @@ Grams TypeCapacityGrams(const ITable* unit_types,
         if (unit_levels->CellText(row, unit_col) != key) {
           continue;
         }
-        if (static_cast<std::uint8_t>(LayoutNumber(*unit_levels, row, level_col)) != level) {
+        // Compared in FLOAT, never cast: LayoutNumber refuses nan and inf
+        // but clamps only to +/-1e9, so a hand-edited level of -1 or 1e6
+        // would make the cast undefined ([conv.fpint]/1). This is the very
+        // class the cast pass exists to remove, and it was sitting two lines
+        // from the conversion the pass did fix.
+        if (LayoutNumber(*unit_levels, row, level_col) != static_cast<float>(level)) {
           continue;
         }
         const float tonnes = LayoutNumber(*unit_levels, row, tonnes_col);
         if (tonnes > 0.0F) {
-          return static_cast<Grams>(tonnes) * 1'000 * kGramsPerKilogram;
+          return GramsFromTonnes(tonnes);
         }
       }
     }
@@ -474,7 +488,7 @@ Grams TypeCapacityGrams(const ITable* unit_types,
     return -1;
   }
   const float tonnes = LayoutNumber(*unit_types, type.value, tonnes_col);
-  return tonnes > 0.0F ? static_cast<Grams>(tonnes) * 1'000 * kGramsPerKilogram : -1;
+  return tonnes > 0.0F ? GramsFromTonnes(tonnes) : -1;
 }
 
 void PlaceStartStock(WorldState& world,
@@ -529,7 +543,15 @@ void PlaceStartStock(WorldState& world,
     const Grams over = held - capacity;
     LogError("genesis: start stock overfills '" + std::string(where) +
              "'; the excess is dropped and booked as no_room");
-    const Grams here = resource.value < place.stock.size() ? place.stock[resource.value] : Grams{0};
+    // MEM-001 fix. The read below was written defensively and the write two
+    // lines under it was not: a row PutStock refused never grew the vector,
+    // so this cell may not exist — and then there is nothing here to trim
+    // anyway (`cut` would be zero), while the write would be a heap overrun
+    // with nothing to show for it.
+    if (resource.value >= place.stock.size()) {
+      continue;
+    }
+    const Grams here = place.stock[resource.value];
     const Grams cut = over < here ? over : here;
     place.stock[resource.value] = here - cut;
     AddLedgerAmount(world.ledger.current.no_room, resource, cut);

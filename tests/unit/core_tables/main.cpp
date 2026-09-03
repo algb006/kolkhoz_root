@@ -164,6 +164,42 @@ int main() {
   failures += Expect(core::LoadTableSet((root / "missing").string(), &error) == nullptr,
                      "a missing directory fails the load");
 
+  // THE ROW CAP, and why it is worth a test of its own. A DefId is 16 bits
+  // and 0xFFFF means "no such definition" (core_common/ids.h), so every
+  // parser in the core bounds an id with `value >= vector.size()` and every
+  // one of them is correct ONLY because a definition table can never hold
+  // 65536 rows. That guard lives here, in one place, and nothing measured
+  // it until the named cast pass went looking (task A7a).
+  //
+  // The boundary is the interesting number, not the middle: 65535 rows is
+  // the largest table there can be, and it yields indices 0..65534 — so the
+  // sentinel is not a row, which is exactly what the parsers rely on.
+  fs::create_directories(root / "huge");
+  {
+    std::string wide_table = "key,v\n";
+    wide_table.reserve(1U << 20U);
+    for (std::uint32_t row = 0; row < 65536U; ++row) {
+      wide_table += "k" + std::to_string(row) + ",1\n";
+    }
+    WriteFile(root / "huge" / "many.csv", wide_table);
+  }
+  failures += Expect(core::LoadTableSet((root / "huge").string(), &error) == nullptr,
+                     "65536 rows fail the load: a DefId could not name the last one");
+
+  fs::create_directories(root / "brim");
+  {
+    std::string brim_table = "key,v\n";
+    brim_table.reserve(1U << 20U);
+    for (std::uint32_t row = 0; row < 65535U; ++row) {
+      brim_table += "k" + std::to_string(row) + ",1\n";
+    }
+    WriteFile(root / "brim" / "many.csv", brim_table);
+  }
+  const auto brim = core::LoadTableSet((root / "brim").string(), &error);
+  const core::ITable* brim_table = brim == nullptr ? nullptr : brim->FindTable("many");
+  failures += Expect(brim_table != nullptr && brim_table->RowCount() == 65535U,
+                     "and 65535 rows load: the last row is 65534, the sentinel is not a row");
+
   fs::remove_all(root);
   if (failures == 0) {
     std::cout << "unit_core_tables: all checks passed\n";

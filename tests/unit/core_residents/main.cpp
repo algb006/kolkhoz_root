@@ -692,6 +692,50 @@ int CheckSettleHouse() {
   return failures;
 }
 
+/// A post empties with its holder, and the village is told (task A7; boss's
+/// decision of 2026-09-03: an empty post is an EVENT, not an alarm — the
+/// place may simply not be needed any more, and the trouble, when there is
+/// one, arrives with its own alarm).
+///
+/// Driven through death by old age rather than by calling the remover
+/// directly: the announcement has to sit at the chokepoint every way out of
+/// the village passes through, and a test that calls the chokepoint proves
+/// only that the chokepoint works.
+int CheckVacatedPostIsAnnounced(core::IResidentsSystem& system) {
+  int failures = 0;
+  core::WorldState world;
+  world.world_seed = 5;
+  world.rng = core::SeedRngState(5, 0);
+  const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+  // Old enough that the demography rates will bury him within the run.
+  const core::ResidentId groom = AddAdult(world, yard, core::Sex::kMale, 95.0F);
+  const std::uint32_t row = FindRow(world.residents, groom);
+  core::UnitRow stable;
+  stable.level = 2;
+  const core::UnitId horse_yard = AppendRow(world.units, stable);
+  world.residents.rows[row].post.profession = core::ProfessionId{3};
+  world.residents.rows[row].post.unit = horse_yard;
+
+  bool announced = false;
+  bool right_shape = false;
+  for (std::uint32_t day = 0; day < 400 && !announced; ++day) {
+    world.step_events.clear();
+    RunDays(system, world, 1);
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind != core::EventKind::kPostVacated) {
+        continue;
+      }
+      announced = true;
+      right_shape = event.resident.value == groom.value && event.unit.value == horse_yard.value &&
+                    event.amount == 3;
+    }
+  }
+  failures += Expect(announced, "the day the groom dies, the village hears the post is empty");
+  failures += Expect(right_shape, "and the event names the man, his yard and the post he held");
+  failures += Expect(FindRow(world.residents, groom) == core::kNoRow, "he is gone, not lingering");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   const EmptyTableSet tables;  // canonical defaults compiled into the config
@@ -812,6 +856,7 @@ int main() {
 
   failures += CheckFoodConfigDefaults(tables);
   failures += CheckEmptiedYard(*system);
+  failures += CheckVacatedPostIsAnnounced(*system);
   failures += CheckMeal();
   failures += CheckSatietyComponent();
   failures += CheckPlot();

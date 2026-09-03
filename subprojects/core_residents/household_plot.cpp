@@ -107,7 +107,7 @@ float PlotHours(const PlotConfig& plot, const YardToday& yard, std::uint8_t mont
 }
 
 void AddToPantry(FamilyRow& family, ResourceId resource, float kilograms) {
-  const auto amount = static_cast<Grams>(kilograms * static_cast<float>(kGramsPerKilogram));
+  const auto amount = GramsFromKilograms(kilograms);
   if (resource.value == kInvalidDefIdValue || amount <= 0) {
     return;
   }

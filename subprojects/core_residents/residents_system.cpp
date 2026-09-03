@@ -212,6 +212,22 @@ void RemoveResident(WorldState& current, ResidentId id) {
   }
   const FamilyId family = current.residents.rows[row_index].family;
   const ResidentId spouse = current.residents.rows[row_index].spouse;
+  // A post empties with its holder, and nobody ordered it (task A7; boss's
+  // decision of 2026-09-03). This is the one chokepoint every death and
+  // every departure goes through, which is why the announcement lives here
+  // and not in each of them — a way out of the village that forgot to say
+  // it would be a post the player never learns is empty.
+  const PostAssignment post = current.residents.rows[row_index].post;
+  if (post.profession.value != kInvalidDefIdValue) {
+    SimEvent vacated;
+    vacated.tick = current.calendar.tick;
+    vacated.kind = EventKind::kPostVacated;
+    vacated.severity = EventSeverity::kNotable;
+    vacated.resident = id;
+    vacated.unit = post.unit;
+    vacated.amount = static_cast<std::int64_t>(post.profession.value);
+    current.step_events.push_back(vacated);
+  }
   RemoveRow(current.residents, id);
   const std::uint32_t spouse_row = FindRow(current.residents, spouse);
   if (spouse_row != kNoRow) {
@@ -608,7 +624,7 @@ class ResidentsSystem final : public IResidentsSystem {
       newlyweds.resize(parents.size(), 0);
     }
     for (std::uint32_t index = 0; index < parents.size(); ++index) {
-      const auto share = static_cast<Grams>(static_cast<float>(parents[index]) * kDowryShare);
+      const auto share = GramsFromFloat(static_cast<float>(parents[index]) * kDowryShare);
       parents[index] -= share;
       newlyweds[index] += share;
     }

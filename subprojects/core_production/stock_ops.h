@@ -52,8 +52,14 @@ inline Grams StockOf(const ResourceAmounts& stock, ResourceId resource) {
 /// @brief Kilograms as grams, multiplying BEFORE the cast. A hen makes far
 /// less than a kilogram of manure a day, and casting kilograms first
 /// truncated her to zero forever.
+///
+/// A one-line delegate since the named cast pass, and it stays only for that
+/// sentence above it: the ORDER of the multiply and the cast is the thing
+/// this name remembers. The guard itself belongs to core_common, and having
+/// two conversions meant one of them was unguarded — "safe because of who
+/// calls it today" is exactly the reasoning the pass threw out.
 inline Grams KilogramsToGrams(float kilograms) {
-  return static_cast<Grams>(kilograms * static_cast<float>(kGramsPerKilogram));
+  return GramsFromKilograms(kilograms);
 }
 
 /// @brief True when the unit type stores goods by a number rather than by

@@ -1,8 +1,13 @@
 /// @file
 /// @brief Units of measure and numeric conventions of the simulation state.
 /// @threading PARALLEL_READONLY
-/// Type aliases and compile-time constants only; no mutable state. Readable
-/// from any phase and any thread.
+/// Type aliases, compile-time constants, and — since the named cast pass —
+/// three PURE conversion functions (GramsFromFloat and its two unit
+/// wrappers). Pure is what earns the label: no state of any kind, static or
+/// global, no lazy initialization, the result a function of the argument
+/// alone. They are called from parallel phases (the family meal, the
+/// household plot) as well as sequential ones, and a future edit that gave
+/// any of them memory would break this label rather than merely bend it.
 ///
 /// Every quantity that must balance exactly — mass of resources, labor-day
 /// accruals, money — is stored as a scaled integer. Integer bookkeeping makes
@@ -40,6 +45,40 @@ using Grams = std::int64_t;
 
 inline constexpr Grams kGramsPerKilogram = 1'000;
 inline constexpr Grams kGramsPerTonne = 1'000'000;
+
+/// @brief Whole grams from a float mass in kilograms — the ONE way a
+/// computed float becomes a stored mass.
+///
+/// Why a function and not a cast at each site (the named DefId/cast pass,
+/// task A7a; boss 2026-09-03). Converting a float to an integer is
+/// UNDEFINED when the value is NaN, an infinity, or when its truncation
+/// does not fit the destination ([conv.fpint]/1) — and the floats that reach
+/// these sites come off hand-editable balance tables and, since the save
+/// format exists, off files a reader bit_casts without inspecting. The core
+/// had three of these casts guarded by hand and a dozen unguarded, which is
+/// how a class of defect becomes a property of the codebase rather than a
+/// case. One guard, one place, every site.
+///
+/// @param kilograms A computed mass. May legitimately be a fraction: the
+///        result is TRUNCATED, as every mass in the core is.
+/// @return The mass in grams, or 0 when the argument cannot be one: NaN, an
+///         infinity, a negative, or a magnitude that would overflow. Zero is
+///         the neutral answer everywhere this is used — no stock, no
+///         estimate, no dose — so a poisoned number costs an empty result
+///         rather than a wrong one or a crash.
+/// @note Not the place for a diagnostic: it is called inside per-field and
+///       per-row loops, and a caller that wants to complain about a bad cell
+///       must check the cell where it is READ (that is what the table
+///       parsers do), not here.
+Grams GramsFromKilograms(float kilograms);
+
+/// @brief Whole grams from a float mass in tonnes. Same refusals.
+Grams GramsFromTonnes(float tonnes);
+
+/// @brief Whole grams from a float that is ALREADY a mass in grams — a
+/// share of a harvest, a by-product ratio. The primitive the other two are
+/// written in; same refusals, and the same 0 for anything unusable.
+Grams GramsFromFloat(float grams);
 
 /// @brief Amounts of every resource kind, indexed by ResourceId (ids.h).
 /// A dense vector sized to the resource definition table: amounts[id.value]

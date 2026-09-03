@@ -138,7 +138,7 @@ float EatFromPantry(const FoodConfig& config, FamilyRow& family, float need_kcal
     if (def.kcal_per_gram <= 0.0F || family.pantry[index] <= 0) {
       continue;
     }
-    const auto take = static_cast<Grams>(static_cast<float>(family.pantry[index]) * share);
+    const auto take = GramsFromFloat(static_cast<float>(family.pantry[index]) * share);
     if (take <= 0) {
       continue;
     }

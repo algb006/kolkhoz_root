@@ -7,4 +7,5 @@
 # this module alone and never through each other.
 
 kolkhoz_add_module(core_common
-    alarm_state.cpp)
+    alarm_state.cpp
+    quantities.cpp)

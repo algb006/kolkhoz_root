@@ -159,8 +159,7 @@ class ProductionSystem final : public IProductionSystem {
         // loss, which is the one thing it exists to prevent.
         const CropDef& crop = config_.crops[field.crop.value];
         const float soil = field.fertility / config_.farming.fertility_neutral;
-        const auto expected =
-            static_cast<Grams>(crop.yield_kg_per_ha * field.area_ga * soil) * kGramsPerKilogram;
+        const auto expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
         if (expected > free_room) {
           Alarm alarm;
           alarm.kind = AlarmKind::kHarvestWillNotFit;
@@ -251,8 +250,7 @@ class ProductionSystem final : public IProductionSystem {
     if (crop.sowing_norm_kg_per_ha <= 0.0F) {
       return 0;
     }
-    const auto need =
-        static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
+    const auto need = GramsFromKilograms(crop.sowing_norm_kg_per_ha * field.area_ga);
     const Grams have = HeldEverywhere(world, crop.resource);
     return have >= need ? 0 : need - have;
   }
@@ -617,8 +615,7 @@ class ProductionSystem final : public IProductionSystem {
     if (field.manure_applied != 0) {
       const float share = static_cast<float>(field.manure_applied) / 100.0F;
       const auto dose =
-          static_cast<Grams>(config_.farming.manure_norm_kg_per_ha * field.area_ga * share) *
-          kGramsPerKilogram;
+          GramsFromKilograms(config_.farming.manure_norm_kg_per_ha * field.area_ga * share);
       current.ledger.current.manure_plowed_in += dose;
       current.ledger.current.area_manured_ha += field.area_ga * share;
     }
@@ -669,8 +666,7 @@ class ProductionSystem final : public IProductionSystem {
         break;
       }
       FieldRow& field = current.fields.rows[row];
-      const auto dose = static_cast<Grams>(config_.farming.manure_norm_kg_per_ha * field.area_ga) *
-                        kGramsPerKilogram;
+      const auto dose = GramsFromKilograms(config_.farming.manure_norm_kg_per_ha * field.area_ga);
       if (dose <= 0) {
         continue;
       }
@@ -713,8 +709,7 @@ class ProductionSystem final : public IProductionSystem {
       // seed sows the whole field anyway — the shortfall alarm is a UI
       // concern.
       if (crop.sowing_norm_kg_per_ha > 0.0F) {
-        const auto need =
-            static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
+        const auto need = GramsFromKilograms(crop.sowing_norm_kg_per_ha * field.area_ga);
         const Grams got = TakeFromStorage(current, config_, crop.resource, need);
         AddLedgerAmount(current.ledger.current.seed, crop.resource, got);
         // Short seed sows the whole field anyway, and the player is told by
@@ -747,8 +742,7 @@ class ProductionSystem final : public IProductionSystem {
     const float soil_factor = field.fertility / config_.farming.fertility_neutral;
     const float weather_factor = 1.0F - field.weather_stress;
     const auto yield_grams =
-        static_cast<Grams>(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor) *
-        kGramsPerKilogram;
+        GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor);
     // Instant delivery (logistics stub): hay feeds the stock yard, the rest
     // goes through the store door. What the stores had no room for stays ON
     // THE FIELD — the field brigade's buffer of the transport design (§9) —
@@ -777,7 +771,7 @@ class ProductionSystem final : public IProductionSystem {
     // own and free, a reserve ration with a lowered effect but plainly there
     // in a winter manger (design db crop.straw_ratio).
     if (crop.straw_ratio > 0.0F) {
-      const auto straw = static_cast<Grams>(static_cast<float>(yield_grams) * crop.straw_ratio);
+      const auto straw = GramsFromFloat(static_cast<float>(yield_grams) * crop.straw_ratio);
       const Grams straw_placed = DeliverToStores(current, config_, config_.straw_resource, straw);
       AddLedgerAmount(current.ledger.current.harvest, config_.straw_resource, straw);
       // Straw has no buffer of its own — it is not why a field waits — so
@@ -790,7 +784,7 @@ class ProductionSystem final : public IProductionSystem {
     if (config_.plan_grain_share > 0.0F && IsPlanGrain(crop.resource)) {
       AddToStock(current.plan.due,
                  crop.resource,
-                 static_cast<Grams>(static_cast<float>(yield_grams) * config_.plan_grain_share));
+                 GramsFromFloat(static_cast<float>(yield_grams) * config_.plan_grain_share));
     }
     // Fertility bookkeeping (§2, §7, §8): the crop's delta, the manure
     // bonus, the growing repeat penalty.

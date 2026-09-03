@@ -64,7 +64,7 @@ void AddToPantry(FamilyRow& family, ResourceId resource, Grams amount) {
 }
 
 Grams KilogramsToGrams(float kilograms) {
-  return static_cast<Grams>(kilograms * static_cast<float>(kGramsPerKilogram));
+  return GramsFromKilograms(kilograms);
 }
 
 std::uint32_t EpochIndex(Epoch epoch) {

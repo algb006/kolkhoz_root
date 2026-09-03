@@ -4,9 +4,11 @@
 
 #include <cstdint>
 #include <iostream>
+#include <limits>
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
@@ -206,11 +208,42 @@ int TestRandom() {
 
 }  // namespace
 
+/// The one conversion from a computed float to a stored mass (quantities.h;
+/// the named cast pass of task A7a). It exists because the cast it replaces
+/// is UNDEFINED for nan, for an infinity and for anything whose truncation
+/// does not fit — and the floats that reach it come off hand-editable tables
+/// and off save files a reader bit_casts without inspecting.
+int TestGramsFromFloat() {
+  int failures = 0;
+  failures += Expect(core::GramsFromKilograms(2.5F) == 2500, "two and a half kilos are 2500 g");
+  failures += Expect(core::GramsFromTonnes(1.0F) == core::kGramsPerTonne, "a tonne is a million g");
+  failures += Expect(core::GramsFromFloat(1500.7F) == 1500, "a fraction of a gram truncates");
+  failures += Expect(core::GramsFromFloat(0.0F) == 0, "nothing is nothing");
+
+  // The refusals — the whole reason the function exists. Each is a value
+  // that would make the bare cast undefined.
+  const float nan_value = std::numeric_limits<float>::quiet_NaN();
+  const float infinity = std::numeric_limits<float>::infinity();
+  failures += Expect(core::GramsFromFloat(nan_value) == 0, "nan is not a mass");
+  failures += Expect(core::GramsFromKilograms(nan_value) == 0, "and not a mass in kilograms");
+  failures += Expect(core::GramsFromFloat(infinity) == 0, "an infinity is not a mass");
+  failures += Expect(core::GramsFromFloat(-infinity) == 0, "nor is a negative one");
+  failures += Expect(core::GramsFromFloat(-1.0F) == 0, "a negative mass is refused, not stored");
+  failures += Expect(core::GramsFromTonnes(1.0e30F) == 0,
+                     "and so is a number too big to be a mass, before it overflows");
+
+  // The boundary, because a test that only measures the middle measures
+  // nothing: just under the ceiling still converts.
+  failures += Expect(core::GramsFromFloat(8.0e15F) > 0, "a huge but usable mass still converts");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestCalendar();
   failures += TestStateTable();
   failures += TestRandom();
+  failures += TestGramsFromFloat();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

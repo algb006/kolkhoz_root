@@ -108,6 +108,21 @@ enum class EventKind : std::uint8_t {
   kAppointed,  ///< resident, unit; amount = the ProfessionId value. Applied at the day's close.
   kDismissed,  ///< resident, unit; amount = the ProfessionId value he held.
 
+  /// The post is empty and NOBODY ordered it: its holder died or left
+  /// (resident, unit; amount = the ProfessionId value he held). Boss's
+  /// decision of 2026-09-03, and its reasoning is worth keeping: an empty
+  /// post is not a standing trouble the player must clear — the place may
+  /// simply not be needed any more — so it is an EVENT and not an alarm.
+  /// The trouble, when there is one, arrives with its own alarm: a yard
+  /// whose groom is gone stops tending the herd and raises kHerdStarving.
+  /// Seventy posts each raising an alarm would be noise; each announcing
+  /// itself once, on the day it happens, is news.
+  ///
+  /// A DISMISSAL does not raise this — it already announces itself with
+  /// kDismissed, and the same fact twice is the noise the rule above exists
+  /// to avoid. This kind means "it emptied by itself".
+  kPostVacated,
+
   /// unit — the kolkhoz yard: the groom is in place and the horses came
   /// off the private yards, all at once (livestock design §5); amount =
   /// heads. Once per campaign, and kNotable: the day a third of the village

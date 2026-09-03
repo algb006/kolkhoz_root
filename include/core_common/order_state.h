@@ -172,7 +172,9 @@ enum class OrderKind : std::uint8_t {
   /// still kAccepted is kConflictsWithActive. Refused: no such resident
   /// (kNoSuchSubject); outside the post's age band, the wrong sex for it,
   /// or below its education threshold — all columns of professions.csv
-  /// (kNotEligible); no such unit, a site, or a unit type and level that
+  /// (kNotEligible); no such unit (kNoSuchSubject, as in construction — a
+  /// named thing that is gone answers the same whichever book it lies in);
+  /// a site, or a unit type and level that
   /// carry no such post per unit_staff.csv (kRuleForbids); every slot at
   /// the unit taken, or a `single_post` post already held anywhere in the
   /// village (kNoVacancy). Consumer: core_labor.

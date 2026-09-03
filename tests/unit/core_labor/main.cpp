@@ -819,8 +819,8 @@ int TestAppointmentRefusals() {
   labor->RunAssignmentDecisions(previous, post.world());
 
   const auto refusal = [&](core::OrderId id) { return post.Order(id).refusal; };
-  failures += Expect(refusal(no_such_unit) == core::OrderRefusal::kRuleForbids,
-                     "no such unit: refused by rule");
+  failures += Expect(refusal(no_such_unit) == core::OrderRefusal::kNoSuchSubject,
+                     "no such unit: the named thing is gone, exactly as in construction");
   failures += Expect(refusal(wrong_sex) == core::OrderRefusal::kNotEligible,
                      "a man is not put to the milking, and the table says so, not the code");
   failures += Expect(refusal(no_diploma) == core::OrderRefusal::kNotEligible,
@@ -829,6 +829,17 @@ int TestAppointmentRefusals() {
       Expect(refusal(too_young) == core::OrderRefusal::kNotEligible, "a child is nobody's groom");
   failures += Expect(refusal(nothing_to_leave) == core::OrderRefusal::kRuleForbids,
                      "there is nothing to dismiss him from");
+  // The pair that matters to the presentation: "no such unit" and "that unit
+  // takes no groom" are two different sentences, and it cannot build them
+  // from one code (boss, 2026-09-03). The barn exists and carries no groom.
+  const core::OrderId wrong_place = post.Issue(post.Appoint(0, post.barn, 0));
+  post.world().calendar.tick = 0;
+  core::RefreshCalendarCaches(post.world().calendar);
+  const core::WorldState again = post.world();
+  labor->RunAssignmentDecisions(again, post.world());
+  failures += Expect(refusal(wrong_place) == core::OrderRefusal::kRuleForbids,
+                     "a unit that exists but carries no such post is refused by RULE, "
+                     "and the two answers are not the same word");
 
   // Vacancy: the yard has ONE groom's place. The first man in takes it at the
   // day's close; the second is refused for the place and not by the rule.
