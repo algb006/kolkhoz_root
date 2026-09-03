@@ -42,9 +42,15 @@ ssh "${host}" "echo ok" >/dev/null
 # set on NTFS through MSYS2 — every file arrives and then fails with
 # "failed to set permissions ... Permission denied". -rlt carries what the
 # host actually needs, and content comparison is what --checksum is for.
+#
+# .cache/ is excluded for the same reason build/ is, and it bit us: clangd
+# keeps its index there, and rsync creating those directories on NTFS hit
+# exactly the permission error the flags above are chosen to avoid — a
+# whole publish failing over an editor's cache that the host never needed.
 rsync -rltz --checksum --delete --omit-dir-times \
       --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
       --exclude 'claude/' --exclude 'artifacts/' --exclude 'publish/' \
+      --exclude '.cache/' \
       "${project_dir}/" "${host}:${remote_dir}/"
 
 if [ "${sync_only}" -eq 1 ]; then
