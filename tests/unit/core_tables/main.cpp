@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <type_traits>
 
@@ -97,6 +98,49 @@ int main() {
                        "a BOM does not corrupt the first header");
     failures +=
         Expect(constants != nullptr && constants->CellInteger(0, 1) == 12, "CRLF rows parse");
+  }
+
+  // Non-finite cells: std::from_chars accepts "inf" and "nan" as a complete
+  // match, and every consumer of a real cell eventually casts it to an
+  // integer, where that is undefined behaviour. CellReal refuses them at the
+  // door (tables.h; phase-2 task A6, the table-value debt). The table itself
+  // still LOADS — the dialect has nothing against the text — and the refusal
+  // is per cell, which is what lets a consumer fall back to its default.
+  fs::create_directories(root / "wild");
+  WriteFile(root / "wild" / "knobs.csv",
+            "key,v\n"
+            "plus_inf,inf\n"
+            "minus_inf,-inf\n"
+            "not_a_number,nan\n"
+            "capital,INF\n"
+            "huge_but_finite,1e30\n"
+            "ordinary,2.5\n");
+  const auto wild = core::LoadTableSet((root / "wild").string(), &error);
+  failures += Expect(wild != nullptr, "a table with non-finite text still loads");
+  if (wild != nullptr) {
+    const core::ITable* knobs = wild->FindTable("knobs");
+    failures += Expect(knobs != nullptr, "knobs.csv is found");
+    if (knobs != nullptr) {
+      const std::uint32_t value_column = knobs->FindColumn("v");
+      const auto cell = [&](const char* key) {
+        return knobs->CellReal(knobs->FindRowByKey(key), value_column);
+      };
+      failures += Expect(!cell("plus_inf").has_value(), "\"inf\" is not a value");
+      failures += Expect(!cell("minus_inf").has_value(), "\"-inf\" is not a value");
+      failures += Expect(!cell("not_a_number").has_value(), "\"nan\" is not a value");
+      failures += Expect(!cell("capital").has_value(), "\"INF\" is not a value either");
+      // Finite is not the same as sensible: the range stays the consumer's,
+      // and CellReal hands this one over as it is.
+      const std::optional<float> huge = cell("huge_but_finite");
+      failures += Expect(huge.has_value() && *huge > 1e29F,
+                         "a huge but finite cell is still a value — the range is the reader's");
+      const std::optional<float> plain = cell("ordinary");
+      failures += Expect(plain.has_value() && *plain > 2.4F && *plain < 2.6F,
+                         "and an ordinary cell is untouched by all this");
+      failures +=
+          Expect(!knobs->CellInteger(knobs->FindRowByKey("plus_inf"), value_column).has_value(),
+                 "\"inf\" was never an integer to begin with");
+    }
   }
 
   // Whole-or-nothing: each defect fails the entire load with an error text.

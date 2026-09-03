@@ -16,6 +16,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -286,14 +287,38 @@ class Session final : public ISession {
     // The batch a save carried beside the world: put back exactly as it was,
     // and NOT journaled — these were recorded when they were first issued,
     // in the journal that went with that save (session.h).
-    assert(carried.issued.empty() ||
-           initial.orders.next_id_value + carried.issued.size() >= initial.orders.next_id_value);
+    assert(BatchBelongsTo(initial, carried));
     staged_ = std::move(carried);
   }
 
   const StagedOrders& StagedBatch() const override { return staged_; }
 
  private:
+  /// @brief Does `staged` belong to `initial` — the @pre of the second
+  /// ReplaceWorld, actually tested? A batch saved beside a world has its
+  /// issued rows waiting for the ids [next_id_value, next_id_value + size),
+  /// and every id it cancels is either a row of that world's book or one of
+  /// those promises. A batch from ANOTHER world fails both, and applying it
+  /// would resolve each id against whatever entity of the loaded world wears
+  /// that number. Counted in 64 bits: the same test in 32 is where the
+  /// previous version of this check became a tautology (MEM-001).
+  /// @note Used only from the Debug assert; a caller error, not a refusal —
+  ///       a wrong batch is still applied in Release, as the header says.
+  static bool BatchBelongsTo(const WorldState& initial, const StagedOrders& staged) {
+    const std::uint64_t base = initial.orders.next_id_value;
+    const std::uint64_t promised_end = base + staged.issued.size();
+    if (promised_end > std::numeric_limits<std::uint32_t>::max()) {
+      return false;  // the promises would not fit the id space
+    }
+    for (const OrderId order : staged.cancelled) {
+      const bool is_promise = order.value >= base && order.value < promised_end;
+      if (!is_promise && FindRow(initial.orders, order) == kNoRow) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// @brief The id the next staged row would be given if the batch were
   /// applied now: the book's counter, which nothing but the engine moves.
   std::uint32_t StagedIdBase() const { return State().orders.next_id_value; }

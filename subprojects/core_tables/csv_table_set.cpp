@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -184,6 +185,16 @@ class CsvTable final : public ITable {
     if (parse_error != std::errc() || parse_end != text.data() + text.size()) {
       return std::nullopt;
     }
+    // std::from_chars accepts "inf" and "nan" as a complete match, and every
+    // consumer of a real cell eventually casts it to an integer, where a
+    // non-finite value is undefined behaviour ([conv.fpint]/1). The tables
+    // are exported and then hand-edited, so the refusal belongs HERE, at the
+    // one door every reader comes through, and not in each reader. Written
+    // positively on purpose: `!(v > lo && v < hi)` style tests are what let
+    // nan through everywhere else. Phase-2 task A6, the table-value debt.
+    if (!std::isfinite(value)) {
+      return std::nullopt;
+    }
     return value;
   }
 
@@ -313,14 +324,36 @@ std::unique_ptr<ITableSet> LoadTableSet(std::string_view directory, std::string*
   }
 
   // File-name order — the stable load order promised by TableName().
+  //
+  // Every filesystem call here takes an error_code. The throwing forms are
+  // the trap: a range-for over directory_iterator increments with the
+  // THROWING operator++, and directory_entry::is_regular_file() without an
+  // error_code throws too — either would leave this function by exception,
+  // past the "nullptr plus a reason in `error`" contract this whole loader
+  // is written to (tables.h). A directory that vanishes mid-scan, or an
+  // entry whose status cannot be read, is a load error like any other.
   std::vector<fs::path> files;
-  for (const fs::directory_entry& entry : fs::directory_iterator(root, fs_error)) {
-    if (entry.is_regular_file() && entry.path().extension() == ".csv") {
-      files.push_back(entry.path());
-    }
-  }
+  fs::directory_iterator entry(root, fs_error);
   if (fs_error) {
     return fail("cannot list '" + root.string() + "': " + fs_error.message());
+  }
+  const fs::directory_iterator end;
+  while (entry != end) {
+    std::error_code entry_error;
+    const bool regular = entry->is_regular_file(entry_error);
+    if (entry_error) {
+      // Whole-or-nothing (tables.h): an entry we cannot even ask about might
+      // be the table this run needs, and skipping it would hand back a
+      // silently partial balance — the one outcome this loader refuses.
+      return fail("cannot read '" + entry->path().string() + "': " + entry_error.message());
+    }
+    if (regular && entry->path().extension() == ".csv") {
+      files.push_back(entry->path());
+    }
+    entry.increment(fs_error);
+    if (fs_error) {
+      return fail("cannot list '" + root.string() + "': " + fs_error.message());
+    }
   }
   std::sort(files.begin(), files.end());
 

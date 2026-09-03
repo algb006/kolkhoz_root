@@ -646,13 +646,12 @@ class ISession {
   /// StagedOrders). The journal records nothing for them: they were
   /// recorded when they were first issued, in the journal that went with
   /// that save.
-  /// @pre `staged` was saved with `initial`: its promised ids follow
-  ///      initial.orders.next_id_value. A batch from another world is a
-  ///      caller error and is applied as it is — every id of it then names
-  ///      whatever entity of the loaded world happens to wear that number.
-  ///      The Debug assert behind this rule is weaker than the rule and
-  ///      catches nothing today (an open item of the core, MEM-001); do not
-  ///      read it as a guard.
+  /// @pre `staged` was saved with `initial`: its issued rows are waiting for
+  ///      the ids [next_id_value, next_id_value + issued.size()), and every
+  ///      id it cancels is either a row of that world's order book or one of
+  ///      those promises. Asserted in Debug; in Release a batch from another
+  ///      world is applied as it is, and every id of it then names whatever
+  ///      entity of the loaded world happens to wear that number.
   /// @note `staged` MAY alias StagedBatch(): the implementation takes its
   ///       copy before the reset, so ReplaceWorld(world, StagedBatch()) — the
   ///       natural spelling of "reload the world and keep what is staged" —

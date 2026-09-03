@@ -70,7 +70,13 @@ class ITable {
                                                   std::uint32_t column) const = 0;
 
   /// @brief Cell as a real number ('.' is the decimal separator). Same
-  /// nullopt policy as CellInteger.
+  /// nullopt policy as CellInteger, plus one refusal of its own: a
+  /// NON-FINITE cell — "inf", "-inf", "nan", which std::from_chars accepts
+  /// as a complete match — is nullopt as well. Every consumer of a real
+  /// cell eventually casts it to an integer, where a non-finite value is
+  /// undefined behaviour, and these tables are exported and then
+  /// hand-edited; so the value never leaves this door. A consumer still
+  /// owns its RANGE: finite is not the same as sensible.
   virtual std::optional<float> CellReal(std::uint32_t row, std::uint32_t column) const = 0;
 };
 

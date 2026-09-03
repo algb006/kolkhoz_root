@@ -185,8 +185,11 @@ void PlaceMeadow(WorldState& world, float area_ga, Vec2 center, bool floodplain)
   AppendRow(world.fields, meadow);
 }
 
-/// @brief Reads one numeric cell of the livestock roster; `fallback` when the
-/// column or the value is missing.
+/// @brief Reads one livestock knob; an absent, unreadable or absurd cell is
+/// the fallback. The range test is the one its neighbours already have
+/// (LayoutNumber, PutStock): CellReal now refuses inf and nan at the door,
+/// but a finite 1e30 still has to be stopped before it reaches the ages and
+/// the casts they feed. Written positively, so anything unexpected fails it.
 float LivestockValue(const ITable& livestock,
                      std::uint32_t row,
                      std::string_view column,
@@ -196,7 +199,14 @@ float LivestockValue(const ITable& livestock,
     return fallback;
   }
   const std::optional<float> value = livestock.CellReal(row, index);
-  return value.has_value() ? *value : fallback;
+  if (!value) {
+    return fallback;
+  }
+  if (!(*value >= -kLayoutNumberLimit && *value <= kLayoutNumberLimit)) {
+    LogWarning("genesis: a livestock cell is not a usable number; the default is used");
+    return fallback;
+  }
+  return *value;
 }
 
 /// @brief Appends one herd; returns nothing, because genesis never needs the

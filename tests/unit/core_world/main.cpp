@@ -1,10 +1,18 @@
 // Unit test of core_world: the wiring config contract and the O0 world
 // genesis STUB. CreateStandardSimulation coverage arrives with task O2.
 
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/herd_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -29,9 +37,161 @@ class EmptyTableSet final : public core::ITableSet {
   std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
 };
 
+/// @brief One table held in memory, so a test can hand genesis a cell no
+/// shipped file contains. Column 0 is the key column, as in the dialect.
+class FakeTable final : public core::ITable {
+ public:
+  FakeTable(std::vector<std::string> header, std::vector<std::vector<std::string>> rows)
+      : header_(std::move(header)), rows_(std::move(rows)) {}
+
+  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
+
+  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(header_.size()); }
+
+  std::uint32_t FindColumn(std::string_view name) const override {
+    for (std::uint32_t index = 0; index < header_.size(); ++index) {
+      if (header_[index] == name) {
+        return index;
+      }
+    }
+    return core::kNoTableColumn;
+  }
+
+  std::uint32_t FindRowByKey(std::string_view key) const override {
+    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
+      if (!rows_[row].empty() && rows_[row][0] == key) {
+        return row;
+      }
+    }
+    return core::kNoTableRow;
+  }
+
+  std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
+    if (row >= rows_.size() || column >= rows_[row].size()) {
+      return {};
+    }
+    return rows_[row][column];
+  }
+
+  std::optional<std::int64_t> CellInteger(std::uint32_t row, std::uint32_t column) const override {
+    const std::optional<float> value = CellReal(row, column);
+    if (!value) {
+      return std::nullopt;
+    }
+    return static_cast<std::int64_t>(*value);
+  }
+
+  /// The shipped loader refuses a non-finite cell (tables.h). This fake does
+  /// NOT: its whole purpose is to hand genesis the value the loader would
+  /// have stopped, and prove that the reader stops it too.
+  std::optional<float> CellReal(std::uint32_t row, std::uint32_t column) const override {
+    const std::string_view text = CellText(row, column);
+    if (text.empty()) {
+      return std::nullopt;
+    }
+    return std::strtof(std::string(text).c_str(), nullptr);
+  }
+
+ private:
+  std::vector<std::string> header_;
+
+  std::vector<std::vector<std::string>> rows_;
+};
+
+/// @brief Replaces every value of `column` in a CSV with `value`, keeping the
+/// file otherwise as it is. Returns false when the column is not there, so a
+/// renamed column fails the test instead of silently emptying it.
+bool SpoilLivestockCell(const std::filesystem::path& path,
+                        std::string_view column,
+                        std::string_view value) {
+  std::ifstream input(path);
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(input, line)) {
+    lines.push_back(line);
+  }
+  input.close();
+
+  std::size_t header_index = lines.size();
+  std::size_t target = 0;
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (lines[index].empty() || lines[index][0] == '#') {
+      continue;
+    }
+    header_index = index;
+    std::size_t position = 0;
+    std::size_t field = 0;
+    while (position <= lines[index].size()) {
+      const std::size_t comma = lines[index].find(',', position);
+      const std::size_t end = comma == std::string::npos ? lines[index].size() : comma;
+      if (lines[index].substr(position, end - position) == column) {
+        target = field;
+        break;
+      }
+      if (comma == std::string::npos) {
+        return false;
+      }
+      position = comma + 1;
+      ++field;
+    }
+    break;
+  }
+  if (header_index == lines.size()) {
+    return false;
+  }
+
+  std::ofstream output(path, std::ios::trunc);
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (index <= header_index || lines[index].empty() || lines[index][0] == '#') {
+      output << lines[index] << '\n';
+      continue;
+    }
+    std::string rebuilt;
+    std::size_t position = 0;
+    std::size_t field = 0;
+    while (position <= lines[index].size()) {
+      const std::size_t comma = lines[index].find(',', position);
+      const std::size_t end = comma == std::string::npos ? lines[index].size() : comma;
+      rebuilt +=
+          field == target ? std::string(value) : lines[index].substr(position, end - position);
+      if (comma == std::string::npos) {
+        break;
+      }
+      rebuilt += ',';
+      position = comma + 1;
+      ++field;
+    }
+    output << rebuilt << '\n';
+  }
+  return true;
+}
+
+/// @brief A table set holding exactly one named table.
+class OneTableSet final : public core::ITableSet {
+ public:
+  OneTableSet(std::string name, const core::ITable* table)
+      : name_(std::move(name)), table_(table) {}
+
+  const core::ITable* FindTable(std::string_view name) const override {
+    return name == name_ ? table_ : nullptr;
+  }
+
+  std::uint32_t TableCount() const override { return 1; }
+
+  std::string_view TableName(std::uint32_t index) const override {
+    return index == 0 ? std::string_view(name_) : std::string_view();
+  }
+
+ private:
+  std::string name_;
+
+  const core::ITable* table_;
+};
+
 }  // namespace
 
 int main() {
+  namespace fs = std::filesystem;
   int failures = 0;
 
   // The wiring config must default to the deterministic verification setup:
@@ -122,6 +282,35 @@ int main() {
                  many_state.families.rows.size() == state.families.rows.size() &&
                  many_state.families.rows[0].satisfaction == state.families.rows[0].satisfaction,
              "the population and its metrics agree across worker counts");
+
+  // The table-value debt (phase-2 task A6), tested where it bites. The
+  // loader now refuses inf and nan at the door (tables.h), so what can still
+  // reach a reader is a FINITE absurdity — and genesis casts livestock ages
+  // to integers. Genesis only reaches the herds with the whole table set
+  // present, so the shipped tables are copied and one cell is spoiled.
+  const fs::path spoiled = fs::temp_directory_path() / "unit_core_world_tables";
+  fs::remove_all(spoiled);
+  fs::copy(fs::path(KOLKHOZ_TABLES_DIR), spoiled, fs::copy_options::recursive);
+  failures += Expect(SpoilLivestockCell(spoiled / "livestock.csv", "life_game_years_max", "1e30"),
+                     "the livestock cell to spoil was found");
+  std::string spoil_error;
+  const auto spoiled_tables = core::LoadTableSet(spoiled.string(), &spoil_error);
+  failures += Expect(spoiled_tables != nullptr, "the spoiled table set still loads");
+  if (spoiled_tables != nullptr) {
+    const core::WorldState wild = core::CreateStartWorld(*spoiled_tables, 12345);
+    failures += Expect(!wild.herds.rows.empty(),
+                       "the roster reaches the herds — otherwise the check below is vacuous");
+    bool ages_are_sane = true;
+    for (const core::HerdRow& herd : wild.herds.rows) {
+      const float age_sum = herd.adult_age_game_years_total;
+      ages_are_sane = ages_are_sane && age_sum >= 0.0F && age_sum < 1e6F;
+    }
+    failures += Expect(ages_are_sane, "an absurd livestock cell never reaches the herd ages");
+    const core::WorldState wild_again = core::CreateStartWorld(*spoiled_tables, 12345);
+    failures += Expect(wild_again.rng.state == wild.rng.state,
+                       "and the fallback keeps genesis deterministic");
+  }
+  fs::remove_all(spoiled);
 
   if (failures == 0) {
     std::cout << "unit_core_world: all checks passed\n";
