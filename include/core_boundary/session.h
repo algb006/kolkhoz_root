@@ -22,19 +22,40 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — sixteen methods, two codec
-/// functions, one factory:
+/// concrete, and it is deliberately small — twenty-one methods, counting
+/// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
 ///               WhereaboutsOf, ActiveAlarms
 ///     orders    IssueOrder, CancelOrder
-///     events    Events, AcknowledgeEvents
+///     events    Events, AcknowledgeEvents — the default reader;
+///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
+///               count), CloseEventReader — any further reader
 ///     record    TakeJournal, ReplaceWorld (two forms), StagedBatch
 ///
-/// (Sixteen since task A2 added the two that let a save carry the staged
-/// batch and the map's side stopped being a constant — all three additions,
-/// which is what the contract's minor number is for; 70-boundary.md §6.)
+/// (Fourteen at first; seventeen after task A2 added the second
+/// ReplaceWorld, StagedBatch and MapSideMeters; twenty-one since the event
+/// log gained readers — all additions, which is what the contract's minor
+/// number is for; 70-boundary.md §6.)
+///
+/// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
+/// the session and drains the event log for its HUD and its fast-forward
+/// summary; the host (project phase 3, the script runtime) gets a reference
+/// and subscribes its scripts to the same events — a resident died, an
+/// order was refused. One window with one acknowledgement cannot serve
+/// both: whoever acknowledged first would have moved the window for the
+/// other, and an event would be seen once, by one of them, or by neither.
+/// So the log has READERS, each with its own cursor, and holds an event
+/// until every open reader has acknowledged it. The two unqualified
+/// methods, Events and AcknowledgeEvents, ARE one of those readers — the
+/// default one, opened with the session, never closed — so a program with
+/// a single consumer is written exactly as before and behaves byte for
+/// byte as before. The alternatives — the presentation forwarding events
+/// to the host, or the host reading without acknowledging — both rest on a
+/// call-order discipline between two other components that the core cannot
+/// check and that fails silently; a decision of core with boss, 2026-09-03
+/// (mailbox thread core-boundary-for-host).
 ///
 /// The read model is WorldState itself — the core's public data, already
 /// plain structs by the state-model law — plus the handful of DERIVED
@@ -71,15 +92,17 @@
 ///
 /// LIFETIMES, stated once. Everything a reader gets back — the state
 /// reference, the spans of events and alarms — is valid until the next
-/// call to AdvanceStep, AdvanceUntil or ReplaceWorld (and the events span
-/// also until AcknowledgeEvents). The presentation copies out what it
-/// keeps and holds nothing across a step; the UE side's own rule ("no
-/// pointers into the core", ue/CLAUDE.md §2) is the same rule seen from
-/// the other bank.
+/// call to AdvanceStep, AdvanceUntil or ReplaceWorld; an events span also
+/// only until the next AcknowledgeEvents or CloseEventReader OF ANY READER,
+/// because either may trim the log's front and move what is left. The
+/// presentation copies out what it keeps and holds nothing across a step;
+/// the UE side's own rule ("no pointers into the core", ue/CLAUDE.md §2)
+/// is the same rule seen from the other bank.
 
 #ifndef CORE_BOUNDARY_SESSION_H_
 #define CORE_BOUNDARY_SESSION_H_
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -337,6 +360,26 @@ bool DecodeJournal(std::span<const std::byte> bytes,
                    std::string* error);
 
 // ---------------------------------------------------------------------------
+// Readers of the event log
+// ---------------------------------------------------------------------------
+
+/// @brief Names one reader of the session's event log — a cursor the
+/// session keeps, not an entity of the world: it is never saved, never
+/// journaled, and means nothing to another session. Issued by
+/// ISession::OpenEventReader in call order, 1, 2, 3…, never reused within
+/// a session, so a stale id names a closed reader and not a new one. The
+/// default reader — the one behind the unqualified Events and
+/// AcknowledgeEvents — has NO id: it cannot be addressed here, and it
+/// cannot be closed. Comparison is defaulted so ids can be keys.
+struct EventReaderId {
+  /// 0 is "no reader" — what a default-constructed id says, and what
+  /// OpenEventReader never returns.
+  std::uint32_t value = 0;
+
+  friend constexpr auto operator<=>(const EventReaderId&, const EventReaderId&) = default;
+};
+
+// ---------------------------------------------------------------------------
 // The session
 // ---------------------------------------------------------------------------
 
@@ -499,18 +542,78 @@ class ISession {
   virtual bool CancelOrder(OrderId order) = 0;
 
   // -- events -----------------------------------------------------------------
+  //
+  // The log is one sequence, appended by every step; a READER is a cursor
+  // into it. Events(…) is the window from a reader's cursor to the end,
+  // AcknowledgeEvents(…) moves that cursor forward, and the log keeps every
+  // event that at least one open reader has not yet acknowledged — its
+  // front is trimmed to the slowest cursor, and never further. So no reader
+  // can lose an event to another reader, and the number of events HELD is
+  // bounded by the slowest reader alone: a reader that stops acknowledging
+  // holds the whole log from that point on. That is the one cost of the
+  // design, stated and not enforced — close a reader that is done, and
+  // drain the default reader if nothing else does (see OpenEventReader).
+  // The MEMORY the log occupies is bounded more loosely, by the high-water
+  // mark of the session: trimming erases from the front and the vector
+  // keeps its capacity, which is the right trade for a container refilled
+  // every step and never the reason to shrink it.
 
-  /// @brief Everything emitted since the last acknowledgement, oldest
-  /// first, across as many steps as have run: the material of a HUD line
-  /// (kNotable), of the summary after a fast-forward (all of them), of the
-  /// interruption (the last one, kInterrupting). Valid until the next
-  /// step, ReplaceWorld or AcknowledgeEvents.
+  /// @brief The default reader's window: everything emitted since ITS last
+  /// acknowledgement, oldest first, across as many steps as have run — the
+  /// material of a HUD line (kNotable), of the summary after a fast-forward
+  /// (all of them), of the interruption (kInterrupting, among the last
+  /// step's events, searched from the end). Valid until the next step,
+  /// ReplaceWorld, or an AcknowledgeEvents or CloseEventReader of any
+  /// reader (see @file, LIFETIMES).
   virtual std::span<const SimEvent> Events() const = 0;
 
-  /// @brief Drops the first `count` events of Events() — the ones the
-  /// presentation has shown or folded into its summary. `count` above the
-  /// size drops everything.
+  /// @brief Moves the default reader's cursor past the first `count` events
+  /// of Events() — the ones the presentation has shown or folded into its
+  /// summary. `count` above the window's size acknowledges the whole
+  /// window. Whether the acknowledged events are freed depends on the
+  /// other readers; whether they are gone from THIS window does not.
   virtual void AcknowledgeEvents(std::size_t count) = 0;
+
+  /// @brief Opens a further reader of the log, with its cursor at the
+  /// CURRENT END: it will see what is emitted from now on, and nothing
+  /// older — an unacknowledged backlog belongs to the readers that were
+  /// open when it accrued, and a subscriber does not inherit another's
+  /// window. Ids are issued in call order, 1, 2, 3…, and never reused.
+  /// Readers survive ReplaceWorld (they are the consumer's subscriptions,
+  /// not the world's state); the log itself is dropped by it, so every
+  /// cursor stands at the start of the new, empty log afterwards.
+  /// @note The default reader is always open and holds the log like any
+  ///       other. A program whose only consumer is a reader opened here —
+  ///       a headless host run — must therefore also drain the default one
+  ///       (AcknowledgeEvents(Events().size()) after each step) or the log
+  ///       grows for the whole run; in the game the presentation drains it
+  ///       and no one else needs to. A program with a single consumer keeps
+  ///       using the default reader and never calls this.
+  virtual EventReaderId OpenEventReader() = 0;
+
+  /// @brief That reader's window: from its cursor to the end of the log,
+  /// oldest first, with the same content and the same lifetime rule as
+  /// Events(). Two readers' windows overlap wherever both have yet to
+  /// acknowledge — the same SimEvent objects, seen from two cursors.
+  /// @return An empty span for an id that is not open (never issued, or
+  ///         closed); asserted in Debug as a caller error.
+  virtual std::span<const SimEvent> Events(EventReaderId reader) const = 0;
+
+  /// @brief Moves that reader's cursor past the first `count` events of
+  /// Events(reader); `count` above the window's size acknowledges the
+  /// whole window. Only this reader's window shrinks; every other reader
+  /// still sees what it has not acknowledged itself.
+  /// @note An id that is not open is a caller error: asserted in Debug,
+  ///       ignored otherwise. Nothing is acknowledged on anyone's behalf.
+  virtual void AcknowledgeEvents(EventReaderId reader, std::size_t count) = 0;
+
+  /// @brief Closes a reader: its window is gone, the events only it was
+  /// holding may be freed, and its id names nothing from now on — it is
+  /// not reissued. The consumer that opened a reader closes it when it is
+  /// done, and before it lets go of the session.
+  /// @note Closing an id that is not open is a caller error: asserted in
+  ///       Debug, ignored otherwise. The default reader cannot be closed.
+  virtual void CloseEventReader(EventReaderId reader) = 0;
 
   // -- record -----------------------------------------------------------------
 
@@ -525,7 +628,9 @@ class ISession {
   /// @brief Replaces the world entirely — the way a load lands
   /// (core_save::LoadWorldFromFile, then this). Forwards to
   /// ISimulation::ResetWorld; drops the staged batch and the event log —
-  /// both described the world being replaced — and recomputes the alarms
+  /// both described the world being replaced — while every open event
+  /// reader stays open with its cursor at the start of the now empty log
+  /// (OpenEventReader); and recomputes the alarms
   /// for the new one, because ActiveAlarms names the conditions standing in
   /// State() and must never describe a different world; starts a new stamp
   /// serial from 0; the journal is NOT cleared — a replay that spans a load is the caller's to cut.

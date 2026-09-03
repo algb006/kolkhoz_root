@@ -277,6 +277,122 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
 }
 
 // ---------------------------------------------------------------------------
+// Readers of the event log: two consumers, two cursors, one log
+// ---------------------------------------------------------------------------
+
+/// @brief The case the reader cursors exist for (session.h, TWO CONSUMERS OF
+/// EVENTS): readers acknowledge DIFFERENT parts of the window, out of order,
+/// and none of them loses what it has not acknowledged itself. A single
+/// reader draining everything would pass whatever the trimming did.
+int TestEventReaders(const core::ITableSet& tables) {
+  int failures = 0;
+  core::WorldState world;
+  ScriptedSimulation* script = nullptr;
+  std::unique_ptr<core::ISession> session = ScriptedSession(tables, world, &script);
+  if (!session) {
+    std::cout << "FAIL: the scripted session was refused\n";
+    return 1;
+  }
+  // One event per tick, each of its own kind, so every window can be named
+  // by what is in it and not merely counted.
+  script->EmitAt(1, core::EventKind::kResidentBorn, core::EventSeverity::kRoutine);
+  script->EmitAt(2, core::EventKind::kResidentDied, core::EventSeverity::kRoutine);
+  script->EmitAt(3, core::EventKind::kWedding, core::EventSeverity::kRoutine);
+  script->EmitAt(4, core::EventKind::kFieldHarvested, core::EventSeverity::kRoutine);
+  script->EmitAt(5, core::EventKind::kUnitBuilt, core::EventSeverity::kRoutine);
+
+  const auto kinds = [](std::span<const core::SimEvent> window) {
+    std::vector<core::EventKind> out;
+    for (const core::SimEvent& event : window) {
+      out.push_back(event.kind);
+    }
+    return out;
+  };
+  const std::vector<core::EventKind> born_died{core::EventKind::kResidentBorn,
+                                               core::EventKind::kResidentDied};
+
+  session->AdvanceStep();  // tick 1
+  session->AdvanceStep();  // tick 2
+  failures +=
+      Expect(kinds(session->Events()) == born_died, "the default reader has the first two events");
+
+  // A reader opened now starts at the END: the backlog belongs to whoever
+  // was open when it accrued.
+  const core::EventReaderId host = session->OpenEventReader();
+  failures += Expect(host.value != 0, "an open reader has a real id");
+  failures += Expect(session->Events(host).empty(), "a reader opened now inherits no backlog");
+  failures +=
+      Expect(kinds(session->Events()) == born_died, "and opening it moved nobody else's window");
+
+  session->AdvanceStep();  // tick 3
+  session->AdvanceStep();  // tick 4
+  failures += Expect(session->Events().size() == 4 && session->Events(host).size() == 2,
+                     "each cursor counts from where it stood");
+
+  // Out of order, and different parts: the later reader acknowledges its
+  // first event while the default reader has acknowledged nothing at all.
+  session->AcknowledgeEvents(host, 1);
+  failures += Expect(kinds(session->Events(host)) ==
+                         std::vector<core::EventKind>{core::EventKind::kFieldHarvested},
+                     "the reader that acknowledged sees the rest of its own window");
+  failures +=
+      Expect(session->Events().size() == 4, "and the reader that did not still sees everything");
+
+  // Now the default reader overtakes it by three; the log may drop only
+  // what BOTH have acknowledged.
+  session->AcknowledgeEvents(3);
+  failures += Expect(
+      kinds(session->Events()) == std::vector<core::EventKind>{core::EventKind::kFieldHarvested},
+      "the default reader keeps what it did not acknowledge");
+  failures += Expect(kinds(session->Events(host)) ==
+                         std::vector<core::EventKind>{core::EventKind::kFieldHarvested},
+                     "and the other reader is untouched by that");
+
+  // A third reader, and a step all three see differently.
+  const core::EventReaderId watcher = session->OpenEventReader();
+  failures += Expect(watcher.value != host.value, "ids are not reused while both are open");
+  session->AdvanceStep();  // tick 5
+  failures += Expect(session->Events().size() == 2 && session->Events(host).size() == 2 &&
+                         kinds(session->Events(watcher)) ==
+                             std::vector<core::EventKind>{core::EventKind::kUnitBuilt},
+                     "one step, three windows, each starting at its own cursor");
+
+  // The two newer readers drain themselves; the default one has not, so
+  // nothing may be freed under it.
+  session->AcknowledgeEvents(watcher, 1);
+  session->AcknowledgeEvents(host, 99);  // above the size: the whole window
+  failures += Expect(session->Events(watcher).empty() && session->Events(host).empty(),
+                     "a count above the window acknowledges the window and no more");
+  failures += Expect(session->Events().size() == 2,
+                     "the slowest reader holds the log for as long as it lags");
+
+  // Closing the laggard is not the same as acknowledging for it — here the
+  // laggard is the default reader, which cannot be closed, so it drains.
+  session->AcknowledgeEvents(session->Events().size());
+  failures += Expect(session->Events().empty(), "and it drains when it is ready");
+
+  session->CloseEventReader(watcher);
+  session->AdvanceStep();  // tick 6, nothing scripted
+  failures += Expect(session->Events().empty() && session->Events(host).empty(),
+                     "a closed reader is gone and the rest keep working");
+
+  // ReplaceWorld drops the log; the readers are subscriptions, not state.
+  core::WorldState reloaded;
+  session->ReplaceWorld(reloaded);
+  failures += Expect(session->Events().empty() && session->Events(host).empty(),
+                     "a load empties the log for every reader");
+  session->AdvanceStep();  // tick 1 again — the script replays
+  failures += Expect(
+      kinds(session->Events()) == std::vector<core::EventKind>{core::EventKind::kResidentBorn} &&
+          kinds(session->Events(host)) ==
+              std::vector<core::EventKind>{core::EventKind::kResidentBorn},
+      "and both cursors stand at the start of the new log");
+
+  session->CloseEventReader(host);
+  return failures;
+}
+
+// ---------------------------------------------------------------------------
 // Events, the fast-forward and what only a scripted simulation can show
 // ---------------------------------------------------------------------------
 
@@ -669,12 +785,14 @@ int main() {
   failures += Expect(core::kJournalMagic.size() == 8, "the journal magic is eight bytes");
   failures += TestOrdersThroughTheEngine(tables);
   failures += TestEventsAndFastForward(tables);
+  failures += TestEventReaders(tables);
   failures += TestSignals(tables);
   failures += TestJournalCodec();
   failures += TestWorkerIndependence(tables);
 
   if (failures == 0) {
-    std::cout << "unit_core_boundary: orders, events, signals, journal and worker independence\n";
+    std::cout << "unit_core_boundary: orders, events, readers, signals, journal and worker "
+                 "independence\n";
   }
   return failures;
 }

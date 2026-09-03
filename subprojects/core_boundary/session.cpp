@@ -194,15 +194,57 @@ class Session final : public ISession {
   }
 
   // -- events ---------------------------------------------------------------
+  //
+  // The log is `events_`, and a reader is an ABSOLUTE position in the stream
+  // it carries: `log_origin_` is the stream position of events_[0], so a
+  // cursor minus the origin is an index. Absolute positions are what make
+  // trimming safe — every cursor keeps meaning the same event after the
+  // front is dropped, which relative indices would not.
 
-  std::span<const SimEvent> Events() const override { return events_; }
+  std::span<const SimEvent> Events() const override { return WindowOf(default_cursor_); }
 
   void AcknowledgeEvents(std::size_t count) override {
-    if (count >= events_.size()) {
-      events_.clear();
+    default_cursor_ = AdvancedCursor(default_cursor_, count);
+    TrimToSlowestReader();
+  }
+
+  EventReaderId OpenEventReader() override {
+    // At the current end: a subscriber sees what happens from now on and
+    // does not inherit another reader's unacknowledged backlog (session.h).
+    const EventReaderId id{next_reader_id_};
+    ++next_reader_id_;
+    readers_.push_back(Reader{.id = id, .cursor = LogEnd()});
+    return id;
+  }
+
+  std::span<const SimEvent> Events(EventReaderId reader) const override {
+    const Reader* const open = FindReader(reader);
+    assert(open != nullptr);  // an id that is not open: a caller error
+    if (open == nullptr) {
+      return {};
+    }
+    return WindowOf(open->cursor);
+  }
+
+  void AcknowledgeEvents(EventReaderId reader, std::size_t count) override {
+    Reader* const open = FindReader(reader);
+    assert(open != nullptr);
+    if (open == nullptr) {
+      return;  // nothing is acknowledged on anyone's behalf (session.h)
+    }
+    open->cursor = AdvancedCursor(open->cursor, count);
+    TrimToSlowestReader();
+  }
+
+  void CloseEventReader(EventReaderId reader) override {
+    const Reader* const open = FindReader(reader);
+    assert(open != nullptr);
+    if (open == nullptr) {
       return;
     }
-    events_.erase(events_.begin(), events_.begin() + static_cast<std::ptrdiff_t>(count));
+    readers_.erase(readers_.begin() + (open - readers_.data()));
+    // The events only this reader was holding are free now.
+    TrimToSlowestReader();
   }
 
   // -- record ---------------------------------------------------------------
@@ -220,6 +262,14 @@ class Session final : public ISession {
     staged_.issued.clear();
     staged_.cancelled.clear();
     events_.clear();
+    // The readers are the consumers' subscriptions, not the world's state:
+    // they stay open, and every cursor stands at the start of the new,
+    // empty log (session.h, OpenEventReader).
+    log_origin_ = 0;
+    default_cursor_ = 0;
+    for (Reader& reader : readers_) {
+      reader.cursor = 0;
+    }
     batch_sequence_ = 0;
     serial_ = 0;
     simulation_->ResetWorld(initial);
@@ -324,6 +374,64 @@ class Session final : public ISession {
     return false;
   }
 
+  /// @brief One open reader of the event log: its id and its position in
+  /// the event stream (see the events section for what "absolute" means).
+  struct Reader {
+    EventReaderId id;
+    std::uint64_t cursor = 0;
+  };
+
+  /// @brief Stream position one past the last event held.
+  std::uint64_t LogEnd() const { return log_origin_ + events_.size(); }
+
+  /// @brief The window from `cursor` to the end of the log. A cursor is
+  /// never behind the origin: trimming stops at the slowest one.
+  std::span<const SimEvent> WindowOf(std::uint64_t cursor) const {
+    // Every open cursor lies within the log by construction: the front is
+    // trimmed to the SLOWEST of them and never further. A cursor behind the
+    // origin would mean an event was freed while a reader still needed it.
+    assert(cursor >= log_origin_ && cursor <= LogEnd());
+    return std::span<const SimEvent>(events_).subspan(
+        static_cast<std::size_t>(cursor - log_origin_));
+  }
+
+  /// @brief `cursor` moved past `count` events, clamped to the end of the
+  /// log: a count above the window's size acknowledges the whole window.
+  std::uint64_t AdvancedCursor(std::uint64_t cursor, std::size_t count) const {
+    const std::uint64_t end = LogEnd();
+    const std::uint64_t room = end - cursor;
+    return cursor + (static_cast<std::uint64_t>(count) < room ? count : room);
+  }
+
+  const Reader* FindReader(EventReaderId reader) const {
+    for (const Reader& open : readers_) {
+      if (open.id == reader) {
+        return &open;
+      }
+    }
+    return nullptr;
+  }
+
+  Reader* FindReader(EventReaderId reader) {
+    return const_cast<Reader*>(std::as_const(*this).FindReader(reader));
+  }
+
+  /// @brief Drops the front of the log up to the slowest cursor, and never
+  /// further: an event is held until EVERY open reader has acknowledged it
+  /// (session.h). The default reader counts among them and cannot be closed.
+  void TrimToSlowestReader() {
+    std::uint64_t slowest = default_cursor_;
+    for (const Reader& open : readers_) {
+      slowest = open.cursor < slowest ? open.cursor : slowest;
+    }
+    const std::size_t drop = static_cast<std::size_t>(slowest - log_origin_);
+    if (drop == 0) {
+      return;
+    }
+    events_.erase(events_.begin(), events_.begin() + static_cast<std::ptrdiff_t>(drop));
+    log_origin_ = slowest;
+  }
+
   BoundaryConfig config_;
 
   std::unique_ptr<ISimulation> simulation_;
@@ -338,8 +446,25 @@ class Session final : public ISession {
   /// step, saved beside the world, restored by the second ReplaceWorld.
   StagedOrders staged_;
 
-  /// Everything emitted since the last acknowledgement, oldest first.
+  /// Everything no open reader has acknowledged yet, oldest first.
   std::vector<SimEvent> events_;
+
+  /// Stream position of events_[0] — what turns an absolute cursor into an
+  /// index. Grows only in TrimToSlowestReader; reset by ReplaceWorld.
+  std::uint64_t log_origin_ = 0;
+
+  /// The default reader — the one behind the unqualified Events() and
+  /// AcknowledgeEvents(count). Always open, never closed, has no id.
+  std::uint64_t default_cursor_ = 0;
+
+  /// The readers opened by OpenEventReader, in the order they were opened.
+  /// Two consumers is the case this exists for (session.h), so a vector
+  /// scanned linearly is the whole data structure the problem deserves.
+  std::vector<Reader> readers_;
+
+  /// The id the next OpenEventReader hands out. Never reused, so a stale
+  /// id names a closed reader and not a new one; 0 stays "no reader".
+  std::uint32_t next_reader_id_ = 1;
 
   std::vector<JournalEntry> journal_;
 
