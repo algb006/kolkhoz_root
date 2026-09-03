@@ -120,9 +120,26 @@ target_include_directories(core_headers INTERFACE
 # Warnings, standard and sanitizer flags applied to our own code only.
 add_library(core_options INTERFACE)
 
+# Floating-point determinism. The state model promises identical results
+# from the single-threaded and the multi-threaded run, and comparable ones
+# from the Clang build and the MSVC build (core rules §10, §14;
+# manual/52-state-model.md, core_common/quantities.h). CONTRACTION is what
+# would break the second promise: a * b + c fused into one FMA keeps a wider
+# intermediate, so the same source gives a different last bit depending on
+# what the compiler chose — and thirty simulated years amplify a last bit
+# into a different village.
+#
+# Both documents claimed this was already handled by build flags. It was
+# not: the flags below were added 3 September 2026, after a delivery cycle
+# found the promise standing on nothing (RACE-001). Latent until then —
+# baseline x86-64 has no FMA — but a promise that holds only because of the
+# machine it happens to run on is not a promise.
 if(MSVC)
   target_compile_options(core_options INTERFACE
-      /W4 /permissive- /utf-8 /Zc:preprocessor /Zc:__cplusplus /EHsc)
+      /W4 /permissive- /utf-8 /Zc:preprocessor /Zc:__cplusplus /EHsc
+      # Precise mode: no reassociation, no unsafe transforms. Contraction is
+      # off under it unless /fp:contract is asked for, and it is not.
+      /fp:precise)
   if(KOLKHOZ_WERROR)
     target_compile_options(core_options INTERFACE /WX)
   endif()
@@ -131,7 +148,10 @@ else()
       -Wall -Wextra -Wpedantic
       -Wshadow -Wconversion -Wsign-conversion
       -Wnon-virtual-dtor -Woverloaded-virtual
-      -Wnull-dereference -Wdouble-promotion -Wformat=2)
+      -Wnull-dereference -Wdouble-promotion -Wformat=2
+      # Clang's own default for C++ is -ffp-contract=on. This is the half of
+      # the promise that is enforceable rather than merely stated.
+      -ffp-contract=off)
   if(KOLKHOZ_WERROR)
     target_compile_options(core_options INTERFACE -Werror)
   endif()

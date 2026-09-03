@@ -18,7 +18,17 @@
 /// Floating-point determinism rules (single-thread run must equal the
 /// multi-thread run, Clang build must be checkable against the MSVC build):
 ///   * float (32-bit) everywhere in state; double only inside local math.
-///   * No fast-math. FP contraction is off project-wide (build flags).
+///   * No fast-math. FP contraction is off project-wide — `-ffp-contract=off`
+///     for Clang, `/fp:precise` for MSVC, in core_options. The flags were
+///     added 3 September 2026, after a delivery cycle found this line
+///     promising something the build did not do (RACE-001). MEASURED the
+///     same day: the thirty-year run is byte-identical with the flag, and
+///     byte-identical again when built the other way round with FMA and
+///     `-ffp-contract=fast`. So contraction changes nothing HERE — because
+///     everything that must balance is a scaled integer (see above), and the
+///     float paths that could contract do not feed a conserved quantity.
+///     The flag is the lock on that door for the code that comes later, not
+///     the reason the door is shut today.
 ///   * Reductions over entities run in row order, never in completion order.
 
 #ifndef CORE_COMMON_QUANTITIES_H_
