@@ -316,7 +316,7 @@ virtual void StageOrders(std::span<const OrderRow> issued,
 
 | Заглушка | Значение сейчас | Кто снимает |
 |---|---|---|
-| `UnitSignals::wear` | 0 | А5 |
+| `UnitSignals::wear` | ~~0~~ **сдано А5, 03.09.2026:** отдаёт `UnitRow::wear` ([Износ и ремонт](73-wear-and-repair.md)) | — |
 | `UnitSignals::indoor_temperature_celsius` | температура воздуха | отопление, позже |
 | `UnitSignals::paused` | 0 | потребитель `kPauseUnit` в `core_production` |
 | `UnitSignals::prank_marks` | 0 | фаза III |

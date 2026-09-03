@@ -28,9 +28,19 @@
 /// needs no second kind of destination. A unit that is not yet built is a
 /// row at LEVEL 0: the one rule every consumer needs.
 ///
-/// What is deliberately NOT here yet: wear and condition (task A5), staff
-/// assignments, upgrade modules. Fields for them are added when their
-/// systems arrive — appending is the cheap extension.
+/// WEAR IS A NUMBER ON THE ROW (project phase 2, task A5;
+/// manual/73-wear-and-repair.md). A building ages: 0..100, faster while
+/// lived in or worked in, by the amortization years of the build class of
+/// the level it stands at; at 100 it is a ruin that still works — nothing
+/// vanishes from wear except the start's old houses, which the canon lets
+/// collapse (start design §4). Repair is a SITE on the unit, like an
+/// upgrade: kDelivering, then kRepairing, and the number returns to zero.
+/// An upgrade repairs on its way (unit rules §11). What wear DOES to output
+/// and comfort is not the core's yet: this stage makes it grow and be seen.
+///
+/// What is deliberately NOT here yet: staff assignments, upgrade modules.
+/// Fields for them are added when their systems arrive — appending is the
+/// cheap extension.
 
 #ifndef CORE_COMMON_UNIT_STATE_H_
 #define CORE_COMMON_UNIT_STATE_H_
@@ -69,6 +79,15 @@ enum class ConstructionPhase : std::uint8_t {
   /// labour being invested in the dismantling; the row is removed when it
   /// reaches zero. The unit is at level 0 from the moment this begins.
   kDemolishing,
+
+  /// Being repaired (task A5; construction design §11, unit rules §15):
+  /// the spare parts are on site, labour is being invested, and the unit
+  /// WORKS meanwhile at its own level — like an upgrade, a repair is a
+  /// site on a standing unit. target_level equals the current level, so
+  /// that every reader of the site block sees "nothing moves". At zero the
+  /// parts are consumed and UnitRow::wear returns to 0. Appended after
+  /// kDemolishing so that no stored value changes meaning.
+  kRepairing,
 };
 
 /// @brief The site block of a unit: what is being built here and how far
@@ -142,6 +161,27 @@ struct UnitRow {
   /// The site block (see ConstructionState). All zeros for a unit that is
   /// simply standing, which is most units most of the time.
   ConstructionState construction;
+
+  /// Wear of the building, 0..100 (unit rules §15: 0-25 as new, 26-50
+  /// worn but sound, 51-75 visibly decayed, 76-99 falling apart, 100 a
+  /// ruin that still works and never vanishes). Grows once a day in the
+  /// construction sub-step by the amortization of the STANDING level's
+  /// build class — a full scale in `wear_years_idle` years of standing
+  /// empty, in `wear_years_in_use` years while a household lives here or
+  /// somebody works here today (task A5, manual/73-wear-and-repair.md §2).
+  /// Stays 0 for a type with no building (has_wear = 0: a heap, a stack,
+  /// a trench) and for a site at level 0. Reset to 0 by a finished repair
+  /// or upgrade. The start's old houses begin part worn — each drawn from
+  /// the band in construction.csv, 45..60 as shipped, so that they do not
+  /// all fall on one night — and are the one type that collapses at 100
+  /// (start design §4).
+  ///
+  /// Written only by the construction sub-step and by genesis; read by the
+  /// boundary's UnitSignals::wear and, later, by the systems whose numbers
+  /// it will move. Float on purpose: the daily share is well under one
+  /// percent, and an integer would truncate it to nothing — the lesson of
+  /// the herds and the clothing scales, learned three times already.
+  Metric wear = 0.0F;
 };
 
 /// @brief The units table type used by WorldState.

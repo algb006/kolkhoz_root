@@ -1,5 +1,11 @@
-// core_layout — prints the byte layout of the state rows the boundary hands
-// over, as the compiler that built THIS library sees it.
+/// @file
+/// @brief core_layout — prints the byte layout of the state rows the boundary
+/// hands over, as the compiler that built THIS library sees it.
+/// @threading SINGLE_THREADED
+/// A main() that prints seven numbers and exits. No simulation, no state, no
+/// second thread — the label is here because every translation unit of this
+/// project carries one, and a tool that publishes a check should not be the
+/// file that skips one.
 //
 // Why an executable and not a header of constants: sizeof is a fact of the
 // build, and the whole point is to catch a publication whose include/ and

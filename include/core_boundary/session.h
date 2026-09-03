@@ -165,8 +165,10 @@ struct UnitSignals {
   /// §1: eighteen biological months) — the diapers on the line.
   std::uint8_t infants = 0;
 
-  /// Wear, 0..100 (unit rules §15). STUB: 0 until task A5 makes wear grow;
-  /// the field exists so the presentation codes against it now.
+  /// Wear, 0..100 — UnitRow::wear as it stands, the number the layer's
+  /// four keyframes blend on (architecture §7б: wear_00 / 50 / 75 / 100)
+  /// and the office's mice read (office design §5). Grows since task A5
+  /// (manual/73-wear-and-repair.md); 0 for a type with nothing to wear.
   Metric wear = 0.0F;
 
   /// Air temperature inside, degrees Celsius. STUB: equals the outdoor

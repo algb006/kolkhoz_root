@@ -96,6 +96,14 @@ enum class EventKind : std::uint8_t {
   kUnitBuilt,       ///< unit (task A2).
   kUnitDemolished,  ///< unit (task A2); the id is dead after this step.
 
+  // -- wear (task A5) ---------------------------------------------------------
+  kUnitRepaired,  ///< unit — a repair finished; wear is back at 0.
+
+  /// unit — one of the start's old houses fell at 100 wear (start design
+  /// §4): the id is dead after this step, and its household stands without
+  /// a house until the demography sub-step rehouses it the next day.
+  kUnitCollapsed,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.

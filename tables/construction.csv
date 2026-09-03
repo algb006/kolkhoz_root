@@ -2,5 +2,15 @@
 # ladders, crews and plots come from unit_types / unit_levels / unit_level_cost.
 # demolition costs labour days as this share of the level's build norm:
 # noticeably less than building (construction design section 12). ASSUMPTION
+# repair (task A5): the share of the level's norm a repair at FULL wear costs,
+# the spare parts it eats per game man-day, and the start houses — how many
+# years they take from their starting wear to collapse, and the band that wear
+# is drawn in. Boss's figures of 2026-09-03; the amortization terms themselves
+# live with the build classes in unit_levels.csv
 key,value
 demolition_labor_share,0.25
+repair_labor_share,0.30
+repair_spare_parts_per_labor_day,0.30
+old_house_collapse_years,12
+old_house_wear_min,45
+old_house_wear_max,60

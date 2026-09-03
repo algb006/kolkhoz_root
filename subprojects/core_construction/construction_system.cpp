@@ -29,6 +29,10 @@
 namespace core {
 namespace {
 
+/// More parts than any repair can ask for: the cast below is undefined
+/// above the destination's range, and the figure comes off a table.
+constexpr float kMaxRepairPieces = 1e9F;
+
 /// @brief Squared distance: the plot check compares against a sum of radii,
 /// and squaring both sides keeps it exact and cheap.
 float DistanceSquared(const Vec2& from, const Vec2& to) {
@@ -109,6 +113,11 @@ class ConstructionSystem final : public IConstructionSystem {
   void RunConstructionDecisions(const WorldState& /*previous*/, WorldState& current) override {
     ConsumeOrders(current);
     if (HourFromTick(current.calendar.tick) == 0) {
+      // Wear BEFORE the day's deliveries and before anything finishes: a
+      // repair ordered today is priced on the wear the unit woke up with,
+      // and a house that reaches the top of the scale falls before the
+      // deliveries walk the rows it is no longer in (task A5).
+      AgeUnits(current);
       DeliverMaterials(current);
     }
     FinishSites(current);
@@ -120,6 +129,171 @@ class ConstructionSystem final : public IConstructionSystem {
   /// Every construction order is decided in the step it is read: kDone or
   /// kRefused, never kAccepted or kActive (71-construction.md §3). The word
   /// is the chairman's; the work that follows is the unit's own state.
+  /// Wear of a day (task A5, manual/73-wear-and-repair.md §2). Every BUILT
+  /// unit whose type has a building ages by the amortization of the level it
+  /// STANDS at — a whole scale in `wear_years_idle` years standing empty, in
+  /// `wear_years_in_use` years while a household lives there or somebody
+  /// works there today — or something is simply LYING in it. Clamped at 100:
+  /// a ruin still works and never vanishes.
+  ///
+  /// IN USE IS THE SHORTER TERM: "works — wears faster; stands — hardly ages
+  /// at all" (unit rules §15). The tables carry both figures; nothing here
+  /// decides which is bigger, and nothing should. The start's old houses are the exception the
+  /// canon names — they run on their own term and collapse at the top (start design §4).
+  void AgeUnits(WorldState& current) {
+    std::vector<UnitId> collapsed;
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      UnitRow& unit = current.units.rows[row];
+      if (unit.level == 0 || unit.type.value >= config_.types.size()) {
+        continue;  // a site is not a building yet
+      }
+      const BuildType& type = config_.types[unit.type.value];
+      if (type.has_wear == 0) {
+        continue;  // a heap, a stack, a trench: nothing to wear
+      }
+      const bool is_old_house = type_is_old_house(unit.type);
+      const float years = is_old_house ? config_.old_house_collapse_years
+                                       : WearYears(type, unit.level, InUse(current, row));
+      if (!(years > 0.0F)) {
+        continue;  // the ladder names no term for this level: it does not wear
+      }
+      // The class gives the base term, the nature of the unit corrects it:
+      // a byre is damp and full of ammonia, a water mill shakes. A faster
+      // pace is a SHORTER life, hence the multiply on the daily share.
+      const float pace = is_old_house ? 1.0F : type.wear_factor;
+      unit.wear += kWearScale * pace / (years * static_cast<float>(kDaysPerYear));
+      if (unit.wear < kWearScale) {
+        continue;
+      }
+      unit.wear = kWearScale;
+      if (is_old_house) {
+        collapsed.push_back(current.units.row_ids[row]);
+      }
+    }
+    for (const UnitId unit : collapsed) {
+      Collapse(current, unit);
+    }
+  }
+
+  /// The amortization term of the level a unit stands at, in game years.
+  static float WearYears(const BuildType& type, std::uint8_t level, bool in_use) {
+    const std::size_t index = static_cast<std::size_t>(level) - 1;
+    if (index >= type.levels.size()) {
+      return 0.0F;
+    }
+    const BuildLevel& step = type.levels[index];
+    return in_use ? step.wear_years_in_use : step.wear_years_idle;
+  }
+
+  /// Is anybody living or working in this unit today? A household in it, or
+  /// a resident assigned to a herd that stands here — the two facts the
+  /// state carries. A BUILDING CREW DOES NOT COUNT: a site is not working,
+  /// it is being worked on, and it does not wear because level 0 is skipped
+  /// above anyway. When unit cycles arrive, "in use" becomes their flag.
+  static bool InUse(const WorldState& world, std::uint32_t row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.household.value != kInvalidEntityIdValue) {
+      return true;
+    }
+    // A unit with something in it is not empty either (boss, 2026-09-03): a
+    // granary holding grain is walked round, propped and patched every week,
+    // and calling it abandoned is the untruth behind which the player would
+    // watch a barn full of bread decay.
+    for (const Grams amount : unit.stock) {
+      if (amount > 0) {
+        return true;
+      }
+    }
+    const UnitId id = world.units.row_ids[row];
+    for (const ResidentRow& resident : world.residents.rows) {
+      if (resident.work.kind != WorkKind::kHerdCare) {
+        continue;
+      }
+      const std::uint32_t herd_row = FindRow(world.herds, resident.work.herd);
+      if (herd_row != kNoRow && world.herds.rows[herd_row].unit.value == id.value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool type_is_old_house(UnitTypeId type) const {
+    return config_.old_house_type.value != kInvalidDefIdValue &&
+           type.value == config_.old_house_type.value;
+  }
+
+  /// An old house at the top of the scale falls (start design §4, housing
+  /// design §10) — the ONE unit in the game that vanishes from wear. The
+  /// household it sheltered is left without a house on purpose: rehousing is
+  /// the demography sub-step's job the next day, by the same path a newly
+  /// wed couple takes. Clearing the family's `house` is the one field of
+  /// another module's row this subsystem writes, and the contract says so.
+  void Collapse(WorldState& current, UnitId unit) {
+    const std::uint32_t row = FindRow(current.units, unit);
+    if (row == kNoRow) {
+      return;
+    }
+    const FamilyId household = current.units.rows[row].household;
+    MoveStockOut(current, row);
+    const std::uint32_t family_row = FindRow(current.families, household);
+    if (family_row != kNoRow) {
+      current.families.rows[family_row].house = UnitId{};
+    }
+    Emit(current, EventKind::kUnitCollapsed, EventSeverity::kNotable, unit);
+    RemoveRow(current.units, unit);
+  }
+
+  /// kRepairUnit (task A5; construction design §11): a site on a STANDING
+  /// unit, exactly like an upgrade — deliver the parts, then invest the
+  /// labour, and the unit works all the while. The price is frozen at the
+  /// order, scaled by the wear it was ordered at: a neglected repair is
+  /// dearer in man-days and in parts alike.
+  OrderRefusal StartRepair(WorldState& current, UnitId unit) {
+    const std::uint32_t row = FindRow(current.units, unit);
+    if (row == kNoRow) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    UnitRow& site = current.units.rows[row];
+    if (site.level == 0 || site.construction.phase != ConstructionPhase::kNone) {
+      return OrderRefusal::kRuleForbids;  // a site is one thing at a time
+    }
+    if (site.type.value >= config_.types.size() || config_.types[site.type.value].has_wear == 0) {
+      return OrderRefusal::kRuleForbids;  // nothing to wear, nothing to mend
+    }
+    if (type_is_old_house(site.type)) {
+      // "They are to be replaced, not improved" (housing design §10).
+      return OrderRefusal::kRuleForbids;
+    }
+    if (!(site.wear > 0.0F)) {
+      return OrderRefusal::kRuleForbids;  // nothing worn
+    }
+    if (config_.spare_part_resource.value == kInvalidDefIdValue) {
+      return OrderRefusal::kRuleForbids;  // the tables carry no spare part
+    }
+    const float norm = LevelLaborDays(site.type, site.level);
+    const float days = norm * config_.repair_labor_share * (site.wear / kWearScale);
+    site.construction.phase = ConstructionPhase::kDelivering;
+    // The level does not move, and target_level says so out loud: every
+    // reader of the site block sees "this unit stays where it is".
+    site.construction.target_level = site.level;
+    site.construction.labor_days_total = days;
+    site.construction.labor_days_remaining = 0.0F;  // set when the parts are in
+    site.construction.max_crew = LevelCrew(site.type, site.level);
+    return OrderRefusal::kNone;
+  }
+
+  /// Spare parts a repair of this many man-days eats, in grams. Parts are
+  /// counted in PIECES by the design and in grams by every store, and the
+  /// recipe's own rule converts between them — one place, one formula
+  /// (construction design §2; BuildMaterial in construction_config.h).
+  Grams RepairPartsGrams(float labor_days) const {
+    const float pieces = labor_days * config_.repair_spare_parts_per_labor_day;
+    if (!(pieces > 0.0F) || pieces > kMaxRepairPieces) {
+      return 0;
+    }
+    return static_cast<Grams>(pieces) * config_.spare_part_grams;
+  }
+
   void ConsumeOrders(WorldState& current) {
     // By index, because appending a unit row may reallocate nothing here but
     // the book itself is stable — orders are appended only by the engine.
@@ -140,6 +314,9 @@ class ConstructionSystem final : public IConstructionSystem {
           break;
         case OrderKind::kDemolishUnit:
           Settle(order, Demolish(current, order.unit));
+          break;
+        case OrderKind::kRepairUnit:
+          Settle(order, StartRepair(current, order.unit));
           break;
         default:
           break;  // not ours; another consumer's, or the events slot's refusal
@@ -282,9 +459,51 @@ class ConstructionSystem final : public IConstructionSystem {
   /// STUB of project phase 1's logistics: whatever the recipe still lacks is
   /// taken from the stores in row order, distance ignored. Task A4 replaces
   /// this with routing behind the same seam — the site's own stock.
+  /// The delivery half of a repair: bring the spare parts the frozen norm
+  /// calls for, and move to kRepairing when they are all on site. The same
+  /// shape as a build's delivery — one resource instead of a recipe.
+  void DeliverRepairParts(WorldState& current, std::uint32_t row) {
+    UnitRow& site = current.units.rows[row];
+    const ResourceId parts = config_.spare_part_resource;
+    const Grams need = RepairPartsGrams(site.construction.labor_days_total);
+    const Grams have = AmountAt(site.stock, parts);
+    if (have < need) {
+      const Grams taken = TakeFromStores(current, row, parts, need - have);
+      AddTo(current.units.rows[row].stock, parts, taken);
+    }
+    if (AmountAt(current.units.rows[row].stock, parts) < need) {
+      return;  // still short; kSiteWithoutMaterials speaks for it (task A3)
+    }
+    UnitRow& ready = current.units.rows[row];
+    ready.construction.phase = ConstructionPhase::kRepairing;
+    ready.construction.labor_days_remaining = ready.construction.labor_days_total;
+    if (ready.construction.labor_days_remaining <= 0.0F) {
+      CompleteRepair(current, current.units.row_ids[row], ready);
+    }
+  }
+
+  /// A repair that has had its labour: the parts are used up, the wear is
+  /// gone, the level never moved. "An upgrade repairs on its way" is the
+  /// other half of the same rule and lives in CompleteBuild.
+  void CompleteRepair(WorldState& current, UnitId unit, UnitRow& site) {
+    const Grams used = RepairPartsGrams(site.construction.labor_days_total);
+    AddTo(site.stock, config_.spare_part_resource, -used);
+    site.wear = 0.0F;
+    site.construction = ConstructionState{};
+    Emit(current, EventKind::kUnitRepaired, EventSeverity::kNotable, unit);
+  }
+
   void DeliverMaterials(WorldState& current) {
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       if (current.units.rows[row].construction.phase != ConstructionPhase::kDelivering) {
+        continue;
+      }
+      // A REPAIR asks for spare parts and nothing else (construction design
+      // §2), so its "recipe" is one line computed from the frozen norm — the
+      // level's own recipe would rebuild the barn instead of mending it.
+      if (current.units.rows[row].construction.target_level == current.units.rows[row].level &&
+          current.units.rows[row].level > 0) {
+        DeliverRepairParts(current, row);
         continue;
       }
       const UnitTypeId type = current.units.rows[row].type;
@@ -330,6 +549,8 @@ class ConstructionSystem final : public IConstructionSystem {
       }
       if (site.construction.phase == ConstructionPhase::kBuilding) {
         CompleteBuild(current, current.units.row_ids[row], site);
+      } else if (site.construction.phase == ConstructionPhase::kRepairing) {
+        CompleteRepair(current, current.units.row_ids[row], site);
       } else if (site.construction.phase == ConstructionPhase::kDemolishing) {
         gone.push_back(current.units.row_ids[row]);
       }
@@ -348,6 +569,10 @@ class ConstructionSystem final : public IConstructionSystem {
       }
     }
     site.level = site.construction.target_level;
+    // "Any level upgrade repairs the unit entirely" (unit rules §11): the
+    // amortization term starts again, and that is why repairing before an
+    // upgrade is pointless rather than merely wasteful.
+    site.wear = 0.0F;
     site.construction = ConstructionState{};
     Emit(current, EventKind::kUnitBuilt, EventSeverity::kNotable, unit);
   }

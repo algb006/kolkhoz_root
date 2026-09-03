@@ -78,6 +78,12 @@ inline constexpr Kopecks kKopecksPerRuble = 100;
 /// long periods, so integer exactness buys nothing here.
 using Metric = float;
 
+/// @brief The top of the wear scale — a ruin (unit rules §15: 0..100, and
+/// 100 is where it stops). Named here beside Metric because wear IS one,
+/// and because "100" spelled out at every clamp is the kind of magic
+/// number a rule hides behind (task A5).
+inline constexpr Metric kWearScale = 100.0F;
+
 inline constexpr Metric kMetricMin = 0.0f;
 inline constexpr Metric kMetricMax = 100.0f;
 

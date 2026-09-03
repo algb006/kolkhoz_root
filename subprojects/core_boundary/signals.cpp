@@ -109,8 +109,12 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   // arithmetic honest (manual/70-boundary.md §10).
   signals.indoor_temperature_celsius = world.weather.air_temperature_celsius;
 
-  // wear, paused, prank_marks: STUB at their neutral values until A5, the
-  // kPauseUnit consumer in core_production and project phase 3 fill them.
+  // Wear is the row's own since task A5: the number the layer's four
+  // keyframes blend on and the office's mice read.
+  signals.wear = world.units.rows[unit_row].wear;
+
+  // paused, prank_marks: STUB at their neutral values until the kPauseUnit
+  // consumer and project phase 3 fill them.
   return signals;
 }
 

@@ -112,6 +112,17 @@ constexpr float kMaxStockKilograms = 1e9F;
 /// twelve kilometres on a side leaves this six orders of magnitude of room.
 constexpr float kLayoutNumberLimit = 1e9F;
 
+/// The band the start's old houses begin their wear in (start design §4:
+/// "a starting wear of 50 %", spread by boss's rule of 2026-09-03 so that
+/// they do not all fall together). DEFAULTS ONLY: the numbers live in
+/// tables/construction.csv beside the term those houses run on, and genesis
+/// reads them below. They were constants here for one afternoon, and in that
+/// afternoon the table said 45..60 while the code obeyed itself — a knob
+/// nobody reads is worse than no knob at all.
+constexpr float kOldHouseWearMinDefault = 45.0F;
+
+constexpr float kOldHouseWearMaxDefault = 60.0F;
+
 void PutStock(UnitRow& unit, ResourceId resource, float kilograms) {
   if (resource.value == kInvalidDefIdValue) {
     return;
@@ -601,6 +612,39 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     world.units.rows[unit_row].household = world.families.row_ids[family_row];
     world.families.rows[family_row].house = entry.second;
     ++family_row;
+  }
+
+  // THE OLD HOUSES START PART WORN (start design §4), and not all at the
+  // same number: a spread of fifteen points puts their collapses years
+  // apart instead of dropping twenty-one roofs in one night (boss,
+  // 2026-09-03; task A5). Drawn from the campaign seed like every other
+  // start draw, so the same seed gives the same village — and the band
+  // itself comes from the table, not from this file.
+  float wear_min = kOldHouseWearMinDefault;
+  float wear_max = kOldHouseWearMaxDefault;
+  if (const ITable* const knobs = tables.FindTable("construction")) {
+    const std::uint32_t column = knobs->FindColumn("value");
+    const std::uint32_t min_row = knobs->FindRowByKey("old_house_wear_min");
+    const std::uint32_t max_row = knobs->FindRowByKey("old_house_wear_max");
+    if (column != kNoTableColumn && min_row != kNoTableRow) {
+      wear_min = LayoutNumber(*knobs, min_row, column);
+    }
+    if (column != kNoTableColumn && max_row != kNoTableRow) {
+      wear_max = LayoutNumber(*knobs, max_row, column);
+    }
+  }
+  // A band that is not a band — reversed, negative, past the scale — is a
+  // table error, and the canonical figures stand instead of a wrong world.
+  if (!(wear_min >= 0.0F && wear_max <= kWearScale && wear_min <= wear_max)) {
+    LogWarning("genesis: the old-house wear band is unusable; the canonical 45..60 is used");
+    wear_min = kOldHouseWearMinDefault;
+    wear_max = kOldHouseWearMaxDefault;
+  }
+  for (UnitRow& unit : world.units.rows) {
+    if (unit.type.value != house_type.value || unit.level == 0) {
+      continue;
+    }
+    unit.wear = wear_min + (NextRandomUnitFloat(world.rng) * (wear_max - wear_min));
   }
 
   // WHAT LIES WHERE comes from the table too (start_stock.csv, boss numbers

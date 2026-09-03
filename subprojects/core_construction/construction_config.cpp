@@ -35,6 +35,14 @@ constexpr float kMaxKgPerUnit = 100'000.0F;
 /// the design names is a 2500 t elevator.
 constexpr float kMaxStorageTonnes = 1e6F;
 
+/// An amortization term longer than this is a table error rather than a
+/// plan: nothing in the design outlives a campaign by four orders.
+constexpr float kMaxWearYears = 10'000.0F;
+
+/// A pace multiplier outside this is a table error: the design's fastest
+/// named exception is 1.6.
+constexpr float kMaxWearFactor = 100.0F;
+
 /// Grams in a tonne — the tables state stores in tonnes, the core counts
 /// grams (state model §5).
 constexpr Grams kGramsPerTonne = 1'000'000;
@@ -124,6 +132,8 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t radius_col = unit_types.FindColumn("plot_radius_m");
   const std::uint32_t tonnes_col = unit_types.FindColumn("storage_capacity_t");
   const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
+  const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
+  const std::uint32_t wear_factor_col = unit_types.FindColumn("wear_factor");
 
   config.types.assign(unit_types.RowCount(), BuildType{});
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
@@ -161,6 +171,29 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     type.capacity_by_plot = static_cast<std::uint8_t>(number);
+    // Absent column = 0 for every type, and that means NOTHING WEARS. The
+    // honest reading of "no data" (task A5, manual/73-wear-and-repair.md
+    // §2): deriving it from the capacity flag or the recipe would be a
+    // guess wearing the clothes of a rule.
+    if (!CellOrDefault(unit_types, row, has_wear_col, 0.0F, 1.0F, 0.0F, number)) {
+      Fail(error, "unit_types", "has_wear is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    type.has_wear = static_cast<std::uint8_t>(number);
+    // An empty cell is 1.0 — the class's own pace — because the column names
+    // only the exceptions the design lists by name. The floor is ZERO, not
+    // one: a type that outlasts its class, a stone shed among timber ones,
+    // is as legitimate as one that burns through it, and a floor of 1.0
+    // refused the first kind outright. A cell of exactly 0 would mean "never
+    // wears", which is what has_wear says, so it falls back to the class.
+    if (!CellOrDefault(
+            unit_types, row, wear_factor_col, 0.0F, kMaxWearFactor, 1.0F, type.wear_factor)) {
+      Fail(error, "unit_types", "wear_factor is out of range in row " + std::to_string(row));
+      return false;
+    }
+    if (!(type.wear_factor > 0.0F)) {
+      type.wear_factor = 1.0F;
+    }
   }
   return true;
 }
@@ -176,6 +209,8 @@ bool ReadLevels(const ITable& levels,
   const std::uint32_t class_col = levels.FindColumn("build_class");
   const std::uint32_t crew_col = levels.FindColumn("max_crew");
   const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
+  const std::uint32_t idle_col = levels.FindColumn("wear_years_idle");
+  const std::uint32_t in_use_col = levels.FindColumn("wear_years_in_use");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
     Fail(error, "unit_levels", "no 'unit' or 'level' column");
     return false;
@@ -225,6 +260,12 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
     step.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
+    if (!CellOrDefault(levels, row, idle_col, 0.0F, kMaxWearYears, 0.0F, step.wear_years_idle) ||
+        !CellOrDefault(
+            levels, row, in_use_col, 0.0F, kMaxWearYears, 0.0F, step.wear_years_in_use)) {
+      Fail(error, "unit_levels", "a wear term is out of range in row " + std::to_string(row));
+      return false;
+    }
     step.is_marking = static_cast<std::uint8_t>(
         class_col != kNoTableColumn && levels.CellText(row, class_col) == kMarkingClass ? 1 : 0);
   }
@@ -328,17 +369,29 @@ bool ParseConstructionConfig(const ITableSet& tables,
                              std::string& error) {
   const ITable* const knobs = tables.FindTable("construction");
   if (knobs != nullptr) {
-    const std::uint32_t row = knobs->FindRowByKey("demolition_labor_share");
     const std::uint32_t column = knobs->FindColumn("value");
-    if (row != kNoTableRow && !CellOrDefault(*knobs,
-                                             row,
-                                             column,
-                                             0.0F,
-                                             1.0F,
-                                             config.demolition_labor_share,
-                                             config.demolition_labor_share)) {
-      Fail(error, "construction", "demolition_labor_share is out of range");
-      return false;
+
+    // key, ceiling, destination — the knobs of this subsystem, each keeping
+    // its canonical default when the table does not name it (task A5).
+    struct Knob {
+      const char* key;
+      float ceiling;
+      float* value;
+    };
+
+    const Knob knob_list[] = {
+        {"demolition_labor_share", 1.0F, &config.demolition_labor_share},
+        {"repair_labor_share", 1.0F, &config.repair_labor_share},
+        {"repair_spare_parts_per_labor_day", 1e3F, &config.repair_spare_parts_per_labor_day},
+        {"old_house_collapse_years", 1e4F, &config.old_house_collapse_years},
+    };
+    for (const Knob& knob : knob_list) {
+      const std::uint32_t row = knobs->FindRowByKey(knob.key);
+      if (row != kNoTableRow &&
+          !CellOrDefault(*knobs, row, column, 0.0F, knob.ceiling, *knob.value, *knob.value)) {
+        Fail(error, "construction", std::string(knob.key) + " is out of range");
+        return false;
+      }
     }
   }
 
@@ -363,6 +416,23 @@ bool ParseConstructionConfig(const ITableSet& tables,
   if (!ReadResourceMass(*resources, grams_per_unit)) {
     Fail(error, "resources", "kg_per_unit is out of range");
     return false;
+  }
+
+  // What a repair is made of, and the one type that collapses instead of
+  // standing as a ruin. Both are keys, resolved here so that no rule of the
+  // subsystem has to know a string (task A5).
+  config.spare_part_resource = ResourceId{};
+  config.spare_part_grams = 0;
+  const std::uint32_t spare_row = resources->FindRowByKey("spare_part");
+  if (spare_row != kNoTableRow && spare_row < grams_per_unit.size() &&
+      grams_per_unit[spare_row] > 0) {
+    config.spare_part_resource = ResourceId{static_cast<std::uint16_t>(spare_row)};
+    config.spare_part_grams = grams_per_unit[spare_row];
+  }
+  config.old_house_type = UnitTypeId{};
+  const std::uint32_t old_house_row = unit_types->FindRowByKey("old_house");
+  if (old_house_row != kNoTableRow) {
+    config.old_house_type = UnitTypeId{static_cast<std::uint16_t>(old_house_row)};
   }
 
   const ITable* const levels = tables.FindTable("unit_levels");

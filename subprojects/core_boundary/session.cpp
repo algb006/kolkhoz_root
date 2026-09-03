@@ -62,6 +62,7 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kResumeUnit:
     case OrderKind::kDemolishUnit:
     case OrderKind::kStartBuild:
+    case OrderKind::kRepairUnit:
     case OrderKind::kUpgradeUnit:
       return has_unit;
     case OrderKind::kSetRotation:

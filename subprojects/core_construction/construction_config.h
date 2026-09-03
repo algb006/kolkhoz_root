@@ -73,6 +73,26 @@ struct BuildLevel {
   /// (task A3), and this module already parses the very table that says so.
   /// 0 = the level stores nothing by number.
   Grams storage_capacity_grams = 0;
+
+  /// Amortization of a unit STANDING at this level, in game years to a
+  /// full wear scale (unit rules §15: "the time an object takes to reach
+  /// 100 % if never repaired"): standing empty and unworked, and while a
+  /// household lives in it or somebody works in it today. Read from
+  /// unit_levels.csv `wear_years_idle` / `wear_years_in_use` — the build
+  /// class's figures, exported per level like labor_days and max_crew, so
+  /// a brick level outlasts a timber one by data and not by a rule here.
+  /// 0 = the ladder names none for this level, and the unit does not wear
+  /// (task A5, manual/73-wear-and-repair.md §2).
+  ///
+  /// IN USE IS THE SHORTER TERM. "Works — wears faster; stands — hardly
+  /// ages at all", and pausing what is unused is called doubly profitable
+  /// (unit rules §15). The tables carry both figures and the code only
+  /// picks one; the direction is stated here because it is the half a
+  /// reader gets wrong (boss corrected his own delivery criterion on it,
+  /// 2026-09-03).
+  float wear_years_idle = 0.0F;
+
+  float wear_years_in_use = 0.0F;
 };
 
 /// Everything the subsystem knows about one unit type.
@@ -102,6 +122,20 @@ struct BuildType {
   /// 0/1: the capacity is the outline the player draws, so there is no
   /// number and the store is never full (a heap, a stack, a trench).
   std::uint8_t capacity_by_plot = 0;
+
+  /// The type's own pace against its class's, from unit_types.csv
+  /// `wear_factor`: a stock yard, a byre and the kolkhoz yard 1.6 (damp,
+  /// ammonia, animals), a water mill 1.5 (water and vibration), a sawmill
+  /// 1.4. 1.0 = the class's own pace. The class gives the base, the
+  /// nature of the unit corrects it (boss, 2026-09-03).
+  float wear_factor = 1.0F;
+
+  /// 0/1 from unit_types.csv `has_wear` (the design db derives it: a unit
+  /// without a building has nothing to wear — unit rules §15). 0 keeps
+  /// UnitRow::wear at zero for ever and refuses kRepairUnit. Missing
+  /// column = 0 for every type: no data, no wear, said out loud rather
+  /// than guessed from the capacity flag.
+  std::uint8_t has_wear = 0;
 };
 
 /// The subsystem's own knobs (construction.csv) and the parsed tables.
@@ -122,9 +156,63 @@ struct ConstructionConfig {
   /// By UnitTypeId value. Sized to the unit_types table; a type the tables
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;
+
+  // -- wear and repair (task A5, construction.csv) ------------------------------
+
+  /// A repair at FULL wear costs this share of the level's build norm in
+  /// labour days; scaled linearly by wear / 100 at the moment of the order
+  /// (construction design §11: "less and cheaper", and "a neglected repair
+  /// is dearer"). Boss's figure of 2026-09-03: a capital repair is about a
+  /// third of the build — less and repair is free, more and demolishing to
+  /// rebuild wins, which is not the fork the design wants.
+  float repair_labor_share = 0.30F;
+
+  /// Spare parts a repair consumes per game man-day of its labour — the
+  /// only material a building's repair takes (construction design §2:
+  /// "repair of buildings: spare parts only"). In pieces of resources.csv
+  /// `spare_part`; the mass is that row's kg_per_unit, as everywhere.
+  /// Boss's figure of 2026-09-03: a repair must run into HANDS, not into
+  /// the district's quota — at 0.30 a timber barn's repair costs nine
+  /// parts, which is felt and does not block.
+  float repair_spare_parts_per_labor_day = 0.30F;
+
+  /// resources.csv "spare_part": what a repair is delivered and what it
+  /// consumes. Invalid = the table set has none, and every repair order is
+  /// refused rather than silently free.
+  ResourceId spare_part_resource;
+
+  /// Grams in one spare part (resources.csv kg_per_unit of that row).
+  /// Parts are counted in PIECES by the design and in grams by every store;
+  /// this is the one number that converts, resolved once at parse time like
+  /// every recipe amount.
+  Grams spare_part_grams = 0;
+
+  /// unit_types.csv "old_house": the start's houses, which begin part worn
+  /// (genesis draws each in the band of construction.csv, 45..60 by the
+  /// shipped figures), cannot be repaired and are the ONE type that
+  /// collapses at 100 (start design §4, housing design §10). Invalid = the
+  /// table set has none, and nothing collapses.
+  UnitTypeId old_house_type;
+
+  /// Game years an old house takes from its starting wear to 100 — the
+  /// canon's "race of the first years: dismantle them before they fall"
+  /// (start design §4). Its own figure, not the ladder's: the ladder gives
+  /// a timber house decades, and these are the houses that do not get
+  /// them. Boss's figure of 2026-09-03: six years would drop all twenty-one
+  /// yards inside the first five, when the player has nothing to build
+  /// with; twelve puts the first collapse at year eight to ten — built in
+  /// time, nothing lost.
+  ///
+  /// The BAND those houses start in is not here: it is a start value, and
+  /// genesis reads it straight from the same table. Two knobs parsed by a
+  /// subsystem that has no rule for them are two knobs nobody reads, which
+  /// is how construction.csv briefly said 45..60 while the code obeyed its
+  /// own constants.
+  float old_house_collapse_years = 12.0F;
 };
 
-/// @brief Reads the five tables into `config`.
+/// @brief Reads the five tables into `config` — and, since task A5, the
+/// wear columns of two of them and the repair knobs of construction.csv.
 /// @param error Receives the reason on failure, table and row named.
 /// @return false when a present table is malformed or contradicts another —
 ///         a type that claims a plot and names neither radius nor marking

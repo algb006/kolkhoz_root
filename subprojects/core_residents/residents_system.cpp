@@ -387,6 +387,14 @@ class ResidentsSystem final : public IResidentsSystem {
     const SimDay day = current.calendar.day;
     UpdateEpoch(current);
     const EpochDemography& epoch = config_.epochs[EpochIndex(current.epoch)];
+    // FIRST: whoever lost a roof overnight gets one. The construction
+    // sub-step lets the start's old houses fall at the top of the wear scale
+    // and clears the household's `house` (task A5) — it cannot rehouse them
+    // itself, because settling a family is this sub-step's rule and not its
+    // own. A day of homelessness is the design's own answer for a burnt or
+    // fallen house; a second one would be a family with nowhere for its day
+    // to start from.
+    Rehouse(current);
     RunDeaths(current, day);
     RunOutflow(current, epoch, day);
     RunBirths(current, epoch, day);
@@ -645,6 +653,30 @@ class ResidentsSystem final : public IResidentsSystem {
   /// start walked all day and worked nothing, and the farm stopped mowing
   /// by its seventh year. A position belongs to the scene, never to a
   /// default.
+  /// Families whose house is gone: a free one if the village has it, a STUB
+  /// one otherwise — the same path a newly wed couple and a migrant take
+  /// (SettleHouse). Runs before everything else in the day so that nobody
+  /// is counted homeless twice.
+  void Rehouse(WorldState& current) const {
+    for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+      FamilyRow& family = current.families.rows[row];
+      if (family.house.value != kInvalidEntityIdValue &&
+          FindRow(current.units, family.house) != kNoRow) {
+        continue;
+      }
+      const FamilyId id = current.families.row_ids[row];
+      const UnitId house = SettleHouse(current, id, FamilyId{});
+      // SettleHouse may append a unit row, which can move the family rows'
+      // neighbours but not this vector: families and units are separate
+      // tables. Re-read anyway — the reference above is older than the call.
+      current.families.rows[row].house = house;
+      const std::uint32_t house_row = FindRow(current.units, house);
+      if (house_row != kNoRow) {
+        current.units.rows[house_row].household = id;
+      }
+    }
+  }
+
   UnitId SettleHouse(WorldState& current, FamilyId groom_family, FamilyId bride_family) const {
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       const UnitRow& unit = current.units.rows[row];

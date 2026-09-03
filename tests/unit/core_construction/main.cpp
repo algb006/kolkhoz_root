@@ -120,32 +120,63 @@ class BuildTables final : public core::ITableSet {
   // Row 0 is the store the materials come from, row 1 the barn we build,
   // row 2 an Epoch-II type whose gate is shut, row 3 an outline the player
   // draws (build class "plot": no work, no materials).
-  FakeTable types_{{"key", "era", "player_built", "gate", "has_plot", "plot_radius_m"},
-                   {{"store", "1", "0", "start", "1", "10"},
-                    {"barn", "1", "1", "era", "1", "20"},
-                    {"club", "2", "1", "era", "1", "20"},
-                    {"orchard", "1", "1", "era", "1", ""}}};
+  // has_wear and wear_factor are task A5's: the orchard is an outline with
+  // nothing to wear, the barn ages half again as fast as its class (damp,
+  // animals), and old_house is the one type that collapses.
+  FakeTable types_{{"key",
+                    "era",
+                    "player_built",
+                    "gate",
+                    "has_plot",
+                    "plot_radius_m",
+                    "has_wear",
+                    "wear_factor"},
+                   {{"store", "1", "0", "start", "1", "10", "1", ""},
+                    {"barn", "1", "1", "era", "1", "20", "1", "1.5"},
+                    {"club", "2", "1", "era", "1", "20", "1", ""},
+                    {"orchard", "1", "1", "era", "1", "", "0", ""},
+                    {"old_house", "1", "0", "start", "1", "10", "1", ""}}};
 
   // 70 real man-days is 10 game man-days (root rules §9: real / 7).
-  FakeTable levels_{{"unit", "level", "era", "labor_days", "build_class", "max_crew"},
-                    {{"store", "1", "1", "70", "wood_small", "5"},
-                     {"barn", "1", "1", "70", "wood_small", "5"},
-                     {"barn", "2", "1", "140", "wood_small_ext", "8"},
-                     {"club", "1", "2", "70", "wood_small", "5"},
-                     {"orchard", "1", "1", "0", "plot", ""}}};
+  // Ten years standing, five in use: IN USE IS THE SHORTER TERM (unit rules
+  // §15, and boss corrected his own criterion on it). Round numbers so the
+  // daily share is exact arithmetic in the test below.
+  FakeTable levels_{{"unit",
+                     "level",
+                     "era",
+                     "labor_days",
+                     "build_class",
+                     "max_crew",
+                     "wear_years_idle",
+                     "wear_years_in_use"},
+                    {{"store", "1", "1", "70", "wood_small", "5", "10", "5"},
+                     {"barn", "1", "1", "70", "wood_small", "5", "10", "5"},
+                     {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10"},
+                     {"club", "1", "2", "70", "wood_small", "5", "10", "5"},
+                     {"orchard", "1", "1", "0", "plot", "", "", ""},
+                     {"old_house", "1", "1", "70", "wood_small", "5", "10", "5"}}};
 
   FakeTable costs_{{"unit", "level", "resource", "amount"},
                    {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
 
-  FakeTable resources_{{"key", "measure", "kg_per_unit"}, {{"log", "pcs", "200"}}};
+  FakeTable resources_{{"key", "measure", "kg_per_unit"},
+                       {{"log", "pcs", "200"}, {"spare_part", "pcs", "5"}}};
 
-  FakeTable knobs_{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+  FakeTable knobs_{{"key", "value"},
+                   {{"demolition_labor_share", "0.5"},
+                    {"repair_labor_share", "0.5"},
+                    {"repair_spare_parts_per_labor_day", "1"},
+                    {"old_house_collapse_years", "2"}}};
 };
 
 constexpr std::uint16_t kStoreType = 0;
 constexpr std::uint16_t kBarnType = 1;
 constexpr std::uint16_t kClubType = 2;
 constexpr std::uint16_t kOrchardType = 3;
+constexpr std::uint16_t kOldHouseType = 4;
+
+/// Grams of one spare part, as the fixture states it: 5 kg a piece.
+constexpr core::Grams kPartGrams = 5 * core::kGramsPerKilogram;
 
 /// Grams of one log, as the table states it: 200 kg a piece.
 constexpr core::Grams kLogGrams = 200 * core::kGramsPerKilogram;
@@ -374,6 +405,210 @@ class EmptyTableSet final : public core::ITableSet {
   std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
 };
 
+/// Task A5: the building ages, and it ages at two speeds. Ten years empty,
+/// five in use, and the barn's own pace is one and a half — so a day of
+/// standing empty is 100 / (10 x 1.5 x 48) and a day in use is twice that.
+int TestWearGrows(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  if (system == nullptr) {
+    std::cout << "FAIL: the wear table set builds no system\n";
+    return 1;
+  }
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{kBarnType};
+  barn.level = 1;
+  const core::UnitId empty = core::AppendRow(world.units, barn);
+  core::UnitRow lived_in;
+  lived_in.type = core::UnitTypeId{kBarnType};
+  lived_in.level = 1;
+  lived_in.household = core::FamilyId{7};  // somebody lives here
+  const core::UnitId busy = core::AppendRow(world.units, lived_in);
+  core::UnitRow orchard;
+  orchard.type = core::UnitTypeId{kOrchardType};
+  orchard.level = 1;
+  const core::UnitId nothing_to_wear = core::AppendRow(world.units, orchard);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{kBarnType};
+  site.level = 0;  // a marked site: not a building yet
+  const core::UnitId unbuilt = core::AppendRow(world.units, site);
+
+  const auto wear_of = [&](core::UnitId id) {
+    const std::uint32_t row = core::FindRow(world.units, id);
+    return row == core::kNoRow ? -1.0F : world.units.rows[row].wear;
+  };
+
+  world.calendar.tick = 0;
+  Run(*system, world, 0);
+  const float idle_day = wear_of(empty);
+  const float used_day = wear_of(busy);
+  // A FASTER pace is a shorter life, so the type's factor multiplies the
+  // daily share: 100 / (10 years x 48 days) x 1.5.
+  const float expected_idle = 100.0F / (10.0F * 48.0F) * 1.5F;
+  failures += Expect(idle_day > expected_idle * 0.999F && idle_day < expected_idle * 1.001F,
+                     "a day standing empty is the level's idle term, at the type's own pace");
+  failures += Expect(used_day > idle_day * 1.99F && used_day < idle_day * 2.01F,
+                     "and a day in use wears twice as fast: work consumes, standing preserves");
+  failures += Expect(wear_of(nothing_to_wear) == 0.0F, "an outline with no building never wears");
+  failures += Expect(wear_of(unbuilt) == 0.0F, "and neither does a site that is not built yet");
+
+  // Only at the day boundary: an hour is not a day.
+  Run(*system, world, 5);
+  failures += Expect(wear_of(empty) == idle_day, "wear moves once a day, not once an hour");
+
+  // Something merely LYING in a unit keeps it in use (boss, 2026-09-03).
+  const std::uint32_t empty_row = core::FindRow(world.units, empty);
+  world.units.rows[empty_row].stock.assign(1, kLogGrams);
+  Run(*system, world, 0);
+  failures += Expect(wear_of(empty) - idle_day > idle_day * 1.9F,
+                     "a store with grain in it is not abandoned, and wears like it is used");
+  return failures;
+}
+
+/// The scale stops at 100 and the unit goes on working — except the start's
+/// old houses, which are the one kind that falls (start design §4).
+int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{kBarnType};
+  barn.level = 1;
+  barn.wear = 99.99F;
+  const core::UnitId ruin = core::AppendRow(world.units, barn);
+
+  core::FamilyRow family;
+  const core::FamilyId household = core::AppendRow(world.families, family);
+  core::UnitRow old_house;
+  old_house.type = core::UnitTypeId{kOldHouseType};
+  old_house.level = 1;
+  old_house.wear = 99.99F;
+  old_house.household = household;
+  const core::UnitId doomed = core::AppendRow(world.units, old_house);
+  world.families.rows[core::FindRow(world.families, household)].house = doomed;
+
+  Run(*system, world, 0);
+  const std::uint32_t ruin_row = core::FindRow(world.units, ruin);
+  failures += Expect(ruin_row != core::kNoRow && world.units.rows[ruin_row].wear == 100.0F,
+                     "wear stops at a hundred: a ruin still stands and still works");
+  failures += Expect(core::FindRow(world.units, doomed) == core::kNoRow,
+                     "an old house at the top of the scale falls — the one unit that does");
+  bool said_so = false;
+  for (const core::SimEvent& event : world.step_events) {
+    said_so = said_so ||
+              (event.kind == core::EventKind::kUnitCollapsed && event.unit.value == doomed.value);
+  }
+  failures += Expect(said_so, "and it says so, rather than vanishing quietly");
+  const std::uint32_t family_row = core::FindRow(world.families, household);
+  failures += Expect(world.families.rows[family_row].house.value == 0,
+                     "the family it sheltered is left pointing at no house, not at a dead id");
+
+  // Another day must not fall over the hole it left.
+  Run(*system, world, 0);
+  failures +=
+      Expect(core::FindRow(world.units, ruin) != core::kNoRow, "and the day after is uneventful");
+  return failures;
+}
+
+/// The fifth order: a repair is a site on a standing unit, paid for by the
+/// wear it was ordered at, made of spare parts and nothing else.
+int TestRepair(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  core::WorldState world;
+  // 200 parts in the store, which is more than any repair here asks for.
+  core::UnitRow store;
+  store.type = core::UnitTypeId{kStoreType};
+  store.level = 1;
+  store.stock.assign(2, 0);
+  store.stock[1] = 200 * kPartGrams;
+  core::AppendRow(world.units, store);
+
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{kBarnType};
+  barn.level = 1;
+  barn.wear = 50.0F;
+  const core::UnitId worn = core::AppendRow(world.units, barn);
+
+  const core::OrderId order = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, worn));
+  Run(*system, world, 0);
+  const std::uint32_t row = core::FindRow(world.units, worn);
+  const core::ConstructionState& site = world.units.rows[row].construction;
+  // 10 game man-days of build norm x 0.5 share x 50/100 of wear = 2.5.
+  failures += Expect(site.labor_days_total > 2.49F && site.labor_days_total < 2.51F,
+                     "a repair costs the level's norm by the share, scaled by the wear it had");
+  failures += Expect(site.target_level == world.units.rows[row].level,
+                     "and the level does not move: the site says so out loud");
+  failures += Expect(site.phase == core::ConstructionPhase::kRepairing,
+                     "the parts were in the store, so the delivery is already done");
+  failures += Expect(world.units.rows[row].stock.size() > 1 && world.units.rows[row].stock[1] > 0,
+                     "the spare parts are on site");
+  failures += Expect(RefusalOf(world, order) == core::OrderRefusal::kNone, "and nothing refused");
+
+  // The labour is invested by somebody else's sub-step; here we just finish.
+  world.units.rows[row].construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 1);
+  failures += Expect(world.units.rows[row].wear == 0.0F, "a finished repair takes the wear away");
+  failures += Expect(world.units.rows[row].construction.phase == core::ConstructionPhase::kNone,
+                     "and the site is gone");
+  failures += Expect(world.units.rows[row].stock[1] == 0,
+                     "the parts were used up, not left lying on the site");
+  bool repaired = false;
+  for (const core::SimEvent& event : world.step_events) {
+    repaired = repaired || event.kind == core::EventKind::kUnitRepaired;
+  }
+  failures += Expect(repaired, "and the outbox says so");
+
+  // Refusals: nothing worn, nothing to wear, and the old houses.
+  const core::OrderId again = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, worn));
+  core::UnitRow orchard;
+  orchard.type = core::UnitTypeId{kOrchardType};
+  orchard.level = 1;
+  orchard.wear = 0.0F;
+  const core::UnitId outline = core::AppendRow(world.units, orchard);
+  const core::OrderId no_wear = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, outline));
+  core::UnitRow old_house;
+  old_house.type = core::UnitTypeId{kOldHouseType};
+  old_house.level = 1;
+  old_house.wear = 60.0F;
+  const core::UnitId ancient = core::AppendRow(world.units, old_house);
+  const core::OrderId unfixable = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, ancient));
+  Run(*system, world, 2);
+  failures += Expect(RefusalOf(world, again) == core::OrderRefusal::kRuleForbids,
+                     "a unit with nothing worn is not repaired");
+  failures += Expect(RefusalOf(world, no_wear) == core::OrderRefusal::kRuleForbids,
+                     "nor is one with nothing to wear");
+  failures += Expect(RefusalOf(world, unfixable) == core::OrderRefusal::kRuleForbids,
+                     "and an old house is replaced, never mended");
+  return failures;
+}
+
+/// "Any level upgrade repairs the unit entirely" (unit rules §11).
+int TestUpgradeHeals(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  core::WorldState world;
+  PlaceStore(world, 100 * kLogGrams);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{kBarnType};
+  barn.level = 1;
+  barn.wear = 80.0F;
+  const core::UnitId unit = core::AppendRow(world.units, barn);
+  Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, unit));
+  Run(*system, world, 0);
+  const std::uint32_t row = core::FindRow(world.units, unit);
+  // Still worn — and a shade worse, because the day that opened the site
+  // also aged the barn. What matters is that nothing healed.
+  failures += Expect(world.units.rows[row].wear >= 80.0F,
+                     "an upgrade under way has not healed anything yet");
+  world.units.rows[row].construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 1);
+  failures += Expect(world.units.rows[row].level == 2 && world.units.rows[row].wear == 0.0F,
+                     "and the finished upgrade repairs the unit on its way");
+  return failures;
+}
+
 int TestTableLessWorld() {
   int failures = 0;
   const EmptyTableSet tables;
@@ -400,6 +635,10 @@ int main() {
   failures += TestRefusals(tables);
   failures += TestDemolition(tables);
   failures += TestTableLessWorld();
+  failures += TestWearGrows(tables);
+  failures += TestWearCeilingAndCollapse(tables);
+  failures += TestRepair(tables);
+  failures += TestUpgradeHeals(tables);
   if (failures == 0) {
     std::cout << "unit_core_construction: marking, building, upgrading, refusals and demolition\n";
   }

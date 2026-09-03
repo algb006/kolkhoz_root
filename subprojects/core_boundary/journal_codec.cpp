@@ -59,10 +59,25 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the journal codec too");
 
 constexpr std::uint8_t kMaxJournalVerb = static_cast<std::uint8_t>(JournalVerb::kCancel);
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDemolishUnit);
+// THE LAST ENUMERATOR, and it has to be the last one: a guard left behind
+// refuses every journal carrying a kind newer than itself. THREE of these
+// four were stale, all left at task A2's additions — kMaxOrderKind and
+// kMaxOrderRefusal found by task A5's design pass, kMaxWorkKind by its
+// analysis pass, in this very block and one line under a comment that had
+// just declared the matter closed. A journal with kStartBuild,
+// kUpgradeUnit, kGateClosed, kTooClose, kNotEmpty or a builder's
+// assignment decoded as "corrupt". The save codec had the same bug and the
+// same cure (core_save/save_rows.cpp, which had already fixed the work
+// kind and not this file).
+//
+// The lesson is about tests, not about diligence: a codec test that stages
+// a MIDDLING value passes for ever while the guard rots behind it. Each of
+// these is now covered by staging the NEWEST value of its enum, which is
+// the only stage that fails when somebody appends without looking here.
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kRepairUnit);
 constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
-constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kRuleForbids);
-constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kHerdCare);
+constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNotEmpty);
+constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kConstruction);
 
 class Writer {
  public:

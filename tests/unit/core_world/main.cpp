@@ -283,6 +283,58 @@ int main() {
                  many_state.families.rows[0].satisfaction == state.families.rows[0].satisfaction,
              "the population and its metrics agree across worker counts");
 
+  // The start's old houses begin PART WORN, and the band is the table's —
+  // not a constant in genesis (task A5). Checked by moving the band: if the
+  // knobs were dead, every house would come out in 45..60 regardless.
+  {
+    const fs::path banded = fs::temp_directory_path() / "unit_core_world_wear_band";
+    fs::remove_all(banded);
+    fs::copy(fs::path(KOLKHOZ_TABLES_DIR), banded, fs::copy_options::recursive);
+    // REWRITTEN, not appended: the shipped table already names the band, and
+    // a second row with the same key is a duplicate the loader refuses —
+    // rightly, and it caught this test doing it.
+    {
+      std::ifstream source(banded / "construction.csv");
+      std::string knobs;
+      std::string knob_line;
+      while (std::getline(source, knob_line)) {
+        if (knob_line.rfind("old_house_wear_", 0) == 0) {
+          continue;
+        }
+        knobs += knob_line + "\n";
+      }
+      source.close();
+      std::ofstream(banded / "construction.csv", std::ios::trunc)
+          << knobs << "old_house_wear_min,10\nold_house_wear_max,12\n";
+    }
+    std::string band_error;
+    const auto banded_tables = core::LoadTableSet(banded.string(), &band_error);
+    failures += Expect(banded_tables != nullptr, "the re-banded table set loads");
+    if (banded_tables != nullptr) {
+      const core::WorldState banded_world = core::CreateStartWorld(*banded_tables, 4242);
+      const core::UnitTypeId old_house{static_cast<std::uint16_t>(
+          banded_tables->FindTable("unit_types")->FindRowByKey("old_house"))};
+      std::uint32_t houses = 0;
+      bool inside_band = true;
+      bool all_equal = true;
+      float first = -1.0F;
+      for (const core::UnitRow& unit : banded_world.units.rows) {
+        if (unit.type.value != old_house.value || unit.level == 0) {
+          continue;
+        }
+        ++houses;
+        inside_band = inside_band && unit.wear >= 10.0F && unit.wear <= 12.0F;
+        first = first < 0.0F ? unit.wear : first;
+        all_equal = all_equal && unit.wear == first;
+      }
+      failures += Expect(houses > 1, "the start has old houses to wear");
+      failures += Expect(inside_band, "and their wear comes from the table's band, not from code");
+      failures += Expect(!all_equal,
+                         "each is drawn separately: twenty-one roofs must not fall in one night");
+    }
+    fs::remove_all(banded);
+  }
+
   // The table-value debt (phase-2 task A6), tested where it bites. The
   // loader now refuses inf and nan at the door (tables.h), so what can still
   // reach a reader is a FINITE absurdity — and genesis casts livestock ages

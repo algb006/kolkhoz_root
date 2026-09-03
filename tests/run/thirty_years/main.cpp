@@ -243,6 +243,43 @@ int main() {
   failures +=
       run::Expect(kolkhoz_heads > 10, "the kolkhoz herds are still standing after thirty years");
 
+  // WEAR OVER THIRTY YEARS (task A5). The criterion is not a number but a
+  // shape: what is worked wears, what merely stands waits its turn, and
+  // nothing quietly disappears except the start's old houses, which the
+  // canon lets fall. Measured here rather than eyeballed, because "the wear
+  // looks plausible" is exactly the sort of claim that stops being true
+  // without anybody noticing.
+  std::uint32_t worn_units = 0;
+  std::uint32_t ruins = 0;
+  std::uint32_t wearless = 0;
+  float highest_wear = 0.0F;
+  double wear_sum = 0.0;
+  for (const core::UnitRow& unit : state.units.rows) {
+    if (unit.level == 0) {
+      continue;
+    }
+    if (unit.wear > 0.0F) {
+      ++worn_units;
+      wear_sum += static_cast<double>(unit.wear);
+      highest_wear = unit.wear > highest_wear ? unit.wear : highest_wear;
+      ruins += unit.wear >= 100.0F ? 1 : 0;
+    } else {
+      ++wearless;
+    }
+  }
+  const double mean_wear = worn_units == 0 ? 0.0 : wear_sum / static_cast<double>(worn_units);
+  std::cout << "thirty_years: " << worn_units << " units carry wear (mean " << mean_wear
+            << "%, worst " << highest_wear << "%, " << ruins << " at the ruin mark), " << wearless
+            << " have none to carry\n";
+
+  failures += run::Expect(worn_units > 0,
+                          "thirty years of standing and working leave a mark on the buildings");
+  failures += run::Expect(wearless > 0,
+                          "and the heaps and stacks carry none: no building, nothing to wear");
+  failures += run::Expect(highest_wear <= 100.0F, "wear never passes the ruin mark");
+  failures += run::Expect(mean_wear > 1.0,
+                          "the village is not brand new after three decades without a repair");
+
   // The two halves of the food year must both be real. A run where nothing
   // is harvested, or nothing is eaten, would still satisfy every count above
   // — and both have happened during this phase's development.

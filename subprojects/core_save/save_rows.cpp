@@ -44,7 +44,7 @@ static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
 // see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
 // what has to notice.
 static_assert(sizeof(FieldRow) == 56, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(UnitRow) == 40 + kAmountsSize,
+static_assert(sizeof(UnitRow) == 48 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the codec and VERSION_SAVE");
@@ -58,7 +58,7 @@ constexpr std::uint8_t kMaxSex = static_cast<std::uint8_t>(Sex::kMale);
 constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kConstruction);
 
 constexpr std::uint8_t kMaxConstructionPhase =
-    static_cast<std::uint8_t>(ConstructionPhase::kDemolishing);
+    static_cast<std::uint8_t>(ConstructionPhase::kRepairing);
 
 constexpr std::uint8_t kMaxEducationStage = static_cast<std::uint8_t>(EducationStage::kHigher);
 
@@ -75,7 +75,7 @@ constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerel
 // over "order kind holds 8, outside 0..7". Both names are the LAST
 // enumerator of their enum, and order_state.h says so where a new one gets
 // appended.
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kUpgradeUnit);
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kRepairUnit);
 constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
 constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNotEmpty);
 
@@ -334,6 +334,9 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteFloat(row.construction.labor_days_total);
   out.WriteFloat(row.construction.labor_days_remaining);
   out.WriteU8(row.construction.max_crew);
+
+  // Wear (task A5): the building's own age, which nothing can rederive.
+  out.WriteFloat(row.wear);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -351,6 +354,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.labor_days_total = in.ReadFloat();
   row.construction.labor_days_remaining = in.ReadFloat();
   row.construction.max_crew = in.ReadU8();
+  row.wear = in.ReadFloat();
   return row;
 }
 

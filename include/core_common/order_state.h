@@ -147,11 +147,26 @@ enum class OrderKind : std::uint8_t {
   /// Consumer: core_construction.
   kUpgradeUnit,
 
+  /// Repair a standing unit (task A5; construction design §11, unit rules
+  /// §15). Names `unit`. Opens a site on it — kDelivering for the spare
+  /// parts, then kRepairing for the labour — and the unit works meanwhile.
+  /// Cost scales with the wear at the moment of the order: a neglected
+  /// repair is dearer, in parts and in man-days alike. Refused when the
+  /// unit is not built, is a site already, has nothing to wear (has_wear
+  /// = 0) or nothing worn (wear = 0), or is one of the start's old houses,
+  /// which the canon says cannot be repaired, only replaced (housing design
+  /// §10). Decided in the step it is read, like the other four.
+  kRepairUnit,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
   //
-  // APPENDING A KIND MEANS RAISING kMaxOrderKind in core_save/save_rows.cpp:
+  // APPENDING A KIND MEANS RAISING kMaxOrderKind in core_save/save_rows.cpp
+  // AND in core_boundary/journal_codec.cpp — two guards, one rule, and the
+  // journal's was left behind at kDemolishUnit when A2 appended two kinds
+  // (found by task A5's design pass; a journal carrying kStartBuild would
+  // have been refused on decode):
   // the save codec validates the byte it read against the last enumerator,
   // and a guard left behind refuses every save carrying the new kind. There
   // is no sentinel to derive it from on purpose — ShapeIsValid in
