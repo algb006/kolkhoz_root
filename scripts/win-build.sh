@@ -40,14 +40,27 @@ ssh "${host}" "echo ok" >/dev/null
 
 # Deliberately not -a: it implies -p -o -g, and POSIX permissions cannot be
 # set on NTFS through MSYS2 — every file arrives and then fails with
-# "failed to set permissions ... Permission denied". -rlt carries what the
-# host actually needs, and content comparison is what --checksum is for.
+# "failed to set permissions ... Permission denied". Content comparison is
+# what --checksum is for.
+#
+# AND DELIBERATELY NOT -t EITHER, which is the harder-won half. Preserving
+# the VM's modification times let a file arrive OLDER than the object Ninja
+# had already built from its previous content — and Ninja, which compares
+# times, then skipped the compile. The publish still copied include/ fresh,
+# so the headers moved and the archive did not: task A3's FieldRow was 56
+# bytes by the published headers and 40 in the published library, every
+# version string on both sides said 0.13.0, and the graphics layer read the
+# field table as confident nonsense (boss, 2026-09-03). Without -t every
+# transferred file lands with the host's current time, which is always newer
+# than anything built from its predecessor, and Ninja rebuilds what changed.
+# The mtimes on the host mean "when this arrived", which is the only thing
+# they can honestly mean across two machines.
 #
 # .cache/ is excluded for the same reason build/ is, and it bit us: clangd
 # keeps its index there, and rsync creating those directories on NTFS hit
 # exactly the permission error the flags above are chosen to avoid — a
 # whole publish failing over an editor's cache that the host never needed.
-rsync -rltz --checksum --delete --omit-dir-times \
+rsync -rlz --checksum --delete --omit-dir-times \
       --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
       --exclude 'claude/' --exclude 'artifacts/' --exclude 'publish/' \
       --exclude '.cache/' \
@@ -79,6 +92,12 @@ mkdir -p "${local_artifacts}"
 if ssh "${host}" "test -f '${publish_dir}/lib/core.lib'"; then
   ssh "${host}" "cat '${publish_dir}/lib/core.lib'" > "${local_artifacts}/core.lib"
   published=$(ssh "${host}" "cat '${publish_dir}/VERSION'" | tr -d '\r\n')
+  # The layout report the host just produced, brought back beside the library
+  # so that a mismatched pair is visible from this side too.
+  if ssh "${host}" "test -f '${publish_dir}/LAYOUT.txt'"; then
+    ssh "${host}" "cat '${publish_dir}/LAYOUT.txt'" | tr -d '\r' \
+      > "${local_artifacts}/LAYOUT.txt"
+  fi
   local_version=$(tr -d '\r\n' < "${project_dir}/VERSION")
   echo "Забрана artifacts/${build_type}/core.lib — версия ${published}"
   echo "Опубликовано на хосте: ${publish_dir}"

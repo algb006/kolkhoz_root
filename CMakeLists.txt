@@ -207,6 +207,7 @@ if(KOLKHOZ_BUILD_TESTS)
   add_subdirectory(tests)
 endif()
 
+add_subdirectory(tools)        # core_layout: the published layout report
 add_subdirectory(src)          # game executable, phase 2
 
 message(STATUS "kolkhoz_core ${PROJECT_VERSION} save=${KOLKHOZ_SAVE_VERSION} "

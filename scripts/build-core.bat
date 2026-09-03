@@ -135,6 +135,21 @@ rem lets the consumer fail loudly on a stale artifact instead of linking it.
 copy /y "%PROJECT_DIR%\VERSION" "%PUBLISH_DIR%\VERSION" >nul
 if errorlevel 1 exit /b 1
 
+rem The layout report, produced BY THIS BUILD (tools/core_layout.cpp). It is
+rem the only thing in publish\ that can catch a pair that is not a pair: the
+rem headers say one size, the archive was compiled with another, and every
+rem version string on both sides still agrees. Whoever links compares.
+if exist "%BUILD_DIR%\bin\core_layout.exe" (
+    "%BUILD_DIR%\bin\core_layout.exe" > "%PUBLISH_DIR%\LAYOUT.txt"
+    if errorlevel 1 (
+        echo [core] the layout report could not be produced
+        exit /b 1
+    )
+) else (
+    echo [core] core_layout.exe is missing from "%BUILD_DIR%" - the publish would be uncheckable
+    exit /b 1
+)
+
 set /p PUBLISHED_VERSION=<"%PUBLISH_DIR%\VERSION"
 echo [core] published %BUILD_TYPE% %PUBLISHED_VERSION%
 echo [core] ok: %BUILD_DIR%
