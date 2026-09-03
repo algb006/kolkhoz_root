@@ -29,7 +29,9 @@
 #include <vector>
 
 #include "assignment.h"
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
 #include "core_common/herd_state.h"
@@ -46,6 +48,7 @@
 #include "core_tables/tables.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "posts.h"
 
 namespace core {
 namespace {
@@ -109,10 +112,153 @@ class LaborSystem final : public ILaborSystem {
     RunHour(current, hour);
     if (hour + 1U >= kTicksPerDay) {
       CloseDay(current);
+      ApplyPostOrders(current);
+    }
+    // Reading comes LAST, and that is the whole of the "first close of the
+    // day AFTER it was accepted" rule (manual/74-posts.md §3): an order that
+    // arrives on the day's last tick is validated here, behind the close it
+    // just missed, and waits a full day for the next one. Put the read first
+    // and an order issued at midnight would take effect the same midnight —
+    // a man's post changed while his day was still being paid out.
+    ReadPostOrders(current);
+  }
+
+  void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
+    // Once the team is in, the question is closed for the campaign: the flag
+    // is the milestone, not the yard's current staffing (world_state.h).
+    if (state.chairman.horses_stabled != 0 || config_.groom_post.value == kInvalidDefIdValue) {
+      return;
+    }
+    const std::int64_t waiting = HorsesAtPrivateYards(state);
+    if (waiting <= 0) {
+      return;  // nothing stands at the yards: nothing to be freed
+    }
+    for (std::uint32_t row = 0; row < state.units.rows.size(); ++row) {
+      const UnitRow& unit = state.units.rows[row];
+      const UnitId id = state.units.row_ids[row];
+      if (FindStaffSlot(config_, unit.type, unit.level, config_.groom_post) == nullptr) {
+        continue;
+      }
+      if (HasGroom(state, id)) {
+        // Appointed and the horses not moved yet: that is the one idle
+        // morning of manual/74-posts.md §5, and it is SILENT. The player did
+        // everything right and is not told off for the slot order.
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kYardWithoutGroom;
+      alarm.unit = id;
+      alarm.amount = waiting;
+      out.push_back(alarm);
     }
   }
 
  private:
+  // -- the order book (task A7; manual/74-posts.md §3) ---------------------
+
+  /// Validates every kAppoint and kDismiss the engine appended this step.
+  /// A post order NEVER settles in the step it is read: it goes to
+  /// kAccepted — visible, and cancellable right up to the moment it takes
+  /// effect — or straight to kRefused, which is an answer and needs no
+  /// waiting.
+  void ReadPostOrders(WorldState& current) const {
+    for (std::uint32_t row = 0; row < current.orders.rows.size(); ++row) {
+      OrderRow& order = current.orders.rows[row];
+      if (order.status != OrderStatus::kPending ||
+          (order.kind != OrderKind::kAppoint && order.kind != OrderKind::kDismiss)) {
+        continue;
+      }
+      OrderRefusal refusal = order.kind == OrderKind::kAppoint
+                                 ? CheckAppointment(config_, current, order)
+                                 : CheckDismissal(current, order);
+      if (refusal == OrderRefusal::kNone && HasWaitingPostOrder(current, order.resident, row)) {
+        refusal = OrderRefusal::kConflictsWithActive;
+      }
+      if (refusal != OrderRefusal::kNone) {
+        order.status = OrderStatus::kRefused;
+        order.refusal = refusal;
+        continue;
+      }
+      order.status = OrderStatus::kAccepted;
+    }
+  }
+
+  /// The day is over and the men are paid: now posts may change (time design
+  /// §11). Everything is checked a SECOND time here, because a day is long
+  /// enough for the unit to be demolished, the man to die, or the last free
+  /// slot to be taken by another order accepted the same morning — and of
+  /// two orders for one place, the one applied first is the one that gets it.
+  void ApplyPostOrders(WorldState& current) const {
+    for (std::uint32_t row = 0; row < current.orders.rows.size(); ++row) {
+      OrderRow& order = current.orders.rows[row];
+      if (order.status != OrderStatus::kAccepted ||
+          (order.kind != OrderKind::kAppoint && order.kind != OrderKind::kDismiss)) {
+        continue;
+      }
+      const OrderRefusal refusal = order.kind == OrderKind::kAppoint
+                                       ? CheckAppointment(config_, current, order)
+                                       : CheckDismissal(current, order);
+      if (refusal != OrderRefusal::kNone) {
+        order.status = OrderStatus::kRefused;
+        order.refusal = refusal;
+        continue;
+      }
+      const std::uint32_t resident_row = FindRow(current.residents, order.resident);
+      ResidentRow& resident = current.residents.rows[resident_row];
+      SimEvent event;
+      event.tick = current.calendar.tick;
+      event.severity = EventSeverity::kNotable;
+      event.resident = order.resident;
+      if (order.kind == OrderKind::kAppoint) {
+        // A man who already holds a post is MOVED, not doubled: one work a
+        // day means one place (time design §11).
+        resident.post.profession = order.profession;
+        resident.post.unit = order.unit;
+        event.kind = EventKind::kAppointed;
+        event.unit = order.unit;
+        event.amount = static_cast<std::int64_t>(order.profession.value);
+      } else {
+        event.kind = EventKind::kDismissed;
+        event.unit = resident.post.unit;
+        event.amount = static_cast<std::int64_t>(resident.post.profession.value);
+        resident.post = PostAssignment{};
+      }
+      current.step_events.push_back(event);
+      order.status = OrderStatus::kDone;
+      order.refusal = OrderRefusal::kNone;
+    }
+  }
+
+  /// @brief Whether anybody holds the groom's post at this unit.
+  bool HasGroom(const WorldState& world, UnitId unit) const {
+    for (const ResidentRow& resident : world.residents.rows) {
+      if (resident.post.profession.value == config_.groom_post.value &&
+          resident.post.unit.value == unit.value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// @brief Kolkhoz horses still standing at private yards, all ages: what
+  /// the yard is waiting for, and what the alarm counts.
+  std::int64_t HorsesAtPrivateYards(const WorldState& world) const {
+    if (config_.horse_kind.value == kInvalidDefIdValue) {
+      return 0;
+    }
+    std::int64_t heads = 0;
+    for (const HerdRow& herd : world.herds.rows) {
+      if (herd.kind.value != config_.horse_kind.value || herd.household_owned != 0 ||
+          herd.household.value == kInvalidEntityIdValue) {
+        continue;
+      }
+      heads += static_cast<std::int64_t>(herd.adult_count) +
+               static_cast<std::int64_t>(herd.juvenile_count) +
+               static_cast<std::int64_t>(herd.newborn_count);
+    }
+    return heads;
+  }
+
   // -- the morning ---------------------------------------------------------
 
   // The economic year's burn used to stand here, as a placeholder for the
@@ -127,6 +273,7 @@ class LaborSystem final : public ILaborSystem {
       resident.work = WorkAssignment{};
     }
     RefillHerdCare(current);
+    AssignPostHolders(current);
     const std::vector<AssignmentJob> jobs = CollectJobs(current);
     if (jobs.empty()) {
       return;
@@ -147,6 +294,37 @@ class LaborSystem final : public ILaborSystem {
       work.field = job.field;
       work.herd = job.herd;
       work.unit = job.unit;
+    }
+  }
+
+  /// The holder's morning (manual/74-posts.md §4): he is out of the
+  /// accountant's pool entirely, and he stands first on the work of his OWN
+  /// unit — for the groom, the yard's herd care. It is done BEFORE the
+  /// accountant runs, which is what "first" means here: the seam he starts
+  /// draining is the same one the accountant may send others to, and both
+  /// drain it hour by hour in row order.
+  ///
+  /// A post whose work the core does not model yet — the storekeeper, the
+  /// timekeeper, every line of the roster but this one — leaves its holder
+  /// reserved and IDLE. That is a STUB named by the table rather than by
+  /// code: the day such a unit grows work the core counts, this same loop
+  /// puts him on it. It is also silent: no event, no journal line, no alarm
+  /// (boss's condition of 2026-09-03), because being reserved is what the
+  /// player asked for.
+  void AssignPostHolders(WorldState& current) const {
+    for (ResidentRow& resident : current.residents.rows) {
+      if (resident.post.profession.value == kInvalidDefIdValue) {
+        continue;
+      }
+      for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+        const HerdRow& herd = current.herds.rows[row];
+        if (herd.unit.value != resident.post.unit.value || herd.care_days_remaining <= 0.0F) {
+          continue;
+        }
+        resident.work.kind = WorkKind::kHerdCare;
+        resident.work.herd = current.herds.row_ids[row];
+        break;
+      }
     }
   }
 
@@ -269,6 +447,9 @@ class LaborSystem final : public ILaborSystem {
       if (age < config_.adult_age_years || !HomePosition(current, resident.family, home)) {
         continue;
       }
+      if (resident.post.profession.value != kInvalidDefIdValue) {
+        continue;  // he has a place of his own; the accountant does not touch him
+      }
       AssignmentCandidate candidate;
       candidate.resident_row = row;
       candidate.home = home;
@@ -292,7 +473,12 @@ class LaborSystem final : public ILaborSystem {
   /// member of the household that is (manual/65-labor-model.md §4).
   std::vector<bool> MarkHorseHosts(const WorldState& current) const {
     std::vector<bool> locked(current.residents.rows.size(), false);
-    if (config_.horse_kind.value == kInvalidDefIdValue) {
+    if (config_.horse_kind.value == kInvalidDefIdValue || current.chairman.horses_stabled != 0) {
+      // Once the team is stabled the lock is gone for good, whatever later
+      // becomes of the yard (livestock design §5: the mark "at the horse"
+      // never comes back). The loop below would say the same today — no
+      // kolkhoz horse stands at a yard any more — but the flag says it for
+      // every tomorrow as well.
       return locked;
     }
     for (const HerdRow& herd : current.herds.rows) {

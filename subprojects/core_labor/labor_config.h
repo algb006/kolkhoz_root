@@ -19,10 +19,12 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/resident_state.h"
 
 namespace core {
 
@@ -114,6 +116,61 @@ struct SkillBlend {
   float stamina_weight = 0.35F;
 
   float schooled_weight = 0.15F;
+};
+
+/// The roster key of the groom. Shared knowledge with core_production,
+/// which resolves the same post for the herd day (stable_horses.h) — spelt
+/// out in both places rather than passed between them, because a profession
+/// key is DATA and two modules reading one table are not a dependency
+/// (manual/74-posts.md §5).
+inline constexpr std::string_view kGroomPostKey = "groom";
+
+/// Who may hold a post at all (professions.csv `gender`). It is the era's
+/// own rule and not the core's: the milkmaid and the poultry maid are
+/// women's posts in the design's Epoch I, and the day that changes it is a
+/// cell that changes, not a branch here.
+enum class PostSexRule : std::uint8_t {
+  kAny = 0,
+  kFemale,
+  kMale,
+};
+
+/// One post a resident can be appointed to (tables/professions.csv; posts
+/// design, manual/74-posts.md §6). Every threshold is a COLUMN and never a
+/// rule in code: a post that grows its own age band tomorrow grows it in the
+/// table, and nothing here is touched.
+struct ProfessionDef {
+  EducationStage min_education = EducationStage::kNone;
+
+  /// Biological years. 0 means the ordinary working age — the column is
+  /// empty for most posts, and the groom is one of them.
+  float min_age_years = 0.0F;
+
+  /// Biological years. 0 means no upper limit.
+  float max_age_years = 0.0F;
+
+  PostSexRule sex_rule = PostSexRule::kAny;
+
+  /// The village has room for exactly one holder, wherever he stands. A
+  /// second appointment is refused with kNoVacancy and not kRuleForbids:
+  /// "the place is taken" and "no such place here" are different things,
+  /// and the player fixes them differently.
+  std::uint8_t single_post = 0;
+};
+
+/// One row of tables/unit_staff.csv: which unit type carries which post, on
+/// which step of its ladder, and how many of them.
+struct StaffSlot {
+  UnitTypeId unit_type;
+
+  ProfessionId profession;
+
+  /// The ladder step that carries the post; 0 means every step. Levels are
+  /// 1-based in the world (level 0 is a marked site, which carries nothing).
+  std::uint8_t level = 0;
+
+  /// How many may hold it at one unit; 0 means no ceiling.
+  std::uint16_t slots = 0;
 };
 
 /// The labor configuration: everything the subsystem knows outside state.
@@ -218,6 +275,24 @@ struct LaborConfig {
   /// From this biological age a resident is a worker (life-cycle §1).
   /// Child labor (life-cycle §7) is deferred: nobody younger is placed.
   float adult_age_years = 16.0F;
+
+  // -- posts (professions.csv, unit_staff.csv; task A7) ---------------------
+  /// Indexed by ProfessionId, in table order. Empty when the table is
+  /// absent — and then no post exists that could be filled, so every
+  /// kAppoint is refused by rule.
+  std::vector<ProfessionDef> professions;
+
+  /// The staff table flat, in file order: a handful of dozens of rows, walked
+  /// linearly. An index by unit type would be a second structure to keep in
+  /// step with the first for no measurable gain at this size.
+  std::vector<StaffSlot> staff;
+
+  /// professions.csv "groom" — the one post the core raises an alarm about,
+  /// because it is the one that unlocks the start (livestock design §5: the
+  /// yard without a groom leaves the team at private yards and a third of
+  /// the village tied to it). Resolved from kGroomPostKey; invalid when the
+  /// roster has no such row, and then the alarm never fires.
+  ProfessionId groom_post;
 
   // -- placement (labor.csv; society design §1) ----------------------------
   /// Accountant placement quality 0-3. Campaign default 0: the start has no

@@ -66,7 +66,6 @@ enum class SocialStatus : std::uint8_t {
   kParty,     ///< From 18, for life.
 };
 
-/// @brief One resident. Plain data; invalid ids mean "no such relative".
 /// @brief A standing appointment: which post, at which unit. Plain data;
 /// both invalid means "holds no post", and the two are set and cleared
 /// together — a profession with no unit, or a unit with no profession, is a
@@ -77,6 +76,7 @@ struct PostAssignment {
   UnitId unit;
 };
 
+/// @brief One resident. Plain data; invalid ids mean "no such relative".
 struct ResidentRow {
   // -- identity and kinship ------------------------------------------------
   FamilyId family;  ///< The household this person lives in.

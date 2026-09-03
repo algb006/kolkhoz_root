@@ -183,6 +183,23 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   work.resident = core::ResidentId{7};
   work.work = core::WorkKind::kHerdCare;
   failures += Expect(session->IssueOrder(work).value == 0, "barn work without a herd is refused");
+
+  // A post is a profession AT a unit, and all three parts are the SHAPE of
+  // the order — whether that unit carries that post is core_labor's rule and
+  // not the boundary's (task A7; manual/74-posts.md §3).
+  core::OrderRow appoint;
+  appoint.kind = core::OrderKind::kAppoint;
+  appoint.resident = core::ResidentId{7};
+  failures += Expect(session->IssueOrder(appoint).value == 0,
+                     "an appointment without a unit or a post is refused");
+  appoint.unit = core::UnitId{4};
+  failures += Expect(session->IssueOrder(appoint).value == 0,
+                     "and one without the post is still shapeless");
+  core::OrderRow dismiss;
+  dismiss.kind = core::OrderKind::kDismiss;
+  failures += Expect(session->IssueOrder(dismiss).value == 0,
+                     "a dismissal names the man, and nothing else will do");
+
   work.herd = core::HerdId{3};
   const core::OrderId first = session->IssueOrder(work);
   failures += Expect(first.value == 1, "the first order is promised id 1");

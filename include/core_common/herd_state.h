@@ -1,12 +1,22 @@
 /// @file
 /// @brief HerdRow — the per-herd state: kind, place, headcount by age rung.
 /// @threading PARALLEL_READONLY
-/// Rows live in WorldState::herds under the double-buffer discipline;
-/// headcount changes (births, maturation, deaths, transfers) happen only in
-/// the sequential production decisions sub-step (stage 6; horse offspring
-/// is additionally blocked until a stable exists — the capacity rule of the
-/// start rework). Only care_days_remaining is written elsewhere: the labor
-/// sub-step of the same sequential slot.
+/// Rows live in WorldState::herds under the double-buffer discipline. THREE
+/// writers, and every one of them is a sequential sub-step of the decisions
+/// slot (phase 3), which is what keeps structure changes away from any
+/// parallel phase:
+///   * production decisions — the herd day: births, maturation, deaths,
+///     transfers, billeting (stage 6; horse offspring is additionally
+///     blocked until a stable exists — the capacity rule of the start
+///     rework), and the one-time merge of the team into the kolkhoz yard
+///     (task A7, core_production/stable_horses.h), which REMOVES rows;
+///   * demography, in core_residents — a dying family's flock passes to the
+///     heir: `household` is reassigned, head counts are folded in, and the
+///     emptied row is REMOVED (residents_system.cpp). A second module that
+///     changes the table's shape, named here because a write map that lists
+///     one writer is the map a future parallel phase would be planned
+///     against;
+///   * labor — care_days_remaining, and nothing else.
 ///
 /// Design sources: livestock design §6 and the mobs parcel: the age ladder
 /// is 1/2/3 (wild/poultry/cattle), ONLY ADULTS produce — milk, wool, eggs,

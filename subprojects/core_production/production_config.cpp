@@ -684,15 +684,13 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.pelt_resource = ResourceByKey(resources, "mink_pelt");
   config.down_resource = ResourceByKey(resources, "down");
   config.compost_heap_type = UnitTypeByKey(unit_types, "manure_pile");
-  // The stable is not a unit of its own: it is the SECOND level of the
-  // kolkhoz yard (boss 2026-08-30), and phase 1 keeps every unit at its
-  // genesis level. So the id stays invalid and horse breeding stays blocked
-  // — the start canon's own rule, arrived at by the canon's own route.
-  // The stable is the SECOND step of the kolkhoz yard, and foals come only
-  // under its roof (livestock design §5). The type is resolved here; whether
-  // one is BUILT is a question about the world, asked once a day in
-  // herd_system.cpp. Phase 1 has no construction, so core_world raises it as
-  // a stub at the turn of the first year — see world.cpp, RaiseKolkhozYard.
+  // The stable is not a unit of its own: it is the SECOND step of the
+  // kolkhoz yard (boss 2026-08-30), and foals come only under its roof
+  // (livestock design §5). The type is resolved here; whether one is BUILT
+  // is a question about the world, asked once a day in herd_system.cpp. Who
+  // builds it is nobody's business here: since task A7 the yard is built by
+  // orders like any other unit, and in a run the player is played by the
+  // run's own chairman (tests/run/common/yard_policy.h).
   config.stable_type = UnitTypeByKey(unit_types, "horse_yard");
   if (const ITable* weather = tables.FindTable("weather"); weather != nullptr) {
     constexpr std::array<std::string_view, 4> kSeasons = {"winter", "spring", "summer", "autumn"};
@@ -713,6 +711,17 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     }
   }
   config.horse_kind = KindByKey(livestock, "horse");
+  // The groom's post, by the roster key. core_labor spells the same literal
+  // for the alarm and the appointment rules; the two must stay one word, or
+  // the alarm would watch one post while the transfer waited on another
+  // (manual/74-posts.md §5). Reading a table core_labor also reads is not a
+  // dependency on core_labor — a profession key is data.
+  if (const ITable* professions = tables.FindTable("professions")) {
+    const std::uint32_t row = professions->FindRowByKey("groom");
+    if (row != kNoTableRow) {
+      config.groom_post = ProfessionId{static_cast<std::uint16_t>(row)};
+    }
+  }
   config.pig_kind = KindByKey(livestock, "pig");
   return true;
 }

@@ -7,7 +7,8 @@
 kolkhoz_add_module(core_production
     production_system.cpp
     production_config.cpp
-    herd_system.cpp)
+    herd_system.cpp
+    stable_horses.cpp)
 
 target_link_libraries(core_production
     PUBLIC core_common core_sim

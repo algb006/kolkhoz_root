@@ -268,6 +268,136 @@ bool ParseLivestock(const ITable& table, LaborConfig& config, std::string& error
   return true;
 }
 
+/// @brief The education stage a `min_education` cell names. The keys are the
+/// design db's own (`education_level.key`), and "any" is the floor rather
+/// than a special case: everybody has at least no schooling.
+bool ParseEducationStage(std::string_view key, EducationStage& stage, std::string& error) {
+  if (key.empty() || key == "any") {
+    stage = EducationStage::kNone;
+    return true;
+  }
+  if (key == "primary") {
+    stage = EducationStage::kPrimary;
+    return true;
+  }
+  if (key == "secondary") {
+    stage = EducationStage::kSecondary;
+    return true;
+  }
+  if (key == "vocational") {
+    stage = EducationStage::kVocational;
+    return true;
+  }
+  if (key == "higher") {
+    stage = EducationStage::kHigher;
+    return true;
+  }
+  error = "min_education names no education stage";
+  return false;
+}
+
+bool ParseSexRule(std::string_view key, PostSexRule& rule, std::string& error) {
+  if (key.empty() || key == "any") {
+    rule = PostSexRule::kAny;
+    return true;
+  }
+  if (key == "female") {
+    rule = PostSexRule::kFemale;
+    return true;
+  }
+  if (key == "male") {
+    rule = PostSexRule::kMale;
+    return true;
+  }
+  error = "gender is neither any, female nor male";
+  return false;
+}
+
+/// tables/professions.csv — the roster of posts (manual/74-posts.md §6).
+/// A ProfessionId IS the row number here, like every other definition table.
+bool ParseProfessions(const ITable& table, LaborConfig& config, std::string& error) {
+  const std::uint32_t education_column = table.FindColumn("min_education");
+  const std::uint32_t min_age_column = table.FindColumn("min_age");
+  const std::uint32_t max_age_column = table.FindColumn("max_age");
+  const std::uint32_t gender_column = table.FindColumn("gender");
+  const std::uint32_t single_column = table.FindColumn("single_post");
+  config.professions.assign(table.RowCount(), ProfessionDef{});
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    ProfessionDef& post = config.professions[row];
+    if (education_column != kNoTableColumn &&
+        !ParseEducationStage(table.CellText(row, education_column), post.min_education, error)) {
+      PrefixError("professions", table.CellText(row, 0), error);
+      return false;
+    }
+    if (gender_column != kNoTableColumn &&
+        !ParseSexRule(table.CellText(row, gender_column), post.sex_rule, error)) {
+      PrefixError("professions", table.CellText(row, 0), error);
+      return false;
+    }
+    float single = 0.0F;
+    if (!OptionalCell(table, row, min_age_column, 0.0F, 120.0F, post.min_age_years, error) ||
+        !OptionalCell(table, row, max_age_column, 0.0F, 120.0F, post.max_age_years, error) ||
+        !OptionalCell(table, row, single_column, 0.0F, 1.0F, single, error)) {
+      PrefixError("professions", table.CellText(row, 0), error);
+      return false;
+    }
+    post.single_post = static_cast<std::uint8_t>(single);
+  }
+  return true;
+}
+
+/// tables/unit_staff.csv — who a unit has room for. A row naming a unit type
+/// or a post that is not in its own table is an error and not a silent skip:
+/// a staff line nobody can ever satisfy is a broken export, and the day it
+/// appears is the day to say so.
+bool ParseUnitStaff(const ITable& table,
+                    const ITableSet& tables,
+                    LaborConfig& config,
+                    std::string& error) {
+  const ITable* unit_types = tables.FindTable("unit_types");
+  const ITable* professions = tables.FindTable("professions");
+  if (unit_types == nullptr || professions == nullptr) {
+    error = "unit_staff needs unit_types and professions, and one of them is missing";
+    PrefixError("unit_staff", "", error);
+    return false;
+  }
+  const std::uint32_t unit_column = table.FindColumn("unit");
+  const std::uint32_t profession_column = table.FindColumn("profession");
+  const std::uint32_t level_column = table.FindColumn("level");
+  const std::uint32_t slots_column = table.FindColumn("slots");
+  if (unit_column == kNoTableColumn || profession_column == kNoTableColumn) {
+    error = "unit_staff has no unit or profession column";
+    PrefixError("unit_staff", "", error);
+    return false;
+  }
+  config.staff.clear();
+  config.staff.reserve(table.RowCount());
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    const std::uint32_t type_row = unit_types->FindRowByKey(table.CellText(row, unit_column));
+    const std::uint32_t post_row =
+        professions->FindRowByKey(table.CellText(row, profession_column));
+    if (type_row == kNoTableRow || post_row == kNoTableRow) {
+      error = "a staff line names a unit type or a post that no table has";
+      PrefixError("unit_staff", table.CellText(row, unit_column), error);
+      return false;
+    }
+    StaffSlot slot;
+    slot.unit_type = UnitTypeId{static_cast<std::uint16_t>(type_row)};
+    slot.profession = ProfessionId{static_cast<std::uint16_t>(post_row)};
+    float level = 0.0F;
+    float slots = 0.0F;
+    if (!OptionalCell(table, row, level_column, 0.0F, 255.0F, level, error) ||
+        !OptionalCell(table, row, slots_column, 0.0F, 65535.0F, slots, error)) {
+      PrefixError("unit_staff", table.CellText(row, unit_column), error);
+      return false;
+    }
+    slot.level = static_cast<std::uint8_t>(level);
+    slot.slots = static_cast<std::uint16_t>(slots);
+    config.staff.push_back(slot);
+  }
+  return true;
+}
+
 bool ParseCropWindows(const ITable& table, LaborConfig& config, std::string& error) {
   const std::uint32_t sow_column = table.FindColumn("sow_to_month");
   const std::uint32_t harvest_column = table.FindColumn("harvest_to_month");
@@ -319,6 +449,30 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   if (const ITable* crops = tables.FindTable("crops")) {
     if (!ParseCropWindows(*crops, config, error)) {
       return false;
+    }
+  }
+  if (const ITable* professions = tables.FindTable("professions")) {
+    if (!ParseProfessions(*professions, config, error)) {
+      return false;
+    }
+  }
+  if (const ITable* staff = tables.FindTable("unit_staff")) {
+    if (!ParseUnitStaff(*staff, tables, config, error)) {
+      return false;
+    }
+  }
+  // The groom, by the key the roster gives him. It is a LITERAL and not a
+  // knob on purpose: core_production looks the same post up for itself (the
+  // herd day owns the herds it moves — stable_horses.h), and a key that one
+  // module could be told to change while the other could not would let the
+  // alarm watch one post while the transfer waited on another. One name, in
+  // one place, read twice. A roster without him is not an error: a
+  // table-less test world has no posts at all, and then there is no yard
+  // alarm to raise either.
+  if (const ITable* professions = tables.FindTable("professions")) {
+    const std::uint32_t row = professions->FindRowByKey(kGroomPostKey);
+    if (row != kNoTableRow) {
+      config.groom_post = ProfessionId{static_cast<std::uint16_t>(row)};
     }
   }
   return true;

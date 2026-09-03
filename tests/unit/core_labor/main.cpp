@@ -11,6 +11,8 @@
 
 #include <charconv>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -20,12 +22,15 @@
 #include <vector>
 
 #include "assignment.h"
+#include "core_common/alarm_state.h"
+#include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "posts.h"
 
 static_assert(std::is_abstract_v<core::ILaborSystem>, "ILaborSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::ILaborSystem>,
@@ -571,6 +576,400 @@ int TestBarnLeadsTheClosedWindow() {
   return failures;
 }
 
+// ---------------------------------------------------------------------------
+// Posts (task A7; manual/74-posts.md)
+// ---------------------------------------------------------------------------
+
+/// A table set with a roster of posts and a staff line for each, written to
+/// disk so it goes through the real loader. Four posts, chosen to exercise
+/// one column each: the groom (nothing but the working age), the milkmaid (a
+/// woman's post), the agronomist (a diploma), the chairman (one to a
+/// village).
+std::filesystem::path WritePostTables() {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_posts";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "unit_types.csv") << "key\nhorse_yard\ncow_barn\n";
+  std::ofstream(root / "professions.csv")
+      << "key,min_education,min_age,max_age,gender,single_post\n"
+         "groom,any,16,,any,0\n"
+         "milkmaid,any,16,,female,0\n"
+         "agronomist,vocational,16,,any,0\n"
+         "chairman,any,25,60,any,1\n";
+  std::ofstream(root / "unit_staff.csv") << "unit,profession,level,slots\n"
+                                            "horse_yard,groom,,1\n"
+                                            "horse_yard,chairman,,\n"
+                                            "cow_barn,milkmaid,2,3\n"
+                                            "cow_barn,agronomist,,\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_real_year\nhorse,40\ncow,32\n";
+  return root;
+}
+
+/// The world the post tests share: a yard at level 2, a barn at level 1, one
+/// family and the adults the test asks for.
+class PostWorld {
+ public:
+  explicit PostWorld(std::uint32_t adults) : day_(adults) {
+    core::UnitRow stable;
+    stable.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+    // The TYPE is what carries the post: a unit without one carries nothing,
+    // whatever its level. Row 0 of unit_types.csv is the horse yard, row 1
+    // the cow barn.
+    stable.type = core::UnitTypeId{0};
+    stable.level = 2;
+    yard = core::AppendRow(day_.world.units, stable);
+    core::UnitRow cowshed;
+    cowshed.position = core::Vec2{.x = 20.0F, .y = 0.0F};
+    cowshed.type = core::UnitTypeId{1};
+    cowshed.level = 1;
+    barn = core::AppendRow(day_.world.units, cowshed);
+  }
+
+  /// Stages an order the way the engine would: appended, kPending.
+  core::OrderId Issue(const core::OrderRow& order) {
+    core::OrderRow row = order;
+    row.status = core::OrderStatus::kPending;
+    return core::AppendRow(day_.world.orders, row);
+  }
+
+  core::OrderRow Appoint(std::uint32_t resident_row, core::UnitId unit, std::uint16_t post) const {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kAppoint;
+    order.resident = day_.world.residents.row_ids[resident_row];
+    order.unit = unit;
+    order.profession = core::ProfessionId{post};
+    return order;
+  }
+
+  core::OrderRow Dismiss(std::uint32_t resident_row) const {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kDismiss;
+    order.resident = day_.world.residents.row_ids[resident_row];
+    return order;
+  }
+
+  const core::OrderRow& Order(core::OrderId id) const {
+    return day_.world.orders.rows[core::FindRow(day_.world.orders, id)];
+  }
+
+  bool Settled(core::OrderId id) const {
+    return core::FindRow(day_.world.orders, id) != core::kNoRow;
+  }
+
+  void RunDay(core::ILaborSystem& labor, std::uint32_t day) { day_.RunDay(labor, day); }
+
+  core::WorldState& world() { return day_.world; }
+
+  core::UnitId yard;
+
+  core::UnitId barn;
+
+ private:
+  DayWorld day_;
+};
+
+int TestPostTablesParse() {
+  int failures = 0;
+  const std::filesystem::path root = WritePostTables();
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  if (Expect(tables != nullptr, "the post tables load") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  core::LaborConfig config;
+  failures += Expect(core::ParseLaborConfig(*tables, config, error), "and parse");
+  failures += Expect(config.professions.size() == 4, "four posts in the roster");
+  failures += Expect(config.staff.size() == 4, "four staff lines");
+  failures += Expect(config.groom_post.value == 0, "the groom is found by his key");
+  if (config.professions.size() == 4) {
+    failures += Expect(config.professions[1].sex_rule == core::PostSexRule::kFemale,
+                       "the milkmaid's column is read, not guessed");
+    failures += Expect(config.professions[2].min_education == core::EducationStage::kVocational,
+                       "the agronomist's diploma is a threshold");
+    failures += Expect(
+        config.professions[3].single_post != 0 && config.professions[3].max_age_years == 60.0F,
+        "one chairman to a village, and he retires at sixty");
+  }
+  // The staff line is what makes a post EXIST at a unit, and the level
+  // column is what makes it exist at one step of the ladder and not another.
+  const core::UnitTypeId yard_type{0};
+  const core::UnitTypeId barn_type{1};
+  failures += Expect(core::FindStaffSlot(config, yard_type, 1, core::ProfessionId{0}) != nullptr,
+                     "an empty level means every step of the ladder");
+  failures += Expect(core::FindStaffSlot(config, yard_type, 0, core::ProfessionId{0}) == nullptr,
+                     "a marked site carries no post, whatever the table says");
+  failures += Expect(core::FindStaffSlot(config, barn_type, 1, core::ProfessionId{1}) == nullptr,
+                     "the milkmaid's line names level 2, so level 1 has no place for her");
+  failures += Expect(core::FindStaffSlot(config, barn_type, 2, core::ProfessionId{1}) != nullptr,
+                     "and level 2 does");
+
+  // A staff line naming a unit type nobody has is a broken export, not a
+  // line to skip in silence.
+  std::ofstream(root / "unit_staff.csv") << "unit,profession,level,slots\nno_such_unit,groom,,1\n";
+  const auto broken = core::LoadTableSet(root.string(), &error);
+  core::LaborConfig ignored;
+  failures += Expect(broken != nullptr && !core::ParseLaborConfig(*broken, ignored, error),
+                     "a staff line for a unit type nobody has is an error");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+int TestAppointmentTakesEffectAtTheDayClose() {
+  int failures = 0;
+  const std::filesystem::path root = WritePostTables();
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
+    return 1;
+  }
+  PostWorld post(1);
+  const core::OrderId order = post.Issue(post.Appoint(0, post.yard, 0));
+
+  // Hour by hour, so the moment of the change is measured and not assumed:
+  // the post must be empty for every hour of the day and filled at its close.
+  bool empty_all_day = true;
+  for (std::uint32_t hour = 0; hour < core::kTicksPerDay; ++hour) {
+    post.world().calendar.tick = hour;
+    core::RefreshCalendarCaches(post.world().calendar);
+    const core::WorldState previous = post.world();
+    labor->RunAssignmentDecisions(previous, post.world());
+    const bool held = post.world().residents.rows[0].post.profession.value == 0;
+    if (hour + 1 < core::kTicksPerDay) {
+      empty_all_day = empty_all_day && !held;
+      // And it is ACCEPTED all that time: visible, and cancellable.
+      empty_all_day = empty_all_day && post.Settled(order) &&
+                      post.Order(order).status == core::OrderStatus::kAccepted;
+    }
+  }
+  failures += Expect(empty_all_day, "the post stays empty, and the order accepted, all day long");
+  failures += Expect(post.world().residents.rows[0].post.profession.value == 0 &&
+                         post.world().residents.rows[0].post.unit.value == post.yard.value,
+                     "and he holds it from the day's close");
+  failures += Expect(post.Order(order).status == core::OrderStatus::kDone,
+                     "the order is done, not still waiting");
+  bool appointed_event = false;
+  for (const core::SimEvent& event : post.world().step_events) {
+    appointed_event = appointed_event || event.kind == core::EventKind::kAppointed;
+  }
+  failures += Expect(appointed_event, "and says so with an event");
+
+  // AN ORDER THAT ARRIVES ON THE DAY'S LAST TICK waits a whole day, and this
+  // is the case that measures the rule: an order issued earlier is applied at
+  // that day's close whichever way round reading and applying are done, so it
+  // proves nothing about the order of the two. This one does — put the read
+  // before the apply and the post changes at the very midnight the order
+  // arrived, while the day was still being paid out.
+  const core::OrderId midnight = post.Issue(post.Appoint(0, post.yard, 3));
+  post.world().calendar.tick = (2 * core::kTicksPerDay) - 1;  // the last hour of day 1
+  core::RefreshCalendarCaches(post.world().calendar);
+  const core::WorldState at_midnight = post.world();
+  labor->RunAssignmentDecisions(at_midnight, post.world());
+  failures += Expect(post.Order(midnight).status == core::OrderStatus::kAccepted &&
+                         post.world().residents.rows[0].post.profession.value == 0,
+                     "an order arriving at midnight misses that close and holds nothing yet");
+  post.RunDay(*labor, 2);
+  failures += Expect(post.world().residents.rows[0].post.profession.value == 3,
+                     "and takes effect at the FIRST close after it was accepted, not the same one");
+
+  // Dismissal is the same kind of order, and takes the same day.
+  const core::OrderId release = post.Issue(post.Dismiss(0));
+  post.world().step_events.clear();
+  post.RunDay(*labor, 1);
+  failures +=
+      Expect(post.world().residents.rows[0].post.profession.value == core::kInvalidDefIdValue,
+             "a dismissal empties the post at the close of its own day");
+  failures += Expect(post.Order(release).status == core::OrderStatus::kDone,
+                     "and is an order like any other");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+int TestAppointmentRefusals() {
+  int failures = 0;
+  const std::filesystem::path root = WritePostTables();
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
+    return 1;
+  }
+  PostWorld post(3);
+  post.world().residents.rows[0].sex = core::Sex::kMale;
+  post.world().residents.rows[1].sex = core::Sex::kFemale;
+  post.world().residents.rows[2].birth_day = -10;  // a child, ~0.8 years old
+
+  const core::OrderId no_such_unit = post.Issue(post.Appoint(0, core::UnitId{999}, 0));
+  // The barn stands at level 2 for this test, because the milkmaid's staff
+  // line names that step: at level 1 she would be refused by RULE and the
+  // sex column would never be reached — a test that passes for the wrong
+  // reason proves nothing about the column it claims to measure.
+  post.world().units.rows[core::FindRow(post.world().units, post.barn)].level = 2;
+  const core::OrderId wrong_sex = post.Issue(post.Appoint(0, post.barn, 1));
+  const core::OrderId no_diploma = post.Issue(post.Appoint(0, post.barn, 2));
+  const core::OrderId too_young = post.Issue(post.Appoint(2, post.yard, 0));
+  const core::OrderId nothing_to_leave = post.Issue(post.Dismiss(1));
+
+  // One tick is enough: validation happens in the step the order is read.
+  post.world().calendar.tick = 0;
+  core::RefreshCalendarCaches(post.world().calendar);
+  const core::WorldState previous = post.world();
+  labor->RunAssignmentDecisions(previous, post.world());
+
+  const auto refusal = [&](core::OrderId id) { return post.Order(id).refusal; };
+  failures += Expect(refusal(no_such_unit) == core::OrderRefusal::kRuleForbids,
+                     "no such unit: refused by rule");
+  failures += Expect(refusal(wrong_sex) == core::OrderRefusal::kNotEligible,
+                     "a man is not put to the milking, and the table says so, not the code");
+  failures += Expect(refusal(no_diploma) == core::OrderRefusal::kNotEligible,
+                     "the agronomist's post wants the diploma it names");
+  failures +=
+      Expect(refusal(too_young) == core::OrderRefusal::kNotEligible, "a child is nobody's groom");
+  failures += Expect(refusal(nothing_to_leave) == core::OrderRefusal::kRuleForbids,
+                     "there is nothing to dismiss him from");
+
+  // Vacancy: the yard has ONE groom's place. The first man in takes it at the
+  // day's close; the second is refused for the place and not by the rule.
+  const core::OrderId first = post.Issue(post.Appoint(0, post.yard, 0));
+  post.RunDay(*labor, 0);
+  failures += Expect(post.Order(first).status == core::OrderStatus::kDone, "the first is groom");
+  const core::OrderId second = post.Issue(post.Appoint(1, post.yard, 0));
+  post.RunDay(*labor, 1);
+  failures += Expect(post.Order(second).refusal == core::OrderRefusal::kNoVacancy,
+                     "the second finds the place taken, which is not the same as forbidden");
+
+  // Two orders for one man, both waiting: unresolvable without an order
+  // nobody has seen.
+  const core::OrderId move = post.Issue(post.Appoint(0, post.yard, 0));
+  const core::OrderId also = post.Issue(post.Dismiss(0));
+  post.world().calendar.tick = 2 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(post.world().calendar);
+  const core::WorldState before = post.world();
+  labor->RunAssignmentDecisions(before, post.world());
+  const bool one_of_each = (post.Order(move).status == core::OrderStatus::kAccepted &&
+                            post.Order(also).refusal == core::OrderRefusal::kConflictsWithActive) ||
+                           (post.Order(also).status == core::OrderStatus::kAccepted &&
+                            post.Order(move).refusal == core::OrderRefusal::kConflictsWithActive);
+  failures += Expect(one_of_each, "of two orders for one man, the second waits for nothing");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+int TestHolderIsOutOfThePoolAndOnHisOwnWork() {
+  int failures = 0;
+  const std::filesystem::path root = WritePostTables();
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
+    return 1;
+  }
+
+  /// Runs a morning and reports where each man ended up. Measured at a
+  /// WORKING hour and not at the day's end: the close clears every
+  /// assignment, so a test that looks after it sees nothing at all.
+  const auto morning = [&labor](PostWorld& post) {
+    for (std::uint32_t hour = 0; hour <= 8; ++hour) {
+      post.world().calendar.tick = hour;
+      core::RefreshCalendarCaches(post.world().calendar);
+      const core::WorldState previous = post.world();
+      labor->RunAssignmentDecisions(previous, post.world());
+    }
+  };
+  const auto add_harvest = [](PostWorld& post) {
+    core::FieldRow field;
+    field.center = core::Vec2{.x = 40.0F, .y = 0.0F};
+    field.area_ga = 10.0F;
+    field.phase = core::FieldPhase::kHarvest;
+    field.work_days_remaining = 40.0F;
+    core::AppendRow(post.world().fields, field);
+  };
+
+  // -- with a herd at his yard: he stands on it, and on THAT one ------------
+  PostWorld stabled(2);
+  core::HerdRow team;
+  team.unit = stabled.yard;
+  team.kind = core::LivestockKindId{0};
+  team.adult_count = 16;
+  const core::HerdId horses = core::AppendRow(stabled.world().herds, team);
+  core::HerdRow cows;
+  cows.unit = stabled.barn;
+  cows.kind = core::LivestockKindId{1};
+  cows.adult_count = 20;
+  core::AppendRow(stabled.world().herds, cows);
+  add_harvest(stabled);
+  stabled.world().residents.rows[0].post.profession = core::ProfessionId{0};
+  stabled.world().residents.rows[0].post.unit = stabled.yard;
+  morning(stabled);
+  const core::WorkAssignment& groom = stabled.world().residents.rows[0].work;
+  failures += Expect(groom.kind == core::WorkKind::kHerdCare && groom.herd.value == horses.value,
+                     "the groom stands at his OWN yard's herd, not at the barn next door");
+
+  // -- with no herd there: out of the pool, and idle in silence -------------
+  // This is the half that proves the first: the accountant has a harvest
+  // crying out for hands and does not touch him.
+  PostWorld reserved(2);
+  add_harvest(reserved);
+  reserved.world().residents.rows[0].post.profession = core::ProfessionId{0};
+  reserved.world().residents.rows[0].post.unit = reserved.yard;
+  morning(reserved);
+  failures += Expect(reserved.world().residents.rows[0].work.kind == core::WorkKind::kNone,
+                     "a post with no work the core models keeps its holder reserved and idle");
+  failures += Expect(reserved.world().residents.rows[1].work.kind == core::WorkKind::kHarvest,
+                     "while the man without a post is sent to the harvest that wanted them both");
+  bool silent = true;
+  for (const core::SimEvent& event : reserved.world().step_events) {
+    silent = silent && event.kind != core::EventKind::kAppointed;
+  }
+  failures += Expect(silent, "and an idle holder says nothing about it");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+int TestYardWithoutGroomAlarm() {
+  int failures = 0;
+  const std::filesystem::path root = WritePostTables();
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
+    return 1;
+  }
+  PostWorld post(1);
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{0};  // horses
+  team.household = post.world().families.row_ids[0];
+  team.adult_count = 16;
+  core::AppendRow(post.world().herds, team);
+
+  std::vector<core::Alarm> alarms;
+  labor->CollectAlarms(post.world(), alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kYardWithoutGroom &&
+                         alarms[0].unit.value == post.yard.value && alarms[0].amount == 16,
+                     "a built yard with no groom and the team still at the yards raises it");
+
+  // Appointed, and the horses NOT yet moved: the alarm is gone the moment
+  // the post is filled. The groom's one idle morning makes no sound
+  // (boss's condition of 2026-09-03).
+  post.world().residents.rows[0].post.profession = core::ProfessionId{0};
+  post.world().residents.rows[0].post.unit = post.yard;
+  alarms.clear();
+  labor->CollectAlarms(post.world(), alarms);
+  failures += Expect(alarms.empty(), "appointed is enough: the idle morning is silent");
+
+  // And once the team is in, the question is closed for the campaign, even
+  // if the groom is later dismissed.
+  post.world().residents.rows[0].post = core::PostAssignment{};
+  post.world().chairman.horses_stabled = 1;
+  alarms.clear();
+  labor->CollectAlarms(post.world(), alarms);
+  failures += Expect(alarms.empty(), "after the horses are stabled it never comes back");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestSurplusIdles();
@@ -587,6 +986,11 @@ int main() {
   failures += TestBarnRunsOnTheDayOff();
   failures += TestLaborTableParsing();
   failures += TestBarnLeadsTheClosedWindow();
+  failures += TestPostTablesParse();
+  failures += TestAppointmentTakesEffectAtTheDayClose();
+  failures += TestAppointmentRefusals();
+  failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
+  failures += TestYardWithoutGroomAlarm();
   if (failures == 0) {
     std::cout << "unit_core_labor: all checks passed\n";
   }

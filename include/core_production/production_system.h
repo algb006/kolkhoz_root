@@ -2,8 +2,14 @@
 /// @brief IProductionSystem — the boundary of the land-and-production subsystem.
 /// @threading PARALLEL_WRITE
 /// The production phase (slot 4) writes world state from many workers, each
-/// over its own range of unit and field rows, strictly under the buffer law
-/// (core_sim/step.h). The production-decisions sub-step runs sequentially
+/// over its own range of FIELD rows — and today over nothing else: the only
+/// parallel phase in the module is the field-growth one, which writes
+/// FieldRow::weather_stress and reads the calendar and weather blocks phase
+/// 1 froze. Unit work cycles are sequential, in the decisions sub-step; if
+/// they are ever parallelised the write map widens THEN, and this line says
+/// so then. A label wider than the truth is worse than none: it stops being
+/// an ownership contract a reader can use. All of it strictly under the
+/// buffer law (core_sim/step.h). The production-decisions sub-step runs sequentially
 /// inside the decisions slot (phase 3) on the sim thread; accessor and
 /// factory are wiring-time, sim thread only.
 ///

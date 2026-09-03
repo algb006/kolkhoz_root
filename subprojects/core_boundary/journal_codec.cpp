@@ -42,7 +42,13 @@ namespace {
 /// Bytes of an OrderRow on the wire, and of one whole entry around it. Both
 /// are FIXED, which is what lets the reader check a file's length before it
 /// reads a single field — the journal's answer to a truncated file.
-constexpr std::size_t kOrderBytes = 4 + 8 + (4 * 4) + (4 * 2) + (2 * 4);
+///
+/// Read as: four one-byte enums, the tick, four entity ids, FIVE definition
+/// ids, the position. Task A7 taught the arithmetic something the sizeof
+/// tripwire below cannot teach it: a field added into a struct's PADDING
+/// changes the wire and not sizeof, so this line has to be counted by hand
+/// against WriteOrder every time the row grows.
+constexpr std::size_t kOrderBytes = 4 + 8 + (4 * 4) + (5 * 2) + (2 * 4);
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -74,9 +80,9 @@ constexpr std::uint8_t kMaxJournalVerb = static_cast<std::uint8_t>(JournalVerb::
 // a MIDDLING value passes for ever while the guard rots behind it. Each of
 // these is now covered by staging the NEWEST value of its enum, which is
 // the only stage that fails when somebody appends without looking here.
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kRepairUnit);
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDismiss);
 constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
-constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNotEmpty);
+constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNoVacancy);
 constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kConstruction);
 
 class Writer {
@@ -183,6 +189,7 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   // does not, which is why the journal is a debugging and run-tool artifact
   // and never a second save (session.h, EncodeJournal).
   out.U16(row.unit_type.value);
+  out.U16(row.profession.value);
   out.U16(row.rotation_year0.value);
   out.U16(row.rotation_year1.value);
   out.U16(row.rotation_year2.value);
@@ -205,6 +212,7 @@ OrderRow ReadOrder(Reader& in) {
   row.herd = HerdId{in.U32()};
 
   row.unit_type = UnitTypeId{in.U16()};
+  row.profession = ProfessionId{in.U16()};
   row.rotation_year0 = CropId{in.U16()};
   row.rotation_year1 = CropId{in.U16()};
   row.rotation_year2 = CropId{in.U16()};

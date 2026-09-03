@@ -39,6 +39,8 @@ const char* DefTableName(DefKind kind) {
       return "unit_types";
     case DefKind::kLivestock:
       return "livestock";
+    case DefKind::kProfession:
+      return "professions";
   }
   return "unknown";
 }

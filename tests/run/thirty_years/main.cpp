@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "../common/run_harness.h"
+#include "../common/yard_policy.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/world_state.h"
@@ -142,9 +143,15 @@ int main() {
   field_sheet << "year,field,kind,area_ha,crop,manured,fertility,stress_july\n";
   std::vector<FieldSample> sampled;
 
+  // The chairman, for the one decision the start cannot do without: build
+  // the yard, take it to the stable step, appoint a groom. The core used to
+  // do this itself in a stub; a run plays the player now (yard_policy.h).
+  run::YardPolicy yard(*world.tables);
+
   for (std::uint32_t year = 0; year < kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       run::AdvanceDays(*world, 1);
+      yard.RunDay(*world.simulation);
       const core::WorldState& mid = world.State();
       if (mid.calendar.date.month == core::Month::kJuly && mid.calendar.date.day_in_month == 0) {
         sampled.assign(mid.fields.rows.size(), FieldSample{});
@@ -242,6 +249,35 @@ int main() {
   }
   failures +=
       run::Expect(kolkhoz_heads > 10, "the kolkhoz herds are still standing after thirty years");
+
+  // THE POSTS (task A7). The yard used to appear out of nothing at the turn
+  // of the second year, in a stub that stood in for the player; now the run
+  // plays him (yard_policy.h). What is measured is the whole chain — an
+  // order built the yard, an order appointed a groom, and the herd day
+  // moved the team — because any broken link in it looks exactly like the
+  // old failure and is caught by the plough check three lines above only
+  // AFTER thirty years of it.
+  failures += run::Expect(state.chairman.horses_stabled != 0,
+                          "the chairman's yard was built, a groom was appointed, and the team "
+                          "came in off the private yards");
+  std::uint32_t horses_at_yards = 0;
+  for (const core::HerdRow& herd : state.herds.rows) {
+    if (herd.household_owned == 0 && herd.household.value != core::kInvalidEntityIdValue) {
+      ++horses_at_yards;
+    }
+  }
+  failures +=
+      run::Expect(horses_at_yards == 0, "and no kolkhoz herd is billeted on a household any more");
+  // Nobody need still HOLD the post at the end: the run's chairman stops
+  // watching the day the team comes in, and thirty years is four grooms'
+  // lifetimes. A post whose holder dies simply empties — measured here on
+  // purpose, because the first draft of this check asserted the opposite and
+  // was wrong about the model rather than about the run.
+  std::uint32_t posts_held = 0;
+  for (const core::ResidentRow& resident : state.residents.rows) {
+    posts_held += resident.post.profession.value != core::kInvalidDefIdValue ? 1 : 0;
+  }
+  std::cout << "thirty_years: " << posts_held << " posts still held at the end\n";
 
   // WEAR OVER THIRTY YEARS (task A5). The criterion is not a number but a
   // shape: what is worked wears, what merely stands waits its turn, and

@@ -90,15 +90,9 @@ class DecisionsSlot final : public ISequentialPhase {
 /// was eaten equals what is left".
 class EventsSlot final : public ISequentialPhase {
  public:
-  /// @param yard_type  unit_types.csv "horse_yard"; invalid disables the stub.
-  /// @param horse_kind livestock.csv "horse"; invalid disables the stub.
-  EventsSlot(UnitTypeId yard_type, LivestockKindId horse_kind)
-      : yard_type_(yard_type), horse_kind_(horse_kind) {}
-
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
     SweepOrderBook(current);
-    RaiseKolkhozYard(current);
     RotateLedger(current);
   }
 
@@ -152,98 +146,15 @@ class EventsSlot final : public ISequentialPhase {
   }
 
  private:
-  /// Where the stubbed yard stands. It used to be the literal Vec2{150, 150},
-  /// which was inside the old ten-kilometre map's village and is the empty
-  /// south-west corner of the twelve-kilometre one — twelve kilometres from
-  /// the houses, so no horse could reach a field inside the four-hour leg and
-  /// the farm stopped ploughing for ever. A position is not a constant of the
-  /// core: it belongs to the scene, so it is taken from the scene the layout
-  /// actually laid out.
-  static Vec2 VillagePosition(const WorldState& current) {
-    Vec2 sum{.x = 0.0F, .y = 0.0F};
-    std::uint32_t seen = 0;
-    for (const UnitRow& unit : current.units.rows) {
-      sum.x += unit.position.x;
-      sum.y += unit.position.y;
-      ++seen;
-    }
-    if (seen == 0) {
-      return Vec2{.x = 150.0F, .y = 150.0F};  // an empty world: harmless
-    }
-    return Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
-  }
-
-  /// STUB, and the one that stands in for the PLAYER rather than for a rule
-  /// (boss answer of 2026-08-31; the wedding house in residents_system.cpp is
-  /// the same figure).
-  ///
-  /// The deadline is real and it is the canon's own: a horse lives 6-8 game
-  /// years, the start team's ages are drawn across that whole band, and foals
-  /// come only under a stable's roof. So the team is gone by the sixth year
-  /// unless somebody builds the yard — and since ploughing is horse work,
-  /// the farm then stops ploughing for ever. The thirty-year run measured
-  /// exactly that: from year seven, six fields standing in the ploughing
-  /// phase and three hundred adults with nothing to do.
-  ///
-  /// Phase 1 has no construction, so nobody can build it. What is missing is
-  /// the BUILDER, not the rule, and this stub supplies only that: the yard
-  /// appears when a player would have raised it — the canon calls it the
-  /// first building of the campaign — at the turn of the first year, and at
-  /// its SECOND step, because the summer yard has no roof for foals.
-  ///
-  /// The horses come in from the private yards all at once and in one herd,
-  /// which is what the canon describes: it also frees the sixteen householders
-  /// who were tied to them, since nobody hosts a kolkhoz horse any more.
-  void RaiseKolkhozYard(WorldState& current) const {
-    if (yard_type_.value == kInvalidDefIdValue || horse_kind_.value == kInvalidDefIdValue) {
-      return;
-    }
-    if (current.calendar.tick == 0 || current.calendar.tick % kTicksPerYear != 0 ||
-        current.calendar.date.year != 2) {
-      return;
-    }
-    for (const UnitRow& unit : current.units.rows) {
-      if (unit.type.value == yard_type_.value) {
-        return;  // a world that already has one (a loaded save)
-      }
-    }
-    UnitRow yard;
-    yard.type = yard_type_;
-    yard.level = 2;  // the stable: the step at which foals become possible
-    yard.position = VillagePosition(current);
-    const UnitId built = AppendRow(current.units, yard);
-
-    std::uint32_t gathered = kNoRow;
-    std::vector<HerdId> emptied;
-    for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
-      HerdRow& herd = current.herds.rows[row];
-      if (herd.kind.value != horse_kind_.value || herd.household_owned != 0) {
-        continue;
-      }
-      if (gathered == kNoRow) {
-        gathered = row;
-        herd.unit = built;
-        herd.household = FamilyId{};
-        continue;
-      }
-      HerdRow& team = current.herds.rows[gathered];
-      team.adult_count = static_cast<std::uint16_t>(team.adult_count + herd.adult_count);
-      team.juvenile_count = static_cast<std::uint16_t>(team.juvenile_count + herd.juvenile_count);
-      team.newborn_count = static_cast<std::uint16_t>(team.newborn_count + herd.newborn_count);
-      team.adult_age_game_years_total += herd.adult_age_game_years_total;
-      emptied.push_back(current.herds.row_ids[row]);
-    }
-    for (const HerdId id : emptied) {
-      RemoveRow(current.herds, id);
-    }
-    // The sire count is NOT set here. It is a herd-system invariant, re-derived
-    // on the next herd day (herd_system.cpp): sixteen lone "herds" of one head
-    // each were each their own stallion, and summing them would leave a team
-    // of sixteen stallions and no mares.
-    LogInfo(
-        "STUB: the kolkhoz yard is raised at the first year's turn, standing in for the "
-        "construction system; the team comes in off the private yards");
-  }
+  // The kolkhoz yard used to be RAISED here, by a stub that stood in for the
+  // PLAYER: phase 1 had no construction, so nobody could build the first
+  // building of the campaign, and without it the team died of old age and
+  // the farm stopped ploughing for ever. Task A7 removed it whole. The yard
+  // is built by an order now, the groom is appointed by an order, and the
+  // horses come in off the private yards when he is (production's herd day,
+  // herd_system.cpp — StableHorses). What stood in for the player is played
+  // by whoever plays him: the run policy in tests/run, never a rule of the
+  // core (manual/74-posts.md §8).
 
   static Grams AmountAt(const ResourceAmounts& amounts, std::size_t index) {
     return index < amounts.size() ? amounts[index] : 0;
@@ -280,10 +191,6 @@ class EventsSlot final : public ISequentialPhase {
   /// of which happens at hour 0, lands in the year it settles rather than
   /// in the one that just began. The price, stated in ledger_state.h so
   /// nobody hunts for it: day 0's demography is booked to the year before.
-  UnitTypeId yard_type_;
-
-  LivestockKindId horse_kind_;
-
   static void RotateLedger(WorldState& current) {
     if (current.calendar.tick == 0 || current.calendar.tick % kTicksPerYear != 0) {
       return;
@@ -317,7 +224,7 @@ class StandardSimulation final : public ISimulation {
         labor_(std::move(labor)),
         construction_(std::move(construction)),
         decisions_slot_(*labor_, *residents_, *production_, *construction_),
-        events_slot_(YardType(*config.tables), HorseKind(*config.tables)) {
+        events_slot_() {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -349,6 +256,7 @@ class StandardSimulation final : public ISimulation {
   /// A7, the yard without a stableman) it takes its place first, here.
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
     const WorldState& completed = engine_->CompletedState();
+    labor_->CollectAlarms(completed, alarms);
     residents_->CollectAlarms(completed, alarms);
     production_->CollectAlarms(completed, alarms);
     construction_->CollectAlarms(completed, alarms);
@@ -370,20 +278,6 @@ class StandardSimulation final : public ISimulation {
   DecisionsSlot decisions_slot_;
 
   EventsSlot events_slot_;
-
-  static UnitTypeId YardType(const ITableSet& tables) {
-    const ITable* unit_types = tables.FindTable("unit_types");
-    const std::uint32_t row =
-        unit_types == nullptr ? kNoTableRow : unit_types->FindRowByKey("horse_yard");
-    return row == kNoTableRow ? UnitTypeId{} : UnitTypeId{static_cast<std::uint16_t>(row)};
-  }
-
-  static LivestockKindId HorseKind(const ITableSet& tables) {
-    const ITable* livestock = tables.FindTable("livestock");
-    const std::uint32_t row = livestock == nullptr ? kNoTableRow : livestock->FindRowByKey("horse");
-    return row == kNoTableRow ? LivestockKindId{}
-                              : LivestockKindId{static_cast<std::uint16_t>(row)};
-  }
 
   std::unique_ptr<ISimulation> engine_;
 };

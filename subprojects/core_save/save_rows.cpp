@@ -35,7 +35,7 @@ namespace {
 // otherwise, and it was right. See save_blocks.cpp for the same reckoning.
 constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
-static_assert(sizeof(ResidentRow) == 156,
+static_assert(sizeof(ResidentRow) == 164,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
@@ -75,9 +75,9 @@ constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerel
 // over "order kind holds 8, outside 0..7". Both names are the LAST
 // enumerator of their enum, and order_state.h says so where a new one gets
 // appended.
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kRepairUnit);
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDismiss);
 constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
-constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNotEmpty);
+constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNoVacancy);
 
 template <typename IdT>
 void WriteEntityId(ByteWriter& out, IdT id) {
@@ -129,6 +129,14 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
 
+  // The post (task A7). Both halves or neither: a profession without a unit
+  // names a groom of nowhere, a unit without a profession names a place
+  // nobody holds — and both would load as a resident who is neither in the
+  // accountant's pool nor at any work. Refused on the way IN, where the
+  // damaged half can still be named.
+  sink.WriteDefId(DefKind::kProfession, row.post.profession.value);
+  WriteEntityId(out, row.post.unit);
+
   out.WriteU8(static_cast<std::uint8_t>(row.education_stage));
   out.WriteFloat(row.education_grade);
   out.WriteFloat(row.current_grade);
@@ -179,6 +187,13 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.unit = ReadEntityId<UnitId>(in);
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
+
+  row.post.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
+  row.post.unit = ReadEntityId<UnitId>(in);
+  if ((row.post.profession.value == kInvalidDefIdValue) !=
+      (row.post.unit.value == kInvalidEntityIdValue)) {
+    source.Fail("a post holds one half: a profession without a unit, or a unit without a post");
+  }
 
   row.education_stage =
       static_cast<EducationStage>(source.ReadEnumValue(0, kMaxEducationStage, "education stage"));
@@ -437,6 +452,7 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   WriteEntityId(out, row.herd);
 
   sink.WriteDefId(DefKind::kUnitType, row.unit_type.value);
+  sink.WriteDefId(DefKind::kProfession, row.profession.value);
   sink.WriteDefId(DefKind::kCrop, row.rotation_year0.value);
   sink.WriteDefId(DefKind::kCrop, row.rotation_year1.value);
   sink.WriteDefId(DefKind::kCrop, row.rotation_year2.value);
@@ -460,6 +476,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.herd = ReadEntityId<HerdId>(in);
 
   row.unit_type = UnitTypeId{source.ReadDefId(DefKind::kUnitType)};
+  row.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
   row.rotation_year0 = CropId{source.ReadDefId(DefKind::kCrop)};
   row.rotation_year1 = CropId{source.ReadDefId(DefKind::kCrop)};
   row.rotation_year2 = CropId{source.ReadDefId(DefKind::kCrop)};

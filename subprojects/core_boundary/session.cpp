@@ -65,6 +65,16 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kRepairUnit:
     case OrderKind::kUpgradeUnit:
       return has_unit;
+    case OrderKind::kAppoint:
+      // A post is a profession AT a unit: all three named, or the order says
+      // nothing (manual/74-posts.md §3). Whether the unit carries that post
+      // is the staff table's answer and core_labor's to give — the boundary
+      // checks the shape, never the rules.
+      return has_resident && has_unit && order.profession.value != kInvalidDefIdValue;
+    case OrderKind::kDismiss:
+      // The post he holds is on his row; naming it again would let the two
+      // disagree.
+      return has_resident;
     case OrderKind::kSetRotation:
       // The three crops may all be invalid: that is three years of fallow,
       // a legal rotation and not an empty order.

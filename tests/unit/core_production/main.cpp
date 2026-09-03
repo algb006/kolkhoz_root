@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -684,6 +685,88 @@ int CheckStoreCeilingAndAlarms() {
 
 }  // namespace
 
+/// The turn of the start canon (task A7; manual/74-posts.md §5): the yard is
+/// built, a groom is appointed — and the team comes in off the private
+/// yards, all of it, once and for good.
+int CheckHorsesComeInWhenAGroomIsAppointed() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{0};  // "cow" plays the horse here
+  config.groom_post = core::ProfessionId{3};     // any post id; the key is data
+  config.unit_types[0].livestock_capacity_head = 100.0F;
+
+  // A world of three private yards, each hosting part of the kolkhoz team,
+  // and a built kolkhoz yard nobody has been appointed to yet.
+  const auto build = [&config](bool with_groom) {
+    core::WorldState world;
+    core::UnitRow yard;
+    yard.level = 2;
+    const core::UnitId yard_id = core::AppendRow(world.units, yard);
+    core::FamilyRow household;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    for (std::uint32_t index = 0; index < 3; ++index) {
+      core::HerdRow team;
+      team.kind = config.horse_kind;
+      team.household = family;
+      team.adult_count = 5;
+      team.adult_age_game_years_total = 15.0F;
+      core::AppendRow(world.herds, team);
+    }
+    core::ResidentRow groom;
+    groom.family = family;
+    if (with_groom) {
+      groom.post.profession = config.groom_post;
+      groom.post.unit = yard_id;
+    }
+    core::AppendRow(world.residents, groom);
+    world.rng.state = 12345;
+    return std::pair<core::WorldState, core::UnitId>{world, yard_id};
+  };
+
+  // -- no groom: nothing happens, and that is the design's own answer -------
+  auto [waiting, waiting_yard] = build(false);
+  core::RunHerdDay(config, waiting);
+  failures += Expect(waiting.herds.rows.size() == 3 && waiting.chairman.horses_stabled == 0,
+                     "a yard without a groom leaves the team where it stands");
+
+  // -- appointed: one herd, at the yard, and the milestone is set -----------
+  auto [stabled, yard_id] = build(true);
+  core::RunHerdDay(config, stabled);
+  failures += Expect(stabled.herds.rows.size() == 1, "the team comes in as one herd, not three");
+  failures += Expect(stabled.chairman.horses_stabled == 1, "and the campaign's milestone is set");
+  bool announced = false;
+  std::int64_t heads = 0;
+  for (const core::SimEvent& event : stabled.step_events) {
+    if (event.kind == core::EventKind::kHorsesStabled) {
+      announced = true;
+      heads = event.amount;
+    }
+  }
+  failures += Expect(announced && heads == 15, "the day the village hears about: fifteen head");
+  if (!stabled.herds.rows.empty()) {
+    const core::HerdRow& team = stabled.herds.rows[0];
+    failures += Expect(
+        team.unit.value == yard_id.value && team.household.value == core::kInvalidEntityIdValue,
+        "standing at the yard now, and at nobody's household");
+    failures += Expect(team.adult_count == 15, "with every head of the three that came in");
+    // The sire count is a herd invariant and must be RE-DERIVED, not summed:
+    // three lone herds were each their own stallion.
+    failures += Expect(team.adult_male_count < 15,
+                       "and one team of mares and sires, not fifteen stallions");
+  }
+
+  // -- and only once ------------------------------------------------------
+  const std::size_t events_before = stabled.step_events.size();
+  core::RunHerdDay(config, stabled);
+  bool announced_twice = false;
+  for (std::size_t index = events_before; index < stabled.step_events.size(); ++index) {
+    announced_twice =
+        announced_twice || stabled.step_events[index].kind == core::EventKind::kHorsesStabled;
+  }
+  failures += Expect(!announced_twice, "the horses are gathered once in a campaign");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStoreCeilingAndAlarms();
@@ -712,6 +795,7 @@ int main() {
   failures += CheckStableGate();
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
+  failures += CheckHorsesComeInWhenAGroomIsAppointed();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

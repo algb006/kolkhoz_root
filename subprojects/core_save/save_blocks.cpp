@@ -34,7 +34,7 @@ static_assert(sizeof(YearLedger) == 128 + (12 * kAmountsSize),
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
 static_assert(sizeof(WeatherState) == 12, "WeatherState changed — update the codec");
-static_assert(sizeof(ChairmanState) == 12, "ChairmanState changed — update the codec");
+static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
 static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and VERSION_SAVE");
 
 constexpr std::uint8_t kMinEpoch = static_cast<std::uint8_t>(Epoch::kOne);
@@ -185,6 +185,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.chairman.raikom_reputation);
   out.WriteFloat(world.chairman.authority);
   out.WriteFloat(world.chairman.shadow_reputation);
+  out.WriteU8(world.chairman.horses_stabled);
 
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
@@ -226,6 +227,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.raikom_reputation = in.ReadFloat();
   world->chairman.authority = in.ReadFloat();
   world->chairman.shadow_reputation = in.ReadFloat();
+  world->chairman.horses_stabled = in.ReadU8();
 
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);

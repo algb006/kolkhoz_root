@@ -66,6 +66,9 @@ void WriteTableSet(const std::filesystem::path& root, const std::vector<std::str
   WriteTableFile(root / "crops.csv", {"rye", "potato"}, "yield_kg_per_ha");
   WriteTableFile(root / "unit_types.csv", {"barn", "house"}, "capacity_kg");
   WriteTableFile(root / "livestock.csv", {"cow", "goat"}, "feed_units_per_real_day");
+  // The fifth dictionary (task A7): a post is a key like any other, and a
+  // save that names one must find it again in a reshuffled roster.
+  WriteTableFile(root / "professions.csv", {"groom", "storekeeper"}, "min_age");
 }
 
 core::ResourceAmounts Amounts(std::initializer_list<core::Grams> values) {
@@ -89,6 +92,7 @@ core::WorldState MakeWorld() {
   world.rng = core::SeedRngState(world.world_seed, 3);
   core::NextRandomBits(world.rng);
   world.chairman.raikom_reputation = 61.5F;
+  world.chairman.horses_stabled = 1;  // the campaign's one-time milestone (task A7)
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   world.vitals.life_expectancy_years = 61.75F;
@@ -104,6 +108,10 @@ core::WorldState MakeWorld() {
   first.social_status = core::SocialStatus::kKomsomol;
   first.offense_count = 2;
   first.traits = 0xBEEF;
+  // A post he HOLDS (task A7): the second half of the row that only the
+  // fifth dictionary can move, and the pair the codec refuses to see broken.
+  first.post.profession = core::ProfessionId{1};
+  first.post.unit = core::UnitId{1};
   const core::ResidentId first_id = core::AppendRow(world.residents, first);
 
   core::ResidentRow second;
@@ -231,6 +239,20 @@ core::WorldState MakeWorld() {
   refused.unit = core::UnitId{1};
   core::AppendRow(world.orders, refused);
 
+  // An appointment still waiting (task A7): kAccepted is exactly the status
+  // that has to survive a save — the order is visible, cancellable, and
+  // takes effect at a day's close that may fall after the campaign is
+  // reloaded. The top of the two enums travels with it.
+  core::OrderRow appoint;
+  appoint.kind = core::OrderKind::kDismiss;
+  appoint.status = core::OrderStatus::kAccepted;
+  appoint.refusal = core::OrderRefusal::kNoVacancy;
+  appoint.issued_tick = 74;
+  appoint.resident = first_id;
+  appoint.unit = core::UnitId{1};
+  appoint.profession = core::ProfessionId{0};
+  core::AppendRow(world.orders, appoint);
+
   world.ledger.closed.year = 2;
   world.ledger.closed.births = 6;
   world.ledger.closed.deaths = 3;
@@ -301,6 +323,11 @@ int main() {
                      "floats came back exactly, not rounded through decimal");
   failures += Expect(loaded.residents.rows[0].birth_day == -4321,
                      "a birth day before day 0 survived as a negative");
+  failures += Expect(loaded.residents.rows[0].post.profession.value == 1 &&
+                         loaded.residents.rows[0].post.unit.value == 1,
+                     "the post he holds came back whole");
+  failures += Expect(loaded.chairman.horses_stabled == 1,
+                     "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.residents.next_id_value == world.residents.next_id_value &&
                          loaded.residents.rows.size() == 2,
                      "the spent id of a dead resident was not reissued");
@@ -323,8 +350,12 @@ int main() {
   // The order book: a campaign saved with an order waiting resumes with it
   // waiting, and the waiting row keeps every field the consumer will read.
   failures += Expect(
-      loaded.orders.rows.size() == 4 && loaded.orders.next_id_value == world.orders.next_id_value,
+      loaded.orders.rows.size() == 5 && loaded.orders.next_id_value == world.orders.next_id_value,
       "the order book came back whole");
+  failures += Expect(loaded.orders.rows[4].status == core::OrderStatus::kAccepted &&
+                         loaded.orders.rows[4].profession.value == 0 &&
+                         loaded.orders.rows[4].refusal == core::OrderRefusal::kNoVacancy,
+                     "an appointment still waiting resumes still waiting");
   failures += Expect(loaded.orders.rows[0].kind == core::OrderKind::kAssignWork &&
                          loaded.orders.rows[0].status == core::OrderStatus::kAccepted &&
                          loaded.orders.rows[0].work == core::WorkKind::kHarvest &&

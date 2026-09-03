@@ -266,6 +266,13 @@ struct OrderRow {
   /// For kAssignWork: the kind of work. kNone otherwise.
   WorkKind work = WorkKind::kNone;
 
+  /// For kAppoint: which post (task A7). It stands here, among the flavour
+  /// fields and not down with the targets, for the same reason `work` does —
+  /// both say WHICH KIND of a thing the order is about, not which thing —
+  /// and because the four leading bytes leave a hole exactly this wide: the
+  /// row stays 48 bytes and the book stays cheap to copy every step.
+  ProfessionId profession;
+
   /// The completed tick the order was issued after (boundary stamp at the
   /// moment of IssueOrder); the row is applied at the start of the step
   /// that follows. The journal replays by this tick.
@@ -281,8 +288,6 @@ struct OrderRow {
   HerdId herd;  ///< kAssignWork (kHerdCare).
 
   UnitTypeId unit_type;  ///< kBuildUnit.
-
-  ProfessionId profession;  ///< kAppoint: the post (task A7).
 
   CropId rotation_year0;  ///< kSetRotation; invalid = fallow that year.
 

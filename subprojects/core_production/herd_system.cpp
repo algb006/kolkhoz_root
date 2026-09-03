@@ -16,6 +16,7 @@
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "stable_horses.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -906,6 +907,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   if (config.livestock.empty()) {
     return;  // a table-less world keeps no animals
   }
+  StableHorses(config, current);
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   std::vector<float> room = RoofRoom(current, config);
   const float working_share = WorkingShare(current, config);

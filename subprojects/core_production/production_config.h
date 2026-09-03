@@ -408,6 +408,14 @@ struct ProductionConfig {
 
   LivestockKindId horse_kind;  ///< livestock.csv "horse": the only kind the stable gates.
 
+  /// professions.csv "groom" — the post that ends the start's horse
+  /// arrangement (livestock design §5, task A7). The herd day recognises
+  /// the groom by this id and nothing else: the post itself is core_labor's
+  /// business, but a profession key is DATA, and reading a table is not a
+  /// dependency on the module that also reads it (manual/74-posts.md §5).
+  /// Invalid when the roster is missing, and then no team is ever gathered.
+  ProfessionId groom_post;
+
   LivestockKindId pig_kind;  ///< livestock.csv "pig": the only kind with an autumn slaughter.
 
   /// The share of the year's grain harvest the district expects
