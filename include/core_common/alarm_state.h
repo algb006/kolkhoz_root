@@ -134,8 +134,10 @@ enum class AlarmKind : std::uint8_t {
   /// horses still stand at private yards and a third of the village is
   /// tied to them (livestock design §5: "the groom was not appointed —
   /// nothing happened", and the alarm is named there). Subject: `unit`
-  /// (the yard); `amount` = the horses waiting. Clears the day the groom
-  /// is appointed; never returns after the horses are stabled.
+  /// (the yard); `amount` = the horses waiting. Clears the moment the
+  /// appointment is applied — BEFORE the horses move, so the groom's one
+  /// idle morning makes no sound (boss's condition, 2026-09-03); never
+  /// returns after the horses are stabled.
   kYardWithoutGroom,
 
   // Appended by later tasks and phases: children out of school, sewage,

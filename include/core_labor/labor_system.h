@@ -37,6 +37,9 @@
 ///     pool and stands first on his own unit's daily work when the core
 ///     models it — the yard's herd care for the groom. Posts whose work is
 ///     not modelled keep the holder reserved and idle (STUB, by table).
+///     An idle holder is SILENT — no event, no log line, no alarm: the
+///     groom's first morning at an empty yard is the player having done
+///     everything right (boss's condition, 2026-09-03).
 ///   * The horse lock of the start canon is read from ChairmanState::
 ///     horses_stabled: once the herd day has gathered the horses, no
 ///     householder is tied to horse work again (livestock design §5).
@@ -93,11 +96,13 @@ class ILaborSystem {
 ///               object. Reads labor.csv (rates, thresholds, efficiency
 ///               factors) plus the norm columns of crops.csv, farming.csv
 ///               and livestock.csv (formats: manual/61-balance-tables.md);
-///               since task A7 also professions.csv (the posts: key,
-///               education threshold, working age) and unit_staff.csv (which
-///               unit type carries which post, and how many slots — empty
-///               means unlimited). Without those two every kAppoint is
-///               refused kRuleForbids: no post exists that can be filled.
+///               since task A7 also professions.csv (key, min_education,
+///               min_age, max_age, gender, single_post, era) and
+///               unit_staff.csv (unit, profession, level, slots — an empty
+///               level means every step of the ladder, empty slots no
+///               ceiling). Both are exports of the design db, never laid by
+///               hand. Without them every kAppoint is refused kRuleForbids:
+///               no post exists that can be filled.
 /// @return nullptr when a present table is malformed (missing tables mean
 ///         the documented defaults, like every subsystem factory).
 std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables);

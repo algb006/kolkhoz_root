@@ -170,10 +170,12 @@ enum class OrderKind : std::uint8_t {
   /// working day" (time design §11). A resident holding another post is
   /// MOVED by this order; a second kAppoint for a resident whose first is
   /// still kAccepted is kConflictsWithActive. Refused: no such resident
-  /// (kNoSuchSubject); under working age or below the post's education
-  /// threshold (kNotEligible); no such unit, a site, or a unit type that
-  /// carries no such post (kRuleForbids); every slot taken (kNoVacancy).
-  /// Consumer: core_labor.
+  /// (kNoSuchSubject); outside the post's age band, the wrong sex for it,
+  /// or below its education threshold — all columns of professions.csv
+  /// (kNotEligible); no such unit, a site, or a unit type and level that
+  /// carry no such post per unit_staff.csv (kRuleForbids); every slot at
+  /// the unit taken, or a `single_post` post already held anywhere in the
+  /// village (kNoVacancy). Consumer: core_labor.
   kAppoint,
 
   /// Dismiss `resident` from the post he holds — the same kind of order as
