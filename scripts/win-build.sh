@@ -12,7 +12,7 @@
 # host at once and are told apart from outside. The graphics layer takes
 # Release; the Debug one is for our own runs.
 #
-# Usage: scripts/win-build.sh [--sync-only] [--clean] [--release]
+# Usage: scripts/win-build.sh [--sync-only] [--clean] [--release] [--dirty]
 # Host and directory come from WIN_HOST and WIN_DIR.
 
 set -euo pipefail
@@ -24,11 +24,13 @@ project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 sync_only=0
 build_type=Debug
 clean_arg=""
+allow_dirty=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --sync-only) sync_only=1 ;;
     --clean)     clean_arg="clean" ;;
+    --dirty)     allow_dirty=1 ;;
     --release)   build_type=Release ;;
     *) echo "Неизвестный ключ: $1" >&2; exit 2 ;;
   esac
@@ -37,6 +39,28 @@ done
 
 echo "==> ${host}:${remote_dir}"
 ssh "${host}" "echo ok" >/dev/null
+
+# ONLY A DELIVERED COMMIT IS PUBLISHED (boss's rule of 2026-09-03, and the
+# reason is a day of somebody else's time). A publish carries a VERSION, and
+# that number has to mean the same thing everywhere it is read; published
+# from a working tree it means "whatever core happened to have open". It
+# happened: 0.13.0 went out with an unfinished task A5 in it, the host
+# crashed under MSVC before its first step, and nobody could tell from the
+# outside that the number was lying.
+#
+# A dirty tree is the machine-checkable half of "delivered", so that is what
+# is refused. Publishing an older commit is done by extracting it and running
+# this script from there (git archive <sha> | tar -x -C <dir>), which is a
+# clean tree by construction — and outside a repository the check has nothing
+# to say and stands aside.
+if git -C "${project_dir}" rev-parse --git-dir >/dev/null 2>&1; then
+  if [ -n "$(git -C "${project_dir}" status --porcelain)" ] && [ "${allow_dirty}" -eq 0 ]; then
+    echo "ОТКАЗ: дерево грязное — в publish уходит только сданный коммит." >&2
+    echo "       Выложить незакоммиченное: --dirty. Выложить прошлую сдачу:" >&2
+    echo "       git archive <sha> | tar -x -C ~/claudetmp/<dir> и запустить оттуда." >&2
+    exit 1
+  fi
+fi
 
 # Deliberately not -a: it implies -p -o -g, and POSIX permissions cannot be
 # set on NTFS through MSYS2 — every file arrives and then fails with
