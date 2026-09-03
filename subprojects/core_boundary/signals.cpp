@@ -186,22 +186,4 @@ ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId reside
   return where;
 }
 
-void CollectAlarms(const WorldState& /*world*/, std::vector<Alarm>& alarms) {
-  // STUB, and deliberately not empty of intent: the roster is task A3's, and
-  // when it lands every predicate is appended HERE, in kind order — that half
-  // of the promised order (session.h: by kind, then by subject id) comes free
-  // from the order the predicates are written in.
-  //
-  // The other half does NOT come free, and this is the note A3 must not miss:
-  // a table's row order is NOT id order. Removal is swap-with-last, so row
-  // order follows the history of deaths and demolitions (state_table.h says
-  // so outright, and tells order-sensitive consumers to sort by id first). A
-  // predicate that simply sweeps rows would therefore hand the presentation a
-  // list that reshuffles whenever an unrelated entity dies — deterministic,
-  // and still wrong. Each predicate sorts its own findings by subject id
-  // before appending, or sweeps by id; the cheapest place to do it is here,
-  // per kind, while the group is small.
-  alarms.clear();
-}
-
 }  // namespace core

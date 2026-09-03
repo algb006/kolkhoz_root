@@ -118,7 +118,158 @@ class ProductionSystem final : public IProductionSystem {
     RunHerdDay(config_, current);
   }
 
+  void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
+    CollectStoreAlarms(completed, alarms);
+    CollectFieldAlarms(completed, alarms);
+    CollectHerdAlarms(completed, alarms);
+  }
+
  private:
+  /// kStoreFull: a numbered store holding at least its capacity. A store
+  /// bounded by the outline the player drew has no number to be full
+  /// against and never raises it (stock_ops.h, StorageCapacityGrams).
+  void CollectStoreAlarms(const WorldState& world, std::vector<Alarm>& alarms) const {
+    for (const UnitRow& unit : world.units.rows) {
+      if (!StoresGoods(unit, config_)) {
+        continue;
+      }
+      const Grams capacity = StorageCapacityGrams(unit, config_);
+      if (capacity <= 0 || TotalStock(unit.stock) < capacity) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kStoreFull;
+      alarm.unit = world.units.row_ids[static_cast<std::size_t>(&unit - world.units.rows.data())];
+      alarm.amount = capacity;
+      alarms.push_back(alarm);
+    }
+  }
+
+  /// kHarvestWaitingOnField, kHarvestWillNotFit and kSeedShort — the three
+  /// conditions of a field, in kind order so that the caller's sort has
+  /// less to do (it still sorts: row order is not id order).
+  void CollectFieldAlarms(const WorldState& world, std::vector<Alarm>& alarms) const {
+    const Grams free_room = FreeRoomOfStores(world);
+    for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+      const FieldRow& field = world.fields.rows[row];
+      if (field.crop.value < config_.crops.size() && field.phase == FieldPhase::kGrowing &&
+          field.kind == LandKind::kArable) {
+        // The estimate is this subsystem's own payout arithmetic without the
+        // weather stress: understating it would bring the warning after the
+        // loss, which is the one thing it exists to prevent.
+        const CropDef& crop = config_.crops[field.crop.value];
+        const float soil = field.fertility / config_.farming.fertility_neutral;
+        const auto expected =
+            static_cast<Grams>(crop.yield_kg_per_ha * field.area_ga * soil) * kGramsPerKilogram;
+        if (expected > free_room) {
+          Alarm alarm;
+          alarm.kind = AlarmKind::kHarvestWillNotFit;
+          alarm.field = world.fields.row_ids[row];
+          alarm.resource = crop.resource;
+          alarm.amount = expected - free_room;
+          alarms.push_back(alarm);
+        }
+      }
+      if (field.reaped_grams > 0) {
+        Alarm alarm;
+        alarm.kind = AlarmKind::kHarvestWaitingOnField;
+        alarm.field = world.fields.row_ids[row];
+        alarm.resource = field.reaped_resource;
+        alarm.amount = field.reaped_grams;
+        alarms.push_back(alarm);
+      }
+      const Grams short_of = SeedShortfall(world, field);
+      if (short_of > 0) {
+        Alarm alarm;
+        alarm.kind = AlarmKind::kSeedShort;
+        alarm.field = world.fields.row_ids[row];
+        alarm.resource = config_.crops[NextSownCrop(world, field).value].resource;
+        alarm.amount = short_of;
+        alarms.push_back(alarm);
+      }
+    }
+  }
+
+  /// kHerdStarving: a kolkhoz herd that went underfed and has not been fed
+  /// since. A household herd is the family's business, not the farm's.
+  void CollectHerdAlarms(const WorldState& world, std::vector<Alarm>& alarms) const {
+    for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+      const HerdRow& herd = world.herds.rows[row];
+      if (herd.unfed_days <= 0.0F || herd.household.value != kInvalidEntityIdValue) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kHerdStarving;
+      alarm.herd = world.herds.row_ids[row];
+      alarm.amount = static_cast<std::int64_t>(herd.newborn_count) +
+                     static_cast<std::int64_t>(herd.juvenile_count) +
+                     static_cast<std::int64_t>(herd.adult_count);
+      alarms.push_back(alarm);
+    }
+  }
+
+  /// Free room of every numbered store together, in grams — what a harvest
+  /// has to fit into. Outline-bounded stores are unbounded and are left out
+  /// of the sum: counting them would make the answer meaningless.
+  Grams FreeRoomOfStores(const WorldState& world) const {
+    Grams room = 0;
+    for (const UnitRow& unit : world.units.rows) {
+      if (!StoresGoods(unit, config_)) {
+        continue;
+      }
+      const Grams free_here = FreeRoomGrams(unit, config_);
+      if (free_here == std::numeric_limits<Grams>::max()) {
+        continue;
+      }
+      room += free_here;
+    }
+    return room;
+  }
+
+  /// The crop the field's rotation sows next: the slot of the coming year,
+  /// which is what the player has just assigned and what the alarm is about
+  /// ("an alarm at assignment, not in spring" — farming design §7).
+  CropId NextSownCrop(const WorldState& world, const FieldRow& field) const {
+    const std::uint32_t year = world.calendar.date.year;
+    const CropId slots[3] = {field.rotation_year0, field.rotation_year1, field.rotation_year2};
+    const CropId next = slots[(year + 1) % 3];
+    return next.value < config_.crops.size() ? next : CropId{};
+  }
+
+  /// Grams of seed the next sowing is short of, 0 when it is covered or
+  /// when there is nothing to sow. Sowing takes ORDINARY produce of the
+  /// crop out of the stores (§7), so the question is what the stores hold.
+  Grams SeedShortfall(const WorldState& world, const FieldRow& field) const {
+    if (field.kind != LandKind::kArable) {
+      return 0;
+    }
+    const CropId next = NextSownCrop(world, field);
+    if (next.value >= config_.crops.size()) {
+      return 0;
+    }
+    const CropDef& crop = config_.crops[next.value];
+    if (crop.sowing_norm_kg_per_ha <= 0.0F) {
+      return 0;
+    }
+    const auto need =
+        static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
+    const Grams have = HeldEverywhere(world, crop.resource);
+    return have >= need ? 0 : need - have;
+  }
+
+  /// What the settlement holds of a resource, anywhere a taker would find
+  /// it — the same reach as TakeFromStorage, which is wider than a store.
+  static Grams HeldEverywhere(const WorldState& world, ResourceId resource) {
+    Grams total = 0;
+    for (const UnitRow& unit : world.units.rows) {
+      if (unit.level == 0) {
+        continue;
+      }
+      total += StockOf(unit.stock, resource);
+    }
+    return total;
+  }
+
   /// The labor seam, seen from the production side (land_state.h): a field
   /// stands in a working phase until its crew has drained
   /// work_days_remaining, and only then moves on. No workers, no progress —
@@ -267,6 +418,18 @@ class ProductionSystem final : public IProductionSystem {
     const float temperature = current.weather.air_temperature_celsius;
     const bool snowing = current.weather.precipitation == Precipitation::kSnow;
     for (FieldRow& field : current.fields.rows) {
+      // The daily retry of the field brigade's buffer, before anything else
+      // the day does: room that appeared overnight empties what is lying
+      // out first, so the load that has waited longest leaves first (task
+      // A3, manual/72-storage-and-alarms.md §2).
+      if (field.reaped_grams > 0) {
+        const Grams moved =
+            DeliverToStores(current, config_, field.reaped_resource, field.reaped_grams);
+        field.reaped_grams -= moved;
+        if (field.reaped_grams == 0) {
+          field.reaped_resource = ResourceId{};
+        }
+      }
       if (field.kind == LandKind::kDerelict) {
         continue;  // unraised land: nothing happens here until it is raised
       }
@@ -296,6 +459,19 @@ class ProductionSystem final : public IProductionSystem {
       // harvest window outranks every other job (assignment.cpp). Winter
       // crops and perennials winter under snow by design.
       if (snowing && !crop.is_winter && !crop.is_perennial) {
+        // What was already reaped and still waiting for a cart goes with the
+        // standing crop, and it is booked as lost room rather than vanishing
+        // (task A3, STUB with a named term: this bounds free storage, it does
+        // not model spoilage — manual/72-storage-and-alarms.md §2).
+        if (field.reaped_grams > 0) {
+          // What LIES there, not what stands there: after a season without a
+          // cart the buffer can hold the previous crop, and booking it under
+          // this year's resource would put the loss in the wrong column.
+          AddLedgerAmount(
+              current.ledger.current.no_room, field.reaped_resource, field.reaped_grams);
+          field.reaped_grams = 0;
+          field.reaped_resource = ResourceId{};
+        }
         field.last_crop = field.crop;
         field.repeat_years = 0;
         field.crop = CropId{};
@@ -304,7 +480,10 @@ class ProductionSystem final : public IProductionSystem {
         field.weather_stress = 0.0F;
         field.manure_applied = 0;
         current.ledger.current.area_lost_ha += field.area_ga;
-        LogWarning("field lost to snow before harvest");
+        // No LogWarning: phase code does not log (core_log contract,
+        // DEADLOCK-001). The loss is an event already — kFieldLost, emitted
+        // where the events slot folds it — and a condition worth telling the
+        // player is an alarm, not a line in a file nobody opens.
         continue;
       }
       if (field.phase != FieldPhase::kGrowing) {
@@ -336,20 +515,25 @@ class ProductionSystem final : public IProductionSystem {
   }
 
   /// @brief Puts a harvested load where it belongs: hay at the manger, the
-  /// rest in the shared store (the phase-1 logistics stub).
-  /// @return kNoRow when the settlement has nowhere at all to put it.
-  std::uint32_t DeliverHarvest(WorldState& current, ResourceId resource, Grams amount) const {
-    std::uint32_t destination = kNoRow;
+  /// rest through the store door — none of them above its ceiling (task A3,
+  /// manual/72-storage-and-alarms.md §2).
+  /// @return What did NOT fit, in grams. The caller decides what that means:
+  ///         a field keeps it (FieldRow::reaped_grams), a meadow's hay has
+  ///         nowhere else and is booked to the year's no_room.
+  Grams DeliverHarvest(WorldState& current, ResourceId resource, Grams amount) const {
+    Grams placed = 0;
     if (resource.value == config_.hay_resource.value) {
-      destination = FindStockYardRow(current, config_);
+      // The manger first, and it is not a numbered store: the stock yard's
+      // table capacity is in HEADS, so the door does not find it and its
+      // fodder buffer has no tonnage to be full against.
+      const std::uint32_t manger = FindStockYardRow(current, config_);
+      if (manger != kNoRow) {
+        AddToStock(current.units.rows[manger].stock, resource, amount);
+        return 0;
+      }
     }
-    if (destination == kNoRow) {
-      destination = FindStorageRow(current, config_);
-    }
-    if (destination != kNoRow) {
-      AddToStock(current.units.rows[destination].stock, resource, amount);
-    }
-    return destination;
+    placed = DeliverToStores(current, config_, resource, amount);
+    return amount - placed;
   }
 
   /// The season's cut. The yield is the land's own rate for the WHOLE
@@ -360,8 +544,11 @@ class ProductionSystem final : public IProductionSystem {
                            ? config_.farming.meadow_floodplain_yield_kg_per_ha
                            : config_.farming.meadow_yield_kg_per_ha;
     const Grams hay = KilogramsToGrams(rate * field.area_ga);
-    DeliverHarvest(current, config_.hay_resource, hay);
+    // A meadow has no reaped buffer of its own: the cut either reaches the
+    // manger and the stores or it is lost, and either way it is booked.
+    const Grams hay_lost = DeliverHarvest(current, config_.hay_resource, hay);
     AddLedgerAmount(current.ledger.current.harvest, config_.hay_resource, hay);
+    AddLedgerAmount(current.ledger.current.no_room, config_.hay_resource, hay_lost);
     current.ledger.current.area_harvested_ha += field.area_ga;
     field.work_days_remaining = 0.0F;
     field.phase = FieldPhase::kGrowing;  // the grass stands again next summer
@@ -530,9 +717,10 @@ class ProductionSystem final : public IProductionSystem {
             static_cast<Grams>(crop.sowing_norm_kg_per_ha * field.area_ga) * kGramsPerKilogram;
         const Grams got = TakeFromStorage(current, config_, crop.resource, need);
         AddLedgerAmount(current.ledger.current.seed, crop.resource, got);
-        if (got < need) {
-          LogWarning("sowing short of seed; sown anyway (STUB until alarms)");
-        }
+        // Short seed sows the whole field anyway, and the player is told by
+        // kSeedShort — standing from the day the rotation is set, not on the
+        // morning of the sowing (task A3; farming design §7). Phase code does
+        // not log (DEADLOCK-001).
       }
     }
     current.ledger.current.area_sown_ha += field.area_ga;
@@ -562,8 +750,24 @@ class ProductionSystem final : public IProductionSystem {
         static_cast<Grams>(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor) *
         kGramsPerKilogram;
     // Instant delivery (logistics stub): hay feeds the stock yard, the rest
-    // goes to shared storage.
-    DeliverHarvest(current, crop.resource, yield_grams);
+    // goes through the store door. What the stores had no room for stays ON
+    // THE FIELD — the field brigade's buffer of the transport design (§9) —
+    // and the daily retry below empties it as room appears. Nothing is lost
+    // here and nothing is forced in above a ceiling.
+    const Grams unplaced = DeliverHarvest(current, crop.resource, yield_grams);
+    if (unplaced > 0) {
+      // A buffer already holding LAST year's produce of another crop cannot
+      // hold this one too — one number names one resource. The old load has
+      // stood a full season by now, so it is written off, loudly, rather
+      // than silently relabelled as this year's.
+      if (field.reaped_grams > 0 && field.reaped_resource.value != crop.resource.value) {
+        AddLedgerAmount(current.ledger.current.no_room, field.reaped_resource, field.reaped_grams);
+        field.reaped_grams = 0;
+        field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
+      }
+      field.reaped_grams += unplaced;
+      field.reaped_resource = crop.resource;
+    }
     // Booked whether or not a store took it in: what the field gave is what
     // the reconciliation compares against the yield tables, and a settlement
     // with nowhere to put its grain is a different finding entirely.
@@ -573,12 +777,12 @@ class ProductionSystem final : public IProductionSystem {
     // own and free, a reserve ration with a lowered effect but plainly there
     // in a winter manger (design db crop.straw_ratio).
     if (crop.straw_ratio > 0.0F) {
-      const std::uint32_t straw_store = FindStorageRow(current, config_);
       const auto straw = static_cast<Grams>(static_cast<float>(yield_grams) * crop.straw_ratio);
-      if (straw_store != kNoRow) {
-        AddToStock(current.units.rows[straw_store].stock, config_.straw_resource, straw);
-      }
+      const Grams straw_placed = DeliverToStores(current, config_, config_.straw_resource, straw);
       AddLedgerAmount(current.ledger.current.harvest, config_.straw_resource, straw);
+      // Straw has no buffer of its own — it is not why a field waits — so
+      // what did not fit is gone, and gone with a line in the book.
+      AddLedgerAmount(current.ledger.current.no_room, config_.straw_resource, straw - straw_placed);
     }
     // The district's plan accrues as the grain is reaped: it is "just a
     // number" in phase 1 (plan §11), a share of the year's own harvest,

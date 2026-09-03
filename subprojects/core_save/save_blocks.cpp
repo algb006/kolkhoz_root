@@ -29,7 +29,7 @@ namespace {
 // telling the truth about its layout, not a format that changed.
 constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
-static_assert(sizeof(YearLedger) == 128 + (11 * kAmountsSize),
+static_assert(sizeof(YearLedger) == 128 + (12 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
@@ -82,6 +82,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.eaten);
 
   sink.WriteAmounts(DefKind::kResource, book.harvest);
+  sink.WriteAmounts(DefKind::kResource, book.no_room);
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
   out.WriteFloat(book.area_harvested_ha);
@@ -129,6 +130,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.eaten = source.ReadAmounts(DefKind::kResource);
 
   book.harvest = source.ReadAmounts(DefKind::kResource);
+  book.no_room = source.ReadAmounts(DefKind::kResource);
   book.seed = source.ReadAmounts(DefKind::kResource);
   book.area_sown_ha = in.ReadFloat();
   book.area_harvested_ha = in.ReadFloat();

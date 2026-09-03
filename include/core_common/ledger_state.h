@@ -57,6 +57,10 @@ namespace core {
 /// WRITE MAP — all writers sequential, one per block except where said:
 ///   people, satiety ......... core_residents, demography sub-step
 ///   issued, ration, nets .... core_residents, the family exchange
+///   no_room ................. every sequential writer that delivers through
+///                             the store door and cannot keep the remainder:
+///                             production (harvest, herds, straw), construction
+///                             (demolition), genesis (a start table that overfills)
 ///   yard_produce ............ core_production, herd day (household herds)
 ///   plot_harvest, eaten ..... core_world, events slot — FOLDED from the
 ///                             pantries: at hour 22 the only pantry writer
@@ -126,6 +130,16 @@ struct YearLedger {
   /// What came off the fields into the stores: grain, potato, flax, the
   /// meadows' hay, straw as the by-product.
   ResourceAmounts harvest;
+
+  /// What found NO ROOM in the stores and is gone: the store's ceiling is
+  /// a refusal at the door (manual/72-storage-and-alarms.md §2), and what
+  /// a refused delivery cannot keep — a herd's produce with nowhere to go,
+  /// straw, a demolished unit's leftovers, a reaped crop the snow took off
+  /// the field — is booked here, so that the year's book still balances
+  /// and the report can say how much the missing storage cost. A refusal
+  /// that CAN be kept (the harvest waiting on its field, FieldRow::
+  /// reaped_grams) is not a loss and is not booked until it becomes one.
+  ResourceAmounts no_room;
 
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 

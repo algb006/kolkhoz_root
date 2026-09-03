@@ -23,7 +23,7 @@
 /// event: it happened at a tick and cannot be re-derived from the state
 /// after. "The herd is underfed" is not an event — it is true for as long
 /// as the state says so, and it is derived from the state on demand
-/// (Alarm in core_boundary/session.h; office design §13). An emitter that
+/// (Alarm in core_common/alarm_state.h; office design §13). An emitter that
 /// finds itself appending the same event every step is reporting a
 /// condition and should stop.
 ///

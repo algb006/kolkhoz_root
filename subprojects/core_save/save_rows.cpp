@@ -43,7 +43,7 @@ static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
 // see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
 // what has to notice.
-static_assert(sizeof(FieldRow) == 40, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(FieldRow) == 56, "FieldRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(UnitRow) == 40 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
@@ -285,6 +285,10 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.kind));
   out.WriteFloat(row.weather_stress);
   out.WriteFloat(row.work_days_remaining);
+  // The field brigade's buffer (task A3): what was reaped and has not
+  // reached a store, and what it is. History the simulation cannot rederive.
+  out.WriteI64(row.reaped_grams);
+  sink.WriteDefId(DefKind::kResource, row.reaped_resource.value);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -306,6 +310,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.kind = static_cast<LandKind>(source.ReadEnumValue(0, kMaxLandKind, "land kind"));
   row.weather_stress = in.ReadFloat();
   row.work_days_remaining = in.ReadFloat();
+  row.reaped_grams = in.ReadI64();
+  row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   return row;
 }
 

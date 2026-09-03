@@ -123,6 +123,31 @@ struct FieldRow {
   /// wired without the labor sub-step therefore never finishes a working
   /// phase — deliberately: work does not happen without workers.
   float work_days_remaining = 0.0F;
+
+  /// Produce of `crop` reaped and NOT YET IN A STORE, in grams: the field
+  /// brigade's buffer of the transport design (§9, "what accumulates: the
+  /// harvest off the field"), in its smallest form — one resource, one
+  /// number. Non-zero only while the stores had no room for the whole
+  /// yield at payout (manual/72-storage-and-alarms.md §2): the field stays
+  /// in kHarvest with no work left, production retries the delivery every
+  /// day and empties this first, and kHarvestWaitingOnField stands meanwhile.
+  /// STUB, with the term named (boss, 2026-09-03): the first settled snow
+  /// takes what is still lying there, which BOUNDS the free storage rather
+  /// than modelling spoilage. Real weathering of swaths — how many days of
+  /// rain cost how much — is polish, and the design owes the number.
+  /// Snow that ends the season loses it (kFieldLost) and books it to the
+  /// ledger's no_room — never silently. Task A4's logistics will move it
+  /// instead of the instant stub; the buffer is the same. SAVED: history
+  /// the simulation cannot rederive (VERSION_SAVE 4 → 5, the human's call).
+  Grams reaped_grams = 0;
+
+  /// What the waiting load IS. The buffer has to name its own resource: the
+  /// field goes idle after payout and its `crop` is cleared for the next
+  /// rotation slot, so by the time a cart comes the crop field no longer
+  /// says what is lying there. Invalid exactly when reaped_grams is 0.
+  /// (Added during implementation of task A3; the design named only the
+  /// number and that was one field short — manual/72-storage-and-alarms.md §5.)
+  ResourceId reaped_resource;
 };
 
 /// @brief The fields table type used by WorldState.

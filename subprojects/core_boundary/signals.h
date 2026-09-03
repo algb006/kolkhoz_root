@@ -50,12 +50,11 @@ FieldSignals DeriveFieldSignals(const WorldState& world, FieldId field);
 /// the road (manual/70-boundary.md §10).
 ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId resident);
 
-/// @brief Rebuilds the list of conditions standing in `world`, in a
-/// deterministic order (by kind, then by subject id).
-/// @note STUB: the alarm roster is task A3's — AlarmKind has one value and
-/// this sweep therefore always yields nothing. It exists so that A3 has one
-/// place to fill and the session's refresh path is already wired and tested.
-void CollectAlarms(const WorldState& world, std::vector<Alarm>& alarms);
+// The alarms are NOT derived here since task A3: they are the subsystems'
+// predicates, collected through ISimulation::CollectAlarms and sorted by
+// the session (core_common/alarm_state.h; manual/72-storage-and-alarms.md
+// §3). This file keeps only what the boundary can compute from the state
+// and its own two knobs.
 
 }  // namespace core
 

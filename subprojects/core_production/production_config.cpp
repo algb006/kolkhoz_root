@@ -430,6 +430,47 @@ bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::s
   return true;
 }
 
+/// The level ladder's storage figures: unit_levels.csv gives a capacity per
+/// LEVEL, and the level a unit stands at is the ceiling that binds it (unit
+/// rules §11). Rows name their type by key, so the roster of types has to be
+/// there to resolve them; a row naming an unknown type is skipped rather than
+/// refused — the ladder legitimately carries levels of types a table set may
+/// not define.
+bool ParseUnitLevels(const ITable& levels,
+                     const ITable& unit_types,
+                     std::vector<UnitTypeDef>& types,
+                     std::string& error) {
+  const std::uint32_t unit_col = levels.FindColumn("unit");
+  const std::uint32_t level_col = levels.FindColumn("level");
+  const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
+  if (unit_col == kNoTableColumn || level_col == kNoTableColumn || tonnes_col == kNoTableColumn) {
+    return true;  // no ladder to read: the type's own figure stands
+  }
+  for (std::uint32_t row = 0; row < levels.RowCount(); ++row) {
+    const std::uint32_t type_row = unit_types.FindRowByKey(levels.CellText(row, unit_col));
+    if (type_row == kNoTableRow || type_row >= types.size()) {
+      continue;
+    }
+    float level = 0.0F;
+    float tonnes = 0.0F;
+    if (!CellOrDefault(levels, row, level_col, 0, 0, 255, level, error) ||
+        !CellOrDefault(levels, row, tonnes_col, 0, 0, 1e6F, tonnes, error)) {
+      error = "unit_levels: " + error;
+      return false;
+    }
+    if (level < 1.0F) {
+      continue;  // level 0 is "not built" and stores nothing (unit_state.h)
+    }
+    const auto index = static_cast<std::size_t>(level) - 1;
+    std::vector<float>& ladder = types[type_row].level_storage_capacity_kg;
+    if (ladder.size() <= index) {
+      ladder.resize(index + 1, 0.0F);
+    }
+    ladder[index] = tonnes * 1000.0F;
+  }
+  return true;
+}
+
 /// Feed values live on the RESOURCE (a kilogram of oat is one fodder unit),
 /// so they are read off the resource roster and kept dense by ResourceId.
 bool ParseFeedValues(const ITable& table, std::vector<float>& values, std::string& error) {
@@ -575,6 +616,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     return false;
   }
   if (unit_types != nullptr && !ParseUnitTypes(*unit_types, config.unit_types, error)) {
+    return false;
+  }
+  const ITable* const unit_levels = tables.FindTable("unit_levels");
+  if (unit_types != nullptr && unit_levels != nullptr &&
+      !ParseUnitLevels(*unit_levels, *unit_types, config.unit_types, error)) {
     return false;
   }
   if (resources != nullptr && !ParseFeedValues(*resources, config.feed_values, error)) {

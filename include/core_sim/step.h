@@ -64,7 +64,9 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <vector>
 
+#include "core_common/alarm_state.h"
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
@@ -208,6 +210,20 @@ class ISimulation {
   /// The way tests and the balance run seed or rewind a world. In-game state
   /// changes go through commands at the step boundary, never through this.
   virtual void ResetWorld(const WorldState& initial) = 0;
+
+  /// @brief Appends every alarm standing in CompletedState() to `alarms` —
+  /// the union of the subsystems' predicates, asked in the fixed order of
+  /// the decisions slot (manual/54-modules.md §3: labor, residents,
+  /// production, construction), each over the completed state with its own
+  /// configuration. The SECOND extension of this contract the boundary
+  /// asked for (StageOrders was the first, manual/70-boundary.md §8), and
+  /// for the same reason: what the presentation needs and only the
+  /// subsystems can compute. A pure read; nothing is stored, and asking
+  /// twice on the same state appends the same alarms twice.
+  /// @note Called between steps on the sim thread. The order of the result
+  ///       is the fan-out order and then each predicate's own — the caller
+  ///       sorts (core_boundary/session.h promises kind, then subject id).
+  virtual void CollectAlarms(std::vector<Alarm>& alarms) const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.

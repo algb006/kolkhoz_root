@@ -13,6 +13,7 @@
 
 #include "core_boundary/session.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -84,17 +85,17 @@ class Session final : public ISession {
   Session(const BoundaryConfig& config, std::unique_ptr<ISimulation> simulation)
       : config_(config), simulation_(std::move(simulation)) {
     // The alarms describe the state that ActiveAlarms is asked about, so
-    // they are computed for the starting world too, not only after a step.
-    // Through the simulation directly: State() is virtual, and a virtual
-    // call in a constructor is legal here and confusing everywhere.
-    CollectAlarms(simulation_->CompletedState(), alarms_);
+    // they stand for the starting world too, not only after a step: a
+    // session freshly created over a loaded world answers with the
+    // conditions of that world at its very first call.
+    RefreshAlarms();
   }
 
   // -- time -----------------------------------------------------------------
 
   void AdvanceStep() override {
     RunOneStep();
-    CollectAlarms(State(), alarms_);
+    RefreshAlarms();
   }
 
   FastForwardReport AdvanceUntil(const FastForwardTarget& target,
@@ -124,7 +125,7 @@ class Session final : public ISession {
         break;
       }
     }
-    CollectAlarms(State(), alarms_);
+    RefreshAlarms();
     return report;
   }
 
@@ -274,7 +275,7 @@ class Session final : public ISession {
     batch_sequence_ = 0;
     serial_ = 0;
     simulation_->ResetWorld(initial);
-    CollectAlarms(State(), alarms_);
+    RefreshAlarms();
   }
 
   void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) override {
@@ -405,6 +406,27 @@ class Session final : public ISession {
     EventReaderId id;
     std::uint64_t cursor = 0;
   };
+
+  /// @brief Rebuilds the alarm list from the simulation and puts it in the
+  /// order the contract promises: by kind, then by the subject id the kind
+  /// names (session.h, ActiveAlarms; core_common/alarm_state.h).
+  ///
+  /// The sort is not decoration. Every predicate sweeps a state table in ROW
+  /// order, and row order is not id order — removal is swap-with-last
+  /// (state_table.h), so an unrelated death or demolition reshuffles the
+  /// rows behind an alarm that did not change. A presentation diffing the
+  /// list would see churn that means nothing. Sorting by (kind, subject)
+  /// makes the list a function of the state alone.
+  void RefreshAlarms() {
+    alarms_.clear();
+    simulation_->CollectAlarms(alarms_);
+    std::sort(alarms_.begin(), alarms_.end(), [](const Alarm& left, const Alarm& right) {
+      if (left.kind != right.kind) {
+        return left.kind < right.kind;
+      }
+      return AlarmSubjectValue(left) < AlarmSubjectValue(right);
+    });
+  }
 
   /// @brief Stream position one past the last event held.
   std::uint64_t LogEnd() const { return log_origin_ + events_.size(); }

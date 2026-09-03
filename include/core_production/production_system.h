@@ -20,6 +20,7 @@
 #define CORE_PRODUCTION_PRODUCTION_SYSTEM_H_
 
 #include <memory>
+#include <vector>
 
 #include "core_sim/step.h"
 
@@ -45,6 +46,22 @@ class IProductionSystem {
   /// (nomenclature), starting and closing cycles, seasonal transitions of
   /// fields. Runs every tick; daily work gates itself to day boundaries.
   virtual void RunProductionDecisions(const WorldState& previous, WorldState& current) = 0;
+
+  /// @brief Appends the production alarms standing in `completed`
+  /// (core_common/alarm_state.h; manual/72-storage-and-alarms.md §3):
+  /// kStoreFull for every numbered store at its level's capacity;
+  /// kHarvestWaitingOnField for every field with reaped produce waiting
+  /// (FieldRow::reaped_grams); kHarvestWillNotFit for every growing field
+  /// whose expected yield — this subsystem's own estimate, at today's
+  /// fertility and no weather stress — exceeds the free room of all stores
+  /// together;
+  /// kSeedShort for every field whose next sowing the stores cannot seed
+  /// to the norm; kHerdStarving for every kolkhoz herd with unfed_days > 0.
+  /// Each subject at most once, in row order within a kind — the session
+  /// sorts by id. A pure read of `completed` with the configuration: no
+  /// state of the subsystem changes, no log is written. Called between
+  /// steps on the sim thread through ISimulation::CollectAlarms.
+  virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
 };
 
 /// @brief Creates the production subsystem.

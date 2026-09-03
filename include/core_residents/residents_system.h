@@ -22,6 +22,7 @@
 #define CORE_RESIDENTS_RESIDENTS_SYSTEM_H_
 
 #include <memory>
+#include <vector>
 
 #include "core_sim/step.h"
 
@@ -55,6 +56,17 @@ class IResidentsSystem {
   /// interface stability; the contract is the whole sub-step. Runs every
   /// tick; the implementation itself gates daily and monthly work.
   virtual void RunDemographyDecisions(const WorldState& previous, WorldState& current) = 0;
+
+  /// @brief Appends the people alarms standing in `completed`
+  /// (core_common/alarm_state.h): kFamilyGoingHungry for every family whose
+  /// satiety component is under the ration floor of the food configuration
+  /// — the same threshold at which the exchange hands out the safety
+  /// ration (manual/66-food-model.md §5), so the alarm stands exactly while
+  /// the kolkhoz feeds the family by right. Row order within the kind; the
+  /// session sorts by id. A pure read with the configuration; no state
+  /// changes, nothing is logged. Called between steps on the sim thread
+  /// through ISimulation::CollectAlarms.
+  virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
 };
 
 /// @brief Creates the people subsystem.

@@ -19,6 +19,7 @@
 
 #include "campaign_tables.h"
 #include "core_common/calendar.h"
+#include "core_common/ledger_state.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -420,9 +421,56 @@ bool PlaceStartLayout(WorldState& world,
 /// boss numbers of 2026-08-31). Amounts are in each resource's own measure
 /// and the row carries the mass of one, so the conversion to grams needs no
 /// second table — the same one rule the recipes use.
+/// @brief Capacity of a unit type in grams, or -1 for an outline the player
+/// draws (a heap, a stack: no number to be full against). Reads the level
+/// ladder first and the type's own figure second — the same order and the
+/// same tables core_production reads, so the two never disagree about what
+/// a granary holds.
+Grams TypeCapacityGrams(const ITable* unit_types,
+                        const ITable* unit_levels,
+                        UnitTypeId type,
+                        std::uint8_t level) {
+  if (unit_types == nullptr || type.value == kInvalidDefIdValue ||
+      type.value >= unit_types->RowCount()) {
+    return -1;
+  }
+  const std::uint32_t by_plot_col = unit_types->FindColumn("capacity_by_plot");
+  if (by_plot_col != kNoTableColumn && LayoutNumber(*unit_types, type.value, by_plot_col) > 0.0F) {
+    return -1;
+  }
+  const std::string_view key = unit_types->CellText(type.value, 0);
+  if (unit_levels != nullptr && level >= 1) {
+    const std::uint32_t unit_col = unit_levels->FindColumn("unit");
+    const std::uint32_t level_col = unit_levels->FindColumn("level");
+    const std::uint32_t tonnes_col = unit_levels->FindColumn("storage_capacity_t");
+    if (unit_col != kNoTableColumn && level_col != kNoTableColumn && tonnes_col != kNoTableColumn) {
+      for (std::uint32_t row = 0; row < unit_levels->RowCount(); ++row) {
+        if (unit_levels->CellText(row, unit_col) != key) {
+          continue;
+        }
+        if (static_cast<std::uint8_t>(LayoutNumber(*unit_levels, row, level_col)) != level) {
+          continue;
+        }
+        const float tonnes = LayoutNumber(*unit_levels, row, tonnes_col);
+        if (tonnes > 0.0F) {
+          return static_cast<Grams>(tonnes) * 1'000 * kGramsPerKilogram;
+        }
+      }
+    }
+  }
+  const std::uint32_t tonnes_col = unit_types->FindColumn("storage_capacity_t");
+  if (tonnes_col == kNoTableColumn) {
+    return -1;
+  }
+  const float tonnes = LayoutNumber(*unit_types, type.value, tonnes_col);
+  return tonnes > 0.0F ? static_cast<Grams>(tonnes) * 1'000 * kGramsPerKilogram : -1;
+}
+
 void PlaceStartStock(WorldState& world,
                      const ITable& stock,
                      const ITable* resources,
+                     const ITable* unit_types,
+                     const ITable* unit_levels,
                      const std::vector<std::pair<std::string_view, UnitId>>& placed) {
   const std::uint32_t place_col = stock.FindColumn("place");
   const std::uint32_t resource_col = stock.FindColumn("resource");
@@ -445,9 +493,35 @@ void PlaceStartStock(WorldState& world,
     if (unit_row == kNoRow || resource.value == kInvalidDefIdValue) {
       continue;
     }
-    PutStock(world.units.rows[unit_row],
-             resource,
-             LayoutNumber(stock, row, amount_col) * LayoutNumber(stock, row, mass_col));
+    UnitRow& place = world.units.rows[unit_row];
+    const float kilograms =
+        LayoutNumber(stock, row, amount_col) * LayoutNumber(stock, row, mass_col);
+    PutStock(place, resource, kilograms);
+    // The start set must FIT where the canon puts it ("capacity — exactly
+    // the start set, no more", start design §5). A row that overfills its
+    // place is a table error, not a game state: genesis is setup code and
+    // may say so out loud, and what did not fit is booked to the year's
+    // no_room so the first report shows it rather than hiding it (task A3).
+    const Grams capacity = TypeCapacityGrams(unit_types, unit_levels, place.type, place.level);
+    if (capacity < 0) {
+      continue;
+    }
+    Grams held = 0;
+    for (const Grams amount : place.stock) {
+      if (amount > 0) {
+        held += amount;
+      }
+    }
+    if (held <= capacity) {
+      continue;
+    }
+    const Grams over = held - capacity;
+    LogError("genesis: start stock overfills '" + std::string(where) +
+             "'; the excess is dropped and booked as no_room");
+    const Grams here = resource.value < place.stock.size() ? place.stock[resource.value] : Grams{0};
+    const Grams cut = over < here ? over : here;
+    place.stock[resource.value] = here - cut;
+    AddLedgerAmount(world.ledger.current.no_room, resource, cut);
   }
 }
 
@@ -461,6 +535,7 @@ void PlaceStartStock(WorldState& world,
 /// amounts are ASSUMPTION sized to the first sowing plus a food margin.
 void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   const ITable* unit_types = tables.FindTable("unit_types");
+  const ITable* unit_levels = tables.FindTable("unit_levels");
   const ITable* resources = tables.FindTable("resources");
   const ITable* crops = tables.FindTable("crops");
   if (unit_types == nullptr || resources == nullptr || crops == nullptr) {
@@ -544,7 +619,7 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // eats 7.3 t a game day and the scythes go out on day 22.
   const ITable* const start_stock = tables.FindTable("start_stock");
   if (start_stock != nullptr) {
-    PlaceStartStock(world, *start_stock, resources, placed);
+    PlaceStartStock(world, *start_stock, resources, unit_types, unit_levels, placed);
   }
 
   // What the households still have of their own. The village was living

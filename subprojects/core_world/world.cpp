@@ -341,6 +341,19 @@ class StandardSimulation final : public ISimulation {
 
   void ResetWorld(const WorldState& initial) override { engine_->ResetWorld(initial); }
 
+  /// The fan-out of task A3: every subsystem that owns alarms answers over
+  /// the completed state with its own configuration, in the FIXED order of
+  /// the decisions slot (manual/54-modules.md §3) — the same order for the
+  /// same reason, so that the list a caller gets is a function of the state
+  /// and nothing else. Labor owns none yet; when assignments arrive (task
+  /// A7, the yard without a stableman) it takes its place first, here.
+  void CollectAlarms(std::vector<Alarm>& alarms) const override {
+    const WorldState& completed = engine_->CompletedState();
+    residents_->CollectAlarms(completed, alarms);
+    production_->CollectAlarms(completed, alarms);
+    construction_->CollectAlarms(completed, alarms);
+  }
+
  private:
   std::unique_ptr<ITimeSystem> time_;
 

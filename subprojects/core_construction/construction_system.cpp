@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -50,6 +51,60 @@ void Emit(WorldState& current, EventKind kind, EventSeverity severity, UnitId un
 class ConstructionSystem final : public IConstructionSystem {
  public:
   explicit ConstructionSystem(ConstructionConfig config) : config_(std::move(config)) {}
+
+  /// What the settlement holds of a resource outside the site itself —
+  /// the same reach the delivery stub draws on: built units only, because a
+  /// level-0 row is another site and its stock belongs to its own building.
+  static Grams HeldEverywhere(const WorldState& world, ResourceId resource) {
+    Grams total = 0;
+    for (const UnitRow& unit : world.units.rows) {
+      if (unit.level == 0) {
+        continue;
+      }
+      total += AmountAt(unit.stock, resource);
+    }
+    return total;
+  }
+
+  /// kSiteWithoutMaterials: a site is delivering and the settlement cannot
+  /// complete its recipe. The instant-delivery stub brings whatever there
+  /// is (DeliverMaterials), so without this the site would wait for ever in
+  /// silence — the player has no other way to learn that the barn is short
+  /// four tonnes of boards. kNoRoad is in the roster and yields nothing:
+  /// the core has no roads, and a STUB that says so is better than a key
+  /// invented later (alarm_state.h).
+  void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
+    for (std::uint32_t row = 0; row < completed.units.rows.size(); ++row) {
+      const UnitRow& site = completed.units.rows[row];
+      if (site.construction.phase != ConstructionPhase::kDelivering) {
+        continue;
+      }
+      const BuildLevel* const step = LevelOf(site.type, site.construction.target_level);
+      if (step == nullptr) {
+        continue;
+      }
+      // The FIRST material short, in recipe order: one alarm names one
+      // shortfall, and the recipe's own order is the deterministic choice.
+      for (const BuildMaterial& material : step->recipe) {
+        const Grams on_site = AmountAt(site.stock, material.resource);
+        if (on_site >= material.grams) {
+          continue;
+        }
+        const Grams lacking = material.grams - on_site;
+        const Grams available = HeldEverywhere(completed, material.resource);
+        if (available >= lacking) {
+          continue;  // the stores can still cover it; the stub will bring it
+        }
+        Alarm alarm;
+        alarm.kind = AlarmKind::kSiteWithoutMaterials;
+        alarm.unit = completed.units.row_ids[row];
+        alarm.resource = material.resource;
+        alarm.amount = lacking - available;
+        alarms.push_back(alarm);
+        break;
+      }
+    }
+  }
 
   void RunConstructionDecisions(const WorldState& /*previous*/, WorldState& current) override {
     ConsumeOrders(current);
@@ -356,6 +411,12 @@ class ConstructionSystem final : public IConstructionSystem {
   /// The demolition's first step: the buffers go to the stores, and what has
   /// nowhere to go is lost — the design says so and says the player is
   /// warned (unit rules §14). The instant-delivery stub again.
+  /// What a demolished unit was holding goes out through the store door —
+  /// none of the receivers above its ceiling (task A3,
+  /// manual/72-storage-and-alarms.md §2). What no store has room for is
+  /// GONE, and booked to the year's no_room: demolishing a full barn with
+  /// nowhere to put its contents is the player's decision, and the cost of
+  /// it belongs in the book rather than in silence.
   void MoveStockOut(WorldState& current, std::uint32_t row) {
     ResourceAmounts stock = current.units.rows[row].stock;
     current.units.rows[row].stock.clear();
@@ -364,14 +425,62 @@ class ConstructionSystem final : public IConstructionSystem {
         continue;
       }
       const ResourceId resource{static_cast<std::uint16_t>(index)};
-      for (std::uint32_t target = 0; target < current.units.rows.size(); ++target) {
-        if (target == row || current.units.rows[target].level == 0) {
-          continue;
-        }
-        AddTo(current.units.rows[target].stock, resource, stock[index]);
-        break;
+      const Grams placed = DeliverOut(current, row, resource, stock[index]);
+      AddLedgerAmount(current.ledger.current.no_room, resource, stock[index] - placed);
+    }
+  }
+
+  /// Free room of a built store in grams, or 0 when it is not a store the
+  /// core can measure. An outline the player drew (a heap, a stack) has no
+  /// number and is never full: it takes whatever is offered.
+  Grams FreeRoomOf(const UnitRow& unit) const {
+    if (unit.level == 0 || unit.type.value >= config_.types.size()) {
+      return 0;
+    }
+    const BuildType& type = config_.types[unit.type.value];
+    if (type.capacity_by_plot != 0) {
+      return std::numeric_limits<Grams>::max();
+    }
+    Grams capacity = type.storage_capacity_grams;
+    const std::size_t index = static_cast<std::size_t>(unit.level) - 1;
+    if (index < type.levels.size() && type.levels[index].storage_capacity_grams > 0) {
+      capacity = type.levels[index].storage_capacity_grams;
+    }
+    if (capacity <= 0) {
+      return 0;
+    }
+    Grams held = 0;
+    for (const Grams amount : unit.stock) {
+      if (amount > 0) {
+        held += amount;
       }
     }
+    return held >= capacity ? 0 : capacity - held;
+  }
+
+  /// Puts `amount` into the built, numbered stores other than `from`, none
+  /// above its capacity; returns what went in. The construction module has
+  /// its own copy of the rule rather than a dependency on core_production:
+  /// two subject-tier modules do not call each other (CLAUDE.md §7), and
+  /// what it needs is one number per unit type, which its own config holds.
+  Grams DeliverOut(WorldState& current, std::uint32_t from, ResourceId resource, Grams amount) {
+    Grams placed = 0;
+    for (std::uint32_t target = 0; target < current.units.rows.size() && placed < amount;
+         ++target) {
+      if (target == from) {
+        continue;
+      }
+      UnitRow& unit = current.units.rows[target];
+      const Grams room = FreeRoomOf(unit);
+      if (room <= 0) {
+        continue;
+      }
+      const Grams left = amount - placed;
+      const Grams take = room < left ? room : left;
+      AddTo(unit.stock, resource, take);
+      placed += take;
+    }
+    return placed;
   }
 
   /// Takes up to `wanted` grams of `resource` from the standing units, in

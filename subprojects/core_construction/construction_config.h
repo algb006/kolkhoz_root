@@ -65,6 +65,14 @@ struct BuildLevel {
   std::uint8_t is_marking = 0;
 
   std::vector<BuildMaterial> recipe;
+
+  /// Storage capacity of a unit STANDING at this level, in grams
+  /// (unit_levels.csv storage_capacity_t). Read here and not asked of
+  /// core_production because two subject-tier modules never call each other
+  /// (CLAUDE.md §7): demolition has to know what a receiving store can hold
+  /// (task A3), and this module already parses the very table that says so.
+  /// 0 = the level stores nothing by number.
+  Grams storage_capacity_grams = 0;
 };
 
 /// Everything the subsystem knows about one unit type.
@@ -85,6 +93,15 @@ struct BuildType {
   /// Levels 1..N, dense: index 0 is level 1. Empty for a type with no
   /// ladder at all, which is what "cannot be built" looks like in data.
   std::vector<BuildLevel> levels;
+
+  /// The type's own storage capacity in grams (unit_types.csv
+  /// storage_capacity_t), used when the level ladder names none — the same
+  /// fallback core_production applies, so the two never disagree.
+  Grams storage_capacity_grams = 0;
+
+  /// 0/1: the capacity is the outline the player draws, so there is no
+  /// number and the store is never full (a heap, a stack, a trench).
+  std::uint8_t capacity_by_plot = 0;
 };
 
 /// The subsystem's own knobs (construction.csv) and the parsed tables.

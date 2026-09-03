@@ -67,7 +67,9 @@
 #define CORE_CONSTRUCTION_CONSTRUCTION_SYSTEM_H_
 
 #include <memory>
+#include <vector>
 
+#include "core_common/alarm_state.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -95,6 +97,17 @@ class IConstructionSystem {
   /// kUnitBuilt / kUnitDemolished to the outbox. Reads residents (a house's
   /// household) and herds (what stands where) and never writes them.
   virtual void RunConstructionDecisions(const WorldState& previous, WorldState& current) = 0;
+
+  /// @brief Appends the construction alarms standing in `completed`
+  /// (core_common/alarm_state.h): kSiteWithoutMaterials for every site in
+  /// kDelivering whose recipe the stores cannot complete — the first
+  /// material short in recipe order and the grams short of it, so the
+  /// presentation can say "the barn waits for 4 t of boards"; kNoRoad is in
+  /// the roster and yields nothing (STUB: the core has no roads). Row order
+  /// within the kind; the session sorts by id. A pure read with the
+  /// configuration; nothing changes, nothing is logged. Called between
+  /// steps on the sim thread through ISimulation::CollectAlarms.
+  virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
 };
 
 /// @brief Creates the construction subsystem.

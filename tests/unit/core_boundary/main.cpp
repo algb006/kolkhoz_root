@@ -103,6 +103,17 @@ class ScriptedSimulation final : public core::ISimulation {
     staged_cancelled_.clear();
   }
 
+  /// The scripted simulation owns no subsystem, so the alarms it reports are
+  /// the ones a test PUT there: `alarms` below is handed out verbatim. That
+  /// is what lets the boundary test check the session's own half of the
+  /// contract — the sort — without dragging in production's predicates.
+  void CollectAlarms(std::vector<core::Alarm>& alarms) const override {
+    alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
+  }
+
+  /// What the next CollectAlarms will hand back, in the order given.
+  std::vector<core::Alarm> alarms_;
+
  private:
   core::WorldState world_;
 
@@ -603,7 +614,54 @@ int TestSignals(const core::ITableSet& tables) {
   failures +=
       Expect(session->WhereaboutsOf(core::ResidentId{404}).place == core::Whereabouts::kUnknown,
              "a resident that does not exist is nowhere");
-  failures += Expect(session->ActiveAlarms().empty(), "STUB: the alarm roster is empty until A3");
+  // The session's own half of the alarm contract is the SORT: the roster and
+  // the predicates belong to the subsystems, and what the boundary promises
+  // is an order — by kind, then by the subject id the kind names — so that a
+  // panel can diff the list. The scripted simulation hands back exactly what
+  // a test puts in it, deliberately out of order and with row order that a
+  // real table would never produce.
+  failures += Expect(session->ActiveAlarms().empty(), "a simulation with no alarms reports none");
+  {
+    core::Alarm store_high;
+    store_high.kind = core::AlarmKind::kStoreFull;
+    store_high.unit = core::UnitId{9};
+    core::Alarm store_low;
+    store_low.kind = core::AlarmKind::kStoreFull;
+    store_low.unit = core::UnitId{2};
+    core::Alarm hungry;
+    hungry.kind = core::AlarmKind::kFamilyGoingHungry;
+    hungry.family = core::FamilyId{5};
+    core::Alarm waiting;
+    waiting.kind = core::AlarmKind::kHarvestWaitingOnField;
+    waiting.field = core::FieldId{1};
+    // Deliberately backwards: family before store, and the high unit id
+    // before the low one.
+    script->alarms_ = {hungry, store_high, waiting, store_low};
+    session->AdvanceStep();
+    const std::span<const core::Alarm> sorted = session->ActiveAlarms();
+    failures += Expect(sorted.size() == 4, "every alarm the simulation reports is passed on");
+    if (sorted.size() == 4) {
+      failures += Expect(sorted[0].kind == core::AlarmKind::kStoreFull &&
+                             sorted[1].kind == core::AlarmKind::kStoreFull,
+                         "kinds sort by their value, whatever order they arrived in");
+      failures += Expect(sorted[0].unit.value == 2 && sorted[1].unit.value == 9,
+                         "and within a kind the subject id decides — not the row order");
+      failures += Expect(sorted[2].kind == core::AlarmKind::kHarvestWaitingOnField &&
+                             sorted[3].kind == core::AlarmKind::kFamilyGoingHungry,
+                         "the later kinds follow in roster order");
+    }
+    // A load re-asks: the alarms of the world just loaded stand at once,
+    // rather than after the first step (session.h, ActiveAlarms).
+    script->alarms_ = {store_low};
+    core::WorldState reloaded;
+    session->ReplaceWorld(reloaded);
+    failures +=
+        Expect(session->ActiveAlarms().size() == 1 && session->ActiveAlarms()[0].unit.value == 2,
+               "a load stands the new world's alarms without waiting for a step");
+    script->alarms_.clear();
+    session->AdvanceStep();
+    failures += Expect(session->ActiveAlarms().empty(), "and a condition that passed is gone");
+  }
 
   // After dark everyone is home, assignment or not: the STUB whereabouts
   // follows the solar window (manual/70-boundary.md §10).

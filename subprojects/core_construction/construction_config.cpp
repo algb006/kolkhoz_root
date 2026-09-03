@@ -31,6 +31,14 @@ namespace {
 constexpr float kMaxLaborDays = 100'000.0F;
 constexpr float kMaxAmount = 10'000'000.0F;
 constexpr float kMaxKgPerUnit = 100'000.0F;
+/// A store bigger than this is a table error, not a plan: the largest thing
+/// the design names is a 2500 t elevator.
+constexpr float kMaxStorageTonnes = 1e6F;
+
+/// Grams in a tonne — the tables state stores in tonnes, the core counts
+/// grams (state model §5).
+constexpr Grams kGramsPerTonne = 1'000'000;
+
 constexpr float kMaxRadius = 1'000.0F;
 constexpr std::uint32_t kMaxEra = 3;
 constexpr std::uint32_t kMaxLevel = 32;
@@ -114,6 +122,8 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t built_col = unit_types.FindColumn("player_built");
   const std::uint32_t era_col = unit_types.FindColumn("era");
   const std::uint32_t radius_col = unit_types.FindColumn("plot_radius_m");
+  const std::uint32_t tonnes_col = unit_types.FindColumn("storage_capacity_t");
+  const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
 
   config.types.assign(unit_types.RowCount(), BuildType{});
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
@@ -141,6 +151,16 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       Fail(error, "unit_types", "plot_radius_m is out of range in row " + std::to_string(row));
       return false;
     }
+    if (!CellOrDefault(unit_types, row, tonnes_col, 0.0F, kMaxStorageTonnes, 0.0F, number)) {
+      Fail(error, "unit_types", "storage_capacity_t is out of range in row " + std::to_string(row));
+      return false;
+    }
+    type.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
+    if (!CellOrDefault(unit_types, row, by_plot_col, 0.0F, 1.0F, 0.0F, number)) {
+      Fail(error, "unit_types", "capacity_by_plot is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    type.capacity_by_plot = static_cast<std::uint8_t>(number);
   }
   return true;
 }
@@ -155,6 +175,7 @@ bool ReadLevels(const ITable& levels,
   const std::uint32_t days_col = levels.FindColumn("labor_days");
   const std::uint32_t class_col = levels.FindColumn("build_class");
   const std::uint32_t crew_col = levels.FindColumn("max_crew");
+  const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
     Fail(error, "unit_levels", "no 'unit' or 'level' column");
     return false;
@@ -198,6 +219,12 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
     step.era = static_cast<std::uint8_t>(number);
+    if (!CellOrDefault(levels, row, tonnes_col, 0.0F, kMaxStorageTonnes, 0.0F, number)) {
+      Fail(
+          error, "unit_levels", "storage_capacity_t is out of range in row " + std::to_string(row));
+      return false;
+    }
+    step.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
     step.is_marking = static_cast<std::uint8_t>(
         class_col != kNoTableColumn && levels.CellText(row, class_col) == kMarkingClass ? 1 : 0);
   }

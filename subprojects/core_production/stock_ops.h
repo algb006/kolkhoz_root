@@ -1,9 +1,15 @@
 /// @file
 /// @brief Moving resources into and out of stores, pantries and heaps.
 /// @threading SINGLE_THREADED
-/// Called only from the production decisions sub-step (slot 3), which is
-/// sequential: these functions walk whole tables and would race anywhere
-/// else.
+/// Two callers, both on the sim thread and both outside any phase. The ones
+/// that WRITE — AddToStock, DeliverToStores, TakeFromStorage — are called
+/// only from the production decisions sub-step (slot 3), which is
+/// sequential: they walk whole tables and would race anywhere else. The
+/// pure readers — StoresGoods, StorageCapacityGrams, TotalStock,
+/// FreeRoomGrams, StockOf — are also read BETWEEN steps by the subsystem's
+/// alarm predicates (task A3, IProductionSystem::CollectAlarms), where
+/// nothing is running and nothing is written. Adding a caller means saying
+/// which of the two it is; the file holds both kinds side by side.
 ///
 /// Not a bag of utilities: one subject — a dense ResourceAmounts vector and
 /// the arithmetic of adding to it and taking from it — used by the two files
@@ -13,6 +19,7 @@
 #define CORE_PRODUCTION_STOCK_OPS_H_
 
 #include <cstdint>
+#include <limits>
 
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -60,8 +67,9 @@ inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
 }
 
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:
-/// one shared storage pool, capacity overflow is a logged STUB until real
-/// logistics.
+/// one shared storage pool. Capacity is no longer ignored — since task A3
+/// the door (DeliverToStores) refuses above the ceiling and the remainder is
+/// the caller's business, not a line in a log.
 inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionConfig& config) {
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     if (StoresGoods(world.units.rows[row], config)) {
@@ -120,7 +128,116 @@ inline Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& c
   if (type.capacity_by_plot != 0) {
     return -1;
   }
+  // The ceiling of the level the unit STANDS at, not of the one being built:
+  // a store keeps its old ceiling until the day the level moves (unit rules
+  // §11, and ConstructionState says the same about every capacity). The
+  // ladder is consulted first and the type's own figure is the fallback, so
+  // a table set without unit_levels.csv behaves exactly as it did.
+  if (unit.level >= 1) {
+    const std::size_t index = static_cast<std::size_t>(unit.level) - 1;
+    if (index < type.level_storage_capacity_kg.size() &&
+        type.level_storage_capacity_kg[index] > 0.0F) {
+      return static_cast<Grams>(type.level_storage_capacity_kg[index]) * kGramsPerKilogram;
+    }
+  }
   return static_cast<Grams>(type.storage_capacity_kg) * kGramsPerKilogram;
+}
+
+/// @brief Total grams a unit is holding, all resources together.
+/// A store's ceiling is a tonnage, not a per-resource quota: the design
+/// counts what a granary holds, not what it holds of rye.
+inline Grams TotalStock(const ResourceAmounts& stock) {
+  Grams total = 0;
+  for (const Grams amount : stock) {
+    if (amount > 0) {
+      total += amount;
+    }
+  }
+  return total;
+}
+
+/// @brief Free room of one unit in grams: capacity minus what it holds.
+/// Negative capacity (an outline the player drew) means unbounded, and is
+/// reported as the largest value rather than as zero — a heap is never full.
+inline Grams FreeRoomGrams(const UnitRow& unit, const ProductionConfig& config) {
+  const Grams capacity = StorageCapacityGrams(unit, config);
+  if (capacity < 0) {
+    return std::numeric_limits<Grams>::max();
+  }
+  const Grams held = TotalStock(unit.stock);
+  return held >= capacity ? 0 : capacity - held;
+}
+
+/// @brief THE DOOR. Puts up to `amount` grams of `resource` into the
+/// settlement's stores, in row order, none of them above its capacity;
+/// returns what actually went in.
+///
+/// Every delivery to a store goes through here (task A3,
+/// manual/72-storage-and-alarms.md §2). The ceiling is a REFUSAL AT THE
+/// DOOR, not a loss: this function puts what fits and says how much that
+/// was, and what to do with the remainder is the caller's — the harvest
+/// waits on its field, a herd's produce is simply not made, and what can be
+/// kept nowhere is booked to the year's `no_room` so that nothing vanishes
+/// without a line. A caller that ignores the return value is the bug this
+/// signature exists to make visible.
+///
+/// Taking is wider than delivering and stays that way (TakeFromStorage): a
+/// delivery needs a destination with a number to clamp against, taking does
+/// not. A level-0 row is a site and stores nothing for anybody.
+inline Grams DeliverToStores(WorldState& world,
+                             const ProductionConfig& config,
+                             ResourceId resource,
+                             Grams amount) {
+  if (amount <= 0) {
+    return 0;
+  }
+  Grams placed = 0;
+  for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
+    UnitRow& unit = world.units.rows[row];
+    // A NUMBERED store, and the test has to say so itself: StoresGoods asks
+    // only whether the type carries a tonnage, and a type carrying both a
+    // tonnage and the by-plot flag would come back with unbounded room and
+    // swallow the whole load — leaving the second pass below unreachable and
+    // the ceiling unenforced. The shipped tables have no such row; the code
+    // must not depend on that.
+    if (!StoresGoods(unit, config) || StorageCapacityGrams(unit, config) < 0) {
+      continue;
+    }
+    const Grams room = FreeRoomGrams(unit, config);
+    if (room <= 0) {
+      continue;
+    }
+    const Grams left = amount - placed;
+    const Grams take = room < left ? room : left;
+    AddToStock(unit.stock, resource, take);
+    placed += take;
+  }
+  if (placed >= amount) {
+    return placed;
+  }
+  // SECOND PASS: an outline the player drew that ALREADY HOLDS this very
+  // resource — the haystack with the hay in it, the log pile with the logs.
+  // Such a place has no ceiling (the player's contour is its size), and the
+  // core has no routing table to say which store takes what, so "where this
+  // resource already lies" is the only rule available that does not invent
+  // one. Without it the ceiling would turn a haystack standing full of hay
+  // into a hundred tonnes of hay booked as lost while the stack watched:
+  // a numbered store is what a DELIVERY needs (A2, stock_ops.h), and until
+  // task A4 gives goods a route, this is the narrowest way to keep the
+  // ceiling from inventing losses the design never described. Second pass
+  // and not first: the numbered stores are still the settlement's stores.
+  for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
+    UnitRow& unit = world.units.rows[row];
+    if (unit.level == 0 || StorageCapacityGrams(unit, config) >= 0) {
+      continue;  // not built, or a numbered store the first pass has seen
+    }
+    if (StockOf(unit.stock, resource) <= 0) {
+      continue;  // an outline that is not this resource's home
+    }
+    AddToStock(unit.stock, resource, amount - placed);
+    placed = amount;
+  }
+  return placed;
 }
 
 /// @brief Takes up to `wanted` grams of `resource` from anywhere the

@@ -214,6 +214,16 @@ struct FeedLinkDef {
 struct UnitTypeDef {
   float storage_capacity_kg = 0.0F;  ///< 0 = stores nothing.
 
+  /// Storage capacity per LEVEL, in kilograms, index = level - 1
+  /// (unit_levels.csv storage_capacity_t). "A store keeps its old ceiling"
+  /// until the day the level moves (unit rules §11), so the ceiling that
+  /// binds is the one of the level the unit stands at — a granary is 150 t
+  /// at level 1 and 300 t at level 2. Empty, or a zero entry, means the
+  /// ladder says nothing for that level and the type's own figure is used;
+  /// that is what keeps a table with no unit_levels.csv working exactly as
+  /// before (task A3, manual/72-storage-and-alarms.md §2).
+  std::vector<float> level_storage_capacity_kg;
+
   float livestock_capacity_head = 0.0F;
 
   /// 0/1: the capacity is the outline the PLAYER draws, so there is no

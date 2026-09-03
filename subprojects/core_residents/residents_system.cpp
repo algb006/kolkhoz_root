@@ -330,6 +330,48 @@ class ResidentsSystem final : public IResidentsSystem {
 
   IParallelPhase& MetricsPhase() override { return metrics_phase_; }
 
+  /// kFamilyGoingHungry: the family's mean member satiety has fallen to the
+  /// floor at which the kolkhoz owes the safety ration. The THRESHOLD is the
+  /// ration's, but the alarm is not a report that the ration is running — it
+  /// stands whether or not the auto-rule is armed, because it speaks of the
+  /// trouble and not of the treatment (boss, 2026-09-03; alarm_state.h).
+  ///
+  /// Raw member satiety, not FamilyRow::component_satiety, for the same
+  /// reason the ration itself uses it: the component is capped by the
+  /// variety ceiling, and a family living on nothing but bread would raise
+  /// a hunger alarm with full bins.
+  void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
+    const std::size_t families = completed.families.rows.size();
+    if (families == 0) {
+      return;
+    }
+    // One pass over the residents rather than one pass per family: the same
+    // answer, and it does not become quadratic on a grown village.
+    std::vector<float> satiety_sum(families, 0.0F);
+    std::vector<std::uint32_t> counted(families, 0);
+    for (const ResidentRow& resident : completed.residents.rows) {
+      const std::uint32_t row = FindRow(completed.families, resident.family);
+      if (row == kNoRow) {
+        continue;
+      }
+      satiety_sum[row] += resident.satiety;
+      ++counted[row];
+    }
+    for (std::uint32_t row = 0; row < families; ++row) {
+      if (counted[row] == 0) {
+        continue;  // an empty household eats nothing and triggers nothing
+      }
+      const float satiety = satiety_sum[row] / static_cast<float>(counted[row]);
+      if (satiety > food_.distribution.ration_satiety_threshold) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kFamilyGoingHungry;
+      alarm.family = completed.families.row_ids[row];
+      alarms.push_back(alarm);
+    }
+  }
+
   /// The whole residents sub-step of the decisions slot, not demography
   /// alone: the name is kept because the interface is a contract, and
   /// manual/66-food-model.md §1 records what it now covers — demography,

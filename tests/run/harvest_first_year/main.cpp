@@ -152,6 +152,7 @@ int main() {
   failures +=
       run::Expect(start.herds.rows.size() == 60, "genesis places the kolkhoz and yard herds");
 
+  const std::uint32_t rye = resources->FindRowByKey("rye");
   const std::uint32_t oat = resources->FindRowByKey("oat");
   const std::uint32_t barley = resources->FindRowByKey("barley");
   const std::uint32_t wheat = resources->FindRowByKey("wheat");
@@ -180,7 +181,19 @@ int main() {
     if (core::HourFromTick(day.calendar.tick) != 0) {
       continue;
     }
-    const core::Grams grain = stock_of(day, oat) + stock_of(day, barley) + stock_of(day, wheat);
+    // Everything the settlement HAS of the three spring grains, which since
+    // task A3 is no longer "what is in the stores": a store has a ceiling
+    // now, and what did not fit is lying on the field it was reaped from
+    // (FieldRow::reaped_grams). Counting only the stores would measure the
+    // church, not the harvest — the same sum as before the ceiling, taken
+    // where the grain actually is.
+    core::Grams grain = stock_of(day, oat) + stock_of(day, barley) + stock_of(day, wheat);
+    for (const core::FieldRow& waiting_field : day.fields.rows) {
+      const std::uint32_t what = waiting_field.reaped_resource.value;
+      if (what == oat || what == barley || what == wheat) {
+        grain += waiting_field.reaped_grams;
+      }
+    }
     grain_peak = grain > grain_peak ? grain : grain_peak;
     const core::Grams cut = stock_of(day, hay);
     hay_peak = cut > hay_peak ? cut : hay_peak;
@@ -201,12 +214,64 @@ int main() {
 
   PrintVillageCondition(state);
 
-  // The reference anchor: ~48 t minus what was eaten as seed for the sown
-  // 43.4 ha (7.8 t came from the start stores, so the net gain is what
-  // matters: harvest itself lands whole). Weather stress can shave up to
-  // the cap (30%); fertility deltas land after harvest.
+  // WHAT THE FIELDS GAVE, from the year's book — and since task A3 that is
+  // no longer the same number as what the stores hold. The stores now have a
+  // CEILING (manual/72-storage-and-alarms.md §2), and the start has exactly
+  // one of them: the church, sixty tonnes, shared by grain, potato and
+  // vegetables alike. So the peak in store measures the church, and the
+  // anchor — 43.4 ha of grain at soil factor 1.3, sim_v6 year 1 — has to be
+  // read where the harvest is recorded whole — and over the FOUR bread
+  // grains the anchor's 43.4 hectares are sown with, rye included. The old
+  // reading summed three of them out of the stores, where the start set's
+  // own eleven tonnes sat beside the new crop; that sum is a different
+  // quantity, and with a ceiling under it, it measures the church.
+  const auto ledger_grams = [](const core::ResourceAmounts& column, std::uint32_t id) {
+    return id < column.size() ? column[id] : core::Grams{0};
+  };
+  // The year has turned by now, so the book that holds this year's flows is
+  // `closed`; `current` is the new one, already a day old. Summing both is
+  // the honest read and survives either side of the turn.
+  const auto reaped_of = [&](std::uint32_t id) {
+    return ledger_grams(state.ledger.closed.harvest, id) +
+           ledger_grams(state.ledger.current.harvest, id);
+  };
+  const double reaped_tonnes =
+      static_cast<double>(reaped_of(rye) + reaped_of(oat) + reaped_of(barley) + reaped_of(wheat)) /
+      1.0e6;
+  core::Grams waiting = 0;
+  for (const core::FieldRow& field : state.fields.rows) {
+    waiting += field.reaped_grams;
+  }
+  core::Grams lost_for_want_of_room = 0;
+  for (const core::Grams amount : state.ledger.closed.no_room) {
+    lost_for_want_of_room += amount > 0 ? amount : 0;
+  }
+  for (const core::Grams amount : state.ledger.current.no_room) {
+    lost_for_want_of_room += amount > 0 ? amount : 0;
+  }
+  std::cout << "harvest_first_year: the fields gave " << reaped_tonnes
+            << " t of grain; the ceiling left " << static_cast<double>(waiting) / 1.0e6
+            << " t waiting on the fields and " << static_cast<double>(lost_for_want_of_room) / 1.0e6
+            << " t with nowhere to go at all\n";
+
   failures += run::Expect(grain_tonnes > 33.0 && grain_tonnes < 53.0,
                           "first-year grain matches the sim_v6 anchor (~48 t, weather may shave)");
+
+  // And what the FIELDS gave, which is a different number and always was:
+  // the peak above includes the start set's own eleven tonnes sitting in the
+  // church. Printed rather than asserted — the anchor was calibrated on the
+  // peak, and inventing a band for a quantity nobody measured against sim_v6
+  // would be fitting the check to the code.
+  std::cout << "harvest_first_year: of that peak, " << reaped_tonnes
+            << " t is this year's own reaping\n";
+
+  // And the finding the ceiling itself is: the start cannot store its own
+  // first harvest. That is not a regression to be tuned away — the canon
+  // says the food store "is not in the start set and has to be built"
+  // (production units §10), and this is the first year the core says so in
+  // numbers instead of quietly holding four hundred tonnes in a church.
+  failures += run::Expect(waiting > 0 || lost_for_want_of_room > 0,
+                          "the first harvest does not fit the church, and the run says so");
 
   // The meadows delivered: 200 ha at the canon's 1.5 t/ha for a natural
   // meadow's whole season (boss answer Q6, 2026-08-31 — farming.csv,

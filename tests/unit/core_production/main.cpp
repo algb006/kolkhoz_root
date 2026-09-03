@@ -584,10 +584,109 @@ int CheckDroughtReadsTheAfternoon() {
   return failures;
 }
 
+/// The store door and the field's buffer (task A3): a harvest bigger than
+/// the settlement can hold must be REFUSED at the ceiling, kept on the field
+/// and reported — never forced in, never lost in silence. Built over a real
+/// table set, because both the capacity and the payout live behind the
+/// factory.
+int CheckStoreCeilingAndAlarms() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_ceiling";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n";
+  // A barn of one tonne at level 1, five at level 2: the ladder is what
+  // binds, and the type's own figure is only the fallback.
+  std::ofstream(root / "unit_types.csv") << "key,storage_capacity_t,capacity_by_plot\nbarn,9,0\n";
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the ceiling table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  // Ten hectares at a tonne a hectare, into a barn that holds one tonne.
+  core::WorldState world;
+  world.calendar.tick = 31 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  const core::UnitId barn_id = core::AppendRow(world.units, barn);
+  core::FieldRow field;
+  field.area_ga = 10.0F;
+  field.fertility = 50.0F;
+  field.phase = core::FieldPhase::kHarvest;
+  field.crop = core::CropId{0};
+  field.work_days_remaining = 0.0F;
+  const core::FieldId field_id = core::AppendRow(world.fields, field);
+
+  const core::WorldState before = world;
+  system->RunProductionDecisions(before, world);
+
+  const core::Grams held = world.units.rows[0].stock.size() > 0 ? world.units.rows[0].stock[0] : 0;
+  failures += Expect(held == 1'000 * core::kGramsPerKilogram,
+                     "the store takes its level's tonne and not a gram more");
+  failures += Expect(world.fields.rows[0].reaped_grams == 9'000 * core::kGramsPerKilogram,
+                     "and the nine tonnes that did not fit stay on the field");
+  failures += Expect(world.fields.rows[0].reaped_resource.value == 0,
+                     "the waiting load names what it is, so a cart knows");
+  failures += Expect(
+      (world.ledger.current.harvest.empty() ? core::Grams{0} : world.ledger.current.harvest[0]) ==
+          10'000 * core::kGramsPerKilogram,
+      "the book still records the whole yield: the field gave it");
+  failures += Expect((world.ledger.current.no_room.empty() ? core::Grams{0}
+                                                           : world.ledger.current.no_room[0]) == 0,
+                     "and nothing is written off — what waits is not lost");
+
+  // Both alarms stand: the store is full, and the field is holding produce.
+  std::vector<core::Alarm> alarms;
+  system->CollectAlarms(world, alarms);
+  bool store_full = false;
+  bool waiting = false;
+  for (const core::Alarm& alarm : alarms) {
+    store_full = store_full ||
+                 (alarm.kind == core::AlarmKind::kStoreFull && alarm.unit.value == barn_id.value);
+    waiting = waiting || (alarm.kind == core::AlarmKind::kHarvestWaitingOnField &&
+                          alarm.field.value == field_id.value &&
+                          alarm.amount == 9'000 * core::kGramsPerKilogram);
+  }
+  failures += Expect(store_full, "a store at its ceiling says so");
+  failures += Expect(waiting, "and the field says how much is lying on it");
+
+  // Room appears, and the buffer empties itself the next day without anyone
+  // asking: the daily retry is what makes the wait temporary.
+  world.units.rows[0].level = 2;             // the barn was upgraded: five tonnes now
+  const core::WorldState yesterday = world;  // captured BEFORE the day turns
+  world.calendar.tick += core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  system->RunProductionDecisions(yesterday, world);
+  failures += Expect(world.units.rows[0].stock[0] == 5'000 * core::kGramsPerKilogram,
+                     "room that appeared is filled from the field, up to the new ceiling");
+  failures += Expect(world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram,
+                     "and what still does not fit keeps waiting");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 }  // namespace
 
 int main() {
   int failures = 0;
+  failures += CheckStoreCeilingAndAlarms();
   const EmptyTableSet tables;
   const auto system = core::CreateProductionSystem(tables);
   failures += Expect(system != nullptr, "factory yields a system");

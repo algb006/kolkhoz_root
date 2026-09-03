@@ -111,6 +111,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
@@ -231,32 +232,6 @@ struct ResidentWhereabouts {
   Tick departed = 0;
 
   Tick arrives = 0;
-};
-
-/// @brief What an alarm is about. STUB roster: the kinds are named by task
-/// A3 (stores with a ceiling and alarms, phase-2 plan §4), which also
-/// retires the LogWarning calls inside phases that DEADLOCK-001 found —
-/// an alarm is the sanctioned way out of a phase. Kinds are appended.
-enum class AlarmKind : std::uint8_t {
-  kNone = 0,
-};
-
-/// @brief A standing condition the player should see until it passes
-/// (office design §13: an alarm hangs in its group while the trouble
-/// lasts, and clears itself). Derived from the completed state on request,
-/// never stored, never an event — see core_common/event_state.h.
-struct Alarm {
-  AlarmKind kind = AlarmKind::kNone;
-
-  ResidentId resident;
-
-  FamilyId family;
-
-  UnitId unit;
-
-  FieldId field;
-
-  HerdId herd;
 };
 
 // ---------------------------------------------------------------------------
@@ -492,9 +467,17 @@ class ISession {
   /// @return place == kUnknown for a resident that does not exist.
   virtual ResidentWhereabouts WhereaboutsOf(ResidentId resident) const = 0;
 
-  /// @brief The conditions standing in the completed state, recomputed
-  /// after every step, in a deterministic order (by kind, then by subject
-  /// id). Valid until the next step or ReplaceWorld.
+  /// @brief The conditions standing in the completed state — the roster
+  /// and the fields each kind fills are core_common/alarm_state.h.
+  /// Recomputed after every step and after ReplaceWorld by asking the
+  /// simulation (ISimulation::CollectAlarms: the subsystems' predicates
+  /// over State() with their own configuration; the session computes no
+  /// rule itself), then sorted by kind and, within a kind, by the subject
+  /// id (AlarmSubjectValue) — the same list for the same state whatever
+  /// the row order underneath, so a panel can diff it. Each subject
+  /// appears at most once per kind. Valid until the next step or
+  /// ReplaceWorld. Empty for a world whose tables define nothing that can
+  /// go wrong, which is what a table-less unit-test world is.
   virtual std::span<const Alarm> ActiveAlarms() const = 0;
 
   // -- orders -----------------------------------------------------------------

@@ -112,6 +112,14 @@ class StepEngine final : public ISimulation {
     staged_cancelled_.clear();
   }
 
+  /// The engine owns no subsystem and therefore no predicate: it is a step
+  /// machine over a phase set, and which conditions matter is a rule of the
+  /// game, not of the machine. The assembled simulation (core_world) is
+  /// where the fan-out lives; a bare engine — which is what unit tests and
+  /// the determinism harness drive — answers with nothing, the same shape a
+  /// world whose tables define nothing that can go wrong answers with.
+  void CollectAlarms(std::vector<Alarm>& /*alarms*/) const override {}
+
  private:
   /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
   /// completed, append the issued rows in arrival order (the table issues the

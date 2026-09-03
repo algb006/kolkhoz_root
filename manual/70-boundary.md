@@ -321,7 +321,7 @@ virtual void StageOrders(std::span<const OrderRow> issued,
 | `UnitSignals::paused` | 0 | потребитель `kPauseUnit` в `core_production` |
 | `UnitSignals::prank_marks` | 0 | фаза III |
 | `ResidentWhereabouts` | дома / на работе по часам наряда, `kOnTheRoad` не бывает | задача труда: время выхода и прихода на назначении |
-| `AlarmKind` | одно значение `kNone` | А3 |
+| `AlarmKind` | ~~одно значение `kNone`~~ **спроектировано А3, 03.09.2026:** реестр семи видов переехал в `core_common/alarm_state.h`, предикаты — у подсистем, сессия только сортирует ([Склады и алармы](72-storage-and-alarms.md)) | А3 (реализация — Opus) |
 | Виды `kBuildUnit`, `kDemolishUnit` | отказ `kNoConsumer` | А2 |
 | Поля `UnitSignals` сверх семи | не требуются: каталог В3 сверен, §3 | по мере пополнения каталога |
 
@@ -348,7 +348,7 @@ virtual void StageOrders(std::span<const OrderRow> issued,
 
 | Вопрос | Где решается |
 |---|---|
-| Список алармов и их предикаты | **А3** |
+| Список алармов и их предикаты | **А3** — реестр и контракт есть ([Склады и алармы §3–4](72-storage-and-alarms.md)), тела — Opus |
 | Пополнение `UnitSignals` | [Каталог живых сигналов §12](../../manual/design/presentation/live-signals.md#12-как-пополнять): новый признак с «выводится из» — новое поле здесь |
 | Форма транспорта внутри нарядов | **А4**, решение 155 |
 | События третьей фазы | Фаза III, `core_events` |
