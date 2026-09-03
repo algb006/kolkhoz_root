@@ -104,6 +104,16 @@ enum class EventKind : std::uint8_t {
   /// a house until the demography sub-step rehouses it the next day.
   kUnitCollapsed,
 
+  // -- posts (task A7) --------------------------------------------------------
+  kAppointed,  ///< resident, unit; amount = the ProfessionId value. Applied at the day's close.
+  kDismissed,  ///< resident, unit; amount = the ProfessionId value he held.
+
+  /// unit — the kolkhoz yard: the groom is in place and the horses came
+  /// off the private yards, all at once (livestock design §5); amount =
+  /// heads. Once per campaign, and kNotable: the day a third of the village
+  /// is free to work again.
+  kHorsesStabled,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.

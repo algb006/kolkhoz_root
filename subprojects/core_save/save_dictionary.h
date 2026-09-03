@@ -33,7 +33,7 @@ namespace core {
 
 class ITableSet;
 
-/// @brief The four definition tables a save remaps by key. The value is the
+/// @brief The five definition tables a save remaps by key. The value is the
 /// dictionary's position in the payload — appending a kind is a format
 /// change (VERSION_SAVE), which is why the list is an enum and not data.
 enum class DefKind : std::uint8_t {
@@ -41,9 +41,10 @@ enum class DefKind : std::uint8_t {
   kCrop,
   kUnitType,
   kLivestock,
+  kProfession,  ///< tables/professions.csv; ResidentRow::post, OrderRow::profession (task A7).
 };
 
-inline constexpr std::uint32_t kDefKindCount = 4;
+inline constexpr std::uint32_t kDefKindCount = 5;
 
 /// @brief The tables/ file name backing a kind: "resources", "crops"...
 const char* DefTableName(DefKind kind);
@@ -52,7 +53,7 @@ constexpr std::uint32_t DefKindIndex(DefKind kind) {
   return static_cast<std::uint32_t>(kind);
 }
 
-/// @brief The keys of the four definition tables, each in DefId order.
+/// @brief The keys of the five definition tables, each in DefId order.
 /// A missing table gives an empty vector — which is not an error here: it
 /// only becomes one if the world actually uses an id of that kind.
 struct DefDictionaries {

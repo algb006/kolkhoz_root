@@ -108,7 +108,8 @@
 | `kReleaseWork` | Снять наряд, вернуть учётчику | `core_labor` | Там же |
 | `kPauseUnit`, `kResumeUnit` | Пауза юнита по [Юнитам §5](../../manual/design/world/units/rules.md#5-пауза-юнита) | `core_production` | А2–А3 |
 | `kSetRotation` | Трёхлетний севооборот поля | `core_production` | Там же |
-| `kBuildUnit`, `kDemolishUnit` | Стройка и снос | А2 | А2 |
+| `kBuildUnit`, `kStartBuild`, `kUpgradeUnit`, `kDemolishUnit`, `kRepairUnit` | Стройка, снос, ремонт ([Стройка](71-construction.md), [Износ](73-wear-and-repair.md)) | `core_construction` | А2, А5 — сдано |
+| `kAppoint`, `kDismiss` | **Должность** — место на юните, не наряд: конюх, кладовщик. Проверяется при чтении, `kAccepted` до закрытия суток, применяется на нём ([Время §11](../../manual/design/core/time.md#11-назначение-работ-и-предел-работника)); снятие — такое же распоряжение, по требованию boss'а. Новый отказ `kNoVacancy` ([Должности](74-posts.md)) | `core_labor` | А7 — спроектировано |
 | *зарезервировано* | Номенклатура ([Юниты §6](../../manual/design/world/units/rules.md#6-номенклатура-продукции)), транспорт как часть нарядов (решение 155, А4), делегирование | — | — |
 
 **Один вид — один потребитель.** Значения перечисления только добавляются: журнал, написанный

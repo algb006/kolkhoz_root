@@ -158,6 +158,32 @@ enum class OrderKind : std::uint8_t {
   /// §10). Decided in the step it is read, like the other four.
   kRepairUnit,
 
+  /// Appoint `resident` to the post `profession` at `unit` (task A7;
+  /// manual/74-posts.md). NOT kAssignWork: that one puts a person on a
+  /// day's work at a field or herd and outranks the accountant for as long
+  /// as it stands; this one gives a person a PLACE — the groom of this
+  /// yard, the storekeeper of this granary — that survives the day and the
+  /// save and is his until a kDismiss. The two look alike and must not be
+  /// merged: one names a job, the other a role. Validated in the step it
+  /// is read and then kAccepted, cancellable, until the day's close, when
+  /// the labor sub-step applies it — "a change of post only after the
+  /// working day" (time design §11). A resident holding another post is
+  /// MOVED by this order; a second kAppoint for a resident whose first is
+  /// still kAccepted is kConflictsWithActive. Refused: no such resident
+  /// (kNoSuchSubject); under working age or below the post's education
+  /// threshold (kNotEligible); no such unit, a site, or a unit type that
+  /// carries no such post (kRuleForbids); every slot taken (kNoVacancy).
+  /// Consumer: core_labor.
+  kAppoint,
+
+  /// Dismiss `resident` from the post he holds — the same kind of order as
+  /// the appointment, at boss's insistence (2026-09-03): a post nobody can
+  /// be removed from is a post for life, and the player notices on the
+  /// first groom who takes to drink. Same timing as kAppoint: kAccepted,
+  /// applied at the day's close. Refused with kRuleForbids when the
+  /// resident holds no post. Consumer: core_labor.
+  kDismiss,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -214,6 +240,13 @@ enum class OrderRefusal : std::uint8_t {
   /// demolished"; the stock, by contrast, is moved out, not refused).
   kNotEmpty,
 
+  /// Appointment refused because every slot of that post at that unit is
+  /// taken (task A7; the staff table of the design db says how many —
+  /// one groom per farm, and it is the whole reason the refusal has a
+  /// name of its own: "no room" at a post is a fact the presentation
+  /// shows, not a rule it has to guess).
+  kNoVacancy,
+
   // Appending a refusal means raising kMaxOrderRefusal in
   // core_save/save_rows.cpp — see the note over OrderKind above.
 };
@@ -237,15 +270,17 @@ struct OrderRow {
   Tick issued_tick = 0;
 
   // -- targets, by kind ------------------------------------------------------
-  ResidentId resident;  ///< kAssignWork, kReleaseWork.
+  ResidentId resident;  ///< kAssignWork, kReleaseWork, kAppoint, kDismiss.
 
-  UnitId unit;  ///< kPauseUnit, kResumeUnit, kDemolishUnit; kAssignWork at a unit.
+  UnitId unit;  ///< kPauseUnit, kResumeUnit, kDemolishUnit, kAppoint; kAssignWork at a unit.
 
   FieldId field;  ///< kAssignWork (field kinds), kSetRotation.
 
   HerdId herd;  ///< kAssignWork (kHerdCare).
 
   UnitTypeId unit_type;  ///< kBuildUnit.
+
+  ProfessionId profession;  ///< kAppoint: the post (task A7).
 
   CropId rotation_year0;  ///< kSetRotation; invalid = fallow that year.
 

@@ -15,6 +15,17 @@
 /// fertility, unit work cycles with their input and output buffers, herds
 /// and their feed. Worker productivity is read from resident state in
 /// core_common — this module never names core_residents.
+///
+/// Stabling the horses (project phase 2, task A7; manual/74-posts.md): the
+/// herd day, before billeting, looks for a kolkhoz horse herd still at a
+/// private yard while some built unit has a resident holding the groom's
+/// post there (ResidentRow::post). Found — every kolkhoz horse herd is
+/// merged into one at that unit, ChairmanState::horses_stabled is set,
+/// kHorsesStabled is raised. Once per campaign by construction: after the
+/// move no such herd exists, and the flag keeps the labor lock from ever
+/// returning. The rule is the herd system's because herds are its rows;
+/// it recognises the groom by the profession key in labor's tables, which
+/// is data, not a dependency on core_labor.
 
 #ifndef CORE_PRODUCTION_PRODUCTION_SYSTEM_H_
 #define CORE_PRODUCTION_PRODUCTION_SYSTEM_H_

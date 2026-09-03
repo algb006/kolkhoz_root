@@ -90,6 +90,16 @@ struct ChairmanState {
   /// Reputation in the shadow world, 0..100. Exists only with the role lines;
   /// stays 0 until that system exists.
   Metric shadow_reputation = 0.0f;
+
+  /// 0/1: the kolkhoz horses have been gathered off the private yards into
+  /// the kolkhoz yard — the ONE-TIME turn of the start canon (livestock
+  /// design §5: the "at the horse" mark is set at the founding, lifted by
+  /// the groom, and never comes back, whatever happens to the yard later).
+  /// Set by the herd day the morning after a groom is appointed; read by the
+  /// labor placement, which stops locking householders to horse work the
+  /// moment it is set. A milestone of the campaign, which is why it sits
+  /// with the chairman's numbers and not on any herd (task A7).
+  std::uint8_t horses_stabled = 0;
 };
 
 /// @brief Settlement-wide vital statistics (design decision 105).

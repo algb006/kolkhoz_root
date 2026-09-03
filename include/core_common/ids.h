@@ -129,6 +129,13 @@ using UnitTypeId = DefId<UnitTypeIdTag>;
 /// @brief A livestock kind from the livestock table: cow, sheep, pig, hen, duck.
 using LivestockKindId = DefId<LivestockKindIdTag>;
 
+struct ProfessionIdTag {};
+
+/// @brief Row of tables/professions.csv — a post a resident can be appointed
+/// to (professions design §1; project phase 2, task A7). The eleventh id
+/// kind, and the first that names a role rather than a thing.
+using ProfessionId = DefId<ProfessionIdTag>;
+
 }  // namespace core
 
 #endif  // CORE_COMMON_IDS_H_

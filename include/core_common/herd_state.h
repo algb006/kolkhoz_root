@@ -20,7 +20,9 @@
 ///
 /// A herd stands either at a unit (the stock-yard's cows) or at a family's
 /// yard (the start keeps all 16 kolkhoz horses in private yards until the
-/// kolkhoz yard is built) — exactly one of `unit`/`household` is valid.
+/// kolkhoz yard is built AND a groom is appointed — livestock design §5,
+/// task A7: the herd day moves them the morning after the appointment) —
+/// exactly one of `unit`/`household` is valid.
 ///
 /// Labor seam (stage 5, manual/65-labor-model.md): unit-standing herds are
 /// a daily work source — the labor sub-step refills care_days_remaining

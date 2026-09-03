@@ -67,6 +67,16 @@ enum class SocialStatus : std::uint8_t {
 };
 
 /// @brief One resident. Plain data; invalid ids mean "no such relative".
+/// @brief A standing appointment: which post, at which unit. Plain data;
+/// both invalid means "holds no post", and the two are set and cleared
+/// together — a profession with no unit, or a unit with no profession, is a
+/// row the codec refuses.
+struct PostAssignment {
+  ProfessionId profession;
+
+  UnitId unit;
+};
+
 struct ResidentRow {
   // -- identity and kinship ------------------------------------------------
   FamilyId family;  ///< The household this person lives in.
@@ -101,6 +111,25 @@ struct ResidentRow {
   /// idle today — including a fatigue walk-off, which clears the kind but
   /// keeps worked_norm_days_today until the close-out pays it.
   WorkAssignment work;
+
+  // -- the post (task A7; manual/74-posts.md) --------------------------------
+  /// The post this resident HOLDS — a standing appointment, not today's
+  /// work: the groom, the storekeeper, the timekeeper are appointed and
+  /// keep their place until dismissed (phase-2 plan §4, A7). One post per
+  /// person, because one work per day (time design §11: no moonlighting).
+  /// Written only by the labor sub-step, at the day's close, from a
+  /// kAppoint or kDismiss order accepted earlier that day (time design §11:
+  /// "a change of post — only after the working day"); cleared with the
+  /// row when the resident dies or leaves. Invalid profession = holds none.
+  ///
+  /// What holding a post DOES today: the holder is not in the accountant's
+  /// morning pool and is placed first on his own unit's daily work when the
+  /// core models it — the yard's herd care for the groom. A post whose work
+  /// the core does not model yet keeps its holder reserved and idle (STUB,
+  /// named in the post table's own terms). The groom is the post this stage
+  /// exists for: the day after one is appointed, the herd day stables the
+  /// horses (herd_state.h, production).
+  PostAssignment post;
 
   // -- education (education design §2, §4, §5) -----------------------------
   EducationStage education_stage = EducationStage::kNone;

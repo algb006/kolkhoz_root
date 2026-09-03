@@ -95,7 +95,7 @@
 | `core_residents` | `IResidentsSystem`: две фазы + `RunDemographyDecisions` | `include/core_residents/residents_system.h` |
 | `core_production` | `IProductionSystem`: фаза + `RunProductionDecisions` | `include/core_production/production_system.h` |
 | `core_logistics` | `ILogisticsSystem` (заглушка «мгновенно») | `include/core_logistics/logistics_system.h` |
-| `core_labor` | `ILaborSystem`: `RunAssignmentDecisions` | `include/core_labor/labor_system.h` |
+| `core_labor` | `ILaborSystem`: `RunAssignmentDecisions`, `CollectAlarms` (А7) | `include/core_labor/labor_system.h` |
 | `core_construction` | `IConstructionSystem`: `RunConstructionDecisions` (А2 — контракт) | `include/core_construction/construction_system.h` |
 | `core_world` | Фабрики `CreateStartWorld`, `CreateStandardSimulation` | `include/core_world/world.h` |
 | `core_boundary` | `ISession`, фабрика `CreateSession`, кодек журнала (А1 — контракт, O2 — реализация) | `include/core_boundary/session.h` |

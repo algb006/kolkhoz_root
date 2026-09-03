@@ -128,10 +128,19 @@ enum class AlarmKind : std::uint8_t {
   /// its key before the roads arrive. Subject: `unit`.
   kNoRoad,
 
-  // Appended by later tasks and phases: the yard without a stableman
-  // (livestock design §5; assignments, task A7), children out of school,
-  // sewage, logistics falling behind. Named so the numbering is planned,
-  // not discovered.
+  // -- posts: core_labor (task A7) -----------------------------------------------
+
+  /// The kolkhoz yard stands built and has no groom, while the kolkhoz
+  /// horses still stand at private yards and a third of the village is
+  /// tied to them (livestock design §5: "the groom was not appointed —
+  /// nothing happened", and the alarm is named there). Subject: `unit`
+  /// (the yard); `amount` = the horses waiting. Clears the day the groom
+  /// is appointed; never returns after the horses are stabled.
+  kYardWithoutGroom,
+
+  // Appended by later tasks and phases: children out of school, sewage,
+  // logistics falling behind. Named so the numbering is planned, not
+  // discovered.
 };
 
 /// @brief One standing condition. Which fields are meaningful is fixed by
