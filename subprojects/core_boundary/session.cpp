@@ -227,13 +227,18 @@ class Session final : public ISession {
   }
 
   void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) override {
+    // The copy is taken BEFORE the reset, which empties the session's own
+    // batch: that is what makes ReplaceWorld(world, StagedBatch()) — the
+    // natural spelling of "reload the world and keep what is staged" —
+    // correct instead of forbidden (session.h).
+    StagedOrders carried = staged;
     ReplaceWorld(initial);
     // The batch a save carried beside the world: put back exactly as it was,
     // and NOT journaled — these were recorded when they were first issued,
     // in the journal that went with that save (session.h).
-    assert(staged.issued.empty() ||
-           initial.orders.next_id_value + staged.issued.size() >= initial.orders.next_id_value);
-    staged_ = staged;
+    assert(carried.issued.empty() ||
+           initial.orders.next_id_value + carried.issued.size() >= initial.orders.next_id_value);
+    staged_ = std::move(carried);
   }
 
   const StagedOrders& StagedBatch() const override { return staged_; }

@@ -255,6 +255,24 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
     resumed = resumed || event.order.value == pending.value;
   }
   failures += Expect(resumed, "and the resumed batch reaches the engine like any other");
+
+  // The same call with the session's OWN batch as the argument: the natural
+  // spelling of "reload the world and keep what is staged" (session.h, the
+  // second ReplaceWorld). It used to lose the orders silently, because the
+  // reset emptied the batch before the argument was read.
+  const core::OrderId kept = session->IssueOrder(RotationOrder(4));
+  const core::WorldState reloaded = session->State();
+  session->ReplaceWorld(reloaded, session->StagedBatch());
+  failures +=
+      Expect(session->StagedBatch().issued.size() == 1 &&
+                 session->StagedBatch().issued.front().kind == core::OrderKind::kSetRotation,
+             "a reload given the session's own batch keeps it");
+  session->AdvanceStep();
+  bool kept_reached = false;
+  for (const core::SimEvent& event : session->Events()) {
+    kept_reached = kept_reached || event.order.value == kept.value;
+  }
+  failures += Expect(kept_reached, "and that batch reaches the engine too");
   return failures;
 }
 

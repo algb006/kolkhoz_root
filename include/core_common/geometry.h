@@ -1,14 +1,14 @@
 /// @file
 /// @brief Map coordinate system and the two-dimensional vector of the core.
 /// @threading PARALLEL_READONLY
-/// Type aliases and compile-time constants only; no mutable state. Readable
-/// from any phase and any thread.
+/// A type alias and a plain-data aggregate; no mutable state. Readable from
+/// any phase and any thread.
 ///
 /// The core never includes engine headers, so it carries its own vector type
 /// (architecture, §2). The world is flat for simulation purposes: the map is
-/// square with kMapSizeMeters on a side, positions are metres in the XY
-/// plane, height matters only to the presentation. All travel-time and distance math works on this
-/// plane.
+/// square, its side is DATA and not a constant of this file (see Vec2 below),
+/// positions are metres in the XY plane, height matters only to the
+/// presentation. All travel-time and distance math works on this plane.
 ///
 /// Precision: float at coordinate 12'000 m resolves ~1 mm — far below
 /// anything the simulation distinguishes.
