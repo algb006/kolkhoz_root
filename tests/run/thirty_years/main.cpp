@@ -121,21 +121,27 @@ constexpr std::size_t kCanonTop = 1500;
 /// The floor keeps its assertion: 1400 stands two hundred clear of the
 /// noise, and that reading is unambiguous.
 ///
-/// WHAT THIS COSTS, SAID PLAINLY: the population gate now catches
-/// divergence DOWNWARD only. Re-measured on the fixture as it stands today
-/// (repair speaking, baseline 1606), births scaled by:
+/// WHAT THIS COSTS, SAID PLAINLY: the population gate ASSERTS downward only.
+/// Re-measured 2026-09-05, on the tree as it stands — cloud swing in, no
+/// weather memory, baseline 1561 — births scaled by:
 ///
-///   x1.50  3017   prints as a FINDING, fails nothing
-///   x1.15  1591   MINUS FIFTEEN. Inside the noise: this mutation had
-///                 already stopped being caught while it was still counted
-///                 as the upper edge's proof
-///   x0.85  1345   fails the floor by 55 — ON the resolution, proves nothing
-///   x0.80   798   FAILS THE FLOOR BY 602, ten times the noise
+///   x1.50  3211   prints as a FINDING, fails nothing
+///   x1.15  1859   prints as a FINDING: above the 1608 ceiling by 251, four
+///                 times the noise. It is READ again, though still not
+///                 asserted
+///   x0.85  1210   fails the floor by 190, three noises
+///   x0.80  1034   fails the floor by 366, six noises
 ///
-/// So the floor is an assertion and here is its number: 602. A mutation
-/// whose effect is smaller than the resolution proves nothing by firing OR
-/// by staying silent, which is why the magnitude is chosen above the noise
-/// and the noise is measured before the first mutation, not after it.
+/// EVERY ONE OF THOSE NUMBERS MOVED when the cloud swing went in, and the
+/// previous set is kept in 69-reconciliation.md §13.9 as the record of the
+/// world it was taken in. x1.15 read 1591 then — fifteen residents, inside
+/// the noise, caught by nothing; it reads 251 clear of the ceiling now. The
+/// lesson is not about clouds: DATE A MUTATION BY THE STATE OF THE MODEL,
+/// not only by the seed.
+///
+/// A mutation whose effect is smaller than the resolution proves nothing by
+/// firing OR by staying silent, which is why the magnitude is chosen above
+/// the noise and the noise is measured before the first mutation.
 ///
 /// And the honest statement of what this half of the gate is: it catches a
 /// village that failed to grow, and it prints everything else.
