@@ -23,6 +23,7 @@
 #include "core_common/world_state.h"
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
+#include "field_haul.h"
 #include "herd_system.h"
 #include "production_config.h"
 #include "stock_lights.h"
@@ -1019,6 +1020,56 @@ int CheckSeedLightDoesNotNetCropsOff() {
   return failures;
 }
 
+/// NOBODY HAULED, AND THE GRAIN MOVED ANYWAY.
+///
+/// The settlement compares TODAY'S demand with YESTERDAY'S leftover and
+/// treats the difference as work done. That is right only while the demand
+/// can shrink: the demand is capped by the room the stores can still take,
+/// and the room GROWS every day, because the village eats. On a day when
+/// nobody was sent to the field at all, today's demand comes out larger than
+/// yesterday's leftover, and the difference is booked as a load carried.
+///
+/// Found by the seventh reconciliation pass, and it explains its strangest
+/// number: the thirtieth year harvests 1172 tonnes of field produce and
+/// spends 0.00 man-days carrying it.
+int CheckHaulingIsNotFree() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.cart_load_kg = 750.0F;
+  config.carry_kg_adult = 20.0F;
+  config.walk_speed_kmh = 5.0F;
+  config.harness_speed_kmh = 12.0F;
+  config.standard_day_hours = 10.0F;
+  config.unit_types[0].storage_capacity_kg = 10000.0F;
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 10.0F;
+  field.center = core::Vec2{.x = 2000.0F, .y = 0.0F};
+  field.reaped_grams = 8000 * kKilo;  // eight tonnes lying on the ground
+  field.reaped_resource = core::ResourceId{0};
+  core::AppendRow(world.fields, field);
+
+  // Day one sizes the demand. Nobody is assigned, so the seam is untouched.
+  core::SettleHauling(config, world);
+  const core::Grams after_first = world.fields.rows[0].reaped_grams;
+  failures += Expect(after_first == 8000 * kKilo,
+                     "the first evening carries nothing: the demand was only just written");
+  failures += Expect(world.fields.rows[0].haul_days_remaining > 0.0F, "and it asks for carriers");
+
+  // Overnight the stores empty a little — the village ate. NOBODY is sent to
+  // the field: the seam is left exactly as the settlement wrote it.
+  world.units.rows[0].stock[0] = 0;
+  core::SettleHauling(config, world);
+  failures += Expect(world.fields.rows[0].reaped_grams == after_first,
+                     "and the second evening carries nothing either, because nobody went: "
+                     "room that grew overnight is not a day's work by somebody");
+  return failures;
+}
+
 }  // namespace
 
 /// The turn of the start canon (task A7; manual/74-posts.md §5): the yard is
@@ -1205,6 +1256,7 @@ int main() {
   failures += CheckSeedLightAsksAboutTheNearestCampaign();
   failures += CheckFeedLightKeepsTheKindsApart();
   failures += CheckSeedLightDoesNotNetCropsOff();
+  failures += CheckHaulingIsNotFree();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();

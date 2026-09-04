@@ -937,6 +937,12 @@ class ProductionSystem final : public IProductionSystem {
     } else {
       field.haul_days_remaining = 0.0F;
     }
+    // And the settlement's baseline with it. The guard above stopped the
+    // FIRST evening from reading an unset number as a day's work; the same
+    // reading came back through the other door, because the evening measured
+    // today's demand against yesterday's leftover and the room grows every
+    // day as the village eats (seventh reconciliation pass).
+    field.haul_days_written = field.haul_days_remaining;
     if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
       field.phase = FieldPhase::kGrowing;  // the stand yields again next summer
       return;

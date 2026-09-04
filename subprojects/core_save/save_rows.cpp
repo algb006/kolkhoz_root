@@ -345,6 +345,13 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The field brigade's buffer (task A3): what was reaped and has not
   // reached a store, and what it is. History the simulation cannot rederive.
   out.WriteFloat(row.haul_days_remaining);
+  // The settlement's memory of what it wrote last night (task: the seventh
+  // reconciliation pass). sizeof(FieldRow) did NOT move — the float landed in
+  // padding the row already had, and the tripwire stayed silent. Fourth time
+  // in a row, which is the ordinary outcome and not bad luck: a field added
+  // to a row almost always lands in a hole, because holes are what sit
+  // between fields of different widths.
+  out.WriteFloat(row.haul_days_written);
   out.WriteI64(row.reaped_grams);
   sink.WriteDefId(DefKind::kResource, row.reaped_resource.value);
 }
@@ -369,6 +376,7 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.weather_stress = in.ReadFloat();
   row.work_days_remaining = in.ReadFloat();
   row.haul_days_remaining = in.ReadFloat();
+  row.haul_days_written = in.ReadFloat();
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   return row;

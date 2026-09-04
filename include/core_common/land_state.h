@@ -155,6 +155,23 @@ struct FieldRow {
   /// `reaped_grams` is zero.
   float haul_days_remaining = 0.0F;
 
+  /// What the settlement LAST WROTE into the seam above, so that it can tell
+  /// what people carried from what the room did.
+  ///
+  /// It exists because the two are not the same and were treated as the
+  /// same. The settlement used to read the drain as "today's demand minus
+  /// what is left of yesterday's", and the demand is capped by the room the
+  /// stores can still take — room that GROWS every day, because the village
+  /// eats. So on a day when nobody was sent to the field at all, today's
+  /// demand came out larger than yesterday's leftover and the difference was
+  /// booked as a load carried. **The thirtieth year of the run harvested
+  /// 1172 tonnes and spent 0.00 man-days carrying them** (seventh
+  /// reconciliation pass).
+  ///
+  /// With the written figure kept, the drain is exactly what it says:
+  /// written minus left, and nothing else can move it.
+  float haul_days_written = 0.0F;
+
   /// Produce of `crop` reaped and NOT YET IN A STORE, in grams: the field
   /// brigade's buffer of the transport design (§9, "what accumulates: the
   /// harvest off the field"), in its smallest form — one resource, one

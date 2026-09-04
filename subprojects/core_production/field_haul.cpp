@@ -108,13 +108,19 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     // and one kilogram arrives — measured, twice, in the thirty-year run.
     const Grams receivable = ReceivableRoom(config, current);
     const Grams haulable = receivable < field.reaped_grams ? receivable : field.reaped_grams;
-    const float wanted = HaulDaysFor(haulable, rate, config.standard_day_hours);
     // What was drained since the demand was written. Never negative: room
     // shrinks overnight as well as grows, and a demand that came out
     // smaller than what is left of it means nobody hauled, not that
     // somebody un-hauled.
-    const float done =
-        wanted > field.haul_days_remaining ? wanted - field.haul_days_remaining : 0.0F;
+    // WHAT PEOPLE CARRIED, and nothing else. Measured against what the
+    // settlement itself wrote last night — not against today's demand, which
+    // is capped by a room that grows every day as the village eats. Comparing
+    // the two demands booked that growth as somebody's day of work, and the
+    // run carried its whole harvest for nothing.
+    const float done = field.haul_days_written > field.haul_days_remaining
+                           ? field.haul_days_written - field.haul_days_remaining
+                           : 0.0F;
+    const float against = field.haul_days_written;
     // SETTLED AS A SHARE OF THE LOAD, not as an absolute weight. The seam
     // was set to `wanted` last night and drained by real people since, so
     // the share carried is what is missing from it. Converting the missing
@@ -122,8 +128,8 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     // wrong: the rate is recomputed here, and a horse that appeared
     // overnight made the two ends of the subtraction measure different
     // things. A share cannot move more of a load than the load has.
-    if (done > 0.0F && wanted > 0.0F) {
-      const float share = done / wanted;
+    if (done > 0.0F && against > 0.0F) {
+      const float share = done / against;
       const Grams carried =
           GramsFromFloat(static_cast<float>(haulable) * (share > 1.0F ? 1.0F : share));
       const Grams offered = carried < field.reaped_grams ? carried : field.reaped_grams;
@@ -137,6 +143,8 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     const Grams left = ReceivableRoom(config, current);
     field.haul_days_remaining = HaulDaysFor(
         left < field.reaped_grams ? left : field.reaped_grams, rate, config.standard_day_hours);
+    // And remember it, because tomorrow this is the only honest baseline.
+    field.haul_days_written = field.haul_days_remaining;
   }
 }
 
