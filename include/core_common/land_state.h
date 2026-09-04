@@ -234,7 +234,7 @@ struct FieldRow {
   /// than modelling spoilage. Real weathering of swaths — how many days of
   /// rain cost how much — is polish, and the design owes the number.
   /// Snow that ends the season loses it (kFieldLost) and books it to the
-  /// ledger's no_room — never silently. Task A4's logistics will move it
+  /// ledger's lost_no_room — never silently. Task A4's logistics will move it
   /// instead of the instant stub; the buffer is the same. SAVED: history
   /// the simulation cannot rederive (VERSION_SAVE 4 → 5, the human's call).
   Grams reaped_grams = 0;

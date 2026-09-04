@@ -727,7 +727,7 @@ class ConstructionSystem final : public IConstructionSystem {
   /// What a demolished unit was holding goes out through the store door —
   /// none of the receivers above its ceiling (task A3,
   /// manual/72-storage-and-alarms.md §2). What no store has room for is
-  /// GONE, and booked to the year's no_room: demolishing a full barn with
+  /// GONE, and booked to the year's lost_no_room: demolishing a full barn with
   /// nowhere to put its contents is the player's decision, and the cost of
   /// it belongs in the book rather than in silence.
   void MoveStockOut(WorldState& current, std::uint32_t row) {
@@ -739,7 +739,7 @@ class ConstructionSystem final : public IConstructionSystem {
       }
       const ResourceId resource{static_cast<std::uint16_t>(index)};
       const Grams placed = DeliverOut(current, row, resource, stock[index]);
-      AddLedgerAmount(current.ledger.current.no_room, resource, stock[index] - placed);
+      AddLedgerAmount(current.ledger.current.lost_no_room, resource, stock[index] - placed);
     }
   }
 

@@ -245,10 +245,10 @@ int main() {
     waiting += field.reaped_grams;
   }
   core::Grams lost_for_want_of_room = 0;
-  for (const core::Grams amount : state.ledger.closed.no_room) {
+  for (const core::Grams amount : state.ledger.closed.lost_no_room) {
     lost_for_want_of_room += amount > 0 ? amount : 0;
   }
-  for (const core::Grams amount : state.ledger.current.no_room) {
+  for (const core::Grams amount : state.ledger.current.lost_no_room) {
     lost_for_want_of_room += amount > 0 ? amount : 0;
   }
   std::cout << "harvest_first_year: the fields gave " << reaped_tonnes

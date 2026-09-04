@@ -58,7 +58,7 @@ namespace core {
 /// WRITE MAP — all writers sequential, one per block except where said:
 ///   people, satiety ......... core_residents, demography sub-step
 ///   issued, ration, nets .... core_residents, the family exchange
-///   no_room ................. every sequential writer that delivers through
+///   lost_no_room ............ every sequential writer that delivers through
 ///                             the store door and cannot keep the remainder:
 ///                             production (harvest, herds, straw), construction
 ///                             (demolition), genesis (a start table that overfills)
@@ -145,7 +145,20 @@ struct YearLedger {
   /// meadows' hay, straw as the by-product.
   ResourceAmounts harvest;
 
-  /// What found NO ROOM in the stores and is gone: the store's ceiling is
+  /// WHAT IS GONE FOR WANT OF ROOM — and the name carries the "gone",
+  /// because the name is what a reader trusts.
+  ///
+  /// It was called `no_room` until 2026-09-05, and that name cost a
+  /// measurement: an oat balance built to close came up 3.778 t short,
+  /// because "no room" reads as a state — lying somewhere, waiting — and
+  /// every one of the five writers here means a LOSS. Waiting has its own
+  /// column and its own word (the harvest on its field, below).
+  ///
+  /// THE CLASS, worth more than the rename: A COLUMN NAMED AFTER ITS CAUSE
+  /// IS READ AS A DESCRIPTION OF A STATE. "No room" says what happened; the
+  /// reader hears where the grain is.
+  ///
+  /// What found no room in the stores and is gone: the store's ceiling is
   /// a refusal at the door (manual/72-storage-and-alarms.md §2), and what
   /// a refused delivery cannot keep — a herd's produce with nowhere to go,
   /// straw, a demolished unit's leftovers, a reaped crop the snow took off
@@ -153,7 +166,7 @@ struct YearLedger {
   /// and the report can say how much the missing storage cost. A refusal
   /// that CAN be kept (the harvest waiting on its field, FieldRow::
   /// reaped_grams) is not a loss and is not booked until it becomes one.
-  ResourceAmounts no_room;
+  ResourceAmounts lost_no_room;
 
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 
@@ -189,10 +202,10 @@ struct YearLedger {
   ResourceAmounts delivered;  ///< Shipped against the plan.
 
   /// What went bad in a store or a larder over the year, by resource
-  /// (task A4; transport design §10). A separate column from `no_room`
-  /// because they are different failures with different cures: no_room is
+  /// (task A4; transport design §10). A separate column from `lost_no_room`
+  /// because they are different failures with different cures: lost_no_room is
   /// a barn too small, spoiled is a barn too slow. Nothing vanishes without
-  /// a line — the same rule that gave no_room its column.
+  /// a line — the same rule that gave lost_no_room its column.
   ResourceAmounts spoiled;
 
   // -- labor ---------------------------------------------------------------

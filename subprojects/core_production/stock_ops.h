@@ -184,7 +184,7 @@ inline Grams FreeRoomGrams(const UnitRow& unit, const ProductionConfig& config) 
 /// DOOR, not a loss: this function puts what fits and says how much that
 /// was, and what to do with the remainder is the caller's — the harvest
 /// waits on its field, a herd's produce is simply not made, and what can be
-/// kept nowhere is booked to the year's `no_room` so that nothing vanishes
+/// kept nowhere is booked to the year's `lost_no_room` so that nothing vanishes
 /// without a line. A caller that ignores the return value is the bug this
 /// signature exists to make visible.
 ///

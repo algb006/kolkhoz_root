@@ -64,6 +64,38 @@ double Tonnes(core::Grams grams) {
   return static_cast<double>(grams) / 1.0e6;
 }
 
+/// @brief What the seed fund WOULD demand for one crop today, recomputed
+/// here from the tables rather than read out of the core.
+///
+/// A second tally by another road, which is the only kind worth having: the
+/// core walks the same fields in family_exchange.cpp (IssueReserve) by the
+/// same rule — a field that is IDLE and carries this crop in its coming slot
+/// reserves its sowing norm — and a disagreement between the two would be
+/// the finding.
+core::Grams SeedDemand(const core::WorldState& world,
+                       core::CropId crop,
+                       float sowing_norm_kg_per_ha) {
+  core::Grams demand = 0;
+  for (const core::FieldRow& field : world.fields.rows) {
+    if (field.phase != core::FieldPhase::kIdle || field.rotation_year0.value != crop.value) {
+      continue;
+    }
+    demand += core::GramsFromKilograms(sowing_norm_kg_per_ha * field.area_ga);
+  }
+  return demand;
+}
+
+/// @brief What the STORES hold — the quantity the fund is subtracted from
+/// before anything is handed out (FreeStock). Pantries are not stores: what
+/// a family already holds is past the fund.
+core::Grams VillageStores(const core::WorldState& world, core::ResourceId resource) {
+  core::Grams total = 0;
+  for (const core::UnitRow& unit : world.units.rows) {
+    total += core::AmountOf(unit.stock, resource);
+  }
+  return total;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -86,10 +118,22 @@ int main(int argc, char** argv) {
   }
   const core::ResourceId oat{static_cast<std::uint16_t>(oat_row)};
 
+  const core::ITable* crops = world.tables->FindTable("crops");
+  const std::uint32_t oat_crop_row =
+      crops == nullptr ? core::kNoTableRow : crops->FindRowByKey("oat");
+  if (oat_crop_row == core::kNoTableRow) {
+    std::cout << "FAIL: the tables have no oat crop\n";
+    return 1;
+  }
+  const core::CropId oat_crop{static_cast<std::uint16_t>(oat_crop_row)};
+  const std::optional<float> norm =
+      crops->CellReal(oat_crop_row, crops->FindColumn("sowing_norm_kg_per_ha"));
+  const float sowing_norm = norm ? *norm : 0.0F;
+
   std::cout << std::fixed << std::setprecision(3);
   std::cout << "oat_balance: " << kYears << " years, seed " << seed << ", tonnes\n";
-  std::cout << "year  opening  harvest      fed    eaten  spoiled     sown  shipped  no_room"
-               "  closing   residual   cycle\n";
+  std::cout << "year  opening  harvest      fed    eaten  spoiled     sown  shipped  lost_no_room"
+               "  closing   residual   cycle   demand     held  days\n";
 
   core::Grams opening = HeldEverywhere(world.State(), oat);
   core::Grams sown_last_year = 0;
@@ -99,7 +143,32 @@ int main(int argc, char** argv) {
   bool ever_sown = false;
 
   for (std::uint32_t year = 1; year <= kYears; ++year) {
-    run::AdvanceYear(*world);
+    // Day by day, because the fund is recomputed on every hand-out and a
+    // yearly snapshot would photograph one arbitrary morning of it.
+    core::Grams demand_peak = 0;
+    core::Grams held_peak = 0;
+    std::uint32_t demanding_days = 0;
+    // WHEN in the year the fund stands, not only how long. The demand lives
+    // while the field is IDLE; the moment ploughing opens, the field leaves
+    // that phase and the fund stops protecting the grain — weeks before the
+    // sowing actually takes it.
+    std::uint32_t first_demand_day = core::kDaysPerYear;
+    std::uint32_t last_demand_day = 0;
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      run::AdvanceDays(*world, 1);
+      const core::WorldState& today = world.State();
+      const core::Grams demand = SeedDemand(today, oat_crop, sowing_norm);
+      if (demand > 0) {
+        ++demanding_days;
+        first_demand_day = std::min(first_demand_day, day);
+        last_demand_day = std::max(last_demand_day, day);
+      }
+      demand_peak = std::max(demand_peak, demand);
+      // What the fund actually FREEZES is the smaller of what it asks for
+      // and what the stores hold: a demand of nine tonnes against an empty
+      // store holds nothing at all.
+      held_peak = std::max(held_peak, std::min(demand, VillageStores(today, oat)));
+    }
     const core::WorldState& state = world.State();
     if (state.ledger.closed.year == last_closed) {
       continue;  // the books have not turned; nothing to balance
@@ -119,11 +188,11 @@ int main(int argc, char** argv) {
     // the stock of a store that fell down. The name says "no room" and the
     // meaning is "gone", which is why a balance that trusted the name came
     // up short.
-    const core::Grams no_room = core::AmountOf(book.no_room, oat);
+    const core::Grams lost_no_room = core::AmountOf(book.lost_no_room, oat);
     const core::Grams closing = HeldEverywhere(state, oat);
 
     const core::Grams expected =
-        opening + harvest - fed - eaten - spoiled - sown - shipped - no_room;
+        opening + harvest - fed - eaten - spoiled - sown - shipped - lost_no_room;
     const core::Grams residual = closing - expected;
     // A kilogram of one crop over a year of a whole settlement is the width
     // of the rounding, not of a leak.
@@ -141,9 +210,14 @@ int main(int argc, char** argv) {
     std::cout << std::setw(4) << book.year << std::setw(9) << Tonnes(opening) << std::setw(9)
               << Tonnes(harvest) << std::setw(9) << Tonnes(fed) << std::setw(9) << Tonnes(eaten)
               << std::setw(9) << Tonnes(spoiled) << std::setw(9) << Tonnes(sown) << std::setw(9)
-              << Tonnes(shipped) << std::setw(9) << Tonnes(no_room) << std::setw(9)
+              << Tonnes(shipped) << std::setw(9) << Tonnes(lost_no_room) << std::setw(9)
               << Tonnes(closing) << std::setw(11) << Tonnes(residual) << std::setw(8) << cycle
-              << '\n';
+              << std::setw(9) << Tonnes(demand_peak) << std::setw(9) << Tonnes(held_peak)
+              << std::setw(6) << demanding_days;
+    if (demanding_days > 0) {
+      std::cout << "  (days " << first_demand_day << "-" << last_demand_day << ")";
+    }
+    std::cout << '\n';
 
     opening = closing;
     sown_last_year = sown;

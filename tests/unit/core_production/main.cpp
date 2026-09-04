@@ -689,9 +689,10 @@ int CheckStoreCeilingAndAlarms() {
       (world.ledger.current.harvest.empty() ? core::Grams{0} : world.ledger.current.harvest[0]) ==
           10'000 * core::kGramsPerKilogram,
       "the book still records the whole yield: the field gave it");
-  failures += Expect((world.ledger.current.no_room.empty() ? core::Grams{0}
-                                                           : world.ledger.current.no_room[0]) == 0,
-                     "and nothing is written off — what waits is not lost");
+  failures += Expect(
+      (world.ledger.current.lost_no_room.empty() ? core::Grams{0}
+                                                 : world.ledger.current.lost_no_room[0]) == 0,
+      "and nothing is written off — what waits is not lost");
 
   // Both alarms stand: the store is full, and the field is holding produce.
   std::vector<core::Alarm> alarms;

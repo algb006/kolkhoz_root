@@ -646,7 +646,7 @@ class ProductionSystem final : public IProductionSystem {
           // cart the buffer can hold the previous crop, and booking it under
           // this year's resource would put the loss in the wrong column.
           AddLedgerAmount(
-              current.ledger.current.no_room, field.reaped_resource, field.reaped_grams);
+              current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
           field.reaped_grams = 0;
           field.reaped_resource = ResourceId{};
         }
@@ -706,7 +706,7 @@ class ProductionSystem final : public IProductionSystem {
   /// manual/72-storage-and-alarms.md §2).
   /// @return What did NOT fit, in grams. The caller decides what that means:
   ///         a field keeps it (FieldRow::reaped_grams), a meadow's hay has
-  ///         nowhere else and is booked to the year's no_room.
+  ///         nowhere else and is booked to the year's lost_no_room.
   Grams DeliverHarvest(WorldState& current, ResourceId resource, Grams amount) const {
     Grams placed = 0;
     if (resource.value == config_.hay_resource.value) {
@@ -735,7 +735,7 @@ class ProductionSystem final : public IProductionSystem {
     // manger and the stores or it is lost, and either way it is booked.
     const Grams hay_lost = DeliverHarvest(current, config_.hay_resource, hay);
     AddLedgerAmount(current.ledger.current.harvest, config_.hay_resource, hay);
-    AddLedgerAmount(current.ledger.current.no_room, config_.hay_resource, hay_lost);
+    AddLedgerAmount(current.ledger.current.lost_no_room, config_.hay_resource, hay_lost);
     current.ledger.current.area_harvested_ha += field.area_ga;
     field.work_days_remaining = 0.0F;
     MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the grass stands again next summer
@@ -950,7 +950,8 @@ class ProductionSystem final : public IProductionSystem {
       // stood a full season by now, so it is written off, loudly, rather
       // than silently relabelled as this year's.
       if (field.reaped_grams > 0 && field.reaped_resource.value != crop.resource.value) {
-        AddLedgerAmount(current.ledger.current.no_room, field.reaped_resource, field.reaped_grams);
+        AddLedgerAmount(
+            current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
         field.reaped_grams = 0;
         field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
       }
@@ -980,7 +981,8 @@ class ProductionSystem final : public IProductionSystem {
       AddLedgerAmount(current.ledger.current.harvest, config_.straw_resource, straw);
       // Straw has no buffer of its own — it is not why a field waits — so
       // what did not fit is gone, and gone with a line in the book.
-      AddLedgerAmount(current.ledger.current.no_room, config_.straw_resource, straw - straw_placed);
+      AddLedgerAmount(
+          current.ledger.current.lost_no_room, config_.straw_resource, straw - straw_placed);
     }
     // The district's plan accrues as the grain is reaped: it is "just a
     // number" in phase 1 (plan §11), a share of the year's own harvest,

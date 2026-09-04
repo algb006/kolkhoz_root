@@ -585,7 +585,7 @@ int main(int argc, char** argv) {
   // A LIMIT THAT BINDS MUST SAY SO. A run that quietly starves a village
   // against a ceiling is an argument, not a measurement (boss, 2026-09-03).
   core::Grams lost_to_room = 0;
-  for (const core::Grams lost : state.ledger.closed.no_room) {
+  for (const core::Grams lost : state.ledger.closed.lost_no_room) {
     lost_to_room += lost;
   }
   if (lost_to_room > 0) {

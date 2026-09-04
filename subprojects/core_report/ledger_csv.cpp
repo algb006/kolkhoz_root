@@ -306,7 +306,7 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // What the stores had no room for and nobody could keep (task A3): the
   // first column that says what the missing storage cost, rather than
   // leaving the year's book to balance by silence.
-  EmitResourceBlock(out, resources, "no_room", book.no_room);
+  EmitResourceBlock(out, resources, "lost_no_room", book.lost_no_room);
   EmitResourceBlock(out, resources, "spoiled", book.spoiled);
   EmitResourceBlock(out, resources, "seed", book.seed);
   EmitResourceBlock(out, resources, "delivered", book.delivered);

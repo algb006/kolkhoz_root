@@ -131,7 +131,7 @@ class FixturePolicy {
   /// THE FIELD is what a chairman actually sees, and he sees it the same
   /// week: since task A4 a loaded field can start nothing — you do not
   /// plough grain into the ground you grew it on — so a load that waits
-  /// costs the next sowing, not just the grain. The ledger's `no_room` is
+  /// costs the next sowing, not just the grain. The ledger's `lost_no_room` is
   /// the second signal and a late one: it is only booked when the snow takes
   /// what was still out, by which time the year is lost. Watching only the
   /// late signal is what left the run's chairman a year behind his village.
@@ -149,7 +149,7 @@ class FixturePolicy {
         return true;
       }
     }
-    for (const core::Grams lost : world.ledger.closed.no_room) {
+    for (const core::Grams lost : world.ledger.closed.lost_no_room) {
       if (lost > 0) {
         return true;
       }

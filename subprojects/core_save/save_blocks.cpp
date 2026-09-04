@@ -82,7 +82,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.eaten);
 
   sink.WriteAmounts(DefKind::kResource, book.harvest);
-  sink.WriteAmounts(DefKind::kResource, book.no_room);
+  sink.WriteAmounts(DefKind::kResource, book.lost_no_room);
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
@@ -131,7 +131,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.eaten = source.ReadAmounts(DefKind::kResource);
 
   book.harvest = source.ReadAmounts(DefKind::kResource);
-  book.no_room = source.ReadAmounts(DefKind::kResource);
+  book.lost_no_room = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
   book.seed = source.ReadAmounts(DefKind::kResource);
   book.area_sown_ha = in.ReadFloat();

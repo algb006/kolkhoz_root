@@ -527,7 +527,7 @@ void PlaceStartStock(WorldState& world,
     // the start set, no more", start design §5). A row that overfills its
     // place is a table error, not a game state: genesis is setup code and
     // may say so out loud, and what did not fit is booked to the year's
-    // no_room so the first report shows it rather than hiding it (task A3).
+    // lost_no_room so the first report shows it rather than hiding it (task A3).
     const Grams capacity = TypeCapacityGrams(unit_types, unit_levels, place.type, place.level);
     if (capacity < 0) {
       continue;
@@ -543,7 +543,7 @@ void PlaceStartStock(WorldState& world,
     }
     const Grams over = held - capacity;
     LogError("genesis: start stock overfills '" + std::string(where) +
-             "'; the excess is dropped and booked as no_room");
+             "'; the excess is dropped and booked as lost_no_room");
     // MEM-001 fix. The read below was written defensively and the write two
     // lines under it was not: a row PutStock refused never grew the vector,
     // so this cell may not exist — and then there is nothing here to trim
@@ -555,7 +555,7 @@ void PlaceStartStock(WorldState& world,
     const Grams here = place.stock[resource.value];
     const Grams cut = over < here ? over : here;
     place.stock[resource.value] = here - cut;
-    AddLedgerAmount(world.ledger.current.no_room, resource, cut);
+    AddLedgerAmount(world.ledger.current.lost_no_room, resource, cut);
   }
 }
 
