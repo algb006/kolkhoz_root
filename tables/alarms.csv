@@ -1,0 +1,16 @@
+# generated from db/design.db — do not edit by hand
+# the nine alarms in the order the top bar's stack ranks them: severity_rank 1 is the heaviest and takes the single red the bar allows (office design §7)
+# the rank is UNIQUE, so it is a total order over KINDS and novelty only ever breaks ties between INSTANCES of one kind — two hungry families, not a full store against a starving herd
+# the kinds themselves are the core's AlarmKind; what the design owns is their order and their subject, and until 5 September 2026 that had no home at all, which is how a ranking rule came to be written for a carrier that did not exist
+# an alarm's answer — what the player can do — is design text and stays in the database: a signal with no answer is a reproach, and the core carries no reproaches
+# no_road is a declared stub: the core has no roads, the predicate never fires, and the kind is kept so the layer's map has a key
+key,subject,severity_rank
+family_going_hungry,family,1
+herd_starving,herd,2
+harvest_waiting_on_field,field,3
+seed_short,field,4
+harvest_will_not_fit,field,5
+yard_without_groom,unit,6
+site_without_materials,unit,7
+store_full,unit,8
+no_road,unit,9
