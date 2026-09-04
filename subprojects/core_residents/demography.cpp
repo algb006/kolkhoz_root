@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_common/emit_event.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
@@ -185,14 +186,10 @@ void RemoveResident(WorldState& current, ResidentId id) {
   // it would be a post the player never learns is empty.
   const PostAssignment post = current.residents.rows[row_index].post;
   if (post.profession.value != kInvalidDefIdValue) {
-    SimEvent vacated;
-    vacated.tick = current.calendar.tick;
-    vacated.kind = EventKind::kPostVacated;
-    vacated.severity = EventSeverity::kNotable;
+    SimEvent& vacated = EmitEvent(current, EventKind::kPostVacated, EventSeverity::kNotable);
     vacated.resident = id;
     vacated.unit = post.unit;
     vacated.amount = static_cast<std::int64_t>(post.profession.value);
-    current.step_events.push_back(vacated);
   }
   RemoveRow(current.residents, id);
   const std::uint32_t spouse_row = FindRow(current.residents, spouse);
@@ -233,6 +230,17 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
     }
   }
   for (const ResidentId id : dead) {
+    // BEFORE the row goes: afterwards there is no family left to name, and
+    // an event that says only "somebody died" is a line the player cannot
+    // act on. The two ways out of the village are announced at their own
+    // call sites and not inside RemoveResident, which cannot tell them
+    // apart — and telling them apart is the whole content of the news.
+    const std::uint32_t row = FindRow(current.residents, id);
+    SimEvent& died = EmitEvent(current, EventKind::kResidentDied, EventSeverity::kNotable);
+    died.resident = id;
+    if (row != kNoRow) {
+      died.family = current.residents.rows[row].family;
+    }
     RemoveResident(current, id);
   }
   current.ledger.current.deaths += static_cast<std::uint32_t>(dead.size());
@@ -261,6 +269,12 @@ void RunOutflow(const LifeConfig& config,
     }
   }
   for (const ResidentId id : leaving) {
+    const std::uint32_t row = FindRow(current.residents, id);
+    SimEvent& left = EmitEvent(current, EventKind::kResidentLeft, EventSeverity::kNotable);
+    left.resident = id;
+    if (row != kNoRow) {
+      left.family = current.residents.rows[row].family;
+    }
     RemoveResident(current, id);
   }
   // Booked apart from deaths, and that is the whole reason the ledger
@@ -360,7 +374,15 @@ void RunBirths(const LifeConfig& config,
     child.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
     child.satiety = 70.0F;
     child.health = DrawInRange(current.rng, 70.0F, 95.0F);
-    AppendRow(current.residents, child);
+    const ResidentId child_id = AppendRow(current.residents, child);
+    // Said out loud where it happens. Until 2026-09-05 this line and the
+    // three below it were silent: a hundred and seventy-three children were
+    // born over four hundred days and the journal carried none of them,
+    // while a vacated post two hundred lines above this one announced
+    // itself correctly.
+    SimEvent& born = EmitEvent(current, EventKind::kResidentBorn, EventSeverity::kNotable);
+    born.resident = child_id;
+    born.family = child.family;
     // Counted here and not from `mothers`: the child-mortality draw above
     // skips some of them, and a birth nobody survived is not a birth the
     // village saw.
@@ -466,6 +488,11 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
       current.residents.rows[bride_row].family = home;
       current.residents.rows[groom_row].spouse = bride_id;
       current.residents.rows[groom_row].family = home;
+      // The bride and the household that did not exist a line ago, which is
+      // what the kind's contract asks for (event_state.h).
+      SimEvent& wedding = EmitEvent(current, EventKind::kWedding, EventSeverity::kNotable);
+      wedding.resident = bride_id;
+      wedding.family = home;
       current.ledger.current.weddings += 1;
       // Both parents' yards may now stand empty — a household of one that
       // married out leaves nothing behind but its books.
@@ -502,7 +529,10 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     migrant.stamina = DrawInRange(current.rng, 20.0F, 80.0F);
     migrant.optimism = DrawInRange(current.rng, 20.0F, 80.0F);
     migrant.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
-    AppendRow(current.residents, migrant);
+    const ResidentId migrant_id = AppendRow(current.residents, migrant);
+    SimEvent& arrived = EmitEvent(current, EventKind::kResidentArrived, EventSeverity::kNotable);
+    arrived.resident = migrant_id;
+    arrived.family = migrant.family;
     current.ledger.current.arrivals += 1;
   }
 }

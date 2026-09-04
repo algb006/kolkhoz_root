@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -241,6 +242,7 @@ void RunDistribution(const FoodConfig& config,
     }
   }
   const float redeemed_share = wanted_kcal > 0.0F ? covered_kcal / wanted_kcal : 0.0F;
+  bool issued_to_anyone = false;
   for (FamilyRow& family : current.families.rows) {
     const TrudodniHundredths outstanding = family.trudodni_account - family.trudodni_redeemed;
     if (outstanding <= 0) {
@@ -262,6 +264,14 @@ void RunDistribution(const FoodConfig& config,
     }
     family.trudodni_redeemed +=
         static_cast<TrudodniHundredths>(static_cast<float>(outstanding) * redeemed_share);
+    issued_to_anyone = true;
+  }
+  if (issued_to_anyone) {
+    // ONE EVENT FOR THE SETTLEMENT, not one per household: the kind's
+    // contract names no family (event_state.h), and it is right not to —
+    // the distribution is a day of the village, and a hundred and forty
+    // identical lines would bury the day it happened.
+    EmitEvent(current, EventKind::kDistributionIssued, EventSeverity::kNotable);
   }
 }
 
@@ -292,6 +302,7 @@ void RunRation(const FoodConfig& config,
     if (eaters == 0) {
       continue;
     }
+    bool given_anything = false;
     for (std::uint32_t index = 0; index < config.resources.size(); ++index) {
       const float norm = config.resources[index].ration_kg_per_day;
       if (norm <= 0.0F) {
@@ -304,6 +315,14 @@ void RunRation(const FoodConfig& config,
       const Grams given = TakeFromUnits(current, resource, issue);
       AddToPantry(current.families.rows[row], resource, given);
       AddLedgerAmount(current.ledger.current.ration, resource, given);
+      given_anything = given_anything || given > 0;
+    }
+    if (given_anything) {
+      // Per household, unlike the distribution above, and for the opposite
+      // reason: the safety ration is a statement about THIS family, and
+      // which families are on it is the whole information in it.
+      SimEvent& event = EmitEvent(current, EventKind::kRationIssued, EventSeverity::kNotable);
+      event.family = id;
     }
   }
 }

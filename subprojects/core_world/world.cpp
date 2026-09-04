@@ -15,6 +15,7 @@
 
 #include "campaign_tables.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
@@ -127,17 +128,13 @@ class EventsSlot final : public ISequentialPhase {
         default:
           continue;  // accepted or active: still the consumer's
       }
-      SimEvent event;
-      event.tick = current.calendar.tick;
-      event.kind = kind;
-      event.severity = EventSeverity::kNotable;
+      SimEvent& event = EmitEvent(current, kind, EventSeverity::kNotable);
       event.order = current.orders.row_ids[row];
       event.unit = order.unit;
       event.resident = order.resident;
       event.field = order.field;
       event.herd = order.herd;
       event.amount = static_cast<std::int64_t>(order.refusal);
-      current.step_events.push_back(event);
       done.push_back(current.orders.row_ids[row]);
     }
     for (const OrderId id : done) {
@@ -201,6 +198,12 @@ class EventsSlot final : public ISequentialPhase {
     current.ledger.closed = std::move(current.ledger.current);
     current.ledger.closed.year = ended;
     current.ledger.current = YearLedger{};
+    // The books rotated, and the year that closed rides in `amount` as the
+    // kind's contract says. Interrupting on purpose: a fast-forward that
+    // runs past a year's end has run past the one moment the player is
+    // certain to want to look at.
+    SimEvent& event = EmitEvent(current, EventKind::kYearClosed, EventSeverity::kInterrupting);
+    event.amount = static_cast<std::int64_t>(ended);
   }
 };
 

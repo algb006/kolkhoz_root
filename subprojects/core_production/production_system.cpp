@@ -24,12 +24,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
@@ -59,6 +61,38 @@ void ClearFieldWeather(FieldRow& field) {
   field.drought_run_days = 0;
   field.wet_run_days = 0;
   field.weather_state = FieldWeatherState::kNone;
+}
+
+/// @brief The id of a field row, from the row itself.
+///
+/// The field loops of this file hand a REFERENCE around — that is how they
+/// were written, and threading an id through a dozen helpers to say one
+/// sentence in the journal would be a larger change than the sentence. The
+/// rows live in a vector, so the reference names its own index.
+///
+/// PRECONDITION, and the only one: `field` is a row of `current.fields`, not
+/// a copy of one. Every caller here is inside a loop over those rows; the
+/// assert catches the day somebody passes a temporary.
+FieldId FieldIdOf(const WorldState& current, const FieldRow& field) {
+  const auto index = static_cast<std::size_t>(&field - current.fields.rows.data());
+  assert(index < current.fields.row_ids.size());
+  return index < current.fields.row_ids.size() ? current.fields.row_ids[index] : FieldId{};
+}
+
+/// @brief Moves a field into a phase AND says so.
+///
+/// One function because there are ten places that move a phase, and ten
+/// copies of "set it, then announce it" is exactly how eighteen event kinds
+/// came to have no emitter at all (boss, 2026-09-05). The announcement
+/// carries the NEW phase in `amount`, as the kind's contract says.
+void MoveFieldPhase(WorldState& current, FieldRow& field, FieldPhase phase) {
+  if (field.phase == phase) {
+    return;  // a phase that did not change is not news
+  }
+  field.phase = phase;
+  SimEvent& event = EmitEvent(current, EventKind::kFieldPhaseChanged);
+  event.field = FieldIdOf(current, field);
+  event.amount = static_cast<std::int64_t>(phase);
 }
 
 /// The production slot (phase 4), parallel by field: accumulates the
@@ -358,13 +392,13 @@ class ProductionSystem final : public IProductionSystem {
       field.work_days_remaining = 0.0F;
       switch (field.phase) {
         case FieldPhase::kPlowing:
-          OpenPhase(field, FieldPhase::kHarrowing);
+          OpenPhase(current, field, FieldPhase::kHarrowing);
           break;
         case FieldPhase::kHarrowing:
           if (field.crop.value == kInvalidDefIdValue) {
             FinishSowing(current, field);  // bare fallow: nothing to sow
           } else {
-            OpenPhase(field, FieldPhase::kSowing);
+            OpenPhase(current, field, FieldPhase::kSowing);
           }
           break;
         case FieldPhase::kSowing:
@@ -401,8 +435,8 @@ class ProductionSystem final : public IProductionSystem {
   /// @brief Moves the field into a working phase and sizes its demand:
   /// area x the phase's norm. The crop is the one in the ground or, while
   /// the field is still being prepared, the one this year's rotation plans.
-  void OpenPhase(FieldRow& field, FieldPhase phase) const {
-    field.phase = phase;
+  void OpenPhase(WorldState& current, FieldRow& field, FieldPhase phase) const {
+    MoveFieldPhase(current, field, phase);
     if (field.kind != LandKind::kArable) {
       // Grass is mown, never ploughed, harrowed or sown: the meadow has one
       // working phase in the year and one norm to size it.
@@ -460,7 +494,7 @@ class ProductionSystem final : public IProductionSystem {
       const bool bare =
           field.phase == FieldPhase::kGrowing && field.crop.value == kInvalidDefIdValue;
       if (bare) {
-        field.phase = FieldPhase::kIdle;  // the ploughed fallow stood its year
+        MoveFieldPhase(current, field, FieldPhase::kIdle);  // the fallow stood its year
         if (field.manure_applied != 0) {
           // A fallow has no harvest to settle its manure at: it settles here.
           field.fertility += ManureBonus(field);
@@ -484,7 +518,7 @@ class ProductionSystem final : public IProductionSystem {
           field.rotation_year0.value != field.crop.value) {
         field.last_crop = field.crop;
         field.crop = CropId{};
-        field.phase = FieldPhase::kIdle;
+        MoveFieldPhase(current, field, FieldPhase::kIdle);
         ClearFieldWeather(field);
       }
     }
@@ -540,6 +574,15 @@ class ProductionSystem final : public IProductionSystem {
       return OrderRefusal::kRuleForbids;
     }
     current.units.rows[row].paused = paused;
+    // The two verbs announce themselves here, where the flag turns, and not
+    // in the order book beside kOrderDone: the order is that the chairman
+    // asked, the event is that the unit stopped. They are the same tick and
+    // different facts, and only the second one is what the player sees in
+    // the world.
+    SimEvent& event = EmitEvent(current,
+                                paused != 0 ? EventKind::kUnitPaused : EventKind::kUnitResumed,
+                                EventSeverity::kNotable);
+    event.unit = unit;
     return OrderRefusal::kNone;
   }
 
@@ -610,15 +653,24 @@ class ProductionSystem final : public IProductionSystem {
         field.last_crop = field.crop;
         field.repeat_years = 0;
         field.crop = CropId{};
-        field.phase = FieldPhase::kIdle;
+        MoveFieldPhase(current, field, FieldPhase::kIdle);
         field.work_days_remaining = 0.0F;
         ClearFieldWeather(field);
         field.manure_applied = 0;
         current.ledger.current.area_lost_ha += field.area_ga;
+        // AND HERE IT IS SAID. The comment that used to stand on these lines
+        // claimed the loss "is an event already — kFieldLost, emitted where
+        // the events slot folds it". It was not: the kind had no emitter
+        // anywhere in the core, and the sentence describing the emission
+        // outlived the emission it described (boss, 2026-09-05). Snow on an
+        // unreaped field is the only TOTAL loss of a harvest in the game, so
+        // it interrupts a fast-forward: the player is entitled to see the
+        // day it happened, not the year's total.
+        SimEvent& lost = EmitEvent(current, EventKind::kFieldLost, EventSeverity::kInterrupting);
+        lost.field = FieldIdOf(current, field);
         // No LogWarning: phase code does not log (core_log contract,
-        // DEADLOCK-001). The loss is an event already — kFieldLost, emitted
-        // where the events slot folds it — and a condition worth telling the
-        // player is an alarm, not a line in a file nobody opens.
+        // DEADLOCK-001), and a condition worth telling the player is an
+        // alarm, not a line in a file nobody opens.
         continue;
       }
       if (field.phase != FieldPhase::kGrowing) {
@@ -631,7 +683,7 @@ class ProductionSystem final : public IProductionSystem {
       const bool cut_today = !crop.is_perennial || (month == crop.harvest_from_month &&
                                                     current.calendar.date.day_in_month == 0);
       if (in_window && cut_today) {
-        OpenPhase(field, FieldPhase::kHarvest);
+        OpenPhase(current, field, FieldPhase::kHarvest);
       }
     }
   }
@@ -640,12 +692,12 @@ class ProductionSystem final : public IProductionSystem {
   /// out. No sowing window, no temperature gate, no snow loss (grass winters
   /// where it grew), no fertility — a meadow is land, not a crop
   /// (land_state.h, LandKind; boss answer Q6).
-  void RunMeadow(const WorldState& current, FieldRow& field, std::uint8_t month) const {
+  void RunMeadow(WorldState& current, FieldRow& field, std::uint8_t month) const {
     if (field.phase != FieldPhase::kGrowing) {
       return;  // already being mown, and one cut a year is all there is
     }
     if (month == config_.farming.meadow_cut_month && current.calendar.date.day_in_month == 0) {
-      OpenPhase(field, FieldPhase::kHarvest);
+      OpenPhase(current, field, FieldPhase::kHarvest);
     }
   }
 
@@ -686,7 +738,7 @@ class ProductionSystem final : public IProductionSystem {
     AddLedgerAmount(current.ledger.current.no_room, config_.hay_resource, hay_lost);
     current.ledger.current.area_harvested_ha += field.area_ga;
     field.work_days_remaining = 0.0F;
-    field.phase = FieldPhase::kGrowing;  // the grass stands again next summer
+    MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the grass stands again next summer
   }
 
   /// The field year opens here: the sowing window and the temperature say
@@ -756,7 +808,7 @@ class ProductionSystem final : public IProductionSystem {
       current.ledger.current.manure_plowed_in += dose;
       current.ledger.current.area_manured_ha += field.area_ga * share;
     }
-    OpenPhase(field, FieldPhase::kPlowing);
+    OpenPhase(current, field, FieldPhase::kPlowing);
   }
 
   /// THE WINTER'S MANURE PLAN, made at the year's turn: the heap is dealt out
@@ -836,7 +888,7 @@ class ProductionSystem final : public IProductionSystem {
     if (crop_id.value == kInvalidDefIdValue) {
       // Bare fallow: ploughed and harrowed, nothing goes in. It stands as
       // ground with no crop until the year turns or a winter crop takes it.
-      field.phase = FieldPhase::kGrowing;
+      MoveFieldPhase(current, field, FieldPhase::kGrowing);
       field.work_days_remaining = 0.0F;
       return;
     }
@@ -857,7 +909,7 @@ class ProductionSystem final : public IProductionSystem {
     }
     current.ledger.current.area_sown_ha += field.area_ga;
     field.crop = crop_id;
-    field.phase = FieldPhase::kGrowing;
+    MoveFieldPhase(current, field, FieldPhase::kGrowing);
     field.work_days_remaining = 0.0F;
     ClearFieldWeather(field);
   }
@@ -869,7 +921,7 @@ class ProductionSystem final : public IProductionSystem {
       return;
     }
     if (field.crop.value >= config_.crops.size()) {
-      field.phase = FieldPhase::kIdle;
+      MoveFieldPhase(current, field, FieldPhase::kIdle);
       return;
     }
     Harvest(current, field, config_.crops[field.crop.value]);
@@ -910,6 +962,15 @@ class ProductionSystem final : public IProductionSystem {
     // with nowhere to put its grain is a different finding entirely.
     AddLedgerAmount(current.ledger.current.harvest, crop.resource, yield_grams);
     current.ledger.current.area_harvested_ha += field.area_ga;
+    // What this field gave, and of what: the three fields the kind's
+    // contract names (event_state.h). Routine — a harvest is the year
+    // working, not news — but the panel and the story layer both read the
+    // journal, and a year of harvests that left no trace in it is a year
+    // they cannot describe.
+    SimEvent& reaped = EmitEvent(current, EventKind::kFieldHarvested);
+    reaped.field = FieldIdOf(current, field);
+    reaped.resource = crop.resource;
+    reaped.amount = static_cast<std::int64_t>(yield_grams);
     // Straw is what the field leaves behind, and it is a feed of its own —
     // own and free, a reserve ration with a lowered effect but plainly there
     // in a winter manger (design db crop.straw_ratio).
@@ -984,7 +1045,7 @@ class ProductionSystem final : public IProductionSystem {
     // day as the village eats (seventh reconciliation pass).
     field.haul_days_written = field.haul_days_remaining;
     if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
-      field.phase = FieldPhase::kGrowing;  // the stand yields again next summer
+      MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the stand yields again
       return;
     }
     // A perennial whose next slot is something else ends at this cut, not at
@@ -995,7 +1056,7 @@ class ProductionSystem final : public IProductionSystem {
       field.last_crop = field.crop;
     }
     field.crop = CropId{};
-    field.phase = FieldPhase::kIdle;
+    MoveFieldPhase(current, field, FieldPhase::kIdle);
   }
 
   ProductionConfig config_;

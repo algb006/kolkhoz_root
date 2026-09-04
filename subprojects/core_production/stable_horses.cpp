@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
@@ -74,13 +75,9 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
   if (moved_heads == 0) {
     return;  // nothing actually came in: a loaded save, and no news in it
   }
-  SimEvent event;
-  event.tick = current.calendar.tick;
-  event.kind = EventKind::kHorsesStabled;
-  event.severity = EventSeverity::kNotable;
+  SimEvent& event = EmitEvent(current, EventKind::kHorsesStabled, EventSeverity::kNotable);
   event.unit = yard;
   event.amount = static_cast<std::int64_t>(moved_heads);
-  current.step_events.push_back(event);
 }
 
 }  // namespace core

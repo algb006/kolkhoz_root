@@ -20,6 +20,7 @@
 
 #include "construction_config.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
@@ -34,15 +35,12 @@ namespace {
 /// above the destination's range, and the figure comes off a table.
 constexpr float kMaxRepairPieces = 1e9F;
 
-/// @brief Emits one event into the step's outbox. Sequential code only —
-/// which the whole of this module is (buffer-law rule 5).
+/// @brief This module's shorthand: every one of its events is about a unit.
+/// The general helper is core_common/emit_event.h, and it is the one a check
+/// walks to ask which kinds have an emitter (scripts/event_sites.py) — so
+/// this wrapper forwards to it rather than building an event of its own.
 void Emit(WorldState& current, EventKind kind, EventSeverity severity, UnitId unit) {
-  SimEvent event;
-  event.tick = current.calendar.tick;
-  event.kind = kind;
-  event.severity = severity;
-  event.unit = unit;
-  current.step_events.push_back(event);
+  EmitEvent(current, kind, severity).unit = unit;
 }
 
 class ConstructionSystem final : public IConstructionSystem {

@@ -31,6 +31,7 @@
 #include "assignment.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
@@ -242,25 +243,23 @@ class LaborSystem final : public ILaborSystem {
       }
       const std::uint32_t resident_row = FindRow(current.residents, order.resident);
       ResidentRow& resident = current.residents.rows[resident_row];
-      SimEvent event;
-      event.tick = current.calendar.tick;
-      event.severity = EventSeverity::kNotable;
+      const bool appointing = order.kind == OrderKind::kAppoint;
+      SimEvent& event = EmitEvent(current,
+                                  appointing ? EventKind::kAppointed : EventKind::kDismissed,
+                                  EventSeverity::kNotable);
       event.resident = order.resident;
-      if (order.kind == OrderKind::kAppoint) {
+      if (appointing) {
         // A man who already holds a post is MOVED, not doubled: one work a
         // day means one place (time design §11).
         resident.post.profession = order.profession;
         resident.post.unit = order.unit;
-        event.kind = EventKind::kAppointed;
         event.unit = order.unit;
         event.amount = static_cast<std::int64_t>(order.profession.value);
       } else {
-        event.kind = EventKind::kDismissed;
         event.unit = resident.post.unit;
         event.amount = static_cast<std::int64_t>(resident.post.profession.value);
         resident.post = PostAssignment{};
       }
-      current.step_events.push_back(event);
       order.status = OrderStatus::kDone;
       order.refusal = OrderRefusal::kNone;
     }
@@ -705,6 +704,8 @@ class LaborSystem final : public ILaborSystem {
         // The critical fatigue limit (unit rules §8): his own decision, and
         // it ends his working day — so his day is settled here and now.
         current.ledger.current.walk_offs += 1;
+        SimEvent& event = EmitEvent(current, EventKind::kWalkOff, EventSeverity::kNotable);
+        event.resident = current.residents.row_ids[row];
         PayDay(current, resident);
       }
     }

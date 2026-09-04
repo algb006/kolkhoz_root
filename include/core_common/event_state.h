@@ -88,7 +88,18 @@ enum class EventKind : std::uint8_t {
   kYearClosed,          ///< The ledger rotated; amount = the year that closed.
 
   // -- the order book: the events slot sweep ---------------------------------
-  kOrderAccepted,   ///< order.
+  //
+  /// @no_emit the order is still the consumer's own: the sweep announces
+  /// only terminal states (world.cpp, "accepted or active: still the
+  /// consumer's"). A caller that issued an order knows it issued it, and
+  /// hears back when it ENDS — telling it that its own order was accepted
+  /// is an echo, not news. The two kinds stay in the enum because the state
+  /// machine has those states and a numbering with holes in it is worse
+  /// than a numbering with silences.
+  kOrderAccepted,  ///< order.
+
+  /// @no_emit the same reason as kOrderAccepted above: a state the issuer
+  /// already knows it asked for.
   kOrderStarted,    ///< order.
   kOrderDone,       ///< order.
   kOrderRefused,    ///< order; amount = the OrderRefusal value.

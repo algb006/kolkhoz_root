@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -475,8 +476,10 @@ void RunBirths(const ProductionConfig& config,
                const LivestockDef& kind,
                LivestockKindId kind_id,
                HerdRow& herd,
+               HerdId herd_id,
                std::uint8_t month,
                bool stable_built,
+               WorldState& world,
                YearLedger& book) {
   if (herd.household_owned != 0) {
     // A YARD BREEDS, and only its cap stops it (boss answer Q7,
@@ -542,6 +545,12 @@ void RunBirths(const ProductionConfig& config,
     return;
   }
   book.herd_births += born;
+  // Said where it happens, with the herd it happened to. Two hundred and
+  // thirty head were born over four hundred days and the journal carried
+  // none of them (boss, 2026-09-05).
+  SimEvent& event = EmitEvent(world, EventKind::kHerdBorn);
+  event.herd = herd_id;
+  event.amount = static_cast<std::int64_t>(born);
   // A kind with no newborn rung (poultry) hatches straight into juveniles.
   if (kind.newborn_game_months > 0.0F) {
     herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count + born);
@@ -759,7 +768,7 @@ void PlaceSurplusHead(const ProductionConfig& config,
 /// at the lower end and certain at the upper one, averaged over the ages the
 /// herd holds (AverageAgeHazard). The draw is the world's sequential RNG, so
 /// a replay lands on the same animals.
-void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, WorldState& world) {
+void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, WorldState& world) {
   if (herd.adult_count == 0) {
     return;
   }
@@ -788,6 +797,11 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, WorldState& world) {
     return;
   }
   world.ledger.current.herd_deaths_age += gone;
+  // Routine: animals age out, and a village that is told about it loudly
+  // every day stops reading the journal. Hunger is the loud one below.
+  SimEvent& event = EmitEvent(world, EventKind::kHerdDied);
+  event.herd = herd_id;
+  event.amount = static_cast<std::int64_t>(gone);
   // THE OLD ONES GO, not the average ones. Removing at the mean left the
   // mean exactly where it was, so a herd could never grow younger by burying
   // its elders — which is the one way a real herd does it.
@@ -808,6 +822,8 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, WorldState& world) {
 void RunHungerDeaths(const ProductionConfig& config,
                      const LivestockDef& kind,
                      HerdRow& herd,
+                     HerdId herd_id,
+                     WorldState& world,
                      YearLedger& book) {
   if (herd.unfed_days <= config.farming.unfed_death_after_days) {
     return;
@@ -831,7 +847,17 @@ void RunHungerDeaths(const ProductionConfig& config,
   const std::uint16_t adults_gone = TakeHeads(herd.adult_count, owed);
   // What the hunger actually took, not what it asked for: a herd with fewer
   // heads than the day owed loses only the heads it had.
-  book.herd_deaths_hunger += static_cast<std::uint32_t>(owed_at_first - owed) + adults_gone;
+  const auto starved = static_cast<std::uint32_t>(owed_at_first - owed) + adults_gone;
+  book.herd_deaths_hunger += starved;
+  if (starved > 0) {
+    // THE SEVERITY IS THE WHOLE DIFFERENCE between this and the line above:
+    // the kind's contract says "severity says hunger from age"
+    // (event_state.h), so the two paths share a kind and part on how loudly
+    // they say it. An animal that starved is news the player has to act on.
+    SimEvent& event = EmitEvent(world, EventKind::kHerdDied, EventSeverity::kInterrupting);
+    event.herd = herd_id;
+    event.amount = static_cast<std::int64_t>(starved);
+  }
   if (adults_gone > 0 && herd.adult_count > 0) {
     const float mean =
         herd.adult_age_game_years_total / static_cast<float>(herd.adult_count + adults_gone);
@@ -950,9 +976,18 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     if (herd.household_owned != 0) {
       PlaceSurplusHead(config, kind, place, queues, gifts, herd, current);
     }
-    RunBirths(config, kind, herd.kind, herd, month, stable_built, current.ledger.current);
-    RunAgeDeaths(kind, herd, current);
-    RunHungerDeaths(config, kind, herd, current.ledger.current);
+    const HerdId herd_id = current.herds.row_ids[row];
+    RunBirths(config,
+              kind,
+              herd.kind,
+              herd,
+              herd_id,
+              month,
+              stable_built,
+              current,
+              current.ledger.current);
+    RunAgeDeaths(kind, herd, herd_id, current);
+    RunHungerDeaths(config, kind, herd, herd_id, current, current.ledger.current);
     RunAutumnSlaughter(config, kind, herd.kind, place, herd, current, current.calendar);
   }
   for (const HerdRow& gift : gifts) {
