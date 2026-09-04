@@ -64,7 +64,8 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// row is a state row.
 static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the journal codec too");
 
-constexpr std::uint8_t kMaxJournalVerb = static_cast<std::uint8_t>(JournalVerb::kCancel);
+constexpr std::uint8_t kMaxJournalVerb =
+    static_cast<std::uint8_t>(JournalVerb::kJournalVerbCount) - 1;
 // THE LAST ENUMERATOR, and it has to be the last one: a guard left behind
 // refuses every journal carrying a kind newer than itself. THREE of these
 // four were stale, all left at task A2's additions — kMaxOrderKind and
@@ -80,10 +81,20 @@ constexpr std::uint8_t kMaxJournalVerb = static_cast<std::uint8_t>(JournalVerb::
 // a MIDDLING value passes for ever while the guard rots behind it. Each of
 // these is now covered by staging the NEWEST value of its enum, which is
 // the only stage that fails when somebody appends without looking here.
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDismiss);
-constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
-constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNoVacancy);
-constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kHauling);
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kOrderKindCount) - 1;
+constexpr std::uint8_t kMaxOrderStatus =
+    static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount) - 1;
+constexpr std::uint8_t kMaxOrderRefusal =
+    static_cast<std::uint8_t>(OrderRefusal::kOrderRefusalCount) - 1;
+constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(kWorkKindCount) - 1;
+
+// The same self-check the save codec carries: a bound must be strictly below
+// its count, or the count itself would decode as a value.
+static_assert(kMaxJournalVerb < static_cast<std::uint8_t>(JournalVerb::kJournalVerbCount));
+static_assert(kMaxOrderKind < static_cast<std::uint8_t>(OrderKind::kOrderKindCount));
+static_assert(kMaxOrderStatus < static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount));
+static_assert(kMaxOrderRefusal < static_cast<std::uint8_t>(OrderRefusal::kOrderRefusalCount));
+static_assert(kMaxWorkKind < static_cast<std::uint8_t>(kWorkKindCount));
 
 class Writer {
  public:

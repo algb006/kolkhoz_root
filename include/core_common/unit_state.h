@@ -90,6 +90,14 @@ enum class ConstructionPhase : std::uint8_t {
   /// parts are consumed and UnitRow::wear returns to 0. Appended after
   /// kDemolishing so that no stored value changes meaning.
   kRepairing,
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kConstructionPhaseCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kConstructionPhaseCount,
 };
 
 /// @brief The site block of a unit: what is being built here and how far

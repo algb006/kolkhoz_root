@@ -44,6 +44,14 @@ enum class FieldPhase : std::uint8_t {
   kSowing,   ///< Consumes ordinary grain/potatoes of the crop (§7).
   kGrowing,  ///< No field work; winter crops sit out the winter here.
   kHarvest,  ///< The heaviest phase of the year.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kFieldPhaseCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kFieldPhaseCount,
 };
 
 /// @brief What kind of land the row is (boss answer to question Q6,
@@ -60,6 +68,14 @@ enum class LandKind : std::uint8_t {
   kMeadow,            ///< Natural grassland, mown once a season.
   kFloodplainMeadow,  ///< The best grass of the farm; STUB until terrain zones.
   kDerelict,          ///< Arable nobody has raised: weeds and sod, no work until it is (phase 2).
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kLandKindCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kLandKindCount,
 };
 
 /// @brief One field. Plain data.

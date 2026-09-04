@@ -293,6 +293,14 @@ struct FastForwardReport {
 enum class JournalVerb : std::uint8_t {
   kIssue = 0,
   kCancel,
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kJournalVerbCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kJournalVerbCount,
 };
 
 /// @brief One thing the presentation did, as the session recorded it:

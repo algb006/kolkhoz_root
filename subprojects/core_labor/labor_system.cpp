@@ -67,6 +67,10 @@ constexpr WorkKind KindOfPhase(FieldPhase phase) {
     case FieldPhase::kHarvest:
       return WorkKind::kHarvest;
     case FieldPhase::kIdle:
+    // Not a phase, and it waits for no work: handled beside the
+    // phases that wait for none, so this switch can stay without a
+    // default and keep a new phase a compile error.
+    case FieldPhase::kFieldPhaseCount:
     case FieldPhase::kGrowing:
       return WorkKind::kNone;
   }

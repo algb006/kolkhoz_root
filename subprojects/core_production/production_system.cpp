@@ -354,6 +354,9 @@ class ProductionSystem final : public IProductionSystem {
         return phase;
       case FieldPhase::kIdle:
       case FieldPhase::kGrowing:
+      // Not a phase: handled beside the phases that need no work, so this
+      // switch keeps no default and a new phase stays a compile error.
+      case FieldPhase::kFieldPhaseCount:
         return FieldPhase::kIdle;
     }
     return FieldPhase::kIdle;

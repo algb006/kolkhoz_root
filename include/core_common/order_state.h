@@ -192,17 +192,33 @@ enum class OrderKind : std::uint8_t {
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
   //
-  // APPENDING A KIND MEANS RAISING kMaxOrderKind in core_save/save_rows.cpp
-  // AND in core_boundary/journal_codec.cpp — two guards, one rule, and the
-  // journal's was left behind at kDemolishUnit when A2 appended two kinds
-  // (found by task A5's design pass; a journal carrying kStartBuild would
-  // have been refused on decode):
-  // the save codec validates the byte it read against the last enumerator,
-  // and a guard left behind refuses every save carrying the new kind. There
-  // is no sentinel to derive it from on purpose — ShapeIsValid in
-  // core_boundary/session.cpp switches over this enum WITHOUT a default, so
-  // a new kind is a compile error there until it is handled, and a sentinel
-  // would have to be handled too. The same note stands over OrderRefusal.
+  // APPEND BEFORE kOrderKindCount. That is the whole rule, and it is a fact
+  // about this enum rather than an instruction about two other files.
+  //
+  // It used to be the instruction: "raise kMaxOrderKind in
+  // core_save/save_rows.cpp AND in core_boundary/journal_codec.cpp". Two
+  // homes, one rule, and the journal's copy sat at kDemolishUnit for two
+  // whole tasks after A2 appended two kinds — found by a design pass rather
+  // than by anything that runs, and a journal carrying kStartBuild would
+  // have been refused on decode. A rule whose only mechanism is a comment is
+  // not a mechanism, it is an intention, and an intention fails no check
+  // because it takes part in none (boss, 2026-09-04).
+  //
+  // The count is safe to add even though ShapeIsValid in
+  // core_boundary/session.cpp switches over this enum WITHOUT a default: a
+  // new REAL kind is still a compile error there until it is handled, which
+  // is the tripwire that note was protecting. The sentinel is handled once,
+  // beside kNone, and refused for the same reason.
+  //
+  // The same holds over OrderStatus and OrderRefusal.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kOrderKindCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kOrderKindCount,
 };
 
 /// @brief Where an order stands. Terminal statuses are removed by the events
@@ -214,6 +230,14 @@ enum class OrderStatus : std::uint8_t {
   kDone,         ///< Terminal.
   kRefused,      ///< Terminal; `refusal` says why.
   kCancelled,    ///< Terminal; cancelled while kPending or kAccepted.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kOrderStatusCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kOrderStatusCount,
 };
 
 /// @brief Why an order was refused. The presentation turns the code into a
@@ -253,6 +277,14 @@ enum class OrderRefusal : std::uint8_t {
 
   // Appending a refusal means raising kMaxOrderRefusal in
   // core_save/save_rows.cpp — see the note over OrderKind above.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kOrderRefusalCount,
 };
 
 /// @brief One order. Plain data; `kind` says which target fields are read,

@@ -45,6 +45,14 @@ namespace core {
 enum class Sex : std::uint8_t {
   kFemale = 0,
   kMale = 1,
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kSexCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kSexCount,
 };
 
 /// @brief Completed education, five steps (education design §2). Never lost.
@@ -54,6 +62,14 @@ enum class EducationStage : std::uint8_t {
   kSecondary,   ///< Secondary school step.
   kVocational,  ///< Tekhnikum / uchilishche, 3 years.
   kHigher,      ///< Institute; only after vocational.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kEducationStageCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kEducationStageCount,
 };
 
 /// @brief Public status (metrics design §2, group 3). Advances by own merit,
@@ -64,6 +80,14 @@ enum class SocialStatus : std::uint8_t {
   kPioneer,   ///< Ages 10-14.
   kKomsomol,  ///< Ages 14-26.
   kParty,     ///< From 18, for life.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kSocialStatusCount-1 and this is what they check against.
+  /// Values are appended BEFORE it — that is the whole rule, and it is a
+  /// fact here rather than an instruction somewhere else. A length
+  /// written out by hand beside an enum drifts, and four of them already
+  /// had (journal_codec.cpp).
+  kSocialStatusCount,
 };
 
 /// @brief A standing appointment: which post, at which unit. Plain data;

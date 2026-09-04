@@ -48,6 +48,11 @@ bool ShapeIsValid(const OrderRow& order) {
   const bool has_herd = order.herd.value != kInvalidEntityIdValue;
   switch (order.kind) {
     case OrderKind::kNone:
+    // The count is not a kind. It is refused beside kNone and for the same
+    // reason: neither names anything the chairman can order. Handling it
+    // here costs one line and keeps this switch WITHOUT a default, which is
+    // what makes a genuinely new kind a compile error (order_state.h).
+    case OrderKind::kOrderKindCount:
       return false;
     case OrderKind::kAssignWork:
       // The kind of work decides which target is required, and the list is

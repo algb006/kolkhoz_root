@@ -53,19 +53,37 @@ static_assert(sizeof(WorkAssignment) == 24,
 
 /// Highest valid value of each u8 enum a row carries. The reader refuses
 /// anything above (LoadSource::ReadEnumValue) — see its docs for why.
-constexpr std::uint8_t kMaxSex = static_cast<std::uint8_t>(Sex::kMale);
+// EVERY LENGTH IS DERIVED, NOT WRITTEN. Each enum carries its own count as
+// its last enumerator, and these are that count minus one — so appending a
+// value moves the guard with it, and there is nothing left to forget.
+//
+// It used to be a hand-written last enumerator plus an instruction in the
+// enum's own header saying "raise this when you append". Two homes for one
+// length, and the journal codec's copy sat two tasks behind: A2 appended two
+// order kinds and kMaxOrderKind stayed at kDemolishUnit, so a journal
+// carrying kStartBuild would have been refused on decode. Found by a design
+// pass, not by anything that runs — a rule whose only mechanism is a comment
+// is an intention, and an intention fails no check because it takes part in
+// none (boss, 2026-09-04).
+//
+// The counts are also what lets a CONSUMER static_assert the length of its
+// own mirror: the graphics layer had eight refusal reasons against our nine
+// and had no way to notice.
+constexpr std::uint8_t kMaxSex = static_cast<std::uint8_t>(Sex::kSexCount) - 1;
 
-constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kHauling);
+constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(kWorkKindCount) - 1;
 
 constexpr std::uint8_t kMaxConstructionPhase =
-    static_cast<std::uint8_t>(ConstructionPhase::kRepairing);
+    static_cast<std::uint8_t>(ConstructionPhase::kConstructionPhaseCount) - 1;
 
-constexpr std::uint8_t kMaxEducationStage = static_cast<std::uint8_t>(EducationStage::kHigher);
+constexpr std::uint8_t kMaxEducationStage =
+    static_cast<std::uint8_t>(EducationStage::kEducationStageCount) - 1;
 
-constexpr std::uint8_t kMaxSocialStatus = static_cast<std::uint8_t>(SocialStatus::kParty);
+constexpr std::uint8_t kMaxSocialStatus =
+    static_cast<std::uint8_t>(SocialStatus::kSocialStatusCount) - 1;
 
-constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kHarvest);
-constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerelict);
+constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kFieldPhaseCount) - 1;
+constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kLandKindCount) - 1;
 
 // MEM-002 fix: these two were left at the enumerators of before task A2
 // while order_state.h grew kStartBuild, kUpgradeUnit and three refusals
@@ -75,9 +93,33 @@ constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kDerel
 // over "order kind holds 8, outside 0..7". Both names are the LAST
 // enumerator of their enum, and order_state.h says so where a new one gets
 // appended.
-constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDismiss);
-constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
-constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNoVacancy);
+constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kOrderKindCount) - 1;
+constexpr std::uint8_t kMaxOrderStatus =
+    static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount) - 1;
+constexpr std::uint8_t kMaxOrderRefusal =
+    static_cast<std::uint8_t>(OrderRefusal::kOrderRefusalCount) - 1;
+
+// AND THE GUARD CHECKS ITSELF, here, where it lives. Every bound above must
+// be strictly BELOW its count, because the count is not a value: a save
+// carrying its number has to be refused, not decoded into a kind that does
+// not exist. Writing `= kCount` instead of `= kCount - 1` is the one
+// plausible slip these derivations still allow, and it would let exactly
+// that byte through.
+//
+// A compile-time check and not a run-time one on purpose: there is no world
+// in which the wrong bound is acceptable, so there is nothing to observe at
+// run time — only something to forbid.
+static_assert(kMaxSex < static_cast<std::uint8_t>(Sex::kSexCount));
+static_assert(kMaxWorkKind < static_cast<std::uint8_t>(kWorkKindCount));
+static_assert(kMaxEducationStage < static_cast<std::uint8_t>(EducationStage::kEducationStageCount));
+static_assert(kMaxSocialStatus < static_cast<std::uint8_t>(SocialStatus::kSocialStatusCount));
+static_assert(kMaxFieldPhase < static_cast<std::uint8_t>(FieldPhase::kFieldPhaseCount));
+static_assert(kMaxLandKind < static_cast<std::uint8_t>(LandKind::kLandKindCount));
+static_assert(kMaxConstructionPhase <
+              static_cast<std::uint8_t>(ConstructionPhase::kConstructionPhaseCount));
+static_assert(kMaxOrderKind < static_cast<std::uint8_t>(OrderKind::kOrderKindCount));
+static_assert(kMaxOrderStatus < static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount));
+static_assert(kMaxOrderRefusal < static_cast<std::uint8_t>(OrderRefusal::kOrderRefusalCount));
 
 template <typename IdT>
 void WriteEntityId(ByteWriter& out, IdT id) {
