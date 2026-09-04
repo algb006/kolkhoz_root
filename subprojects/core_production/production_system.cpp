@@ -154,10 +154,9 @@ class ProductionSystem final : public IProductionSystem {
   }
 
   void CollectStockForecast(const WorldState& completed,
-                            float eating_kg_per_day,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));
-    lights.push_back(SeedLight(config_, completed, eating_kg_per_day));
+    lights.push_back(SeedLight(config_, completed));
   }
 
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {

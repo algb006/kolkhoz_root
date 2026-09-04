@@ -98,12 +98,7 @@ class IProductionSystem {
   /// A pure read of `completed` with the configuration; no state changes,
   /// nothing is logged. Called between steps on the sim thread through
   /// ISimulation::CollectStockForecast.
-  /// @param eating_kg_per_day What the settlement eats a day in grain
-  ///        equivalent, from core_residents through the assembly point: the
-  ///        seed fund is not spent, it is EATEN, and the eating rate is not
-  ///        this module's to know.
   virtual void CollectStockForecast(const WorldState& completed,
-                                    float eating_kg_per_day,
                                     std::vector<StockForecast>& lights) const = 0;
 
   /// @brief Game days to the next harvest window, 0 while one is open.

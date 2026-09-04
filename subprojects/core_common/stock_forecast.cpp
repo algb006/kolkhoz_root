@@ -25,4 +25,16 @@ StockLight LightFrom(std::int32_t days_of_stock,
   return StockLight::kYellow;
 }
 
+StockLight LightFromCoverage(float coverage, float margin) {
+  if (coverage < 1.0F) {
+    // Not enough to sow the ground that is waiting. A FACT, like every other
+    // red: the kSeedShort alarm stands beside it about a particular field.
+    return StockLight::kRed;
+  }
+  if (coverage < 1.0F + margin) {
+    return StockLight::kYellow;  // covered, and only just
+  }
+  return StockLight::kGreen;
+}
+
 }  // namespace core

@@ -429,10 +429,6 @@ class ResidentsSystem final : public IResidentsSystem {
     return !hungry.empty();
   }
 
-  float DailyGrainEquivalentKilograms(const WorldState& completed) const override {
-    return SettlementDailyNeedKilograms(food_, config_.life_speedup, completed);
-  }
-
   void CollectStockForecast(const WorldState& completed,
                             std::int32_t days_to_harvest,
                             std::vector<StockForecast>& lights) const override {

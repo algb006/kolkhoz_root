@@ -262,23 +262,25 @@ class StandardSimulation final : public ISimulation {
     return labor_->CountWorkforce(engine_->CompletedState());
   }
 
-  /// THE ASSEMBLY POINT IS WHERE THE TWO CROSSINGS MEET, and that is the
-  /// whole reason this is not two independent calls.
+  /// ONE CROSSING, AND THE ASSEMBLY CARRIES IT. The food light needs the
+  /// harvest date, which core_production owns, and core_residents may not
+  /// reach into another module for it (CLAUDE.md §7). So the assembly — the
+  /// one place allowed to see everybody — reads the date from its owner and
+  /// hands it to the other.
   ///
-  /// The food light needs the harvest date, which core_production owns; the
-  /// seed light needs the eating rate, which core_residents owns. Neither
-  /// module may name the other (CLAUDE.md §7), and neither number wanted a
-  /// second home. So the assembly — the one place that is allowed to see
-  /// everybody — reads each scalar from its owner and hands it to the other.
+  /// THERE WERE TWO. The seed light used to want the eating rate from
+  /// core_residents, because it forecast "days until the seed fund is eaten
+  /// away" — and that number does not exist: seed is spent all at once, on
+  /// the sowing (boss, 2026-09-04). With the right unit — coverage of the
+  /// campaign — the second crossing was not needed at all. A seam that a
+  /// wrong unit made necessary is not a seam; it is the wrong unit.
   ///
   /// The ORDER is the fan-out order of the decisions slot, like alarms; the
   /// session sorts what comes back, so nothing here depends on it.
   void CollectStockForecast(std::vector<StockForecast>& lights) const override {
     const WorldState& completed = engine_->CompletedState();
-    const std::int32_t days_to_harvest = production_->DaysToNextHarvest(completed);
-    const float eating_kg_per_day = residents_->DailyGrainEquivalentKilograms(completed);
-    residents_->CollectStockForecast(completed, days_to_harvest, lights);
-    production_->CollectStockForecast(completed, eating_kg_per_day, lights);
+    residents_->CollectStockForecast(completed, production_->DaysToNextHarvest(completed), lights);
+    production_->CollectStockForecast(completed, lights);
   }
 
   void CollectAlarms(std::vector<Alarm>& alarms) const override {

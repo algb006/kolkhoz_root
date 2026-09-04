@@ -93,16 +93,6 @@ class IResidentsSystem {
   virtual void CollectStockForecast(const WorldState& completed,
                                     std::int32_t days_to_harvest,
                                     std::vector<StockForecast>& lights) const = 0;
-
-  /// @brief What the settlement eats in a day, in the GRAIN EQUIVALENT the
-  /// food norms are stated in.
-  ///
-  /// Exposed for the seed light, which lives in core_production: the seed
-  /// fund's danger is being EATEN, and the rate at which it is eaten is this
-  /// module's number. The same crossing as days_to_harvest, in the other
-  /// direction and through the same assembly point.
-  /// @note Called between steps on the sim thread. A pure read.
-  virtual float DailyGrainEquivalentKilograms(const WorldState& completed) const = 0;
 };
 
 /// @brief Creates the people subsystem.

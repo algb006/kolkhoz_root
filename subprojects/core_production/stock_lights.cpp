@@ -63,6 +63,27 @@ std::int32_t DaysToWindow(const WorldState& world, std::uint8_t from, std::uint8
   return months * static_cast<std::int32_t>(kDaysPerMonth);
 }
 
+/// The month the nearest sowing campaign opens, or kMonthsPerYear when no
+/// crop names a window at all. "Nearest" is by the calendar and forward
+/// only: a campaign whose window is open right now is the nearest one.
+std::uint8_t NearestSowingMonth(const ProductionConfig& config, const WorldState& world) {
+  std::uint8_t best = static_cast<std::uint8_t>(kMonthsPerYear);
+  std::int32_t best_days = kStockForecastHorizonDays + 1;
+  for (const CropDef& crop : config.crops) {
+    if (!(crop.sowing_norm_kg_per_ha > 0.0F) || crop.sow_from_month >= kMonthsPerYear) {
+      continue;
+    }
+    const std::int32_t days = DaysToWindow(world, crop.sow_from_month, crop.sow_to_month);
+    // Ties go to the lower month so the answer is a function of the tables
+    // and not of their row order.
+    if (days < best_days || (days == best_days && crop.sow_from_month < best)) {
+      best_days = days;
+      best = crop.sow_from_month;
+    }
+  }
+  return best;
+}
+
 bool HasStallSeason(const ProductionConfig& config) {
   return !MonthInRange(
       WinterMonth(config), config.farming.pasture_from_month, config.farming.pasture_to_month);
@@ -201,111 +222,75 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
   return light;
 }
 
-StockForecast SeedLight(const ProductionConfig& config,
-                        const WorldState& world,
-                        float eating_kg_per_day) {
+StockForecast SeedLight(const ProductionConfig& config, const WorldState& world) {
   StockForecast light;
   light.kind = StockKind::kSeed;
-  light.days_to_date = DaysToSowing(config, world);
+  light.measure = StockMeasure::kCoverage;
 
-  // WHAT IS NEEDED AND WHAT IS THERE, PER RESOURCE — not summed across the
-  // crops, and this is two corrections at once.
-  //
-  // Summing per CROP double-counted: winter wheat and spring wheat are two
-  // crops and one resource, and resources.csv says so outright ("grain is
-  // per culture; storage is shared"). Summing the TOTAL netted the crops
-  // against each other: a mountain of rye cancelled the complete absence of
-  // potato seed and read green — the exact opposite of what this function's
-  // own comment claimed. You cannot sow oats with rye.
-  std::vector<float> need_kg(config.feed_values.size(), 0.0F);
-  std::vector<float> have_kg(config.feed_values.size(), 0.0F);
-  std::vector<std::uint8_t> is_seed(config.feed_values.size(), 0);
-  const auto resource_index = [&](ResourceId resource) {
-    return resource.value < need_kg.size() ? static_cast<std::size_t>(resource.value)
-                                           : need_kg.size();
-  };
-  for (const CropDef& crop : config.crops) {
-    if (!(crop.sowing_norm_kg_per_ha > 0.0F)) {
-      continue;
-    }
-    const std::size_t index = resource_index(crop.resource);
-    if (index < is_seed.size()) {
-      is_seed[index] = 1;
-    }
+  // THE NEXT SOWING IS A CAMPAIGN ON THE CALENDAR, not an index in the
+  // rotation (boss, 2026-09-04). In autumn the nearest campaign is the
+  // winter one and the winter crops are counted; once the winter crop is in
+  // the ground the nearest campaign is the spring one, and asking about
+  // winter seed then is meaningless — it is already sown. The light used to
+  // read rotation_year0, which is THIS year's crop and only shifts at the
+  // year's turn, so a spring field was charged its seed a second time for a
+  // third of the year and the light stood amber for no reason a player
+  // could see.
+  const std::uint8_t campaign_month = NearestSowingMonth(config, world);
+  if (campaign_month >= kMonthsPerYear) {
+    // No crop names a sowing window: nothing is ever sown, so nothing can be
+    // short of seed.
+    light.days_to_date = 0;
+    light.coverage = 1.0F;
+    light.light = StockLight::kGreen;
+    return light;
   }
+  light.days_to_date = DaysToWindow(world, campaign_month, campaign_month);
+
+  // What the campaign's fields will want, by RESOURCE — two crops can share
+  // one (winter wheat and spring wheat are both `wheat`), and counting per
+  // crop would count the same grain twice.
+  std::vector<float> need_kg(config.feed_values.size(), 0.0F);
   for (const FieldRow& field : world.fields.rows) {
     if (field.kind != LandKind::kArable || field.rotation_year0.value >= config.crops.size()) {
       continue;
     }
+    // A FIELD THAT IS OCCUPIED IS NOT IN THIS CAMPAIGN. Standing corn is not
+    // waiting to be sown, whatever the rotation says about it.
+    if (field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest) {
+      continue;
+    }
     const CropDef& crop = config.crops[field.rotation_year0.value];
-    const std::size_t index = resource_index(crop.resource);
-    if (!(crop.sowing_norm_kg_per_ha > 0.0F) || index >= need_kg.size()) {
-      continue;
+    if (crop.sow_from_month != campaign_month || !(crop.sowing_norm_kg_per_ha > 0.0F)) {
+      continue;  // this field is sown in some other campaign
     }
-    need_kg[index] += crop.sowing_norm_kg_per_ha * field.area_ga;
-  }
-  float total_need = 0.0F;
-  for (std::size_t index = 0; index < need_kg.size(); ++index) {
-    total_need += need_kg[index];
-    if (is_seed[index] != 0) {
-      const ResourceId id{static_cast<std::uint16_t>(index)};
-      have_kg[index] =
-          static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
+    if (crop.resource.value < need_kg.size()) {
+      need_kg[crop.resource.value] += crop.sowing_norm_kg_per_ha * field.area_ga;
     }
   }
 
-  if (!(total_need > 0.0F)) {
-    // Nothing is going into the ground, so no seed fund can be eaten away.
-    // Reported as kStockNeverRunsOut because it is the same shape of answer,
-    // and said here in words because the constant's own name talks about
-    // consumption: here it is the DEMAND that is absent, not the eating.
-    light.days_of_stock = kStockNeverRunsOut;
-    light.light = LightFrom(light.days_of_stock, light.days_to_date, 0, false);
-    return light;
-  }
-
-  // THE TIGHTEST CROP DECIDES, because you cannot sow oats with rye. Short of
-  // any one of them is short, and the days are the days of the crop that runs
-  // out of surplus first — netting them would answer about a village that
-  // does not exist.
-  bool short_now = false;
-  float tightest_surplus = -1.0F;
-  for (std::size_t index = 0; index < need_kg.size(); ++index) {
-    if (!(need_kg[index] > 0.0F)) {
+  // THE TIGHTEST CROP DECIDES: you cannot sow oats with rye, and a village
+  // short of one seed is short however much of another it has. Netting them
+  // let a mountain of rye cancel the absence of potato seed and read green.
+  float coverage = -1.0F;
+  for (std::uint32_t resource = 0; resource < need_kg.size(); ++resource) {
+    if (!(need_kg[resource] > 0.0F)) {
       continue;
     }
-    const float surplus = have_kg[index] - need_kg[index];
-    if (surplus < 0.0F) {
-      short_now = true;
-      break;
-    }
-    if (tightest_surplus < 0.0F || surplus < tightest_surplus) {
-      tightest_surplus = surplus;
-    }
+    const ResourceId id{static_cast<std::uint16_t>(resource)};
+    const float have_kg =
+        static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
+    const float share = have_kg / need_kg[resource];
+    coverage = coverage < 0.0F || share < coverage ? share : coverage;
   }
-  if (short_now) {
-    // Already short: the kSeedShort alarm stands beside this and says the
-    // same thing about a particular field.
-    light.days_of_stock = 0;
-    light.light = LightFrom(0, light.days_to_date, 0, true);
+  if (coverage < 0.0F) {
+    // The campaign asks for nothing: no free field is due this crop.
+    light.coverage = 1.0F;
+    light.light = StockLight::kGreen;
     return light;
   }
-  if (!(eating_kg_per_day > 0.0F)) {
-    light.days_of_stock = kStockNeverRunsOut;  // nobody eats: the fund cannot be eaten
-    light.light = LightFrom(light.days_of_stock, light.days_to_date, 0, false);
-    return light;
-  }
-  // How long the village can go on eating before the tightest crop's grain
-  // falls THROUGH its sowing norm. Not "how long the food lasts" — that is
-  // the food light, and it answers a different question about the same heap.
-  const float days = tightest_surplus / eating_kg_per_day;
-  light.days_of_stock = days >= static_cast<float>(kStockForecastHorizonDays)
-                            ? kStockForecastHorizonDays
-                            : static_cast<std::int32_t>(days);
-  light.light = LightFrom(light.days_of_stock,
-                          light.days_to_date,
-                          static_cast<std::int32_t>(config.farming.seed_light_margin_days),
-                          false);
+  light.coverage = coverage;
+  light.light = LightFromCoverage(coverage, config.farming.seed_light_margin_share);
   return light;
 }
 

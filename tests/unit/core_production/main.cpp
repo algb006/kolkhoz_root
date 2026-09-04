@@ -815,14 +815,13 @@ int CheckFeedLightNeverRunsOut() {
   return failures;
 }
 
-/// THE SEED LIGHT COUNTS THE SURPLUS, not the heap.
+/// THE SEED LIGHT MEASURES COVERAGE, because seed has no daily spending.
 ///
-/// Food and seed are the same grain, and that is exactly why they are two
-/// lights. The food light asks how long the heap feeds the village; this one
-/// asks how long the village can eat before the heap falls THROUGH the
-/// sowing norm. Counting the whole heap here would answer the other light's
-/// question and say nothing about the mistake that costs a year.
-int CheckSeedLightCountsTheSurplus() {
+/// It goes into the ground all at once, so "days of seed" is not a hard
+/// number — it is one that does not exist: infinite until the sowing, zero
+/// on the day of it (boss, 2026-09-04). The light answers what the stock
+/// actually has to say: what share of the campaign can be sown.
+int CheckSeedLightMeasuresCoverage() {
   int failures = 0;
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
   core::ProductionConfig config = MakeHerdConfig();
@@ -832,38 +831,97 @@ int CheckSeedLightCountsTheSurplus() {
   rye.sowing_norm_kg_per_ha = 10.0F;
   rye.sow_from_month = 4;
   rye.sow_to_month = 5;
-  config.farming.seed_light_margin_days = 0.0F;
+  config.farming.seed_light_margin_share = 0.1F;
 
   core::WorldState world = MakeHerdWorld(0.0F);
   core::FieldRow field;
   field.kind = core::LandKind::kArable;
-  field.area_ga = 10.0F;  // ten hectares: a hundred kg of seed
+  field.area_ga = 10.0F;  // a hundred kilograms of seed
   field.rotation_year0 = core::CropId{0};
+  field.phase = core::FieldPhase::kIdle;
   core::AppendRow(world.fields, field);
-  world.units.rows[0].stock[0] = 160 * kKilo;  // sixty kilograms above the norm
-  world.calendar.tick = 0;
+  world.calendar.tick = 0;  // January: the sowing is four months off
   core::RefreshCalendarCaches(world.calendar);
 
-  // Six kilograms eaten a day: the surplus lasts ten days, the whole heap
-  // would have lasted twenty-six. The light must say ten.
-  const core::StockForecast light = core::SeedLight(config, world, 6.0F);
-  failures += Expect(light.days_of_stock == 10,
-                     "the seed light counts only what stands ABOVE the sowing norm");
+  world.units.rows[0].stock[0] = 60 * kKilo;
+  const core::StockForecast thin = core::SeedLight(config, world);
+  failures += Expect(thin.measure == core::StockMeasure::kCoverage,
+                     "the seed light says outright which number it answers with");
+  failures += Expect(thin.coverage > 0.59F && thin.coverage < 0.61F,
+                     "sixty kilograms against a hundred is six tenths of the campaign");
+  failures += Expect(thin.light == core::StockLight::kRed,
+                     "and short of a whole covering it burns at once, not when the date nears: "
+                     "seed is mended slowly, so waiting for the sowing would warn too late");
+  failures += Expect(thin.days_to_date == 4 * static_cast<std::int32_t>(core::kDaysPerMonth),
+                     "the date beside it is the CALENDAR, not a number derived from the stock");
 
-  // Nobody eats: the fund cannot be eaten, and that is "never", not zero and
-  // not a dark light.
-  const core::StockForecast idle = core::SeedLight(config, world, 0.0F);
-  failures += Expect(idle.days_of_stock == core::kStockNeverRunsOut,
-                     "a village that eats nothing cannot eat its seed fund");
-  failures += Expect(idle.light == core::StockLight::kGreen, "which is green, not dark");
+  world.units.rows[0].stock[0] = 105 * kKilo;
+  failures += Expect(core::SeedLight(config, world).light == core::StockLight::kYellow,
+                     "covered by a twentieth is covered only just");
+  world.units.rows[0].stock[0] = 200 * kKilo;
+  failures += Expect(core::SeedLight(config, world).light == core::StockLight::kGreen,
+                     "and twice the norm is room to spare");
+  return failures;
+}
 
-  // Already below the norm: red, and red is a FACT — the kSeedShort alarm
-  // stands beside it about a particular field.
-  world.units.rows[0].stock[0] = 40 * kKilo;
-  const core::StockForecast shortfall = core::SeedLight(config, world, 6.0F);
-  failures += Expect(shortfall.light == core::StockLight::kRed,
-                     "grain already below the sowing norm is red, whatever the date says");
-  failures += Expect(shortfall.days_of_stock == 0, "and there is no surplus left to count");
+/// THE CAMPAIGN IS THE CALENDAR, NOT THE ROTATION INDEX, and an occupied
+/// field is not in it.
+///
+/// The light used to read rotation_year0 — THIS year's crop, shifted only at
+/// the year's turn — so from the sowing to the new year a spring field was
+/// charged its seed a second time and the light stood amber for a third of
+/// the year with nothing behind it. Asking about the nearest campaign fixes
+/// it by asking the right question: once the winter crop is in the ground,
+/// winter seed is not what the farm is short of.
+int CheckSeedLightAsksAboutTheNearestCampaign() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(2);
+  config.crops[0].resource = core::ResourceId{0};  // winter rye, sown in month 8
+  config.crops[0].sowing_norm_kg_per_ha = 10.0F;
+  config.crops[0].sow_from_month = 8;
+  config.crops[0].sow_to_month = 8;
+  config.crops[1].resource = core::ResourceId{1};  // spring oats, sown in month 3
+  config.crops[1].sowing_norm_kg_per_ha = 10.0F;
+  config.crops[1].sow_from_month = 3;
+  config.crops[1].sow_to_month = 3;
+
+  // FOUR FIELDS, AND EACH IS EXCLUDED BY AT MOST ONE RULE. A field that two
+  // rules both throw out measures neither of them: drop either rule and the
+  // answer does not move. The first draft of this test had exactly that —
+  // one winter field, standing AND of the other campaign — and both
+  // mutations passed in silence.
+  core::WorldState world = MakeHerdWorld(0.0F);
+  const auto add_field = [&world](std::uint16_t crop, core::FieldPhase phase) {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 1.0F;
+    field.rotation_year0 = core::CropId{crop};
+    field.phase = phase;
+    core::AppendRow(world.fields, field);
+  };
+  add_field(1, core::FieldPhase::kIdle);     // spring, free: the campaign's own
+  add_field(0, core::FieldPhase::kIdle);     // winter, free: only the CAMPAIGN excludes it
+  add_field(1, core::FieldPhase::kGrowing);  // spring, standing: only OCCUPIED excludes it
+
+  // October: the winter crop is in the ground, the nearest campaign is the
+  // spring one. There is no winter seed left in store at all — and that is
+  // not a shortage, because nobody is going to sow winter rye again this
+  // year.
+  world.calendar.tick = 9 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  world.units.rows[0].stock[0] = 0;
+  world.units.rows[0].stock[1] = 100 * core::kGramsPerKilogram;
+  const core::StockForecast autumn = core::SeedLight(config, world);
+  failures += Expect(autumn.light == core::StockLight::kGreen,
+                     "an empty winter-seed bin in October is not a shortage: the winter crop "
+                     "is already in the ground");
+  // ONE free spring hectare wants ten kilograms, and a hundred stand there.
+  // Count the winter field too and the tightest crop becomes rye at zero;
+  // count the standing spring field and the cover halves to five.
+  failures += Expect(autumn.coverage > 9.9F && autumn.coverage < 10.1F,
+                     "exactly one hectare is waiting to be sown, and it is covered ten times "
+                     "over — the standing field and the other campaign are both out");
   return failures;
 }
 
@@ -930,7 +988,7 @@ int CheckSeedLightDoesNotNetCropsOff() {
   config.crops[1].sowing_norm_kg_per_ha = 10.0F;
   config.crops[1].sow_from_month = 4;
   config.crops[1].sow_to_month = 5;
-  config.farming.seed_light_margin_days = 0.0F;
+  config.farming.seed_light_margin_share = 0.0F;
 
   core::WorldState world = MakeHerdWorld(0.0F);
   core::FieldRow rye_field;
@@ -946,16 +1004,18 @@ int CheckSeedLightDoesNotNetCropsOff() {
   // comfortable; crop by crop it cannot sow half its land.
   world.units.rows[0].stock[0] = 1000 * kKilo;
   world.units.rows[0].stock[1] = 0;
-  const core::StockForecast light = core::SeedLight(config, world, 6.0F);
+  const core::StockForecast light = core::SeedLight(config, world);
   failures += Expect(light.light == core::StockLight::kRed,
                      "no potato seed is short, however much rye stands beside it");
+  failures += Expect(light.coverage == 0.0F, "and the coverage is the tightest crop's: none");
 
   // Both covered, but one only just: the tightest crop decides the days.
   world.units.rows[0].stock[1] = 40 * kKilo;  // 10 needed, 30 spare
   world.units.rows[0].stock[0] = 1000 * kKilo;
-  const core::StockForecast tight = core::SeedLight(config, world, 6.0F);
-  failures += Expect(tight.days_of_stock == 5,
-                     "the crop that runs out of surplus first is the one that counts");
+  const core::StockForecast tight = core::SeedLight(config, world);
+  failures += Expect(tight.coverage > 3.9F && tight.coverage < 4.1F,
+                     "the crop with the thinnest cover is the one that counts, not the fat one "
+                     "beside it");
   return failures;
 }
 
@@ -1141,7 +1201,8 @@ int main() {
   failures += CheckFeedLightCountsTheWinter();
   failures += CheckFeedLightRespectsTheCeiling();
   failures += CheckFeedLightNeverRunsOut();
-  failures += CheckSeedLightCountsTheSurplus();
+  failures += CheckSeedLightMeasuresCoverage();
+  failures += CheckSeedLightAsksAboutTheNearestCampaign();
   failures += CheckFeedLightKeepsTheKindsApart();
   failures += CheckSeedLightDoesNotNetCropsOff();
   failures += CheckBilletingAndProduce();

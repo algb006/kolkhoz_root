@@ -145,6 +145,29 @@ constexpr std::int32_t kStockNeverRunsOut = -1;
 /// story would act.
 constexpr std::int32_t kStockForecastHorizonDays = 96;
 
+/// @brief What a light actually measures, because the four are not measured
+/// alike and pretending they were is how a field lies.
+///
+/// FOOD, FODDER AND FIREWOOD ARE SPENT DAY BY DAY, so the honest question is
+/// how many days they last. SEED IS SPENT ALL AT ONCE, on the sowing, and
+/// "days of seed" is not a hard number — it is a number that does not exist:
+/// infinite until the sowing and zero on the day of it. Converting it into
+/// calories would not fix that; it would make a thing that does not exist
+/// look plausible (boss, 2026-09-04).
+///
+/// > One field stretched over two different questions lies about the one it
+/// > was not meant for.
+enum class StockMeasure : std::uint8_t {
+  /// `days_of_stock` is the answer; `coverage` is unused.
+  kDays = 0,
+
+  /// `coverage` is the answer: the share of what the moment needs that the
+  /// stores can meet. 0.6 means a third of the sowing has nothing to sow
+  /// with. `days_of_stock` is unused, and `days_to_date` still says when
+  /// the moment comes — a CALENDAR number, not one derived from the stock.
+  kCoverage,
+};
+
 /// @brief One light, ready to draw and ready to reason about.
 struct StockForecast {
   StockKind kind = StockKind::kFood;
@@ -160,6 +183,15 @@ struct StockForecast {
   /// harvest, the pasture, the end of the cold, the sowing. 0 when the date
   /// is today or unknown.
   std::int32_t days_to_date = 0;
+
+  /// Which of the two numbers above this light actually answers with.
+  StockMeasure measure = StockMeasure::kDays;
+
+  /// Share of what the moment needs that the stores can meet, for a light
+  /// whose stock is spent all at once (`measure == kCoverage`). 1.0 and
+  /// above is covered; 0.6 means a third of the sowing has nothing to sow
+  /// with. Unused — and left at 0 — for a kDays light.
+  float coverage = 0.0F;
 
   /// Why the light is dark. kNone whenever `light` is a colour.
   NoDataReason no_data_reason = NoDataReason::kNone;
@@ -189,6 +221,20 @@ StockLight LightFrom(std::int32_t days_of_stock,
                      std::int32_t days_to_date,
                      std::int32_t margin_days,
                      bool already_short);
+
+/// @brief The colour of a light whose stock is spent all at once.
+/// @param coverage Share of the need the stores can meet; 1.0 is exactly
+///        covered.
+/// @param margin The slack "with room to spare" means here, as a share on
+///        top of 1.0 — from the owner's own table.
+///
+/// THE DATE IS NOT IN IT, and that is the rule, not an omission (boss,
+/// 2026-09-04). A shortage of seed is visible the moment the harvest is in
+/// and can only be mended slowly, by eating less; a light that waited for
+/// the sowing to draw near would light up exactly when nothing can be done.
+/// **The deadline of such a light is not "when it turns on" — it is "how
+/// long is left to fix it".**
+StockLight LightFromCoverage(float coverage, float margin);
 
 }  // namespace core
 

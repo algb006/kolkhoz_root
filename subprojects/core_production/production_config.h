@@ -335,7 +335,12 @@ struct FarmingConfig {
   /// these are what is wrong, not the player.
   float feed_light_margin_days = 12.0F;  ///< A season of slack on the fodder.
 
-  float seed_light_margin_days = 4.0F;  ///< A month: seed is a fixed norm.
+  /// The seed light measures COVERAGE, not days, so its margin is a SHARE
+  /// on top of a whole covering: 0.1 means green wants a tenth in hand.
+  /// Seed is spent all at once and "days of seed" does not exist (boss,
+  /// 2026-09-04) — a margin in days would have been a slack on a number
+  /// that is not there.
+  float seed_light_margin_share = 0.1F;
 
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.

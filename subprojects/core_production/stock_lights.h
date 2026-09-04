@@ -59,36 +59,22 @@ std::int32_t DaysToSowing(const ProductionConfig& config, const WorldState& worl
 /// Food and seed are the same grain and still two lights, because this is
 /// the start's most expensive mistake: an eaten seed fund shows nothing at
 /// all until sowing, and by then it costs a whole year (office design §5).
-/// @param eating_kg_per_day What the settlement eats a day, in the GRAIN
-///        EQUIVALENT the food norms are stated in. Passed in because the
-///        eating norms belong to core_residents and this module may not
-///        reach for them (CLAUDE.md §7); the assembly point carries the
-///        number across, exactly as it carries DaysToHarvest the other way.
+/// @brief The seed light: is there enough to sow what the nearest campaign
+/// will put in the ground.
 ///
-/// TWO THINGS THIS NUMBER GETS WRONG, both known and both waiting on boss:
+/// COVERAGE, NOT DAYS, and that is boss's answer of 2026-09-04 rather than a
+/// simplification. Seed is not spent day by day — it goes in at once, on the
+/// sowing — so "days of seed" is not a hard number but a number that does
+/// not exist: infinite until the sowing and zero on the day of it. The light
+/// answers the question the stock actually has: what share of the campaign
+/// can be sown.
 ///
-///   * it is a GRAIN EQUIVALENT and the surplus below is raw kilograms, so a
-///     crop whose calories are far from rye's — potato is a quarter of it —
-///     forecasts too many days. The food light converts through calories for
-///     exactly this reason; this one cannot, because the densities live with
-///     the food config in core_residents;
-///   * `rotation_year0` is THIS year's crop and only shifts at the year
-///     turn, so from sowing to the new year a spring field is charged its
-///     seed a second time. What "the next sowing" means for a winter crop is
-///     a design answer, not an arithmetic one.
-///
-/// Both push the light the same way — towards standing yellow — and a light
-/// that is yellow always is the failure mode this mechanism exists to avoid.
-/// Recorded in OPEN_ITEMS and put to boss rather than guessed at.
-///
-/// It is needed because the seed fund's danger is not spoilage or use — it
-/// is BEING EATEN. Food and seed are the same grain, and the light asks
-/// whether the grain still covers the sowing norm when sowing comes. Without
-/// the eating rate the light could only ever say "enough right now", which
-/// is precisely the reassurance that costs a year.
-StockForecast SeedLight(const ProductionConfig& config,
-                        const WorldState& world,
-                        float eating_kg_per_day);
+/// The date travels beside it and is a CALENDAR number. A shortage of seed
+/// shows the moment the harvest is in and mends only slowly; a light that
+/// waited for the sowing to draw near would come on when nothing can be
+/// done. Its deadline is not when it lights up — it is how long is left to
+/// fix it.
+StockForecast SeedLight(const ProductionConfig& config, const WorldState& world);
 
 }  // namespace core
 
