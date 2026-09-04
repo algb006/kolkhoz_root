@@ -41,8 +41,15 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
     // (construction design §8). A site waits; a sowing window does not.
     case WorkKind::kConstruction:
       return 5;
-    case WorkKind::kNone:
+    // Hauling comes after building and before nothing at all. It is the one
+    // work whose urgency is carried entirely by its WINDOW rather than by
+    // its kind: a load waiting on a field before the snow is the most urgent
+    // thing in the village, and the same load in June can wait a week. The
+    // window is what says which (task A4).
+    case WorkKind::kHauling:
       return 6;
+    case WorkKind::kNone:
+      return 7;
   }
   return 6;
 }
@@ -213,7 +220,13 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
 
   for (const std::uint32_t job_index : OrderJobs(jobs)) {
     const AssignmentJob& job = jobs[job_index];
-    const bool horse_work = IsHorseWork(job.kind);
+    // A harnessed job takes a horse out of the day's pool exactly as
+    // ploughing does — which is what assignment.h has promised since the
+    // meadow cut was written, and what this line did not do until task A4
+    // came to rely on it. Without it the village could field an unlimited
+    // number of horse mowers, and hauling would have put a cart behind
+    // every carrier at once.
+    const bool horse_work = IsHorseWork(job.kind) || job.harnessed;
     if (horse_work && horses_left == 0) {
       continue;
     }
@@ -232,11 +245,22 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       if (job.max_crew != 0 && placed >= job.max_crew) {
         break;
       }
+      // A HORSE IS TAKEN IF ONE IS FREE. Whether its absence STOPS the work
+      // is a different question, and only ploughing and harrowing answer it
+      // yes — those are IsHorseWork, and a man cannot pull a plough. Mowing
+      // without a horse is a scythe, and carrying without one is a back:
+      // slower, and still work.
+      //
+      // Measured, because the difference is not academic: while every
+      // harnessed job demanded an animal, the carts took all sixteen horses
+      // every day — hauling always outranked ploughing — and the farm opened
+      // its ploughing and then sent nobody to it, year after year.
       if (horse_work) {
-        if (horses_left == 0) {
-          break;
+        if (horses_left > 0) {
+          --horses_left;
+        } else if (IsHorseWork(job.kind)) {
+          break;  // no horse, no plough: this job cannot be done at all today
         }
-        --horses_left;
       }
       result[pick.candidate_index] = job_index;
       expected_output += pick.daily_norm;

@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/fixture_policy.h"
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
 #include "core_common/calendar.h"
@@ -147,11 +148,17 @@ int main() {
   // the yard, take it to the stable step, appoint a groom. The core used to
   // do this itself in a stub; a run plays the player now (yard_policy.h).
   run::YardPolicy yard(*world.tables);
+  // And somewhere to put the harvest. The canon gives the village no granary
+  // — that is the game, and the run says so out loud rather than tabling it
+  // away (granary_policy.h).
+  run::FixturePolicy fixture(*world.tables);
+  run::FixturePolicy::Declare();
 
   for (std::uint32_t year = 0; year < kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       run::AdvanceDays(*world, 1);
       yard.RunDay(*world.simulation);
+      fixture.RunDay(*world.simulation);
       const core::WorldState& mid = world.State();
       if (mid.calendar.date.month == core::Month::kJuly && mid.calendar.date.day_in_month == 0) {
         sampled.assign(mid.fields.rows.size(), FieldSample{});
@@ -273,6 +280,17 @@ int main() {
   // lifetimes. A post whose holder dies simply empties — measured here on
   // purpose, because the first draft of this check asserted the opposite and
   // was wrong about the model rather than about the run.
+  fixture.Report(state);
+  // A LIMIT THAT BINDS MUST SAY SO. A run that quietly starves a village
+  // against a ceiling is an argument, not a measurement (boss, 2026-09-03).
+  core::Grams lost_to_room = 0;
+  for (const core::Grams lost : state.ledger.closed.no_room) {
+    lost_to_room += lost;
+  }
+  if (lost_to_room > 0) {
+    std::cout << "thirty_years: STORAGE STILL BINDS — the last year lost "
+              << static_cast<double>(lost_to_room) / 1.0e6 << " t for want of room\n";
+  }
   std::uint32_t posts_held = 0;
   for (const core::ResidentRow& resident : state.residents.rows) {
     posts_held += resident.post.profession.value != core::kInvalidDefIdValue ? 1 : 0;

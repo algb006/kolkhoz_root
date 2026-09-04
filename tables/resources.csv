@@ -3,108 +3,110 @@
 # measure is the unit every OTHER table writes this resource in: recipes, start stock, yields, orders
 # kg_per_unit: kilograms in ONE such unit, filled for every row on purpose. grams = amount * kg_per_unit * 1000, one rule, no special case per measure. 1000 for a tonne, 1 for a kilogram, the density for a litre or a cubic metre, the mass of one item for a piece (construction design §1, boss ruling 2026-08-31)
 # feed_value in fodder units per kg; empty means not a feed
+# spoil_days: shelf life in GAME days at a plain store, from the spoilage class, not from the row. Empty means it does not spoil (class none) or the rule is its own (class special, see the design note). Spoilage runs at the END of the day, AFTER the eaters have eaten: what was consumed cannot rot
+# cellar, ice house, cold and processing multiply the term (transport design 10). None of those exist in the slice, so the multiplier is 1 everywhere for now
 # kcal_per_gram: food, plus grain as the grain-equivalent reference
 # subtitle is the design gloss: what the row covers and what it does not
-key,title,measure,kg_per_unit,feed_value,kcal_per_gram,subtitle
-rye,Рожь,t,1000,1.15,3.3,хлебное зерно: мука и хлеб
-wheat,Пшеница,t,1000,1.2,3.3,"хлебное зерно, ценнее всего в сдаче; озимая и яровая идут в один ресурс"
-oat,Овёс,t,1000,1,3.3,"фуражное зерно, лошадям — главный корм"
-barley,Ячмень,t,1000,1.15,3.3,"фураж, крупа и пивоварня"
-buckwheat,Гречиха,t,1000,0.95,3.3,крупа; посевы — медонос
-pea,Горох,t,1000,,3.3,только крупа: в корм не идёт
-potato,Картофель,t,1000,0.3,0.77,
-vegetables,Овощи,t,1000,,0.25,"капуста, морковь, свёкла, лук, чеснок; огурцы и помидоры — только теплица"
-flax,Лён,t,1000,,,
-hay,Сено,t,1000,0.45,,
-straw,Солома,t,1000,0.2,,
-green_mass,Зелёная масса,t,1000,,,травы и кукуруза на силос
-silage,Силос,t,1000,0.2,,
-fodder_beet,Кормовая свёкла и турнепс,t,1000,0.12,,сочный корм на зимовку
-hops,Хмель,t,1000,,,
-fruit,Фрукты и ягоды,t,1000,,0.5,
-honey,Мёд,t,1000,,3,
-milk,Молоко,l,1.03,,0.64,
-cheese,Сыр,kg,1,,3.5,"домашний, козий"
-meat,Мясо и сало,t,1000,,2.5,
-fish,Рыба,t,1000,0.5,0.9,
-egg,Яйцо,kg,1,,1.4,
-forest_forage,Дары леса,t,1000,,0.4,"грибы, ягоды, орехи"
-wool,Шерсть,t,1000,,,
-hide,Шкуры,pcs,20,,,
-down,Пух и перо,kg,1,,,
-mink_pelt,Норковые шкурки,pcs,0.2,,,
-offal,Субпродукты,t,1000,0.35,,
-reed,Камыш,t,1000,0.15,,
-manure,Навоз и перегной,t,1000,,,
-compound_feed,Комбикорм,t,1000,1,,
-log,Брёвна,pcs,200,,,
-board,Доски,m3,600,,,
-firewood,Дрова,m3,500,,,
-pole_and_chip,Жерди и щепа,pcs,15,,,
-stone,Камень,t,1000,,,
-clay,Глина,t,1000,,,
-sand,Песок,t,1000,,,
-motor_fuel,ГСМ,l,0.83,,,"солярка, бензин, масло"
-kerosene,Керосин,l,0.8,,,
-coal,Уголь,t,1000,,,
-bottled_gas,Газ в баллонах,pcs,22,,,
-brick,Кирпич,pcs,3.5,,,
-roofing,Шифер и кровля,pcs,25,,,
-glass,Стекло,pcs,8,,,
-cement,Цемент,t,1000,,,
-steel,Железо и сталь,t,1000,,,
-reinforced_concrete,Железобетон,pcs,2000,,,
-insulation,Утеплитель,pcs,15,,,
-lime,Известь,t,1000,,,
-gravel,Щебень,t,1000,,,
-mineral_fertilizer,Минеральные удобрения,t,1000,,,
-paint,Краска,l,1.3,,,
-spare_part,Запчасти,pcs,5,,,"единая позиция, от подшипника до провода: прежнее деление на механические и электрические детали отменено"
-industrial_equipment,Промышленное оборудование,pcs,300,,,"станки, моторы, насосы"
-consumer_goods,Товары первой необходимости (промтовары),bundle,10,,,"бандл всего, что не определено отдельной строкой: посуда, мыло, спички, галантерея, зонты, книги. Состав не расписываем — он свой в каждой эпохе, и цену бандла эпоха меняет (P54f). В Эпохе I потребление минимально"
-factory_textile,Фабричное сырьё модных цехов,pcs,20,,,"ткань, синтетика, фурнитура, подошвенная резина (Производственные юниты §3)"
-grocery,Бакалея,kg,1,,3.5,"агрегат: соль, сахар, специи, чай"
-container,Тара,pcs,10,,,
-gun_and_tackle,Ружья и снасти,pcs,4,,,
-school_uniform,Школьная форма,pcs,1,,,
-watch,Часы,pcs,0.1,,,
-bicycle,Велосипед,pcs,15,,,
-radio,Радиоприёмник,pcs,6,,,
-television,Телевизор,pcs,30,,,
-refrigerator,Холодильник,pcs,60,,,
-washing_machine,Стиральная машина,pcs,40,,,
-carpet,Ковёр,pcs,15,,,
-furniture_set,Мебельный гарнитур,pcs,200,,,
-flour,Мука,t,1000,,3.4,
-groats,Крупы,t,1000,,3.4,"агрегат: ячневая, гречневая, гороховая"
-bread,Хлеб,t,1000,,2.2,
-smoked_meat,Копчёности,t,1000,,3,
-smoked_fish,Копчёная рыба,t,1000,,2,
-sausage,Колбасы,t,1000,,2.8,Эпоха II
-pastry,Выпечка,t,1000,,3.4,
-cloth,Своя ткань и пряжа,pcs,15,,,
-leather,Кожа,pcs,8,,,
-dyed_cloth,Крашеная ткань,pcs,15,,,Эпоха II
-dyed_leather,Крашеная кожа,pcs,8,,,Эпоха II
-clothes_summer,Одежда летняя,pcs,0.8,,,
-clothes_midseason,Одежда демисезонная,pcs,1.5,,,Эпоха II
-clothes_winter,Одежда зимняя,pcs,3,,,
-shoes_summer,Обувь летняя,pcs,0.6,,,
-shoes_midseason,Обувь демисезонная (сапоги),pcs,1.8,,,
-shoes_winter,Обувь зимняя (валенки),pcs,1.2,,,
-dyed_clothes_summer,Крашеная одежда летняя,pcs,0.8,,,Эпоха II
-dyed_clothes_midseason,Крашеная одежда демисезонная,pcs,1.5,,,Эпоха II
-dyed_clothes_winter,Крашеная одежда зимняя,pcs,3,,,Эпоха II
-dyed_shoes_midseason,Крашеная обувь (сапоги),pcs,1.8,,,Эпоха II
-fashion_clothes_summer,Модная одежда летняя,pcs,0.8,,,
-fashion_clothes_midseason,Модная одежда демисезонная,pcs,1.5,,,
-fashion_clothes_winter,Модная одежда зимняя,pcs,3,,,
-fashion_shoes_summer,Модная обувь летняя,pcs,0.6,,,
-fashion_shoes_midseason,Модная обувь демисезонная,pcs,1.8,,,
-fashion_shoes_winter,Модная обувь зимняя,pcs,1.2,,,
-fur_coat,Шубы,pcs,4,,,
-wine,Вино,l,0.99,,0.8,
-beer,Пиво,l,1.01,,0.45,
-spirits,Крепкий алкоголь,l,0.94,,,самогон
-woodwork,Мебель и столярные изделия,pcs,30,,,"рамы, двери, ульи, телеги"
-tool,Инструмент,pcs,3,,,
+key,title,measure,kg_per_unit,feed_value,kcal_per_gram,spoilage,spoil_days,subtitle
+rye,Рожь,t,1000,1.15,3.3,slow,600,хлебное зерно: мука и хлеб
+wheat,Пшеница,t,1000,1.2,3.3,slow,600,"хлебное зерно, ценнее всего в сдаче; озимая и яровая идут в один ресурс"
+oat,Овёс,t,1000,1,3.3,slow,600,"фуражное зерно, лошадям — главный корм"
+barley,Ячмень,t,1000,1.15,3.3,slow,600,"фураж, крупа и пивоварня"
+buckwheat,Гречиха,t,1000,0.95,3.3,slow,600,крупа; посевы — медонос
+pea,Горох,t,1000,,3.3,slow,600,только крупа: в корм не идёт
+potato,Картофель,t,1000,0.3,0.77,medium,120,
+vegetables,Овощи,t,1000,,0.25,medium,120,"капуста, морковь, свёкла, лук, чеснок; огурцы и помидоры — только теплица"
+flax,Лён,t,1000,,,none,,
+hay,Сено,t,1000,0.45,,none,,
+straw,Солома,t,1000,0.2,,none,,
+green_mass,Зелёная масса,t,1000,,,very_fast,2,травы и кукуруза на силос
+silage,Силос,t,1000,0.2,,special,,
+fodder_beet,Кормовая свёкла и турнепс,t,1000,0.12,,medium,120,сочный корм на зимовку
+hops,Хмель,t,1000,,,none,,
+fruit,Фрукты и ягоды,t,1000,,0.5,fast,6,
+honey,Мёд,t,1000,,3,very_slow,2400,
+milk,Молоко,l,1.03,,0.64,very_fast,2,
+cheese,Сыр,kg,1,,3.5,medium,120,"домашний, козий"
+meat,Мясо и сало,t,1000,,2.5,very_fast,2,
+fish,Рыба,t,1000,0.5,0.9,very_fast,2,
+egg,Яйцо,kg,1,,1.4,fast,6,
+forest_forage,Дары леса,t,1000,,0.4,fast,6,"грибы, ягоды, орехи"
+wool,Шерсть,t,1000,,,none,,
+hide,Шкуры,pcs,20,,,slow,600,
+down,Пух и перо,kg,1,,,none,,
+mink_pelt,Норковые шкурки,pcs,0.2,,,none,,
+offal,Субпродукты,t,1000,0.35,,very_fast,2,
+reed,Камыш,t,1000,0.15,,none,,
+manure,Навоз и перегной,t,1000,,,special,,
+compound_feed,Комбикорм,t,1000,1,,slow,600,
+log,Брёвна,pcs,200,,,none,,
+board,Доски,m3,600,,,none,,
+firewood,Дрова,m3,500,,,none,,
+pole_and_chip,Жерди и щепа,pcs,15,,,none,,
+stone,Камень,t,1000,,,none,,
+clay,Глина,t,1000,,,none,,
+sand,Песок,t,1000,,,none,,
+motor_fuel,ГСМ,l,0.83,,,none,,"солярка, бензин, масло"
+kerosene,Керосин,l,0.8,,,none,,
+coal,Уголь,t,1000,,,none,,
+bottled_gas,Газ в баллонах,pcs,22,,,none,,
+brick,Кирпич,pcs,3.5,,,none,,
+roofing,Шифер и кровля,pcs,25,,,none,,
+glass,Стекло,pcs,8,,,none,,
+cement,Цемент,t,1000,,,special,,
+steel,Железо и сталь,t,1000,,,none,,
+reinforced_concrete,Железобетон,pcs,2000,,,none,,
+insulation,Утеплитель,pcs,15,,,none,,
+lime,Известь,t,1000,,,none,,
+gravel,Щебень,t,1000,,,none,,
+mineral_fertilizer,Минеральные удобрения,t,1000,,,none,,
+paint,Краска,l,1.3,,,none,,
+spare_part,Запчасти,pcs,5,,,none,,"единая позиция, от подшипника до провода: прежнее деление на механические и электрические детали отменено"
+industrial_equipment,Промышленное оборудование,pcs,300,,,none,,"станки, моторы, насосы"
+consumer_goods,Товары первой необходимости (промтовары),bundle,10,,,none,,"бандл всего, что не определено отдельной строкой: посуда, мыло, спички, галантерея, зонты, книги. Состав не расписываем — он свой в каждой эпохе, и цену бандла эпоха меняет (P54f). В Эпохе I потребление минимально"
+factory_textile,Фабричное сырьё модных цехов,pcs,20,,,none,,"ткань, синтетика, фурнитура, подошвенная резина (Производственные юниты §3)"
+grocery,Бакалея,kg,1,,3.5,very_slow,2400,"агрегат: соль, сахар, специи, чай"
+container,Тара,pcs,10,,,none,,
+gun_and_tackle,Ружья и снасти,pcs,4,,,none,,
+school_uniform,Школьная форма,pcs,1,,,none,,
+watch,Часы,pcs,0.1,,,none,,
+bicycle,Велосипед,pcs,15,,,none,,
+radio,Радиоприёмник,pcs,6,,,none,,
+television,Телевизор,pcs,30,,,none,,
+refrigerator,Холодильник,pcs,60,,,none,,
+washing_machine,Стиральная машина,pcs,40,,,none,,
+carpet,Ковёр,pcs,15,,,none,,
+furniture_set,Мебельный гарнитур,pcs,200,,,none,,
+flour,Мука,t,1000,,3.4,slow,600,
+groats,Крупы,t,1000,,3.4,slow,600,"агрегат: ячневая, гречневая, гороховая"
+bread,Хлеб,t,1000,,2.2,fast,6,
+smoked_meat,Копчёности,t,1000,,3,very_slow,2400,
+smoked_fish,Копчёная рыба,t,1000,,2,very_slow,2400,
+sausage,Колбасы,t,1000,,2.8,slow,600,Эпоха II
+pastry,Выпечка,t,1000,,3.4,fast,6,
+cloth,Своя ткань и пряжа,pcs,15,,,none,,
+leather,Кожа,pcs,8,,,very_slow,2400,
+dyed_cloth,Крашеная ткань,pcs,15,,,none,,Эпоха II
+dyed_leather,Крашеная кожа,pcs,8,,,very_slow,2400,Эпоха II
+clothes_summer,Одежда летняя,pcs,0.8,,,none,,
+clothes_midseason,Одежда демисезонная,pcs,1.5,,,none,,Эпоха II
+clothes_winter,Одежда зимняя,pcs,3,,,none,,
+shoes_summer,Обувь летняя,pcs,0.6,,,none,,
+shoes_midseason,Обувь демисезонная (сапоги),pcs,1.8,,,none,,
+shoes_winter,Обувь зимняя (валенки),pcs,1.2,,,none,,
+dyed_clothes_summer,Крашеная одежда летняя,pcs,0.8,,,none,,Эпоха II
+dyed_clothes_midseason,Крашеная одежда демисезонная,pcs,1.5,,,none,,Эпоха II
+dyed_clothes_winter,Крашеная одежда зимняя,pcs,3,,,none,,Эпоха II
+dyed_shoes_midseason,Крашеная обувь (сапоги),pcs,1.8,,,none,,Эпоха II
+fashion_clothes_summer,Модная одежда летняя,pcs,0.8,,,none,,
+fashion_clothes_midseason,Модная одежда демисезонная,pcs,1.5,,,none,,
+fashion_clothes_winter,Модная одежда зимняя,pcs,3,,,none,,
+fashion_shoes_summer,Модная обувь летняя,pcs,0.6,,,none,,
+fashion_shoes_midseason,Модная обувь демисезонная,pcs,1.8,,,none,,
+fashion_shoes_winter,Модная обувь зимняя,pcs,1.2,,,none,,
+fur_coat,Шубы,pcs,4,,,none,,
+wine,Вино,l,0.99,,0.8,very_slow,2400,
+beer,Пиво,l,1.01,,0.45,medium,120,
+spirits,Крепкий алкоголь,l,0.94,,,none,,самогон
+woodwork,Мебель и столярные изделия,pcs,30,,,none,,"рамы, двери, ульи, телеги"
+tool,Инструмент,pcs,3,,,none,,

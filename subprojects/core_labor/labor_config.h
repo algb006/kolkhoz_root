@@ -200,6 +200,12 @@ struct LaborConfig {
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},  // construction
+      // Hauling: ordinary grade, and the HEAVY drain of decision 107. A day
+      // under a load is the tiring kind of work whether the load is grain or
+      // timber (transport design §2: "a heavy load over a long shoulder
+      // piles up fatigue").
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
   }};
 
   // -- the day (labor.csv; time design §6-§7) ------------------------------
@@ -231,6 +237,14 @@ struct LaborConfig {
   /// Real speed of a harnessed order, km/h (transport.csv horse_trot row):
   /// a plowman rides out with his horse instead of walking (decision 103).
   float harness_speed_kmh = 12.0F;
+
+  // What a carrier carries is NOT here. It was, for a while: cart_load_kg,
+  // carry_kg_adult and a fitness bonus sat in this struct, parsed and never
+  // read, because the price of a trip turned out to belong to ONE owner and
+  // that owner is core_production (core_common/haul.h, manual/75-logistics.md
+  // §3). Configuration nobody reads is worse than none: it reads like a knob
+  // and turns nothing, and the next person spends an afternoon on why moving
+  // it changes no number. Removed by the A4 delivery cycle.
 
   /// Sleep hours per day, for the family's household_hours arithmetic.
   float sleep_hours = 8.0F;

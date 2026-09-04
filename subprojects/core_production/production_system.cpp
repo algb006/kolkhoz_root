@@ -10,9 +10,15 @@
 // its demand (area x the phase's norm in game man-days) and closed here when
 // the crew has drained FieldRow::work_days_remaining to zero. Production
 // never calls labor and labor never calls production — the field row carries
-// the whole contract (manual/65-labor-model.md §2). Deliveries stay instant
-// (the phase-1 logistics stub): harvest lands in storage directly, hay at
-// the stock yard, manure at the compost heap.
+// the whole contract (manual/65-labor-model.md §2).
+//
+// DELIVERY IS NO LONGER INSTANT (task A4, manual/75-logistics.md). What is
+// reaped stays on the field until somebody carries it: this module sizes the
+// carrying in man-days, labor drains that seam with real people, and
+// SettleHauling turns what was drained back into grain in a store. Hay still
+// goes to the stock yard and manure to the compost heap in the same tick —
+// those two paths are the remaining instant stubs, and they are named in
+// OPEN_ITEMS rather than left to be discovered.
 
 #include "core_production/production_system.h"
 
@@ -24,11 +30,14 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/haul.h"
 #include "core_common/ledger_state.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
+#include "field_haul.h"
 #include "herd_system.h"
 #include "production_config.h"
 #include "stock_ops.h"
@@ -107,6 +116,21 @@ class ProductionSystem final : public IProductionSystem {
       // day zero is no year's turn for the daily bookkeeping below. Without
       // this the inherited 250 t lay untouched through the whole first year.
       PlanManure(current);
+    }
+    // The day's hauling is settled at its LAST tick, and the hour matters.
+    // Labor runs earlier in this same slot, so by now the carriers have
+    // finished walking; and settling here rather than at tomorrow's dawn
+    // means the seam labor reads next morning already says what is really
+    // left to carry. Settle at dawn instead and every second day would find
+    // an empty demand and send nobody (task A4).
+    if (HourFromTick(current.calendar.tick) + 1U >= kTicksPerDay) {
+      SettleHauling(config_, current);
+      // AND ONLY THEN does the day's food go bad. The village has eaten by
+      // now — the meal is the needs slot, phase 2, and this is phase 3 of
+      // the same tick — and eaten food cannot rot. The other way round and
+      // the settlement starves beside a full store, with both halves
+      // looking correct (boss, 2026-09-03; transport design §10).
+      SpoilStores(config_, current);
     }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work
@@ -411,23 +435,27 @@ class ProductionSystem final : public IProductionSystem {
     PlanManure(current);
   }
 
+  /// @brief What one hauler is worth on this shoulder today: a cart's load
+  /// at harness speed when the settlement has a draught horse to spare, a
+  /// person's load on foot when it has not (transport design §1, §2; the
+  /// two carriers of task A4, and there are only two).
+  ///
+  /// The REFERENCE carrier, deliberately: a cart takes its 750 kg whoever
+  /// leads the horse, and on foot the spread between a strong man and a
+  /// frail one is paid out in trudodni rather than in tonnage. The price of
+  /// a trip has to be the same on both sides of the seam, and the way it is
+  /// kept the same is core_common/haul.h — one formula, inputs read twice.
   void RunFields(WorldState& current) {
     const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
     const float temperature = current.weather.air_temperature_celsius;
     const bool snowing = current.weather.precipitation == Precipitation::kSnow;
     for (FieldRow& field : current.fields.rows) {
-      // The daily retry of the field brigade's buffer, before anything else
-      // the day does: room that appeared overnight empties what is lying
-      // out first, so the load that has waited longest leaves first (task
-      // A3, manual/72-storage-and-alarms.md §2).
-      if (field.reaped_grams > 0) {
-        const Grams moved =
-            DeliverToStores(current, config_, field.reaped_resource, field.reaped_grams);
-        field.reaped_grams -= moved;
-        if (field.reaped_grams == 0) {
-          field.reaped_resource = ResourceId{};
-        }
-      }
+      // The buffer is no longer emptied here. Until task A4 this was a
+      // daily retry that moved whatever the stores had room for, the moment
+      // they had it — the instant-delivery stub. The load now leaves when
+      // somebody carries it, and the carrying is settled at the day's last
+      // tick (SettleHauling). What A3 wrote about room still holds; what it
+      // said about the retry does not.
       if (field.kind == LandKind::kDerelict) {
         continue;  // unraised land: nothing happens here until it is raised
       }
@@ -436,6 +464,17 @@ class ProductionSystem final : public IProductionSystem {
         continue;
       }
       if (field.phase == FieldPhase::kIdle) {
+        // A LOADED FIELD MAY BE WORKED AGAIN, and it may because the two jobs
+        // no longer share a number: carrying has a seam of its own
+        // (land_state.h). Carting the sheaves off the headland and ploughing
+        // the stubble are different crews on the same ground, and the canon's
+        // rotation needs them at once — oats come off in the eighth month and
+        // winter rye goes in in the eighth.
+        //
+        // For one measured run this file forbade it, to protect the seam the
+        // two jobs were sharing. The forbidding cost the village a quarter of
+        // itself, because a field that could not be cleared could not be sown
+        // either. The shared seam was the defect; the ban was a splint on it.
         TrySow(current, field, month, temperature);
         continue;
       }
@@ -743,12 +782,14 @@ class ProductionSystem final : public IProductionSystem {
     const float weather_factor = 1.0F - field.weather_stress;
     const auto yield_grams =
         GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor);
-    // Instant delivery (logistics stub): hay feeds the stock yard, the rest
-    // goes through the store door. What the stores had no room for stays ON
-    // THE FIELD — the field brigade's buffer of the transport design (§9) —
-    // and the daily retry below empties it as room appears. Nothing is lost
-    // here and nothing is forced in above a ceiling.
-    const Grams unplaced = DeliverHarvest(current, crop.resource, yield_grams);
+    // THE REAPED CROP STAYS ON THE FIELD. Until task A4 it went into the
+    // stores in the same tick it was cut — the instant-delivery stub — and
+    // only the remainder that would not fit stayed out. It all stays out
+    // now: the field brigade's buffer of the transport design §9, and it
+    // empties when somebody comes for it with a back or a cart
+    // (SettleHauling). Nothing is lost here and nothing is forced in above
+    // a ceiling; what the field gave is booked below either way.
+    const Grams unplaced = yield_grams;
     if (unplaced > 0) {
       // A buffer already holding LAST year's produce of another crop cannot
       // hold this one too — one number names one resource. The old load has
@@ -815,7 +856,25 @@ class ProductionSystem final : public IProductionSystem {
     field.manure_applied = 0;
     field.last_crop = field.crop;
     field.weather_stress = 0.0F;
+    // The reaping is over, so the PHASE seam is cleared — without this the
+    // field never leaves kHarvest and the whole rotation stops, which is
+    // what happened for one measured run when this line was swallowed by an
+    // edit to the lines around it.
     field.work_days_remaining = 0.0F;
+    // The load names the price of CARRYING it at once, in its own seam. It
+    // has to be named here and not left to the evening: the first settlement
+    // works out what was carried from what is missing from this number, and
+    // a number nobody set reads as a full day's work — the instant-delivery
+    // stub coming back in through the accounting, which is exactly what an
+    // instrumented run caught it doing.
+    if (field.reaped_grams > 0) {
+      const Grams room = ReceivableRoom(config_, current);
+      field.haul_days_remaining = HaulDaysFor(room < field.reaped_grams ? room : field.reaped_grams,
+                                              FieldHaulRate(config_, current, field),
+                                              config_.standard_day_hours);
+    } else {
+      field.haul_days_remaining = 0.0F;
+    }
     if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
       field.phase = FieldPhase::kGrowing;  // the stand yields again next summer
       return;

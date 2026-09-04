@@ -372,6 +372,41 @@ class LaborSystem final : public ILaborSystem {
         jobs.push_back(job);
       }
     }
+    // Hauling (task A4): a field with a load lying on it wants carriers, and
+    // it wants them whatever season it is — the load does not ripen, it just
+    // sits there getting rained on.
+    //
+    // The demand was sized by PRODUCTION at the end of yesterday
+    // (SettleHauling, core_common/haul.h). Labor does none of that
+    // arithmetic: it reads the seam like any other and drains it with real
+    // people, and production converts what was drained back into grain. One
+    // owner for the price of a trip, and it is not this module.
+    if (!day_off) {
+      for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+        const FieldRow& field = current.fields.rows[row];
+        // Carrying has a seam of its own (land_state.h), so a field may be
+        // ploughed and cleared at once — different crews on the same ground,
+        // which the canon's rotation needs: oats come off in the eighth
+        // month and winter rye goes in in the eighth.
+        if (field.reaped_grams <= 0 || field.haul_days_remaining <= 0.0F) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.field = current.fields.row_ids[row];
+        job.position = field.center;
+        job.work_days_remaining = field.haul_days_remaining;
+        // With a horse if the settlement has one to spare — and then the
+        // placement takes it out of the day's pool, exactly as ploughing
+        // does. The cart is the horse (boss, 2026-09-03).
+        job.harnessed = DraughtHorses(current) > 0;
+        // Urgency is the load's own: before the snow it is the most urgent
+        // thing in the village, in June it can wait. The window of the crop
+        // that is lying there says which.
+        job.window_days_left = HaulWindow(current);
+        jobs.push_back(job);
+      }
+    }
     for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
       const HerdRow& herd = current.herds.rows[row];
       Vec2 position;
@@ -416,6 +451,22 @@ class LaborSystem final : public ILaborSystem {
     }
     position = current.units.rows[unit_row].position;
     return true;
+  }
+
+  /// Urgency of a load waiting on a field: THE DAYS UNTIL THE SNOW, which
+  /// is the deadline a lying load actually has (A3's named term — the first
+  /// settled snow takes what is still out).
+  ///
+  /// It used to be the harvest window of whatever was lying there, and that
+  /// was wrong in the one direction that mattered. A load left over from
+  /// last autumn has a window that shut months ago, which reads as "as
+  /// urgent as work gets" — so through the whole of spring the carts
+  /// outranked the plough and took every horse in the village. The load was
+  /// indeed old; it was not due tonight.
+  std::uint8_t HaulWindow(const WorldState& current) const {
+    const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
+    const std::uint32_t left = kDaysPerYear - day_of_year - 1U;
+    return left > 254U ? 254U : static_cast<std::uint8_t>(left);
   }
 
   /// Urgency of a field job: days until the crop's own window closes. The
@@ -597,7 +648,19 @@ class LaborSystem final : public ILaborSystem {
       return row == kNoRow ? nullptr : &current.units.rows[row].construction.labor_days_remaining;
     }
     const std::uint32_t row = FindRow(current.fields, work.field);
-    if (row == kNoRow || KindOfPhase(current.fields.rows[row].phase) != work.kind) {
+    if (row == kNoRow) {
+      return nullptr;
+    }
+    if (work.kind == WorkKind::kHauling) {
+      // Hauling drains ITS OWN seam. It used to share the field's work seam,
+      // on the strength of a comment claiming the two could never overlap —
+      // and the canon's own rotation overlapped them in the same step. What
+      // ends the haul is the load being gone, not a phase changing under it.
+      return current.fields.rows[row].reaped_grams > 0
+                 ? &current.fields.rows[row].haul_days_remaining
+                 : nullptr;
+    }
+    if (KindOfPhase(current.fields.rows[row].phase) != work.kind) {
       return nullptr;  // production has moved the field on since the morning
     }
     return &current.fields.rows[row].work_days_remaining;

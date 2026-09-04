@@ -253,6 +253,19 @@ bool ParseResourceRows(const ITable& food,
                        FoodConfig& config,
                        std::string& error) {
   config.resources.assign(resources.RowCount(), FoodResourceDef{});
+  // Shelf life comes off the RESOURCE roster, not the food one: hay and
+  // firewood go bad without ever being eaten.
+  config.spoil_days.assign(resources.RowCount(), 0.0F);
+  const std::uint32_t spoil_column = resources.FindColumn("spoil_days");
+  if (spoil_column != kNoTableColumn) {
+    for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
+      if (!OptionalCell(
+              resources, row, spoil_column, 0.0F, 100000.0F, config.spoil_days[row], error)) {
+        PrefixError("resources", "spoil_days", error);
+        return false;
+      }
+    }
+  }
   const std::uint32_t key_column = resources.FindColumn("key");
   if (key_column == kNoTableColumn) {
     error = "resources: no key column";

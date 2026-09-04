@@ -83,7 +83,7 @@ constexpr std::uint8_t kMaxJournalVerb = static_cast<std::uint8_t>(JournalVerb::
 constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kDismiss);
 constexpr std::uint8_t kMaxOrderStatus = static_cast<std::uint8_t>(OrderStatus::kCancelled);
 constexpr std::uint8_t kMaxOrderRefusal = static_cast<std::uint8_t>(OrderRefusal::kNoVacancy);
-constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kConstruction);
+constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(WorkKind::kHauling);
 
 class Writer {
  public:

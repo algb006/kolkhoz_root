@@ -710,6 +710,78 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       }
     }
   }
+  // The haul knobs (task A4). Same tables labor reads; the arithmetic that
+  // uses them is shared (core_common/haul.h), so only the inputs travel.
+  if (const ITable* transport = tables.FindTable("transport")) {
+    const std::uint32_t speed_col = transport->FindColumn("speed_kmh");
+    const std::uint32_t load_col = transport->FindColumn("load_tonnes");
+    float tonnes = config.cart_load_kg / 1000.0F;
+    if (!CellOrDefault(*transport,
+                       transport->FindRowByKey("pedestrian"),
+                       speed_col,
+                       0.5F,
+                       0.5F,
+                       60.0F,
+                       config.walk_speed_kmh,
+                       error) ||
+        !CellOrDefault(*transport,
+                       transport->FindRowByKey("horse_trot"),
+                       speed_col,
+                       0.5F,
+                       0.5F,
+                       60.0F,
+                       config.harness_speed_kmh,
+                       error) ||
+        !CellOrDefault(*transport,
+                       transport->FindRowByKey("cart_loaded"),
+                       load_col,
+                       0.01F,
+                       0.01F,
+                       100.0F,
+                       tonnes,
+                       error)) {
+      error = "transport: " + error;
+      return false;
+    }
+    config.cart_load_kg = tonnes * 1000.0F;
+  }
+  if (const ITable* labor = tables.FindTable("labor")) {
+    const std::uint32_t value_col = labor->FindColumn("value");
+    if (!CellOrDefault(*labor,
+                       labor->FindRowByKey("standard_day_hours"),
+                       value_col,
+                       10.0F,
+                       1.0F,
+                       24.0F,
+                       config.standard_day_hours,
+                       error) ||
+        !CellOrDefault(*labor,
+                       labor->FindRowByKey("carry_kg_adult"),
+                       value_col,
+                       20.0F,
+                       0.1F,
+                       1000.0F,
+                       config.carry_kg_adult,
+                       error)) {
+      error = "labor: " + error;
+      return false;
+    }
+  }
+  // Shelf life, by resource (task A4). A missing column or an empty cell
+  // means the resource does not go bad, which is why the default is zero
+  // and not something large: "keeps for ever" and "keeps a long time" are
+  // different statements, and the table says which.
+  config.spoil_days.assign(resources == nullptr ? 0 : resources->RowCount(), 0.0F);
+  if (resources != nullptr) {
+    const std::uint32_t days_column = resources->FindColumn("spoil_days");
+    for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+      if (!CellOrDefault(
+              *resources, row, days_column, 0.0F, 0.0F, 100000.0F, config.spoil_days[row], error)) {
+        error = "resources: spoil_days: " + error;
+        return false;
+      }
+    }
+  }
   config.horse_kind = KindByKey(livestock, "horse");
   // The groom's post, by the roster key. core_labor spells the same literal
   // for the alarm and the appointment rules; the two must stay one word, or

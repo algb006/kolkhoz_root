@@ -638,11 +638,16 @@ int CheckStoreCeilingAndAlarms() {
   const core::WorldState before = world;
   system->RunProductionDecisions(before, world);
 
+  // THE WHOLE TEN TONNES STAY ON THE FIELD. Until task A4 the store took
+  // its tonne in the same tick the crop was cut, for nothing, and only the
+  // nine that would not fit waited. Reaping and carrying are two jobs now:
+  // what is cut is cut, and what is carried is carried by somebody.
   const core::Grams held = world.units.rows[0].stock.size() > 0 ? world.units.rows[0].stock[0] : 0;
-  failures += Expect(held == 1'000 * core::kGramsPerKilogram,
-                     "the store takes its level's tonne and not a gram more");
-  failures += Expect(world.fields.rows[0].reaped_grams == 9'000 * core::kGramsPerKilogram,
-                     "and the nine tonnes that did not fit stay on the field");
+  failures += Expect(held == 0, "cutting a field puts nothing in a store: that is a second job");
+  failures += Expect(world.fields.rows[0].reaped_grams == 10'000 * core::kGramsPerKilogram,
+                     "the whole yield lies where it was cut, waiting for hands");
+  failures += Expect(world.fields.rows[0].haul_days_remaining > 0.0F,
+                     "and the field asks for those hands, in its own seam");
   failures += Expect(world.fields.rows[0].reaped_resource.value == 0,
                      "the waiting load names what it is, so a cart knows");
   failures += Expect(
@@ -663,20 +668,50 @@ int CheckStoreCeilingAndAlarms() {
                  (alarm.kind == core::AlarmKind::kStoreFull && alarm.unit.value == barn_id.value);
     waiting = waiting || (alarm.kind == core::AlarmKind::kHarvestWaitingOnField &&
                           alarm.field.value == field_id.value &&
-                          alarm.amount == 9'000 * core::kGramsPerKilogram);
+                          alarm.amount == 10'000 * core::kGramsPerKilogram);
   }
-  failures += Expect(store_full, "a store at its ceiling says so");
+  // The store is EMPTY now, not full: nothing was carried into it, so the
+  // ceiling alarm has nothing to complain about and the field alarm carries
+  // the whole story. That is the right division — a full store and an
+  // uncarried harvest are different troubles with different cures.
+  failures += Expect(!store_full, "an empty store does not cry that it is full");
   failures += Expect(waiting, "and the field says how much is lying on it");
 
-  // Room appears, and the buffer empties itself the next day without anyone
-  // asking: the daily retry is what makes the wait temporary.
-  world.units.rows[0].level = 2;             // the barn was upgraded: five tonnes now
-  const core::WorldState yesterday = world;  // captured BEFORE the day turns
-  world.calendar.tick += core::kTicksPerDay;
-  core::RefreshCalendarCaches(world.calendar);
-  system->RunProductionDecisions(yesterday, world);
-  failures += Expect(world.units.rows[0].stock[0] == 5'000 * core::kGramsPerKilogram,
-                     "room that appeared is filled from the field, up to the new ceiling");
+  // ROOM ALONE NO LONGER EMPTIES THE FIELD. Until task A4 a daily retry
+  // moved whatever fitted, for nothing, the moment it fitted — and this
+  // check measured that stub. The load waits for HANDS now: the seam is the
+  // demand for carrying it, and until somebody drains the seam the barn
+  // stays as empty as the day it was built, however much room it has.
+  world.units.rows[0].level = 2;  // the barn was upgraded: five tonnes now
+  {
+    const core::WorldState yesterday = world;
+    world.calendar.tick += core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    system->RunProductionDecisions(yesterday, world);
+  }
+  failures += Expect(world.units.rows[0].stock.empty() || world.units.rows[0].stock[0] == 0,
+                     "room that appeared moves nothing by itself: a load needs carrying");
+  failures += Expect(world.fields.rows[0].haul_days_remaining > 0.0F,
+                     "what it does instead is ask for carriers, by the day");
+
+  // And when the carriers have done their day — which is what draining the
+  // seam MEANS, and what core_labor does with real people — the grain
+  // arrives, up to the ceiling, and the rest keeps waiting.
+  // The carriers do their day, and THE DAY IS SETTLED AT ITS LAST TICK —
+  // which is the hour this has to be driven at. Settling at dawn instead
+  // would read a seam nobody had worked yet, and the whole model of "the
+  // load leaves when somebody carries it" would quietly become "the load
+  // leaves".
+  world.fields.rows[0].haul_days_remaining = 0.0F;
+  {
+    const core::WorldState yesterday = world;
+    world.calendar.tick += core::kTicksPerDay - 1U;
+    core::RefreshCalendarCaches(world.calendar);
+    system->RunProductionDecisions(yesterday, world);
+  }
+  failures += Expect(!world.units.rows[0].stock.empty() &&
+                         world.units.rows[0].stock[0] == 5'000 * core::kGramsPerKilogram,
+                     "a day of hauling fills the room that appeared, up to the new ceiling");
   failures += Expect(world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram,
                      "and what still does not fit keeps waiting");
   std::filesystem::remove_all(root);

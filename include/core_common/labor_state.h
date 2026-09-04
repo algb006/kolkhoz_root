@@ -50,9 +50,25 @@ enum class WorkKind : std::uint8_t {
   kHarvest,       ///< By hand in Epoch I; the heaviest window of the year.
   kHerdCare,      ///< Feeding, milking, mucking at a unit-standing herd.
   kConstruction,  ///< Building, raising or taking down a unit (task A2).
+
+  /// Carrying a load from where it lies to where it belongs (task A4;
+  /// transport design §2 and §9). NOT a subsystem of its own — decision 155
+  /// keeps transport inside the work orders, and this is what that means in
+  /// the core: hauling is a work kind, a hauler is a resident with an
+  /// assignment, and the load is state that was already there.
+  ///
+  /// Two carriers, and only two (boss, 2026-09-03). ON FOOT, at walking
+  /// speed, carrying what a person carries — the age band, stamina and
+  /// sportiness, cut by health, rest and hunger (transport §2). WITH A
+  /// HORSE, at harness speed, carrying a cart's 750 kg: the cart comes with
+  /// the draught animal and is not counted separately, because the canon of
+  /// the start hands out horses and horse tackle to the same yards together.
+  /// The hand cart of §9 is deliberately not modelled — it would need an
+  /// inventory per household, which is the micromanagement the design avoids.
+  kHauling,
 };
 
-inline constexpr std::uint32_t kWorkKindCount = 7;
+inline constexpr std::uint32_t kWorkKindCount = 8;
 
 /// @brief True for kinds that harness a horse: the crew is capped by adult
 /// kolkhoz horses, and residents hosting a kolkhoz horse at their yard are

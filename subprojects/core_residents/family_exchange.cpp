@@ -16,6 +16,7 @@
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
+#include "core_common/spoilage.h"
 
 namespace core {
 namespace {
@@ -364,6 +365,26 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
     return;  // a table-less world has no food roster and nothing to hand out
   }
   RunNets(config, current);
+  // THE LARDERS ROT TOO, and they rot here — after the meal. The meal is the
+  // needs slot, phase 2; this is the decisions slot, phase 3, of the same
+  // tick, so what a family ate today it ate before today's spoilage
+  // (transport design §10; boss's ordering, 2026-09-03). Rot the larder
+  // before the meal and the village would starve beside a full cellar.
+  //
+  // Without this the kolkhoz's issue would be a way of hiding food from
+  // time: the stores went bad and the pantries did not, so handing food out
+  // preserved it. The food_year run measured exactly that — striking out the
+  // issue norms came out BETTER than keeping them — and that inversion is
+  // what sent me looking.
+  if (!config.spoil_days.empty()) {
+    for (FamilyRow& family : current.families.rows) {
+      if (family.pantry.empty()) {
+        continue;
+      }
+      SpoilAmounts(
+          family.pantry, config.spoil_days, config.keeping_factor, current.ledger.current.spoiled);
+    }
+  }
   const SimDay day = current.calendar.day;
   if (config.distribution.period_days > 0 && day % config.distribution.period_days == 0) {
     const std::vector<Grams> reserve = IssueReserve(config, current);

@@ -36,7 +36,7 @@ constexpr const char* kKilogramSuffix = "_kg";
 /// The work kinds that carry a column: everything but kNone, which is the
 /// absence of an assignment and delivers nothing by definition.
 constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {
-    "none", "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction"};
+    "none", "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction", "hauling"};
 
 /// Grams as kilograms with three decimals — exact, and it reads back to the
 /// same gram. Written by hand rather than through a float, which would lose
@@ -290,6 +290,7 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // first column that says what the missing storage cost, rather than
   // leaving the year's book to balance by silence.
   EmitResourceBlock(out, resources, "no_room", book.no_room);
+  EmitResourceBlock(out, resources, "spoiled", book.spoiled);
   EmitResourceBlock(out, resources, "seed", book.seed);
   EmitResourceBlock(out, resources, "delivered", book.delivered);
   EmitResourceBlock(out, resources, "herd_produce", book.herd_produce);

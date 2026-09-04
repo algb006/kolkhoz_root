@@ -198,8 +198,15 @@ bool ParseEducationFactors(const ITable& table, LaborConfig& config, std::string
 /// One row per work kind, in the order of the WorkKind enum (kNone has no
 /// row: nobody is paid for idling).
 bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& error) {
-  constexpr std::array<std::string_view, 5> kKeys = {
-      "plowing", "harrowing", "sowing", "harvest", "herd_care"};
+  // In WorkKind order, because the loop indexes by position: kNone has no
+  // row, so entry N lands on kind N+1. A key the table does not carry keeps
+  // the compiled default, and that is how BOTH construction and hauling
+  // stand today: labor.csv is generated from the design db and carries
+  // neither row. The keys are listed so that the day the db grows them the
+  // core reads them without a rebuild — and so that the reader is not left
+  // wondering why two of the eight kinds are missing.
+  constexpr std::array<std::string_view, 7> kKeys = {
+      "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction", "hauling"};
   const std::uint32_t rate_column = table.FindColumn("trudodni_rate");
   const std::uint32_t drain_column = table.FindColumn("rest_drain_per_norm_day");
   for (std::uint32_t index = 0; index < kKeys.size(); ++index) {

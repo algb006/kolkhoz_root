@@ -61,6 +61,19 @@ namespace core {
 ///                             the store door and cannot keep the remainder:
 ///                             production (harvest, herds, straw), construction
 ///                             (demolition), genesis (a start table that overfills)
+///   spoiled ................. TWO WRITERS, and the exactness argument is
+///                             written here rather than assumed (task A4):
+///                             core_production rots the units' stores at the
+///                             day's LAST tick, core_residents rots the
+///                             families' larders at the NEXT day's first —
+///                             different ticks, both in the sequential
+///                             decisions slot, and even sharing one tick the
+///                             slot's fixed order (labor, residents,
+///                             production) would decide it. The accumulation
+///                             is += on an integer, so order could not
+///                             change the sum anyway; the reason to write
+///                             this down is that the NEXT writer will not
+///                             have these three properties by luck
 ///   yard_produce ............ core_production, herd day (household herds)
 ///   plot_harvest, eaten ..... core_world, events slot — FOLDED from the
 ///                             pantries: at hour 22 the only pantry writer
@@ -173,6 +186,13 @@ struct YearLedger {
 
   // -- district ------------------------------------------------------------
   ResourceAmounts delivered;  ///< Shipped against the plan.
+
+  /// What went bad in a store or a larder over the year, by resource
+  /// (task A4; transport design §10). A separate column from `no_room`
+  /// because they are different failures with different cures: no_room is
+  /// a barn too small, spoiled is a barn too slow. Nothing vanishes without
+  /// a line — the same rule that gave no_room its column.
+  ResourceAmounts spoiled;
 
   // -- labor ---------------------------------------------------------------
   /// Game man-days delivered, by WorkKind (index = the enum value).

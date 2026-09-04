@@ -261,6 +261,18 @@ struct FoodConfig {
   /// Dense by ResourceId, sized to the resource roster.
   std::vector<FoodResourceDef> resources;
 
+  /// Game days a resource keeps, dense by ResourceId — resources.csv
+  /// `spoil_days`, zero for what does not go bad (task A4; transport design
+  /// §10). Read here for the FAMILIES' LARDERS; core_production reads the
+  /// same column for the units' stores, and the rule itself is shared
+  /// (core_common/spoilage.h). Milk rots in a cellar exactly as it rots in a
+  /// granary — and a larder that did not rot would turn the kolkhoz's issue
+  /// into a way of hiding food from time itself.
+  std::vector<float> spoil_days;
+
+  /// STUB at 1.0: cellars, ice houses and frost are not in the slice.
+  float keeping_factor = 1.0F;
+
   /// Dense by CropId, sized to the crop roster: what the seed fund holds
   /// back before the distribution runs.
   std::vector<SeedNormDef> seed_norms;

@@ -124,6 +124,21 @@ struct FieldRow {
   /// phase — deliberately: work does not happen without workers.
   float work_days_remaining = 0.0F;
 
+  /// Norm man-days of CARRYING still owed for the load below (task A4,
+  /// manual/75-logistics.md §4). A seam of its own, and it earned one: the
+  /// field's `work_days_remaining` carries the demand of whatever the field
+  /// is DOING, and carrying a load off it is a second job that runs beside
+  /// the first. Three separate findings of the A4 delivery cycle pointed at
+  /// this one missing number — two jobs raised from a single seam, the
+  /// carried grain having to be INFERRED by subtraction because nothing
+  /// recorded it, and a loaded field unable to be ploughed because its only
+  /// seam was busy. One float answers all three.
+  ///
+  /// Written by production (it sizes the demand and settles it at the day's
+  /// last tick), drained by labor exactly like any other seam. Zero whenever
+  /// `reaped_grams` is zero.
+  float haul_days_remaining = 0.0F;
+
   /// Produce of `crop` reaped and NOT YET IN A STORE, in grams: the field
   /// brigade's buffer of the transport design (§9, "what accumulates: the
   /// harvest off the field"), in its smallest form — one resource, one

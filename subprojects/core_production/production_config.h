@@ -416,6 +416,43 @@ struct ProductionConfig {
   /// Invalid when the roster is missing, and then no team is ever gathered.
   ProfessionId groom_post;
 
+  // -- what a haul costs (task A4; transport design §1, §2; haul.h) --------
+  /// The SAME five numbers labor reads, out of the SAME two tables
+  /// (transport.csv, labor.csv), and read twice on purpose. Production
+  /// sizes the hauling demand it writes into a field's work seam; labor
+  /// drains that seam with real people. **The price of a trip has to be the
+  /// same on both sides of a seam**, and the way it is kept the same is that
+  /// the arithmetic lives in one place — core_common/haul.h — and only its
+  /// inputs are read twice. A number is data; two modules reading one table
+  /// is not a dependency (the same argument as the groom's key above).
+  ///
+  /// The demand is sized for a REFERENCE carrier, and that is exact where it
+  /// matters: a cart takes its 750 kg whoever leads the horse. On foot the
+  /// spread between a strong man and a frail one shows up in what each is
+  /// PAID for the day, not in the tonnage the field expects — a named
+  /// simplification, not an oversight.
+  float cart_load_kg = 750.0F;
+
+  float carry_kg_adult = 20.0F;
+
+  float walk_speed_kmh = 5.0F;
+
+  float harness_speed_kmh = 12.0F;
+
+  float standard_day_hours = 10.0F;
+
+  // -- shelf life (task A4; transport design §10) --------------------------
+  /// Game days a resource keeps, by ResourceId — resources.csv `spoil_days`,
+  /// empty for what does not go bad. Read here for the units' stores;
+  /// core_residents reads the same column for the larders, and the rule
+  /// itself is shared (core_common/spoilage.h) so the two cannot drift.
+  std::vector<float> spoil_days;
+
+  /// Multiplier on every shelf life: a cellar, an ice house, a frost.
+  /// STUB at 1.0 — none of them is in the vertical slice, and the knob is
+  /// here so that the day one arrives there is a place to put it.
+  float keeping_factor = 1.0F;
+
   LivestockKindId pig_kind;  ///< livestock.csv "pig": the only kind with an autumn slaughter.
 
   /// The share of the year's grain harvest the district expects
