@@ -72,6 +72,28 @@ class DecisionsSlot final : public ISequentialPhase {
   IConstructionSystem* construction_;
 };
 
+/// @brief Caloric density per resource, dense by ResourceId.
+/// A resource without the column, or with a blank cell, reads zero — which
+/// is the right answer for hay and straw and the honest one for anything
+/// the design has not priced yet.
+std::vector<float> FoodValuePerResource(const ITableSet& tables) {
+  std::vector<float> density;
+  const ITable* resources = tables.FindTable("resources");
+  if (resources == nullptr) {
+    return density;
+  }
+  const std::uint32_t column = resources->FindColumn("kcal_per_gram");
+  density.assign(resources->RowCount(), 0.0F);
+  if (column == kNoTableColumn) {
+    return density;
+  }
+  for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+    const std::optional<float> cell = resources->CellReal(row, column);
+    density[row] = cell && *cell > 0.0F ? *cell : 0.0F;
+  }
+  return density;
+}
+
 /// The events slot (phase 7). The event system itself is still a STUB — it
 /// is a phase-3 project feature — but the slot is no longer empty: since
 /// stage 7 it keeps the run ledger's two entries that cannot be kept where
@@ -91,6 +113,9 @@ class DecisionsSlot final : public ISequentialPhase {
 /// was eaten equals what is left".
 class EventsSlot final : public ISequentialPhase {
  public:
+  explicit EventsSlot(std::vector<float> kcal_per_gram)
+      : kcal_per_gram_(std::move(kcal_per_gram)) {}
+
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
     SweepOrderBook(current);
@@ -197,7 +222,7 @@ class EventsSlot final : public ISequentialPhase {
   /// run leaves thirty of them — and the first year leaves ONE point, which
   /// is the honest picture of a farm that has only just started rather than
   /// a line drawn from zero.
-  static void AppendChronicleYear(WorldState& current) {
+  void AppendChronicleYear(WorldState& current) const {
     ChronicleYear row;
     row.year = current.ledger.closed.year;
     row.residents = static_cast<std::uint32_t>(current.residents.rows.size());
@@ -213,13 +238,43 @@ class EventsSlot final : public ISequentialPhase {
       area += field.area_ga;
     }
     row.fertility = area > 0.0F ? weighted / area : 0.0F;
-    for (const Grams grams : current.ledger.closed.harvest) {
-      row.harvest_grams += grams > 0 ? grams : 0;
+    // FOOD OFF THE ARABLE, AND NOT MASS OFF THE FARM. Mass was the first
+    // answer and it was wrong in a way worth keeping written down: potatoes
+    // yield 9000 kg/ha against rye's 850 and feed a quarter as much per
+    // kilogram, so a year that swapped rye for potatoes would have read as a
+    // bumper year. A sum of unmixable quantities is a number somebody
+    // decides by and gets it wrong (boss's own rule, applied to his own
+    // order, 2026-09-05).
+    //
+    // Caloric density does two jobs at once here. It makes the crops
+    // comparable, and it drops the meadow without a special case: hay and
+    // straw feed animals, not people, so their density is zero and they fall
+    // out. That is what pairs this sheet with the fertility one — both are
+    // then about the same land.
+    //
+    // THE LIMIT, SAID RATHER THAN DISCOVERED: a crop grown for fibre is
+    // invisible here. Flax exhausts the soil and adds nothing to this curve,
+    // so the pair reads "the land is being eaten" for a year that was in
+    // fact spent on linen. The sheet measures FOOD off the arable, and that
+    // is the whole of what it measures.
+    double kcal = 0.0;
+    for (std::size_t index = 0; index < current.ledger.closed.harvest.size(); ++index) {
+      const Grams grams = current.ledger.closed.harvest[index];
+      const float density = index < kcal_per_gram_.size() ? kcal_per_gram_[index] : 0.0F;
+      if (grams > 0 && density > 0.0F) {
+        kcal += static_cast<double>(grams) * static_cast<double>(density);
+      }
     }
+    row.harvest_kcal = static_cast<std::int64_t>(kcal);
     current.ledger.chronicle.push_back(row);
   }
 
-  static void RotateLedger(WorldState& current) {
+  /// Caloric density by ResourceId, from tables/resources.csv. Read once at
+  /// wiring: the chronicle needs it every year and a table cannot change
+  /// under a running campaign.
+  std::vector<float> kcal_per_gram_;
+
+  void RotateLedger(WorldState& current) const {
     if (current.calendar.tick == 0 || current.calendar.tick % kTicksPerYear != 0) {
       return;
     }
@@ -259,7 +314,7 @@ class StandardSimulation final : public ISimulation {
         labor_(std::move(labor)),
         construction_(std::move(construction)),
         decisions_slot_(*labor_, *residents_, *production_, *construction_),
-        events_slot_() {
+        events_slot_(FoodValuePerResource(*config.tables)) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -320,6 +375,17 @@ class StandardSimulation final : public ISimulation {
 
   Deadline WearDeadline(UnitId unit) const override {
     return construction_->WearDeadline(engine_->CompletedState(), unit);
+  }
+
+  /// Tomorrow first. The weather is a pure function of (seed, day), so the
+  /// days ahead are evaluated exactly as the days behind would be — nothing
+  /// is remembered and nothing is cached.
+  void CollectPrecipitationForecast(std::span<Precipitation> into) const override {
+    const WorldState& completed = engine_->CompletedState();
+    for (std::size_t ahead = 0; ahead < into.size(); ++ahead) {
+      into[ahead] = time_->PrecipitationOn(
+          completed.world_seed, completed.calendar.day + static_cast<SimDay>(ahead) + 1U);
+    }
   }
 
   void CollectAlarms(std::vector<Alarm>& alarms) const override {

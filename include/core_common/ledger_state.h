@@ -240,16 +240,28 @@ struct ChronicleYear {
   /// all, which is a fact and not a missing value.
   float fertility = 0.0F;
 
-  /// The year's gross harvest in grams, summed over every resource.
+  /// The year's harvest in KILOCALORIES — food off the arable, not mass off
+  /// the farm.
   ///
-  /// SAID PLAINLY, BECAUSE IT IS A SUM OF UNMIXABLE QUANTITIES: rye and
-  /// potatoes and hay go into it by MASS. That is what "gross yield" means
-  /// in the tradition the design borrows the word from, and it is the wall's
-  /// question — how much came off the land — but a tonne of hay is not a
-  /// tonne of bread, and nobody should decide between crops by this number.
-  /// The alternative, a sum in kcal, is available (the food model computes
-  /// it) and was not chosen because the sheet is titled "gross harvest".
-  Grams harvest_grams = 0;
+  /// Mass was the first answer and it was wrong, in a way worth keeping
+  /// written down. Potatoes yield 9000 kg/ha against rye's 850 and feed
+  /// about a quarter as much per kilogram, so a year that swapped rye for
+  /// potatoes would have read as a bumper year: a sum of unmixable
+  /// quantities is a number somebody decides by and gets wrong.
+  ///
+  /// Caloric density does two jobs at once. It makes the crops comparable,
+  /// and it drops the meadow with no special case — hay and straw feed
+  /// animals and have no density here, so they fall out. That is what pairs
+  /// this sheet with the fertility one: both are then about the same land,
+  /// and their divergence is the reading the wall exists for — FERTILITY
+  /// FALLING WHILE THE HARVEST HOLDS MEANS THE LAND IS BEING EATEN.
+  ///
+  /// THE LIMIT, SAID RATHER THAN DISCOVERED: a crop grown for fibre is
+  /// invisible on this curve. Flax exhausts the soil and adds no calories,
+  /// so the pair would read "the land is being eaten" for a year in fact
+  /// spent on linen. The sheet measures food off the arable, and that is the
+  /// whole of what it measures.
+  std::int64_t harvest_kcal = 0;
 };
 
 /// @brief The wall: one row per closed year, oldest first.

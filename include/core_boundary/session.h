@@ -22,13 +22,13 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — twenty-five methods, counting
+/// concrete, and it is deliberately small — twenty-six methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
 ///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce,
-///               StockLights, WearDeadline
+///               StockLights, PrecipitationForecast, WearDeadline
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -550,6 +550,29 @@ class ISession {
   ///
   /// Valid until the next step or ReplaceWorld.
   virtual std::span<const StockForecast> StockLights() const = 0;
+
+  /// @brief Precipitation for the next three days: tomorrow, the day after,
+  /// the third. Always three, always in that order.
+  ///
+  /// THREE IS THE DESIGN'S NUMBER AND NOT A LIMIT OF THE MODEL. The
+  /// generator can be asked about any day — the weather is a pure function
+  /// of (world_seed, day), so a day ahead costs what a day behind costs —
+  /// and the design spends exactly three, because three is what it promises
+  /// the player: a threat that can be seen coming is a decision, and one
+  /// that cannot is the "punishment for the unforeseeable" the red line
+  /// forbids (farming design §6).
+  ///
+  /// PRECIPITATION ALONE, deliberately. The strip draws an icon per day and
+  /// nothing else; temperature and cloud are not here because nothing is
+  /// drawn from them, and a value on the boundary that nobody draws is a
+  /// value somebody eventually derives something from.
+  ///
+  /// It is a FORECAST, not a promise about the run: it is exactly what those
+  /// days will be, because they are already determined. There is no model
+  /// error to hide and none is claimed.
+  ///
+  /// Valid until the next step or ReplaceWorld.
+  virtual std::span<const Precipitation> PrecipitationForecast() const = 0;
 
   /// @brief How long `unit` has before its wear reaches the end of the
   /// scale, at the rate it is wearing today (unit rules §15).

@@ -116,6 +116,16 @@ class ScriptedSimulation final : public core::ISimulation {
     alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
   }
 
+  /// The scripted double has no weather; the days ahead read from whatever
+  /// the test set, so a session test can pin a forecast without a table set.
+  void CollectPrecipitationForecast(std::span<core::Precipitation> into) const override {
+    for (std::size_t ahead = 0; ahead < into.size(); ++ahead) {
+      into[ahead] = ahead < forecast_.size() ? forecast_[ahead] : core::Precipitation::kNone;
+    }
+  }
+
+  std::vector<core::Precipitation> forecast_;
+
   /// What the next CollectAlarms will hand back, in the order given.
   std::vector<core::Alarm> alarms_;
 
@@ -948,6 +958,27 @@ int TestStockLights(const core::ITableSet& tables) {
                light.no_data_reason < core::NoDataReason::kNoDataReasonCount;
   }
   failures += Expect(in_range, "no light or reason is handed over as the terminator itself");
+
+  // -- the three-day forecast, on the same session ------------------------
+  //
+  // The length is a CONTRACT and not a measurement: the design spends three
+  // days, and a panel that draws three icons must never be handed two. The
+  // order is the other half of it — a strip that reads "tomorrow, the day
+  // after, the third" cannot be given them in any other order and notice.
+  script->forecast_ = {
+      core::Precipitation::kRain, core::Precipitation::kNone, core::Precipitation::kSnow};
+  session->AdvanceStep();
+  const std::span<const core::Precipitation> forecast = session->PrecipitationForecast();
+  failures += Expect(forecast.size() == 3, "the forecast is three days, always");
+  failures += Expect(forecast.size() == 3 && forecast[0] == core::Precipitation::kRain &&
+                         forecast[1] == core::Precipitation::kNone &&
+                         forecast[2] == core::Precipitation::kSnow,
+                     "and they arrive as tomorrow, the day after, the third");
+  bool forecast_in_range = true;
+  for (const core::Precipitation day : forecast) {
+    forecast_in_range = forecast_in_range && day < core::Precipitation::kPrecipitationCount;
+  }
+  failures += Expect(forecast_in_range, "and no day is handed over as the enum's terminator");
 
   bool any_green = false;
   for (const core::StockForecast& light : lights) {

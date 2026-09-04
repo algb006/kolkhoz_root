@@ -259,6 +259,25 @@ class ISimulation {
   /// rate; the bare engine knows no subsystems and answers kNoData.
   /// @note Called between steps on the sim thread.
   virtual Deadline WearDeadline(UnitId unit) const = 0;
+
+  /// @brief The precipitation of the next `into.size()` days, tomorrow
+  /// first, filled in place.
+  ///
+  /// IT IS A QUERY AND NOT A MEMORY. The weather is a pure function of
+  /// (world_seed, day) — no history is kept anywhere — so the days ahead are
+  /// simply evaluated, exactly as the days behind would be. That is what
+  /// makes a forecast free here and what made it worth building the
+  /// generator's memory into the generator rather than into an accumulator
+  /// (time_system.cpp).
+  ///
+  /// THE DESIGN'S LIMIT IS THREE DAYS and it belongs to the design, not to
+  /// this signature: nothing here stops a caller asking for ten, and the
+  /// boundary is where the three is spent (session.h).
+  ///
+  /// The bare engine has no weather and leaves every entry kNone — the same
+  /// answer a table-less world gives.
+  /// @note Called between steps on the sim thread.
+  virtual void CollectPrecipitationForecast(std::span<Precipitation> into) const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.

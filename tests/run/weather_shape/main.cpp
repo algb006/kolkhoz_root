@@ -189,6 +189,8 @@ bool WriteMemorylessWeather(const std::filesystem::path& into) {
 
 /// @brief Drives the time phase over `kYears` and collects the shape.
 /// @return false when the table set or the system refused to build.
+std::uint32_t forecast_disagreements = 0;
+
 bool Measure(const std::string& tables_dir, Shape& shape) {
   std::string error;
   const auto tables = core::LoadTableSet(tables_dir, &error);
@@ -220,6 +222,17 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
     core::RefreshCalendarCaches(previous.calendar);
     current = previous;
     system->TimeAndWeatherPhase().RunSequential(previous, current);
+
+    // THE FORECAST IS THE SAME ARITHMETIC OR IT IS A SECOND WEATHER. The
+    // phase wrote today's precipitation into `current`; PrecipitationOn is
+    // what the boundary hands the player three days early. They come from
+    // one function (time_system.cpp, WeatherOfDay), and this is the check
+    // that says so out loud — a copy of the rule would part from it on the
+    // first edit to either, and nobody would notice until a forecast said
+    // rain on a dry day.
+    if (system->PrecipitationOn(g_seed, current.calendar.day) != current.weather.precipitation) {
+      ++forecast_disagreements;
+    }
 
     const auto season = static_cast<std::size_t>(current.calendar.season);
     SeasonStats& into = shape.seasons[season];
@@ -323,6 +336,9 @@ int main(int argc, char** argv) {
         std::abs(now.MeanSwing() - was.MeanSwing()) <= kSwingCelsius,
         (name + ": the sky redistributed the diurnal swing without changing its mean").c_str());
   }
+
+  failures += run::Expect(forecast_disagreements == 0,
+                          "the forecast and the phase are the same weather, day for day");
 
   // A stopped generator passes every invariant above — it would report the
   // same day forever, which is why the measure has to prove it measured.

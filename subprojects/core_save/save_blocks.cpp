@@ -266,7 +266,7 @@ void WriteLedger(SaveSink& sink, const LedgerState& ledger) {
     out.WriteU16(year.year);
     out.WriteU32(year.residents);
     out.WriteFloat(year.fertility);
-    out.WriteI64(year.harvest_grams);
+    out.WriteI64(year.harvest_kcal);
   }
 }
 
@@ -286,7 +286,7 @@ LedgerState ReadLedger(LoadSource& source) {
     year.year = in.ReadU16();
     year.residents = in.ReadU32();
     year.fertility = in.ReadFloat();
-    year.harvest_grams = in.ReadI64();
+    year.harvest_kcal = in.ReadI64();
     ledger.chronicle.push_back(year);
   }
   return ledger;

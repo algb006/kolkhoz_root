@@ -226,6 +226,63 @@ bool WetDay(std::uint64_t seed, SimDay day, const SeasonTable& seasons) {
   return wet;
 }
 
+/// @brief The weather of ONE DAY, past or future, from nothing but the seed
+/// and the day number.
+///
+/// ONE HOME FOR THE RULE. The phase writes what this returns and the
+/// forecast asks it about days that have not happened; a second copy of the
+/// arithmetic would be a second weather, and the two would part on the first
+/// edit to either. It takes the season by day-of-year rather than from the
+/// calendar cache precisely so that a day ahead of the clock can be asked.
+WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day) {
+  WeatherState weather;
+  const std::uint32_t day_of_year = day % kDaysPerYear;
+  weather.daylight_hours = kDaylightGameHours[day_of_year];
+  const SeasonWeather& season = SeasonOfDayOfYear(seasons, day_of_year);
+
+  const float noise = MemoryLatent(world_seed, day, kTemperatureSalt, season.temperature_memory);
+  float temperature =
+      SeasonalMeanTemperature(seasons, day_of_year) + noise * season.temperature_spread_celsius;
+  temperature = temperature < kTemperatureMinCelsius ? kTemperatureMinCelsius : temperature;
+  temperature = temperature > kTemperatureMaxCelsius ? kTemperatureMaxCelsius : temperature;
+  weather.air_temperature_celsius = temperature;
+
+  const bool wet = WetDay(world_seed, day, seasons);
+  weather.precipitation = wet ? (temperature <= 0.0F ? Precipitation::kSnow : Precipitation::kRain)
+                              : Precipitation::kNone;
+
+  // The sky. Rain implies cloud and cloud does not imply rain, so a wet day
+  // is pulled TOWARDS overcast and a dry one away from it — and the pull is
+  // applied to the finished 0..1 cloud rather than to the latent, because
+  // the latent has to be clipped and clipping would eat the wet day's push
+  // while leaving the dry day's intact. That is not a hypothetical: the
+  // first version did exactly that and the mean cloud came out at 0.42 in
+  // winter instead of 0.5 — a season of quietly wider swings.
+  //
+  // Here the mean survives by arithmetic: a wet day reads c + b(1-c) and a
+  // dry one c - b*(p/(1-p))*c, so the mean over the season is
+  //   c + p*b*(1-c) - (1-p)*b*p/(1-p)*c = c + p*b*(1 - 2c),
+  // which is c exactly when c averages a half — and it does, the latent
+  // being symmetric.
+  const float chance = season.precipitation_chance_percent / 100.0F;
+  const float sky = MemoryLatent(world_seed, day, kCloudSalt, season.temperature_memory);
+  const float plain_cloud = 0.5F + 0.5F * sky;
+  const float dry_pull = chance >= 1.0F ? 1.0F : kRainCloudBias * chance / (1.0F - chance);
+  weather.cloud_cover = wet ? plain_cloud + kRainCloudBias * (1.0F - plain_cloud)
+                            : plain_cloud * (1.0F - (dry_pull > 1.0F ? 1.0F : dry_pull));
+
+  // AND THE SWING, WHICH IS THE ONLY THING THE SKY IS ALLOWED TO TOUCH. The
+  // daily MEAN above is untouched by cloud: the background of every other
+  // system stands where the table put it, and what moves is how far the day
+  // departs from it in either direction. The season's mean multiplier is 1
+  // because the mean cloud is a half — a claim measured in the run, not
+  // asserted here (69-reconciliation.md §13.11).
+  weather.temperature_swing_celsius =
+      season.temperature_amplitude_celsius *
+      (1.0F + season.cloud_swing * (1.0F - 2.0F * weather.cloud_cover));
+  return weather;
+}
+
 /// Phase 1 slot: clock, calendar caches, the day's weather.
 class TimeAndWeatherSlot final : public ISequentialPhase {
  public:
@@ -237,54 +294,9 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
 
     // Weather is a function of the day alone: recomputing it every tick of
     // the same day writes the same values (frozen for the rest of the step).
-    const SimDay day = current.calendar.day;
-    const std::uint32_t day_of_year = day % kDaysPerYear;
-    current.weather.daylight_hours = kDaylightGameHours[day_of_year];
-
-    const SeasonWeather& season = seasons_[static_cast<std::uint32_t>(current.calendar.season)];
-    const float noise =
-        MemoryLatent(current.world_seed, day, kTemperatureSalt, season.temperature_memory);
-    float temperature =
-        SeasonalMeanTemperature(seasons_, day_of_year) + noise * season.temperature_spread_celsius;
-    temperature = temperature < kTemperatureMinCelsius ? kTemperatureMinCelsius : temperature;
-    temperature = temperature > kTemperatureMaxCelsius ? kTemperatureMaxCelsius : temperature;
-    current.weather.air_temperature_celsius = temperature;
-
-    const bool wet = WetDay(current.world_seed, day, seasons_);
-    current.weather.precipitation =
-        wet ? (temperature <= 0.0F ? Precipitation::kSnow : Precipitation::kRain)
-            : Precipitation::kNone;
-
-    // The sky. Rain implies cloud and cloud does not imply rain, so a wet day
-    // is pulled TOWARDS overcast and a dry one away from it — and the pull
-    // is applied to the finished 0..1 cloud rather than to the latent,
-    // because the latent has to be clipped and clipping would eat the wet
-    // day's push while leaving the dry day's intact. That is not a
-    // hypothetical: the first version did exactly that and the mean cloud
-    // came out at 0.42 in winter instead of 0.5, which is a season of
-    // quietly wider swings.
-    //
-    // Here the mean survives by arithmetic: a wet day reads c + b(1-c) and a
-    // dry one c - b*(p/(1-p))*c, so the mean over the season is
-    //   c + p*b*(1-c) - (1-p)*b*p/(1-p)*c = c + p*b*(1 - 2c),
-    // which is c exactly when c averages a half — and it does, the latent
-    // being symmetric.
-    const float chance = season.precipitation_chance_percent / 100.0F;
-    const float sky = MemoryLatent(current.world_seed, day, kCloudSalt, season.temperature_memory);
-    const float plain_cloud = 0.5F + 0.5F * sky;
-    const float dry_pull = chance >= 1.0F ? 1.0F : kRainCloudBias * chance / (1.0F - chance);
-    const float cloud = wet ? plain_cloud + kRainCloudBias * (1.0F - plain_cloud)
-                            : plain_cloud * (1.0F - (dry_pull > 1.0F ? 1.0F : dry_pull));
-    current.weather.cloud_cover = cloud;
-
-    // AND THE SWING, WHICH IS THE ONLY THING THE SKY IS ALLOWED TO TOUCH.
-    // The daily MEAN above is untouched by cloud: the background of every
-    // other system stands where the table put it, and what moves is how far
-    // the day departs from it in either direction. The season's mean
-    // multiplier is 1 because the mean cloud is a half — a claim measured in
-    // the run, not asserted here (69-reconciliation.md §13.11).
-    current.weather.temperature_swing_celsius =
-        season.temperature_amplitude_celsius * (1.0F + season.cloud_swing * (1.0F - 2.0F * cloud));
+    // The arithmetic lives in WeatherOfDay because the forecast asks the
+    // same question about days ahead — one rule, one home.
+    current.weather = WeatherOfDay(seasons_, current.world_seed, current.calendar.day);
   }
 
  private:
@@ -293,11 +305,16 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
 
 class TimeSystem final : public ITimeSystem {
  public:
-  explicit TimeSystem(const SeasonTable& seasons) : phase_(seasons) {}
+  explicit TimeSystem(const SeasonTable& seasons) : seasons_(seasons), phase_(seasons) {}
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
 
+  Precipitation PrecipitationOn(std::uint64_t world_seed, SimDay day) const override {
+    return WeatherOfDay(seasons_, world_seed, day).precipitation;
+  }
+
  private:
+  SeasonTable seasons_;
   TimeAndWeatherSlot phase_;
 };
 

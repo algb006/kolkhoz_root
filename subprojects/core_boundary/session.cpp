@@ -14,6 +14,7 @@
 #include "core_boundary/session.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -116,6 +117,7 @@ class Session final : public ISession {
     // conditions of that world at its very first call.
     RefreshAlarms();
     RefreshStockLights();
+    RefreshForecast();
   }
 
   // -- time -----------------------------------------------------------------
@@ -124,6 +126,7 @@ class Session final : public ISession {
     RunOneStep();
     RefreshAlarms();
     RefreshStockLights();
+    RefreshForecast();
   }
 
   FastForwardReport AdvanceUntil(const FastForwardTarget& target,
@@ -155,6 +158,7 @@ class Session final : public ISession {
     }
     RefreshAlarms();
     RefreshStockLights();
+    RefreshForecast();
     return report;
   }
 
@@ -189,6 +193,8 @@ class Session final : public ISession {
   std::span<const Alarm> ActiveAlarms() const override { return alarms_; }
 
   std::span<const StockForecast> StockLights() const override { return lights_; }
+
+  std::span<const Precipitation> PrecipitationForecast() const override { return forecast_; }
 
   Deadline WearDeadline(UnitId unit) const override { return simulation_->WearDeadline(unit); }
 
@@ -316,6 +322,7 @@ class Session final : public ISession {
     simulation_->ResetWorld(initial);
     RefreshAlarms();
     RefreshStockLights();
+    RefreshForecast();
   }
 
   void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) override {
@@ -485,6 +492,10 @@ class Session final : public ISession {
   /// A fixed-length list in a fixed order, for the same reason alarms are
   /// sorted: a panel diffs it, and a list whose order followed the fan-out
   /// would churn for no reason the player could see.
+  /// Filled beside the lights and on the same occasions: after a step, after
+  /// a load, after a world is replaced. Three days, tomorrow first.
+  void RefreshForecast() { simulation_->CollectPrecipitationForecast(forecast_); }
+
   void RefreshStockLights() {
     std::vector<StockForecast> answered;
     simulation_->CollectStockForecast(answered);
@@ -601,6 +612,11 @@ class Session final : public ISession {
   std::vector<Alarm> alarms_;
 
   std::vector<StockForecast> lights_;
+
+  /// The design's three days (session.h). A fixed array and not a vector:
+  /// the length is a contract, not a measurement, and a span over an array
+  /// cannot come back short.
+  std::array<Precipitation, 3> forecast_{};
 };
 
 }  // namespace

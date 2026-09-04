@@ -22,6 +22,7 @@
 
 #include <memory>
 
+#include "core_common/world_state.h"
 #include "core_sim/step.h"
 
 namespace core {
@@ -37,6 +38,22 @@ class ITimeSystem {
   /// The reference is valid for the lifetime of the system object; wiring
   /// stores it in StepPhaseSet::time_and_weather.
   virtual ISequentialPhase& TimeAndWeatherPhase() = 0;
+
+  /// @brief The precipitation of one day, past or future.
+  ///
+  /// THE FORECAST IS A QUERY, NOT A RECORD, and that follows from the
+  /// generator: weather is a pure function of (world_seed, day), so a day
+  /// that has not happened is evaluated exactly like one that has. Nothing
+  /// is cached and nothing is stored; asking for tomorrow costs what asking
+  /// for today costs.
+  ///
+  /// @param world_seed The campaign seed — the same one WorldState carries.
+  /// @param day        Any day, including days ahead of the clock.
+  /// @return kSnow when that day's temperature is at or below zero and it
+  ///         is wet, kRain when it is wet and warmer, kNone when it is dry.
+  ///         A system built without a weather table answers from its STUB
+  ///         seasons, the same ones the phase would use.
+  virtual Precipitation PrecipitationOn(std::uint64_t world_seed, SimDay day) const = 0;
 };
 
 /// @brief Creates the time subsystem.

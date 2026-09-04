@@ -272,9 +272,9 @@ core::WorldState MakeWorld() {
   // survives. A campaign is fifty years of these, and they are the one
   // history the simulation cannot rederive.
   world.ledger.chronicle = {
-      {.year = 1, .residents = 80, .fertility = 55.5F, .harvest_grams = 41'000'000},
-      {.year = 2, .residents = 93, .fertility = 54.25F, .harvest_grams = 48'500'000},
-      {.year = 3, .residents = 88, .fertility = 56.0F, .harvest_grams = 39'250'000},
+      {.year = 1, .residents = 80, .fertility = 55.5F, .harvest_kcal = 41'000'000},
+      {.year = 2, .residents = 93, .fertility = 54.25F, .harvest_kcal = 48'500'000},
+      {.year = 3, .residents = 88, .fertility = 56.0F, .harvest_kcal = 39'250'000},
   };
   world.ledger.current.year = 0;
   world.ledger.current.births = 1;
@@ -365,7 +365,7 @@ int main() {
       loaded.ledger.chronicle.size() == 3 && loaded.ledger.chronicle[0].year == 1 &&
       loaded.ledger.chronicle[2].year == 3 && loaded.ledger.chronicle[1].residents == 93 &&
       loaded.ledger.chronicle[1].fertility == 54.25F &&
-      loaded.ledger.chronicle[2].harvest_grams == 39'250'000;
+      loaded.ledger.chronicle[2].harvest_kcal == 39'250'000;
   failures += Expect(wall_intact, "and the office wall came back whole, in order");
 
   // The order book: a campaign saved with an order waiting resumes with it

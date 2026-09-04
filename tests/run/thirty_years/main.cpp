@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -283,6 +284,20 @@ int main(int argc, char** argv) {
   // because thirty years of grams overflow a float's mantissa long before
   // they overflow the counter.
   double harvested_tonnes = 0.0;
+  double harvested_kcal = 0.0;
+  // Caloric density by ResourceId, read here rather than taken from the
+  // core: a second tally that shares the core's code would be one tally.
+  std::vector<double> food_value;
+  if (const core::ITable* resources = world.tables->FindTable("resources")) {
+    const std::uint32_t column = resources->FindColumn("kcal_per_gram");
+    food_value.assign(resources->RowCount(), 0.0);
+    if (column != core::kNoTableColumn) {
+      for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+        const std::optional<float> cell = resources->CellReal(row, column);
+        food_value[row] = cell && *cell > 0.0F ? static_cast<double>(*cell) : 0.0;
+      }
+    }
+  }
   double eaten_tonnes = 0.0;
   std::uint32_t rows_written = 0;
   std::uint16_t last_year = 0;
@@ -403,6 +418,18 @@ int main(int argc, char** argv) {
     PrintYear(state);
     for (const core::Grams grams : state.ledger.closed.harvest) {
       harvested_tonnes += static_cast<double>(grams) / 1.0e6;
+    }
+    // The wall's third sheet, added up a SECOND time and by another road:
+    // the core reads the density inside core_world and writes kcal at the
+    // rotation; this reads the same column off the table set and sums the
+    // same books. Two tallies of one fact — the trick that has caught more
+    // than the checks it was written for.
+    for (std::size_t index = 0; index < state.ledger.closed.harvest.size(); ++index) {
+      const core::Grams grams = state.ledger.closed.harvest[index];
+      const double density = index < food_value.size() ? food_value[index] : 0.0;
+      if (grams > 0 && density > 0.0) {
+        harvested_kcal += static_cast<double>(grams) * density;
+      }
     }
     for (const core::Grams grams : state.ledger.closed.eaten) {
       eaten_tonnes += static_cast<double>(grams) / 1.0e6;
@@ -676,12 +703,14 @@ int main(int argc, char** argv) {
   // appended twice.
   const core::Chronicle& wall = state.ledger.chronicle;
   failures += run::Expect(wall.size() == g_years, "the wall carries one row per closed year");
-  double wall_tonnes = 0.0;
+  double wall_kcal = 0.0;
   for (const core::ChronicleYear& year : wall) {
-    wall_tonnes += static_cast<double>(year.harvest_grams) / 1.0e6;
+    wall_kcal += static_cast<double>(year.harvest_kcal);
   }
-  failures += run::Expect(std::abs(wall_tonnes - harvested_tonnes) < 0.001,
-                          "and the same gross harvest the run added up itself");
+  // Within a kilocalorie a year: the core truncates each year to a whole
+  // kcal, this run does not.
+  failures += run::Expect(std::abs(wall_kcal - harvested_kcal) < static_cast<double>(g_years),
+                          "and the same food off the arable the run added up itself");
   if (!wall.empty()) {
     failures += run::Expect(
         wall.back().year == static_cast<std::uint16_t>(g_years) && wall.front().year == 1,
@@ -692,10 +721,10 @@ int main(int argc, char** argv) {
                             "and the last row's people are the people the gate counted");
     std::cout << "wall: " << wall.size() << " years — year 1 " << wall.front().residents
               << " residents, fertility " << wall.front().fertility << ", harvest "
-              << static_cast<double>(wall.front().harvest_grams) / 1.0e6 << " t; year "
+              << static_cast<double>(wall.front().harvest_kcal) / 1.0e9 << " Gkcal; year "
               << wall.back().year << " " << wall.back().residents << " residents, fertility "
               << wall.back().fertility << ", harvest "
-              << static_cast<double>(wall.back().harvest_grams) / 1.0e6 << " t\n";
+              << static_cast<double>(wall.back().harvest_kcal) / 1.0e9 << " Gkcal\n";
   }
   failures += run::Expect(eaten_tonnes > 100.0, "and the village ate");
 

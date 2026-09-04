@@ -140,6 +140,15 @@ class StepEngine final : public ISimulation {
   /// world whose tables define nothing that can go wrong answers with.
   void CollectAlarms(std::vector<Alarm>& /*alarms*/) const override {}
 
+  /// The bare engine has no weather table and no time system: every day
+  /// ahead is dry, which is the same answer a table-less world gives for
+  /// today. Not a stub to be filled — a world without weather has none.
+  void CollectPrecipitationForecast(std::span<Precipitation> into) const override {
+    for (Precipitation& day : into) {
+      day = Precipitation::kNone;
+    }
+  }
+
   /// The bare engine knows no subsystems, so it knows no rules: nobody can
   /// be ordered and the workforce is empty. StandardSimulation answers these
   /// for real by asking core_labor (task A8), exactly as it does for alarms.
