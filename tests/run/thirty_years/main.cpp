@@ -108,15 +108,22 @@ constexpr std::size_t kCanonTop = 1500;
 /// noise, and that reading is unambiguous.
 ///
 /// WHAT THIS COSTS, SAID PLAINLY: the population gate now catches
-/// divergence DOWNWARD only. And re-measuring the mutations on the fixture
-/// as it stands today (repair speaking, baseline 1606) says the loss is
-/// smaller than it looks and the remaining catch is thinner than it looked:
-/// +15% births reads 1591 — FIFTEEN residents, inside the noise, so that
-/// mutation had already stopped being caught before the assertion was
-/// dropped; -15% reads 1345, which fails the floor by 55, which is itself
-/// inside the noise. +50% reads 3017 and prints as a FINDING.
+/// divergence DOWNWARD only. Re-measured on the fixture as it stands today
+/// (repair speaking, baseline 1606), births scaled by:
 ///
-/// So the honest statement of what this half of the gate is: it catches a
+///   x1.50  3017   prints as a FINDING, fails nothing
+///   x1.15  1591   MINUS FIFTEEN. Inside the noise: this mutation had
+///                 already stopped being caught while it was still counted
+///                 as the upper edge's proof
+///   x0.85  1345   fails the floor by 55 — ON the resolution, proves nothing
+///   x0.80   798   FAILS THE FLOOR BY 602, ten times the noise
+///
+/// So the floor is an assertion and here is its number: 602. A mutation
+/// whose effect is smaller than the resolution proves nothing by firing OR
+/// by staying silent, which is why the magnitude is chosen above the noise
+/// and the noise is measured before the first mutation, not after it.
+///
+/// And the honest statement of what this half of the gate is: it catches a
 /// village that failed to grow, and it prints everything else.
 constexpr std::size_t kStubCeiling = 1608;
 
