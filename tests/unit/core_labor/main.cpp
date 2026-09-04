@@ -915,6 +915,158 @@ int TestAppointmentRefusals() {
                      "and the appointment beside it is NOT refused against an order just ended");
   failures += Expect(post.world().residents.rows[1].post.profession.value == 1,
                      "she ends the day a milkmaid: released and appointed in one gesture");
+
+  // AND THE SAME SYMMETRY FROM THE WORK SIDE (boss's decision of 2026-09-04:
+  // what a man has already promised has ONE home, and it is the book).
+  //
+  // The window is between accepting a post order and applying it at the day's
+  // close: the resident row still says yesterday. A check that reads the row
+  // there answers the right question about the wrong moment.
+  // The third of the household, who holds NOTHING: residents 0 and 1 already
+  // carry posts from the cases above, and a man with an applied post would be
+  // refused by the older half of the rule — the test would pass for the wrong
+  // reason and say nothing about the half under test.
+  post.world().residents.rows[2].birth_day = -300;  // grown since the child case
+  post.world().residents.rows[2].education_stage = core::EducationStage::kHigher;
+  const core::OrderId granted = post.Issue(post.Appoint(2, post.barn, 2));
+  post.world().calendar.tick = 6 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(post.world().calendar);
+  {
+    const core::WorldState before_grant = post.world();
+    labor->RunAssignmentDecisions(before_grant, post.world());
+  }
+  failures += Expect(post.Order(granted).status == core::OrderStatus::kAccepted,
+                     "the appointment is granted and waits for the day's close");
+  failures +=
+      Expect(post.world().residents.rows[2].post.profession.value == core::kInvalidDefIdValue,
+             "and until then the resident row still says he holds nothing");
+  core::OrderRow work_second;
+  work_second.kind = core::OrderKind::kAssignWork;
+  work_second.resident = post.world().residents.row_ids[2];
+  work_second.work = core::WorkKind::kHerdCare;
+  work_second.herd = herd;
+  const core::OrderId late_work = post.Issue(work_second);
+  {
+    const core::WorldState before_work = post.world();
+    labor->RunAssignmentDecisions(before_work, post.world());
+  }
+  failures += Expect(post.Order(late_work).refusal == core::OrderRefusal::kConflictsWithActive,
+                     "a work order over a post granted this morning is refused, not accepted");
+  failures += Expect(post.Order(granted).status == core::OrderStatus::kAccepted,
+                     "and the appointment it could not overrule is still standing");
+
+  // The mirror of "release, then appoint": DISMISS, then put him to work.
+  // One gesture, two rows, and the post verbs are read first — so the work
+  // order meets a post that is already on its way out.
+  post.RunDay(*labor, 7);
+  failures += Expect(post.world().residents.rows[2].post.profession.value == 2,
+                     "he is the agronomist by the close of that day");
+  const core::OrderId let_out = post.Issue(post.Dismiss(2));
+  const core::OrderId together_work = post.Issue(work_second);
+  post.RunDay(*labor, 8);
+  failures += Expect(post.Order(let_out).status == core::OrderStatus::kDone,
+                     "the dismissal in the same batch goes through");
+  failures += Expect(post.Order(together_work).refusal != core::OrderRefusal::kConflictsWithActive,
+                     "and the work order beside it is NOT refused against a post being ended");
+
+  // THE CANCELLED DISMISSAL. The order above was let past a held post on the
+  // strength of a kDismiss — and a dismissal does not settle in the tick it
+  // is read: it waits at kAccepted until the day's close, and the
+  // presentation may take it back in between. Take it back, and without the
+  // tick-by-tick invariant the man keeps his post AND his standing order for
+  // the rest of the campaign: two answers to "what does this man do",
+  // reached by the one route that goes round both admission checks.
+  DayWorld plain(1);
+  const core::HerdId barn_herd = plain.AddUnitHerd(4, 20.0F);
+  plain.world.residents.rows[0].post.profession = core::ProfessionId{0};
+  plain.world.residents.rows[0].post.unit = plain.world.units.row_ids[0];
+  core::OrderRow drop;
+  drop.kind = core::OrderKind::kDismiss;
+  drop.status = core::OrderStatus::kPending;
+  drop.resident = plain.world.residents.row_ids[0];
+  const core::OrderId dropping = core::AppendRow(plain.world.orders, drop);
+  core::OrderRow put_to_work;
+  put_to_work.kind = core::OrderKind::kAssignWork;
+  put_to_work.status = core::OrderStatus::kPending;
+  put_to_work.resident = plain.world.residents.row_ids[0];
+  put_to_work.work = core::WorkKind::kHerdCare;
+  put_to_work.herd = barn_herd;
+  const core::OrderId conditional = core::AppendRow(plain.world.orders, put_to_work);
+  {
+    const core::WorldState before_batch = plain.world;
+    labor->RunAssignmentDecisions(before_batch, plain.world);
+  }
+  const std::uint32_t granted_row = core::FindRow(plain.world.orders, conditional);
+  failures += Expect(granted_row != core::kNoRow && plain.world.orders.rows[granted_row].status ==
+                                                        core::OrderStatus::kAccepted,
+                     "the work order stands while its dismissal is on the way");
+
+  // The chairman takes the dismissal back — what ISession::CancelOrder does
+  // to a kAccepted row.
+  plain.world.orders.rows[core::FindRow(plain.world.orders, dropping)].status =
+      core::OrderStatus::kCancelled;
+  plain.world.calendar.tick = 1;
+  core::RefreshCalendarCaches(plain.world.calendar);
+  {
+    const core::WorldState after_cancel = plain.world;
+    labor->RunAssignmentDecisions(after_cancel, plain.world);
+  }
+  const std::uint32_t stranded = core::FindRow(plain.world.orders, conditional);
+  failures += Expect(stranded != core::kNoRow &&
+                         plain.world.orders.rows[stranded].status == core::OrderStatus::kRefused,
+                     "cancel the dismissal and the order granted against it ends too");
+  failures += Expect(stranded != core::kNoRow && plain.world.orders.rows[stranded].refusal ==
+                                                     core::OrderRefusal::kConflictsWithActive,
+                     "and it says which of the two answers it lost to");
+  failures += Expect(plain.world.residents.rows[0].post.profession.value == 0,
+                     "the post is the one that survives: the order stood on a dismissal "
+                     "that never happened");
+
+  // WITHIN ONE BATCH, AND IN BOTH ORDERS. The post verbs are read before the
+  // work verbs, so an appointment used to win every same-batch race however
+  // late it was given — the reverse of "the second one yields". The book's
+  // row order is the order the chairman gave them in, and it is the only
+  // thing that can tell first from second here. A test that tries just one
+  // order proves nothing: a rule that always refuses the work order passes
+  // it, and so does a rule that always refuses the appointment.
+  for (int job_given_first = 0; job_given_first < 2; ++job_given_first) {
+    PostWorld race(1);
+    core::HerdRow race_cows;
+    race_cows.unit = race.barn;
+    race_cows.adult_count = 3;
+    const core::HerdId race_herd = core::AppendRow(race.world().herds, race_cows);
+    race.world().residents.rows[0].sex = core::Sex::kMale;
+    core::OrderRow job;
+    job.kind = core::OrderKind::kAssignWork;
+    job.resident = race.world().residents.row_ids[0];
+    job.work = core::WorkKind::kHerdCare;
+    job.herd = race_herd;
+
+    core::OrderId job_id;
+    core::OrderId post_id;
+    if (job_given_first != 0) {
+      job_id = race.Issue(job);
+      post_id = race.Issue(race.Appoint(0, race.yard, 0));
+    } else {
+      post_id = race.Issue(race.Appoint(0, race.yard, 0));
+      job_id = race.Issue(job);
+    }
+    race.world().calendar.tick = 0;
+    core::RefreshCalendarCaches(race.world().calendar);
+    {
+      const core::WorldState before_race = race.world();
+      labor->RunAssignmentDecisions(before_race, race.world());
+    }
+    const bool job_won = race.Order(job_id).status == core::OrderStatus::kAccepted &&
+                         race.Order(post_id).refusal == core::OrderRefusal::kConflictsWithActive;
+    const bool post_won = race.Order(post_id).status == core::OrderStatus::kAccepted &&
+                          race.Order(job_id).refusal == core::OrderRefusal::kConflictsWithActive;
+    failures +=
+        Expect(job_won != post_won, "exactly one of the two stands, and the other says why");
+    failures += Expect(job_given_first != 0 ? job_won : post_won,
+                       job_given_first != 0 ? "the work order given first is the one that stands"
+                                            : "the appointment given first is the one that stands");
+  }
   std::filesystem::remove_all(root);
   return failures;
 }

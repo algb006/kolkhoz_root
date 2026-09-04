@@ -197,6 +197,16 @@ class LaborSystem final : public ILaborSystem {
       if (refusal == OrderRefusal::kNone && HasWaitingPostOrder(current, order.resident, row)) {
         refusal = OrderRefusal::kConflictsWithActive;
       }
+      // And the same conflict when the other side is still UNREAD. The post
+      // verbs are read before the work verbs, so a kAssignWork from this very
+      // batch is kPending here and invisible to CheckAppointment — which made
+      // the appointment win every same-batch race, however late it was given.
+      // The row index is what tells first from second: only a work order
+      // BELOW this one arrived before it (task A8 delivery cycle).
+      if (refusal == OrderRefusal::kNone && order.kind == OrderKind::kAppoint &&
+          WorkOrderCameFirst(current, order.resident, row)) {
+        refusal = OrderRefusal::kConflictsWithActive;
+      }
       if (refusal != OrderRefusal::kNone) {
         order.status = OrderStatus::kRefused;
         order.refusal = refusal;

@@ -4,7 +4,7 @@
 # build_class is the template the recipe was expanded from; it is informational, the recipe itself is in unit_level_cost.csv
 # max_crew: how many builders fit on the site at once. It belongs to the CLASS — what limits the crew is the size of the thing being built — and is resolved here the same way labor_days is. Empty where nothing is built (construction design §8)
 # a level with no class and no labour is not built by the player
-# wear_years_*: years from new to fully worn on THIS step, resolved from its build class the same way max_crew is. in_use is the SHORTER of the two: work consumes a building and standing still preserves it (unit rules §15). Multiply by the unit's wear_factor
+# wear_years_*: years from new to fully worn on THIS step, resolved from its build class the same way max_crew is. in_use is the SHORTER of the two: work consumes a building and standing still preserves it (unit rules §15). The unit's wear_factor multiplies the DAILY SHARE, not the years: a faster pace is a SHORTER life, so a byre at 1.6 wears out in 1/1.6 of its class term
 unit,level,era,labor_days,build_class,max_crew,storage_capacity_t,livestock_capacity_head,wear_years_idle,wear_years_in_use
 threshing_floor,1,1,30,earthwork,8,,,60,40
 slaughterhouse,1,1,120,wood_small,8,,,50,30

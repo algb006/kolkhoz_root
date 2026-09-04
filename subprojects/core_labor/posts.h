@@ -69,6 +69,30 @@ OrderRefusal CheckDismissal(const WorldState& world, const OrderRow& order);
 ///             itself a conflict.
 bool HasWaitingPostOrder(const WorldState& world, ResidentId resident, std::uint32_t self);
 
+/// @brief Whether a post for `resident` is standing at kAccepted — granted
+/// and not yet applied, because a post takes effect at the day's close.
+///
+/// Asked by CheckAssignWork, and this is the half of the post/order conflict
+/// that used to be missing. That check read the APPLIED post on the resident
+/// row, so between accepting an appointment and applying it there was a
+/// window in which a work order sailed through — and the next morning's
+/// re-check killed the appointment instead. The rule says the second one
+/// yields; reading applied state answered the right question about the wrong
+/// moment (boss, 2026-09-04: what a man has already promised has one home,
+/// and that home is the book).
+bool AppointmentIsWaiting(const WorldState& world, ResidentId resident);
+
+/// @brief Whether a dismissal for `resident` is in the book and has not been
+/// refused or cancelled — that is, whether his post is being ended in this
+/// very batch.
+///
+/// The mirror of ReleaseIsInTheBook (work_orders.h): "dismiss him, then put
+/// him to work" is one gesture in the office and two rows in one book, and
+/// the post verbs are read BEFORE the work verbs in the tick — so without
+/// this the work order would be refused against a post that is already on
+/// its way out.
+bool DismissalIsInTheBook(const WorldState& world, ResidentId resident);
+
 }  // namespace core
 
 #endif  // CORE_LABOR_POSTS_H_

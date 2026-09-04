@@ -167,6 +167,28 @@ OrderRefusal CheckDismissal(const WorldState& world, const OrderRow& order) {
   return OrderRefusal::kNone;
 }
 
+bool AppointmentIsWaiting(const WorldState& world, ResidentId resident) {
+  for (const OrderRow& order : world.orders.rows) {
+    if (order.kind == OrderKind::kAppoint && order.status == OrderStatus::kAccepted &&
+        order.resident.value == resident.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool DismissalIsInTheBook(const WorldState& world, ResidentId resident) {
+  for (const OrderRow& order : world.orders.rows) {
+    if (order.kind != OrderKind::kDismiss || order.resident.value != resident.value) {
+      continue;
+    }
+    if (order.status != OrderStatus::kRefused && order.status != OrderStatus::kCancelled) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HasWaitingPostOrder(const WorldState& world, ResidentId resident, std::uint32_t self) {
   for (std::uint32_t row = 0; row < world.orders.rows.size(); ++row) {
     if (row == self) {

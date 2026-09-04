@@ -9,6 +9,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "labor_day.h"
+#include "posts.h"
 
 namespace core {
 namespace {
@@ -53,11 +54,37 @@ void CloseOrphanedWork(WorldState& current) {
     if (order.kind != OrderKind::kAssignWork || order.status != OrderStatus::kAccepted) {
       continue;
     }
-    if (FindRow(current.residents, order.resident) != kNoRow && TargetExists(current, order)) {
+    const std::uint32_t resident_row = FindRow(current.residents, order.resident);
+    if (resident_row == kNoRow || !TargetExists(current, order)) {
+      order.status = OrderStatus::kRefused;
+      order.refusal = OrderRefusal::kNoSuchSubject;
       continue;
     }
-    order.status = OrderStatus::kRefused;
-    order.refusal = OrderRefusal::kNoSuchSubject;
+    // AND THE ONE ANSWER IS CHECKED HERE, EVERY TICK, not only at admission.
+    //
+    // A work order is let past a held post when the same batch carries the
+    // kDismiss that ends it — but a dismissal does not settle in the tick it
+    // is read: it waits at kAccepted until the day's close, and the
+    // presentation may CANCEL it in between (ISession::CancelOrder takes
+    // kAccepted rows). Cancel it, and the man kept his post while his work
+    // order kept standing: two answers to "what does this man do", for the
+    // rest of the campaign, with ApplyStandingWork quietly overwriting the
+    // post placement every morning — the very state the conflict rules
+    // exist to prevent, reached by the one route that goes round them.
+    //
+    // The post wins, and not by preference: the work order was granted on a
+    // dismissal that did not happen, so it is the one standing on nothing.
+    // The refusal says which (task A8 delivery cycle).
+    // "A dismissal is on the way" is the whole exception, and it has to be
+    // re-asked every tick rather than trusted once: the post is still on the
+    // row until the day's close, so a check without this would refuse the
+    // very order the same batch legitimately granted. Cancel the dismissal
+    // and this becomes false — which is exactly when the order must go.
+    if (current.residents.rows[resident_row].post.profession.value != kInvalidDefIdValue &&
+        !DismissalIsInTheBook(current, order.resident)) {
+      order.status = OrderStatus::kRefused;
+      order.refusal = OrderRefusal::kConflictsWithActive;
+    }
   }
 }
 
@@ -89,6 +116,19 @@ bool ReleaseIsInTheBook(const WorldState& world, ResidentId resident) {
   return false;
 }
 
+bool WorkOrderCameFirst(const WorldState& world, ResidentId resident, std::uint32_t before_row) {
+  const auto rows = static_cast<std::uint32_t>(world.orders.rows.size());
+  const std::uint32_t limit = before_row < rows ? before_row : rows;
+  for (std::uint32_t row = 0; row < limit; ++row) {
+    const OrderRow& order = world.orders.rows[row];
+    if (order.kind == OrderKind::kAssignWork && order.status == OrderStatus::kPending &&
+        order.resident.value == resident.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 OrderRefusal CheckAssignWork(const LaborConfig& config,
                              const WorldState& world,
                              const OrderRow& order) {
@@ -100,10 +140,24 @@ OrderRefusal CheckAssignWork(const LaborConfig& config,
     return OrderRefusal::kNoSuchSubject;
   }
   const ResidentRow& resident = world.residents.rows[resident_row];
-  if (resident.post.profession.value != kInvalidDefIdValue) {
-    // He already has an answer to "what does this man do" (task A7). Two
-    // answers are one too many, and silently letting the newer win would
-    // empty a post nobody dismissed him from.
+  // WHAT A MAN HAS ALREADY PROMISED HAS ONE HOME, AND IT IS THE BOOK
+  // (boss, 2026-09-04). Both halves of the post/order conflict are read from
+  // there, and for the same reason: between accepting a post order and
+  // applying it at the day's close the resident row still says yesterday,
+  // and anyone who asks it in that window gets the right answer to the wrong
+  // question. That window is exactly where this check used to let a work
+  // order through — and the next morning's re-check then killed the
+  // appointment, so the tie-break came out the reverse of the rule.
+  //
+  // The rule is: WHICHEVER ARRIVES SECOND IS REFUSED. Two answers to "what
+  // does this man do" are one too many, and letting the newer win silently
+  // would empty a post nobody dismissed him from.
+  if (resident.post.profession.value != kInvalidDefIdValue &&
+      !DismissalIsInTheBook(world, order.resident)) {
+    return OrderRefusal::kConflictsWithActive;
+  }
+  if (AppointmentIsWaiting(world, order.resident)) {
+    // A post granted this morning and not yet applied. It got here first.
     return OrderRefusal::kConflictsWithActive;
   }
   const float age = BiologicalAgeYears(config, resident.birth_day, world.calendar.day);

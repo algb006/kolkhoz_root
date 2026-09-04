@@ -60,6 +60,21 @@ std::uint32_t StandingWorkRow(const WorldState& world, ResidentId resident, std:
 /// and the man would end the step with neither post nor work.
 bool ReleaseIsInTheBook(const WorldState& world, ResidentId resident);
 
+/// @brief Whether a kAssignWork for `resident` is sitting UNREAD in the book
+/// at a row BELOW `before_row` — that is, whether the chairman put him to
+/// work earlier in this same batch.
+///
+/// WHY THE ROW INDEX AND NOT JUST "IS THERE ONE". Inside one batch the post
+/// verbs are read before the work verbs, so at the moment an appointment is
+/// validated a work order from the SAME batch is still kPending and invisible
+/// to StandingWorkRow. Without this the appointment always won, however late
+/// it was issued — the reverse of the rule that the second one yields. And a
+/// bare "is there a pending work order" would invert it the other way,
+/// refusing an appointment that arrived first. The book's row order IS the
+/// order the chairman gave them in (IssueOrder appends, StageOrders keeps the
+/// order), so it is the only thing that can tell first from second here.
+bool WorkOrderCameFirst(const WorldState& world, ResidentId resident, std::uint32_t before_row);
+
 /// @brief Reads the book's two work verbs and moves them.
 ///
 /// kAssignWork goes to kAccepted and STAYS there — that is the standing
