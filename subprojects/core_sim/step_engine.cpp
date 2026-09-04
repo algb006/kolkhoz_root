@@ -51,7 +51,27 @@ class ParallelPhaseTask final : public enki::ITaskSet {
     m_SetSize = item_count;
   }
 
-  void ExecuteRange(enki::TaskSetPartition range, std::uint32_t /*threadnum*/) override {
+  /// NOEXCEPT, AND THAT IS THE WHOLE FIX FOR A HANG THAT HAD NO GUARD.
+  ///
+  /// An exception leaving RunItemRange used to unwind out through the
+  /// scheduler's worker loop: `task_` stayed live on the workers, the
+  /// barrier in WaitforTask was never satisfied, and the next step added
+  /// the same task_ to the pipe again — in Release, with no assert to
+  /// catch it, the pending counter walks below zero and the step hangs
+  /// forever. A simulation that stops answering says nothing about why.
+  ///
+  /// The hazard is the CROSSING, not the phases: the project already
+  /// forbids exceptions in hot code (root rules §4), and this makes that
+  /// rule a fact at the one place where breaking it costs a deadlock
+  /// instead of a stack trace. Declared here rather than on
+  /// IParallelPhase::RunItemRange on purpose — putting it on the contract
+  /// would make every phase author answer for bad_alloc, which is a
+  /// decision about the whole engine and not this boundary's to take.
+  ///
+  /// An override may be more restrictive than the virtual it overrides;
+  /// enki's own ExecuteRange is not noexcept, and that is exactly the seam
+  /// this closes.
+  void ExecuteRange(enki::TaskSetPartition range, std::uint32_t /*threadnum*/) noexcept override {
     phase_->RunItemRange(*previous_, *current_, range.start, range.end);
   }
 
