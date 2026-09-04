@@ -310,6 +310,21 @@ struct FarmingConfig {
 
   float stress_cap = 0.3F;
 
+  /// How many CONSECUTIVE growing days of one kind of weather it takes
+  /// before the field says out loud that it is drying or soaking
+  /// (FieldWeatherState). The design gives the phenomenon — "long heat
+  /// without rain", "drawn-out rains" — and leaves the count to the run,
+  /// which is what this row is: tables/farming.csv, weather_state_days.
+  ///
+  /// Chosen by sweeping the thirty-year run rather than by taste, and the
+  /// rule of choice is written down: THE LARGEST VALUE AT WHICH BOTH HALVES
+  /// STILL HAPPEN. A threshold at which one of them never fires turns half
+  /// the state into decoration. Measured over 2408 growing field-days:
+  /// 2 days -> 0.50% drying / 3.90% soaking; 3 -> 0.08% / 0.87%;
+  /// 4 -> 0% / 0.08%; 6 -> nothing at all in thirty years.
+  /// See manual/balance/69-reconciliation.md §13.10.
+  float weather_state_days = 3.0F;
+
   // -- stage 6: herd-wide knobs (tables/farming.csv scalar rows) -----------
   /// Underfeeding: produce multiplier while unfed, and when deaths start.
   /// ASSUMPTION until the feeding runs.

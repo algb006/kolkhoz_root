@@ -71,7 +71,9 @@ int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& man
     const core::FieldRow& one_worker = one.fields.rows[row];
     const core::FieldRow& three_workers = many.fields.rows[row];
     fields_identical = one_worker.fertility == three_workers.fertility &&
-                       one_worker.weather_stress == three_workers.weather_stress &&
+                       one_worker.drought_stress == three_workers.drought_stress &&
+                       one_worker.wet_stress == three_workers.wet_stress &&
+                       one_worker.weather_state == three_workers.weather_state &&
                        one_worker.phase == three_workers.phase &&
                        one_worker.crop.value == three_workers.crop.value &&
                        one_worker.repeat_years == three_workers.repeat_years;

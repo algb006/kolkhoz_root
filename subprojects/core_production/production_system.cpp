@@ -47,6 +47,20 @@
 namespace core {
 namespace {
 
+/// Wipe the weather a field has been through: both accumulators, both
+/// run counters and the judgement made off them. Kept as one function
+/// because there are four places that end a growing spell (a perennial
+/// plan change, a field lost to snow, a fresh sowing, a finished harvest)
+/// and five fields to clear — four copies of five lines is how one of them
+/// eventually keeps a stale "kSoaking" on a field that is bare.
+void ClearFieldWeather(FieldRow& field) {
+  field.drought_stress = 0.0F;
+  field.wet_stress = 0.0F;
+  field.drought_run_days = 0;
+  field.wet_run_days = 0;
+  field.weather_state = FieldWeatherState::kNone;
+}
+
 /// The production slot (phase 4), parallel by field: accumulates the
 /// growth-season weather stress. Reads the calendar and the day's weather
 /// from `current` — both blocks are written by phase 1 alone and frozen for
@@ -75,7 +89,6 @@ class FieldGrowthPhase final : public IParallelPhase {
         continue;
       }
       const CropDef& crop = config_->crops[field.crop.value];
-      float stress = 0.0F;
       // Drought is a matter of the AFTERNOON: the mean plus the season's
       // half-swing (camera design §4). On the mean alone the summer never
       // reached +25 and this branch was dead in every run before it.
@@ -84,14 +97,38 @@ class FieldGrowthPhase final : public IParallelPhase {
           weather.air_temperature_celsius + (season < farming.temp_amplitude_by_season.size()
                                                  ? farming.temp_amplitude_by_season[season]
                                                  : 0.0F);
+      // TWO ACCUMULATORS, NOT ONE, and the branches stay exclusive as they
+      // were: a day is a rain day or a heat day or neither. The sum is
+      // capped where the single number used to be capped — clamping a
+      // running total every day and clamping it once at the end give the
+      // same value, because the increments are never negative.
       if (weather.precipitation == Precipitation::kRain) {
-        stress = farming.stress_per_day * crop.wet_sensitivity;
+        field.wet_stress += farming.stress_per_day * crop.wet_sensitivity;
+        field.wet_run_days = field.wet_run_days < 255 ? field.wet_run_days + 1 : 255;
+        field.drought_run_days = 0;
       } else if (afternoon >= farming.drought_temp_c) {
-        stress = farming.stress_per_day * crop.drought_sensitivity;
+        field.drought_stress += farming.stress_per_day * crop.drought_sensitivity;
+        field.drought_run_days = field.drought_run_days < 255 ? field.drought_run_days + 1 : 255;
+        field.wet_run_days = 0;
+      } else {
+        // A day that is neither breaks BOTH runs. "Long heat without rain"
+        // means without a mild day in the middle of it either: a spell that
+        // a fortnight of ordinary weather interrupts is not the spell the
+        // design names.
+        field.drought_run_days = 0;
+        field.wet_run_days = 0;
       }
-      field.weather_stress += stress;
-      field.weather_stress =
-          field.weather_stress > farming.stress_cap ? farming.stress_cap : field.weather_stress;
+      // The judgement, made here rather than left to the reader. Whoever
+      // draws the field would otherwise infer it from temperature, and a
+      // second home for the rule is how a mechanic ends up with two.
+      const auto threshold = static_cast<std::uint32_t>(farming.weather_state_days);
+      if (field.drought_run_days >= threshold && threshold > 0) {
+        field.weather_state = FieldWeatherState::kDrying;
+      } else if (field.wet_run_days >= threshold && threshold > 0) {
+        field.weather_state = FieldWeatherState::kSoaking;
+      } else {
+        field.weather_state = FieldWeatherState::kNone;
+      }
     }
   }
 
@@ -449,7 +486,7 @@ class ProductionSystem final : public IProductionSystem {
         field.last_crop = field.crop;
         field.crop = CropId{};
         field.phase = FieldPhase::kIdle;
-        field.weather_stress = 0.0F;
+        ClearFieldWeather(field);
       }
     }
     PlanManure(current);
@@ -576,7 +613,7 @@ class ProductionSystem final : public IProductionSystem {
         field.crop = CropId{};
         field.phase = FieldPhase::kIdle;
         field.work_days_remaining = 0.0F;
-        field.weather_stress = 0.0F;
+        ClearFieldWeather(field);
         field.manure_applied = 0;
         current.ledger.current.area_lost_ha += field.area_ga;
         // No LogWarning: phase code does not log (core_log contract,
@@ -823,7 +860,7 @@ class ProductionSystem final : public IProductionSystem {
     field.crop = crop_id;
     field.phase = FieldPhase::kGrowing;
     field.work_days_remaining = 0.0F;
-    field.weather_stress = 0.0F;
+    ClearFieldWeather(field);
   }
 
   /// The reaped field pays out and leaves the harvest phase.
@@ -841,7 +878,11 @@ class ProductionSystem final : public IProductionSystem {
 
   void Harvest(WorldState& current, FieldRow& field, const CropDef& crop) {
     const float soil_factor = field.fertility / config_.farming.fertility_neutral;
-    const float weather_factor = 1.0F - field.weather_stress;
+    // The sum of the two, capped exactly where the single number was.
+    const float stress_total = field.drought_stress + field.wet_stress;
+    const float capped =
+        stress_total > config_.farming.stress_cap ? config_.farming.stress_cap : stress_total;
+    const float weather_factor = 1.0F - capped;
     const auto yield_grams =
         GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor);
     // THE REAPED CROP STAYS ON THE FIELD. Until task A4 it went into the
@@ -917,7 +958,7 @@ class ProductionSystem final : public IProductionSystem {
     field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
     field.manure_applied = 0;
     field.last_crop = field.crop;
-    field.weather_stress = 0.0F;
+    ClearFieldWeather(field);
     // The reaping is over, so the PHASE seam is cleared — without this the
     // field never leaves kHarvest and the whole rotation stops, which is
     // what happened for one measured run when this line was swallowed by an

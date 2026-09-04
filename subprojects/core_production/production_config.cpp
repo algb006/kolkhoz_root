@@ -148,7 +148,8 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
                            {"repeat_penalty_per_year", &farming.repeat_penalty_per_year},
                            {"drought_temp_c", &farming.drought_temp_c},
                            {"stress_per_day", &farming.stress_per_day},
-                           {"stress_cap", &farming.stress_cap}};
+                           {"stress_cap", &farming.stress_cap},
+                           {"weather_state_days", &farming.weather_state_days}};
   for (const Entry& entry : entries) {
     const std::uint32_t row = table.FindRowByKey(entry.key);
     const std::optional<float> cell = table.CellReal(row, value_col);

@@ -147,7 +147,13 @@ core::WorldState MakeWorld() {
   field.rotation_year1 = core::CropId{1};
   field.last_crop = core::CropId{};  // invalid passes through untouched
   field.repeat_years = 2;
-  field.weather_stress = 0.125F;
+  // Both accumulators, both counters and the judgement: a round trip that
+  // carries only one of them proves only one of them.
+  field.drought_stress = 0.125F;
+  field.wet_stress = 0.0625F;
+  field.drought_run_days = 6;
+  field.wet_run_days = 0;
+  field.weather_state = core::FieldWeatherState::kDrying;
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task

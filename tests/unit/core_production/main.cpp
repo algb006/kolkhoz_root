@@ -539,11 +539,13 @@ int CheckDroughtReadsTheAfternoon() {
          "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
          "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
          "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
-         "rye,rye,0,0,4,5,5,5,8,8,2,850,180,-1,1,0,3,8,0\n";
+         // Sensitive to BOTH, so that the two sides can be damaged apart.
+         "rye,rye,0,0,4,5,5,5,8,8,2,850,180,-1,1,1,3,8,0\n";
   std::ofstream(root / "farming.csv")
       << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
          "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
-         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n";
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";  // the unit fixture pins its own
   std::ofstream(root / "weather.csv")
       << "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
          "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n";
@@ -555,27 +557,60 @@ int CheckDroughtReadsTheAfternoon() {
     return 1;
   }
 
-  const auto stress_after_a_day = [&](float mean_celsius) {
+  // A run of `days` identical days on one field, returned whole: the two
+  // accumulators, the two run counters and the judgement have to be read
+  // SEPARATELY, which is the entire point of the split.
+  const auto after_days = [&](float mean_celsius, core::Precipitation precipitation, int days) {
     core::WorldState world;
     world.calendar.tick = 30 * core::kTicksPerDay;  // late July: summer
     core::RefreshCalendarCaches(world.calendar);
     world.weather.air_temperature_celsius = mean_celsius;
-    world.weather.precipitation = core::Precipitation::kNone;
+    world.weather.precipitation = precipitation;
     core::FieldRow field;
     field.area_ga = 10.0F;
     field.phase = core::FieldPhase::kGrowing;
     field.crop = core::CropId{0};
     core::AppendRow(world.fields, field);
-    const core::WorldState previous = world;
-    system->ProductionPhase().RunItemRange(previous, world, 0, 1);
-    return world.fields.rows[0].weather_stress;
+    for (int day = 0; day < days; ++day) {
+      const core::WorldState previous = world;
+      system->ProductionPhase().RunItemRange(previous, world, 0, 1);
+      world.calendar.tick += core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+    }
+    return world.fields.rows[0];
   };
-  failures += Expect(stress_after_a_day(18.0F) == 0.0F,
+  const auto drought_after_a_day = [&](float mean_celsius) {
+    return after_days(mean_celsius, core::Precipitation::kNone, 1).drought_stress;
+  };
+  failures += Expect(drought_after_a_day(18.0F) == 0.0F,
                      "a summer day with a mean of 18 reads 24 in the afternoon: no drought");
-  failures += Expect(stress_after_a_day(19.0F) > 0.0F,
+  failures += Expect(drought_after_a_day(19.0F) > 0.0F,
                      "a mean of 19 reads 25 in the afternoon, and the field starts to burn");
-  failures += Expect(stress_after_a_day(24.0F) == stress_after_a_day(19.0F),
+  failures += Expect(drought_after_a_day(24.0F) == drought_after_a_day(19.0F),
                      "hotter is not more stress a day: the rate is the crop's, the gate is heat");
+
+  // THE TWO SIDES MUST FALL APART, AND ONE DAMAGE MAY NOT DROP BOTH. While
+  // they were one accumulator neither could be checked: "the field is
+  // drying" and "the field is drowning" were the same reading.
+  const core::FieldRow burnt = after_days(24.0F, core::Precipitation::kNone, 5);
+  const core::FieldRow drowned = after_days(10.0F, core::Precipitation::kRain, 5);
+  failures += Expect(burnt.drought_stress > 0.0F && burnt.wet_stress == 0.0F,
+                     "five days of heat move the drought accumulator and only it");
+  failures += Expect(drowned.wet_stress > 0.0F && drowned.drought_stress == 0.0F,
+                     "five days of rain move the wet accumulator and only it");
+  failures += Expect(burnt.weather_state == core::FieldWeatherState::kDrying,
+                     "and the field says which way it suffers: drying");
+  failures += Expect(drowned.weather_state == core::FieldWeatherState::kSoaking,
+                     "and the other one says soaking");
+
+  // The threshold is a RUN, not a tally: four days is under it, and a mild
+  // day in the middle of a spell breaks it rather than pausing it.
+  failures += Expect(after_days(24.0F, core::Precipitation::kNone, 4).weather_state ==
+                         core::FieldWeatherState::kNone,
+                     "four days of heat are a spell of weather, not a state of the field");
+  failures += Expect(after_days(10.0F, core::Precipitation::kNone, 5).weather_state ==
+                         core::FieldWeatherState::kNone,
+                     "and a mild spell announces nothing at all");
   std::filesystem::remove_all(root);
   return failures;
 }
@@ -601,7 +636,8 @@ int CheckStoreCeilingAndAlarms() {
   std::ofstream(root / "farming.csv")
       << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
          "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
-         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n";
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
   // A barn of one tonne at level 1, five at level 2: the ladder is what
   // binds, and the type's own figure is only the fallback.
   std::ofstream(root / "unit_types.csv") << "key,storage_capacity_t,capacity_by_plot\nbarn,9,0\n";

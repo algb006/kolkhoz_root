@@ -298,6 +298,10 @@ int main() {
   run::RepairPolicy repairs(*world.tables);
   run::RepairPolicy::Declare();
 
+  std::uint64_t growing_field_days = 0;
+  std::uint64_t drying_field_days = 0;
+  std::uint64_t soaking_field_days = 0;
+
   for (std::uint32_t year = 0; year < kYears; ++year) {
     double year_seconds = 0.0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
@@ -310,12 +314,29 @@ int main() {
       year_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
       const core::WorldState& mid = world.State();
+      // THE WEATHER JUDGEMENT, COUNTED RATHER THAN ADMIRED. A state that is
+      // on for a third of every growing day says nothing, and one that never
+      // fires in thirty years says nothing either; the threshold behind it
+      // (farming.csv weather_state_days) was picked off these three counts
+      // and not off taste.
+      for (const core::FieldRow& row : mid.fields.rows) {
+        if (row.phase != core::FieldPhase::kGrowing || row.kind != core::LandKind::kArable) {
+          continue;
+        }
+        ++growing_field_days;
+        if (row.weather_state == core::FieldWeatherState::kDrying) {
+          ++drying_field_days;
+        } else if (row.weather_state == core::FieldWeatherState::kSoaking) {
+          ++soaking_field_days;
+        }
+      }
       if (mid.calendar.date.month == core::Month::kJuly && mid.calendar.date.day_in_month == 0) {
         sampled.assign(mid.fields.rows.size(), FieldSample{});
         for (std::size_t field = 0; field < mid.fields.rows.size(); ++field) {
           sampled[field].crop = CropKey(*world.tables, mid.fields.rows[field].crop);
           sampled[field].manured = mid.fields.rows[field].manure_applied != 0;
-          sampled[field].stress = mid.fields.rows[field].weather_stress;
+          sampled[field].stress =
+              mid.fields.rows[field].drought_stress + mid.fields.rows[field].wet_stress;
         }
       }
     }
@@ -442,6 +463,17 @@ int main() {
   // again, and three hundred adults stood idle beside six fields frozen in
   // the ploughing phase.
   failures += run::Expect(years_without_plowing == 0, "the farm ploughs in every year of the run");
+  {
+    const auto share = [growing_field_days](std::uint64_t part) {
+      return growing_field_days == 0
+                 ? 0.0
+                 : 100.0 * static_cast<double>(part) / static_cast<double>(growing_field_days);
+    };
+    std::cout << "weather: of " << growing_field_days << " growing field-days, "
+              << drying_field_days << " were called drying (" << share(drying_field_days)
+              << "%) and " << soaking_field_days << " soaking (" << share(soaking_field_days)
+              << "%)\n";
+  }
   std::cout << "thirty_years: the leanest arable field ended at " << lowest_fertility
             << " fertility\n";
   failures += run::Expect(lowest_fertility >= 15.0F,

@@ -43,7 +43,12 @@ static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
 // see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
 // what has to notice.
-static_assert(sizeof(FieldRow) == 64, "FieldRow changed — update the codec and VERSION_SAVE");
+//
+// 2026-09-04: it moved for once, 64 -> 72. weather_stress became TWO floats
+// plus two run counters and a judgement byte (the drought/waterlogging
+// split), and this time the tripwire fired before the codec did — which is
+// the one thing it is for.
+static_assert(sizeof(FieldRow) == 72, "FieldRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(UnitRow) == 48 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
@@ -84,6 +89,8 @@ constexpr std::uint8_t kMaxSocialStatus =
 
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kFieldPhaseCount) - 1;
 constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kLandKindCount) - 1;
+constexpr std::uint8_t kMaxFieldWeatherState =
+    static_cast<std::uint8_t>(FieldWeatherState::kFieldWeatherStateCount) - 1;
 
 // MEM-002 fix: these two were left at the enumerators of before task A2
 // while order_state.h grew kStartBuild, kUpgradeUnit and three refusals
@@ -115,6 +122,8 @@ static_assert(kMaxEducationStage < static_cast<std::uint8_t>(EducationStage::kEd
 static_assert(kMaxSocialStatus < static_cast<std::uint8_t>(SocialStatus::kSocialStatusCount));
 static_assert(kMaxFieldPhase < static_cast<std::uint8_t>(FieldPhase::kFieldPhaseCount));
 static_assert(kMaxLandKind < static_cast<std::uint8_t>(LandKind::kLandKindCount));
+static_assert(kMaxFieldWeatherState <
+              static_cast<std::uint8_t>(FieldWeatherState::kFieldWeatherStateCount));
 static_assert(kMaxConstructionPhase <
               static_cast<std::uint8_t>(ConstructionPhase::kConstructionPhaseCount));
 static_assert(kMaxOrderKind < static_cast<std::uint8_t>(OrderKind::kOrderKindCount));
@@ -340,7 +349,13 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(row.repeat_years);
   out.WriteU8(row.manure_applied);
   out.WriteU8(static_cast<std::uint8_t>(row.kind));
-  out.WriteFloat(row.weather_stress);
+  // Drought and waterlogging, apart. One number could not say which, and
+  // the two are cured by opposite things (boss, 2026-09-04).
+  out.WriteFloat(row.drought_stress);
+  out.WriteFloat(row.wet_stress);
+  out.WriteU8(row.drought_run_days);
+  out.WriteU8(row.wet_run_days);
+  out.WriteU8(static_cast<std::uint8_t>(row.weather_state));
   out.WriteFloat(row.work_days_remaining);
   // The field brigade's buffer (task A3): what was reaped and has not
   // reached a store, and what it is. History the simulation cannot rederive.
@@ -373,7 +388,12 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.repeat_years = in.ReadU8();
   row.manure_applied = in.ReadU8();
   row.kind = static_cast<LandKind>(source.ReadEnumValue(0, kMaxLandKind, "land kind"));
-  row.weather_stress = in.ReadFloat();
+  row.drought_stress = in.ReadFloat();
+  row.wet_stress = in.ReadFloat();
+  row.drought_run_days = in.ReadU8();
+  row.wet_run_days = in.ReadU8();
+  row.weather_state = static_cast<FieldWeatherState>(
+      source.ReadEnumValue(0, kMaxFieldWeatherState, "field weather state"));
   row.work_days_remaining = in.ReadFloat();
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();

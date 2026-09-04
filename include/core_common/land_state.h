@@ -78,6 +78,33 @@ enum class LandKind : std::uint8_t {
   kLandKindCount,
 };
 
+/// @brief What the weather is doing to a growing field, as a JUDGEMENT
+/// rather than a number (boss parcel core-weather-stress, 2026-09-04).
+///
+/// The stress it names used to be ONE accumulator fed by drought and by
+/// waterlogging alike. It scaled the harvest correctly and said nothing:
+/// 0.3 of stress does not tell whether the field is drying or drowning, and
+/// THE TWO ARE CURED BY OPPOSITE THINGS. Worse, they are not even the same
+/// shape — drought costs a harvest, waterlogging costs a harvest AND the
+/// dates it must be lifted by, with snow behind them. A player shown one
+/// number is wrong half the time, and wrong most expensively in the half
+/// where he had to hurry.
+///
+/// The threshold belongs to the core because the judgement does: the design
+/// says "long heat without rain" and "drawn-out rains" and leaves the
+/// number of days to whoever runs it (farming design §6). It is
+/// FarmingConfig::weather_state_days, a table row, not a constant here.
+enum class FieldWeatherState : std::uint8_t {
+  kNone = 0,  ///< Neither run of days has reached the threshold.
+  kDrying,    ///< Heat without rain, for weather_state_days running.
+  kSoaking,   ///< Rain, for weather_state_days running.
+
+  /// NOT A VALUE, and never written to a save or read from one: the
+  /// codecs range-check 0..kFieldWeatherStateCount-1 and this is what they
+  /// check against. Values are appended BEFORE it.
+  kFieldWeatherStateCount,
+};
+
 /// @brief One field. Plain data.
 struct FieldRow {
   /// Center of the contour. The shape itself is presentation/routing data
@@ -129,9 +156,32 @@ struct FieldRow {
   /// sizeof tripwire cannot see and VERSION_SAVE must (manual/67-save-format.md §7).
   LandKind kind = LandKind::kArable;
 
-  /// Growth-season weather stress, 0..1 accumulated daily while growing
-  /// (drought and waterlogging, §6); scales the harvest down, never to zero.
-  float weather_stress = 0.0F;
+  /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
+  /// growing (farming design §6).
+  ///
+  /// This and the field below were one number until 2026-09-04, and the
+  /// harvest still uses their SUM, capped exactly as the single number was:
+  /// splitting them was not allowed to move the yield, and it did not (the
+  /// thirty-year run is identical). What the split buys is that the row can
+  /// now be ASKED which way it is suffering — see FieldWeatherState.
+  float drought_stress = 0.0F;
+
+  /// Growth-season weather stress from RAIN, 0..1, on the same terms.
+  /// Kept apart from the one above because a sum of unmixable quantities is
+  /// a number somebody decides by and gets wrong.
+  float wet_stress = 0.0F;
+
+  /// Consecutive growing days of heat and of rain. They are counters, not
+  /// history: a day of the other kind resets the one it is not. The state
+  /// below is judged off them, and they are saved because a load in the
+  /// middle of a dry spell must not forget the spell.
+  std::uint8_t drought_run_days = 0;
+
+  std::uint8_t wet_run_days = 0;
+
+  /// The core's judgement, so that no reader has to invent its own from
+  /// temperature. Set every growing day from the two counters above.
+  FieldWeatherState weather_state = FieldWeatherState::kNone;
 
   /// Game man-days of work left in the current working phase — the
   /// production/labor seam (see @file). Set by production at phase open,
