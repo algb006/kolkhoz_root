@@ -96,7 +96,48 @@ constexpr std::size_t kCanonTop = 1500;
 ///
 /// A constant that says how it was derived but not what may not be done
 /// with it is half guarded.
+///
+/// AND SINCE 2026-09-04 IT IS NO LONGER ASSERTED. It is printed, with the
+/// measured noise beside it, and nothing fails on it. Boss's decision, and
+/// it came out of the measurement below: the ceiling stands 1606 to 1608
+/// away from the run, which is TWO residents, which is inside the noise of
+/// the instrument that produced both numbers. An assertion whose edge sits
+/// inside the noise fails on correct work — the next lawful pass reads 1620
+/// for no reason at all, and the run teaches the village to switch it off.
+/// The floor keeps its assertion: 1400 stands two hundred clear of the
+/// noise, and that reading is unambiguous.
+///
+/// WHAT THIS COSTS, SAID PLAINLY: the population gate now catches
+/// divergence DOWNWARD only. And re-measuring the mutations on the fixture
+/// as it stands today (repair speaking, baseline 1606) says the loss is
+/// smaller than it looks and the remaining catch is thinner than it looked:
+/// +15% births reads 1591 — FIFTEEN residents, inside the noise, so that
+/// mutation had already stopped being caught before the assertion was
+/// dropped; -15% reads 1345, which fails the floor by 55, which is itself
+/// inside the noise. +50% reads 3017 and prints as a FINDING.
+///
+/// So the honest statement of what this half of the gate is: it catches a
+/// village that failed to grow, and it prints everything else.
 constexpr std::size_t kStubCeiling = 1608;
+
+/// THE INSTRUMENT'S OWN RESOLUTION, measured rather than estimated
+/// (69-reconciliation.md §13.8, 2026-09-04).
+///
+/// The thirty-year curve is chaotic in the ordinary sense: a change that
+/// touches nothing causally still moves the thirtieth year. Measured by a
+/// discriminator — the same policy, the same 320 repairs, the same 481
+/// man-days, with ONE demolition order moved from year 5 to year 6: 1606
+/// became 1545. Sixty-one residents, from a change that has no channel to
+/// the population at all.
+///
+/// It is not derived from a series of readings — the series is the thing it
+/// explains. Three points that line up in order are a coincidence until
+/// somebody measures how many points the instrument can line up by itself.
+///
+/// What it is for: any comparison of two runs by population that is finer
+/// than this is reading noise. It is printed beside the ceiling so that the
+/// next person who wants to attribute a cause meets it before their series.
+constexpr std::size_t kMeasuredNoiseResidents = 60;
 
 /// Fast-forward: a game day in at most two seconds with nothing drawn
 /// (phase-two plan §1). NOT a pin on this machine's speed — the measured
@@ -346,7 +387,8 @@ int main() {
   // -- THE PHASE GATE, HALF ONE: the run still converges with the canon ----
   const std::size_t population = state.residents.rows.size();
   std::cout << "gate: " << population << " residents in the thirtieth year — canon " << kCanonLow
-            << "-" << kCanonTop << ", ceiling in force " << kStubCeiling << '\n';
+            << "-" << kCanonTop << ", floor asserted; stub ceiling " << kStubCeiling
+            << " OBSERVED not asserted, measured noise ±" << kMeasuredNoiseResidents << '\n';
   if (population > kCanonTop) {
     // SAID OUT LOUD EVERY TIME, not only when it fails. A run that sits
     // above the canon on a caveat must keep saying which caveat, or the
@@ -356,10 +398,18 @@ int main() {
                  "covers; when the player builds the houses this must come back under "
               << kCanonTop << '\n';
   }
+  if (population > kStubCeiling) {
+    // A FINDING, and it says so in the word the caveat's owner used. It does
+    // not fail the run and it does not move the constant: both of those
+    // would end the observation, one loudly and one quietly.
+    std::cout << "gate: FINDING — above the stub ceiling " << kStubCeiling << " by "
+              << (population - kStubCeiling) << ", which is "
+              << (population - kStubCeiling > kMeasuredNoiseResidents ? "MORE" : "less")
+              << " than the instrument's own ±" << kMeasuredNoiseResidents
+              << "; the caveat covers the excess over the canon, not this\n";
+  }
   failures += run::Expect(population >= kCanonLow,
                           "the village reaches the canon's thirtieth year and not a smaller one");
-  failures += run::Expect(population <= kStubCeiling,
-                          "and does not outgrow even the free-housing caveat's ceiling");
 
   // -- THE PHASE GATE, HALF TWO: fast-forward holds the norm ---------------
   std::cout << "gate: a game day of the costliest year cost " << costliest_year_day_seconds
