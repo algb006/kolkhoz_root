@@ -216,6 +216,33 @@ if ! ssh "${host}" "test -d '${remote_dir}/publish/${version}/tables'"; then
   echo "ОТКАЗ: библиотеки на месте, а таблиц нет — без них ядро не считает ничего." >&2
   exit 1
 fi
+# AND THE TABLES ARE COMPARED, NOT COUNTED. A directory that exists says the
+# copy ran, not that it carried this tree's tables: on 2026-09-04 the design
+# db was fixed, exported into core/tables, and 0.17.14 was already published
+# — so old_house stood without a build class in the delivery while the
+# repository had it, and the graphics layer found it by twenty-one warnings
+# in its own run. An export is not a delivery, and the question "did it
+# arrive" is only ever answered on the consumer's side.
+#
+# Byte for byte, both ways: a missing file and an extra one are the same
+# defect wearing different clothes. Checked BEFORE current moves, so a
+# mismatch leaves the pointer on the last whole version rather than naming a
+# half one.
+# Both sides go through the same awk rather than being compared as printed:
+# GNU md5sum on the host reads in binary mode and writes "hash *./name", the
+# VM writes "hash  ./name", and a check that fails on THAT is worse than no
+# check — it cries on every publish until somebody takes it out.
+sum_fmt='{ name = $2; sub(/^\*/, "", name); sub(/^\.\//, "", name); print $1, name }'
+local_sums=$(cd "${project_dir}/tables" && md5sum ./*.csv | awk "${sum_fmt}" | sort -k2)
+remote_sums=$(ssh "${host}" "cd '${remote_dir}/publish/${version}/tables' && md5sum ./*.csv" \
+  | tr -d '\r' | awk "${sum_fmt}" | sort -k2)
+if [ "${local_sums}" != "${remote_sums}" ]; then
+  echo "ОТКАЗ: выложенные таблицы не совпадают с tables/ этого дерева." >&2
+  diff <(printf '%s\n' "${local_sums}") <(printf '%s\n' "${remote_sums}") \
+    | grep -E '^[<>]' >&2 || true
+  exit 1
+fi
+echo "Таблицы сверены с деревом: $(printf '%s\n' "${local_sums}" | wc -l) файлов, совпадают побайтно"
 for config in Debug Release; do
   fetch_artifacts "${config}"
 done

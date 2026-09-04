@@ -98,6 +98,7 @@ check-tests:
 	@./scripts/check_module_tests.sh
 	@python3 scripts/check_includes.py
 	@python3 scripts/boundary_enums.py
+	@python3 scripts/check_tables_export.py
 
 # Bumping is the closing step of a delivery cycle, run in the same commit as the
 # work being delivered. VERSION_SAVE is not bumped here — see 57-versioning.md.

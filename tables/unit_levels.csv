@@ -133,7 +133,7 @@ bridge,1,1,120,wood_small,8,,,50,30
 phone_line,1,2,300,brick_small,10,,,80,55
 call_office,1,2,300,brick_small,10,,,80,55
 street_lamp,1,2,0,plot,,,,,
-old_house,1,1,,,,,,,
+old_house,1,1,,wood_small,8,,,50,30
 wooden_house,1,1,70,wood_tiny,5,,,45,25
 wooden_house,2,1,120,wood_small,8,,,50,30
 wooden_house,3,2,120,wood_small,8,,,50,30
