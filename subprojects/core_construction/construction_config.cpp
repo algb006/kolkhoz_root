@@ -135,6 +135,7 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
   const std::uint32_t wear_factor_col = unit_types.FindColumn("wear_factor");
 
+  config.wear_column_present = has_wear_col != kNoTableColumn;
   config.types.assign(unit_types.RowCount(), BuildType{});
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
     BuildType& type = config.types[row];

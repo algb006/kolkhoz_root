@@ -77,6 +77,86 @@ class ConstructionSystem final : public IConstructionSystem {
   /// four tonnes of boards. kNoRoad is in the roster and yields nothing:
   /// the core has no roads, and a STUB that says so is better than a key
   /// invented later (alarm_state.h).
+  Deadline WearDeadline(const WorldState& completed, UnitId unit) const override {
+    if (!config_.wear_column_present) {
+      // The tables carry no has_wear column at all, so nothing here knows
+      // whether anything wears. "Nothing wears" and "nobody said" arrive at
+      // this code as the same zero, and they are not the same answer.
+      return NoDeadline(DeadlineKind::kNoData);
+    }
+    const std::uint32_t row = FindRow(completed.units, unit);
+    if (row == kNoRow) {
+      return NoDeadline(DeadlineKind::kNotApplicable);  // no such unit: no question
+    }
+    const UnitRow& built = completed.units.rows[row];
+    if (built.type.value >= config_.types.size()) {
+      return NoDeadline(DeadlineKind::kNotApplicable);  // no type, no term
+    }
+    if (built.level == 0) {
+      // A SITE IS "NEVER", NOT "NOT APPLICABLE". Pegs and string do not wear
+      // — but this row keeps its id and starts wearing the day it is built,
+      // and kNotApplicable tells the reader to drop the question for good
+      // (deadline.h). The rate is what changes here, which is kNever's whole
+      // meaning.
+      return NoDeadline(DeadlineKind::kNever);
+    }
+    const BuildType& type = config_.types[built.type.value];
+    if (type.has_wear == 0) {
+      // A stack, a heap, a trench. Not "no deadline yet" — no wear, ever.
+      return NoDeadline(DeadlineKind::kNotApplicable);
+    }
+    if (built.wear >= kWearScale) {
+      // Asked BEFORE the pause, because a unit already at the end is at the
+      // end whether it is running or not — "never" would be a promise about
+      // a limit it has already reached.
+      return DeadlineInDays(0);
+    }
+    if (built.paused != 0) {
+      // Stopped units do not wear (unit rules §15). An answer that changes
+      // the moment somebody starts it, which is exactly what kNever means.
+      return NoDeadline(DeadlineKind::kNever);
+    }
+    const bool is_old_house = type_is_old_house(built.type);
+    const float years = is_old_house ? config_.old_house_collapse_years
+                                     : WearYears(type, built.level, InUse(completed, row));
+    if (!(years > 0.0F)) {
+      // The ladder names no term for this level. Documented as "does not
+      // wear" (construction_config.h), so the question does not arise —
+      // and it is told apart from a missing column by the check above.
+      return NoDeadline(DeadlineKind::kNotApplicable);
+    }
+    // The same daily share AgeUnits adds, read forward instead of applied.
+    const float pace = is_old_house ? 1.0F : type.wear_factor;
+    const float per_day = kWearScale * pace / (years * static_cast<float>(kDaysPerYear));
+    if (!(per_day > 0.0F)) {
+      return NoDeadline(DeadlineKind::kNever);  // a pace of nothing wears nothing
+    }
+    // COUNTED THE WAY THE WORLD COUNTS IT, day by day, and not by dividing.
+    //
+    // AgeUnits ADDS the daily share; dividing the remainder by it answers a
+    // different question and answers it wrong twice over. It truncates,
+    // so the forecast named a day one earlier than the world reaches — and
+    // on the last-but-one day it returned 0, which this contract defines as
+    // "the limit is reached now". And the accumulated float sum does not
+    // land where the division says anyway: a twenty-year term takes 961
+    // additions, not 960.
+    //
+    // Adding the same shares in the same order agrees by CONSTRUCTION rather
+    // than by argument, and it also removes a float-to-int cast that a
+    // denormal pace could have driven out of range.
+    float wear = built.wear;
+    std::int32_t days = 0;
+    while (wear < kWearScale && days < kWearForecastHorizonDays) {
+      wear += per_day;
+      ++days;
+    }
+    // Saturation, said out loud: a term so long that a century of game days
+    // does not reach the end of the scale reports the horizon, and a reader
+    // takes it as "at least this". The loop needs a bound anyway — a
+    // denormal share would otherwise run for ever.
+    return DeadlineInDays(days);
+  }
+
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     for (std::uint32_t row = 0; row < completed.units.rows.size(); ++row) {
       const UnitRow& site = completed.units.rows[row];

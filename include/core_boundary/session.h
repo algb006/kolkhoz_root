@@ -22,13 +22,13 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — twenty-four methods, counting
+/// concrete, and it is deliberately small — twenty-five methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
 ///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce,
-///               StockLights
+///               StockLights, WearDeadline
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -38,7 +38,8 @@
 /// (Fourteen at first; seventeen after task A2 added the second
 /// ReplaceWorld, StagedBatch and MapSideMeters; twenty-one since the event
 /// log gained readers; twenty-three since task A8 added the two workforce
-/// questions; twenty-four since the stock lights — all additions, which is
+/// questions; twenty-four since the stock lights, twenty-five with the wear
+/// deadline — all additions, which is
 /// what the contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -206,6 +207,18 @@ enum class Whereabouts : std::uint8_t {
   kAtWork,       ///< At the assignment's place: a field, a herd's unit.
   kOnTheRoad,    ///< Between `from` and `to`; the leg's ticks say when.
   kAway,         ///< Out of the settlement (a later phase: trips, school).
+
+  /// NOT A KIND, and never a value anybody stores or sends: the count, so a
+  /// CONSUMER can static_assert the length of its own mirror.
+  ///
+  /// That is the whole reason, and it is why this one was missing. The
+  /// counts were first asked of the SERIALIZABLE enums — the ones whose
+  /// codecs range-check — but the reason was mirrors, and the two sets are
+  /// not the same set. These are exactly the tables that have already
+  /// drifted silently once, and they were the ones left without a guard
+  /// (boss, 2026-09-04). Narrowing a rule by a property that was not its
+  /// reason looks like tidiness and works like a hole.
+  kWhereaboutsCount,
 };
 
 /// @brief The unified chronometer seen from the presentation's side (time
@@ -529,6 +542,22 @@ class ISession {
   ///
   /// Valid until the next step or ReplaceWorld.
   virtual std::span<const StockForecast> StockLights() const = 0;
+
+  /// @brief How long `unit` has before its wear reaches the end of the
+  /// scale, at the rate it is wearing today (unit rules §15).
+  ///
+  /// THE SAME NUMBER FOR BOTH READERS, and that is why it is here rather
+  /// than in the panel. The HUD's wear layer paints from it; the story reads
+  /// the days and can set a quest WHILE THE HOUSE IS STILL STANDING — the
+  /// difference between reacting and warning. `wear = 92` does not say "four
+  /// days", and a threshold on the level paints two units alike whose terms
+  /// and paces differ.
+  ///
+  /// Answers with days, or with one of the three refusals that are not the
+  /// same refusal (core_common/deadline.h): never, not applicable, no data.
+  /// A unit that does not exist is kNotApplicable.
+  /// @note Between steps; the answer describes State().
+  virtual Deadline WearDeadline(UnitId unit) const = 0;
 
   // -- orders -----------------------------------------------------------------
 

@@ -190,6 +190,8 @@ class Session final : public ISession {
 
   std::span<const StockForecast> StockLights() const override { return lights_; }
 
+  Deadline WearDeadline(UnitId unit) const override { return simulation_->WearDeadline(unit); }
+
   // -- orders ---------------------------------------------------------------
 
   OrderId IssueOrder(const OrderRow& order) override {

@@ -143,6 +143,18 @@ enum class AlarmKind : std::uint8_t {
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.
+
+  /// NOT A KIND, and never a value anybody stores or sends: the count, so a
+  /// CONSUMER can static_assert the length of its own mirror.
+  ///
+  /// That is the whole reason, and it is why this one was missing. The
+  /// counts were first asked of the SERIALIZABLE enums — the ones whose
+  /// codecs range-check — but the reason was mirrors, and the two sets are
+  /// not the same set. These are exactly the tables that have already
+  /// drifted silently once, and they were the ones left without a guard
+  /// (boss, 2026-09-04). Narrowing a rule by a property that was not its
+  /// reason looks like tidiness and works like a hole.
+  kAlarmKindCount,
 };
 
 /// @brief One standing condition. Which fields are meaningful is fixed by

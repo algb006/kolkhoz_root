@@ -133,6 +133,13 @@ class StepEngine final : public ISimulation {
   /// it does so once, in one place.
   void CollectStockForecast(std::vector<StockForecast>& /*lights*/) const override {}
 
+  /// No subsystems, so no rate to forecast from. kNoData and not kNever:
+  /// nothing here knows whether the unit wears, and saying "it never will"
+  /// would be an answer this object has no business giving.
+  Deadline WearDeadline(UnitId /*unit*/) const override {
+    return NoDeadline(DeadlineKind::kNoData);
+  }
+
  private:
   /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
   /// completed, append the issued rows in arrival order (the table issues the

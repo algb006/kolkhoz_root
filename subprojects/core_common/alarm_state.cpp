@@ -13,6 +13,11 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
   // error here, which is exactly where a new kind must declare its subject.
   switch (alarm.kind) {
     case AlarmKind::kNone:
+    // Not a kind, and it has no subject any more than kNone does. Handled
+    // beside it so this switch keeps no default and a genuinely new kind
+    // stays a build error here — which is exactly where a new kind must
+    // declare whose it is.
+    case AlarmKind::kAlarmKindCount:
       return 0;
     case AlarmKind::kStoreFull:
     case AlarmKind::kSiteWithoutMaterials:

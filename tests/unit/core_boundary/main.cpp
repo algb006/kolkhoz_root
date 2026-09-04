@@ -115,6 +115,11 @@ class ScriptedSimulation final : public core::ISimulation {
   /// which is exactly the case the session's kNoData filling is for.
   void CollectStockForecast(std::vector<core::StockForecast>& /*lights*/) const override {}
 
+  /// No subsystem here either, and so no rate: kNoData.
+  core::Deadline WearDeadline(core::UnitId /*unit*/) const override {
+    return core::NoDeadline(core::DeadlineKind::kNoData);
+  }
+
   void CollectAlarms(std::vector<core::Alarm>& alarms) const override {
     alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
   }

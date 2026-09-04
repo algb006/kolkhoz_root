@@ -283,6 +283,10 @@ class StandardSimulation final : public ISimulation {
     production_->CollectStockForecast(completed, lights);
   }
 
+  Deadline WearDeadline(UnitId unit) const override {
+    return construction_->WearDeadline(engine_->CompletedState(), unit);
+  }
+
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
     const WorldState& completed = engine_->CompletedState();
     labor_->CollectAlarms(completed, alarms);

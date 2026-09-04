@@ -108,6 +108,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/deadline.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -151,6 +152,33 @@ class IConstructionSystem {
   /// configuration; nothing changes, nothing is logged. Called between
   /// steps on the sim thread through ISimulation::CollectAlarms.
   virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
+
+  /// @brief How long this unit has before its wear reaches the scale's end,
+  /// at the rate it is wearing today (unit rules §15).
+  ///
+  /// TWO READERS, ONE CALCULATION. The HUD's wear layer compares it with a
+  /// date and paints; the story reads the days and can set a quest WHILE THE
+  /// HOUSE IS STILL STANDING. That is the whole point of a deadline over a
+  /// level: `wear = 92` does not say "four days", and the story that can
+  /// only see the level can react but never warn.
+  ///
+  /// IT LIVES HERE because the rate does: the amortisation term of the level,
+  /// the type's own pace, and whether anybody is using the unit today. A
+  /// panel that reached the same number from `wear` would be right until the
+  /// first table change and wrong afterwards with no sign of it.
+  ///
+  /// THE FORECAST IS DULL ON PURPOSE, like the stock lights: today's rate,
+  /// carried forward. It does not guess that somebody will move in, that the
+  /// chairman will repair it, or that the unit will be paused.
+  ///
+  /// @return kDays with the days left, 0 when the unit is already at the end
+  ///         of the scale; kNever for a unit that is not wearing at all
+  ///         right now (a stopped one) — an answer that changes the moment it
+  ///         is started; kNotApplicable for a unit that has no wear and never
+  ///         will (a stack, a heap, a trench, a site); kNoData when the
+  ///         tables carry no term to compute with.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual Deadline WearDeadline(const WorldState& completed, UnitId unit) const = 0;
 };
 
 /// @brief Creates the construction subsystem.

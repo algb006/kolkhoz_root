@@ -209,6 +209,13 @@ struct ConstructionConfig {
   /// is how construction.csv briefly said 45..60 while the code obeyed its
   /// own constants.
   float old_house_collapse_years = 12.0F;
+  /// WAS THERE A has_wear COLUMN AT ALL? Without this the config cannot tell
+  /// "this unit has nothing to wear" from "the table said nothing", because
+  /// both arrive as has_wear = 0 — and those are two different answers to
+  /// give a reader (core_common/deadline.h: kNotApplicable against kNoData).
+  /// A stack is dropped from consideration for good; a missing column is a
+  /// hole somebody has to fill.
+  bool wear_column_present = false;
 };
 
 /// @brief Reads the five tables into `config` — and, since task A5, the

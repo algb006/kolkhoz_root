@@ -20,18 +20,19 @@
 
 ## 1. Граница одним взглядом
 
-**Один объект — `ISession`, двадцать четыре метода — каждая перегрузка считается отдельно, — две
+**Один объект — `ISession`, двадцать пять методов — каждая перегрузка считается отдельно, — две
 функции кодека, одна фабрика.** (Четырнадцать при принятии; семнадцать после задачи А2, добавившей
 второй `ReplaceWorld`, `StagedBatch` и `MapSideMeters`; двадцать один с читателями журнала событий;
 двадцать три после А8, добавившей два вопроса о рабочих руках; двадцать четыре со светофором
-запасов ([`77-stock-lights.md`](77-stock-lights.md)).
+запасов ([`77-stock-lights.md`](77-stock-lights.md)); двадцать пять со сроком износа
+([`73-wear-and-repair.md`](73-wear-and-repair.md)).
 Всё это добавления, и каждое — `minor`, §6.) Через него
 графика, панели UE и прогон с ботом-политикой ведут партию.
 
 | Группа | Методы | Направление |
 |---|---|---|
 | **Время** | `AdvanceStep`, `AdvanceUntil` | вверх: «считай» |
-| **Чтение** | `Stamp`, `State`, `SignalsOfUnit`, `SignalsOfField`, `WhereaboutsOf`, `ActiveAlarms`, `CanBeOrdered`, `Workforce`, `StockLights` | вниз: состояние и выводимое из него |
+| **Чтение** | `Stamp`, `State`, `SignalsOfUnit`, `SignalsOfField`, `WhereaboutsOf`, `ActiveAlarms`, `CanBeOrdered`, `Workforce`, `StockLights`, `WearDeadline` | вниз: состояние и выводимое из него |
 | **Распоряжения** | `IssueOrder`, `CancelOrder` | вверх: команды, и только эти два глагола |
 | **События** | `Events`, `AcknowledgeEvents` — читатель по умолчанию; `OpenEventReader`, `Events(reader)`, `AcknowledgeEvents(reader, n)`, `CloseEventReader` — любой следующий | вниз: что случилось |
 | **Запись** | `TakeJournal`, `ReplaceWorld` (две формы), `StagedBatch` | журнал команд; загрузка — с пачкой и без |

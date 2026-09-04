@@ -482,6 +482,125 @@ int TestWearGrows(const core::ITableSet& tables) {
   return failures;
 }
 
+/// A table set with no `has_wear` column at all, for the third refusal.
+class NoWearColumnTables final : public core::ITableSet {
+ public:
+  const core::ITable* FindTable(std::string_view name) const override {
+    return name == "unit_types" ? &types_ : inner_.FindTable(name);
+  }
+
+  std::uint32_t TableCount() const override { return inner_.TableCount(); }
+
+  std::string_view TableName(std::uint32_t index) const override { return inner_.TableName(index); }
+
+ private:
+  BuildTables inner_;
+
+  // The same rows, minus the column. Absent is not the same as zero: zero
+  // says "this unit has nothing to wear", absent says "nobody wrote it down".
+  FakeTable types_{{"key", "era", "player_built", "gate", "has_plot", "plot_radius_m"},
+                   {{"store", "1", "0", "start", "1", "10"},
+                    {"barn", "1", "1", "era", "1", "20"},
+                    {"club", "2", "1", "era", "1", "20"},
+                    {"orchard", "1", "1", "era", "1", ""},
+                    {"old_house", "1", "0", "start", "1", "10"}}};
+};
+
+/// THE DEADLINE MUST AGREE WITH THE WORLD, and that is the only test of a
+/// forecast worth writing: it promises a number of days, so run those days
+/// and see whether the unit is where it was promised to be. Checking a
+/// forecast against its own formula checks the formula against itself.
+///
+/// THE BARN STARTS AT SEVEN, NOT AT ZERO, and that is the whole point of the
+/// number. At zero the daily share divides the scale exactly — 320 days
+/// either way — and the first draft of this test used it, so it could not
+/// see rounding at all. At seven the division says 297 and the world takes
+/// 298: the forecast has to name the day the world reaches, not the day
+/// before it.
+///
+/// The three refusals are checked here too, because they are not the same
+/// refusal (core_common/deadline.h): a stopped unit and a site will wear
+/// later (kNever), a stack never will (kNotApplicable), and a table with no
+/// wear column says nothing at all (kNoData).
+int TestWearDeadline(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  if (system == nullptr) {
+    std::cout << "FAIL: the deadline table set builds no system\n";
+    return 1;
+  }
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{kBarnType};
+  barn.level = 1;
+  barn.wear = 7.0F;  // the corner: 297.6 days away, so 298 and not 297
+  const core::UnitId ageing = core::AppendRow(world.units, barn);
+  core::UnitRow stopped = barn;
+  stopped.paused = 1;
+  const core::UnitId halted = core::AppendRow(world.units, stopped);
+  core::UnitRow orchard;
+  orchard.type = core::UnitTypeId{kOrchardType};
+  orchard.level = 1;
+  const core::UnitId outline = core::AppendRow(world.units, orchard);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{kBarnType};
+  site.level = 0;
+  const core::UnitId unbuilt = core::AppendRow(world.units, site);
+  core::UnitRow finished;
+  finished.type = core::UnitTypeId{kBarnType};
+  finished.level = 1;
+  finished.wear = 100.0F;
+  finished.paused = 1;  // worn out AND stopped: the limit outranks the pause
+  const core::UnitId spent = core::AppendRow(world.units, finished);
+
+  failures += Expect(system->WearDeadline(world, halted).kind == core::DeadlineKind::kNever,
+                     "a stopped unit is not wearing — an answer that changes when it starts");
+  failures += Expect(system->WearDeadline(world, unbuilt).kind == core::DeadlineKind::kNever,
+                     "and a site is not either: it will wear the day it is built, so the "
+                     "question is not to be dropped");
+  failures +=
+      Expect(system->WearDeadline(world, outline).kind == core::DeadlineKind::kNotApplicable,
+             "an outline with no building has no wear, today or ever");
+  failures += Expect(
+      system->WearDeadline(world, core::UnitId{404}).kind == core::DeadlineKind::kNotApplicable,
+      "a unit that does not exist raises no question");
+  const core::Deadline done = system->WearDeadline(world, spent);
+  failures += Expect(done.kind == core::DeadlineKind::kDays && done.days == 0,
+                     "a unit already at the end of the scale is there, stopped or not");
+
+  const core::Deadline promised = system->WearDeadline(world, ageing);
+  failures += Expect(promised.kind == core::DeadlineKind::kDays && promised.days == 298,
+                     "the deadline names the day the world REACHES the limit, not the day "
+                     "before: dividing gives 297.6 and truncating it would say 297");
+
+  const auto wear_of = [&](core::UnitId id) {
+    const std::uint32_t row = core::FindRow(world.units, id);
+    return row == core::kNoRow ? -1.0F : world.units.rows[row].wear;
+  };
+  // Both sides of the promise. One day short must NOT be there, and the
+  // promised day must — a test that only checks the second passes for any
+  // forecast that is early.
+  for (std::int32_t step = 1; step < promised.days; ++step) {
+    Run(*system, world, static_cast<std::uint32_t>(step) * core::kTicksPerDay);
+  }
+  failures += Expect(wear_of(ageing) < 100.0F, "the day before the promised one it is not there");
+  Run(*system, world, static_cast<std::uint32_t>(promised.days) * core::kTicksPerDay);
+  failures += Expect(wear_of(ageing) >= 100.0F, "and on the promised day it is");
+  failures += Expect(wear_of(halted) == 7.0F, "while the stopped one has not moved at all");
+
+  // The third refusal: no column, so nothing is known about wear at all.
+  const NoWearColumnTables silent;
+  const auto blind = core::CreateConstructionSystem(silent);
+  if (blind != nullptr) {
+    failures += Expect(blind->WearDeadline(world, ageing).kind == core::DeadlineKind::kNoData,
+                       "no has_wear column is NO DATA — not 'nothing wears', which is what "
+                       "the same zero used to mean");
+  } else {
+    failures += Expect(false, "the column-less table set builds a system");
+  }
+  return failures;
+}
+
 /// The scale stops at 100 and the unit goes on working — except the start's
 /// old houses, which are the one kind that falls (start design §4).
 int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
@@ -652,6 +771,7 @@ int main() {
   failures += TestDemolition(tables);
   failures += TestTableLessWorld();
   failures += TestWearGrows(tables);
+  failures += TestWearDeadline(tables);
   failures += TestWearCeilingAndCollapse(tables);
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);

@@ -67,6 +67,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/deadline.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/order_state.h"
@@ -252,6 +253,12 @@ class ISimulation {
   /// change here.
   /// @note Called between steps on the sim thread.
   virtual void CollectStockForecast(std::vector<StockForecast>& lights) const = 0;
+
+  /// @brief How long this unit has before its wear reaches the end of the
+  /// scale, at today's rate. Fans out to core_construction, which owns the
+  /// rate; the bare engine knows no subsystems and answers kNoData.
+  /// @note Called between steps on the sim thread.
+  virtual Deadline WearDeadline(UnitId unit) const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.
