@@ -665,6 +665,38 @@ int main(int argc, char** argv) {
   // is harvested, or nothing is eaten, would still satisfy every count above
   // — and both have happened during this phase's development.
   failures += run::Expect(harvested_tonnes > 100.0, "the fields produced over the run");
+
+  // -- THE OFFICE WALL: one row per closed year, and the same numbers ------
+  //
+  // The chronicle is written at the rotation from the closed book; this run
+  // sums the same books itself, year by year, as it goes. Two tallies of one
+  // fact again — the trick that turned out stronger than the acceptance it
+  // was written for (the event journal, 0.17.18) — and it catches the two
+  // ways a series like this dies: a row that never gets appended, and a row
+  // appended twice.
+  const core::Chronicle& wall = state.ledger.chronicle;
+  failures += run::Expect(wall.size() == g_years, "the wall carries one row per closed year");
+  double wall_tonnes = 0.0;
+  for (const core::ChronicleYear& year : wall) {
+    wall_tonnes += static_cast<double>(year.harvest_grams) / 1.0e6;
+  }
+  failures += run::Expect(std::abs(wall_tonnes - harvested_tonnes) < 0.001,
+                          "and the same gross harvest the run added up itself");
+  if (!wall.empty()) {
+    failures += run::Expect(
+        wall.back().year == static_cast<std::uint16_t>(g_years) && wall.front().year == 1,
+        "the years on the wall run from the first to the last, in order");
+    // The residents on the last row are read at the rotation, which is the
+    // last tick of the run — the same population the gate above judged.
+    failures += run::Expect(wall.back().residents == population,
+                            "and the last row's people are the people the gate counted");
+    std::cout << "wall: " << wall.size() << " years — year 1 " << wall.front().residents
+              << " residents, fertility " << wall.front().fertility << ", harvest "
+              << static_cast<double>(wall.front().harvest_grams) / 1.0e6 << " t; year "
+              << wall.back().year << " " << wall.back().residents << " residents, fertility "
+              << wall.back().fertility << ", harvest "
+              << static_cast<double>(wall.back().harvest_grams) / 1.0e6 << " t\n";
+  }
   failures += run::Expect(eaten_tonnes > 100.0, "and the village ate");
 
   // The herd is the part of the balance that goes wrong quietly: a barn can

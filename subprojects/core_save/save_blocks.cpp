@@ -248,15 +248,47 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->vitals.satiety_running_days = in.ReadU32();
 }
 
+/// A campaign is fifty to seventy years; the ceiling is four orders above
+/// that, and it exists for one reason only — a corrupt length must not turn
+/// into a reserve() of four billion rows before a single one is read. Same
+/// guard the row tables carry (save.cpp, kMaxNextIdValue).
+constexpr std::uint32_t kMaxChronicleYears = 1U << 16U;
+
 void WriteLedger(SaveSink& sink, const LedgerState& ledger) {
   WriteYearLedger(sink, ledger.current);
   WriteYearLedger(sink, ledger.closed);
+  // The office wall (ledger_state.h, Chronicle). THE ONE HISTORY THE
+  // SIMULATION CANNOT REDERIVE — `current` and `closed` are two years and
+  // the wall is fifty — so it is saved for the same reason reaped_grams is.
+  ByteWriter& out = sink.Out();
+  out.WriteU32(static_cast<std::uint32_t>(ledger.chronicle.size()));
+  for (const ChronicleYear& year : ledger.chronicle) {
+    out.WriteU16(year.year);
+    out.WriteU32(year.residents);
+    out.WriteFloat(year.fertility);
+    out.WriteI64(year.harvest_grams);
+  }
 }
 
 LedgerState ReadLedger(LoadSource& source) {
   LedgerState ledger;
   ledger.current = ReadYearLedger(source);
   ledger.closed = ReadYearLedger(source);
+  ByteReader& in = source.In();
+  const std::uint32_t years = in.ReadU32();
+  if (years > kMaxChronicleYears) {
+    source.Fail("chronicle length is absurd");
+    return ledger;
+  }
+  ledger.chronicle.reserve(years);
+  for (std::uint32_t index = 0; index < years; ++index) {
+    ChronicleYear year;
+    year.year = in.ReadU16();
+    year.residents = in.ReadU32();
+    year.fertility = in.ReadFloat();
+    year.harvest_grams = in.ReadI64();
+    ledger.chronicle.push_back(year);
+  }
   return ledger;
 }
 

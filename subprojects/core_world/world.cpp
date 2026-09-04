@@ -188,6 +188,37 @@ class EventsSlot final : public ISequentialPhase {
   /// of which happens at hour 0, lands in the year it settles rather than
   /// in the one that just began. The price, stated in ledger_state.h so
   /// nobody hunts for it: day 0's demography is booked to the year before.
+  /// @brief Writes the closed year onto the office wall (ledger_state.h,
+  /// ChronicleYear).
+  ///
+  /// Called from the rotation and only from there: the row is a statement
+  /// about a year that is over, and a row appended anywhere else would be
+  /// about a year still being lived. One row per rotation, so a thirty-year
+  /// run leaves thirty of them — and the first year leaves ONE point, which
+  /// is the honest picture of a farm that has only just started rather than
+  /// a line drawn from zero.
+  static void AppendChronicleYear(WorldState& current) {
+    ChronicleYear row;
+    row.year = current.ledger.closed.year;
+    row.residents = static_cast<std::uint32_t>(current.residents.rows.size());
+    // Area-weighted over the arable, meadows excluded — the reasoning is on
+    // the field itself, and it is a decision rather than an average.
+    float weighted = 0.0F;
+    float area = 0.0F;
+    for (const FieldRow& field : current.fields.rows) {
+      if (field.kind != LandKind::kArable) {
+        continue;
+      }
+      weighted += field.fertility * field.area_ga;
+      area += field.area_ga;
+    }
+    row.fertility = area > 0.0F ? weighted / area : 0.0F;
+    for (const Grams grams : current.ledger.closed.harvest) {
+      row.harvest_grams += grams > 0 ? grams : 0;
+    }
+    current.ledger.chronicle.push_back(row);
+  }
+
   static void RotateLedger(WorldState& current) {
     if (current.calendar.tick == 0 || current.calendar.tick % kTicksPerYear != 0) {
       return;
@@ -198,6 +229,7 @@ class EventsSlot final : public ISequentialPhase {
     current.ledger.closed = std::move(current.ledger.current);
     current.ledger.closed.year = ended;
     current.ledger.current = YearLedger{};
+    AppendChronicleYear(current);
     // The books rotated, and the year that closed rides in `amount` as the
     // kind's contract says. Interrupting on purpose: a fast-forward that
     // runs past a year's end has run past the one moment the player is

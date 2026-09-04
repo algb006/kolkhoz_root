@@ -43,6 +43,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -210,10 +211,62 @@ struct YearLedger {
 /// @brief The two books of the world: the year being written and the last
 /// one closed. The report writer reads `closed`; nothing reads `current`
 /// but the writers that fill it.
+/// @brief One year on the office wall: the three curves and nothing else
+/// (office design §7, boss parcel core-year-chronicle 2026-09-05).
+///
+/// WHY A ROW OF THREE AND NOT THE WHOLE CLOSED YEAR. The wall carries three
+/// sheets on one axis, and a fourth curve is forbidden there by design — the
+/// stack is ranked by eye, and a fourth breaks the comparison of the three.
+/// Keeping the entire YearLedger per year would carry the resource columns
+/// seventy times over into every save, and would sit there as a standing
+/// invitation to draw the fourth line from data that is already handy. Three
+/// numbers say what the wall says; a fourth curve, when the design asks for
+/// one, arrives as a task and as a field.
+struct ChronicleYear {
+  /// The year that closed, 1-based, as YearLedger::year carries it.
+  std::uint16_t year = 0;
+
+  /// Residents alive at the moment the books rotated.
+  std::uint32_t residents = 0;
+
+  /// SOIL FERTILITY OF THE WHOLE FARM AS ONE NUMBER, 0-100 — and one number
+  /// about many fields is an assertion, so here is which one it is: the
+  /// mean over ARABLE fields WEIGHTED BY AREA, meadows excluded because a
+  /// meadow has no fertility to improve or exhaust (land_state.h, LandKind).
+  ///
+  /// Weighted and not plain: a hundred hectares at 40 beside one hectare at
+  /// 90 is not a farm at 65, and the plain mean would let a scrap of good
+  /// garden hide the state of the fields. Zero when there is no arable at
+  /// all, which is a fact and not a missing value.
+  float fertility = 0.0F;
+
+  /// The year's gross harvest in grams, summed over every resource.
+  ///
+  /// SAID PLAINLY, BECAUSE IT IS A SUM OF UNMIXABLE QUANTITIES: rye and
+  /// potatoes and hay go into it by MASS. That is what "gross yield" means
+  /// in the tradition the design borrows the word from, and it is the wall's
+  /// question — how much came off the land — but a tonne of hay is not a
+  /// tonne of bread, and nobody should decide between crops by this number.
+  /// The alternative, a sum in kcal, is available (the food model computes
+  /// it) and was not chosen because the sheet is titled "gross harvest".
+  Grams harvest_grams = 0;
+};
+
+/// @brief The wall: one row per closed year, oldest first.
+using Chronicle = std::vector<ChronicleYear>;
+
 struct LedgerState {
   YearLedger current;
 
   YearLedger closed;
+
+  /// Every year that has closed, in order. THE ONE PIECE OF HISTORY THE
+  /// SIMULATION CANNOT REDERIVE: `current` and `closed` are two years, and
+  /// the wall is fifty. A layer that accumulated it instead would lose it on
+  /// load, and the office of a campaign resumed after a year away would show
+  /// a single point on the thirtieth year — lying in the comfortable
+  /// direction, "the farm has only just started".
+  Chronicle chronicle;
 };
 
 /// @brief Adds grams under `resource` to a ledger column, growing the dense
