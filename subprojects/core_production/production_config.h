@@ -300,12 +300,6 @@ struct FarmingConfig {
   /// branch was dead and no field ever burned.
   float drought_temp_c = 25.0F;
 
-  /// Half the diurnal swing per season, indexed by Season, from
-  /// weather.csv temp_amplitude_c. Read here as well as by core_time: the
-  /// weather state keeps one number a day by design, and the afternoon is
-  /// the mean plus this. 0 when the table has no such column.
-  std::array<float, 4> temp_amplitude_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
-
   float stress_per_day = 0.02F;
 
   float stress_cap = 0.3F;
@@ -319,11 +313,17 @@ struct FarmingConfig {
   /// Chosen by sweeping the thirty-year run rather than by taste, and the
   /// rule of choice is written down: THE LARGEST VALUE AT WHICH BOTH HALVES
   /// STILL HAPPEN. A threshold at which one of them never fires turns half
-  /// the state into decoration. Measured over 2408 growing field-days:
-  /// 2 days -> 0.50% drying / 3.90% soaking; 3 -> 0.08% / 0.87%;
-  /// 4 -> 0% / 0.08%; 6 -> nothing at all in thirty years.
-  /// See manual/balance/69-reconciliation.md §13.10.
-  float weather_state_days = 3.0F;
+  /// the state into decoration and then reports itself healthy by being
+  /// silent.
+  ///
+  /// Re-swept once the weather gained memory, because the answer depended on
+  /// the source and not on the field: over 2400 growing field-days,
+  /// 3 days -> 1.17% drying / 3.08% soaking; 4 -> 0.29% / 1.38%;
+  /// 5 -> 0% / 0.58%. Before memory the same sweep gave three days, with
+  /// drought already dead at four. The threshold moved because the generator
+  /// started producing spells, not because it was fitted to an answer.
+  /// See manual/balance/69-reconciliation.md §13.10 and §13.11.
+  float weather_state_days = 4.0F;
 
   // -- stage 6: herd-wide knobs (tables/farming.csv scalar rows) -----------
   /// Underfeeding: produce multiplier while unfed, and when deaths start.

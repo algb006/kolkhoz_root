@@ -696,23 +696,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // orders like any other unit, and in a run the player is played by the
   // run's own chairman (tests/run/common/yard_policy.h).
   config.stable_type = UnitTypeByKey(unit_types, "horse_yard");
-  if (const ITable* weather = tables.FindTable("weather"); weather != nullptr) {
-    constexpr std::array<std::string_view, 4> kSeasons = {"winter", "spring", "summer", "autumn"};
-    const std::uint32_t amplitude_col = weather->FindColumn("temp_amplitude_c");
-    for (std::uint32_t season = 0; season < kSeasons.size(); ++season) {
-      const std::uint32_t row = weather->FindRowByKey(kSeasons[season]);
-      if (!CellOrDefault(*weather,
-                         row,
-                         amplitude_col,
-                         Range{.low = 0, .high = 30},
-                         0,
-                         config.farming.temp_amplitude_by_season[season],
-                         error)) {
-        error = "weather: temp_amplitude_c: " + error;
-        return false;
-      }
-    }
-  }
+  // The season amplitudes used to be copied in here so that the drought
+  // branch could work out the afternoon. THEY ARE GONE: the day's swing is
+  // now a field of WeatherState, written once by the time phase and read by
+  // everyone, because the sky moves it per day and a per-season copy could
+  // no longer be right. One number, one home (2026-09-04, cloud parcel).
   // The haul knobs (task A4). Same tables labor reads; the arithmetic that
   // uses them is shared (core_common/haul.h), so only the inputs travel.
   if (const ITable* transport = tables.FindTable("transport")) {

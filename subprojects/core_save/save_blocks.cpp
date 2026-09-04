@@ -33,7 +33,7 @@ static_assert(sizeof(YearLedger) == 136 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
-static_assert(sizeof(WeatherState) == 12, "WeatherState changed — update the codec");
+static_assert(sizeof(WeatherState) == 20, "WeatherState changed — update the codec");
 static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
 static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and VERSION_SAVE");
 
@@ -177,6 +177,12 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.weather.air_temperature_celsius);
   out.WriteFloat(world.weather.daylight_hours);
   out.WriteU8(static_cast<std::uint8_t>(world.weather.precipitation));
+  // The day's swing and the day's sky (the cloud parcel, 2026-09-04). Both
+  // are recomputable from (seed, day), and both are saved anyway for the
+  // same reason the temperature is: a loaded world must be able to answer
+  // before it has stepped once.
+  out.WriteFloat(world.weather.temperature_swing_celsius);
+  out.WriteFloat(world.weather.cloud_cover);
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -219,6 +225,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->weather.daylight_hours = in.ReadFloat();
   world->weather.precipitation =
       static_cast<Precipitation>(source.ReadEnumValue(0, kMaxPrecipitation, "precipitation"));
+  world->weather.temperature_swing_celsius = in.ReadFloat();
+  world->weather.cloud_cover = in.ReadFloat();
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

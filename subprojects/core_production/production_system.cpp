@@ -89,14 +89,13 @@ class FieldGrowthPhase final : public IParallelPhase {
         continue;
       }
       const CropDef& crop = config_->crops[field.crop.value];
-      // Drought is a matter of the AFTERNOON: the mean plus the season's
+      // Drought is a matter of the AFTERNOON: the mean plus the day's
       // half-swing (camera design §4). On the mean alone the summer never
-      // reached +25 and this branch was dead in every run before it.
-      const auto season = static_cast<std::size_t>(current.calendar.season);
-      const float afternoon =
-          weather.air_temperature_celsius + (season < farming.temp_amplitude_by_season.size()
-                                                 ? farming.temp_amplitude_by_season[season]
-                                                 : 0.0F);
+      // reached +25 and this branch was dead in every run before it. The
+      // swing is the DAY's since the cloud parcel — a clear noon is hotter
+      // — and it is read off the weather rather than off a copy of the
+      // season table kept here.
+      const float afternoon = weather.air_temperature_celsius + weather.temperature_swing_celsius;
       // TWO ACCUMULATORS, NOT ONE, and the branches stay exclusive as they
       // were: a day is a rain day or a heat day or neither. The sum is
       // capped where the single number used to be capped — clamping a

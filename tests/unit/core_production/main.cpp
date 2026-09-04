@@ -565,6 +565,10 @@ int CheckDroughtReadsTheAfternoon() {
     world.calendar.tick = 30 * core::kTicksPerDay;  // late July: summer
     core::RefreshCalendarCaches(world.calendar);
     world.weather.air_temperature_celsius = mean_celsius;
+    // The DAY's half-swing, which the time phase writes and this test has to
+    // state for itself: production no longer keeps a copy of the season
+    // amplitudes. Six is the summer figure of the fixture's weather table.
+    world.weather.temperature_swing_celsius = 6.0F;
     world.weather.precipitation = precipitation;
     core::FieldRow field;
     field.area_ga = 10.0F;

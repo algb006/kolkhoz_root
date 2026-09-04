@@ -104,6 +104,25 @@ struct WeatherState {
   float daylight_hours = 12.0f;
 
   Precipitation precipitation = Precipitation::kNone;
+
+  /// Half the day's swing about the mean above, in Celsius: the afternoon is
+  /// the mean PLUS this and the night is the mean MINUS it.
+  ///
+  /// It is a property of THE DAY and not of the season, which is the whole
+  /// point: the sky moves it (a clear noon is hotter and a clear midnight
+  /// colder — one phenomenon in two directions), while the mean stays where
+  /// the season table put it so that nothing else in the simulation drifts.
+  ///
+  /// It lives here rather than being looked up from the weather table by
+  /// each reader, and that is a fix rather than a convenience: production
+  /// kept its own copy of the season amplitudes to compute the afternoon,
+  /// which is one number with two homes.
+  float temperature_swing_celsius = 0.0f;
+
+  /// Overcast, 0 = clear sky, 1 = solid cloud. A quantity of the day in its
+  /// own right: rain implies cloud, cloud does not imply rain, and an
+  /// overcast dry day is exactly the day the swing rule exists for.
+  float cloud_cover = 0.5f;
 };
 
 /// @brief The chairman's standing. He is an abstract figure without a body or

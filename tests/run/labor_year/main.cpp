@@ -24,6 +24,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <unordered_map>
@@ -38,8 +39,20 @@
 
 namespace {
 
+/// The bands below are the reference calculation's, and the reference was
+/// computed for ONE year of ONE seed. A run on another seed measures the
+/// same quantities and must not pretend the bands apply to it: it prints
+/// them instead. The bands still bind on the canonical seed, which is what
+/// ctest runs.
+bool g_bands_bind = true;
+
 int ExpectBand(double value, double low, double high, const char* label) {
   if (value >= low && value <= high) {
+    return 0;
+  }
+  if (!g_bands_bind) {
+    std::cout << "off-band (other seed): " << label << " — " << value << ", canon " << low << ".."
+              << high << '\n';
     return 0;
   }
   std::cout << "FAIL: " << label << " — got " << value << ", wanted " << low << ".." << high
@@ -175,9 +188,17 @@ int CheckTheRoad(const core::WorldState& start) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  // A seed argument, and it earned its place the day the weather gained
+  // memory: a first year is ONE SAMPLE, and a balance decision taken off one
+  // sample is the class this project has spent a day learning to refuse. The
+  // bands below are still checked against the canonical seed — the run's job
+  // is unchanged — but the same binary can now be swept over seeds to say
+  // how OFTEN a year comes out the way it did (69-reconciliation.md §13.11).
+  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1930;
+  g_bands_bind = seed == 1930;
   int failures = 0;
-  const run::Simulation started = run::Start(1930);
+  const run::Simulation started = run::Start(seed);
   if (!started) {
     return 1;
   }
@@ -328,7 +349,7 @@ int main() {
   failures += run::Expect(after_burn == 0.0, "the economic year's turn burns what was not spent");
 
   // --- the same year with three workers ------------------------------------
-  const run::Simulation parallel = run::Start(1930, 3);
+  const run::Simulation parallel = run::Start(seed, 3);
   if (!parallel) {
     return failures + 1;
   }
