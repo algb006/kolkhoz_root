@@ -122,6 +122,33 @@ enum class AlarmKind : std::uint8_t {
   /// recipe order; `amount` = the grams short of it.
   kSiteWithoutMaterials,
 
+  /// A site has its materials and is waiting for HANDS: it is in
+  /// ConstructionPhase::kBuilding and not one resident is assigned to it
+  /// today. Subject: `unit`.
+  ///
+  /// WHY THIS EXISTS, and it is not about construction. kStoreFull tells the
+  /// player to build a store. A probe did exactly that — `start_build`, no
+  /// refusal, plot marked — and the site stood four hundred days with a crew
+  /// of zero, because workers do not come to a site by themselves and a
+  /// second order (`assign_work … construction`) says nothing about itself.
+  ///
+  /// A PIECE OF ADVICE ANSWERS FOR THE SUFFICIENCY OF THE ACTION IT NAMES.
+  /// "Build a store", when a store is not built by one command, is not a
+  /// hint but a trap — because it looks carried out (boss, 2026-09-05).
+  ///
+  /// THE CONDITION IS "NOBODY IS ON IT TODAY", not "nobody was ever
+  /// assigned". The host's instrument settled that: it assigned six men
+  /// once and the third store still stood empty, because yesterday's hands
+  /// are in the fields today, on another site, or dead. An alarm that goes
+  /// out on the first order goes out early and leads back to where it came
+  /// from.
+  ///
+  /// kBuilding alone, and the two other labour phases are deliberately left
+  /// out: a repair works meanwhile at its own level and a demolition is not
+  /// a thing the player was advised to do — neither leaves a site standing
+  /// that he could mistake for progress.
+  kSiteWithoutCrew,
+
   /// The site is not reachable by road (unit rules §12). STUB: the core
   /// has no roads, so no site is ever unreachable and the predicate yields
   /// nothing; the kind is in the roster so that the presentation's map has

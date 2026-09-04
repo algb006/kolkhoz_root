@@ -43,6 +43,20 @@ void Emit(WorldState& current, EventKind kind, EventSeverity severity, UnitId un
   EmitEvent(current, kind, severity).unit = unit;
 }
 
+/// @brief How many residents are assigned to this site right now.
+///
+/// The assignment is the fact, and the order that made it is not: an order
+/// given a year ago says nothing about who is on the site this morning.
+std::uint32_t CrewOnSite(const WorldState& completed, UnitId site) {
+  std::uint32_t crew = 0;
+  for (const ResidentRow& resident : completed.residents.rows) {
+    if (resident.work.kind == WorkKind::kConstruction && resident.work.unit.value == site.value) {
+      ++crew;
+    }
+  }
+  return crew;
+}
+
 class ConstructionSystem final : public IConstructionSystem {
  public:
   explicit ConstructionSystem(ConstructionConfig config) : config_(std::move(config)) {}
@@ -151,6 +165,18 @@ class ConstructionSystem final : public IConstructionSystem {
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     for (std::uint32_t row = 0; row < completed.units.rows.size(); ++row) {
       const UnitRow& site = completed.units.rows[row];
+      // A site with its materials and nobody on it (alarm_state.h,
+      // kSiteWithoutCrew). Counted from the assignments themselves and not
+      // from an order that was once given: yesterday's hands are in the
+      // fields today.
+      if (site.construction.phase == ConstructionPhase::kBuilding &&
+          CrewOnSite(completed, completed.units.row_ids[row]) == 0) {
+        Alarm alarm;
+        alarm.kind = AlarmKind::kSiteWithoutCrew;
+        alarm.unit = completed.units.row_ids[row];
+        alarm.amount = static_cast<std::int64_t>(site.construction.labor_days_remaining);
+        alarms.push_back(alarm);
+      }
       if (site.construction.phase != ConstructionPhase::kDelivering) {
         continue;
       }

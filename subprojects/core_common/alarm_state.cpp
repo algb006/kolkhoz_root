@@ -21,6 +21,7 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
       return 0;
     case AlarmKind::kStoreFull:
     case AlarmKind::kSiteWithoutMaterials:
+    case AlarmKind::kSiteWithoutCrew:
     case AlarmKind::kNoRoad:
     case AlarmKind::kYardWithoutGroom:
       return alarm.unit.value;
