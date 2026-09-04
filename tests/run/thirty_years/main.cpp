@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -39,7 +40,20 @@ namespace {
 
 constexpr std::uint32_t kYears = 30;
 
+/// The run under measurement. Both default to the canonical configuration —
+/// which is what ctest runs, and the only one the gates below bind on — and
+/// both can be overridden on the command line: `thirty_years [seed] [years]`.
+///
+/// It earned the argument the day the weather gained memory. "Does the
+/// village survive an unlucky first year" is a question about THREE seeds
+/// out of twenty, and answering it by editing a constant and rebuilding is
+/// how a measurement stops being repeatable
+/// (69-reconciliation.md §13.12).
+std::uint32_t g_years = kYears;
+bool g_canonical_run = true;
+
 constexpr std::uint64_t kSeed = 1929;
+std::uint64_t g_seed = kSeed;
 
 // -- THE OTHER TWO HALVES OF THE PHASE GATE ------------------------------
 //
@@ -163,7 +177,7 @@ constexpr double kDayBudgetSeconds = 2.0;
 /// did not merely holds? Fields are few, so the sheet stays small.
 std::filesystem::path FieldSheetPath() {
   return std::filesystem::path("claude") / "analysis" /
-         ("fields_" + std::to_string(kSeed) + ".csv");
+         ("fields_" + std::to_string(g_seed) + ".csv");
 }
 
 std::string CropKey(const core::ITableSet& tables, core::CropId crop) {
@@ -187,7 +201,7 @@ struct FieldSample {
 
 std::filesystem::path SheetPath() {
   return std::filesystem::path("claude") / "analysis" /
-         ("ledger_" + std::to_string(kSeed) + ".csv");
+         ("ledger_" + std::to_string(g_seed) + ".csv");
 }
 
 /// A year's row, printed for the terminal: enough to see the shape of the
@@ -233,9 +247,20 @@ void PrintHerdFinding(const core::WorldState& state) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   int failures = 0;
-  run::Simulation world = run::Start(kSeed);
+  if (argc > 1) {
+    g_seed = std::strtoull(argv[1], nullptr, 10);
+  }
+  if (argc > 2) {
+    g_years = static_cast<std::uint32_t>(std::strtoul(argv[2], nullptr, 10));
+  }
+  // THE GATES BIND ON THE CANONICAL RUN AND NOWHERE ELSE. A band measured
+  // for thirty years of one seed says nothing about five years of another,
+  // and a check that fires there would be measuring the argument rather than
+  // the simulation.
+  g_canonical_run = g_seed == kSeed && g_years == kYears;
+  run::Simulation world = run::Start(g_seed);
   if (!world) {
     return 1;
   }
@@ -302,7 +327,7 @@ int main() {
   std::uint64_t drying_field_days = 0;
   std::uint64_t soaking_field_days = 0;
 
-  for (std::uint32_t year = 0; year < kYears; ++year) {
+  for (std::uint32_t year = 0; year < g_years; ++year) {
     double year_seconds = 0.0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       const std::chrono::steady_clock::time_point day_began = std::chrono::steady_clock::now();
@@ -407,9 +432,9 @@ int main() {
   // The book of year N closes on the first tick of year N+1, which is the
   // last tick of the Nth year of ticks: thirty years of ticks therefore
   // close exactly thirty books, the last of them year 30.
-  failures += run::Expect(rows_written == kYears, "one row per year of the run");
-  failures +=
-      run::Expect(state.ledger.closed.year == kYears, "the last closed book is the last full year");
+  failures += run::Expect(rows_written == g_years, "one row per year of the run");
+  failures += run::Expect(state.ledger.closed.year == g_years,
+                          "the last closed book is the last full year");
   failures += run::Expect(state.families.rows.size() > 20, "and it has households");
 
   // -- THE PHASE GATE, HALF ONE: the run still converges with the canon ----
@@ -436,13 +461,18 @@ int main() {
               << " than the instrument's own ±" << kMeasuredNoiseResidents
               << "; the caveat covers the excess over the canon, not this\n";
   }
-  failures += run::Expect(population >= kCanonLow,
-                          "the village reaches the canon's thirtieth year and not a smaller one");
+  if (g_canonical_run) {
+    failures += run::Expect(population >= kCanonLow,
+                            "the village reaches the canon's thirtieth year and not a smaller one");
+  } else {
+    std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
+              << " years) — the canon band is printed and not asserted\n";
+  }
 
   // -- THE PHASE GATE, HALF TWO: fast-forward holds the norm ---------------
   std::cout << "gate: a game day of the costliest year cost " << costliest_year_day_seconds
             << " s (year " << costliest_year << "), the run averaged "
-            << simulated_seconds / static_cast<double>(kYears * core::kDaysPerYear)
+            << simulated_seconds / static_cast<double>(g_years * core::kDaysPerYear)
             << " s/day against a budget of " << kDayBudgetSeconds << " s\n";
   // A STOPPED CLOCK IS UNDER EVERY BUDGET. The measure has to prove it
   // measured before its verdict means anything — the same reason the
@@ -451,6 +481,8 @@ int main() {
       run::Expect(simulated_seconds > 0.0, "the fast-forward measure actually timed something");
   failures += run::Expect(costliest_year_day_seconds <= kDayBudgetSeconds,
                           "and no year of the run cost more per game day than the norm allows");
+  // The speed norm binds on every run: it is a property of the machine and
+  // of the step, not of the seed or of how many years were asked for.
 
   // -- what task O2b made structural, and what the first pass had none of ---
   // These are not balance bands. They are the three ways the farm used to
