@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -346,17 +347,24 @@ class ResidentsSystem final : public IResidentsSystem {
 
   IParallelPhase& MetricsPhase() override { return metrics_phase_; }
 
-  /// kFamilyGoingHungry: the family's mean member satiety has fallen to the
-  /// floor at which the kolkhoz owes the safety ration. The THRESHOLD is the
-  /// ration's, but the alarm is not a report that the ration is running — it
-  /// stands whether or not the auto-rule is armed, because it speaks of the
-  /// trouble and not of the treatment (boss, 2026-09-03; alarm_state.h).
+  /// Every family whose mean member satiety has fallen to the floor at which
+  /// the kolkhoz owes the safety ration.
+  ///
+  /// ONE HOME for the predicate, and it has two readers: CollectAlarms turns
+  /// them into kFamilyGoingHungry, and the food light reads "is anybody
+  /// hungry right now" as its red. Two copies of a threshold drift the day
+  /// somebody adds a reason to one of them.
+  ///
+  /// The THRESHOLD is the ration's, but this is not a report that the ration
+  /// is running — it holds whether or not the auto-rule is armed, because it
+  /// speaks of the trouble and not of the treatment (boss, 2026-09-03;
+  /// alarm_state.h).
   ///
   /// Raw member satiety, not FamilyRow::component_satiety, for the same
   /// reason the ration itself uses it: the component is capped by the
   /// variety ceiling, and a family living on nothing but bread would raise
   /// a hunger alarm with full bins.
-  void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
+  void CollectHungryFamilies(const WorldState& completed, std::vector<FamilyId>& out) const {
     const std::size_t families = completed.families.rows.size();
     if (families == 0) {
       return;
@@ -381,11 +389,95 @@ class ResidentsSystem final : public IResidentsSystem {
       if (satiety > food_.distribution.ration_satiety_threshold) {
         continue;
       }
+      out.push_back(completed.families.row_ids[row]);
+    }
+  }
+
+  /// kFamilyGoingHungry, one per hungry family, in family row order — the
+  /// session sorts by id.
+  void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
+    std::vector<FamilyId> hungry;
+    CollectHungryFamilies(completed, hungry);
+    for (const FamilyId family : hungry) {
       Alarm alarm;
       alarm.kind = AlarmKind::kFamilyGoingHungry;
-      alarm.family = completed.families.row_ids[row];
+      alarm.family = family;
       alarms.push_back(alarm);
     }
+  }
+
+  /// Everything edible of one resource the settlement can reach: the stores
+  /// AND the family pantries. A forecast that counted only the stores would
+  /// go yellow every spring with the pantries full, and a light that cries
+  /// wolf is a light nobody reads.
+  static Grams EdibleHeld(const WorldState& world, ResourceId resource) {
+    Grams total = 0;
+    for (const UnitRow& unit : world.units.rows) {
+      if (unit.level != 0) {
+        total += AmountOf(unit.stock, resource);
+      }
+    }
+    for (const FamilyRow& family : world.families.rows) {
+      total += AmountOf(family.pantry, resource);
+    }
+    return total;
+  }
+
+  bool AnyoneGoingHungry(const WorldState& completed) const {
+    std::vector<FamilyId> hungry;
+    CollectHungryFamilies(completed, hungry);
+    return !hungry.empty();
+  }
+
+  float DailyGrainEquivalentKilograms(const WorldState& completed) const override {
+    return SettlementDailyNeedKilograms(food_, config_.life_speedup, completed);
+  }
+
+  void CollectStockForecast(const WorldState& completed,
+                            std::int32_t days_to_harvest,
+                            std::vector<StockForecast>& lights) const override {
+    StockForecast food;
+    food.kind = StockKind::kFood;
+    food.days_to_date = days_to_harvest;
+
+    const float need_kg = SettlementDailyNeedKilograms(food_, config_.life_speedup, completed);
+    if (!(need_kg > 0.0F)) {
+      // An empty village eats nothing. "Never runs out" and not "no data":
+      // the question was asked and answered (stock_forecast.h).
+      food.days_of_stock = kStockNeverRunsOut;
+      food.light = LightFrom(food.days_of_stock, food.days_to_date, 0, false);
+      lights.push_back(food);
+      return;
+    }
+
+    // Everything edible, wherever it lies — stores and pantries both. A
+    // forecast that counted only the stores would go yellow every spring
+    // while the pantries were full, and the player would learn to ignore it.
+    // Converted through calories, because the norm is a grain EQUIVALENT and
+    // a tonne of potatoes is not a tonne of rye.
+    const float reference = food_.consumption.grain_reference_kcal_per_gram;
+    double kcal = 0.0;
+    if (reference > 0.0F) {
+      for (std::uint32_t resource = 0; resource < food_.resources.size(); ++resource) {
+        const float density = food_.resources[resource].kcal_per_gram;
+        if (!(density > 0.0F)) {
+          continue;
+        }
+        const ResourceId id{static_cast<std::uint16_t>(resource)};
+        kcal += static_cast<double>(EdibleHeld(completed, id)) * static_cast<double>(density);
+      }
+    }
+    const double need_kcal = static_cast<double>(need_kg) * static_cast<double>(kGramsPerKilogram) *
+                             static_cast<double>(reference);
+    const double days = need_kcal > 0.0 ? kcal / need_kcal : 0.0;
+    food.days_of_stock = days >= static_cast<double>(kStockForecastHorizonDays)
+                             ? kStockForecastHorizonDays
+                             : static_cast<std::int32_t>(days);
+    food.light = LightFrom(food.days_of_stock,
+                           food.days_to_date,
+                           static_cast<std::int32_t>(food_.consumption.food_light_margin_days),
+                           AnyoneGoingHungry(completed));
+    lights.push_back(food);
   }
 
   /// The whole residents sub-step of the decisions slot, not demography

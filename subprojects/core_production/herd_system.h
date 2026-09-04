@@ -39,6 +39,24 @@ namespace core {
 ///       the whole day a no-op rather than an error.
 void RunHerdDay(const ProductionConfig& config, WorldState& current);
 
+/// @brief Is `month` inside the inclusive band [from, to]? 0-based months.
+/// The band does not wrap the new year, and no caller needs it to: the
+/// pasture season lies inside one year by construction.
+bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to);
+
+/// @brief The day's fodder need of one herd, in feed units.
+/// @param month 0-based; inside the pasture season the grass covers its
+///        share, outside it the whole norm comes from the stores.
+///
+/// Public so that the feed light forecasts with the SAME arithmetic the day
+/// actually runs on (stock_lights.h). A forecast that recomputed the need
+/// beside this one would drift from it the first time a rung or a factor
+/// moved, and it would drift silently.
+float FeedNeedUnits(const ProductionConfig& config,
+                    const LivestockDef& kind,
+                    const HerdRow& herd,
+                    std::uint8_t month);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_HERD_SYSTEM_H_

@@ -43,6 +43,24 @@ void RunFamilyMeal(const FoodConfig& config,
                    WorldState& current,
                    std::uint32_t family_item);
 
+/// @brief What one person needs in a day, in the GRAIN EQUIVALENT the food
+/// norms are stated in.
+/// @param age_years Biological age.
+/// @param worked_heavy Whether the day was spent on a heavy work kind.
+///
+/// Public so that the food light (the stock traffic light) forecasts with
+/// the SAME norm the meal is served from. A forecast that recomputed the
+/// ramp beside this one would drift from it the first time the table moved,
+/// and drift silently — which is the whole reason the number has one home.
+float DailyNeedKilograms(const ConsumptionConfig& eat, float age_years, bool worked_heavy);
+
+/// @brief What the whole settlement eats in a day, grain-equivalent kg.
+/// Nobody's work is counted heavy here: the forecast is about the ordinary
+/// day, and assuming every day heavy would understate the stock on purpose.
+float SettlementDailyNeedKilograms(const FoodConfig& config,
+                                   float life_speedup,
+                                   const WorldState& world);
+
 /// @brief The family's satiety component: the members' mean satiety, cut
 /// down by the variety ceiling of the epoch (metrics design §8 — one bread
 /// all winter caps the component at 50 in Epoch I).

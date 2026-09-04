@@ -25,6 +25,7 @@
 #include "core_tables/tables.h"
 #include "herd_system.h"
 #include "production_config.h"
+#include "stock_lights.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::IProductionSystem>,
@@ -719,6 +720,245 @@ int CheckStoreCeilingAndAlarms() {
   return failures;
 }
 
+/// THE FEED LIGHT COUNTS THE WINTERING, and the corner is midsummer.
+///
+/// In the pasture months the grass covers most of the ration and the daily
+/// draw on the stores falls to nearly nothing. A light that counted TODAY
+/// would stand green all summer and turn yellow in November — when the hay
+/// can no longer be cut. It is meant to be most useful in haymaking, and
+/// that is only true if it looks past the grass.
+int CheckFeedLightCountsTheWinter() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.feed_links = {core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                         .resource = core::ResourceId{0},
+                                         .reserve = 0,
+                                         .max_share = 1.0F}};
+  config.farming.pasture_from_month = 4;
+  config.farming.pasture_to_month = 8;
+  // Half the ration comes off the grass in summer. If the forecast used the
+  // summer need it would report twice the days it should.
+  config.livestock[0].pasture_coverage_summer = 0.5F;
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].stock[0] = 40 * kKilo;  // 40 feed units
+  AddHerd(world, 0, 4, 0, true);              // four adults: 4 units a winter day
+
+  world.calendar.tick = 6 * core::kDaysPerMonth * core::kTicksPerDay;  // July
+  core::RefreshCalendarCaches(world.calendar);
+  const core::StockForecast summer = core::FeedLight(config, world);
+  failures += Expect(static_cast<std::uint8_t>(world.calendar.date.month) == 6,
+                     "the test stands in the pasture season");
+  failures += Expect(summer.days_of_stock == 10,
+                     "forty units against the WINTER ration of four a day: ten days, "
+                     "not the twenty the grass would suggest");
+
+  world.calendar.tick = 11 * core::kDaysPerMonth * core::kTicksPerDay;  // December
+  core::RefreshCalendarCaches(world.calendar);
+  const core::StockForecast winter = core::FeedLight(config, world);
+  failures += Expect(winter.days_of_stock == summer.days_of_stock,
+                     "and the same answer in December: the light does not change its mind "
+                     "with the season, only the date it is measured against does");
+  return failures;
+}
+
+/// THE CEILING, which is where dividing would lie.
+///
+/// Every feed has a cap on the share of the day's need it may cover — a
+/// ruminant does not live on grain however much of it there is. Total units
+/// over daily need OVERSTATES a lopsided store, and an overstating light is
+/// the green one that lies.
+int CheckFeedLightRespectsTheCeiling() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.farming.pasture_from_month = 4;
+  config.farming.pasture_to_month = 8;
+  config.livestock[0].pasture_coverage_summer = 0.0F;
+  // One feed, capped at half the ration. The store holds twenty units and
+  // the herd needs two a day: dividing says ten days, the cap says five,
+  // and after five days the herd is starving beside ten unusable units.
+  config.feed_links = {core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                         .resource = core::ResourceId{0},
+                                         .reserve = 0,
+                                         .max_share = 0.5F}};
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].stock[0] = 20 * kKilo;
+  AddHerd(world, 0, 2, 0, true);
+  world.calendar.tick = 11 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+
+  const core::StockForecast light = core::FeedLight(config, world);
+  failures += Expect(light.days_of_stock == 0,
+                     "a ration that can never be covered in full runs out on day one, "
+                     "and dividing the units would have promised ten days");
+  failures += Expect(light.light == core::StockLight::kRed,
+                     "and the herd that cannot be fed today is red, not amber");
+  return failures;
+}
+
+/// "NEVER" IS AN ANSWER, and it is not "no data". A village with no kolkhoz
+/// herd has nothing eating the fodder; the question was asked and answered.
+int CheckFeedLightNeverRunsOut() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  core::WorldState world = MakeHerdWorld(0.0F);
+  const core::StockForecast light = core::FeedLight(config, world);
+  failures +=
+      Expect(light.days_of_stock == core::kStockNeverRunsOut, "nothing eats, so nothing runs out");
+  failures += Expect(light.light == core::StockLight::kGreen,
+                     "which is green, and pointedly not the dark of an unanswered light");
+  return failures;
+}
+
+/// THE SEED LIGHT COUNTS THE SURPLUS, not the heap.
+///
+/// Food and seed are the same grain, and that is exactly why they are two
+/// lights. The food light asks how long the heap feeds the village; this one
+/// asks how long the village can eat before the heap falls THROUGH the
+/// sowing norm. Counting the whole heap here would answer the other light's
+/// question and say nothing about the mistake that costs a year.
+int CheckSeedLightCountsTheSurplus() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(1);
+  core::CropDef& rye = config.crops[0];
+  rye.resource = core::ResourceId{0};
+  rye.sowing_norm_kg_per_ha = 10.0F;
+  rye.sow_from_month = 4;
+  rye.sow_to_month = 5;
+  config.farming.seed_light_margin_days = 0.0F;
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 10.0F;  // ten hectares: a hundred kg of seed
+  field.rotation_year0 = core::CropId{0};
+  core::AppendRow(world.fields, field);
+  world.units.rows[0].stock[0] = 160 * kKilo;  // sixty kilograms above the norm
+  world.calendar.tick = 0;
+  core::RefreshCalendarCaches(world.calendar);
+
+  // Six kilograms eaten a day: the surplus lasts ten days, the whole heap
+  // would have lasted twenty-six. The light must say ten.
+  const core::StockForecast light = core::SeedLight(config, world, 6.0F);
+  failures += Expect(light.days_of_stock == 10,
+                     "the seed light counts only what stands ABOVE the sowing norm");
+
+  // Nobody eats: the fund cannot be eaten, and that is "never", not zero and
+  // not a dark light.
+  const core::StockForecast idle = core::SeedLight(config, world, 0.0F);
+  failures += Expect(idle.days_of_stock == core::kStockNeverRunsOut,
+                     "a village that eats nothing cannot eat its seed fund");
+  failures += Expect(idle.light == core::StockLight::kGreen, "which is green, not dark");
+
+  // Already below the norm: red, and red is a FACT — the kSeedShort alarm
+  // stands beside it about a particular field.
+  world.units.rows[0].stock[0] = 40 * kKilo;
+  const core::StockForecast shortfall = core::SeedLight(config, world, 6.0F);
+  failures += Expect(shortfall.light == core::StockLight::kRed,
+                     "grain already below the sowing norm is red, whatever the date says");
+  failures += Expect(shortfall.days_of_stock == 0, "and there is no surplus left to count");
+  return failures;
+}
+
+/// TWO KINDS, AND EACH EATS ITS OWN. The first version of this forecast
+/// walked every feed link without looking at whose it was, so the pigs'
+/// barley covered the cows' hay and every ceiling — a share of ONE herd's
+/// day — became a share of the whole settlement, which is to say nothing at
+/// all. The tests written with it could not see that: each had one kind and
+/// one feed. A forecast is only as honest as the smallest farm it was tried
+/// on, and one kind is not a farm.
+int CheckFeedLightKeepsTheKindsApart() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.farming.pasture_from_month = 4;
+  config.farming.pasture_to_month = 8;
+  config.livestock[0].pasture_coverage_summer = 0.0F;
+  config.livestock[1].feed_units_per_game_day = 1.0F;
+  config.livestock[1].pasture_coverage_summer = 0.0F;
+  // Resource 0 is the cows' feed, resource 1 the pigs'. Neither kind is ever
+  // offered the other's.
+  config.feed_links = {core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                         .resource = core::ResourceId{0},
+                                         .reserve = 0,
+                                         .max_share = 1.0F},
+                       core::FeedLinkDef{.kind = core::LivestockKindId{1},
+                                         .resource = core::ResourceId{1},
+                                         .reserve = 0,
+                                         .max_share = 1.0F}};
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].stock[0] = 4 * kKilo;    // the cows have four days
+  world.units.rows[0].stock[1] = 100 * kKilo;  // the pigs have a hundred
+  AddHerd(world, 0, 1, 0, true);               // one cow: one unit a day
+  AddHerd(world, 1, 1, 0, true);               // one pig: one unit a day
+  world.calendar.tick = 11 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+
+  const core::StockForecast light = core::FeedLight(config, world);
+  failures += Expect(light.days_of_stock == 4,
+                     "the farm runs out when the FIRST herd does: the pigs' hundred days "
+                     "do not feed the cows for one");
+  return failures;
+}
+
+/// TWO CROPS, ONE RESOURCE — and two crops that are not one.
+///
+/// Winter wheat and spring wheat are two crops and a single resource, so
+/// summing the stock per crop counted the same grain twice. And summing the
+/// crops TOGETHER let a mountain of one cancel the absence of another: you
+/// cannot sow oats with rye, and a village with no potato seed is short
+/// however much rye it has.
+int CheckSeedLightDoesNotNetCropsOff() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(2);
+  config.crops[0].resource = core::ResourceId{0};  // rye
+  config.crops[0].sowing_norm_kg_per_ha = 10.0F;
+  config.crops[0].sow_from_month = 4;
+  config.crops[0].sow_to_month = 5;
+  config.crops[1].resource = core::ResourceId{1};  // potato, a different heap
+  config.crops[1].sowing_norm_kg_per_ha = 10.0F;
+  config.crops[1].sow_from_month = 4;
+  config.crops[1].sow_to_month = 5;
+  config.farming.seed_light_margin_days = 0.0F;
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  core::FieldRow rye_field;
+  rye_field.kind = core::LandKind::kArable;
+  rye_field.area_ga = 1.0F;
+  rye_field.rotation_year0 = core::CropId{0};
+  core::AppendRow(world.fields, rye_field);
+  core::FieldRow potato_field = rye_field;
+  potato_field.rotation_year0 = core::CropId{1};
+  core::AppendRow(world.fields, potato_field);
+
+  // Rye to spare, no potato seed at all. Netted together the village looks
+  // comfortable; crop by crop it cannot sow half its land.
+  world.units.rows[0].stock[0] = 1000 * kKilo;
+  world.units.rows[0].stock[1] = 0;
+  const core::StockForecast light = core::SeedLight(config, world, 6.0F);
+  failures += Expect(light.light == core::StockLight::kRed,
+                     "no potato seed is short, however much rye stands beside it");
+
+  // Both covered, but one only just: the tightest crop decides the days.
+  world.units.rows[0].stock[1] = 40 * kKilo;  // 10 needed, 30 spare
+  world.units.rows[0].stock[0] = 1000 * kKilo;
+  const core::StockForecast tight = core::SeedLight(config, world, 6.0F);
+  failures += Expect(tight.days_of_stock == 5,
+                     "the crop that runs out of surplus first is the one that counts");
+  return failures;
+}
+
 }  // namespace
 
 /// The turn of the start canon (task A7; manual/74-posts.md §5): the yard is
@@ -898,6 +1138,12 @@ int main() {
 
   failures += CheckFeeding();
   failures += CheckFeedCaps();
+  failures += CheckFeedLightCountsTheWinter();
+  failures += CheckFeedLightRespectsTheCeiling();
+  failures += CheckFeedLightNeverRunsOut();
+  failures += CheckSeedLightCountsTheSurplus();
+  failures += CheckFeedLightKeepsTheKindsApart();
+  failures += CheckSeedLightDoesNotNetCropsOff();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();

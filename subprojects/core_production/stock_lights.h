@@ -1,0 +1,95 @@
+/// @file
+/// @brief The two stock lights core_production owns: feed and seed.
+/// @threading SINGLE_THREADED
+/// Read-only over a completed state, called between steps on the sim thread
+/// through ISimulation::CollectStockForecast. Nothing here writes.
+///
+/// WHY THESE TWO AND NOT THE OTHER TWO. A light lives with the consumption
+/// it forecasts (core_common/stock_forecast.h). The fodder rate per head per
+/// day, the pasture season that decides which days are stall days, the
+/// sowing norm per hectare and the rotation that says which crop comes next
+/// are all here and none of them can move. Food belongs to core_residents
+/// with the eating norms; firewood belongs to nobody yet.
+
+#ifndef CORE_PRODUCTION_STOCK_LIGHTS_H_
+#define CORE_PRODUCTION_STOCK_LIGHTS_H_
+
+#include <cstdint>
+
+#include "core_common/stock_forecast.h"
+#include "core_common/world_state.h"
+#include "production_config.h"
+
+namespace core {
+
+/// @brief Game days from `world`'s today to the next start of the harvest
+/// window, 0 when the window is open now.
+///
+/// It is here because the farming calendar is here, and it is PUBLIC because
+/// the food light needs it and core_residents may not reach into this module
+/// for it (CLAUDE.md §7). The assembly point passes it across — that is what
+/// an assembly point is for.
+std::int32_t DaysToHarvest(const ProductionConfig& config, const WorldState& world);
+
+/// @brief The feed light: will the fodder reach the pasture.
+///
+/// COUNTS THE WINTERING, NOT TODAY. In the pasture months the grass covers
+/// its share and the daily draw on the stores falls to nearly nothing; a
+/// light that counted that would stand green until November and turn yellow
+/// when the hay can no longer be cut (office design §5). The light is most
+/// useful in haymaking, and that is only true if it looks at the winter.
+///
+/// DRAINED DAY BY DAY, not divided. Every feed has a ceiling on the share of
+/// the day's need it may cover — a ruminant does not live on grain however
+/// much of it there is — so total units over daily need OVERSTATES what a
+/// lopsided store will carry. An overstating light is the green one that
+/// lies, which is the one thing this whole mechanism exists to prevent, so
+/// the forecast walks the days and drains a copy of the stores by the real
+/// order and the real ceilings.
+StockForecast FeedLight(const ProductionConfig& config, const WorldState& world);
+
+/// @brief Game days to the start of the pasture season, 0 when it is open.
+std::int32_t DaysToPasture(const ProductionConfig& config, const WorldState& world);
+
+/// @brief Game days to the next sowing window, 0 when one is open.
+std::int32_t DaysToSowing(const ProductionConfig& config, const WorldState& world);
+
+/// @brief The seed light: will there be anything left to sow.
+///
+/// Food and seed are the same grain and still two lights, because this is
+/// the start's most expensive mistake: an eaten seed fund shows nothing at
+/// all until sowing, and by then it costs a whole year (office design §5).
+/// @param eating_kg_per_day What the settlement eats a day, in the GRAIN
+///        EQUIVALENT the food norms are stated in. Passed in because the
+///        eating norms belong to core_residents and this module may not
+///        reach for them (CLAUDE.md §7); the assembly point carries the
+///        number across, exactly as it carries DaysToHarvest the other way.
+///
+/// TWO THINGS THIS NUMBER GETS WRONG, both known and both waiting on boss:
+///
+///   * it is a GRAIN EQUIVALENT and the surplus below is raw kilograms, so a
+///     crop whose calories are far from rye's — potato is a quarter of it —
+///     forecasts too many days. The food light converts through calories for
+///     exactly this reason; this one cannot, because the densities live with
+///     the food config in core_residents;
+///   * `rotation_year0` is THIS year's crop and only shifts at the year
+///     turn, so from sowing to the new year a spring field is charged its
+///     seed a second time. What "the next sowing" means for a winter crop is
+///     a design answer, not an arithmetic one.
+///
+/// Both push the light the same way — towards standing yellow — and a light
+/// that is yellow always is the failure mode this mechanism exists to avoid.
+/// Recorded in OPEN_ITEMS and put to boss rather than guessed at.
+///
+/// It is needed because the seed fund's danger is not spoilage or use — it
+/// is BEING EATEN. Food and seed are the same grain, and the light asks
+/// whether the grain still covers the sowing norm when sowing comes. Without
+/// the eating rate the light could only ever say "enough right now", which
+/// is precisely the reassurance that costs a year.
+StockForecast SeedLight(const ProductionConfig& config,
+                        const WorldState& world,
+                        float eating_kg_per_day);
+
+}  // namespace core
+
+#endif  // CORE_PRODUCTION_STOCK_LIGHTS_H_

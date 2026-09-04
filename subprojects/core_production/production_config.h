@@ -324,6 +324,19 @@ struct FarmingConfig {
   /// for three different penalties at all.
   float reserve_feed_factor = 0.8F;
 
+  /// THE STOCK LIGHTS' MARGINS, in game days: how much slack "enough with
+  /// room to spare" means before a light goes green (office design §5, the
+  /// stock traffic light). They are separate numbers on purpose — a bad
+  /// winter and a sowing norm are not the same kind of risk, and one shared
+  /// threshold would be a wrong answer to one of the two.
+  ///
+  /// ASSUMPTION until the balance pass. A yellow light that is yellow
+  /// always is noise and stops being seen inside a week; if that happens
+  /// these are what is wrong, not the player.
+  float feed_light_margin_days = 12.0F;  ///< A season of slack on the fodder.
+
+  float seed_light_margin_days = 4.0F;  ///< A month: seed is a fixed norm.
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.

@@ -68,7 +68,7 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
   ConsumptionConfig& eat = config.consumption;
   SatietyConfig& satiety = config.satiety;
   auto heavy_mask = static_cast<float>(eat.heavy_kinds_mask);
-  const std::array<ScalarKnob, 18> knobs = {{
+  const std::array<ScalarKnob, 19> knobs = {{
       {.key = "adult_kg_grain_eq_per_year",
        .value = &eat.adult_kg_grain_eq_per_year,
        .low = 1.0F,
@@ -84,6 +84,10 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
        .high = 120.0F},
       {.key = "elderly_factor", .value = &eat.elderly_factor, .low = 0.1F, .high = 2.0F},
       {.key = "heavy_work_factor", .value = &eat.heavy_work_factor, .low = 1.0F, .high = 3.0F},
+      {.key = "food_light_margin_days",
+       .value = &eat.food_light_margin_days,
+       .low = 0.0F,
+       .high = 1000.0F},
       {.key = "heavy_kinds_mask", .value = &heavy_mask, .low = 0.0F, .high = 4.0e9F},
       {.key = "grain_reference_kcal_per_gram",
        .value = &eat.grain_reference_kcal_per_gram,

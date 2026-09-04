@@ -70,6 +70,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/order_state.h"
+#include "core_common/stock_forecast.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -237,6 +238,20 @@ class ISimulation {
   /// those are standing about at this moment.
   /// @note Called between steps on the sim thread, like its neighbours.
   virtual WorkforceCount Workforce() const = 0;
+
+  /// @brief Appends every stock light the wired subsystems own, in the
+  /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms
+  /// does and for the same reason: the forecast belongs to whoever owns the
+  /// consumption, not to whoever wants to draw it.
+  ///
+  /// A KIND NOBODY ANSWERS IS NOT MISSING — it is unanswered, and the
+  /// session says so with StockLight::kNoData rather than leaving a gap for
+  /// a reader to fill with a default. Firewood is that kind today: no
+  /// consumption rate for it exists anywhere yet. When one arrives, the
+  /// subsystem that owns it starts answering and the light comes on with no
+  /// change here.
+  /// @note Called between steps on the sim thread.
+  virtual void CollectStockForecast(std::vector<StockForecast>& lights) const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.

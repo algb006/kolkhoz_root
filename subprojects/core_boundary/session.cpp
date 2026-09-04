@@ -110,6 +110,7 @@ class Session final : public ISession {
     // session freshly created over a loaded world answers with the
     // conditions of that world at its very first call.
     RefreshAlarms();
+    RefreshStockLights();
   }
 
   // -- time -----------------------------------------------------------------
@@ -117,6 +118,7 @@ class Session final : public ISession {
   void AdvanceStep() override {
     RunOneStep();
     RefreshAlarms();
+    RefreshStockLights();
   }
 
   FastForwardReport AdvanceUntil(const FastForwardTarget& target,
@@ -147,6 +149,7 @@ class Session final : public ISession {
       }
     }
     RefreshAlarms();
+    RefreshStockLights();
     return report;
   }
 
@@ -179,6 +182,8 @@ class Session final : public ISession {
   }
 
   std::span<const Alarm> ActiveAlarms() const override { return alarms_; }
+
+  std::span<const StockForecast> StockLights() const override { return lights_; }
 
   // -- orders ---------------------------------------------------------------
 
@@ -303,6 +308,7 @@ class Session final : public ISession {
     serial_ = 0;
     simulation_->ResetWorld(initial);
     RefreshAlarms();
+    RefreshStockLights();
   }
 
   void ReplaceWorld(const WorldState& initial, const StagedOrders& staged) override {
@@ -455,6 +461,42 @@ class Session final : public ISession {
     });
   }
 
+  /// The lights, always four and always in kind order, with the gaps filled.
+  ///
+  /// FILLING THE GAPS IS THE SESSION'S JOB AND NOT A RULE. Whether a stock
+  /// can be forecast is a fact about what is wired, not about the farm — so
+  /// saying "nobody answered for firewood" is a statement about the assembly
+  /// and belongs to the thing that assembles. The reason is carried with it,
+  /// because the presentation must be able to tell a hole in the design from
+  /// a hole in the core: they are fixed by different people.
+  ///
+  /// A fixed-length list in a fixed order, for the same reason alarms are
+  /// sorted: a panel diffs it, and a list whose order followed the fan-out
+  /// would churn for no reason the player could see.
+  void RefreshStockLights() {
+    std::vector<StockForecast> answered;
+    simulation_->CollectStockForecast(answered);
+    lights_.assign(static_cast<std::size_t>(StockKind::kStockKindCount), StockForecast{});
+    for (std::size_t index = 0; index < lights_.size(); ++index) {
+      StockForecast& light = lights_[index];
+      light.kind = static_cast<StockKind>(index);
+      light.light = StockLight::kNoData;
+      // Firewood is the one kind the design has not given numbers for: the
+      // heating design names the factors and not one rate, and its own
+      // "what next" list still carries the open item. Every other silence
+      // would be ours.
+      light.no_data_reason = light.kind == StockKind::kFirewood
+                                 ? NoDataReason::kRateNotInDesign
+                                 : NoDataReason::kNoSubsystemAnswered;
+    }
+    for (const StockForecast& given : answered) {
+      const auto index = static_cast<std::size_t>(given.kind);
+      if (index < lights_.size()) {
+        lights_[index] = given;  // last answer wins; one owner per kind
+      }
+    }
+  }
+
   /// @brief Stream position one past the last event held.
   std::uint64_t LogEnd() const { return log_origin_ + events_.size(); }
 
@@ -545,6 +587,8 @@ class Session final : public ISession {
   /// The conditions standing in the completed state; rebuilt after every
   /// step, so it never describes a world other than State()'s.
   std::vector<Alarm> alarms_;
+
+  std::vector<StockForecast> lights_;
 };
 
 }  // namespace

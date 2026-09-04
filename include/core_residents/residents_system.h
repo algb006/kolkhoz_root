@@ -67,6 +67,42 @@ class IResidentsSystem {
   /// changes, nothing is logged. Called between steps on the sim thread
   /// through ISimulation::CollectAlarms.
   virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
+
+  /// @brief Appends the stock lights this subsystem owns (task: the stock
+  /// traffic light). Today one: StockKind::kFood.
+  ///
+  /// The eating norms live here — the grain-equivalent year norm, the age
+  /// factors, the kcal reference — so the forecast of how long the food
+  /// lasts lives here too, beside them. A panel that reached the same
+  /// number from the stores would be right until the first balance change
+  /// and wrong afterwards with no sign of it.
+  ///
+  /// The forecast is deliberately dull (stock_forecast.h): the edible stock
+  /// that is there against the eating that is known, to the harvest. It
+  /// guesses nothing the player might do.
+  ///
+  /// A pure read of `completed` with the configuration; no state changes,
+  /// nothing is logged. Called between steps on the sim thread through
+  /// ISimulation::CollectStockForecast.
+  /// @param days_to_harvest Game days to the next harvest window. Passed IN
+  ///        because the farming calendar belongs to core_production and this
+  ///        module may not reach for it (CLAUDE.md §7): the assembly point
+  ///        carries the number across, which is what an assembly point is
+  ///        for. The alternative was a second copy of the harvest months,
+  ///        and a second copy is a second answer.
+  virtual void CollectStockForecast(const WorldState& completed,
+                                    std::int32_t days_to_harvest,
+                                    std::vector<StockForecast>& lights) const = 0;
+
+  /// @brief What the settlement eats in a day, in the GRAIN EQUIVALENT the
+  /// food norms are stated in.
+  ///
+  /// Exposed for the seed light, which lives in core_production: the seed
+  /// fund's danger is being EATEN, and the rate at which it is eaten is this
+  /// module's number. The same crossing as days_to_harvest, in the other
+  /// direction and through the same assembly point.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual float DailyGrainEquivalentKilograms(const WorldState& completed) const = 0;
 };
 
 /// @brief Creates the people subsystem.

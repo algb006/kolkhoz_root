@@ -22,12 +22,13 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — twenty-three methods, counting
+/// concrete, and it is deliberately small — twenty-four methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
-///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce
+///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce,
+///               StockLights
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -37,8 +38,8 @@
 /// (Fourteen at first; seventeen after task A2 added the second
 /// ReplaceWorld, StagedBatch and MapSideMeters; twenty-one since the event
 /// log gained readers; twenty-three since task A8 added the two workforce
-/// questions — all additions, which is what the contract's minor number is
-/// for; 70-boundary.md §6.)
+/// questions; twenty-four since the stock lights — all additions, which is
+/// what the contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
 /// the session and drains the event log for its HUD and its fast-forward
@@ -497,6 +498,29 @@ class ISession {
   /// ReplaceWorld. Empty for a world whose tables define nothing that can
   /// go wrong, which is what a table-less unit-test world is.
   virtual std::span<const Alarm> ActiveAlarms() const = 0;
+
+  /// @brief The four stock lights of the completed state, ALWAYS four and
+  /// always in StockKind order — food, feed, firewood, seed.
+  ///
+  /// Recomputed after every step and after ReplaceWorld by asking the
+  /// simulation (ISimulation::CollectStockForecast); the session computes no
+  /// rule and holds no threshold, exactly as with alarms.
+  ///
+  /// A KIND NOBODY ANSWERED COMES BACK AS StockLight::kNoData WITH A REASON,
+  /// never as a gap and never as green. Firewood is that kind today: no
+  /// consumption rate for it exists in any table, and the reason says so, so
+  /// that the presentation can tell "the design has not given the numbers"
+  /// from "the core did not finish the sum". A missing light drawn as green
+  /// would teach the player to trust it and would lie once — in the first
+  /// winter, which is the winter the whole mechanism exists for.
+  ///
+  /// The number beside the colour is the point of the second reader: the
+  /// panel compares it with the date and paints, the story reads the days
+  /// and decides whether to set a quest today or wait. One calculation, two
+  /// readings — never two calculations (office design §5).
+  ///
+  /// Valid until the next step or ReplaceWorld.
+  virtual std::span<const StockForecast> StockLights() const = 0;
 
   // -- orders -----------------------------------------------------------------
 

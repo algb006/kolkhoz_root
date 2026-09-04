@@ -32,29 +32,6 @@ float ClampMetric(float value) {
   return low > kMetricMax ? kMetricMax : low;
 }
 
-/// @brief One person's share of the adult norm today, in grain-equivalent
-/// kilograms per GAME day (metrics design §8).
-///
-/// Nothing until the breast is left behind, a straight ramp from there to
-/// the adult norm at sixteen, a little less in old age, a fifth more on a
-/// day of heavy work. The ramp is linear because the design draws it that
-/// way; the two multipliers are ASSUMPTION and live in the table.
-float DailyNeedKilograms(const ConsumptionConfig& eat, float age_years, bool worked_heavy) {
-  if (age_years < eat.eat_from_bio_years) {
-    return 0.0F;  // still at the breast: the pantry feeds the mother
-  }
-  const float adult_per_day = eat.adult_kg_grain_eq_per_year / static_cast<float>(kDaysPerYear);
-  float need = adult_per_day;
-  if (age_years < eat.adult_from_bio_years) {
-    const float span = eat.adult_from_bio_years - eat.eat_from_bio_years;
-    need =
-        span > 0.0F ? adult_per_day * (age_years - eat.eat_from_bio_years) / span : adult_per_day;
-  } else if (age_years >= eat.elderly_from_bio_years) {
-    need = adult_per_day * eat.elderly_factor;
-  }
-  return worked_heavy ? need * eat.heavy_work_factor : need;
-}
-
 /// @brief Did this person spend the day on one of the heavy kinds? The mask
 /// is food's own (ConsumptionConfig::heavy_kinds_mask) rather than a read of
 /// labor's parsed rates: the food side must not depend on another module's
@@ -185,6 +162,40 @@ void MoveSatietyAndHealth(const FoodConfig& config,
 }
 
 }  // namespace
+
+/// @brief One person's share of the adult norm today, in grain-equivalent
+/// kilograms per GAME day (metrics design §8).
+///
+/// Nothing until the breast is left behind, a straight ramp from there to
+/// the adult norm at sixteen, a little less in old age, a fifth more on a
+/// day of heavy work. The ramp is linear because the design draws it that
+/// way; the two multipliers are ASSUMPTION and live in the table.
+float DailyNeedKilograms(const ConsumptionConfig& eat, float age_years, bool worked_heavy) {
+  if (age_years < eat.eat_from_bio_years) {
+    return 0.0F;  // still at the breast: the pantry feeds the mother
+  }
+  const float adult_per_day = eat.adult_kg_grain_eq_per_year / static_cast<float>(kDaysPerYear);
+  float need = adult_per_day;
+  if (age_years < eat.adult_from_bio_years) {
+    const float span = eat.adult_from_bio_years - eat.eat_from_bio_years;
+    need =
+        span > 0.0F ? adult_per_day * (age_years - eat.eat_from_bio_years) / span : adult_per_day;
+  } else if (age_years >= eat.elderly_from_bio_years) {
+    need = adult_per_day * eat.elderly_factor;
+  }
+  return worked_heavy ? need * eat.heavy_work_factor : need;
+}
+
+float SettlementDailyNeedKilograms(const FoodConfig& config,
+                                   float life_speedup,
+                                   const WorldState& world) {
+  float kilograms = 0.0F;
+  for (const ResidentRow& resident : world.residents.rows) {
+    const float age = BiologicalAgeYears(life_speedup, resident.birth_day, world.calendar.day);
+    kilograms += DailyNeedKilograms(config.consumption, age, false);
+  }
+  return kilograms;
+}
 
 void RunFamilyMeal(const FoodConfig& config,
                    float life_speedup,

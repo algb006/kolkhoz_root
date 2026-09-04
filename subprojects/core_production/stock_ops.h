@@ -42,11 +42,12 @@ inline void AddToStock(ResourceAmounts& stock, ResourceId resource, Grams amount
   cell = cell < 0 ? 0 : cell;
 }
 
+/// @brief What a store holds of one resource. A one-line delegate since the
+/// stock lights: core_residents needed the same read, so the accessor moved
+/// down to core_common beside the type it reads (quantities.h, AmountOf).
+/// The name stays because it is what this module's prose calls it.
 inline Grams StockOf(const ResourceAmounts& stock, ResourceId resource) {
-  if (resource.value == kInvalidDefIdValue || stock.size() <= resource.value) {
-    return 0;
-  }
-  return stock[resource.value];
+  return AmountOf(stock, resource);
 }
 
 /// @brief Kilograms as grams, multiplying BEFORE the cast. A hen makes far

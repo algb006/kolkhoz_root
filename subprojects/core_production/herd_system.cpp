@@ -24,10 +24,6 @@ namespace {
 
 constexpr float kGameMonthsPerYear = 12.0F;
 
-bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
-  return month >= from && month <= to;
-}
-
 std::uint16_t AsHeads(float value) {
   if (!(value > 0.0F)) {
     return 0;
@@ -217,23 +213,6 @@ void RunBilleting(const HerdRow& herd,
   const float housed = heads < room[unit_row] ? heads : room[unit_row];
   room[unit_row] -= housed;
   billeted = AsHeads(heads - housed);
-}
-
-/// The day's fodder need, in feed units. Adults eat the norm, juveniles the
-/// juvenile share of it, newborns at the dam nothing. In the pasture months
-/// the grass covers its share of the need — the norm is about NEED, not
-/// about a mandatory trip to the store.
-float FeedNeedUnits(const ProductionConfig& config,
-                    const LivestockDef& kind,
-                    const HerdRow& herd,
-                    std::uint8_t month) {
-  const float heads = static_cast<float>(herd.adult_count) +
-                      static_cast<float>(herd.juvenile_count) * config.farming.juvenile_feed_factor;
-  float need = heads * kind.feed_units_per_game_day;
-  if (MonthInRange(month, config.farming.pasture_from_month, config.farming.pasture_to_month)) {
-    need *= 1.0F - kind.pasture_coverage_summer;
-  }
-  return need > 0.0F ? need : 0.0F;
 }
 
 /// @brief Is there a stable standing? The kolkhoz yard's SECOND step is the
@@ -902,6 +881,27 @@ void RunAutumnSlaughter(const ProductionConfig& config,
 }
 
 }  // namespace
+
+bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
+  return month >= from && month <= to;
+}
+
+/// The day's fodder need, in feed units. Adults eat the norm, juveniles the
+/// juvenile share of it, newborns at the dam nothing. In the pasture months
+/// the grass covers its share of the need — the norm is about NEED, not
+/// about a mandatory trip to the store.
+float FeedNeedUnits(const ProductionConfig& config,
+                    const LivestockDef& kind,
+                    const HerdRow& herd,
+                    std::uint8_t month) {
+  const float heads = static_cast<float>(herd.adult_count) +
+                      static_cast<float>(herd.juvenile_count) * config.farming.juvenile_feed_factor;
+  float need = heads * kind.feed_units_per_game_day;
+  if (MonthInRange(month, config.farming.pasture_from_month, config.farming.pasture_to_month)) {
+    need *= 1.0F - kind.pasture_coverage_summer;
+  }
+  return need > 0.0F ? need : 0.0F;
+}
 
 void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   if (config.livestock.empty()) {

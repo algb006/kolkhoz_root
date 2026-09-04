@@ -251,6 +251,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   const auto knobs = std::to_array<Knob>({
       {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
       {"unfed_death_after_days", &farming.unfed_death_after_days, 0.0F, 1000.0F},
+      {"feed_light_margin_days", &farming.feed_light_margin_days, 0.0F, 1000.0F},
+      {"seed_light_margin_days", &farming.seed_light_margin_days, 0.0F, 1000.0F},
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
       {"juvenile_feed_factor", &farming.juvenile_feed_factor, 0.0F, 1.0F},
       {"reserve_feed_factor", &farming.reserve_feed_factor, 0.0F, 1.0F},

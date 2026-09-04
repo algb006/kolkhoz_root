@@ -37,6 +37,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/ids.h"
+
 namespace core {
 
 // ---------------------------------------------------------------------------
@@ -95,6 +97,21 @@ Grams GramsFromFloat(float grams);
 /// is the stored mass of that resource. The layout of a warehouse buffer, a
 /// family pantry and the yearly plan is one and the same type.
 using ResourceAmounts = std::vector<Grams>;
+
+/// @brief What a dense per-resource vector holds of one resource, 0 when the
+/// vector is shorter than the id or the id is invalid.
+///
+/// It lives HERE, with the type it reads, and not in the module that first
+/// needed it. It began in core_production; when the stock lights arrived
+/// core_residents needed the same three lines, and a second copy of an
+/// accessor is how two answers to one question start. A vector shorter than
+/// an id is not an error — a store that never held rye has no cell for it.
+inline Grams AmountOf(const ResourceAmounts& amounts, ResourceId resource) {
+  if (resource.value == kInvalidDefIdValue || amounts.size() <= resource.value) {
+    return 0;
+  }
+  return amounts[resource.value];
+}
 
 // ---------------------------------------------------------------------------
 // Labor and money

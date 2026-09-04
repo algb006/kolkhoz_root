@@ -111,6 +111,10 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::WorkforceCount Workforce() const override { return {}; }
 
+  /// The scripted simulation owns no subsystem, so it forecasts nothing —
+  /// which is exactly the case the session's kNoData filling is for.
+  void CollectStockForecast(std::vector<core::StockForecast>& /*lights*/) const override {}
+
   void CollectAlarms(std::vector<core::Alarm>& alarms) const override {
     alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
   }
@@ -910,6 +914,57 @@ int TestCrewOrderShape(const core::ITableSet& tables) {
   return failures;
 }
 
+/// The stock lights at the boundary. What is measured here is the SESSION's
+/// half of the contract — four lights, always, in kind order, with the gaps
+/// filled and named — because the forecasts themselves belong to the
+/// subsystems and have their own tests.
+///
+/// The scripted simulation answers nothing at all, which is exactly the case
+/// worth measuring: a light nobody computes must come back dark WITH A
+/// REASON, and above all not green.
+int TestStockLights(const core::ITableSet& tables) {
+  int failures = 0;
+  core::WorldState world;
+  ScriptedSimulation* script = nullptr;
+  std::unique_ptr<core::ISession> session = ScriptedSession(tables, world, &script);
+  if (!session) {
+    std::cout << "FAIL: the stock-light session was refused\n";
+    return 1;
+  }
+  const std::span<const core::StockForecast> lights = session->StockLights();
+  failures += Expect(lights.size() == static_cast<std::size_t>(core::StockKind::kStockKindCount),
+                     "there are always four lights, however many were answered");
+  bool in_kind_order = true;
+  for (std::size_t index = 0; index < lights.size(); ++index) {
+    in_kind_order = in_kind_order && lights[index].kind == static_cast<core::StockKind>(index);
+  }
+  failures += Expect(in_kind_order, "and they come in kind order, so a panel can diff the list");
+
+  bool any_green = false;
+  for (const core::StockForecast& light : lights) {
+    any_green = any_green || light.light == core::StockLight::kGreen;
+  }
+  failures += Expect(!any_green,
+                     "a light nobody computed is never green: green would teach the player "
+                     "to trust it");
+  for (const core::StockForecast& light : lights) {
+    failures +=
+        Expect(light.light == core::StockLight::kNoData, "an unanswered light says so plainly");
+    failures += Expect(light.no_data_reason != core::NoDataReason::kNone,
+                       "and every dark light carries a reason");
+  }
+  // The two reasons are not interchangeable: one is a hole in the design and
+  // the other a hole in the wiring, and different people fix them.
+  const auto& firewood = lights[static_cast<std::size_t>(core::StockKind::kFirewood)];
+  failures += Expect(firewood.no_data_reason == core::NoDataReason::kRateNotInDesign,
+                     "firewood is dark because the design has given no rate");
+  const auto& food = lights[static_cast<std::size_t>(core::StockKind::kFood)];
+  failures += Expect(food.no_data_reason == core::NoDataReason::kNoSubsystemAnswered,
+                     "and food, here, because this simulation wires no subsystem — "
+                     "the two complaints are not the same complaint");
+  return failures;
+}
+
 // ---------------------------------------------------------------------------
 // The two workforce questions (task A8)
 // ---------------------------------------------------------------------------
@@ -1004,6 +1059,7 @@ int main() {
   failures += TestJournalCodec();
   failures += TestWorkerIndependence(tables);
   failures += TestCrewOrderShape(tables);
+  failures += TestStockLights(tables);
   failures += TestWorkforceQuestions(tables);
 
   if (failures == 0) {

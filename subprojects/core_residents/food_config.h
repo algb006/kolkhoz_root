@@ -104,6 +104,17 @@ struct ConsumptionConfig {
   /// rest drain is the heavy 4/norm-day: plowing, harvest).
   float heavy_work_factor = 1.2F;  ///< ASSUMPTION.
 
+  /// THE FOOD LIGHT'S MARGIN, game days: how much slack "enough with room to
+  /// spare" means before the light goes green (office design §5, the stock
+  /// traffic light). Its own number and not a shared one — reaching the
+  /// harvest with a fortnight in hand is a different kind of comfort from
+  /// reaching the sowing with the seed norm intact.
+  ///
+  /// ASSUMPTION until the balance pass. A light that is yellow always is
+  /// noise and stops being seen inside a week; if that happens this is what
+  /// is wrong, not the player.
+  float food_light_margin_days = 8.0F;
+
   /// Which WorkKind values count as heavy, as a bitmask by kind index.
   /// Default: plowing (1) and harvest (4) — the decision-107 heavy pair.
   /// A mask, not a labor-config read: the food side must not depend on

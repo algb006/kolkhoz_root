@@ -127,6 +127,12 @@ class StepEngine final : public ISimulation {
 
   WorkforceCount Workforce() const override { return {}; }
 
+  /// And no stock lights either: a forecast is a subsystem's rule, and the
+  /// bare engine has no subsystems. It appends NOTHING rather than four dark
+  /// lights — the session is what turns "nobody answered" into kNoData, and
+  /// it does so once, in one place.
+  void CollectStockForecast(std::vector<StockForecast>& /*lights*/) const override {}
+
  private:
   /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
   /// completed, append the issued rows in arrival order (the table issues the

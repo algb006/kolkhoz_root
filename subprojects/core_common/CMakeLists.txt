@@ -11,4 +11,5 @@ kolkhoz_add_module(core_common
     haul.cpp
     spoilage.cpp
     quantities.cpp
+    stock_forecast.cpp
     version_pin.cpp)

@@ -262,6 +262,25 @@ class StandardSimulation final : public ISimulation {
     return labor_->CountWorkforce(engine_->CompletedState());
   }
 
+  /// THE ASSEMBLY POINT IS WHERE THE TWO CROSSINGS MEET, and that is the
+  /// whole reason this is not two independent calls.
+  ///
+  /// The food light needs the harvest date, which core_production owns; the
+  /// seed light needs the eating rate, which core_residents owns. Neither
+  /// module may name the other (CLAUDE.md §7), and neither number wanted a
+  /// second home. So the assembly — the one place that is allowed to see
+  /// everybody — reads each scalar from its owner and hands it to the other.
+  ///
+  /// The ORDER is the fan-out order of the decisions slot, like alarms; the
+  /// session sorts what comes back, so nothing here depends on it.
+  void CollectStockForecast(std::vector<StockForecast>& lights) const override {
+    const WorldState& completed = engine_->CompletedState();
+    const std::int32_t days_to_harvest = production_->DaysToNextHarvest(completed);
+    const float eating_kg_per_day = residents_->DailyGrainEquivalentKilograms(completed);
+    residents_->CollectStockForecast(completed, days_to_harvest, lights);
+    production_->CollectStockForecast(completed, eating_kg_per_day, lights);
+  }
+
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
     const WorldState& completed = engine_->CompletedState();
     labor_->CollectAlarms(completed, alarms);

@@ -79,6 +79,40 @@ class IProductionSystem {
   /// state of the subsystem changes, no log is written. Called between
   /// steps on the sim thread through ISimulation::CollectAlarms.
   virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
+
+  /// @brief Appends the stock lights this subsystem owns (task: the stock
+  /// traffic light). Two: StockKind::kFeed and StockKind::kSeed.
+  ///
+  /// Both rules are already here and neither can move: the feed rate per
+  /// head per day, the pasture season that says which days are stall days,
+  /// the sowing norm per hectare and the rotation that says which crop is
+  /// next. The lights are those same numbers read forward instead of
+  /// backward.
+  ///
+  /// THE FEED LIGHT COUNTS THE WINTERING, not today (office design §5).
+  /// In summer the herd is out and the daily draw on the stores is near
+  /// nothing; a light that counted that would stand green until November
+  /// and turn yellow when the hay can no longer be cut. It is most useful
+  /// in haymaking, and that is only true if it looks at the winter.
+  ///
+  /// A pure read of `completed` with the configuration; no state changes,
+  /// nothing is logged. Called between steps on the sim thread through
+  /// ISimulation::CollectStockForecast.
+  /// @param eating_kg_per_day What the settlement eats a day in grain
+  ///        equivalent, from core_residents through the assembly point: the
+  ///        seed fund is not spent, it is EATEN, and the eating rate is not
+  ///        this module's to know.
+  virtual void CollectStockForecast(const WorldState& completed,
+                                    float eating_kg_per_day,
+                                    std::vector<StockForecast>& lights) const = 0;
+
+  /// @brief Game days to the next harvest window, 0 while one is open.
+  ///
+  /// Exposed for the FOOD light, which lives in core_residents with the
+  /// eating norms: "will it last to the harvest" needs a date this module
+  /// owns and that one may not read from here.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual std::int32_t DaysToNextHarvest(const WorldState& completed) const = 0;
 };
 
 /// @brief Creates the production subsystem.
