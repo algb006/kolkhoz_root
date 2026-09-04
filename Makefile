@@ -40,7 +40,7 @@ help:
 	@echo '  make rebuild        собрать с нуля — при странном поведении первым делом'
 	@echo '  make test           прогнать все тесты через ctest'
 	@echo '  make unit           только обязательные unit-тесты модулей'
-	@echo '  make check-tests    проверить, что на каждый модуль есть unit-тест'
+	@echo '  make check-tests    unit-тест на модуль, включения, длины перечислений границы'
 	@echo '  make version        версии ядра и формата сохранений'
 	@echo '  make bump-patch     поднять версию: сдан модуль'
 	@echo '  make bump-minor     поднять версию: сдан этап плана либо сломана граница с UE'
@@ -97,6 +97,11 @@ unit: build
 check-tests:
 	@./scripts/check_module_tests.sh
 	@python3 scripts/check_includes.py
+# `|| true` while seven boundary enums are still without a terminator and the
+# decision to close them is boss's: the count is meant to be read, not to stop
+# the build on a hole somebody already knows about. Drop it when they are
+# closed and the check becomes binding.
+	@python3 scripts/boundary_enums.py || true
 
 # Bumping is the closing step of a delivery cycle, run in the same commit as the
 # work being delivered. VERSION_SAVE is not bumped here — see 57-versioning.md.
