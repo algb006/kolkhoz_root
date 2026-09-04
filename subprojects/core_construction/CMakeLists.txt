@@ -18,4 +18,4 @@ kolkhoz_add_module(core_construction
 
 target_link_libraries(core_construction
     PUBLIC core_common
-    PRIVATE core_tables core_log)
+    PRIVATE core_catalog core_tables core_log)

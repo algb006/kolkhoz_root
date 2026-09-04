@@ -10,6 +10,12 @@
 // be built, which is the honest answer — while a PRESENT row that cannot be
 // read or contradicts another table refuses the whole subsystem.
 
+/// @threading PARALLEL_READONLY
+/// Filled ONCE by the factory and never written again. It also CONTAINS the
+/// catalogue (core_catalog/definitions.h), which hands out a std::span into
+/// itself through Plots() — so this object's immutability is the lifetime
+/// and the thread-safety of that span both.
+
 #ifndef CORE_CONSTRUCTION_CONSTRUCTION_CONFIG_H_
 #define CORE_CONSTRUCTION_CONSTRUCTION_CONFIG_H_
 
@@ -17,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/definitions.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/world_state.h"
@@ -104,12 +111,6 @@ struct BuildType {
 
   std::uint8_t era = 1;
 
-  /// Plot radius in metres; 0 = takes no plot in the core's arithmetic
-  /// (either none by design, or an outline the player draws — the
-  /// distinction lives in the tables, not here: both mean "not in the
-  /// overlap check", unit rules §9).
-  float plot_radius_m = 0.0F;
-
   /// Levels 1..N, dense: index 0 is level 1. Empty for a type with no
   /// ladder at all, which is what "cannot be built" looks like in data.
   std::vector<BuildLevel> levels;
@@ -144,25 +145,15 @@ struct ConstructionConfig {
   /// (construction design §12: "noticeably less than building"). ASSUMPTION.
   float demolition_labor_share = 0.25F;
 
-  /// Side of the square map in metres, from tables/map.csv `side_m`. ZERO
-  /// MEANS THE TABLE SET HAS NO MAP, and then no position is out of bounds:
-  /// a world with no map declared has no edge to fall off, and refusing
-  /// every build in a table-less test would be inventing a rule out of a
-  /// missing file. Never defaulted to a number — a wrong edge is worse than
-  /// no edge, which is exactly how the ten-kilometre constant survived the
-  /// move to twelve.
-  float map_side_m = 0.0F;
-
   /// By UnitTypeId value. Sized to the unit_types table; a type the tables
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;
 
-  /// The `plot_radius_m` of every type laid out contiguously, so the shared
-  /// rule in core_common/plot.h can read it: that header knows Vec2 and the
-  /// units table and must not learn BuildType. Derived from `types` in one
-  /// place, at the end of the parse — the number is read from the table
-  /// once and stored twice, which is a projection and not a second rule.
-  std::vector<float> plot_radius_by_type;
+  /// The catalogue, read at parse time: the plot radii and the map side
+  /// come from there and not from this module's own read of unit_types.csv,
+  /// because those columns have a second reader (core_residents' wedding
+  /// stub) and therefore an owner (core_catalog/definitions.h).
+  Definitions definitions;
 
   // -- wear and repair (task A5, construction.csv) ------------------------------
 

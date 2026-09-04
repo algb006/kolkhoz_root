@@ -425,12 +425,15 @@ class ConstructionSystem final : public IConstructionSystem {
     }
     // The edge is data (construction_config.h): zero means the table set
     // declares no map, and then there is nothing to be outside of.
-    if (config_.map_side_m > 0.0F &&
-        !(order.position.x >= 0.0F && order.position.x <= config_.map_side_m &&
-          order.position.y >= 0.0F && order.position.y <= config_.map_side_m)) {
+    if (config_.definitions.map_side_m > 0.0F &&
+        !(order.position.x >= 0.0F && order.position.x <= config_.definitions.map_side_m &&
+          order.position.y >= 0.0F && order.position.y <= config_.definitions.map_side_m)) {
       return OrderRefusal::kRuleForbids;
     }
-    if (PlotOverlaps(current, order.position, type.plot_radius_m, UnitId{})) {
+    const float radius = type_row < config_.definitions.units.plot_radius_m.size()
+                             ? config_.definitions.units.plot_radius_m[type_row]
+                             : 0.0F;
+    if (PlotOverlaps(current, order.position, radius, UnitId{})) {
       return OrderRefusal::kTooClose;
     }
 
@@ -682,9 +685,7 @@ class ConstructionSystem final : public IConstructionSystem {
   /// unit row that appeared WITHOUT an order — the houses the residents
   /// module appends — was outside it (boss, 2026-09-04).
   bool PlotOverlaps(const WorldState& current, const Vec2& place, float radius, UnitId ignore) {
-    const PlotRules rules{.radius_by_type = config_.plot_radius_by_type,
-                          .map_side_m = config_.map_side_m};
-    return core::PlotOverlaps(current.units, rules, place, radius, ignore);
+    return core::PlotOverlaps(current.units, config_.definitions.Plots(), place, radius, ignore);
   }
 
   static bool HerdStandsAt(const WorldState& current, UnitId unit) {

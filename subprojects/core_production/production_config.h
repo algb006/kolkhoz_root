@@ -7,6 +7,12 @@
 // (unit tests, early runs) gets empty rosters and the subsystem idles;
 // present-but-malformed tables refuse the factory.
 
+/// @threading PARALLEL_READONLY
+/// Filled ONCE by the factory and never written again. FieldGrowthPhase
+/// (slot 4, parallel by field) holds a pointer to it and reads the crop and
+/// farming rosters from every worker. Safe because nothing writes it — and
+/// for no other reason, so no per-step field may be added here.
+
 #ifndef CORE_PRODUCTION_PRODUCTION_CONFIG_H_
 #define CORE_PRODUCTION_PRODUCTION_CONFIG_H_
 

@@ -27,15 +27,6 @@ std::uint8_t Saturate8(std::uint32_t count) {
   return static_cast<std::uint8_t>(count < kByteCeiling ? count : kByteCeiling);
 }
 
-/// @brief Biological age in years: the clock of a person runs life_speedup
-/// times faster than the calendar (demography design §2). Negative for a
-/// resident born after `day`, which a well-formed world never holds.
-float BiologicalAgeYears(float life_speedup, std::int32_t birth_day, SimDay day) {
-  const float game_years = static_cast<float>(static_cast<std::int32_t>(day) - birth_day) /
-                           static_cast<float>(kDaysPerYear);
-  return game_years * life_speedup;
-}
-
 /// @brief True for the four kinds that are worked on a field; kHerdCare is
 /// the barn's and kNone is nobody's.
 bool IsFieldWork(WorkKind kind) {

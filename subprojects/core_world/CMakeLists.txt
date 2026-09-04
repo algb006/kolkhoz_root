@@ -13,5 +13,5 @@ kolkhoz_add_module(core_world
 
 target_link_libraries(core_world
     PUBLIC core_common core_sim
-    PRIVATE core_tables core_time core_residents core_production
+    PRIVATE core_catalog core_tables core_time core_residents core_production
             core_logistics core_labor core_construction core_log)

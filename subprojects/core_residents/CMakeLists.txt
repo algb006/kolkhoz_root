@@ -8,6 +8,8 @@ kolkhoz_add_module(core_residents
     residents_system.cpp
     life_config.cpp
     food_config.cpp
+    demography.cpp
+    housing.cpp
     family_exchange.cpp
     family_meal.cpp
     household_plot.cpp
@@ -15,4 +17,4 @@ kolkhoz_add_module(core_residents
 
 target_link_libraries(core_residents
     PUBLIC core_common core_sim
-    PRIVATE core_tables core_log)
+    PRIVATE core_catalog core_tables core_log)

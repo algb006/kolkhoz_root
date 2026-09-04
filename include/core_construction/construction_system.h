@@ -207,32 +207,6 @@ class IConstructionSystem {
 ///         table-less world simply has nothing that can be built.
 std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables);
 
-/// @brief Everything core_common/plot.h needs out of the tables: the plot
-/// radius of every unit type, and the side of the map.
-///
-/// WHY IT LEAVES THIS MODULE AT ALL. The residents module raises the
-/// wedding STUB house itself, and it has to satisfy the same no-overlap
-/// rule as a house the player builds — one invariant, both ways in (boss,
-/// 2026-09-04). The radius is a column of unit_types.csv, and this module
-/// is the one that reads that table's build data: a second reader in
-/// core_residents would be a second place for the column's name, its range
-/// and its default to live. So the number is read HERE, once, and carried
-/// across the seam by core_world, which is the one assembly point allowed
-/// to see both modules.
-/// @return Empty radii and a zero map side when the table set has no
-///         unit_types, or when it is malformed — the same "nothing can be
-///         built" a table-less world gets from the factory above, and then
-///         nothing has a plot and there is no edge to fall off.
-/// @note The returned vector OWNS the radii; the PlotRules handed to
-///       core_common holds a span into it and must not outlive it.
-struct PlotRadiiAndMap {
-  std::vector<float> radius_by_type;
-
-  float map_side_m = 0.0F;
-};
-
-PlotRadiiAndMap LoadPlotRules(const ITableSet& tables);
-
 }  // namespace core
 
 #endif  // CORE_CONSTRUCTION_CONSTRUCTION_SYSTEM_H_

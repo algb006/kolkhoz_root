@@ -15,6 +15,17 @@
 // Units: the tables and this struct speak kilograms and hours, like the
 // design documents; systems convert to Grams at the pantry boundary.
 
+/// @threading PARALLEL_READONLY
+/// Filled ONCE by the factory, before the system object exists, and never
+/// written again. TWO parallel phases hold a pointer to it —
+/// FamilyNeedsPhase and FamilyMetricsPhase — so every worker of slots 2 and
+/// 6 reads it at the same time, and that is safe for exactly one reason:
+/// nothing writes it.
+///
+/// SO: NO PER-STEP FIELD BELONGS HERE. A cache, a counter, anything the
+/// step writes turns this from a constant into shared mutable state read by
+/// every worker at once, and the compiler will not say a word.
+
 #ifndef CORE_RESIDENTS_FOOD_CONFIG_H_
 #define CORE_RESIDENTS_FOOD_CONFIG_H_
 

@@ -18,10 +18,10 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_tables/tables.h"
-#include "table_read.h"
 
 namespace core {
 namespace {
@@ -56,7 +56,7 @@ bool ParseCategory(std::string_view text, FoodCategory& category, std::string& e
 /// @brief A month knob written 1..12 in the file and 0-based in the struct.
 bool ReadMonth(const ITable& table, std::string_view key, std::uint8_t& month, std::string& error) {
   auto human = static_cast<float>(month) + 1.0F;
-  if (!OptionalValue(table, key, 1.0F, 12.0F, human, error)) {
+  if (!OptionalValue(table, key, Range{.low = 1.0F, .high = 12.0F}, human, error)) {
     PrefixError("food", key, error);
     return false;
   }
@@ -71,68 +71,57 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
   const std::array<ScalarKnob, 19> knobs = {{
       {.key = "adult_kg_grain_eq_per_year",
        .value = &eat.adult_kg_grain_eq_per_year,
-       .low = 1.0F,
-       .high = 5000.0F},
-      {.key = "eat_from_bio_years", .value = &eat.eat_from_bio_years, .low = 0.0F, .high = 20.0F},
+       .range = {.low = 1.0F, .high = 5000.0F}},
+      {.key = "eat_from_bio_years",
+       .value = &eat.eat_from_bio_years,
+       .range = {.low = 0.0F, .high = 20.0F}},
       {.key = "adult_from_bio_years",
        .value = &eat.adult_from_bio_years,
-       .low = 1.0F,
-       .high = 40.0F},
+       .range = {.low = 1.0F, .high = 40.0F}},
       {.key = "elderly_from_bio_years",
        .value = &eat.elderly_from_bio_years,
-       .low = 1.0F,
-       .high = 120.0F},
-      {.key = "elderly_factor", .value = &eat.elderly_factor, .low = 0.1F, .high = 2.0F},
-      {.key = "heavy_work_factor", .value = &eat.heavy_work_factor, .low = 1.0F, .high = 3.0F},
+       .range = {.low = 1.0F, .high = 120.0F}},
+      {.key = "elderly_factor", .value = &eat.elderly_factor, .range = {.low = 0.1F, .high = 2.0F}},
+      {.key = "heavy_work_factor",
+       .value = &eat.heavy_work_factor,
+       .range = {.low = 1.0F, .high = 3.0F}},
       {.key = "food_light_margin_days",
        .value = &eat.food_light_margin_days,
-       .low = 0.0F,
-       .high = 1000.0F},
-      {.key = "heavy_kinds_mask", .value = &heavy_mask, .low = 0.0F, .high = 4.0e9F},
+       .range = {.low = 0.0F, .high = 1000.0F}},
+      {.key = "heavy_kinds_mask", .value = &heavy_mask, .range = {.low = 0.0F, .high = 4.0e9F}},
       {.key = "grain_reference_kcal_per_gram",
        .value = &eat.grain_reference_kcal_per_gram,
-       .low = 0.1F,
-       .high = 10.0F},
+       .range = {.low = 0.1F, .high = 10.0F}},
       {.key = "satiety_drift_per_day",
        .value = &satiety.drift_per_day,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "missing_category_penalty",
        .value = &satiety.missing_category_penalty,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "categories_norm_epoch_1",
        .value = satiety.categories_norm_by_epoch.data(),
-       .low = 0.0F,
-       .high = 9.0F},
+       .range = {.low = 0.0F, .high = 9.0F}},
       {.key = "categories_norm_epoch_2",
        .value = &satiety.categories_norm_by_epoch[1],
-       .low = 0.0F,
-       .high = 9.0F},
+       .range = {.low = 0.0F, .high = 9.0F}},
       {.key = "categories_norm_epoch_3",
        .value = &satiety.categories_norm_by_epoch[2],
-       .low = 0.0F,
-       .high = 9.0F},
+       .range = {.low = 0.0F, .high = 9.0F}},
       {.key = "health_loss_satiety_threshold",
        .value = &satiety.health_loss_satiety_threshold,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "health_loss_per_week",
        .value = &satiety.health_loss_per_week,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "health_recovery_satiety_threshold",
        .value = &satiety.health_recovery_satiety_threshold,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "health_recovery_per_week",
        .value = &satiety.health_recovery_per_week,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "ration_satiety_threshold",
        .value = &config.distribution.ration_satiety_threshold,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
   }};
   if (!ReadKnobs(table, "food", knobs, error)) {
     return false;
@@ -149,10 +138,9 @@ bool ParseDistribution(const ITable& table, FoodConfig& config, std::string& err
   const std::array<ScalarKnob, 3> knobs = {{
       {.key = "distribution_period_days",
        .value = &period,
-       .low = 1.0F,
-       .high = static_cast<float>(kDaysPerYear)},
-      {.key = "ration_auto", .value = &ration_auto, .low = 0.0F, .high = 1.0F},
-      {.key = "reserve_seed_fund", .value = &reserve_seed, .low = 0.0F, .high = 1.0F},
+       .range = {.low = 1.0F, .high = static_cast<float>(kDaysPerYear)}},
+      {.key = "ration_auto", .value = &ration_auto, .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "reserve_seed_fund", .value = &reserve_seed, .range = {.low = 0.0F, .high = 1.0F}},
   }};
   if (!ReadKnobs(table, "food", knobs, error)) {
     return false;
@@ -166,54 +154,51 @@ bool ParseDistribution(const ITable& table, FoodConfig& config, std::string& err
 bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
   PlotConfig& plot = config.plot;
   const std::array<ScalarKnob, 15> knobs = {{
-      {.key = "plot_full_yield_hours", .value = &plot.full_yield_hours, .low = 0.1F, .high = 24.0F},
+      {.key = "plot_full_yield_hours",
+       .value = &plot.full_yield_hours,
+       .range = {.low = 0.1F, .high = 24.0F}},
       {.key = "plot_no_worker_base_hours",
        .value = &plot.no_worker_base_hours,
-       .low = 0.0F,
-       .high = 24.0F},
-      {.key = "plot_elders_hours", .value = &plot.elders_hours, .low = 0.0F, .high = 12.0F},
+       .range = {.low = 0.0F, .high = 24.0F}},
+      {.key = "plot_elders_hours",
+       .value = &plot.elders_hours,
+       .range = {.low = 0.0F, .high = 12.0F}},
       {.key = "plot_elder_from_bio_years",
        .value = &plot.elder_from_bio_years,
-       .low = 1.0F,
-       .high = 120.0F},
+       .range = {.low = 1.0F, .high = 120.0F}},
       {.key = "plot_schoolchild_hours",
        .value = &plot.schoolchild_hours,
-       .low = 0.0F,
-       .high = 12.0F},
+       .range = {.low = 0.0F, .high = 12.0F}},
       {.key = "plot_schoolchild_summer_hours",
        .value = &plot.schoolchild_summer_hours,
-       .low = 0.0F,
-       .high = 12.0F},
+       .range = {.low = 0.0F, .high = 12.0F}},
       {.key = "plot_schoolchild_hours_cap",
        .value = &plot.schoolchild_hours_cap,
-       .low = 0.0F,
-       .high = 12.0F},
-      {.key = "plot_drinker_hours", .value = &plot.drinker_hours, .low = 0.0F, .high = 12.0F},
+       .range = {.low = 0.0F, .high = 12.0F}},
+      {.key = "plot_drinker_hours",
+       .value = &plot.drinker_hours,
+       .range = {.low = 0.0F, .high = 12.0F}},
       {.key = "plot_drinker_alcoholism_threshold",
        .value = &plot.drinker_alcoholism_threshold,
-       .low = 0.0F,
-       .high = 100.0F},
-      {.key = "plot_sickness_hours", .value = &plot.sickness_hours, .low = 0.0F, .high = 12.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "plot_sickness_hours",
+       .value = &plot.sickness_hours,
+       .range = {.low = 0.0F, .high = 12.0F}},
       {.key = "plot_sickness_health_threshold",
        .value = &plot.sickness_health_threshold,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "potato_kg_per_yard_year",
        .value = &plot.potato_kg_per_yard_year,
-       .low = 0.0F,
-       .high = 1.0e5F},
+       .range = {.low = 0.0F, .high = 1.0e5F}},
       {.key = "vegetables_kg_per_yard_year",
        .value = &plot.vegetables_kg_per_yard_year,
-       .low = 0.0F,
-       .high = 1.0e5F},
+       .range = {.low = 0.0F, .high = 1.0e5F}},
       {.key = "fish_kg_per_yard_year_epoch_1",
        .value = plot.fish_kg_per_yard_year.data(),
-       .low = 0.0F,
-       .high = 1.0e5F},
+       .range = {.low = 0.0F, .high = 1.0e5F}},
       {.key = "fish_kg_per_yard_year_epoch_2",
        .value = &plot.fish_kg_per_yard_year[1],
-       .low = 0.0F,
-       .high = 1.0e5F},
+       .range = {.low = 0.0F, .high = 1.0e5F}},
   }};
   if (!ReadKnobs(table, "food", knobs, error)) {
     return false;
@@ -229,16 +214,13 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
   const auto tail = std::to_array<ScalarKnob>({
       {.key = "fish_kg_per_yard_year_epoch_3",
        .value = &plot.fish_kg_per_yard_year[2],
-       .low = 0.0F,
-       .high = 1.0e5F},
+       .range = {.low = 0.0F, .high = 1.0e5F}},
       {.key = "plot_schoolchild_from_bio_years",
        .value = &plot.schoolchild_from_bio_years,
-       .low = 0.0F,
-       .high = 30.0F},
+       .range = {.low = 0.0F, .high = 30.0F}},
       {.key = "plot_schoolchild_to_bio_years",
        .value = &plot.schoolchild_to_bio_years,
-       .low = 0.0F,
-       .high = 30.0F},
+       .range = {.low = 0.0F, .high = 30.0F}},
   });
   return ReadKnobs(table, "food", tail, error) &&
          ReadMonth(table, "plot_summer_from_month", plot.summer_from_month, error) &&
@@ -263,8 +245,12 @@ bool ParseResourceRows(const ITable& food,
   const std::uint32_t spoil_column = resources.FindColumn("spoil_days");
   if (spoil_column != kNoTableColumn) {
     for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
-      if (!OptionalCell(
-              resources, row, spoil_column, 0.0F, 100000.0F, config.spoil_days[row], error)) {
+      if (!OptionalCell(resources,
+                        row,
+                        spoil_column,
+                        Range{.low = 0.0F, .high = 100000.0F},
+                        config.spoil_days[row],
+                        error)) {
         PrefixError("resources", "spoil_days", error);
         return false;
       }
@@ -286,12 +272,30 @@ bool ParseResourceRows(const ITable& food,
       continue;  // not eaten
     }
     FoodResourceDef& def = config.resources[row];
-    if (!OptionalCell(food, food_row, kcal_column, 0.0F, 10.0F, def.kcal_per_gram, error) ||
-        !OptionalCell(
-            food, food_row, issue_column, 0.0F, 100.0F, def.issue_kg_per_trudoden, error) ||
-        !OptionalCell(food, food_row, ration_column, 0.0F, 100.0F, def.ration_kg_per_day, error) ||
-        !OptionalCell(
-            food, food_row, issue_share_column, 0.0F, 1.0F, def.issue_share_of_stock, error)) {
+    if (!OptionalCell(food,
+                      food_row,
+                      kcal_column,
+                      Range{.low = 0.0F, .high = 10.0F},
+                      def.kcal_per_gram,
+                      error) ||
+        !OptionalCell(food,
+                      food_row,
+                      issue_column,
+                      Range{.low = 0.0F, .high = 100.0F},
+                      def.issue_kg_per_trudoden,
+                      error) ||
+        !OptionalCell(food,
+                      food_row,
+                      ration_column,
+                      Range{.low = 0.0F, .high = 100.0F},
+                      def.ration_kg_per_day,
+                      error) ||
+        !OptionalCell(food,
+                      food_row,
+                      issue_share_column,
+                      Range{.low = 0.0F, .high = 1.0F},
+                      def.issue_share_of_stock,
+                      error)) {
       PrefixError("food", resources.CellText(row, key_column), error);
       return false;
     }
@@ -319,8 +323,7 @@ bool ParseSeedNorms(const ITable& crops,
     if (!OptionalCell(crops,
                       row,
                       norm_column,
-                      0.0F,
-                      1.0e5F,
+                      Range{.low = 0.0F, .high = 1.0e5F},
                       config.seed_norms[row].sowing_norm_kg_per_ha,
                       error)) {
       PrefixError("crops", "sowing_norm_kg_per_ha", error);
@@ -378,7 +381,9 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   // second table (the labor precedent: labor reads life.csv the same way).
   if (const ITable* labor = tables.FindTable("labor")) {
     const std::array<ScalarKnob, 1> knobs = {{
-        {.key = "sleep_hours", .value = &config.plot.sleep_hours, .low = 0.0F, .high = 16.0F},
+        {.key = "sleep_hours",
+         .value = &config.plot.sleep_hours,
+         .range = {.low = 0.0F, .high = 16.0F}},
     }};
     if (!ReadKnobs(*labor, "labor", knobs, message)) {
       if (error != nullptr) {

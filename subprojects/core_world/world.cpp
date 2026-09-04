@@ -394,15 +394,7 @@ float LifeSpeedupFromTables(const ITableSet& tables) {
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config) {
   assert(config.tables != nullptr);
   auto time = CreateTimeSystem(*config.tables);
-  // The plot radii cross a module seam HERE and nowhere else. core_residents
-  // raises the wedding STUB house and owes it the same no-overlap rule as an
-  // ordered building, but the column belongs to core_construction's read of
-  // unit_types.csv; this file is the one place allowed to see both modules
-  // (boss, 2026-09-04).
-  const PlotRadiiAndMap plot_rules = LoadPlotRules(*config.tables);
-  auto residents = CreateResidentsSystem(
-      *config.tables,
-      PlotRules{.radius_by_type = plot_rules.radius_by_type, .map_side_m = plot_rules.map_side_m});
+  auto residents = CreateResidentsSystem(*config.tables);
   auto production = CreateProductionSystem(*config.tables);
   auto logistics = CreateLogisticsSystem(*config.tables);
   auto labor = CreateLaborSystem(*config.tables);

@@ -52,6 +52,16 @@ enum class Epoch : std::uint8_t {
   kThree = 3,
 };
 
+/// @brief The epoch as an index into a dense per-epoch table.
+///
+/// The enum counts from ONE — an epoch is a thing the player is told about,
+/// and there is no epoch zero — while every per-epoch table in the tables
+/// counts from zero. This one line is where the two meet, and it was
+/// written out four times in three files before task A6 collected it.
+constexpr std::uint32_t EpochIndex(Epoch epoch) {
+  return static_cast<std::uint32_t>(epoch) - 1;
+}
+
 /// @brief Precipitation on the current day.
 enum class Precipitation : std::uint8_t {
   kNone = 0,

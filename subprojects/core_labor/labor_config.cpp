@@ -18,6 +18,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_tables/tables.h"
 
@@ -26,117 +27,39 @@ namespace {
 
 /// @brief Turns "a cell is not a number" into "labor: path_factor: a cell is
 /// not a number", building the message with appends only.
-void PrefixError(std::string_view table, std::string_view key, std::string& error) {
-  std::string message(table);
-  message += ": ";
-  if (!key.empty()) {
-    message += key;
-    message += ": ";
-  }
-  message += error;
-  error = std::move(message);
-}
-
-/// @brief Reads one cell as a real number.
-/// @return false only when the cell is present and unreadable or out of
-///         range; an absent column or empty cell leaves `value` untouched.
-bool OptionalCell(const ITable& table,
-                  std::uint32_t row,
-                  std::uint32_t column,
-                  float low,
-                  float high,
-                  float& value,
-                  std::string& error) {
-  if (row == kNoTableRow || column == kNoTableColumn || table.CellText(row, column).empty()) {
-    return true;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    error = "a cell is not a number";
-    return false;
-  }
-  // Written as a positive test so that NaN fails it: NaN compares false
-  // against everything, including itself.
-  const bool in_range = *cell >= low && *cell <= high;
-  if (!in_range) {
-    error = "a cell is out of range";
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
-/// @brief Reads one key's `value` cell of a key/value table.
-bool OptionalValue(const ITable& table,
-                   std::string_view key,
-                   float low,
-                   float high,
-                   float& value,
-                   std::string& error) {
-  return OptionalCell(
-      table, table.FindRowByKey(key), table.FindColumn("value"), low, high, value, error);
-}
-
-/// One scalar knob of labor.csv: where it lands and what it may be.
-struct ScalarKnob {
-  std::string_view key;
-  float* value;
-  float low;
-  float high;
-};
-
-bool ReadKnobs(const ITable& table,
-               std::string_view table_name,
-               std::span<const ScalarKnob> knobs,
-               std::string& error) {
-  for (const ScalarKnob& knob : knobs) {
-    if (!OptionalValue(table, knob.key, knob.low, knob.high, *knob.value, error)) {
-      PrefixError(table_name, knob.key, error);
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
   const std::array<ScalarKnob, 12> knobs = {{
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
-       .low = 1.0F,
-       .high = 24.0F},
+       .range = {.low = 1.0F, .high = 24.0F}},
       {.key = "travel_limit_hours",
        .value = &config.travel_limit_hours,
-       .low = 0.0F,
-       .high = 24.0F},
-      {.key = "min_usable_hours", .value = &config.min_usable_hours, .low = 0.0F, .high = 24.0F},
-      {.key = "path_factor", .value = &config.path_factor, .low = 1.0F, .high = 5.0F},
-      {.key = "sleep_hours", .value = &config.sleep_hours, .low = 0.0F, .high = 16.0F},
+       .range = {.low = 0.0F, .high = 24.0F}},
+      {.key = "min_usable_hours",
+       .value = &config.min_usable_hours,
+       .range = {.low = 0.0F, .high = 24.0F}},
+      {.key = "path_factor", .value = &config.path_factor, .range = {.low = 1.0F, .high = 5.0F}},
+      {.key = "sleep_hours", .value = &config.sleep_hours, .range = {.low = 0.0F, .high = 16.0F}},
       {.key = "rest_walkoff_threshold",
        .value = &config.rest_walkoff_threshold,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "rest_recovery_day_off",
        .value = &config.rest_recovery_day_off,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "rest_recovery_idle_day",
        .value = &config.rest_recovery_idle_day,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "health_loss_per_spent_day",
        .value = &config.health_loss_per_spent_day,
-       .low = 0.0F,
-       .high = 10.0F},
+       .range = {.low = 0.0F, .high = 10.0F}},
       {.key = "stamina_drain_relief",
        .value = &config.stamina_drain_relief,
-       .low = 0.0F,
-       .high = 1.0F},
+       .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "self_education_max_bonus",
        .value = &config.self_education_max_bonus,
-       .low = 0.0F,
-       .high = 1.0F},
-      {.key = "placement_level", .value = &placement, .low = 0.0F, .high = 3.0F},
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "placement_level", .value = &placement, .range = {.low = 0.0F, .high = 3.0F}},
   }};
   if (!ReadKnobs(table, "labor", knobs, error)) {
     return false;
@@ -151,29 +74,52 @@ bool ParseEfficiencyKnobs(const ITable& table, LaborConfig& config, std::string&
   const std::array<ScalarKnob, 16> knobs = {{
       {.key = "efficiency_health_pivot",
        .value = &factors.health_pivot,
-       .low = 0.0F,
-       .high = 100.0F},
-      {.key = "efficiency_health_slope", .value = &factors.health_slope, .low = 0.0F, .high = 5.0F},
-      {.key = "efficiency_mood_pivot", .value = &factors.mood_pivot, .low = 0.0F, .high = 100.0F},
-      {.key = "efficiency_mood_slope", .value = &factors.mood_slope, .low = 0.0F, .high = 5.0F},
-      {.key = "efficiency_skill_pivot", .value = &factors.skill_pivot, .low = 0.0F, .high = 100.0F},
-      {.key = "efficiency_skill_slope", .value = &factors.skill_slope, .low = 0.0F, .high = 5.0F},
-      {.key = "rest_step_tired", .value = &factors.rest_step_tired, .low = 0.0F, .high = 100.0F},
-      {.key = "rest_step_spent", .value = &factors.rest_step_spent, .low = 0.0F, .high = 100.0F},
-      {.key = "rest_factor_tired", .value = &factors.rest_factor_tired, .low = 0.0F, .high = 1.0F},
-      {.key = "rest_factor_spent", .value = &factors.rest_factor_spent, .low = 0.0F, .high = 1.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_health_slope",
+       .value = &factors.health_slope,
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "efficiency_mood_pivot",
+       .value = &factors.mood_pivot,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_mood_slope",
+       .value = &factors.mood_slope,
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "efficiency_skill_pivot",
+       .value = &factors.skill_pivot,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_skill_slope",
+       .value = &factors.skill_slope,
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "rest_step_tired",
+       .value = &factors.rest_step_tired,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "rest_step_spent",
+       .value = &factors.rest_step_spent,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "rest_factor_tired",
+       .value = &factors.rest_factor_tired,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "rest_factor_spent",
+       .value = &factors.rest_factor_spent,
+       .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "aging_margin_years",
        .value = &factors.aging_margin_years,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "age_decline_per_year",
        .value = &factors.age_decline_per_year,
-       .low = 0.0F,
-       .high = 1.0F},
-      {.key = "age_decline_floor", .value = &factors.age_decline_floor, .low = 0.0F, .high = 1.0F},
-      {.key = "skill_earned_weight", .value = &skill.earned_weight, .low = 0.0F, .high = 1.0F},
-      {.key = "skill_stamina_weight", .value = &skill.stamina_weight, .low = 0.0F, .high = 1.0F},
-      {.key = "skill_schooled_weight", .value = &skill.schooled_weight, .low = 0.0F, .high = 1.0F},
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "age_decline_floor",
+       .value = &factors.age_decline_floor,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "skill_earned_weight",
+       .value = &skill.earned_weight,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "skill_stamina_weight",
+       .value = &skill.stamina_weight,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "skill_schooled_weight",
+       .value = &skill.schooled_weight,
+       .range = {.low = 0.0F, .high = 1.0F}},
   }};
   return ReadKnobs(table, "labor", knobs, error);
 }
@@ -187,7 +133,11 @@ bool ParseEducationFactors(const ITable& table, LaborConfig& config, std::string
                                                      "education_vocational",
                                                      "education_higher"};
   for (std::uint32_t index = 0; index < kKeys.size(); ++index) {
-    if (!OptionalValue(table, kKeys[index], 0.1F, 3.0F, config.education_factor[index], error)) {
+    if (!OptionalValue(table,
+                       kKeys[index],
+                       Range{.low = 0.1F, .high = 3.0F},
+                       config.education_factor[index],
+                       error)) {
       PrefixError("labor", kKeys[index], error);
       return false;
     }
@@ -212,9 +162,18 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
   for (std::uint32_t index = 0; index < kKeys.size(); ++index) {
     const std::uint32_t row = table.FindRowByKey(kKeys[index]);
     WorkKindRates& rates = config.rates[index + 1];  // +1: WorkKind::kNone is row-less
-    if (!OptionalCell(table, row, rate_column, 0.0F, 10.0F, rates.trudodni_rate, error) ||
-        !OptionalCell(
-            table, row, drain_column, 0.0F, 100.0F, rates.rest_drain_per_norm_day, error)) {
+    if (!OptionalCell(table,
+                      row,
+                      rate_column,
+                      Range{.low = 0.0F, .high = 10.0F},
+                      rates.trudodni_rate,
+                      error) ||
+        !OptionalCell(table,
+                      row,
+                      drain_column,
+                      Range{.low = 0.0F, .high = 100.0F},
+                      rates.rest_drain_per_norm_day,
+                      error)) {
       PrefixError("labor", kKeys[index], error);
       return false;
     }
@@ -230,15 +189,13 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
   if (!OptionalCell(table,
                     table.FindRowByKey("pedestrian"),
                     speed_column,
-                    0.5F,
-                    20.0F,
+                    Range{.low = 0.5F, .high = 20.0F},
                     config.walk_speed_kmh,
                     error) ||
       !OptionalCell(table,
                     table.FindRowByKey("horse_trot"),
                     speed_column,
-                    0.5F,
-                    60.0F,
+                    Range{.low = 0.5F, .high = 60.0F},
                     config.harness_speed_kmh,
                     error)) {
     PrefixError("transport", "speed_kmh", error);
@@ -261,8 +218,12 @@ bool ParseLivestock(const ITable& table, LaborConfig& config, std::string& error
   constexpr float kDefaultCareRealDaysPerYear = 32.0F;
   config.care_days_per_year.assign(table.RowCount(), kDefaultCareRealDaysPerYear);
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    if (!OptionalCell(
-            table, row, care_column, 0.0F, 3650.0F, config.care_days_per_year[row], error)) {
+    if (!OptionalCell(table,
+                      row,
+                      care_column,
+                      Range{.low = 0.0F, .high = 3650.0F},
+                      config.care_days_per_year[row],
+                      error)) {
       PrefixError("livestock", "care_days_per_year", error);
       return false;
     }
@@ -342,9 +303,19 @@ bool ParseProfessions(const ITable& table, LaborConfig& config, std::string& err
       return false;
     }
     float single = 0.0F;
-    if (!OptionalCell(table, row, min_age_column, 0.0F, 120.0F, post.min_age_years, error) ||
-        !OptionalCell(table, row, max_age_column, 0.0F, 120.0F, post.max_age_years, error) ||
-        !OptionalCell(table, row, single_column, 0.0F, 1.0F, single, error)) {
+    if (!OptionalCell(table,
+                      row,
+                      min_age_column,
+                      Range{.low = 0.0F, .high = 120.0F},
+                      post.min_age_years,
+                      error) ||
+        !OptionalCell(table,
+                      row,
+                      max_age_column,
+                      Range{.low = 0.0F, .high = 120.0F},
+                      post.max_age_years,
+                      error) ||
+        !OptionalCell(table, row, single_column, Range{.low = 0.0F, .high = 1.0F}, single, error)) {
       PrefixError("professions", table.CellText(row, 0), error);
       return false;
     }
@@ -393,8 +364,9 @@ bool ParseUnitStaff(const ITable& table,
     slot.profession = ProfessionId{static_cast<std::uint16_t>(post_row)};
     float level = 0.0F;
     float slots = 0.0F;
-    if (!OptionalCell(table, row, level_column, 0.0F, 255.0F, level, error) ||
-        !OptionalCell(table, row, slots_column, 0.0F, 65535.0F, slots, error)) {
+    if (!OptionalCell(table, row, level_column, Range{.low = 0.0F, .high = 255.0F}, level, error) ||
+        !OptionalCell(
+            table, row, slots_column, Range{.low = 0.0F, .high = 65535.0F}, slots, error)) {
       PrefixError("unit_staff", table.CellText(row, unit_column), error);
       return false;
     }
@@ -413,8 +385,9 @@ bool ParseCropWindows(const ITable& table, LaborConfig& config, std::string& err
     // Table months are human 1..12; the core's Month enum is 0-based.
     float sow_to = 12.0F;
     float harvest_to = 12.0F;
-    if (!OptionalCell(table, row, sow_column, 1.0F, 12.0F, sow_to, error) ||
-        !OptionalCell(table, row, harvest_column, 1.0F, 12.0F, harvest_to, error)) {
+    if (!OptionalCell(table, row, sow_column, Range{.low = 1.0F, .high = 12.0F}, sow_to, error) ||
+        !OptionalCell(
+            table, row, harvest_column, Range{.low = 1.0F, .high = 12.0F}, harvest_to, error)) {
       PrefixError("crops", "window", error);
       return false;
     }
@@ -441,8 +414,12 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   }
   if (const ITable* life = tables.FindTable("life")) {
     const std::array<ScalarKnob, 2> knobs = {{
-        {.key = "life_speedup", .value = &config.life_speedup, .low = 0.1F, .high = 100.0F},
-        {.key = "adult_age_years", .value = &config.adult_age_years, .low = 1.0F, .high = 100.0F},
+        {.key = "life_speedup",
+         .value = &config.life_speedup,
+         .range = {.low = 0.1F, .high = 100.0F}},
+        {.key = "adult_age_years",
+         .value = &config.adult_age_years,
+         .range = {.low = 1.0F, .high = 100.0F}},
     }};
     if (!ReadKnobs(*life, "life", knobs, error)) {
       return false;

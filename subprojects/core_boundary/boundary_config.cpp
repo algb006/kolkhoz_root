@@ -12,6 +12,8 @@
 #include <optional>
 #include <string_view>
 
+#include "core_catalog/definitions.h"
+#include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -19,63 +21,40 @@ namespace {
 
 constexpr std::uint32_t kMonthsPerBioYear = 12;
 
-/// @brief Reads one key's `value` cell of a key/value table.
-/// @param low,high Inclusive bounds; the test is written positively so that
-///        a NaN cell fails it (NaN compares false against everything).
-/// @return false only when the cell is present and unreadable or out of
-///         range; an absent row, column or empty cell keeps `value`.
-bool OptionalValue(const ITable& table,
-                   std::string_view key,
-                   float low,
-                   float high,
-                   float& value,
-                   std::string& error) {
-  const std::uint32_t row = table.FindRowByKey(key);
-  const std::uint32_t column = table.FindColumn("value");
-  if (row == kNoTableRow || column == kNoTableColumn || table.CellText(row, column).empty()) {
-    return true;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    error = "life: ";
-    error += key;
-    error += ": a cell is not a number";
-    return false;
-  }
-  if (!(*cell >= low && *cell <= high)) {
-    error = "life: ";
-    error += key;
-    error += ": a cell is out of range";
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
 }  // namespace
 
 bool ParseBoundaryConfig(const ITableSet& tables, BoundaryConfig& config, std::string& error) {
-  if (const ITable* const map = tables.FindTable("map")) {
-    const std::uint32_t side_col = map->FindColumn("side_m");
-    if (map->RowCount() > 0 && side_col != kNoTableColumn) {
-      const std::optional<float> side = map->CellReal(0, side_col);
-      if (!side || !(*side > 0.0F && *side <= 1e7F)) {
-        error = "map: side_m is missing or out of range";
-        return false;
-      }
-      config.map_side_m = *side;
-    }
+  // The map side comes from the CATALOGUE, which is its one reader. This
+  // module used to read the column itself and, alone among the three
+  // readers, treated a zero as a REFUSAL rather than as "the table set
+  // declares no map" — one cell with two meanings, and nothing that would
+  // ever have made them disagree out loud (task A6).
+  Definitions definitions;
+  if (!LoadDefinitions(tables, definitions, error)) {
+    return false;
   }
+  config.map_side_m = definitions.map_side_m;
   const ITable* const life = tables.FindTable("life");
   if (life == nullptr) {
     return true;  // no table: the defaults above are the canonical values
   }
-  if (!OptionalValue(*life, "life_speedup", 0.1F, 100.0F, config.life_speedup, error)) {
+  // The shared reader states the fault; naming the table and the key is the
+  // caller's job, because only the caller knows which table it was reading.
+  // That prefix was lost for one commit when this moved off the module's own
+  // copy of the reader — a message regression is still a regression.
+  if (!OptionalValue(
+          *life, "life_speedup", Range{.low = 0.1F, .high = 100.0F}, config.life_speedup, error)) {
+    PrefixError("life", "life_speedup", error);
     return false;
   }
   // Stated in months by the design, so read in months and converted once.
   float infant_age_months = config.infant_age_bio_years * static_cast<float>(kMonthsPerBioYear);
-  if (!OptionalValue(*life, "infant_age_months", 0.0F, 240.0F, infant_age_months, error)) {
+  if (!OptionalValue(*life,
+                     "infant_age_months",
+                     Range{.low = 0.0F, .high = 240.0F},
+                     infant_age_months,
+                     error)) {
+    PrefixError("life", "infant_age_months", error);
     return false;
   }
   config.infant_age_bio_years = infant_age_months / static_cast<float>(kMonthsPerBioYear);

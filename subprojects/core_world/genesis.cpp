@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "campaign_tables.h"
+#include "core_catalog/definitions.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/random.h"
@@ -591,13 +592,15 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   std::vector<std::pair<std::string_view, UnitId>> placed;
   // The side of the map is data and lives in exactly one place — map.csv,
   // exported from db/map.db. Zero when the table set has none.
-  float map_side_m = 0.0F;
-  if (const ITable* const map = tables.FindTable("map")) {
-    const std::uint32_t side_col = map->FindColumn("side_m");
-    if (map->RowCount() > 0) {
-      map_side_m = LayoutNumber(*map, 0, side_col);
-    }
-  }
+  //
+  // From the CATALOGUE, and not from a third private read of the same
+  // column: this one had no range at all, so it was the one of the three
+  // that would have taken a six-digit typo and laid the village out over
+  // it (task A6).
+  Definitions definitions;
+  std::string catalog_error;
+  const float map_side_m =
+      LoadDefinitions(tables, definitions, catalog_error) ? definitions.map_side_m : 0.0F;
   if (!PlaceStartLayout(world, *layout, unit_types, crops, kStartFertility, map_side_m, placed)) {
     LogError("genesis: start_layout has no key or kind column");
     return;

@@ -198,6 +198,27 @@ constexpr void RefreshCalendarCaches(CalendarState& calendar) {
   calendar.season = SeasonOfMonth(calendar.date.month);
 }
 
+/// @brief A person's age in BIOLOGICAL years — what the body has lived,
+/// not what the calendar has.
+/// @param life_speedup tables/life.csv `life_speedup`: game years per
+///        biological year (×4 by the canon). It belongs to the balance
+///        tables, so it is a parameter and not a constant here.
+/// @param birth_day SIGNED on purpose. The starting generation was born
+///        BEFORE day 0 (resident_state.h), so the subtraction has to happen
+///        in a signed type; done in SimDay's own unsigned type, the
+///        old-timers come out four billion days old.
+///
+/// ONE HOME, and it took five to notice. This was written out by hand in
+/// core_residents (three times), core_labor and core_boundary — five copies
+/// of four lines, agreeing only because nobody had yet changed one of them
+/// (task A6, 2026-09-04). It belongs here because it is calendar
+/// arithmetic and nothing else: no state, no module, no subsystem's rule.
+constexpr float BiologicalAgeYears(float life_speedup, std::int32_t birth_day, SimDay day) {
+  const float game_years = static_cast<float>(static_cast<std::int32_t>(day) - birth_day) /
+                           static_cast<float>(kDaysPerYear);
+  return game_years * life_speedup;
+}
+
 }  // namespace core
 
 #endif  // CORE_COMMON_CALENDAR_H_

@@ -21,74 +21,108 @@
 #include <string>
 #include <string_view>
 
+#include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
-#include "table_read.h"
 
 namespace core {
 namespace {
 
 /// unit_types.csv `class` of every kind of dwelling.
-constexpr std::string_view kHousingClass = "housing";
 
 /// @brief Reads one key's value cell; a missing key is an error (see the
 /// file comment: the stage-3 keys are required).
-bool RequiredValue(const ITable& table, std::string_view key, float& value, std::string& error) {
-  const std::uint32_t row = table.FindRowByKey(key);
-  const std::uint32_t column = table.FindColumn("value");
-  if (row == kNoTableRow || column == kNoTableColumn) {
-    error = "life: no row '" + std::string(key) + "' or no value column";
-    return false;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    error = "life: value of '" + std::string(key) + "' is not a number";
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
 bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error) {
   float epoch2 = 0.0F;
   float epoch3 = 0.0F;
+  // EVERY ONE OF THESE NOW CARRIES ITS RANGE, and that is the whole of task
+  // A6 in this file. They used to be read by a local RequiredValue with no
+  // bounds at all, so `nan`, `inf` and a stray six-digit typo went straight
+  // through to a float-to-int cast — UB-001 and UB-002, reopened by four
+  // delivery cycles in a row. The bounds below are the design's own: ages
+  // in biological years, percentages as percentages, and a life speed that
+  // must be positive because the whole clock divides by it.
+  //
+  // `migration_per_year` is bounded at a thousand for a reason worth
+  // writing down: RunMigration multiplies it by the campaign day before the
+  // cast, so an unbounded rate overflows `int32` after enough days rather
+  // than at the moment the table is read — which is the far side of the
+  // campaign from the mistake.
+  constexpr Range kAgeYears{.low = 1.0F, .high = 120.0F};
+  constexpr Range kPercent{.low = 0.0F, .high = 100.0F};
   const bool ok =
-      RequiredValue(table, "life_speedup", config.life_speedup, error) &&
-      RequiredValue(table, "adult_age_years", config.adult_age_years, error) &&
-      RequiredValue(table, "marriage_age_years", config.marriage_age_years, error) &&
-      RequiredValue(table, "fertility_from_years", config.fertility_from_years, error) &&
-      RequiredValue(table, "fertility_to_years", config.fertility_to_years, error) &&
-      RequiredValue(table, "mortality_age_mid_years", config.mortality_age_mid_years, error) &&
-      RequiredValue(table, "mortality_age_old_years", config.mortality_age_old_years, error) &&
       RequiredValue(table,
+                    "life",
+                    "life_speedup",
+                    Range{.low = 0.1F, .high = 100.0F},
+                    config.life_speedup,
+                    error) &&
+      RequiredValue(table, "life", "adult_age_years", kAgeYears, config.adult_age_years, error) &&
+      RequiredValue(
+          table, "life", "marriage_age_years", kAgeYears, config.marriage_age_years, error) &&
+      RequiredValue(
+          table, "life", "fertility_from_years", kAgeYears, config.fertility_from_years, error) &&
+      RequiredValue(
+          table, "life", "fertility_to_years", kAgeYears, config.fertility_to_years, error) &&
+      RequiredValue(table,
+                    "life",
+                    "mortality_age_mid_years",
+                    kAgeYears,
+                    config.mortality_age_mid_years,
+                    error) &&
+      RequiredValue(table,
+                    "life",
+                    "mortality_age_old_years",
+                    kAgeYears,
+                    config.mortality_age_old_years,
+                    error) &&
+      RequiredValue(table,
+                    "life",
                     "mortality_young_percent_per_year",
+                    kPercent,
                     config.mortality_young_percent_per_year,
                     error) &&
-      RequiredValue(
-          table, "mortality_mid_percent_per_year", config.mortality_mid_percent_per_year, error) &&
-      RequiredValue(
-          table, "mortality_old_percent_per_year", config.mortality_old_percent_per_year, error) &&
-      RequiredValue(table, "migration_per_year", config.migration_per_year, error) &&
-      RequiredValue(table, "epoch2_population", epoch2, error) &&
-      RequiredValue(table, "epoch3_population", epoch3, error) &&
       RequiredValue(table,
+                    "life",
+                    "mortality_mid_percent_per_year",
+                    kPercent,
+                    config.mortality_mid_percent_per_year,
+                    error) &&
+      RequiredValue(table,
+                    "life",
+                    "mortality_old_percent_per_year",
+                    kPercent,
+                    config.mortality_old_percent_per_year,
+                    error) &&
+      RequiredValue(table,
+                    "life",
+                    "migration_per_year",
+                    Range{.low = 0.0F, .high = 1000.0F},
+                    config.migration_per_year,
+                    error) &&
+      RequiredValue(
+          table, "life", "epoch2_population", Range{.low = 1.0F, .high = 1.0e7F}, epoch2, error) &&
+      RequiredValue(
+          table, "life", "epoch3_population", Range{.low = 1.0F, .high = 1.0e7F}, epoch3, error) &&
+      RequiredValue(table,
+                    "life",
                     "marriage_chance_percent_per_day",
+                    kPercent,
                     config.marriage_chance_percent_per_day,
                     error) &&
-      RequiredValue(table, "sex_balance_gain", config.sex_balance_gain, error);
+      RequiredValue(table,
+                    "life",
+                    "sex_balance_gain",
+                    Range{.low = 0.0F, .high = 10.0F},
+                    config.sex_balance_gain,
+                    error);
   if (!ok) {
     return false;
   }
-  // Value validation: a float-to-uint cast of a negative, NaN or huge value
-  // is UB, and a non-positive life speed divides to infinity. Written as
-  // positive tests so that NaN fails them — NaN compares false against
-  // everything, so the earlier `<= 0 || > 1e9` form let it through.
-  const bool speed_ok = config.life_speedup > 0.0F;
-  const bool epoch2_ok = epoch2 >= 1.0F && epoch2 <= 1.0e9F;
-  const bool epoch3_ok = epoch3 >= 1.0F && epoch3 <= 1.0e9F;
-  if (!speed_ok || !epoch2_ok || !epoch3_ok) {
-    error = "life: life_speedup must be positive and epoch thresholds sane";
-    return false;
-  }
+  // The casts below are now safe BY THE RANGES ABOVE and not by a second
+  // check written beside them: the epoch thresholds are in [1, 1e7], which
+  // is inside uint32 with four orders of magnitude to spare, and NaN never
+  // got this far. One home for the rule — the range — instead of a range
+  // and a guard that have to agree.
   config.epoch2_population = static_cast<std::uint32_t>(epoch2);
   config.epoch3_population = static_cast<std::uint32_t>(epoch3);
   return true;
@@ -100,57 +134,65 @@ bool ParseVitalsAndBirths(const ITable& table, LifeConfig& config, std::string& 
   VitalsConfig& vitals = config.vitals;
   BirthConditionsConfig& births = config.birth_conditions;
   const std::array<ScalarKnob, 8> vitals_knobs = {{
-      {.key = "vitals_base_years", .value = &vitals.base_years, .low = 1.0F, .high = 120.0F},
+      {.key = "vitals_base_years",
+       .value = &vitals.base_years,
+       .range = {.low = 1.0F, .high = 120.0F}},
       {.key = "vitals_satiety_neutral",
        .value = &vitals.satiety_neutral,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "vitals_satiety_to_years_slope",
        .value = &vitals.satiety_to_years_slope,
-       .low = 0.0F,
-       .high = 10.0F},
+       .range = {.low = 0.0F, .high = 10.0F}},
       {.key = "vitals_nutrition_years_min",
        .value = &vitals.nutrition_years_min,
-       .low = -50.0F,
-       .high = 0.0F},
+       .range = {.low = -50.0F, .high = 0.0F}},
       {.key = "vitals_nutrition_years_max",
        .value = &vitals.nutrition_years_max,
-       .low = 0.0F,
-       .high = 50.0F},
-      {.key = "vitals_medicine_years", .value = &vitals.medicine_years, .low = 0.0F, .high = 50.0F},
-      {.key = "vitals_living_years", .value = &vitals.living_years, .low = 0.0F, .high = 50.0F},
+       .range = {.low = 0.0F, .high = 50.0F}},
+      {.key = "vitals_medicine_years",
+       .value = &vitals.medicine_years,
+       .range = {.low = 0.0F, .high = 50.0F}},
+      {.key = "vitals_living_years",
+       .value = &vitals.living_years,
+       .range = {.low = 0.0F, .high = 50.0F}},
       {.key = "vitals_working_conditions_years",
        .value = &vitals.working_conditions_years,
-       .low = -50.0F,
-       .high = 50.0F},
+       .range = {.low = -50.0F, .high = 50.0F}},
   }};
   const std::array<ScalarKnob, 11> birth_knobs = {{
       {.key = "birth_satisfaction_bound_1",
        .value = births.satisfaction_bounds.data(),
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "birth_satisfaction_bound_2",
        .value = &births.satisfaction_bounds[1],
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "birth_satisfaction_bound_3",
        .value = &births.satisfaction_bounds[2],
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "birth_satisfaction_bound_4",
        .value = &births.satisfaction_bounds[3],
-       .low = 0.0F,
-       .high = 100.0F},
-      {.key = "birth_multiplier_1", .value = births.multipliers.data(), .low = 0.0F, .high = 5.0F},
-      {.key = "birth_multiplier_2", .value = &births.multipliers[1], .low = 0.0F, .high = 5.0F},
-      {.key = "birth_multiplier_3", .value = &births.multipliers[2], .low = 0.0F, .high = 5.0F},
-      {.key = "birth_multiplier_4", .value = &births.multipliers[3], .low = 0.0F, .high = 5.0F},
-      {.key = "birth_multiplier_5", .value = &births.multipliers[4], .low = 0.0F, .high = 5.0F},
-      {.key = "birth_satiety_stop", .value = &births.satiety_stop, .low = 0.0F, .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "birth_multiplier_1",
+       .value = births.multipliers.data(),
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "birth_multiplier_2",
+       .value = &births.multipliers[1],
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "birth_multiplier_3",
+       .value = &births.multipliers[2],
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "birth_multiplier_4",
+       .value = &births.multipliers[3],
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "birth_multiplier_5",
+       .value = &births.multipliers[4],
+       .range = {.low = 0.0F, .high = 5.0F}},
+      {.key = "birth_satiety_stop",
+       .value = &births.satiety_stop,
+       .range = {.low = 0.0F, .high = 100.0F}},
       {.key = "birth_mother_health_stop",
        .value = &births.mother_health_stop,
-       .low = 0.0F,
-       .high = 100.0F},
+       .range = {.low = 0.0F, .high = 100.0F}},
   }};
   return ReadKnobs(table, "life", vitals_knobs, error) &&
          ReadKnobs(table, "life", birth_knobs, error);
@@ -231,15 +273,6 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     const std::uint32_t house = unit_types->FindRowByKey("wooden_house");
     if (house != kNoTableRow) {
       config.house_type = UnitTypeId{static_cast<std::uint16_t>(house)};
-    }
-    const std::uint32_t class_column = unit_types->FindColumn("class");
-    config.type_is_housing.assign(unit_types->RowCount(), 0);
-    if (class_column != kNoTableColumn) {
-      for (std::uint32_t row = 0; row < unit_types->RowCount(); ++row) {
-        if (unit_types->CellText(row, class_column) == kHousingClass) {
-          config.type_is_housing[row] = 1;
-        }
-      }
     }
   }
   return true;

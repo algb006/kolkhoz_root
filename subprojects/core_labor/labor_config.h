@@ -13,6 +13,14 @@
 // production is what opens a working phase and sizes its
 // work_days_remaining (manual/65-labor-model.md §2).
 
+/// @threading PARALLEL_READONLY
+/// Filled ONCE by the factory and never written again. core_labor owns no
+/// parallel phase today, so there is no race to have — the label is here
+/// because "single-threaded" and "nobody said" are different statements,
+/// and the analyser can only tell them apart if one of them is written
+/// down (CLAUDE.md §10; found by the delivery cycle of task A6, which swept
+/// nineteen files instead of a handful for want of four such lines).
+
 #ifndef CORE_LABOR_LABOR_CONFIG_H_
 #define CORE_LABOR_LABOR_CONFIG_H_
 

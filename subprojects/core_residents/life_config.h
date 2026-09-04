@@ -30,7 +30,10 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/definitions.h"
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/world_state.h"
 
 namespace core {
 
@@ -112,26 +115,15 @@ struct LifeConfig {
   /// type then).
   UnitTypeId house_type;
 
-  /// Indexed by UnitTypeId value: 1 for every unit type of the housing class
-  /// (unit_types.csv `class`). A unit of one of these types with no household
-  /// in it is a FREE HOUSE, and a free house is what a wedding needs first
-  /// (life-cycle §12: "a free house — new, freed, or one the farm got at the
-  /// start"). Empty in a table-less world: then nothing is ever free.
-  std::vector<std::uint8_t> type_is_housing;
-
-  /// Plot radius in metres by UnitTypeId value, handed in by core_world
-  /// from core_construction's read of unit_types.csv (LoadPlotRules). The
-  /// wedding STUB places a house with it, through the same
-  /// core_common/plot.h rule an ordered building goes through. Empty in a
-  /// table-less world, and then nothing has a plot to overlap.
+  /// THE CATALOGUE, read at factory time (core_catalog/definitions.h): the
+  /// housing class of every unit type, the plot radii and the map side.
   ///
-  /// OWNED, not borrowed: the span the factory is called with belongs to
-  /// the caller and may die with the call, while this outlives the campaign.
-  std::vector<float> plot_radius_by_type;
-
-  /// Side of the square map in metres, from the same crossing. Zero = the
-  /// table set declares no map, and then a house cannot be off it.
-  float map_side_m = 0.0F;
+  /// Held whole rather than picked apart into fields of this struct, and
+  /// that is the point of it: two of these columns were being read TWICE —
+  /// once here and once in the module that owns them — which is the very
+  /// thing the catalogue exists to stop. A copy of a catalogue column in a
+  /// subsystem's config is a second home wearing a different name.
+  Definitions definitions;
 
   float life_speedup = 4.0F;
 

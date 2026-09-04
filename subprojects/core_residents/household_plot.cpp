@@ -19,16 +19,6 @@
 namespace core {
 namespace {
 
-float BiologicalAgeYears(float life_speedup, std::int32_t birth_day, SimDay day) {
-  const float game_years = static_cast<float>(static_cast<std::int32_t>(day) - birth_day) /
-                           static_cast<float>(kDaysPerYear);
-  return game_years * life_speedup;
-}
-
-std::uint32_t EpochIndex(Epoch epoch) {
-  return static_cast<std::uint32_t>(epoch) - 1;
-}
-
 bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
   return month >= from && month <= to;
 }

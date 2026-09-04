@@ -21,4 +21,4 @@ kolkhoz_add_module(core_boundary
 
 target_link_libraries(core_boundary
     PUBLIC core_common core_sim
-    PRIVATE core_tables core_log)
+    PRIVATE core_catalog core_tables core_log)

@@ -13,4 +13,4 @@ kolkhoz_add_module(core_labor
 
 target_link_libraries(core_labor
     PUBLIC core_common
-    PRIVATE core_tables core_log)
+    PRIVATE core_catalog core_tables core_log)

@@ -25,6 +25,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_log/log.h"
@@ -47,33 +48,6 @@ ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
 /// parse time: everything downstream casts these numbers to integers or
 /// multiplies them into grams, and a NaN, an infinity or an absurd
 /// magnitude would be undefined behaviour there instead of a clear error.
-bool CellOrDefault(const ITable& table,
-                   std::uint32_t row,
-                   std::uint32_t column,
-                   float fallback,
-                   float low,
-                   float high,
-                   float& value,
-                   std::string& error) {
-  if (column == kNoTableColumn || table.CellText(row, column).empty()) {
-    value = fallback;
-    return true;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    error = "a cell is not a number";
-    return false;
-  }
-  // Written as a positive test so that NaN fails it: NaN compares false
-  // against everything, including itself.
-  if (!(*cell >= low && *cell <= high)) {
-    error = "a cell is out of range";
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
 bool ParseCrops(const ITable& table,
                 const ITable* resources,
                 std::vector<CropDef>& crops,
@@ -124,9 +98,8 @@ bool ParseCrops(const ITable& table,
       if (!CellOrDefault(table,
                          row,
                          columns[index],
+                         Range{.low = kColumns[index].low, .high = kColumns[index].high},
                          kColumns[index].fallback,
-                         kColumns[index].low,
-                         kColumns[index].high,
                          values[index],
                          error)) {
         error = "crops: " + error;
@@ -218,8 +191,13 @@ bool ParseFieldPhases(const ITable& table, FarmingConfig& farming, std::string& 
   const std::uint32_t days_col = table.FindColumn("labor_days_per_ha");
   for (const Phase& phase : phases) {
     float days = *phase.value * kRealDaysPerGameDay;  // back to REAL for the read
-    if (!CellOrDefault(
-            table, table.FindRowByKey(phase.key), days_col, days, 0.0F, 1000.0F, days, error)) {
+    if (!CellOrDefault(table,
+                       table.FindRowByKey(phase.key),
+                       days_col,
+                       Range{.low = 0.0F, .high = 1000.0F},
+                       days,
+                       days,
+                       error)) {
       error = std::string("field_phases: ") + phase.key + ": " + error;
       return false;
     }
@@ -274,9 +252,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
     if (!CellOrDefault(table,
                        table.FindRowByKey(knob.key),
                        value_col,
+                       Range{.low = knob.low, .high = knob.high},
                        *knob.value,
-                       knob.low,
-                       knob.high,
                        *knob.value,
                        error)) {
       error = std::string("farming: ") + knob.key + ": " + error;
@@ -340,9 +317,8 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
       if (!CellOrDefault(table,
                          row,
                          columns[index],
+                         Range{.low = kColumns[index].low, .high = kColumns[index].high},
                          kColumns[index].fallback,
-                         kColumns[index].low,
-                         kColumns[index].high,
                          values[index],
                          error)) {
         error = "livestock: " + error;
@@ -371,14 +347,27 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
     kind.meat_kg_per_head = values[16];
     kind.hide_pieces_per_head = values[17];
     float self_fed = 0.0F;
-    if (!CellOrDefault(table, row, pelt_col, 0, 0, 100, kind.pelt_pieces_per_head, error) ||
-        !CellOrDefault(table, row, down_col, 0, 0, 100, kind.down_kg_per_head, error) ||
-        !CellOrDefault(table, row, self_fed_col, 0, 0, 1, self_fed, error)) {
+    if (!CellOrDefault(table,
+                       row,
+                       pelt_col,
+                       Range{.low = 0, .high = 100},
+                       0,
+                       kind.pelt_pieces_per_head,
+                       error) ||
+        !CellOrDefault(
+            table, row, down_col, Range{.low = 0, .high = 100}, 0, kind.down_kg_per_head, error) ||
+        !CellOrDefault(table, row, self_fed_col, Range{.low = 0, .high = 1}, 0, self_fed, error)) {
       error = "livestock: " + error;
       return false;
     }
     kind.household_self_fed = static_cast<std::uint8_t>(self_fed);
-    if (!CellOrDefault(table, row, cap_col, 0, 0, 1000, kind.household_cap_heads, error)) {
+    if (!CellOrDefault(table,
+                       row,
+                       cap_col,
+                       Range{.low = 0, .high = 1000},
+                       0,
+                       kind.household_cap_heads,
+                       error)) {
       error = "livestock: " + error;
       return false;
     }
@@ -409,18 +398,29 @@ bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::s
     UnitTypeDef& type = types[row];
     float tonnes = 0.0F;
     float by_plot = 0.0F;
-    if (!CellOrDefault(table, row, tonnes_col, 0, 0, 1e6F, tonnes, error) ||
-        !CellOrDefault(table, row, kilograms_col, 0, 0, 1e9F, type.storage_capacity_kg, error) ||
-        !CellOrDefault(table, row, heads_col, 0, 0, 1e6F, type.livestock_capacity_head, error) ||
+    if (!CellOrDefault(table, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error) ||
+        !CellOrDefault(table,
+                       row,
+                       kilograms_col,
+                       Range{.low = 0, .high = 1e9F},
+                       0,
+                       type.storage_capacity_kg,
+                       error) ||
+        !CellOrDefault(table,
+                       row,
+                       heads_col,
+                       Range{.low = 0, .high = 1e6F},
+                       0,
+                       type.livestock_capacity_head,
+                       error) ||
         !CellOrDefault(table,
                        row,
                        heads_old_col,
+                       Range{.low = 0, .high = 1e6F},
                        type.livestock_capacity_head,
-                       0,
-                       1e6F,
                        type.livestock_capacity_head,
                        error) ||
-        !CellOrDefault(table, row, by_plot_col, 0, 0, 1, by_plot, error)) {
+        !CellOrDefault(table, row, by_plot_col, Range{.low = 0, .high = 1}, 0, by_plot, error)) {
       error = "unit_types: " + error;
       return false;
     }
@@ -455,8 +455,8 @@ bool ParseUnitLevels(const ITable& levels,
     }
     float level = 0.0F;
     float tonnes = 0.0F;
-    if (!CellOrDefault(levels, row, level_col, 0, 0, 255, level, error) ||
-        !CellOrDefault(levels, row, tonnes_col, 0, 0, 1e6F, tonnes, error)) {
+    if (!CellOrDefault(levels, row, level_col, Range{.low = 0, .high = 255}, 0, level, error) ||
+        !CellOrDefault(levels, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error)) {
       error = "unit_levels: " + error;
       return false;
     }
@@ -479,7 +479,7 @@ bool ParseFeedValues(const ITable& table, std::vector<float>& values, std::strin
   const std::uint32_t column = table.FindColumn("feed_value");
   values.assign(table.RowCount(), 0.0F);
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    if (!CellOrDefault(table, row, column, 0, 0, 10, values[row], error)) {
+    if (!CellOrDefault(table, row, column, Range{.low = 0, .high = 10}, 0, values[row], error)) {
       error = "resources: feed_value: " + error;
       return false;
     }
@@ -518,9 +518,10 @@ bool ParseFeedLinks(const ITable& table,
     float reserve = 0.0F;
     float max_share = 1.0F;
     float work_only = 0.0F;
-    if (!CellOrDefault(table, row, reserve_col, 0, 0, 1, reserve, error) ||
-        !CellOrDefault(table, row, share_col, 1, 0, 1, max_share, error) ||
-        !CellOrDefault(table, row, work_only_col, 0, 0, 1, work_only, error)) {
+    if (!CellOrDefault(table, row, reserve_col, Range{.low = 0, .high = 1}, 0, reserve, error) ||
+        !CellOrDefault(table, row, share_col, Range{.low = 0, .high = 1}, 1, max_share, error) ||
+        !CellOrDefault(
+            table, row, work_only_col, Range{.low = 0, .high = 1}, 0, work_only, error)) {
       error = "feed_links: " + error;
       return false;
     }
@@ -593,7 +594,8 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
     if (row == kNoTableRow) {
       return true;  // a kind the tables do not carry keeps its default
     }
-    return CellOrDefault(table, row, yield_col, into, 0.0F, 1e5F, into, error);
+    return CellOrDefault(
+        table, row, yield_col, Range{.low = 0.0F, .high = 1e5F}, into, into, error);
   };
   if (!rate_of("upland", farming.meadow_yield_kg_per_ha) ||
       !rate_of("floodplain", farming.meadow_floodplain_yield_kg_per_ha)) {
@@ -656,9 +658,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     if (!CellOrDefault(*campaign,
                        campaign->FindRowByKey("plan_grain_share_percent"),
                        campaign->FindColumn("value"),
+                       Range{.low = 0.0F, .high = 100.0F},
                        0.0F,
-                       0.0F,
-                       100.0F,
                        percent,
                        error)) {
       error = "campaign: plan_grain_share_percent: " + error;
@@ -702,9 +703,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       if (!CellOrDefault(*weather,
                          row,
                          amplitude_col,
+                         Range{.low = 0, .high = 30},
                          0,
-                         0,
-                         30,
                          config.farming.temp_amplitude_by_season[season],
                          error)) {
         error = "weather: temp_amplitude_c: " + error;
@@ -721,25 +721,22 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     if (!CellOrDefault(*transport,
                        transport->FindRowByKey("pedestrian"),
                        speed_col,
+                       Range{.low = 0.5F, .high = 60.0F},
                        0.5F,
-                       0.5F,
-                       60.0F,
                        config.walk_speed_kmh,
                        error) ||
         !CellOrDefault(*transport,
                        transport->FindRowByKey("horse_trot"),
                        speed_col,
+                       Range{.low = 0.5F, .high = 60.0F},
                        0.5F,
-                       0.5F,
-                       60.0F,
                        config.harness_speed_kmh,
                        error) ||
         !CellOrDefault(*transport,
                        transport->FindRowByKey("cart_loaded"),
                        load_col,
+                       Range{.low = 0.01F, .high = 100.0F},
                        0.01F,
-                       0.01F,
-                       100.0F,
                        tonnes,
                        error)) {
       error = "transport: " + error;
@@ -752,17 +749,15 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     if (!CellOrDefault(*labor,
                        labor->FindRowByKey("standard_day_hours"),
                        value_col,
+                       Range{.low = 1.0F, .high = 24.0F},
                        10.0F,
-                       1.0F,
-                       24.0F,
                        config.standard_day_hours,
                        error) ||
         !CellOrDefault(*labor,
                        labor->FindRowByKey("carry_kg_adult"),
                        value_col,
+                       Range{.low = 0.1F, .high = 1000.0F},
                        20.0F,
-                       0.1F,
-                       1000.0F,
                        config.carry_kg_adult,
                        error)) {
       error = "labor: " + error;
@@ -777,8 +772,13 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   if (resources != nullptr) {
     const std::uint32_t days_column = resources->FindColumn("spoil_days");
     for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
-      if (!CellOrDefault(
-              *resources, row, days_column, 0.0F, 0.0F, 100000.0F, config.spoil_days[row], error)) {
+      if (!CellOrDefault(*resources,
+                         row,
+                         days_column,
+                         Range{.low = 0.0F, .high = 100000.0F},
+                         0.0F,
+                         config.spoil_days[row],
+                         error)) {
         error = "resources: spoil_days: " + error;
         return false;
       }

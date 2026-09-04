@@ -13,19 +13,10 @@
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "life_config.h"
 
 namespace core {
 namespace {
-
-float BiologicalAgeYears(float life_speedup, std::int32_t birth_day, SimDay day) {
-  const float game_years = static_cast<float>(static_cast<std::int32_t>(day) - birth_day) /
-                           static_cast<float>(kDaysPerYear);
-  return game_years * life_speedup;
-}
-
-std::uint32_t EpochIndex(Epoch epoch) {
-  return static_cast<std::uint32_t>(epoch) - 1;
-}
 
 float ClampMetric(float value) {
   const float low = value < kMetricMin ? kMetricMin : value;

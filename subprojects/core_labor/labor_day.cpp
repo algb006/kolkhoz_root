@@ -73,9 +73,10 @@ float TravelHours(const Vec2& from, const Vec2& to, float hours_per_km) {
 }
 
 float BiologicalAgeYears(const LaborConfig& config, std::int32_t birth_day, SimDay day) {
-  const float game_years = static_cast<float>(static_cast<std::int32_t>(day) - birth_day) /
-                           static_cast<float>(kDaysPerYear);
-  return game_years * config.life_speedup;
+  // The arithmetic is core_common's (calendar.h); this overload exists only
+  // to spare every call site the `.life_speedup`, and must never grow a
+  // second opinion about the formula.
+  return BiologicalAgeYears(config.life_speedup, birth_day, day);
 }
 
 float FieldSkillBlend(const LaborConfig& config, const ResidentRow& resident) {

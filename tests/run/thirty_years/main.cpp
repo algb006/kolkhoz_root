@@ -25,6 +25,7 @@
 #include "../common/orders_policy.h"
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
+#include "core_catalog/definitions.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/plot.h"
@@ -307,10 +308,11 @@ int main() {
   // straight into the table and never went past kTooClose, so the village
   // came out as stacks of houses at one coordinate (boss, 2026-09-04).
   // A property of the state is checked over the state.
-  const core::PlotRadiiAndMap loaded = core::LoadPlotRules(*world.tables);
-  const core::PlotRules plot_rules{.radius_by_type = loaded.radius_by_type,
-                                   .map_side_m = loaded.map_side_m};
-  const std::span<const float> plot_radii = loaded.radius_by_type;
+  core::Definitions definitions;
+  std::string catalog_error;
+  core::LoadDefinitions(*world.tables, definitions, catalog_error);
+  const core::PlotRules plot_rules = definitions.Plots();
+  const std::span<const float> plot_radii = definitions.units.plot_radius_m;
   std::uint32_t overlapping = 0;
   for (std::uint32_t row = 0; row < state.units.rows.size(); ++row) {
     const core::UnitRow& unit = state.units.rows[row];

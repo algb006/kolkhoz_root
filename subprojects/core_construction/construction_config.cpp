@@ -20,6 +20,7 @@
 #include <optional>
 #include <string_view>
 
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_construction/construction_system.h"
 #include "core_tables/tables.h"
@@ -48,7 +49,6 @@ constexpr float kMaxWearFactor = 100.0F;
 /// grams (state model §5).
 constexpr Grams kGramsPerTonne = 1'000'000;
 
-constexpr float kMaxRadius = 1'000.0F;
 constexpr std::uint32_t kMaxEra = 3;
 constexpr std::uint32_t kMaxLevel = 32;
 constexpr std::uint32_t kMaxCrewCeiling = 255;
@@ -67,25 +67,6 @@ void Fail(std::string& error, std::string_view table, std::string_view what) {
 /// @brief A cell as a real number, `fallback` for an empty one; a present
 /// unreadable or out-of-range cell fails the parse. Written positively so a
 /// NaN fails it too.
-bool CellOrDefault(const ITable& table,
-                   std::uint32_t row,
-                   std::uint32_t column,
-                   float low,
-                   float high,
-                   float fallback,
-                   float& value) {
-  if (column == kNoTableColumn || table.CellText(row, column).empty()) {
-    value = fallback;
-    return true;
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell || !(*cell >= low && *cell <= high)) {
-    return false;
-  }
-  value = *cell;
-  return true;
-}
-
 UnitGate GateFromText(std::string_view text, bool& known) {
   known = true;
   if (text.empty() || text == "era") {
@@ -110,7 +91,12 @@ UnitGate GateFromText(std::string_view text, bool& known) {
 /// @brief Grams per one unit of a resource, from resources.csv. Zero means
 /// "the tables carry no mass for it", which is a refusal wherever a recipe
 /// names it: a material with no mass cannot be moved, stored or spent.
-bool ReadResourceMass(const ITable& resources, std::vector<Grams>& grams_per_unit) {
+/// @param error Now carried, because the shared reader has a reason to
+///        give and the old private one did not: a bare false told the
+///        loader that something in resources.csv was wrong and nothing more.
+bool ReadResourceMass(const ITable& resources,
+                      std::vector<Grams>& grams_per_unit,
+                      std::string& error) {
   const std::uint32_t column = resources.FindColumn("kg_per_unit");
   grams_per_unit.assign(resources.RowCount(), 0);
   if (column == kNoTableColumn) {
@@ -118,7 +104,9 @@ bool ReadResourceMass(const ITable& resources, std::vector<Grams>& grams_per_uni
   }
   for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
     float kg = 0.0F;
-    if (!CellOrDefault(resources, row, column, 0.0F, kMaxKgPerUnit, 0.0F, kg)) {
+    if (!CellOrDefault(
+            resources, row, column, Range{.low = 0.0F, .high = kMaxKgPerUnit}, 0.0F, kg, error)) {
+      PrefixError("resources", resources.CellText(row, 0), error);
       return false;
     }
     grams_per_unit[row] = static_cast<Grams>(static_cast<double>(kg) * kGramsPerKilogram);
@@ -130,7 +118,6 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t gate_col = unit_types.FindColumn("gate");
   const std::uint32_t built_col = unit_types.FindColumn("player_built");
   const std::uint32_t era_col = unit_types.FindColumn("era");
-  const std::uint32_t radius_col = unit_types.FindColumn("plot_radius_m");
   const std::uint32_t tonnes_col = unit_types.FindColumn("storage_capacity_t");
   const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
   const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
@@ -149,60 +136,94 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     float number = 0.0F;
-    if (!CellOrDefault(unit_types, row, built_col, 0.0F, 1.0F, 0.0F, number)) {
+    if (!CellOrDefault(
+            unit_types, row, built_col, Range{.low = 0.0F, .high = 1.0F}, 0.0F, number, error)) {
       Fail(error, "unit_types", "player_built is not 0 or 1 in row " + std::to_string(row));
       return false;
     }
     type.player_built = static_cast<std::uint8_t>(number);
-    if (!CellOrDefault(unit_types, row, era_col, 1.0F, static_cast<float>(kMaxEra), 1.0F, number)) {
+    if (!CellOrDefault(unit_types,
+                       row,
+                       era_col,
+                       Range{.low = 1.0F, .high = static_cast<float>(kMaxEra)},
+                       1.0F,
+                       number,
+                       error)) {
       Fail(error, "unit_types", "era is out of range in row " + std::to_string(row));
       return false;
     }
     type.era = static_cast<std::uint8_t>(number);
-    if (!CellOrDefault(unit_types, row, radius_col, 0.0F, kMaxRadius, 0.0F, type.plot_radius_m)) {
-      Fail(error, "unit_types", "plot_radius_m is out of range in row " + std::to_string(row));
-      return false;
-    }
-    if (!CellOrDefault(unit_types, row, tonnes_col, 0.0F, kMaxStorageTonnes, 0.0F, number)) {
+    if (!CellOrDefault(unit_types,
+                       row,
+                       tonnes_col,
+                       Range{.low = 0.0F, .high = kMaxStorageTonnes},
+                       0.0F,
+                       number,
+                       error)) {
       Fail(error, "unit_types", "storage_capacity_t is out of range in row " + std::to_string(row));
       return false;
     }
     type.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
-    if (!CellOrDefault(unit_types, row, by_plot_col, 0.0F, 1.0F, 0.0F, number)) {
+    if (!CellOrDefault(
+            unit_types, row, by_plot_col, Range{.low = 0.0F, .high = 1.0F}, 0.0F, number, error)) {
       Fail(error, "unit_types", "capacity_by_plot is not 0 or 1 in row " + std::to_string(row));
       return false;
     }
     type.capacity_by_plot = static_cast<std::uint8_t>(number);
-    // Absent column = 0 for every type, and that means NOTHING WEARS. The
+    // Absent COLUMN = 0 for every type, and that means NOTHING WEARS. The
     // honest reading of "no data" (task A5, manual/73-wear-and-repair.md
     // §2): deriving it from the capacity flag or the recipe would be a
     // guess wearing the clothes of a rule.
-    if (!CellOrDefault(unit_types, row, has_wear_col, 0.0F, 1.0F, 0.0F, number)) {
-      Fail(error, "unit_types", "has_wear is not 0 or 1 in row " + std::to_string(row));
-      return false;
+    //
+    // AN EMPTY CELL IN A PRESENT COLUMN IS A DIFFERENT ANSWER, and until
+    // task A6 the config could not tell the two apart: both arrived as
+    // has_wear = 0, so a hole in the export read as "this one does not wear
+    // out" and a whole class of units would have quietly stopped ageing.
+    // The column-level flag closed it at the level of the column; this
+    // closes it at the level of the cell, which is where it was open.
+    //
+    // The answer is a REFUSAL and not a default. A column that is there is
+    // a column the export means to fill: a blank in it is a hole in the
+    // data, not a value, and the one thing that must not happen is for it
+    // to read as the answer that costs nothing to notice.
+    switch (
+        ReadCell(unit_types, row, has_wear_col, Range{.low = 0.0F, .high = 1.0F}, number, error)) {
+      case CellState::kRead:
+        type.has_wear = static_cast<std::uint8_t>(number);
+        break;
+      case CellState::kAbsent:
+        if (has_wear_col != kNoTableColumn) {
+          Fail(error,
+               "unit_types",
+               "has_wear is empty in row " + std::to_string(row) +
+                   " — a present column must answer for every type");
+          return false;
+        }
+        type.has_wear = 0;
+        break;
+      case CellState::kBad:
+        Fail(error, "unit_types", "has_wear is not 0 or 1 in row " + std::to_string(row));
+        return false;
     }
-    type.has_wear = static_cast<std::uint8_t>(number);
     // An empty cell is 1.0 — the class's own pace — because the column names
     // only the exceptions the design lists by name. The floor is ZERO, not
     // one: a type that outlasts its class, a stone shed among timber ones,
     // is as legitimate as one that burns through it, and a floor of 1.0
     // refused the first kind outright. A cell of exactly 0 would mean "never
     // wears", which is what has_wear says, so it falls back to the class.
-    if (!CellOrDefault(
-            unit_types, row, wear_factor_col, 0.0F, kMaxWearFactor, 1.0F, type.wear_factor)) {
+    if (!CellOrDefault(unit_types,
+                       row,
+                       wear_factor_col,
+                       Range{.low = 0.0F, .high = kMaxWearFactor},
+                       1.0F,
+                       type.wear_factor,
+                       error)) {
       Fail(error, "unit_types", "wear_factor is out of range in row " + std::to_string(row));
       return false;
     }
     if (!(type.wear_factor > 0.0F)) {
       type.wear_factor = 1.0F;
     }
-  }
-  // The contiguous copy the shared plot rule reads (construction_config.h).
-  // Filled here, from the rows just parsed, so there is exactly one place
-  // where a radius comes into being.
-  config.plot_radius_by_type.assign(config.types.size(), 0.0F);
-  for (std::uint32_t row = 0; row < config.types.size(); ++row) {
-    config.plot_radius_by_type[row] = config.types[row].plot_radius_m;
   }
   return true;
 }
@@ -232,7 +253,13 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
     float number = 0.0F;
-    if (!CellOrDefault(levels, row, level_col, 1.0F, static_cast<float>(kMaxLevel), 0.0F, number) ||
+    if (!CellOrDefault(levels,
+                       row,
+                       level_col,
+                       Range{.low = 1.0F, .high = static_cast<float>(kMaxLevel)},
+                       0.0F,
+                       number,
+                       error) ||
         number < 1.0F) {
       Fail(error, "unit_levels", "level is out of range in row " + std::to_string(row));
       return false;
@@ -247,31 +274,65 @@ bool ReadLevels(const ITable& levels,
 
     // Real man-days in the table, game man-days in the core: every consumer
     // divides once at parse time (root rules §9, calendar.h).
-    if (!CellOrDefault(levels, row, days_col, 0.0F, kMaxLaborDays, 0.0F, number)) {
+    if (!CellOrDefault(levels,
+                       row,
+                       days_col,
+                       Range{.low = 0.0F, .high = kMaxLaborDays},
+                       0.0F,
+                       number,
+                       error)) {
       Fail(error, "unit_levels", "labor_days is out of range in row " + std::to_string(row));
       return false;
     }
     step.labor_days = number / kRealDaysPerGameDay;
-    if (!CellOrDefault(
-            levels, row, crew_col, 0.0F, static_cast<float>(kMaxCrewCeiling), 0.0F, number)) {
+    if (!CellOrDefault(levels,
+                       row,
+                       crew_col,
+                       Range{.low = 0.0F, .high = static_cast<float>(kMaxCrewCeiling)},
+                       0.0F,
+                       number,
+                       error)) {
       Fail(error, "unit_levels", "max_crew is out of range in row " + std::to_string(row));
       return false;
     }
     step.max_crew = static_cast<std::uint8_t>(number);
-    if (!CellOrDefault(levels, row, era_col, 1.0F, static_cast<float>(kMaxEra), 1.0F, number)) {
+    if (!CellOrDefault(levels,
+                       row,
+                       era_col,
+                       Range{.low = 1.0F, .high = static_cast<float>(kMaxEra)},
+                       1.0F,
+                       number,
+                       error)) {
       Fail(error, "unit_levels", "era is out of range in row " + std::to_string(row));
       return false;
     }
     step.era = static_cast<std::uint8_t>(number);
-    if (!CellOrDefault(levels, row, tonnes_col, 0.0F, kMaxStorageTonnes, 0.0F, number)) {
+    if (!CellOrDefault(levels,
+                       row,
+                       tonnes_col,
+                       Range{.low = 0.0F, .high = kMaxStorageTonnes},
+                       0.0F,
+                       number,
+                       error)) {
       Fail(
           error, "unit_levels", "storage_capacity_t is out of range in row " + std::to_string(row));
       return false;
     }
     step.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
-    if (!CellOrDefault(levels, row, idle_col, 0.0F, kMaxWearYears, 0.0F, step.wear_years_idle) ||
-        !CellOrDefault(
-            levels, row, in_use_col, 0.0F, kMaxWearYears, 0.0F, step.wear_years_in_use)) {
+    if (!CellOrDefault(levels,
+                       row,
+                       idle_col,
+                       Range{.low = 0.0F, .high = kMaxWearYears},
+                       0.0F,
+                       step.wear_years_idle,
+                       error) ||
+        !CellOrDefault(levels,
+                       row,
+                       in_use_col,
+                       Range{.low = 0.0F, .high = kMaxWearYears},
+                       0.0F,
+                       step.wear_years_in_use,
+                       error)) {
       Fail(error, "unit_levels", "a wear term is out of range in row " + std::to_string(row));
       return false;
     }
@@ -304,7 +365,13 @@ bool ReadRecipes(const ITable& costs,
       return false;
     }
     float number = 0.0F;
-    if (!CellOrDefault(costs, row, level_col, 1.0F, static_cast<float>(kMaxLevel), 0.0F, number) ||
+    if (!CellOrDefault(costs,
+                       row,
+                       level_col,
+                       Range{.low = 1.0F, .high = static_cast<float>(kMaxLevel)},
+                       0.0F,
+                       number,
+                       error) ||
         number < 1.0F) {
       Fail(error, "unit_level_cost", "level is out of range in row " + std::to_string(row));
       return false;
@@ -329,7 +396,8 @@ bool ReadRecipes(const ITable& costs,
            "row " + std::to_string(row) + " names a resource with no kg_per_unit");
       return false;
     }
-    if (!CellOrDefault(costs, row, amount_col, 0.0F, kMaxAmount, 0.0F, number)) {
+    if (!CellOrDefault(
+            costs, row, amount_col, Range{.low = 0.0F, .high = kMaxAmount}, 0.0F, number, error)) {
       Fail(error, "unit_level_cost", "amount is out of range in row " + std::to_string(row));
       return false;
     }
@@ -356,7 +424,7 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
     if (type.player_built == 0 || unit_types.CellText(row, has_plot_col) != "1") {
       continue;
     }
-    if (type.plot_radius_m > 0.0F) {
+    if (config.definitions.units.plot_radius_m[row] > 0.0F) {
       continue;
     }
     const bool marked_out = !type.levels.empty() && type.levels.front().is_marking != 0;
@@ -396,21 +464,25 @@ bool ParseConstructionConfig(const ITableSet& tables,
     };
     for (const Knob& knob : knob_list) {
       const std::uint32_t row = knobs->FindRowByKey(knob.key);
-      if (row != kNoTableRow &&
-          !CellOrDefault(*knobs, row, column, 0.0F, knob.ceiling, *knob.value, *knob.value)) {
+      if (row != kNoTableRow && !CellOrDefault(*knobs,
+                                               row,
+                                               column,
+                                               Range{.low = 0.0F, .high = knob.ceiling},
+                                               *knob.value,
+                                               *knob.value,
+                                               error)) {
         Fail(error, "construction", std::string(knob.key) + " is out of range");
         return false;
       }
     }
   }
 
-  if (const ITable* const map = tables.FindTable("map")) {
-    const std::uint32_t column = map->FindColumn("side_m");
-    if (map->RowCount() > 0 && column != kNoTableColumn &&
-        !CellOrDefault(*map, 0, column, 0.0F, 1e7F, 0.0F, config.map_side_m)) {
-      Fail(error, "map", "side_m is out of range");
-      return false;
-    }
+  // The catalogue first: the plot radii and the map side belong to it, and
+  // this module reads them from there rather than from its own pass over
+  // unit_types.csv — those two columns have a second reader, and a column
+  // with two readers has an owner (core_catalog/definitions.h).
+  if (!LoadDefinitions(tables, config.definitions, error)) {
+    return false;
   }
 
   const ITable* const unit_types = tables.FindTable("unit_types");
@@ -422,7 +494,7 @@ bool ParseConstructionConfig(const ITableSet& tables,
     return false;
   }
   std::vector<Grams> grams_per_unit;
-  if (!ReadResourceMass(*resources, grams_per_unit)) {
+  if (!ReadResourceMass(*resources, grams_per_unit, error)) {
     Fail(error, "resources", "kg_per_unit is out of range");
     return false;
   }
@@ -457,18 +529,6 @@ bool ParseConstructionConfig(const ITableSet& tables,
     return false;
   }
   return CheckPlots(*unit_types, config, error);
-}
-
-PlotRadiiAndMap LoadPlotRules(const ITableSet& tables) {
-  ConstructionConfig config;
-  std::string error;
-  if (!ParseConstructionConfig(tables, config, error)) {
-    return {};
-  }
-  PlotRadiiAndMap rules;
-  rules.radius_by_type = std::move(config.plot_radius_by_type);
-  rules.map_side_m = config.map_side_m;
-  return rules;
 }
 
 }  // namespace core

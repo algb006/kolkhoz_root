@@ -68,16 +68,6 @@ Grams KilogramsToGrams(float kilograms) {
   return GramsFromKilograms(kilograms);
 }
 
-std::uint32_t EpochIndex(Epoch epoch) {
-  return static_cast<std::uint32_t>(epoch) - 1;
-}
-
-float BiologicalAgeYears(float life_speedup, std::int32_t birth_day, SimDay day) {
-  const float game_years = static_cast<float>(static_cast<std::int32_t>(day) - birth_day) /
-                           static_cast<float>(kDaysPerYear);
-  return game_years * life_speedup;
-}
-
 /// @brief Mean satiety of the family's members; 100 for a household with
 /// nobody in it (it eats nothing and triggers nothing).
 ///
