@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
@@ -802,6 +803,82 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
   return failures;
 }
 
+/// Pause and resume (task A8): the two verbs of the order book that stop a
+/// unit and start it again.
+///
+/// Driven through the SUBSYSTEM, not through a helper, because the claim
+/// includes WHERE the book is read: before the early return that a world
+/// with no crops takes. A pause is about a unit, and "the tables were thin"
+/// is not a reason the chairman should ever be shown.
+int CheckPauseAndResume() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_pause";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "unit_types.csv") << "key,storage_capacity_t\nbarn,9\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "a thin table set still builds a production system") != 0) {
+    return 1;
+  }
+
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  const core::UnitId barn_id = core::AppendRow(world.units, barn);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{0};
+  site.level = 0;  // pegs and string: there is no production here to stop
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+
+  const auto give = [&world](core::OrderKind kind, core::UnitId unit) {
+    core::OrderRow row;
+    row.kind = kind;
+    row.status = core::OrderStatus::kPending;
+    row.unit = unit;
+    return core::AppendRow(world.orders, row);
+  };
+  const core::OrderId stop = give(core::OrderKind::kPauseUnit, barn_id);
+  const core::OrderId on_site = give(core::OrderKind::kPauseUnit, site_id);
+  const core::OrderId nowhere = give(core::OrderKind::kPauseUnit, core::UnitId{99});
+
+  const core::WorldState before = world;
+  system->RunProductionDecisions(before, world);
+
+  const auto refusal = [&world](core::OrderId id) {
+    const std::uint32_t row = core::FindRow(world.orders, id);
+    return row == core::kNoRow ? core::OrderRefusal::kNone : world.orders.rows[row].refusal;
+  };
+  const auto status = [&world](core::OrderId id) {
+    const std::uint32_t row = core::FindRow(world.orders, id);
+    return row == core::kNoRow ? core::OrderStatus::kPending : world.orders.rows[row].status;
+  };
+  failures += Expect(status(stop) == core::OrderStatus::kDone && world.units.rows[0].paused != 0,
+                     "the unit is stopped in the step the order is read");
+  failures += Expect(refusal(on_site) == core::OrderRefusal::kRuleForbids,
+                     "a marked site has no production to stop");
+  failures += Expect(refusal(nowhere) == core::OrderRefusal::kNoSuchSubject,
+                     "and a unit that does not exist is refused for the unit");
+
+  // Pausing the paused is refused rather than swallowed: it is not a
+  // harmless repeat, it means the chairman is looking at something stale.
+  const core::OrderId again = give(core::OrderKind::kPauseUnit, barn_id);
+  const core::OrderId start = give(core::OrderKind::kResumeUnit, barn_id);
+  {
+    const core::WorldState previous = world;
+    system->RunProductionDecisions(previous, world);
+  }
+  failures += Expect(refusal(again) == core::OrderRefusal::kRuleForbids,
+                     "stopping what already stands is refused, not silently agreed with");
+  failures += Expect(status(start) == core::OrderStatus::kDone && world.units.rows[0].paused == 0,
+                     "and resuming starts it again");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStoreCeilingAndAlarms();
@@ -831,6 +908,7 @@ int main() {
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
+  failures += CheckPauseAndResume();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

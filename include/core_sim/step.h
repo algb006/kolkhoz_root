@@ -68,6 +68,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/ids.h"
+#include "core_common/labor_state.h"
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
 
@@ -224,6 +225,18 @@ class ISimulation {
   ///       is the fan-out order and then each predicate's own — the caller
   ///       sorts (core_boundary/session.h promises kind, then subject id).
   virtual void CollectAlarms(std::vector<Alarm>& alarms) const = 0;
+
+  /// @brief Whether `resident` could be given a work order at all, asked of
+  /// the subsystem that owns the rule (task A8). Fans out exactly as
+  /// CollectAlarms does, and for the same reason: the answer belongs to
+  /// whoever applies it every morning, not to whoever wants to draw it.
+  /// @note Called between steps on the sim thread.
+  virtual bool CanBeOrdered(ResidentId resident) const = 0;
+
+  /// @brief How many of the settlement can be put to work, and how many of
+  /// those are standing about at this moment.
+  /// @note Called between steps on the sim thread, like its neighbours.
+  virtual WorkforceCount Workforce() const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.

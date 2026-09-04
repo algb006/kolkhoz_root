@@ -107,6 +107,10 @@ class ScriptedSimulation final : public core::ISimulation {
   /// the ones a test PUT there: `alarms` below is handed out verbatim. That
   /// is what lets the boundary test check the session's own half of the
   /// contract — the sort — without dragging in production's predicates.
+  bool CanBeOrdered(core::ResidentId /*resident*/) const override { return false; }
+
+  core::WorkforceCount Workforce() const override { return {}; }
+
   void CollectAlarms(std::vector<core::Alarm>& alarms) const override {
     alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
   }
@@ -211,10 +215,13 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   session->AdvanceStep();
   failures +=
       Expect(session->Stamp().tick == 1 && session->Stamp().serial == 1, "one step, one serial");
-  // The batch was applied before phase 1 and answered before the step ended:
-  // no wired subsystem consumes these two kinds, so the events slot refused
-  // them with kNoConsumer and swept the rows (order_state.h). The proof that
-  // the promised ids named the rows the engine made is in the answers.
+  // The batch was applied before phase 1 and answered before the step ended,
+  // and the two refusals are of DIFFERENT kinds on purpose. kAssignWork has
+  // had a consumer since task A8, so it is core_labor that turns it down —
+  // resident 7 is not in this empty world. kSetRotation still has none, and
+  // the events slot refuses it with kNoConsumer rather than meeting it with
+  // silence. Both rows are swept (order_state.h). The proof that the promised
+  // ids named the rows the engine made is in the answers.
   failures += Expect(session->State().orders.rows.empty(),
                      "an order nobody consumes does not outlive its step");
   const std::span<const core::SimEvent> answered = session->Events();
@@ -223,9 +230,13 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
     failures +=
         Expect(answered[0].order.value == first.value && answered[1].order.value == second.value,
                "the answers name the promised ids, in staging order");
+    failures += Expect(
+        answered[0].kind == core::EventKind::kOrderRefused &&
+            answered[0].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoSuchSubject),
+        "work for a man who does not exist is refused by the consumer that has him");
     failures +=
-        Expect(answered[0].kind == core::EventKind::kOrderRefused &&
-                   answered[0].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer),
+        Expect(answered[1].kind == core::EventKind::kOrderRefused &&
+                   answered[1].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer),
                "an order kind with no consumer is refused, never met with silence");
   }
   session->AcknowledgeEvents(answered.size());
@@ -551,6 +562,7 @@ int TestSignals(const core::ITableSet& tables) {
 
   core::UnitRow barn;
   barn.position = core::Vec2{.x = 400.0F, .y = 300.0F};
+  barn.paused = 1;  // the chairman stopped it; the layer has to see that
   const core::UnitId barn_id = core::AppendRow(world.units, barn);
 
   core::HerdRow herd;
@@ -597,13 +609,17 @@ int TestSignals(const core::ITableSet& tables) {
   failures += Expect(house_signals.residents_working == 0, "nobody works at a house");
   failures += Expect(house_signals.indoor_temperature_celsius == -7.5F,
                      "STUB: inside is as cold as outside");
-  failures += Expect(house_signals.wear == 0.0F && house_signals.paused == 0,
-                     "STUB: wear and pause stay neutral until their systems land");
+  failures += Expect(house_signals.wear == 0.0F, "STUB: wear stays neutral for a house");
+  failures += Expect(house_signals.paused == 0, "a unit nobody stopped is not stopped");
 
   const core::UnitSignals barn_signals = session->SignalsOfUnit(barn_id);
   failures +=
       Expect(barn_signals.residents_working == 1, "the barn crew is counted through the herd");
   failures += Expect(barn_signals.residents_living == 0, "nobody lives in the barn");
+  // The pause reaches the layer through the SIGNALS, not through the row:
+  // this is the only place the presentation can learn that a yard stands
+  // still, so the byte core_production writes has to arrive here (task A8).
+  failures += Expect(barn_signals.paused == 1, "and the stopped barn reports itself stopped");
   failures += Expect(session->SignalsOfUnit(core::UnitId{404}).unit.value == 0,
                      "a unit that does not exist gives a default");
 
@@ -851,6 +867,129 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
   return failures;
 }
 
+/// The shape of a CREW order: building names the UNIT that is the site, not
+/// a field (task A2 — a site is a unit row). This case was missing from the
+/// boundary's shape check, so the order the design describes was refused
+/// here, while the one shaped to get past named a field the labor seam
+/// would never read. Its own session, because issuing orders moves the id
+/// counter and the promised-id assertions above count on it.
+int TestCrewOrderShape(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the crew-shape session was refused\n";
+    return 1;
+  }
+  core::OrderRow crew;
+  crew.kind = core::OrderKind::kAssignWork;
+  crew.resident = core::ResidentId{7};
+  crew.work = core::WorkKind::kConstruction;
+  crew.field = core::FieldId{5};
+  failures += Expect(session->IssueOrder(crew).value == 0,
+                     "building work named by a field is not a shape the book knows");
+  crew.field = core::FieldId{};
+  crew.unit = core::UnitId{9};
+  failures += Expect(session->IssueOrder(crew).value != 0,
+                     "and named by its site it is a shape the book takes");
+  // Hauling stays with the fields: the load lies on the ground it came off.
+  core::OrderRow haul;
+  haul.kind = core::OrderKind::kAssignWork;
+  haul.resident = core::ResidentId{7};
+  haul.work = core::WorkKind::kHauling;
+  haul.unit = core::UnitId{9};
+  failures += Expect(session->IssueOrder(haul).value == 0, "carrying is not named by a unit");
+  haul.unit = core::UnitId{};
+  haul.field = core::FieldId{5};
+  failures += Expect(session->IssueOrder(haul).value != 0, "it is named by the field it lies on");
+  return failures;
+}
+
+// ---------------------------------------------------------------------------
+// The two workforce questions (task A8)
+// ---------------------------------------------------------------------------
+
+/// Who may be given an order, and how many there are. The answers are asked
+/// of the REAL simulation on purpose: the boundary owns no rule here, it owns
+/// the fan-out — session to ISimulation to core_labor — and a break anywhere
+/// along it would leave the layer with a plausible zero. The rule itself is
+/// core_labor's unit test; what is measured here is that the answer comes
+/// from there and not from a default.
+///
+/// The corner is the third man: of working age and with no roof. The layer
+/// hard-codes sixteen and would count him; the core counts a day that can
+/// START somewhere, and does not.
+int TestWorkforceQuestions(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+
+  core::SessionConfig config;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the workforce session was refused\n";
+    return 1;
+  }
+
+  core::WorldState world;
+  core::FamilyRow family;
+  const core::FamilyId household = core::AppendRow(world.families, family);
+  core::UnitRow house;
+  house.household = household;
+  const core::UnitId house_id = core::AppendRow(world.units, house);
+  world.families.rows[core::FindRow(world.families, household)].house = house_id;
+
+  // Twenty biological years: life runs four times the calendar, so five
+  // calendar years are twenty of his own, well clear of the sixteen.
+  core::ResidentRow grown;
+  grown.family = household;
+  grown.birth_day = -5 * static_cast<std::int32_t>(core::kDaysPerYear);
+  const core::ResidentId grown_id = core::AppendRow(world.residents, grown);
+
+  core::ResidentRow child;
+  child.family = household;
+  child.birth_day = 0;
+  const core::ResidentId child_id = core::AppendRow(world.residents, child);
+
+  // A family without a house: nobody's day starts anywhere.
+  core::FamilyRow homeless_family;
+  const core::FamilyId no_roof = core::AppendRow(world.families, homeless_family);
+  core::ResidentRow homeless;
+  homeless.family = no_roof;
+  homeless.birth_day = -5 * static_cast<std::int32_t>(core::kDaysPerYear);
+  const core::ResidentId homeless_id = core::AppendRow(world.residents, homeless);
+
+  session->ReplaceWorld(world);
+  failures += Expect(session->CanBeOrdered(grown_id), "a grown man with a roof takes orders");
+  failures += Expect(!session->CanBeOrdered(child_id), "a child does not");
+  failures += Expect(!session->CanBeOrdered(homeless_id), "and neither does a man with no roof");
+  failures += Expect(!session->CanBeOrdered(core::ResidentId{404}),
+                     "a resident that does not exist takes no orders either");
+
+  const core::WorkforceCount empty_day = session->Workforce();
+  failures += Expect(empty_day.employable == 1, "one of the three can be put to work");
+  failures += Expect(empty_day.idle == 1, "and today he stands idle");
+
+  // The same world with the man at work: employable does not move, idle does.
+  // Two numbers that moved together would be one number with two names.
+  world.residents.rows[core::FindRow(world.residents, grown_id)].work.kind =
+      core::WorkKind::kSowing;
+  session->ReplaceWorld(world);
+  const core::WorkforceCount working_day = session->Workforce();
+  failures += Expect(working_day.employable == 1, "putting him to work does not change the pool");
+  failures += Expect(working_day.idle == 0, "but it empties the idle count");
+
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -864,10 +1003,12 @@ int main() {
   failures += TestSignals(tables);
   failures += TestJournalCodec();
   failures += TestWorkerIndependence(tables);
+  failures += TestCrewOrderShape(tables);
+  failures += TestWorkforceQuestions(tables);
 
   if (failures == 0) {
-    std::cout << "unit_core_boundary: orders, events, readers, signals, journal and worker "
-                 "independence\n";
+    std::cout << "unit_core_boundary: orders, events, readers, signals, journal, worker "
+                 "independence and the workforce questions\n";
   }
   return failures;
 }

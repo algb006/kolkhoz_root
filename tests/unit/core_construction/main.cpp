@@ -463,6 +463,22 @@ int TestWearGrows(const core::ITableSet& tables) {
   Run(*system, world, 0);
   failures += Expect(wear_of(empty) - idle_day > idle_day * 1.9F,
                      "a store with grain in it is not abandoned, and wears like it is used");
+
+  // Task A8: A STOPPED UNIT DOES NOT WEAR (unit rules §15, and §5 lists it
+  // among what a pause does). This is the one effect of a pause the slice
+  // can show, so it is the one that has to be measured — and measured
+  // BESIDE a running twin, because "nothing moved" is also what a broken
+  // day boundary looks like.
+  core::UnitRow stopped_row;
+  stopped_row.type = core::UnitTypeId{kBarnType};
+  stopped_row.level = 1;
+  stopped_row.paused = 1;
+  const core::UnitId stopped = core::AppendRow(world.units, stopped_row);
+  const float running_before = wear_of(empty);
+  Run(*system, world, core::kTicksPerDay);  // hour 0 of the next day: a wear boundary
+  failures += Expect(wear_of(stopped) == 0.0F, "a stopped unit does not wear out");
+  failures += Expect(wear_of(empty) > running_before,
+                     "while the one standing beside it wore that same day");
   return failures;
 }
 

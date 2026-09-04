@@ -50,12 +50,22 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kNone:
       return false;
     case OrderKind::kAssignWork:
-      // The kind of work decides which target is required: the four field
-      // kinds name a field, barn work names a herd (labor_state.h).
+      // The kind of work decides which target is required, and the list is
+      // the whole of WorkKind, not the part of it that existed when this
+      // check was written: the four field kinds and hauling name a FIELD
+      // (the load lies on the ground it came off), barn work names a HERD,
+      // and building names the UNIT that is the site (task A2 — a site is a
+      // unit row). Construction was missing here, so a crew order shaped
+      // the way the design shapes it was refused at the boundary and one
+      // shaped to get past the boundary named a field the seam would never
+      // read. Found by the delivery cycle of task A8.
       if (!has_resident || order.work == WorkKind::kNone) {
         return false;
       }
-      return order.work == WorkKind::kHerdCare ? has_herd : has_field;
+      if (order.work == WorkKind::kHerdCare) {
+        return has_herd;
+      }
+      return order.work == WorkKind::kConstruction ? has_unit : has_field;
     case OrderKind::kReleaseWork:
       return has_resident;
     case OrderKind::kPauseUnit:
@@ -157,6 +167,12 @@ class Session final : public ISession {
   FieldSignals SignalsOfField(FieldId field) const override {
     return DeriveFieldSignals(State(), field);
   }
+
+  bool CanBeOrdered(ResidentId resident) const override {
+    return simulation_->CanBeOrdered(resident);
+  }
+
+  WorkforceCount Workforce() const override { return simulation_->Workforce(); }
 
   ResidentWhereabouts WhereaboutsOf(ResidentId resident) const override {
     return DeriveWhereabouts(State(), resident);

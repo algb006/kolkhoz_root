@@ -120,6 +120,13 @@ class StepEngine final : public ISimulation {
   /// world whose tables define nothing that can go wrong answers with.
   void CollectAlarms(std::vector<Alarm>& /*alarms*/) const override {}
 
+  /// The bare engine knows no subsystems, so it knows no rules: nobody can
+  /// be ordered and the workforce is empty. StandardSimulation answers these
+  /// for real by asking core_labor (task A8), exactly as it does for alarms.
+  bool CanBeOrdered(ResidentId /*resident*/) const override { return false; }
+
+  WorkforceCount Workforce() const override { return {}; }
+
  private:
   /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
   /// completed, append the issued rows in arrival order (the table issues the

@@ -77,6 +77,30 @@ constexpr bool IsHorseWork(WorkKind kind) {
   return kind == WorkKind::kPlowing || kind == WorkKind::kHarrowing;
 }
 
+/// @brief How many of the settlement's people can be put to work, and how
+/// many of those are standing about — the two numbers behind the HUD's red
+/// "idle" count (task A8, asked for by `ue` through boss).
+///
+/// WHY THE CORE COUNTS THIS AND NOT THE LAYER. The presentation can see a
+/// birthday and reach "sixteen or over" on its own; what it cannot see is
+/// the RULE. The working age is a cell in life.csv, not a constant — move
+/// it and a layer that hard-coded sixteen goes on drawing the old number
+/// with no sign that anything changed. The same goes for every other reason
+/// a man is out of the pool: no household to start the day from, a post that
+/// already answers for him, and whatever the next stage adds. **One home for
+/// the rule, and it is the module that applies it every morning.**
+struct WorkforceCount {
+  /// People the accountant could place today: of working age, with a home
+  /// to leave from. A post holder counts here — he is employed, not idle.
+  std::uint32_t employable = 0;
+
+  /// Of those, the ones with no work assigned right now. Read it after a
+  /// day's first tick and it is the morning's leftovers; read it at night
+  /// and the day has been cleared, so it is everybody. The number means
+  /// "standing about AT THIS MOMENT", which is what a HUD shows.
+  std::uint32_t idle = 0;
+};
+
 /// @brief The assignment block of one resident. Plain data.
 /// Exactly one target id is valid, matching the kind: a field for the four
 /// field kinds, a herd for kHerdCare, a unit for kConstruction, none for

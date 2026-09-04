@@ -6,7 +6,9 @@
 /// write to a unit row is sequential: stores move in the production
 /// decisions sub-step (slot 3), houses appear in the demography sub-step,
 /// the construction sub-step of the same slot moves the `construction`
-/// block and the level, and the parallel slots touch no unit at all — slot
+/// block, the level and `wear`, `paused` is set by the production sub-step
+/// reading kPauseUnit and only read by construction and the boundary after
+/// it (task A8), and the parallel slots touch no unit at all — slot
 /// 4 is split by FIELD (land_state.h), slot 5 is the instant-delivery stub.
 /// When logistics becomes real and takes units as its unit of parallelism,
 /// that is a threading change and this block changes with it. Structural
@@ -182,6 +184,24 @@ struct UnitRow {
   /// percent, and an integer would truncate it to nothing — the lesson of
   /// the herds and the clothing scales, learned three times already.
   Metric wear = 0.0F;
+
+  /// Production here is STOPPED by the chairman's order (unit rules §5;
+  /// task A8). Not demolished and not mothballed — paused: the order says
+  /// when, and the unit waits where it stands.
+  ///
+  /// What it means in the slice, said plainly because it is less than the
+  /// design describes: **the building does not wear while it is stopped**
+  /// (unit rules §15 — "a standing unit does not wear out"), and the layer
+  /// can show the state. The rest of §5 — production halted, workers
+  /// released to the pool, supply stopped while carrying continues — needs
+  /// unit work CYCLES, and the core has none yet: what a unit does today is
+  /// hold a herd, hold goods and wear out. Pausing must not stop the herd
+  /// being fed, so it does not touch herd care.
+  ///
+  /// "Stops when the running cycle ends" (§5) is likewise nothing to
+  /// implement yet and everything to remember: when cycles arrive, this flag
+  /// is what they will consult, and the ORDER is what will wait.
+  std::uint8_t paused = 0;
 };
 
 /// @brief The units table type used by WorldState.

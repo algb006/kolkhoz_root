@@ -32,6 +32,7 @@
 #include "core_common/calendar.h"
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
+#include "core_common/order_state.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -104,6 +105,11 @@ class ProductionSystem final : public IProductionSystem {
   IParallelPhase& ProductionPhase() override { return phase_; }
 
   void RunProductionDecisions(const WorldState& previous, WorldState& current) override {
+    // The order book first, and BEFORE the table-less early return below: a
+    // world without crops still has units, and a pause is about a unit. An
+    // order nobody reads is refused by the events slot with kNoConsumer, and
+    // "the tables were thin" is not a reason the chairman should ever see.
+    ConsumeOrders(current);
     if (config_.crops.empty()) {
       return;  // a table-less world idles (STUB)
     }
@@ -435,16 +441,58 @@ class ProductionSystem final : public IProductionSystem {
     PlanManure(current);
   }
 
-  /// @brief What one hauler is worth on this shoulder today: a cart's load
-  /// at harness speed when the settlement has a draught horse to spare, a
-  /// person's load on foot when it has not (transport design §1, §2; the
-  /// two carriers of task A4, and there are only two).
+  /// @brief The production half of the order book (task A8): the two verbs
+  /// that stop a unit and start it again.
   ///
-  /// The REFERENCE carrier, deliberately: a cart takes its 750 kg whoever
-  /// leads the horse, and on foot the spread between a strong man and a
-  /// frail one is paid out in trudodni rather than in tonnage. The price of
-  /// a trip has to be the same on both sides of the seam, and the way it is
-  /// kept the same is core_common/haul.h — one formula, inputs read twice.
+  /// Settled IN THE STEP THEY ARE READ, like the construction kinds and
+  /// unlike an appointment: there is nothing to wait for. The design's
+  /// "stops when the running cycle ends" (unit rules §5) is a promise about
+  /// CYCLES, and the core has none — when it does, this is where the waiting
+  /// will be, and the order is what will wait.
+  void ConsumeOrders(WorldState& current) const {
+    for (OrderRow& order : current.orders.rows) {
+      if (order.status != OrderStatus::kPending) {
+        continue;
+      }
+      switch (order.kind) {
+        case OrderKind::kPauseUnit:
+          Settle(order, SetPaused(current, order.unit, 1));
+          break;
+        case OrderKind::kResumeUnit:
+          Settle(order, SetPaused(current, order.unit, 0));
+          break;
+        default:
+          break;  // not ours: another consumer's, or the events slot's refusal
+      }
+    }
+  }
+
+  static void Settle(OrderRow& order, OrderRefusal refusal) {
+    order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
+    order.refusal = refusal;
+  }
+
+  /// @brief Stops a unit or starts it again.
+  /// @return kNoSuchSubject when there is no such unit, kRuleForbids for a
+  ///         site (level 0 is pegs and string — there is no production to
+  ///         stop) and for an order that asks for the state the unit is
+  ///         already in: "pause the paused" is not a no-op to be swallowed,
+  ///         it means the chairman is looking at something stale.
+  static OrderRefusal SetPaused(WorldState& current, UnitId unit, std::uint8_t paused) {
+    const std::uint32_t row = FindRow(current.units, unit);
+    if (row == kNoRow) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    if (current.units.rows[row].level == 0) {
+      return OrderRefusal::kRuleForbids;
+    }
+    if (current.units.rows[row].paused == paused) {
+      return OrderRefusal::kRuleForbids;
+    }
+    current.units.rows[row].paused = paused;
+    return OrderRefusal::kNone;
+  }
+
   void RunFields(WorldState& current) {
     const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
     const float temperature = current.weather.air_temperature_celsius;

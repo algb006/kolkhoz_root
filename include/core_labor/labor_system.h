@@ -56,6 +56,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/labor_state.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -79,6 +80,19 @@ class ILaborSystem {
   /// ResidentRow::post and the status of kAppoint/kDismiss rows in the
   /// order book (task A7). Never changes any table's shape.
   virtual void RunAssignmentDecisions(const WorldState& previous, WorldState& current) = 0;
+
+  /// @brief Whether `resident` could be given a work order at all: of
+  /// working age, alive, with a household to start the day from (task A8).
+  ///
+  /// The rule lives here because the THRESHOLD lives here — life.csv's
+  /// adult age, read into this subsystem's configuration. A presentation
+  /// that reached the same answer from a birthday would be right until the
+  /// day the cell moves, and then wrong with no sign of it.
+  virtual bool CanBeOrdered(const WorldState& state, ResidentId resident) const = 0;
+
+  /// @brief The two workforce numbers over the whole settlement: how many
+  /// could be put to work, and how many of those have no work right now.
+  virtual WorkforceCount CountWorkforce(const WorldState& state) const = 0;
 
   /// @brief Appends the labor alarms that hold in `state` (task A7).
   /// Today one: kYardWithoutGroom — a built unit whose staff table names

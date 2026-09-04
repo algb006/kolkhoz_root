@@ -864,6 +864,57 @@ int TestAppointmentRefusals() {
                            (post.Order(also).status == core::OrderStatus::kAccepted &&
                             post.Order(move).refusal == core::OrderRefusal::kConflictsWithActive);
   failures += Expect(one_of_each, "of two orders for one man, the second waits for nothing");
+
+  // AND THE SAME CONFLICT FROM THE OTHER SIDE (task A8 delivery cycle,
+  // second iteration). A work order for a post holder was already refused
+  // with kConflictsWithActive; an APPOINTMENT of a man who has a standing
+  // work order was not checked at all, so both survived and the standing
+  // order overwrote the post placement every morning after. Whichever
+  // arrives second is refused: the chairman releases him first, which is
+  // one order, not a guess about which of two he meant.
+  core::HerdRow cows;
+  cows.unit = post.barn;
+  cows.adult_count = 6;
+  const core::HerdId herd = core::AppendRow(post.world().herds, cows);
+  core::OrderRow work_first;
+  work_first.kind = core::OrderKind::kAssignWork;
+  work_first.status = core::OrderStatus::kPending;
+  // The milkmaid's place at the barn, which is free: the groom's at the yard
+  // was taken three cases ago, and kNoVacancy would answer before the rule
+  // under test was ever reached — a refusal for the wrong reason measures
+  // nothing about the reason it claims.
+  work_first.resident = post.world().residents.row_ids[1];
+  work_first.work = core::WorkKind::kHerdCare;
+  work_first.herd = herd;
+  const core::OrderId standing = core::AppendRow(post.world().orders, work_first);
+  post.RunDay(*labor, 3);
+  failures +=
+      Expect(post.Order(standing).status == core::OrderStatus::kAccepted, "the work order stands");
+  const core::OrderId late_post = post.Issue(post.Appoint(1, post.barn, 1));
+  post.RunDay(*labor, 4);
+  failures += Expect(post.Order(late_post).refusal == core::OrderRefusal::kConflictsWithActive,
+                     "a woman with a standing order is not appointed over it, and it says why");
+  failures +=
+      Expect(post.world().residents.rows[1].post.profession.value == core::kInvalidDefIdValue,
+             "and the refused appointment left her without a post");
+
+  // BUT THE WORKFLOW THE REFUSAL PRESCRIBES MUST NOT BE THE ONE IT BREAKS.
+  // "Release him, then appoint him" is one gesture in the office and two
+  // rows in one batch; the work verbs are read after the post verbs in the
+  // tick, so the appointment meets a standing order that is settled kDone a
+  // few statements later. Found by the third iteration of the A8 cycle.
+  core::OrderRow let_go;
+  let_go.kind = core::OrderKind::kReleaseWork;
+  let_go.resident = post.world().residents.row_ids[1];
+  const core::OrderId released = post.Issue(let_go);
+  const core::OrderId together = post.Issue(post.Appoint(1, post.barn, 1));
+  post.RunDay(*labor, 5);
+  failures += Expect(post.Order(released).status == core::OrderStatus::kDone,
+                     "the release in the same batch is done");
+  failures += Expect(post.Order(together).refusal != core::OrderRefusal::kConflictsWithActive,
+                     "and the appointment beside it is NOT refused against an order just ended");
+  failures += Expect(post.world().residents.rows[1].post.profession.value == 1,
+                     "she ends the day a milkmaid: released and appointed in one gesture");
   std::filesystem::remove_all(root);
   return failures;
 }
@@ -981,6 +1032,452 @@ int TestYardWithoutGroomAlarm() {
   return failures;
 }
 
+// ---------------------------------------------------------------------------
+// Standing work orders (task A8)
+// ---------------------------------------------------------------------------
+
+/// The chairman's standing order, driven through the subsystem the way the
+/// engine drives it: the book is appended to, labor reads it at the END of
+/// the tick, and the override lands the NEXT morning.
+int TestStandingWorkOrder() {
+  int failures = 0;
+  const EmptyTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables);
+  if (Expect(labor != nullptr, "factory yields a system") != 0) {
+    return 1;
+  }
+  DayWorld day(2);
+  // Two jobs far enough apart that the accountant's own choice is visible:
+  // a near harvest that will take everybody, and a far one that will not.
+  const core::FieldId near_field =
+      day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  const core::FieldId far_field =
+      day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 300.0F, .y = 0.0F});
+
+  core::OrderRow assign;
+  assign.kind = core::OrderKind::kAssignWork;
+  assign.status = core::OrderStatus::kPending;
+  assign.resident = day.world.residents.row_ids[0];
+  assign.work = core::WorkKind::kHarvest;
+  assign.field = far_field;
+  const core::OrderId standing = core::AppendRow(day.world.orders, assign);
+
+  // DAY ONE, MEASURED AT A WORKING HOUR AND AT THE MAN, not at the order.
+  // The claim is "a change takes effect after the current day" (time design
+  // §11), and the only thing that can show it is WHERE HE STANDS TODAY.
+  // Checking the order's status instead proves nothing: the row reads
+  // kAccepted whether it was read first in the tick or last, and the first
+  // draft of this test did exactly that and passed against a deliberately
+  // broken ordering.
+  for (std::uint32_t hour = 0; hour <= 8; ++hour) {
+    day.world.calendar.tick = hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  failures += Expect(day.world.residents.rows[0].work.field.value != far_field.value,
+                     "an order given today moves nobody today");
+  for (std::uint32_t hour = 9; hour < core::kTicksPerDay; ++hour) {
+    day.world.calendar.tick = hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const std::uint32_t order_row = core::FindRow(day.world.orders, standing);
+  failures += Expect(order_row != core::kNoRow &&
+                         day.world.orders.rows[order_row].status == core::OrderStatus::kAccepted,
+                     "a work order is accepted and STAYS accepted: that is what standing means");
+
+  // DAY TWO, measured at a working hour — the close clears every assignment,
+  // so a test that looks at the end of the day sees nothing at all.
+  for (std::uint32_t hour = 0; hour <= 8; ++hour) {
+    day.world.calendar.tick = core::kTicksPerDay + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  failures += Expect(day.world.residents.rows[0].work.field.value == far_field.value,
+                     "and from the next morning the chairman's man is where he was sent");
+  failures += Expect(day.world.residents.rows[1].work.field.value == near_field.value,
+                     "while the accountant keeps placing everybody else");
+
+  // A SECOND order for the same man supersedes the first, and the first is
+  // CANCELLED — not done. It never finished; it was taken back.
+  core::OrderRow moved = assign;
+  moved.field = near_field;
+  moved.status = core::OrderStatus::kPending;
+  core::AppendRow(day.world.orders, moved);
+  day.world.calendar.tick = 2 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(day.world.calendar);
+  {
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const std::uint32_t old_row = core::FindRow(day.world.orders, standing);
+  failures += Expect(old_row != core::kNoRow &&
+                         day.world.orders.rows[old_row].status == core::OrderStatus::kCancelled,
+                     "a newer order takes the older one back rather than completing it");
+  return failures;
+}
+
+/// The two corners the delivery cycle found, and neither is a day like the
+/// days above.
+///
+/// UB-001, THE REST DAY. The chairman's standing order used to reach the
+/// man on a Sunday or not, depending on something that has nothing to do
+/// with him: whether the village had a barn. On a day off the accountant
+/// collects no field work, so his job list was empty and StartDay returned
+/// before the standing orders — but herd care IS collected on a day off,
+/// because animals eat on Sunday, so as soon as one herd stood at a unit
+/// the list was not empty, the return did not happen, and the chairman's
+/// man worked every Sunday of his life. The corner is therefore a REST DAY
+/// IN A VILLAGE WITH A BARN, and a test without the barn measures nothing.
+///
+/// MEM-001, THE DEAD MAN'S ORDER. A standing order whose man has died could
+/// never reach a terminal status: kReleaseWork refuses for kNoSuchSubject
+/// before it looks for the standing row, and nothing else moves it. The
+/// sweep removes terminal rows only, so the row lived for the rest of the
+/// campaign — in every save, and walked by an O(n) scan inside an O(n) loop
+/// on all twenty-four ticks of every day.
+int TestStandingWorkCorners() {
+  int failures = 0;
+  const EmptyTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables);
+  if (Expect(labor != nullptr, "factory yields a system") != 0) {
+    return 1;
+  }
+  DayWorld day(1);
+  const core::FieldId field =
+      day.AddField(core::FieldPhase::kHarvest, 400.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  day.AddUnitHerd(10, 30.0F);  // the barn: it gives the day off a job list
+
+  core::OrderRow assign;
+  assign.kind = core::OrderKind::kAssignWork;
+  assign.status = core::OrderStatus::kPending;
+  assign.resident = day.world.residents.row_ids[0];
+  assign.work = core::WorkKind::kHarvest;
+  assign.field = field;
+  const core::OrderId standing = core::AppendRow(day.world.orders, assign);
+
+  // Day 0 is Monday (DayWorld sets day zero's weekday), so day 6 is the
+  // Sunday. Run up to it; the order is read on day 0 and stands from day 1.
+  for (std::uint32_t index = 0; index <= 5; ++index) {
+    day.RunDay(*labor, index);
+  }
+  // The rest day itself, measured mid-day: the close clears every
+  // assignment, so a look after the last tick sees nothing either way.
+  for (std::uint32_t hour = 0; hour <= 8; ++hour) {
+    day.world.calendar.tick = (6 * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  failures += Expect(day.world.calendar.weekday == core::Weekday::kSunday,
+                     "day six of a week beginning on Monday is the Sunday");
+  failures += Expect(day.world.residents.rows[0].work.field.value != field.value,
+                     "the chairman commands the work, not the calendar: no field on a rest day");
+  for (std::uint32_t hour = 9; hour < core::kTicksPerDay; ++hour) {
+    day.world.calendar.tick = (6 * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  // And the Monday after it: the order did not lapse over the weekend.
+  for (std::uint32_t hour = 0; hour <= 8; ++hour) {
+    day.world.calendar.tick = (7 * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  failures += Expect(day.world.residents.rows[0].work.field.value == field.value,
+                     "and on the Monday he is back on the job he was ordered to");
+
+  // Now his man dies. The order can no longer be released, superseded or
+  // finished by any rule there is, so it is closed here or never.
+  core::RemoveRow(day.world.residents, day.world.residents.row_ids[0]);
+  day.RunDay(*labor, 8);
+  const std::uint32_t orphan = core::FindRow(day.world.orders, standing);
+  failures +=
+      Expect(orphan != core::kNoRow &&
+                 day.world.orders.rows[orphan].status == core::OrderStatus::kRefused &&
+                 day.world.orders.rows[orphan].refusal == core::OrderRefusal::kNoSuchSubject,
+             "an order whose man is gone ends, and says why: the sweep can take it");
+  return failures;
+}
+
+/// Four corners the SECOND iteration of the delivery cycle found, and every
+/// one of them is about the fixes the first iteration made. This is the
+/// cycle reviewing its own edits, which is what it is for.
+///
+/// 1. The rest day must stop the same work it stops for everyone else and
+///    no more: a blanket "no standing orders on a Sunday" dropped the
+///    ordered cowman back into the pool while animals still had to be fed.
+/// 2. A construction order names a UNIT; the target check was looking for
+///    it in the fields table.
+/// 3. Closing orphaned orders had to come LAST, or a kReleaseWork arriving
+///    in the same step was told there was nothing to release.
+/// 4. A post and a standing order were refused in one direction only, so
+///    kAppoint after kAssignWork left both alive and the order overwrote
+///    the post every morning.
+int TestSecondIterationCorners() {
+  int failures = 0;
+  const EmptyTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables);
+  if (Expect(labor != nullptr, "factory yields a system") != 0) {
+    return 1;
+  }
+  DayWorld day(2);
+  const core::HerdId herd = day.AddUnitHerd(10, 30.0F);
+  const core::FieldId field =
+      day.AddField(core::FieldPhase::kHarvest, 400.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+
+  // One man ordered to the barn, one to the field. The Sunday must part them.
+  core::OrderRow to_barn;
+  to_barn.kind = core::OrderKind::kAssignWork;
+  to_barn.status = core::OrderStatus::kPending;
+  to_barn.resident = day.world.residents.row_ids[0];
+  to_barn.work = core::WorkKind::kHerdCare;
+  to_barn.herd = herd;
+  core::AppendRow(day.world.orders, to_barn);
+  core::OrderRow to_field;
+  to_field.kind = core::OrderKind::kAssignWork;
+  to_field.status = core::OrderStatus::kPending;
+  to_field.resident = day.world.residents.row_ids[1];
+  to_field.work = core::WorkKind::kHarvest;
+  to_field.field = field;
+  core::AppendRow(day.world.orders, to_field);
+
+  for (std::uint32_t index = 0; index <= 5; ++index) {
+    day.RunDay(*labor, index);
+  }
+  for (std::uint32_t hour = 0; hour <= 8; ++hour) {  // the Sunday, mid-day
+    day.world.calendar.tick = (6 * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  failures += Expect(day.world.calendar.weekday == core::Weekday::kSunday, "day six is the Sunday");
+  failures += Expect(day.world.residents.rows[0].work.kind == core::WorkKind::kHerdCare &&
+                         day.world.residents.rows[0].work.herd.value == herd.value,
+                     "the ordered cowman keeps his barn on a rest day: animals eat on Sunday");
+  failures += Expect(day.world.residents.rows[1].work.field.value != field.value,
+                     "and the ordered harvester does not go to the field");
+
+  // A construction order names a unit. Its target must be looked for among
+  // UNITS: routed to the fields table it can only ever be refused.
+  DayWorld site_day(1);
+  core::UnitRow site;
+  site.level = 0;
+  site.construction.labor_days_remaining = 10.0F;
+  const core::UnitId site_id = core::AppendRow(site_day.world.units, site);
+  core::OrderRow build;
+  build.kind = core::OrderKind::kAssignWork;
+  build.status = core::OrderStatus::kPending;
+  build.resident = site_day.world.residents.row_ids[0];
+  build.work = core::WorkKind::kConstruction;
+  build.unit = site_id;
+  const core::OrderId building = core::AppendRow(site_day.world.orders, build);
+  site_day.RunDay(*labor, 0);
+  const std::uint32_t build_row = core::FindRow(site_day.world.orders, building);
+  failures += Expect(build_row != core::kNoRow && site_day.world.orders.rows[build_row].status ==
+                                                      core::OrderStatus::kAccepted,
+                     "an order to build names a unit, and the unit is where it is looked for");
+
+  // A release arriving in the same step as the target's disappearance must
+  // still be a release, not "there is nothing to release him from".
+  DayWorld gone_day(1);
+  const core::HerdId doomed = gone_day.AddUnitHerd(4, 25.0F);
+  core::OrderRow tend;
+  tend.kind = core::OrderKind::kAssignWork;
+  tend.status = core::OrderStatus::kPending;
+  tend.resident = gone_day.world.residents.row_ids[0];
+  tend.work = core::WorkKind::kHerdCare;
+  tend.herd = doomed;
+  const core::OrderId standing = core::AppendRow(gone_day.world.orders, tend);
+  gone_day.RunDay(*labor, 0);
+  core::RemoveRow(gone_day.world.herds, doomed);
+  core::OrderRow release;
+  release.kind = core::OrderKind::kReleaseWork;
+  release.status = core::OrderStatus::kPending;
+  release.resident = gone_day.world.residents.row_ids[0];
+  const core::OrderId freeing = core::AppendRow(gone_day.world.orders, release);
+  gone_day.world.calendar.tick = core::kTicksPerDay;
+  core::RefreshCalendarCaches(gone_day.world.calendar);
+  {
+    const core::WorldState previous = gone_day.world;
+    labor->RunAssignmentDecisions(previous, gone_day.world);
+  }
+  const std::uint32_t freed_row = core::FindRow(gone_day.world.orders, freeing);
+  failures += Expect(freed_row != core::kNoRow &&
+                         gone_day.world.orders.rows[freed_row].status == core::OrderStatus::kDone,
+                     "a release in the step the herd vanished is still a release");
+  const std::uint32_t stood = core::FindRow(gone_day.world.orders, standing);
+  failures += Expect(
+      stood != core::kNoRow && gone_day.world.orders.rows[stood].status == core::OrderStatus::kDone,
+      "and the order it ended is done, not refused behind its back");
+  return failures;
+}
+
+int TestReleaseWork() {
+  int failures = 0;
+  const EmptyTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables);
+  if (Expect(labor != nullptr, "factory yields a system") != 0) {
+    return 1;
+  }
+  DayWorld day(1);
+  const core::FieldId field =
+      day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  core::OrderRow assign;
+  assign.kind = core::OrderKind::kAssignWork;
+  assign.status = core::OrderStatus::kPending;
+  assign.resident = day.world.residents.row_ids[0];
+  assign.work = core::WorkKind::kHarvest;
+  assign.field = field;
+  const core::OrderId standing = core::AppendRow(day.world.orders, assign);
+  day.RunDay(*labor, 0);
+
+  // Releasing a man nobody ordered is refused, and refused BY RULE rather
+  // than by subject: the man exists, the order does not.
+  core::OrderRow stray;
+  stray.kind = core::OrderKind::kReleaseWork;
+  stray.status = core::OrderStatus::kPending;
+  stray.resident = core::ResidentId{999};
+  const core::OrderId no_such = core::AppendRow(day.world.orders, stray);
+
+  core::OrderRow release;
+  release.kind = core::OrderKind::kReleaseWork;
+  release.status = core::OrderStatus::kPending;
+  release.resident = day.world.residents.row_ids[0];
+  const core::OrderId freed = core::AppendRow(day.world.orders, release);
+
+  day.world.calendar.tick = core::kTicksPerDay;
+  core::RefreshCalendarCaches(day.world.calendar);
+  {
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const auto status = [&](core::OrderId id) {
+    const std::uint32_t row = core::FindRow(day.world.orders, id);
+    // A removed row reads as kRefused rather than as a status of its own:
+    // there is no "no status", and the sweep only removes what ended.
+    return row == core::kNoRow ? core::OrderStatus::kRefused : day.world.orders.rows[row].status;
+  };
+  failures += Expect(status(freed) == core::OrderStatus::kDone, "the release is done");
+  failures += Expect(status(standing) == core::OrderStatus::kDone,
+                     "and the standing order it ended is done too: it ran as ordered");
+  const std::uint32_t stray_row = core::FindRow(day.world.orders, no_such);
+  failures += Expect(stray_row != core::kNoRow && day.world.orders.rows[stray_row].refusal ==
+                                                      core::OrderRefusal::kNoSuchSubject,
+                     "releasing a man who does not exist is refused for the man");
+  return failures;
+}
+
+/// The four ways a work order is turned down. Each of them is a real rule
+/// with a real cost if it is missed: a child sent to the harvest, a groom
+/// pulled off his post by a stray order, a field that was ploughed under
+/// yesterday. The refusal has to name WHICH — "no" without a reason is what
+/// the boundary already said before this task.
+int TestAssignWorkRefusals() {
+  int failures = 0;
+  const EmptyTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables);
+  if (Expect(labor != nullptr, "factory yields a system") != 0) {
+    return 1;
+  }
+  DayWorld day(2);
+  const core::FieldId field =
+      day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+
+  // The second man holds a post: he already has an answer to "what does this
+  // man do", and a work order would be a second one.
+  day.world.residents.rows[1].post.profession = core::ProfessionId{0};
+  day.world.residents.rows[1].post.unit = day.world.units.row_ids[0];
+
+  // A child of the same household: born today, and life runs four times the
+  // calendar, so he is nowhere near the working age.
+  core::ResidentRow child;
+  child.family = day.family;
+  child.birth_day = 0;
+  const core::ResidentId child_id = core::AppendRow(day.world.residents, child);
+
+  const auto order = [&](core::ResidentId resident, core::FieldId target) {
+    core::OrderRow row;
+    row.kind = core::OrderKind::kAssignWork;
+    row.status = core::OrderStatus::kPending;
+    row.resident = resident;
+    row.work = core::WorkKind::kHarvest;
+    row.field = target;
+    return core::AppendRow(day.world.orders, row);
+  };
+  const core::OrderId no_man = order(core::ResidentId{999}, field);
+  const core::OrderId no_field = order(day.world.residents.row_ids[0], core::FieldId{999});
+  const core::OrderId on_post = order(day.world.residents.row_ids[1], field);
+  const core::OrderId too_young = order(child_id, field);
+
+  {
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const auto refusal = [&](core::OrderId id) {
+    const std::uint32_t row = core::FindRow(day.world.orders, id);
+    if (row == core::kNoRow || day.world.orders.rows[row].status != core::OrderStatus::kRefused) {
+      return core::OrderRefusal::kNone;  // not refused at all: the test says so below
+    }
+    return day.world.orders.rows[row].refusal;
+  };
+  failures += Expect(refusal(no_man) == core::OrderRefusal::kNoSuchSubject,
+                     "work for a man who does not exist is refused for the man");
+  failures += Expect(refusal(no_field) == core::OrderRefusal::kNoSuchSubject,
+                     "and work on a field that does not exist, for the field");
+  failures += Expect(refusal(on_post) == core::OrderRefusal::kConflictsWithActive,
+                     "a post holder is not to be ordered off his post by a work order");
+  failures += Expect(refusal(too_young) == core::OrderRefusal::kNotEligible,
+                     "and a child is not eligible for work at all");
+  failures += Expect(day.world.residents.rows[1].post.profession.value == 0,
+                     "the refused order left the post where it was");
+  return failures;
+}
+
+int TestWorkforceIsTheLaborRule() {
+  int failures = 0;
+  const EmptyTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables);
+  if (Expect(labor != nullptr, "factory yields a system") != 0) {
+    return 1;
+  }
+  DayWorld day(3);
+  // A child, and a grown man with no household to start the day from: the
+  // two reasons the core knows that a birthday alone does not tell.
+  day.world.residents.rows[1].birth_day = -10;            // an infant
+  day.world.residents.rows[2].family = core::FamilyId{};  // nobody's household
+
+  const core::WorkforceCount before = labor->CountWorkforce(day.world);
+  failures += Expect(before.employable == 1,
+                     "the count is the labor rule: an adult with a home, and nobody else");
+  failures += Expect(before.idle == 1, "and before the day is placed he is standing about");
+  failures += Expect(labor->CanBeOrdered(day.world, day.world.residents.row_ids[0]),
+                     "the man himself answers yes");
+  failures += Expect(!labor->CanBeOrdered(day.world, day.world.residents.row_ids[1]),
+                     "the child answers no");
+  failures += Expect(!labor->CanBeOrdered(day.world, core::ResidentId{999}),
+                     "and a man who does not exist answers no rather than crashing");
+
+  // Put him to work and he stops being idle — the number the HUD paints red
+  // is the one that moves.
+  day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  for (std::uint32_t hour = 0; hour <= 8; ++hour) {
+    day.world.calendar.tick = hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const core::WorkforceCount working = labor->CountWorkforce(day.world);
+  failures += Expect(working.employable == 1 && working.idle == 0,
+                     "a placed man is employable and not idle");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestSurplusIdles();
@@ -1002,6 +1499,12 @@ int main() {
   failures += TestAppointmentRefusals();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
   failures += TestYardWithoutGroomAlarm();
+  failures += TestStandingWorkOrder();
+  failures += TestReleaseWork();
+  failures += TestAssignWorkRefusals();
+  failures += TestStandingWorkCorners();
+  failures += TestSecondIterationCorners();
+  failures += TestWorkforceIsTheLaborRule();
   if (failures == 0) {
     std::cout << "unit_core_labor: all checks passed\n";
   }

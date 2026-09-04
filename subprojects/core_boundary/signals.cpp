@@ -113,8 +113,13 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   // keyframes blend on and the office's mice read.
   signals.wear = world.units.rows[unit_row].wear;
 
-  // paused, prank_marks: STUB at their neutral values until the kPauseUnit
-  // consumer and project phase 3 fill them.
+  // The pause is the row's own since task A8: core_production sets the byte
+  // when it reads kPauseUnit, and the layer needs it to show a yard standing
+  // still. What a stopped unit actually stops is unit rules §5 — today,
+  // in the slice, that is the wear that no longer grows.
+  signals.paused = world.units.rows[unit_row].paused;
+
+  // prank_marks: STUB at its neutral value until project phase 3.
   return signals;
 }
 

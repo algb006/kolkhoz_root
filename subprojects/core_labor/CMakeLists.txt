@@ -8,7 +8,8 @@ kolkhoz_add_module(core_labor
     labor_config.cpp
     labor_day.cpp
     labor_system.cpp
-    posts.cpp)
+    posts.cpp
+    work_orders.cpp)
 
 target_link_libraries(core_labor
     PUBLIC core_common

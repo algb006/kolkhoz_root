@@ -354,6 +354,11 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
 
   // Wear (task A5): the building's own age, which nothing can rederive.
   out.WriteFloat(row.wear);
+  // The pause byte went into padding the row already had, so sizeof(UnitRow)
+  // did NOT move and the tripwire above stayed silent — the same trap task
+  // A7 sprang with OrderRow::profession. The wire grew all the same, and
+  // that is what VERSION_SAVE counts.
+  out.WriteU8(row.paused);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -372,6 +377,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.labor_days_remaining = in.ReadFloat();
   row.construction.max_crew = in.ReadU8();
   row.wear = in.ReadFloat();
+  row.paused = in.ReadU8();
   return row;
 }
 

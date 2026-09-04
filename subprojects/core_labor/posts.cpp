@@ -9,6 +9,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "labor_day.h"
+#include "work_orders.h"
 
 namespace core {
 namespace {
@@ -132,6 +133,25 @@ OrderRefusal CheckAppointment(const LaborConfig& config,
   if (slot->slots != 0 &&
       HoldersAt(world, order.profession, order.unit, order.resident) >= slot->slots) {
     return OrderRefusal::kNoVacancy;
+  }
+  // AND THE SAME RULE THE OTHER WAY ROUND (task A8 delivery cycle).
+  // CheckAssignWork refuses a work order for a man who holds a post — "two
+  // answers to what this man does is one too many" — but the reverse was
+  // not checked, so kAppoint after kAssignWork left BOTH alive and the
+  // standing order quietly overwrote the post placement every morning.
+  // That is exactly the outcome 76-work-orders.md §2 forbids, arrived at
+  // from the other side. Whichever of the two arrives second is refused;
+  // the chairman releases him first, and that is one order, not a guess.
+  if (StandingWorkRow(world, order.resident, kNoRow) != kNoRow &&
+      !ReleaseIsInTheBook(world, order.resident)) {
+    // ... unless the chairman is releasing him in the same batch. "Release
+    // him, then appoint him" is one gesture in the office and two rows in
+    // one book, and the two work verbs are read AFTER the two post verbs in
+    // the tick — so without this the appointment would be refused against
+    // an order settled kDone a few statements later, and the man would end
+    // the step with neither post nor work. The workflow this refusal
+    // prescribes must not be the workflow it breaks.
+    return OrderRefusal::kConflictsWithActive;
   }
   return OrderRefusal::kNone;
 }

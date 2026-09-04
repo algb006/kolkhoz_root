@@ -49,6 +49,7 @@
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
+#include "work_orders.h"
 
 namespace core {
 namespace {
@@ -121,6 +122,28 @@ class LaborSystem final : public ILaborSystem {
     // and an order issued at midnight would take effect the same midnight —
     // a man's post changed while his day was still being paid out.
     ReadPostOrders(current);
+    // The two work verbs read here for the same reason posts do: an order
+    // arriving today takes effect from the NEXT working day (time design
+    // §11), and reading LAST in the tick is what makes that true without a
+    // second flag to remember the day by.
+    ReadWorkOrders(config_, current);
+  }
+
+  bool CanBeOrdered(const WorldState& state, ResidentId resident) const override {
+    const std::uint32_t row = FindRow(state.residents, resident);
+    return row != kNoRow && Employable(state, state.residents.rows[row]);
+  }
+
+  WorkforceCount CountWorkforce(const WorldState& state) const override {
+    WorkforceCount count;
+    for (const ResidentRow& resident : state.residents.rows) {
+      if (!Employable(state, resident)) {
+        continue;
+      }
+      ++count.employable;
+      count.idle += resident.work.kind == WorkKind::kNone ? 1U : 0U;
+    }
+    return count;
   }
 
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
@@ -274,27 +297,50 @@ class LaborSystem final : public ILaborSystem {
     }
     RefillHerdCare(current);
     AssignPostHolders(current);
+    // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
+    // function, because the chairman's orders below it must run on days the
+    // accountant has nothing to do. A day off, or a winter day with every
+    // field idle and no load lying, gives an empty job list — and the two
+    // bare early returns that used to stand here skipped the standing
+    // orders with it. work_orders.h promises the opposite: a standing order
+    // whose target has no work today leaves its man IDLE, not unassigned.
     const std::vector<AssignmentJob> jobs = CollectJobs(current);
-    if (jobs.empty()) {
-      return;
-    }
-    const std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
-    if (candidates.empty()) {
-      return;
-    }
-    const std::vector<std::uint32_t> plan =
-        PlanDayAssignments(jobs, candidates, DayParams(current));
-    for (std::uint32_t index = 0; index < candidates.size(); ++index) {
-      if (plan[index] == kNoJobAssigned) {
-        continue;
+    if (!jobs.empty()) {
+      const std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
+      if (!candidates.empty()) {
+        const std::vector<std::uint32_t> plan =
+            PlanDayAssignments(jobs, candidates, DayParams(current));
+        for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+          if (plan[index] == kNoJobAssigned) {
+            continue;
+          }
+          const AssignmentJob& job = jobs[plan[index]];
+          WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
+          work.kind = job.kind;
+          work.field = job.field;
+          work.herd = job.herd;
+          work.unit = job.unit;
+        }
       }
-      const AssignmentJob& job = jobs[plan[index]];
-      WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
-      work.kind = job.kind;
-      work.field = job.field;
-      work.herd = job.herd;
-      work.unit = job.unit;
     }
+    // AND THE CHAIRMAN OVERRULES THE ACCOUNTANT, last and without argument
+    // (delegation design §7, management by exception). It is done after the
+    // placement rather than by excluding these men from it, and the
+    // difference is the point: the accountant plans the day as if they were
+    // his, and one man is then taken off that plan. Nothing is revoked —
+    // "one overridden placement leaves the delegation as it was".
+    //
+    // THE REST DAY IS SAID OUT LOUD HERE, and it used to be said by
+    // accident. The chairman commands the work, not the calendar: a
+    // standing order does not send a man to the field on a Sunday. Before
+    // the delivery cycle of task A8 that came out of CollectJobs returning
+    // an empty list on a day off and StartDay returning with it — which
+    // held only in a village with no barn, because herd care is collected
+    // on a day off too (animals eat on Sunday). Where a barn stood, the
+    // list was not empty, the return did not happen, and the chairman's man
+    // worked every Sunday of his life. One rule must not depend on whether
+    // an unrelated one had anything to say.
+    ApplyStandingWork(current, current, IsDayOff(current.calendar.weekday, current.epoch));
   }
 
   /// The holder's morning (manual/74-posts.md §4): he is out of the
@@ -484,6 +530,22 @@ class LaborSystem final : public ILaborSystem {
         calendar, kind == WorkKind::kHarvest ? windows.harvest_to_month : windows.sow_to_month);
   }
 
+  /// @brief Whether this man could be put to work at all — THE SAME TEST
+  /// the accountant applies each morning, which is the whole point of it
+  /// being one function: `CollectCandidates` calls it, and so does the
+  /// boundary's answer to the layer. A second copy would drift the day
+  /// somebody added a reason and touched only one of them.
+  ///
+  /// A POST HOLDER IS EMPLOYABLE and deliberately so: he is out of the
+  /// accountant's pool because he has his own place, not because he cannot
+  /// be given work. Counting him idle would put the village's groom into a
+  /// red number every day of his life.
+  bool Employable(const WorldState& state, const ResidentRow& resident) const {
+    Vec2 home;
+    const float age = BiologicalAgeYears(config_, resident.birth_day, state.calendar.day);
+    return age >= config_.adult_age_years && HomePosition(state, resident.family, home);
+  }
+
   /// Everyone of working age whose day can start somewhere. Children are
   /// left out entirely: child labor (life-cycle §7) is deferred.
   std::vector<AssignmentCandidate> CollectCandidates(const WorldState& current) const {
@@ -493,11 +555,11 @@ class LaborSystem final : public ILaborSystem {
     candidates.reserve(current.residents.rows.size());
     for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
       const ResidentRow& resident = current.residents.rows[row];
-      const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
       Vec2 home;
-      if (age < config_.adult_age_years || !HomePosition(current, resident.family, home)) {
+      if (!Employable(current, resident) || !HomePosition(current, resident.family, home)) {
         continue;
       }
+      const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
       if (resident.post.profession.value != kInvalidDefIdValue) {
         continue;  // he has a place of his own; the accountant does not touch him
       }

@@ -151,6 +151,13 @@ class ConstructionSystem final : public IConstructionSystem {
       if (type.has_wear == 0) {
         continue;  // a heap, a stack, a trench: nothing to wear
       }
+      if (unit.paused != 0) {
+        // A STOPPED UNIT DOES NOT WEAR OUT (unit rules §15, and §5 lists it
+        // among what a pause changes). This is the one effect of a pause the
+        // slice can actually show: the rest of §5 needs unit work cycles,
+        // and the core has none. Task A8.
+        continue;
+      }
       const bool is_old_house = type_is_old_house(unit.type);
       const float years = is_old_house ? config_.old_house_collapse_years
                                        : WearYears(type, unit.level, InUse(current, row));

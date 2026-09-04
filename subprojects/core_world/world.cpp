@@ -254,6 +254,14 @@ class StandardSimulation final : public ISimulation {
   /// same reason, so that the list a caller gets is a function of the state
   /// and nothing else. Labor owns none yet; when assignments arrive (task
   /// A7, the yard without a stableman) it takes its place first, here.
+  bool CanBeOrdered(ResidentId resident) const override {
+    return labor_->CanBeOrdered(engine_->CompletedState(), resident);
+  }
+
+  WorkforceCount Workforce() const override {
+    return labor_->CountWorkforce(engine_->CompletedState());
+  }
+
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
     const WorldState& completed = engine_->CompletedState();
     labor_->CollectAlarms(completed, alarms);

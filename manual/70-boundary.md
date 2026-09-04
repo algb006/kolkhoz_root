@@ -20,16 +20,17 @@
 
 ## 1. Граница одним взглядом
 
-**Один объект — `ISession`, двадцать один метод — каждая перегрузка считается отдельно, — две
+**Один объект — `ISession`, двадцать три метода — каждая перегрузка считается отдельно, — две
 функции кодека, одна фабрика.** (Четырнадцать при принятии; семнадцать после задачи А2, добавившей
-второй `ReplaceWorld`, `StagedBatch` и `MapSideMeters`; двадцать один с читателями журнала событий.
+второй `ReplaceWorld`, `StagedBatch` и `MapSideMeters`; двадцать один с читателями журнала событий;
+двадцать три после А8, добавившей два вопроса о рабочих руках.
 Всё это добавления, и каждое — `minor`, §6.) Через него
 графика, панели UE и прогон с ботом-политикой ведут партию.
 
 | Группа | Методы | Направление |
 |---|---|---|
 | **Время** | `AdvanceStep`, `AdvanceUntil` | вверх: «считай» |
-| **Чтение** | `Stamp`, `State`, `SignalsOfUnit`, `SignalsOfField`, `WhereaboutsOf`, `ActiveAlarms` | вниз: состояние и выводимое из него |
+| **Чтение** | `Stamp`, `State`, `SignalsOfUnit`, `SignalsOfField`, `WhereaboutsOf`, `ActiveAlarms`, `CanBeOrdered`, `Workforce` | вниз: состояние и выводимое из него |
 | **Распоряжения** | `IssueOrder`, `CancelOrder` | вверх: команды, и только эти два глагола |
 | **События** | `Events`, `AcknowledgeEvents` — читатель по умолчанию; `OpenEventReader`, `Events(reader)`, `AcknowledgeEvents(reader, n)`, `CloseEventReader` — любой следующий | вниз: что случилось |
 | **Запись** | `TakeJournal`, `ReplaceWorld` (две формы), `StagedBatch` | журнал команд; загрузка — с пачкой и без |
@@ -319,7 +320,7 @@ virtual void StageOrders(std::span<const OrderRow> issued,
 |---|---|---|
 | `UnitSignals::wear` | ~~0~~ **сдано А5, 03.09.2026:** отдаёт `UnitRow::wear` ([Износ и ремонт](73-wear-and-repair.md)) | — |
 | `UnitSignals::indoor_temperature_celsius` | температура воздуха | отопление, позже |
-| `UnitSignals::paused` | 0 | потребитель `kPauseUnit` в `core_production` |
+| `UnitSignals::paused` | ~~0~~ **сдано А8, 04.09.2026:** отдаёт `UnitRow::paused` — байт, который ставит потребитель `kPauseUnit` в `core_production` ([Наряды §4](76-work-orders.md#4-пауза-юнита-один-байт-и-одно-следствие)) | — |
 | `UnitSignals::prank_marks` | 0 | фаза III |
 | `ResidentWhereabouts` | дома / на работе по часам наряда, `kOnTheRoad` не бывает | задача труда: время выхода и прихода на назначении |
 | `AlarmKind` | ~~одно значение `kNone`~~ **спроектировано А3, 03.09.2026:** реестр семи видов переехал в `core_common/alarm_state.h`, предикаты — у подсистем, сессия только сортирует ([Склады и алармы](72-storage-and-alarms.md)) | А3 (реализация — Opus) |

@@ -22,12 +22,12 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — twenty-one methods, counting
+/// concrete, and it is deliberately small — twenty-three methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
-///               WhereaboutsOf, ActiveAlarms
+///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -36,8 +36,9 @@
 ///
 /// (Fourteen at first; seventeen after task A2 added the second
 /// ReplaceWorld, StagedBatch and MapSideMeters; twenty-one since the event
-/// log gained readers — all additions, which is what the contract's minor
-/// number is for; 70-boundary.md §6.)
+/// log gained readers; twenty-three since task A8 added the two workforce
+/// questions — all additions, which is what the contract's minor number is
+/// for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
 /// the session and drains the event log for its HUD and its fast-forward
@@ -175,8 +176,10 @@ struct UnitSignals {
   /// temperature until heating exists (heating design; a later task).
   float indoor_temperature_celsius = 0.0F;
 
-  /// 0/1: production stopped by a kPauseUnit order (unit rules §5). STUB:
-  /// 0 until the consumer of that order lands in core_production.
+  /// 0/1: production stopped by a kPauseUnit order (unit rules §5). Real
+  /// since task A8. What the pause stops in the slice is the wear: a
+  /// stopped unit does not age. Unit WORK cycles do not exist yet, so
+  /// nothing else about the unit changes when this turns 1.
   std::uint8_t paused = 0;
 
   /// Fresh marks of children's pranks — the broken panes that do not move
@@ -468,6 +471,19 @@ class ISession {
   /// @brief Where `resident` is, derived from State() now.
   /// @return place == kUnknown for a resident that does not exist.
   virtual ResidentWhereabouts WhereaboutsOf(ResidentId resident) const = 0;
+
+  /// @brief Whether `resident` could be given a work order at all — of
+  /// working age, alive, with a household to start the day from.
+  /// @return false for a resident that does not exist.
+  /// @note The age threshold comes from life.csv through the labor
+  ///       subsystem's own configuration, so this answer moves when the
+  ///       table moves. That is the whole reason the question is asked here
+  ///       rather than of a birthday.
+  virtual bool CanBeOrdered(ResidentId resident) const = 0;
+
+  /// @brief The two workforce numbers over the whole settlement, derived
+  /// from State() now.
+  virtual WorkforceCount Workforce() const = 0;
 
   /// @brief The conditions standing in the completed state — the roster
   /// and the fields each kind fills are core_common/alarm_state.h.
