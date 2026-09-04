@@ -168,7 +168,25 @@ if exist "%BUILD_DIR%\bin\core_layout.exe" (
     exit /b 1
 )
 
+rem THE TABLES TRAVEL WITH THE LIBRARY, and they sit BESIDE the configurations
+rem rather than inside each: they do not depend on Debug or Release, and two
+rem copies would be two homes that differ one day. The version is carried by
+rem the path, so the tables get no number of their own - a second number is a
+rem second thing to disagree with the first.
+rem
+rem Why at all: a library without its tables computes nothing. Headers and lib
+rem travelled with a number while the tables came from somebody's working tree
+rem at some other moment - that is not two deliveries, it is one torn in half,
+rem and it emptied the graphics layer's world (boss, 2026-09-04).
+set "TABLES_DIR=%PROJECT_DIR%\publish\%CORE_VERSION%\tables"
+if exist "%TABLES_DIR%" rmdir /s /q "%TABLES_DIR%"
+xcopy /E /I /Y /Q "%PROJECT_DIR%\tables" "%TABLES_DIR%" >nul
+if errorlevel 1 (
+    echo [core] the tables could not be published
+    exit /b 1
+)
+
 set /p PUBLISHED_VERSION=<"%PUBLISH_DIR%\VERSION"
-echo [core] published %BUILD_TYPE% %PUBLISHED_VERSION%
+echo [core] published %BUILD_TYPE% %PUBLISHED_VERSION% + tables
 echo [core] ok: %BUILD_DIR%
 exit /b 0

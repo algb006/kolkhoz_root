@@ -8,6 +8,7 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 #include "core_tables/tables.h"
@@ -51,6 +52,54 @@ int main() {
             "# legumes restore\n"
             "pea,Pea,800.5,32,2,\"has \"\"quotes\"\"\"\n");
   WriteFile(root / "good" / "constants.csv", "\xEF\xBB\xBFname,value\r\nspeed_factor,12\r\n");
+
+  // THE COMMENT LINE IS PROSE, and prose has quotes and commas in it. Both
+  // used to reach the tokenizer: the quote failed the whole file with
+  // "stray quote in an unquoted cell", the comma quietly split the comment
+  // into cells and was saved only by the row being thrown away afterwards.
+  // A table that will not load empties the consumer's world, and it was the
+  // graphics layer that found it, not us (boss, 2026-09-04).
+  std::string prose_error;
+  fs::create_directories(root / "prose");
+  WriteFile(root / "prose" / "notes.csv",
+            "key,value\n"
+            "# a comment with \"quotes\" in it, and a comma too\n"
+            "  # indented, and still a comment\n"
+            "alpha,1\n"
+            "#\n"
+            "beta,2\n");
+  const auto prose = core::LoadTableSet((root / "prose").string(), &prose_error);
+  failures += Expect(prose != nullptr, "a comment with quotes and commas does not fail the table");
+  if (prose != nullptr) {
+    const core::ITable* notes = prose->FindTable("notes");
+    failures += Expect(notes != nullptr && notes->RowCount() == 2,
+                       "and the comments are gone while both data rows stay");
+  }
+
+  // AND THE TRAP IN THE OBVIOUS FIX. Sweeping the text for lines that begin
+  // with '#' would pass the two checks above and silently eat this one: a
+  // quoted cell may span lines, and a continuation line beginning with '#'
+  // is DATA, not a comment. Deciding at the start of a line WITH the quote
+  // state is what tells them apart.
+  fs::create_directories(root / "spanning");
+  WriteFile(root / "spanning" / "notes.csv",
+            "key,note\n"
+            "# a real comment\n"
+            "alpha,\"first line\n"
+            "# not a comment: this is inside the cell\n"
+            "last line\"\n"
+            "beta,plain\n");
+  const auto spanning = core::LoadTableSet((root / "spanning").string(), &prose_error);
+  failures += Expect(spanning != nullptr, "a table with a multi-line quoted cell loads");
+  if (spanning != nullptr) {
+    const core::ITable* notes = spanning->FindTable("notes");
+    failures += Expect(notes != nullptr && notes->RowCount() == 2, "and it is two rows, not three");
+    if (notes != nullptr && notes->RowCount() == 2) {
+      const std::string_view cell = notes->CellText(0, notes->FindColumn("note"));
+      failures += Expect(cell.find("# not a comment") != std::string_view::npos,
+                         "the hash line INSIDE the quoted cell survived as data");
+    }
+  }
 
   // A good directory loads whole.
   std::string error;

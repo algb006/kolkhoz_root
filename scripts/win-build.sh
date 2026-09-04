@@ -18,6 +18,7 @@
 # keeps the previous one standing while the next appears.
 #
 #     publish/0.17.0/{Debug,Release}/{include,lib,VERSION,LAYOUT.txt}
+#     publish/0.17.0/tables/           <- beside the configurations, not in them
 #     publish/0.16.0/...
 #     publish/current      <- a FILE holding "0.17.0"
 #
@@ -206,6 +207,15 @@ for config in Debug Release; do
     exit 1
   fi
 done
+# A library without its tables computes nothing, so the tables are part of the
+# delivery and not a separate errand. They sit BESIDE the configurations —
+# publish/<version>/tables — because they do not depend on Debug or Release,
+# and one copy cannot disagree with another. Checked here for the same reason
+# the libraries are: what current names has to be whole.
+if ! ssh "${host}" "test -d '${remote_dir}/publish/${version}/tables'"; then
+  echo "ОТКАЗ: библиотеки на месте, а таблиц нет — без них ядро не считает ничего." >&2
+  exit 1
+fi
 for config in Debug Release; do
   fetch_artifacts "${config}"
 done

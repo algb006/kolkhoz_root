@@ -38,9 +38,25 @@ using CsvRows = std::vector<std::vector<std::string>>;
 /// The 65535 cap of tables.h: DefId is uint16 with 0xFFFF reserved.
 constexpr std::uint32_t kMaxDataRows = 65535;
 
-/// @brief Splits raw CSV text into rows of cells per RFC 4180.
+/// @brief Splits raw CSV text into rows of cells per RFC 4180, dropping
+/// COMMENT LINES as it goes.
 /// Returns false (with `error` filled) on a structural defect: an unclosed
 /// quoted cell, or a stray quote inside an unquoted cell.
+///
+/// THE COMMENT IS DECIDED HERE AND NOT AFTERWARDS, and that is the fix to a
+/// blocker that emptied the graphics layer's world (boss, 2026-09-04). The
+/// comment rows used to be dropped after the whole file had been tokenised,
+/// so a `"` anywhere in a `#` line hit "stray quote in an unquoted cell" and
+/// took the WHOLE TABLE down — and with it the consumer's world, not ours.
+/// These comments are prose, and quotes are natural in prose; that no table
+/// carried one was luck, not a guard.
+///
+/// AND IT IS DECIDED AT THE START OF A LINE, WITH THE QUOTE STATE IN HAND,
+/// rather than by sweeping the text for lines beginning with '#'. That
+/// sweep is the obvious fix and it is wrong: a quoted cell may span lines,
+/// and a continuation line that happens to begin with '#' is DATA. Asking
+/// the question only when a line begins outside quotes gets that right by
+/// construction instead of by a second rule that has to remember it.
 bool ParseCsv(std::string_view text, CsvRows& rows, std::string& error) {
   // Sheets exports often lead with a BOM; the canon has none — strip it.
   if (text.starts_with("\xEF\xBB\xBF")) {
@@ -51,6 +67,7 @@ bool ParseCsv(std::string_view text, CsvRows& rows, std::string& error) {
   bool in_quotes = false;
   bool cell_was_quoted = false;
   std::size_t position = 0;
+  bool at_line_start = true;
   const std::size_t size = text.size();
   auto end_cell = [&row, &cell, &cell_was_quoted]() {
     row.push_back(std::move(cell));
@@ -66,6 +83,23 @@ bool ParseCsv(std::string_view text, CsvRows& rows, std::string& error) {
     row.clear();
   };
   while (position < size) {
+    if (at_line_start && !in_quotes) {
+      // Leading blanks do not make a line something other than a comment.
+      std::size_t look = position;
+      while (look < size && (text[look] == ' ' || text[look] == '\t')) {
+        ++look;
+      }
+      if (look < size && text[look] == '#') {
+        while (position < size && text[position] != '\n') {
+          ++position;
+        }
+        if (position < size) {
+          ++position;  // and the newline with it: the row was never begun
+        }
+        continue;  // still at the start of a line, and still outside quotes
+      }
+      at_line_start = false;
+    }
     const char character = text[position];
     if (in_quotes) {
       if (character == '"') {
@@ -99,6 +133,7 @@ bool ParseCsv(std::string_view text, CsvRows& rows, std::string& error) {
         break;
       case '\n':
         end_row();
+        at_line_start = true;
         break;
       default:
         cell.push_back(character);
@@ -270,10 +305,11 @@ std::unique_ptr<CsvTable> LoadOneTable(const std::filesystem::path& path, std::s
   if (!ParseCsv(text, parsed, error)) {
     return nullptr;
   }
-  // Drop comment rows: first cell starting with '#'.
-  std::erase_if(parsed, [](const std::vector<std::string>& row) {
-    return !row.empty() && row.front().starts_with('#');
-  });
+  // No comment filter here any more: ParseCsv drops them at the start of a
+  // line, where the quote state is known. Filtering after the parse could
+  // only ever be the second half of a rule whose first half had already
+  // failed — and it would also have eaten a legitimate quoted cell whose
+  // text begins with a hash.
   if (parsed.empty()) {
     error = "no header row";
     return nullptr;
