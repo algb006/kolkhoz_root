@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_common/calendar.h"
 #include "core_common/herd_state.h"
 #include "core_common/state_table_ops.h"
@@ -28,75 +29,7 @@ int Expect(bool condition, const char* label) {
   return 1;
 }
 
-class EmptyTableSet final : public core::ITableSet {
- public:
-  const core::ITable* FindTable(std::string_view /*name*/) const override { return nullptr; }
-
-  std::uint32_t TableCount() const override { return 0; }
-
-  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
-};
-
 /// @brief One table held in memory, so a test can hand genesis a cell no
-/// shipped file contains. Column 0 is the key column, as in the dialect.
-class FakeTable final : public core::ITable {
- public:
-  FakeTable(std::vector<std::string> header, std::vector<std::vector<std::string>> rows)
-      : header_(std::move(header)), rows_(std::move(rows)) {}
-
-  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
-
-  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(header_.size()); }
-
-  std::uint32_t FindColumn(std::string_view name) const override {
-    for (std::uint32_t index = 0; index < header_.size(); ++index) {
-      if (header_[index] == name) {
-        return index;
-      }
-    }
-    return core::kNoTableColumn;
-  }
-
-  std::uint32_t FindRowByKey(std::string_view key) const override {
-    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
-      if (!rows_[row].empty() && rows_[row][0] == key) {
-        return row;
-      }
-    }
-    return core::kNoTableRow;
-  }
-
-  std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
-    if (row >= rows_.size() || column >= rows_[row].size()) {
-      return {};
-    }
-    return rows_[row][column];
-  }
-
-  std::optional<std::int64_t> CellInteger(std::uint32_t row, std::uint32_t column) const override {
-    const std::optional<float> value = CellReal(row, column);
-    if (!value) {
-      return std::nullopt;
-    }
-    return static_cast<std::int64_t>(*value);
-  }
-
-  /// The shipped loader refuses a non-finite cell (tables.h). This fake does
-  /// NOT: its whole purpose is to hand genesis the value the loader would
-  /// have stopped, and prove that the reader stops it too.
-  std::optional<float> CellReal(std::uint32_t row, std::uint32_t column) const override {
-    const std::string_view text = CellText(row, column);
-    if (text.empty()) {
-      return std::nullopt;
-    }
-    return std::strtof(std::string(text).c_str(), nullptr);
-  }
-
- private:
-  std::vector<std::string> header_;
-
-  std::vector<std::vector<std::string>> rows_;
-};
 
 /// @brief Replaces every value of `column` in a CSV with `value`, keeping the
 /// file otherwise as it is. Returns false when the column is not there, so a
@@ -166,28 +99,6 @@ bool SpoilLivestockCell(const std::filesystem::path& path,
   return true;
 }
 
-/// @brief A table set holding exactly one named table.
-class OneTableSet final : public core::ITableSet {
- public:
-  OneTableSet(std::string name, const core::ITable* table)
-      : name_(std::move(name)), table_(table) {}
-
-  const core::ITable* FindTable(std::string_view name) const override {
-    return name == name_ ? table_ : nullptr;
-  }
-
-  std::uint32_t TableCount() const override { return 1; }
-
-  std::string_view TableName(std::uint32_t index) const override {
-    return index == 0 ? std::string_view(name_) : std::string_view();
-  }
-
- private:
-  std::string name_;
-
-  const core::ITable* table_;
-};
-
 }  // namespace
 
 int main() {
@@ -202,7 +113,7 @@ int main() {
   failures += Expect(config.worker_count == 1, "config defaults to the verification mode");
 
   // Genesis STUB: an empty world at day 0, deterministic from the seed.
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const core::WorldState world = core::CreateStartWorld(tables, 12345);
   failures += Expect(world.world_seed == 12345, "genesis stores the seed");
   failures += Expect(world.calendar.tick == 0, "genesis starts at tick 0");

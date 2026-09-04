@@ -17,6 +17,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
 
@@ -30,51 +31,36 @@ int Expect(bool condition, const char* label) {
   return 1;
 }
 
-/// One in-memory table: a header row plus data rows.
+/// A table whose CellReal LETS `nan` and `inf` THROUGH, unlike the shipped
+/// reader and unlike the shared fake in tests/common/fake_tables.h.
 ///
-/// Its CellReal DELIBERATELY lets `nan` and `inf` through, exactly as
-/// `from_chars` does and as the shipped reader did until UB-004 was closed.
-/// The range test is the second lock on that door, and a test whose fake
-/// closes the first lock cannot tell whether the second one is there.
-class FakeTable final : public core::ITable {
+/// That is this test's SUBJECT, not a shortcut. csv_table_set.cpp refuses
+/// non-finite values at the door, and the range test here is the second lock
+/// on that door; a fake that closes the first lock cannot tell whether the
+/// second one is there at all. So the leak is deliberate, local, and says so.
+class LeakyTable final : public core::ITable {
  public:
-  FakeTable(std::vector<std::string_view> columns, std::vector<std::vector<std::string_view>> rows)
-      : columns_(std::move(columns)), rows_(std::move(rows)) {}
+  explicit LeakyTable(test::FakeTable table) : table_(std::move(table)) {}
 
-  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
+  std::uint32_t RowCount() const override { return table_.RowCount(); }
 
-  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(columns_.size()); }
+  std::uint32_t ColumnCount() const override { return table_.ColumnCount(); }
 
-  std::uint32_t FindColumn(std::string_view name) const override {
-    for (std::uint32_t index = 0; index < columns_.size(); ++index) {
-      if (columns_[index] == name) {
-        return index;
-      }
-    }
-    return core::kNoTableColumn;
-  }
+  std::uint32_t FindColumn(std::string_view name) const override { return table_.FindColumn(name); }
 
   std::uint32_t FindRowByKey(std::string_view key) const override {
-    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
-      if (!rows_[row].empty() && rows_[row][0] == key) {
-        return row;
-      }
-    }
-    return core::kNoTableRow;
+    return table_.FindRowByKey(key);
   }
 
   std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
-    if (row >= rows_.size() || column >= rows_[row].size()) {
-      return {};
-    }
-    return rows_[row][column];
+    return table_.CellText(row, column);
   }
 
   std::optional<std::int64_t> CellInteger(std::uint32_t row, std::uint32_t column) const override {
-    const std::optional<float> value = CellReal(row, column);
-    return value ? std::optional<std::int64_t>(static_cast<std::int64_t>(*value)) : std::nullopt;
+    return table_.CellInteger(row, column);
   }
 
+  /// `std::from_chars` and nothing else — no isfinite, on purpose.
   std::optional<float> CellReal(std::uint32_t row, std::uint32_t column) const override {
     const std::string_view text = CellText(row, column);
     if (text.empty()) {
@@ -90,26 +76,24 @@ class FakeTable final : public core::ITable {
   }
 
  private:
-  std::vector<std::string_view> columns_;
-
-  std::vector<std::vector<std::string_view>> rows_;
+  test::FakeTable table_;
 };
 
 /// life.csv as a key/value table, with one of every kind of trouble in it.
-FakeTable KnobTable() {
-  return FakeTable({"key", "value"},
-                   {{"good", "4"},
-                    {"empty", ""},
-                    {"words", "four"},
-                    {"too_big", "1000"},
-                    {"negative", "-1"},
-                    {"not_a_number", "nan"},
-                    {"infinite", "inf"}});
+LeakyTable KnobTable() {
+  return LeakyTable(test::FakeTable({"key", "value"},
+                                    {{"good", "4"},
+                                     {"empty", ""},
+                                     {"words", "four"},
+                                     {"too_big", "1000"},
+                                     {"negative", "-1"},
+                                     {"not_a_number", "nan"},
+                                     {"infinite", "inf"}}));
 }
 
 int TestThreeAnswers() {
   int failures = 0;
-  const FakeTable table = KnobTable();
+  const LeakyTable table = KnobTable();
   const std::uint32_t value_column = table.FindColumn("value");
   std::string error;
 
@@ -177,7 +161,7 @@ int TestThreeAnswers() {
 /// negated test would have let it through.
 int TestNotANumber() {
   int failures = 0;
-  const FakeTable table = KnobTable();
+  const LeakyTable table = KnobTable();
   const std::uint32_t value_column = table.FindColumn("value");
   std::string error;
   float value = 7.0F;
@@ -205,7 +189,7 @@ int TestNotANumber() {
 /// the reason all four exist.
 int TestEntryPoints() {
   int failures = 0;
-  const FakeTable table = KnobTable();
+  const LeakyTable table = KnobTable();
   const core::Range narrow{.low = 0.0F, .high = 10.0F};
   std::string error;
 

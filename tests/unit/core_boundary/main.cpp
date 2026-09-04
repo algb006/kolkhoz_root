@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_boundary/session.h"
 #include "core_common/calendar.h"
 #include "core_common/day_window.h"
@@ -35,15 +36,6 @@ int Expect(bool condition, const char* label) {
   std::cout << "FAIL: " << label << '\n';
   return 1;
 }
-
-class EmptyTableSet final : public core::ITableSet {
- public:
-  const core::ITable* FindTable(std::string_view /*name*/) const override { return nullptr; }
-
-  std::uint32_t TableCount() const override { return 0; }
-
-  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
-};
 
 /// A simulation the test drives by hand: it keeps one world, applies the
 /// staged batch exactly as the engine does (buffer-law rule 2) and emits the
@@ -1054,7 +1046,7 @@ int TestWorkforceQuestions(const core::ITableSet& tables) {
 
 int main() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
 
   failures += Expect(core::kJournalMagic.size() == 8, "the journal magic is eight bytes");
   failures += TestOrdersThroughTheEngine(tables);

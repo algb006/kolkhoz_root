@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "assignment.h"
 #include "core_common/alarm_state.h"
 #include "core_common/order_state.h"
@@ -45,97 +46,6 @@ int Expect(bool condition, const char* label) {
   std::cout << "FAIL: " << label << '\n';
   return 1;
 }
-
-/// One in-memory table: a header row plus data rows, enough to feed the
-/// labor parser without touching the disk.
-class FakeTable final : public core::ITable {
- public:
-  FakeTable(std::vector<std::string_view> columns, std::vector<std::vector<std::string_view>> rows)
-      : columns_(std::move(columns)), rows_(std::move(rows)) {}
-
-  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
-
-  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(columns_.size()); }
-
-  std::uint32_t FindColumn(std::string_view name) const override {
-    for (std::uint32_t index = 0; index < columns_.size(); ++index) {
-      if (columns_[index] == name) {
-        return index;
-      }
-    }
-    return core::kNoTableColumn;
-  }
-
-  std::uint32_t FindRowByKey(std::string_view key) const override {
-    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
-      if (!rows_[row].empty() && rows_[row][0] == key) {
-        return row;
-      }
-    }
-    return core::kNoTableRow;
-  }
-
-  std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
-    if (row >= rows_.size() || column >= rows_[row].size()) {
-      return {};
-    }
-    return rows_[row][column];
-  }
-
-  std::optional<std::int64_t> CellInteger(std::uint32_t row, std::uint32_t column) const override {
-    const std::optional<float> value = CellReal(row, column);
-    return value ? std::optional<std::int64_t>(static_cast<std::int64_t>(*value)) : std::nullopt;
-  }
-
-  std::optional<float> CellReal(std::uint32_t row, std::uint32_t column) const override {
-    const std::string_view text = CellText(row, column);
-    if (text.empty()) {
-      return std::nullopt;
-    }
-    float value = 0.0F;
-    const char* const begin = text.data();
-    const auto result = std::from_chars(begin, begin + text.size(), value);
-    if (result.ec != std::errc{} || result.ptr != begin + text.size()) {
-      return std::nullopt;
-    }
-    return value;
-  }
-
- private:
-  std::vector<std::string_view> columns_;
-
-  std::vector<std::vector<std::string_view>> rows_;
-};
-
-/// A table set holding exactly one named table.
-class OneTableSet final : public core::ITableSet {
- public:
-  OneTableSet(std::string_view name, const core::ITable& table) : name_(name), table_(&table) {}
-
-  const core::ITable* FindTable(std::string_view name) const override {
-    return name == name_ ? table_ : nullptr;
-  }
-
-  std::uint32_t TableCount() const override { return 1; }
-
-  std::string_view TableName(std::uint32_t index) const override {
-    return index == 0 ? name_ : std::string_view{};
-  }
-
- private:
-  std::string_view name_;
-
-  const core::ITable* table_;
-};
-
-class EmptyTableSet final : public core::ITableSet {
- public:
-  const core::ITable* FindTable(std::string_view /*name*/) const override { return nullptr; }
-
-  std::uint32_t TableCount() const override { return 0; }
-
-  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
-};
 
 core::AssignmentJob FieldJob(core::WorkKind kind,
                              std::uint32_t field_id,
@@ -305,7 +215,7 @@ int TestPlacementLevels() {
 
 int TestBoundarySystemStub() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto system = core::CreateLaborSystem(tables);
   failures += Expect(system != nullptr, "factory yields a system");
   if (system != nullptr) {
@@ -447,7 +357,7 @@ int TestReferenceWorkerDeliversOneNorm() {
 
 int TestWholeWorkingDay() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (labor == nullptr) {
     return Expect(false, "factory yields a system");
@@ -474,7 +384,7 @@ int TestWholeWorkingDay() {
 
 int TestWalkOffPaysAndStops() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (labor == nullptr) {
     return Expect(false, "factory yields a system");
@@ -496,7 +406,7 @@ int TestWalkOffPaysAndStops() {
 
 int TestBarnRunsOnTheDayOff() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (labor == nullptr) {
     return Expect(false, "factory yields a system");
@@ -521,27 +431,27 @@ int TestBarnRunsOnTheDayOff() {
 /// defaults, a present one is read, a present-but-broken one refuses.
 int TestLaborTableParsing() {
   int failures = 0;
-  const FakeTable good(
+  const test::FakeTable good(
       {"key", "value", "trudodni_rate", "rest_drain_per_norm_day"},
       {{"standard_day_hours", "12"}, {"travel_limit_hours", "3"}, {"harvest", "", "1.5", "5"}});
-  const OneTableSet good_set("labor", good);
+  const test::FakeTableSet good_set("labor", good);
   failures +=
       Expect(core::CreateLaborSystem(good_set) != nullptr, "a readable labor table is read");
 
-  const FakeTable not_a_number({"key", "value"}, {{"standard_day_hours", "рано"}});
-  const OneTableSet bad_text("labor", not_a_number);
+  const test::FakeTable not_a_number({"key", "value"}, {{"standard_day_hours", "рано"}});
+  const test::FakeTableSet bad_text("labor", not_a_number);
   failures += Expect(core::CreateLaborSystem(bad_text) == nullptr,
                      "a cell that is not a number refuses the factory");
 
-  const FakeTable out_of_range({"key", "value"}, {{"path_factor", "99"}});
-  const OneTableSet bad_range("labor", out_of_range);
+  const test::FakeTable out_of_range({"key", "value"}, {{"path_factor", "99"}});
+  const test::FakeTableSet bad_range("labor", out_of_range);
   failures += Expect(core::CreateLaborSystem(bad_range) == nullptr,
                      "a value outside its range refuses the factory too");
 
   // A table of a shape the parser knows nothing about is not an error: every
   // key is optional, and what is absent keeps the canonical default.
-  const FakeTable strange({"key", "value"}, {{"nobody_reads_this", "5"}});
-  const OneTableSet strange_set("labor", strange);
+  const test::FakeTable strange({"key", "value"}, {{"nobody_reads_this", "5"}});
+  const test::FakeTableSet strange_set("labor", strange);
   failures += Expect(core::CreateLaborSystem(strange_set) != nullptr,
                      "unknown keys are the balancer's notes, not a failure");
   return failures;
@@ -1193,7 +1103,7 @@ int TestYardWithoutGroomAlarm() {
 /// the tick, and the override lands the NEXT morning.
 int TestStandingWorkOrder() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
@@ -1293,7 +1203,7 @@ int TestStandingWorkOrder() {
 /// on all twenty-four ticks of every day.
 int TestStandingWorkCorners() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
@@ -1373,7 +1283,7 @@ int TestStandingWorkCorners() {
 ///    the post every morning.
 int TestSecondIterationCorners() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
@@ -1472,7 +1382,7 @@ int TestSecondIterationCorners() {
 
 int TestReleaseWork() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
@@ -1532,7 +1442,7 @@ int TestReleaseWork() {
 /// the boundary already said before this task.
 int TestAssignWorkRefusals() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
@@ -1593,7 +1503,7 @@ int TestAssignWorkRefusals() {
 
 int TestWorkforceIsTheLaborRule() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto labor = core::CreateLaborSystem(tables);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;

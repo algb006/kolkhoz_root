@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
@@ -36,59 +37,6 @@ int Expect(bool condition, const char* label) {
   std::cout << "FAIL: " << label << '\n';
   return 1;
 }
-
-class FakeTable final : public core::ITable {
- public:
-  FakeTable(std::vector<std::string_view> columns, std::vector<std::vector<std::string_view>> rows)
-      : columns_(std::move(columns)), rows_(std::move(rows)) {}
-
-  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
-
-  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(columns_.size()); }
-
-  std::uint32_t FindColumn(std::string_view name) const override {
-    for (std::uint32_t index = 0; index < columns_.size(); ++index) {
-      if (columns_[index] == name) {
-        return index;
-      }
-    }
-    return core::kNoTableColumn;
-  }
-
-  std::uint32_t FindRowByKey(std::string_view key) const override {
-    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
-      if (!rows_[row].empty() && rows_[row][0] == key) {
-        return row;
-      }
-    }
-    return core::kNoTableRow;
-  }
-
-  std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
-    if (row >= rows_.size() || column >= rows_[row].size()) {
-      return {};
-    }
-    return rows_[row][column];
-  }
-
-  std::optional<std::int64_t> CellInteger(std::uint32_t row, std::uint32_t column) const override {
-    const std::optional<float> value = CellReal(row, column);
-    return value ? std::optional<std::int64_t>(static_cast<std::int64_t>(*value)) : std::nullopt;
-  }
-
-  std::optional<float> CellReal(std::uint32_t row, std::uint32_t column) const override {
-    const std::string_view text = CellText(row, column);
-    if (text.empty()) {
-      return std::nullopt;
-    }
-    return static_cast<float>(std::stod(std::string(text)));
-  }
-
- private:
-  std::vector<std::string_view> columns_;
-
-  std::vector<std::vector<std::string_view>> rows_;
-};
 
 /// The five tables the subsystem reads, and nothing else.
 class BuildTables final : public core::ITableSet {
@@ -123,50 +71,50 @@ class BuildTables final : public core::ITableSet {
   // has_wear and wear_factor are task A5's: the orchard is an outline with
   // nothing to wear, the barn ages half again as fast as its class (damp,
   // animals), and old_house is the one type that collapses.
-  FakeTable types_{{"key",
-                    "era",
-                    "player_built",
-                    "gate",
-                    "has_plot",
-                    "plot_radius_m",
-                    "has_wear",
-                    "wear_factor"},
-                   {{"store", "1", "0", "start", "1", "10", "1", ""},
-                    {"barn", "1", "1", "era", "1", "20", "1", "1.5"},
-                    {"club", "2", "1", "era", "1", "20", "1", ""},
-                    {"orchard", "1", "1", "era", "1", "", "0", ""},
-                    {"old_house", "1", "0", "start", "1", "10", "1", ""}}};
+  test::FakeTable types_{{"key",
+                          "era",
+                          "player_built",
+                          "gate",
+                          "has_plot",
+                          "plot_radius_m",
+                          "has_wear",
+                          "wear_factor"},
+                         {{"store", "1", "0", "start", "1", "10", "1", ""},
+                          {"barn", "1", "1", "era", "1", "20", "1", "1.5"},
+                          {"club", "2", "1", "era", "1", "20", "1", ""},
+                          {"orchard", "1", "1", "era", "1", "", "0", ""},
+                          {"old_house", "1", "0", "start", "1", "10", "1", ""}}};
 
   // 70 real man-days is 10 game man-days (root rules §9: real / 7).
   // Ten years standing, five in use: IN USE IS THE SHORTER TERM (unit rules
   // §15, and boss corrected his own criterion on it). Round numbers so the
   // daily share is exact arithmetic in the test below.
-  FakeTable levels_{{"unit",
-                     "level",
-                     "era",
-                     "labor_days",
-                     "build_class",
-                     "max_crew",
-                     "wear_years_idle",
-                     "wear_years_in_use"},
-                    {{"store", "1", "1", "70", "wood_small", "5", "10", "5"},
-                     {"barn", "1", "1", "70", "wood_small", "5", "10", "5"},
-                     {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10"},
-                     {"club", "1", "2", "70", "wood_small", "5", "10", "5"},
-                     {"orchard", "1", "1", "0", "plot", "", "", ""},
-                     {"old_house", "1", "1", "70", "wood_small", "5", "10", "5"}}};
+  test::FakeTable levels_{{"unit",
+                           "level",
+                           "era",
+                           "labor_days",
+                           "build_class",
+                           "max_crew",
+                           "wear_years_idle",
+                           "wear_years_in_use"},
+                          {{"store", "1", "1", "70", "wood_small", "5", "10", "5"},
+                           {"barn", "1", "1", "70", "wood_small", "5", "10", "5"},
+                           {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10"},
+                           {"club", "1", "2", "70", "wood_small", "5", "10", "5"},
+                           {"orchard", "1", "1", "0", "plot", "", "", ""},
+                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5"}}};
 
-  FakeTable costs_{{"unit", "level", "resource", "amount"},
-                   {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
+  test::FakeTable costs_{{"unit", "level", "resource", "amount"},
+                         {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
 
-  FakeTable resources_{{"key", "measure", "kg_per_unit"},
-                       {{"log", "pcs", "200"}, {"spare_part", "pcs", "5"}}};
+  test::FakeTable resources_{{"key", "measure", "kg_per_unit"},
+                             {{"log", "pcs", "200"}, {"spare_part", "pcs", "5"}}};
 
-  FakeTable knobs_{{"key", "value"},
-                   {{"demolition_labor_share", "0.5"},
-                    {"repair_labor_share", "0.5"},
-                    {"repair_spare_parts_per_labor_day", "1"},
-                    {"old_house_collapse_years", "2"}}};
+  test::FakeTable knobs_{{"key", "value"},
+                         {{"demolition_labor_share", "0.5"},
+                          {"repair_labor_share", "0.5"},
+                          {"repair_spare_parts_per_labor_day", "1"},
+                          {"old_house_collapse_years", "2"}}};
 };
 
 constexpr std::uint16_t kStoreType = 0;
@@ -395,15 +343,6 @@ int TestDemolition(const core::ITableSet& tables) {
 }
 
 /// A table set with no tables at all: nothing can be built, and that is the
-/// honest answer rather than a refusal to exist.
-class EmptyTableSet final : public core::ITableSet {
- public:
-  const core::ITable* FindTable(std::string_view /*name*/) const override { return nullptr; }
-
-  std::uint32_t TableCount() const override { return 0; }
-
-  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
-};
 
 /// Task A5: the building ages, and it ages at two speeds. Ten years empty,
 /// five in use, and the barn's own pace is one and a half — so a day of
@@ -498,12 +437,12 @@ class NoWearColumnTables final : public core::ITableSet {
 
   // The same rows, minus the column. Absent is not the same as zero: zero
   // says "this unit has nothing to wear", absent says "nobody wrote it down".
-  FakeTable types_{{"key", "era", "player_built", "gate", "has_plot", "plot_radius_m"},
-                   {{"store", "1", "0", "start", "1", "10"},
-                    {"barn", "1", "1", "era", "1", "20"},
-                    {"club", "2", "1", "era", "1", "20"},
-                    {"orchard", "1", "1", "era", "1", ""},
-                    {"old_house", "1", "0", "start", "1", "10"}}};
+  test::FakeTable types_{{"key", "era", "player_built", "gate", "has_plot", "plot_radius_m"},
+                         {{"store", "1", "0", "start", "1", "10"},
+                          {"barn", "1", "1", "era", "1", "20"},
+                          {"club", "2", "1", "era", "1", "20"},
+                          {"orchard", "1", "1", "era", "1", ""},
+                          {"old_house", "1", "0", "start", "1", "10"}}};
 };
 
 /// THE DEADLINE MUST AGREE WITH THE WORLD, and that is the only test of a
@@ -746,7 +685,7 @@ int TestUpgradeHeals(const core::ITableSet& tables) {
 
 int TestTableLessWorld() {
   int failures = 0;
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
   failures += Expect(system != nullptr, "a table-less world still gets a subsystem");
   if (!system) {

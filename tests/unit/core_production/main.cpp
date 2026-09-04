@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -41,15 +42,6 @@ int Expect(bool condition, const char* label) {
   std::cout << "FAIL: " << label << '\n';
   return 1;
 }
-
-class EmptyTableSet final : public core::ITableSet {
- public:
-  const core::ITable* FindTable(std::string_view /*name*/) const override { return nullptr; }
-
-  std::uint32_t TableCount() const override { return 0; }
-
-  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
-};
 
 // --- stage 6, task O3: the herd day ---------------------------------------
 
@@ -1233,7 +1225,7 @@ int CheckPauseAndResume() {
 int main() {
   int failures = 0;
   failures += CheckStoreCeilingAndAlarms();
-  const EmptyTableSet tables;
+  const test::FakeTableSet tables;
   const auto system = core::CreateProductionSystem(tables);
   failures += Expect(system != nullptr, "factory yields a system");
 

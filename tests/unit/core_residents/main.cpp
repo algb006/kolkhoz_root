@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -52,65 +53,6 @@ int Expect(bool condition, const char* label) {
   return 1;
 }
 
-class EmptyTableSet final : public core::ITableSet {
- public:
-  const core::ITable* FindTable(std::string_view /*name*/) const override { return nullptr; }
-
-  std::uint32_t TableCount() const override { return 0; }
-
-  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
-};
-
-/// One in-memory table: a header and its rows, text only.
-class FakeTable final : public core::ITable {
- public:
-  FakeTable(std::vector<std::string_view> columns, std::vector<std::vector<std::string_view>> rows)
-      : columns_(std::move(columns)), rows_(std::move(rows)) {}
-
-  std::uint32_t RowCount() const override { return static_cast<std::uint32_t>(rows_.size()); }
-
-  std::uint32_t ColumnCount() const override { return static_cast<std::uint32_t>(columns_.size()); }
-
-  std::uint32_t FindColumn(std::string_view name) const override {
-    for (std::uint32_t index = 0; index < columns_.size(); ++index) {
-      if (columns_[index] == name) {
-        return index;
-      }
-    }
-    return core::kNoTableColumn;
-  }
-
-  std::uint32_t FindRowByKey(std::string_view key) const override {
-    for (std::uint32_t row = 0; row < rows_.size(); ++row) {
-      if (!rows_[row].empty() && rows_[row][0] == key) {
-        return row;
-      }
-    }
-    return core::kNoTableRow;
-  }
-
-  std::string_view CellText(std::uint32_t row, std::uint32_t column) const override {
-    if (row >= rows_.size() || column >= rows_[row].size()) {
-      return {};
-    }
-    return rows_[row][column];
-  }
-
-  std::optional<std::int64_t> CellInteger(std::uint32_t /*row*/,
-                                          std::uint32_t /*column*/) const override {
-    return std::nullopt;  // the housing test reads keys and classes only
-  }
-
-  std::optional<float> CellReal(std::uint32_t /*row*/, std::uint32_t /*column*/) const override {
-    return std::nullopt;
-  }
-
- private:
-  std::vector<std::string_view> columns_;
-
-  std::vector<std::vector<std::string_view>> rows_;
-};
-
 /// A table set with unit types alone: two kinds of dwelling and a barn, so
 /// that the housing class is something the config has to read, not assume.
 class HousingTables final : public core::ITableSet {
@@ -124,8 +66,9 @@ class HousingTables final : public core::ITableSet {
   std::string_view TableName(std::uint32_t /*index*/) const override { return "unit_types"; }
 
  private:
-  FakeTable types_{{"key", "class"},
-                   {{"old_house", "housing"}, {"barn", "livestock"}, {"wooden_house", "housing"}}};
+  test::FakeTable types_{
+      {"key", "class"},
+      {{"old_house", "housing"}, {"barn", "livestock"}, {"wooden_house", "housing"}}};
 };
 
 /// Appends an adult of the given biological age (life speedup 4).
@@ -738,7 +681,7 @@ int CheckVacatedPostIsAnnounced(core::IResidentsSystem& system) {
 
 int main() {
   int failures = 0;
-  const EmptyTableSet tables;  // canonical defaults compiled into the config
+  const test::FakeTableSet tables;  // canonical defaults compiled into the config
   const auto system = core::CreateResidentsSystem(tables);
   failures += Expect(system != nullptr, "factory yields a system");
 
