@@ -82,6 +82,19 @@ constexpr std::size_t kCanonTop = 1500;
 /// The constant has an owner and an end. When the player builds the houses,
 /// the stub goes and this line goes with it, and the check tightens to
 /// kCanonTop by deletion rather than by somebody remembering.
+///
+/// AND THE ONE THING THAT MAY NOT BE DONE WITH IT: IT NEVER RISES BECAUSE A
+/// RUN EXCEEDED IT (boss, 2026-09-04). The 7.2% is one observation — how far
+/// the stub inflated the curve in that pass, at that seed, on that layout —
+/// and not a law. A pass that comes out above 1608 is a FINDING; moving the
+/// constant to admit it is the quietest way there is to kill the gate. Each
+/// pass would nudge the ceiling by its own excess, each time "explained",
+/// and in half a year the band would pass anything while still looking
+/// strict. It is the rule "a reference is not rewritten from a run",
+/// applied to the tolerance instead of to the number.
+///
+/// A constant that says how it was derived but not what may not be done
+/// with it is half guarded.
 constexpr std::size_t kStubCeiling = 1608;
 
 /// Fast-forward: a game day in at most two seconds with nothing drawn

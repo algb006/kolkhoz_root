@@ -40,6 +40,23 @@ constexpr std::array<std::string_view, static_cast<std::uint32_t>(FoodCategory::
                       "sweet",
                       "fats"};
 
+// EVERY CELL HAS A NAME, and that is a different question from "are there as
+// many cells" (host, 2026-09-04). The array declares its own length from
+// FoodCategory::kCount, so deleting a name from the middle leaves the length intact, the
+// cell holding "", and the build green — and "" is what an empty table cell
+// reads as, so the parse would answer a category to a blank. A terminator
+// guards the growth of the set; this guards the holes inside it.
+static_assert(
+    [] {
+      for (const std::string_view name : kCategoryNames) {
+        if (name.empty()) {
+          return false;
+        }
+      }
+      return true;
+    }(),
+    "every food category carries a name: a blank cell must not parse as one");
+
 bool ParseCategory(std::string_view text, FoodCategory& category, std::string& error) {
   for (std::uint32_t index = 0; index < kCategoryNames.size(); ++index) {
     if (kCategoryNames[index] == text) {

@@ -319,12 +319,32 @@ class StandardSimulation final : public ISimulation {
 
 namespace {
 
+/// The seven names a campaign table may use, in Weekday order.
+///
+/// EVERY CELL HAS A NAME, and that is a different question from "are there
+/// as many cells" (host, 2026-09-04). The array takes its length from
+/// kDaysPerWeek, so deleting a name from the middle would leave the length
+/// intact, the cell holding "", and the build green — and "" is what an
+/// empty table cell reads as, so a blank day_zero_weekday would parse as a
+/// day. A terminator guards the growth of a set; this guards its holes.
+constexpr std::array<std::string_view, kDaysPerWeek> kWeekdayNames = {
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
+
+static_assert(
+    [] {
+      for (const std::string_view name : kWeekdayNames) {
+        if (name.empty()) {
+          return false;
+        }
+      }
+      return true;
+    }(),
+    "every weekday carries a name: a blank cell must not parse as a day");
+
 /// @brief Weekday by its lowercase English name; `valid` reports success.
 Weekday ParseWeekdayNameInternal(std::string_view name, bool& valid) {
-  constexpr std::array<std::string_view, kDaysPerWeek> kNames = {
-      "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
-  for (std::uint32_t index = 0; index < kNames.size(); ++index) {
-    if (kNames[index] == name) {
+  for (std::uint32_t index = 0; index < kWeekdayNames.size(); ++index) {
+    if (kWeekdayNames[index] == name) {
       valid = true;
       return static_cast<Weekday>(index);
     }
