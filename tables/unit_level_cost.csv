@@ -726,12 +726,6 @@ call_office,1,glass,25
 call_office,1,cement,5
 call_office,1,insulation,8
 call_office,1,spare_part,6
-household_yard,1,straw,4
-household_yard,1,log,60
-household_yard,1,board,8
-household_yard,1,stone,5
-household_yard,1,clay,3
-household_yard,1,glass,6
 wooden_house,1,straw,3
 wooden_house,1,log,35
 wooden_house,1,board,4
