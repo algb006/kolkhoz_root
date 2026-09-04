@@ -24,6 +24,7 @@
 
 #include "../common/fixture_policy.h"
 #include "../common/orders_policy.h"
+#include "../common/repair_policy.h"
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/definitions.h"
@@ -210,6 +211,9 @@ int main() {
   double lived_head_days = 0.0;
   std::uint32_t years_without_plowing = 0;
   float lowest_fertility = 100.0F;
+  // Every man-day the settlement worked, of every kind, so the price of
+  // repair can be given as a SHARE and not as a number nobody can size.
+  double total_work_days = 0.0;
 
   std::ofstream field_sheet(FieldSheetPath(), std::ios::binary | std::ios::trunc);
   field_sheet << "year,field,kind,area_ha,crop,manured,fertility,stress_july\n";
@@ -240,6 +244,11 @@ int main() {
   // pause (orders_policy.h). A verb the run does not say is not checked by
   // the run, however many unit tests stand behind it (boss, 2026-09-04).
   run::OrdersPolicy orders;
+  // And the two verbs that were silent for no reason but silence: repair
+  // and demolition (repair_policy.h). Every wear number in the tables was
+  // chosen by argument on 2026-09-03 and never played once.
+  run::RepairPolicy repairs(*world.tables);
+  run::RepairPolicy::Declare();
 
   for (std::uint32_t year = 0; year < kYears; ++year) {
     double year_seconds = 0.0;
@@ -249,6 +258,7 @@ int main() {
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
       orders.RunDay(*world.simulation);
+      repairs.RunDay(*world.simulation);
       year_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
       const core::WorldState& mid = world.State();
@@ -302,6 +312,9 @@ int main() {
       lived_head_days +=
           static_cast<double>(herd.newborn_count + herd.juvenile_count + herd.adult_count) *
           core::kDaysPerYear;
+    }
+    for (const float days : state.ledger.closed.work_days_by_kind) {
+      total_work_days += static_cast<double>(days);
     }
     const float plowed =
         state.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)];
@@ -412,6 +425,9 @@ int main() {
   // was wrong about the model rather than about the run.
   fixture.Report(state);
   failures += orders.Report();
+  failures += repairs.Report(state);
+  std::cout << "repair: that is " << (repairs.LaborDays() / total_work_days * 100.0) << "% of the "
+            << total_work_days << " man-days the settlement worked in thirty years\n";
   // A LIMIT THAT BINDS MUST SAY SO. A run that quietly starves a village
   // against a ceiling is an argument, not a measurement (boss, 2026-09-03).
   core::Grams lost_to_room = 0;
