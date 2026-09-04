@@ -11,6 +11,7 @@ harvest_waiting_on_field,field,3
 seed_short,field,4
 harvest_will_not_fit,field,5
 yard_without_groom,unit,6
-site_without_materials,unit,7
-store_full,unit,8
-no_road,unit,9
+site_without_crew,unit,7
+site_without_materials,unit,8
+store_full,unit,9
+no_road,unit,10
