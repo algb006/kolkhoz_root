@@ -4,11 +4,13 @@ rem
 rem Invoked over SSH by scripts/win-build.sh, and runnable by hand:
 rem     build-core.bat [Debug|Release] [clean]
 rem
-rem Each configuration builds into its OWN directory and publishes into its own
-rem folder under publish\. Both used to share build-msvc\, so whichever was
-rem built last owned lib\core.lib and nothing outside could tell which one that
-rem was - while the graphics layer can only take Release (the editor ships with
-rem /MD and _ITERATOR_DEBUG_LEVEL=0, and a Debug CRT build is LNK2038 for it).
+rem Each configuration builds into its OWN directory and publishes into
+rem publish\<version>\<Config>. Both used to share build-msvc\, so whichever
+rem was built last owned lib\core.lib and nothing outside could tell which one
+rem that was - while the graphics layer can only take Release (the editor ships
+rem with /MD and _ITERATOR_DEBUG_LEVEL=0, and a Debug CRT build is LNK2038 for
+rem it). The version in the path is the second half of the same lesson: a slot
+rem that is rewritten cannot be pinned to.
 rem
 rem Messages are in English on purpose: this runs through cmd.exe over SSH,
 rem where the console code page is whatever the session happens to inherit,
@@ -25,7 +27,23 @@ if /i not "%BUILD_TYPE%"=="Debug" if /i not "%BUILD_TYPE%"=="Release" (
     exit /b 2
 )
 set "BUILD_DIR=%PROJECT_DIR%\build-msvc-%BUILD_TYPE%"
-set "PUBLISH_DIR=%PROJECT_DIR%\publish\%BUILD_TYPE%"
+
+rem THE PUBLISH SLOT IS THE VERSION, NOT THE CONFIGURATION. It used to be
+rem publish\<Config>, one slot per configuration, rewritten by every build -
+rem so "what is published" was whatever ran last, and a consumer pinned to a
+rem number had nothing to pin to. A directory per version keeps the old one
+rem standing while the new one appears, which is the whole point: a version
+rem is STORED, not replaced (manual/technical/50-architecture.md).
+rem
+rem publish\current is written by win-build.sh, not here, and only after BOTH
+rem configurations of one version are in place. Half a version is never what
+rem the pointer names.
+set /p CORE_VERSION=<"%PROJECT_DIR%\VERSION"
+if not defined CORE_VERSION (
+    echo [core] the VERSION file is empty - there is no number to publish under
+    exit /b 1
+)
+set "PUBLISH_DIR=%PROJECT_DIR%\publish\%CORE_VERSION%\%BUILD_TYPE%"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 
 if /i "%~2"=="clean" (

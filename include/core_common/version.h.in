@@ -12,15 +12,35 @@
 
 namespace core {
 
+/// NOT `inline`, AND THAT IS THE WHOLE POINT — measured, not reasoned.
+///
+/// `inline constexpr` gives a namespace-scope constant EXTERNAL linkage: one
+/// entity per program, whichever translation unit it came from. That breaks
+/// the version pin (version_pin.h), whose entire job is to hold the header's
+/// number and the library's number side by side and see them differ. Built
+/// as the real case on the Windows host — a library from a 0.17.0 header, a
+/// caller from a 0.16.0 one — MSVC folded the two definitions, discarded the
+/// library's literal, and THE PIN PASSED, at /Od and at /O2 /GL /LTCG alike.
+/// Clang and GCC happened not to, which is worse than failing: mixing two
+/// publishes is an ODR violation on an inline variable, so no compiler owes
+/// us the answer we were relying on.
+///
+/// Without `inline`, a namespace-scope `constexpr` has INTERNAL linkage:
+/// every translation unit gets its own copy, the library keeps the number it
+/// was built from, and the two sides of the seam can disagree — which is the
+/// only condition under which the pin can catch anything. These are
+/// compile-time constants read by value; nothing compares their addresses,
+/// and nobody needs them to be one object.
+
 /// @brief Core library version, semantic versioning.
 /// Major changes when the core/presentation boundary breaks, minor when a stage
 /// of the phase plan is handed over, patch on a delivered fix.
-inline constexpr int kCoreVersionMajor = @PROJECT_VERSION_MAJOR@;
-inline constexpr int kCoreVersionMinor = @PROJECT_VERSION_MINOR@;
-inline constexpr int kCoreVersionPatch = @PROJECT_VERSION_PATCH@;
+constexpr int kCoreVersionMajor = @PROJECT_VERSION_MAJOR@;
+constexpr int kCoreVersionMinor = @PROJECT_VERSION_MINOR@;
+constexpr int kCoreVersionPatch = @PROJECT_VERSION_PATCH@;
 
 /// @brief The same version as "major.minor.patch", for logs and run reports.
-inline constexpr const char* kCoreVersionString = "@PROJECT_VERSION@";
+constexpr const char* kCoreVersionString = "@PROJECT_VERSION@";
 
 /// @brief Binary layout version of a saved game.
 /// Bumped whenever the on-disk layout of saved state changes so that an older
@@ -29,7 +49,7 @@ inline constexpr const char* kCoreVersionString = "@PROJECT_VERSION@";
 /// save-breaking change must be visible on its own.
 /// @note A save with a higher number than this build must be refused, not
 ///       guessed at.
-inline constexpr int kSaveFormatVersion = @KOLKHOZ_SAVE_VERSION@;
+constexpr int kSaveFormatVersion = @KOLKHOZ_SAVE_VERSION@;
 
 }  // namespace core
 

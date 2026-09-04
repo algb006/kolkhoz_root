@@ -10,4 +10,5 @@ kolkhoz_add_module(core_common
     alarm_state.cpp
     haul.cpp
     spoilage.cpp
-    quantities.cpp)
+    quantities.cpp
+    version_pin.cpp)

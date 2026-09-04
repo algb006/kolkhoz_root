@@ -12,6 +12,13 @@
 #include "core_common/random.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/version_pin.h"
+
+namespace core_test {
+/// Defined in version_linkage_probe.cpp — a second translation unit, so that
+/// the linkage of the version constants is measurable from inside one build.
+const char* const* VersionStringAddressFromOtherTu();
+}  // namespace core_test
 
 namespace {
 
@@ -238,12 +245,44 @@ int TestGramsFromFloat() {
   return failures;
 }
 
+/// The version pin (version_pin.h). What CANNOT be tested here is the case
+/// the pin exists for — headers of one publish against a library of another —
+/// because a test links the pair it was built with, and they always agree.
+/// What IS tested is the machinery that would notice: the library answers
+/// with its own number rather than the caller's, and the comparison says no
+/// when the numbers differ.
+int TestVersionPin() {
+  int failures = 0;
+  // THE LINKAGE, FIRST, because everything below rests on it. The pin holds
+  // the header's number beside the library's and looks for a difference; if
+  // the constant has EXTERNAL linkage there is only one of it in the whole
+  // program, and there is nothing left to differ. MSVC folds them and the
+  // pin passes on a mismatched pair — measured on the host at /Od and at
+  // /O2 /GL /LTCG alike. Two translation units, two addresses: that is what
+  // internal linkage looks like from inside a single build, and it is the
+  // only part of the mechanism a one-publish test can actually see.
+  failures += Expect(&core::kCoreVersionString != core_test::VersionStringAddressFromOtherTu(),
+                     "the version constant is per-translation-unit, not one per program");
+  failures += Expect(core::CoreLibraryVersion() != nullptr, "the library states a version");
+  failures += Expect(core::CoreVersionPinHolds(core::kCoreVersionString),
+                     "a library and headers from one build are one publish");
+  failures += Expect(!core::CoreVersionPinHolds("0.0.1"),
+                     "and a caller compiled against another number is told so");
+  failures += Expect(!core::CoreVersionPinHolds(nullptr),
+                     "a caller that cannot say what it built against has no pin at all");
+  // The number is a real one, not an empty string that would compare equal to
+  // another empty string and pass this whole test for nothing.
+  failures += Expect(core::CoreLibraryVersion()[0] != '\0', "and the version is not empty");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestCalendar();
   failures += TestStateTable();
   failures += TestRandom();
   failures += TestGramsFromFloat();
+  failures += TestVersionPin();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

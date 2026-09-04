@@ -84,9 +84,11 @@ echo "Заголовок core_common/version.h перегенерируется 
 # longer has, and the consumer's version pin is what discovers it — an hour
 # later, in somebody else's build. That happened once (1.0.0, 2026-08-31): the
 # delivery cycle checks the MSVC build in DEBUG, while the graphics layer takes
-# the RELEASE publication, and the two are different commands. The divergence
-# is created here, in one second, so it is named here.
+# the RELEASE publication, and back then the two were different commands. They
+# are one now — `make publish` does both configurations or neither — but the
+# gap between raising a number and publishing it is still made here, in one
+# second, so it is still named here.
 if [ -f "$project_dir/artifacts/Release/core.lib" ]; then
-    echo "НАПОМИНАНИЕ: на хосте опубликована $current — выложи 'make win-release',"
+    echo "НАПОМИНАНИЕ: на хосте опубликована $current — выложи 'make publish',"
     echo "             иначе слой графики упрётся в несовпадение версий."
 fi

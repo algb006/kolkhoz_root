@@ -5,7 +5,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit \
-        check-tests format format-check tidy docs sync win win-release win-clean \
+        check-tests format format-check tidy docs sync win win-release publish win-clean \
         win-setup hooks deps info version bump-patch bump-minor
 
 # --- Settings ---------------------------------------------------------------
@@ -54,8 +54,9 @@ help:
 	@echo '  make docs           выжимка Doxygen в $(BUILD_DIR)/doc'
 	@echo ''
 	@echo '  make sync           отправить исходники на Windows-хост ($(WIN_HOST))'
-	@echo '  make win            собрать и опубликовать на хосте под MSVC (Debug)'
-	@echo '  make win-release    то же, Release — это берёт слой графики'
+	@echo '  make publish        ВЫЛОЖИТЬ: обе конфигурации одной версии + current'
+	@echo '  make win            только проверка сборки под MSVC, Debug — current не двигает'
+	@echo '  make win-release    то же, Release'
 	@echo '  make win-clean      снести каталог сборки Debug на хосте и собрать заново'
 	@echo '  make win-setup      что и как настроить на хосте в первый раз'
 	@echo ''
@@ -142,13 +143,18 @@ docs:
 
 # --- Windows host -----------------------------------------------------------
 
-# All four go through one script: the rsync flags and the remote invocation are
-# fiddly enough that a second copy of them would drift.
+# All of them go through one script: the rsync flags and the remote invocation
+# are fiddly enough that a second copy of them would drift.
 #
 # Each configuration has its own build directory on the host and its own
-# publish/<Config>/ folder — include, lib/core.lib (enkiTS merged in) and
-# VERSION beside it. The graphics layer takes Release; Debug is for our runs.
-# manual/setup/60-windows-host.md §6а.
+# folder under publish/<version>/ — include, lib/core.lib (enkiTS merged in),
+# VERSION and LAYOUT.txt beside it. The graphics layer takes Release; Debug is
+# for our runs.
+#
+# `publish` is the only target that publishes. `win` and `win-release` build
+# one configuration to check that MSVC still accepts the tree, and leave
+# publish/current where it was — so there is no way to publish half a version
+# rather than a rule against it. manual/setup/60-windows-host.md §6а.
 WIN_ENV = WIN_HOST=$(WIN_HOST) WIN_DIR=$(WIN_DIR)
 
 sync:
@@ -159,6 +165,11 @@ win:
 
 win-release:
 	@$(WIN_ENV) ./scripts/win-build.sh --release
+
+# THE publishing command, and the only one. Both configurations of one
+# version, then publish/current — never half. manual/setup/60-windows-host.md.
+publish:
+	@$(WIN_ENV) ./scripts/win-build.sh --both
 
 win-clean:
 	@$(WIN_ENV) ./scripts/win-build.sh --clean
