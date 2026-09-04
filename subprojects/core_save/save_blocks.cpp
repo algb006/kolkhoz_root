@@ -39,7 +39,7 @@ static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and
 
 constexpr std::uint8_t kMinEpoch = static_cast<std::uint8_t>(Epoch::kOne);
 
-constexpr std::uint8_t kMaxEpoch = static_cast<std::uint8_t>(Epoch::kThree);
+constexpr std::uint8_t kMaxEpoch = static_cast<std::uint8_t>(Epoch::kEpochEnd) - 1;
 
 constexpr std::uint8_t kMaxPrecipitation = static_cast<std::uint8_t>(Precipitation::kSnow);
 

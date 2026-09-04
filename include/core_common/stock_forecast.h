@@ -187,6 +187,10 @@ enum class StockMeasure : std::uint8_t {
   /// with. `days_of_stock` is unused, and `days_to_date` still says when
   /// the moment comes — a CALENDAR number, not one derived from the stock.
   kCoverage,
+
+  /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  kStockMeasureCount,
 };
 
 /// @brief One light, ready to draw and ready to reason about.

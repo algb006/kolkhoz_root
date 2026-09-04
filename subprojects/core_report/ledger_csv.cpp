@@ -38,6 +38,23 @@ constexpr const char* kKilogramSuffix = "_kg";
 constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {
     "none", "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction", "hauling"};
 
+// EVERY CELL HAS A NAME, which is not the same question as "are there as
+// many cells" (host, 2026-09-04). The array takes its length from the enum
+// now, so appending a kind widens it and leaves the new cell holding a null
+// pointer — and a null here is a crash in the sheet writer, not a hole a
+// reader would notice. The terminator guards the growth of the set; this
+// guards its holes.
+static_assert(
+    [] {
+      for (const char* const name : kWorkKindNames) {
+        if (name == nullptr || *name == '\0') {
+          return false;
+        }
+      }
+      return true;
+    }(),
+    "every work kind carries a column name: appending a kind must name it here too");
+
 /// Grams as kilograms with three decimals — exact, and it reads back to the
 /// same gram. Written by hand rather than through a float, which would lose
 /// the last digits on a tonne.

@@ -46,11 +46,30 @@ namespace core {
 
 /// @brief Game epoch. Reaching the next one is the campaign's arc:
 /// 80 residents at start, ~500 by Epoch II, ~1500 by Epoch III.
+///
+/// @enum_length kEpochCount — and this one gets its length BESIDE the enum
+/// rather than inside it, which is the opposite of the rule everywhere else
+/// (2026-09-04). The reason is the numbering: an epoch is a thing the player
+/// is told about and there is no epoch zero, so a trailing `kEpochCount`
+/// would take the value FOUR while there are THREE epochs. A terminator
+/// that lies about the count is worse than none — every mirror would size
+/// its array one too long and never hear a complaint. So the enum gets a
+/// bound, `kEpochEnd`, which is honestly one past the last, and the count is
+/// derived from it below.
 enum class Epoch : std::uint8_t {
   kOne = 1,
   kTwo = 2,
   kThree = 3,
+
+  /// NOT AN EPOCH: one PAST the last, for a range check. Because the enum
+  /// counts from one this is four, not three — take kEpochCount for the
+  /// number of them. Values are appended BEFORE it.
+  kEpochEnd,
 };
+
+/// @brief How many epochs there are. Derived from the bound above, so a
+/// fourth epoch moves both by being appended in one place.
+inline constexpr std::uint32_t kEpochCount = static_cast<std::uint32_t>(Epoch::kEpochEnd) - 1;
 
 /// @brief The epoch as an index into a dense per-epoch table.
 ///
@@ -67,6 +86,10 @@ enum class Precipitation : std::uint8_t {
   kNone = 0,
   kRain,
   kSnow,
+
+  /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  kPrecipitationCount,
 };
 
 /// @brief Weather of the current day.

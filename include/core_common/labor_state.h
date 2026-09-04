@@ -66,9 +66,22 @@ enum class WorkKind : std::uint8_t {
   /// The hand cart of §9 is deliberately not modelled — it would need an
   /// inventory per household, which is the micromanagement the design avoids.
   kHauling,
+
+  /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  kWorkKindCount,
 };
 
-inline constexpr std::uint32_t kWorkKindCount = 8;
+/// @brief The number of work kinds, as a plain integer for array sizes.
+///
+/// DERIVED, not written out. Until 2026-09-04 this line said `= 8` — a
+/// length kept by hand beside the enum it counts, which is the one thing
+/// the terminator convention exists to abolish. Six places size arrays and
+/// range-check bytes on it, and every one of them would have kept working,
+/// quietly measuring the wrong enum, the day a ninth kind was appended.
+/// Found while giving WorkKind the terminator it was missing.
+inline constexpr std::uint32_t kWorkKindCount =
+    static_cast<std::uint32_t>(WorkKind::kWorkKindCount);
 
 /// @brief True for kinds that harness a horse: the crew is capped by adult
 /// kolkhoz horses, and residents hosting a kolkhoz horse at their yard are

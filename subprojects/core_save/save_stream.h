@@ -22,6 +22,7 @@
 #define CORE_SAVE_SAVE_STREAM_H_
 
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -104,7 +105,28 @@ class ByteReader {
 
   std::int64_t ReadI64() { return static_cast<std::int64_t>(ReadU64()); }
 
-  float ReadFloat() { return std::bit_cast<float>(ReadU32()); }
+  /// @brief One float of the payload — and it REFUSES A NON-FINITE ONE.
+  ///
+  /// Every float a save holds is a simulation quantity: a position, a wear,
+  /// a fertility, a mean. Not one of them is legitimately NaN or infinite,
+  /// so a bit pattern that decodes to one did not come from a run of this
+  /// core, and the stream is broken rather than believed. A restored NaN
+  /// would otherwise travel to the unguarded casts to integer that every
+  /// system makes on quantities it has no reason to doubt.
+  ///
+  /// ONE INVARIANT, TWO DOORS. The table reader has refused non-finite
+  /// cells since task A6 (csv_table_set.cpp), and the save reader is the
+  /// second way the same numbers enter the same state. Guarding one door
+  /// is what this project keeps finding out the hard way — the plot rule,
+  /// the has_wear column, and now this.
+  float ReadFloat() {
+    const float value = std::bit_cast<float>(ReadU32());
+    if (!std::isfinite(value)) {
+      Invalidate();
+      return 0.0F;
+    }
+    return value;
+  }
 
   /// @brief A key as written by WriteKey; empty string once invalid.
   std::string ReadKey();

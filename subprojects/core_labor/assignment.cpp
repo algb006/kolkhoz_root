@@ -48,7 +48,12 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
     // window is what says which (task A4).
     case WorkKind::kHauling:
       return 6;
+    // Not a kind of work, and neither is the terminator. Handled beside
+    // kNone so this switch keeps no default and a genuinely new kind stays
+    // a build error here — which is exactly where a new kind must declare
+    // where it stands in the queue.
     case WorkKind::kNone:
+    case WorkKind::kWorkKindCount:
       return 7;
   }
   return 6;

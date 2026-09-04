@@ -97,11 +97,7 @@ unit: build
 check-tests:
 	@./scripts/check_module_tests.sh
 	@python3 scripts/check_includes.py
-# `|| true` while seven boundary enums are still without a terminator and the
-# decision to close them is boss's: the count is meant to be read, not to stop
-# the build on a hole somebody already knows about. Drop it when they are
-# closed and the check becomes binding.
-	@python3 scripts/boundary_enums.py || true
+	@python3 scripts/boundary_enums.py
 
 # Bumping is the closing step of a delivery cycle, run in the same commit as the
 # work being delivered. VERSION_SAVE is not bumped here — see 57-versioning.md.

@@ -427,6 +427,11 @@ class Session final : public ISession {
           }
         }
         return false;
+      // Not a target. Handled here rather than by a default so a genuinely
+      // new kind of target stays a build error at the one place that has to
+      // say when it is reached.
+      case FastForwardTargetKind::kFastForwardTargetKindCount:
+        return false;
     }
     return false;
   }

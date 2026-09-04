@@ -51,7 +51,11 @@ namespace core {
 enum class EventSeverity : std::uint8_t {
   kRoutine = 0,   ///< Summary material only; no notification.
   kNotable,       ///< One HUD notification; never breaks a fast-forward.
-  kInterrupting,  ///< Breaks a fast-forward and notifies (time design §1).
+  kInterrupting,  ///< Breaks a fast-forward and notifies (time design §1).,
+
+  /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  kEventSeverityCount,
 };
 
 /// @brief What happened. Grouped by the sub-step that emits it; the fields

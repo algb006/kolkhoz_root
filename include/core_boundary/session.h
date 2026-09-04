@@ -264,7 +264,11 @@ enum class FastForwardTargetKind : std::uint8_t {
   kTick = 0,      ///< Until the completed tick reaches `tick`.
   kNextSunrise,   ///< Until the next sunrise as the core lays the day out.
   kNextSunset,    ///< Until the next sunset.
-  kFirstEventOf,  ///< Until an event of `event_kind` is emitted.
+  kFirstEventOf,  ///< Until an event of `event_kind` is emitted.,
+
+  /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  kFastForwardTargetKindCount,
 };
 
 /// @brief The stop condition of one AdvanceUntil.
@@ -291,6 +295,10 @@ enum class FastForwardOutcome : std::uint8_t {
   /// The step budget ran out first. Call again next frame with the same
   /// target: the slicing that keeps the game thread responsive.
   kBudgetSpent,
+
+  /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  kFastForwardOutcomeCount,
 };
 
 struct FastForwardReport {

@@ -149,6 +149,7 @@ class OrdersPolicy {
       case core::WorkKind::kHauling:
         return "hauling";
       case core::WorkKind::kNone:
+      case core::WorkKind::kWorkKindCount:
         break;
     }
     return "nothing";
