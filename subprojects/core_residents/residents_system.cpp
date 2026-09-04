@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/plot.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
@@ -793,15 +794,46 @@ class ResidentsSystem final : public IResidentsSystem {
     }
     UnitRow house;
     house.type = config_.house_type;
-    if (!FamilyHousePosition(current, groom_family, house.position) &&
-        !FamilyHousePosition(current, bride_family, house.position)) {
-      house.position = VillagePosition(current);
+    Vec2 wanted;
+    if (!FamilyHousePosition(current, groom_family, wanted) &&
+        !FamilyHousePosition(current, bride_family, wanted)) {
+      wanted = VillagePosition(current);
     }
+    // AND NOW THE SAME RULE AN ORDERED BUILDING GOES THROUGH. Both wanted
+    // positions are places that are ALREADY TAKEN — the parents' own house,
+    // or the mean of all the houses, which is itself a spot somebody's
+    // house tends to sit on — so taking either as given put every new
+    // household inside a plot that was standing. Three generations of one
+    // family came out as three houses at one coordinate, and every migrant
+    // couple of the campaign at the same village mean: the layer drew a
+    // stack of identical slabs, which is how this was found (boss,
+    // 2026-09-04). The plot rule was never wrong; it simply guarded the
+    // ORDER BOOK, and this house does not come through the book.
+    house.position = FreePlot(current.units, PlotRulesOf(config_), wanted, HouseRadius());
     return AppendRow(current.units, house);
+  }
+
+  /// The plot rules as core_common wants them, built from the config each
+  /// time rather than stored: a span into a member is a member's lifetime
+  /// written down twice.
+  static PlotRules PlotRulesOf(const LifeConfig& config) {
+    return PlotRules{.radius_by_type = config.plot_radius_by_type, .map_side_m = config.map_side_m};
+  }
+
+  /// The plot radius of the type the STUB raises; zero when the tables know
+  /// no radius for it, and then the house takes the spot it wanted.
+  float HouseRadius() const {
+    return config_.house_type.value < config_.plot_radius_by_type.size()
+               ? config_.plot_radius_by_type[config_.house_type.value]
+               : 0.0F;
   }
 
   /// The mean position of the houses people live in; the origin only in a
   /// world with no houses at all (a table-less test).
+  ///
+  /// It is a WANTED position and never a final one: the mean of a village
+  /// is a spot in the middle of that village, where somebody already lives.
+  /// Every caller passes it through FreePlot.
   static Vec2 VillagePosition(const WorldState& current) {
     Vec2 sum{.x = 0.0F, .y = 0.0F};
     std::uint32_t seen = 0;
@@ -917,13 +949,20 @@ class ResidentsSystem final : public IResidentsSystem {
 
 }  // namespace
 
-std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables) {
+std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
+                                                        const PlotRules& plot_rules) {
   LifeConfig life;
   std::string error;
   if (!ParseLifeConfig(tables, life, error)) {
     LogError(error);
     return nullptr;
   }
+  // After the parse and not before it: the rules come from another module's
+  // read, and nothing in tables/life.csv may be allowed to overwrite them.
+  // Copied, never held as a span: the caller's vector may die with the call.
+  life.plot_radius_by_type.assign(plot_rules.radius_by_type.begin(),
+                                  plot_rules.radius_by_type.end());
+  life.map_side_m = plot_rules.map_side_m;
   FoodConfig food = ParseFoodConfig(tables, &error);
   if (!error.empty()) {
     LogError(error);

@@ -8,6 +8,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/plot.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table.h"
@@ -276,6 +277,99 @@ int TestVersionPin() {
   return failures;
 }
 
+/// The plot rule (core_common/plot.h). It is checked here and not in
+/// core_construction because it is no longer that module's: the wedding
+/// stub in core_residents places a house through the same call, and a rule
+/// with two callers and one home needs a test that belongs to neither.
+int TestPlot() {
+  int failures = 0;
+
+  // Radii by type: type 0 has a 25-metre plot, type 1 none at all.
+  const float radii[] = {25.0F, 0.0F};
+  const core::PlotRules rules{.radius_by_type = radii, .map_side_m = 0.0F};
+  core::UnitTable units;
+  core::UnitRow standing;
+  standing.type = core::UnitTypeId{0};  // the default id is INVALID, not row zero
+  standing.position = core::Vec2{.x = 100.0F, .y = 100.0F};
+  const core::UnitId first = core::AppendRow(units, standing);
+
+  failures += Expect(
+      core::PlotOverlaps(units, rules, core::Vec2{.x = 130.0F, .y = 100.0F}, 25.0F, core::UnitId{}),
+      "two 25-metre plots 30 metres apart overlap");
+  failures += Expect(!core::PlotOverlaps(
+                         units, rules, core::Vec2{.x = 151.0F, .y = 100.0F}, 25.0F, core::UnitId{}),
+                     "and 51 metres apart they do not");
+  failures +=
+      Expect(!core::PlotOverlaps(units, rules, core::Vec2{.x = 100.0F, .y = 100.0F}, 25.0F, first),
+             "a unit does not overlap itself when it is the one being moved");
+
+  // BOSS'S PORCH TEST (2026-09-04): two families given the SAME parental
+  // house must not end up on the same plot. That is the whole defect —
+  // SettleHouse took the parents' coordinates as the answer.
+  const core::Vec2 parents{.x = 100.0F, .y = 100.0F};
+  const core::Vec2 first_child = core::FreePlot(units, rules, parents, 25.0F);
+  core::UnitRow child_house;
+  child_house.type = core::UnitTypeId{0};
+  child_house.position = first_child;
+  core::AppendRow(units, child_house);
+  const core::Vec2 second_child = core::FreePlot(units, rules, parents, 25.0F);
+  failures += Expect(!(first_child.x == parents.x && first_child.y == parents.y),
+                     "a house wanted on its parents' plot is moved off it");
+  failures += Expect(!(second_child.x == first_child.x && second_child.y == first_child.y),
+                     "and the second child does not land on the first");
+  failures += Expect(!core::PlotOverlaps(units, rules, second_child, 25.0F, core::UnitId{}),
+                     "and neither of them overlaps anything standing");
+
+  // A free spot is TAKEN AS IT IS: the search must not push a house that
+  // fits, or every village would drift outward one wedding at a time.
+  const core::Vec2 empty{.x = 5000.0F, .y = 5000.0F};
+  const core::Vec2 kept = core::FreePlot(units, rules, empty, 25.0F);
+  failures +=
+      Expect(kept.x == empty.x && kept.y == empty.y, "a spot that is already free is left alone");
+
+  // A type with no plot at all takes no part, in either direction.
+  failures += Expect(!core::PlotOverlaps(units, rules, parents, 0.0F, core::UnitId{}),
+                     "a thing with no plot overlaps nothing");
+  const core::Vec2 no_plot = core::FreePlot(units, rules, parents, 0.0F);
+  failures += Expect(no_plot.x == parents.x && no_plot.y == parents.y,
+                     "and is not moved off the spot it was given");
+
+  // Empty radii: a table-less world has no plots, so nothing may be refused
+  // and nothing may be moved.
+  failures += Expect(!core::PlotOverlaps(units, core::PlotRules{}, parents, 25.0F, core::UnitId{}),
+                     "a world whose tables name no radii has no plot rule");
+
+  // THE EDGE OF THE MAP IS THE OTHER HALF OF THE INVARIANT. A player's
+  // order is REFUSED outside the map; the stub cannot refuse, so it must
+  // not go there instead — found by the delivery cycle's own analysis on
+  // 2026-09-04, in the very change that was closing the same class of hole.
+  const core::PlotRules bounded{.radius_by_type = radii, .map_side_m = 300.0F};
+  core::UnitTable edge_units;
+  core::UnitRow corner;
+  corner.type = core::UnitTypeId{0};
+  corner.position = core::Vec2{.x = 40.0F, .y = 40.0F};
+  core::AppendRow(edge_units, corner);
+  const core::Vec2 pushed = core::FreePlot(edge_units, bounded, corner.position, 25.0F);
+  failures += Expect(pushed.x - 25.0F >= 0.0F && pushed.y - 25.0F >= 0.0F &&
+                         pushed.x + 25.0F <= 300.0F && pushed.y + 25.0F <= 300.0F,
+                     "a house pushed off a crowded corner stays on the map");
+  failures += Expect(!core::PlotOverlaps(edge_units, bounded, pushed, 25.0F, core::UnitId{}),
+                     "and is still clear of what pushed it");
+  // A map side of zero means the table set declares no map, and then there
+  // is no edge to fall off — not an edge at the origin.
+  const core::Vec2 unbounded = core::FreePlot(units, rules, parents, 25.0F);
+  failures += Expect(unbounded.x != 0.0F || unbounded.y != 0.0F,
+                     "a table set with no map declared has no edge, not one at zero");
+
+  // DETERMINISM. The search is a fixed walk over integer offsets, so the
+  // same question asked twice gives the same answer bit for bit — the half
+  // of the phase gate the runs measure, asked of the one new loop.
+  const core::Vec2 again = core::FreePlot(units, rules, parents, 25.0F);
+  failures += Expect(again.x == second_child.x && again.y == second_child.y,
+                     "and the same crowded spot always yields the same free one");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestCalendar();
@@ -283,6 +377,7 @@ int main() {
   failures += TestRandom();
   failures += TestGramsFromFloat();
   failures += TestVersionPin();
+  failures += TestPlot();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

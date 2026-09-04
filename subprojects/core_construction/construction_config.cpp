@@ -21,6 +21,7 @@
 #include <string_view>
 
 #include "core_common/calendar.h"
+#include "core_construction/construction_system.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -195,6 +196,13 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
     if (!(type.wear_factor > 0.0F)) {
       type.wear_factor = 1.0F;
     }
+  }
+  // The contiguous copy the shared plot rule reads (construction_config.h).
+  // Filled here, from the rows just parsed, so there is exactly one place
+  // where a radius comes into being.
+  config.plot_radius_by_type.assign(config.types.size(), 0.0F);
+  for (std::uint32_t row = 0; row < config.types.size(); ++row) {
+    config.plot_radius_by_type[row] = config.types[row].plot_radius_m;
   }
   return true;
 }
@@ -449,6 +457,18 @@ bool ParseConstructionConfig(const ITableSet& tables,
     return false;
   }
   return CheckPlots(*unit_types, config, error);
+}
+
+PlotRadiiAndMap LoadPlotRules(const ITableSet& tables) {
+  ConstructionConfig config;
+  std::string error;
+  if (!ParseConstructionConfig(tables, config, error)) {
+    return {};
+  }
+  PlotRadiiAndMap rules;
+  rules.radius_by_type = std::move(config.plot_radius_by_type);
+  rules.map_side_m = config.map_side_m;
+  return rules;
 }
 
 }  // namespace core

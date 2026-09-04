@@ -23,6 +23,7 @@
 #include "core_common/event_state.h"
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
+#include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 
@@ -32,14 +33,6 @@ namespace {
 /// More parts than any repair can ask for: the cast below is undefined
 /// above the destination's range, and the figure comes off a table.
 constexpr float kMaxRepairPieces = 1e9F;
-
-/// @brief Squared distance: the plot check compares against a sum of radii,
-/// and squaring both sides keeps it exact and cheap.
-float DistanceSquared(const Vec2& from, const Vec2& to) {
-  const float dx = to.x - from.x;
-  const float dy = to.y - from.y;
-  return (dx * dx) + (dy * dy);
-}
 
 /// @brief Emits one event into the step's outbox. Sequential code only —
 /// which the whole of this module is (buffer-law rule 5).
@@ -684,31 +677,14 @@ class ConstructionSystem final : public IConstructionSystem {
   }
 
   /// Two units may not stand closer than the sum of their radii (unit rules
-  /// §9). A radius of zero takes no part: either the type has no plot at all
-  /// or the player draws its outline, and the outline is the presentation's
-  /// to guard.
+  /// §9). The rule itself lives in core_common/plot.h, where the wedding
+  /// stub can reach it too: it used to be private to this class, and every
+  /// unit row that appeared WITHOUT an order — the houses the residents
+  /// module appends — was outside it (boss, 2026-09-04).
   bool PlotOverlaps(const WorldState& current, const Vec2& place, float radius, UnitId ignore) {
-    if (radius <= 0.0F) {
-      return false;
-    }
-    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-      if (current.units.row_ids[row].value == ignore.value) {
-        continue;
-      }
-      const UnitRow& other = current.units.rows[row];
-      if (other.type.value >= config_.types.size()) {
-        continue;
-      }
-      const float other_radius = config_.types[other.type.value].plot_radius_m;
-      if (other_radius <= 0.0F) {
-        continue;
-      }
-      const float reach = radius + other_radius;
-      if (DistanceSquared(place, other.position) < reach * reach) {
-        return true;
-      }
-    }
-    return false;
+    const PlotRules rules{.radius_by_type = config_.plot_radius_by_type,
+                          .map_side_m = config_.map_side_m};
+    return core::PlotOverlaps(current.units, rules, place, radius, ignore);
   }
 
   static bool HerdStandsAt(const WorldState& current, UnitId unit) {

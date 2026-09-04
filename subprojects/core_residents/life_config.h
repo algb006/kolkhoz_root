@@ -8,6 +8,19 @@
 //
 // Stage 6 adds the vitals block (life expectancy, decision 105) and the
 // birth-conditions block (decision 106); their keys live in life.csv too.
+//
+/// @threading PARALLEL_READONLY
+/// Filled ONCE, by CreateResidentsSystem, before the system object exists;
+/// never written again for the life of the campaign. Slot-6 workers hold a
+/// pointer to it (FamilyMetricsPhase) and read it from many threads at
+/// once, which is safe for exactly that reason and for no other.
+///
+/// SO: NO PER-STEP FIELD BELONGS HERE. A cache, a counter, anything the
+/// step writes turns this object from a constant into shared mutable state
+/// read by every worker at once, and the compiler will not say a word. The
+/// label was missing entirely until 2026-09-04, and its absence cost the
+/// whole module a full race sweep on every delta — the tooling cannot tell
+/// "single-threaded" from "nobody said".
 
 #ifndef CORE_RESIDENTS_LIFE_CONFIG_H_
 #define CORE_RESIDENTS_LIFE_CONFIG_H_
@@ -105,6 +118,20 @@ struct LifeConfig {
   /// (life-cycle §12: "a free house — new, freed, or one the farm got at the
   /// start"). Empty in a table-less world: then nothing is ever free.
   std::vector<std::uint8_t> type_is_housing;
+
+  /// Plot radius in metres by UnitTypeId value, handed in by core_world
+  /// from core_construction's read of unit_types.csv (LoadPlotRules). The
+  /// wedding STUB places a house with it, through the same
+  /// core_common/plot.h rule an ordered building goes through. Empty in a
+  /// table-less world, and then nothing has a plot to overlap.
+  ///
+  /// OWNED, not borrowed: the span the factory is called with belongs to
+  /// the caller and may die with the call, while this outlives the campaign.
+  std::vector<float> plot_radius_by_type;
+
+  /// Side of the square map in metres, from the same crossing. Zero = the
+  /// table set declares no map, and then a house cannot be off it.
+  float map_side_m = 0.0F;
 
   float life_speedup = 4.0F;
 

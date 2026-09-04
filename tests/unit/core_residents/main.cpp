@@ -630,7 +630,7 @@ core::FamilyId RunUntilWedding(core::IResidentsSystem& system, core::WorldState&
 int CheckSettleHouse() {
   int failures = 0;
   const HousingTables tables;
-  const auto system = core::CreateResidentsSystem(tables);
+  const auto system = core::CreateResidentsSystem(tables, core::PlotRules{});
   failures += Expect(system != nullptr, "a system over the housing tables");
 
   // A free house of a housing type stands in the village: the wedding takes it.
@@ -739,7 +739,7 @@ int CheckVacatedPostIsAnnounced(core::IResidentsSystem& system) {
 int main() {
   int failures = 0;
   const EmptyTableSet tables;  // canonical defaults compiled into the config
-  const auto system = core::CreateResidentsSystem(tables);
+  const auto system = core::CreateResidentsSystem(tables, core::PlotRules{});
   failures += Expect(system != nullptr, "factory yields a system");
 
   // A hand-built village: three fertile couples, one old man, one single.

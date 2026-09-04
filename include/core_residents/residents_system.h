@@ -22,8 +22,10 @@
 #define CORE_RESIDENTS_RESIDENTS_SYSTEM_H_
 
 #include <memory>
+#include <span>
 #include <vector>
 
+#include "core_common/plot.h"
 #include "core_sim/step.h"
 
 namespace core {
@@ -98,8 +100,18 @@ class IResidentsSystem {
 /// @brief Creates the people subsystem.
 /// @param tables Balance tables (consumption norms, demography rates);
 ///               non-owning, must outlive the returned object.
+/// @param plot_rules The radii and the map edge, as core_construction reads
+///        them out of unit_types.csv and map.csv (LoadPlotRules). The
+///        wedding STUB raises a house itself, and that house must satisfy
+///        the same rules as one the player builds — they come in from
+///        outside because those columns have one reader and this is not it.
+///        The span must outlive the call, not the returned system: it is
+///        copied. EMPTY RADII MEAN NO RULE: a table-less test world has no
+///        plots, and then houses may share a spot, which is exactly what
+///        the old behaviour was everywhere.
 /// Implemented in core_residents (stage 3 of the plan; no-op STUB — task O0).
-std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables);
+std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
+                                                        const PlotRules& plot_rules);
 
 }  // namespace core
 

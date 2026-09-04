@@ -157,6 +157,13 @@ struct ConstructionConfig {
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;
 
+  /// The `plot_radius_m` of every type laid out contiguously, so the shared
+  /// rule in core_common/plot.h can read it: that header knows Vec2 and the
+  /// units table and must not learn BuildType. Derived from `types` in one
+  /// place, at the end of the parse — the number is read from the table
+  /// once and stored twice, which is a projection and not a second rule.
+  std::vector<float> plot_radius_by_type;
+
   // -- wear and repair (task A5, construction.csv) ------------------------------
 
   /// A repair at FULL wear costs this share of the level's build norm in

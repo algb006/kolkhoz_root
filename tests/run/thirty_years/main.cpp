@@ -11,20 +11,25 @@
 //
 // The sheet lands in claude/analysis/, which is outside git: it is a
 // measurement, not a source, and it changes with every table edit.
-
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "../common/fixture_policy.h"
+#include "../common/orders_policy.h"
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
+#include "core_common/plot.h"
 #include "core_common/world_state.h"
+#include "core_construction/construction_system.h"
 #include "core_report/ledger_csv.h"
 
 namespace {
@@ -153,12 +158,17 @@ int main() {
   // away (granary_policy.h).
   run::FixturePolicy fixture(*world.tables);
   run::FixturePolicy::Declare();
+  // And the two verbs the runs had never said: a standing work order and a
+  // pause (orders_policy.h). A verb the run does not say is not checked by
+  // the run, however many unit tests stand behind it (boss, 2026-09-04).
+  run::OrdersPolicy orders;
 
   for (std::uint32_t year = 0; year < kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       run::AdvanceDays(*world, 1);
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
+      orders.RunDay(*world.simulation);
       const core::WorldState& mid = world.State();
       if (mid.calendar.date.month == core::Month::kJuly && mid.calendar.date.day_in_month == 0) {
         sampled.assign(mid.fields.rows.size(), FieldSample{});
@@ -281,6 +291,7 @@ int main() {
   // purpose, because the first draft of this check asserted the opposite and
   // was wrong about the model rather than about the run.
   fixture.Report(state);
+  failures += orders.Report();
   // A LIMIT THAT BINDS MUST SAY SO. A run that quietly starves a village
   // against a ceiling is an argument, not a measurement (boss, 2026-09-03).
   core::Grams lost_to_room = 0;
@@ -291,6 +302,58 @@ int main() {
     std::cout << "thirty_years: STORAGE STILL BINDS — the last year lost "
               << static_cast<double>(lost_to_room) / 1.0e6 << " t for want of room\n";
   }
+  // NO TWO PLOTS OVERLAP — read off the WORLD, not off the door the rule
+  // used to be guarded at. The wedding stub appended its house rows
+  // straight into the table and never went past kTooClose, so the village
+  // came out as stacks of houses at one coordinate (boss, 2026-09-04).
+  // A property of the state is checked over the state.
+  const core::PlotRadiiAndMap loaded = core::LoadPlotRules(*world.tables);
+  const core::PlotRules plot_rules{.radius_by_type = loaded.radius_by_type,
+                                   .map_side_m = loaded.map_side_m};
+  const std::span<const float> plot_radii = loaded.radius_by_type;
+  std::uint32_t overlapping = 0;
+  for (std::uint32_t row = 0; row < state.units.rows.size(); ++row) {
+    const core::UnitRow& unit = state.units.rows[row];
+    const float radius = unit.type.value < plot_radii.size() ? plot_radii[unit.type.value] : 0.0F;
+    if (!(radius > 0.0F)) {
+      continue;
+    }
+    if (core::PlotOverlaps(
+            state.units, plot_rules, unit.position, radius, state.units.row_ids[row])) {
+      ++overlapping;
+    }
+  }
+  // AND HOW FAR THE VILLAGE HAD TO SPREAD TO HOLD THEM. Plots that may not
+  // overlap take room, and room is the walk to the fields — the cost of the
+  // fix, named rather than left to be discovered (boss, 2026-09-04).
+  core::Vec2 centre{.x = 0.0F, .y = 0.0F};
+  std::uint32_t housed = 0;
+  for (const core::UnitRow& unit : state.units.rows) {
+    if (unit.household.value == core::kInvalidEntityIdValue) {
+      continue;
+    }
+    centre.x += unit.position.x;
+    centre.y += unit.position.y;
+    ++housed;
+  }
+  float spread = 0.0F;
+  if (housed != 0) {
+    centre.x /= static_cast<float>(housed);
+    centre.y /= static_cast<float>(housed);
+    for (const core::UnitRow& unit : state.units.rows) {
+      if (unit.household.value == core::kInvalidEntityIdValue) {
+        continue;
+      }
+      const float dx = unit.position.x - centre.x;
+      const float dy = unit.position.y - centre.y;
+      spread = std::max(spread, std::sqrt((dx * dx) + (dy * dy)));
+    }
+  }
+  std::cout << "thirty_years: " << state.units.rows.size() << " units stand, " << overlapping
+            << " of them on somebody else's plot; " << housed << " lived-in houses reach " << spread
+            << " m from the village centre\n";
+  failures += run::Expect(overlapping == 0, "no two plots overlap after thirty years of weddings");
+
   std::uint32_t posts_held = 0;
   for (const core::ResidentRow& resident : state.residents.rows) {
     posts_held += resident.post.profession.value != core::kInvalidDefIdValue ? 1 : 0;

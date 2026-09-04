@@ -9,6 +9,7 @@
 kolkhoz_add_module(core_common
     alarm_state.cpp
     haul.cpp
+    plot.cpp
     spoilage.cpp
     quantities.cpp
     stock_forecast.cpp
