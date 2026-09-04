@@ -937,6 +937,18 @@ int TestStockLights(const core::ITableSet& tables) {
   }
   failures += Expect(in_kind_order, "and they come in kind order, so a panel can diff the list");
 
+  // THE TERMINATOR IS NOT A COLOUR. It exists so the layer can put a
+  // static_assert on the number of lights it draws (boss, 2026-09-04), and
+  // the core's half of that bargain is never to hand one over: a light of
+  // value kStockLightCount would pass every switch the layer writes and
+  // land in its default, which draws grey — that is, "no data".
+  bool in_range = true;
+  for (const core::StockForecast& light : lights) {
+    in_range = in_range && light.light < core::StockLight::kStockLightCount &&
+               light.no_data_reason < core::NoDataReason::kNoDataReasonCount;
+  }
+  failures += Expect(in_range, "no light or reason is handed over as the terminator itself");
+
   bool any_green = false;
   for (const core::StockForecast& light : lights) {
     any_green = any_green || light.light == core::StockLight::kGreen;

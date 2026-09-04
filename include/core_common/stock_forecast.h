@@ -103,6 +103,18 @@ enum class StockLight : std::uint8_t {
   /// nothing for it — an empty field takes no default when the default
   /// reads as well-being.
   kNoData,
+
+  /// NOT A LIGHT: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  ///
+  /// This enum was the one the rule of 0.17.6 missed while fifteen others
+  /// got their terminator, and it is the one where the miss reads best: a
+  /// fifth light added here would fall through the layer's `default` and
+  /// be drawn grey — that is, AS "NO DATA" — without breaking a build.
+  /// A new state of the stock would reach the player as the absence of a
+  /// state, and it would fail beautifully, because grey looks like an
+  /// answer (boss, 2026-09-04).
+  kStockLightCount,
 };
 
 /// @brief Why a light says nothing. Meaningful only with StockLight::kNoData.
@@ -125,6 +137,15 @@ enum class NoDataReason : std::uint8_t {
   /// subsystem that is not wired yet. Not the same complaint at all: this
   /// one is ours to fix.
   kNoSubsystemAnswered,
+
+  /// NOT A REASON: the number of them, for a consumer's mirror. Values are
+  /// appended BEFORE it.
+  ///
+  /// Missed by the same short list as StockLight above, and reported by the
+  /// host on the same day: it had written in its own tree that its guard
+  /// was a reminder and not a check, which is what an enum without a length
+  /// leaves its consumers to do.
+  kNoDataReasonCount,
 };
 
 /// @brief `days_of_stock` when nothing is being consumed at all: the stock

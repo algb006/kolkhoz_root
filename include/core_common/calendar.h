@@ -78,6 +78,12 @@ inline constexpr std::uint32_t kClockScale = 12;
 inline constexpr float kRealDaysPerGameDay = 7.0F;
 
 /// @brief Calendar month. Values are 0-based so the enum doubles as an index.
+///
+/// @enum_length kMonthsPerYear — NO kCount terminator here, and that is a
+/// decision rather than an oversight: the calendar declares the length
+/// first and the enum follows it. A terminator would be a second home
+/// for one number, which is what terminators were brought in to abolish.
+/// A consumer's mirror guards itself on kMonthsPerYear.
 enum class Month : std::uint8_t {
   kJanuary = 0,
   kFebruary,
@@ -95,6 +101,12 @@ enum class Month : std::uint8_t {
 
 /// @brief Day of the 7-day week. The week is real: Sunday is the day off in
 /// Epochs I–II, Saturday joins it in Epoch III.
+///
+/// @enum_length kDaysPerWeek — NO kCount terminator here, and that is a
+/// decision rather than an oversight: the calendar declares the length
+/// first and the enum follows it. A terminator would be a second home
+/// for one number, which is what terminators were brought in to abolish.
+/// A consumer's mirror guards itself on kDaysPerWeek.
 enum class Weekday : std::uint8_t {
   kMonday = 0,
   kTuesday,
@@ -106,6 +118,12 @@ enum class Weekday : std::uint8_t {
 };
 
 /// @brief Season. December–February is winter, and so on by threes.
+///
+/// @enum_length kSeasonsPerYear — NO kCount terminator here, and that is a
+/// decision rather than an oversight: the calendar declares the length
+/// first and the enum follows it. A terminator would be a second home
+/// for one number, which is what terminators were brought in to abolish.
+/// A consumer's mirror guards itself on kSeasonsPerYear.
 enum class Season : std::uint8_t {
   kWinter = 0,
   kSpring,
