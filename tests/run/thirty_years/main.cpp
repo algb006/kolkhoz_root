@@ -12,6 +12,7 @@
 // The sheet lands in claude/analysis/, which is outside git: it is a
 // measurement, not a source, and it changes with every table edit.
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -38,6 +39,57 @@ namespace {
 constexpr std::uint32_t kYears = 30;
 
 constexpr std::uint64_t kSeed = 1929;
+
+// -- THE OTHER TWO HALVES OF THE PHASE GATE ------------------------------
+//
+// The hard half of the phase-two criterion is four lines
+// (manual/process/70-phase2-plan.md §1). One of them — "no UE headers" — is
+// grep, and one — determinism — got its own run today. The remaining two
+// were read off a document by whoever remembered to look, which is the same
+// state determinism was in this morning: A LINE OF A CRITERION WITH NO
+// EXECUTABLE CARRIER IS AN INTENTION (boss, 2026-09-04).
+//
+// They live here rather than in a run of their own because this is where
+// the numbers they judge are produced. A gate checked somewhere other than
+// where its quantity appears is the failure this run already carries a scar
+// from — the house placed at a door the placing code never came through.
+
+/// The canon's thirtieth year: 1400-1500 residents (CLAUDE.md §9 "growth
+/// targets", phase-two plan §1). THE FLOOR IS HARD — nothing in the run
+/// excuses a village that failed to grow.
+constexpr std::size_t kCanonLow = 1400;
+
+/// The canon's top. Printed always, asserted only once the caveat below is
+/// gone.
+constexpr std::size_t kCanonTop = 1500;
+
+/// THE CEILING ACTUALLY IN FORCE, and it is wider than the canon's for one
+/// written-down reason, not for want of a tighter number.
+///
+/// Every wedding in this run is handed a house for free
+/// (core_residents/housing.h, STUB), which cancels the canon's brake "no
+/// free house, no wedding" (life-cycle §12). Boss's caveat, made on the
+/// fifth reconciliation pass and repeated on the eleventh: the run's curve
+/// is an UPPER ESTIMATE of the real one, the excess over the canon is
+/// explained by that stub ENTIRELY, and no other number is to be bent to
+/// it (69-reconciliation.md §11).
+///
+/// So the ceiling is derived, not chosen: the canon top times the widest
+/// excess the caveat has ever had to explain — 1608 against 1500, +7.2%, on
+/// the pass that stated the caveat. A run above THAT is not the stub any
+/// more, and the caveat stops covering it.
+///
+/// The constant has an owner and an end. When the player builds the houses,
+/// the stub goes and this line goes with it, and the check tightens to
+/// kCanonTop by deletion rather than by somebody remembering.
+constexpr std::size_t kStubCeiling = 1608;
+
+/// Fast-forward: a game day in at most two seconds with nothing drawn
+/// (phase-two plan §1). NOT a pin on this machine's speed — the measured
+/// figure is around 0.05 s/day, so the norm sits a factor of forty away and
+/// a busy host cannot trip it. What it catches is the thing the norm is
+/// there for: a step that became forty times dearer.
+constexpr double kDayBudgetSeconds = 2.0;
 
 /// Where the sheet goes. Relative to the repository root, which is this
 /// test's working directory (its CMakeLists sets it).
@@ -150,6 +202,18 @@ int main() {
   field_sheet << "year,field,kind,area_ha,crop,manured,fertility,stress_july\n";
   std::vector<FieldSample> sampled;
 
+  // The fast-forward measure. Only the game's own day is on the clock: the
+  // step and the chairman's orders. The sheets, the samples and the
+  // printing are the instrument's cost, not the game's, and charging them
+  // to the norm would make the norm say something else.
+  // Averaged over a YEAR and not taken as a single worst day: ctest runs
+  // this alongside the rest of the suite, and one contended day would be a
+  // spike, not a regression. Forty-eight days of a growing village is a
+  // measure that only moves when the step does.
+  double costliest_year_day_seconds = 0.0;
+  std::uint32_t costliest_year = 0;
+  double simulated_seconds = 0.0;
+
   // The chairman, for the one decision the start cannot do without: build
   // the yard, take it to the stable step, appoint a groom. The core used to
   // do this itself in a stub; a run plays the player now (yard_policy.h).
@@ -165,11 +229,15 @@ int main() {
   run::OrdersPolicy orders;
 
   for (std::uint32_t year = 0; year < kYears; ++year) {
+    double year_seconds = 0.0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      const std::chrono::steady_clock::time_point day_began = std::chrono::steady_clock::now();
       run::AdvanceDays(*world, 1);
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
       orders.RunDay(*world.simulation);
+      year_seconds +=
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
       const core::WorldState& mid = world.State();
       if (mid.calendar.date.month == core::Month::kJuly && mid.calendar.date.day_in_month == 0) {
         sampled.assign(mid.fields.rows.size(), FieldSample{});
@@ -179,6 +247,15 @@ int main() {
           sampled[field].stress = mid.fields.rows[field].weather_stress;
         }
       }
+    }
+    // A day of the year that has just been lived, not of the whole run: the
+    // village grows all the way through, so the run's mean would hide the
+    // only year that matters — the last and largest.
+    const double day_seconds = year_seconds / static_cast<double>(core::kDaysPerYear);
+    simulated_seconds += year_seconds;
+    if (day_seconds > costliest_year_day_seconds) {
+      costliest_year_day_seconds = day_seconds;
+      costliest_year = year + 1;
     }
     const core::WorldState& state = world.State();
     for (std::size_t field = 0; field < state.fields.rows.size(); ++field) {
@@ -238,9 +315,38 @@ int main() {
   failures += run::Expect(rows_written == kYears, "one row per year of the run");
   failures +=
       run::Expect(state.ledger.closed.year == kYears, "the last closed book is the last full year");
-  failures +=
-      run::Expect(state.residents.rows.size() > 100, "the settlement is alive after thirty years");
   failures += run::Expect(state.families.rows.size() > 20, "and it has households");
+
+  // -- THE PHASE GATE, HALF ONE: the run still converges with the canon ----
+  const std::size_t population = state.residents.rows.size();
+  std::cout << "gate: " << population << " residents in the thirtieth year — canon " << kCanonLow
+            << "-" << kCanonTop << ", ceiling in force " << kStubCeiling << '\n';
+  if (population > kCanonTop) {
+    // SAID OUT LOUD EVERY TIME, not only when it fails. A run that sits
+    // above the canon on a caveat must keep saying which caveat, or the
+    // green light gets read as agreement with the canon itself.
+    std::cout << "gate: above the canon top by " << (population - kCanonTop)
+              << " — the free-housing stub (core_residents/housing.h) is what the caveat "
+                 "covers; when the player builds the houses this must come back under "
+              << kCanonTop << '\n';
+  }
+  failures += run::Expect(population >= kCanonLow,
+                          "the village reaches the canon's thirtieth year and not a smaller one");
+  failures += run::Expect(population <= kStubCeiling,
+                          "and does not outgrow even the free-housing caveat's ceiling");
+
+  // -- THE PHASE GATE, HALF TWO: fast-forward holds the norm ---------------
+  std::cout << "gate: a game day of the costliest year cost " << costliest_year_day_seconds
+            << " s (year " << costliest_year << "), the run averaged "
+            << simulated_seconds / static_cast<double>(kYears * core::kDaysPerYear)
+            << " s/day against a budget of " << kDayBudgetSeconds << " s\n";
+  // A STOPPED CLOCK IS UNDER EVERY BUDGET. The measure has to prove it
+  // measured before its verdict means anything — the same reason the
+  // determinism run counts the residents it agreed on.
+  failures +=
+      run::Expect(simulated_seconds > 0.0, "the fast-forward measure actually timed something");
+  failures += run::Expect(costliest_year_day_seconds <= kDayBudgetSeconds,
+                          "and no year of the run cost more per game day than the norm allows");
 
   // -- what task O2b made structural, and what the first pass had none of ---
   // These are not balance bands. They are the three ways the farm used to
