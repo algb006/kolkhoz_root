@@ -278,6 +278,50 @@ int main(int argc, char** argv) {
   run::OrdersPolicy orders;
   run::RepairPolicy repairs(*world.tables);
 
+  // DAY ZERO, before anything has had a chance to die: the canon says
+  // sixteen kolkhoz horses stand in private yards from the first morning
+  // (start canon §11), and the claim under test is that the core has none.
+  {
+    const core::WorldState& dawn = world.State();
+    const core::ITable* const kinds = world.tables->FindTable("livestock");
+    const std::uint32_t horse = kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
+    std::uint32_t adults = 0;
+    std::uint32_t billeted = 0;
+    std::uint32_t owned_by_family = 0;
+    for (const core::HerdRow& herd : dawn.herds.rows) {
+      if (horse == core::kNoTableRow || herd.kind.value != horse) {
+        continue;
+      }
+      adults += herd.adult_count;
+      billeted += herd.household.value != core::kInvalidEntityIdValue ? herd.adult_count : 0U;
+      owned_by_family += herd.household_owned != 0 ? herd.adult_count : 0U;
+    }
+    // And the other half of the canon: ONE ADULT PER HORSE is held to horse
+    // work and cannot be sent elsewhere (MarkHorseHosts). Counted here the
+    // way the labour model counts it — an adult of a family that hosts one.
+    std::uint32_t hosts = 0;
+    for (const core::HerdRow& herd : dawn.herds.rows) {
+      if (horse == core::kNoTableRow || herd.kind.value != horse ||
+          herd.household.value == core::kInvalidEntityIdValue) {
+        continue;
+      }
+      std::uint16_t left = herd.adult_count;
+      for (const core::ResidentRow& resident : dawn.residents.rows) {
+        if (left == 0) {
+          break;
+        }
+        if (resident.family.value == herd.household.value &&
+            core::BiologicalAgeYears(rules.life_speedup, resident.birth_day, dawn.calendar.day) >=
+                16.0F) {
+          ++hosts;
+          --left;
+        }
+      }
+    }
+    std::cout << "idle_curve: нулевые сутки — лошадей взрослых " << adults << ", из них стоят по "
+              << "дворам " << billeted << ", в личной собственности " << owned_by_family
+              << "; при лошадях держат по взрослому " << hosts << " дворов\n";
+  }
   std::cout << "idle_curve: seed " << seed << ", " << kYears << " years"
             << (no_chairman ? ", БЕЗ ПРЕДСЕДАТЕЛЯ" : (yard_only ? ", ТОЛЬКО КОНЮШНЯ" : "")) << '\n';
   std::cout << "idle_curve: год | жителей | рабочего возраста | работали | бездельничали | "
