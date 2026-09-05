@@ -42,6 +42,7 @@
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_activity.h"
@@ -127,12 +128,14 @@ int main(int argc, char** argv) {
   // appoints a groom, and drops the other three.
   bool yard_only = false;
   bool watch_build = false;
+  bool far_site = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
     raise_derelict = raise_derelict || argument == "--raise-derelict";
     no_chairman = no_chairman || argument == "--no-chairman";
     yard_only = yard_only || argument == "--yard-only";
     watch_build = watch_build || argument == "--watch-build";
+    far_site = far_site || argument == "--far";
   }
   const run::Simulation world = run::Start(seed);
   if (!world) {
@@ -200,7 +203,15 @@ int main(int argc, char** argv) {
     core::OrderRow mark;
     mark.kind = core::OrderKind::kBuildUnit;
     mark.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(type_row)};
-    mark.position = core::Vec2{.x = 8600.0F, .y = 9700.0F};
+    // --far reproduces the other instrument's frame exactly: (505, 495) is
+    // the OPPOSITE CORNER of a 12 km map from a village that lives between
+    // x 7380..9551 and y 8509..10475 — eleven and nine tenths kilometres of
+    // diagonal. He did not choose that corner, he ALLOWED it: a pair of
+    // numbers "about the middle" without asking the map where the middle
+    // is. The question this run asks is not his arithmetic but MINE: does
+    // the order book say anything at all about a site nobody can reach?
+    mark.position =
+        far_site ? core::Vec2{.x = 505.0F, .y = 495.0F} : core::Vec2{.x = 8600.0F, .y = 9700.0F};
     world->StageOrders(std::span<const core::OrderRow>(&mark, 1), {});
     world->AdvanceStep();
     std::uint32_t site = core::kNoRow;
@@ -214,6 +225,8 @@ int main(int argc, char** argv) {
       return 1;
     }
     const core::UnitId id = world.State().units.row_ids[site];
+    std::cout << "idle_curve: разметка — отказ " << static_cast<int>(mark.refusal) << " ("
+              << (mark.refusal == core::OrderRefusal::kNone ? "принята" : "отклонена") << ")\n";
     core::OrderRow start;
     start.kind = core::OrderKind::kStartBuild;
     start.unit = id;
@@ -233,7 +246,20 @@ int main(int argc, char** argv) {
       for (const core::ResidentRow& resident : world.State().residents.rows) {
         crew += resident.work.kind == core::WorkKind::kConstruction ? 1U : 0U;
       }
+      // AND WHAT DOES THE VILLAGE SAY ABOUT IT? A site nobody can reach is
+      // not silent in the core: kSiteWithoutCrew counts the assignments and
+      // finds none. Whether the ORDER should have refused is a separate
+      // question; whether the state says anything at all is this one.
+      std::vector<core::Alarm> alarms;
+      world->CollectAlarms(alarms);
+      std::uint32_t crewless = 0;
+      for (const core::Alarm& alarm : alarms) {
+        crewless += alarm.kind == core::AlarmKind::kSiteWithoutCrew && alarm.unit.value == id.value
+                        ? 1U
+                        : 0U;
+      }
       if (unit.construction.labor_days_remaining != last_seam || day < 3 || unit.level > 0) {
+        std::cout << "idle_curve:   тревога «площадка без бригады»: " << crewless << '\n';
         std::cout << "idle_curve: сутки " << day << " ступень " << static_cast<int>(unit.level)
                   << " фаза " << static_cast<int>(unit.construction.phase) << " шов "
                   << unit.construction.labor_days_remaining << " бригада " << crew << '\n';
