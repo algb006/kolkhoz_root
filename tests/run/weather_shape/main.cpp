@@ -167,6 +167,15 @@ struct Shape {
   std::uint32_t snowfall_denied_by_cold = 0;
 
   std::uint32_t snowy_days = 0;
+
+  /// WET DAYS INSIDE THE STORM WINDOW, split by what refused them a storm.
+  /// Asked because the cold ceiling on a blizzard turned out to be a rule
+  /// that could not fire, and `thunder_min_c` is a threshold of exactly the
+  /// same shape: if the window is never cold enough to refuse anybody, the
+  /// number is a comment (architecture §8аб) and belongs in no table.
+  std::uint32_t wet_in_storm_window = 0;
+
+  std::uint32_t refused_by_cold = 0;
 };
 
 const char* SeasonName(std::size_t season) {
@@ -281,6 +290,21 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
     if (current.weather.phenomenon == core::WeatherPhenomenon::kBlizzard) {
       shape.coldest_blizzard = today < shape.coldest_blizzard ? today : shape.coldest_blizzard;
     }
+    // The window is May..August, 0-based months 4..7 — the same months the
+    // generator tests, spelled here so the instrument does not read the
+    // table it is measuring.
+    const std::uint32_t month_now =
+        (current.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth % core::kMonthsPerYear;
+    if (current.weather.precipitation == core::Precipitation::kRain && month_now >= 4U &&
+        month_now <= 7U) {
+      ++shape.wet_in_storm_window;
+      // Not a storm, and warm enough to have been one: then it was the draw
+      // that refused it, not the cold. The complement is what the ceiling
+      // actually costs.
+      const double afternoon = static_cast<double>(current.weather.air_temperature_celsius) +
+                               static_cast<double>(current.weather.temperature_swing_celsius);
+      shape.refused_by_cold += afternoon < 15.0 ? 1U : 0U;
+    }
     if (current.weather.precipitation == core::Precipitation::kSnow) {
       ++shape.snowy_days;
       shape.snowfall_denied_by_cold +=
@@ -363,6 +387,8 @@ void Print(const char* label, const Shape& shape) {
   std::cout << "  coldest blizzard " << shape.coldest_blizzard << " C, coldest day "
             << shape.coldest_day << " C; squalls " << shape.squalls << ", of them outside a storm "
             << shape.squalls_without_a_storm << '\n';
+  std::cout << "  wet days in the storm window " << shape.wet_in_storm_window
+            << ", of them too cool to thunder " << shape.refused_by_cold << '\n';
   std::cout << "  snowy days " << shape.snowy_days << ", of them blown but too cold for a blizzard "
             << shape.snowfall_denied_by_cold << " ("
             << (shape.snowy_days == 0 ? 0.0

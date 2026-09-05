@@ -152,74 +152,69 @@ int main() {
     failures += Expect(any_difference, "a different seed gives different weather");
   }
 
-  // -- THE NAMING KNOBS ARE READ, not merely declared ----------------------
+  // -- THE KNOBS ARE READ, AND THE MONTH CHANGES BASE ON THE WAY IN --------
   //
-  // The struct's comment promised that a column added to weather.csv wins
-  // the moment it appears, while the parser knew none of the names — so the
-  // column would have been dropped in silence, by a parser that is strict
-  // about every name it does know. This is the check that makes the promise
-  // and the mechanism the same statement (found by the delivery's analysis
-  // pass, 2026-09-05).
+  // Two separate claims, and the second is the one no range check can make.
   //
-  // MEASURED BY THE OUTPUT AND NOT BY THE PARSE. That a table loads proves
-  // nothing about whether a number reached the generator; what proves it is
-  // that the year of weather CHANGES when the number does.
+  // The knobs live in their own table (weather_params.csv, key/value); the
+  // seasons live in weather.csv. They were briefly one file and the core lost
+  // its weather entirely, so the split is worth a test of its own.
+  //
+  // MONTHS CROSS THIS SEAM AS HUMAN 1..12 and the calendar counts from zero.
+  // A base error here is the quietest kind there is: 6 taken as written is
+  // July instead of June, and BOTH are legal months, so a range check passes
+  // either way. The only instrument that can see it is one that asserts WHICH
+  // MONTH by name — so this test shuts the storm window down to a single
+  // month and looks at where the storms actually land.
   {
-    fs::create_directories(root / "windy");
-    const std::string header =
-        "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent,"
-        "calm_share,wind_share,thunder_from_month,thunder_to_month\n";
-    // Every day still, and the storm window shut: with calm_share at 1 the
-    // wind can only be kCalm, and with a window of one winter month no
-    // summer day can thunder.
-    WriteFile(root / "windy" / "weather.csv",
-              header + "winter,-10,2,3,35,1,0,0,0\n" + "spring,5,7,5,35,1,0,0,0\n" +
-                  "summer,19,5,6,25,1,0,0,0\n" + "autumn,6,7,5,45,1,0,0,0\n");
-    const auto windy_tables = core::LoadTableSet((root / "windy").string(), nullptr);
-    const auto windy = windy_tables == nullptr ? nullptr : core::CreateTimeSystem(*windy_tables);
-    failures += Expect(windy != nullptr, "a weather table carrying the naming columns builds");
-    if (windy != nullptr) {
+    fs::create_directories(root / "knobs");
+    WriteFile(root / "knobs" / "weather.csv",
+              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+              "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
+    // June and June only, in human months. Zero-based that is 5.
+    WriteFile(root / "knobs" / "weather_params.csv",
+              "key,value\nthunder_from_month,6\nthunder_to_month,6\nthunder_share,1\n"
+              "thunder_min_c,-15\ncalm_share,1\nwind_share,0\n");
+    const auto knob_tables = core::LoadTableSet((root / "knobs").string(), nullptr);
+    const auto knobbed = knob_tables == nullptr ? nullptr : core::CreateTimeSystem(*knob_tables);
+    failures += Expect(knobbed != nullptr, "a table set with weather_params builds");
+    if (knobbed != nullptr) {
+      std::uint32_t storms = 0;
+      std::uint32_t storms_outside_june = 0;
       bool all_still = true;
-      bool any_storm = false;
-      for (core::SimDay day = 1; day <= 400; ++day) {
-        const core::DayForecast at = windy->WeatherOn(7, day);
+      for (core::SimDay day = 0; day < 10 * core::kDaysPerYear; ++day) {
+        const core::DayForecast at = knobbed->WeatherOn(11, day);
         all_still = all_still && at.wind == core::WindBand::kCalm;
-        any_storm = any_storm || at.phenomenon == core::WeatherPhenomenon::kThunderstorm;
+        if (at.phenomenon != core::WeatherPhenomenon::kThunderstorm) {
+          continue;
+        }
+        ++storms;
+        const std::uint32_t month =
+            (day % core::kDaysPerYear) / core::kDaysPerMonth % core::kMonthsPerYear;
+        storms_outside_june += month == 5U ? 0U : 1U;  // June is 5 counting from zero
       }
-      failures += Expect(all_still, "calm_share = 1 in the table makes every day still");
-      failures += Expect(!any_storm, "and a shut window means no day thunders");
+      failures += Expect(storms > 0, "a window of one month still thunders in it");
+      failures += Expect(storms_outside_june == 0,
+                         "and month 6 in the table means JUNE, not July: every storm lands in the "
+                         "sixth month counting from one");
+      failures += Expect(all_still, "calm_share = 1 from the params table makes every day still");
     }
-    // And the same table without the columns must NOT be still — otherwise
-    // the check above would pass on a generator that ignores the columns and
-    // simply never blows.
-    bool any_wind = false;
-    bool any_storm_by_default = false;
-    for (core::SimDay day = 1; day <= 400; ++day) {
-      const core::DayForecast at = time_system->WeatherOn(7, day);
-      any_wind = any_wind || at.wind != core::WindBand::kCalm;
-      any_storm_by_default =
-          any_storm_by_default || at.phenomenon == core::WeatherPhenomenon::kThunderstorm;
-    }
-    failures += Expect(any_wind && any_storm_by_default,
-                       "without those columns the same seed does blow and does thunder");
   }
 
-  // A number outside its range is an error and not a clamp — a window
-  // quietly widened to the whole year would look like a working rule.
+  // A month outside 1..12 is refused, not clamped — and 0 is refused too,
+  // which is the whole point of the base being human here: a zero would be
+  // the December of a 0-based reader and a nonsense of a human one.
   {
     fs::create_directories(root / "silly");
     WriteFile(root / "silly" / "weather.csv",
-              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent,"
-              "thunder_from_month\n"
-              "winter,-10,2,3,35,99\n"
-              "spring,5,7,5,35,4\n"
-              "summer,19,5,6,25,4\n"
-              "autumn,6,7,5,45,4\n");
+              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+              "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
+    WriteFile(root / "silly" / "weather_params.csv", "key,value\nthunder_from_month,0\n");
     const auto silly_tables = core::LoadTableSet((root / "silly").string(), nullptr);
     failures += Expect(silly_tables != nullptr, "the out-of-range table parses as CSV");
     if (silly_tables != nullptr) {
       failures += Expect(core::CreateTimeSystem(*silly_tables) == nullptr,
-                         "but a month of 99 is refused, not clamped");
+                         "but a month of 0 is refused: months here are human, 1..12");
     }
   }
 

@@ -155,8 +155,15 @@ struct SeasonWeather {
   /// kStrongWind, so the three always sum to one by construction.
   float wind_share = 0.5F;
 
-  /// Thunderstorm window, 0-based months, inclusive: MAY TO AUGUST, which is
-  /// 4..7. Outside it a thunderstorm cannot happen at all.
+  /// Thunderstorm window, 0-BASED months inclusive — May to August, so 4..7.
+  /// Outside it a thunderstorm cannot happen at all.
+  ///
+  /// THE TABLE SPELLS THESE 1..12 AND THIS FIELD IS 0-BASED. Every month
+  /// that crosses the seam is human (crops.csv says so in its own header,
+  /// and the design base CHECKs it), while the calendar counts from zero.
+  /// The conversion happens in ONE named place, ParseWeatherParams, because
+  /// a month off by one is the quietest error there is: 5 read from zero is
+  /// June, not May, and no range check can see it — both are legal months.
   std::uint8_t thunder_from_month = 4;
 
   std::uint8_t thunder_to_month = 7;
@@ -176,15 +183,25 @@ struct SeasonWeather {
   /// fires on all of them says nothing.
   float frost_night_celsius = 0.0F;
 
-  /// Frost window, 0-based months inclusive: the growing half of the year,
-  /// where a frost is the one that kills seedlings.
+  /// Frost window, 0-based months inclusive: the span in which a frost has
+  /// something to kill. NOT A CHOICE AND NOT STORED as a decision — the
+  /// design computes it from the crop calendar itself, the first sowing to
+  /// the last harvest of the non-winter crops, so a crop added with a later
+  /// harvest moves the window without anybody remembering to.
   std::uint8_t frost_from_month = 3;
 
   std::uint8_t frost_to_month = 9;
 
-  /// Afternoon at or above which a dry day is named heat. The drought
-  /// threshold of tables/farming.csv, kept here as the naming rule's own.
-  float heat_afternoon_celsius = 25.0F;
+  /// Afternoon at or above which a dry day is named ЗНОЙ — sultry, shimmer
+  /// and burnt grass. +28 on the temperature scale.
+  ///
+  /// IT IS NOT `drought_temp_c` AND NOT THE +25 OF ЖАРА, and the three used
+  /// to share a number without being one fact. The test that separates them
+  /// is not whether the numbers are equal but WHO READS THEM and why: heat
+  /// at +25 dresses the children and shortens the chairman's day, sultry at
+  /// +28 names the day, drought kills a crop. A copy has one consumer; two
+  /// facts have two (boss, 2026-09-05).
+  float sultry_afternoon_celsius = 28.0F;
 
   /// Share of still dry days that fog over.
   float fog_share = 0.2F;
@@ -403,7 +420,7 @@ WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, 
     // on all of them would say nothing. What the design wants named is the
     // frost that KILLS SEEDLINGS — the one out of season.
     weather.phenomenon = WeatherPhenomenon::kFrost;
-  } else if (afternoon >= season.heat_afternoon_celsius) {
+  } else if (afternoon >= season.sultry_afternoon_celsius) {
     weather.phenomenon = WeatherPhenomenon::kHeat;
   } else if (weather.wind == WindBand::kCalm &&
              CounterHashUnitFloat(world_seed, day, 0, kFogSalt) < season.fog_share) {
@@ -470,29 +487,6 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
   const std::uint32_t memory_column = table.FindColumn("temp_memory");
   const std::uint32_t persistence_column = table.FindColumn("wet_persistence");
   const std::uint32_t cloud_column = table.FindColumn("cloud_swing");
-  // The wind and the naming rules (the wind parcel, 2026-09-05), optional on
-  // exactly the same terms: a table from before them keeps the defaults of
-  // SeasonWeather, which are the design's own numbers.
-  //
-  // THESE ARE READ AND NOT MERELY DECLARED, and that distinction is the
-  // finding this loop exists because of: the struct's comment promised that
-  // a column added to weather.csv "wins the moment it appears", while the
-  // parser knew none of these names — so the column would have been dropped
-  // without a word, in a parser that is otherwise strict about every name it
-  // does know. A promise about a mechanism is a description of it, and an
-  // undescribed silence is the worse half.
-  const std::uint32_t calm_column = table.FindColumn("calm_share");
-  const std::uint32_t wind_column = table.FindColumn("wind_share");
-  const std::uint32_t thunder_from_column = table.FindColumn("thunder_from_month");
-  const std::uint32_t thunder_to_column = table.FindColumn("thunder_to_month");
-  const std::uint32_t thunder_share_column = table.FindColumn("thunder_share");
-  const std::uint32_t thunder_warm_column = table.FindColumn("thunder_min_c");
-  const std::uint32_t blizzard_column = table.FindColumn("blizzard_min_c");
-  const std::uint32_t frost_night_column = table.FindColumn("frost_night_c");
-  const std::uint32_t frost_from_column = table.FindColumn("frost_from_month");
-  const std::uint32_t frost_to_column = table.FindColumn("frost_to_month");
-  const std::uint32_t heat_column = table.FindColumn("heat_afternoon_c");
-  const std::uint32_t fog_column = table.FindColumn("fog_share");
   if (mean_column == kNoTableColumn || spread_column == kNoTableColumn ||
       chance_column == kNoTableColumn) {
     error = "weather: a required column is missing";
@@ -546,59 +540,10 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
       *out = *cell;
       return true;
     };
-    // A number that may be negative — a temperature — needs its own reader:
-    // `knob` bounds 0..top, and a blizzard's ceiling is below zero by nature.
-    const auto degrees = [&table, row, &error](std::uint32_t column, const char* name, float* out) {
-      if (column == kNoTableColumn) {
-        return true;
-      }
-      const std::optional<float> cell = table.CellReal(row, column);
-      if (!cell || !(*cell >= kTemperatureMinCelsius && *cell <= kTemperatureMaxCelsius)) {
-        error = std::string("weather: ") + name + " must be a temperature on the -15..+30 scale";
-        return false;
-      }
-      *out = *cell;
-      return true;
-    };
-    // And a month is 0..11 and whole. Out of range is an error and not a
-    // clamp, for the reason the memory knobs give: a window quietly widened
-    // to the whole year would look like a working rule.
-    const auto month = [&table, row, &error](
-                           std::uint32_t column, const char* name, std::uint8_t* out) {
-      if (column == kNoTableColumn) {
-        return true;
-      }
-      const std::optional<float> cell = table.CellReal(row, column);
-      if (!cell || !(*cell >= 0.0F && *cell <= 11.0F)) {
-        error = std::string("weather: ") + name + " must be a 0-based month, 0..11";
-        return false;
-      }
-      *out = static_cast<std::uint8_t>(*cell);
-      return true;
-    };
     SeasonWeather into;
     if (!knob(memory_column, "temp_memory", 0.95F, &into.temperature_memory) ||
         !knob(persistence_column, "wet_persistence", 0.95F, &into.wet_persistence) ||
-        !knob(cloud_column, "cloud_swing", 1.0F, &into.cloud_swing) ||
-        !knob(calm_column, "calm_share", 1.0F, &into.calm_share) ||
-        !knob(wind_column, "wind_share", 1.0F, &into.wind_share) ||
-        !knob(thunder_share_column, "thunder_share", 1.0F, &into.thunder_share) ||
-        !knob(fog_column, "fog_share", 1.0F, &into.fog_share) ||
-        !degrees(thunder_warm_column, "thunder_min_c", &into.thunder_min_celsius) ||
-        !degrees(blizzard_column, "blizzard_min_c", &into.blizzard_min_celsius) ||
-        !degrees(frost_night_column, "frost_night_c", &into.frost_night_celsius) ||
-        !degrees(heat_column, "heat_afternoon_c", &into.heat_afternoon_celsius) ||
-        !month(thunder_from_column, "thunder_from_month", &into.thunder_from_month) ||
-        !month(thunder_to_column, "thunder_to_month", &into.thunder_to_month) ||
-        !month(frost_from_column, "frost_from_month", &into.frost_from_month) ||
-        !month(frost_to_column, "frost_to_month", &into.frost_to_month)) {
-      return false;
-    }
-    // THE TWO SHARES TOGETHER DECIDE A THIRD, so they are checked together:
-    // what is left after calm and wind is the strong-wind share, and a table
-    // whose two sum past one would name a negative one.
-    if (into.calm_share + into.wind_share > 1.0F) {
-      error = "weather: calm_share + wind_share must not exceed 1 — the rest is the strong wind";
+        !knob(cloud_column, "cloud_swing", 1.0F, &into.cloud_swing)) {
       return false;
     }
     into.temperature_mean_celsius = *mean;
@@ -610,13 +555,129 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
   return true;
 }
 
+/// @brief Parses tables/weather_params.csv — the naming knobs, one per row,
+/// `key,value` — into every season of `seasons`.
+///
+/// THE KNOBS ARE NOT PER SEASON and the seasons are not per knob: they are
+/// two registries, and they were briefly one file, which cost the core its
+/// whole weather for as long as it took to notice (2026-09-05). A season row
+/// has a season for a key and eight columns; a knob row has a knob for a key
+/// and one value. No loader can read a header as both.
+///
+/// A MISSING TABLE OR A MISSING ROW IS NOT AN ERROR: SeasonWeather carries
+/// the core's own defaults, and eight of them are ADMITTEDLY PICKED — they
+/// are marked as such in the design base, so that whoever cites them later
+/// can see what they are citing. A row that IS there is validated strictly.
+///
+/// @return false on a malformed value; `error` then says which knob and why.
+bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& error) {
+  const std::uint32_t value_column = table.FindColumn("value");
+  if (value_column == kNoTableColumn) {
+    error = "weather_params: no 'value' column";
+    return false;
+  }
+  // Read once into one season and copy: the knobs name rules of the whole
+  // climate, not of a season, and a per-season copy is what would let them
+  // drift into four answers to one question.
+  SeasonWeather knobs = seasons[0];
+  const auto cell = [&table, value_column](const char* key, std::optional<float>* out) {
+    const std::uint32_t row = table.FindRowByKey(key);
+    *out = row == kNoTableRow ? std::nullopt : table.CellReal(row, value_column);
+    return row != kNoTableRow;
+  };
+  const auto share = [&cell, &error](const char* key, float* out) {
+    std::optional<float> value;
+    if (!cell(key, &value)) {
+      return true;  // absent: the core's default stands
+    }
+    if (!value || !(*value >= 0.0F && *value <= 1.0F)) {
+      error = std::string("weather_params: ") + key + " must be a share, 0..1";
+      return false;
+    }
+    *out = *value;
+    return true;
+  };
+  const auto degrees = [&cell, &error](const char* key, float* out) {
+    std::optional<float> value;
+    if (!cell(key, &value)) {
+      return true;
+    }
+    if (!value || !(*value >= kTemperatureMinCelsius && *value <= kTemperatureMaxCelsius)) {
+      error =
+          std::string("weather_params: ") + key + " must be a temperature on the -15..+30 scale";
+      return false;
+    }
+    *out = *value;
+    return true;
+  };
+  // THE ONE PLACE A MONTH CHANGES BASE, and it is named so that there is a
+  // place to look. Every month crossing this seam is HUMAN 1..12 — crops.csv
+  // says so in its own header and the design base CHECKs it — while the
+  // calendar counts from zero. The error this guards is the quietest kind:
+  // 5 taken as written moves the thunderstorm from May to June, and BOTH
+  // numbers are legal months, so no range check anywhere can see it. Only a
+  // test that asserts which MONTH, by name, can (boss, 2026-09-05).
+  const auto human_month = [&cell, &error](const char* key, std::uint8_t* out) {
+    std::optional<float> value;
+    if (!cell(key, &value)) {
+      return true;
+    }
+    if (!value || !(*value >= 1.0F && *value <= 12.0F)) {
+      error = std::string("weather_params: ") + key + " must be a human month, 1..12";
+      return false;
+    }
+    *out = static_cast<std::uint8_t>(*value - 1.0F);
+    return true;
+  };
+  if (!share("calm_share", &knobs.calm_share) || !share("wind_share", &knobs.wind_share) ||
+      !share("thunder_share", &knobs.thunder_share) || !share("fog_share", &knobs.fog_share) ||
+      !degrees("thunder_min_c", &knobs.thunder_min_celsius) ||
+      !degrees("blizzard_min_c", &knobs.blizzard_min_celsius) ||
+      !degrees("frost_night_c", &knobs.frost_night_celsius) ||
+      !degrees("sultry_afternoon_c", &knobs.sultry_afternoon_celsius) ||
+      !human_month("thunder_from_month", &knobs.thunder_from_month) ||
+      !human_month("thunder_to_month", &knobs.thunder_to_month) ||
+      !human_month("frost_from_month", &knobs.frost_from_month) ||
+      !human_month("frost_to_month", &knobs.frost_to_month)) {
+    return false;
+  }
+  // The two shares decide a third between them: what is left after calm and
+  // wind is the strong wind, and a pair summing past one would name a
+  // negative share.
+  if (knobs.calm_share + knobs.wind_share > 1.0F) {
+    error = "weather_params: calm_share + wind_share must not exceed 1 — the rest is strong wind";
+    return false;
+  }
+  for (SeasonWeather& season : seasons) {
+    season.calm_share = knobs.calm_share;
+    season.wind_share = knobs.wind_share;
+    season.thunder_share = knobs.thunder_share;
+    season.fog_share = knobs.fog_share;
+    season.thunder_min_celsius = knobs.thunder_min_celsius;
+    season.blizzard_min_celsius = knobs.blizzard_min_celsius;
+    season.frost_night_celsius = knobs.frost_night_celsius;
+    season.sultry_afternoon_celsius = knobs.sultry_afternoon_celsius;
+    season.thunder_from_month = knobs.thunder_from_month;
+    season.thunder_to_month = knobs.thunder_to_month;
+    season.frost_from_month = knobs.frost_from_month;
+    season.frost_to_month = knobs.frost_to_month;
+  }
+  return true;
+}
+
 }  // namespace
 
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables) {
   SeasonTable seasons = kDefaultSeasons;
+  std::string error;
   if (const ITable* weather = tables.FindTable("weather")) {
-    std::string error;
     if (!ParseWeatherTable(*weather, seasons, error)) {
+      LogError(error);
+      return nullptr;
+    }
+  }
+  if (const ITable* params = tables.FindTable("weather_params")) {
+    if (!ParseWeatherParams(*params, seasons, error)) {
       LogError(error);
       return nullptr;
     }

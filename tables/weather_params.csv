@@ -1,0 +1,18 @@
+# generated from db/design.db — do not edit by hand
+# the weather knobs the core used to hold as compiled-in defaults. Where a number came from is in the design base, in weather_param. source -- document, measurement, or default -- and eight of the ten started as the core's picked defaults
+# MONTHS ARE HUMAN 1..12, like every other month that crosses this seam (see crops.csv). The core's defaults were 0-based, which is the same digit for a different month and no range check can catch it: 5 read from zero moves the thunderstorm to June
+# frost_from_month and frost_to_month are NOT stored anywhere: they are min(sow_from_month) and max(harvest_to_month) over non-winter crops -- the span in which a frost has something to kill. Add a later crop and the window follows it
+# sultry_afternoon_c names ЗНОЙ and the temperature scale puts it at +28. It is not drought_temp_c in farming.csv and it is not the +25 of ЖАРА: three facts, two of which happened to share a number
+key,value
+thunder_from_month,5
+thunder_to_month,8
+thunder_share,0.35
+thunder_min_c,15
+blizzard_min_c,-10
+frost_night_c,0
+sultry_afternoon_c,28
+calm_share,0.35
+wind_share,0.5
+fog_share,0.2
+frost_from_month,4
+frost_to_month,10
