@@ -3,6 +3,8 @@
 # start_stock.csv holds the NORMAL level only; stock_scale is what the other levels multiply every amount by
 # fodder is not a flat multiple: the design sizes it from the date of the first cut, so fodder_weeks is the slack against that date — positive is surplus, negative is short
 # an EMPTY cell means the design has not written that number yet. Reading it as 1.0 would quietly make every level the normal one: refuse the level instead, or fall back to normal and say so
+# the three numbers other than normal are FIRST NUMBERS and nothing has measured them. Do NOT measure them by population: a difference in residents needs eight pairs to see a hundred (5 September 2026). Difficulty reads honestly in the building order and in the year the timber runs out — both cheap and both already measured
+# normal is 1.0 by definition: start_stock is written for it and every balance run counts by it
 key,title,stock_scale,fodder_weeks
 easy,Лёгкий,1.5,3
 normal,Обычный,1,0
