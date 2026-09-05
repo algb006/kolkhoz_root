@@ -79,9 +79,12 @@ class ConstructionSystem final : public IConstructionSystem {
   /// complete its recipe. The instant-delivery stub brings whatever there
   /// is (DeliverMaterials), so without this the site would wait for ever in
   /// silence — the player has no other way to learn that the barn is short
-  /// four tonnes of boards. kNoRoad is in the roster and yields nothing:
-  /// the core has no roads, and a STUB that says so is better than a key
-  /// invented later (alarm_state.h).
+  /// four tonnes of boards.
+  ///
+  /// kSiteUnreachable: twice the road from the NEAREST dwelling does not fit
+  /// in the daylight window, so nobody can get there and back in a day. It
+  /// was a declared stub until 2026-09-05 — "the core has no roads" — and it
+  /// came alive without moving: the question is not roads but HOURS.
   Deadline WearDeadline(const WorldState& completed, UnitId unit) const override {
     if (!config_.wear_column_present) {
       // The tables carry no has_wear column at all, so nothing here knows
@@ -176,6 +179,21 @@ class ConstructionSystem final : public IConstructionSystem {
         alarm.unit = completed.units.row_ids[row];
         alarm.amount = static_cast<std::int64_t>(site.construction.labor_days_remaining);
         alarms.push_back(alarm);
+      }
+      // OUT OF REACH: twice the road from the nearest house does not fit in
+      // the day. Only where work is actually open — a marked contour is not
+      // waiting for anybody yet, and saying it is unreachable before it is
+      // started would be a warning about nothing.
+      if (site.construction.phase == ConstructionPhase::kDelivering ||
+          site.construction.phase == ConstructionPhase::kBuilding) {
+        const float road = NearestDwellingHours(completed, site.position);
+        if (road > 0.0F && 2.0F * road >= completed.weather.daylight_hours) {
+          Alarm alarm;
+          alarm.kind = AlarmKind::kSiteUnreachable;
+          alarm.unit = completed.units.row_ids[row];
+          alarm.amount = static_cast<std::int64_t>(road);
+          alarms.push_back(alarm);
+        }
       }
       if (site.construction.phase != ConstructionPhase::kDelivering) {
         continue;
@@ -300,6 +318,27 @@ class ConstructionSystem final : public IConstructionSystem {
     const std::size_t index = static_cast<std::size_t>(level) - 1;
     const float step = index < type.levels.size() ? type.levels[index].wear_factor : 1.0F;
     return type.wear_factor * step;
+  }
+
+  /// @brief Hours of road, one way, from the NEAREST dwelling to `place`;
+  ///        0 when the settlement has no house at all.
+  ///
+  /// The nearest and not the middle: a homestead two kilometres out is
+  /// legitimate and reachable by its own household, and measuring against
+  /// the far side of the village would forbid people to spread out.
+  float NearestDwellingHours(const WorldState& completed, const Vec2& place) const {
+    float best = -1.0F;
+    for (const UnitRow& unit : completed.units.rows) {
+      if (unit.level == 0 || unit.type.value >= config_.definitions.units.is_housing.size() ||
+          config_.definitions.units.is_housing[unit.type.value] == 0) {
+        continue;
+      }
+      const float hours = TravelHoursBetween(unit.position, place, config_.walk_hours_per_km);
+      if (best < 0.0F || hours < best) {
+        best = hours;
+      }
+    }
+    return best < 0.0F ? 0.0F : best;
   }
 
   static float WearYears(const BuildType& type, std::uint8_t level, bool in_use) {

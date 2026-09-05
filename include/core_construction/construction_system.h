@@ -146,7 +146,7 @@ class IConstructionSystem {
   /// (core_common/alarm_state.h): kSiteWithoutMaterials for every site in
   /// kDelivering whose recipe the stores cannot complete — the first
   /// material short in recipe order and the grams short of it, so the
-  /// presentation can say "the barn waits for 4 t of boards"; kNoRoad is in
+  /// presentation can say "the barn waits for 4 t of boards"; kSiteUnreachable is in
   /// the roster and yields nothing (STUB: the core has no roads). Row order
   /// within the kind; the session sorts by id. A pure read with the
   /// configuration; nothing changes, nothing is logged. Called between

@@ -253,13 +253,29 @@ int main(int argc, char** argv) {
       std::vector<core::Alarm> alarms;
       world->CollectAlarms(alarms);
       std::uint32_t crewless = 0;
+      std::uint32_t unreachable = 0;
+      std::int64_t road = 0;
       for (const core::Alarm& alarm : alarms) {
-        crewless += alarm.kind == core::AlarmKind::kSiteWithoutCrew && alarm.unit.value == id.value
-                        ? 1U
-                        : 0U;
+        if (alarm.unit.value != id.value) {
+          continue;
+        }
+        crewless += alarm.kind == core::AlarmKind::kSiteWithoutCrew ? 1U : 0U;
+        if (alarm.kind == core::AlarmKind::kSiteUnreachable) {
+          ++unreachable;
+          road = alarm.amount;
+        }
+      }
+      // THE GUARD, and it is the one boss asked for: a site in the corner of
+      // the map must say so from the FIRST day, and a site by the village
+      // must never say it. Checked by damage — the same run raises both.
+      if (day == 0) {
+        failures += run::Expect(far_site == (unreachable == 1),
+                                far_site ? "a site eleven kilometres out says so on day zero"
+                                         : "and a site by the village never says it");
       }
       if (unit.construction.labor_days_remaining != last_seam || day < 3 || unit.level > 0) {
-        std::cout << "idle_curve:   тревога «площадка без бригады»: " << crewless << '\n';
+        std::cout << "idle_curve:   тревоги — без бригады " << crewless << ", НЕДОСТИЖИМА "
+                  << unreachable << " (дороги " << road << " ч в одну сторону)\n";
         std::cout << "idle_curve: сутки " << day << " ступень " << static_cast<int>(unit.level)
                   << " фаза " << static_cast<int>(unit.construction.phase) << " шов "
                   << unit.construction.labor_days_remaining << " бригада " << crew << '\n';
@@ -267,11 +283,12 @@ int main(int argc, char** argv) {
       }
       if (unit.level > 0) {
         std::cout << "idle_curve: ПОСТРОЕНА на сутках " << day << ", БЕЗ kUpgradeUnit\n";
-        return 0;
+        return failures;
       }
     }
-    std::cout << "idle_curve: за двести суток НЕ ПОСТРОЕНА\n";
-    return 1;
+    std::cout << "idle_curve: за двести суток НЕ ПОСТРОЕНА"
+              << (far_site ? " — и это правильно: до неё не дойти\n" : "\n");
+    return far_site ? failures : failures + 1;
   }
   run::YardPolicy yard(*world.tables);
   run::FixturePolicy fixture(*world.tables);

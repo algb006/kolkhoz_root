@@ -16,6 +16,8 @@
 #ifndef CORE_COMMON_GEOMETRY_H_
 #define CORE_COMMON_GEOMETRY_H_
 
+#include <cmath>
+
 namespace core {
 
 /// @brief A distance or coordinate, in metres.
@@ -39,6 +41,23 @@ struct Vec2 {
 
   Meters y = 0.0f;
 };
+
+/// @brief Game hours of one-way travel between two places at a given pace.
+/// @param hours_per_km Game hours per kilometre for the traveller: on foot
+///        or behind a harness, from transport.csv through the config that
+///        owns it. NOT a constant — a village-wide half-hour cost this
+///        project a third of every working hour it had measured
+///        (resident_activity.h, 2026-09-05).
+///
+/// ONE HOME FOR THE ARITHMETIC. It was written in core_labor and needed
+/// again by the resident's activity and by the site that nobody can reach;
+/// three copies of a square root is how three answers about one road come
+/// to disagree.
+inline float TravelHoursBetween(const Vec2& from, const Vec2& to, float hours_per_km) {
+  const float dx_km = (from.x - to.x) / 1000.0F;
+  const float dy_km = (from.y - to.y) / 1000.0F;
+  return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
+}
 
 }  // namespace core
 

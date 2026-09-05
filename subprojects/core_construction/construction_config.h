@@ -164,6 +164,13 @@ struct ConstructionConfig {
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;
 
+  /// Game hours of one-way travel per kilometre on foot (transport.csv
+  /// `pedestrian`, divided by the clock scale). Read here because the site
+  /// nobody can reach is measured in HOURS of road, and the hours need the
+  /// pace; the arithmetic itself is core_common's (geometry.h) so that this
+  /// module holds a number and not a second opinion.
+  float walk_hours_per_km = 2.4F;
+
   /// The catalogue, read at parse time: the plot radii and the map side
   /// come from there and not from this module's own read of unit_types.csv,
   /// because those columns have a second reader (core_residents' wedding

@@ -67,9 +67,10 @@ float HoursPerKm(const LaborConfig& config, WorkKind kind) {
 }
 
 float TravelHours(const Vec2& from, const Vec2& to, float hours_per_km) {
-  const float dx_km = (from.x - to.x) / 1000.0F;
-  const float dy_km = (from.y - to.y) / 1000.0F;
-  return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
+  // core_common/geometry.h since 2026-09-05: the activity and the
+  // unreachable site ask the same question, and three square roots would be
+  // three answers about one road.
+  return TravelHoursBetween(from, to, hours_per_km);
 }
 
 float BiologicalAgeYears(const LaborConfig& config, std::int32_t birth_day, SimDay day) {

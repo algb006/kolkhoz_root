@@ -587,6 +587,26 @@ bool ParseConstructionConfig(const ITableSet& tables,
     config.old_house_type = UnitTypeId{static_cast<std::uint16_t>(old_house_row)};
   }
 
+  // The walking pace, from the same table every other consumer reads it
+  // from (transport.csv) and never copied into a table of this module's
+  // own. Real km/h in the file; the chronometer divides.
+  if (const ITable* const transport = tables.FindTable("transport")) {
+    float kmh = 5.0F;
+    if (!CellOrDefault(*transport,
+                       transport->FindRowByKey("pedestrian"),
+                       transport->FindColumn("speed_kmh"),
+                       Range{.low = 0.5F, .high = 20.0F},
+                       5.0F,
+                       kmh,
+                       error)) {
+      Fail(error, "transport", "pedestrian speed_kmh is out of range");
+      return false;
+    }
+    if (kmh > 0.0F) {
+      config.walk_hours_per_km = static_cast<float>(kClockScale) / kmh;
+    }
+  }
+
   const ITable* const levels = tables.FindTable("unit_levels");
   if (levels == nullptr) {
     // No ladder: nothing can be built, and nothing has a capacity either —

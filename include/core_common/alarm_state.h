@@ -170,11 +170,27 @@ enum class AlarmKind : std::uint8_t {
   /// that he could mistake for progress.
   kSiteWithoutCrew,
 
-  /// The site is not reachable by road (unit rules §12). STUB: the core
-  /// has no roads, so no site is ever unreachable and the predicate yields
-  /// nothing; the kind is in the roster so that the presentation's map has
-  /// its key before the roads arrive. Subject: `unit`.
-  kNoRoad,
+  /// NOBODY CAN GET THERE AND BACK IN A DAY: twice the road from the
+  /// NEAREST dwelling does not fit in the daylight window. Subject: `unit`;
+  /// `amount` = the hours of road, one way, in game hours.
+  ///
+  /// FROM THE NEAREST HOUSE AND NOT FROM THE VILLAGE'S MIDDLE, because
+  /// distance is not a vice: a homestead two kilometres out is legitimate
+  /// and reachable by its own household, and measuring it against the far
+  /// side of the settlement would forbid people to spread out at all.
+  ///
+  /// IT WAS `kNoRoad` UNTIL 2026-09-05 — "the core has no roads, so the
+  /// predicate yields nothing", a kind kept in the roster for the layer's
+  /// map key. It never fired once. What made it measurable was not roads
+  /// but HOURS: a site is out of reach when the day is too short for the
+  /// walk, and that needs no road at all. The stub came alive without moving.
+  ///
+  /// A WARNING AND NOT A REFUSAL AT THE ORDER, for two reasons and the
+  /// second is the stronger: distance is legitimate, and the window is
+  /// SHORTER IN WINTER — so a site unreachable in December is reachable in
+  /// June, and this goes out by itself when the day grows. A refusal would
+  /// have to be revisited every morning or lie once and for ever.
+  kSiteUnreachable,
 
   // -- posts: core_labor (task A7) -----------------------------------------------
 
