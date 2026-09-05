@@ -128,6 +128,13 @@ int main(int argc, char** argv) {
   // appoints a groom, and drops the other three.
   bool yard_only = false;
   bool watch_build = false;
+  // --yard-delay=N: the chairman does not touch the horse yard until day N.
+  //
+  // WHAT IT MEASURES. Until the yard is raised the team only ages — that is
+  // the design's own rule, "no stable, no foals" — so there is a number of
+  // days after which it is too late, and the number is what a hint has to
+  // be built on. A hint without a deadline is an alarm with no answer.
+  std::uint32_t yard_delay = 0;
   bool far_site = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
@@ -135,6 +142,10 @@ int main(int argc, char** argv) {
     no_chairman = no_chairman || argument == "--no-chairman";
     yard_only = yard_only || argument == "--yard-only";
     watch_build = watch_build || argument == "--watch-build";
+    if (argument.starts_with("--yard-delay=")) {
+      yard_delay = static_cast<std::uint32_t>(std::atoi(
+          std::string(argument.substr(std::string_view("--yard-delay=").size())).c_str()));
+    }
     far_site = far_site || argument == "--far";
   }
   const run::Simulation world = run::Start(seed);
@@ -388,7 +399,9 @@ int main(int argc, char** argv) {
     std::uint32_t of_age = 0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       if (!no_chairman) {
-        yard.RunDay(*world.simulation);
+        if (world.State().calendar.day >= yard_delay) {
+          yard.RunDay(*world.simulation);
+        }
         if (!yard_only) {
           fixture.RunDay(*world.simulation);
           orders.RunDay(*world.simulation);
