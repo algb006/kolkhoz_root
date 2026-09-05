@@ -477,6 +477,28 @@ int TestResidentActivity() {
   failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kIdle,
                      "no order and a fit man of working age is IDLE");
 
+  // A MAN WHO WALKED OFF IS NOT IDLE, AND THE DIFFERENCE IS AN ACCUSATION
+  // IN BOTH DIRECTIONS. He has no order — PayDay cleared it when he broke
+  // off — but he has been out today, which nobody unassigned has. Calling
+  // that idleness would blame the chairman for a decision the man made
+  // himself.
+  world.residents.rows[0].work.kind = core::WorkKind::kNone;
+  world.residents.rows[0].work.hours_away_today = 6.0F;
+  world.residents.rows[0].rest = 8.0F;  // under the walk-off line he broke at
+  failures +=
+      Expect(at(10, 30.0F).activity == core::ResidentActivity::kTruant && at(10, 30.0F).detail == 1,
+             "unassigned, already out today and under the rest he broke off at: he "
+             "walked off, and that is not idleness");
+
+  // AND THE OTHER MAN IS NOT ACCUSED. The crew finished the phase under him
+  // and production moved the field on: PayDay settled him too, and he is
+  // just as unassigned with just as many hours away — but he is rested, and
+  // none of it was his doing.
+  world.residents.rows[0].rest = 70.0F;
+  failures += Expect(at(10, 30.0F).activity != core::ResidentActivity::kTruant,
+                     "a man whose job vanished under him is not a truant: he did not choose it");
+  world.residents.rows[0].work.hours_away_today = 0.0F;
+
   // AND IDLENESS IS NEVER CHARGED FOR AN AGE. The toddler and the old man
   // are at home, and nothing is charged to the player — not because either
   // has a state of his own, but because there is nothing to charge: kIdle

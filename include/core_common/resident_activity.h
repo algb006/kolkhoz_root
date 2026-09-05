@@ -186,6 +186,12 @@ struct ActivityRules {
   /// convention that lets the detail be answered at all.
   float sleep_hours = 8.0F;
 
+  /// Rest at or below which a man ends his own working day and goes home
+  /// (labour config `rest_walkoff_threshold`, decision 107). What tells a
+  /// truant from a man whose job vanished under him: both are unassigned
+  /// with hours already spent away, and only one of them chose it.
+  float walkoff_rest = 10.0F;
+
   /// Hours of road between his house and his work, one way. The labour
   /// model computes it from the distance and the speed of his work kind;
   /// this asks for the answer rather than the arithmetic, for the same

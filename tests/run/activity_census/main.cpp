@@ -67,8 +67,15 @@ constexpr std::array<std::string_view,
 
 /// Deliberately silent today, with the reason: no source in the model, and
 /// the stub says so in resident_activity.h one by one.
-constexpr std::array<std::string_view, 5> kWaived = {
-    "treated", "away", "truant", "eating", "resting"};
+///
+/// TRUANCY CAME OFF THIS LIST ON 2026-09-05, and the check is why. It was
+/// waived as "an event of the step, not a state of the world" — and that
+/// was true of the EVENT and false of the world, which carries the hours a
+/// man spent away and the rest he broke off at. The waiver was a reason not
+/// to look. The moment truancy started firing the census refused the run,
+/// because a state that is both waived and happening means one of the two
+/// is out of date; that refusal is what this line records.
+constexpr std::array<std::string_view, 4> kWaived = {"treated", "away", "eating", "resting"};
 
 /// THE OPEN QUESTION THIS CHECK RAISED IS CLOSED, and the way it closed is
 /// the reason to keep the check. It found not_worker and too_young

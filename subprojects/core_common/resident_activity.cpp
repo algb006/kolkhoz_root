@@ -28,6 +28,7 @@ namespace {
 /// Detail indices, by the order of resident_activity_details.csv WITHIN
 /// each activity. Named here so that a reader of the code sees the word
 /// rather than the number; the table is still the roster.
+constexpr std::uint8_t kTruantWalkedOff = 1;
 constexpr std::uint8_t kWalkingToWork = 0;
 constexpr std::uint8_t kWalkingHome = 1;
 constexpr std::uint8_t kBlockedNoMaterial = 1;
@@ -94,10 +95,33 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   }
   // STUB: kAway. Nothing in the core sends anybody to the district, and the
   // order that would belongs to the quest layer.
-  // STUB: kTruant. A man who walks off from fatigue raises kWalkOff, but
-  // that is an event of the step and not a state of the world — deriving a
-  // state from it would give a different truant after a save and a load,
-  // which is exactly the trap a derived value has to avoid.
+  // OFF WORK WITHOUT LEAVE, and the world says it without a new field.
+  //
+  // A man who walks off from fatigue is settled on the spot: PayDay books
+  // his hours and CLEARS HIS ASSIGNMENT (labor_system.cpp), and the day's
+  // wipe only comes at midnight. So between the walk-off and the end of the
+  // day he is a man with no order who has nonetheless been out — hours
+  // already spent away — which nobody else in the village is.
+  //
+  // THAT ALONE WOULD ACCUSE THE INNOCENT. PayDay is also called when the
+  // job vanishes from under a man: the crew finished the phase this very
+  // hour and production moved the field on. He is unassigned with hours
+  // away too, and none of it was his doing. What separates them is that the
+  // walk-off has a cause the state still carries — he is at or under the
+  // rest he broke off at, and the other man is not.
+  //
+  // "Overslept" and "went on a bender" have no source and are not guessed
+  // at: a wrong cause is worse than an unnamed one, and truancy is an
+  // accusation.
+  //
+  // NOTHING WAS ADDED TO THE STATE FOR THIS, which is the point. The event
+  // kWalkOff is a fact of the step and dies with it; deriving from it would
+  // hand back a different truant after a save. `hours_away_today` and
+  // `rest` are both saved, so this answer survives a load — and the census
+  // probe is what says so rather than my saying it.
+  if (!assigned && resident.work.hours_away_today > 0.0F && resident.rest <= rules.walkoff_rest) {
+    set(ResidentActivity::kTruant);
+  }
   if (nothing_to_work_with && Inside(hour, starts, stops)) {
     set(ResidentActivity::kBlocked);
   }
@@ -190,6 +214,9 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
         answer.place.point = target;
       }
       break;
+    case ResidentActivity::kTruant:
+      answer.detail = kTruantWalkedOff;
+      break;
     case ResidentActivity::kStudying:
       answer.detail = kStudyingSchool;
       break;
@@ -201,7 +228,6 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
       break;
     case ResidentActivity::kTreated:
     case ResidentActivity::kAway:
-    case ResidentActivity::kTruant:
     case ResidentActivity::kIdle:
     case ResidentActivity::kEating:
     case ResidentActivity::kResting:
