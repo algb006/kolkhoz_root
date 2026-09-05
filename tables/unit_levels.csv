@@ -163,3 +163,4 @@ honour_board,1,1,0,plot,,,,,,1
 church_store,1,1,,,,60,,,,1
 manor_ruins,1,1,,,,,,,,1
 water_intake,1,2,120,concrete_slab,10,,,90,60,1
+water_standpipe,1,2,0,plot,,,,,,1
