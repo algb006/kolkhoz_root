@@ -28,6 +28,7 @@
 // work. Nothing here guesses which; it prints both curves side by side.
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -148,6 +149,22 @@ int main(int argc, char** argv) {
   std::cout << "idle_curve: seed " << seed << ", " << kYears << " years\n";
   std::cout << "idle_curve: год | жителей | рабочего возраста | работали | бездельничали | "
                "стояло работы, чел-дней (среднее за год)\n";
+  // BY SEASON, because boss's second instrument found idleness sitting on
+  // the busy season and asked whether that is a distribution defect. It is
+  // only a distribution defect if there was work for those hands: the
+  // standing seam against the working-age count in the SAME season is what
+  // says so, and comparing one season with another cannot.
+  std::array<double, 4> seam_by_season{};
+  std::array<std::uint64_t, 4> idle_by_season{};
+  std::array<std::uint64_t, 4> work_by_season{};
+  std::array<std::uint64_t, 4> hands_by_season{};
+  // HIS DENOMINATOR, not a second one. The other instrument counts the
+  // share of an able adult's WORKING DAY: the hours that belonged to
+  // idleness, work, the road, "nothing to work with" and truancy, and no
+  // others. Two instruments that disagree because their denominators differ
+  // have not disagreed about the world at all, and saying so would be a
+  // false alarm dressed as a finding.
+  std::array<std::uint64_t, 4> day_by_season{};
   for (std::uint32_t year = 0; year < kYears; ++year) {
     std::uint64_t worked = 0;
     std::uint64_t idled = 0;
@@ -170,9 +187,26 @@ int main(int argc, char** argv) {
           idled += what == core::ResidentActivity::kIdle ? 1U : 0U;
           blocked += what == core::ResidentActivity::kBlocked ? 1U : 0U;
           walking += what == core::ResidentActivity::kWalking ? 1U : 0U;
+          const auto now = static_cast<std::size_t>(state.calendar.season);
+          if (now < idle_by_season.size()) {
+            idle_by_season[now] += what == core::ResidentActivity::kIdle ? 1U : 0U;
+            work_by_season[now] += what == core::ResidentActivity::kWorking ? 1U : 0U;
+            day_by_season[now] += what == core::ResidentActivity::kIdle ||
+                                          what == core::ResidentActivity::kWorking ||
+                                          what == core::ResidentActivity::kWalking ||
+                                          what == core::ResidentActivity::kBlocked ||
+                                          what == core::ResidentActivity::kTruant
+                                      ? 1U
+                                      : 0U;
+          }
         }
       }
       const core::WorldState& evening = world.State();
+      const auto season = static_cast<std::size_t>(evening.calendar.season);
+      if (season < seam_by_season.size()) {
+        seam_by_season[season] += static_cast<double>(SeamsStanding(evening));
+        ++hands_by_season[season];
+      }
       seam_sum += static_cast<double>(SeamsStanding(evening));
       ++samples;
       of_age = 0;
@@ -200,6 +234,22 @@ int main(int argc, char** argv) {
               << (seam_sum / (samples == 0 ? 1 : samples)) << " | назначено-но-нечем " << blocked
               << " | в дороге " << walking << '\n';
   }
+  // THE SEASONAL ARITHMETIC, and it answers the question boss's second
+  // instrument raised: is the busy season's idleness a matter of who was
+  // picked, or was there never work for those hands in the first place?
+  static constexpr std::array<std::string_view, 4> kSeasons = {"зима", "весна", "лето", "осень"};
+  std::cout << "idle_curve: сезон | стояло работы, чел-дней | работали, чел-часов | "
+               "бездельничали | доля простоя\n";
+  for (std::size_t index = 0; index < kSeasons.size(); ++index) {
+    const double days = hands_by_season[index] == 0
+                            ? 0.0
+                            : seam_by_season[index] / static_cast<double>(hands_by_season[index]);
+    const double total = static_cast<double>(day_by_season[index]);
+    const double share = total == 0.0 ? 0.0 : static_cast<double>(idle_by_season[index]) / total;
+    std::cout << "idle_curve: " << kSeasons[index] << " | " << days << " | "
+              << work_by_season[index] << " | " << idle_by_season[index] << " | " << share << '\n';
+  }
+
   // WHAT IS STANDING AT THE END, field by field. A seam that neither
   // drains nor changes for years is not "work waiting" — it is work nobody
   // can be sent to, and the difference is the whole question.
