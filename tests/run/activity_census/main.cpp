@@ -34,7 +34,11 @@
 #include <string_view>
 #include <vector>
 
+#include "../common/fixture_policy.h"
+#include "../common/orders_policy.h"
+#include "../common/repair_policy.h"
 #include "../common/run_harness.h"
+#include "../common/yard_policy.h"
 #include "core_common/calendar.h"
 #include "core_common/resident_activity.h"
 #include "core_common/world_state.h"
@@ -44,7 +48,17 @@
 
 namespace {
 
-constexpr std::uint32_t kYears = 3;
+/// FIVE, AND THE FIFTH IS THE ONE THAT MATTERS. Three years was enough
+/// until the day-rotating queue landed: work spread over four times as many
+/// hands stopped exhausting anybody, and truancy — a walk-off from fatigue —
+/// went to zero. The roll-call refused the run at once, which is what it is
+/// for, and the honest answer was not to waive the state but to LOOK LONGER:
+/// on the shipped tables the first walk-offs appear in the fifth year, and
+/// they run to two thousand man-hours by the ninth (tests/run/idle_curve).
+///
+/// A window too short to reach a state is the same defect as a list built
+/// from the output: both can only confirm what they already contain.
+constexpr std::uint32_t kYears = 5;
 
 /// The names, in enum order, for the roll-call to print. Kept beside the
 /// enum rather than read from the table on purpose: the roster the check
@@ -126,8 +140,23 @@ int main() {
   }
   const core::ActivityRules rules = RulesOfRun(*world.tables);
 
+  // THE ROLL-CALL WATCHES A VILLAGE THAT WORKS, and until 2026-09-05 it did
+  // not. With no chairman the draught horses die out, every arable field
+  // freezes in its ploughing, and the place stops being a farm — a poor
+  // world in which to ask whether every activity has a source, because half
+  // of them stop having one for reasons that are not about the roster.
+  // These are the four the thirty-year run uses.
+  run::YardPolicy yard(*world.tables);
+  run::FixturePolicy fixture(*world.tables);
+  run::OrdersPolicy orders;
+  run::RepairPolicy repairs(*world.tables);
+
   std::array<std::uint64_t, kNames.size()> seen{};
   for (std::uint32_t day = 0; day < kYears * core::kDaysPerYear; ++day) {
+    yard.RunDay(*world.simulation);
+    fixture.RunDay(*world.simulation);
+    orders.RunDay(*world.simulation);
+    repairs.RunDay(*world.simulation);
     for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
       world->AdvanceStep();
       const core::WorldState& state = world.State();

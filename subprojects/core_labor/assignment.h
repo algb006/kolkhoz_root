@@ -99,6 +99,27 @@ struct AssignmentCandidate {
 
 /// @brief The day's placement parameters, from config and calendar.
 struct AssignmentParams {
+  /// TURNS TAKE TURNS. The candidates who tie on everything else used to be
+  /// broken apart by their ROW, ascending, and rows are handed out at
+  /// birth — so the queue was in birth order and never moved. Measured on
+  /// the shipped tables, where placement_level is 0 and therefore EVERY
+  /// candidate ties at a score of zero: the first fifth of the roster idled
+  /// 36 % of its working day and the last three fifths idled 93-96 %. The
+  /// same measurement by age reads as "the young never work", and that is
+  /// the same fact wearing a face — the young are simply the late rows.
+  ///
+  /// So the tie is broken on the row PLUS THE DAY, modulo the roster: the
+  /// queue advances by one every morning and everybody's turn comes round.
+  /// It costs no state, it is the same for one worker and for many, and it
+  /// is what a tallyman handing out orders does — the design says there are
+  /// no foremen optimising output (society design §1).
+  std::uint32_t rotation = 0;
+
+  /// People in the roster, the modulus of that rotation. Zero disables it
+  /// and leaves the old fixed order, which is what a world with no
+  /// residents wants and what every unit test that does not care gets.
+  std::uint32_t roster = 0;
+
   /// Hours of the daylight work window today (sunrise to sunset shrunk as
   /// the model dictates); a worker's usable hours are these minus twice
   /// his travel.

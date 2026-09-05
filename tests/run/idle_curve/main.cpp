@@ -181,11 +181,30 @@ int main(int argc, char** argv) {
   // have not disagreed about the world at all, and saying so would be a
   // false alarm dressed as a finding.
   std::array<std::uint64_t, 4> day_by_season{};
+  // BY AGE BAND, because the other instrument found the young idling twice
+  // as much as the old on all four seeds and that is not explained by there
+  // being too little work: too little work falls on everybody.
+  static constexpr std::array<float, 5> kBandFrom = {16.0F, 26.0F, 36.0F, 46.0F, 56.0F};
+  std::array<std::uint64_t, 5> idle_by_band{};
+  std::array<std::uint64_t, 5> day_by_band{};
+  // AND BY ROW, which is the discriminator. At placement_level 0 — the
+  // shipped value, "the start has no accountant and the chairman places
+  // naively" — every candidate scores zero and the sort falls through to
+  // its stable tiebreaker: the RESIDENT'S ROW, ascending. Rows are appended
+  // at birth, so a fixed queue in birth order is exactly what a village of
+  // growing population would see as "the young never work".
+  //
+  // Age and row are correlated, so a gradient by age proves nothing on its
+  // own. If the gradient follows the ROW at least as tightly, the cause is
+  // the queue and not the years.
+  std::array<std::uint64_t, 5> idle_by_fifth{};
+  std::array<std::uint64_t, 5> day_by_fifth{};
   for (std::uint32_t year = 0; year < kYears; ++year) {
     std::uint64_t worked = 0;
     std::uint64_t idled = 0;
     std::uint64_t blocked = 0;
     std::uint64_t walking = 0;
+    std::uint64_t truant = 0;
     double seam_sum = 0.0;
     std::uint32_t samples = 0;
     std::uint32_t of_age = 0;
@@ -207,10 +226,33 @@ int main(int argc, char** argv) {
           idled += what == core::ResidentActivity::kIdle ? 1U : 0U;
           blocked += what == core::ResidentActivity::kBlocked ? 1U : 0U;
           walking += what == core::ResidentActivity::kWalking ? 1U : 0U;
+          truant += what == core::ResidentActivity::kTruant ? 1U : 0U;
           const auto now = static_cast<std::size_t>(state.calendar.season);
           if (now < idle_by_season.size()) {
             idle_by_season[now] += what == core::ResidentActivity::kIdle ? 1U : 0U;
             work_by_season[now] += what == core::ResidentActivity::kWorking ? 1U : 0U;
+            const float years = core::BiologicalAgeYears(
+                rules.life_speedup, state.residents.rows[row].birth_day, state.calendar.day);
+            std::size_t band = kBandFrom.size();
+            for (std::size_t index = 0; index < kBandFrom.size(); ++index) {
+              if (years >= kBandFrom[index]) {
+                band = index;
+              }
+            }
+            const bool counted =
+                what == core::ResidentActivity::kIdle || what == core::ResidentActivity::kWorking ||
+                what == core::ResidentActivity::kWalking ||
+                what == core::ResidentActivity::kBlocked || what == core::ResidentActivity::kTruant;
+            if (band < kBandFrom.size() && counted && years < 70.0F) {
+              ++day_by_band[band];
+              idle_by_band[band] += what == core::ResidentActivity::kIdle ? 1U : 0U;
+              const std::size_t fifth =
+                  std::min<std::size_t>(4,
+                                        (static_cast<std::size_t>(row) * 5) /
+                                            std::max<std::size_t>(1, state.residents.rows.size()));
+              ++day_by_fifth[fifth];
+              idle_by_fifth[fifth] += what == core::ResidentActivity::kIdle ? 1U : 0U;
+            }
             day_by_season[now] += what == core::ResidentActivity::kIdle ||
                                           what == core::ResidentActivity::kWorking ||
                                           what == core::ResidentActivity::kWalking ||
@@ -252,7 +294,7 @@ int main(int argc, char** argv) {
     std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
               << of_age << " | " << worked << " | " << idled << " | "
               << (seam_sum / (samples == 0 ? 1 : samples)) << " | назначено-но-нечем " << blocked
-              << " | в дороге " << walking << '\n';
+              << " | в дороге " << walking << " | прогул " << truant << '\n';
   }
   // THE SEASONAL ARITHMETIC, and it answers the question boss's second
   // instrument raised: is the busy season's idleness a matter of who was
@@ -268,6 +310,22 @@ int main(int argc, char** argv) {
     const double share = total == 0.0 ? 0.0 : static_cast<double>(idle_by_season[index]) / total;
     std::cout << "idle_curve: " << kSeasons[index] << " | " << days << " | "
               << work_by_season[index] << " | " << idle_by_season[index] << " | " << share << '\n';
+  }
+
+  static constexpr std::array<std::string_view, 5> kBandName = {
+      "16-25", "26-35", "36-45", "46-55", "56-70"};
+  std::cout << "idle_curve: полоса | доля простоя\n";
+  for (std::size_t index = 0; index < kBandName.size(); ++index) {
+    const double total = static_cast<double>(day_by_band[index]);
+    std::cout << "idle_curve: " << kBandName[index] << " | "
+              << (total == 0.0 ? 0.0 : static_cast<double>(idle_by_band[index]) / total) << '\n';
+  }
+
+  std::cout << "idle_curve: пятина строк | доля простоя\n";
+  for (std::size_t index = 0; index < day_by_fifth.size(); ++index) {
+    const double total = static_cast<double>(day_by_fifth[index]);
+    std::cout << "idle_curve: " << (index + 1) << " | "
+              << (total == 0.0 ? 0.0 : static_cast<double>(idle_by_fifth[index]) / total) << '\n';
   }
 
   // WHAT IS STANDING AT THE END, field by field. A seam that neither

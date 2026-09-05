@@ -203,14 +203,19 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
       picks.push_back(pick);
     }
   }
-  std::ranges::sort(picks, [](const RankedPick& left, const RankedPick& right) {
+  // The rotated tiebreaker (assignment.h): row plus the day, modulo the
+  // roster. Without it the queue is the birth order and never advances.
+  const auto turn = [&params](std::uint32_t row) {
+    return params.roster == 0 ? row : (row + params.rotation) % params.roster;
+  };
+  std::ranges::sort(picks, [&turn](const RankedPick& left, const RankedPick& right) {
     if (left.prefer != right.prefer) {
       return left.prefer;
     }
     if (left.score != right.score) {
       return left.score > right.score;
     }
-    return left.resident_row < right.resident_row;
+    return turn(left.resident_row) < turn(right.resident_row);
   });
   return picks;
 }

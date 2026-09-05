@@ -616,6 +616,9 @@ class LaborSystem final : public ILaborSystem {
     params.walk_hours_per_km = HoursPerKm(config_, WorkKind::kSowing);
     params.harness_hours_per_km = HoursPerKm(config_, WorkKind::kPlowing);
     params.travel_limit_hours = config_.travel_limit_hours;
+    // The queue advances by one a day and wraps on the roster.
+    params.rotation = static_cast<std::uint32_t>(current.calendar.day);
+    params.roster = static_cast<std::uint32_t>(current.residents.rows.size());
     params.min_usable_hours = config_.min_usable_hours;
     params.standard_day_hours = config_.standard_day_hours;
     params.draught_horses = DraughtHorses(current);
