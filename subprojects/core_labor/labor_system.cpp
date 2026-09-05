@@ -44,6 +44,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
@@ -54,29 +55,6 @@
 
 namespace core {
 namespace {
-
-/// @brief The work a field in this phase is waiting for; kNone when the
-/// field is growing, idle or fallow.
-constexpr WorkKind KindOfPhase(FieldPhase phase) {
-  switch (phase) {
-    case FieldPhase::kPlowing:
-      return WorkKind::kPlowing;
-    case FieldPhase::kHarrowing:
-      return WorkKind::kHarrowing;
-    case FieldPhase::kSowing:
-      return WorkKind::kSowing;
-    case FieldPhase::kHarvest:
-      return WorkKind::kHarvest;
-    case FieldPhase::kIdle:
-    // Not a phase, and it waits for no work: handled beside the
-    // phases that wait for none, so this switch can stay without a
-    // default and keep a new phase a compile error.
-    case FieldPhase::kFieldPhaseCount:
-    case FieldPhase::kGrowing:
-      return WorkKind::kNone;
-  }
-  return WorkKind::kNone;
-}
 
 /// @brief Whole days left until the end of `month_end`, capped at 254 (255
 /// is the "no window" value of AssignmentJob).
@@ -90,20 +68,11 @@ std::uint8_t DaysLeftInWindow(const CalendarState& calendar, std::uint8_t month_
   return left > 254U ? 254U : static_cast<std::uint8_t>(left);
 }
 
-/// @brief Position a resident's day starts and ends at: his family's house.
-/// Returns false for a family without a house — genesis gives every family
-/// one, so this is the guard for hand-built worlds, not a normal case.
+/// The two places the labour day is measured between live in
+/// core_common/work_seam.h since 2026-09-05: the resident's activity needs
+/// the same answers, and a second copy would drift.
 bool HomePosition(const WorldState& world, FamilyId family, Vec2& home) {
-  const std::uint32_t family_row = FindRow(world.families, family);
-  if (family_row == kNoRow) {
-    return false;
-  }
-  const std::uint32_t house_row = FindRow(world.units, world.families.rows[family_row].house);
-  if (house_row == kNoRow) {
-    return false;
-  }
-  home = world.units.rows[house_row].position;
-  return true;
+  return HomePositionOf(world, family, home);
 }
 
 class LaborSystem final : public ILaborSystem {
@@ -711,57 +680,16 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  /// The seam this assignment drains, or nullptr when its target is gone.
+  /// The seam this assignment drains — core_common/work_seam.h, shared with
+  /// whoever asks what a man is doing this hour. It lived here until
+  /// 2026-09-05, and the activity needed the same seven cases to tell "no
+  /// order" from "an order and nothing to work with".
   static float* WorkSeam(WorldState& current, const WorkAssignment& work) {
-    if (work.kind == WorkKind::kHerdCare) {
-      const std::uint32_t row = FindRow(current.herds, work.herd);
-      return row == kNoRow ? nullptr : &current.herds.rows[row].care_days_remaining;
-    }
-    if (work.kind == WorkKind::kConstruction) {
-      const std::uint32_t row = FindRow(current.units, work.unit);
-      // A site that finished or was demolished since the morning: the crew
-      // simply has nothing to drain, exactly as with a field production has
-      // moved on.
-      return row == kNoRow ? nullptr : &current.units.rows[row].construction.labor_days_remaining;
-    }
-    const std::uint32_t row = FindRow(current.fields, work.field);
-    if (row == kNoRow) {
-      return nullptr;
-    }
-    if (work.kind == WorkKind::kHauling) {
-      // Hauling drains ITS OWN seam. It used to share the field's work seam,
-      // on the strength of a comment claiming the two could never overlap —
-      // and the canon's own rotation overlapped them in the same step. What
-      // ends the haul is the load being gone, not a phase changing under it.
-      return current.fields.rows[row].reaped_grams > 0
-                 ? &current.fields.rows[row].haul_days_remaining
-                 : nullptr;
-    }
-    if (KindOfPhase(current.fields.rows[row].phase) != work.kind) {
-      return nullptr;  // production has moved the field on since the morning
-    }
-    return &current.fields.rows[row].work_days_remaining;
+    return WorkSeamOf(current, work);
   }
 
   static bool WorkPlace(const WorldState& current, const WorkAssignment& work, Vec2& place) {
-    if (work.kind == WorkKind::kHerdCare) {
-      const std::uint32_t row = FindRow(current.herds, work.herd);
-      return row != kNoRow && HerdPosition(current, current.herds.rows[row], place);
-    }
-    if (work.kind == WorkKind::kConstruction) {
-      const std::uint32_t row = FindRow(current.units, work.unit);
-      if (row == kNoRow) {
-        return false;
-      }
-      place = current.units.rows[row].position;
-      return true;
-    }
-    const std::uint32_t row = FindRow(current.fields, work.field);
-    if (row == kNoRow) {
-      return false;
-    }
-    place = current.fields.rows[row].center;
-    return true;
+    return WorkPlaceOf(current, work, place);
   }
 
   // -- the day's close -----------------------------------------------------

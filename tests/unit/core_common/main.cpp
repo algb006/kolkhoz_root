@@ -11,6 +11,7 @@
 #include "core_common/plot.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
+#include "core_common/resident_activity.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -370,6 +371,123 @@ int TestPlot() {
   return failures;
 }
 
+/// One resident, one hour, one answer — and the answer is chosen by
+/// priority rather than by the order the predicates happen to be written
+/// in (resident_activity.h).
+///
+/// WHAT THIS CHECKS THAT A CHAIN OF IFS WOULD NOT. The states are not
+/// mutually exclusive as facts: a sick man can also have no work order, a
+/// child can also be at home. The table gives them a total order so that
+/// the answer does not depend on which case a reader put first, and the
+/// only way to test that is to build a resident several of them are true
+/// of and see which one comes out.
+int TestResidentActivity() {
+  int failures = 0;
+  core::ActivityRules rules;
+  rules.travel_hours = 1.0F;
+
+  core::WorldState world;
+  world.weather.daylight_hours = 12.0F;  // sunrise 6, sunset 18
+  core::RefreshCalendarCaches(world.calendar);
+
+  // A house for the family, so that home is a real place.
+  core::UnitRow house;
+  house.level = 1;
+  house.position = core::Vec2{.x = 100.0F, .y = 100.0F};
+  const core::UnitId home_id = core::AppendRow(world.units, house);
+  core::FamilyRow family;
+  family.house = home_id;
+  const core::FamilyId family_id = core::AppendRow(world.families, family);
+
+  // A field with work still on it, two kilometres out.
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.phase = core::FieldPhase::kPlowing;
+  field.center = core::Vec2{.x = 2100.0F, .y = 100.0F};
+  field.work_days_remaining = 5.0F;
+  const core::FieldId field_id = core::AppendRow(world.fields, field);
+
+  core::ResidentRow man;
+  man.family = family_id;
+  man.birth_day = -30 * static_cast<std::int32_t>(core::kDaysPerYear);  // thirty years old
+  man.health = 70.0F;
+  man.work.kind = core::WorkKind::kPlowing;
+  man.work.field = field_id;
+  core::AppendRow(world.residents, man);
+
+  const auto at = [&world, &rules](std::uint32_t hour, float age) {
+    world.calendar.tick = hour;
+    core::RefreshCalendarCaches(world.calendar);
+    return core::ActivityOfResident(world, 0, age, rules);
+  };
+
+  // Sunrise to sunrise+travel is the road out; then the work; then the road
+  // home; then the plot until sleep; then the night.
+  failures += Expect(at(6, 30.0F).activity == core::ResidentActivity::kWalking,
+                     "the hour after sunrise is the road to work");
+  failures += Expect(at(6, 30.0F).detail == 0, "and its detail says which way he is going");
+  failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kWorking,
+                     "the middle of the day is work");
+  failures += Expect(at(17, 30.0F).activity == core::ResidentActivity::kWalking,
+                     "the hour before sunset is the road home");
+  failures += Expect(at(17, 30.0F).detail == 1, "and it says so");
+  failures += Expect(at(19, 30.0F).activity == core::ResidentActivity::kLph,
+                     "the evening is the household plot — an INVENTED schedule, marked as one");
+  failures += Expect(at(2, 30.0F).activity == core::ResidentActivity::kAtHome,
+                     "the small hours are at home");
+  failures += Expect(at(2, 30.0F).detail == 0, "asleep");
+
+  // THE WORK PLACE IS THE FIELD, and it is a point rather than an id: a man
+  // in a field stands at no unit at all.
+  const core::ResidentActivityState working = at(10, 30.0F);
+  failures += Expect(working.place.point.x == 2100.0F && working.place.unit.value == 0,
+                     "a man at work is at a point, and at no unit when the work is a field");
+
+  // NOTHING TO WORK WITH is not the same as no work: the seam empties and
+  // the same man in the same hour is blocked rather than working.
+  world.fields.rows[0].work_days_remaining = 0.0F;
+  failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kBlocked,
+                     "an order with an empty seam is BLOCKED, and that is not idleness");
+  failures += Expect(at(10, 30.0F).detail == 3, "waiting his turn, for want of a nearer cause");
+  world.fields.rows[0].work_days_remaining = 5.0F;
+
+  // NO ORDER AT ALL is idleness — the other half, and the one the player
+  // fixes differently.
+  world.residents.rows[0].work.kind = core::WorkKind::kNone;
+  failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kIdle,
+                     "no order and a fit man of working age is IDLE");
+
+  // AND NEITHER SIGNAL BLAMES THE PLAYER FOR AN AGE: the toddler and the
+  // old man are not idle. That much the roster delivers, and it is what
+  // kTooYoung and kNotWorker were put there for.
+  failures += Expect(at(10, 4.0F).activity != core::ResidentActivity::kIdle,
+                     "a toddler with no order is not the chairman's failure");
+  failures +=
+      Expect(at(10, 80.0F).activity != core::ResidentActivity::kIdle, "and neither is an old man");
+
+  // WHAT THEY ARE INSTEAD IS kAtHome, and that is the table's priority
+  // talking, not this code: at_home is 12, not_worker 13, too_young 14. Any
+  // man who is not out working is at home, so the two states below it can
+  // never be the answer to "what is he doing". Reported to boss on
+  // 2026-09-05 as a question about the ROSTER — they are either ranked
+  // wrongly or they are decoration — and asserted here as the table has it
+  // so that the day he reorders, this check moves with him.
+  failures += Expect(at(10, 4.0F).activity == core::ResidentActivity::kAtHome,
+                     "as the table ranks it today, a toddler at home is AT HOME");
+  world.residents.rows[0].health = 5.0F;
+  failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kTreated,
+                     "and a man too ill to stand is being treated, whatever else is true of him");
+  world.residents.rows[0].health = 70.0F;
+
+  // A SCHOOLCHILD IS STUDYING AND NOT IDLE, and the priority is what says
+  // so: both predicates hold of a ten-year-old in daylight.
+  failures += Expect(at(10, 10.0F).activity == core::ResidentActivity::kStudying,
+                     "a child in the daytime is at school, not idling");
+  failures += Expect(at(2, 10.0F).activity == core::ResidentActivity::kAtHome,
+                     "and at night he is at home: school does not run round the clock");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestCalendar();
@@ -378,6 +496,7 @@ int main() {
   failures += TestGramsFromFloat();
   failures += TestVersionPin();
   failures += TestPlot();
+  failures += TestResidentActivity();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

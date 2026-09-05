@@ -13,4 +13,6 @@ kolkhoz_add_module(core_common
     spoilage.cpp
     quantities.cpp
     stock_forecast.cpp
-    version_pin.cpp)
+    resident_activity.cpp
+    version_pin.cpp
+    work_seam.cpp)
