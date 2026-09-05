@@ -333,6 +333,27 @@ int main(int argc, char** argv) {
   // can be sent to, and the difference is the whole question.
   const core::WorldState& last = world.State();
   const core::ITableSet* const last_tables = world.tables.get();
+  // DID ANYTHING ACTUALLY GET BUILT? The other instrument reports that a
+  // site never finishes on any core, ever. This run's chairman raises the
+  // horse yard THROUGH THE ORDER BOOK — kBuildUnit, then kStartBuild, then
+  // kUpgradeUnit — so if construction never completed, the yard would still
+  // be at level 0 and there would be no draught horses at all.
+  const core::ITable* const types = last_tables->FindTable("unit_types");
+  const std::uint32_t yard_type =
+      types == nullptr ? core::kNoTableRow : types->FindRowByKey("horse_yard");
+  for (const core::UnitRow& unit : last.units.rows) {
+    if (yard_type != core::kNoTableRow && unit.type.value == yard_type) {
+      std::cout << "idle_curve: конюшня — ступень " << static_cast<int>(unit.level)
+                << ", фаза стройки " << static_cast<int>(unit.construction.phase) << ", осталось "
+                << unit.construction.labor_days_remaining << " чел-дней\n";
+    }
+  }
+  std::uint32_t built = 0;
+  for (const core::UnitRow& unit : last.units.rows) {
+    built += unit.level > 0 ? 1U : 0U;
+  }
+  std::cout << "idle_curve: юнитов стоит " << built << " из " << last.units.rows.size() << '\n';
+
   // Draught horses specifically: ploughing cannot be done without one, and
   // a job that merely PREFERS a horse still takes one (assignment.cpp).
   const core::ITable* const livestock = last_tables->FindTable("livestock");
