@@ -24,8 +24,10 @@ constexpr float kMaxMapSideM = 1.0e7F;
 
 bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& error) {
   const std::uint32_t radius_column = unit_types.FindColumn("plot_radius_m");
+  const std::uint32_t body_column = unit_types.FindColumn("footprint_r_m");
   const std::uint32_t class_column = unit_types.FindColumn("class");
   defs.plot_radius_m.assign(unit_types.RowCount(), 0.0F);
+  defs.keep_out_radius_m.assign(unit_types.RowCount(), 0.0F);
   defs.is_housing.assign(unit_types.RowCount(), 0);
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
     if (!CellOrDefault(unit_types,
@@ -38,6 +40,22 @@ bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& er
       PrefixError("unit_types", "plot_radius_m", error);
       return false;
     }
+    // The plot where there is one, the body where there is not. A type with
+    // both would be a question this code cannot answer, and the tables never
+    // pose it: the plot is the larger and the body would vanish inside it
+    // anyway, so the plot wins and nothing is lost.
+    float body = 0.0F;
+    if (!CellOrDefault(unit_types,
+                       row,
+                       body_column,
+                       Range{.low = 0.0F, .high = kMaxPlotRadiusM},
+                       0.0F,
+                       body,
+                       error)) {
+      PrefixError("unit_types", "footprint_r_m", error);
+      return false;
+    }
+    defs.keep_out_radius_m[row] = defs.plot_radius_m[row] > 0.0F ? defs.plot_radius_m[row] : body;
     if (class_column != kNoTableColumn && unit_types.CellText(row, class_column) == kHousingClass) {
       defs.is_housing[row] = 1;
     }

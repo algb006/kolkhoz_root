@@ -1240,6 +1240,117 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
   return failures;
 }
 
+/// A field being reaped spends the room, even though nobody is warned about
+/// it.
+///
+/// host, seed 1930: on day 20 a timothy field entered the HARVEST phase; the
+/// warnings that day named two other fields, and timothy was never named on
+/// any day. Two days later it gave up 27.3 tonnes — into the room that had
+/// just been promised to those two. The alarm's loop skipped any field that
+/// was not growing, so a field being reaped was neither warned about NOR
+/// subtracted, and the forecast was wrong about every field at once.
+///
+/// The two are separate questions. Keeping quiet about a field whose harvest
+/// has begun is a choice and a defensible one — there is no season left to
+/// answer in. Leaving its load out of the arithmetic is not a choice: those
+/// tonnes take room whoever is told about them.
+int CheckAReapedFieldStillSpendsTheRoom() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_reaping_claim";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\n";
+  // Eight harvest days a hectare, so a ten-hectare field's harvest phase is
+  // eighty real days of work — the measure of "how much is still standing".
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\nbarn,0\n";
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the reaping-claim table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  core::AppendRow(world.units, barn);
+  // Row 0 is being reaped and is half uncut: fifty tonnes expected, so
+  // twenty-five are still standing. Row 1 is growing fifty more.
+  core::FieldRow reaping;
+  reaping.kind = core::LandKind::kArable;
+  reaping.area_ga = 50.0F;
+  reaping.fertility = 50.0F;
+  reaping.phase = core::FieldPhase::kHarvest;
+  reaping.crop = core::CropId{0};
+  reaping.work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
+  const core::FieldId cut = core::AppendRow(world.fields, reaping);
+  core::FieldRow growing;
+  growing.kind = core::LandKind::kArable;
+  growing.area_ga = 50.0F;
+  growing.fertility = 50.0F;
+  growing.phase = core::FieldPhase::kGrowing;
+  growing.crop = core::CropId{0};
+  const core::FieldId ahead = core::AppendRow(world.fields, growing);
+
+  const auto warned = [&system, &world](const core::FieldId field) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    core::Grams total = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit && alarm.field.value == field.value) {
+        total += alarm.amount;
+      }
+    }
+    return total;
+  };
+
+  // Sixty tonnes of room, twenty-five still standing on the field being
+  // reaped: thirty-five left, and the growing fifty overruns by fifteen.
+  // Under the old rule the reaped field claimed NOTHING, fifty fitted into
+  // sixty, and nobody was told anything at all.
+  failures += Expect(warned(ahead) == 15'000 * core::kGramsPerKilogram,
+                     "the standing half of a field being reaped is taken out of the room");
+  failures += Expect(warned(cut) == 0,
+                     "and the field being reaped is not itself warned: its season is over");
+
+  // A load already CUT and lying on the field claims its own weight too. It
+  // is not in a store, so it has not touched today's free room, and it goes
+  // in the moment there is anywhere to put it. Twenty tonnes lying plus
+  // twenty-five standing leaves fifteen, and the growing fifty overruns by
+  // thirty-five.
+  world.fields.rows[0].reaped_grams = 20'000 * core::kGramsPerKilogram;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  failures += Expect(warned(ahead) == 35'000 * core::kGramsPerKilogram,
+                     "a load already cut and lying on a field claims room as well");
+
+  // And when it is all cut and carried away, the field claims nothing and
+  // the growing fifty fits into the sixty again — or the check above would
+  // only be proving that something always overruns.
+  world.fields.rows[0].reaped_grams = 0;
+  world.fields.rows[0].work_days_remaining = 0.0F;
+  failures += Expect(warned(ahead) == 0,
+                     "a field with nothing left to give claims nothing, and the room is free");
+
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// The room is spent in the order the fields will be REAPED, not in row
 /// order.
 ///
@@ -1579,6 +1690,7 @@ int main() {
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
+  failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckPauseAndResume();
 

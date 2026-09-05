@@ -49,11 +49,14 @@ namespace core {
 /// to core_residents, and a settlement whose radii and whose map came from
 /// different places would be two rules wearing one name.
 struct PlotRules {
-  /// Plot radius in metres by UnitTypeId value, as the unit_types.csv
-  /// `plot_radius_m` column gives it. A type outside the span, or one whose
-  /// radius is zero, takes no part: either it has no plot at all or the
-  /// player draws its outline, and an outline is the presentation's to
-  /// guard (unit rules §9).
+  /// The radius nothing else may come inside, in metres, by UnitTypeId
+  /// value — the type's PLOT where it has one (unit_types.csv
+  /// `plot_radius_m`) and its BODY where it does not (`footprint_r_m`).
+  /// One rule with two numbers: a plot says "keep clear of my yard", a body
+  /// says "you cannot stand where I stand", and both are answered by the
+  /// same comparison. A type outside the span, or one whose radius is zero,
+  /// takes no part: it has neither, or the player draws its outline, and an
+  /// outline is the presentation's to guard (unit rules §9).
   std::span<const float> radius_by_type;
 
   /// Side of the square map in metres, from tables/map.csv `side_m`. ZERO

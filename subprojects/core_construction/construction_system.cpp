@@ -476,8 +476,11 @@ class ConstructionSystem final : public IConstructionSystem {
           order.position.y >= 0.0F && order.position.y <= config_.definitions.map_side_m)) {
       return OrderRefusal::kRuleForbids;
     }
-    const float radius = type_row < config_.definitions.units.plot_radius_m.size()
-                             ? config_.definitions.units.plot_radius_m[type_row]
+    // The plot where the type has one, the BODY where it does not: a well
+    // and a lamp post cannot stand in the same metre either, and until
+    // 2026-09-05 they took no part in this rule at all.
+    const float radius = type_row < config_.definitions.units.keep_out_radius_m.size()
+                             ? config_.definitions.units.keep_out_radius_m[type_row]
                              : 0.0F;
     if (PlotOverlaps(current, order.position, radius, UnitId{})) {
       return OrderRefusal::kTooClose;

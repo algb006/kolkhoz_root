@@ -33,15 +33,15 @@ bool FamilyHousePosition(const WorldState& current, FamilyId family, Vec2& posit
 /// time rather than stored: a span into a member is a member's lifetime
 /// written down twice.
 PlotRules PlotRulesOf(const LifeConfig& config) {
-  return PlotRules{.radius_by_type = config.definitions.units.plot_radius_m,
+  return PlotRules{.radius_by_type = config.definitions.units.keep_out_radius_m,
                    .map_side_m = config.definitions.map_side_m};
 }
 
 /// The plot radius of the type the STUB raises; zero when the tables know
 /// no radius for it, and then the house takes the spot it wanted.
 float HouseRadius(const LifeConfig& config) {
-  return config.house_type.value < config.definitions.units.plot_radius_m.size()
-             ? config.definitions.units.plot_radius_m[config.house_type.value]
+  return config.house_type.value < config.definitions.units.keep_out_radius_m.size()
+             ? config.definitions.units.keep_out_radius_m[config.house_type.value]
              : 0.0F;
 }
 

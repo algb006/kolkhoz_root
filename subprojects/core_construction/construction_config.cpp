@@ -492,6 +492,9 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
     if (type.player_built == 0 || unit_types.CellText(row, has_plot_col) != "1") {
       continue;
     }
+    // The PLOT alone, never the body: this asks whether a type that claims
+    // a plot names one, and a footprint is a different answer to a different
+    // question. A well has a body and no plot, and it does not claim one.
     if (config.definitions.units.plot_radius_m[row] > 0.0F) {
       continue;
     }

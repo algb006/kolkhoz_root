@@ -52,6 +52,23 @@ struct UnitTypeDefs {
   /// presentation's to guard (unit rules §9).
   std::vector<float> plot_radius_m;
 
+  /// The radius NOTHING ELSE MAY COME INSIDE, in metres — the plot where a
+  /// type has one, and the type's own body where it does not
+  /// (unit_types.csv `footprint_r_m`). This is what the overlap rule reads
+  /// (plot.h); `plot_radius_m` above stays the plot alone, because "claims
+  /// a plot and names no radius" is a different question and a body must
+  /// not answer it.
+  ///
+  /// TWO RULES, ONE NUMBER, AND THE DESIGN SAYS THEY ARE THE SAME RULE WITH
+  /// A DIFFERENT NUMBER (boss, 2026-09-05). A plot says "keep your distance
+  /// from my yard"; a body says "you cannot stand where I stand". A well, a
+  /// lamp post and a notice board had no plot and therefore took no part in
+  /// the rule at all — two of them could occupy the same metre, which the
+  /// human called out by name: "two similar objects will overlap each
+  /// other… that is not decor". No type carries both numbers, so one span
+  /// serves both readings without a choice ever having to be made.
+  std::vector<float> keep_out_radius_m;
+
   /// 1 for every type of the housing class (unit_types.csv `class`). A unit
   /// of one of these with no household in it is a FREE HOUSE, which is what
   /// a wedding needs first (life-cycle §12).
@@ -77,7 +94,7 @@ struct Definitions {
   /// object: it must outlive the call, which it does — the catalogue is
   /// built before the systems and outlives them.
   PlotRules Plots() const {
-    return PlotRules{.radius_by_type = units.plot_radius_m, .map_side_m = map_side_m};
+    return PlotRules{.radius_by_type = units.keep_out_radius_m, .map_side_m = map_side_m};
   }
 };
 

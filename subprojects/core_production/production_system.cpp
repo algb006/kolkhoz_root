@@ -259,6 +259,50 @@ class ProductionSystem final : public IProductionSystem {
     }
   }
 
+  /// @brief What this field will still put into a store this season, in
+  ///        grams — its claim on the shared room.
+  ///
+  /// WHAT WILL LAND, NOT WHAT LIES. Three parts, and only the first was ever
+  /// counted:
+  ///
+  /// 1. A crop still GROWING claims its whole expected yield.
+  /// 2. A crop being REAPED claims the part still standing. It used to claim
+  ///    nothing at all — the alarm's loop skipped any field that was not
+  ///    growing — and that is the defect host measured on 0.17.28: the room
+  ///    promised to two other fields was already spoken for by twenty-seven
+  ///    tonnes of timothy that landed two days later. The alarm may keep
+  ///    silent about a field being reaped; THE ARITHMETIC MAY NOT.
+  /// 3. A load already CUT and lying on the field claims its own weight. It
+  ///    is not in a store, so it has not reduced today's free room, and it
+  ///    goes in the moment there is anywhere to put it.
+  ///
+  /// The standing part is measured by the labour left against the labour the
+  /// phase started with (harvest_days_per_ha x hectares), because that is
+  /// the only measure of "how much of this field is still uncut" the state
+  /// carries. It is a share of the estimate, not a second estimate.
+  Grams RoomClaimOf(const FieldRow& field) const {
+    Grams claim = field.reaped_grams > 0 ? field.reaped_grams : 0;
+    if (field.kind != LandKind::kArable || field.crop.value >= config_.crops.size()) {
+      return claim;
+    }
+    const bool growing = field.phase == FieldPhase::kGrowing;
+    const bool reaping = field.phase == FieldPhase::kHarvest;
+    if (!growing && !reaping) {
+      return claim;
+    }
+    const CropDef& crop = config_.crops[field.crop.value];
+    const float soil = field.fertility / config_.farming.fertility_neutral;
+    const Grams expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
+    if (growing) {
+      return claim + expected;
+    }
+    const float phase_norm = crop.harvest_days_per_ha * field.area_ga;
+    // A phase with no norm is one nobody has to work: none of it is standing.
+    const float uncut = phase_norm > 0.0F ? field.work_days_remaining / phase_norm : 0.0F;
+    const float share = uncut < 0.0F ? 0.0F : (uncut > 1.0F ? 1.0F : uncut);
+    return claim + static_cast<Grams>(static_cast<float>(expected) * share);
+  }
+
   /// @brief Field rows ordered by when their crop is reaped, then by row.
   ///
   /// Only the order matters, so the key is the whole months from today to
@@ -274,11 +318,19 @@ class ProductionSystem final : public IProductionSystem {
       order[row] = row;
     }
     const auto months_away = [this, &world, today](std::uint32_t row) {
-      const CropId crop = world.fields.rows[row].crop;
-      if (crop.value >= config_.crops.size()) {
+      const FieldRow& field = world.fields.rows[row];
+      // A field being reaped, or one already holding a cut load, lands NOW —
+      // whatever month its crop is nominally reaped in. Reading the month
+      // alone put a field whose harvest month has just PASSED eleven months
+      // into the future and let three others spend the room in front of it.
+      if (field.phase == FieldPhase::kHarvest || field.reaped_grams > 0) {
+        return 0U;
+      }
+      if (field.crop.value >= config_.crops.size()) {
         return kMonthsPerYear;
       }
-      const auto month = static_cast<std::uint32_t>(config_.crops[crop.value].harvest_from_month);
+      const auto month =
+          static_cast<std::uint32_t>(config_.crops[field.crop.value].harvest_from_month);
       return (month + kMonthsPerYear - today) % kMonthsPerYear;
     };
     std::stable_sort(order.begin(), order.end(), [&months_away](std::uint32_t a, std::uint32_t b) {
@@ -315,33 +367,33 @@ class ProductionSystem final : public IProductionSystem {
     // eleven whatever the numbers happen to be. Fields whose crops are
     // reaped in the same month keep row order between them: that much IS
     // arbitrary, and there is nothing in the model that says otherwise.
+    // EVERY FIELD SPENDS THE ROOM ITS PRODUCE WILL TAKE; only some of them
+    // are told about it. The two are separate questions and used to be one:
+    // the loop skipped a field that was not growing, so a field being reaped
+    // was neither warned about nor SUBTRACTED, and the room promised to the
+    // fields behind it had already been spoken for by the load that landed
+    // two days later (host, seed 1930: twenty-seven tonnes of timothy).
+    //
+    // The alarm may keep silent about a field. The arithmetic may not.
     Grams room_left = FreeRoomOfStores(world);
     for (const std::uint32_t row : FieldsInHarvestOrder(world)) {
       const FieldRow& field = world.fields.rows[row];
-      if (field.crop.value < config_.crops.size() && field.phase == FieldPhase::kGrowing &&
-          field.kind == LandKind::kArable) {
-        // The estimate is this subsystem's own payout arithmetic without the
-        // weather stress: understating it would bring the warning after the
-        // loss, which is the one thing it exists to prevent.
-        const CropDef& crop = config_.crops[field.crop.value];
-        const float soil = field.fertility / config_.farming.fertility_neutral;
-        const auto expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
-        const Grams over = expected > room_left ? expected - room_left : 0;
-        room_left = expected >= room_left ? 0 : room_left - expected;
-        // A FORECAST OF WHAT HAS ALREADY HAPPENED IS NOT A FORECAST. While
-        // this field's own produce is lying on it unhoused, the loud alarm
-        // about this field already stands, and repeating the quiet one
-        // beside it says nothing the player can still act on. The room is
-        // spent above regardless: last year's heap is not in a store, so
-        // this year's crop competes for the room exactly as it would.
-        if (over > 0 && field.reaped_grams == 0) {
-          Alarm alarm;
-          alarm.kind = AlarmKind::kHarvestWillNotFit;
-          alarm.field = world.fields.row_ids[row];
-          alarm.resource = crop.resource;
-          alarm.amount = over;
-          alarms.push_back(alarm);
-        }
+      const Grams claim = RoomClaimOf(field);
+      const Grams over = claim > room_left ? claim - room_left : 0;
+      room_left = claim >= room_left ? 0 : room_left - claim;
+      // WARNED ONLY WHILE THERE IS STILL A SEASON TO ANSWER IN: a crop that
+      // is growing, and one whose own produce is not already lying unhoused
+      // beside it. A forecast of what has already happened is not a
+      // forecast — the loud alarm about that field stands anyway, and the
+      // quiet one beside it says nothing anybody can still act on.
+      if (over > 0 && field.reaped_grams == 0 && field.phase == FieldPhase::kGrowing &&
+          field.kind == LandKind::kArable && field.crop.value < config_.crops.size()) {
+        Alarm alarm;
+        alarm.kind = AlarmKind::kHarvestWillNotFit;
+        alarm.field = world.fields.row_ids[row];
+        alarm.resource = config_.crops[field.crop.value].resource;
+        alarm.amount = over;
+        alarms.push_back(alarm);
       }
       if (field.reaped_grams > 0) {
         Alarm alarm;

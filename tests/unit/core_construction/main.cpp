@@ -78,12 +78,18 @@ class BuildTables final : public core::ITableSet {
                           "has_plot",
                           "plot_radius_m",
                           "has_wear",
-                          "wear_factor"},
-                         {{"store", "1", "0", "start", "1", "10", "1", ""},
-                          {"barn", "1", "1", "era", "1", "20", "1", "1.5"},
-                          {"club", "2", "1", "era", "1", "20", "1", ""},
-                          {"orchard", "1", "1", "era", "1", "", "0", ""},
-                          {"old_house", "1", "0", "start", "1", "10", "1", ""}}};
+                          "wear_factor",
+                          "footprint_r_m"},
+                         {{"store", "1", "0", "start", "1", "10", "1", "", ""},
+                          {"barn", "1", "1", "era", "1", "20", "1", "1.5", ""},
+                          {"club", "2", "1", "era", "1", "20", "1", "", ""},
+                          {"orchard", "1", "1", "era", "1", "", "0", "", ""},
+                          {"old_house", "1", "0", "start", "1", "10", "1", "", ""},
+                          // A well: no plot, but a body of 1.2 m that
+                          // nothing else may stand inside (task of
+                          // 2026-09-05). has_plot is 0 and that is now three
+                          // different facts, not one.
+                          {"well", "1", "1", "era", "0", "", "0", "", "1.2"}}};
 
   // wear_factor is the STEP's pace over its class's term, and it stands on
   // three rows on purpose: the store carries it where the type has none
@@ -109,7 +115,8 @@ class BuildTables final : public core::ITableSet {
                            {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10", "1.1"},
                            {"club", "1", "2", "70", "wood_small", "5", "10", "5", ""},
                            {"orchard", "1", "1", "0", "plot", "", "", "", ""},
-                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"}}};
+                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"},
+                           {"well", "1", "1", "14", "earthwork", "2", "", "", ""}}};
 
   test::FakeTable costs_{{"unit", "level", "resource", "amount"},
                          {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
@@ -129,6 +136,8 @@ constexpr std::uint16_t kBarnType = 1;
 constexpr std::uint16_t kClubType = 2;
 constexpr std::uint16_t kOrchardType = 3;
 constexpr std::uint16_t kOldHouseType = 4;
+
+constexpr std::uint16_t kWellType = 5;
 
 /// Grams of one spare part, as the fixture states it: 5 kg a piece.
 constexpr core::Grams kPartGrams = 5 * core::kGramsPerKilogram;
@@ -449,7 +458,12 @@ class NoWearColumnTables final : public core::ITableSet {
                           {"barn", "1", "1", "era", "1", "20"},
                           {"club", "2", "1", "era", "1", "20"},
                           {"orchard", "1", "1", "era", "1", ""},
-                          {"old_house", "1", "0", "start", "1", "10"}}};
+                          {"old_house", "1", "0", "start", "1", "10"},
+                          // The ladder is the inner set's and names every
+                          // type in it; a level row naming a type this
+                          // roster lacks refuses the whole config, and the
+                          // refusal would be right.
+                          {"well", "1", "1", "era", "0", ""}}};
 };
 
 /// THE DEADLINE MUST AGREE WITH THE WORLD, and that is the only test of a
@@ -707,6 +721,57 @@ int TestTableLessWorld() {
   return failures;
 }
 
+/// A unit with no plot still has a BODY, and nothing may stand inside it.
+///
+/// `has_plot = 0` used to answer three questions with one word: no yard to
+/// keep clear, no body to bump into, and no rule about where the thing may
+/// stand. The first is true of a well, the second is not — two wells could
+/// occupy the same metre, and the human named it: "two similar objects will
+/// overlap each other… that is not decor" (boss relaying, 2026-09-05).
+///
+/// It is the same rule with a different number, so the same comparison
+/// answers it: the type's plot where it has one, its footprint where it does
+/// not. The third question — `placement_ref`: verge, wall, route — refers to
+/// roads and walls the world does not have yet, and is deliberately unread.
+int TestABodyKeepsItsMetre(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  if (system == nullptr) {
+    std::cout << "FAIL: the body table set builds no system\n";
+    return 1;
+  }
+  core::WorldState world;
+  const core::OrderId first = Issue(world, BuildOrder(kWellType, 1000.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, first) == core::OrderRefusal::kNone,
+                     "the first well is dug where the chairman said");
+
+  // Half a metre away: inside 1.2 + 1.2, so the two bodies would share
+  // ground. Before the body was read this was allowed, and silently.
+  const core::OrderId on_top = Issue(world, BuildOrder(kWellType, 1000.5F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, on_top) == core::OrderRefusal::kTooClose,
+                     "a second well half a metre away is refused: bodies do not overlap");
+
+  // Three metres away: clear of 2.4, and legal. Without this the check above
+  // would only be proving that the second well is always refused.
+  const core::OrderId beside = Issue(world, BuildOrder(kWellType, 1003.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, beside) == core::OrderRefusal::kNone,
+                     "and three metres away it is dug: a body is small, not a plot");
+
+  // A body is kept out of a PLOT as well — the barn's twenty metres are the
+  // barn's, and a well is not exempt for being little.
+  const core::OrderId yard = Issue(world, BuildOrder(kBarnType, 2000.0F, 2000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, yard) == core::OrderRefusal::kNone, "the barn goes up");
+  const core::OrderId inside = Issue(world, BuildOrder(kWellType, 2010.0F, 2000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, inside) == core::OrderRefusal::kTooClose,
+                     "and a well ten metres into its yard is refused");
+  return failures;
+}
+
 /// The step's pace multiplies the type's, and the old house is not exempt.
 ///
 /// Two facts, two columns, one product: the type says what the NATURE of a
@@ -849,6 +914,7 @@ int main() {
   int failures = 0;
   const BuildTables tables;
   failures += TestStepPaceMultipliesTypePace(tables);
+  failures += TestABodyKeepsItsMetre(tables);
   failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
   failures += TestRefusals(tables);
