@@ -77,7 +77,13 @@ core::Grams SeedDemand(const core::WorldState& world,
                        float sowing_norm_kg_per_ha) {
   core::Grams demand = 0;
   for (const core::FieldRow& field : world.fields.rows) {
-    if (field.phase != core::FieldPhase::kIdle || field.rotation_year0.value != crop.value) {
+    // The core's rule since 2026-09-05: a field still owes its sowing until
+    // the crop is in the ground, so growing and reaping are the only two
+    // phases that end the demand. Mirrored here rather than shared, which is
+    // the point of a second tally.
+    const bool already_sown =
+        field.phase == core::FieldPhase::kGrowing || field.phase == core::FieldPhase::kHarvest;
+    if (already_sown || field.rotation_year0.value != crop.value) {
       continue;
     }
     demand += core::GramsFromKilograms(sowing_norm_kg_per_ha * field.area_ga);

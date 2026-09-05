@@ -121,7 +121,8 @@ std::uint32_t EaterCount(const FoodConfig& config,
 ///   * seed — the sowing still to come. Only fields that have yet to be sown
 ///     count: a field already in the ground took its seed when its sowing
 ///     phase closed, and reserving for it twice would freeze grain the
-///     settlement has already spent.
+///     settlement has already spent. "Yet to be sown" is the CROP's state
+///     and not the field's phase — see the loop.
 ///   * plan — WorldState::plan.due, which accrues as the grain is reaped and
 ///     is handed over at the turn of the year. Its absence here is what let
 ///     the issue eat the district's share all summer.
@@ -135,8 +136,23 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   std::vector<Grams> reserve(config.resources.size(), 0);
   if (config.distribution.reserve_seed_fund != 0) {
     for (const FieldRow& field : world.fields.rows) {
-      if (field.phase != FieldPhase::kIdle ||
-          field.rotation_year0.value >= config.seed_norms.size()) {
+      // UNTIL THE SOWING TAKES IT, not until the ploughing starts.
+      //
+      // The condition was `phase == kIdle` until 2026-09-05, and that held
+      // the seed for the wrong thing: the plough opened, the field left the
+      // idle phase, and the grain went free WEEKS BEFORE the sowing came for
+      // it — eleven protected days of forty-eight in one measured year, ONE
+      // day in two others (69-reconciliation.md §13.16). The fund was
+      // guarding A PHASE OF THE FIELD rather than A QUANTITY OF GRAIN.
+      //
+      // A field is done needing seed once the crop is in the ground: growing
+      // or being reaped. Everything before that — idle, ploughing,
+      // harrowing, sowing itself — is a field that still has to be sown, and
+      // the design's rule is that the fund opens only by the chairman's own
+      // decision (resources design §6), never by a plough.
+      const bool already_sown =
+          field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
+      if (already_sown || field.rotation_year0.value >= config.seed_norms.size()) {
         continue;
       }
       const SeedNormDef& seed = config.seed_norms[field.rotation_year0.value];
