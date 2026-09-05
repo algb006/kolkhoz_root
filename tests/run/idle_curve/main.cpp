@@ -472,7 +472,27 @@ int main(int argc, char** argv) {
     std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
               << of_age << " | " << worked << " | " << idled << " | "
               << (seam_sum / (samples == 0 ? 1 : samples)) << " | назначено-но-нечем " << blocked
-              << " | в дороге " << walking << " | прогул " << truant << '\n';
+              << " | в дороге " << walking << " | прогул " << truant;
+    {
+      // The team, year by year: the other instrument sees no foal in four
+      // hundred days, and four hundred days is eight and a third years.
+      const core::ITable* const kinds = world.tables->FindTable("livestock");
+      const std::uint32_t horses_kind =
+          kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
+      std::uint32_t adults = 0;
+      std::uint32_t sires = 0;
+      std::uint32_t young = 0;
+      for (const core::HerdRow& herd : done.herds.rows) {
+        if (horses_kind == core::kNoTableRow || herd.kind.value != horses_kind) {
+          continue;
+        }
+        adults += herd.adult_count;
+        sires += herd.adult_male_count;
+        young += static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count;
+      }
+      std::cout << " | лошадей " << adults << "/" << sires << " жеребцов, молодняк " << young;
+    }
+    std::cout << '\n';
   }
   // THE SEASONAL ARITHMETIC, and it answers the question boss's second
   // instrument raised: is the busy season's idleness a matter of who was
@@ -559,6 +579,23 @@ int main(int argc, char** argv) {
   }
   std::cout << "idle_curve: в конце — голов всего " << all_head << ", ТЯГЛОВЫХ ЛОШАДЕЙ " << horses
             << "; лугов под косой " << mowing << ", пашни под плугом " << ploughing << '\n';
+  // THE TEAM ITSELF, head by head. The other instrument found that horses
+  // never foal in four hundred days and that the stable changes nothing;
+  // the "why" is this side's. A herd with no sire cannot breed, and a herd
+  // that never breeds never grows, and the sire count is re-derived only
+  // where heads GROW UP.
+  for (std::uint32_t row = 0; row < last.herds.rows.size(); ++row) {
+    const core::HerdRow& herd = last.herds.rows[row];
+    if (horse_row == core::kNoTableRow || herd.kind.value != horse_row) {
+      continue;
+    }
+    std::cout << "idle_curve: табун " << row << " — взрослых " << herd.adult_count << ", из них "
+              << "жеребцов " << herd.adult_male_count << ", молодняк "
+              << (herd.newborn_count + herd.juvenile_count) << ", на постое " << herd.billeted_count
+              << ", при дворе " << (herd.household.value != core::kInvalidEntityIdValue ? 1 : 0)
+              << ", у юнита " << (herd.unit.value != core::kInvalidEntityIdValue ? 1 : 0) << '\n';
+  }
+
   // WHY NOBODY IS SENT is the question, and there are only so many ways to
   // be unsendable: no house (a man with no home has no day to travel from),
   // too young, or a job that needs a horse and no horse free.
