@@ -30,7 +30,7 @@ build_yard,1,1,40,shelter,5,,,30,18,1
 build_yard,2,2,600,brick_mid,16,,,90,60,1
 manure_pile,1,1,30,earthwork,8,,,60,40,1
 dryer,1,2,300,brick_small,10,,,80,55,1
-water_mill,1,1,,,,,,,,1
+water_mill,1,1,,wood_large,12,,,55,32,1
 utility_yard,1,1,120,wood_small,8,,,50,30,1
 goods_store,1,1,120,wood_small,8,80,,50,30,1.1
 workshops,1,1,120,wood_small,8,,,50,30,1.1
@@ -160,7 +160,7 @@ cemetery,2,1,40,shelter,5,,,30,18,1
 cemetery,3,2,120,wood_small,8,,,50,30,1
 propaganda,1,1,0,plot,,,,,,1
 honour_board,1,1,0,plot,,,,,,1
-church_store,1,1,,,,60,,,,1
-manor_ruins,1,1,,,,,,,,1
+church_store,1,1,,brick_mid,16,60,,90,60,1
+manor_ruins,1,1,,brick_mid,16,,,90,60,1
 water_intake,1,2,120,concrete_slab,10,,,90,60,1
 water_standpipe,1,2,0,plot,,,,,,1
