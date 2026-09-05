@@ -70,8 +70,9 @@ class IProductionSystem {
   /// kHarvestWaitingOnField for every field with reaped produce waiting
   /// (FieldRow::reaped_grams); kHarvestWillNotFit for every growing field
   /// whose expected yield — this subsystem's own estimate, at today's
-  /// fertility and no weather stress — exceeds the free room of all stores
-  /// together;
+  /// fertility and no weather stress — exceeds what is LEFT of the free
+  /// room of all stores after the growing fields before it in row order,
+  /// and whose own produce is not already waiting unhoused;
   /// kSeedShort for every field whose next sowing the stores cannot seed
   /// to the norm; kHerdStarving for every kolkhoz herd with unfed_days > 0.
   /// Each subject at most once, in row order within a kind — the session

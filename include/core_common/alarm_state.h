@@ -68,13 +68,22 @@ enum class AlarmKind : std::uint8_t {
   /// stack) never raise it: they have no number to be full against.
   kStoreFull,
 
-  /// A field is GROWING a crop the stores will not hold: the expected yield
-  /// is larger than all the free room together. The warning before the
-  /// loss — there is still a season in which to free a store or raise one,
-  /// and that is exactly what separates this kind from the next one (boss,
-  /// 2026-09-03: the player must tell "build now" from "cart it away" at a
-  /// glance). Subject: `field`; `resource` = the crop's produce;
-  /// `amount` = the grams that would not fit.
+  /// A field is GROWING a crop the stores will not hold. The warning before
+  /// the loss — there is still a season in which to free a store or raise
+  /// one, and that is exactly what separates this kind from the next one
+  /// (boss, 2026-09-03: the player must tell "build now" from "cart it
+  /// away" at a glance). Subject: `field`; `resource` = the crop's produce;
+  /// `amount` = this field's own grams that would not fit.
+  ///
+  /// THE FIELDS SHARE ONE ROOM, and the test is against what is left of it
+  /// after the other growing fields, not against the whole of it. Measured
+  /// against the whole, three fields of fifty tonnes facing sixty each
+  /// "fit" and nobody is warned (host, 2026-09-05). The amounts of the
+  /// fields that overrun sum to the true overrun.
+  ///
+  /// SILENT WHILE THE FIELD'S OWN kHarvestWaitingOnField STANDS: a forecast
+  /// of what has already happened is not a forecast, and the loud alarm
+  /// about the same field is already there.
   kHarvestWillNotFit,
 
   /// A field is holding produce already reaped, because the stores had no

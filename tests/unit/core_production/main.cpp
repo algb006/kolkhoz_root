@@ -1120,6 +1120,126 @@ int CheckHaulingIsNotFree() {
   return failures;
 }
 
+/// The warning must come a season before the loss, and it did not.
+///
+/// host measured the window between kHarvestWillNotFit and
+/// kHarvestWaitingOnField on 0.17.24: 0 days on two seeds of three, 4 on
+/// the third, against a granary that takes 15 days to raise. There is no
+/// arithmetic in which that is a warning.
+///
+/// The cause is in the predicate, not the balance. Every field was compared
+/// against the WHOLE free room, so fields sharing one store each "fitted"
+/// on their own and nobody was told that together they did not. The warning
+/// became true only once the room had shrunk below a single field — and the
+/// room shrinks because the harvest has begun, which is why the two alarms
+/// arrived on the same tick.
+///
+/// So the control quantity here is not a number of days but an ORDER: with
+/// three fields sharing a room too small for their sum, the warning must
+/// stand while every one of them is still growing — before any of them is
+/// cut, and therefore before there is anything to be lost.
+int CheckTheHarvestWarningComesBeforeTheHarvest() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_will_not_fit";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\nbarn,0\n";
+  // A barn of sixty tonnes, and three fields of fifty growing into it.
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the shared-room table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  core::WorldState world;
+  world.calendar.tick = 31 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  core::AppendRow(world.units, barn);
+  std::vector<core::FieldId> field_ids;
+  for (int index = 0; index < 3; ++index) {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 50.0F;  // fifty hectares at a tonne a hectare
+    field.fertility = 50.0F;
+    field.phase = core::FieldPhase::kGrowing;
+    field.crop = core::CropId{0};
+    field_ids.push_back(core::AppendRow(world.fields, field));
+  }
+
+  const auto warned = [&system, &world](const core::FieldId field) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    core::Grams total = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit &&
+          (field.value == core::kInvalidEntityIdValue || alarm.field.value == field.value)) {
+        total += alarm.amount;
+      }
+    }
+    return total;
+  };
+
+  // Every field is still GROWING: nothing has been cut, so nothing can have
+  // been lost, and this is the moment the warning exists for.
+  failures += Expect(warned(core::FieldId{}) == 90'000 * core::kGramsPerKilogram,
+                     "three fields of fifty into sixty: the warning names the ninety over");
+  failures +=
+      Expect(warned(field_ids[0]) == 0, "the first field fits in the room and is not warned about");
+  failures += Expect(warned(field_ids[1]) == 40'000 * core::kGramsPerKilogram,
+                     "the second overruns by what is left of the room after the first");
+  failures += Expect(warned(field_ids[2]) == 50'000 * core::kGramsPerKilogram,
+                     "and the third by the whole of itself: the room is spent");
+
+  // One field alone into the same barn fits, and silence is the right answer
+  // — otherwise the check above would only be proving that it always warns.
+  core::WorldState one_field = world;
+  one_field.fields.rows.resize(1);
+  one_field.fields.row_ids.resize(1);
+  {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(one_field, alarms);
+    bool any = false;
+    for (const core::Alarm& alarm : alarms) {
+      any = any || alarm.kind == core::AlarmKind::kHarvestWillNotFit;
+    }
+    failures += Expect(!any, "fifty tonnes into sixty is not a warning");
+  }
+
+  // A FORECAST OF WHAT HAS ALREADY HAPPENED IS NOT A FORECAST. While the
+  // third field's own produce lies on it unhoused, the loud alarm about
+  // that field already stands and the quiet one beside it says nothing the
+  // player can still act on. host saw the warning fire three times on a
+  // field whose trouble had been standing since day one.
+  world.fields.rows[2].reaped_grams = 10'000 * core::kGramsPerKilogram;
+  world.fields.rows[2].reaped_resource = core::ResourceId{0};
+  failures += Expect(warned(field_ids[2]) == 0,
+                     "a field already holding its loss is not warned that it might have one");
+  failures += Expect(warned(field_ids[1]) == 40'000 * core::kGramsPerKilogram,
+                     "and its neighbours are warned exactly as before: the room is spent the same");
+
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// A capacity that no level row answers for must STOP the load, not read as
 /// zero.
 ///
@@ -1369,6 +1489,7 @@ int main() {
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
+  failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckPauseAndResume();
 

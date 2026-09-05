@@ -263,7 +263,24 @@ class ProductionSystem final : public IProductionSystem {
   /// conditions of a field, in kind order so that the caller's sort has
   /// less to do (it still sorts: row order is not id order).
   void CollectFieldAlarms(const WorldState& world, std::vector<Alarm>& alarms) const {
-    const Grams free_room = FreeRoomOfStores(world);
+    // THE ROOM IS ONE AND THE FIELDS SHARE IT, so it is SPENT as the loop
+    // walks them and not re-offered whole to each. Comparing every field
+    // against the whole free room is the defect host measured on 0.17.24:
+    // three fields of fifty tonnes facing sixty tonnes of room each "fit",
+    // nobody is warned, and a hundred and fifty arrive. The warning then
+    // became true only once the room had already shrunk below one field —
+    // which happens because the harvest has started — so a forecast was
+    // being compared against TODAY's room and fired at the same tick as the
+    // loss it exists to precede (window measured: 0 days on two seeds of
+    // three, against a granary that takes 15 days to raise).
+    //
+    // Which field is named is a CONVENTION and worth saying out loud: the
+    // room is spent in row order, so the fields that overrun are the later
+    // ones. Nobody can know which field will really be the one left out —
+    // that depends on the order the harvest comes in — but the amounts are
+    // each field's own unhoused share and they sum to the true overrun,
+    // which is the number the player has to act on.
+    Grams room_left = FreeRoomOfStores(world);
     for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
       const FieldRow& field = world.fields.rows[row];
       if (field.crop.value < config_.crops.size() && field.phase == FieldPhase::kGrowing &&
@@ -274,12 +291,20 @@ class ProductionSystem final : public IProductionSystem {
         const CropDef& crop = config_.crops[field.crop.value];
         const float soil = field.fertility / config_.farming.fertility_neutral;
         const auto expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
-        if (expected > free_room) {
+        const Grams over = expected > room_left ? expected - room_left : 0;
+        room_left = expected >= room_left ? 0 : room_left - expected;
+        // A FORECAST OF WHAT HAS ALREADY HAPPENED IS NOT A FORECAST. While
+        // this field's own produce is lying on it unhoused, the loud alarm
+        // about this field already stands, and repeating the quiet one
+        // beside it says nothing the player can still act on. The room is
+        // spent above regardless: last year's heap is not in a store, so
+        // this year's crop competes for the room exactly as it would.
+        if (over > 0 && field.reaped_grams == 0) {
           Alarm alarm;
           alarm.kind = AlarmKind::kHarvestWillNotFit;
           alarm.field = world.fields.row_ids[row];
           alarm.resource = crop.resource;
-          alarm.amount = expected - free_room;
+          alarm.amount = over;
           alarms.push_back(alarm);
         }
       }
