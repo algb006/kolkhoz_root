@@ -217,11 +217,22 @@ struct ActivityRules {
   /// with hours already spent away, and only one of them chose it.
   float walkoff_rest = 10.0F;
 
-  /// Hours of road between his house and his work, one way. The labour
-  /// model computes it from the distance and the speed of his work kind;
-  /// this asks for the answer rather than the arithmetic, for the same
-  /// reason as `age_years` below.
-  float travel_hours = 0.0F;
+  /// Game hours of one-way travel per kilometre, on foot and behind a
+  /// harness (labour config, `transport.csv` through HoursPerKm). The
+  /// ANSWER is computed here from these and the two places; it used to be
+  /// passed in as one ready number, and every caller passed the same
+  /// half-hour for the whole village.
+  ///
+  /// THAT WAS THE LAST LIE LEFT IN THIS FUNCTION, and it is the same shape
+  /// as the age was: a value the caller must derive by somebody else's
+  /// formula, quietly replaced by a plausible constant. A man four hours
+  /// from his field was counted as working, because the window was narrowed
+  /// by thirty minutes instead of by eight hours — and "the crew is working
+  /// and the site does not move" is exactly the picture that produces
+  /// (host's measurement, 2026-09-05, quoting my number back at me).
+  float walk_hours_per_km = 2.4F;
+
+  float harness_hours_per_km = 1.0F;
 };
 
 /// @brief What one resident is doing at the hour the world stands at.

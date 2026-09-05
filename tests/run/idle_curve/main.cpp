@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -42,7 +43,9 @@
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
 #include "core_common/calendar.h"
+#include "core_common/order_state.h"
 #include "core_common/resident_activity.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -54,7 +57,26 @@ constexpr std::uint32_t kYears = 12;
 
 core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
   core::ActivityRules rules;
-  rules.travel_hours = 0.5F;
+  // The two road rates, from the same table the labour model reads them
+  // from. A run that made one up would be measuring its own invention: the
+  // half-hour that used to stand here counted a man four hours from his
+  // field as working.
+  const core::ITable* const transport = tables.FindTable("transport");
+  const std::uint32_t speed_column =
+      transport == nullptr ? core::kNoTableColumn : transport->FindColumn("speed_kmh");
+  const auto rate = [&](std::string_view key, float fallback) {
+    const std::uint32_t row =
+        transport == nullptr ? core::kNoTableRow : transport->FindRowByKey(key);
+    if (row == core::kNoTableRow || speed_column == core::kNoTableColumn) {
+      return fallback;
+    }
+    const float kmh =
+        std::strtof(std::string(transport->CellText(row, speed_column)).c_str(), nullptr);
+    // Real km/h against game hours: the clock runs four times faster.
+    return kmh > 0.0F ? core::kClockScale / kmh : fallback;
+  };
+  rules.walk_hours_per_km = rate("pedestrian", 2.4F);
+  rules.harness_hours_per_km = rate("horse_trot", 1.0F);
   const core::ITable* const life = tables.FindTable("life");
   const std::uint32_t row =
       life == nullptr ? core::kNoTableRow : life->FindRowByKey("life_speedup");
@@ -104,11 +126,13 @@ int main(int argc, char** argv) {
   // answer: --yard-only keeps the one that raises the horse yard and
   // appoints a groom, and drops the other three.
   bool yard_only = false;
+  bool watch_build = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
     raise_derelict = raise_derelict || argument == "--raise-derelict";
     no_chairman = no_chairman || argument == "--no-chairman";
     yard_only = yard_only || argument == "--yard-only";
+    watch_build = watch_build || argument == "--watch-build";
   }
   const run::Simulation world = run::Start(seed);
   if (!world) {
@@ -156,6 +180,73 @@ int main(int argc, char** argv) {
   }
   int failures = 0;
   const core::ActivityRules rules = RulesOfRun(*world.tables);
+
+  // --watch-build: THE SEAM ITSELF, day by day, and nothing else.
+  //
+  // Boss's objection is exact and my earlier answer was half of one. I
+  // showed that the arm ISSUES the orders and that the yard ends at level 2
+  // with nothing left to do — and from that screen "the labour paid for it"
+  // and "an order zeroed it" are indistinguishable, because the third
+  // command in my own three is kUpgradeUnit and an upgrade opens a NEW
+  // seam. So: the first two commands only, and then watch the number.
+  if (watch_build) {
+    const core::ITable* const types = world.tables->FindTable("unit_types");
+    const std::uint32_t type_row =
+        types == nullptr ? core::kNoTableRow : types->FindRowByKey("horse_yard");
+    if (type_row == core::kNoTableRow) {
+      std::cout << "FAIL: no horse_yard in the tables\n";
+      return 1;
+    }
+    core::OrderRow mark;
+    mark.kind = core::OrderKind::kBuildUnit;
+    mark.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(type_row)};
+    mark.position = core::Vec2{.x = 8600.0F, .y = 9700.0F};
+    world->StageOrders(std::span<const core::OrderRow>(&mark, 1), {});
+    world->AdvanceStep();
+    std::uint32_t site = core::kNoRow;
+    for (std::uint32_t row = 0; row < world.State().units.rows.size(); ++row) {
+      if (world.State().units.rows[row].type.value == type_row) {
+        site = row;
+      }
+    }
+    if (site == core::kNoRow) {
+      std::cout << "FAIL: the mark was refused\n";
+      return 1;
+    }
+    const core::UnitId id = world.State().units.row_ids[site];
+    core::OrderRow start;
+    start.kind = core::OrderKind::kStartBuild;
+    start.unit = id;
+    world->StageOrders(std::span<const core::OrderRow>(&start, 1), {});
+    float last_seam = -1.0F;
+    for (std::uint32_t day = 0; day < 200; ++day) {
+      for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        world->AdvanceStep();
+      }
+      const std::uint32_t row = core::FindRow(world.State().units, id);
+      if (row == core::kNoRow) {
+        std::cout << "idle_curve: площадка исчезла на сутках " << day << '\n';
+        break;
+      }
+      const core::UnitRow& unit = world.State().units.rows[row];
+      std::uint32_t crew = 0;
+      for (const core::ResidentRow& resident : world.State().residents.rows) {
+        crew += resident.work.kind == core::WorkKind::kConstruction ? 1U : 0U;
+      }
+      if (unit.construction.labor_days_remaining != last_seam || day < 3 || unit.level > 0) {
+        std::cout << "idle_curve: сутки " << day << " ступень " << static_cast<int>(unit.level)
+                  << " фаза " << static_cast<int>(unit.construction.phase) << " шов "
+                  << unit.construction.labor_days_remaining << " бригада " << crew << '\n';
+        last_seam = unit.construction.labor_days_remaining;
+      }
+      if (unit.level > 0) {
+        std::cout << "idle_curve: ПОСТРОЕНА на сутках " << day << ", БЕЗ kUpgradeUnit\n";
+        return 0;
+      }
+    }
+    std::cout << "idle_curve: за двести суток НЕ ПОСТРОЕНА\n";
+    return 1;
+  }
   run::YardPolicy yard(*world.tables);
   run::FixturePolicy fixture(*world.tables);
   run::OrdersPolicy orders;

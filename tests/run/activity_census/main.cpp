@@ -119,7 +119,26 @@ bool Waived(std::string_view name) {
 /// it", which was true, and was the excuse.
 core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
   core::ActivityRules rules;
-  rules.travel_hours = 0.5F;  // the run's own convention; see the census note
+  // The two road rates, from the same table the labour model reads them
+  // from. A run that made one up would be measuring its own invention: the
+  // half-hour that used to stand here counted a man four hours from his
+  // field as working.
+  const core::ITable* const transport = tables.FindTable("transport");
+  const std::uint32_t speed_column =
+      transport == nullptr ? core::kNoTableColumn : transport->FindColumn("speed_kmh");
+  const auto rate = [&](std::string_view key, float fallback) {
+    const std::uint32_t row =
+        transport == nullptr ? core::kNoTableRow : transport->FindRowByKey(key);
+    if (row == core::kNoTableRow || speed_column == core::kNoTableColumn) {
+      return fallback;
+    }
+    const float kmh =
+        std::strtof(std::string(transport->CellText(row, speed_column)).c_str(), nullptr);
+    // Real km/h against game hours: the clock runs four times faster.
+    return kmh > 0.0F ? core::kClockScale / kmh : fallback;
+  };
+  rules.walk_hours_per_km = rate("pedestrian", 2.4F);
+  rules.harness_hours_per_km = rate("horse_trot", 1.0F);
   const core::ITable* const life = tables.FindTable("life");
   const std::uint32_t row =
       life == nullptr ? core::kNoTableRow : life->FindRowByKey("life_speedup");

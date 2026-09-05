@@ -384,7 +384,12 @@ int TestPlot() {
 int TestResidentActivity() {
   int failures = 0;
   core::ActivityRules rules;
-  rules.travel_hours = 1.0F;
+  // The field below is two kilometres from the house, and the test wants an
+  // hour of road each way: half an hour per kilometre. The rate is what the
+  // rules carry now — the road itself is computed from the two places, so a
+  // test can no longer state a travel that the geometry does not support.
+  rules.walk_hours_per_km = 0.5F;
+  rules.harness_hours_per_km = 0.5F;
 
   core::WorldState world;
   world.weather.daylight_hours = 12.0F;  // sunrise 6, sunset 18

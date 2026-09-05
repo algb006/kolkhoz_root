@@ -16,6 +16,7 @@
 
 #include "core_common/resident_activity.h"
 
+#include <cmath>
 #include <cstdint>
 
 #include "core_common/calendar.h"
@@ -77,9 +78,20 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   // today; he stands about, unpaid" — and this is that sentence asked as a
   // question instead of written as a comment.
   const bool nothing_to_work_with = assigned && (seam == nullptr || *seam <= 0.0F);
+  // HIS OWN ROAD, not the village's average: from his house to his job, at
+  // the speed his kind of work travels. Harnessed work rides out.
+  const bool harnessed =
+      resident.work.kind == WorkKind::kPlowing || resident.work.kind == WorkKind::kHarrowing;
+  const float hours_per_km = harnessed ? rules.harness_hours_per_km : rules.walk_hours_per_km;
+  float travel = 0.0F;
+  if (assigned && has_home && has_target) {
+    const float dx = (target.x - home.x) / 1000.0F;
+    const float dy = (target.y - home.y) / 1000.0F;
+    travel = std::sqrt((dx * dx) + (dy * dy)) * hours_per_km;
+  }
   const float leaves = window.sunrise;
-  const float starts = window.sunrise + rules.travel_hours;
-  const float stops = window.sunset - rules.travel_hours;
+  const float starts = window.sunrise + travel;
+  const float stops = window.sunset - travel;
   const float returns = window.sunset;
   const bool of_working_age =
       age_years >= rules.work_from_bio_years && age_years < rules.work_to_bio_years;
