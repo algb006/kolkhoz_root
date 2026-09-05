@@ -731,15 +731,14 @@ wooden_house,1,log,35
 wooden_house,1,board,4
 wooden_house,1,clay,2
 wooden_house,2,straw,4
-wooden_house,2,log,60
+wooden_house,2,log,63
 wooden_house,2,board,8
-wooden_house,2,stone,5
 wooden_house,2,clay,3
 wooden_house,2,glass,6
 wooden_house,3,straw,4
 wooden_house,3,log,60
 wooden_house,3,board,8
-wooden_house,3,stone,5
+wooden_house,3,stone,9
 wooden_house,3,clay,3
 wooden_house,3,glass,6
 wooden_house,4,straw,2
