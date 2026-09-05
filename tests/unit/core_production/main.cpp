@@ -1224,15 +1224,20 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
     failures += Expect(!any, "fifty tonnes into sixty is not a warning");
   }
 
-  // A FORECAST OF WHAT HAS ALREADY HAPPENED IS NOT A FORECAST. While the
-  // third field's own produce lies on it unhoused, the loud alarm about
-  // that field already stands and the quiet one beside it says nothing the
-  // player can still act on. host saw the warning fire three times on a
-  // field whose trouble had been standing since day one.
+  // AND IT KEEPS BURNING WHILE THE LOAD IS STILL HOMELESS. An earlier
+  // version of this check asserted the opposite — that a field already
+  // holding its own load says nothing more, because a forecast of what has
+  // happened is not a forecast. That reasoning was sound and the rule was
+  // wrong, and host measured why: the alarm went out a median of FOUR DAYS
+  // before the grain hit the ground, so the last thing the player saw
+  // before losing a crop was the warning going away. A signal that switches
+  // off just before the trouble does not read as silence — it reads as "it
+  // turned out fine" (boss and host, 2026-09-05). The alarm goes out when
+  // the harvest is STORED or LOST, not when the field changes phase.
   world.fields.rows[2].reaped_grams = 10'000 * core::kGramsPerKilogram;
   world.fields.rows[2].reaped_resource = core::ResourceId{0};
-  failures += Expect(warned(field_ids[2]) == 0,
-                     "a field already holding its loss is not warned that it might have one");
+  failures +=
+      Expect(warned(field_ids[2]) > 0, "a field holding its load homeless goes on saying so");
   failures += Expect(warned(field_ids[1]) == 40'000 * core::kGramsPerKilogram,
                      "and its neighbours are warned exactly as before: the room is spent the same");
 
@@ -1326,8 +1331,12 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   // sixty, and nobody was told anything at all.
   failures += Expect(warned(ahead) == 15'000 * core::kGramsPerKilogram,
                      "the standing half of a field being reaped is taken out of the room");
-  failures += Expect(warned(cut) == 0,
-                     "and the field being reaped is not itself warned: its season is over");
+  // The field being reaped is silent because its twenty-five tonnes FIT in
+  // the sixty, not because it is being reaped: it spends the room first and
+  // finds enough. A field being reaped that does NOT fit says so — that is
+  // what CheckTheWarningBurnsUntilTheHarvestIsResolved is for.
+  failures +=
+      Expect(warned(cut) == 0, "the field being reaped fits into the room and says nothing");
 
   // A load already CUT and lying on the field claims its own weight too. It
   // is not in a store, so it has not touched today's free room, and it goes
@@ -1346,6 +1355,110 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   world.fields.rows[0].work_days_remaining = 0.0F;
   failures += Expect(warned(ahead) == 0,
                      "a field with nothing left to give claims nothing, and the room is free");
+
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+/// The alarm burns until the harvest is RESOLVED — stored or lost — and not
+/// until the field changes phase.
+///
+/// host measured the old rule from outside, on 0.17.30: between the warning
+/// going dark and the load hitting the ground there was a median of FOUR
+/// days of silence, spread three to eight, every single time. The field
+/// enters its harvest a few days before the grain lands, the alarm stopped,
+/// and the last thing the player saw before losing a crop was the warning
+/// going away.
+///
+/// A SIGNAL THAT SWITCHES OFF JUST BEFORE THE TROUBLE DOES NOT READ AS
+/// SILENCE. IT READS AS "IT TURNED OUT FINE." Acting on the last state you
+/// were shown is the whole of what a live signal is; this one told the
+/// player he was safe four days before he was robbed.
+///
+/// The estimate still comes from a growing field alone. On the other two
+/// states the quantity is known BETTER, not worse — the part still standing
+/// and the weight of the heap — which is why there is something to burn on.
+int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_burns_on";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\nbarn,0\n";
+  // Ten tonnes of room against a fifty-tonne field: it will not fit in any
+  // of the three states, so the alarm has to speak in all three.
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,10\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the burning table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  core::AppendRow(world.units, barn);
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 50.0F;
+  field.fertility = 50.0F;
+  field.phase = core::FieldPhase::kGrowing;
+  field.crop = core::CropId{0};
+  core::AppendRow(world.fields, field);
+
+  const auto warned = [&system, &world]() {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    core::Grams total = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit) {
+        total += alarm.amount;
+      }
+    }
+    return total;
+  };
+
+  // Growing: forty of the fifty will not fit.
+  failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
+                     "growing and too big for the room: the warning stands");
+
+  // Being reaped, half still on the stalk and half already cut and lying:
+  // twenty-five standing plus twenty-five in the heap is still fifty, and
+  // forty of them still have nowhere to go. THE OLD RULE WENT SILENT HERE.
+  world.fields.rows[0].phase = core::FieldPhase::kHarvest;
+  world.fields.rows[0].work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
+  world.fields.rows[0].reaped_grams = 25'000 * core::kGramsPerKilogram;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
+                     "being reaped and still too big: the warning does not go out");
+
+  // All cut, nothing standing, the whole fifty in a heap on the ground.
+  world.fields.rows[0].phase = core::FieldPhase::kIdle;
+  world.fields.rows[0].work_days_remaining = 0.0F;
+  world.fields.rows[0].reaped_grams = 50'000 * core::kGramsPerKilogram;
+  failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
+                     "lying in a heap with nowhere to put it: the warning still stands");
+
+  // Carried away: the trouble is over and the alarm goes out. Without this
+  // the three checks above would only be proving that it never goes out.
+  world.fields.rows[0].reaped_grams = 0;
+  failures += Expect(warned() == 0, "carried into a store, the warning goes out");
 
   std::filesystem::remove_all(root);
   return failures;
@@ -1691,6 +1804,7 @@ int main() {
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckAReapedFieldStillSpendsTheRoom();
+  failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckPauseAndResume();
 

@@ -81,9 +81,21 @@ enum class AlarmKind : std::uint8_t {
   /// "fit" and nobody is warned (host, 2026-09-05). The amounts of the
   /// fields that overrun sum to the true overrun.
   ///
-  /// SILENT WHILE THE FIELD'S OWN kHarvestWaitingOnField STANDS: a forecast
-  /// of what has already happened is not a forecast, and the loud alarm
-  /// about the same field is already there.
+  /// IT BURNS UNTIL THE HARVEST IS RESOLVED — carried into a store or
+  /// written off — and NOT until the field changes phase. It used to go out
+  /// when the crop left kGrowing, and host measured what that looked like
+  /// from outside: a median of four days of silence between the warning
+  /// going dark and the load hitting the ground, every time. A signal that
+  /// switches off just before the trouble does not read as silence, it
+  /// reads as "it turned out fine" (host, 2026-09-05), and the player acts
+  /// on the last state he was shown.
+  ///
+  /// THE ESTIMATE IS STILL THE GROWING FIELD'S. On the other two states the
+  /// quantity is known better rather than worse — the part still standing,
+  /// measured by the labour left, and the weight of the heap — so there is
+  /// something honest to burn on. Two questions that `phase == kGrowing`
+  /// used to answer with one word: can this be estimated, and should this
+  /// go on warning.
   kHarvestWillNotFit,
 
   /// A field is holding produce already reaped, because the stores had no

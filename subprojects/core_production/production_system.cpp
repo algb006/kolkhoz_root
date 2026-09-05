@@ -381,17 +381,46 @@ class ProductionSystem final : public IProductionSystem {
       const Grams claim = RoomClaimOf(field);
       const Grams over = claim > room_left ? claim - room_left : 0;
       room_left = claim >= room_left ? 0 : room_left - claim;
-      // WARNED ONLY WHILE THERE IS STILL A SEASON TO ANSWER IN: a crop that
-      // is growing, and one whose own produce is not already lying unhoused
-      // beside it. A forecast of what has already happened is not a
-      // forecast — the loud alarm about that field stands anyway, and the
-      // quiet one beside it says nothing anybody can still act on.
-      if (over > 0 && field.reaped_grams == 0 && field.phase == FieldPhase::kGrowing &&
-          field.kind == LandKind::kArable && field.crop.value < config_.crops.size()) {
+      // THE ALARM BURNS UNTIL THE HARVEST IS RESOLVED, and "resolved" means
+      // stored or lost — not "the field changed phase".
+      //
+      // It used to go out the moment the field left kGrowing, and host
+      // measured what that looks like from the outside: a median of FOUR
+      // DAYS of silence between the warning going dark and the load hitting
+      // the ground, every single time. The field enters its harvest a few
+      // days before the grain lands, the alarm stops, and the last thing the
+      // player sees before losing the crop is the warning going away.
+      //
+      // A SIGNAL THAT SWITCHES OFF JUST BEFORE THE TROUBLE DOES NOT READ AS
+      // SILENCE. IT READS AS "IT TURNED OUT FINE" (host, 2026-09-05), and
+      // acting on the last state you were shown is the whole of what a live
+      // signal is for. This one told the player he was safe.
+      //
+      // So `phase == kGrowing` is gone from here. It was answering two
+      // questions at once — "can this be estimated" and "should this go on
+      // warning" — which is the same shape as the two it was untangled from
+      // this week: the room's arithmetic against the alarm's silence, and a
+      // month counted forward against one counted back. THE ESTIMATE still
+      // comes from a growing field alone, and it does: RoomClaimOf gives a
+      // reaped field the part still standing and a heap its own weight, both
+      // of which are known BETTER than a forecast, not worse.
+      //
+      // It goes out when the claim goes to zero, which happens when the load
+      // is carried into a store or written off. That is the trouble ending,
+      // one way or the other, and either is a thing the player can see.
+      if (over > 0 && field.kind == LandKind::kArable) {
+        const bool standing =
+            field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
         Alarm alarm;
         alarm.kind = AlarmKind::kHarvestWillNotFit;
         alarm.field = world.fields.row_ids[row];
-        alarm.resource = config_.crops[field.crop.value].resource;
+        // What the produce IS: the crop while any of it is still on the
+        // stalk, the load's own resource once the field is only a heap. A
+        // field lying under last year's rye may already have this year's
+        // crop written in its rotation slot.
+        alarm.resource = standing && field.crop.value < config_.crops.size()
+                             ? config_.crops[field.crop.value].resource
+                             : field.reaped_resource;
         alarm.amount = over;
         alarms.push_back(alarm);
       }
