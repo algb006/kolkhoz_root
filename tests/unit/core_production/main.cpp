@@ -1360,6 +1360,100 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   return failures;
 }
 
+/// The straw arrives with the grain, and it was never counted.
+///
+/// Harvest() puts the grain through the store door and then, in the same
+/// tick, `yield x straw_ratio` behind it — 1.5 for rye, 1.1 for oat, 0.8 for
+/// buckwheat. RoomClaimOf credited the grain alone, so a rye field was
+/// measured at two-fifths of what it actually delivers.
+///
+/// host traced one on seed 1930: an oat field's warning stood from day 20 to
+/// day 26 at 11.6 t, WENT OUT on day 27 because the grain by then fitted,
+/// and on day 30 the load landed with 26.6 tonnes of straw beside it. Nine
+/// of the fifteen remaining losses were of this shape.
+///
+/// The straw is also the sharper half, and this test says so: grain that
+/// does not fit WAITS on the field, straw that does not fit is written off
+/// the same tick. Only the standing crop brings any — what is already cut
+/// has had its straw placed or lost already.
+int CheckTheStrawClaimsRoomToo() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_straw";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\nstraw,0.2\n";
+  // straw_ratio 1.5, the rye figure: fifty tonnes of grain bring seventy-five
+  // of straw, and the field asks the stores for a hundred and twenty-five.
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,1.5\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\nbarn,0\n";
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the straw table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  core::AppendRow(world.units, barn);
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 50.0F;  // fifty tonnes of grain at a tonne a hectare
+  field.fertility = 50.0F;
+  field.phase = core::FieldPhase::kGrowing;
+  field.crop = core::CropId{0};
+  core::AppendRow(world.fields, field);
+
+  const auto warned = [&system, &world]() {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    core::Grams total = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit) {
+        total += alarm.amount;
+      }
+    }
+    return total;
+  };
+
+  // WITHOUT THE STRAW THIS FIELD IS SILENT: fifty tonnes fit into sixty and
+  // nobody is told anything. With it the field asks for a hundred and
+  // twenty-five and overruns by sixty-five — which is the whole claim of
+  // this check, and the reason a 50 t field into a 60 t barn was chosen.
+  failures += Expect(warned() == 65'000 * core::kGramsPerKilogram,
+                     "a rye field claims its straw as well: fifty of grain is a hundred and "
+                     "twenty-five with it");
+
+  // HALF CUT: only the standing half still brings straw, and the twenty-five
+  // tonnes already lying have had theirs placed or lost. Standing 25 grain
+  // + 37.5 straw = 62.5, plus 25 in the heap = 87.5, over by 27.5.
+  world.fields.rows[0].phase = core::FieldPhase::kHarvest;
+  world.fields.rows[0].work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
+  world.fields.rows[0].reaped_grams = 25'000 * core::kGramsPerKilogram;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  failures += Expect(warned() == 27'500 * core::kGramsPerKilogram,
+                     "and a load already cut brings no more straw: that straw is settled");
+
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// The alarm burns until the harvest is RESOLVED — stored or lost — and not
 /// until the field changes phase.
 ///
@@ -1805,6 +1899,7 @@ int main() {
   failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
+  failures += CheckTheStrawClaimsRoomToo();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckPauseAndResume();
 

@@ -262,7 +262,20 @@ class ProductionSystem final : public IProductionSystem {
   /// @brief What this field will still put into a store this season, in
   ///        grams — its claim on the shared room.
   ///
-  /// WHAT WILL LAND, NOT WHAT LIES. Three parts, and only the first was ever
+  /// THE RULE, AND IT IS WORTH HAVING A NAME BECAUSE IT HAS NOW BEEN GOT
+  /// WRONG THREE TIMES IN A WEEK:
+  ///
+  ///   A FIELD'S CLAIM ON THE ROOM IS EVERYTHING THAT WILL ARRIVE FROM IT,
+  ///   NOT THE THING THE FIELD IS NAMED AFTER.
+  ///
+  /// The three were: a field being reaped, which fell out of the walk
+  /// altogether; a load already cut and lying on the ground, which is not in
+  /// a store but is going to be; and the STRAW that arrives in the same
+  /// delivery as the grain and was never counted at all. Each was found
+  /// singly, by measurement, after it had already cost a harvest. Named here
+  /// so the fourth is found by reading instead.
+  ///
+  /// WHAT WILL LAND, NOT WHAT LIES. Four parts, and only the first was ever
   /// counted:
   ///
   /// 1. A crop still GROWING claims its whole expected yield.
@@ -275,6 +288,19 @@ class ProductionSystem final : public IProductionSystem {
   /// 3. A load already CUT and lying on the field claims its own weight. It
   ///    is not in a store, so it has not reduced today's free room, and it
   ///    goes in the moment there is anywhere to put it.
+  /// 4. THE STRAW ARRIVES WITH THE GRAIN, through the same door, in the same
+  ///    tick — `yield x straw_ratio`, and the ratio runs from 0.8 for
+  ///    buckwheat to 1.5 for rye. A rye field therefore delivers two and a
+  ///    half times the tonnage the forecast was crediting it with. host
+  ///    traced one: an oat field's warning stood from day 20 to day 26 at
+  ///    11.6 t, WENT OUT on day 27 because the grain by then fitted, and on
+  ///    day 30 the load landed with 26.6 t of straw beside it.
+  ///
+  ///    And the straw is the sharper half: it HAS NO BUFFER. Grain that does
+  ///    not fit waits on the field; straw that does not fit is written off
+  ///    the same tick (Harvest, lost_no_room). Only the standing part of the
+  ///    crop brings straw — what is already cut has already had its straw
+  ///    placed or lost.
   ///
   /// The standing part is measured by the labour left against the labour the
   /// phase started with (harvest_days_per_ha x hectares), because that is
@@ -293,14 +319,16 @@ class ProductionSystem final : public IProductionSystem {
     const CropDef& crop = config_.crops[field.crop.value];
     const float soil = field.fertility / config_.farming.fertility_neutral;
     const Grams expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
+    // Grain and straw travel together, so the standing crop claims both.
+    const float with_straw = 1.0F + (crop.straw_ratio > 0.0F ? crop.straw_ratio : 0.0F);
     if (growing) {
-      return claim + expected;
+      return claim + static_cast<Grams>(static_cast<float>(expected) * with_straw);
     }
     const float phase_norm = crop.harvest_days_per_ha * field.area_ga;
     // A phase with no norm is one nobody has to work: none of it is standing.
     const float uncut = phase_norm > 0.0F ? field.work_days_remaining / phase_norm : 0.0F;
     const float share = uncut < 0.0F ? 0.0F : (uncut > 1.0F ? 1.0F : uncut);
-    return claim + static_cast<Grams>(static_cast<float>(expected) * share);
+    return claim + static_cast<Grams>(static_cast<float>(expected) * share * with_straw);
   }
 
   /// @brief Field rows ordered by when their crop is reaped, then by row.
