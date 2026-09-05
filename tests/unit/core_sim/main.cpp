@@ -117,7 +117,6 @@ core::WorldState RunEngine(std::uint32_t items, std::uint32_t steps, std::uint32
       .needs = &hash_write,
       .decisions = &noop_sequential,
       .production = &noop_parallel,
-      .logistics = &noop_parallel,
       .metrics = &noop_parallel,
       .events = &noop_sequential,
   };
@@ -146,7 +145,6 @@ core::WorldState RunStagedBook(std::uint32_t worker_count) {
       .needs = &hash_write,
       .decisions = &noop_sequential,
       .production = &noop_parallel,
-      .logistics = &noop_parallel,
       .metrics = &noop_parallel,
       .events = &emitter,
   };
@@ -216,7 +214,6 @@ int main() {
       .needs = &noop_parallel,
       .decisions = &noop_sequential,
       .production = &noop_parallel,
-      .logistics = &noop_parallel,
       .metrics = &noop_parallel,
       .events = &noop_sequential,
   };
@@ -239,7 +236,6 @@ int main() {
         .needs = &noop_parallel,
         .decisions = &noop_sequential,
         .production = &noop_parallel,
-        .logistics = &noop_parallel,
         .metrics = &noop_parallel,
         .events = &emitter,
     };

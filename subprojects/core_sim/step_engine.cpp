@@ -92,7 +92,7 @@ class StepEngine final : public ISimulation {
         worker_count_(EffectiveWorkerCount(worker_count)) {
     assert(phases_.time_and_weather != nullptr && phases_.needs != nullptr &&
            phases_.decisions != nullptr && phases_.production != nullptr &&
-           phases_.logistics != nullptr && phases_.metrics != nullptr && phases_.events != nullptr);
+           phases_.metrics != nullptr && phases_.events != nullptr);
     if (worker_count_ > 1) {
       scheduler_.Initialize(worker_count_);
     }
@@ -107,7 +107,6 @@ class StepEngine final : public ISimulation {
     RunParallelPhase(*phases_.needs);
     phases_.decisions->RunSequential(previous_, current_);
     RunParallelPhase(*phases_.production);
-    RunParallelPhase(*phases_.logistics);
     RunParallelPhase(*phases_.metrics);
     phases_.events->RunSequential(previous_, current_);
     // Rule 8: the just-built state becomes the completed one.

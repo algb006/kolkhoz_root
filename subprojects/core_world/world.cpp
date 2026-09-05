@@ -25,7 +25,6 @@
 #include "core_construction/construction_system.h"
 #include "core_labor/labor_system.h"
 #include "core_log/log.h"
-#include "core_logistics/logistics_system.h"
 #include "core_production/production_system.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
@@ -304,13 +303,11 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<ITimeSystem> time,
                      std::unique_ptr<IResidentsSystem> residents,
                      std::unique_ptr<IProductionSystem> production,
-                     std::unique_ptr<ILogisticsSystem> logistics,
                      std::unique_ptr<ILaborSystem> labor,
                      std::unique_ptr<IConstructionSystem> construction)
       : time_(std::move(time)),
         residents_(std::move(residents)),
         production_(std::move(production)),
-        logistics_(std::move(logistics)),
         labor_(std::move(labor)),
         construction_(std::move(construction)),
         decisions_slot_(*labor_, *residents_, *production_, *construction_),
@@ -320,7 +317,6 @@ class StandardSimulation final : public ISimulation {
         .needs = &residents_->NeedsPhase(),
         .decisions = &decisions_slot_,
         .production = &production_->ProductionPhase(),
-        .logistics = &logistics_->LogisticsPhase(),
         .metrics = &residents_->MetricsPhase(),
         .events = &events_slot_,
     };
@@ -402,8 +398,6 @@ class StandardSimulation final : public ISimulation {
   std::unique_ptr<IResidentsSystem> residents_;
 
   std::unique_ptr<IProductionSystem> production_;
-
-  std::unique_ptr<ILogisticsSystem> logistics_;
 
   std::unique_ptr<ILaborSystem> labor_;
 
@@ -517,10 +511,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   auto time = CreateTimeSystem(*config.tables);
   auto residents = CreateResidentsSystem(*config.tables);
   auto production = CreateProductionSystem(*config.tables);
-  auto logistics = CreateLogisticsSystem(*config.tables);
   auto labor = CreateLaborSystem(*config.tables);
   auto construction = CreateConstructionSystem(*config.tables);
-  if (!time || !residents || !production || !logistics || !labor || !construction) {
+  if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).
     return nullptr;
   }
@@ -528,7 +521,6 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(time),
                                               std::move(residents),
                                               std::move(production),
-                                              std::move(logistics),
                                               std::move(labor),
                                               std::move(construction));
 }

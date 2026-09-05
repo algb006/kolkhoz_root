@@ -9,7 +9,7 @@
 #     plain data. Everyone may use it.
 #   * three tiers: infrastructure (core_common, core_log, core_tables,
 #     core_sim) may be used by any module; subject modules (core_time,
-#     core_residents, core_production, core_logistics, core_labor) never name
+#     core_residents, core_production, core_labor) never name
 #     each other — data flows between them through the state in core_common;
 #     core_world is the composition root and the only module that may name
 #     everyone.

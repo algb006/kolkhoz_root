@@ -167,8 +167,21 @@ struct StepPhaseSet {
 
   IParallelPhase* production = nullptr;
 
-  IParallelPhase* logistics = nullptr;
-
+  // THE LOGISTICS SLOT WAS HERE, AND IT IS GONE (2026-09-05). It ran every
+  // tick over zero items because transport did not become a subsystem — it
+  // became the eighth kind of work (phase-2 plan A4, decision 155), so
+  // nothing ever travelled between units for a phase to advance.
+  //
+  // A PHASE IS WORK, NOT A PLACE. An empty one still costs its barrier —
+  // "everybody finished, then onward" — and the barrier is the expensive
+  // half; what it was waiting for was nothing at all. And from outside a
+  // phase that runs and does nothing cannot be told from one that is
+  // broken, which is the same shape as a guard no test ever reaches.
+  //
+  // Keeping the slot for a future model of goods in flight would have been
+  // a stub with no named gap behind it — the shadow of a stub rather than
+  // one. When such a model arrives the phase comes back, and its return is
+  // an EVENT, the way a change of a threading label is (root rules §10).
   IParallelPhase* metrics = nullptr;
 
   ISequentialPhase* events = nullptr;
@@ -187,7 +200,7 @@ class ISimulation {
  public:
   virtual ~ISimulation() = default;
 
-  /// @brief Runs one full step: copy forward, phases 1–7 with barriers, swap.
+  /// @brief Runs one full step: copy forward, phases 1–6 with barriers, swap.
   /// Advances game time by exactly one tick (kTicksPerDay ticks make a day —
   /// core_common/calendar.h). Blocks until the step is complete.
   virtual void AdvanceStep() = 0;
