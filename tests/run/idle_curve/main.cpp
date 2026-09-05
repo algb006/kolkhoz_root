@@ -1,0 +1,265 @@
+// Simulation run: where the idle hours come from, year by year.
+//
+// The census says the settlement idles nearly twice as many hours as it
+// works, and on some seeds the working hours reach ZERO by the tenth year.
+// There is no player in a run, so the village hands out its own orders, and
+// "nobody was given anything to do" is therefore a statement about the farm
+// and not about a missing chairman.
+//
+// WHAT THIS MEASURES, AND WHY IT IS NOT THE SAME QUESTION. Idleness has two
+// possible causes and they need opposite cures:
+//
+//   THE HANDING OUT BROKE — there is work standing undone and nobody was
+//   sent to it. That is a defect in the assignment.
+//
+//   THE WORK RAN OUT — the farm's demand is what twenty fields and a
+//   handful of sites ask for, and the village grew past it. That is not a
+//   defect at all; it is the shape of the model, and the cure is more to
+//   do, not better assignment.
+//
+// The two are told apart by ONE number the activity census does not carry:
+// the WORK STANDING UNDONE, in man-days, on the same day the idleness is
+// counted. Every seam the labour sub-step can drain is summed — fields,
+// hauling, sites, herds — because a seam is exactly "work somebody could be
+// sent to right now".
+//
+// So: if idleness rises while the seams are FULL, the assignment is broken.
+// If idleness rises while the seams are EMPTY, the village has outgrown its
+// work. Nothing here guesses which; it prints both curves side by side.
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "../common/fixture_policy.h"
+#include "../common/orders_policy.h"
+#include "../common/repair_policy.h"
+#include "../common/run_harness.h"
+#include "../common/yard_policy.h"
+#include "core_common/calendar.h"
+#include "core_common/resident_activity.h"
+#include "core_common/work_seam.h"
+#include "core_common/world_state.h"
+#include "core_tables/tables.h"
+#include "core_world/world.h"
+
+namespace {
+
+constexpr std::uint32_t kYears = 12;
+
+core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
+  core::ActivityRules rules;
+  rules.travel_hours = 0.5F;
+  const core::ITable* const life = tables.FindTable("life");
+  const std::uint32_t row =
+      life == nullptr ? core::kNoTableRow : life->FindRowByKey("life_speedup");
+  const std::uint32_t column = life == nullptr ? core::kNoTableColumn : life->FindColumn("value");
+  if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+    rules.life_speedup = std::strtof(std::string(life->CellText(row, column)).c_str(), nullptr);
+  }
+  return rules;
+}
+
+/// @brief Work standing undone right now, in game man-days: every seam the
+/// labour sub-step is able to drain.
+///
+/// THIS IS THE HALF THE CENSUS CANNOT SEE. A man is idle either because
+/// nobody sent him or because there was nowhere to send him, and only this
+/// number separates the two.
+float SeamsStanding(const core::WorldState& world) {
+  float days = 0.0F;
+  for (const core::FieldRow& field : world.fields.rows) {
+    days += field.work_days_remaining > 0.0F ? field.work_days_remaining : 0.0F;
+    days += field.haul_days_remaining > 0.0F ? field.haul_days_remaining : 0.0F;
+  }
+  for (const core::UnitRow& unit : world.units.rows) {
+    days += unit.construction.labor_days_remaining > 0.0F ? unit.construction.labor_days_remaining
+                                                          : 0.0F;
+  }
+  for (const core::HerdRow& herd : world.herds.rows) {
+    days += herd.care_days_remaining > 0.0F ? herd.care_days_remaining : 0.0F;
+  }
+  return days;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  const std::uint32_t seed = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1930;
+  bool raise_derelict = false;
+  for (int index = 1; index < argc; ++index) {
+    raise_derelict = raise_derelict || std::string_view(argv[index]) == "--raise-derelict";
+  }
+  const run::Simulation world = run::Start(seed);
+  if (!world) {
+    return 1;
+  }
+  // THE CONTROL ARM, and it answers the question the two curves alone
+  // cannot. Ninety of the start canon's hundred and sixty hectares are
+  // DERELICT — two fields of forty-five — and nothing in the core can raise
+  // them: LandKind::kDerelict is skipped whole, and the work that would
+  // clear it is phase-2 (land_state.h). So the farm's labour demand is
+  // bounded by seventy hectares for ever.
+  //
+  // If the handing out of work were broken, giving the village more land
+  // would change nothing. If the demand is the ceiling, the working hours
+  // must rise. Raising them here is a PROBE and ships nowhere: it hands the
+  // two fields the rotation of the field nearest them in size, because a
+  // field with no rotation is sown with nothing and would measure the
+  // rotation instead of the land.
+  if (raise_derelict) {
+    core::WorldState raised = world.State();
+    core::CropId slots[3]{};
+    for (const core::FieldRow& field : raised.fields.rows) {
+      if (field.kind == core::LandKind::kArable && field.rotation_year0.value != 0) {
+        slots[0] = field.rotation_year0;
+        slots[1] = field.rotation_year1;
+        slots[2] = field.rotation_year2;
+        break;
+      }
+    }
+    std::uint32_t lifted = 0;
+    for (core::FieldRow& field : raised.fields.rows) {
+      if (field.kind != core::LandKind::kDerelict) {
+        continue;
+      }
+      field.kind = core::LandKind::kArable;
+      field.rotation_year0 = slots[0];
+      field.rotation_year1 = slots[1];
+      field.rotation_year2 = slots[2];
+      ++lifted;
+    }
+    world.simulation->ResetWorld(raised);
+    std::cout << "idle_curve: CONTROL ARM — " << lifted
+              << " derelict fields raised to arable. A PROBE, not a mechanic: nothing in the "
+                 "core can do this, and nothing of it ships\n";
+  }
+  int failures = 0;
+  const core::ActivityRules rules = RulesOfRun(*world.tables);
+  run::YardPolicy yard(*world.tables);
+  run::FixturePolicy fixture(*world.tables);
+  run::OrdersPolicy orders;
+  run::RepairPolicy repairs(*world.tables);
+
+  std::cout << "idle_curve: seed " << seed << ", " << kYears << " years\n";
+  std::cout << "idle_curve: год | жителей | рабочего возраста | работали | бездельничали | "
+               "стояло работы, чел-дней (среднее за год)\n";
+  for (std::uint32_t year = 0; year < kYears; ++year) {
+    std::uint64_t worked = 0;
+    std::uint64_t idled = 0;
+    std::uint64_t blocked = 0;
+    std::uint64_t walking = 0;
+    double seam_sum = 0.0;
+    std::uint32_t samples = 0;
+    std::uint32_t of_age = 0;
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      yard.RunDay(*world.simulation);
+      fixture.RunDay(*world.simulation);
+      orders.RunDay(*world.simulation);
+      repairs.RunDay(*world.simulation);
+      for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        world->AdvanceStep();
+        const core::WorldState& state = world.State();
+        for (std::uint32_t row = 0; row < state.residents.rows.size(); ++row) {
+          const core::ResidentActivity what = core::ActivityOfResident(state, row, rules).activity;
+          worked += what == core::ResidentActivity::kWorking ? 1U : 0U;
+          idled += what == core::ResidentActivity::kIdle ? 1U : 0U;
+          blocked += what == core::ResidentActivity::kBlocked ? 1U : 0U;
+          walking += what == core::ResidentActivity::kWalking ? 1U : 0U;
+        }
+      }
+      const core::WorldState& evening = world.State();
+      seam_sum += static_cast<double>(SeamsStanding(evening));
+      ++samples;
+      of_age = 0;
+      for (const core::ResidentRow& resident : evening.residents.rows) {
+        const float age =
+            core::BiologicalAgeYears(rules.life_speedup, resident.birth_day, evening.calendar.day);
+        of_age += age >= rules.work_from_bio_years && age < rules.work_to_bio_years ? 1U : 0U;
+      }
+    }
+    const core::WorldState& done = world.State();
+    // THE ONE BINDING CLAIM, and it is the trap this run found: a year in
+    // which NOBODY worked while work stood is a village that cannot get
+    // out. Ploughing needs a horse and a man cannot pull a plough
+    // (assignment.cpp), so a settlement that loses its last draught horse
+    // stalls every arable field in kPlowing for ever — no ploughing, no
+    // sowing, no harvest, no oats, no horses. Nothing in the model breaks
+    // that circle, and "no way out" is a red line of the design.
+    if (worked == 0 && seam_sum / (samples == 0 ? 1 : samples) > 1.0) {
+      failures += run::Expect(false,
+                              "a year with work standing and nobody working at all: the village "
+                              "has no way out of this, and that is a red line");
+    }
+    std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
+              << of_age << " | " << worked << " | " << idled << " | "
+              << (seam_sum / (samples == 0 ? 1 : samples)) << " | назначено-но-нечем " << blocked
+              << " | в дороге " << walking << '\n';
+  }
+  // WHAT IS STANDING AT THE END, field by field. A seam that neither
+  // drains nor changes for years is not "work waiting" — it is work nobody
+  // can be sent to, and the difference is the whole question.
+  const core::WorldState& last = world.State();
+  const core::ITableSet* const last_tables = world.tables.get();
+  // Draught horses specifically: ploughing cannot be done without one, and
+  // a job that merely PREFERS a horse still takes one (assignment.cpp).
+  const core::ITable* const livestock = last_tables->FindTable("livestock");
+  const std::uint32_t horse_row =
+      livestock == nullptr ? core::kNoTableRow : livestock->FindRowByKey("horse");
+  std::uint32_t horses = 0;
+  std::uint32_t all_head = 0;
+  for (const core::HerdRow& herd : last.herds.rows) {
+    all_head += herd.adult_count;
+    if (horse_row != core::kNoTableRow && herd.kind.value == horse_row) {
+      horses += herd.adult_count;
+    }
+  }
+  std::uint32_t mowing = 0;
+  std::uint32_t ploughing = 0;
+  for (const core::FieldRow& field : last.fields.rows) {
+    const bool meadow =
+        field.kind == core::LandKind::kMeadow || field.kind == core::LandKind::kFloodplainMeadow;
+    mowing += meadow && field.work_days_remaining > 0.0F ? 1U : 0U;
+    ploughing += field.kind == core::LandKind::kArable &&
+                         field.phase == core::FieldPhase::kPlowing &&
+                         field.work_days_remaining > 0.0F
+                     ? 1U
+                     : 0U;
+  }
+  std::cout << "idle_curve: в конце — голов всего " << all_head << ", ТЯГЛОВЫХ ЛОШАДЕЙ " << horses
+            << "; лугов под косой " << mowing << ", пашни под плугом " << ploughing << '\n';
+  // WHY NOBODY IS SENT is the question, and there are only so many ways to
+  // be unsendable: no house (a man with no home has no day to travel from),
+  // too young, or a job that needs a horse and no horse free.
+  std::uint32_t homeless = 0;
+  std::uint32_t of_age = 0;
+  for (const core::ResidentRow& resident : last.residents.rows) {
+    const float age =
+        core::BiologicalAgeYears(rules.life_speedup, resident.birth_day, last.calendar.day);
+    if (!(age >= rules.work_from_bio_years && age < rules.work_to_bio_years)) {
+      continue;
+    }
+    ++of_age;
+    core::Vec2 home{};
+    homeless += core::HomePositionOf(last, resident.family, home) ? 0U : 1U;
+  }
+  std::cout << "idle_curve: в конце — " << last.herds.rows.size() << " стад, взрослых голов "
+            << horses << "; рабочего возраста " << of_age << ", из них БЕЗ ДОМА " << homeless
+            << '\n';
+  for (std::uint32_t row = 0; row < last.fields.rows.size(); ++row) {
+    const core::FieldRow& field = last.fields.rows[row];
+    if (field.work_days_remaining <= 0.0F && field.haul_days_remaining <= 0.0F) {
+      continue;
+    }
+    std::cout << "idle_curve:   поле " << row << " вид " << static_cast<int>(field.kind) << " фаза "
+              << static_cast<int>(field.phase) << " га " << field.area_ga << " работы "
+              << field.work_days_remaining << " подвоза " << field.haul_days_remaining << " лежит "
+              << field.reaped_grams << '\n';
+  }
+  std::cout << (failures == 0 ? "idle_curve: all checks passed\n" : "idle_curve: FAILED\n");
+  return failures;
+}
