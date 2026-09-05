@@ -31,6 +31,7 @@ namespace {
 constexpr std::uint8_t kWalkingToWork = 0;
 constexpr std::uint8_t kWalkingHome = 1;
 constexpr std::uint8_t kBlockedNoMaterial = 1;
+constexpr std::uint8_t kBlockedNoRoom = 2;
 constexpr std::uint8_t kBlockedWaiting = 3;
 constexpr std::uint8_t kStudyingSchool = 0;
 constexpr std::uint8_t kLphGarden = 0;
@@ -158,12 +159,25 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
       }
       break;
     case ResidentActivity::kBlocked:
-      // Only two of the four causes are knowable today: a site still
-      // waiting for its recipe says so in its phase, and everything else
-      // is "waiting his turn". No tool and nowhere to put it have no source
-      // — a wrong cause is worse than an unnamed one, because the cause is
-      // the part the player acts on.
+      // Three of the four causes are knowable; only "no tool" is not, and
+      // tools are not a thing the model has at all. A WRONG CAUSE IS WORSE
+      // THAN AN UNNAMED ONE, because the cause is the part the player acts
+      // on, so what cannot be told is left as "waiting his turn".
       answer.detail = kBlockedWaiting;
+      // A man carrying a load off a field stops for exactly one reason, and
+      // it is not his turn in a queue: there is nowhere to put what he is
+      // carrying. And the world says so without anybody having to be asked
+      // — production sizes the hauling demand by the free room of all the
+      // stores (field_haul.cpp, ReceivableRoom), so A STANDING LOAD WITH NO
+      // DEMAND AGAINST IT MEANS THE DOORS ARE SHUT. The run's own chairman
+      // reads the same predicate for the same reason (fixture_policy.h).
+      if (resident.work.kind == WorkKind::kHauling) {
+        const std::uint32_t field_row = FindRow(world.fields, resident.work.field);
+        if (field_row != kNoRow && world.fields.rows[field_row].reaped_grams > 0 &&
+            world.fields.rows[field_row].haul_days_remaining <= 0.0F) {
+          answer.detail = kBlockedNoRoom;
+        }
+      }
       if (resident.work.kind == WorkKind::kConstruction) {
         const std::uint32_t site = FindRow(world.units, resident.work.unit);
         if (site != kNoRow &&

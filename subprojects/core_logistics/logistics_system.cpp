@@ -1,8 +1,8 @@
 // Implementation of the core_logistics boundary
-// (include/core_logistics/logistics_system.h). The whole subsystem is the
-// phase-1 instant-delivery STUB (task O0): transport costs nothing and takes
-// no time, so the phase has nothing to move. Real logistics is a phase-2
-// project decision (plan, §11).
+// (include/core_logistics/logistics_system.h). THE PHASE HAS NO SUBJECT —
+// the header says why at length, and the short version is that transport
+// was delivered as WorkKind::kHauling rather than as a subsystem, so there
+// is nothing in flight between units for this phase to advance.
 
 #include "core_logistics/logistics_system.h"
 
@@ -11,8 +11,8 @@
 namespace core {
 namespace {
 
-/// STUB slot for phase 5: instant delivery means no in-flight goods exist,
-/// so there are no items to process.
+/// Phase 5, over zero items, every tick. Not "not yet written": there is
+/// nothing for it to write about (header).
 class LogisticsStubPhase final : public IParallelPhase {
  public:
   std::uint32_t ParallelItemCount(const WorldState& /*current*/) const override { return 0; }
@@ -34,7 +34,6 @@ class LogisticsSystem final : public ILogisticsSystem {
 }  // namespace
 
 std::unique_ptr<ILogisticsSystem> CreateLogisticsSystem(const ITableSet& /*tables*/) {
-  // STUB: the phase-1 stub ignores the tables by contract.
   return std::make_unique<LogisticsSystem>();
 }
 

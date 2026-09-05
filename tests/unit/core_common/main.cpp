@@ -451,6 +451,26 @@ int TestResidentActivity() {
   failures += Expect(at(10, 30.0F).detail == 3, "waiting his turn, for want of a nearer cause");
   world.fields.rows[0].work_days_remaining = 5.0F;
 
+  // AND A HAULER STOPS FOR A REASON OF HIS OWN. "Waiting his turn" is a
+  // true sentence about the wrong thing: a man carrying a load off a field
+  // stops because there is nowhere to put it, and the cause is the only
+  // part of a stoppage the player can act on.
+  world.residents.rows[0].work.kind = core::WorkKind::kHauling;
+  world.fields.rows[0].reaped_grams = 1000;
+  world.fields.rows[0].haul_days_remaining = 0.0F;
+  failures += Expect(
+      at(10, 30.0F).activity == core::ResidentActivity::kBlocked && at(10, 30.0F).detail == 2,
+      "a load standing with no demand against it means the doors are shut, and "
+      "the stoppage says so: nowhere to put it");
+  // And with a demand against it he is not blocked at all — otherwise the
+  // check above would only be proving that a hauler is always stopped.
+  world.fields.rows[0].haul_days_remaining = 3.0F;
+  failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kWorking,
+                     "and while there is room to carry it into, he is carrying");
+  world.fields.rows[0].reaped_grams = 0;
+  world.fields.rows[0].haul_days_remaining = 0.0F;
+  world.residents.rows[0].work.kind = core::WorkKind::kPlowing;
+
   // NO ORDER AT ALL is idleness — the other half, and the one the player
   // fixes differently.
   world.residents.rows[0].work.kind = core::WorkKind::kNone;
