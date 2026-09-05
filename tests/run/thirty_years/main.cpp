@@ -72,6 +72,13 @@ bool g_canonical_run = true;
 /// the grain and turn one measurement into two.
 bool g_free_materials = false;
 
+/// `--tables=<dir>`: read the table set from somewhere other than `tables`.
+/// The harness has taken the path as a parameter since the day it was
+/// written — "a doctored run passes its own copy instead" — and this is the
+/// argument that reaches it. Like --free-materials it takes the run out of
+/// the canonical set, so no gate binds on a doctored table set.
+std::string g_tables_dir = "tables";
+
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
 
@@ -323,14 +330,19 @@ int main(int argc, char** argv) {
     g_years = static_cast<std::uint32_t>(std::strtoul(argv[2], nullptr, 10));
   }
   for (int index = 1; index < argc; ++index) {
-    g_free_materials = g_free_materials || std::string_view(argv[index]) == "--free-materials";
+    const std::string_view argument(argv[index]);
+    g_free_materials = g_free_materials || argument == "--free-materials";
+    if (argument.starts_with("--tables=")) {
+      g_tables_dir = std::string(argument.substr(std::string_view("--tables=").size()));
+    }
   }
   // THE GATES BIND ON THE CANONICAL RUN AND NOWHERE ELSE. A band measured
   // for thirty years of one seed says nothing about five years of another,
   // and a check that fires there would be measuring the argument rather than
   // the simulation.
-  g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials;
-  run::Simulation world = run::Start(g_seed);
+  g_canonical_run =
+      g_seed == kSeed && g_years == kYears && !g_free_materials && g_tables_dir == "tables";
+  run::Simulation world = run::Start(g_seed, 1, g_tables_dir);
   if (!world) {
     return 1;
   }
