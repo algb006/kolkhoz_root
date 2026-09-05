@@ -49,8 +49,16 @@
 
 namespace core {
 
-/// @brief The fourteen states, in PRIORITY ORDER: the first that applies
+/// @brief The TWELVE states, in PRIORITY ORDER: the first that applies
 /// wins, and the table's `priority` column says the same thing in numbers.
+///
+/// It was fourteen until 2026-09-05: kTooYoung and kNotWorker were states of
+/// a PERSON, not things a person is doing at an hour, and a roll-call of
+/// activities that answers "he is too young" has stopped answering the
+/// question it was asked. A child is at school, at the plot or at home; an
+/// old man the same. The two thresholds that named them are still here —
+/// they now decide whether WORKING is available, not what to call somebody
+/// who has no work.
 enum class ResidentActivity : std::uint8_t {
   /// Being treated. STUB: the core has no illness, only `health` below a
   /// threshold, and none of the four places exist as units yet.
@@ -99,9 +107,9 @@ enum class ResidentActivity : std::uint8_t {
   /// BETTER. The less a state explains, the lower it stands — and this one
   /// explains least, because anybody not doing something else is at home.
   ///
-  /// It stood twelfth of fourteen until 2026-09-05 and made the two below
-  /// it unreachable; the census found that on its first run. Standing last
-  /// it can make nothing unreachable ever again.
+  /// It stood twelfth of the then fourteen until 2026-09-05 and made the two
+  /// below it unreachable; the census found that on its first run. Standing
+  /// LAST it can make nothing unreachable ever again.
   kAtHome,
 
   /// NOT A VALUE, and never written to a save or read from one: the codecs
@@ -163,15 +171,18 @@ inline constexpr std::uint8_t kNoActivityDetail = 0xFF;
 /// fact comes to have two values that drift. The caller fills this from the
 /// configs that own the numbers, and this module holds none.
 struct ActivityRules {
-  /// Biological years below which a person is kTooYoung: not a worker, and
-  /// not the player's failure either.
+  /// Biological years below which a person is not of working age. Below it
+  /// kWorking, kIdle and kBlocked are unavailable and he falls through to
+  /// what he is actually doing — school, the plot, home. Being young is not
+  /// an activity, and it is not the player's failure either.
   float work_from_bio_years = 16.0F;
 
-  /// Biological years at or above which he is kNotWorker by age.
+  /// Biological years at or above which working is no longer available to
+  /// him. Same shape as the floor: he falls through, he is not labelled.
   float work_to_bio_years = 70.0F;
 
-  /// Health below this makes him kNotWorker by health, and below
-  /// `treated_health` he is kTreated.
+  /// Health below this takes working away from him too; below
+  /// `treated_health` he is kTreated, which IS an activity.
   float fit_health = 20.0F;
 
   float treated_health = 10.0F;

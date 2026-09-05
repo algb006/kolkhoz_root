@@ -11,7 +11,7 @@
 /// label-vs-code check, so the engine module always gets the full
 /// RACE/DEADLOCK analysis despite this label — the safe direction.
 ///
-/// One step advances game time by one tick and runs seven phases in a fixed
+/// One step advances game time by one tick and runs SIX phases in a fixed
 /// order with a barrier after each (architecture, §7е). Sequential slots run
 /// on the sim thread; parallel slots are split over rows of that phase's unit
 /// of parallelism (state model doc, §4). The order never changes at run time
@@ -77,7 +77,7 @@
 namespace core {
 
 // ---------------------------------------------------------------------------
-// The seven phases
+// The six phases
 // ---------------------------------------------------------------------------
 
 /// @brief The phases of one simulation step, in their fixed execution order.
@@ -88,13 +88,26 @@ enum class StepPhase : std::uint8_t {
   kTimeAndWeather = 0,  ///< Sequential. Advances calendar and weather.
   kNeeds = 1,           ///< Parallel over families: food, rest, cold, mood.
   kDecisions = 2,       ///< Sequential. Assignments, births/deaths, structure.
-  kProduction = 3,      ///< Parallel over units and fields: cycles, growth.
-  kLogistics = 4,       ///< Parallel over units. Phase-1 stub: instant delivery.
-  kMetrics = 5,         ///< Parallel over families: satisfaction aggregates.
-  kEvents = 6,          ///< Sequential. Checks, incidents, extension point.
+  kProduction = 3,      ///< Parallel over fields: cycles, growth.
+  // kLogistics WAS 4 AND IS GONE (2026-09-05), with the slot it named in
+  // StepPhaseSet below — the reasons are written out there. THE ROSTER
+  // OUTLIVED THE SLOT BY A DAY: the removal was made where it was noticed,
+  // in the struct, and this enum twenty lines above it kept a phase the
+  // engine no longer runs, kept the count at seven, and the unit test kept
+  // guarding the seven. A contract nobody executes still lies to whoever
+  // reads it, and a static_assert on the wrong number is a guard pointed at
+  // nothing (found by the delivery's own analysis pass, 2026-09-05).
+  //
+  // Renumbering is safe HERE, and only because this enum is not carried in a
+  // save and not mirrored across a build boundary: the value is the
+  // execution index, and the execution order genuinely changed. When a model
+  // of goods in flight brings the phase back it comes back at the end of the
+  // roster, and its return is an EVENT.
+  kMetrics = 4,  ///< Parallel over families: satisfaction aggregates.
+  kEvents = 5,   ///< Sequential. Checks, incidents, extension point.
 };
 
-inline constexpr std::uint32_t kStepPhaseCount = 7;
+inline constexpr std::uint32_t kStepPhaseCount = 6;
 
 // ---------------------------------------------------------------------------
 // Phase plug-in contracts
@@ -152,7 +165,7 @@ class IParallelPhase {
 // Wiring
 // ---------------------------------------------------------------------------
 
-/// @brief The seven phase implementations of one simulation, by slot.
+/// @brief The six phase implementations of one simulation, by slot.
 /// Typed by slot so a parallel implementation cannot land in a sequential
 /// slot or vice versa. Pointers are non-owning: the wiring code (stage 1,
 /// task O2) owns the subsystem objects and must keep them alive for the
@@ -295,7 +308,7 @@ class ISimulation {
 
 /// @brief Creates the step engine over an initial world.
 /// @param initial      The starting world; copied into both buffers.
-/// @param phases       One implementation per slot, all seven non-null; the
+/// @param phases       One implementation per slot, all six non-null; the
 ///                     caller owns the phase objects and keeps them alive for
 ///                     the engine's lifetime (the set itself is copied).
 /// @param worker_count 0 = one worker per hardware core minus one; 1 = the

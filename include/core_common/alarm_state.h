@@ -204,6 +204,34 @@ enum class AlarmKind : std::uint8_t {
   /// returns after the horses are stabled.
   kYardWithoutGroom,
 
+  /// THE TEAM IS DYING OUT AND THERE IS NO ROOF TO BREED UNDER: a kolkhoz
+  /// horse herd has entered its lifespan band — age deaths are running —
+  /// while the kolkhoz yard has not reached its SECOND step, the stable,
+  /// and horses foal only under that roof (livestock design §5).
+  /// Subject: `herd`; `amount` = the heads still alive.
+  ///
+  /// THE CONDITION IS A STATE AND NOT AN OUTCOME, because the outcome has
+  /// no warning form. Measured: the team stands at 26 head on day 160 and
+  /// at zero on day 168, and between 41 head and 26 there is nothing a
+  /// player could read as a slope (core, 2026-09-05). So the predicate is
+  /// "the herd is now losing heads to age", which is true from the first
+  /// death onwards and is a property of the completed state, not of a
+  /// transition that happened once and is gone.
+  ///
+  /// IT DOES NOT GO OUT WHEN A GROOM IS APPOINTED, and that is the whole
+  /// reason it exists beside kYardWithoutGroom. That one clears on the
+  /// appointment — correctly, it asked for a groom and got one — and the
+  /// team goes on dying in silence. Silence then says a third thing, which
+  /// the office knows nothing about: not "solved" and not "not yet", but
+  /// "you did what was asked and it did not help" (office design §14a;
+  /// boss, 2026-09-05). AN ALARM THAT GOES OUT IN ANSWER TO A CORRECT
+  /// ACTION LIES, and lies worse than one that never lit: the player is
+  /// not left in the dark, he is told he is done.
+  ///
+  /// AGAINST THE SECOND STEP, not against "no yard" and not against "no
+  /// groom": the yard at step one is a pen, and a pen breeds nobody.
+  kHerdWithoutStable,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

@@ -1787,6 +1787,105 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
 /// includes WHERE the book is read: before the early return that a world
 /// with no crops takes. A pause is about a unit, and "the tables were thin"
 /// is not a reason the chairman should ever be shown.
+/// kHerdWithoutStable: the team has a roof to breed under, or it does not.
+///
+/// FOUR STATES AND ONE OF THEM IS THE WHOLE POINT. A yard at step one with a
+/// groom in it is the position the player reaches by doing exactly what the
+/// office told him — and kYardWithoutGroom goes out there, correctly, while
+/// the team goes on dying. This kind must still be burning at that moment or
+/// the silence lies (alarm_state.h; boss, 2026-09-05).
+int CheckTheTeamWithoutARoofSaysSo() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_stable";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nhay,1\n";
+  std::ofstream(root / "livestock.csv")
+      << "key,sexed,kolkhoz_only,household_only,feed_units_per_real_day,care_days_per_real_year,"
+         "pasture_coverage_summer,newborn_game_months,adult_from_game_months,life_game_years_min,"
+         "life_game_years_max,births_per_game_year,litter_heads,males_share\n"
+         "horse,1,1,0,10,22,0.5,2,12,6,8,1,1,0.07\n"
+         "cow,1,0,0,10,22,0.5,2,12,6,8,1,1,0.07\n";
+  std::ofstream(root / "unit_types.csv")
+      << "key,storage_capacity_t,capacity_by_plot\nhorse_yard,0,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the stable table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  const auto burning = [&](const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    std::int64_t heads = -1;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHerdWithoutStable) {
+        heads = alarm.amount;
+      }
+    }
+    return heads;
+  };
+
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow yard;
+  yard.type = core::UnitTypeId{0};
+  yard.level = 0;
+  core::AppendRow(world.units, yard);
+  failures += Expect(burning(world) < 0, "a farm with no horses is not asked for a stable");
+
+  // A family's own mare is not the chairman's business, and neither is
+  // anybody's cow.
+  core::HerdRow mare;
+  mare.kind = core::LivestockKindId{0};
+  mare.adult_count = 2;
+  mare.household_owned = 1;
+  core::AppendRow(world.herds, mare);
+  core::HerdRow cow;
+  cow.kind = core::LivestockKindId{1};
+  cow.adult_count = 9;
+  core::AppendRow(world.herds, cow);
+  failures += Expect(burning(world) < 0, "nor a farm whose only horses are somebody's own");
+
+  // The team: two rows, as the start really keeps it — sixteen billets, not
+  // one herd — and the alarm is ONE line counting all of it.
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{0};
+  team.adult_count = 5;
+  const core::HerdId first = core::AppendRow(world.herds, team);
+  team.adult_count = 3;
+  team.juvenile_count = 1;
+  core::AppendRow(world.herds, team);
+  failures += Expect(burning(world) == 9, "the team's own head count, over all its rows");
+  {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    std::uint32_t lines = 0;
+    core::HerdId subject;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHerdWithoutStable) {
+        ++lines;
+        subject = alarm.herd;
+      }
+    }
+    failures += Expect(lines == 1, "one line for the team, not one per billet");
+    failures += Expect(subject.value == first.value, "and it names the team's first row");
+  }
+
+  world.units.rows[0].level = 1;
+  failures += Expect(burning(world) == 9, "a yard at step one is a pen: the ask stands");
+  // The groom's appointment is what silences kYardWithoutGroom. It changes
+  // nothing here, and that is the defect this kind exists for.
+  world.chairman.horses_stabled = 1;
+  failures += Expect(burning(world) == 9, "and stabling the horses does not answer it either");
+  world.units.rows[0].level = 2;
+  failures += Expect(burning(world) < 0, "the second step answers it, and only the second step");
+  return failures;
+}
+
 int CheckPauseAndResume() {
   int failures = 0;
   const std::filesystem::path root =
@@ -1901,6 +2000,7 @@ int main() {
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckTheStrawClaimsRoomToo();
   failures += CheckCapacityWithoutALadderIsRefused();
+  failures += CheckTheTeamWithoutARoofSaysSo();
   failures += CheckPauseAndResume();
 
   if (failures == 0) {

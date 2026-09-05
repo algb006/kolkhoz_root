@@ -18,7 +18,7 @@
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 
-static_assert(core::kStepPhaseCount == 7, "the step cycle has seven fixed phases");
+static_assert(core::kStepPhaseCount == 6, "the step cycle has six fixed phases");
 static_assert(static_cast<int>(core::StepPhase::kTimeAndWeather) == 0,
               "time-and-weather opens the step");
 static_assert(static_cast<int>(core::StepPhase::kEvents) == core::kStepPhaseCount - 1,

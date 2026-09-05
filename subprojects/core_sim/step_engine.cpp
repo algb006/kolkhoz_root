@@ -1,5 +1,5 @@
 // Implementation of the step engine (include/core_sim/step.h, task O2): two
-// state buffers, seven phases with barriers, the enkiTS worker pool and the
+// state buffers, six phases with barriers, the enkiTS worker pool and the
 // mandatory single-worker verification mode.
 //
 // Concurrency lives HERE and only here: the module's public surface is

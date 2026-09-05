@@ -39,6 +39,11 @@ namespace core {
 ///       the whole day a no-op rather than an error.
 void RunHerdDay(const ProductionConfig& config, WorldState& current);
 
+/// @brief Is there a stable standing? The kolkhoz yard's SECOND step is the
+/// stable, and only its roof brings foals (livestock design §5). A yard at
+/// step one is a pen: it houses horses and breeds none.
+bool StableBuilt(const WorldState& world, const ProductionConfig& config);
+
 /// @brief Is `month` inside the inclusive band [from, to]? 0-based months.
 /// The band does not wrap the new year, and no caller needs it to: the
 /// pasture season lies inside one year by construction.

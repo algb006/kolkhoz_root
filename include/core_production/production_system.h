@@ -51,9 +51,11 @@ class IProductionSystem {
  public:
   virtual ~IProductionSystem() = default;
 
-  /// @brief The production slot implementation (phase 4, parallel by unit
-  /// and field). Valid for the lifetime of the system; wired into
-  /// StepPhaseSet::production.
+  /// @brief The production slot implementation (phase 4, parallel over
+  /// FIELDS — the crop's growth day, and nothing per unit: the unit work of
+  /// this subsystem is structure-changing and lives in the sequential
+  /// decisions sub-step below). Valid for the lifetime of the system; wired
+  /// into StepPhaseSet::production.
   virtual IParallelPhase& ProductionPhase() = 0;
 
   /// @brief Production decisions: the sub-step of the decisions slot.
@@ -68,15 +70,20 @@ class IProductionSystem {
   /// (core_common/alarm_state.h; manual/72-storage-and-alarms.md §3):
   /// kStoreFull for every numbered store at its level's capacity;
   /// kHarvestWaitingOnField for every field with reaped produce waiting
-  /// (FieldRow::reaped_grams); kHarvestWillNotFit for every growing field
-  /// whose expected yield — this subsystem's own estimate, at today's
-  /// fertility and no weather stress — exceeds what is LEFT of the free
-  /// room of all stores after the growing fields before it in row order,
-  /// and whose own produce is not already waiting unhoused;
-  /// kSeedShort for every field whose next sowing the stores cannot seed
-  /// to the norm; kHerdStarving for every kolkhoz herd with unfed_days > 0.
-  /// Each subject at most once, in row order within a kind — the session
-  /// sorts by id. A pure read of `completed` with the configuration: no
+  /// (FieldRow::reaped_grams); kHarvestWillNotFit for every field whose
+  /// claim on the shared room — this subsystem's own estimate of everything
+  /// that will still arrive from it, straw included — exceeds what is LEFT
+  /// of the free room after the fields that will be HARVESTED EARLIER have
+  /// spent theirs; kSeedShort for every field whose next sowing the stores
+  /// cannot seed to the norm; kHerdStarving for every kolkhoz herd with
+  /// unfed_days > 0; kHerdWithoutStable, one line for the whole kolkhoz
+  /// horse team, while the yard has not reached its second step.
+  /// Each subject at most once. Within a kind the order is the walk's own —
+  /// row order for the store, herd and seed kinds, HARVEST ORDER for the
+  /// two harvest kinds, because the room is spent in the order the fields
+  /// are reaped and not in the order the table happens to hold them. Either
+  /// way the session sorts by (kind, subject id), so what the player sees
+  /// does not depend on this. A pure read of `completed` with the configuration: no
   /// state of the subsystem changes, no log is written. Called between
   /// steps on the sim thread through ISimulation::CollectAlarms.
   virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;

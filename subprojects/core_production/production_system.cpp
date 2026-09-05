@@ -488,6 +488,77 @@ class ProductionSystem final : public IProductionSystem {
                      static_cast<std::int64_t>(herd.adult_count);
       alarms.push_back(alarm);
     }
+    CollectStableAlarms(world, alarms);
+  }
+
+  /// kHerdWithoutStable: the farm owns a horse team and the yard has not
+  /// reached its second step, so the team ages and cannot renew itself
+  /// (alarm_state.h).
+  ///
+  /// LIT ON THE FOUNDING MORNING, and that is a measurement and not a
+  /// convenience. The order said "light it with the death of the first
+  /// horse", for the sake of an early date with a natural link. The date
+  /// is earlier than that and the link is the same one: the sixteen start
+  /// horses are SIXTEEN HERDS OF ONE HEAD, aged 1.8 to 7.8 game years
+  /// against a lifespan band of 6 to 8, so four of them stand inside the
+  /// death band on day zero and the first head goes on day 33 (seed 1930,
+  /// core 2026-09-05). There is no morning on which this team is not
+  /// dying; waiting for the first death would only spend a fifth of the
+  /// 144-day deadline saying nothing.
+  ///
+  /// AND IT COSTS NO STATE. "A horse has died" is a transition and the
+  /// world keeps no per-kind tally of one, so that predicate would need a
+  /// new field in HerdRow — a save-format change, and the save version is
+  /// the human's to raise. "The farm has horses and no stable" is a
+  /// property of the completed state, which is what an alarm is allowed to
+  /// be (alarm_state.h).
+  ///
+  /// ONE ALARM FOR THE TEAM, not one per row. The team is sixteen rows at
+  /// the start and one after the horses are stabled, and sixteen identical
+  /// lines on the founding morning would bury the very line they are. The
+  /// core has no id for "the team", so the subject is the first of its
+  /// rows in row order — deterministic, and the amount is the whole team's.
+  ///
+  /// THREE THINGS IT DOES NOT LOOK AT, and each was deliberate:
+  ///   * whether a yard exists at all — a yard at step one is a pen and
+  ///     breeds nobody, so building one must not silence the ask;
+  ///   * whether a groom is appointed — kYardWithoutGroom goes out on the
+  ///     appointment and the team goes on dying behind that silence, which
+  ///     is the defect this kind was written for;
+  ///   * how many head are left — the outcome has no warning form: 26 head
+  ///     on day 160 and none on day 168.
+  void CollectStableAlarms(const WorldState& world, std::vector<Alarm>& alarms) const {
+    if (config_.horse_kind.value == kInvalidDefIdValue || StableBuilt(world, config_)) {
+      return;
+    }
+    std::uint32_t first = kNoRow;
+    std::int64_t heads = 0;
+    for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+      const HerdRow& herd = world.herds.rows[row];
+      // The farm's own team, wherever it stands: the start keeps it at
+      // private yards and it is kolkhoz property there (herd_state.h), so
+      // the place says nothing and the ownership says everything. A
+      // family's own mare is not the chairman's business.
+      if (herd.household_owned != 0 || herd.kind.value != config_.horse_kind.value) {
+        continue;
+      }
+      const std::int64_t mine = static_cast<std::int64_t>(herd.newborn_count) +
+                                static_cast<std::int64_t>(herd.juvenile_count) +
+                                static_cast<std::int64_t>(herd.adult_count);
+      if (mine <= 0) {
+        continue;  // an emptied row is not a team
+      }
+      first = first == kNoRow ? row : first;
+      heads += mine;
+    }
+    if (first == kNoRow) {
+      return;  // no horses: nothing to lose, and no stable to ask for
+    }
+    Alarm alarm;
+    alarm.kind = AlarmKind::kHerdWithoutStable;
+    alarm.herd = world.herds.row_ids[first];
+    alarm.amount = heads;
+    alarms.push_back(alarm);
   }
 
   /// Free room of every numbered store together, in grams — what a harvest

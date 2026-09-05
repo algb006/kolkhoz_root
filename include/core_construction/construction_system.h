@@ -146,9 +146,13 @@ class IConstructionSystem {
   /// (core_common/alarm_state.h): kSiteWithoutMaterials for every site in
   /// kDelivering whose recipe the stores cannot complete — the first
   /// material short in recipe order and the grams short of it, so the
-  /// presentation can say "the barn waits for 4 t of boards"; kSiteUnreachable is in
-  /// the roster and yields nothing (STUB: the core has no roads). Row order
-  /// within the kind; the session sorts by id. A pure read with the
+  /// presentation can say "the barn waits for 4 t of boards"; kSiteWithoutCrew
+  /// for a site in kBuilding with nobody on it today; and kSiteUnreachable
+  /// for one whose road from the nearest dwelling will not fit twice into
+  /// the daylight window. THE LAST WAS A STUB UNTIL 2026-09-05 — "the core
+  /// has no roads, so it yields nothing" — and it came alive without a
+  /// single road, because what makes a site out of reach is HOURS and not
+  /// roads. Row order within the kind; the session sorts by id. A pure read with the
   /// configuration; nothing changes, nothing is logged. Called between
   /// steps on the sim thread through ISimulation::CollectAlarms.
   virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;

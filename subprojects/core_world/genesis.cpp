@@ -438,10 +438,6 @@ bool PlaceStartLayout(WorldState& world,
   return true;
 }
 
-/// @brief Puts the start stock where the layout says it lies (start_stock.csv,
-/// boss numbers of 2026-08-31). Amounts are in each resource's own measure
-/// and the row carries the mass of one, so the conversion to grams needs no
-/// second table — the same one rule the recipes use.
 /// @brief Capacity of a unit type in grams, or -1 for an outline the player
 /// draws (a heap, a stack: no number to be full against). Reads the LEVEL
 /// LADDER and nothing else — the same one place core_production and
@@ -491,6 +487,10 @@ Grams TypeCapacityGrams(const ITable* unit_types,
   return -1;
 }
 
+/// @brief Puts the start stock where the layout says it lies (start_stock.csv,
+/// boss numbers of 2026-08-31). Amounts are in each resource's own measure
+/// and the row carries the mass of one, so the conversion to grams needs no
+/// second table — the same one rule the recipes use.
 void PlaceStartStock(WorldState& world,
                      const ITable& stock,
                      const ITable* resources,

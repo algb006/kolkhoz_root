@@ -136,6 +136,14 @@ int main(int argc, char** argv) {
   // be built on. A hint without a deadline is an alarm with no answer.
   std::uint32_t yard_delay = 0;
   bool far_site = false;
+  // --herd-alarm: the kHerdWithoutStable timeline, and nothing else.
+  //
+  // Three dates decide whether the kind is a warning or an obituary: the day
+  // it lights, the day the team first loses a head, and the day the team is
+  // gone. Combined with --yard-delay=N it is also the damage guard boss
+  // asked for: take the stable out of a run that had one and the kind must
+  // light and never go out again.
+  bool herd_alarm = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
     raise_derelict = raise_derelict || argument == "--raise-derelict";
@@ -147,6 +155,7 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--yard-delay=").size())).c_str()));
     }
     far_site = far_site || argument == "--far";
+    herd_alarm = herd_alarm || argument == "--herd-alarm";
   }
   const run::Simulation world = run::Start(seed);
   if (!world) {
@@ -305,6 +314,130 @@ int main(int argc, char** argv) {
   run::FixturePolicy fixture(*world.tables);
   run::OrdersPolicy orders;
   run::RepairPolicy repairs(*world.tables);
+
+  if (herd_alarm) {
+    const core::ITable* const kinds = world.tables->FindTable("livestock");
+    const std::uint32_t horse = kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
+    const core::ITable* const types = world.tables->FindTable("unit_types");
+    const std::uint32_t yard_type =
+        types == nullptr ? core::kNoTableRow : types->FindRowByKey("horse_yard");
+    if (horse == core::kNoTableRow || yard_type == core::kNoTableRow) {
+      std::cout << "FAIL: no horse or horse_yard in the tables\n";
+      return 1;
+    }
+    const auto heads = [&](const core::WorldState& state) {
+      std::uint32_t count = 0;
+      for (const core::HerdRow& herd : state.herds.rows) {
+        if (herd.kind.value == horse && herd.household_owned == 0) {
+          count += static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count +
+                   herd.newborn_count;
+        }
+      }
+      return count;
+    };
+    const std::uint32_t start_heads = heads(world.State());
+    {
+      std::uint32_t rows = 0;
+      for (const core::HerdRow& herd : world.State().herds.rows) {
+        if (herd.kind.value == horse && herd.household_owned == 0) {
+          ++rows;
+          std::cout << "idle_curve:   табун-строка " << rows << " — взрослых " << herd.adult_count
+                    << ", сумма лет " << herd.adult_age_game_years_total << '\n';
+        }
+      }
+      std::cout << "idle_curve: колхозных конских строк на старте " << rows << '\n';
+    }
+    std::int32_t lit = -1;
+    std::int32_t first_loss = -1;
+    std::int32_t went_out = -1;
+    std::int32_t relit = -1;
+    std::int32_t stable_day = -1;
+    std::int32_t groom_day = -1;
+    std::int32_t gone = -1;
+    std::int32_t groom_silenced_yard = -1;
+    bool burning = false;
+    const std::uint32_t days = 3U * core::kDaysPerYear;
+    for (std::uint32_t day = 0; day < days; ++day) {
+      if (world.State().calendar.day >= yard_delay) {
+        yard.RunDay(*world.simulation);
+      }
+      for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        world->AdvanceStep();
+      }
+      const core::WorldState& state = world.State();
+      const auto today = static_cast<std::int32_t>(state.calendar.day);
+      std::vector<core::Alarm> alarms;
+      world->CollectAlarms(alarms);
+      bool on = false;
+      bool yard_alarm = false;
+      std::int64_t left = 0;
+      for (const core::Alarm& alarm : alarms) {
+        if (alarm.kind == core::AlarmKind::kHerdWithoutStable) {
+          on = true;
+          left = alarm.amount;
+        }
+        yard_alarm = yard_alarm || alarm.kind == core::AlarmKind::kYardWithoutGroom;
+      }
+      if (on && lit < 0) {
+        lit = today;
+        std::cout << "idle_curve: ТАБУН БЕЗ КОНЮШНИ загорелась на сутках " << today << ", голов "
+                  << left << '\n';
+        // AND IT IS THE TEAM IT COUNTS, not the byre. The kind filter and the
+        // ownership filter are both invisible to a check that only asks
+        // whether something burns: damage either one and the alarm still
+        // burns, on thirty-nine head of cattle instead of sixteen horses.
+        failures += run::Expect(left == static_cast<std::int64_t>(start_heads),
+                                "the alarm counts the kolkhoz horse team and nothing else");
+      }
+      if (!on && burning && went_out < 0) {
+        went_out = today;
+      }
+      if (on && went_out >= 0 && relit < 0) {
+        relit = today;
+      }
+      burning = on;
+      const std::uint32_t now = heads(state);
+      if (first_loss < 0 && now < start_heads) {
+        first_loss = today;
+      }
+      if (gone < 0 && now == 0) {
+        gone = today;
+      }
+      for (const core::UnitRow& unit : state.units.rows) {
+        if (unit.type.value == yard_type && unit.level >= 2 && stable_day < 0) {
+          stable_day = today;
+        }
+      }
+      // THE GROOM IS THE POINT OF THE WHOLE KIND: the day kYardWithoutGroom
+      // stops sounding is the day the player is told he is done. Whether the
+      // team is still dying on that day is what the new kind answers.
+      if (groom_day < 0 && lit >= 0 && !yard_alarm && groom_silenced_yard < 0) {
+        groom_silenced_yard = today;
+      }
+    }
+    std::cout << "idle_curve: голов на старте " << start_heads << ", в конце "
+              << heads(world.State()) << "; конюшня " << stable_day << ", первая потеря "
+              << first_loss << ", табун сгинул " << gone << '\n';
+    std::cout << "idle_curve: тревога — загорелась " << lit << ", погасла " << went_out
+              << ", загорелась снова " << relit << "; «двор без конюха» замолк на сутках "
+              << groom_silenced_yard << '\n';
+    // THE GUARDS. Without a stable the kind must light and stay lit to the
+    // last day; with one it must be out at the end. And it must NOT be the
+    // groom that puts it out: the day the yard's own alarm falls silent, this
+    // one is still burning.
+    if (stable_day < 0) {
+      failures += run::Expect(lit >= 0, "with no stable the herd alarm lights");
+      failures += run::Expect(burning, "and it is still burning on the last day");
+      failures += run::Expect(went_out < 0, "and it never went out in between");
+      failures +=
+          run::Expect(groom_silenced_yard < 0 || lit <= groom_silenced_yard,
+                      "the groom's silence does not put it out — it is already burning by then");
+    } else {
+      failures += run::Expect(!burning, "once the stable stands the herd alarm is out");
+    }
+    std::cout << (failures == 0 ? "idle_curve: all checks passed\n" : "idle_curve: FAILED\n");
+    return failures;
+  }
 
   // DAY ZERO, before anything has had a chance to die: the canon says
   // sixteen kolkhoz horses stand in private yards from the first morning

@@ -216,20 +216,6 @@ void RunBilleting(const HerdRow& herd,
   billeted = AsHeads(heads - housed);
 }
 
-/// @brief Is there a stable standing? The kolkhoz yard's SECOND step is the
-/// stable, and only its roof brings foals (livestock design §5).
-bool StableBuilt(const WorldState& world, const ProductionConfig& config) {
-  if (config.stable_type.value == kInvalidDefIdValue) {
-    return false;
-  }
-  for (const UnitRow& unit : world.units.rows) {
-    if (unit.type.value == config.stable_type.value && unit.level >= 2) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /// @brief Share of the draught animals that went out to work today, 0..1.
 ///
 /// The wage ration of question Q2 is per head and per day: a horse in the
@@ -907,6 +893,18 @@ void RunAutumnSlaughter(const ProductionConfig& config,
 }
 
 }  // namespace
+
+bool StableBuilt(const WorldState& world, const ProductionConfig& config) {
+  if (config.stable_type.value == kInvalidDefIdValue) {
+    return false;
+  }
+  for (const UnitRow& unit : world.units.rows) {
+    if (unit.type.value == config.stable_type.value && unit.level >= 2) {
+      return true;
+    }
+  }
+  return false;
+}
 
 bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
   return month >= from && month <= to;

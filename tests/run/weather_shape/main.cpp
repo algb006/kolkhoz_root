@@ -38,6 +38,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "../common/run_harness.h"
@@ -286,12 +287,86 @@ void Print(const char* label, const Shape& shape) {
 
 }  // namespace
 
+/// @brief Writes tables/weather.csv with temp_memory set to `memory` in every
+/// season, everything else untouched.
+///
+/// WHY A SWEEP AND NOT A CHOICE. The knob was shipped at zero on measured
+/// grounds (69-reconciliation.md §13.11): at 0.3 the connected cold spells
+/// close the sowing window in three first years out of twenty, which is the
+/// design's own red line. What that measurement never asked is what the
+/// SMALLEST memory is that still gives heat a tail — the question a decision
+/// needs and a single value cannot answer.
+bool WriteWeatherWithMemory(const std::filesystem::path& into, float memory) {
+  std::ifstream source("tables/weather.csv");
+  if (!source) {
+    return false;
+  }
+  std::ofstream sink(into, std::ios::binary);
+  std::string line;
+  std::size_t column = 0;
+  bool header_seen = false;
+  while (std::getline(source, line)) {
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    if (line.empty() || line[0] == '#') {
+      sink << line << '\n';
+      continue;
+    }
+    std::vector<std::string> cells;
+    std::stringstream fields(line);
+    std::string cell;
+    while (std::getline(fields, cell, ',')) {
+      cells.push_back(cell);
+    }
+    if (!header_seen) {
+      for (std::size_t at = 0; at < cells.size(); ++at) {
+        column = cells[at] == "temp_memory" ? at : column;
+      }
+      header_seen = true;
+    } else if (column < cells.size()) {
+      cells[column] = std::to_string(memory);
+    }
+    for (std::size_t at = 0; at < cells.size(); ++at) {
+      sink << (at == 0 ? "" : ",") << cells[at];
+    }
+    sink << '\n';
+  }
+  return true;
+}
+
 int main(int argc, char** argv) {
   namespace fs = std::filesystem;
-  if (argc > 1) {
+  if (argc > 1 && std::string_view(argv[1]).substr(0, 2) != "--") {
     g_seed = std::strtoull(argv[1], nullptr, 10);
   }
+  float sweep = -1.0F;
+  for (int index = 1; index < argc; ++index) {
+    const std::string_view argument(argv[index]);
+    if (argument.starts_with("--memory=")) {
+      sweep = std::strtof(std::string(argument.substr(9)).c_str(), nullptr);
+    }
+  }
   int failures = 0;
+
+  if (sweep >= 0.0F) {
+    const fs::path dir = fs::temp_directory_path() / "run_weather_shape_sweep";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    if (!WriteWeatherWithMemory(dir / "weather.csv", sweep)) {
+      std::cout << "FAIL: tables/weather.csv not found — run from the repo root\n";
+      return 1;
+    }
+    Shape swept;
+    if (!Measure(dir.string(), swept)) {
+      return 1;
+    }
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "weather_shape: " << kYears << " years, seed " << g_seed << ", temp_memory "
+              << sweep << '\n';
+    Print("temp_memory sweep", swept);
+    return 0;
+  }
 
   const fs::path control_dir = fs::temp_directory_path() / "run_weather_shape_control";
   fs::remove_all(control_dir);
