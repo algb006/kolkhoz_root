@@ -92,8 +92,23 @@ float SeamsStanding(const core::WorldState& world) {
 int main(int argc, char** argv) {
   const std::uint32_t seed = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1930;
   bool raise_derelict = false;
+  // ONE ARM, ONE VARIABLE. The other instrument runs without a chairman and
+  // finds winter the QUIET season; this one runs with one and finds winter
+  // among the busiest. The chairman builds, and building is winter work, so
+  // he was the obvious candidate — and he PREDICTS THE WRONG SIGN: his work
+  // should have lowered winter idleness here, and winter idleness here is
+  // higher. A candidate that predicts the opposite of what was measured
+  // explains something else. Switching him off settles it in one run.
+  bool no_chairman = false;
+  // And the chairman is four policies, so "the chairman" is not yet an
+  // answer: --yard-only keeps the one that raises the horse yard and
+  // appoints a groom, and drops the other three.
+  bool yard_only = false;
   for (int index = 1; index < argc; ++index) {
-    raise_derelict = raise_derelict || std::string_view(argv[index]) == "--raise-derelict";
+    const std::string_view argument(argv[index]);
+    raise_derelict = raise_derelict || argument == "--raise-derelict";
+    no_chairman = no_chairman || argument == "--no-chairman";
+    yard_only = yard_only || argument == "--yard-only";
   }
   const run::Simulation world = run::Start(seed);
   if (!world) {
@@ -146,7 +161,8 @@ int main(int argc, char** argv) {
   run::OrdersPolicy orders;
   run::RepairPolicy repairs(*world.tables);
 
-  std::cout << "idle_curve: seed " << seed << ", " << kYears << " years\n";
+  std::cout << "idle_curve: seed " << seed << ", " << kYears << " years"
+            << (no_chairman ? ", БЕЗ ПРЕДСЕДАТЕЛЯ" : (yard_only ? ", ТОЛЬКО КОНЮШНЯ" : "")) << '\n';
   std::cout << "idle_curve: год | жителей | рабочего возраста | работали | бездельничали | "
                "стояло работы, чел-дней (среднее за год)\n";
   // BY SEASON, because boss's second instrument found idleness sitting on
@@ -174,10 +190,14 @@ int main(int argc, char** argv) {
     std::uint32_t samples = 0;
     std::uint32_t of_age = 0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      yard.RunDay(*world.simulation);
-      fixture.RunDay(*world.simulation);
-      orders.RunDay(*world.simulation);
-      repairs.RunDay(*world.simulation);
+      if (!no_chairman) {
+        yard.RunDay(*world.simulation);
+        if (!yard_only) {
+          fixture.RunDay(*world.simulation);
+          orders.RunDay(*world.simulation);
+          repairs.RunDay(*world.simulation);
+        }
+      }
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world->AdvanceStep();
         const core::WorldState& state = world.State();
