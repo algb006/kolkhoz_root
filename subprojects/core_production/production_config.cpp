@@ -141,6 +141,15 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
     float* value;
   };
 
+  // ONE BAND FOR ALL NINE, AND A TRAP IN IT WORTH NAMING. Every row here is
+  // read back as a float, and the shared band below admits negatives because
+  // several of them legitimately are. The moment a row of this list ends up
+  // cast to an UNSIGNED or narrower integer, that band stops being enough —
+  // a negative float converted to unsigned is undefined, and the cast is far
+  // from here. weather_state_days is that row today and carries its own floor
+  // below; the next one will need the same, and nothing but this comment says
+  // so. The shape that would say it structurally — a Range per Entry, as
+  // core_catalog's ScalarKnob already has — is in OPEN_ITEMS.
   const Entry entries[] = {{"fertility_neutral", &farming.fertility_neutral},
                            {"manure_norm_kg_per_ha", &farming.manure_norm_kg_per_ha},
                            {"manure_fertility_bonus", &farming.manure_fertility_bonus},
@@ -166,6 +175,16 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
   }
   if (!(farming.fertility_neutral > 0.0F)) {
     error = "farming: fertility_neutral must be positive";
+    return false;
+  }
+  // UB-001 fix: weather_state_days is the ONE knob of that list that becomes an
+  // UNSIGNED integer (production_system.cpp, the field's weather judgement).
+  // The shared band above admits negatives, and converting a negative float to
+  // an unsigned type is undefined ([conv.fpint]/1) — the `threshold > 0` test
+  // at the use site sits AFTER the conversion and cannot help. Every other
+  // entry is consumed as a float, which is why only this one needs a floor.
+  if (!(farming.weather_state_days >= 0.0F)) {
+    error = "farming: weather_state_days must not be negative";
     return false;
   }
   return true;

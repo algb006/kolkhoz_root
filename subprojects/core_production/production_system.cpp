@@ -154,6 +154,9 @@ class FieldGrowthPhase final : public IParallelPhase {
       // The judgement, made here rather than left to the reader. Whoever
       // draws the field would otherwise infer it from temperature, and a
       // second home for the rule is how a mechanic ends up with two.
+      // Non-negative by the parse (production_config.cpp gives this one knob
+      // its own floor): the conversion below would be undefined otherwise,
+      // and the `threshold > 0` test comes after it and could not help.
       const auto threshold = static_cast<std::uint32_t>(farming.weather_state_days);
       if (field.drought_run_days >= threshold && threshold > 0) {
         field.weather_state = FieldWeatherState::kDrying;
