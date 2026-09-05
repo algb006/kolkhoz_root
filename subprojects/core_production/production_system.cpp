@@ -259,6 +259,34 @@ class ProductionSystem final : public IProductionSystem {
     }
   }
 
+  /// @brief Field rows ordered by when their crop is reaped, then by row.
+  ///
+  /// Only the order matters, so the key is the whole months from today to
+  /// the crop's first harvest month, wrapped: a field whose crop is reaped
+  /// next month comes before one reaped in eleven, and the answer does not
+  /// change when the year rolls over. A field with no crop of the roster
+  /// sorts last on a key of twelve — it is not growing anything the alarm
+  /// can be about, and the loop skips it anyway.
+  std::vector<std::uint32_t> FieldsInHarvestOrder(const WorldState& world) const {
+    const auto today = static_cast<std::uint32_t>(world.calendar.date.month);
+    std::vector<std::uint32_t> order(world.fields.rows.size());
+    for (std::uint32_t row = 0; row < order.size(); ++row) {
+      order[row] = row;
+    }
+    const auto months_away = [this, &world, today](std::uint32_t row) {
+      const CropId crop = world.fields.rows[row].crop;
+      if (crop.value >= config_.crops.size()) {
+        return kMonthsPerYear;
+      }
+      const auto month = static_cast<std::uint32_t>(config_.crops[crop.value].harvest_from_month);
+      return (month + kMonthsPerYear - today) % kMonthsPerYear;
+    };
+    std::stable_sort(order.begin(), order.end(), [&months_away](std::uint32_t a, std::uint32_t b) {
+      return months_away(a) < months_away(b);
+    });
+    return order;
+  }
+
   /// kHarvestWaitingOnField, kHarvestWillNotFit and kSeedShort — the three
   /// conditions of a field, in kind order so that the caller's sort has
   /// less to do (it still sorts: row order is not id order).
@@ -274,14 +302,21 @@ class ProductionSystem final : public IProductionSystem {
     // loss it exists to precede (window measured: 0 days on two seeds of
     // three, against a granary that takes 15 days to raise).
     //
-    // Which field is named is a CONVENTION and worth saying out loud: the
-    // room is spent in row order, so the fields that overrun are the later
-    // ones. Nobody can know which field will really be the one left out —
-    // that depends on the order the harvest comes in — but the amounts are
-    // each field's own unhoused share and they sum to the true overrun,
-    // which is the number the player has to act on.
+    // AND IT IS SPENT IN THE ORDER THE FIELDS WILL BE REAPED, because the
+    // alarm points at ONE field and the player walks to it. Row order would
+    // do the arithmetic just as well — the sum is the same whoever is
+    // named — but it would name an arbitrary field as the one that will not
+    // fit, and an arbitrary answer shown as a definite one is a lie. What
+    // comes in last is what finds the room gone; that is causally true and
+    // not merely consistent (boss, 2026-09-05).
+    //
+    // The order is read off the crop's harvest month, counted forward from
+    // today so that a crop reaped in two months precedes one reaped in
+    // eleven whatever the numbers happen to be. Fields whose crops are
+    // reaped in the same month keep row order between them: that much IS
+    // arbitrary, and there is nothing in the model that says otherwise.
     Grams room_left = FreeRoomOfStores(world);
-    for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    for (const std::uint32_t row : FieldsInHarvestOrder(world)) {
       const FieldRow& field = world.fields.rows[row];
       if (field.crop.value < config_.crops.size() && field.phase == FieldPhase::kGrowing &&
           field.kind == LandKind::kArable) {

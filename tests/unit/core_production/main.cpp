@@ -1240,6 +1240,94 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
   return failures;
 }
 
+/// The room is spent in the order the fields will be REAPED, not in row
+/// order.
+///
+/// Row order does the arithmetic just as well — the sum over the warned
+/// fields is the same whoever is named — so a check built on one crop
+/// cannot tell the two apart. It takes crops reaped in different months,
+/// laid out in rows that disagree with those months: then the field the
+/// alarm points at is different under the two rules, and the difference is
+/// the whole claim. The alarm names ONE field and the player walks to it;
+/// an arbitrary field shown as a definite one is a lie (boss, 2026-09-05).
+int CheckTheRoomIsSpentInHarvestOrder() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_harvest_order";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\noat,1\npotato,0.3\n";
+  // Three crops reaped in three different months: oat in the sixth, rye in
+  // the eighth, potato in the ninth.
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n"
+         "oat,oat,0,0,4,5,5,5,6,6,2,1000,0,-1,0,0,3,8,0\n"
+         "potato,potato,0,0,4,5,5,5,9,9,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\nbarn,0\n";
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  if (Expect(system != nullptr, "the harvest-order table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+
+  core::WorldState world;  // January: every harvest month is still ahead
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  core::AppendRow(world.units, barn);
+  // Rows deliberately out of harvest order: potato (reaped last) is row 0,
+  // oat (reaped first) is row 1, rye is row 2.
+  std::vector<core::FieldId> field_ids;
+  for (const std::uint16_t crop : {std::uint16_t{2}, std::uint16_t{1}, std::uint16_t{0}}) {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 50.0F;
+    field.fertility = 50.0F;
+    field.phase = core::FieldPhase::kGrowing;
+    field.crop = core::CropId{crop};
+    field_ids.push_back(core::AppendRow(world.fields, field));
+  }
+
+  std::vector<core::Alarm> alarms;
+  system->CollectAlarms(world, alarms);
+  const auto warned = [&alarms](const core::FieldId field) {
+    core::Grams total = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit && alarm.field.value == field.value) {
+        total += alarm.amount;
+      }
+    }
+    return total;
+  };
+
+  // The oat comes in first and fits; the rye finds ten tonnes of room left;
+  // the potato, reaped last, finds none. Under row order the silent field
+  // would be the potato and the empty-handed one the rye — the exact swap
+  // this check exists to see.
+  failures += Expect(warned(field_ids[1]) == 0,
+                     "the oat is reaped first and fits: it is not the field to walk to");
+  failures += Expect(warned(field_ids[2]) == 40'000 * core::kGramsPerKilogram,
+                     "the rye comes next and overruns by what the oat left");
+  failures += Expect(warned(field_ids[0]) == 50'000 * core::kGramsPerKilogram,
+                     "and the potato, last in, finds the room gone — the whole of it over");
+
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// A capacity that no level row answers for must STOP the load, not read as
 /// zero.
 ///
@@ -1490,6 +1578,7 @@ int main() {
   failures += CheckDroughtReadsTheAfternoon();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
+  failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckPauseAndResume();
 
