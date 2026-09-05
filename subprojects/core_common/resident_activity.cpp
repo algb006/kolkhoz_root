@@ -36,8 +36,6 @@ constexpr std::uint8_t kStudyingSchool = 0;
 constexpr std::uint8_t kLphGarden = 0;
 constexpr std::uint8_t kAtHomeAsleep = 0;
 constexpr std::uint8_t kAtHomeAwake = 1;
-constexpr std::uint8_t kNotWorkerAge = 0;
-constexpr std::uint8_t kNotWorkerHealth = 1;
 
 /// Whether `hour` falls inside [from, to). Half-open so that an hour
 /// belongs to exactly one band and the bands can be laid end to end.
@@ -102,7 +100,11 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   if (nothing_to_work_with && Inside(hour, starts, stops)) {
     set(ResidentActivity::kBlocked);
   }
-  if (!assigned && of_working_age && fit) {
+  // IDLENESS IS CHARGED TO A WORKER IN WORKING HOURS AND TO NOBODY ELSE.
+  // The child and the old man are not exempted by a state of their own —
+  // there is simply nothing to charge them with, which is the same answer
+  // arrived at without a second question in the list.
+  if (!assigned && of_working_age && fit && Inside(hour, leaves, returns)) {
     set(ResidentActivity::kIdle);
   }
   if (assigned && !nothing_to_work_with && Inside(hour, starts, stops)) {
@@ -129,16 +131,9 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   }
   // STUB: kResting. Six details — fishing, foraging, bathing, culture,
   // sport, drinking — and no mechanic behind any of them.
-  set(ResidentActivity::kAtHome);  // the floor: everybody is somewhere
-  if (!of_working_age && age_years >= rules.work_from_bio_years) {
-    set(ResidentActivity::kNotWorker);
-  }
-  if (age_years >= rules.work_from_bio_years && !fit) {
-    set(ResidentActivity::kNotWorker);
-  }
-  if (age_years < rules.work_from_bio_years) {
-    set(ResidentActivity::kTooYoung);
-  }
+  // The remainder, and it stands LAST so that it can swallow nothing that
+  // is explained better.
+  set(ResidentActivity::kAtHome);
 
   // -- the highest priority that holds -------------------------------------
   for (std::size_t index = 0; index < std::size(holds); ++index) {
@@ -190,16 +185,12 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
     case ResidentActivity::kAtHome:
       answer.detail = asleep ? kAtHomeAsleep : kAtHomeAwake;
       break;
-    case ResidentActivity::kNotWorker:
-      answer.detail = fit ? kNotWorkerAge : kNotWorkerHealth;
-      break;
     case ResidentActivity::kTreated:
     case ResidentActivity::kAway:
     case ResidentActivity::kTruant:
     case ResidentActivity::kIdle:
     case ResidentActivity::kEating:
     case ResidentActivity::kResting:
-    case ResidentActivity::kTooYoung:
     case ResidentActivity::kResidentActivityCount:
       break;
   }

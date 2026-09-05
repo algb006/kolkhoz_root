@@ -63,39 +63,27 @@ constexpr std::array<std::string_view,
               "studying",
               "lph",
               "resting",
-              "at_home",
-              "not_worker",
-              "too_young"};
+              "at_home"};
 
 /// Deliberately silent today, with the reason: no source in the model, and
 /// the stub says so in resident_activity.h one by one.
 constexpr std::array<std::string_view, 5> kWaived = {
     "treated", "away", "truant", "eating", "resting"};
 
-/// SILENT FOR A DIFFERENT REASON, AND IT IS A QUESTION RATHER THAN A
-/// DECISION. Both have predicates that hold and neither can ever be the
-/// answer, because resident_activities.csv ranks at_home 12 above
-/// not_worker 13 and too_young 14 — and anybody who is not out working is
-/// at home. So the two states meant to keep the idleness signal from
-/// blaming the player for a toddler's age never appear at all.
+/// THE OPEN QUESTION THIS CHECK RAISED IS CLOSED, and the way it closed is
+/// the reason to keep the check. It found not_worker and too_young
+/// unreachable — at_home outranked them and swallowed everybody not out
+/// working — and boss did not reorder the priorities. He took both states
+/// OUT: they were answering "why is the idleness signal not charged to him"
+/// inside a list that answers "what is he doing", one word for two
+/// questions. The condition moved to kIdle, at_home moved to last, and the
+/// roster went from fourteen to twelve.
 ///
-/// The signal itself is not wrong: kIdle already excludes them, which is
-/// what they were put there for. But "what is he doing" answers "at home"
-/// for a four-year-old and for a bedridden man alike, and the two rows that
-/// would have said something are unreachable.
-///
-/// Listed here so the run stays green while boss decides the ROSTER
-/// question — reported 2026-09-05 — and printed as a question rather than
-/// as a silence, because a finding parked in a waiver list is a finding
-/// lost. It comes out of this list the day the priority moves.
-constexpr std::array<std::string_view, 2> kOpenQuestion = {"not_worker", "too_young"};
+/// So the probe asked for as a guard against a dead STUB found a dead
+/// REGISTRY instead, on its first run.
 
 bool Waived(std::string_view name) {
   return std::ranges::find(kWaived, name) != kWaived.end();
-}
-
-bool OpenQuestion(std::string_view name) {
-  return std::ranges::find(kOpenQuestion, name) != kOpenQuestion.end();
 }
 
 core::ActivityRules RulesOfRun() {
@@ -141,12 +129,11 @@ int main() {
     const bool dead = seen[index] == 0;
     const char* mark = "        ";
     if (dead) {
-      mark = Waived(kNames[index]) ? "молчит  "
-                                   : (OpenQuestion(kNames[index]) ? "ВОПРОС  " : "МЁРТВОЕ ");
+      mark = Waived(kNames[index]) ? "молчит  " : "МЁРТВОЕ ";
     }
     std::cout << "activity_census:   " << mark << kNames[index] << ' ' << seen[index]
               << " человеко-часов\n";
-    if (dead && !Waived(kNames[index]) && !OpenQuestion(kNames[index])) {
+    if (dead && !Waived(kNames[index])) {
       failures += run::Expect(false, "an activity nothing waived never happened");
     }
     if (!dead && Waived(kNames[index])) {
@@ -190,8 +177,6 @@ int main() {
                           "value survives a save only if everything under it does");
   std::filesystem::remove(file);
 
-  std::cout << "activity_census: ВОПРОС boss'у — not_worker и too_young недостижимы: "
-               "at_home (12) стоит выше них (13, 14), а дома оказывается всякий, кто не в поле\n";
   std::cout << (failures == 0 ? "activity_census: all checks passed\n"
                               : "activity_census: FAILED\n");
   return failures;

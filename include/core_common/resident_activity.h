@@ -16,6 +16,16 @@
 /// resident_activities.csv carries the same numbers; the config refuses a
 /// table set where the two disagree.
 ///
+/// TWO STATES WERE TAKEN OUT OF THE ROSTER ON 2026-09-05, and the reason is
+/// worth keeping. "Too young" and "not a worker" were answering the question
+/// "why does the idleness signal not apply to him" while sitting in a list
+/// that answers "what is he doing" — one word for two questions, which is
+/// the defect this project spent the day finding in its own data. The
+/// condition moved to where it belongs: kIdle holds only for a worker in
+/// working hours. A two-year-old is then at home and asleep, which is the
+/// truth, and no idleness is charged to the player because THERE IS NOTHING
+/// TO CHARGE, not because the child has a state of his own.
+///
 /// THREE OF THEM ARE A REPROACH TO THE PLAYER, not a property of the
 /// person: kIdle, kBlocked and kTruant. They are counted in man-days
 /// because that is the unit the reproach is measured in — a village of
@@ -84,15 +94,15 @@ enum class ResidentActivity : std::uint8_t {
   /// none of the six has a mechanic behind it.
   kResting,
 
-  /// At home, asleep or awake.
+  /// At home, asleep or awake. LAST ON PURPOSE, and that is a rule rather
+  /// than a placement: THE REMAINDER MUST NOT SWALLOW WHAT IS EXPLAINED
+  /// BETTER. The less a state explains, the lower it stands — and this one
+  /// explains least, because anybody not doing something else is at home.
+  ///
+  /// It stood twelfth of fourteen until 2026-09-05 and made the two below
+  /// it unreachable; the census found that on its first run. Standing last
+  /// it can make nothing unreachable ever again.
   kAtHome,
-
-  /// Not a worker: by age or by health. Exists so that the idleness signal
-  /// never calls an old man the player's failure.
-  kNotWorker,
-
-  /// A child below working age, for the same reason.
-  kTooYoung,
 
   /// NOT A VALUE, and never written to a save or read from one: the codecs
   /// range-check 0..kResidentActivityCount-1 and this is what they check

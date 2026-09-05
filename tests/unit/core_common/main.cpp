@@ -457,23 +457,22 @@ int TestResidentActivity() {
   failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kIdle,
                      "no order and a fit man of working age is IDLE");
 
-  // AND NEITHER SIGNAL BLAMES THE PLAYER FOR AN AGE: the toddler and the
-  // old man are not idle. That much the roster delivers, and it is what
-  // kTooYoung and kNotWorker were put there for.
+  // AND IDLENESS IS NEVER CHARGED FOR AN AGE. The toddler and the old man
+  // are at home, and nothing is charged to the player — not because either
+  // has a state of his own, but because there is nothing to charge: kIdle
+  // holds for a worker in working hours and for nobody else.
+  //
+  // The roster HAD two states for this, "too young" and "not a worker", and
+  // the census found them unreachable on its first run. Boss did not
+  // reorder the priorities: he took both out, because they answered "why is
+  // the signal not charged to him" inside a list that answers "what is he
+  // doing" — one word for two questions.
   failures += Expect(at(10, 4.0F).activity != core::ResidentActivity::kIdle,
                      "a toddler with no order is not the chairman's failure");
   failures +=
       Expect(at(10, 80.0F).activity != core::ResidentActivity::kIdle, "and neither is an old man");
-
-  // WHAT THEY ARE INSTEAD IS kAtHome, and that is the table's priority
-  // talking, not this code: at_home is 12, not_worker 13, too_young 14. Any
-  // man who is not out working is at home, so the two states below it can
-  // never be the answer to "what is he doing". Reported to boss on
-  // 2026-09-05 as a question about the ROSTER — they are either ranked
-  // wrongly or they are decoration — and asserted here as the table has it
-  // so that the day he reorders, this check moves with him.
   failures += Expect(at(10, 4.0F).activity == core::ResidentActivity::kAtHome,
-                     "as the table ranks it today, a toddler at home is AT HOME");
+                     "a toddler with nothing else true of him is at home, and that is the truth");
   world.residents.rows[0].health = 5.0F;
   failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kTreated,
                      "and a man too ill to stand is being treated, whatever else is true of him");
