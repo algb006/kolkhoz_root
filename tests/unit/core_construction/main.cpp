@@ -85,6 +85,12 @@ class BuildTables final : public core::ITableSet {
                           {"orchard", "1", "1", "era", "1", "", "0", ""},
                           {"old_house", "1", "0", "start", "1", "10", "1", ""}}};
 
+  // wear_factor is the STEP's pace over its class's term, and it stands on
+  // three rows on purpose: the store carries it where the type has none
+  // (1.0 x 1.1), the barn's second step carries it where the type has 1.5
+  // (1.5 x 1.1 — the product, which one factor alone cannot show), and the
+  // old house carries it where the code used to hard-code 1.0.
+  //
   // 70 real man-days is 10 game man-days (root rules §9: real / 7).
   // Ten years standing, five in use: IN USE IS THE SHORTER TERM (unit rules
   // §15, and boss corrected his own criterion on it). Round numbers so the
@@ -96,13 +102,14 @@ class BuildTables final : public core::ITableSet {
                            "build_class",
                            "max_crew",
                            "wear_years_idle",
-                           "wear_years_in_use"},
-                          {{"store", "1", "1", "70", "wood_small", "5", "10", "5"},
-                           {"barn", "1", "1", "70", "wood_small", "5", "10", "5"},
-                           {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10"},
-                           {"club", "1", "2", "70", "wood_small", "5", "10", "5"},
-                           {"orchard", "1", "1", "0", "plot", "", "", ""},
-                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5"}}};
+                           "wear_years_in_use",
+                           "wear_factor"},
+                          {{"store", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"},
+                           {"barn", "1", "1", "70", "wood_small", "5", "10", "5", ""},
+                           {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10", "1.1"},
+                           {"club", "1", "2", "70", "wood_small", "5", "10", "5", ""},
+                           {"orchard", "1", "1", "0", "plot", "", "", "", ""},
+                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"}}};
 
   test::FakeTable costs_{{"unit", "level", "resource", "amount"},
                          {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
@@ -700,6 +707,66 @@ int TestTableLessWorld() {
   return failures;
 }
 
+/// The step's pace multiplies the type's, and the old house is not exempt.
+///
+/// Two facts, two columns, one product: the type says what the NATURE of a
+/// unit does to it (a byre is damp, a mill shakes), the step says what it
+/// STANDS ON (a timber frame on wooden stools lives shorter than the same
+/// frame on stone — 1.1 across twenty-seven Epoch I first steps). A unit
+/// that is both damp and badly founded is worse than one that is either, so
+/// they multiply (boss, 2026-09-05).
+///
+/// ONE FACTOR CANNOT SHOW A PRODUCT, so the barn's second step is measured:
+/// its type is 1.5 and its step is 1.1, and 1.65 is a different number from
+/// either. And the old house is measured because the code used to write 1.0
+/// for it in so many words — its own pace is empty (a hut has no nature that
+/// ages it) but its stools are the worst in the village, and its collapse
+/// term answers a different question, so applying the step to it is not one
+/// fact counted twice.
+int TestStepPaceMultipliesTypePace(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  if (system == nullptr) {
+    std::cout << "FAIL: the wear table set builds no system\n";
+    return 1;
+  }
+  core::WorldState world;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{kStoreType};
+  store.level = 1;
+  const core::UnitId founded = core::AppendRow(world.units, store);
+  core::UnitRow big_barn;
+  big_barn.type = core::UnitTypeId{kBarnType};
+  big_barn.level = 2;
+  const core::UnitId both = core::AppendRow(world.units, big_barn);
+  core::UnitRow hut;
+  hut.type = core::UnitTypeId{kOldHouseType};
+  hut.level = 1;
+  const core::UnitId ancient = core::AppendRow(world.units, hut);
+
+  world.calendar.tick = 0;
+  Run(*system, world, 0);
+  const auto wear_of = [&world](core::UnitId id) {
+    const std::uint32_t row = core::FindRow(world.units, id);
+    return row == core::kNoRow ? -1.0F : world.units.rows[row].wear;
+  };
+  const auto near = [](float value, float expected) {
+    return value > expected * 0.999F && value < expected * 1.001F;
+  };
+
+  // Ten years idle, no pace of its own, a step of 1.1.
+  failures += Expect(near(wear_of(founded), 100.0F / (10.0F * 48.0F) * 1.1F),
+                     "a step's pace applies where the type names none");
+  // Twenty years idle at the second step, type 1.5 times step 1.1.
+  failures += Expect(near(wear_of(both), 100.0F / (20.0F * 48.0F) * 1.5F * 1.1F),
+                     "and it multiplies the type's rather than replacing it");
+  // Two years to collapse, no pace of its own, a step of 1.1. This one was
+  // 1.0 by a branch in the code until 2026-09-05.
+  failures += Expect(near(wear_of(ancient), 100.0F / (2.0F * 48.0F) * 1.1F),
+                     "the old house wears at its stools' pace, not at one");
+  return failures;
+}
+
 /// A capacity that no level row answers for must STOP the load.
 ///
 /// The type row used to carry a storage figure of its own, and the export
@@ -781,6 +848,7 @@ int TestCapacityNeedsALadder() {
 int main() {
   int failures = 0;
   const BuildTables tables;
+  failures += TestStepPaceMultipliesTypePace(tables);
   failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
   failures += TestRefusals(tables);

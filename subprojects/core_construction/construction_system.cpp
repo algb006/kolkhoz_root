@@ -131,7 +131,7 @@ class ConstructionSystem final : public IConstructionSystem {
       return NoDeadline(DeadlineKind::kNotApplicable);
     }
     // The same daily share AgeUnits adds, read forward instead of applied.
-    const float pace = is_old_house ? 1.0F : type.wear_factor;
+    const float pace = WearPace(type, built.level);
     const float per_day = kWearScale * pace / (years * static_cast<float>(kDaysPerYear));
     if (!(per_day > 0.0F)) {
       return NoDeadline(DeadlineKind::kNever);  // a pace of nothing wears nothing
@@ -261,10 +261,10 @@ class ConstructionSystem final : public IConstructionSystem {
       if (!(years > 0.0F)) {
         continue;  // the ladder names no term for this level: it does not wear
       }
-      // The class gives the base term, the nature of the unit corrects it:
-      // a byre is damp and full of ammonia, a water mill shakes. A faster
-      // pace is a SHORTER life, hence the multiply on the daily share.
-      const float pace = is_old_house ? 1.0F : type.wear_factor;
+      // The class gives the base term; the nature of the unit and what it
+      // stands on both correct it (WearPace). A faster pace is a SHORTER
+      // life, hence the multiply on the daily share.
+      const float pace = WearPace(type, unit.level);
       unit.wear += kWearScale * pace / (years * static_cast<float>(kDaysPerYear));
       if (unit.wear < kWearScale) {
         continue;
@@ -280,6 +280,28 @@ class ConstructionSystem final : public IConstructionSystem {
   }
 
   /// The amortization term of the level a unit stands at, in game years.
+  /// @brief How much faster than its class's term this unit wears: the
+  ///        type's own pace times the step's.
+  ///
+  /// TWO FACTS, TWO COLUMNS, ONE PRODUCT. The type says what the nature of
+  /// the unit does to it — a byre is damp and full of ammonia, a mill
+  /// shakes; the step says what it stands on — a timber frame on wooden
+  /// stools lives shorter than the same frame on stone. Both answer "how
+  /// much faster", and a unit that is both damp and badly founded is worse
+  /// than one that is either, so they multiply (boss, 2026-09-05).
+  ///
+  /// THE OLD HOUSE IS NOT AN EXCEPTION, and it used to be. Its own pace is
+  /// empty — a peasant hut has no nature that ages it — but its stools are
+  /// the worst in the village, and the step now says so. Its collapse term
+  /// answers a different question (an event of the story, not a term of the
+  /// wear), which is exactly why applying the step's pace to it is not the
+  /// same fact counted twice.
+  static float WearPace(const BuildType& type, std::uint8_t level) {
+    const std::size_t index = static_cast<std::size_t>(level) - 1;
+    const float step = index < type.levels.size() ? type.levels[index].wear_factor : 1.0F;
+    return type.wear_factor * step;
+  }
+
   static float WearYears(const BuildType& type, std::uint8_t level, bool in_use) {
     const std::size_t index = static_cast<std::size_t>(level) - 1;
     if (index >= type.levels.size()) {

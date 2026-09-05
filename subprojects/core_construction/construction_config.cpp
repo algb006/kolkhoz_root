@@ -291,6 +291,7 @@ bool ReadLevels(const ITable& levels,
   const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
   const std::uint32_t idle_col = levels.FindColumn("wear_years_idle");
   const std::uint32_t in_use_col = levels.FindColumn("wear_years_in_use");
+  const std::uint32_t pace_col = levels.FindColumn("wear_factor");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
     Fail(error, "unit_levels", "no 'unit' or 'level' column");
     return false;
@@ -385,6 +386,23 @@ bool ReadLevels(const ITable& levels,
                        error)) {
       Fail(error, "unit_levels", "a wear term is out of range in row " + std::to_string(row));
       return false;
+    }
+    // An empty cell is 1.0 — this step adds nothing to its class's term —
+    // and the floor is the same as the type column's, for the same reason:
+    // a pace of zero would be a building that never wears at all, and that
+    // is what has_wear says, not what a multiplier says.
+    if (!CellOrDefault(levels,
+                       row,
+                       pace_col,
+                       Range{.low = 0.0F, .high = kMaxWearFactor},
+                       1.0F,
+                       step.wear_factor,
+                       error)) {
+      Fail(error, "unit_levels", "wear_factor is out of range in row " + std::to_string(row));
+      return false;
+    }
+    if (!(step.wear_factor > 0.0F)) {
+      step.wear_factor = 1.0F;
     }
     step.is_marking = static_cast<std::uint8_t>(
         class_col != kNoTableColumn && levels.CellText(row, class_col) == kMarkingClass ? 1 : 0);

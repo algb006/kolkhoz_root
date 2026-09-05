@@ -100,6 +100,22 @@ struct BuildLevel {
   float wear_years_idle = 0.0F;
 
   float wear_years_in_use = 0.0F;
+
+  /// What THIS STEP does to its build class's term, on top of the type's
+  /// own pace (unit_levels.csv `wear_factor`). 1.0 = the step adds
+  /// nothing. Today it carries one fact for the whole roster: a timber
+  /// frame on wooden stools lives shorter than the same frame on stone —
+  /// 1.1 on twenty-seven first steps, and every one of them Epoch I.
+  ///
+  /// A SECOND FACT, NOT A SECOND NAME FOR THE FIRST. `unit.wear_factor`
+  /// says what the nature of the unit does to it (a byre is damp, a mill
+  /// shakes); this says what it stands on. They multiply because both
+  /// answer "how much faster", and a unit that is both damp and badly
+  /// founded is worse than one that is either (boss, 2026-09-05). The
+  /// unit whose foundation is absent BY DESIGN takes no penalty here —
+  /// its class already pays for it in the term, and one fact counted
+  /// twice looks exactly like two facts.
+  float wear_factor = 1.0F;
 };
 
 /// Everything the subsystem knows about one unit type. NO CAPACITY LIVES
