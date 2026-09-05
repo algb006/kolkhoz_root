@@ -28,7 +28,7 @@
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
 ///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce,
-///               StockLights, PrecipitationForecast, WearDeadline
+///               StockLights, WeatherForecast, WearDeadline
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -551,7 +551,7 @@ class ISession {
   /// Valid until the next step or ReplaceWorld.
   virtual std::span<const StockForecast> StockLights() const = 0;
 
-  /// @brief Precipitation for the next three days: tomorrow, the day after,
+  /// @brief The weather of the next three days: tomorrow, the day after,
   /// the third. Always three, always in that order.
   ///
   /// THREE IS THE DESIGN'S NUMBER AND NOT A LIMIT OF THE MODEL. The
@@ -562,17 +562,30 @@ class ISession {
   /// that cannot is the "punishment for the unforeseeable" the red line
   /// forbids (farming design §6).
   ///
-  /// PRECIPITATION ALONE, deliberately. The strip draws an icon per day and
-  /// nothing else; temperature and cloud are not here because nothing is
-  /// drawn from them, and a value on the boundary that nobody draws is a
-  /// value somebody eventually derives something from.
+  /// TWO NAMES PER DAY AND NO NUMBERS. The strip draws an icon for the day
+  /// and, beside it, an icon for the wind; temperature and cloud are not
+  /// here because nothing is drawn from them, and a value on the boundary
+  /// that nobody draws is a value somebody eventually derives something
+  /// from.
+  ///
+  /// THE WIND IS A SECOND ICON AND NOT A NINTH NAME. A windy clear day would
+  /// otherwise have to be called "wind" and lose the "clear" — and the wind
+  /// is what the quest layer may order separately for exactly that reason
+  /// (Кожаный босс, 2026-09-05).
+  ///
+  /// IT USED TO BE PRECIPITATION, and the quest layer is what changed it: a
+  /// quest may order a named day, an ordered day must enter this forecast
+  /// like any other, and "rain" and "thunderstorm" are one Precipitation and
+  /// two names. A promise to the player does not distinguish who chose the
+  /// storm, so what is ordered and what is forecast have to be the same
+  /// alphabet.
   ///
   /// It is a FORECAST, not a promise about the run: it is exactly what those
   /// days will be, because they are already determined. There is no model
   /// error to hide and none is claimed.
   ///
   /// Valid until the next step or ReplaceWorld.
-  virtual std::span<const Precipitation> PrecipitationForecast() const = 0;
+  virtual std::span<const DayForecast> WeatherForecast() const = 0;
 
   /// @brief How long `unit` has before its wear reaches the end of the
   /// scale, at the rate it is wearing today (unit rules §15).

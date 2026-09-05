@@ -140,11 +140,12 @@ class StepEngine final : public ISimulation {
   void CollectAlarms(std::vector<Alarm>& /*alarms*/) const override {}
 
   /// The bare engine has no weather table and no time system: every day
-  /// ahead is dry, which is the same answer a table-less world gives for
-  /// today. Not a stub to be filled — a world without weather has none.
-  void CollectPrecipitationForecast(std::span<Precipitation> into) const override {
-    for (Precipitation& day : into) {
-      day = Precipitation::kNone;
+  /// ahead is clear and still, which is the same answer a table-less world
+  /// gives for today. Not a stub to be filled — a world without weather has
+  /// none.
+  void CollectWeatherForecast(std::span<DayForecast> into) const override {
+    for (DayForecast& day : into) {
+      day = DayForecast{};
     }
   }
 

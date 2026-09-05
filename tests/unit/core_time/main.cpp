@@ -152,6 +152,77 @@ int main() {
     failures += Expect(any_difference, "a different seed gives different weather");
   }
 
+  // -- THE NAMING KNOBS ARE READ, not merely declared ----------------------
+  //
+  // The struct's comment promised that a column added to weather.csv wins
+  // the moment it appears, while the parser knew none of the names — so the
+  // column would have been dropped in silence, by a parser that is strict
+  // about every name it does know. This is the check that makes the promise
+  // and the mechanism the same statement (found by the delivery's analysis
+  // pass, 2026-09-05).
+  //
+  // MEASURED BY THE OUTPUT AND NOT BY THE PARSE. That a table loads proves
+  // nothing about whether a number reached the generator; what proves it is
+  // that the year of weather CHANGES when the number does.
+  {
+    fs::create_directories(root / "windy");
+    const std::string header =
+        "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent,"
+        "calm_share,wind_share,thunder_from_month,thunder_to_month\n";
+    // Every day still, and the storm window shut: with calm_share at 1 the
+    // wind can only be kCalm, and with a window of one winter month no
+    // summer day can thunder.
+    WriteFile(root / "windy" / "weather.csv",
+              header + "winter,-10,2,3,35,1,0,0,0\n" + "spring,5,7,5,35,1,0,0,0\n" +
+                  "summer,19,5,6,25,1,0,0,0\n" + "autumn,6,7,5,45,1,0,0,0\n");
+    const auto windy_tables = core::LoadTableSet((root / "windy").string(), nullptr);
+    const auto windy = windy_tables == nullptr ? nullptr : core::CreateTimeSystem(*windy_tables);
+    failures += Expect(windy != nullptr, "a weather table carrying the naming columns builds");
+    if (windy != nullptr) {
+      bool all_still = true;
+      bool any_storm = false;
+      for (core::SimDay day = 1; day <= 400; ++day) {
+        const core::DayForecast at = windy->WeatherOn(7, day);
+        all_still = all_still && at.wind == core::WindBand::kCalm;
+        any_storm = any_storm || at.phenomenon == core::WeatherPhenomenon::kThunderstorm;
+      }
+      failures += Expect(all_still, "calm_share = 1 in the table makes every day still");
+      failures += Expect(!any_storm, "and a shut window means no day thunders");
+    }
+    // And the same table without the columns must NOT be still — otherwise
+    // the check above would pass on a generator that ignores the columns and
+    // simply never blows.
+    bool any_wind = false;
+    bool any_storm_by_default = false;
+    for (core::SimDay day = 1; day <= 400; ++day) {
+      const core::DayForecast at = time_system->WeatherOn(7, day);
+      any_wind = any_wind || at.wind != core::WindBand::kCalm;
+      any_storm_by_default =
+          any_storm_by_default || at.phenomenon == core::WeatherPhenomenon::kThunderstorm;
+    }
+    failures += Expect(any_wind && any_storm_by_default,
+                       "without those columns the same seed does blow and does thunder");
+  }
+
+  // A number outside its range is an error and not a clamp — a window
+  // quietly widened to the whole year would look like a working rule.
+  {
+    fs::create_directories(root / "silly");
+    WriteFile(root / "silly" / "weather.csv",
+              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent,"
+              "thunder_from_month\n"
+              "winter,-10,2,3,35,99\n"
+              "spring,5,7,5,35,4\n"
+              "summer,19,5,6,25,4\n"
+              "autumn,6,7,5,45,4\n");
+    const auto silly_tables = core::LoadTableSet((root / "silly").string(), nullptr);
+    failures += Expect(silly_tables != nullptr, "the out-of-range table parses as CSV");
+    if (silly_tables != nullptr) {
+      failures += Expect(core::CreateTimeSystem(*silly_tables) == nullptr,
+                         "but a month of 99 is refused, not clamped");
+    }
+  }
+
   // A malformed weather table is refused, not patched over.
   fs::create_directories(root / "bad");
   WriteFile(root / "bad" / "weather.csv",

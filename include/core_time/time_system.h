@@ -39,7 +39,8 @@ class ITimeSystem {
   /// stores it in StepPhaseSet::time_and_weather.
   virtual ISequentialPhase& TimeAndWeatherPhase() = 0;
 
-  /// @brief The precipitation of one day, past or future.
+  /// @brief What one day, past or future, will be CALLED and how it will
+  /// blow — the two names the seam carries (world_state.h).
   ///
   /// THE FORECAST IS A QUERY, NOT A RECORD, and that follows from the
   /// generator: weather is a pure function of (world_seed, day), so a day
@@ -47,13 +48,21 @@ class ITimeSystem {
   /// is cached and nothing is stored; asking for tomorrow costs what asking
   /// for today costs.
   ///
+  /// IT ANSWERS WITH THE NAME AND NOT WITH THE PRECIPITATION since
+  /// 2026-09-05, and the reason is the quest layer rather than the panel:
+  /// a quest may order the weather of a named day, and an ordered day must
+  /// enter the three-day forecast like any other — the forecast is a promise
+  /// to the player, and a promise does not distinguish who chose the storm.
+  /// A quest orders one of the eight NAMES; "rain" and "thunderstorm" are
+  /// two of them and one Precipitation, so precipitation could not carry the
+  /// order back out.
+  ///
   /// @param world_seed The campaign seed — the same one WorldState carries.
   /// @param day        Any day, including days ahead of the clock.
-  /// @return kSnow when that day's temperature is at or below zero and it
-  ///         is wet, kRain when it is wet and warmer, kNone when it is dry.
-  ///         A system built without a weather table answers from its STUB
-  ///         seasons, the same ones the phase would use.
-  virtual Precipitation PrecipitationOn(std::uint64_t world_seed, SimDay day) const = 0;
+  /// @return The day's phenomenon and wind band. A system built without a
+  ///         weather table answers from its STUB seasons, the same ones the
+  ///         phase would use.
+  virtual DayForecast WeatherOn(std::uint64_t world_seed, SimDay day) const = 0;
 };
 
 /// @brief Creates the time subsystem.

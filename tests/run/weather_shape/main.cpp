@@ -133,6 +133,40 @@ struct Shape {
   RunLengths wet_runs;
   RunLengths dry_runs;
   RunLengths hot_runs;
+
+  /// HOW OFTEN EACH NAME IS USED, and how often each wind band. Counted per
+  /// season as well as in total, because the two rulings this measures are
+  /// both SEASONAL: a thunderstorm outside May-August is a defect, and a
+  /// blizzard is what winter has instead of a hard frost.
+  std::array<std::array<std::uint32_t, core::kWeatherPhenomenonCountValue>, core::kSeasonsPerYear>
+      phenomena{};
+
+  std::array<std::array<std::uint32_t, core::kWindBandCountValue>, core::kSeasonsPerYear> winds{};
+
+  /// The coldest day on which a blizzard was named, and the coldest day
+  /// there was at all. The gap between them is the ruling.
+  double coldest_blizzard = 1000.0;
+
+  double coldest_day = 1000.0;
+
+  /// Squalls seen, and squalls seen outside a thunderstorm. The second must
+  /// be zero: a squall is a part of a storm and of nothing else.
+  std::uint32_t squalls = 0;
+
+  std::uint32_t squalls_without_a_storm = 0;
+
+  /// SNOW AND A STRONG WIND THAT WAS STILL NOT A BLIZZARD — which is exactly
+  /// the set the cold rule refused, since a weaker wind is the only other
+  /// way to be a snowfall. Counted as a SHARE and not as a temperature on
+  /// boss's condition (2026-09-05), and the reason is that the measurement
+  /// ages and the assertion does not: the shipped climate has both memory
+  /// knobs at zero, and the day somebody turns them on the distribution
+  /// moves while the threshold stays. A threshold that refuses NOBODY is a
+  /// comment, not a rule (architecture §8аб), and only a share can say so
+  /// years from now.
+  std::uint32_t snowfall_denied_by_cold = 0;
+
+  std::uint32_t snowy_days = 0;
 };
 
 const char* SeasonName(std::size_t season) {
@@ -225,18 +259,41 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
     system->TimeAndWeatherPhase().RunSequential(previous, current);
 
     // THE FORECAST IS THE SAME ARITHMETIC OR IT IS A SECOND WEATHER. The
-    // phase wrote today's precipitation into `current`; PrecipitationOn is
-    // what the boundary hands the player three days early. They come from
-    // one function (time_system.cpp, WeatherOfDay), and this is the check
-    // that says so out loud — a copy of the rule would part from it on the
-    // first edit to either, and nobody would notice until a forecast said
-    // rain on a dry day.
-    if (system->PrecipitationOn(g_seed, current.calendar.day) != current.weather.precipitation) {
+    // phase wrote today's name and wind into `current`; WeatherOn is what
+    // the boundary hands the player three days early. They come from one
+    // function (time_system.cpp, WeatherOfDay), and this is the check that
+    // says so out loud — a copy of the rule would part from it on the first
+    // edit to either, and nobody would notice until a forecast promised a
+    // clear day and the storm came.
+    const core::DayForecast ahead = system->WeatherOn(g_seed, current.calendar.day);
+    if (ahead.phenomenon != current.weather.phenomenon || ahead.wind != current.weather.wind) {
       ++forecast_disagreements;
     }
 
     const auto season = static_cast<std::size_t>(current.calendar.season);
     SeasonStats& into = shape.seasons[season];
+    // THE NAMES, counted per season, because both rulings under test are
+    // seasonal ones (camera design §4).
+    shape.phenomena[season][static_cast<std::size_t>(current.weather.phenomenon)] += 1U;
+    shape.winds[season][static_cast<std::size_t>(current.weather.wind)] += 1U;
+    const auto today = static_cast<double>(current.weather.air_temperature_celsius);
+    shape.coldest_day = today < shape.coldest_day ? today : shape.coldest_day;
+    if (current.weather.phenomenon == core::WeatherPhenomenon::kBlizzard) {
+      shape.coldest_blizzard = today < shape.coldest_blizzard ? today : shape.coldest_blizzard;
+    }
+    if (current.weather.precipitation == core::Precipitation::kSnow) {
+      ++shape.snowy_days;
+      shape.snowfall_denied_by_cold +=
+          current.weather.phenomenon == core::WeatherPhenomenon::kSnowfall &&
+                  current.weather.wind >= core::WindBand::kStrongWind
+              ? 1U
+              : 0U;
+    }
+    if (current.weather.wind == core::WindBand::kSquall) {
+      ++shape.squalls;
+      shape.squalls_without_a_storm +=
+          current.weather.phenomenon == core::WeatherPhenomenon::kThunderstorm ? 0U : 1U;
+    }
     const auto mean = static_cast<double>(current.weather.air_temperature_celsius);
     const auto swing = static_cast<double>(current.weather.temperature_swing_celsius);
     into.temperature_sum += mean;
@@ -283,6 +340,34 @@ void Print(const char* label, const Shape& shape) {
             << shape.dry_runs.AtLeast(3) << ", 5+ " << shape.dry_runs.AtLeast(5) << '\n';
   std::cout << "  hot afternoons in a row: longest " << shape.hot_runs.Longest() << ", 3+ "
             << shape.hot_runs.AtLeast(3) << ", 5+ " << shape.hot_runs.AtLeast(5) << '\n';
+  constexpr std::array<const char*, core::kWeatherPhenomenonCountValue> kPhenomenonNames = {
+      "clear", "fog", "rain", "thunderstorm", "snowfall", "blizzard", "frost", "heat"};
+  constexpr std::array<const char*, core::kWindBandCountValue> kWindNames = {
+      "calm", "wind", "strong", "squall"};
+  for (std::size_t name = 0; name < kPhenomenonNames.size(); ++name) {
+    std::cout << "  " << kPhenomenonNames[name] << ":";
+    for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+      std::cout << ' ' << SeasonName(season) << ' ' << shape.phenomena[season][name];
+    }
+    std::cout << '\n';
+  }
+  std::cout << "  wind:";
+  for (std::size_t band = 0; band < kWindNames.size(); ++band) {
+    std::uint32_t total = 0;
+    for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+      total += shape.winds[season][band];
+    }
+    std::cout << ' ' << kWindNames[band] << ' ' << total;
+  }
+  std::cout << '\n';
+  std::cout << "  coldest blizzard " << shape.coldest_blizzard << " C, coldest day "
+            << shape.coldest_day << " C; squalls " << shape.squalls << ", of them outside a storm "
+            << shape.squalls_without_a_storm << '\n';
+  std::cout << "  snowy days " << shape.snowy_days << ", of them blown but too cold for a blizzard "
+            << shape.snowfall_denied_by_cold << " ("
+            << (shape.snowy_days == 0 ? 0.0
+                                      : 100.0 * shape.snowfall_denied_by_cold / shape.snowy_days)
+            << "% of snow)\n";
 }
 
 }  // namespace
@@ -414,6 +499,48 @@ int main(int argc, char** argv) {
 
   failures += run::Expect(forecast_disagreements == 0,
                           "the forecast and the phase are the same weather, day for day");
+
+  // -- the three rulings of 2026-09-05, as checks and not as prose ---------
+  //
+  // Each of these can FAIL, and that is the point: a guard that cannot fail
+  // is indistinguishable from a missing one and worse than a signal that
+  // never fired, because it says "all well" every run (architecture §8ц).
+  // Every one of the three was verified by damaging the rule it guards.
+  {
+    std::uint32_t storms_out_of_season = 0;
+    for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+      // Winter and autumn hold no month of May..August between them; spring
+      // holds May and summer holds the other three, so those two are the
+      // only seasons a storm may appear in at all.
+      const bool may_storm = season == static_cast<std::size_t>(core::Season::kSpring) ||
+                             season == static_cast<std::size_t>(core::Season::kSummer);
+      storms_out_of_season += may_storm ? 0U
+                                        : shipped.phenomena[season][static_cast<std::size_t>(
+                                              core::WeatherPhenomenon::kThunderstorm)];
+    }
+    failures +=
+        run::Expect(storms_out_of_season == 0, "a thunderstorm never happens outside May..August");
+    failures += run::Expect(
+        shipped.phenomena[static_cast<std::size_t>(core::Season::kSummer)]
+                         [static_cast<std::size_t>(core::WeatherPhenomenon::kThunderstorm)] > 0,
+        "and inside the window it does happen — the check has something to check");
+  }
+  failures += run::Expect(shipped.squalls > 0, "squalls happen");
+  failures += run::Expect(shipped.squalls_without_a_storm == 0,
+                          "and every one of them is inside a thunderstorm");
+  // THE COLD RULING, and it needs BOTH halves. That blizzards exist proves
+  // nothing; that the coldest day of two hundred years was too cold to be
+  // one is the ruling. Damage it and the two numbers meet.
+  failures += run::Expect(
+      shipped.coldest_blizzard > shipped.coldest_day + 0.5,
+      "the coldest days are too cold for a blizzard — the stillest day is the cruellest");
+  // AND THE SAME RULING AS A SHARE, which is the half that survives a change
+  // of climate. The two numbers above are a MEASUREMENT of today's
+  // distribution and they age silently; this one says what the rule must
+  // always do — refuse somebody — and it cannot age (boss, 2026-09-05).
+  failures += run::Expect(shipped.snowfall_denied_by_cold > 0,
+                          "and the cold rule refuses a non-zero share of blown snowy days: a "
+                          "threshold outside what the world produces is a comment, not a rule");
 
   // A stopped generator passes every invariant above — it would report the
   // same day forever, which is why the measure has to prove it measured.

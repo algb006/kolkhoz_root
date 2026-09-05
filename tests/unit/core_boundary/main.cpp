@@ -118,13 +118,13 @@ class ScriptedSimulation final : public core::ISimulation {
 
   /// The scripted double has no weather; the days ahead read from whatever
   /// the test set, so a session test can pin a forecast without a table set.
-  void CollectPrecipitationForecast(std::span<core::Precipitation> into) const override {
+  void CollectWeatherForecast(std::span<core::DayForecast> into) const override {
     for (std::size_t ahead = 0; ahead < into.size(); ++ahead) {
-      into[ahead] = ahead < forecast_.size() ? forecast_[ahead] : core::Precipitation::kNone;
+      into[ahead] = ahead < forecast_.size() ? forecast_[ahead] : core::DayForecast{};
     }
   }
 
-  std::vector<core::Precipitation> forecast_;
+  std::vector<core::DayForecast> forecast_;
 
   /// What the next CollectAlarms will hand back, in the order given.
   std::vector<core::Alarm> alarms_;
@@ -965,20 +965,34 @@ int TestStockLights(const core::ITableSet& tables) {
   // days, and a panel that draws three icons must never be handed two. The
   // order is the other half of it — a strip that reads "tomorrow, the day
   // after, the third" cannot be given them in any other order and notice.
-  script->forecast_ = {
-      core::Precipitation::kRain, core::Precipitation::kNone, core::Precipitation::kSnow};
+  //
+  // AND THE WIND TRAVELS BESIDE THE NAME, not inside it: the middle day here
+  // is clear AND blowing hard, which is precisely the day that could not be
+  // expressed while the forecast was one field wide.
+  script->forecast_ = {core::DayForecast{.phenomenon = core::WeatherPhenomenon::kThunderstorm,
+                                         .wind = core::WindBand::kSquall},
+                       core::DayForecast{.phenomenon = core::WeatherPhenomenon::kClear,
+                                         .wind = core::WindBand::kStrongWind},
+                       core::DayForecast{.phenomenon = core::WeatherPhenomenon::kBlizzard,
+                                         .wind = core::WindBand::kStrongWind}};
   session->AdvanceStep();
-  const std::span<const core::Precipitation> forecast = session->PrecipitationForecast();
+  const std::span<const core::DayForecast> forecast = session->WeatherForecast();
   failures += Expect(forecast.size() == 3, "the forecast is three days, always");
-  failures += Expect(forecast.size() == 3 && forecast[0] == core::Precipitation::kRain &&
-                         forecast[1] == core::Precipitation::kNone &&
-                         forecast[2] == core::Precipitation::kSnow,
+  failures += Expect(forecast.size() == 3 &&
+                         forecast[0].phenomenon == core::WeatherPhenomenon::kThunderstorm &&
+                         forecast[1].phenomenon == core::WeatherPhenomenon::kClear &&
+                         forecast[2].phenomenon == core::WeatherPhenomenon::kBlizzard,
                      "and they arrive as tomorrow, the day after, the third");
+  failures += Expect(forecast.size() == 3 && forecast[0].wind == core::WindBand::kSquall &&
+                         forecast[1].wind == core::WindBand::kStrongWind,
+                     "a clear day that blows hard is a day the forecast can say");
   bool forecast_in_range = true;
-  for (const core::Precipitation day : forecast) {
-    forecast_in_range = forecast_in_range && day < core::Precipitation::kPrecipitationCount;
+  for (const core::DayForecast& day : forecast) {
+    forecast_in_range = forecast_in_range &&
+                        day.phenomenon < core::WeatherPhenomenon::kWeatherPhenomenonCount &&
+                        day.wind < core::WindBand::kWindBandCount;
   }
-  failures += Expect(forecast_in_range, "and no day is handed over as the enum's terminator");
+  failures += Expect(forecast_in_range, "and no day is handed over as an enum's terminator");
 
   bool any_green = false;
   for (const core::StockForecast& light : lights) {

@@ -1,17 +1,18 @@
 # generated from db/design.db — do not edit by hand
-# the nine alarms in the order the top bar's stack ranks them: severity_rank 1 is the heaviest and takes the single red the bar allows (office design §7)
+# the alarms in the order the top bar's stack ranks them: severity_rank 1 is the heaviest and takes the single red the bar allows (office design §7)
 # the rank is UNIQUE, so it is a total order over KINDS and novelty only ever breaks ties between INSTANCES of one kind — two hungry families, not a full store against a starving herd
 # the kinds themselves are the core's AlarmKind; what the design owns is their order and their subject, and until 5 September 2026 that had no home at all, which is how a ranking rule came to be written for a carrier that did not exist
 # an alarm's answer — what the player can do — is design text and stays in the database: a signal with no answer is a reproach, and the core carries no reproaches
-# no_road is a declared stub: the core has no roads, the predicate never fires, and the kind is kept so the layer's map has a key
+# site_unreachable was called no_road until 5 September 2026 and was a declared stub under that name. The name lied about the cause: the site that stalled was 11.9 km out, 28.6 hours of walking one way, and no road would have helped. Renamed, it fires, and it ranks ABOVE no-crew and no-materials because those two are meaningless for a site nobody can reach
 key,subject,severity_rank
 family_going_hungry,family,1
 herd_starving,herd,2
 harvest_waiting_on_field,field,3
 seed_short,field,4
 harvest_will_not_fit,field,5
-yard_without_groom,unit,6
-site_without_crew,unit,7
-site_without_materials,unit,8
-store_full,unit,9
-no_road,unit,10
+herd_without_stable,herd,6
+yard_without_groom,unit,7
+site_unreachable,unit,8
+site_without_crew,unit,9
+site_without_materials,unit,10
+store_full,unit,11

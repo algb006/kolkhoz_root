@@ -28,6 +28,7 @@
 #define CORE_COMMON_WORLD_STATE_H_
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "core_common/calendar.h"
@@ -92,6 +93,111 @@ enum class Precipitation : std::uint8_t {
   kPrecipitationCount,
 };
 
+/// @brief What the day IS, one name for it — the eight the design names
+/// (camera design §4). One per day: the presentation shows one icon and the
+/// quest layer orders one name, so a day that is both raining and foggy has
+/// to be called something, and the roster is ordered so that the call is
+/// always the same one.
+///
+/// WIND IS NOT IN HERE, and that is the whole shape of this enum
+/// (Кожаный босс, 2026-09-05). Wind is random and almost unrelated to the
+/// weather — a windy sunny summer day is an ordinary day — so it stands
+/// BESIDE any of these rather than among them. Were it a ninth name, "clear
+/// and still" and "clear and blowing" would be two different days with one
+/// name, and the icon would have to drop "clear" to say "wind".
+enum class WeatherPhenomenon : std::uint8_t {
+  /// Nothing is happening to the sky worth a name of its own. The commonest
+  /// day, and it exists as a NAME rather than as an absence so that the
+  /// quest layer can order it: "a clear morning for the holiday".
+  kClear = 0,
+
+  /// Fog: the dense morning kind lying along the floodplain. Delays the
+  /// start of work.
+  kFog,
+
+  /// Rain, from drizzle to downpour. Stops the harvest and spoils grain on
+  /// the threshing floor.
+  kRain,
+
+  /// Thunder, lightning, darkening. MAY TO AUGUST AND NEVER OUTSIDE IT, by
+  /// climate and by quest order alike: a thunderstorm in January is refused,
+  /// not granted.
+  ///
+  /// A SQUALL IS POSSIBLE INSIDE IT AND NOWHERE ELSE, which is not the same
+  /// as "a storm has one": the wind is drawn first and on its own, and a
+  /// storm that was going to blow hard blows a squall instead. A still storm
+  /// stays still — the rain is not what lays the corn.
+  kThunderstorm,
+
+  /// Snowfall, piling on the ground and the roofs. Snow on a field not yet
+  /// reaped kills that harvest whole (farming design §6).
+  kSnowfall,
+
+  /// A blizzard: wind and snow together, no visibility, drifts, the road
+  /// shut. IT DOES NOT COME IN A HARD FROST, which is physics and a live
+  /// signal at once — the cruellest cold stands on the stillest, clearest
+  /// day, so the two winter troubles look like opposites and neither can be
+  /// mistaken for the other. The word is BLIZZARD and not "buran": the
+  /// design keeps one term per thing.
+  kBlizzard,
+
+  /// Frost: rime and a skin of ice. Kills seedlings; anything tender dies
+  /// in the night (farming design §4).
+  kFrost,
+
+  /// Heat: shimmer and burnt grass. Drought and a fall in the milk.
+  kHeat,
+
+  /// NOT A VALUE: the count, for a consumer's mirror. Values are appended
+  /// BEFORE it.
+  kWeatherPhenomenonCount,
+};
+
+/// @brief How hard it blows today, as a BAND and not a number.
+///
+/// The player never sees numbers (chairman design §5), and the layer draws
+/// from the band, so the band is what crosses the seam. Whatever number the
+/// generator used to pick it stays inside the generator.
+enum class WindBand : std::uint8_t {
+  /// Still. The grass stands, the chimney smoke goes up in a column.
+  kCalm = 0,
+
+  /// Waves across the field, crowns swaying, washing on the line.
+  kWind,
+
+  /// Dust, drifting snow, branches bending. Spray drifts off target, and
+  /// snow is blown off the winter crop — a loss to the winter sowing.
+  kStrongWind,
+
+  /// A short furious gust that lays the standing corn. IT HAPPENS ONLY
+  /// INSIDE A THUNDERSTORM: the squall is a part of the storm, not a
+  /// weather of its own, and flattening the corn is its work and not the
+  /// rain's.
+  kSquall,
+
+  /// NOT A VALUE: the count, for a consumer's mirror.
+  kWindBandCount,
+};
+
+/// @brief The two counts as plain numbers, for anything that has to SIZE an
+/// array by them. A `static_cast` at every such site reads as arithmetic on
+/// a name; this reads as what it is.
+inline constexpr std::size_t kWeatherPhenomenonCountValue =
+    static_cast<std::size_t>(WeatherPhenomenon::kWeatherPhenomenonCount);
+
+inline constexpr std::size_t kWindBandCountValue =
+    static_cast<std::size_t>(WindBand::kWindBandCount);
+
+/// @brief One day of the forecast: what it will be called and how it will
+/// blow. Two fields because the seam carries two (WeatherPhenomenon,
+/// WindBand) — "clear and a strong wind" is a legitimate forecast and a
+/// legitimate quest order, and one name could not carry it.
+struct DayForecast {
+  WeatherPhenomenon phenomenon = WeatherPhenomenon::kClear;
+
+  WindBand wind = WindBand::kCalm;
+};
+
 /// @brief Weather of the current day.
 /// Written by the time-and-weather phase (phase 1, single-threaded), frozen
 /// for the rest of the step. Daylight bounds the working day (time design,
@@ -123,6 +229,16 @@ struct WeatherState {
   /// own right: rain implies cloud, cloud does not imply rain, and an
   /// overcast dry day is exactly the day the swing rule exists for.
   float cloud_cover = 0.5f;
+
+  /// What this day is CALLED — one name, the presentation's icon and the
+  /// quest layer's order (WeatherPhenomenon).
+  WeatherPhenomenon phenomenon = WeatherPhenomenon::kClear;
+
+  /// How hard it blows, as a band (WindBand). A SECOND FIELD BESIDE THE
+  /// FIRST and not a ninth name in it: the icon for wind is drawn next to
+  /// the icon for the phenomenon, because otherwise a windy clear day would
+  /// have to be called "wind" and lose the "clear".
+  WindBand wind = WindBand::kCalm;
 };
 
 /// @brief The chairman's standing. He is an abstract figure without a body or

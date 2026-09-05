@@ -194,7 +194,7 @@ class Session final : public ISession {
 
   std::span<const StockForecast> StockLights() const override { return lights_; }
 
-  std::span<const Precipitation> PrecipitationForecast() const override { return forecast_; }
+  std::span<const DayForecast> WeatherForecast() const override { return forecast_; }
 
   Deadline WearDeadline(UnitId unit) const override { return simulation_->WearDeadline(unit); }
 
@@ -494,7 +494,7 @@ class Session final : public ISession {
   /// would churn for no reason the player could see.
   /// Filled beside the lights and on the same occasions: after a step, after
   /// a load, after a world is replaced. Three days, tomorrow first.
-  void RefreshForecast() { simulation_->CollectPrecipitationForecast(forecast_); }
+  void RefreshForecast() { simulation_->CollectWeatherForecast(forecast_); }
 
   void RefreshStockLights() {
     std::vector<StockForecast> answered;
@@ -616,7 +616,7 @@ class Session final : public ISession {
   /// The design's three days (session.h). A fixed array and not a vector:
   /// the length is a contract, not a measurement, and a span over an array
   /// cannot come back short.
-  std::array<Precipitation, 3> forecast_{};
+  std::array<DayForecast, 3> forecast_{};
 };
 
 }  // namespace

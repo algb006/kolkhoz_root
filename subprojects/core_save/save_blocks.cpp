@@ -33,7 +33,8 @@ static_assert(sizeof(YearLedger) == 136 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
-static_assert(sizeof(WeatherState) == 20, "WeatherState changed — update the codec");
+static_assert(sizeof(WeatherState) == 24,
+              "WeatherState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
 static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and VERSION_SAVE");
 
@@ -42,6 +43,14 @@ constexpr std::uint8_t kMinEpoch = static_cast<std::uint8_t>(Epoch::kOne);
 constexpr std::uint8_t kMaxEpoch = static_cast<std::uint8_t>(Epoch::kEpochEnd) - 1;
 
 constexpr std::uint8_t kMaxPrecipitation = static_cast<std::uint8_t>(Precipitation::kSnow);
+
+// The two names the day carries beside its numbers (world_state.h). Bounded
+// by the LAST VALUE and not by the count, the way every other enum here is:
+// the terminator is not a value and a save carrying it is a corrupt save.
+constexpr std::uint8_t kMaxPhenomenon =
+    static_cast<std::uint8_t>(WeatherPhenomenon::kWeatherPhenomenonCount) - 1;
+
+constexpr std::uint8_t kMaxWindBand = static_cast<std::uint8_t>(WindBand::kWindBandCount) - 1;
 
 constexpr std::uint8_t kMaxWeekday = static_cast<std::uint8_t>(Weekday::kSunday);
 
@@ -183,6 +192,12 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // before it has stepped once.
   out.WriteFloat(world.weather.temperature_swing_celsius);
   out.WriteFloat(world.weather.cloud_cover);
+  // The day's NAME and the day's wind band (the wind parcel, 2026-09-05).
+  // Recomputable from (seed, day) like everything above them, and saved for
+  // the same reason: a loaded world must be able to answer before it has
+  // stepped once.
+  out.WriteU8(static_cast<std::uint8_t>(world.weather.phenomenon));
+  out.WriteU8(static_cast<std::uint8_t>(world.weather.wind));
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -227,6 +242,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<Precipitation>(source.ReadEnumValue(0, kMaxPrecipitation, "precipitation"));
   world->weather.temperature_swing_celsius = in.ReadFloat();
   world->weather.cloud_cover = in.ReadFloat();
+  world->weather.phenomenon =
+      static_cast<WeatherPhenomenon>(source.ReadEnumValue(0, kMaxPhenomenon, "weather phenomenon"));
+  world->weather.wind = static_cast<WindBand>(source.ReadEnumValue(0, kMaxWindBand, "wind band"));
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

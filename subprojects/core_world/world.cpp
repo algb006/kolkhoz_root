@@ -376,11 +376,11 @@ class StandardSimulation final : public ISimulation {
   /// Tomorrow first. The weather is a pure function of (seed, day), so the
   /// days ahead are evaluated exactly as the days behind would be — nothing
   /// is remembered and nothing is cached.
-  void CollectPrecipitationForecast(std::span<Precipitation> into) const override {
+  void CollectWeatherForecast(std::span<DayForecast> into) const override {
     const WorldState& completed = engine_->CompletedState();
     for (std::size_t ahead = 0; ahead < into.size(); ++ahead) {
-      into[ahead] = time_->PrecipitationOn(
-          completed.world_seed, completed.calendar.day + static_cast<SimDay>(ahead) + 1U);
+      into[ahead] = time_->WeatherOn(completed.world_seed,
+                                     completed.calendar.day + static_cast<SimDay>(ahead) + 1U);
     }
   }
 

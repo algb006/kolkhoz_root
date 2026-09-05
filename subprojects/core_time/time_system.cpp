@@ -34,6 +34,13 @@ constexpr std::uint64_t kTemperatureSalt = 0x7431;
 constexpr std::uint64_t kPrecipitationSalt = 0x7432;
 constexpr std::uint64_t kCloudSalt = 0x7433;
 constexpr std::uint64_t kPrecipitationAnchorSalt = 0x7434;
+// Wind and the two phenomena that need a draw of their own. SEPARATE SALTS
+// ARE THE WHOLE POINT for the wind: it is meant to be almost unrelated to the
+// weather, and sharing a stream with the temperature or the sky would make it
+// a function of them (Кожаный босс, 2026-09-05: "a windy sunny summer day").
+constexpr std::uint64_t kWindSalt = 0x7435;
+constexpr std::uint64_t kThunderSalt = 0x7436;
+constexpr std::uint64_t kFogSalt = 0x7437;
 
 /// HOW FAR BACK TODAY REMEMBERS. The weather keeps being a pure function of
 /// (seed, day) — nothing is carried in world state — but the function now
@@ -130,6 +137,57 @@ struct SeasonWeather {
   /// (1 + this), an overcast one by (1 - this). Clear noon is hotter and
   /// clear midnight colder, which is one phenomenon in two directions.
   float cloud_swing = 0.0F;
+
+  // -- wind and the names of days (Кожаный босс, 2026-09-05) ---------------
+  //
+  // ALL OPTIONAL COLUMNS WITH THE DESIGN'S OWN NUMBERS AS DEFAULTS, on the
+  // same terms as the memory knobs above: tables/weather.csv is generated
+  // from db/design.db and this module does not edit it, so the numbers stand
+  // here until boss adds the columns. ParseWeatherTable READS EVERY ONE OF
+  // THEM by name — the promise and the mechanism are checked against each
+  // other, and this comment is the place the check was failed once.
+
+  /// Share of days that are still, 0..1. The rest split between kWind and
+  /// kStrongWind by `wind_share`.
+  float calm_share = 0.35F;
+
+  /// Share of days at kWind. What is left after this and `calm_share` is
+  /// kStrongWind, so the three always sum to one by construction.
+  float wind_share = 0.5F;
+
+  /// Thunderstorm window, 0-based months, inclusive: MAY TO AUGUST, which is
+  /// 4..7. Outside it a thunderstorm cannot happen at all.
+  std::uint8_t thunder_from_month = 4;
+
+  std::uint8_t thunder_to_month = 7;
+
+  /// Share of wet days inside the window that thunder rather than just rain.
+  float thunder_share = 0.35F;
+
+  /// Afternoon below which a wet day is rain and not a storm.
+  float thunder_min_celsius = 15.0F;
+
+  /// A blizzard needs snow, a strong wind, and a temperature NOT below this:
+  /// it comes about zero and down to -10..-15, never in a hard frost.
+  float blizzard_min_celsius = -10.0F;
+
+  /// A dry night at or below this is named a frost — but only inside the
+  /// window below, because every winter night is under zero and a name that
+  /// fires on all of them says nothing.
+  float frost_night_celsius = 0.0F;
+
+  /// Frost window, 0-based months inclusive: the growing half of the year,
+  /// where a frost is the one that kills seedlings.
+  std::uint8_t frost_from_month = 3;
+
+  std::uint8_t frost_to_month = 9;
+
+  /// Afternoon at or above which a dry day is named heat. The drought
+  /// threshold of tables/farming.csv, kept here as the naming rule's own.
+  float heat_afternoon_celsius = 25.0F;
+
+  /// Share of still dry days that fog over.
+  float fog_share = 0.2F;
 };
 
 using SeasonTable = std::array<SeasonWeather, kSeasonsPerYear>;
@@ -185,6 +243,12 @@ float SeasonalMeanTemperature(const SeasonTable& seasons, std::uint32_t day_of_y
 const SeasonWeather& SeasonOfDayOfYear(const SeasonTable& seasons, std::uint32_t day_of_year) {
   const auto month = static_cast<Month>((day_of_year / kDaysPerMonth) % kMonthsPerYear);
   return seasons[static_cast<std::uint32_t>(SeasonOfMonth(month))];
+}
+
+/// @brief The 0-based month a day of the year falls in — the unit the
+/// phenomenon windows are written in, the same one the crop tables use.
+std::uint8_t MonthOfDayOfYear(std::uint32_t day_of_year) {
+  return static_cast<std::uint8_t>((day_of_year / kDaysPerMonth) % kMonthsPerYear);
 }
 
 /// @brief Is this a wet day? A two-state chain, unrolled over the window.
@@ -280,6 +344,77 @@ WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, 
   weather.temperature_swing_celsius =
       season.temperature_amplitude_celsius *
       (1.0F + season.cloud_swing * (1.0F - 2.0F * weather.cloud_cover));
+
+  // -- the wind, drawn on its own ------------------------------------------
+  //
+  // Its own salt and no memory: the design says wind is random and almost
+  // unrelated to the weather, so nothing above feeds into it. The band comes
+  // out of one uniform draw by season shares, and kSquall is NOT reachable
+  // here — a squall belongs to a thunderstorm and is assigned below, after
+  // the day has a name.
+  const float gust = CounterHashUnitFloat(world_seed, day, 0, kWindSalt);
+  weather.wind = gust < season.calm_share                       ? WindBand::kCalm
+                 : gust < season.calm_share + season.wind_share ? WindBand::kWind
+                                                                : WindBand::kStrongWind;
+
+  // -- and then what the day is CALLED --------------------------------------
+  //
+  // ONE NAME PER DAY, so the roster is a PRIORITY and not a set: a day can be
+  // raining and foggy and above +25 at once, and the presentation shows one
+  // icon. The order is the trouble's own — what would make the player act
+  // first stands first — and it is fixed, so two runs never disagree about
+  // what a day was called.
+  const float afternoon = temperature + weather.temperature_swing_celsius;
+  const float night = temperature - weather.temperature_swing_celsius;
+  const std::uint8_t month = MonthOfDayOfYear(day_of_year);
+  if (weather.precipitation == Precipitation::kSnow) {
+    // A blizzard is snow AND a strong wind AND not a hard frost. The last is
+    // Кожаный босс's ruling and it is physics: a blizzard comes about zero
+    // and down to -10..-15, while at -25 the sky is clear and the air stands
+    // still. It buys a live signal for nothing — the cruellest cold is the
+    // stillest, clearest day — so the two winter troubles look like
+    // opposites and neither reads as the other.
+    weather.phenomenon =
+        weather.wind >= WindBand::kStrongWind && temperature >= season.blizzard_min_celsius
+            ? WeatherPhenomenon::kBlizzard
+            : WeatherPhenomenon::kSnowfall;
+  } else if (weather.precipitation == Precipitation::kRain) {
+    // A thunderstorm is rain inside the storm window and warm enough, with a
+    // draw of its own for how often. OUTSIDE THE WINDOW IT CANNOT HAPPEN at
+    // all — not by climate and not by a quest's order, which is why the
+    // window is tested before the draw and not after.
+    const bool in_window = month >= season.thunder_from_month && month <= season.thunder_to_month;
+    const bool warm = afternoon >= season.thunder_min_celsius;
+    const bool struck =
+        CounterHashUnitFloat(world_seed, day, 0, kThunderSalt) < season.thunder_share;
+    weather.phenomenon =
+        in_window && warm && struck ? WeatherPhenomenon::kThunderstorm : WeatherPhenomenon::kRain;
+    // The squall is a part of the storm and nothing else's: it is the squall
+    // that lays the corn, not the rain. A storm that already blows hard gets
+    // it; a still storm stays still.
+    if (weather.phenomenon == WeatherPhenomenon::kThunderstorm &&
+        weather.wind >= WindBand::kStrongWind) {
+      weather.wind = WindBand::kSquall;
+    }
+  } else if (night <= season.frost_night_celsius && month >= season.frost_from_month &&
+             month <= season.frost_to_month) {
+    // Frost is named only in the growing half of the year, and that is not a
+    // simplification: every winter night is below zero, so a name that fired
+    // on all of them would say nothing. What the design wants named is the
+    // frost that KILLS SEEDLINGS — the one out of season.
+    weather.phenomenon = WeatherPhenomenon::kFrost;
+  } else if (afternoon >= season.heat_afternoon_celsius) {
+    weather.phenomenon = WeatherPhenomenon::kHeat;
+  } else if (weather.wind == WindBand::kCalm &&
+             CounterHashUnitFloat(world_seed, day, 0, kFogSalt) < season.fog_share) {
+    // Fog needs still air, and that is the one place wind touches the name of
+    // the day. It is not a contradiction of "wind is unrelated to weather":
+    // the wind is still drawn first and on its own, and the day is named
+    // around it rather than the other way about.
+    weather.phenomenon = WeatherPhenomenon::kFog;
+  } else {
+    weather.phenomenon = WeatherPhenomenon::kClear;
+  }
   return weather;
 }
 
@@ -309,8 +444,9 @@ class TimeSystem final : public ITimeSystem {
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
 
-  Precipitation PrecipitationOn(std::uint64_t world_seed, SimDay day) const override {
-    return WeatherOfDay(seasons_, world_seed, day).precipitation;
+  DayForecast WeatherOn(std::uint64_t world_seed, SimDay day) const override {
+    const WeatherState weather = WeatherOfDay(seasons_, world_seed, day);
+    return DayForecast{.phenomenon = weather.phenomenon, .wind = weather.wind};
   }
 
  private:
@@ -334,6 +470,29 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
   const std::uint32_t memory_column = table.FindColumn("temp_memory");
   const std::uint32_t persistence_column = table.FindColumn("wet_persistence");
   const std::uint32_t cloud_column = table.FindColumn("cloud_swing");
+  // The wind and the naming rules (the wind parcel, 2026-09-05), optional on
+  // exactly the same terms: a table from before them keeps the defaults of
+  // SeasonWeather, which are the design's own numbers.
+  //
+  // THESE ARE READ AND NOT MERELY DECLARED, and that distinction is the
+  // finding this loop exists because of: the struct's comment promised that
+  // a column added to weather.csv "wins the moment it appears", while the
+  // parser knew none of these names — so the column would have been dropped
+  // without a word, in a parser that is otherwise strict about every name it
+  // does know. A promise about a mechanism is a description of it, and an
+  // undescribed silence is the worse half.
+  const std::uint32_t calm_column = table.FindColumn("calm_share");
+  const std::uint32_t wind_column = table.FindColumn("wind_share");
+  const std::uint32_t thunder_from_column = table.FindColumn("thunder_from_month");
+  const std::uint32_t thunder_to_column = table.FindColumn("thunder_to_month");
+  const std::uint32_t thunder_share_column = table.FindColumn("thunder_share");
+  const std::uint32_t thunder_warm_column = table.FindColumn("thunder_min_c");
+  const std::uint32_t blizzard_column = table.FindColumn("blizzard_min_c");
+  const std::uint32_t frost_night_column = table.FindColumn("frost_night_c");
+  const std::uint32_t frost_from_column = table.FindColumn("frost_from_month");
+  const std::uint32_t frost_to_column = table.FindColumn("frost_to_month");
+  const std::uint32_t heat_column = table.FindColumn("heat_afternoon_c");
+  const std::uint32_t fog_column = table.FindColumn("fog_share");
   if (mean_column == kNoTableColumn || spread_column == kNoTableColumn ||
       chance_column == kNoTableColumn) {
     error = "weather: a required column is missing";
@@ -387,21 +546,66 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
       *out = *cell;
       return true;
     };
-    float memory = 0.0F;
-    float persistence = 0.0F;
-    float cloud_swing = 0.0F;
-    if (!knob(memory_column, "temp_memory", 0.95F, &memory) ||
-        !knob(persistence_column, "wet_persistence", 0.95F, &persistence) ||
-        !knob(cloud_column, "cloud_swing", 1.0F, &cloud_swing)) {
+    // A number that may be negative — a temperature — needs its own reader:
+    // `knob` bounds 0..top, and a blizzard's ceiling is below zero by nature.
+    const auto degrees = [&table, row, &error](std::uint32_t column, const char* name, float* out) {
+      if (column == kNoTableColumn) {
+        return true;
+      }
+      const std::optional<float> cell = table.CellReal(row, column);
+      if (!cell || !(*cell >= kTemperatureMinCelsius && *cell <= kTemperatureMaxCelsius)) {
+        error = std::string("weather: ") + name + " must be a temperature on the -15..+30 scale";
+        return false;
+      }
+      *out = *cell;
+      return true;
+    };
+    // And a month is 0..11 and whole. Out of range is an error and not a
+    // clamp, for the reason the memory knobs give: a window quietly widened
+    // to the whole year would look like a working rule.
+    const auto month = [&table, row, &error](
+                           std::uint32_t column, const char* name, std::uint8_t* out) {
+      if (column == kNoTableColumn) {
+        return true;
+      }
+      const std::optional<float> cell = table.CellReal(row, column);
+      if (!cell || !(*cell >= 0.0F && *cell <= 11.0F)) {
+        error = std::string("weather: ") + name + " must be a 0-based month, 0..11";
+        return false;
+      }
+      *out = static_cast<std::uint8_t>(*cell);
+      return true;
+    };
+    SeasonWeather into;
+    if (!knob(memory_column, "temp_memory", 0.95F, &into.temperature_memory) ||
+        !knob(persistence_column, "wet_persistence", 0.95F, &into.wet_persistence) ||
+        !knob(cloud_column, "cloud_swing", 1.0F, &into.cloud_swing) ||
+        !knob(calm_column, "calm_share", 1.0F, &into.calm_share) ||
+        !knob(wind_column, "wind_share", 1.0F, &into.wind_share) ||
+        !knob(thunder_share_column, "thunder_share", 1.0F, &into.thunder_share) ||
+        !knob(fog_column, "fog_share", 1.0F, &into.fog_share) ||
+        !degrees(thunder_warm_column, "thunder_min_c", &into.thunder_min_celsius) ||
+        !degrees(blizzard_column, "blizzard_min_c", &into.blizzard_min_celsius) ||
+        !degrees(frost_night_column, "frost_night_c", &into.frost_night_celsius) ||
+        !degrees(heat_column, "heat_afternoon_c", &into.heat_afternoon_celsius) ||
+        !month(thunder_from_column, "thunder_from_month", &into.thunder_from_month) ||
+        !month(thunder_to_column, "thunder_to_month", &into.thunder_to_month) ||
+        !month(frost_from_column, "frost_from_month", &into.frost_from_month) ||
+        !month(frost_to_column, "frost_to_month", &into.frost_to_month)) {
       return false;
     }
-    seasons[season] = {.temperature_mean_celsius = *mean,
-                       .temperature_spread_celsius = *spread,
-                       .temperature_amplitude_celsius = amplitude,
-                       .precipitation_chance_percent = *chance,
-                       .temperature_memory = memory,
-                       .wet_persistence = persistence,
-                       .cloud_swing = cloud_swing};
+    // THE TWO SHARES TOGETHER DECIDE A THIRD, so they are checked together:
+    // what is left after calm and wind is the strong-wind share, and a table
+    // whose two sum past one would name a negative one.
+    if (into.calm_share + into.wind_share > 1.0F) {
+      error = "weather: calm_share + wind_share must not exceed 1 — the rest is the strong wind";
+      return false;
+    }
+    into.temperature_mean_celsius = *mean;
+    into.temperature_spread_celsius = *spread;
+    into.temperature_amplitude_celsius = amplitude;
+    into.precipitation_chance_percent = *chance;
+    seasons[season] = into;
   }
   return true;
 }

@@ -286,8 +286,9 @@ class ISimulation {
   /// @note Called between steps on the sim thread.
   virtual Deadline WearDeadline(UnitId unit) const = 0;
 
-  /// @brief The precipitation of the next `into.size()` days, tomorrow
-  /// first, filled in place.
+  /// @brief The weather of the next `into.size()` days, tomorrow first,
+  /// filled in place: what each day will be CALLED and how it will blow
+  /// (DayForecast, world_state.h).
   ///
   /// IT IS A QUERY AND NOT A MEMORY. The weather is a pure function of
   /// (world_seed, day) — no history is kept anywhere — so the days ahead are
@@ -300,10 +301,11 @@ class ISimulation {
   /// this signature: nothing here stops a caller asking for ten, and the
   /// boundary is where the three is spent (session.h).
   ///
-  /// The bare engine has no weather and leaves every entry kNone — the same
-  /// answer a table-less world gives.
+  /// The bare engine has no weather and leaves every entry at a default
+  /// DayForecast — clear and still, the same answer a table-less world gives
+  /// for today.
   /// @note Called between steps on the sim thread.
-  virtual void CollectPrecipitationForecast(std::span<Precipitation> into) const = 0;
+  virtual void CollectWeatherForecast(std::span<DayForecast> into) const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.

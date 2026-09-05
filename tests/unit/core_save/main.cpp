@@ -87,6 +87,12 @@ core::WorldState MakeWorld() {
   world.weather.air_temperature_celsius = -17.25F;
   world.weather.daylight_hours = 6.5F;
   world.weather.precipitation = core::Precipitation::kSnow;
+  // The day's two NAMES (the wind parcel, 2026-09-05). Deliberately a pair
+  // that cannot be re-derived from the numbers beside them: a blizzard is
+  // snow plus a strong wind plus a temperature, and a codec that dropped
+  // either field would still load a snowy day and look right.
+  world.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
+  world.weather.wind = core::WindBand::kStrongWind;
   world.epoch = core::Epoch::kTwo;
   world.world_seed = 0x0BADC0FFEEULL;
   world.rng = core::SeedRngState(world.world_seed, 3);
@@ -341,6 +347,9 @@ int main() {
   failures += Expect(loaded.residents.rows[0].post.profession.value == 1 &&
                          loaded.residents.rows[0].post.unit.value == 1,
                      "the post he holds came back whole");
+  failures += Expect(loaded.weather.phenomenon == core::WeatherPhenomenon::kBlizzard &&
+                         loaded.weather.wind == core::WindBand::kStrongWind,
+                     "the day's name and its wind band survive the round trip");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.residents.next_id_value == world.residents.next_id_value &&
