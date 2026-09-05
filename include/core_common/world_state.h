@@ -239,6 +239,36 @@ struct WeatherState {
   /// the icon for the phenomenon, because otherwise a windy clear day would
   /// have to be called "wind" and lose the "clear".
   WindBand wind = WindBand::kCalm;
+
+  /// HOW MANY DAYS THE SNOW HAS LAIN. 0 is bare ground; anything above is
+  /// the core's word that snow COVERS the ground today.
+  ///
+  /// A STATE AND NOT AN EVENT, and that is the whole reason it is a field
+  /// rather than a SimEvent: the presentation paints a POSITION, not a
+  /// transition, and a world just loaded has to know whether snow lies
+  /// before it has stepped once. Three readers wait on this one word and
+  /// none of them may guess it from the month — the layer's white winter
+  /// ("until the core says settled snow, winter ground is dead grass"), the
+  /// fallen leaf that lies until the snow and not for a fixed forty days,
+  /// and the field, where snow on an unreaped crop is the one total loss.
+  ///
+  /// THE ONLY FIELD OF THIS STRUCT THAT IS NOT A FUNCTION OF (seed, day).
+  /// Everything else here is drawn afresh for whatever day is asked, which
+  /// is what makes the three-day forecast free. Snow on the ground is
+  /// history by nature — it is there because it fell and has not yet
+  /// melted — so it is carried forward from yesterday by the weather phase
+  /// and it is saved. That is a departure from the file's own rule, made
+  /// deliberately and not by drift: the alternative was to walk the year
+  /// back to the last certainly-bare summer day on every query, which costs
+  /// a day's weather forty-eight times over to answer a question nobody
+  /// asks about the future.
+  ///
+  /// COUNTED IN DAYS RATHER THAN STORED AS A FLAG, because a count is one
+  /// fact and a flag beside a count would be two homes for it. What "the
+  /// cover is settled" means is decided by the melt rule that maintains
+  /// this number, not by a second threshold on top of it: a dusting that
+  /// thaws tomorrow never reaches a second day.
+  std::uint16_t snow_cover_days = 0;
 };
 
 /// @brief The chairman's standing. He is an abstract figure without a body or

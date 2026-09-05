@@ -6,7 +6,14 @@
 // The static_asserts below are the tripwire for the case neither direction
 // was touched: a new field changes sizeof(RowT) and the build stops until
 // the writer, the reader and the assert are all updated — and the human
-// bumps VERSION_SAVE (manual/67-save-format.md §7). A size that fails on a
+// bumps VERSION_SAVE (manual/67-save-format.md §7).
+//
+// AND THE SIZE IS ONLY HALF THE TRIPWIRE since 2026-09-05: it cannot see a
+// field that fits the existing padding, which has happened four times here
+// and left the build green every time. Beside each size stands the FIELD
+// COUNT (aggregate_arity.h), which is the thing that actually changed.
+//
+// A size that fails on a
 // NEW TARGET, though, is a different animal: there the layout moved and the
 // format did not, and an assert that cannot tell the two apart cries wolf.
 // Hence the reckoning below — anything whose size belongs to the standard
@@ -17,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "aggregate_arity.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -37,8 +45,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
 static_assert(sizeof(ResidentRow) == 164,
               "ResidentRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ResidentRow>() == 36,
+              "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FamilyRow>() == 15,
+              "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
 // see. The STREAM grew by a byte per field all the same, and VERSION_SAVE is
@@ -49,12 +61,22 @@ static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
 // split), and this time the tripwire fired before the codec did — which is
 // the one thing it is for.
 static_assert(sizeof(FieldRow) == 72, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 22,
+              "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(UnitRow) == 48 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<UnitRow>() == 8,
+              "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 18,
+              "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<OrderRow>() == 15,
+              "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 24,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorkAssignment>() == 6,
+              "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 
 /// Highest valid value of each u8 enum a row carries. The reader refuses
 /// anything above (LoadSource::ReadEnumValue) — see its docs for why.

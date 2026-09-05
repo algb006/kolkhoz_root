@@ -176,6 +176,33 @@ struct Shape {
   std::uint32_t wet_in_storm_window = 0;
 
   std::uint32_t refused_by_cold = 0;
+
+  /// THE SETTLED SNOW, which is the one word three readers wait on: the
+  /// layer's white winter, the leaf that lies until the snow, and the field
+  /// where snow on an unreaped crop is the whole loss.
+  std::uint32_t covered_days = 0;
+
+  /// Snowfalls that laid a cover which did NOT reach a second day — the set
+  /// the melt rule refuses. Zero here would mean the rule never separates a
+  /// dusting from a winter, and the number would be a comment.
+  std::uint32_t dustings = 0;
+
+  /// The day of the year on which the cover first appeared, per year, and
+  /// the longest unbroken cover seen.
+  std::uint32_t longest_cover = 0;
+
+  std::array<std::uint32_t, core::kSeasonsPerYear> covered_by_season{};
+
+  /// HOW LONG THE FALLEN LEAF LIES, which is what the layer actually asks:
+  /// days from the first of October to the first morning with snow on the
+  /// ground. One entry per year; the design's leaf lies "until the snow"
+  /// and not for a fixed forty days, so this is the length of that "until".
+  std::vector<std::uint32_t> leaf_waits;
+
+  /// Years in which the wait ran a whole year without a cover. THE DESIGN
+  /// HAS NO SECOND END for the leaf, so a single snowless year is not a
+  /// curiosity — it is a leaf that lies until spring.
+  std::uint32_t snowless_years = 0;
 };
 
 const char* SeasonName(std::size_t season) {
@@ -257,6 +284,8 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
   std::uint32_t wet_run = 0;
   std::uint32_t dry_run = 0;
   std::uint32_t hot_run = 0;
+  bool waiting = false;
+  std::uint32_t waited = 0;
 
   for (std::uint32_t day = 1; day <= kYears * core::kDaysPerYear; ++day) {
     // One tick per day is enough and is the whole point: the weather is a
@@ -266,6 +295,14 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
     core::RefreshCalendarCaches(previous.calendar);
     current = previous;
     system->TimeAndWeatherPhase().RunSequential(previous, current);
+    // AND YESTERDAY HAS TO BECOME YESTERDAY, at the bottom of the loop. It
+    // did not until 2026-09-05, and nothing was wrong until then: every
+    // field of the weather was a function of (seed, day), so `previous`
+    // could stay at its defaults forever without the numbers noticing.
+    // Snow on the ground is the first field carried over, and the first
+    // reading with it said "the cover never lasts a second day" — which was
+    // the instrument talking about itself. THE MODEL CHANGED SHAPE AND THE
+    // HARNESS DID NOT, and the harness said so in the model's voice.
 
     // THE FORECAST IS THE SAME ARITHMETIC OR IT IS A SECOND WEATHER. The
     // phase wrote today's name and wind into `current`; WeatherOn is what
@@ -304,6 +341,18 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
       const double afternoon = static_cast<double>(current.weather.air_temperature_celsius) +
                                static_cast<double>(current.weather.temperature_swing_celsius);
       shape.refused_by_cold += afternoon < 15.0 ? 1U : 0U;
+    }
+    // The cover, and the two things worth knowing about it: how much of the
+    // year it lies, and how often it fails to last a second day.
+    if (current.weather.snow_cover_days > 0) {
+      ++shape.covered_days;
+      shape.covered_by_season[static_cast<std::size_t>(current.calendar.season)] += 1U;
+      shape.longest_cover = current.weather.snow_cover_days > shape.longest_cover
+                                ? current.weather.snow_cover_days
+                                : shape.longest_cover;
+    }
+    if (previous.weather.snow_cover_days == 1 && current.weather.snow_cover_days == 0) {
+      ++shape.dustings;  // laid yesterday, gone today
     }
     if (current.weather.precipitation == core::Precipitation::kSnow) {
       ++shape.snowy_days;
@@ -345,6 +394,24 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
       shape.hot_runs.Add(hot_run);
       hot_run = 0;
     }
+    // The leaf's wait: start counting on 1 October and stop on the first
+    // morning the ground is white.
+    const std::uint32_t day_of_year = current.calendar.day % core::kDaysPerYear;
+    if (day_of_year == 36U) {  // month 9 counting from zero: October
+      waiting = true;
+      waited = 0;
+    }
+    if (waiting) {
+      ++waited;
+      if (current.weather.snow_cover_days > 0) {
+        shape.leaf_waits.push_back(waited);
+        waiting = false;
+      } else if (waited >= core::kDaysPerYear) {
+        ++shape.snowless_years;
+        waiting = false;
+      }
+    }
+    previous = current;  // today becomes yesterday — see the note above
   }
   return true;
 }
@@ -389,6 +456,28 @@ void Print(const char* label, const Shape& shape) {
             << shape.squalls_without_a_storm << '\n';
   std::cout << "  wet days in the storm window " << shape.wet_in_storm_window
             << ", of them too cool to thunder " << shape.refused_by_cold << '\n';
+  std::cout << "  snow on the ground " << shape.covered_days << " days ("
+            << (100.0 * shape.covered_days / (kYears * core::kDaysPerYear))
+            << "% of the year), longest unbroken " << shape.longest_cover
+            << ", dustings gone next day " << shape.dustings << '\n';
+  if (!shape.leaf_waits.empty()) {
+    std::vector<std::uint32_t> sorted = shape.leaf_waits;
+    std::sort(sorted.begin(), sorted.end());
+    std::cout << "  leaf waits for snow: " << sorted.size() << " years, shortest " << sorted.front()
+              << ", median " << sorted[sorted.size() / 2] << ", longest " << sorted.back()
+              << " days; snowless years " << shape.snowless_years << '\n';
+    std::cout << "  wait distribution:";
+    for (std::size_t at = 0; at < sorted.size();
+         at += sorted.size() / 10 == 0 ? 1 : sorted.size() / 10) {
+      std::cout << ' ' << sorted[at];
+    }
+    std::cout << '\n';
+  }
+  std::cout << "  cover by season:";
+  for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+    std::cout << ' ' << SeasonName(season) << ' ' << shape.covered_by_season[season];
+  }
+  std::cout << '\n';
   std::cout << "  snowy days " << shape.snowy_days << ", of them blown but too cold for a blizzard "
             << shape.snowfall_denied_by_cold << " ("
             << (shape.snowy_days == 0 ? 0.0
@@ -564,6 +653,47 @@ int main(int argc, char** argv) {
   // of climate. The two numbers above are a MEASUREMENT of today's
   // distribution and they age silently; this one says what the rule must
   // always do — refuse somebody — and it cannot age (boss, 2026-09-05).
+  // -- THE SETTLED SNOW, three claims and each can fail --------------------
+  //
+  // The layer paints winter white on THIS WORD and on nothing else, and the
+  // fallen leaf lies until it, so the failure that matters is not "the number
+  // is wrong" but "the word never comes" or "it never goes".
+  failures += run::Expect(shipped.covered_days > 0, "snow does lie on the ground");
+  // AND IT LIES AFTER THE SNOWFALL, which is the whole of what a cover is
+  // and the thing the first three checks could not see. Damage the carry so
+  // that yesterday's cover is never read, and every one of them still
+  // passed: snow lay, it went away, no summer day was white, dustings were
+  // refused — all true of a world where snow vanishes the morning after it
+  // falls. THE QUESTION WAS "DOES SNOW LIE" WHEN IT HAD TO BE "DOES IT LIE
+  // WHEN IT IS NOT SNOWING". These two need no threshold: a cover that
+  // outlives nothing covers exactly the snowy days and never reaches a
+  // second morning.
+  failures += run::Expect(shipped.covered_days > shipped.snowy_days,
+                          "and it lies on more days than it snows — a cover outlives its snowfall");
+  failures += run::Expect(shipped.longest_cover > 1,
+                          "and reaches a second morning at least once in two hundred years");
+  // THE LEAF'S SECOND END. The design says a fallen leaf lies "until the
+  // snow" and names no other limit, so a year whose snow never settles is
+  // not a curiosity in the climate — it is a leaf that lies until spring
+  // and a layer with nothing to end it. This is a requirement of the
+  // design's own wording, not an observation about today's numbers, and it
+  // is the reading that would have to change if the climate ever did.
+  failures += run::Expect(shipped.snowless_years == 0,
+                          "every year gets snow on the ground: the leaf that lies 'until the snow' "
+                          "always has an end");
+  failures += run::Expect(shipped.leaf_waits.size() > 100,
+                          "and the wait was measured in most of the years, not a handful");
+  failures += run::Expect(shipped.covered_days < kYears * core::kDaysPerYear / 2,
+                          "and it goes away again: a cover over half the year is a rule that "
+                          "never melts");
+  failures += run::Expect(
+      shipped.covered_by_season[static_cast<std::size_t>(core::Season::kSummer)] == 0,
+      "and no summer day ever has snow on the ground — the layer must never paint July white");
+  // THE MELT RULE REFUSES A SHARE, stated the way boss asked the blizzard's
+  // to be: a rule that never separates a dusting from a winter is a comment.
+  failures += run::Expect(shipped.dustings > 0,
+                          "a snowfall that thaws next day leaves no cover — the melt rule refuses "
+                          "a non-zero share of them");
   failures += run::Expect(shipped.snowfall_denied_by_cold > 0,
                           "and the cold rule refuses a non-zero share of blown snowy days: a "
                           "threshold outside what the world produces is a comment, not a rule");

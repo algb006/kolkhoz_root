@@ -135,6 +135,17 @@ class FieldGrowthPhase final : public IParallelPhase {
       // capped where the single number used to be capped — clamping a
       // running total every day and clamping it once at the end give the
       // same value, because the increments are never negative.
+      //
+      // AND THE SPELL IS COUNTED IN HOT DRY DAYS, which is the design's own
+      // definition and not a stricter reading of it: "затяжные +25…+30 в
+      // июне–июле" (farming design §6). It was changed to "dry and warm" on
+      // 2026-09-05 and changed straight back, because the check below —
+      // written against that same design line months earlier — said that a
+      // mild dry spell announces nothing, and it was right. The rarity of
+      // kDrying is the CLIMATE's: a run of four afternoons past +25 happens
+      // about twice in a lifetime here, which is what the design describes.
+      // Nothing about the shape was broken; only the number is open, and the
+      // number is the run length in tables/farming.csv.
       if (weather.precipitation == Precipitation::kRain) {
         field.wet_stress += farming.stress_per_day * crop.wet_sensitivity;
         field.wet_run_days = field.wet_run_days < 255 ? field.wet_run_days + 1 : 255;

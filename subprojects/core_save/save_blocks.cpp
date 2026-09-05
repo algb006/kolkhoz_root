@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <span>
 
+#include "aggregate_arity.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/world_state.h"
@@ -31,12 +32,24 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
 static_assert(sizeof(YearLedger) == 136 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<YearLedger>() == 37,
+              "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<VitalsState>() == 4,
+              "VitalsState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
+static_assert(AggregateArity<CalendarState>() == 6,
+              "CalendarState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WeatherState) == 24,
               "WeatherState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WeatherState>() == 8,
+              "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
+static_assert(AggregateArity<ChairmanState>() == 4,
+              "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RngState>() == 2,
+              "RngState gained or lost a field — update the codec and VERSION_SAVE");
 
 constexpr std::uint8_t kMinEpoch = static_cast<std::uint8_t>(Epoch::kOne);
 
@@ -198,6 +211,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // stepped once.
   out.WriteU8(static_cast<std::uint8_t>(world.weather.phenomenon));
   out.WriteU8(static_cast<std::uint8_t>(world.weather.wind));
+  // How many days the snow has lain (the settled-snow parcel, 2026-09-05).
+  // THE ONLY WEATHER FIELD THAT IS NOT RECOMPUTABLE from (seed, day): a
+  // cover is history, so losing it here would lose it for good, and a
+  // loaded January would show bare ground until the next snowfall.
+  out.WriteU16(world.weather.snow_cover_days);
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -245,6 +263,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->weather.phenomenon =
       static_cast<WeatherPhenomenon>(source.ReadEnumValue(0, kMaxPhenomenon, "weather phenomenon"));
   world->weather.wind = static_cast<WindBand>(source.ReadEnumValue(0, kMaxWindBand, "wind band"));
+  world->weather.snow_cover_days = in.ReadU16();
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

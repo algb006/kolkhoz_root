@@ -93,6 +93,13 @@ core::WorldState MakeWorld() {
   // either field would still load a snowy day and look right.
   world.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
   world.weather.wind = core::WindBand::kStrongWind;
+  // AND THE SNOW ON THE GROUND, which is the one weather field that cannot
+  // be recomputed from (seed, day): lose it here and a loaded January shows
+  // bare earth until the next snowfall. It was written and NOT read once,
+  // and this test did not see it — the run suite did, four sections later,
+  // when the epoch landed on two bytes of snow. A round trip that omits a
+  // field is a round trip that certifies the fields it happens to name.
+  world.weather.snow_cover_days = 9;
   world.epoch = core::Epoch::kTwo;
   world.world_seed = 0x0BADC0FFEEULL;
   world.rng = core::SeedRngState(world.world_seed, 3);
@@ -350,6 +357,8 @@ int main() {
   failures += Expect(loaded.weather.phenomenon == core::WeatherPhenomenon::kBlizzard &&
                          loaded.weather.wind == core::WindBand::kStrongWind,
                      "the day's name and its wind band survive the round trip");
+  failures +=
+      Expect(loaded.weather.snow_cover_days == 9, "and so does the snow lying on the ground");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.residents.next_id_value == world.residents.next_id_value &&

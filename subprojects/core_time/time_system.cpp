@@ -205,6 +205,14 @@ struct SeasonWeather {
 
   /// Share of still dry days that fog over.
   float fog_share = 0.2F;
+
+  /// Daily mean at or above which a snow cover MELTS AWAY, in one day.
+  /// Below it the cover simply lies where it is; a day that snows always
+  /// lays one whether it is melting weather or not, and tomorrow decides.
+  ///
+  /// The threshold is above zero on purpose: a cover survives an afternoon
+  /// that touches thaw, and goes under a day that is warm through.
+  float snow_melt_celsius = 2.0F;
 };
 
 using SeasonTable = std::array<SeasonWeather, kSeasonsPerYear>;
@@ -435,6 +443,42 @@ WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, 
   return weather;
 }
 
+/// @brief Yesterday's snow cover carried into today.
+///
+/// THE RULE IN ONE LINE: snow lays a cover, a warm day takes it away, and any
+/// other day leaves it lying and one day older.
+///
+///   * a day whose precipitation is snow always leaves a cover, whatever the
+///     temperature — snow that falls is on the ground by evening;
+///   * a day whose MEAN is at or above the melt threshold clears it whole. A
+///     mean, not an afternoon: a cover survives an hour of thaw and goes
+///     under a day that is warm the whole way through;
+///   * anything else leaves it as it was, one day older.
+///
+/// A DUSTING THAT THAWS NEVER REACHES ITS SECOND DAY, which is what makes
+/// this number mean "settled" without a second threshold on top of it.
+///
+/// The count saturates rather than wrapping: a cover that lay for sixty-five
+/// thousand days is a bug elsewhere, and a wrap would say "bare ground" in
+/// the middle of February.
+std::uint16_t SnowCoverAfter(const SeasonTable& seasons,
+                             const WeatherState& yesterday,
+                             const WeatherState& today,
+                             SimDay day) {
+  const SeasonWeather& season = SeasonOfDayOfYear(seasons, day % kDaysPerYear);
+  const std::uint16_t lying = yesterday.snow_cover_days;
+  if (today.precipitation == Precipitation::kSnow) {
+    return lying < 65000U ? static_cast<std::uint16_t>(lying + 1U) : lying;
+  }
+  if (today.air_temperature_celsius >= season.snow_melt_celsius) {
+    return 0;
+  }
+  if (lying == 0) {
+    return 0;
+  }
+  return lying < 65000U ? static_cast<std::uint16_t>(lying + 1U) : lying;
+}
+
 /// Phase 1 slot: clock, calendar caches, the day's weather.
 class TimeAndWeatherSlot final : public ISequentialPhase {
  public:
@@ -449,6 +493,13 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     // The arithmetic lives in WeatherOfDay because the forecast asks the
     // same question about days ahead — one rule, one home.
     current.weather = WeatherOfDay(seasons_, current.world_seed, current.calendar.day);
+    // AND THE ONE THING THE DAY CANNOT DRAW FOR ITSELF: whether snow lies.
+    // It carries over from yesterday, because that is what a cover IS — it
+    // is on the ground because it fell and has not melted (world_state.h).
+    // Read from `previous` and written to `current`, like everything else in
+    // this phase, so a re-run of the same tick writes the same number.
+    current.weather.snow_cover_days =
+        SnowCoverAfter(seasons_, previous.weather, current.weather, current.calendar.day);
   }
 
  private:
