@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "core_catalog/table_value.h"
@@ -118,7 +119,6 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t gate_col = unit_types.FindColumn("gate");
   const std::uint32_t built_col = unit_types.FindColumn("player_built");
   const std::uint32_t era_col = unit_types.FindColumn("era");
-  const std::uint32_t tonnes_col = unit_types.FindColumn("storage_capacity_t");
   const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
   const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
   const std::uint32_t wear_factor_col = unit_types.FindColumn("wear_factor");
@@ -153,17 +153,6 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     type.era = static_cast<std::uint8_t>(number);
-    if (!CellOrDefault(unit_types,
-                       row,
-                       tonnes_col,
-                       Range{.low = 0.0F, .high = kMaxStorageTonnes},
-                       0.0F,
-                       number,
-                       error)) {
-      Fail(error, "unit_types", "storage_capacity_t is out of range in row " + std::to_string(row));
-      return false;
-    }
-    type.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
     if (!CellOrDefault(
             unit_types, row, by_plot_col, Range{.low = 0.0F, .high = 1.0F}, 0.0F, number, error)) {
       Fail(error, "unit_types", "capacity_by_plot is not 0 or 1 in row " + std::to_string(row));
@@ -223,6 +212,66 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
     }
     if (!(type.wear_factor > 0.0F)) {
       type.wear_factor = 1.0F;
+    }
+  }
+  return true;
+}
+
+/// @brief Refuses a table set whose store capacities cannot be read off the
+///        level ladder, which is now the only place they live.
+///
+/// Two shapes, and both end in a SILENT ZERO — a store that holds nothing
+/// looks exactly like a store nobody has filled, which is what host stumbled
+/// over on 2026-09-05.
+///
+/// 1. The type row still names storage_capacity_t while no level row does.
+///    That is the leftover column talking, and the load says so rather than
+///    losing the number without a word.
+/// 2. The ladder names a capacity at one step and leaves another blank. A
+///    granary of 150 t at level 1 and nothing at level 2 used to borrow the
+///    type's figure for level 2; it would now be a warehouse that empties
+///    itself the day it is enlarged.
+bool CheckCapacityLadder(const ITable& unit_types, ConstructionConfig& config, std::string& error) {
+  const std::uint32_t tonnes_col = unit_types.FindColumn("storage_capacity_t");
+  for (std::uint32_t row = 0; row < config.types.size() && row < unit_types.RowCount(); ++row) {
+    const BuildType& type = config.types[row];
+    const std::string key(unit_types.CellText(row, 0));
+    bool named_anywhere = false;
+    for (const BuildLevel& step : type.levels) {
+      named_anywhere = named_anywhere || step.storage_capacity_grams > 0;
+    }
+    float in_type = 0.0F;
+    if (!CellOrDefault(unit_types,
+                       row,
+                       tonnes_col,
+                       Range{.low = 0.0F, .high = kMaxStorageTonnes},
+                       0.0F,
+                       in_type,
+                       error)) {
+      Fail(error, "unit_types", "storage_capacity_t is out of range in row " + std::to_string(row));
+      return false;
+    }
+    if (in_type > 0.0F && !named_anywhere) {
+      Fail(error,
+           "unit_types",
+           key +
+               " names storage_capacity_t but no unit_levels.csv row gives it a capacity — "
+               "the type column is not read any more, and the ladder is the only place a "
+               "capacity lives");
+      return false;
+    }
+    if (!named_anywhere || type.capacity_by_plot != 0) {
+      continue;
+    }
+    for (std::size_t index = 0; index < type.levels.size(); ++index) {
+      if (type.levels[index].storage_capacity_grams <= 0) {
+        Fail(error,
+             "unit_levels",
+             key + " level " + std::to_string(index + 1) +
+                 " names no storage_capacity_t while another level does — a blank step is a hole "
+                 "in the ladder, not a capacity of zero");
+        return false;
+      }
     }
   }
   return true;
@@ -339,7 +388,7 @@ bool ReadLevels(const ITable& levels,
     step.is_marking = static_cast<std::uint8_t>(
         class_col != kNoTableColumn && levels.CellText(row, class_col) == kMarkingClass ? 1 : 0);
   }
-  return true;
+  return CheckCapacityLadder(unit_types, config, error);
 }
 
 bool ReadRecipes(const ITable& costs,
@@ -518,7 +567,9 @@ bool ParseConstructionConfig(const ITableSet& tables,
 
   const ITable* const levels = tables.FindTable("unit_levels");
   if (levels == nullptr) {
-    return true;  // no ladder: again, nothing can be built
+    // No ladder: nothing can be built, and nothing has a capacity either —
+    // which is a refusal and not a shrug for any type that still names one.
+    return CheckCapacityLadder(*unit_types, config, error);
   }
   if (!ReadLevels(*levels, *unit_types, config, error)) {
     return false;

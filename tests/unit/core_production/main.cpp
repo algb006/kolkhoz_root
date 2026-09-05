@@ -45,6 +45,22 @@ int Expect(bool condition, const char* label) {
 
 // --- stage 6, task O3: the herd day ---------------------------------------
 
+/// Capacity lives on the LEVEL LADDER and nowhere else (production_config.h:
+/// the type's own figure was a copy of level 1 that the export wrote, so the
+/// fallback reading it could never differ from the step it fell back from).
+/// A test that wants a store therefore fills steps, and it fills the first
+/// four of them: the ladder must not have a blank step among named ones —
+/// the load refuses that — and no test here stands above level two.
+constexpr std::size_t kTestLadderSteps = 4;
+
+void SetStorageKg(core::UnitTypeDef& type, float kilograms) {
+  type.level_storage_capacity_kg.assign(kTestLadderSteps, kilograms);
+}
+
+void SetLivestockHead(core::UnitTypeDef& type, float heads) {
+  type.level_livestock_capacity_head.assign(kTestLadderSteps, heads);
+}
+
 /// Two kinds and three resources, all in round numbers so that the
 /// expectations below are exact.
 ///   kind 0  "cow": one fodder unit a game day, sexed, breeds, gives milk
@@ -74,8 +90,8 @@ core::ProductionConfig MakeHerdConfig() {
   pig.life_game_years_max = 100.0F;
   pig.meat_kg_per_head = 50.0F;
   config.unit_types.resize(1);
-  config.unit_types[0].storage_capacity_kg = 1.0e6F;
-  config.unit_types[0].livestock_capacity_head = 10.0F;
+  SetStorageKg(config.unit_types[0], 1.0e6F);
+  SetLivestockHead(config.unit_types[0], 10.0F);
   config.feed_values = {1.0F, 0.0F, 0.0F};
   config.feed_links = {core::FeedLinkDef{
       .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .reserve = 0}};
@@ -430,8 +446,8 @@ int CheckMangerReach() {
   core::ProductionConfig config = MakeHerdConfig();
   config.milk_resource = core::ResourceId{};
   config.unit_types.resize(2);
-  config.unit_types[1].storage_capacity_kg = 0.0F;  // a barn, not a store
-  config.unit_types[1].livestock_capacity_head = 10.0F;
+  SetStorageKg(config.unit_types[1], 0.0F);  // a barn, not a store
+  SetLivestockHead(config.unit_types[1], 10.0F);
 
   core::WorldState world;
   core::RefreshCalendarCaches(world.calendar);
@@ -642,8 +658,9 @@ int CheckStoreCeilingAndAlarms() {
          "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
          "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
          "weather_state_days,5\n";
-  // A barn of one tonne at level 1, five at level 2: the ladder is what
-  // binds, and the type's own figure is only the fallback.
+  // A barn of one tonne at level 1, five at level 2. The type row still
+  // carries nine, and nine is what the ceiling would be if anything still
+  // read it — it does not, and that is half of what this test proves.
   std::ofstream(root / "unit_types.csv") << "key,storage_capacity_t,capacity_by_plot\nbarn,9,0\n";
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n";
   std::string error;
@@ -1074,7 +1091,7 @@ int CheckHaulingIsNotFree() {
   config.walk_speed_kmh = 5.0F;
   config.harness_speed_kmh = 12.0F;
   config.standard_day_hours = 10.0F;
-  config.unit_types[0].storage_capacity_kg = 10000.0F;
+  SetStorageKg(config.unit_types[0], 10000.0F);
 
   core::WorldState world = MakeHerdWorld(0.0F);
   world.units.rows[0].position = core::Vec2{.x = 0.0F, .y = 0.0F};
@@ -1113,7 +1130,7 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
   core::ProductionConfig config = MakeHerdConfig();
   config.horse_kind = core::LivestockKindId{0};  // "cow" plays the horse here
   config.groom_post = core::ProfessionId{3};     // any post id; the key is data
-  config.unit_types[0].livestock_capacity_head = 100.0F;
+  SetLivestockHead(config.unit_types[0], 100.0F);
 
   // A world of three private yards, each hosting part of the kolkhoz team,
   // and a built kolkhoz yard nobody has been appointed to yet.
@@ -1187,6 +1204,56 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
   return failures;
 }
 
+/// A capacity that no level row answers for must STOP the load, not read as
+/// zero.
+///
+/// This is the check that had to be built before the fallback could go. The
+/// export wrote `LEFT JOIN unit_level ON level = 1`, so unit_types.csv
+/// carried a copy of level 1 and the fallback reading it was an arm that
+/// could not differ from its control — live-looking and never plugged in.
+/// Taking it out turns "no level row" from a wrong-but-plausible number into
+/// a zero, and a store that holds nothing looks exactly like a store nobody
+/// filled: host nearly concluded that capacity means nothing from precisely
+/// that shape. So the load refuses, and this test is the proof the refusal
+/// fires — three shapes, one of which must still pass, or the test would
+/// only be proving that nothing loads.
+int CheckCapacityWithoutALadderIsRefused() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_ladder";
+  const auto loads = [&root](const char* types, const char* levels) {
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    std::ofstream(root / "unit_types.csv") << types;
+    if (levels != nullptr) {
+      std::ofstream(root / "unit_levels.csv") << levels;
+    }
+    std::string error;
+    const auto tables = core::LoadTableSet(root.string(), &error);
+    return tables != nullptr && core::CreateProductionSystem(*tables) != nullptr;
+  };
+  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n", nullptr),
+                     "a capacity with no ladder at all refuses the load");
+  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n",
+                            "unit,level,storage_capacity_t\nbarn,1,\nbarn,2,\n"),
+                     "a capacity whose ladder names none refuses the load");
+  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n",
+                            "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,\n"),
+                     "a blank step among named ones refuses the load");
+  failures += Expect(!loads("key,livestock_capacity_head\ncattle_yard,24\n",
+                            "unit,level,storage_capacity_t\ncattle_yard,1,\n"),
+                     "a head count with no ladder behind it refuses the load too");
+  failures += Expect(loads("key,storage_capacity_t\nbarn,9\n",
+                           "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n"),
+                     "a ladder that answers for every step still loads");
+  // And the column may simply be GONE from unit_types.csv: it is on its way
+  // out of the export, and the loader must not be what breaks when it goes.
+  failures += Expect(loads("key\nbarn\n", "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n"),
+                     "the type column is not required at all");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// Pause and resume (task A8): the two verbs of the order book that stop a
 /// unit and start it again.
 ///
@@ -1200,7 +1267,9 @@ int CheckPauseAndResume() {
       std::filesystem::temp_directory_path() / "unit_core_production_pause";
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
-  std::ofstream(root / "unit_types.csv") << "key,storage_capacity_t\nbarn,9\n";
+  // No capacity column at all: this test is about the order book, and a
+  // capacity with no level row behind it is now a refusal (CheckPauseStore).
+  std::ofstream(root / "unit_types.csv") << "key\nbarn\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
   const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
@@ -1300,6 +1369,7 @@ int main() {
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
+  failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckPauseAndResume();
 
   if (failures == 0) {

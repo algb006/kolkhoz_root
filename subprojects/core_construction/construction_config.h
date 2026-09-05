@@ -102,7 +102,11 @@ struct BuildLevel {
   float wear_years_in_use = 0.0F;
 };
 
-/// Everything the subsystem knows about one unit type.
+/// Everything the subsystem knows about one unit type. NO CAPACITY LIVES
+/// HERE: the ladder holds it, step by step. The type row used to carry a
+/// figure of its own, but the export wrote a copy of level 1 into it, so the
+/// fallback reading it could never differ from the step it fell back from —
+/// a live-looking wire that was never plugged in (boss, 2026-09-05).
 struct BuildType {
   UnitGate gate = UnitGate::kEra;
 
@@ -114,11 +118,6 @@ struct BuildType {
   /// Levels 1..N, dense: index 0 is level 1. Empty for a type with no
   /// ladder at all, which is what "cannot be built" looks like in data.
   std::vector<BuildLevel> levels;
-
-  /// The type's own storage capacity in grams (unit_types.csv
-  /// storage_capacity_t), used when the level ladder names none — the same
-  /// fallback core_production applies, so the two never disagree.
-  Grams storage_capacity_grams = 0;
 
   /// 0/1: the capacity is the outline the player draws, so there is no
   /// number and the store is never full (a heap, a stack, a trench).

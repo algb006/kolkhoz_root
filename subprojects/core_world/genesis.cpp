@@ -443,10 +443,14 @@ bool PlaceStartLayout(WorldState& world,
 /// and the row carries the mass of one, so the conversion to grams needs no
 /// second table — the same one rule the recipes use.
 /// @brief Capacity of a unit type in grams, or -1 for an outline the player
-/// draws (a heap, a stack: no number to be full against). Reads the level
-/// ladder first and the type's own figure second — the same order and the
-/// same tables core_production reads, so the two never disagree about what
-/// a granary holds.
+/// draws (a heap, a stack: no number to be full against). Reads the LEVEL
+/// LADDER and nothing else — the same one place core_production and
+/// core_construction read, so the three never disagree about what a granary
+/// holds. The type row's own storage_capacity_t was a copy of level 1 that
+/// the export wrote, so falling back to it could never give a different
+/// answer from the step it fell back from; a table set whose type names a
+/// capacity with no level row behind it is refused at config load, and this
+/// layout pass sees only sets that got through.
 Grams TypeCapacityGrams(const ITable* unit_types,
                         const ITable* unit_levels,
                         UnitTypeId type,
@@ -484,12 +488,7 @@ Grams TypeCapacityGrams(const ITable* unit_types,
       }
     }
   }
-  const std::uint32_t tonnes_col = unit_types->FindColumn("storage_capacity_t");
-  if (tonnes_col == kNoTableColumn) {
-    return -1;
-  }
-  const float tonnes = LayoutNumber(*unit_types, type.value, tonnes_col);
-  return tonnes > 0.0F ? GramsFromTonnes(tonnes) : -1;
+  return -1;
 }
 
 void PlaceStartStock(WorldState& world,

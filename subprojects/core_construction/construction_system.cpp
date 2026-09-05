@@ -754,11 +754,11 @@ class ConstructionSystem final : public IConstructionSystem {
     if (type.capacity_by_plot != 0) {
       return std::numeric_limits<Grams>::max();
     }
-    Grams capacity = type.storage_capacity_grams;
+    // The step the unit STANDS at, and nowhere else: the type row's own
+    // figure was a copy of level 1 and has been taken out of the config.
     const std::size_t index = static_cast<std::size_t>(unit.level) - 1;
-    if (index < type.levels.size() && type.levels[index].storage_capacity_grams > 0) {
-      capacity = type.levels[index].storage_capacity_grams;
-    }
+    const Grams capacity =
+        index < type.levels.size() ? type.levels[index].storage_capacity_grams : 0;
     if (capacity <= 0) {
       return 0;
     }

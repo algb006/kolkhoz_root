@@ -402,62 +402,98 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
   return true;
 }
 
+/// The type row now carries exactly one thing about capacity: whether there
+/// is a number at all. Everything else is read off the level ladder — see
+/// UnitTypeDef for why the type's own figure had to go.
 bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::string& error) {
-  // Tonnes, not kilograms: the store counts in what the design counts in,
-  // and the unit is in the column's name so that nobody has to remember it.
-  // The older hand-written file used storage_capacity_kg; both are read, and
-  // whichever is present wins — that keeps the switch to the export from
-  // silently zeroing every warehouse.
-  const std::uint32_t tonnes_col = table.FindColumn("storage_capacity_t");
-  const std::uint32_t kilograms_col = table.FindColumn("storage_capacity_kg");
-  const std::uint32_t heads_col = table.FindColumn("livestock_heads");
-  const std::uint32_t heads_old_col = table.FindColumn("livestock_capacity_head");
   const std::uint32_t by_plot_col = table.FindColumn("capacity_by_plot");
   types.resize(table.RowCount());
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    UnitTypeDef& type = types[row];
-    float tonnes = 0.0F;
     float by_plot = 0.0F;
-    if (!CellOrDefault(table, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error) ||
-        !CellOrDefault(table,
-                       row,
-                       kilograms_col,
-                       Range{.low = 0, .high = 1e9F},
-                       0,
-                       type.storage_capacity_kg,
-                       error) ||
-        !CellOrDefault(table,
-                       row,
-                       heads_col,
-                       Range{.low = 0, .high = 1e6F},
-                       0,
-                       type.livestock_capacity_head,
-                       error) ||
-        !CellOrDefault(table,
-                       row,
-                       heads_old_col,
-                       Range{.low = 0, .high = 1e6F},
-                       type.livestock_capacity_head,
-                       type.livestock_capacity_head,
-                       error) ||
-        !CellOrDefault(table, row, by_plot_col, Range{.low = 0, .high = 1}, 0, by_plot, error)) {
+    if (!CellOrDefault(table, row, by_plot_col, Range{.low = 0, .high = 1}, 0, by_plot, error)) {
       error = "unit_types: " + error;
       return false;
     }
-    if (tonnes > 0.0F) {
-      type.storage_capacity_kg = tonnes * 1000.0F;
-    }
-    type.capacity_by_plot = static_cast<std::uint8_t>(by_plot);
+    types[row].capacity_by_plot = static_cast<std::uint8_t>(by_plot);
   }
   return true;
 }
 
-/// The level ladder's storage figures: unit_levels.csv gives a capacity per
-/// LEVEL, and the level a unit stands at is the ceiling that binds it (unit
-/// rules §11). Rows name their type by key, so the roster of types has to be
-/// there to resolve them; a row naming an unknown type is skipped rather than
-/// refused — the ladder legitimately carries levels of types a table set may
-/// not define.
+/// @brief Refuses a table set whose capacities cannot be read off the ladder.
+///
+/// Two shapes, and both used to end in a SILENT ZERO once the type's own
+/// figure stopped standing behind them — which is precisely what host
+/// stumbled over: a store that holds nothing looks exactly like a store
+/// nobody filled.
+///
+/// 1. The type row still names a capacity while no level row does. That is
+///    the leftover column talking; the load says so instead of quietly
+///    losing the number.
+/// 2. The ladder names a capacity at one step and leaves another blank. A
+///    granary of 150 t at level 1 and nothing at level 2 used to borrow the
+///    type's number for level 2 and would now be a warehouse that empties
+///    itself the day it is enlarged.
+bool CheckCapacityLadders(const ITable& unit_types,
+                          const std::vector<UnitTypeDef>& types,
+                          std::string& error) {
+  const std::uint32_t tonnes_col = unit_types.FindColumn("storage_capacity_t");
+  const std::uint32_t heads_col = unit_types.FindColumn("livestock_capacity_head");
+  for (std::uint32_t row = 0; row < types.size() && row < unit_types.RowCount(); ++row) {
+    const UnitTypeDef& type = types[row];
+    const std::string key(unit_types.CellText(row, 0));
+
+    struct Ladder {
+      const char* column;
+      const char* what;
+      std::uint32_t type_col;
+      const std::vector<float>& steps;
+    };
+
+    const std::array<Ladder, 2> ladders = {
+        Ladder{"storage_capacity_t", "storage", tonnes_col, type.level_storage_capacity_kg},
+        Ladder{
+            "livestock_capacity_head", "livestock", heads_col, type.level_livestock_capacity_head}};
+    for (const Ladder& ladder : ladders) {
+      bool named_anywhere = false;
+      for (const float step : ladder.steps) {
+        named_anywhere = named_anywhere || step > 0.0F;
+      }
+      float in_type = 0.0F;
+      if (!CellOrDefault(
+              unit_types, row, ladder.type_col, Range{.low = 0, .high = 1e6F}, 0, in_type, error)) {
+        error = "unit_types: " + error;
+        return false;
+      }
+      if (in_type > 0.0F && !named_anywhere) {
+        error = "unit_types: " + key + " names " + ladder.column +
+                " but no unit_levels.csv row gives it a " + ladder.what +
+                " capacity — the type column is not read any more, and the ladder is the only "
+                "place a capacity lives";
+        return false;
+      }
+      if (!named_anywhere || type.capacity_by_plot != 0) {
+        continue;
+      }
+      for (std::size_t index = 0; index < ladder.steps.size(); ++index) {
+        if (ladder.steps[index] <= 0.0F) {
+          error = "unit_levels: " + key + " level " + std::to_string(index + 1) + " names no " +
+                  std::string(ladder.column) +
+                  " while another level does — a blank step is a hole "
+                  "in the ladder, not a capacity of zero";
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/// The level ladder's capacities: unit_levels.csv gives a figure per LEVEL,
+/// and the level a unit stands at is the ceiling that binds it (unit rules
+/// §11). Rows name their type by key, so the roster of types has to be
+/// there to resolve them; a row naming an unknown type is skipped rather
+/// than refused — the ladder legitimately carries levels of types a table
+/// set may not define.
 bool ParseUnitLevels(const ITable& levels,
                      const ITable& unit_types,
                      std::vector<UnitTypeDef>& types,
@@ -465,8 +501,10 @@ bool ParseUnitLevels(const ITable& levels,
   const std::uint32_t unit_col = levels.FindColumn("unit");
   const std::uint32_t level_col = levels.FindColumn("level");
   const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
-  if (unit_col == kNoTableColumn || level_col == kNoTableColumn || tonnes_col == kNoTableColumn) {
-    return true;  // no ladder to read: the type's own figure stands
+  const std::uint32_t heads_col = levels.FindColumn("livestock_capacity_head");
+  if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
+    error = "unit_levels: no 'unit' or 'level' column — capacities have nowhere to come from";
+    return false;
   }
   for (std::uint32_t row = 0; row < levels.RowCount(); ++row) {
     const std::uint32_t type_row = unit_types.FindRowByKey(levels.CellText(row, unit_col));
@@ -475,8 +513,10 @@ bool ParseUnitLevels(const ITable& levels,
     }
     float level = 0.0F;
     float tonnes = 0.0F;
+    float heads = 0.0F;
     if (!CellOrDefault(levels, row, level_col, Range{.low = 0, .high = 255}, 0, level, error) ||
-        !CellOrDefault(levels, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error)) {
+        !CellOrDefault(levels, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error) ||
+        !CellOrDefault(levels, row, heads_col, Range{.low = 0, .high = 1e6F}, 0, heads, error)) {
       error = "unit_levels: " + error;
       return false;
     }
@@ -484,13 +524,15 @@ bool ParseUnitLevels(const ITable& levels,
       continue;  // level 0 is "not built" and stores nothing (unit_state.h)
     }
     const auto index = static_cast<std::size_t>(level) - 1;
-    std::vector<float>& ladder = types[type_row].level_storage_capacity_kg;
-    if (ladder.size() <= index) {
-      ladder.resize(index + 1, 0.0F);
+    UnitTypeDef& type = types[type_row];
+    if (type.level_storage_capacity_kg.size() <= index) {
+      type.level_storage_capacity_kg.resize(index + 1, 0.0F);
+      type.level_livestock_capacity_head.resize(index + 1, 0.0F);
     }
-    ladder[index] = tonnes * 1000.0F;
+    type.level_storage_capacity_kg[index] = tonnes * 1000.0F;
+    type.level_livestock_capacity_head[index] = heads;
   }
-  return true;
+  return CheckCapacityLadders(unit_types, types, error);
 }
 
 /// Feed values live on the RESOURCE (a kilogram of oat is one fodder unit),
@@ -642,10 +684,17 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   if (unit_types != nullptr && !ParseUnitTypes(*unit_types, config.unit_types, error)) {
     return false;
   }
+  // The ladder is where every capacity lives, so a table set that has types
+  // but no unit_levels.csv still has to be checked: a type naming a capacity
+  // with no ladder behind it is exactly the silent zero this refuses.
   const ITable* const unit_levels = tables.FindTable("unit_levels");
-  if (unit_types != nullptr && unit_levels != nullptr &&
-      !ParseUnitLevels(*unit_levels, *unit_types, config.unit_types, error)) {
-    return false;
+  if (unit_types != nullptr) {
+    const bool read = unit_levels == nullptr
+                          ? CheckCapacityLadders(*unit_types, config.unit_types, error)
+                          : ParseUnitLevels(*unit_levels, *unit_types, config.unit_types, error);
+    if (!read) {
+      return false;
+    }
   }
   if (resources != nullptr && !ParseFeedValues(*resources, config.feed_values, error)) {
     return false;

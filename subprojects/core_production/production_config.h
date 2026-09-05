@@ -217,20 +217,30 @@ struct FeedLinkDef {
   std::uint8_t work_only = 0;
 };
 
+/// Everything a unit type contributes to production, and every capacity in
+/// it comes from the LEVEL LADDER. The type row carries no figure of its
+/// own any more: the export wrote a copy of level 1 into it (a LEFT JOIN on
+/// level = 1), so the type column and the level-1 row were the same number
+/// BY CONSTRUCTION, and the fallback that read the type row could never
+/// fire while looking perfectly alive. An arm that cannot differ from its
+/// control is not a measurement — it is either the answer or an unplugged
+/// wire, and the number alone does not tell the two apart (boss,
+/// 2026-09-05: host nearly concluded that capacity means nothing from a run
+/// byte-identical to its control).
 struct UnitTypeDef {
-  float storage_capacity_kg = 0.0F;  ///< 0 = stores nothing.
-
   /// Storage capacity per LEVEL, in kilograms, index = level - 1
   /// (unit_levels.csv storage_capacity_t). "A store keeps its old ceiling"
   /// until the day the level moves (unit rules §11), so the ceiling that
   /// binds is the one of the level the unit stands at — a granary is 150 t
-  /// at level 1 and 300 t at level 2. Empty, or a zero entry, means the
-  /// ladder says nothing for that level and the type's own figure is used;
-  /// that is what keeps a table with no unit_levels.csv working exactly as
-  /// before (task A3, manual/72-storage-and-alarms.md §2).
+  /// at level 1 and 300 t at level 2. Empty = the type stores nothing by a
+  /// number, and the load refuses a ladder that names a capacity at one
+  /// step and leaves another blank (production_config.cpp).
   std::vector<float> level_storage_capacity_kg;
 
-  float livestock_capacity_head = 0.0F;
+  /// Livestock places per LEVEL, in heads, index = level - 1
+  /// (unit_levels.csv livestock_capacity_head). The same ladder rule: a
+  /// cattle yard holds 24 head at level 1, 72 at level 2, 144 at level 3.
+  std::vector<float> level_livestock_capacity_head;
 
   /// 0/1: the capacity is the outline the PLAYER draws, so there is no
   /// number to read (manure heap, silage trench, hay stack, the log, stone
@@ -238,6 +248,25 @@ struct UnitTypeDef {
   /// this flag means "by area", not "not written down yet" — the design db
   /// carries the flag for exactly that reason.
   std::uint8_t capacity_by_plot = 0;
+
+  /// @brief Kilograms this type stores at the level a unit STANDS at.
+  /// @param level The unit's own level; 0 is a construction site, which
+  ///        stores nothing for anybody (unit_state.h, task A2).
+  /// @return 0 when the ladder names no capacity for that level.
+  float StorageCapacityKgAt(std::uint8_t level) const {
+    const std::size_t index = static_cast<std::size_t>(level) - 1;
+    return level >= 1 && index < level_storage_capacity_kg.size() ? level_storage_capacity_kg[index]
+                                                                  : 0.0F;
+  }
+
+  /// @brief Heads of livestock this type houses at the level a unit stands
+  ///        at; 0 when the ladder names none. See StorageCapacityKgAt.
+  float LivestockCapacityHeadAt(std::uint8_t level) const {
+    const std::size_t index = static_cast<std::size_t>(level) - 1;
+    return level >= 1 && index < level_livestock_capacity_head.size()
+               ? level_livestock_capacity_head[index]
+               : 0.0F;
+  }
 };
 
 struct FarmingConfig {

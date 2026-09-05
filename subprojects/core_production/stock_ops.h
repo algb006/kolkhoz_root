@@ -70,7 +70,7 @@ inline Grams KilogramsToGrams(float kilograms) {
 /// a level is read, is what replaces a flag in every table.
 inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
   return unit.level > 0 && unit.type.value < config.unit_types.size() &&
-         config.unit_types[unit.type.value].storage_capacity_kg > 0.0F;
+         config.unit_types[unit.type.value].StorageCapacityKgAt(unit.level) > 0.0F;
 }
 
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:
@@ -100,7 +100,7 @@ inline std::uint32_t FindStockYardRow(const WorldState& world, const ProductionC
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
     if (unit.level > 0 && unit.type.value < config.unit_types.size() &&
-        config.unit_types[unit.type.value].livestock_capacity_head > 0.0F) {
+        config.unit_types[unit.type.value].LivestockCapacityHeadAt(unit.level) > 0.0F) {
       return row;
     }
   }
@@ -138,16 +138,10 @@ inline Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& c
   // The ceiling of the level the unit STANDS at, not of the one being built:
   // a store keeps its old ceiling until the day the level moves (unit rules
   // §11, and ConstructionState says the same about every capacity). The
-  // ladder is consulted first and the type's own figure is the fallback, so
-  // a table set without unit_levels.csv behaves exactly as it did.
-  if (unit.level >= 1) {
-    const std::size_t index = static_cast<std::size_t>(unit.level) - 1;
-    if (index < type.level_storage_capacity_kg.size() &&
-        type.level_storage_capacity_kg[index] > 0.0F) {
-      return static_cast<Grams>(type.level_storage_capacity_kg[index]) * kGramsPerKilogram;
-    }
-  }
-  return static_cast<Grams>(type.storage_capacity_kg) * kGramsPerKilogram;
+  // ladder is the ONLY place a capacity comes from — the type's own figure
+  // was a copy of level 1 that the export made, so the fallback that read it
+  // could never differ from the step it was falling back from.
+  return GramsFromKilograms(type.StorageCapacityKgAt(unit.level));
 }
 
 /// @brief Total grams a unit is holding, all resources together.

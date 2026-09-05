@@ -185,7 +185,7 @@ std::vector<float> RoofRoom(const WorldState& world, const ProductionConfig& con
     if (unit.type.value >= config.unit_types.size()) {
       continue;
     }
-    room[row] = config.unit_types[unit.type.value].livestock_capacity_head;
+    room[row] = config.unit_types[unit.type.value].LivestockCapacityHeadAt(unit.level);
   }
   return room;
 }

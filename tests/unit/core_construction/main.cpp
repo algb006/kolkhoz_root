@@ -702,9 +702,86 @@ int TestTableLessWorld() {
 
 }  // namespace
 
+/// A capacity that no level row answers for must STOP the load.
+///
+/// The type row used to carry a storage figure of its own, and the export
+/// filled it with a copy of level 1 (`LEFT JOIN unit_level ON level = 1`) —
+/// so the fallback reading it could never differ from the step it fell back
+/// from. Taking it out turns "no level row" into a silent zero, and a store
+/// that holds nothing is indistinguishable from a store nobody filled. Hence
+/// a refusal, and hence this test: a check nothing has ever seen fire is not
+/// a check. The last case must LOAD, or all this would prove is that the
+/// factory can return nothing.
+class LadderTables final : public core::ITableSet {
+ public:
+  LadderTables(std::vector<std::string> type_columns,
+               std::vector<std::vector<std::string>> types,
+               std::vector<std::vector<std::string>> levels)
+      : types_{std::move(type_columns), std::move(types)},
+        levels_{{"unit", "level", "era", "labor_days", "build_class", "storage_capacity_t"},
+                std::move(levels)} {}
+
+  const core::ITable* FindTable(std::string_view name) const override {
+    if (name == "unit_types") {
+      return &types_;
+    }
+    if (name == "unit_levels") {
+      return &levels_;
+    }
+    if (name == "resources") {
+      return &resources_;
+    }
+    return nullptr;
+  }
+
+  std::uint32_t TableCount() const override { return 3; }
+
+  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
+
+ private:
+  test::FakeTable types_;
+  test::FakeTable levels_;
+  test::FakeTable resources_{{"key", "measure", "kg_per_unit"}, {{"log", "unit", "50"}}};
+};
+
+int TestCapacityNeedsALadder() {
+  int failures = 0;
+  const std::vector<std::string> with_column = {
+      "key", "era", "player_built", "gate", "storage_capacity_t"};
+  const auto loads = [](std::vector<std::string> type_columns,
+                        std::vector<std::vector<std::string>> types,
+                        std::vector<std::vector<std::string>> levels) {
+    const LadderTables tables(std::move(type_columns), std::move(types), std::move(levels));
+    return core::CreateConstructionSystem(tables) != nullptr;
+  };
+  failures += Expect(!loads(with_column,
+                            {{"barn", "1", "1", "era", "9"}},
+                            {{"barn", "1", "1", "70", "wood_small", ""}}),
+                     "a capacity whose ladder names none refuses the load");
+  failures += Expect(!loads(with_column,
+                            {{"barn", "1", "1", "era", "9"}},
+                            {{"barn", "1", "1", "70", "wood_small", "1"},
+                             {"barn", "2", "1", "140", "wood_small", ""}}),
+                     "a blank step among named ones refuses the load");
+  failures += Expect(loads(with_column,
+                           {{"barn", "1", "1", "era", "9"}},
+                           {{"barn", "1", "1", "70", "wood_small", "1"},
+                            {"barn", "2", "1", "140", "wood_small", "5"}}),
+                     "a ladder that answers for every step still loads");
+  // The column is on its way out of the export, and the loader must not be
+  // what breaks when it goes: the ladder alone is a complete answer.
+  failures += Expect(loads({"key", "era", "player_built", "gate"},
+                           {{"barn", "1", "1", "era"}},
+                           {{"barn", "1", "1", "70", "wood_small", "1"},
+                            {"barn", "2", "1", "140", "wood_small", "5"}}),
+                     "the type column is not required at all");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   const BuildTables tables;
+  failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
   failures += TestRefusals(tables);
   failures += TestDemolition(tables);
