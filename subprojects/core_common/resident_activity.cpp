@@ -49,13 +49,17 @@ bool Inside(float hour, float from, float to) {
 
 ResidentActivityState ActivityOfResident(const WorldState& world,
                                          std::uint32_t row,
-                                         float age_years,
                                          const ActivityRules& rules) {
   ResidentActivityState answer;
   if (row >= world.residents.rows.size()) {
     return answer;
   }
   const ResidentRow& resident = world.residents.rows[row];
+  // THE ONE HOME OF THIS FORMULA (calendar.h), and it took six writings to
+  // get everybody through the door. Every threshold below is in biological
+  // years, so this must be too.
+  const float age_years =
+      BiologicalAgeYears(rules.life_speedup, resident.birth_day, world.calendar.day);
   const auto hour = static_cast<float>(HourFromTick(world.calendar.tick));
   const DayWindow window = SolarWindow(world.weather.daylight_hours);
   const float sleep_half = rules.sleep_hours * 0.5F;

@@ -186,6 +186,24 @@ struct ActivityRules {
   /// convention that lets the detail be answered at all.
   float sleep_hours = 8.0F;
 
+  /// How many biological years a game year is worth (life.csv
+  /// `life_speedup`, 4 as shipped).
+  ///
+  /// IT IS HERE SO THAT NO CALLER CAN GET THE AGE WRONG, and one already
+  /// did. This function used to take the age as an argument, and the census
+  /// handed it CALENDAR years against thresholds written in BIOLOGICAL
+  /// ones — a village of adults read as a village of children, and every
+  /// idleness number it published was twenty-five times too small (host,
+  /// 2026-09-05). The excuse was in the comment above the arithmetic: "the
+  /// exact speed-up belongs to the configs that own it".
+  ///
+  /// BiologicalAgeYears in calendar.h had already gathered five copies of
+  /// that formula; the census was the sixth, and it was written the day
+  /// after. So the parameter is gone: the answer is computed here, from the
+  /// one home, and the only thing a caller can pass wrong is a number that
+  /// has a name and a range.
+  float life_speedup = 4.0F;
+
   /// The hour dinner is eaten: ONE hour in the middle of the daylight
   /// working day (boss's number, 2026-09-05, not a convention of this
   /// module's — the field canteen is bought precisely so that this hour is
@@ -209,9 +227,6 @@ struct ActivityRules {
 /// @brief What one resident is doing at the hour the world stands at.
 /// @param world     The COMPLETED state; nothing here writes to it.
 /// @param row       Row of `world.residents`.
-/// @param age_years His BIOLOGICAL age. Passed in rather than computed:
-///                  the life speed-up lives in two configs that own it, and
-///                  a third arithmetic here would be a third answer.
 /// @param rules     The thresholds their owners hold (see ActivityRules).
 /// @return The state, its detail where the core can name one, and its place
 ///         where the activity carries one.
@@ -223,7 +238,6 @@ struct ActivityRules {
 ///       thing the priority column exists to prevent.
 ResidentActivityState ActivityOfResident(const WorldState& world,
                                          std::uint32_t row,
-                                         float age_years,
                                          const ActivityRules& rules);
 
 }  // namespace core

@@ -415,10 +415,18 @@ int TestResidentActivity() {
   man.work.field = field_id;
   core::AppendRow(world.residents, man);
 
+  // The age is no longer passed in — it is computed from the birth day and
+  // the speed-up, which is the whole point of the fix. So the test sets the
+  // birth day to make the man the age it wants, and does it through the
+  // same arithmetic the answer uses.
   const auto at = [&world, &rules](std::uint32_t hour, float age) {
     world.calendar.tick = hour;
     core::RefreshCalendarCaches(world.calendar);
-    return core::ActivityOfResident(world, 0, age, rules);
+    world.residents.rows[0].birth_day =
+        static_cast<std::int32_t>(world.calendar.day) -
+        static_cast<std::int32_t>(age / rules.life_speedup *
+                                  static_cast<float>(core::kDaysPerYear));
+    return core::ActivityOfResident(world, 0, rules);
   };
 
   // Sunrise to sunrise+travel is the road out; then the work; then the road

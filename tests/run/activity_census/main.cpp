@@ -93,19 +93,27 @@ bool Waived(std::string_view name) {
   return std::ranges::find(kWaived, name) != kWaived.end();
 }
 
-core::ActivityRules RulesOfRun() {
+/// The rules, with the speed-up read from the SAME table the world was built
+/// from.
+///
+/// THIS RUN IS WHY THE PARAMETER IS GONE. It used to compute the age itself
+/// — calendar years, against thresholds written in biological ones — and
+/// with a speed-up of four that read a village of adults as a village of
+/// children: every idleness number it published was twenty-five times too
+/// small, and it took host's own measurement to see it. The comment above
+/// the arithmetic said "the exact speed-up belongs to the configs that own
+/// it", which was true, and was the excuse.
+core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
   core::ActivityRules rules;
   rules.travel_hours = 0.5F;  // the run's own convention; see the census note
+  const core::ITable* const life = tables.FindTable("life");
+  const std::uint32_t row =
+      life == nullptr ? core::kNoTableRow : life->FindRowByKey("life_speedup");
+  const std::uint32_t column = life == nullptr ? core::kNoTableColumn : life->FindColumn("value");
+  if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+    rules.life_speedup = std::strtof(std::string(life->CellText(row, column)).c_str(), nullptr);
+  }
   return rules;
-}
-
-/// Biological age in years, the run's own arithmetic: this instrument is
-/// counting states, not balancing a life, and the exact speed-up belongs to
-/// the configs that own it.
-float AgeYears(const core::WorldState& world, std::uint32_t row) {
-  const auto days = static_cast<float>(static_cast<std::int64_t>(world.calendar.day) -
-                                       world.residents.rows[row].birth_day);
-  return days / static_cast<float>(core::kDaysPerYear);
 }
 
 }  // namespace
@@ -116,7 +124,7 @@ int main() {
   if (!world) {
     return 1;
   }
-  const core::ActivityRules rules = RulesOfRun();
+  const core::ActivityRules rules = RulesOfRun(*world.tables);
 
   std::array<std::uint64_t, kNames.size()> seen{};
   for (std::uint32_t day = 0; day < kYears * core::kDaysPerYear; ++day) {
@@ -124,8 +132,7 @@ int main() {
       world->AdvanceStep();
       const core::WorldState& state = world.State();
       for (std::uint32_t row = 0; row < state.residents.rows.size(); ++row) {
-        const core::ResidentActivityState answer =
-            core::ActivityOfResident(state, row, AgeYears(state, row), rules);
+        const core::ResidentActivityState answer = core::ActivityOfResident(state, row, rules);
         ++seen[static_cast<std::size_t>(answer.activity)];
       }
     }
@@ -158,7 +165,7 @@ int main() {
   std::vector<core::ResidentActivityState> before;
   const core::WorldState& live = world.State();
   for (std::uint32_t row = 0; row < live.residents.rows.size(); ++row) {
-    before.push_back(core::ActivityOfResident(live, row, AgeYears(live, row), rules));
+    before.push_back(core::ActivityOfResident(live, row, rules));
   }
   if (!core::SaveWorldToFile(live, *world.tables, file.string(), &error)) {
     std::cout << "FAIL: the world did not save (" << error << ")\n";
@@ -171,8 +178,7 @@ int main() {
   }
   std::uint32_t moved = 0;
   for (std::uint32_t row = 0; row < loaded.residents.rows.size() && row < before.size(); ++row) {
-    const core::ResidentActivityState after =
-        core::ActivityOfResident(loaded, row, AgeYears(loaded, row), rules);
+    const core::ResidentActivityState after = core::ActivityOfResident(loaded, row, rules);
     moved += after.activity != before[row].activity || after.detail != before[row].detail ? 1U : 0U;
   }
   std::cout << "activity_census: saved mid-day and loaded back — " << moved << " of "
