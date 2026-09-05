@@ -1,0 +1,10 @@
+# generated from db/design.db — do not edit by hand
+# three steps, and the step decides the path of care by itself
+# care_with / care_without name a detail of the `treated` activity: at_home, post, local_hospital, hospital. The activity registry already names the places, so severity points at them rather than describing them a second time
+# care_without is where he goes when the farm has NO medicine of its own: for a middle case that is a day in the district and back
+# away_days: how long he is off the farm entirely. 0 — he never leaves
+# output_pct is what he still makes while ill, and only where works=1
+key,title,works,output_pct,care_with,care_without,away_days_min,away_days_max
+light,Лёгкое,1,80,at_home,at_home,0,0
+medium,Среднее,0,0,post,hospital,1,1
+heavy,Тяжёлое,0,0,local_hospital,hospital,3,10

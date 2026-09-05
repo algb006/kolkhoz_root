@@ -1,0 +1,9 @@
+# generated from db/design.db — do not edit by hand
+# the farm's illness light. A per-resident metric cannot answer «как село в целом», and the player needs one glance, not a list of eighty men
+# red IS the epidemic, not a step before it — one state, one home. Yellow exists so that red is never a surprise
+# needs_contagious=1: the band requires the illness to pass between people. A village where a fifth of the men have scurvy in March is in trouble, but it is not an epidemic, and calling it one sends the player to quarantine against a problem that lives in his storeroom
+# 8 and 20 per cent are FIRST numbers, chosen against «эпидемия не чаще раза в 10-15 лет». Nothing has measured them yet
+key,title,sick_pct_from,needs_contagious,answer
+green,Норма,0,0,Ничего не требуется
+yellow,Повышенная заболеваемость,8,0,"Искать причину: вода, холод, гигиена, стол"
+red,Эпидемия,20,1,Карантин · вызвать врача из района · не скрывать

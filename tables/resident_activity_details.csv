@@ -1,0 +1,49 @@
+# generated from db/design.db — do not edit by hand
+# the sub-metric of an activity. The pair (activity, detail) is the key: a detail name is unique only inside its own activity
+# the column is `detail` and not `key` on purpose: the core takes the column NAMED `key` as a single-column key and checks it, so that name is a promise of uniqueness, not a label
+# a DIFFERENT question per activity — «куда» for walking, «как» for resting — which is why it is not one shared enum
+# off_map=1: he is in the district — market, hospital, the raikom, a fair — and has NO coordinate on this map. Do not read an empty point as «неизвестно где»: it is the opposite, he is known exactly and he is not here, and a quest must tell the two apart before drawing a line to him
+# off_map hangs on the detail, not the activity, because it varies inside one: treated at the medical post is here, treated in the district hospital is a two-to-five-hour cart ride away
+# walking is always on the map — a man leaves it by BECOMING away, so no one state answers both «идёт» and «его тут нет»
+activity,detail,title,off_map
+treated,at_home,Дома,0
+treated,post,Медпункт (ФАП),0
+treated,local_hospital,Своя участковая больница,0
+treated,hospital,Районная больница,1
+away,messenger,Гонцом,1
+away,market,Рынок райцентра,1
+away,raikom,По вызову райкома,1
+away,fair,На ярмарку,1
+away,escort,Везёт больного,1
+truant,overslept,Проспал,0
+truant,walked_off,Ушёл с работы,0
+truant,bender,Загулял,0
+blocked,no_tool,Нет инструмента,0
+blocked,no_material,Нет материалов,0
+blocked,no_room,Некуда класть,0
+blocked,waiting,Ждёт очереди,0
+walking,to_work,На работу,0
+walking,home,Домой,0
+walking,to_field,На поле,0
+walking,to_rest,На отдых,0
+walking,errand,По делу двора,0
+eating,canteen,Столовая,0
+eating,field,Полевая столовая,0
+eating,home,Дома,0
+eating,bundle,С собой,0
+studying,school,Школа,0
+studying,courses,Курсы,0
+studying,self,Самообразование,0
+lph,garden,Огород,0
+lph,livestock,Своя скотина,0
+lph,stores,Заготовки,0
+resting,fishing,Ловит рыбу,0
+resting,foraging,Собирает грибы и ягоды,0
+resting,bathing,Купается,0
+resting,culture,Культура,0
+resting,sport,Спорт,0
+resting,drinking,Выпивает,0
+at_home,asleep,Спит,0
+at_home,awake,Бодрствует,0
+not_worker,age,По возрасту,0
+not_worker,health,По здоровью,0

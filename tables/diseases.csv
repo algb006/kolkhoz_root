@@ -1,0 +1,26 @@
+# generated from db/design.db — do not edit by hand
+# severity decides the path of care by itself — see disease_severity.csv; it is not an adjective
+# contagious=1: it passes from man to man, and ONLY these can raise an epidemic. Авитаминоз is the counter-example — it is caught from the table, not from a neighbour
+# days -1 means the illness has no fixed length: tuberculosis is chronic, appendicitis is hours
+# health_hit is what it takes off the 0-100 health metric, 0 where the design has not priced it
+# cause is the column the player acts on: an illness with no named cause is bad luck, and the design does not carry those
+# чесотка, педикулёз and кожный нарыв come from the hygiene metric, which the design already names as their source
+# кишечная инфекция and тиф were one row in the design document and are two here: the middle step exists precisely to separate them
+key,title,severity,contagious,days_min,days_max,health_hit,lethal,season,cause
+cold_flu,"Простуда, грипп",light,1,3,7,-8,none,осень и весна,"Холод, сырость, ветхий дом"
+chill,Переохлаждение,light,0,1,2,-5,none,зима,"Холод, нет зимней одежды"
+angina,Ангина,light,1,5,10,-8,none,осень и весна,"Холод, скученность"
+stomach,Расстройство желудка,light,1,2,5,-5,none,лето,"Плохая вода, испорченная еда"
+back,"Радикулит, спина",light,0,5,14,-10,none,круглый год,"Перегрузки в страду, работа без выходных"
+poisoning,Отравление,light,0,3,6,-10,none,лето,"Испорченная еда, грибы"
+avitaminosis,Авитаминоз,light,0,14,60,-15,none,конец зимы и весна,"Однообразный стол, а не нехватка еды"
+scabies,Чесотка,medium,1,10,20,-8,none,круглый год,"Низкая гигиена, нет бани"
+lice,Педикулёз,medium,1,7,20,-5,none,зима,"Низкая гигиена, скученность"
+boil,Кожный нарыв,medium,0,5,12,-10,medium,круглый год,"Низкая гигиена, грязная рана"
+enteric,Кишечная инфекция,medium,1,7,14,-15,medium,лето,Загрязнённая вода из колодца
+pneumonia,Воспаление лёгких,heavy,0,21,42,-25,high,зима,"Переохлаждение, сырое жильё"
+appendicitis,Аппендицит,heavy,0,1,1,0,very_high,круглый год,Ни от чего — случается
+typhus,Тиф,heavy,1,14,35,-30,high,лето и осень,"Загрязнённая вода, скученность, занос извне"
+tuberculosis,Туберкулёз,heavy,1,-1,-1,-2,medium,круглый год,"Скученность, сырость, слабое здоровье"
+heart,Сердечное,heavy,0,2,7,-30,high,круглый год,"Возраст, перегрузки"
+birth,Осложнения родов,heavy,0,1,3,-30,high,круглый год,Роды без акушерки

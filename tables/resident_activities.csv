@@ -1,0 +1,24 @@
+# generated from db/design.db — do not edit by hand
+# what a resident is doing right now: ONE of these and never two, which is the whole value of the column
+# priority is a total order for the moment two rows could describe the same instant — the answer must not depend on the order the core happens to test in
+# is_alarm=1: the state is a reproach to the PLAYER and belongs in the signal stack too. idle, blocked and truant are the three
+# idle and blocked are NOT the same: idle is «наряда нет», blocked is «наряд есть, работать нечем». One word for both would hide the cause, which is the only part the player can fix
+# has_target=1: the state carries a place — where he is or where he is headed. That place is a POINT, metres from the map's south-west corner as in start_layout.csv, and an id only when something happens to stand there: a man crossing a field is at no unit, and a quest that wants to meet him or draw a line to his destination needs a coordinate. The id is the answer that sometimes exists, the point is the one that always does
+# which kind of thing the id names follows from the activity, so no second column says it
+# too_young and not_worker exist so that the idleness signal never lies about a toddler or an old man: a state the player cannot fix must not read as his failure
+# details: how many sub-metrics this activity has, in resident_activity_details.csv. Zero means it has none, not that they are missing
+key,title,has_target,priority,is_alarm,details
+treated,Лечится,1,1,0,4
+away,В отлучке,1,2,0,5
+truant,Прогуливает,0,3,1,3
+blocked,Стоит без дела не по своей вине,1,4,1,4
+idle,Бездельничает,0,5,1,0
+working,Работает,1,6,0,0
+walking,Идёт,1,7,0,5
+eating,Обедает,1,8,0,4
+studying,Учится,1,9,0,3
+lph,Работает в ЛПХ,0,10,0,3
+resting,Отдыхает,1,11,0,6
+at_home,Дома,0,12,0,2
+not_worker,Не работник,0,13,0,2
+too_young,Мал ещё,0,14,0,0
