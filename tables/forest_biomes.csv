@@ -1,32 +1,13 @@
 # generated from db/design.db — do not edit by hand
-# one row per species in a biome; the shares come to 100 within each
+# one row per biome: what it is, not what grows in it
+# the species mix is forest_biome_mix.csv, and it is a separate file because a biome's own columns must not be retyped on every species
 # this is a MIX, not a layout: draw each tree from the shares with the map's tree_noise_seed, so one biome never repeats itself and two maps of the same biome never look the same
 # priority resolves overlapping biome contours — higher wins, and wet ground wins over everything because it grows what it grows
 # is_default marks the biome that fills forest no contour covers. The map therefore carries contours only for what differs from it
 # canopy dark means the crowns close and the floor is bare: that is the look, and the danger is NOT from here — it follows clutter
-biome,title,canopy,priority,is_default,species,share_pct
-spruce_dark,Тёмный ельник,dark,30,0,spruce,70
-spruce_dark,Тёмный ельник,dark,30,0,birch,12
-spruce_dark,Тёмный ельник,dark,30,0,aspen,10
-spruce_dark,Тёмный ельник,dark,30,0,pine,5
-spruce_dark,Тёмный ельник,dark,30,0,alder,3
-pine_bor,Сосновый бор,light,20,0,pine,70
-pine_bor,Сосновый бор,light,20,0,birch,15
-pine_bor,Сосновый бор,light,20,0,spruce,10
-pine_bor,Сосновый бор,light,20,0,rowan,5
-birch_mixed,Березняк смешанный,light,10,1,birch,40
-birch_mixed,Березняк смешанный,light,10,1,aspen,20
-birch_mixed,Березняк смешанный,light,10,1,spruce,15
-birch_mixed,Березняк смешанный,light,10,1,pine,15
-birch_mixed,Березняк смешанный,light,10,1,rowan,5
-birch_mixed,Березняк смешанный,light,10,1,bird_cherry,5
-oak_grove,Дубрава,light,25,0,oak,40
-oak_grove,Дубрава,light,25,0,linden,20
-oak_grove,Дубрава,light,25,0,maple,15
-oak_grove,Дубрава,light,25,0,ash,10
-oak_grove,Дубрава,light,25,0,hazel,10
-oak_grove,Дубрава,light,25,0,birch,5
-alder_wet,Ольшаник,dark,40,0,alder,45
-alder_wet,Ольшаник,dark,40,0,willow,30
-alder_wet,Ольшаник,dark,40,0,birch,15
-alder_wet,Ольшаник,dark,40,0,bird_cherry,10
+biome,title,canopy,priority,is_default
+spruce_dark,Тёмный ельник,dark,30,0
+pine_bor,Сосновый бор,light,20,0
+birch_mixed,Березняк смешанный,light,10,1
+oak_grove,Дубрава,light,25,0
+alder_wet,Ольшаник,dark,40,0

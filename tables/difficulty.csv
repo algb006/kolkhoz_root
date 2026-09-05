@@ -4,7 +4,7 @@
 # fodder is not a flat multiple: the design sizes it from the date of the first cut, so fodder_weeks is the slack against that date — positive is surplus, negative is short
 # an EMPTY cell means the design has not written that number yet. Reading it as 1.0 would quietly make every level the normal one: refuse the level instead, or fall back to normal and say so
 key,title,stock_scale,fodder_weeks
-easy,Лёгкий,,
-normal,Обычный,,0
-hard,Трудный,,
-brutal,Тяжёлый,,
+easy,Лёгкий,1.5,3
+normal,Обычный,1,0
+hard,Трудный,0.7,-1
+brutal,Тяжёлый,0.5,-2

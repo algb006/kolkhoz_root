@@ -85,10 +85,10 @@ beer_stall,Пивной ларёк,social,2,0,1,era,,1,30,,,1,,0
 road_canteen,Дорожная столовая,social,3,0,1,era,,1,45,,,1,,1
 bathhouse,Баня,social,1,0,1,era,,1,25,,,1,,1
 barter_place,Место обмена,social,1,0,1,era,,1,25,,,0,,0
-kolkhoz_market,Колхозный рынок,social,2,0,1,era,,1,30,,,1,,0
+kolkhoz_market,Колхозный рынок,social,2,0,1,era,,1,30,,,0,,0
 roadside_market,Стихийный рынок у трассы,social,3,0,0,era,,1,,,,0,,0
 school_sports_ground,Спортплощадка при школе,social,2,0,1,era,,1,,,,0,,0
-stadium,Стадион,social,1,0,1,era,,1,25,,,1,,0
+stadium,Стадион,social,1,0,1,era,,1,25,,,0,,0
 pioneer_camp,Пионерский лагерь,social,2,0,1,era,,1,45,,,1,,0
 rest_house,Дом отдыха,social,3,0,1,era,,1,70,,,1,,1
 ski_slope,Лыжный склон,social,3,0,1,era,,1,,,,0,,0
@@ -99,7 +99,7 @@ horse_yard,Колхозный двор,logistics,1,0,1,era,,1,45,,,1,1.6,0
 mts,МТС,logistics,2,0,1,event,event_04,1,45,,,1,,0
 machine_park,Стоянка техники,logistics,2,0,1,era,,1,17,,,0,,0
 bus_stop,Автобусная остановка,infrastructure,3,0,1,era,,1,45,,,1,,0
-farm_stop,Остановка колхозного транспорта,infrastructure,1,0,1,era,,1,25,,,1,,0
+farm_stop,Остановка колхозного транспорта,infrastructure,1,0,1,era,,1,25,,,0,,0
 well,Колодец,infrastructure,1,0,1,era,,0,,1.2,open,0,,0
 substation,Трансформаторная подстанция,infrastructure,1,0,1,event,event_01,1,30,,,1,,0
 power_line,Линии электропередачи,infrastructure,1,0,1,event,event_01,0,,,route,0,,0

@@ -1,0 +1,30 @@
+# generated from db/design.db — do not edit by hand
+# one row per species in a biome; the shares come to 100 within each
+# keyed by the PAIR (biome, species): a species appears in many biomes and a biome holds many species
+# this is a MIX, not a layout: draw each tree from the shares with the map's tree_noise_seed, so one biome never repeats itself
+biome,species,share_pct
+spruce_dark,spruce,70
+spruce_dark,birch,12
+spruce_dark,aspen,10
+spruce_dark,pine,5
+spruce_dark,alder,3
+pine_bor,pine,70
+pine_bor,birch,15
+pine_bor,spruce,10
+pine_bor,rowan,5
+birch_mixed,birch,40
+birch_mixed,aspen,20
+birch_mixed,spruce,15
+birch_mixed,pine,15
+birch_mixed,rowan,5
+birch_mixed,bird_cherry,5
+oak_grove,oak,40
+oak_grove,linden,20
+oak_grove,maple,15
+oak_grove,ash,10
+oak_grove,hazel,10
+oak_grove,birch,5
+alder_wet,alder,45
+alder_wet,willow,30
+alder_wet,birch,15
+alder_wet,bird_cherry,10
