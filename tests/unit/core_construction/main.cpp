@@ -700,8 +700,6 @@ int TestTableLessWorld() {
   return failures;
 }
 
-}  // namespace
-
 /// A capacity that no level row answers for must STOP the load.
 ///
 /// The type row used to carry a storage figure of its own, and the export
@@ -777,6 +775,8 @@ int TestCapacityNeedsALadder() {
                      "the type column is not required at all");
   return failures;
 }
+
+}  // namespace
 
 int main() {
   int failures = 0;

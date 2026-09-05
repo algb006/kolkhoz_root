@@ -16,6 +16,7 @@
 
 #include "construction_config.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>

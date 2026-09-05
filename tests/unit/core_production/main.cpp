@@ -1120,6 +1120,56 @@ int CheckHaulingIsNotFree() {
   return failures;
 }
 
+/// A capacity that no level row answers for must STOP the load, not read as
+/// zero.
+///
+/// This is the check that had to be built before the fallback could go. The
+/// export wrote `LEFT JOIN unit_level ON level = 1`, so unit_types.csv
+/// carried a copy of level 1 and the fallback reading it was an arm that
+/// could not differ from its control — live-looking and never plugged in.
+/// Taking it out turns "no level row" from a wrong-but-plausible number into
+/// a zero, and a store that holds nothing looks exactly like a store nobody
+/// filled: host nearly concluded that capacity means nothing from precisely
+/// that shape. So the load refuses, and this test is the proof the refusal
+/// fires — three shapes, one of which must still pass, or the test would
+/// only be proving that nothing loads.
+int CheckCapacityWithoutALadderIsRefused() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_ladder";
+  const auto loads = [&root](const char* types, const char* levels) {
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    std::ofstream(root / "unit_types.csv") << types;
+    if (levels != nullptr) {
+      std::ofstream(root / "unit_levels.csv") << levels;
+    }
+    std::string error;
+    const auto tables = core::LoadTableSet(root.string(), &error);
+    return tables != nullptr && core::CreateProductionSystem(*tables) != nullptr;
+  };
+  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n", nullptr),
+                     "a capacity with no ladder at all refuses the load");
+  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n",
+                            "unit,level,storage_capacity_t\nbarn,1,\nbarn,2,\n"),
+                     "a capacity whose ladder names none refuses the load");
+  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n",
+                            "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,\n"),
+                     "a blank step among named ones refuses the load");
+  failures += Expect(!loads("key,livestock_capacity_head\ncattle_yard,24\n",
+                            "unit,level,storage_capacity_t\ncattle_yard,1,\n"),
+                     "a head count with no ladder behind it refuses the load too");
+  failures += Expect(loads("key,storage_capacity_t\nbarn,9\n",
+                           "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n"),
+                     "a ladder that answers for every step still loads");
+  // And the column may simply be GONE from unit_types.csv: it is on its way
+  // out of the export, and the loader must not be what breaks when it goes.
+  failures += Expect(loads("key\nbarn\n", "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n"),
+                     "the type column is not required at all");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 }  // namespace
 
 /// The turn of the start canon (task A7; manual/74-posts.md §5): the yard is
@@ -1201,56 +1251,6 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
         announced_twice || stabled.step_events[index].kind == core::EventKind::kHorsesStabled;
   }
   failures += Expect(!announced_twice, "the horses are gathered once in a campaign");
-  return failures;
-}
-
-/// A capacity that no level row answers for must STOP the load, not read as
-/// zero.
-///
-/// This is the check that had to be built before the fallback could go. The
-/// export wrote `LEFT JOIN unit_level ON level = 1`, so unit_types.csv
-/// carried a copy of level 1 and the fallback reading it was an arm that
-/// could not differ from its control — live-looking and never plugged in.
-/// Taking it out turns "no level row" from a wrong-but-plausible number into
-/// a zero, and a store that holds nothing looks exactly like a store nobody
-/// filled: host nearly concluded that capacity means nothing from precisely
-/// that shape. So the load refuses, and this test is the proof the refusal
-/// fires — three shapes, one of which must still pass, or the test would
-/// only be proving that nothing loads.
-int CheckCapacityWithoutALadderIsRefused() {
-  int failures = 0;
-  const std::filesystem::path root =
-      std::filesystem::temp_directory_path() / "unit_core_production_ladder";
-  const auto loads = [&root](const char* types, const char* levels) {
-    std::filesystem::remove_all(root);
-    std::filesystem::create_directories(root);
-    std::ofstream(root / "unit_types.csv") << types;
-    if (levels != nullptr) {
-      std::ofstream(root / "unit_levels.csv") << levels;
-    }
-    std::string error;
-    const auto tables = core::LoadTableSet(root.string(), &error);
-    return tables != nullptr && core::CreateProductionSystem(*tables) != nullptr;
-  };
-  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n", nullptr),
-                     "a capacity with no ladder at all refuses the load");
-  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n",
-                            "unit,level,storage_capacity_t\nbarn,1,\nbarn,2,\n"),
-                     "a capacity whose ladder names none refuses the load");
-  failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n",
-                            "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,\n"),
-                     "a blank step among named ones refuses the load");
-  failures += Expect(!loads("key,livestock_capacity_head\ncattle_yard,24\n",
-                            "unit,level,storage_capacity_t\ncattle_yard,1,\n"),
-                     "a head count with no ladder behind it refuses the load too");
-  failures += Expect(loads("key,storage_capacity_t\nbarn,9\n",
-                           "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n"),
-                     "a ladder that answers for every step still loads");
-  // And the column may simply be GONE from unit_types.csv: it is on its way
-  // out of the export, and the loader must not be what breaks when it goes.
-  failures += Expect(loads("key\nbarn\n", "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n"),
-                     "the type column is not required at all");
-  std::filesystem::remove_all(root);
   return failures;
 }
 

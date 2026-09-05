@@ -18,6 +18,7 @@
 #include "production_config.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -433,6 +434,44 @@ bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::s
 ///    granary of 150 t at level 1 and nothing at level 2 used to borrow the
 ///    type's number for level 2 and would now be a warehouse that empties
 ///    itself the day it is enlarged.
+/// @brief One ladder of one type, checked against the type row behind it.
+/// @param key        The unit's key, for the message.
+/// @param column     The column both tables call it, for the message.
+/// @param what       "storage" or "livestock", for the message.
+/// @param in_type    What the type row still says, 0 when the column is gone.
+/// @param by_plot    An outline the player draws has no numbers to be dense.
+/// @param steps      The ladder, index = level - 1.
+bool CheckOneLadder(const std::string& key,
+                    const char* column,
+                    const char* what,
+                    float in_type,
+                    std::uint8_t by_plot,
+                    const std::vector<float>& steps,
+                    std::string& error) {
+  bool named_anywhere = false;
+  for (const float step : steps) {
+    named_anywhere = named_anywhere || step > 0.0F;
+  }
+  if (in_type > 0.0F && !named_anywhere) {
+    error = "unit_types: " + key + " names " + column + " but no unit_levels.csv row gives it a " +
+            what + " capacity — the type column is not read any more, and the ladder is the only " +
+            "place a capacity lives";
+    return false;
+  }
+  if (!named_anywhere || by_plot != 0) {
+    return true;
+  }
+  for (std::size_t index = 0; index < steps.size(); ++index) {
+    if (steps[index] <= 0.0F) {
+      error = "unit_levels: " + key + " level " + std::to_string(index + 1) + " names no " +
+              column + " while another level does — a blank step is a hole in the ladder, not a " +
+              "capacity of zero";
+      return false;
+    }
+  }
+  return true;
+}
+
 bool CheckCapacityLadders(const ITable& unit_types,
                           const std::vector<UnitTypeDef>& types,
                           std::string& error) {
@@ -441,48 +480,30 @@ bool CheckCapacityLadders(const ITable& unit_types,
   for (std::uint32_t row = 0; row < types.size() && row < unit_types.RowCount(); ++row) {
     const UnitTypeDef& type = types[row];
     const std::string key(unit_types.CellText(row, 0));
-
-    struct Ladder {
-      const char* column;
-      const char* what;
-      std::uint32_t type_col;
-      const std::vector<float>& steps;
-    };
-
-    const std::array<Ladder, 2> ladders = {
-        Ladder{"storage_capacity_t", "storage", tonnes_col, type.level_storage_capacity_kg},
-        Ladder{
-            "livestock_capacity_head", "livestock", heads_col, type.level_livestock_capacity_head}};
-    for (const Ladder& ladder : ladders) {
-      bool named_anywhere = false;
-      for (const float step : ladder.steps) {
-        named_anywhere = named_anywhere || step > 0.0F;
-      }
-      float in_type = 0.0F;
-      if (!CellOrDefault(
-              unit_types, row, ladder.type_col, Range{.low = 0, .high = 1e6F}, 0, in_type, error)) {
-        error = "unit_types: " + error;
-        return false;
-      }
-      if (in_type > 0.0F && !named_anywhere) {
-        error = "unit_types: " + key + " names " + ladder.column +
-                " but no unit_levels.csv row gives it a " + ladder.what +
-                " capacity — the type column is not read any more, and the ladder is the only "
-                "place a capacity lives";
-        return false;
-      }
-      if (!named_anywhere || type.capacity_by_plot != 0) {
-        continue;
-      }
-      for (std::size_t index = 0; index < ladder.steps.size(); ++index) {
-        if (ladder.steps[index] <= 0.0F) {
-          error = "unit_levels: " + key + " level " + std::to_string(index + 1) + " names no " +
-                  std::string(ladder.column) +
-                  " while another level does — a blank step is a hole "
-                  "in the ladder, not a capacity of zero";
-          return false;
-        }
-      }
+    float in_tonnes = 0.0F;
+    float in_heads = 0.0F;
+    if (!CellOrDefault(
+            unit_types, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, in_tonnes, error) ||
+        !CellOrDefault(
+            unit_types, row, heads_col, Range{.low = 0, .high = 1e6F}, 0, in_heads, error)) {
+      error = "unit_types: " + error;
+      return false;
+    }
+    if (!CheckOneLadder(key,
+                        "storage_capacity_t",
+                        "storage",
+                        in_tonnes,
+                        type.capacity_by_plot,
+                        type.level_storage_capacity_kg,
+                        error) ||
+        !CheckOneLadder(key,
+                        "livestock_capacity_head",
+                        "livestock",
+                        in_heads,
+                        type.capacity_by_plot,
+                        type.level_livestock_capacity_head,
+                        error)) {
+      return false;
     }
   }
   return true;
