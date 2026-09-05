@@ -22,6 +22,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "../common/fixture_policy.h"
@@ -52,6 +53,24 @@ constexpr std::uint32_t kYears = 30;
 /// (69-reconciliation.md §13.12).
 std::uint32_t g_years = kYears;
 bool g_canonical_run = true;
+
+/// `--free-materials`: the building materials never run out. NOT A GAME
+/// SETTING and never shipped — a control arm for one question, and the
+/// question is what this run has been measuring for thirty years.
+///
+/// The farm makes no logs. Nothing in the tables does: timber is taken by an
+/// ORDER (design, timber §2 — felling trees outside the forest is the farm's
+/// own channel), and that order does not exist in the core yet. So the start
+/// stock of the manor ruins is all the timber there will ever be: 138 tonnes
+/// of it, spent by the sixth year, and flat at seven tonnes for the
+/// twenty-four years after that (tests/run/store_build_time). From year six
+/// this run measures a village that CANNOT BUILD — and it looked healthy,
+/// because the residents went on being counted.
+///
+/// With the flag the materials are topped up daily in a heap bounded by its
+/// own outline (capacity_by_plot), so that free timber cannot take room from
+/// the grain and turn one measurement into two.
+bool g_free_materials = false;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -252,6 +271,47 @@ void PrintHerdFinding(const core::WorldState& state) {
   }
 }
 
+/// @brief Every resource any build recipe names, by row of resources.csv.
+std::vector<std::uint32_t> MaterialRows(const core::ITableSet& tables) {
+  std::vector<std::uint32_t> rows;
+  const core::ITable* const costs = tables.FindTable("unit_level_cost");
+  const core::ITable* const resources = tables.FindTable("resources");
+  if (costs == nullptr || resources == nullptr) {
+    return rows;
+  }
+  const std::uint32_t column = costs->FindColumn("resource");
+  if (column == core::kNoTableColumn) {
+    return rows;
+  }
+  for (std::uint32_t row = 0; row < costs->RowCount(); ++row) {
+    const std::uint32_t resource = resources->FindRowByKey(costs->CellText(row, column));
+    if (resource != core::kNoTableRow && std::ranges::find(rows, resource) == rows.end()) {
+      rows.push_back(resource);
+    }
+  }
+  return rows;
+}
+
+/// @brief The first heap bounded by its own outline: a store with no ceiling
+/// and nothing to overflow. The materials are stacked THERE and not in a
+/// granary, so that the control arm does not also take room from the grain.
+std::uint32_t OutlineHeapRow(const core::WorldState& world, const core::ITableSet& tables) {
+  const core::ITable* const types = tables.FindTable("unit_types");
+  const std::uint32_t column =
+      types == nullptr ? core::kNoTableColumn : types->FindColumn("capacity_by_plot");
+  if (column == core::kNoTableColumn) {
+    return core::kNoRow;
+  }
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const core::UnitRow& unit = world.units.rows[row];
+    if (unit.level > 0 && unit.type.value < types->RowCount() &&
+        types->CellText(unit.type.value, column) == "1") {
+      return row;
+    }
+  }
+  return core::kNoRow;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -262,14 +322,45 @@ int main(int argc, char** argv) {
   if (argc > 2) {
     g_years = static_cast<std::uint32_t>(std::strtoul(argv[2], nullptr, 10));
   }
+  for (int index = 1; index < argc; ++index) {
+    g_free_materials = g_free_materials || std::string_view(argv[index]) == "--free-materials";
+  }
   // THE GATES BIND ON THE CANONICAL RUN AND NOWHERE ELSE. A band measured
   // for thirty years of one seed says nothing about five years of another,
   // and a check that fires there would be measuring the argument rather than
   // the simulation.
-  g_canonical_run = g_seed == kSeed && g_years == kYears;
+  g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials;
   run::Simulation world = run::Start(g_seed);
   if (!world) {
     return 1;
+  }
+
+  // THE CONTROL ARM IS SET ONCE, BEFORE THE FIRST DAY, and then the run is
+  // the run. A daily top-up would have meant copying and resetting the whole
+  // world every day, and a control arm that reaches into the world 1440
+  // times is not the same experiment as one that changes a starting number.
+  if (g_free_materials) {
+    const std::vector<std::uint32_t> material_rows = MaterialRows(*world.tables);
+    core::WorldState stocked = world.State();
+    const std::uint32_t heap = OutlineHeapRow(stocked, *world.tables);
+    if (heap == core::kNoRow || material_rows.empty()) {
+      std::cout << "FAIL: --free-materials found no outline heap to stack them in\n";
+      return 1;
+    }
+    for (const std::uint32_t resource : material_rows) {
+      core::ResourceAmounts& stock = stocked.units.rows[heap].stock;
+      if (resource >= stock.size()) {
+        stock.resize(resource + 1, 0);
+      }
+      // Ten thousand tonnes of each. A granary is twelve tonnes of timber,
+      // so this is a thousand granaries: the arm cannot run short, which is
+      // the whole of what it is for.
+      stock[resource] = 10'000'000 * core::kGramsPerKilogram;
+    }
+    world.simulation->ResetWorld(stocked);
+    std::cout << "thirty_years: CONTROL ARM — " << material_rows.size()
+              << " build materials stacked without limit in the outline heap at row " << heap
+              << ". NOT the canonical run, no gate binds, and nothing of this ships\n";
   }
 
   std::filesystem::create_directories(SheetPath().parent_path());
