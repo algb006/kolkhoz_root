@@ -477,6 +477,31 @@ int TestResidentActivity() {
   failures += Expect(at(10, 30.0F).activity == core::ResidentActivity::kIdle,
                      "no order and a fit man of working age is IDLE");
 
+  // DINNER IS ONE HOUR IN THE MIDDLE OF THE LIGHT DAY — boss's number, not
+  // a convention of the core's. It is visible for anybody the day has not
+  // claimed for something the table ranks higher.
+  world.residents.rows[0].work.kind = core::WorkKind::kNone;
+  failures += Expect(at(12, 10.0F).activity == core::ResidentActivity::kEating,
+                     "at midday a schoolchild is at dinner, not at his lesson");
+  failures += Expect(at(13, 10.0F).activity == core::ResidentActivity::kStudying,
+                     "and an hour later he is back: dinner is one hour, not an afternoon");
+  failures += Expect(at(12, 10.0F).detail == 0xFF,
+                     "where he eats has no source, and an unnamed place beats a guessed one");
+  // BUT NEITHER A WORKER NOR AN IDLE MAN EVER EATS, and that is the table's
+  // priority talking rather than this code: eating is 8, working 6, idle 5.
+  // Everything a person of working age can be doing outranks his dinner, so
+  // the state is reachable only for children and for those otherwise at
+  // home. Reported to boss on 2026-09-05 as a question about the ROSTER —
+  // his own reason for the meal hour is the FIELD CANTEEN, bought so that
+  // the hour is not spent walking home, which is a statement about workers
+  // and cannot be expressed while working outranks eating. Asserted here as
+  // the table has it, so the day the priority moves these checks move too.
+  failures += Expect(at(12, 30.0F).activity == core::ResidentActivity::kIdle,
+                     "as the table ranks it today, an unassigned man idles through dinner");
+  world.residents.rows[0].work.kind = core::WorkKind::kPlowing;
+  failures += Expect(at(12, 30.0F).activity == core::ResidentActivity::kWorking,
+                     "and a man at work stays at work through it");
+
   // A MAN WHO WALKED OFF IS NOT IDLE, AND THE DIFFERENCE IS AN ACCUSATION
   // IN BOTH DIRECTIONS. He has no order — PayDay cleared it when he broke
   // off — but he has been out today, which nobody unassigned has. Calling

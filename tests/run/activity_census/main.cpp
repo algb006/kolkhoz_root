@@ -75,7 +75,7 @@ constexpr std::array<std::string_view,
 /// to look. The moment truancy started firing the census refused the run,
 /// because a state that is both waived and happening means one of the two
 /// is out of date; that refusal is what this line records.
-constexpr std::array<std::string_view, 4> kWaived = {"treated", "away", "eating", "resting"};
+constexpr std::array<std::string_view, 3> kWaived = {"treated", "away", "resting"};
 
 /// THE OPEN QUESTION THIS CHECK RAISED IS CLOSED, and the way it closed is
 /// the reason to keep the check. It found not_worker and too_young

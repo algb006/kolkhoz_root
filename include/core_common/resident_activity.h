@@ -186,6 +186,13 @@ struct ActivityRules {
   /// convention that lets the detail be answered at all.
   float sleep_hours = 8.0F;
 
+  /// The hour dinner is eaten: ONE hour in the middle of the daylight
+  /// working day (boss's number, 2026-09-05, not a convention of this
+  /// module's — the field canteen is bought precisely so that this hour is
+  /// not spent walking home). Midday by default, which is the middle of any
+  /// solar window this model builds.
+  float meal_hour = 12.0F;
+
   /// Rest at or below which a man ends his own working day and goes home
   /// (labour config `rest_walkoff_threshold`, decision 107). What tells a
   /// truant from a man whose job vanished under him: both are unassigned

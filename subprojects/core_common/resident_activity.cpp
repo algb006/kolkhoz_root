@@ -138,8 +138,17 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   if (assigned && (Inside(hour, leaves, starts) || Inside(hour, stops, returns))) {
     set(ResidentActivity::kWalking);
   }
-  // STUB: kEating. The family meal is a quantity of the DAY; the model has
-  // no hour of dinner, so there is nothing to point at when asked "now".
+  // ONE HOUR IN THE MIDDLE OF THE LIGHT WORKING DAY — boss's number of
+  // 2026-09-05, not a convention invented here. The family meal is still a
+  // quantity of the DAY (family_meal.cpp); this says WHEN, which the day's
+  // quantity cannot.
+  //
+  // WHICH of the four places he eats in has no source: a canteen, a field
+  // canteen, home and a bundle are four different units the model does not
+  // know he has. The detail is left unnamed rather than guessed.
+  if (Inside(hour, rules.meal_hour, rules.meal_hour + 1.0F)) {
+    set(ResidentActivity::kEating);
+  }
   if (age_years >= rules.school_from_bio_years && age_years < rules.school_to_bio_years &&
       Inside(hour, window.sunrise, window.sunset)) {
     set(ResidentActivity::kStudying);
