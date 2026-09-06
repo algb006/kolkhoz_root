@@ -17,3 +17,9 @@ apron_width_m,0.7,layer
 vehicle_wall_clearance_m,1.2,layer
 dragonfly_density_hole_m2,0.1,layer
 dragonfly_density_slow_m2,0.03,layer
+body_height_male_m,1.66,both
+body_height_female_m,1.58,both
+body_height_sigma_frac,0.037,both
+body_height_clamp_sigma,2.5,both
+body_build_sigma_frac,0.07,both
+meadow_flower_density_m2,3,layer

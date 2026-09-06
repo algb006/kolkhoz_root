@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "campaign_tables.h"
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/ids.h"
@@ -378,6 +379,18 @@ class StandardSimulation final : public ISimulation {
     return construction_->WearDeadline(engine_->CompletedState(), unit);
   }
 
+  StinkStrength StinkFullAt(Vec2 point) const override {
+    return construction_->StinkFullAt(engine_->CompletedState(), point);
+  }
+
+  StinkStrength StinkNowAt(Vec2 point) const override {
+    return construction_->StinkNowAt(engine_->CompletedState(), point);
+  }
+
+  float ResidentHeightMeters(ResidentId resident) const override {
+    return residents_->HeightMeters(engine_->CompletedState(), resident);
+  }
+
   /// Tomorrow first. The weather is a pure function of (seed, day), so the
   /// days ahead are evaluated exactly as the days behind would be — nothing
   /// is remembered and nothing is cached.
@@ -522,6 +535,34 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     // A factory refused its configuration (it already logged why).
     return nullptr;
   }
+  // THE TABLE'S DECLARED READERS ARE JUDGED HERE, and here only, because
+  // this is the one place that knows every module. The check used to live
+  // inside core_time, which reads world_params.csv for the leaf fall — and
+  // on 2026-09-06 genesis began reading it for the figure of a person, so a
+  // key honestly declared `core` by one module was refused by another that
+  // had simply never heard of it. A module cannot judge the core: it is not
+  // the core.
+  //
+  // Each list comes from the module that reads it, out of the same array the
+  // reader indexes, so no list can age away from its code.
+  {
+    const ITable* const world_params = config.tables->FindTable("world_params");
+    if (world_params != nullptr) {
+      std::vector<std::string_view> known;
+      const std::span<const std::string_view> from_time = TimeWorldParamKeys();
+      const std::span<const std::string_view> from_genesis = GenesisWorldParamKeys();
+      const std::span<const std::string_view> from_life = LifeWorldParamKeys();
+      known.insert(known.end(), from_time.begin(), from_time.end());
+      known.insert(known.end(), from_genesis.begin(), from_genesis.end());
+      known.insert(known.end(), from_life.begin(), from_life.end());
+      std::string trouble;
+      if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
+        LogError(trouble);
+        return nullptr;
+      }
+    }
+  }
+
   // And the start layout is refused on the same terms as a subsystem's
   // table: the parser has already logged the row and the column.
   std::string layout_error;

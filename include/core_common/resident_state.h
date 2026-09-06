@@ -207,6 +207,42 @@ struct ResidentRow {
   /// trait roster and its effects arrive with dialogues (project phase 3);
   /// the field is laid out so saves and genesis are final.
   std::uint16_t traits = 0;
+
+  // -- the body (figure design; boss, 2026-09-06) ---------------------------
+
+  /// How this person's height differs from the base of their sex, AS A
+  /// FRACTION: 0.04 is four percent taller. Drawn once at birth and never
+  /// changed.
+  ///
+  /// A FRACTION AND NOT CENTIMETRES, and that is the decision the whole
+  /// field rests on. A tall child MUST grow into a tall adult; in
+  /// centimetres the deviation would have to be recomputed at every step of
+  /// the age ladder, and the person would jerk on each transition. A
+  /// fraction carries across the steps by itself, because it is a fact about
+  /// the person and not about their current size.
+  ///
+  /// Small on purpose: sigma is 3.7 % and the draw is cut at 2.5 sigma, so
+  /// the whole population lives inside 9.25 % — INCLUDING the inherited
+  /// half-spread a child adds to its parents' mean, which is held to the
+  /// same band rather than allowed to walk outward from it. The knobs are
+  /// world_params.csv rows, not constants here, and their PRODUCT is capped
+  /// as well as each of them: two legal knobs multiplied out to three would
+  /// otherwise make a person shorter than nothing (core_common/body.h).
+  ///
+  /// The first version promised this band and did not hold it: half a
+  /// spread on top of an already-cut mean reached 13.9 % in one generation
+  /// and crept on from there. A bound only the comment believes in is worse
+  /// than none.
+  float height_deviation = 0.0F;
+
+  /// The same for width: the permanent half of stoutness. Sigma 7 %.
+  ///
+  /// THE OTHER HALF IS NOT STORED ANYWHERE, and that is deliberate
+  /// (boss, 2026-09-06): condition — whether a person is well fed today —
+  /// is read by the layer from satiety and health, which it already
+  /// receives. A hungry village looks hungry without a field of its own,
+  /// which is what a live signal means.
+  float build_deviation = 0.0F;
 };
 
 /// @brief The residents table type used by WorldState.

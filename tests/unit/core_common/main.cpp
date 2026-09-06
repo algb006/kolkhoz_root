@@ -3,9 +3,11 @@
 // chosen yet — tests/CMakeLists.txt).
 
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <limits>
 
+#include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
@@ -567,8 +569,184 @@ int TestResidentActivity() {
   return failures;
 }
 
+/// THE FIGURE RULE, measured on the rule and not on a village.
+///
+/// A first version of this guard walked the eighty people of the start and
+/// asserted nobody stood outside the cut. It passed with the cut REMOVED —
+/// eighty draws of a 3.7 % sigma simply never reach 2.5 sigma, so the
+/// assertion was about the sample and not about the rule. Mutation found it;
+/// reading it could not have.
+int CheckTheFigureRule() {
+  int failures = 0;
+  constexpr float kSigma = 0.037F;
+  constexpr float kCut = 2.5F;
+  constexpr std::uint64_t kPeople = 200000;
+
+  float widest = 0.0F;
+  double sum = 0.0;
+  std::uint32_t at_the_cut = 0;
+  bool identical = true;
+  const float first = core::DrawBodyDeviation(1930, 0, 0, kSigma, kCut);
+  for (std::uint64_t person = 0; person < kPeople; ++person) {
+    const float deviation = core::DrawBodyDeviation(1930, person, 0, kSigma, kCut);
+    widest = std::max(widest, std::abs(deviation));
+    sum += static_cast<double>(deviation);
+    at_the_cut += std::abs(deviation) > (kCut * kSigma) - 1.0e-6F ? 1U : 0U;
+    identical = identical && deviation == first;
+  }
+  failures += Expect(!identical, "two hundred thousand people are not all the same height");
+  // THE CUT IS THE SUBJECT. At this many draws a normal distribution reaches
+  // past 2.5 sigma about one time in eighty, so an untrimmed tail would show
+  // here in thousands of people.
+  failures += Expect(widest <= (kCut * kSigma) + 1.0e-6F,
+                     "and not one of them stands outside the cut of 2.5 sigma");
+  failures += Expect(at_the_cut > 0,
+                     "while some of them stand exactly ON it — otherwise the check above passes on "
+                     "a spread too narrow to ever reach the cut");
+  const double mean = sum / static_cast<double>(kPeople);
+  failures += Expect(mean > -0.002 && mean < 0.002,
+                     "the spread is centred: the village is not quietly taller or shorter than "
+                     "its own base height");
+
+  // THE SAME PERSON IS THE SAME HEIGHT, however often asked, and a different
+  // world gives a different one. This is what makes the figure storable
+  // without being stored twice.
+  failures += Expect(core::DrawBodyDeviation(1930, 42, 0, kSigma, kCut) ==
+                         core::DrawBodyDeviation(1930, 42, 0, kSigma, kCut),
+                     "the same person in the same world is the same height every time");
+  failures += Expect(core::DrawBodyDeviation(1930, 42, 0, kSigma, kCut) !=
+                         core::DrawBodyDeviation(1931, 42, 0, kSigma, kCut),
+                     "and the same person in another world is not");
+  // Height and build must not be tied to each other: one hash position for
+  // both would make every tall person broad.
+  failures += Expect(core::DrawBodyDeviation(1930, 42, 0, kSigma, kCut) !=
+                         core::DrawBodyDeviation(1930, 42, 0x100, kSigma, kCut),
+                     "height and build are drawn apart, so a tall man is not broad by arithmetic");
+  // AND THE ROLL ACTUALLY USES TWO POSITIONS, which the two calls above do
+  // not prove: they test the function, and the defect would live in its
+  // CALLER. Measured with the two spreads made equal, so that a shared
+  // position shows as equal values rather than merely proportional ones —
+  // with the shipped sigmas the two would differ anyway and the guard would
+  // pass on arithmetic instead of on the rule.
+  {
+    core::BodyKnobs even;
+    even.height_sigma_frac = kSigma;
+    even.build_sigma_frac = kSigma;
+    core::ResidentRow person;
+    core::RollBody(1930, 42, even, person);
+    failures += Expect(person.height_deviation != person.build_deviation,
+                       "a person's height and build come from two different draws, not from one");
+  }
+
+  // THE GOLDEN VALUE, and it is a CROSS-COMPILER tripwire rather than a
+  // regression test of arithmetic.
+  //
+  // These two floats are the first things in the SAVED state that are not a
+  // scaled integer behind an integer gate, so the argument that holds
+  // Clang and MSVC together elsewhere does not cover them. The draw was
+  // rewritten to use addition alone for that reason — IEEE-754 addition is
+  // correctly rounded by the standard, and `std::log` and `std::cos` are
+  // not — and this line is what says so out loud on the day somebody
+  // "simplifies" it back to Box-Muller, or the day the two compilers
+  // disagree.
+  //
+  // Compared BY BITS: an equality on floats would pass on two numbers that
+  // print the same and are not.
+  {
+    const float golden = core::DrawBodyDeviation(1930, 42, 0, kSigma, kCut);
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &golden, sizeof(bits));
+    failures += Expect(bits == 0x3D8E5241U,
+                       "the figure draw is bit-for-bit what it was: the same person in the same "
+                       "world is the same height under any compiler that follows IEEE-754");
+  }
+
+  // A NONSENSE KNOB GIVES NO DEVIATION rather than a NaN village: written
+  // positively so anything unexpected falls out here and not three systems
+  // away.
+  failures += Expect(core::DrawBodyDeviation(1930, 7, 0, -1.0F, kCut) == 0.0F,
+                     "a negative spread is refused into a flat zero");
+  failures += Expect(core::DrawBodyDeviation(1930, 7, 0, kSigma, 0.0F) == 0.0F,
+                     "and so is a cut of nothing");
+
+  // TWO LEGAL KNOBS WHOSE PRODUCT IS NOT LEGAL. Each band is read and
+  // accepted on its own — 0..0.5 for the spread, 0.5..6 for the cut — and
+  // together they multiply out to three, which would make `base * (1 +
+  // deviation)` a NEGATIVE height. The guard measures the pair, because
+  // that is the thing neither band can see.
+  {
+    // A CROWD AND NOT ONE MAN. The first version of this guard asked one
+    // person, and that person's draw happened to be moderate: with the cap
+    // removed he still landed inside the band, and the check passed its own
+    // mutation. The subject of a bound is the WIDEST of many, never a
+    // sample of one.
+    float widest_absurd = 0.0F;
+    for (std::uint64_t person = 0; person < 5000; ++person) {
+      widest_absurd =
+          std::max(widest_absurd, std::abs(core::DrawBodyDeviation(1930, person, 0, 0.5F, 6.0F)));
+    }
+    failures += Expect(widest_absurd < 1.0F,
+                       "a legal-but-absurd pair of knobs still cannot make a person shorter than "
+                       "nothing: the product is bounded where neither factor is");
+    failures += Expect(widest_absurd > 0.5F,
+                       "and the pair really does push against that bound — otherwise the check "
+                       "above passes on knobs too tame to test it");
+    core::ResidentRow tall;
+    tall.sex = core::Sex::kMale;
+    tall.height_deviation = -widest_absurd;
+    core::BodyKnobs wild;
+    wild.height_sigma_frac = 0.5F;
+    wild.clamp_sigma = 6.0F;
+    failures += Expect(core::HeightMeters(tall, wild, true) > 0.0F,
+                       "and the metres that come out of it are a height and not a hole");
+  }
+
+  // AND INHERITANCE STAYS INSIDE THE BAND, generation after generation. Half
+  // a spread on top of an already-clamped parental mean walks outward: one
+  // generation reached 13.9 % against a promised 9 %, and the bound crept on
+  // from there. Walked twenty generations, because the first version of this
+  // rule was wrong in a way that ONE generation barely showed.
+  {
+    core::BodyKnobs knobs;
+    const float band = knobs.height_sigma_frac * knobs.clamp_sigma;
+    core::ResidentRow mother;
+    core::ResidentRow father;
+    mother.height_deviation = band;
+    father.height_deviation = band;
+    bool inside = true;
+    for (std::uint64_t generation = 0; generation < 20; ++generation) {
+      core::ResidentRow child;
+      core::RollBodyFromParents(1930, generation + 1, knobs, mother, father, child);
+      inside = inside && std::abs(child.height_deviation) <= band + 1.0e-6F;
+      mother = child;
+      father = child;
+    }
+    failures += Expect(inside,
+                       "twenty generations of the tallest possible parents stay inside the band "
+                       "the knobs describe");
+  }
+
+  // THE METRES, and the one rule about them: adults only.
+  core::ResidentRow man;
+  man.sex = core::Sex::kMale;
+  man.height_deviation = 0.1F;
+  core::BodyKnobs knobs;
+  const float grown = core::HeightMeters(man, knobs, true);
+  failures += Expect(grown > 1.82F && grown < 1.83F,
+                     "an adult's height is his base raised by his own fraction");
+  failures += Expect(core::HeightMeters(man, knobs, false) == 0.0F,
+                     "and a child has none: the world carries no base for the steps of childhood, "
+                     "so the answer is 'nobody can say' rather than a number");
+  core::ResidentRow woman = man;
+  woman.sex = core::Sex::kFemale;
+  failures += Expect(core::HeightMeters(woman, knobs, true) < grown,
+                     "the two bases are told apart — the same fraction of a smaller base is less");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckTheFigureRule();
   failures += TestCalendar();
   failures += TestStateTable();
   failures += TestRandom();

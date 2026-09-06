@@ -21,6 +21,8 @@
 #define CORE_TIME_TIME_SYSTEM_H_
 
 #include <memory>
+#include <span>
+#include <string_view>
 
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -79,6 +81,19 @@ class ITimeSystem {
 ///         season row or column, non-numeric cell) — logged, never patched
 ///         over silently — and nullptr when the table is ABSENT and the
 ///         caller did not say kAllowed.
+/// @brief The world_params.csv keys this module reads.
+///
+/// EXPOSED SO THAT NOBODY HAS TO JUDGE THE CORE FROM INSIDE A MODULE. The
+/// table's `reader` column says which rows the core is expected to read, and
+/// checking it needs the union of every module's keys — a module knows only
+/// its own. Until 2026-09-06 the check lived in this module and refused a key
+/// it simply had not heard of; it now lives at the assembly, which unions
+/// these lists (core_catalog/table_value.h).
+///
+/// @return A view of a static array; valid for the life of the program.
+/// @note Wiring-time, sim thread. A pure read of nothing.
+std::span<const std::string_view> TimeWorldParamKeys();
+
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs);
 
 }  // namespace core

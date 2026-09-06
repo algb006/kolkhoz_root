@@ -112,6 +112,18 @@ class ScriptedSimulation final : public core::ISimulation {
     return core::NoDeadline(core::DeadlineKind::kNoData);
   }
 
+  // The scripted double answers clean air for both stink questions: this
+  // test is about the session's forwarding, not about the field.
+  core::StinkStrength StinkFullAt(core::Vec2 /*point*/) const override {
+    return core::StinkStrength::kNone;
+  }
+
+  core::StinkStrength StinkNowAt(core::Vec2 /*point*/) const override {
+    return core::StinkStrength::kNone;
+  }
+
+  float ResidentHeightMeters(core::ResidentId /*resident*/) const override { return 0.0F; }
+
   void CollectAlarms(std::vector<core::Alarm>& alarms) const override {
     alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
   }

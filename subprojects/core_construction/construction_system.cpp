@@ -10,6 +10,7 @@
 
 #include "core_construction/construction_system.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -182,7 +183,13 @@ class ConstructionSystem final : public IConstructionSystem {
   /// Distances are compared SQUARED: the answer is "is it inside", and a
   /// square root on the way to a comparison buys nothing but a chance for
   /// two callers to round differently.
-  StinkStrength StinkAt(const WorldState& completed, Vec2 point) const override {
+  /// The two seam answers share one walk and differ in ONE line — which
+  /// radius a source is measured by. Written as one body with a flag rather
+  /// than two, because two bodies would be two chances for the edge cases
+  /// (a site at level 0, a working-only source, the worse-of-two rule) to
+  /// drift apart, and the drift would show as the cough disagreeing with
+  /// the placement preview about the same yard.
+  StinkStrength StinkWalk(const WorldState& completed, Vec2 point, bool full) const {
     StinkStrength worst = StinkStrength::kNone;
     for (const UnitRow& unit : completed.units.rows) {
       // Level 0 is a site or a unit coming down, and it holds nothing yet:
@@ -200,7 +207,11 @@ class ConstructionSystem final : public IConstructionSystem {
       if (type.stink_when == StinkWhen::kWorking) {
         continue;
       }
-      const float radius = config_.stink_radius_m[static_cast<std::size_t>(type.stink)];
+      const float radius =
+          full ? config_.stink_radius_m[static_cast<std::size_t>(type.stink)] : unit.stink_radius_m;
+      if (!(radius > 0.0F)) {
+        continue;  // today's zone has not started, or has gone out
+      }
       const float dx = point.x - unit.position.x;
       const float dy = point.y - unit.position.y;
       if ((dx * dx) + (dy * dy) <= radius * radius) {
@@ -208,6 +219,14 @@ class ConstructionSystem final : public IConstructionSystem {
       }
     }
     return worst;
+  }
+
+  StinkStrength StinkFullAt(const WorldState& completed, Vec2 point) const override {
+    return StinkWalk(completed, point, true);
+  }
+
+  StinkStrength StinkNowAt(const WorldState& completed, Vec2 point) const override {
+    return StinkWalk(completed, point, false);
   }
 
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
@@ -278,12 +297,47 @@ class ConstructionSystem final : public IConstructionSystem {
       // and a house that reaches the top of the scale falls before the
       // deliveries walk the rows it is no longer in (task A5).
       AgeUnits(current);
+      MoveStinkZones(current);
       DeliverMaterials(current);
     }
     FinishSites(current);
   }
 
  private:
+  /// THE ZONE OF A DAY (water design §4). Every source's reach moves one
+  /// step towards where it belongs: out to the full radius of its strength
+  /// while it emits, in towards nothing while it does not.
+  ///
+  /// A SPEED AND NOT A TERM, and the difference is the whole rule. Give the
+  /// decay a length — "a zone goes out in three days" — and you must then
+  /// explain why the forge's three days are not the tannery's; give it a
+  /// speed and there is nothing left to explain, because the big zone has
+  /// further to shrink. The design tells both stories and asks for one
+  /// rule, and this is the rule that tells both.
+  ///
+  /// WHAT DOES NOT MOVE YET: a source that smells only WHILE IT WORKS never
+  /// grows, because this core has no work at a production unit to read
+  /// (construction_system.h). Its zone stays at nothing, which is the same
+  /// answer the two seam queries give for it, so the STUB is consistent in
+  /// both places rather than only in one.
+  void MoveStinkZones(WorldState& current) const {
+    for (UnitRow& unit : current.units.rows) {
+      if (unit.type.value >= config_.types.size()) {
+        continue;
+      }
+      const BuildType& type = config_.types[unit.type.value];
+      const bool emitting = unit.level > 0 && type.stink != StinkStrength::kNone &&
+                            type.stink_when == StinkWhen::kAlways;
+      const float full =
+          emitting ? config_.stink_radius_m[static_cast<std::size_t>(type.stink)] : 0.0F;
+      if (unit.stink_radius_m < full) {
+        unit.stink_radius_m = std::min(full, unit.stink_radius_m + config_.stink_growth_m_per_day);
+      } else if (unit.stink_radius_m > full) {
+        unit.stink_radius_m = std::max(full, unit.stink_radius_m - config_.stink_decay_m_per_day);
+      }
+    }
+  }
+
   // -- orders ---------------------------------------------------------------
 
   /// Every construction order is decided in the step it is read: kDone or

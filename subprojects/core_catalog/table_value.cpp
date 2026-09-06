@@ -2,8 +2,10 @@
 
 #include "core_catalog/table_value.h"
 
+#include <algorithm>
 #include <cassert>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace core {
@@ -97,6 +99,43 @@ bool ReadKnobs(const ITable& table,
     assert(knob.value != nullptr && "ScalarKnob with no destination — array declared too large");
     if (!OptionalValue(table, knob.key, knob.range, *knob.value, error)) {
       PrefixError(table_name, knob.key, error);
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CheckDeclaredReaders(const ITable& table,
+                          std::string_view table_name,
+                          std::span<const std::string_view> known,
+                          std::string& error) {
+  const std::uint32_t key_column = table.FindColumn("key");
+  const std::uint32_t reader_column = table.FindColumn("reader");
+  if (key_column == kNoTableColumn) {
+    error = std::string(table_name) + ": no 'key' column";
+    return false;
+  }
+  if (reader_column == kNoTableColumn) {
+    error = std::string(table_name) +
+            ": no 'reader' column — a table that does not say who reads each knob cannot tell a "
+            "misspelt core key from a layer one";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    const std::string_view key = table.CellText(row, key_column);
+    const std::string_view reader = table.CellText(row, reader_column);
+    if (reader != "core" && reader != "layer" && reader != "both") {
+      error = std::string(table_name) + ": row '" + std::string(key) + "' declares reader '" +
+              std::string(reader) + "' — it must be core, layer or both";
+      return false;
+    }
+    if (reader == "layer") {
+      continue;  // the graphics layer's knob; the core carries it, unread
+    }
+    if (std::find(known.begin(), known.end(), key) == known.end()) {
+      error = std::string(table_name) + ": row '" + std::string(key) +
+              "' is declared for the core, and the core has no such knob — a misspelt key, or a "
+              "knob whose reader moved";
       return false;
     }
   }

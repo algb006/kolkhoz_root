@@ -20,6 +20,7 @@
 #include "campaign_tables.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/table_value.h"
+#include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/random.h"
@@ -54,9 +55,71 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 
 /// @brief The shared shape of every starting person; kin and family are set
 /// by the caller.
-ResidentRow RollPerson(RngState& rng, Sex sex, float age_years, float life_speedup) {
+/// @brief The figure knobs of world_params.csv, and the keys they came from.
+///
+/// THE KEYS ARE COLLECTED BY THE READERS THEMSELVES, one push per knob read,
+/// so the list handed to the assembly cannot age away from the code that
+/// fills it. A second list written out beside this function would be right
+/// on the day it was written and silent ever after.
+/// The world_params.csv keys genesis reads, and the ONE place they are
+/// written. The knob list below takes its names from this array by index, so
+/// the list the assembly is handed and the list actually read cannot be two
+/// lists: they are the same array. A second copy written out beside the
+/// reader would be correct on the day it was written and mute ever after.
+constexpr std::array<std::string_view, 5> kGenesisWorldParamKeys = {"body_height_male_m",
+                                                                    "body_height_female_m",
+                                                                    "body_height_sigma_frac",
+                                                                    "body_height_clamp_sigma",
+                                                                    "body_build_sigma_frac"};
+
+BodyKnobs ReadBodyKnobs(const ITableSet& tables) {
+  BodyKnobs knobs;
+  const ITable* const world = tables.FindTable("world_params");
+  if (world == nullptr) {
+    return knobs;  // documented defaults, as every other absent table gives
+  }
+  const std::array<ScalarKnob, kGenesisWorldParamKeys.size()> rows = {
+      ScalarKnob{.key = kGenesisWorldParamKeys[0],
+                 .value = &knobs.height_male_m,
+                 .range = Range{.low = 0.5F, .high = 3.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[1],
+                 .value = &knobs.height_female_m,
+                 .range = Range{.low = 0.5F, .high = 3.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[2],
+                 .value = &knobs.height_sigma_frac,
+                 .range = Range{.low = 0.0F, .high = 0.5F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[3],
+                 .value = &knobs.clamp_sigma,
+                 .range = Range{.low = 0.5F, .high = 6.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[4],
+                 .value = &knobs.build_sigma_frac,
+                 .range = Range{.low = 0.0F, .high = 0.5F}}};
+  std::string trouble;
+  if (!ReadKnobs(*world, "world_params", rows, trouble)) {
+    LogError("genesis: " + trouble + " — the documented figure is used");
+    return BodyKnobs{};
+  }
+  return knobs;
+}
+
+/// @param person The id this row will be given (StateTable::next_id_value):
+///        the figure is keyed by it, and drawn from a counter hash rather
+///        than from `rng`, so that adding a body to a person does not move
+///        one single other draw in the world. See core_common/body.h.
+ResidentRow RollPerson(RngState& rng,
+                       const BodyKnobs& body,
+                       std::uint64_t world_seed,
+                       std::uint64_t person_id,
+                       Sex sex,
+                       float age_years,
+                       float life_speedup) {
   ResidentRow person;
   person.sex = sex;
+  // THE FOUNDING GENERATION HAS NO PARENTS TO TAKE AFTER, so every one of
+  // them is an independent draw. Their children below do inherit, which is
+  // why the village stops being eighty people of one height in one
+  // generation rather than two.
+  RollBody(world_seed, person_id, body, person);
   person.birth_day = BirthDayForAge(age_years, life_speedup, rng);
   person.intellect = DrawInRange(rng, 20.0F, 80.0F);
   person.stamina = DrawInRange(rng, 20.0F, 80.0F);
@@ -205,18 +268,14 @@ void PlaceMeadow(WorldState& world, float area_ga, Vec2 center, bool floodplain)
   AppendRow(world.fields, meadow);
 }
 
-/// The practical ceiling the readers below share. NOT the layout's: that one
-/// moved to the parser on 2026-09-06 and comes from the catalogue's Range,
-/// which is where a band belongs. What is left here reads the OTHER tables
-/// genesis touches directly — the level ladder, the wear knobs, the stock
-/// list — and closing that class is its own task, not a rename.
-constexpr float kTableNumberLimit = 1e9F;
-
-/// @brief Reads one livestock knob; an absent, unreadable or absurd cell is
-/// the fallback. The range test is the one its neighbours already have
-/// (TableNumber, PutStock): CellReal now refuses inf and nan at the door,
-/// but a finite 1e30 still has to be stopped before it reaches the ages and
-/// the casts they feed. Written positively, so anything unexpected fails it.
+/// @brief Reads one livestock knob by column NAME; an absent, unreadable or
+/// absurd cell is the fallback.
+///
+/// A LIFETIME AND AN AGE ARE NON-NEGATIVE, and that is now the whole test:
+/// this reader used to carry its own copy of the file's ±1e9 ceiling, which
+/// let a life expectancy of minus four through on its way to the ages and
+/// the casts they feed. The band comes from core_catalog, like every other
+/// band in this file since 2026-09-06.
 float LivestockValue(const ITable& livestock,
                      std::uint32_t row,
                      std::string_view column,
@@ -225,15 +284,14 @@ float LivestockValue(const ITable& livestock,
   if (index == kNoTableColumn) {
     return fallback;
   }
-  const std::optional<float> value = livestock.CellReal(row, index);
-  if (!value) {
+  float value = fallback;
+  std::string trouble;
+  if (!CellOrDefault(livestock, row, index, Range::NonNegative(), fallback, value, trouble)) {
+    LogWarning("genesis: livestock column '" + std::string(column) + "' is not a usable number (" +
+               trouble + "); the default is used");
     return fallback;
   }
-  if (!(*value >= -kTableNumberLimit && *value <= kTableNumberLimit)) {
-    LogWarning("genesis: a livestock cell is not a usable number; the default is used");
-    return fallback;
-  }
-  return *value;
+  return value;
 }
 
 /// @brief Appends one herd; returns nothing, because genesis never needs the
@@ -335,73 +393,56 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
 // with no id behind it, and one shared vocabulary of keys is worth more
 // than the handful of idle rows it costs.
 
-/// @brief The state of one cell of the OTHER tables genesis reads directly —
-/// the level ladder, the wear knobs, the stock list. NOT the layout: that one
-/// got a parser of its own on 2026-09-06 and reads through core_catalog.
+/// @brief One number of a balance table genesis reads directly, or the
+/// caller's fallback when the cell does not give one.
 ///
-/// std::from_chars accepts "inf" and "nan", and these tables are exported and
-/// then hand-edited, so the reader refuses both here instead of passing them
-/// on to a cast (UB-002). Written positively for the same reason as
-/// everywhere else: nan fails the test rather than passing it.
+/// THE BAND IS THE COLUMN'S OWN, and that is the whole change of this pass.
+/// Until now these readers shared one ceiling of 1e9 written in this file,
+/// while core_catalog's Range — the module that exists to be the single
+/// home of this rule — says 1e7. ONE RULE WITH TWO HOMES AND TWO DIFFERENT
+/// NUMBERS, and the layout half of it was cured earlier the same day by
+/// giving the parser the catalogue's reader. This is the other half.
 ///
-/// Written here and not taken from core_catalog because these cells are read
-/// with a LIMIT rather than a range per column, and because genesis cannot
-/// refuse. What it takes from that module is the DISTINCTION, which is the
-/// part that was missing: absent, blank, present-and-wrong are three answers.
-/// The remaining band is a debt, not a design: core_catalog's Range says
-/// 1e7 and this says 1e9, and one rule with two homes is the shape the
-/// layout half of it was just cured of.
-CellState ReadTableCell(const ITable& table,
-                        std::uint32_t row,
-                        std::uint32_t column,
-                        float* value) {
-  if (column == kNoTableColumn) {
-    return CellState::kAbsent;
-  }
-  if (table.CellText(row, column).empty()) {
-    return CellState::kAbsent;  // blank: this row simply does not say
-  }
-  const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell || !(*cell >= -kTableNumberLimit && *cell <= kTableNumberLimit)) {
-    return CellState::kBad;
-  }
-  *value = *cell;
-  return CellState::kRead;
-}
-
-/// @brief One table number, or 0 when the cell does not give one.
+/// A shared ceiling is worse than a wrong one: it is not a band at all. It
+/// let a level of 1e6, a capacity of minus four tonnes and a wear of two
+/// hundred through the same door, because none of them is 1e9. Each of the
+/// six cells left here now declares what it may hold.
 ///
-/// The lossy face of ReadTableCell, kept because most callers have no answer
-/// to "absent" other than the neutral value. The ones that do call the cell
-/// reader directly.
-float TableNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
+/// IT STILL WARNS RATHER THAN REFUSES, and the reason is no longer "genesis
+/// cannot refuse" — since the start layout got its parser it can. It is
+/// that these remaining readers have no parser: the level ladder, the wear
+/// band and the stock list are read cell by cell in the middle of building
+/// the world, and the fallback is a real answer for each of them (the wear
+/// band has canonical figures, an unreadable capacity means "no number").
+/// Turning them into a parse is its own delivery, and it is named in
+/// OPEN_ITEMS with the deeper half of the same debt: core_construction
+/// already parses unit_levels.csv with declared ranges, so genesis reading
+/// it again is a SECOND READER of one table — an instrument that
+/// re-derives a quantity does not check the one it was given.
+float TableNumber(const ITable& table,
+                  std::string_view table_name,
+                  std::string_view column_name,
+                  std::uint32_t row,
+                  std::uint32_t column,
+                  Range range,
+                  float fallback) {
   // THREE DIFFERENT FACTS USED TO LEAVE HERE AS ONE ZERO, and only the third
   // of them said so out loud: no such column, a BLANK cell, and text that is
   // not a number at all. Phase-2 task A6, the second half.
-  //
-  // A blank cell keeps its zero and stays silent, because in these tables
-  // blank genuinely means nothing. TEXT THAT IS NOT A NUMBER IS A DEFECT OF
-  // THE TABLE and says so — a silent substitution is the shape of every
-  // defect this delta has chased: the missing table that swapped a whole
-  // climate for a stub one, and the missing cell that swaps a value.
-  //
-  // IT STILL WARNS RATHER THAN REFUSES, and the reason is now narrower than
-  // it was. It is not that "genesis cannot refuse" — since 2026-09-06 it
-  // can, and the start layout goes through a parser that does. It is that
-  // these REMAINING readers have no parser yet: the level ladder, the wear
-  // band and the stock list are still read cell by cell in the middle of
-  // building the world. That is the open item, and it is named in
-  // OPEN_ITEMS rather than half-fixed here.
-  float value = 0.0F;
-  const CellState state = ReadTableCell(table, row, column, &value);
-  if (state == CellState::kBad) {
-    // NAMES THE TABLE IT IS READING, not "a layout cell": the same function
-    // serves four tables, and until today the warning blamed one of them
-    // for the other three's cells.
-    LogWarning(
-        "genesis: a cell of a balance table is not a number and is read as zero, "
-        "column " +
-        std::to_string(column) + " — check the tables");
+  float value = fallback;
+  std::string trouble;
+  if (!CellOrDefault(table, row, column, range, fallback, value, trouble)) {
+    // NAMES THE TABLE, THE ROW AND THE COLUMN, because one function serves
+    // five tables here and a reader told "a layout cell" or "column 7" has
+    // been told nothing he can act on. The first version of this pass
+    // printed the bare index under a comment claiming it named the column —
+    // the cycle caught the two disagreeing, which is this project's own
+    // rule (a guard names its SUBJECT) broken inside the sentence asserting
+    // it.
+    LogWarning(std::string("genesis: ") + std::string(table_name) + " row " + std::to_string(row) +
+               ", column '" + std::string(column_name) + "' is not a usable number (" + trouble +
+               ") — the documented value is used, check the tables");
+    return fallback;
   }
   return value;
 }
@@ -486,7 +527,13 @@ Grams TypeCapacityGrams(const ITable* unit_types,
     return -1;
   }
   const std::uint32_t by_plot_col = unit_types->FindColumn("capacity_by_plot");
-  if (by_plot_col != kNoTableColumn && TableNumber(*unit_types, type.value, by_plot_col) > 0.0F) {
+  if (by_plot_col != kNoTableColumn && TableNumber(*unit_types,
+                                                   "unit_types",
+                                                   "capacity_by_plot",
+                                                   type.value,
+                                                   by_plot_col,
+                                                   Range{.low = 0.0F, .high = 1.0F},
+                                                   0.0F) > 0.0F) {
     return -1;
   }
   const std::string_view key = unit_types->CellText(type.value, 0);
@@ -499,15 +546,30 @@ Grams TypeCapacityGrams(const ITable* unit_types,
         if (unit_levels->CellText(row, unit_col) != key) {
           continue;
         }
-        // Compared in FLOAT, never cast: TableNumber refuses nan and inf
-        // but clamps only to +/-1e9, so a hand-edited level of -1 or 1e6
-        // would make the cast undefined ([conv.fpint]/1). This is the very
-        // class the cast pass exists to remove, and it was sitting two lines
-        // from the conversion the pass did fix.
-        if (TableNumber(*unit_levels, row, level_col) != static_cast<float>(level)) {
+        // Compared in FLOAT, never cast. The band below now refuses a level
+        // outside 1..255 outright, so the old danger — a hand-edited -1 or
+        // 1e6 reaching a cast and making it undefined ([conv.fpint]/1) —
+        // cannot arrive; the float comparison stays because the cell is a
+        // float and converting it to compare would be the very step the
+        // band exists to make unnecessary.
+        // A LEVEL IS A RUNG, and the ladder has at most as many as a byte
+        // can name; 0 is "not built" and never a row here.
+        if (TableNumber(*unit_levels,
+                        "unit_levels",
+                        "level",
+                        row,
+                        level_col,
+                        Range{.low = 1.0F, .high = 255.0F},
+                        0.0F) != static_cast<float>(level)) {
           continue;
         }
-        const float tonnes = TableNumber(*unit_levels, row, tonnes_col);
+        const float tonnes = TableNumber(*unit_levels,
+                                         "unit_levels",
+                                         "storage_capacity_t",
+                                         row,
+                                         tonnes_col,
+                                         Range::NonNegative(),
+                                         0.0F);
         if (tonnes > 0.0F) {
           return GramsFromTonnes(tonnes);
         }
@@ -549,7 +611,9 @@ void PlaceStartStock(WorldState& world,
       continue;
     }
     UnitRow& place = world.units.rows[unit_row];
-    const float kilograms = TableNumber(stock, row, amount_col) * TableNumber(stock, row, mass_col);
+    const float kilograms =
+        TableNumber(stock, "start_stock", "amount", row, amount_col, Range::NonNegative(), 0.0F) *
+        TableNumber(stock, "start_stock", "kg_per_unit", row, mass_col, Range::NonNegative(), 0.0F);
     PutStock(place, resource, kilograms);
     // The start set must FIT where the canon puts it ("capacity — exactly
     // the start set, no more", start design §5). A row that overfills its
@@ -694,10 +758,22 @@ bool BuildStartEconomy(WorldState& world, const ITableSet& tables, std::string* 
     const std::uint32_t min_row = knobs->FindRowByKey("old_house_wear_min");
     const std::uint32_t max_row = knobs->FindRowByKey("old_house_wear_max");
     if (column != kNoTableColumn && min_row != kNoTableRow) {
-      wear_min = TableNumber(*knobs, min_row, column);
+      wear_min = TableNumber(*knobs,
+                             "construction",
+                             "old_house_wear_min",
+                             min_row,
+                             column,
+                             Range{.low = 0.0F, .high = kWearScale},
+                             kOldHouseWearMinDefault);
     }
     if (column != kNoTableColumn && max_row != kNoTableRow) {
-      wear_max = TableNumber(*knobs, max_row, column);
+      wear_max = TableNumber(*knobs,
+                             "construction",
+                             "old_house_wear_max",
+                             max_row,
+                             column,
+                             Range{.low = 0.0F, .high = kWearScale},
+                             kOldHouseWearMaxDefault);
     }
   }
   // A band that is not a band — reversed, negative, past the scale — is a
@@ -797,6 +873,10 @@ bool BuildStartEconomy(WorldState& world, const ITableSet& tables, std::string* 
 
 }  // namespace
 
+std::span<const std::string_view> GenesisWorldParamKeys() {
+  return kGenesisWorldParamKeys;
+}
+
 WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, std::string* error) {
   WorldState world;
   world.world_seed = world_seed;
@@ -826,6 +906,10 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, s
     life_speedup = 4.0F;
   }
   RngState& rng = world.rng;
+  // The figure of the village. The keys it reads are declared by
+  // GenesisWorldParamKeys() out of the same array, for the assembly to union
+  // with core_time's (core_catalog/table_value.h).
+  const BodyKnobs body = ReadBodyKnobs(tables);
 
   // The pyramid in whole people.
   const auto old_count =
@@ -843,11 +927,18 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, s
     const FamilyId yard = AppendRow(world.families, RollFamily(rng));
     ++old_households;
     const float age = DrawInRange(rng, 62.0F, 74.0F);
-    ResidentRow first = RollPerson(rng, Sex::kMale, age, life_speedup);
+    ResidentRow first = RollPerson(
+        rng, body, world_seed, world.residents.next_id_value, Sex::kMale, age, life_speedup);
     first.family = yard;
     const ResidentId first_id = AppendRow(world.residents, first);
     if (placed + 1 < old_count) {
-      ResidentRow second = RollPerson(rng, Sex::kFemale, age - 2.0F, life_speedup);
+      ResidentRow second = RollPerson(rng,
+                                      body,
+                                      world_seed,
+                                      world.residents.next_id_value,
+                                      Sex::kFemale,
+                                      age - 2.0F,
+                                      life_speedup);
       second.family = yard;
       second.spouse = first_id;
       const ResidentId second_id = AppendRow(world.residents, second);
@@ -866,10 +957,17 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, s
     // Spread over the whole working band, as the reference pyramid does —
     // an all-fertile start would overheat the early growth.
     const float age = DrawInRange(rng, 20.0F, 58.0F);
-    ResidentRow husband = RollPerson(rng, Sex::kMale, age, life_speedup);
+    ResidentRow husband = RollPerson(
+        rng, body, world_seed, world.residents.next_id_value, Sex::kMale, age, life_speedup);
     husband.family = yard;
     const ResidentId husband_id = AppendRow(world.residents, husband);
-    ResidentRow wife = RollPerson(rng, Sex::kFemale, age - 2.0F, life_speedup);
+    ResidentRow wife = RollPerson(rng,
+                                  body,
+                                  world_seed,
+                                  world.residents.next_id_value,
+                                  Sex::kFemale,
+                                  age - 2.0F,
+                                  life_speedup);
     wife.family = yard;
     wife.spouse = husband_id;
     const ResidentId wife_id = AppendRow(world.residents, wife);
@@ -899,10 +997,24 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, s
       age = DrawInRange(rng, 7.0F, 15.5F);
     }
     const Sex sex = NextRandomUnitFloat(rng) < 0.5F ? Sex::kFemale : Sex::kMale;
-    ResidentRow child = RollPerson(rng, sex, age, life_speedup);
+    ResidentRow child =
+        RollPerson(rng, body, world_seed, world.residents.next_id_value, sex, age, life_speedup);
     child.family = world.residents.rows[mother_row].family;
     child.mother = mother_id;
     child.father = family_fathers[host % family_fathers.size()];
+    // AND THE CHILD TAKES AFTER ITS PARENTS, overwriting the independent
+    // figure RollPerson just gave it. Nothing is consumed either way: both
+    // paths are counter hashes keyed by the person, so which one a resident
+    // came by costs the world's RNG stream exactly nothing.
+    const std::uint32_t father_row = FindRow(world.residents, child.father);
+    if (father_row != kNoRow) {
+      RollBodyFromParents(world_seed,
+                          world.residents.next_id_value,
+                          body,
+                          world.residents.rows[mother_row],
+                          world.residents.rows[father_row],
+                          child);
+    }
     AppendRow(world.residents, child);
   }
 

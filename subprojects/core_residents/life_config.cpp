@@ -253,6 +253,49 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 
 }  // namespace
 
+/// The world_params.csv keys THIS module reads, and the one place they are
+/// written: the knob list below takes its names from this array by index, so
+/// what is declared and what is read are the same array rather than two
+/// lists that agree today.
+///
+/// THE BASE HEIGHTS ARE HERE TOO, and it took one wrong turn to see why. A
+/// newborn is given a FRACTION and demography never needs metres — so the
+/// first version of this list held three keys and said so. But the seam that
+/// answers "how tall is this person" is the RESIDENTS' seam: people are this
+/// module's rows, and a height in metres is a fact about a person. The bases
+/// are not read by the birth rule; they are read by the answer this module
+/// owes the outside.
+///
+/// Genesis declares the same five for its own read, and the two arrays are
+/// deliberate rather than shared: each is the single source for ITS module's
+/// read, so the day one of them stops reading a key, its list shrinks with
+/// its code instead of waiting for someone to notice.
+constexpr std::array<std::string_view, 5> kLifeWorldParamKeys = {"body_height_male_m",
+                                                                 "body_height_female_m",
+                                                                 "body_height_sigma_frac",
+                                                                 "body_height_clamp_sigma",
+                                                                 "body_build_sigma_frac"};
+
+bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
+  const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
+      ScalarKnob{.key = kLifeWorldParamKeys[0],
+                 .value = &config.body.height_male_m,
+                 .range = Range{.low = 0.5F, .high = 3.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[1],
+                 .value = &config.body.height_female_m,
+                 .range = Range{.low = 0.5F, .high = 3.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[2],
+                 .value = &config.body.height_sigma_frac,
+                 .range = Range{.low = 0.0F, .high = 0.5F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[3],
+                 .value = &config.body.clamp_sigma,
+                 .range = Range{.low = 0.5F, .high = 6.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[4],
+                 .value = &config.body.build_sigma_frac,
+                 .range = Range{.low = 0.0F, .high = 0.5F}}};
+  return ReadKnobs(world, "world_params", rows, error);
+}
+
 bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& error) {
   if (const ITable* life = tables.FindTable("life")) {
     if (!ParseLifeTable(*life, config, error) || !ParseVitalsAndBirths(*life, config, error)) {
@@ -269,6 +312,11 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       return false;
     }
   }
+  if (const ITable* world = tables.FindTable("world_params")) {
+    if (!ParseBodyKnobs(*world, config, error)) {
+      return false;
+    }
+  }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
     const std::uint32_t house = unit_types->FindRowByKey("wooden_house");
     if (house != kNoTableRow) {
@@ -276,6 +324,10 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     }
   }
   return true;
+}
+
+std::span<const std::string_view> LifeWorldParamKeys() {
+  return kLifeWorldParamKeys;
 }
 
 }  // namespace core

@@ -198,6 +198,14 @@ class Session final : public ISession {
 
   Deadline WearDeadline(UnitId unit) const override { return simulation_->WearDeadline(unit); }
 
+  StinkStrength StinkFullAt(Vec2 point) const override { return simulation_->StinkFullAt(point); }
+
+  StinkStrength StinkNowAt(Vec2 point) const override { return simulation_->StinkNowAt(point); }
+
+  float ResidentHeightMeters(ResidentId resident) const override {
+    return simulation_->ResidentHeightMeters(resident);
+  }
+
   // -- orders ---------------------------------------------------------------
 
   OrderId IssueOrder(const OrderRow& order) override {

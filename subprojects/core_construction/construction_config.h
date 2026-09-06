@@ -205,6 +205,28 @@ struct ConstructionConfig {
   std::array<float, static_cast<std::size_t>(StinkStrength::kStinkStrengthCount)> stink_radius_m = {
       0.0F, 40.0F, 120.0F, 200.0F};
 
+  /// HOW FAST THE ZONE GROWS AND GOES OUT, in metres a day.
+  ///
+  /// ASSUMPTION, like the radii — the design defers the speeds to the same
+  /// polish item — BUT NOT INVENTED: both come out of the design's own two
+  /// worked examples, which is the nearest thing to a measurement a deferred
+  /// number can have.
+  ///
+  ///   * "a tannery that ran leather all season stinks a week into its
+  ///     idleness" — a full strong zone is 200 m and a week is seven days,
+  ///     so 200 / 7 = 28.6, and 28 m a day.
+  ///   * "a forge that worked a morning does not smoke out the street" — a
+  ///     weak zone is 40 m at its widest and a morning is a quarter of a
+  ///     day: at 40 m a day it reaches ten metres, which is the forge's own
+  ///     yard and not the street.
+  ///
+  /// ONE SPEED FOR EVERY SOURCE, and that is the whole reason the design
+  /// needs one decay rule instead of two: a big zone takes longer to go out
+  /// than a small one BY ARITHMETIC, without anybody writing that down.
+  float stink_growth_m_per_day = 40.0F;
+
+  float stink_decay_m_per_day = 28.0F;
+
   /// By UnitTypeId value. Sized to the unit_types table; a type the tables
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;

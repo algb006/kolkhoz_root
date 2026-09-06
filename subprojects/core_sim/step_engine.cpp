@@ -169,6 +169,16 @@ class StepEngine final : public ISimulation {
     return NoDeadline(DeadlineKind::kNoData);
   }
 
+  // The bare engine knows no subsystems, so it knows no sources: clean air
+  // rather than a refusal, exactly as WearDeadline answers kNoData.
+  StinkStrength StinkFullAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }
+
+  StinkStrength StinkNowAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }
+
+  // No subsystems, so no people rules: zero, which is the same answer a
+  // child gets and means the same thing — nobody here can say.
+  float ResidentHeightMeters(ResidentId /*resident*/) const override { return 0.0F; }
+
  private:
   /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
   /// completed, append the issued rows in arrival order (the table issues the

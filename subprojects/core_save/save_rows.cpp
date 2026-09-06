@@ -43,9 +43,12 @@ namespace {
 // otherwise, and it was right. See save_blocks.cpp for the same reckoning.
 constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
-static_assert(sizeof(ResidentRow) == 164,
+// 2026-09-06: 164 -> 172, and MEASURED rather than reasoned, as ever. Two
+// floats — the height and build deviations of the figure — and this time the
+// size moved with the field count instead of hiding in padding.
+static_assert(sizeof(ResidentRow) == 172,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ResidentRow>() == 36,
+static_assert(AggregateArity<ResidentRow>() == 38,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
@@ -73,9 +76,12 @@ static_assert(AggregateArity<FamilyRow>() == 15,
 static_assert(sizeof(FieldRow) == 80, "FieldRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<FieldRow>() == 24,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(UnitRow) == 48 + kAmountsSize,
+// 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
+// amounts. The pause byte before it had landed in padding and moved nothing,
+// which is the whole reason both asserts stand here.
+static_assert(sizeof(UnitRow) == 56 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<UnitRow>() == 8,
+static_assert(AggregateArity<UnitRow>() == 9,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
@@ -246,6 +252,8 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.attitude_to_chairman);
   out.WriteU8(row.has_passport);
   out.WriteU16(row.traits);
+  out.WriteFloat(row.height_deviation);
+  out.WriteFloat(row.build_deviation);
 }
 
 ResidentRow ReadResidentRow(LoadSource& source) {
@@ -306,6 +314,8 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.attitude_to_chairman = in.ReadFloat();
   row.has_passport = in.ReadU8();
   row.traits = in.ReadU16();
+  row.height_deviation = in.ReadFloat();
+  row.build_deviation = in.ReadFloat();
   return row;
 }
 
@@ -472,6 +482,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // A7 sprang with OrderRow::profession. The wire grew all the same, and
   // that is what VERSION_SAVE counts.
   out.WriteU8(row.paused);
+  out.WriteFloat(row.stink_radius_m);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -491,6 +502,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.max_crew = in.ReadU8();
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
+  row.stink_radius_m = in.ReadFloat();
   return row;
 }
 

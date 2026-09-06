@@ -156,6 +156,31 @@ bool RequiredValue(const ITable& table,
                    float& value,
                    std::string& error);
 
+/// @brief Refuses a key/value table whose rows do not declare who reads them,
+/// or which declares a key for the core that no core module reads.
+///
+/// WHY IT LIVES HERE AND NOT IN THE MODULE THAT READS THE TABLE. It was
+/// written in core_time on 2026-09-06 with the debt named in place: `knows`
+/// is one MODULE's key set, and "the core" is many modules. Exact for a
+/// table only one module reads; wrong the moment a second one does, because
+/// a key of module B, honestly declared `core`, is refused by module A.
+///
+/// THAT DAY CAME THE SAME AFTERNOON — world_params.csv gained five body rows
+/// read by genesis while the check sat in core_time — so the rule moved to
+/// the one module both a reader and the ASSEMBLY may depend on. The union of
+/// keys is gathered where every module is known, and no module judges the
+/// core any more.
+///
+/// @param known The keys the core reads, gathered from the readers
+///        THEMSELVES rather than written out a second time beside them. A
+///        hand-kept twin of this list would age exactly as the mirror it
+///        replaces: silently, and only on the day the two disagree.
+/// @return false with `error` naming the row and what is wrong with it.
+bool CheckDeclaredReaders(const ITable& table,
+                          std::string_view table_name,
+                          std::span<const std::string_view> known,
+                          std::string& error);
+
 /// @brief Reads a whole run of scalar knobs, naming the offender on failure.
 /// @pre Every knob's `value` points at a real float. A knob array declared
 ///      larger than its initialiser list leaves the tail value-initialised

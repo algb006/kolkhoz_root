@@ -983,7 +983,7 @@ int TestTheStinkField() {
   place(0, 3000.0F, 0.0F, 0);  // a heap that is still a SITE
 
   const auto at = [&system, &world](float x, float y) {
-    return system->StinkAt(world, core::Vec2{.x = x, .y = y});
+    return system->StinkFullAt(world, core::Vec2{.x = x, .y = y});
   };
   failures += Expect(at(199.0F, 0.0F) == core::StinkStrength::kStrong,
                      "inside a strong source's full radius the air is strong");
@@ -1050,6 +1050,112 @@ int TestTheStinkField() {
   return failures;
 }
 
+/// THE ZONE OF A DAY: it grows, it goes out, and ONE speed tells both
+/// stories.
+///
+/// The design tells two — "a forge that worked a morning does not smoke out
+/// the street" and "a tannery that ran a season stinks a week into its
+/// idleness" — and asks for one rule. A rule that needed two numbers would
+/// pass a check written for either story alone, so this guard measures the
+/// thing that makes them one: A BIG ZONE TAKES LONGER TO GO OUT THAN A SMALL
+/// ONE, without anybody saying so.
+int TestTheStinkZoneGrowsAndGoesOut() {
+  int failures = 0;
+  const test::FakeTable types{
+      {"key", "era", "player_built", "gate", "has_wear", "stink", "stink_when"},
+      {{"heap", "1", "1", "era", "0", "strong", "always"},
+       {"fuel", "1", "1", "era", "0", "weak", "always"}}};
+  const test::FakeTable no_levels{{"unit", "level"}, {}};
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+  const test::FakeTableSet tables{{{"unit_types", &types},
+                                   {"unit_levels", &no_levels},
+                                   {"unit_level_cost", &no_costs},
+                                   {"resources", &no_resources},
+                                   {"construction", &knobs}}};
+  const auto system = core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "the stink-zone fixture builds a construction system") != 0) {
+    return 1;
+  }
+
+  core::WorldState world;
+  core::UnitRow heap;
+  heap.type = core::UnitTypeId{0};
+  heap.position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  core::AppendRow(world.units, heap);
+  core::UnitRow fuel;
+  fuel.type = core::UnitTypeId{1};
+  fuel.position = core::Vec2{.x = 5000.0F, .y = 0.0F};
+  core::AppendRow(world.units, fuel);
+
+  const auto run_a_day = [&system, &world]() {
+    world.calendar.tick += core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    const core::WorldState before = world;
+    system->RunConstructionDecisions(before, world);
+  };
+
+  // A RAISED SOURCE STARTS AT NOTHING. Named first, because every claim
+  // below is about a change from it.
+  failures += Expect(world.units.rows[0].stink_radius_m == 0.0F,
+                     "a source that has never run reaches nowhere");
+  failures += Expect(
+      system->StinkNowAt(world, core::Vec2{.x = 1.0F, .y = 0.0F}) == core::StinkStrength::kNone,
+      "and today it does not smell even at its own feet");
+  // ...while the FULL zone already answers, because that is what a plan is
+  // judged against and a plan is about what the thing will become.
+  failures += Expect(
+      system->StinkFullAt(world, core::Vec2{.x = 1.0F, .y = 0.0F}) == core::StinkStrength::kStrong,
+      "but its full zone answers from the first day: a plan is judged on what the "
+      "source will be, not on what it is this morning");
+
+  run_a_day();
+  const float after_one_day = world.units.rows[0].stink_radius_m;
+  failures += Expect(after_one_day > 0.0F && after_one_day < 200.0F,
+                     "after one day the zone has started and has not arrived");
+  // Grow it to the full radius, then count the days it takes to go out.
+  for (int day = 0; day < 20; ++day) {
+    run_a_day();
+  }
+  failures += Expect(world.units.rows[0].stink_radius_m == 200.0F,
+                     "left running, the strong zone reaches its full radius and stops there");
+  failures += Expect(world.units.rows[1].stink_radius_m == 40.0F,
+                     "and the weak one stops at its own, which is nearer");
+  failures += Expect(
+      system->StinkNowAt(world, core::Vec2{.x = 199.0F, .y = 0.0F}) == core::StinkStrength::kStrong,
+      "now today's zone answers where the full one does");
+
+  // BOTH SOURCES STOP ON THE SAME DAY, and the whole point is that they do
+  // not go out together.
+  world.units.rows[0].level = 0;
+  world.units.rows[1].level = 0;
+  int days_for_the_weak = 0;
+  int days_for_the_strong = 0;
+  for (int day = 0; day < 40; ++day) {
+    run_a_day();
+    if (world.units.rows[1].stink_radius_m > 0.0F) {
+      ++days_for_the_weak;
+    }
+    if (world.units.rows[0].stink_radius_m > 0.0F) {
+      ++days_for_the_strong;
+    }
+  }
+  failures += Expect(
+      world.units.rows[0].stink_radius_m == 0.0F && world.units.rows[1].stink_radius_m == 0.0F,
+      "a source that has stopped goes out");
+  failures += Expect(days_for_the_strong > days_for_the_weak,
+                     "and the BIG zone takes longer than the small one — one speed, both of the "
+                     "design's stories, and no second rule");
+  // The number, not just the ordering: a week for the full strong zone is
+  // the design's own worked example, and it is what the decay rate was set
+  // from. If the rate moves, this says so.
+  failures += Expect(days_for_the_strong >= 6 && days_for_the_strong <= 9,
+                     "a full strong zone takes about a week to go out, as the design says of the "
+                     "tannery");
+  return failures;
+}
+
 /// THE ASSUMED RADII ARE MEASURED AGAINST THE SHIPPED SCENE, not against
 /// themselves.
 ///
@@ -1088,7 +1194,7 @@ int TestTheShippedStartHasNoHouseInAStinkZone() {
     }
     ++houses;
     houses_in_a_zone +=
-        system->StinkAt(world, unit.position) != core::StinkStrength::kNone ? 1U : 0U;
+        system->StinkFullAt(world, unit.position) != core::StinkStrength::kNone ? 1U : 0U;
   }
   // The control first: without it the check below passes on a start with no
   // houses in it, and on a field that answers kNone to everything.
@@ -1096,7 +1202,7 @@ int TestTheShippedStartHasNoHouseInAStinkZone() {
   bool any_zone_at_all = false;
   for (const core::UnitRow& unit : world.units.rows) {
     any_zone_at_all =
-        any_zone_at_all || system->StinkAt(world, unit.position) != core::StinkStrength::kNone;
+        any_zone_at_all || system->StinkFullAt(world, unit.position) != core::StinkStrength::kNone;
   }
   failures += Expect(any_zone_at_all,
                      "and the start's sources do make zones — otherwise the check below is "
@@ -1124,6 +1230,7 @@ int main() {
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);
   failures += TestTheStinkField();
+  failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();
   if (failures == 0) {
     std::cout << "unit_core_construction: marking, building, upgrading, refusals and demolition\n";

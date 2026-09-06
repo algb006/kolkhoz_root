@@ -374,6 +374,14 @@ void RunBirths(const LifeConfig& config,
     child.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
     child.satiety = 70.0F;
     child.health = DrawInRange(current.rng, 70.0F, 95.0F);
+    // THE FIGURE TAKES AFTER THE PARENTS and costs the RNG stream nothing:
+    // it is a counter hash keyed by the id this child is ABOUT to be given
+    // (core_common/body.h). Drawing it from `current.rng` would reroll every
+    // later decision of the world, which is not a theory — the first version
+    // did exactly that, and the balance runs caught it by losing truancy and
+    // a slice of the year's labour.
+    RollBodyFromParents(
+        current.world_seed, current.residents.next_id_value, config.body, mother, father, child);
     const ResidentId child_id = AppendRow(current.residents, child);
     // Said out loud where it happens. Until 2026-09-05 this line and the
     // three below it were silent: a hundred and seventy-three children were
@@ -520,6 +528,9 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     const std::uint32_t house_row = FindRow(current.units, household.house);
     current.units.rows[house_row].household = migrant.family;
     migrant.sex = DrawNewbornSex(config, current, current.rng, day);
+    // A MIGRANT HAS NO PARENTS HERE, so his figure is an independent draw,
+    // like a founder's. Same counter hash, same cost to the stream: none.
+    RollBody(current.world_seed, current.residents.next_id_value, config.body, migrant);
     const float age =
         DrawInRange(current.rng, config.marriage_age_years, config.fertility_to_years);
     migrant.birth_day =

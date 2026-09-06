@@ -19,7 +19,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -55,6 +57,16 @@ class ITableSet;  // Defined in core_tables (stage 1, task F5).
 /// only the campaign setup is read (day-zero weekday); a missing campaign
 /// table means the documented defaults.
 WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, std::string* error);
+
+/// @brief The world_params.csv keys genesis reads (the figure of a person).
+///
+/// Declared so that the assembly can union them with every other module's
+/// and judge the table's `reader` column as a whole. A module cannot judge
+/// "the core" — it is not the core — and this list is the honest half a
+/// module can answer. See core_catalog/table_value.h for what the union is
+/// for and what it caught.
+/// @return A view of a static array; valid for the life of the program.
+std::span<const std::string_view> GenesisWorldParamKeys();
 
 /// @brief Everything CreateStandardSimulation needs.
 struct StandardSimulationConfig {

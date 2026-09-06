@@ -676,69 +676,17 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
 /// can see what they are citing. A row that IS there is validated strictly.
 ///
 /// @return false on a malformed value; `error` then says which knob and why.
-/// @brief Refuses a key/value table whose rows do not say who reads them.
+/// @brief The world_params.csv keys THIS MODULE reads.
 ///
-/// EVERY ROW ANSWERS FOR ITSELF, and this is what a typo runs into. Until
-/// 2026-09-06 a key the core did not recognise was simply not looked for, so
-/// `snow_melt_celsius` written where `snow_melt_c` was meant left every guard
-/// green and the compiled default in force. Refusing the unknown outright was
-/// not available: `insect_buzz_min_c` is a legitimate row whose reader is the
-/// graphics layer. So the row declares its reader, in the design base beside
-/// the value — one home for the number and for its addressee.
+/// Named here so that the assembly can union it with every other module's
+/// and judge the table as a whole; a module cannot judge "the core" because
+/// a module is not the core (core_catalog/table_value.h).
 ///
-/// A PRESENT TABLE MUST DECLARE. These tables are optional as a whole (every
-/// knob has a default), but one without a `reader` column cannot be checked at
-/// all: in it a typo and a layer knob are the same thing, and letting that
-/// pass would put the lenient answer back behind silence.
-///
-/// @param knows The keys the CALLING reader knows, collected by the readers
-///        themselves rather than written out a second time beside them.
-/// @note One home for the rule, two tables. THE DEBT IT CARRIES, named rather
-///       than papered over: `knows` is one MODULE's key set, and "the core" is
-///       many modules. That is exact for weather_params, which only core_time
-///       reads. world_params.csv is named for the world and will one day be
-///       read by more than one module — on that day a key of module B, honestly
-///       declared `core`, would be refused by module A. The check must then
-///       move to where every module's key set is known (the assembly), and
-///       that is an interface change and an event, not a patch. Modules
-///       reading world_params today: ONE. The number is written down because
-///       "no mechanism" and "the mechanism has not arrived" look identical.
-bool CheckDeclaredReaders(const ITable& table,
-                          const char* table_name,
-                          const std::vector<std::string_view>& knows,
-                          std::string& error) {
-  const std::uint32_t key_column = table.FindColumn("key");
-  const std::uint32_t reader_column = table.FindColumn("reader");
-  if (key_column == kNoTableColumn) {
-    error = std::string(table_name) + ": no 'key' column";
-    return false;
-  }
-  if (reader_column == kNoTableColumn) {
-    error = std::string(table_name) +
-            ": no 'reader' column — a table that does not say who reads each knob cannot tell a "
-            "misspelt core key from a layer one";
-    return false;
-  }
-  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    const std::string_view key = table.CellText(row, key_column);
-    const std::string_view reader = table.CellText(row, reader_column);
-    if (reader != "core" && reader != "layer" && reader != "both") {
-      error = std::string(table_name) + ": row '" + std::string(key) + "' declares reader '" +
-              std::string(reader) + "' — it must be core, layer or both";
-      return false;
-    }
-    if (reader == "layer") {
-      continue;  // the graphics layer's knob; the core carries it, unread
-    }
-    if (std::find(knows.begin(), knows.end(), key) == knows.end()) {
-      error = std::string(table_name) + ": row '" + std::string(key) +
-              "' is declared for the core, and the core has no such knob — a misspelt key, or a "
-              "knob whose reader moved";
-      return false;
-    }
-  }
-  return true;
-}
+/// NOT A HAND-KEPT TWIN: ParseWorldParams below fills its own `knows` from
+/// the readers themselves, and the module's unit test compares the two. A
+/// list beside the code it describes ages silently, and this one is made to
+/// fail loudly the day it does.
+constexpr std::array<std::string_view, 1> kTimeWorldParamKeys = {"leaf_fall_month"};
 
 /// @brief Reads world_params.csv: constants of the world that are not weather.
 ///
@@ -747,7 +695,10 @@ bool CheckDeclaredReaders(const ITable& table,
 /// lie. The same reader declaration applies from this table's first day —
 /// the weather table got it only after a typo had already passed in silence,
 /// and there is no reason to buy that lesson twice.
-bool ParseWorldParams(const ITable& table, std::uint8_t& leaf_fall_month, std::string& error) {
+bool ParseWorldParams(const ITable& table,
+                      std::uint8_t& leaf_fall_month,
+                      std::vector<std::string_view>* knows_out,
+                      std::string& error) {
   const std::uint32_t value_column = table.FindColumn("value");
   if (value_column == kNoTableColumn) {
     error = "world_params: no 'value' column";
@@ -757,14 +708,23 @@ bool ParseWorldParams(const ITable& table, std::uint8_t& leaf_fall_month, std::s
   std::string local;
   // HUMAN 1..12 across the seam, as everywhere else, and turned to the
   // calendar's zero base HERE and nowhere else.
-  knows.push_back("leaf_fall_month");
+  knows.push_back(kTimeWorldParamKeys[0]);
   float human = static_cast<float>(leaf_fall_month) + 1.0F;
-  if (!OptionalValue(table, "leaf_fall_month", Range{.low = 1.0F, .high = 12.0F}, human, local)) {
+  if (!OptionalValue(
+          table, kTimeWorldParamKeys[0], Range{.low = 1.0F, .high = 12.0F}, human, local)) {
     error = "world_params: " + local;
     return false;
   }
   leaf_fall_month = static_cast<std::uint8_t>(human - 1.0F);
-  return CheckDeclaredReaders(table, "world_params", knows, error);
+  // THE CHECK IS NOT MADE HERE ANY MORE. It moved to the assembly on
+  // 2026-09-06, the day world_params.csv gained a second core reader — the
+  // day this file predicted in the note the check used to carry. What is
+  // left is the honest half a module CAN answer: the keys IT read, handed
+  // out so that the assembly can union them.
+  if (knows_out != nullptr) {
+    *knows_out = knows;
+  }
+  return true;
 }
 
 bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& error) {
@@ -888,6 +848,10 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
 
 }  // namespace
 
+std::span<const std::string_view> TimeWorldParamKeys() {
+  return kTimeWorldParamKeys;
+}
+
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs) {
   SeasonTable seasons = kDefaultSeasons;
   std::string error;
@@ -920,7 +884,7 @@ std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTable
   // the declaration check has to move (see CheckDeclaredReaders).
   std::uint8_t leaf_fall_month = kDefaultLeafFallMonth;
   if (const ITable* world = tables.FindTable("world_params")) {
-    if (!ParseWorldParams(*world, leaf_fall_month, error)) {
+    if (!ParseWorldParams(*world, leaf_fall_month, nullptr, error)) {
       LogError(error);
       return nullptr;
     }

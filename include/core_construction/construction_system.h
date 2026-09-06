@@ -195,8 +195,8 @@ class IConstructionSystem {
   /// @note Called between steps on the sim thread. A pure read.
   virtual Deadline WearDeadline(const WorldState& completed, UnitId unit) const = 0;
 
-  /// @brief How badly it stinks at this point of the map today — the FULL
-  /// zone of every source that reaches it (water design §4).
+  /// @brief How badly it stinks at this point AT WORST — the FULL zone of
+  /// every source that reaches it (water design §4).
   ///
   /// THE FULL ZONE AND NOT THE CURRENT ONE, and that is the design's own
   /// distinction rather than a shortcut: "the full radius is drawn, not the
@@ -226,7 +226,26 @@ class IConstructionSystem {
   /// Wind does not enter this answer and never will (water design §4).
   /// @return The worst band reaching `point`; kNone for clean air.
   /// @note Called between steps on the sim thread. A pure read.
-  virtual StinkStrength StinkAt(const WorldState& completed, Vec2 point) const = 0;
+  virtual StinkStrength StinkFullAt(const WorldState& completed, Vec2 point) const = 0;
+
+  /// @brief How badly it stinks at this point TODAY — the zone as it has
+  /// actually grown, not as it will be at worst.
+  ///
+  /// THE SECOND QUESTION, AND IT IS A DIFFERENT ONE. The full zone above is
+  /// what a PLAN is judged against; this is what a nose meets. The chairman
+  /// coughs on what is in the air today, and so do the flies — a source
+  /// raised this morning has barely started, and a tannery a week idle is
+  /// still going out. Answering both from one number would make the
+  /// placement preview lie to the player or the cough lie to the world; the
+  /// design keeps them apart in so many words ("the full radius is drawn,
+  /// not the current one"), so the seam keeps them apart too.
+  ///
+  /// Reads UnitRow::stink_radius_m, which the construction sub-step moves
+  /// once a day. The same STUB applies as above: a source that smells only
+  /// while it works never grows, because nothing in this core works.
+  /// @return The worst band reaching `point` today; kNone for clean air.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual StinkStrength StinkNowAt(const WorldState& completed, Vec2 point) const = 0;
 };
 
 /// @brief Creates the construction subsystem.

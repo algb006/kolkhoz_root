@@ -27,6 +27,8 @@
 #define CORE_RESIDENTS_RESIDENTS_SYSTEM_H_
 
 #include <memory>
+#include <span>
+#include <string_view>
 #include <vector>
 
 #include "core_sim/step.h"
@@ -99,6 +101,25 @@ class IResidentsSystem {
   virtual void CollectStockForecast(const WorldState& completed,
                                     std::int32_t days_to_harvest,
                                     std::vector<StockForecast>& lights) const = 0;
+
+  /// @brief How tall this person is, in METRES; 0 for a child and for a
+  /// resident who is not there.
+  ///
+  /// IT LIVES ON THE PEOPLE SUBSYSTEM because people are its rows and
+  /// because it owns both halves of the answer: the person's own deviation,
+  /// which is a fraction stored on the row, and the base height of their
+  /// sex, which is a world_params.csv row this module reads. The core is the
+  /// only side of the seam that holds both — the graphics layer scales bone
+  /// by the fraction and a story script sees neither — so the comparison the
+  /// design asks for by name, "is the wife taller than her husband", can be
+  /// made here and nowhere else (boss, 2026-09-06).
+  ///
+  /// ADULTS ONLY, and named rather than forgotten: the world carries a base
+  /// for a man and for a woman and none for the steps of childhood, so a
+  /// child's height in metres is a question nobody can answer. The fraction
+  /// is valid at every age and is on the row for whoever wants it.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual float HeightMeters(const WorldState& completed, ResidentId resident) const = 0;
 };
 
 /// @brief Creates the people subsystem.
@@ -109,7 +130,27 @@ class IResidentsSystem {
 ///        tables, on the documented defaults (core_tables/stub_tables.h).
 ///        There is no default value: a caller that has not thought about
 ///        it cannot be served a different world in silence.
+
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables, StubTables stubs);
+
+/// @brief The world_params.csv keys this module reads (the spreads of the
+/// figure a newborn is given).
+///
+/// Declared for the assembly to union with every other module's: a module
+/// cannot judge the table's `reader` column, because "the core" is more than
+/// any one of them (core_catalog/table_value.h).
+/// @return A view of a static array; valid for the life of the program.
+std::span<const std::string_view> LifeWorldParamKeys();
+
+/// A NOTE ON WHERE THIS STANDS, because putting it anywhere else cost a
+/// finding. Declared first between CreateResidentsSystem's doc block and
+/// CreateResidentsSystem itself, it took that whole block for itself and
+/// left the factory — @param stubs and all — undocumented. FIFTH time in two
+/// cycles that inserting a declaration stole the comment above it. A doc
+/// comment documents whatever FOLLOWS it, so an insertion point is never
+/// neutral: before adding a declaration, ask whose comment you are standing
+/// under, and prefer the end of the namespace when the answer is "someone
+/// else's".
 
 }  // namespace core
 

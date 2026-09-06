@@ -71,6 +71,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/order_state.h"
+#include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
 #include "core_common/world_state.h"
 
@@ -285,6 +286,35 @@ class ISimulation {
   /// rate; the bare engine knows no subsystems and answers kNoData.
   /// @note Called between steps on the sim thread.
   virtual Deadline WearDeadline(UnitId unit) const = 0;
+
+  /// @brief How badly it stinks at a point of the map — AT WORST
+  /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.
+  ///
+  /// THEY LIVE HERE AND NOT ON THE CONSTRUCTION SUBSYSTEM, and that
+  /// correction is worth a line because it was made a day after the field
+  /// was written. The door was first cut where the FIRST CONSUMER stood:
+  /// placement wants the full zone to paint it and to redden the houses
+  /// inside it. But placement is one reader of four — the chairman coughs
+  /// walking through the village, the flies are drawn wherever the air is
+  /// bad, and a scene script asks whether it smells by a house — and none
+  /// of the other three has anything to do with building. Nobody outside
+  /// holds an IConstructionSystem, so the door was, in practice, not there.
+  ///
+  /// "What does it smell like here" IS A QUESTION ABOUT THE WORLD. Found by
+  /// `host` by enumerating the seam rather than by anyone reading the code.
+  ///
+  /// Fans out to core_construction, which owns the source table and the
+  /// radii; the bare engine knows no subsystems and answers kNone.
+  /// @note Called between steps on the sim thread. Pure reads.
+  virtual StinkStrength StinkFullAt(Vec2 point) const = 0;
+
+  virtual StinkStrength StinkNowAt(Vec2 point) const = 0;
+
+  /// @brief How tall this person is in metres; 0 for a child and for a
+  /// resident who is not there. Fans out to core_residents, which owns the
+  /// rows and both halves of the answer; the bare engine answers 0.
+  /// @note Called between steps on the sim thread.
+  virtual float ResidentHeightMeters(ResidentId resident) const = 0;
 
   /// @brief The weather of the next `into.size()` days, tomorrow first,
   /// filled in place: what each day will be CALLED and how it will blow

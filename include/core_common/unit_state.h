@@ -212,6 +212,25 @@ struct UnitRow {
   /// implement yet and everything to remember: when cycles arrive, this flag
   /// is what they will consult, and the ORDER is what will wait.
   std::uint8_t paused = 0;
+
+  /// HOW FAR THE STINK OF THIS SOURCE REACHES TODAY, in metres from the unit
+  /// (water design §4). 0 for everything that does not smell, and for a
+  /// source that has not started yet.
+  ///
+  /// METRES AND NOT A SHARE, because the decay is a SPEED and not a term —
+  /// boss's rule of 2026-09-06, and the whole reason the design needs only
+  /// one decay rule instead of two. The zone shrinks by so many metres a
+  /// day, so a big one takes longer to go out than a small one WITHOUT
+  /// anybody saying so: a forge that worked a morning reached twenty metres
+  /// and is clean by evening; a tannery that ran a season stands at its full
+  /// two hundred and still stinks a week into its idleness. Give the decay a
+  /// LENGTH instead and you must then explain why the forge's is different.
+  ///
+  /// Grows while the source emits, up to the full radius of its strength;
+  /// falls when it does not. Written once a day by the construction
+  /// sub-step, read by the two seam queries. A unit whose type does not
+  /// smell keeps this at zero for ever.
+  float stink_radius_m = 0.0F;
 };
 
 /// @brief The units table type used by WorldState.

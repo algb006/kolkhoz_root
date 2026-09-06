@@ -686,6 +686,69 @@ int CheckVacatedPostIsAnnounced(core::IResidentsSystem& system) {
 /// is what this check first was: the assembly refuses if ANY of the five
 /// refuses, so damaging one guard is masked by the other four. A guard has
 /// to name its own subject.
+/// THE FIGURE, AND THE ONE THING BOSS ASKED TO BE CHECKED BEFORE THE CODE
+/// WAS WRITTEN: nothing chooses a spouse by height.
+///
+/// He named it as a requirement rather than a hope, and for a reason that is
+/// about the design and not about the code: the whole point of the field is
+/// the tail of the distribution — a wife taller than her husband happens to
+/// 17 % of couples, "much taller" to 3 % — and a preference of ANY strength
+/// would eat that tail entirely. A quest stands on it.
+///
+/// Measured, not asserted from reading: the two bachelors are given opposite
+/// figures and the run is done twice with the figures swapped between them.
+/// If height reached the choice at all, the same run would produce a
+/// different husband.
+int CheckHeightNeverChoosesASpouse() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  const auto system = core::CreateResidentsSystem(nothing, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "the marriage fixture builds a residents system") != 0) {
+    return 1;
+  }
+  const auto run = [&system](float first_deviation, float second_deviation) {
+    core::WorldState world;
+    world.world_seed = 4242;
+    world.rng = core::SeedRngState(4242, 0);
+    // THREE YARDS AND NOT ONE, and the first draft of this fixture had one.
+    // A groom of the bride's own household is close kin by the rule
+    // (AreCloseKin), so both bachelors were ineligible and she married a
+    // MIGRANT the run had produced — a man this guard does not control and
+    // whose height the mutation happened to leave eligible. The check passed
+    // its own mutation and measured nothing. Found the same way as the two
+    // before it today: by mutating the rule and watching the guard stay
+    // green.
+    const core::FamilyId her_yard = core::AppendRow(world.families, core::FamilyRow{});
+    const core::FamilyId first_yard = core::AppendRow(world.families, core::FamilyRow{});
+    const core::FamilyId second_yard = core::AppendRow(world.families, core::FamilyRow{});
+    const core::ResidentId bride = AddAdult(world, her_yard, core::Sex::kFemale, 25.0F);
+    const core::ResidentId tall = AddAdult(world, first_yard, core::Sex::kMale, 26.0F);
+    const core::ResidentId short_one = AddAdult(world, second_yard, core::Sex::kMale, 27.0F);
+    world.residents.rows[FindRow(world.residents, tall)].height_deviation = first_deviation;
+    world.residents.rows[FindRow(world.residents, short_one)].height_deviation = second_deviation;
+    // Long enough that the daily marriage chance is certain to have fired:
+    // the guard is about WHOM she marries, not about when.
+    // SHORT ENOUGH THAT NO MIGRANT ARRIVES to widen the field of candidates:
+    // the subject of this guard is a choice between these two men and nobody
+    // else. The daily chance is 25 %, so twelve days make a wedding all but
+    // certain while the migration rate produces nobody.
+    RunDays(*system, world, 12);
+    const core::ResidentId chosen = world.residents.rows[FindRow(world.residents, bride)].spouse;
+    return chosen.value == tall.value || chosen.value == short_one.value ? chosen
+                                                                         : core::ResidentId{};
+  };
+  const core::ResidentId with_the_tall_first = run(0.09F, -0.09F);
+  const core::ResidentId with_the_short_first = run(-0.09F, 0.09F);
+  // The control first: somebody must actually have married, or the two
+  // answers agree by both being nobody.
+  failures += Expect(with_the_tall_first.value != core::kInvalidEntityIdValue,
+                     "the marriage fixture actually marries somebody");
+  failures += Expect(with_the_tall_first.value == with_the_short_first.value,
+                     "swapping the bachelors' heights does not change whom the bride marries: "
+                     "the tail of the distribution is what the field is for");
+  return failures;
+}
+
 int CheckStubTablesMustBeDeclared() {
   int failures = 0;
   const test::FakeTableSet nothing;
@@ -699,6 +762,7 @@ int CheckStubTablesMustBeDeclared() {
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
+  failures += CheckHeightNeverChoosesASpouse();
   const test::FakeTableSet tables;  // canonical defaults compiled into the config
   const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "factory yields a system");

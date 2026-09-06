@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/plot.h"
 #include "core_common/quantities.h"
@@ -235,6 +236,22 @@ class ResidentsSystem final : public IResidentsSystem {
     std::vector<FamilyId> hungry;
     CollectHungryFamilies(completed, hungry);
     return !hungry.empty();
+  }
+
+  /// The one derived number of the figure (residents_system.h). Adulthood is
+  /// the life table's own threshold, read against BIOLOGICAL years like every
+  /// other age rule in this module — calendar years against a biological
+  /// threshold is the mistake that once read a village of adults as a village
+  /// of children.
+  float HeightMeters(const WorldState& completed, ResidentId resident) const override {
+    const std::uint32_t row = FindRow(completed.residents, resident);
+    if (row == kNoRow) {
+      return 0.0F;
+    }
+    const ResidentRow& person = completed.residents.rows[row];
+    const float age =
+        BiologicalAgeYears(config_.life_speedup, person.birth_day, completed.calendar.day);
+    return core::HeightMeters(person, config_.body, age >= config_.adult_age_years);
   }
 
   void CollectStockForecast(const WorldState& completed,

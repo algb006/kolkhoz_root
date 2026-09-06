@@ -121,6 +121,7 @@
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
+#include "core_common/stink.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 
@@ -602,6 +603,59 @@ class ISession {
   /// A unit that does not exist is kNotApplicable.
   /// @note Between steps; the answer describes State().
   virtual Deadline WearDeadline(UnitId unit) const = 0;
+
+  /// @brief How badly it stinks at a point of the map, in the four bands the
+  /// design speaks in (water design §4). Two questions, two doors:
+  ///
+  ///   * `StinkFullAt` — AT WORST, the zone at its full radius. This is what
+  ///     a PLAN is judged against: the preview drawn under a unit being
+  ///     placed, the houses that turn red inside it, the refusal to raise a
+  ///     dwelling where there is nothing to breathe. The design demands the
+  ///     full radius here in so many words, so that the build-up cannot
+  ///     mislead the player into a spot that will stink later.
+  ///   * `StinkNowAt` — TODAY, the zone as it has actually grown. This is
+  ///     what a NOSE meets: the chairman coughs in a strong band and winces
+  ///     in a medium one, the flies are drawn to bad air, and a scene script
+  ///     asks whether it smells by this house.
+  ///
+  /// ONE NUMBER COULD NOT ANSWER BOTH without lying to one of them, which is
+  /// why they are two calls and not a call with a flag.
+  ///
+  /// A BAND AND NOT A NUMBER, because all four readers are live signals and
+  /// none of them wants a percentage: publishing one would hand the
+  /// threshold to the reader, and a threshold chosen on the far side of the
+  /// seam is a second answer to a mechanic, living where nobody will find
+  /// it.
+  ///
+  /// Wind does not enter either answer and never will — the design refuses a
+  /// wind rose by decision, not by omission.
+  /// @note Between steps; the answers describe State().
+  virtual StinkStrength StinkFullAt(Vec2 point) const = 0;
+
+  virtual StinkStrength StinkNowAt(Vec2 point) const = 0;
+
+  /// @brief How tall this person is, in METRES. 0 for a child and for
+  /// anybody who is not there.
+  ///
+  /// THE ONE DERIVED NUMBER OF THE FIGURE, and the core computes it because
+  /// the core is the only place that holds both halves: the person's own
+  /// deviation, which is a fraction, and the base of their sex, which is a
+  /// table row. The graphics layer does not read this — it scales bone by
+  /// the FRACTION — and the story layer cannot: a script sees neither.
+  ///
+  /// WHAT IT IS FOR, by name: "is the wife taller than her husband". The
+  /// design asks the question and a quest stands on the answer, so somebody
+  /// has to compare two people; of the three places that could, two are the
+  /// wrong side of a seam (boss, 2026-09-06).
+  ///
+  /// ADULTS ONLY, said out loud rather than left to be discovered: the world
+  /// carries a base height for a man and for a woman and none for the steps
+  /// of childhood, so a child's height in metres is a question nobody can
+  /// answer. The FRACTION is valid at every age — it is a fact about the
+  /// person, not about their present size — and it is in the state for
+  /// anyone who wants it.
+  /// @note Between steps; the answer describes State().
+  virtual float ResidentHeightMeters(ResidentId resident) const = 0;
 
   // -- orders -----------------------------------------------------------------
 

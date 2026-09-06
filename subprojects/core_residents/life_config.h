@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
@@ -110,6 +111,11 @@ struct SatisfactionWeights {
 /// The biological clock and its thresholds (tables/life.csv). Ages are
 /// biological years; life_speedup maps them to game years.
 struct LifeConfig {
+  /// The figure knobs of world_params.csv (core_common/body.h). Only the
+  /// spreads and the cut are read here: a newborn is given a FRACTION, and
+  /// the base heights in metres are the seam's business, not demography's.
+  BodyKnobs body;
+
   /// unit_types.csv "wooden_house" row: what the wedding STUB builds
   /// (invalid in a table-less world — the unit is appended with an invalid
   /// type then).

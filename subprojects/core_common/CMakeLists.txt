@@ -8,6 +8,7 @@
 
 kolkhoz_add_module(core_common
     alarm_state.cpp
+    body.cpp
     haul.cpp
     plot.cpp
     spoilage.cpp

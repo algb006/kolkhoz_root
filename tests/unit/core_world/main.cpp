@@ -32,6 +32,39 @@ int Expect(bool condition, const char* label) {
 
 /// @brief One table held in memory, so a test can hand genesis a cell no
 
+/// @brief Rewrites ONE key's value in a key/value CSV, leaving the rest of
+/// the file alone. Returns false when the key is not there, so a renamed row
+/// fails the test instead of silently changing nothing.
+bool SetKeyValue(const std::filesystem::path& path, std::string_view key, std::string_view value) {
+  std::ifstream input(path);
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(input, line)) {
+    lines.push_back(line);
+  }
+  input.close();
+  const std::string prefix = std::string(key) + ",";
+  bool found = false;
+  for (std::string& row : lines) {
+    if (row.rfind(prefix, 0) != 0) {
+      continue;
+    }
+    const std::size_t after_key = prefix.size();
+    const std::size_t next_comma = row.find(',', after_key);
+    const std::string tail =
+        next_comma == std::string::npos ? std::string() : row.substr(next_comma);
+    row = prefix + std::string(value) + tail;
+    found = true;
+  }
+  if (found) {
+    std::ofstream out(path, std::ios::trunc);
+    for (const std::string& row : lines) {
+      out << row << '\n';
+    }
+  }
+  return found;
+}
+
 /// @brief Replaces every value of `column` in a CSV with `value`, keeping the
 /// file otherwise as it is. Named for the column and not for the table it
 /// was written against: it spoils a cell of any of them, and the livestock
@@ -418,7 +451,14 @@ int main() {
   const fs::path spoiled = fs::temp_directory_path() / "unit_core_world_tables";
   fs::remove_all(spoiled);
   fs::copy(fs::path(KOLKHOZ_TABLES_DIR), spoiled, fs::copy_options::recursive);
-  failures += Expect(SpoilColumn(spoiled / "livestock.csv", "life_game_years_max", "1e30"),
+  // NEGATIVE, not huge, and the difference is the whole point of this pass.
+  // A 1e30 was refused even by genesis's own private ceiling of 1e9; MINUS
+  // FIVE sailed straight through it, because that ceiling was symmetric and
+  // was never a band at all — it was one number standing in for the ranges
+  // of seven different columns. Since 2026-09-06 every cell genesis reads
+  // declares what it may hold, out of core_catalog, and a lifetime is
+  // non-negative.
+  failures += Expect(SpoilColumn(spoiled / "livestock.csv", "life_game_years_max", "-5"),
                      "the livestock cell to spoil was found");
   std::string spoil_error;
   const auto spoiled_tables = core::LoadTableSet(spoiled.string(), &spoil_error);
@@ -433,6 +473,14 @@ int main() {
       ages_are_sane = ages_are_sane && age_sum >= 0.0F && age_sum < 1e6F;
     }
     failures += Expect(ages_are_sane, "an absurd livestock cell never reaches the herd ages");
+    // The control: the herds must actually be aged from that column, or the
+    // check above is satisfied by a world that never read it.
+    bool some_age_is_set = false;
+    for (const core::HerdRow& herd : wild.herds.rows) {
+      some_age_is_set = some_age_is_set || herd.adult_age_game_years_total > 0.0F;
+    }
+    failures += Expect(some_age_is_set,
+                       "and the herds are aged at all — otherwise the check above is vacuous");
     const core::WorldState wild_again = core::CreateStartWorld(*spoiled_tables, 12345, nullptr);
     failures += Expect(wild_again.rng.state == wild.rng.state,
                        "and the fallback keeps genesis deterministic");
@@ -478,6 +526,97 @@ int main() {
                          "the world");
     }
     fs::remove_all(bad_scene);
+  }
+
+  // THE FIGURE OF THE VILLAGE (core_common/body.h). Eighty people who were
+  // all exactly one height until 2026-09-06.
+  {
+    const fs::path figures = fs::temp_directory_path() / "unit_core_world_figures";
+    fs::remove_all(figures);
+    fs::copy(fs::path(KOLKHOZ_TABLES_DIR), figures, fs::copy_options::recursive);
+    std::string figure_error;
+    const auto figure_tables = core::LoadTableSet(figures.string(), &figure_error);
+    failures += Expect(figure_tables != nullptr, "the tables for the figure guard load");
+    if (figure_tables != nullptr) {
+      const core::WorldState village = core::CreateStartWorld(*figure_tables, 777, nullptr);
+      const core::WorldState same = core::CreateStartWorld(*figure_tables, 777, nullptr);
+      const core::WorldState other = core::CreateStartWorld(*figure_tables, 778, nullptr);
+
+      bool all_alike = true;
+      bool inside_the_clamp = true;
+      bool same_seed_agrees = true;
+      bool some_seed_differs = false;
+      const float first = village.residents.rows[0].height_deviation;
+      // 2.5 sigma of 3.7 % is 9.25 %; nothing may stand outside it, and the
+      // check is written with a hair of slack for the float arithmetic
+      // rather than against an exact equality.
+      constexpr float kBand = 0.0926F;
+      for (std::size_t row = 0; row < village.residents.rows.size(); ++row) {
+        const core::ResidentRow& person = village.residents.rows[row];
+        all_alike = all_alike && person.height_deviation == first;
+        inside_the_clamp = inside_the_clamp && person.height_deviation >= -kBand &&
+                           person.height_deviation <= kBand;
+        same_seed_agrees = same_seed_agrees &&
+                           same.residents.rows[row].height_deviation == person.height_deviation;
+        some_seed_differs = some_seed_differs ||
+                            other.residents.rows[row].height_deviation != person.height_deviation;
+      }
+      failures +=
+          Expect(!village.residents.rows.empty(), "the figure guard has a village to look at");
+      failures += Expect(!all_alike,
+                         "the starting village is not eighty people of one height — which is the "
+                         "whole reason the field exists");
+      // THE CUT'S OWN GUARD IS IN core_common, on two hundred thousand draws.
+      // This one is about the VILLAGE, and it is worth having for that: at
+      // eighty people the band is never reached, so with the cut removed this
+      // line stays green — it says the shipped world is sane, not that the
+      // rule works. The distinction is written down because the first version
+      // of this check thought it was testing the rule.
+      failures += Expect(inside_the_clamp,
+                         "and the shipped village stands inside the band the knobs describe");
+      failures += Expect(same_seed_agrees,
+                         "the same seed gives the same village its same figures — the draw is a "
+                         "function of the world, not of the order it was built in");
+      failures += Expect(some_seed_differs, "and another seed gives another village");
+
+      // THE FIGURE COSTS THE WORLD'S RNG NOTHING, and this is the assertion
+      // the balance runs taught. The first version drew from the stream, and
+      // four draws per person rerolled everything downstream: truancy stopped
+      // happening at all and the year's labour fell under its reference band.
+      // A counter hash keyed by the person consumes nothing, so the state of
+      // the stream after genesis must not depend on the figure knobs at all.
+      const fs::path widened = fs::temp_directory_path() / "unit_core_world_figures_wide";
+      fs::remove_all(widened);
+      fs::copy(fs::path(KOLKHOZ_TABLES_DIR), widened, fs::copy_options::recursive);
+      // ONE ROW AND NOT THE WHOLE COLUMN. The first draft widened every
+      // value in the file, which put `body_height_clamp_sigma` outside its
+      // own declared range — so the read was REFUSED, the documented
+      // defaults came back, and those are the shipped numbers: the guard
+      // compared the village against itself. A blunt instrument gave a
+      // green that meant nothing.
+      failures +=
+          Expect(SetKeyValue(widened / "world_params.csv", "body_height_sigma_frac", "0.02"),
+                 "the sigma row to narrow was found");
+      std::string wide_error;
+      const auto wide_tables = core::LoadTableSet(widened.string(), &wide_error);
+      if (wide_tables != nullptr) {
+        const core::WorldState wider = core::CreateStartWorld(*wide_tables, 777, nullptr);
+        failures += Expect(wider.rng.state == village.rng.state,
+                           "changing the figure knobs does not move the world's RNG by one step: "
+                           "a new fact must not move the facts that were already there");
+        bool figures_did_change = false;
+        for (std::size_t row = 0; row < wider.residents.rows.size(); ++row) {
+          figures_did_change =
+              figures_did_change || wider.residents.rows[row].height_deviation !=
+                                        village.residents.rows[row].height_deviation;
+        }
+        failures += Expect(figures_did_change,
+                           "while the figures themselves DID change — otherwise the check above "
+                           "passes on knobs nobody read");
+      }
+      fs::remove_all(widened);
+    }
+    fs::remove_all(figures);
   }
 
   if (failures == 0) {
