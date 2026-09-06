@@ -235,6 +235,24 @@ class ConstructionSystem final : public IConstructionSystem {
     return StinkWalk(completed, point, false);
   }
 
+  Grams StorageCapacityGrams(UnitTypeId type, std::uint8_t level) const override {
+    if (type.value == kInvalidDefIdValue || type.value >= config_.types.size() || level == 0) {
+      return -1;
+    }
+    const BuildType& built = config_.types[type.value];
+    // The outline the player draws answers before the ladder is consulted:
+    // such a type may still carry rungs (a heap is levelled and gravelled),
+    // and none of them means a number to be full against.
+    if (built.capacity_by_plot != 0) {
+      return -1;
+    }
+    const std::size_t rung = static_cast<std::size_t>(level) - 1;
+    if (rung >= built.levels.size()) {
+      return -1;
+    }
+    return built.levels[rung].storage_capacity_grams;
+  }
+
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     for (std::uint32_t row = 0; row < completed.units.rows.size(); ++row) {
       const UnitRow& site = completed.units.rows[row];

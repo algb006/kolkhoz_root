@@ -18,6 +18,7 @@
 
 #include "../../common/fake_tables.h"
 #include "core_common/order_state.h"
+#include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
@@ -1221,9 +1222,36 @@ int TestTheShippedStartHasNoHouseInAStinkZone() {
   if (Expect(system != nullptr, "and the shipped tables build a construction system") != 0) {
     return 1;
   }
-  const core::WorldState world = core::CreateStartWorld(*tables, 12345, nullptr);
+  const core::WorldState world = core::CreateStartWorld(*tables, system.get(), 12345, nullptr);
 
   const core::ITable* const unit_types = tables->FindTable("unit_types");
+  // ONE DOOR TO THE LADDER (boss, 2026-09-06). genesis measured the start
+  // stock against unit_levels.csv it parsed itself; this module parses the
+  // same table with declared ranges and refuses a set whose steps disagree.
+  // The door below is what genesis asks now, and what is checked here is
+  // that it answers the LADDER — the granary's two rungs are 150 t and
+  // 300 t in the shipped table, and no other number in the core says so.
+  {
+    const std::uint32_t granary_row = unit_types->FindRowByKey("granary");
+    const std::uint32_t pile_row = unit_types->FindRowByKey("log_pile");
+    failures += Expect(granary_row != core::kNoTableRow && pile_row != core::kNoTableRow,
+                       "the shipped tables name a store and an outline");
+    const core::UnitTypeId granary{static_cast<std::uint16_t>(granary_row)};
+    const core::UnitTypeId pile{static_cast<std::uint16_t>(pile_row)};
+    failures += Expect(system->StorageCapacityGrams(granary, 1) == core::GramsFromTonnes(150.0F),
+                       "the ladder's first rung of the granary is 150 t");
+    failures += Expect(system->StorageCapacityGrams(granary, 2) == core::GramsFromTonnes(300.0F),
+                       "and its second rung is 300 t — the door answers the RUNG, not the type");
+    failures += Expect(system->StorageCapacityGrams(granary, 0) < 0,
+                       "level 0 is 'not built' and holds nothing to be full against");
+    failures += Expect(system->StorageCapacityGrams(granary, 9) < 0,
+                       "a rung the ladder does not have answers -1, not the last one it has");
+    failures += Expect(system->StorageCapacityGrams(pile, 1) < 0,
+                       "an outline the player draws has no number to be full against");
+    failures += Expect(system->StorageCapacityGrams(core::UnitTypeId{}, 1) < 0,
+                       "and an unknown type answers -1 rather than reading past the roster");
+  }
+
   const std::uint32_t house_row = unit_types->FindRowByKey("old_house");
   if (Expect(house_row != core::kNoTableRow, "the shipped tables name the start's house type") !=
       0) {

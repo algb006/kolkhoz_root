@@ -246,6 +246,31 @@ class IConstructionSystem {
   /// @return The worst band reaching `point` today; kNone for clean air.
   /// @note Called between steps on the sim thread. A pure read.
   virtual StinkStrength StinkNowAt(const WorldState& completed, Vec2 point) const = 0;
+
+  /// @brief How much a unit of this type STANDING at `level` can hold, in
+  /// grams, or -1 when the capacity is the outline the player draws (a heap,
+  /// a stack: there is no number to be full against).
+  ///
+  /// THIS DOOR EXISTS BECAUSE THE LADDER HAD TWO READERS. genesis placed the
+  /// start stock by parsing unit_levels.csv itself, cell by cell, with bands
+  /// of its own — while this module parses the same table at factory time,
+  /// with declared ranges, and refuses a set whose steps contradict each
+  /// other. An instrument that re-derives a quantity does not check the one
+  /// it was given: the two agreed only for as long as nobody edited the
+  /// table, and the day they parted they would have parted in silence
+  /// (boss, 2026-09-06 — his decision, and the dependency is deliberate).
+  ///
+  /// It asks nothing of the world, because a capacity is a fact of the TYPE
+  /// and its rung, not of any unit standing today — which is why the world
+  /// need not exist yet when genesis asks.
+  /// @param type A unit type id; an unknown one answers -1.
+  /// @param level The rung it stands at, 1..N. 0 means "not built" and
+  ///              answers -1, as does a rung the ladder does not have.
+  /// @return Capacity in grams, 0 for a level that stores nothing by
+  ///         number, -1 for an outline.
+  /// @note A pure read of the parsed tables. Callable at any time, from the
+  ///       sim thread, including before the first step.
+  virtual Grams StorageCapacityGrams(UnitTypeId type, std::uint8_t level) const = 0;
 };
 
 /// @brief Creates the construction subsystem.

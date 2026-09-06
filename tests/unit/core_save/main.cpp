@@ -336,6 +336,35 @@ int main() {
   failures += Expect(core::EncodeWorld(world, *tables) == bytes,
                      "encoding the same world twice gives the same bytes");
 
+  // A FINITE FLOAT IS NOT YET A USABLE ONE. The reader has refused NaN and
+  // infinity since the format was young; 1e30 passes that door untouched
+  // and is undefined behaviour at the first cast to an integer, which the
+  // core makes on restored floats in a dozen places. The bound is judged
+  // ONCE, where the number enters the state (boss, 2026-09-06: fix it in
+  // the codec, not with a guard at every cast).
+  {
+    core::WorldState wild = MakeWorld();
+    wild.units.rows[0].position.x = 1.0e30F;
+    core::WorldState refused;
+    std::string wild_error;
+    failures +=
+        Expect(!core::DecodeWorld(core::EncodeWorld(wild, *tables), *tables, &refused, &wild_error),
+               "a save carrying a float too large to be a quantity is refused");
+    // THE CONTROL, or the check above would pass on a codec that refuses
+    // any unusual number. A hundred million metres is nonsense as a
+    // position too, but it is inside the bound and the codec is not the
+    // place that judges sense — only representability.
+    core::WorldState large = MakeWorld();
+    large.units.rows[0].position.x = 1.0e8F;
+    core::WorldState restored;
+    std::string large_error;
+    failures += Expect(
+        core::DecodeWorld(core::EncodeWorld(large, *tables), *tables, &restored, &large_error),
+        "while a large but representable one goes through");
+    failures += Expect(restored.units.rows[0].position.x == 1.0e8F,
+                       "and arrives unchanged — the bound refuses, it does not clamp");
+  }
+
   // -- the round trip ------------------------------------------------------
   core::WorldState loaded;
   loaded.epoch = core::Epoch::kThree;  // a marker, to catch a partial write

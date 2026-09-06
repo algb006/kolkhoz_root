@@ -105,7 +105,25 @@ class ByteReader {
 
   std::int64_t ReadI64() { return static_cast<std::int64_t>(ReadU64()); }
 
-  /// @brief One float of the payload — and it REFUSES A NON-FINITE ONE.
+  /// @brief The largest magnitude any float of a save may carry.
+  ///
+  /// A FINITE NUMBER IS NOT YET A USABLE ONE. Refusing NaN and infinity
+  /// below closed the loud half of this door and left the quiet half open:
+  /// 1e30 is perfectly finite, survives every check the reader makes, and
+  /// becomes undefined behaviour at the first cast to an integer
+  /// ([conv.fpint]/1) — and the core casts restored floats to std::int64_t
+  /// in a dozen places that have no reason to doubt them (an alarm's
+  /// amount, a day count, a kcal total).
+  ///
+  /// The bound is a decade above the largest quantity the state can hold
+  /// and three decades below what an int64 can take, so it refuses garbage
+  /// without ever meeting a real number: the map is 12 000 m across, wear
+  /// runs 0..100, a fertility 0..100, a labour day count is single digits,
+  /// and everything counted in grams is an integer type already.
+  static constexpr float kWidestSavedFloat = 1.0e9F;
+
+  /// @brief One float of the payload — and it REFUSES A NON-FINITE ONE, or
+  /// one too large to be a quantity of this simulation.
   ///
   /// Every float a save holds is a simulation quantity: a position, a wear,
   /// a fertility, a mean. Not one of them is legitimately NaN or infinite,
@@ -121,7 +139,12 @@ class ByteReader {
   /// the has_wear column, and now this.
   float ReadFloat() {
     const float value = std::bit_cast<float>(ReadU32());
-    if (!std::isfinite(value)) {
+    // ONE DOOR, NOT A GUARD AT EVERY CAST (boss, 2026-09-06). The magnitude
+    // is judged where the number ENTERS the state, because the places that
+    // cast it are many, are spread over every module, and each of them
+    // would have to remember — and a rule that must be remembered fires
+    // only where it is already remembered.
+    if (!std::isfinite(value) || value > kWidestSavedFloat || value < -kWidestSavedFloat) {
       Invalidate();
       return 0.0F;
     }

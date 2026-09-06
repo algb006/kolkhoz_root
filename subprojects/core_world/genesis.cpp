@@ -26,6 +26,7 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_construction/construction_system.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -509,76 +510,6 @@ void PlaceStartLayout(WorldState& world,
   }
 }
 
-/// @brief Capacity of a unit type in grams, or -1 for an outline the player
-/// draws (a heap, a stack: no number to be full against). Reads the LEVEL
-/// LADDER and nothing else — the same one place core_production and
-/// core_construction read, so the three never disagree about what a granary
-/// holds. The type row's own storage_capacity_t was a copy of level 1 that
-/// the export wrote, so falling back to it could never give a different
-/// answer from the step it fell back from; a table set whose type names a
-/// capacity with no level row behind it is refused at config load, and this
-/// layout pass sees only sets that got through.
-Grams TypeCapacityGrams(const ITable* unit_types,
-                        const ITable* unit_levels,
-                        UnitTypeId type,
-                        std::uint8_t level) {
-  if (unit_types == nullptr || type.value == kInvalidDefIdValue ||
-      type.value >= unit_types->RowCount()) {
-    return -1;
-  }
-  const std::uint32_t by_plot_col = unit_types->FindColumn("capacity_by_plot");
-  if (by_plot_col != kNoTableColumn && TableNumber(*unit_types,
-                                                   "unit_types",
-                                                   "capacity_by_plot",
-                                                   type.value,
-                                                   by_plot_col,
-                                                   Range{.low = 0.0F, .high = 1.0F},
-                                                   0.0F) > 0.0F) {
-    return -1;
-  }
-  const std::string_view key = unit_types->CellText(type.value, 0);
-  if (unit_levels != nullptr && level >= 1) {
-    const std::uint32_t unit_col = unit_levels->FindColumn("unit");
-    const std::uint32_t level_col = unit_levels->FindColumn("level");
-    const std::uint32_t tonnes_col = unit_levels->FindColumn("storage_capacity_t");
-    if (unit_col != kNoTableColumn && level_col != kNoTableColumn && tonnes_col != kNoTableColumn) {
-      for (std::uint32_t row = 0; row < unit_levels->RowCount(); ++row) {
-        if (unit_levels->CellText(row, unit_col) != key) {
-          continue;
-        }
-        // Compared in FLOAT, never cast. The band below now refuses a level
-        // outside 1..255 outright, so the old danger — a hand-edited -1 or
-        // 1e6 reaching a cast and making it undefined ([conv.fpint]/1) —
-        // cannot arrive; the float comparison stays because the cell is a
-        // float and converting it to compare would be the very step the
-        // band exists to make unnecessary.
-        // A LEVEL IS A RUNG, and the ladder has at most as many as a byte
-        // can name; 0 is "not built" and never a row here.
-        if (TableNumber(*unit_levels,
-                        "unit_levels",
-                        "level",
-                        row,
-                        level_col,
-                        Range{.low = 1.0F, .high = 255.0F},
-                        0.0F) != static_cast<float>(level)) {
-          continue;
-        }
-        const float tonnes = TableNumber(*unit_levels,
-                                         "unit_levels",
-                                         "storage_capacity_t",
-                                         row,
-                                         tonnes_col,
-                                         Range::NonNegative(),
-                                         0.0F);
-        if (tonnes > 0.0F) {
-          return GramsFromTonnes(tonnes);
-        }
-      }
-    }
-  }
-  return -1;
-}
-
 /// @brief Puts the start stock where the layout says it lies (start_stock.csv,
 /// boss numbers of 2026-08-31). Amounts are in each resource's own measure
 /// and the row carries the mass of one, so the conversion to grams needs no
@@ -586,8 +517,7 @@ Grams TypeCapacityGrams(const ITable* unit_types,
 void PlaceStartStock(WorldState& world,
                      const ITable& stock,
                      const ITable* resources,
-                     const ITable* unit_types,
-                     const ITable* unit_levels,
+                     const IConstructionSystem* capacities,
                      const std::vector<std::pair<std::string_view, UnitId>>& placed) {
   const std::uint32_t place_col = stock.FindColumn("place");
   const std::uint32_t resource_col = stock.FindColumn("resource");
@@ -620,8 +550,21 @@ void PlaceStartStock(WorldState& world,
     // place is a table error, not a game state: genesis is setup code and
     // may say so out loud, and what did not fit is booked to the year's
     // lost_no_room so the first report shows it rather than hiding it (task A3).
-    const Grams capacity = TypeCapacityGrams(unit_types, unit_levels, place.type, place.level);
-    if (capacity < 0) {
+    // ONE DOOR TO THE LADDER. genesis used to walk unit_levels.csv itself
+    // here, with bands of its own, while core_construction parsed the same
+    // table at factory time and refused a set whose steps disagree. Two
+    // homes for one quantity part in silence the day the table is edited
+    // (boss, 2026-09-06). Without the door — a unit test's world, a tool —
+    // there is no capacity to check against, and the stock is placed as
+    // written: the same answer an absent unit_levels.csv gave before.
+    //
+    // 0 IS NOT A ZERO CAPACITY, it is "the ladder names no number for this
+    // rung" (heaps, stacks, the manor ruins), and a place with no number
+    // cannot be overfilled — exactly what the old reader meant by falling
+    // back to -1 when the cell was blank.
+    const Grams capacity =
+        capacities == nullptr ? -1 : capacities->StorageCapacityGrams(place.type, place.level);
+    if (capacity <= 0) {
       continue;
     }
     Grams held = 0;
@@ -663,9 +606,11 @@ void PlaceStartStock(WorldState& world,
 ///         `error` then carries the parser's sentence. Every other missing
 ///         piece is still the people-only world, as it has always been: an
 ///         absent table is not a wrong one.
-bool BuildStartEconomy(WorldState& world, const ITableSet& tables, std::string* error) {
+bool BuildStartEconomy(WorldState& world,
+                       const ITableSet& tables,
+                       const IConstructionSystem* capacities,
+                       std::string* error) {
   const ITable* unit_types = tables.FindTable("unit_types");
-  const ITable* unit_levels = tables.FindTable("unit_levels");
   const ITable* resources = tables.FindTable("resources");
   const ITable* crops = tables.FindTable("crops");
   if (unit_types == nullptr || resources == nullptr || crops == nullptr) {
@@ -806,7 +751,7 @@ bool BuildStartEconomy(WorldState& world, const ITableSet& tables, std::string* 
   // eats 7.3 t a game day and the scythes go out on day 22.
   const ITable* const start_stock = tables.FindTable("start_stock");
   if (start_stock != nullptr) {
-    PlaceStartStock(world, *start_stock, resources, unit_types, unit_levels, placed);
+    PlaceStartStock(world, *start_stock, resources, capacities, placed);
   }
 
   // What the households still have of their own. The village was living
@@ -877,7 +822,10 @@ std::span<const std::string_view> GenesisWorldParamKeys() {
   return kGenesisWorldParamKeys;
 }
 
-WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, std::string* error) {
+WorldState CreateStartWorld(const ITableSet& tables,
+                            const IConstructionSystem* capacities,
+                            std::uint64_t world_seed,
+                            std::string* error) {
   WorldState world;
   world.world_seed = world_seed;
   world.rng = SeedRngState(world_seed, kWorldRngStream);
@@ -1022,7 +970,7 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, s
     LogWarning("genesis: start parameters rounded population to " +
                std::to_string(world.residents.rows.size()));
   }
-  BuildStartEconomy(world, tables, error);
+  BuildStartEconomy(world, tables, capacities, error);
   return world;
 }
 

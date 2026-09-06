@@ -16,6 +16,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_construction/construction_system.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -151,7 +152,7 @@ int main() {
 
   // Genesis STUB: an empty world at day 0, deterministic from the seed.
   const test::FakeTableSet tables;
-  const core::WorldState world = core::CreateStartWorld(tables, 12345, nullptr);
+  const core::WorldState world = core::CreateStartWorld(tables, nullptr, 12345, nullptr);
   failures += Expect(world.world_seed == 12345, "genesis stores the seed");
   failures += Expect(world.calendar.tick == 0, "genesis starts at tick 0");
   failures +=
@@ -160,8 +161,8 @@ int main() {
   failures += Expect(world.epoch == core::Epoch::kOne, "the campaign starts in Epoch I");
   failures += Expect((world.rng.stream & 1U) == 1U, "the world RNG is seeded (odd stream)");
 
-  const core::WorldState same_seed = core::CreateStartWorld(tables, 12345, nullptr);
-  const core::WorldState other_seed = core::CreateStartWorld(tables, 54321, nullptr);
+  const core::WorldState same_seed = core::CreateStartWorld(tables, nullptr, 12345, nullptr);
+  const core::WorldState other_seed = core::CreateStartWorld(tables, nullptr, 54321, nullptr);
   failures += Expect(same_seed.rng.state == world.rng.state, "same seed — same world RNG");
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
@@ -249,7 +250,7 @@ int main() {
                                     {"resources", &empty},
                                     {"crops", &empty}});
       std::string error;
-      const core::WorldState refused_world = core::CreateStartWorld(set, 7, &error);
+      const core::WorldState refused_world = core::CreateStartWorld(set, nullptr, 7, &error);
       failures += Expect(!error.empty(), item.label);
       failures += Expect(error.find(item.names_column) != std::string::npos,
                          "and the refusal names the column it choked on");
@@ -273,7 +274,7 @@ int main() {
                                     {"resources", &empty},
                                     {"crops", &empty}});
       std::string error;
-      core::CreateStartWorld(set, 7, &error);
+      core::CreateStartWorld(set, nullptr, 7, &error);
       failures += Expect(error.find("no such column") != std::string::npos,
                          "a unit row with no unit_type COLUMN is told the column is missing");
       failures +=
@@ -294,7 +295,7 @@ int main() {
                                     {"resources", &empty},
                                     {"crops", &empty}});
       std::string error;
-      const core::WorldState placed = core::CreateStartWorld(set, 7, &error);
+      const core::WorldState placed = core::CreateStartWorld(set, nullptr, 7, &error);
       failures += Expect(error.empty(), "a layout whose blanks are blanks is accepted");
       failures += Expect(placed.fields.rows.size() == 3,
                          "and every row of it is placed — two fields and a meadow");
@@ -419,7 +420,8 @@ int main() {
     const auto banded_tables = core::LoadTableSet(banded.string(), &band_error);
     failures += Expect(banded_tables != nullptr, "the re-banded table set loads");
     if (banded_tables != nullptr) {
-      const core::WorldState banded_world = core::CreateStartWorld(*banded_tables, 4242, nullptr);
+      const core::WorldState banded_world =
+          core::CreateStartWorld(*banded_tables, nullptr, 4242, nullptr);
       const core::UnitTypeId old_house{static_cast<std::uint16_t>(
           banded_tables->FindTable("unit_types")->FindRowByKey("old_house"))};
       std::uint32_t houses = 0;
@@ -464,7 +466,7 @@ int main() {
   const auto spoiled_tables = core::LoadTableSet(spoiled.string(), &spoil_error);
   failures += Expect(spoiled_tables != nullptr, "the spoiled table set still loads");
   if (spoiled_tables != nullptr) {
-    const core::WorldState wild = core::CreateStartWorld(*spoiled_tables, 12345, nullptr);
+    const core::WorldState wild = core::CreateStartWorld(*spoiled_tables, nullptr, 12345, nullptr);
     failures += Expect(!wild.herds.rows.empty(),
                        "the roster reaches the herds — otherwise the check below is vacuous");
     bool ages_are_sane = true;
@@ -481,7 +483,8 @@ int main() {
     }
     failures += Expect(some_age_is_set,
                        "and the herds are aged at all — otherwise the check above is vacuous");
-    const core::WorldState wild_again = core::CreateStartWorld(*spoiled_tables, 12345, nullptr);
+    const core::WorldState wild_again =
+        core::CreateStartWorld(*spoiled_tables, nullptr, 12345, nullptr);
     failures += Expect(wild_again.rng.state == wild.rng.state,
                        "and the fallback keeps genesis deterministic");
   }
@@ -538,9 +541,10 @@ int main() {
     const auto figure_tables = core::LoadTableSet(figures.string(), &figure_error);
     failures += Expect(figure_tables != nullptr, "the tables for the figure guard load");
     if (figure_tables != nullptr) {
-      const core::WorldState village = core::CreateStartWorld(*figure_tables, 777, nullptr);
-      const core::WorldState same = core::CreateStartWorld(*figure_tables, 777, nullptr);
-      const core::WorldState other = core::CreateStartWorld(*figure_tables, 778, nullptr);
+      const core::WorldState village =
+          core::CreateStartWorld(*figure_tables, nullptr, 777, nullptr);
+      const core::WorldState same = core::CreateStartWorld(*figure_tables, nullptr, 777, nullptr);
+      const core::WorldState other = core::CreateStartWorld(*figure_tables, nullptr, 778, nullptr);
 
       bool all_alike = true;
       bool inside_the_clamp = true;
@@ -600,7 +604,7 @@ int main() {
       std::string wide_error;
       const auto wide_tables = core::LoadTableSet(widened.string(), &wide_error);
       if (wide_tables != nullptr) {
-        const core::WorldState wider = core::CreateStartWorld(*wide_tables, 777, nullptr);
+        const core::WorldState wider = core::CreateStartWorld(*wide_tables, nullptr, 777, nullptr);
         failures += Expect(wider.rng.state == village.rng.state,
                            "changing the figure knobs does not move the world's RNG by one step: "
                            "a new fact must not move the facts that were already there");
@@ -617,6 +621,67 @@ int main() {
       fs::remove_all(widened);
     }
     fs::remove_all(figures);
+  }
+
+  // THE START STOCK IS MEASURED THROUGH THE CONSTRUCTION DOOR, and this is
+  // the check that genesis ASKS it rather than carrying a ladder of its own
+  // (boss, 2026-09-06: "an instrument that re-derives a quantity does not
+  // check the one it was given").
+  //
+  // Read from two sides on purpose. The same overfilled table is founded
+  // twice: once with the door, where the excess is cut and booked to
+  // lost_no_room, and once with nullptr, where there is no capacity to be
+  // full against and the stock stands as written. One side alone would pass
+  // just as well if genesis measured against something else entirely.
+  {
+    const fs::path overfilled = fs::temp_directory_path() / "unit_core_world_overfill";
+    fs::remove_all(overfilled);
+    fs::copy(fs::path(KOLKHOZ_TABLES_DIR), overfilled, fs::copy_options::recursive);
+    // The church store holds 60 t on its only rung; the canon puts 54 t in
+    // it. 135 t of potatoes instead of 35 puts it 94 t over, and nothing but
+    // the ladder says so.
+    {
+      std::ifstream source(overfilled / "start_stock.csv");
+      std::string rows;
+      std::string stock_line;
+      bool found = false;
+      while (std::getline(source, stock_line)) {
+        if (stock_line.rfind("church_store,potato,", 0) == 0) {
+          rows += "church_store,potato,135,1000\n";
+          found = true;
+          continue;
+        }
+        rows += stock_line + "\n";
+      }
+      source.close();
+      failures += Expect(found, "the row to overfill the church store was found");
+      std::ofstream(overfilled / "start_stock.csv", std::ios::trunc) << rows;
+    }
+    std::string overfill_error;
+    const auto overfilled_tables = core::LoadTableSet(overfilled.string(), &overfill_error);
+    failures += Expect(overfilled_tables != nullptr, "the overfilled table set loads");
+    if (overfilled_tables != nullptr) {
+      const auto capacities =
+          core::CreateConstructionSystem(*overfilled_tables, core::StubTables::kRefused);
+      failures += Expect(capacities != nullptr, "and it builds a construction subsystem");
+      const core::WorldState measured =
+          core::CreateStartWorld(*overfilled_tables, capacities.get(), 999, nullptr);
+      const core::WorldState unmeasured =
+          core::CreateStartWorld(*overfilled_tables, nullptr, 999, nullptr);
+      core::Grams cut = 0;
+      for (const core::Grams lost : measured.ledger.current.lost_no_room) {
+        cut += lost;
+      }
+      core::Grams cut_without = 0;
+      for (const core::Grams lost : unmeasured.ledger.current.lost_no_room) {
+        cut_without += lost;
+      }
+      failures += Expect(cut > 0, "with the door, the excess over the ladder's 60 t is cut");
+      failures += Expect(cut_without == 0,
+                         "without it nothing is cut — so the cut above came from the ladder and "
+                         "not from a number genesis kept for itself");
+    }
+    fs::remove_all(overfilled);
   }
 
   if (failures == 0) {

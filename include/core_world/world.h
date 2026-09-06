@@ -29,13 +29,25 @@
 
 namespace core {
 
-class ITableSet;  // Defined in core_tables (stage 1, task F5).
+class ITableSet;            // Defined in core_tables (stage 1, task F5).
+class IConstructionSystem;  // Defined in core_construction.
 
 /// @brief Creates the starting world: the settlement the campaign begins with.
 /// The genesis of the design's start conditions — 80 residents, 21 yards,
 /// 160 ha of arable land — built from the balance tables, deterministically
 /// from the seed: same tables, same seed — same settlement.
 /// @param tables     Balance tables; used during the call only.
+/// @param capacities The construction subsystem, used ONLY to ask what a
+///                   unit type holds at a level (StorageCapacityGrams), so
+///                   that the start stock is measured against the ladder
+///                   the rest of the core measures against. `nullptr` is
+///                   legal and means "no capacity is known here": the stock
+///                   is then placed as the table writes it, which is the
+///                   answer a world without unit_levels.csv always gave.
+///                   THE ARGUMENT EXISTS TO CLOSE A SECOND READER: genesis
+///                   used to parse unit_levels.csv on its own, so one
+///                   quantity had two homes and two sets of bands (boss,
+///                   2026-09-06). Used during the call only.
 /// @param world_seed Campaign seed; stored in the returned state.
 /// @param error   Where the start layout's refusal goes: the parser of
 ///                tables/start_layout.csv names the ROW and the COLUMN it
@@ -56,7 +68,10 @@ class ITableSet;  // Defined in core_tables (stage 1, task F5).
 /// exactly enough for the empty-world criterion of stage 1. Of the tables
 /// only the campaign setup is read (day-zero weekday); a missing campaign
 /// table means the documented defaults.
-WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, std::string* error);
+WorldState CreateStartWorld(const ITableSet& tables,
+                            const IConstructionSystem* capacities,
+                            std::uint64_t world_seed,
+                            std::string* error);
 
 /// @brief The world_params.csv keys genesis reads (the figure of a person).
 ///

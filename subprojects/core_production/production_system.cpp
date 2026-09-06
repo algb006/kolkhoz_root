@@ -337,6 +337,19 @@ class ProductionSystem final : public IProductionSystem {
   /// the only measure of "how much of this field is still uncut" the state
   /// carries. It is a share of the estimate, not a second estimate.
   Grams RoomClaimOf(const FieldRow& field) const {
+    // A CLAIM IS ROOM FOR WHAT HAS NOT BEEN DELIVERED. That one sentence
+    // settles a fork this code spent a day inside (boss, 2026-09-06): "what
+    // is still STANDING" is wrong under a one-shot harvest and "the whole
+    // crop" is wrong under a gradual one, while "the whole crop minus what
+    // has already reached a store" is right under both. Delivered grain
+    // occupies its room itself and needs no reservation; everything else
+    // does, on the stalk or in a heap alike.
+    //
+    // The heap on the field is UNDELIVERED, so it adds rather than
+    // subtracts. While this year's crop is being reaped the only heap a
+    // field can hold is LAST year's (the half-cut heap is unreachable by
+    // design — a state that changes no decision is not modelled), and last
+    // year's load has not touched today's free room either.
     Grams claim = field.reaped_grams > 0 ? field.reaped_grams : 0;
     if (field.kind != LandKind::kArable || field.crop.value >= config_.crops.size()) {
       return claim;
@@ -374,7 +387,16 @@ class ProductionSystem final : public IProductionSystem {
     // HALVING at the cut (there is no halving — there is a drop to nothing
     // and back). The measurement outlived both explanations, which is the
     // argument for keeping it.
-    return claim + static_cast<Grams>(static_cast<float>(expected) * with_straw);
+    // THE SUBTRACTION STANDS HERE EXPLICITLY, and its term is zero by the
+    // model rather than by omission: Harvest() runs ONCE, when the phase
+    // finishes, so not a gram of THIS year's crop reaches a store while the
+    // field is growing or being reaped. The day the harvest becomes gradual,
+    // this is the one place that has to learn what has gone — and it will
+    // read a number instead of an assumption, because the assumption is
+    // written down here as a number.
+    const Grams delivered_this_year = 0;
+    const auto standing_and_cut = static_cast<Grams>(static_cast<float>(expected) * with_straw);
+    return claim + (standing_and_cut - delivered_this_year);
   }
 
   /// @brief Field rows ordered by when their crop is reaped, then by row.
