@@ -188,7 +188,7 @@ int main() {
   //
   // Two separate claims, and the second is the one no range check can make.
   //
-  // The knobs live in their own table (weather_params.csv, key/value); the
+  // The knobs live in their own table (weather_params.csv, key/value/reader); the
   // seasons live in weather.csv. They were briefly one file and the core lost
   // its weather entirely, so the split is worth a test of its own.
   //
@@ -205,8 +205,9 @@ int main() {
               "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
     // June and June only, in human months. Zero-based that is 5.
     WriteFile(root / "knobs" / "weather_params.csv",
-              "key,value\nthunder_from_month,6\nthunder_to_month,6\nthunder_share,1\n"
-              "thunder_min_c,-15\ncalm_share,1\nwind_share,0\n");
+              "key,value,reader\nthunder_from_month,6,core\nthunder_to_month,6,core\n"
+              "thunder_share,1,core\nthunder_min_c,-15,core\ncalm_share,1,core\n"
+              "wind_share,0,core\n");
     const auto knob_tables = core::LoadTableSet((root / "knobs").string(), nullptr);
     const auto knobbed = knob_tables == nullptr
                              ? nullptr
@@ -249,7 +250,7 @@ int main() {
     WriteFile(root / "melt" / "weather.csv",
               "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
               "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
-    WriteFile(root / "melt" / "weather_params.csv", "key,value\nsnow_melt_c,30\n");
+    WriteFile(root / "melt" / "weather_params.csv", "key,value,reader\nsnow_melt_c,30,core\n");
     const auto melt_tables = core::LoadTableSet((root / "melt").string(), nullptr);
     const auto never_melts = melt_tables == nullptr
                                  ? nullptr
@@ -263,7 +264,7 @@ int main() {
                  "a melt threshold of +30 leaves the cover lying over 40 of the year's 48 days — "
                  "row was read, and it was read as the melt threshold");
     }
-    WriteFile(root / "melt" / "weather_params.csv", "key,value\nsnow_melt_c,2\n");
+    WriteFile(root / "melt" / "weather_params.csv", "key,value,reader\nsnow_melt_c,2,core\n");
     const auto plain_tables = core::LoadTableSet((root / "melt").string(), nullptr);
     const auto melts = plain_tables == nullptr
                            ? nullptr
@@ -273,13 +274,50 @@ int main() {
                          "while the same year at the shipped +2 does not — the control that makes "
                          "the assertion above about snow_melt_c and not about the fixture");
     }
-    WriteFile(root / "melt" / "weather_params.csv", "key,value\nsnow_melt_c,99\n");
+    WriteFile(root / "melt" / "weather_params.csv", "key,value,reader\nsnow_melt_c,99,core\n");
     const auto silly_melt = core::LoadTableSet((root / "melt").string(), nullptr);
     failures +=
         Expect(silly_melt != nullptr &&
                    core::CreateTimeSystem(*silly_melt, core::StubTables::kRefused) == nullptr,
                "and a melt threshold off the -15..+30 scale is refused, like every other "
                "temperature that crosses this seam");
+  }
+
+  // THE ROW ANSWERS FOR ITSELF: a key the core does not know is refused when
+  // it is declared as the core's, and carried when it is declared as the
+  // layer's. Until 2026-09-06 both were simply not looked for, so a misspelt
+  // key left every guard green and the compiled default in force.
+  //
+  // The four cases below are one guard seen from four sides, and the LAST is
+  // the one that makes the other three mean anything: without a row that is
+  // legitimately unknown to the core, "refuse the unknown" would be a rule
+  // with no counter-example, and a fixture that only ever refuses cannot tell
+  // a working guard from one that refuses everything.
+  {
+    fs::create_directories(root / "declared");
+    const auto with_params = [&](const char* body) {
+      WriteFile(root / "declared" / "weather.csv",
+                "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+                "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
+      WriteFile(root / "declared" / "weather_params.csv", body);
+      const auto set = core::LoadTableSet((root / "declared").string(), nullptr);
+      return set == nullptr ? nullptr : core::CreateTimeSystem(*set, core::StubTables::kRefused);
+    };
+    failures += Expect(with_params("key,value,reader\nsnow_melt_celsius,2,core\n") == nullptr,
+                       "a misspelt core key is refused — it is not the core's and not declared "
+                       "anyone else's");
+    failures += Expect(with_params("key,value,reader\nsnow_melt_c,2\n") == nullptr,
+                       "a row that declares no reader at all is refused: an empty cell is not a "
+                       "quiet 'core'");
+    failures += Expect(with_params("key,value,reader\nsnow_melt_c,2,nobody\n") == nullptr,
+                       "and a reader outside core/layer/both is refused rather than guessed");
+    failures += Expect(with_params("key,value\nsnow_melt_c,2\n") == nullptr,
+                       "a table with no reader column at all is refused: in it a typo and a "
+                       "layer knob are the same thing");
+    failures += Expect(with_params("key,value,reader\ninsect_buzz_min_c,15,layer\n") != nullptr,
+                       "while a key the core has never heard of BUILDS when the row says the "
+                       "layer reads it — the counter-example that makes the four refusals above "
+                       "about the declaration and not about strictness");
   }
 
   // A month outside 1..12 is refused, not clamped — and 0 is refused too,
@@ -290,7 +328,8 @@ int main() {
     WriteFile(root / "silly" / "weather.csv",
               "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
               "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
-    WriteFile(root / "silly" / "weather_params.csv", "key,value\nthunder_from_month,0\n");
+    WriteFile(root / "silly" / "weather_params.csv",
+              "key,value,reader\nthunder_from_month,0,core\n");
     const auto silly_tables = core::LoadTableSet((root / "silly").string(), nullptr);
     failures += Expect(silly_tables != nullptr, "the out-of-range table parses as CSV");
     if (silly_tables != nullptr) {

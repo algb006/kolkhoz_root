@@ -9,11 +9,14 @@
 
 #include "core_time/time_system.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
@@ -640,6 +643,12 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
   // A range written beside its reader drifts from the value it guards; a
   // range passed INTO the one reader cannot.
   std::string local;
+  // THE SET OF KEYS THE CORE KNOWS, filled BY THE READERS THEMSELVES rather
+  // than written out a second time beside them. A hand-kept twin of this list
+  // would age exactly the way the missing band aged: it cannot know about the
+  // knob nobody added to it. Here a knob that is read is a knob that is known,
+  // by construction, because the same call does both.
+  std::vector<std::string_view> knows;
   const auto degrees = Range{.low = kTemperatureMinCelsius, .high = kTemperatureMaxCelsius};
   const auto human_months = Range{.low = 1.0F, .high = 12.0F};
   // A month crosses this seam as a HUMAN 1..12 and the calendar counts from
@@ -648,6 +657,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
   // and both are legal months, so no range can see it. Only a test that
   // names the month can, and one does.
   const auto month = [&](const char* key, std::uint8_t* out) {
+    knows.push_back(key);
     float human = static_cast<float>(*out) + 1.0F;
     if (!OptionalValue(table, key, human_months, human, local)) {
       error = "weather_params: " + local;
@@ -657,6 +667,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
     return true;
   };
   const auto number = [&](const char* key, Range range, float* out) {
+    knows.push_back(key);
     if (!OptionalValue(table, key, range, *out, local)) {
       error = "weather_params: " + local;
       return false;
@@ -686,6 +697,55 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
       !month("frost_to_month", &knobs.frost_to_month)) {
     return false;
   }
+  // EVERY ROW ANSWERS FOR ITSELF, and this is what a typo runs into.
+  //
+  // Until 2026-09-06 a key the core did not recognise was simply not looked
+  // for, so `snow_melt_celsius` written where `snow_melt_c` was meant left
+  // every guard green and the compiled default in force — the delivery's own
+  // defect one storey down: not a table falling silent, but a row. A guard
+  // could not just refuse the unknown, because `insect_buzz_min_c` is a
+  // legitimate row whose reader is the graphics layer.
+  //
+  // So the row says who reads it, and it says so in the design base beside
+  // the value — one home for the number and for its addressee. The core then
+  // answers three questions per row and refuses on two of them.
+  //
+  // A PRESENT TABLE MUST DECLARE. The whole table is optional (every knob has
+  // a default), but a weather_params.csv without a `reader` column cannot be
+  // checked at all: in it a typo and a layer knob are the same thing. Letting
+  // that pass would put the lenient answer back behind silence, which is the
+  // one thing this delivery exists to stop.
+  const std::uint32_t key_column = table.FindColumn("key");
+  const std::uint32_t reader_column = table.FindColumn("reader");
+  if (key_column == kNoTableColumn) {
+    error = "weather_params: no 'key' column";
+    return false;
+  }
+  if (reader_column == kNoTableColumn) {
+    error =
+        "weather_params: no 'reader' column — a table that does not say who reads each knob "
+        "cannot tell a misspelt core key from a layer one";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    const std::string_view key = table.CellText(row, key_column);
+    const std::string_view reader = table.CellText(row, reader_column);
+    if (reader != "core" && reader != "layer" && reader != "both") {
+      error = "weather_params: row '" + std::string(key) + "' declares reader '" +
+              std::string(reader) + "' — it must be core, layer or both";
+      return false;
+    }
+    if (reader == "layer") {
+      continue;  // the graphics layer's knob; the core carries it, unread
+    }
+    if (std::find(knows.begin(), knows.end(), key) == knows.end()) {
+      error = "weather_params: row '" + std::string(key) +
+              "' is declared for the core, and the core has no such knob — a misspelt key, or a "
+              "knob whose reader moved";
+      return false;
+    }
+  }
+
   // The two shares decide a third between them: what is left after calm and
   // wind is the strong wind, and a pair summing past one would name a
   // negative share.
