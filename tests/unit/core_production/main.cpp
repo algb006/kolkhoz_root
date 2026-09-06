@@ -1325,6 +1325,54 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
     failures += Expect(!any, "fifty tonnes into sixty is not a warning");
   }
 
+  // AND IT DOES NOT SHRINK AS THE FIELD IS CUT. This is the one-day hole
+  // host measured on 0.17.58 (seed 53, oat f7, 10.5 ha): the warning stood
+  // at 22.63 t through d29, went dark for d30 alone, and 11.46 t landed on
+  // d31. Silence for exactly the day it mattered.
+  //
+  // The claim used to count only the part still STANDING, on the stated
+  // ground that the cut part was already a heap. It is not: Harvest() runs
+  // ONCE, when the phase finishes, so while a field is being reaped nothing
+  // has been placed, reaped_grams is zero and no straw has left. The cut
+  // part was in neither place, and the gap grew as the reaping went on —
+  // widest on its last day.
+  //
+  // The guard walks the labour down instead of asserting one point, because
+  // the defect was a SLOPE: a single sample at half-cut would have passed on
+  // the old code too, at half the amount. Nothing is delivered between these
+  // samples, so the right answer is the same number every time.
+  {
+    core::WorldState reaping = world;
+    const core::Grams standing = warned(field_ids[2]);
+    bool every_sample_matches = true;
+    core::Grams smallest = standing;
+    for (const float left : {1.0F, 0.75F, 0.5F, 0.25F, 0.01F}) {
+      reaping.fields.rows[2].phase = core::FieldPhase::kHarvest;
+      // The phase norm is harvest_days_per_ha (8) times the fifty hectares.
+      reaping.fields.rows[2].work_days_remaining = left * 8.0F * 50.0F;
+      std::vector<core::Alarm> alarms;
+      system->CollectAlarms(reaping, alarms);
+      core::Grams over = 0;
+      for (const core::Alarm& alarm : alarms) {
+        if (alarm.kind == core::AlarmKind::kHarvestWillNotFit &&
+            alarm.field.value == field_ids[2].value) {
+          over += alarm.amount;
+        }
+      }
+      every_sample_matches = every_sample_matches && over == standing;
+      smallest = over < smallest ? over : smallest;
+    }
+    failures += Expect(standing > 0,
+                       "the standing field is warned about at all — without that the samples "
+                       "below would agree at zero");
+    failures += Expect(every_sample_matches,
+                       "and a field being reaped claims exactly what it claimed standing, at "
+                       "every stage of the cut: nothing has been delivered yet");
+    failures += Expect(smallest > 0,
+                       "in particular it never falls to nothing on the last day of reaping — the "
+                       "day the whole load lands tomorrow");
+  }
+
   // AND IT KEEPS BURNING WHILE THE LOAD IS STILL HOMELESS. An earlier
   // version of this check asserted the opposite — that a field already
   // holding its own load says nothing more, because a forecast of what has
@@ -1428,12 +1476,26 @@ int CheckAReapedFieldStillSpendsTheRoom() {
     return total;
   };
 
-  // Sixty tonnes of room, twenty-five still standing on the field being
-  // reaped: thirty-five left, and the growing fifty overruns by fifteen.
-  // Under the old rule the reaped field claimed NOTHING, fifty fitted into
-  // sixty, and nobody was told anything at all.
-  failures += Expect(warned(ahead) == 15'000 * core::kGramsPerKilogram,
-                     "the standing half of a field being reaped is taken out of the room");
+  // THE HALF-CUT HEAP IS UNREACHABLE BY DESIGN, NOT BY OMISSION (boss,
+  // 2026-09-06). A field does not accumulate this year's crop while it is
+  // being reaped, and it never will: the intermediate state changes no
+  // decision the player makes — the carting happens on its own, nobody
+  // assigns it — and the one thing it was wanted for, the room warning, is
+  // answered by the whole field claiming its whole yield. A model that
+  // yields no decision is not modelled (design limits §1). The design line
+  // that made it look intended — "everything still on this field, standing,
+  // in swaths, in stooks, in heaps at the edge" — is a PICTURE: the layer
+  // draws swaths and stooks from the share of labour done, which it already
+  // has, without the core counting them.
+  // Sixty tonnes of room and a field being reaped that is still going to
+  // deliver all fifty of itself: ten left, and the growing fifty overruns by
+  // forty. Under the OLDEST rule the reaped field claimed nothing at all;
+  // under the one this replaces it claimed only the half still on the stalk,
+  // which is a smaller lie with the same shape — nothing has left the field
+  // until its phase ends, so half of it was in neither place.
+  failures += Expect(warned(ahead) == 40'000 * core::kGramsPerKilogram,
+                     "a field being reaped is taken out of the room whole, not by the part still "
+                     "standing");
   // The field being reaped is silent because its twenty-five tonnes FIT in
   // the sixty, not because it is being reaped: it spends the room first and
   // finds enough. A field being reaped that does NOT fit says so — that is
@@ -1441,19 +1503,35 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   failures +=
       Expect(warned(cut) == 0, "the field being reaped fits into the room and says nothing");
 
-  // A load already CUT and lying on the field claims its own weight too. It
-  // is not in a store, so it has not touched today's free room, and it goes
-  // in the moment there is anywhere to put it. Twenty tonnes lying plus
-  // twenty-five standing leaves fifteen, and the growing fifty overruns by
-  // thirty-five.
+  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
+  // model that yields no decision is not modelled.)
+  // A load already CUT and lying on the field claims its own weight ON TOP,
+  // and here that is LAST year's heap, which is the only heap a field can
+  // hold while this year's crop is still being reaped. It is not in a store,
+  // so it has not touched today's free room, and it goes in the moment there
+  // is anywhere to put it. Twenty lying plus the fifty still to come spends
+  // the sixty and leaves nothing, so the growing fifty overruns by all of
+  // itself.
   world.fields.rows[0].reaped_grams = 20'000 * core::kGramsPerKilogram;
   world.fields.rows[0].reaped_resource = core::ResourceId{0};
-  failures += Expect(warned(ahead) == 35'000 * core::kGramsPerKilogram,
-                     "a load already cut and lying on a field claims room as well");
+  failures += Expect(warned(ahead) == 50'000 * core::kGramsPerKilogram,
+                     "a load already cut and lying on a field claims room as well, on top of the "
+                     "crop still coming off it");
 
+  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
+  // model that yields no decision is not modelled.)
   // And when it is all cut and carried away, the field claims nothing and
   // the growing fifty fits into the sixty again — or the check above would
   // only be proving that something always overruns.
+  //
+  // THE PHASE IS PART OF THAT STATE. It used to be left at kHarvest with the
+  // labour at zero, which said "carried away" only because the claim was
+  // computed from the labour left. A field being reaped claims its whole
+  // yield now, whatever the labour says, and "carried away" is kIdle with an
+  // empty heap — which is also the only one of the two the running core ever
+  // holds: AdvanceFinishedPhases resolves a reaped field in the same step
+  // its work reaches zero.
+  world.fields.rows[0].phase = core::FieldPhase::kIdle;
   world.fields.rows[0].reaped_grams = 0;
   world.fields.rows[0].work_days_remaining = 0.0F;
   failures += Expect(warned(ahead) == 0,
@@ -1545,15 +1623,24 @@ int CheckTheStrawClaimsRoomToo() {
                      "a rye field claims its straw as well: fifty of grain is a hundred and "
                      "twenty-five with it");
 
-  // HALF CUT: only the standing half still brings straw, and the twenty-five
-  // tonnes already lying have had theirs placed or lost. Standing 25 grain
-  // + 37.5 straw = 62.5, plus 25 in the heap = 87.5, over by 27.5.
+  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
+  // model that yields no decision is not modelled.)
+  // HALF REAPED, AND THE CLAIM DOES NOT MOVE. This block used to say the
+  // opposite — that the cut half had already had its straw placed, so only
+  // the standing half still claimed any. THAT STATE DOES NOT EXIST in this
+  // core: Harvest() runs once, when the phase finishes, and until then not a
+  // gram of grain or straw has left the field. A heap standing during kHarvest
+  // is LAST year's, not this year's half.
+  //
+  // Which is why the number below is the same as the one above: nothing has
+  // been delivered, so nothing has stopped claiming room. The defect this
+  // replaces was measured before it was explained — host, 0.17.58, one day
+  // of silence on the last day of reaping.
   world.fields.rows[0].phase = core::FieldPhase::kHarvest;
   world.fields.rows[0].work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
-  world.fields.rows[0].reaped_grams = 25'000 * core::kGramsPerKilogram;
-  world.fields.rows[0].reaped_resource = core::ResourceId{0};
-  failures += Expect(warned() == 27'500 * core::kGramsPerKilogram,
-                     "and a load already cut brings no more straw: that straw is settled");
+  failures += Expect(warned() == 65'000 * core::kGramsPerKilogram,
+                     "half reaped, the field still claims grain and straw alike: neither has "
+                     "left it yet");
 
   std::filesystem::remove_all(root);
   return failures;
@@ -1639,13 +1726,16 @@ int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
   failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
                      "growing and too big for the room: the warning stands");
 
-  // Being reaped, half still on the stalk and half already cut and lying:
-  // twenty-five standing plus twenty-five in the heap is still fifty, and
-  // forty of them still have nowhere to go. THE OLD RULE WENT SILENT HERE.
+  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
+  // model that yields no decision is not modelled.)
+  // Being reaped: the whole fifty is still coming, because nothing leaves a
+  // field until its harvest phase finishes. Forty of them still have nowhere
+  // to go, exactly as while it stood. THE OLD RULE WENT SILENT HERE, and it
+  // went silent for a second reason nobody had named: it counted only what
+  // was still on the stalk, so the closer the reaping came to done, the less
+  // the field appeared to need.
   world.fields.rows[0].phase = core::FieldPhase::kHarvest;
   world.fields.rows[0].work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
-  world.fields.rows[0].reaped_grams = 25'000 * core::kGramsPerKilogram;
-  world.fields.rows[0].reaped_resource = core::ResourceId{0};
   failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
                      "being reaped and still too big: the warning does not go out");
 

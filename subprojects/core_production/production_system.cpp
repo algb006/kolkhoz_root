@@ -346,14 +346,30 @@ class ProductionSystem final : public IProductionSystem {
     const Grams expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
     // Grain and straw travel together, so the standing crop claims both.
     const float with_straw = 1.0F + (crop.straw_ratio > 0.0F ? crop.straw_ratio : 0.0F);
-    if (growing) {
-      return claim + static_cast<Grams>(static_cast<float>(expected) * with_straw);
-    }
-    const float phase_norm = crop.harvest_days_per_ha * field.area_ga;
-    // A phase with no norm is one nobody has to work: none of it is standing.
-    const float uncut = phase_norm > 0.0F ? field.work_days_remaining / phase_norm : 0.0F;
-    const float share = uncut < 0.0F ? 0.0F : (uncut > 1.0F ? 1.0F : uncut);
-    return claim + static_cast<Grams>(static_cast<float>(expected) * share * with_straw);
+    // A FIELD BEING REAPED CLAIMS ALL OF IT, exactly as a standing one does,
+    // and the share of labour left has no part in the answer.
+    //
+    // It used to claim only the STANDING share, on the stated ground that
+    // "the cut part is already accounted as reaped_grams". THAT PREMISE IS
+    // FALSE IN THIS CODE: nothing is placed while a field is being reaped —
+    // Harvest() runs once, when the phase FINISHES, and until that moment
+    // reaped_grams is zero and no straw has been delivered. So the cut part
+    // was accounted in neither place: gone from the standing share, not yet
+    // a heap. The hole is widest on the last day of reaping, when almost
+    // nothing is standing and the whole yield lands tomorrow.
+    //
+    // host measured it before it was explained (0.17.58, seed 53, oat f7,
+    // 10.5 ha): the warning stood at 22.63 t through d29, went dark for d30
+    // alone, and 11.46 t landed on d31. One day of silence, in the one day
+    // that mattered — and a signal that goes out just before the trouble
+    // does not read as silence, it reads as "it turned out fine".
+    //
+    // Two diagnoses were offered for it first and both were wrong: the
+    // forecast counting grain without straw (fixed in 0.17.36) and the claim
+    // HALVING at the cut (there is no halving — there is a drop to nothing
+    // and back). The measurement outlived both explanations, which is the
+    // argument for keeping it.
+    return claim + static_cast<Grams>(static_cast<float>(expected) * with_straw);
   }
 
   /// @brief Field rows ordered by when their crop is reaped, then by row.
