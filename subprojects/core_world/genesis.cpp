@@ -28,6 +28,7 @@
 #include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "start_layout.h"
 
 namespace core {
 namespace {
@@ -104,10 +105,6 @@ CropId CropByKey(const ITable* crops, std::string_view key) {
   const std::uint32_t row = crops->FindRowByKey(key);
   return row == kNoTableRow ? CropId{} : CropId{static_cast<std::uint16_t>(row)};
 }
-
-/// The same idea for a layout cell: coordinates, areas and flags. A map
-/// twelve kilometres on a side leaves this six orders of magnitude of room.
-constexpr float kLayoutNumberLimit = 1e9F;
 
 /// The band the start's old houses begin their wear in (start design §4:
 /// "a starting wear of 50 %", spread by boss's rule of 2026-09-03 so that
@@ -208,9 +205,16 @@ void PlaceMeadow(WorldState& world, float area_ga, Vec2 center, bool floodplain)
   AppendRow(world.fields, meadow);
 }
 
+/// The practical ceiling the readers below share. NOT the layout's: that one
+/// moved to the parser on 2026-09-06 and comes from the catalogue's Range,
+/// which is where a band belongs. What is left here reads the OTHER tables
+/// genesis touches directly — the level ladder, the wear knobs, the stock
+/// list — and closing that class is its own task, not a rename.
+constexpr float kTableNumberLimit = 1e9F;
+
 /// @brief Reads one livestock knob; an absent, unreadable or absurd cell is
 /// the fallback. The range test is the one its neighbours already have
-/// (LayoutNumber, PutStock): CellReal now refuses inf and nan at the door,
+/// (TableNumber, PutStock): CellReal now refuses inf and nan at the door,
 /// but a finite 1e30 still has to be stopped before it reaches the ages and
 /// the casts they feed. Written positively, so anything unexpected fails it.
 float LivestockValue(const ITable& livestock,
@@ -225,7 +229,7 @@ float LivestockValue(const ITable& livestock,
   if (!value) {
     return fallback;
   }
-  if (!(*value >= -kLayoutNumberLimit && *value <= kLayoutNumberLimit)) {
+  if (!(*value >= -kTableNumberLimit && *value <= kTableNumberLimit)) {
     LogWarning("genesis: a livestock cell is not a usable number; the default is used");
     return fallback;
   }
@@ -331,34 +335,26 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
 // with no id behind it, and one shared vocabulary of keys is worth more
 // than the handful of idle rows it costs.
 
-/// One row of start_layout.csv, in the columns this function reads.
-struct LayoutRow {
-  std::string_view key;
-  std::string_view kind;
-  std::string_view unit_type;
-  float x_meters = 0.0F;
-  float y_meters = 0.0F;
-  float area_ga = 0.0F;
-  std::array<std::string_view, 3> rotation;
-  bool derelict = false;
-};
-
-/// @brief The state of one layout cell, and its value when it has one.
+/// @brief The state of one cell of the OTHER tables genesis reads directly —
+/// the level ladder, the wear knobs, the stock list. NOT the layout: that one
+/// got a parser of its own on 2026-09-06 and reads through core_catalog.
 ///
 /// std::from_chars accepts "inf" and "nan", and these tables are exported and
 /// then hand-edited, so the reader refuses both here instead of passing them
 /// on to a cast (UB-002). Written positively for the same reason as
 /// everywhere else: nan fails the test rather than passing it.
 ///
-/// Written here and not taken from core_catalog because the layout is read
-/// with a LIMIT rather than a range per column — every layout number shares
-/// one practical ceiling — and because genesis cannot refuse. What it takes
-/// from that module is the DISTINCTION, which is the part that was missing:
-/// absent, blank, present-and-wrong are three answers.
-CellState ReadLayoutCell(const ITable& table,
-                         std::uint32_t row,
-                         std::uint32_t column,
-                         float* value) {
+/// Written here and not taken from core_catalog because these cells are read
+/// with a LIMIT rather than a range per column, and because genesis cannot
+/// refuse. What it takes from that module is the DISTINCTION, which is the
+/// part that was missing: absent, blank, present-and-wrong are three answers.
+/// The remaining band is a debt, not a design: core_catalog's Range says
+/// 1e7 and this says 1e9, and one rule with two homes is the shape the
+/// layout half of it was just cured of.
+CellState ReadTableCell(const ITable& table,
+                        std::uint32_t row,
+                        std::uint32_t column,
+                        float* value) {
   if (column == kNoTableColumn) {
     return CellState::kAbsent;
   }
@@ -366,76 +362,65 @@ CellState ReadLayoutCell(const ITable& table,
     return CellState::kAbsent;  // blank: this row simply does not say
   }
   const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell || !(*cell >= -kLayoutNumberLimit && *cell <= kLayoutNumberLimit)) {
+  if (!cell || !(*cell >= -kTableNumberLimit && *cell <= kTableNumberLimit)) {
     return CellState::kBad;
   }
   *value = *cell;
   return CellState::kRead;
 }
 
-/// @brief One layout number, or 0 when the cell does not give one.
+/// @brief One table number, or 0 when the cell does not give one.
 ///
-/// The lossy face of ReadLayoutCell, kept because most callers have no answer
+/// The lossy face of ReadTableCell, kept because most callers have no answer
 /// to "absent" other than the neutral value. The ones that do call the cell
 /// reader directly.
-float LayoutNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
+float TableNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
   // THREE DIFFERENT FACTS USED TO LEAVE HERE AS ONE ZERO, and only the third
   // of them said so out loud: no such column, a BLANK cell, and text that is
   // not a number at all. Phase-2 task A6, the second half.
   //
-  // A blank cell keeps its zero and stays silent, because in this table
-  // blank genuinely means nothing — a layout row that names no area has no
-  // area. TEXT THAT IS NOT A NUMBER IS A DEFECT OF THE TABLE and now says
-  // so: "12kg" in the area column used to lay out a field of nought
-  // hectares and go on with the founding, which is the shape of every
-  // silent substitution we have chased today — the missing table that
-  // swapped a whole climate for a stub one, and the missing cell that swaps
-  // a value.
+  // A blank cell keeps its zero and stays silent, because in these tables
+  // blank genuinely means nothing. TEXT THAT IS NOT A NUMBER IS A DEFECT OF
+  // THE TABLE and says so — a silent substitution is the shape of every
+  // defect this delta has chased: the missing table that swapped a whole
+  // climate for a stub one, and the missing cell that swaps a value.
   //
-  // It warns rather than refuses because genesis has no way to refuse: it
-  // builds a world and returns it. The refusal belongs to the config
-  // parsers, which have one (core_catalog/table_value.h), and the layout
-  // has no parser of its own — that is itself an open item, and it is named
-  // in OPEN_ITEMS rather than half-fixed here.
+  // IT STILL WARNS RATHER THAN REFUSES, and the reason is now narrower than
+  // it was. It is not that "genesis cannot refuse" — since 2026-09-06 it
+  // can, and the start layout goes through a parser that does. It is that
+  // these REMAINING readers have no parser yet: the level ladder, the wear
+  // band and the stock list are still read cell by cell in the middle of
+  // building the world. That is the open item, and it is named in
+  // OPEN_ITEMS rather than half-fixed here.
   float value = 0.0F;
-  const CellState state = ReadLayoutCell(table, row, column, &value);
+  const CellState state = ReadTableCell(table, row, column, &value);
   if (state == CellState::kBad) {
-    LogWarning("genesis: a layout cell is not a number and is read as zero — check the table");
+    // NAMES THE TABLE IT IS READING, not "a layout cell": the same function
+    // serves four tables, and until today the warning blamed one of them
+    // for the other three's cells.
+    LogWarning(
+        "genesis: a cell of a balance table is not a number and is read as zero, "
+        "column " +
+        std::to_string(column) + " — check the tables");
   }
   return value;
 }
 
-/// @brief Fills the units, fields and meadows of the start from the layout
-/// table, and remembers which unit each row's key became so that the stock
+/// @brief Fills the units, fields and meadows of the start from the PARSED
+/// layout, and remembers which unit each row's key became so that the stock
 /// table can find it.
-/// @return false when the table is absent or has no usable columns — the
-///         world then stays people-only, exactly as it does without the
-///         other tables.
-bool PlaceStartLayout(WorldState& world,
-                      const ITable& layout,
+///
+/// There is not one cell read left in this function, and that is the whole
+/// change of 2026-09-06: every number it places has already been checked by
+/// ParseStartLayout, which could refuse. What is left here is placement.
+void PlaceStartLayout(WorldState& world,
+                      const StartLayout& layout,
                       const ITable* unit_types,
                       const ITable* crops,
                       Metric start_fertility,
                       float map_side_m,
                       std::vector<std::pair<std::string_view, UnitId>>& placed) {
-  const std::uint32_t key_col = layout.FindColumn("key");
-  const std::uint32_t kind_col = layout.FindColumn("kind");
-  const std::uint32_t type_col = layout.FindColumn("unit_type");
-  const std::uint32_t x_col = layout.FindColumn("x_m");
-  const std::uint32_t y_col = layout.FindColumn("y_m");
-  const std::uint32_t area_col = layout.FindColumn("area_ha");
-  const std::uint32_t derelict_col = layout.FindColumn("is_derelict");
-  const std::uint32_t meadow_kind_col = layout.FindColumn("meadow_kind");
-  const std::array<std::uint32_t, 3> rotation_cols = {layout.FindColumn("rotation_year0"),
-                                                      layout.FindColumn("rotation_year1"),
-                                                      layout.FindColumn("rotation_year2")};
-  if (key_col == kNoTableColumn || kind_col == kNoTableColumn) {
-    return false;
-  }
-
-  for (std::uint32_t row = 0; row < layout.RowCount(); ++row) {
-    const std::string_view kind = layout.CellText(row, kind_col);
-    const Vec2 place{.x = LayoutNumber(layout, row, x_col), .y = LayoutNumber(layout, row, y_col)};
+  for (const StartLayoutRow& row : layout.rows) {
     // The map bounds ARE checked somewhere — on the positions the chairman
     // orders a building at (core_construction) — and were never checked on
     // the scene the core ships with. So when the layout moved to the twelve
@@ -446,39 +431,41 @@ bool PlaceStartLayout(WorldState& world,
     // scene is the scene, and dropping a cemetery because a number
     // disagrees would be worse. A side of zero means the table set declares
     // no map, and then there is no edge to be outside of.
-    if (map_side_m > 0.0F &&
-        !(place.x >= 0.0F && place.x <= map_side_m && place.y >= 0.0F && place.y <= map_side_m)) {
-      LogWarning("genesis: layout row '" + std::string(layout.CellText(row, key_col)) +
+    //
+    // AND IT STAYS A WARNING WHILE THE PARSER REFUSES, on purpose: this is
+    // not the layout being wrong, it is TWO TABLES disagreeing — start_layout
+    // against map.csv — and the parser reads one table. The refusal that
+    // belongs here belongs to whoever owns both, and that owner does not
+    // exist yet.
+    if (map_side_m > 0.0F && !(row.place.x <= map_side_m && row.place.y <= map_side_m)) {
+      LogWarning("genesis: layout row '" + row.key +
                  "' lies outside the map declared by tables/map.csv");
     }
-    if (kind == "unit") {
-      const UnitTypeId type = TypeByKey(unit_types, layout.CellText(row, type_col));
+    if (row.kind == LayoutKind::kUnit) {
+      const UnitTypeId type = TypeByKey(unit_types, row.unit_type);
       if (type.value == kInvalidDefIdValue) {
         continue;  // a type the core's tables do not carry: nothing to place
       }
-      placed.emplace_back(layout.CellText(row, key_col), PlaceUnit(world, type, place.x, place.y));
+      placed.emplace_back(row.key, PlaceUnit(world, type, row.place.x, row.place.y));
       continue;
     }
-    const float area = LayoutNumber(layout, row, area_col);
-    if (kind == "meadow") {
-      PlaceMeadow(world, area, place, layout.CellText(row, meadow_kind_col) == "floodplain");
+    if (row.kind == LayoutKind::kMeadow) {
+      PlaceMeadow(world, row.area_ha, row.place, row.floodplain);
       continue;
     }
     // Arable, and the reserve field held back for building on: both are
     // field rows, and the reserve is derelict like the rest of the ninety
     // hectares nobody has raised (start canon §2).
-    const bool derelict = LayoutNumber(layout, row, derelict_col) > 0.5F;
     std::array<CropId, 3> rotation;
     for (std::size_t slot = 0; slot < rotation.size(); ++slot) {
-      rotation[slot] = CropByKey(crops, layout.CellText(row, rotation_cols[slot]));
+      rotation[slot] = CropByKey(crops, row.rotation[slot]);
     }
-    const FieldId field =
-        PlaceField(world, area, place, start_fertility, rotation[0], rotation[1], rotation[2]);
-    if (derelict) {
+    const FieldId field = PlaceField(
+        world, row.area_ha, row.place, start_fertility, rotation[0], rotation[1], rotation[2]);
+    if (row.derelict) {
       world.fields.rows[FindRow(world.fields, field)].kind = LandKind::kDerelict;
     }
   }
-  return true;
 }
 
 /// @brief Capacity of a unit type in grams, or -1 for an outline the player
@@ -499,7 +486,7 @@ Grams TypeCapacityGrams(const ITable* unit_types,
     return -1;
   }
   const std::uint32_t by_plot_col = unit_types->FindColumn("capacity_by_plot");
-  if (by_plot_col != kNoTableColumn && LayoutNumber(*unit_types, type.value, by_plot_col) > 0.0F) {
+  if (by_plot_col != kNoTableColumn && TableNumber(*unit_types, type.value, by_plot_col) > 0.0F) {
     return -1;
   }
   const std::string_view key = unit_types->CellText(type.value, 0);
@@ -512,15 +499,15 @@ Grams TypeCapacityGrams(const ITable* unit_types,
         if (unit_levels->CellText(row, unit_col) != key) {
           continue;
         }
-        // Compared in FLOAT, never cast: LayoutNumber refuses nan and inf
+        // Compared in FLOAT, never cast: TableNumber refuses nan and inf
         // but clamps only to +/-1e9, so a hand-edited level of -1 or 1e6
         // would make the cast undefined ([conv.fpint]/1). This is the very
         // class the cast pass exists to remove, and it was sitting two lines
         // from the conversion the pass did fix.
-        if (LayoutNumber(*unit_levels, row, level_col) != static_cast<float>(level)) {
+        if (TableNumber(*unit_levels, row, level_col) != static_cast<float>(level)) {
           continue;
         }
-        const float tonnes = LayoutNumber(*unit_levels, row, tonnes_col);
+        const float tonnes = TableNumber(*unit_levels, row, tonnes_col);
         if (tonnes > 0.0F) {
           return GramsFromTonnes(tonnes);
         }
@@ -562,8 +549,7 @@ void PlaceStartStock(WorldState& world,
       continue;
     }
     UnitRow& place = world.units.rows[unit_row];
-    const float kilograms =
-        LayoutNumber(stock, row, amount_col) * LayoutNumber(stock, row, mass_col);
+    const float kilograms = TableNumber(stock, row, amount_col) * TableNumber(stock, row, mass_col);
     PutStock(place, resource, kilograms);
     // The start set must FIT where the canon puts it ("capacity — exactly
     // the start set, no more", start design §5). A row that overfills its
@@ -609,13 +595,17 @@ void PlaceStartStock(WorldState& world,
 /// stays people-only.
 /// Start fertility 65 = soil factor 1.3 of the reference runs; stock
 /// amounts are ASSUMPTION sized to the first sowing plus a food margin.
-void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
+/// @return false only when the start layout is present and cannot be parsed;
+///         `error` then carries the parser's sentence. Every other missing
+///         piece is still the people-only world, as it has always been: an
+///         absent table is not a wrong one.
+bool BuildStartEconomy(WorldState& world, const ITableSet& tables, std::string* error) {
   const ITable* unit_types = tables.FindTable("unit_types");
   const ITable* unit_levels = tables.FindTable("unit_levels");
   const ITable* resources = tables.FindTable("resources");
   const ITable* crops = tables.FindTable("crops");
   if (unit_types == nullptr || resources == nullptr || crops == nullptr) {
-    return;  // people-only world until the tables exist
+    return true;  // people-only world until the tables exist
   }
   constexpr Metric kStartFertility = 65.0F;
   const UnitTypeId house_type = TypeByKey(unit_types, "old_house");
@@ -629,7 +619,20 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   const ITable* const layout = tables.FindTable("start_layout");
   if (layout == nullptr) {
     LogError("genesis: no start_layout table — the world stays people-only");
-    return;
+    return true;
+  }
+  // THE PARSE COMES BEFORE THE WORLD. Not one row is placed until every row
+  // has been read and checked, so a hand-edited table is answered with one
+  // sentence naming the row and the column instead of a village founded on
+  // a nought-hectare field.
+  StartLayout scene;
+  std::string layout_error;
+  if (!ParseStartLayout(*layout, scene, layout_error)) {
+    LogError(layout_error);
+    if (error != nullptr) {
+      *error = layout_error;
+    }
+    return false;
   }
   std::vector<std::pair<std::string_view, UnitId>> placed;
   // The side of the map is data and lives in exactly one place — map.csv,
@@ -643,10 +646,7 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   std::string catalog_error;
   const float map_side_m =
       LoadDefinitions(tables, definitions, catalog_error) ? definitions.map_side_m : 0.0F;
-  if (!PlaceStartLayout(world, *layout, unit_types, crops, kStartFertility, map_side_m, placed)) {
-    LogError("genesis: start_layout has no key or kind column");
-    return;
-  }
+  PlaceStartLayout(world, scene, unit_types, crops, kStartFertility, map_side_m, placed);
 
   // The units the rest of this function needs by name. A layout without one
   // of them is not an error here: the herd simply has nowhere to stand, and
@@ -694,10 +694,10 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
     const std::uint32_t min_row = knobs->FindRowByKey("old_house_wear_min");
     const std::uint32_t max_row = knobs->FindRowByKey("old_house_wear_max");
     if (column != kNoTableColumn && min_row != kNoTableRow) {
-      wear_min = LayoutNumber(*knobs, min_row, column);
+      wear_min = TableNumber(*knobs, min_row, column);
     }
     if (column != kNoTableColumn && max_row != kNoTableRow) {
-      wear_max = LayoutNumber(*knobs, max_row, column);
+      wear_max = TableNumber(*knobs, max_row, column);
     }
   }
   // A band that is not a band — reversed, negative, past the scale — is a
@@ -792,11 +792,12 @@ void BuildStartEconomy(WorldState& world, const ITableSet& tables) {
   // been cut.
 
   PlaceHerds(world, tables, stock_yard);
+  return true;
 }
 
 }  // namespace
 
-WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
+WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, std::string* error) {
   WorldState world;
   world.world_seed = world_seed;
   world.rng = SeedRngState(world_seed, kWorldRngStream);
@@ -909,7 +910,7 @@ WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed) {
     LogWarning("genesis: start parameters rounded population to " +
                std::to_string(world.residents.rows.size()));
   }
-  BuildStartEconomy(world, tables);
+  BuildStartEconomy(world, tables, error);
   return world;
 }
 

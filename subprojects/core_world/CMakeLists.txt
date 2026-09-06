@@ -9,6 +9,7 @@
 
 kolkhoz_add_module(core_world
     genesis.cpp
+    start_layout.cpp
     world.cpp)
 
 target_link_libraries(core_world

@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -34,12 +35,26 @@ class ITableSet;  // Defined in core_tables (stage 1, task F5).
 /// from the seed: same tables, same seed — same settlement.
 /// @param tables     Balance tables; used during the call only.
 /// @param world_seed Campaign seed; stored in the returned state.
+/// @param error   Where the start layout's refusal goes: the parser of
+///                tables/start_layout.csv names the ROW and the COLUMN it
+///                choked on, and a caller that can refuse (the assembly
+///                below) turns that into a refusal. Written only on that
+///                one failure; untouched otherwise.
+///
+///                THERE IS NO DEFAULT, deliberately, and for the same reason
+///                StubTables has none: this world is still returned when the
+///                layout is refused — people-only, no houses, no fields —
+///                and a caller who has not thought about it would take that
+///                for the designed start. `nullptr` is the sentence "I have
+///                nowhere to report it", and tools and unit tests say it out
+///                loud. Everything ELSE that is missing is not an error and
+///                never reaches here: an absent table is not a wrong one.
 /// @note STUB until stage 3: returns a world at day 0 with weather, epoch,
 /// seed and plan defaults but no resident, family, field or unit rows —
 /// exactly enough for the empty-world criterion of stage 1. Of the tables
 /// only the campaign setup is read (day-zero weekday); a missing campaign
 /// table means the documented defaults.
-WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed);
+WorldState CreateStartWorld(const ITableSet& tables, std::uint64_t world_seed, std::string* error);
 
 /// @brief Everything CreateStandardSimulation needs.
 struct StandardSimulationConfig {
@@ -82,7 +97,10 @@ struct StandardSimulationConfig {
 ///         stub_tables = StubTables::kRefused, a table that is not there at
 ///         all. The refusing factory logs which, and names the table.
 ///         The absent case is new since 2026-09-06: it used to be served
-///         silently from the subsystem's own defaults.
+///         silently from the subsystem's own defaults. Since the same day a
+///         REFUSED START LAYOUT is the other way in: a scene whose row or
+///         column cannot be read is not a scene, and the sentence naming
+///         which row and which column is logged before the nullptr.
 /// Implemented in core_world (stage 1, task O2 wires the stubs of task O0).
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config);
 

@@ -3,19 +3,29 @@
 /// @threading PARALLEL_WRITE
 /// The production phase (slot 4) writes world state from many workers, each
 /// over its own range of FIELD rows — and today over nothing else: the only
-/// parallel phase in the module is the field-growth one, which writes five
+/// parallel phase in the module is the field-growth one, which writes SIX
 /// members of the owned row — FieldRow::drought_stress, ::wet_stress,
-/// ::drought_run_days, ::wet_run_days and ::weather_state — and reads the
-/// calendar and weather blocks phase 1 froze. The single ::weather_stress
-/// this line used to name was split in two on 2026-09-04, and the label
-/// outlived it by two days: a write map naming a field that no longer
-/// exists cannot be checked against the code at all. Unit work cycles are sequential, in the
-/// decisions sub-step; if they are ever parallelised the write map widens THEN, and this line says
-/// so then. A label wider than the truth is worse than none: it stops being
-/// an ownership contract a reader can use. All of it strictly under the
-/// buffer law (core_sim/step.h). The production-decisions sub-step runs sequentially
-/// inside the decisions slot (phase 3) on the sim thread; accessor and
-/// factory are wiring-time, sim thread only.
+/// ::drought_run_days, ::wet_run_days, ::weather_state and ::in_flower —
+/// and reads the calendar and weather blocks phase 1 froze. The sixth is
+/// not like the other five: ::in_flower is written on EVERY owned row,
+/// meadow and arable alike, because the write sits before the crop gate —
+/// a meadow has no crop row and would otherwise be skipped. The five write
+/// only where a crop is growing.
+///
+/// THE MAP HAS NOW FALLEN BEHIND THE CODE TWICE IN THREE DAYS. The single
+/// ::weather_stress this line used to name was split in two on 2026-09-04
+/// and the label outlived it by two days; ::in_flower was added on
+/// 2026-09-06 and the label outlived that by an afternoon, until the cycle's
+/// RACE pass named it (RACE-003). Both times the label stayed green because
+/// nothing compiles it. A write map naming a field that no longer exists
+/// cannot be checked against the code at all, and one short a field the
+/// code does write is worse: it reads as a promise the phase does not
+/// keep. THE MAP IS PART OF THE CHANGE THAT ADDS A WRITE, not a follow-up. Unit work cycles are
+/// sequential, in the decisions sub-step; if they are ever parallelised the write map widens THEN,
+/// and this line says so then. A label wider than the truth is worse than none: it stops being an
+/// ownership contract a reader can use. All of it strictly under the buffer law (core_sim/step.h).
+/// The production-decisions sub-step runs sequentially inside the decisions slot (phase 3) on the
+/// sim thread; accessor and factory are wiring-time, sim thread only.
 ///
 /// Subsystem law (state model, manual/52-state-model.md): implementations
 /// hold configuration only — every fact about the simulated world lives in

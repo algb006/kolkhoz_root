@@ -33,11 +33,14 @@ int Expect(bool condition, const char* label) {
 /// @brief One table held in memory, so a test can hand genesis a cell no
 
 /// @brief Replaces every value of `column` in a CSV with `value`, keeping the
-/// file otherwise as it is. Returns false when the column is not there, so a
+/// file otherwise as it is. Named for the column and not for the table it
+/// was written against: it spoils a cell of any of them, and the livestock
+/// name it carried until 2026-09-06 read as a restriction that was never
+/// there. Returns false when the column is not there, so a
 /// renamed column fails the test instead of silently emptying it.
-bool SpoilLivestockCell(const std::filesystem::path& path,
-                        std::string_view column,
-                        std::string_view value) {
+bool SpoilColumn(const std::filesystem::path& path,
+                 std::string_view column,
+                 std::string_view value) {
   std::ifstream input(path);
   std::vector<std::string> lines;
   std::string line;
@@ -115,7 +118,7 @@ int main() {
 
   // Genesis STUB: an empty world at day 0, deterministic from the seed.
   const test::FakeTableSet tables;
-  const core::WorldState world = core::CreateStartWorld(tables, 12345);
+  const core::WorldState world = core::CreateStartWorld(tables, 12345, nullptr);
   failures += Expect(world.world_seed == 12345, "genesis stores the seed");
   failures += Expect(world.calendar.tick == 0, "genesis starts at tick 0");
   failures +=
@@ -124,55 +127,150 @@ int main() {
   failures += Expect(world.epoch == core::Epoch::kOne, "the campaign starts in Epoch I");
   failures += Expect((world.rng.stream & 1U) == 1U, "the world RNG is seeded (odd stream)");
 
-  const core::WorldState same_seed = core::CreateStartWorld(tables, 12345);
-  const core::WorldState other_seed = core::CreateStartWorld(tables, 54321);
+  const core::WorldState same_seed = core::CreateStartWorld(tables, 12345, nullptr);
+  const core::WorldState other_seed = core::CreateStartWorld(tables, 54321, nullptr);
   failures += Expect(same_seed.rng.state == world.rng.state, "same seed — same world RNG");
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
 
-  // A LAYOUT CELL THAT IS NOT A NUMBER SAYS SO, and a blank one does not.
+  // THE START LAYOUT IS PARSED BEFORE THE WORLD IS BUILT, and the refusal
+  // names the row and the column.
   //
-  // Three facts used to leave LayoutNumber as one silent zero: no such
-  // column, a blank cell, and text that is not a number. Only the third is a
-  // defect of the table — a blank layout row genuinely does not say — and it
-  // is the third that was silent. Phase-2 task A6, second half; the same
-  // shape as the missing weather table that swapped a whole climate for a
-  // stub one without a word on the same day.
+  // What stood here until 2026-09-06 measured the WARNING genesis wrote to
+  // the log, and said why: "genesis has no way to refuse — it builds a world
+  // and returns it". That reason is gone. The parser refuses, CreateStartWorld
+  // carries the sentence out, and the check reads the sentence instead of
+  // grepping a file.
   //
-  // MEASURED THROUGH THE LOG, because genesis has no way to refuse: it
-  // builds a world and returns it. The log file is the only place the
-  // warning is observable from, so it is where the check looks.
+  // The fixture below also caught the old test in the act: its rows called
+  // themselves kind 'arable', a word the shipped table has never used, and
+  // the old reader placed them as fields without a murmur. A test that can
+  // invent a kind is a test standing on a reader that accepts any.
   {
-    const fs::path log_path = fs::temp_directory_path() / "unit_core_world_layout.log";
-    fs::remove(log_path);
-    const test::FakeTable layout({"key", "kind", "x_m", "y_m", "area_ha"},
-                                 {{"field_bad", "arable", "100", "100", "12kg"},
-                                  {"field_blank", "arable", "200", "200", ""}});
-    // Genesis stays people-only until unit_types, resources and crops are
-    // all there, so the smallest set that reaches the layout pass names all
-    // four. They may be empty: the layout row is arable and needs none of
-    // their contents.
+    const std::vector<std::string> header = {
+        "key", "kind", "unit_type", "x_m", "y_m", "area_ha", "is_derelict", "meadow_kind"};
+    const std::vector<std::string> good_field = {
+        "field_a", "field", "", "100", "200", "7.5", "0", ""};
     const test::FakeTable empty({"key"}, {});
-    const test::FakeTableSet one_table({{"start_layout", &layout},
-                                        {"unit_types", &empty},
-                                        {"resources", &empty},
-                                        {"crops", &empty}});
-    failures += Expect(core::InitLogFile(log_path.string()), "the test can open a log file");
-    core::CreateStartWorld(one_table, 7);
-    core::ShutdownLogFile();
-    std::ifstream log(log_path);
-    const std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
-    const bool complained = text.find("a layout cell is not a number") != std::string::npos;
-    failures += Expect(complained,
-                       "a layout cell holding '12kg' is complained about, not read as "
-                       "a zero in silence");
-    // And exactly once: the blank cell beside it must not be complained
-    // about, or the warning becomes noise and stops being read.
-    const std::size_t first = text.find("a layout cell is not a number");
-    const bool only_once = first == std::string::npos || text.find("a layout cell is not a number",
-                                                                   first + 1) == std::string::npos;
-    failures += Expect(only_once, "and the blank cell beside it is not — blank is not a defect");
-    fs::remove(log_path);
+
+    // Each case brings its OWN subject, differing from the good row in the
+    // one cell its rule is about: a fixture several rules reject cannot say
+    // which one did (boss, 2026-09-04).
+    struct Case {
+      const char* label;
+      std::vector<std::string> columns;
+      std::vector<std::vector<std::string>> rows;
+      const char* names_row;     ///< Substring the message must carry, "" for none.
+      const char* names_column;  ///< Column the message must name.
+    };
+
+    const std::vector<Case> refused = {
+        // A MISSING COLUMN, and deliberately this one. A header without
+        // 'kind' or 'key' is refused even with the required-column check
+        // taken out — the empty text a missing column reads as fails the
+        // per-row rule next door — so a guard built on those two would pass
+        // while measuring nothing. A missing 'x_m' has no such second door:
+        // an absent column is an absent cell, an absent cell keeps the
+        // caller's value, and the whole village is founded at the origin in
+        // silence. Found by mutation, 2026-09-06.
+        {"a header without 'x_m' is not a layout at all",
+         {"key", "kind", "y_m", "area_ha"},
+         {{"field_a", "field", "200", "7.5"}},
+         "",
+         "x_m"},
+        {"a kind the layout does not have is refused, not read as a field",
+         header,
+         {{"field_a", "arable", "", "100", "200", "7.5", "0", ""}},
+         "field_a",
+         "kind"},
+        {"'12kg' in the area is refused, not laid out as nought hectares",
+         header,
+         {{"field_a", "field", "", "100", "200", "12kg", "0", ""}},
+         "field_a",
+         "area_ha"},
+        {"a negative coordinate is refused: the table's own header says never negative",
+         header,
+         {{"field_a", "field", "", "-100", "200", "7.5", "0", ""}},
+         "field_a",
+         "x_m"},
+        {"two rows may not share a key: the stock table finds a unit by it",
+         header,
+         {good_field, {"field_a", "field", "", "300", "400", "3", "0", ""}},
+         "field_a",
+         "key"},
+        {"a unit row must name its type",
+         header,
+         {{"barn", "unit", "", "100", "200", "", "0", ""}},
+         "barn",
+         "unit_type"},
+        {"a meadow must say which kind it is: the yield differs by two thirds",
+         header,
+         {{"meadow_a", "meadow", "", "100", "200", "20", "0", ""}},
+         "meadow_a",
+         "meadow_kind"},
+    };
+    for (const Case& item : refused) {
+      const test::FakeTable layout(item.columns, item.rows);
+      const test::FakeTableSet set({{"start_layout", &layout},
+                                    {"unit_types", &empty},
+                                    {"resources", &empty},
+                                    {"crops", &empty}});
+      std::string error;
+      const core::WorldState refused_world = core::CreateStartWorld(set, 7, &error);
+      failures += Expect(!error.empty(), item.label);
+      failures += Expect(error.find(item.names_column) != std::string::npos,
+                         "and the refusal names the column it choked on");
+      failures += Expect(*item.names_row == '\0' || error.find(item.names_row) != std::string::npos,
+                         "and the row, by the key a person can find in the CSV");
+      // The refusal is not decoration: nothing of the scene was placed.
+      failures += Expect(refused_world.fields.rows.empty() && refused_world.units.rows.empty(),
+                         "and a refused layout founds no scene at all");
+    }
+
+    // A MISSING COLUMN IS NOT A DEFECTIVE ROW. 'unit_type' and 'meadow_kind'
+    // are required by the rows that need them and by no others, so their
+    // refusal has to say which of the two happened — the parser was itself
+    // reporting an absent column as a bad row, which is the diagnosis it
+    // exists to stop (UB-006 of the cycle, in code written that morning).
+    {
+      const std::vector<std::string> no_type = {"key", "kind", "x_m", "y_m", "area_ha"};
+      const test::FakeTable layout(no_type, {{"barn", "unit", "100", "200", ""}});
+      const test::FakeTableSet set({{"start_layout", &layout},
+                                    {"unit_types", &empty},
+                                    {"resources", &empty},
+                                    {"crops", &empty}});
+      std::string error;
+      core::CreateStartWorld(set, 7, &error);
+      failures += Expect(error.find("no such column") != std::string::npos,
+                         "a unit row with no unit_type COLUMN is told the column is missing");
+      failures +=
+          Expect(error.find("unit_type") != std::string::npos, "and the missing column is named");
+    }
+
+    // A BLANK CELL IS NOT A DEFECT, and this is the half that keeps the
+    // refusals above from being a machine that refuses everything: a unit
+    // row names no area, an unsown year names no crop.
+    {
+      const test::FakeTable layout(
+          header,
+          {good_field,
+           {"field_blank", "field", "", "300", "400", "", "0", ""},
+           {"meadow_a", "meadow", "", "500", "600", "20", "0", "floodplain"}});
+      const test::FakeTableSet set({{"start_layout", &layout},
+                                    {"unit_types", &empty},
+                                    {"resources", &empty},
+                                    {"crops", &empty}});
+      std::string error;
+      const core::WorldState placed = core::CreateStartWorld(set, 7, &error);
+      failures += Expect(error.empty(), "a layout whose blanks are blanks is accepted");
+      failures += Expect(placed.fields.rows.size() == 3,
+                         "and every row of it is placed — two fields and a meadow");
+      bool floodplain = false;
+      for (const core::FieldRow& field : placed.fields.rows) {
+        floodplain = floodplain || field.kind == core::LandKind::kFloodplainMeadow;
+      }
+      failures += Expect(floodplain, "and the floodplain meadow keeps its kind through the parse");
+    }
   }
 
   // Stage-3 genesis: the designed start, deterministic from the seed.
@@ -288,7 +386,7 @@ int main() {
     const auto banded_tables = core::LoadTableSet(banded.string(), &band_error);
     failures += Expect(banded_tables != nullptr, "the re-banded table set loads");
     if (banded_tables != nullptr) {
-      const core::WorldState banded_world = core::CreateStartWorld(*banded_tables, 4242);
+      const core::WorldState banded_world = core::CreateStartWorld(*banded_tables, 4242, nullptr);
       const core::UnitTypeId old_house{static_cast<std::uint16_t>(
           banded_tables->FindTable("unit_types")->FindRowByKey("old_house"))};
       std::uint32_t houses = 0;
@@ -320,13 +418,13 @@ int main() {
   const fs::path spoiled = fs::temp_directory_path() / "unit_core_world_tables";
   fs::remove_all(spoiled);
   fs::copy(fs::path(KOLKHOZ_TABLES_DIR), spoiled, fs::copy_options::recursive);
-  failures += Expect(SpoilLivestockCell(spoiled / "livestock.csv", "life_game_years_max", "1e30"),
+  failures += Expect(SpoilColumn(spoiled / "livestock.csv", "life_game_years_max", "1e30"),
                      "the livestock cell to spoil was found");
   std::string spoil_error;
   const auto spoiled_tables = core::LoadTableSet(spoiled.string(), &spoil_error);
   failures += Expect(spoiled_tables != nullptr, "the spoiled table set still loads");
   if (spoiled_tables != nullptr) {
-    const core::WorldState wild = core::CreateStartWorld(*spoiled_tables, 12345);
+    const core::WorldState wild = core::CreateStartWorld(*spoiled_tables, 12345, nullptr);
     failures += Expect(!wild.herds.rows.empty(),
                        "the roster reaches the herds — otherwise the check below is vacuous");
     bool ages_are_sane = true;
@@ -335,11 +433,52 @@ int main() {
       ages_are_sane = ages_are_sane && age_sum >= 0.0F && age_sum < 1e6F;
     }
     failures += Expect(ages_are_sane, "an absurd livestock cell never reaches the herd ages");
-    const core::WorldState wild_again = core::CreateStartWorld(*spoiled_tables, 12345);
+    const core::WorldState wild_again = core::CreateStartWorld(*spoiled_tables, 12345, nullptr);
     failures += Expect(wild_again.rng.state == wild.rng.state,
                        "and the fallback keeps genesis deterministic");
   }
   fs::remove_all(spoiled);
+
+  // AND THE ASSEMBLY ACTS ON THE REFUSAL — which is a different claim from
+  // "the parser refuses", and the one that was missing. Every check above
+  // reads CreateStartWorld's error; not one of them would have gone red if
+  // CreateStandardSimulation had read that error and built the world anyway.
+  // That is the class this whole day has been about: a check that runs and
+  // whose result is not used. Found by mutation, 2026-09-06.
+  {
+    const fs::path bad_scene = fs::temp_directory_path() / "unit_core_world_bad_layout";
+    fs::remove_all(bad_scene);
+    fs::copy(fs::path(KOLKHOZ_TABLES_DIR), bad_scene, fs::copy_options::recursive);
+
+    // The control first: the SHIPPED tables must assemble, or the refusal
+    // below proves nothing — a set that never assembles is refused for
+    // whatever reason one likes.
+    std::string clean_error;
+    const auto clean_tables = core::LoadTableSet(bad_scene.string(), &clean_error);
+    failures += Expect(clean_tables != nullptr, "the shipped table set loads");
+    if (clean_tables != nullptr) {
+      core::StandardSimulationConfig shipped;
+      shipped.tables = clean_tables.get();
+      shipped.world_seed = 3;
+      failures += Expect(core::CreateStandardSimulation(shipped) != nullptr,
+                         "and the shipped scene assembles — the control for the refusal below");
+    }
+
+    failures += Expect(SpoilColumn(bad_scene / "start_layout.csv", "x_m", "-1"),
+                       "the layout column to spoil was found");
+    std::string bad_error;
+    const auto bad_tables = core::LoadTableSet(bad_scene.string(), &bad_error);
+    failures += Expect(bad_tables != nullptr, "a layout of negative metres still LOADS");
+    if (bad_tables != nullptr) {
+      core::StandardSimulationConfig broken;
+      broken.tables = bad_tables.get();
+      broken.world_seed = 3;
+      failures += Expect(core::CreateStandardSimulation(broken) == nullptr,
+                         "and the assembly refuses it instead of founding the village outside "
+                         "the world");
+    }
+    fs::remove_all(bad_scene);
+  }
 
   if (failures == 0) {
     std::cout << "unit_core_world: all checks passed\n";

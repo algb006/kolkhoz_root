@@ -106,12 +106,19 @@ enum class FieldWeatherState : std::uint8_t {
   kFieldWeatherStateCount,
 };
 
-/// @brief One field. Plain data.
-/// A meadow that has not been mown within this world's memory. Not zero:
-/// day zero is a real day — the world's first — and a meadow mown on it must
-/// not read as never mown.
+/// @brief A meadow that has not been mown within this world's memory.
+/// Not zero: day zero is a real day — the world's first — and a meadow mown
+/// on it must not read as never mown.
+///
+/// It stands BEFORE FieldRow because the row's default member initialiser
+/// needs it. That placement cost FieldRow its own @brief for a day: the
+/// constant was spliced under the brief that belonged to the struct, and a
+/// doc comment documents whatever follows it, not whatever it was written
+/// for. UB-004 of the 2026-09-06 cycle, and the second time this delta a
+/// brief ended up over the wrong declaration.
 inline constexpr SimDay kNeverMownDay = static_cast<SimDay>(-1);
 
+/// @brief One field. Plain data.
 struct FieldRow {
   /// Center of the contour. The shape itself is presentation/routing data
   /// (project phase 2); the core needs only a location.

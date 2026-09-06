@@ -300,6 +300,7 @@ class EventsSlot final : public ISequentialPhase {
 class StandardSimulation final : public ISimulation {
  public:
   StandardSimulation(const StandardSimulationConfig& config,
+                     WorldState start,
                      std::unique_ptr<ITimeSystem> time,
                      std::unique_ptr<IResidentsSystem> residents,
                      std::unique_ptr<IProductionSystem> production,
@@ -320,8 +321,12 @@ class StandardSimulation final : public ISimulation {
         .metrics = &residents_->MetricsPhase(),
         .events = &events_slot_,
     };
-    engine_ = CreateStepEngine(
-        CreateStartWorld(*config.tables, config.world_seed), phases, config.worker_count);
+    // The world arrives BUILT. Genesis moved out to the factory below on
+    // 2026-09-06 so that its one refusal — a start layout whose row or
+    // column cannot be read — has somewhere to go: a constructor's only
+    // ways out are an exception and a half-built object, and both are worse
+    // than the nullptr this module already returns for a refusing factory.
+    engine_ = CreateStepEngine(std::move(start), phases, config.worker_count);
   }
 
   void AdvanceStep() override { engine_->AdvanceStep(); }
@@ -517,7 +522,15 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     // A factory refused its configuration (it already logged why).
     return nullptr;
   }
+  // And the start layout is refused on the same terms as a subsystem's
+  // table: the parser has already logged the row and the column.
+  std::string layout_error;
+  WorldState start = CreateStartWorld(*config.tables, config.world_seed, &layout_error);
+  if (!layout_error.empty()) {
+    return nullptr;
+  }
   return std::make_unique<StandardSimulation>(config,
+                                              std::move(start),
                                               std::move(time),
                                               std::move(residents),
                                               std::move(production),
