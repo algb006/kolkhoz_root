@@ -14,19 +14,6 @@
 namespace core {
 namespace {
 
-/// Everything the settlement holds of one resource, wherever a taker would
-/// find it. The same reach the feeding itself has.
-Grams HeldEverywhere(const WorldState& world, ResourceId resource) {
-  Grams total = 0;
-  for (const UnitRow& unit : world.units.rows) {
-    if (unit.level == 0) {
-      continue;  // a marked site holds nothing
-    }
-    total += StockOf(unit.stock, resource);
-  }
-  return total;
-}
-
 /// The month a wintering forecast asks about: the first one outside the
 /// pasture band. Taken from the band rather than written down, so moving the
 /// season moves this with it.

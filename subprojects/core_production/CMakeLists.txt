@@ -10,6 +10,7 @@ kolkhoz_add_module(core_production
     field_haul.cpp
     herd_system.cpp
     stable_horses.cpp
+    production_alarms.cpp
     stock_lights.cpp)
 
 target_link_libraries(core_production

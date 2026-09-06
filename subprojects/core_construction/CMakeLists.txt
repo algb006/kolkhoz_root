@@ -14,7 +14,8 @@
 
 kolkhoz_add_module(core_construction
     construction_config.cpp
-    construction_system.cpp)
+    construction_system.cpp
+    unit_decay.cpp)
 
 target_link_libraries(core_construction
     PUBLIC core_common

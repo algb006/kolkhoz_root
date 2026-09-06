@@ -144,6 +144,28 @@ inline Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& c
   return GramsFromKilograms(type.StorageCapacityKgAt(unit.level));
 }
 
+/// @brief What the settlement holds of one resource, anywhere a taker would
+/// find it — the same reach TakeFromStorage has, which is wider than a store:
+/// a pantry, a heap and a manger all count.
+///
+/// ONE HOME, AFTER THREE (2026-09-06). This walk stood twice in the same
+/// module — once inside the alarms and once inside the lights — and the two
+/// copies differed already: one skipped a marked site with a comment saying
+/// why, the other skipped it silently. Two answers to one question part in
+/// silence the day somebody edits one of them.
+/// @param resource What to count; an unknown id answers 0.
+/// @return Grams held everywhere in the settlement.
+inline Grams HeldEverywhere(const WorldState& world, ResourceId resource) {
+  Grams total = 0;
+  for (const UnitRow& unit : world.units.rows) {
+    if (unit.level == 0) {
+      continue;  // a marked site holds nothing
+    }
+    total += StockOf(unit.stock, resource);
+  }
+  return total;
+}
+
 /// @brief Total grams a unit is holding, all resources together.
 /// A store's ceiling is a tonnage, not a per-resource quota: the design
 /// counts what a granary holds, not what it holds of rye.
