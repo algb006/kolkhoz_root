@@ -207,6 +207,12 @@ class ConstructionSystem final : public IConstructionSystem {
       if (type.stink_when == StinkWhen::kWorking) {
         continue;
       }
+      // THE PLAN IS JUDGED ON THE WIDEST THE SOURCE EVER IS, which is its
+      // FIRST rung: the ladder only narrows, so level 1 is the worst case
+      // and the design asks the preview to show exactly that — "the full
+      // radius is drawn, with all the modules still to come", so that a spot
+      // chosen today does not turn out to stink tomorrow. Today's zone,
+      // below, is the one that knows what level the unit actually stands at.
       const float radius =
           full ? config_.stink_radius_m[static_cast<std::size_t>(type.stink)] : unit.stink_radius_m;
       if (!(radius > 0.0F)) {
@@ -304,6 +310,48 @@ class ConstructionSystem final : public IConstructionSystem {
   }
 
  private:
+  /// @brief How far this source reaches when it has fully built up, at the
+  /// level it stands at now.
+  ///
+  /// THE LADDER NARROWS IT, and the floor keeps the core. A unit at level 1
+  /// reaches the full radius of its strength; every rung after that
+  /// multiplies by stink_step_factor, and nothing goes below
+  /// stink_core_fraction of the widest — right up against the byre it
+  /// smells whatever you do.
+  ///
+  /// WHERE THIS CAN BE SEEN AT ALL, counted rather than assumed, and the
+  /// count is smaller than it first looks. Of the thirteen sources the
+  /// tables carry, ELEVEN have a single rung in unit_levels.csv; only the
+  /// cattle yard (three) and the silage trench (two) have a step to climb.
+  ///
+  /// AND ON THE SHIPPED START THE ANSWER IS NONE, which the first version of
+  /// this comment got wrong by saying "two". Genesis places every unit at
+  /// level 1 — start_layout.csv has no level column and UnitRow's default is
+  /// 1 — and the loop below runs zero times at level 1. So a reader who took
+  /// the old sentence at its word would measure the designed village, find
+  /// nothing, and conclude the rule was broken. It bites only after the
+  /// player pays for an upgrade, which is exactly what it is for.
+  float FullRadiusFor(const BuildType& type, std::uint8_t level) const {
+    const float widest = config_.stink_radius_m[static_cast<std::size_t>(type.stink)];
+    float radius = widest;
+    for (std::uint8_t rung = 1; rung < level; ++rung) {
+      radius *= config_.stink_step_factor;
+    }
+    const float floor_radius = widest * config_.stink_core_fraction;
+    return radius < floor_radius ? floor_radius : radius;
+  }
+
+  /// FOURTH THEFT OF A COMMENT IN THIS FILE, and this one was committed
+  /// directly beneath the paragraph that warns about it (see StinkWalk, a
+  /// hundred and seventy lines up). FullRadiusFor was inserted between this
+  /// prose and the function it describes, so Doxygen bound the whole block
+  /// forward and MoveStinkZones shipped with no @brief at all.
+  ///
+  /// The rule was written down, read twice today, and did not fire — because
+  /// it asks to be REMEMBERED at the moment of insertion. So it is now
+  /// checked by a script instead (claude/tools/orphan_doc.py): a doc block
+  /// followed by another doc block is a doc block that has lost its subject,
+  /// and that shape is mechanical.
   /// THE ZONE OF A DAY (water design §4). Every source's reach moves one
   /// step towards where it belongs: out to the full radius of its strength
   /// while it emits, in towards nothing while it does not.
@@ -328,8 +376,7 @@ class ConstructionSystem final : public IConstructionSystem {
       const BuildType& type = config_.types[unit.type.value];
       const bool emitting = unit.level > 0 && type.stink != StinkStrength::kNone &&
                             type.stink_when == StinkWhen::kAlways;
-      const float full =
-          emitting ? config_.stink_radius_m[static_cast<std::size_t>(type.stink)] : 0.0F;
+      const float full = emitting ? FullRadiusFor(type, unit.level) : 0.0F;
       if (unit.stink_radius_m < full) {
         unit.stink_radius_m = std::min(full, unit.stink_radius_m + config_.stink_growth_m_per_day);
       } else if (unit.stink_radius_m > full) {

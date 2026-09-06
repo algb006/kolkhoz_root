@@ -227,6 +227,25 @@ struct ConstructionConfig {
 
   float stink_decay_m_per_day = 28.0F;
 
+  /// EVERY RUNG OF THE LADDER MAKES THE SOURCE CLEANER: the zone of a unit
+  /// at level N reaches this fraction of the zone it reached at level N-1
+  /// (water design §4, "the zone narrows — a smaller radius at every step").
+  ///
+  /// ASSUMPTION, the same polish item as the radii, and a RULE rather than a
+  /// column: the design speaks of upgrading in general — better ventilation,
+  /// solid floors, mechanised mucking out, covered manure stores — and names
+  /// no unit whose steps behave differently from another's. A column in the
+  /// ladder would be thirteen numbers to invent where the design gives one
+  /// sentence.
+  float stink_step_factor = 0.75F;
+
+  /// AND THE CORE NEVER GOES AWAY. "Right up against the byre it will smell
+  /// whatever you do" — so the narrowing has a floor, as a fraction of the
+  /// widest zone, and no ladder however long can take a source below it.
+  /// Without this the rule would eventually make a fur farm odourless, which
+  /// the design refuses in so many words.
+  float stink_core_fraction = 0.35F;
+
   /// By UnitTypeId value. Sized to the unit_types table; a type the tables
   /// do not have is simply out of range, and every lookup checks.
   std::vector<BuildType> types;

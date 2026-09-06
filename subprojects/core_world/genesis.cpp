@@ -53,8 +53,6 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
   return -static_cast<std::int32_t>(game_days + DrawInRange(rng, 0.0F, 6.0F));
 }
 
-/// @brief The shared shape of every starting person; kin and family are set
-/// by the caller.
 /// @brief The figure knobs of world_params.csv, and the keys they came from.
 ///
 /// THE KEYS ARE COLLECTED BY THE READERS THEMSELVES, one push per knob read,
@@ -102,6 +100,8 @@ BodyKnobs ReadBodyKnobs(const ITableSet& tables) {
   return knobs;
 }
 
+/// @brief The shared shape of every starting person; kin and family are set
+/// by the caller.
 /// @param person The id this row will be given (StateTable::next_id_value):
 ///        the figure is keyed by it, and drawn from a counter hash rather
 ///        than from `rng`, so that adding a body to a person does not move

@@ -81,6 +81,9 @@ class ITimeSystem {
 ///         season row or column, non-numeric cell) — logged, never patched
 ///         over silently — and nullptr when the table is ABSENT and the
 ///         caller did not say kAllowed.
+
+std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs);
+
 /// @brief The world_params.csv keys this module reads.
 ///
 /// EXPOSED SO THAT NOBODY HAS TO JUDGE THE CORE FROM INSIDE A MODULE. The
@@ -93,8 +96,6 @@ class ITimeSystem {
 /// @return A view of a static array; valid for the life of the program.
 /// @note Wiring-time, sim thread. A pure read of nothing.
 std::span<const std::string_view> TimeWorldParamKeys();
-
-std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs);
 
 }  // namespace core
 

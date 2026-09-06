@@ -1126,6 +1126,49 @@ int TestTheStinkZoneGrowsAndGoesOut() {
       system->StinkNowAt(world, core::Vec2{.x = 199.0F, .y = 0.0F}) == core::StinkStrength::kStrong,
       "now today's zone answers where the full one does");
 
+  // EVERY RUNG MAKES THE SOURCE CLEANER, and the core never goes away.
+  //
+  // Measured on ONE unit moved up the ladder rather than on two units of
+  // different levels: two units would differ in their positions and their
+  // history as well as in their level, and the assertion would be about the
+  // pair rather than about the step.
+  {
+    const float at_level_one = world.units.rows[0].stink_radius_m;
+    world.units.rows[0].level = 2;
+    for (int day = 0; day < 20; ++day) {
+      run_a_day();
+    }
+    const float at_level_two = world.units.rows[0].stink_radius_m;
+    failures += Expect(at_level_two < at_level_one,
+                       "a rung of the ladder narrows the zone: the upgrade is worth building for "
+                       "the air as well as for the work");
+    world.units.rows[0].level = 40;  // a ladder no unit will ever have
+    for (int day = 0; day < 40; ++day) {
+      run_a_day();
+    }
+    // THE FLOOR, AND NOT MERELY "MORE THAN NOTHING". The first version of
+    // this line asked for a radius above zero, and forty rungs of 0.75
+    // leave two millimetres — which is above zero and is not a core. The
+    // guard passed with the floor deleted. The subject of a floor is the
+    // floor's own value.
+    constexpr float kCoreOfAStrongZone = 200.0F * 0.35F;
+    failures += Expect(world.units.rows[0].stink_radius_m >= kCoreOfAStrongZone - 0.01F,
+                       "and no ladder however long takes a strong source below its core: right up "
+                       "against the byre it smells whatever you do");
+    failures += Expect(world.units.rows[0].stink_radius_m < at_level_two,
+                       "while it does keep narrowing on the way to that floor");
+    // The FULL zone is unmoved by any of this: a plan is judged on the
+    // widest the source ever is, which is its first rung.
+    failures += Expect(system->StinkFullAt(world, core::Vec2{.x = 199.0F, .y = 0.0F}) ==
+                           core::StinkStrength::kStrong,
+                       "but the placement preview still shows the widest the source will ever be, "
+                       "so a spot chosen today does not turn out to stink tomorrow");
+    world.units.rows[0].level = 1;
+    for (int day = 0; day < 20; ++day) {
+      run_a_day();
+    }
+  }
+
   // BOTH SOURCES STOP ON THE SAME DAY, and the whole point is that they do
   // not go out together.
   world.units.rows[0].level = 0;

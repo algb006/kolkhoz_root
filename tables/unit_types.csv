@@ -61,7 +61,7 @@ silage_trench,Силосная траншея,production,1,1,1,era,,1,30,,,0,,0,
 hop_yard,Хмельник,production,2,0,1,era,,1,,,,0,,0,none,,0
 silage_tower,Силосная башня,production,3,0,1,era,,1,45,,,1,,0,none,,0
 hunting_lodge,Охотничий домик,production,1,0,1,era,,1,25,,,1,,0,none,,0
-hay_stack,Скирда,production,1,1,1,era,,0,,,open,0,,0,none,,0
+hay_stack,Скирда,production,1,1,1,era,,0,,23,open,0,,0,none,,0
 cattle_yard,Скотный двор,livestock,1,0,1,era,,1,60,,,1,1.6,0,medium,always,0
 barn,Хлев,livestock,1,0,1,era,,1,25,,,1,1.6,0,strong,always,0
 chicken_farm,Куриная ферма,livestock,1,0,1,era,,1,15,,,1,,0,strong,always,0

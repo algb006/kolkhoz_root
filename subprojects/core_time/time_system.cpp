@@ -661,21 +661,6 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
   return true;
 }
 
-/// @brief Parses tables/weather_params.csv — the naming knobs, one per row,
-/// `key,value` — into every season of `seasons`.
-///
-/// THE KNOBS ARE NOT PER SEASON and the seasons are not per knob: they are
-/// two registries, and they were briefly one file, which cost the core its
-/// whole weather for as long as it took to notice (2026-09-05). A season row
-/// has a season for a key and eight columns; a knob row has a knob for a key
-/// and one value. No loader can read a header as both.
-///
-/// A MISSING TABLE OR A MISSING ROW IS NOT AN ERROR: SeasonWeather carries
-/// the core's own defaults, and eight of them are ADMITTEDLY PICKED — they
-/// are marked as such in the design base, so that whoever cites them later
-/// can see what they are citing. A row that IS there is validated strictly.
-///
-/// @return false on a malformed value; `error` then says which knob and why.
 /// @brief The world_params.csv keys THIS MODULE reads.
 ///
 /// Named here so that the assembly can union it with every other module's
@@ -727,6 +712,21 @@ bool ParseWorldParams(const ITable& table,
   return true;
 }
 
+/// @brief Parses tables/weather_params.csv — the naming knobs, one per row,
+/// `key,value` — into every season of `seasons`.
+///
+/// THE KNOBS ARE NOT PER SEASON and the seasons are not per knob: they are
+/// two registries, and they were briefly one file, which cost the core its
+/// whole weather for as long as it took to notice (2026-09-05). A season row
+/// has a season for a key and eight columns; a knob row has a knob for a key
+/// and one value. No loader can read a header as both.
+///
+/// A MISSING TABLE OR A MISSING ROW IS NOT AN ERROR: SeasonWeather carries
+/// the core's own defaults, and eight of them are ADMITTEDLY PICKED — they
+/// are marked as such in the design base, so that whoever cites them later
+/// can see what they are citing. A row that IS there is validated strictly.
+///
+/// @return false on a malformed value; `error` then says which knob and why.
 bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& error) {
   const std::uint32_t value_column = table.FindColumn("value");
   if (value_column == kNoTableColumn) {
