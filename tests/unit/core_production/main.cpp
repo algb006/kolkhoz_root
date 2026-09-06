@@ -2178,7 +2178,7 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
-/// A MEADOW IN FLOWER IS A STATE, AND THE AFTERMATH FALLS OUT OF THE DATE.
+/// A MEADOW IN FLOWER IS A STATE, AND THE CUT ENDS IT FOR THE YEAR.
 ///
 /// ue took butterflies and had nowhere to put them: MowMeadow returned the
 /// field straight to kGrowing, so mown grass and standing grass were the same
@@ -2186,11 +2186,18 @@ int CheckStubTablesMustBeDeclared() {
 /// core's semantics — there kHarvest means "the work is not done", which is
 /// about the work order, not the grass.
 ///
-/// The guard walks a year rather than sampling a point, because the whole
-/// claim is a SHAPE in time: in flower through the window, dark for the
-/// fortnight after a cut, and in flower again if the cut was early enough for
-/// the aftermath to make it. A single "is it flowering today" would pass on an
-/// implementation that always says yes.
+/// The guard walks TWO years rather than sampling a point, because the whole
+/// claim is a shape in time: in flower from May until the day of the cut,
+/// dark for the rest of that year, and standing again the following spring. A
+/// single "is it flowering today" would pass on an implementation that always
+/// says yes, and a one-year walk would pass on one that never lets go.
+///
+/// AND THE MOWING HAPPENS DURING THE WALK, not before it. The first version of
+/// this guard set last_mown_day for the whole year up front, which asks a
+/// question the game never asks — "what does a meadow mown in July look like
+/// in May?" — and under the year rule it made every cut date identical. The
+/// choice the design is about only exists if the meadow is standing until the
+/// day it is cut.
 int CheckTheMeadowFlowersAndTheAftermathComesBack() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -2199,21 +2206,30 @@ int CheckTheMeadowFlowersAndTheAftermathComesBack() {
     return 1;
   }
 
-  // Two identical meadows, cut on different days of the same window: one in
-  // May, one in August. Everything else about them is the same, so any
-  // difference below is the DATE and nothing else.
+  // A year is 48 days, four to a month, so the window — May, June, July,
+  // months 4..6 — is days 16..27, twelve of them. Counted from the calendar,
+  // not guessed: an earlier draft called day 20 "the start of May" and failed
+  // on the calendar rather than on the code.
+  constexpr core::SimDay kWindowFirstDay = 16;
+  constexpr core::SimDay kWindowLength = 12;
+
+  // `mown_on` is the day the scythe goes through, or kNeverMownDay. Before
+  // it the meadow stands; from it on it carries the cut.
   const auto flowering_days = [&system](core::SimDay mown_on) {
     core::WorldState world;
     core::FieldRow meadow;
     meadow.kind = core::LandKind::kMeadow;
     meadow.area_ga = 10.0F;
     meadow.phase = core::FieldPhase::kGrowing;
-    meadow.last_mown_day = mown_on;
+    meadow.last_mown_day = core::kNeverMownDay;
     core::AppendRow(world.fields, meadow);
     std::vector<core::SimDay> flowering;
-    for (core::SimDay day = 0; day < core::kDaysPerYear; ++day) {
+    for (core::SimDay day = 0; day < core::kDaysPerYear * 2; ++day) {
       world.calendar.tick = day * core::kTicksPerDay;
       core::RefreshCalendarCaches(world.calendar);
+      if (mown_on != core::kNeverMownDay && day == mown_on) {
+        world.fields.rows[0].last_mown_day = mown_on;
+      }
       const core::WorldState before = world;
       system->ProductionPhase().RunItemRange(before, world, 0, 1);
       if (world.fields.rows[0].in_flower) {
@@ -2223,47 +2239,56 @@ int CheckTheMeadowFlowersAndTheAftermathComesBack() {
     return flowering;
   };
 
-  // Never mown: it stands, and it flowers through the whole window — May to
-  // August is four months of four days, sixteen days.
-  const auto untouched = flowering_days(core::kNeverMownDay);
-  failures +=
-      Expect(untouched.size() == 16, "a meadow nobody has cut flowers through the whole window");
+  const auto count_in_year = [](const std::vector<core::SimDay>& days, core::SimDay year) {
+    std::size_t count = 0;
+    for (const core::SimDay day : days) {
+      count += (day / core::kDaysPerYear == year) ? 1U : 0U;
+    }
+    return count;
+  };
 
-  // THE DAYS ARE COUNTED, NOT GUESSED. A year is 48 days, four to a month,
-  // so May..August is days 16..31 — sixteen of them. The first draft cut on
-  // day 20 calling it "the start of May"; day 20 is June, the aftermath then
-  // lands on day 34 and the window has closed. The assertion failed on the
-  // calendar and not on the code.
-  //
-  // Cut on day 16, the first day of May: fourteen days of regrowth land on
-  // day 30 and two days of window remain.
-  const auto early = flowering_days(16);
-  // Cut on day 28, the first day of August: the regrowth lands on day 42,
-  // long past the end.
-  const auto late = flowering_days(28);
-  failures += Expect(!early.empty(),
-                     "a meadow cut at the start of the window flowers again after the aftermath "
-                     "grows back");
-  failures += Expect(early.size() > late.size(),
-                     "and an early cut leaves MORE flowering days than a late one — the nectar "
-                     "flow is the timing of the mowing, not a switch");
-  failures += Expect(untouched.size() > early.size(),
+  // Never mown: it stands through the whole window, both years.
+  const auto untouched = flowering_days(core::kNeverMownDay);
+  failures += Expect(
+      count_in_year(untouched, 0) == kWindowLength && count_in_year(untouched, 1) == kWindowLength,
+      "a meadow nobody has cut flowers through the whole window, every year");
+
+  // Cut on the first day of the window: nothing flowers that year at all.
+  const auto earliest = flowering_days(kWindowFirstDay);
+  failures += Expect(count_in_year(earliest, 0) == 0,
+                     "a meadow cut on the first day of the window does not flower that year");
+
+  // Cut two months in: the eight days before the scythe stand, and not one
+  // day after it.
+  const auto late = flowering_days(kWindowFirstDay + 8);
+  failures += Expect(count_in_year(late, 0) == 8,
+                     "and a late cut keeps the days BEFORE it — the nectar flow is the timing of "
+                     "the mowing, not a switch");
+  failures += Expect(count_in_year(late, 0) > count_in_year(earliest, 0),
+                     "so a later cut leaves more flowering days than an early one");
+  failures += Expect(count_in_year(untouched, 0) > count_in_year(late, 0),
                      "while cutting at all costs flowering days: otherwise the two above would "
                      "agree with a rule that ignores the cut");
 
-  // AND THE FORTNIGHT AFTER THE CUT IS DARK. Named rather than implied: the
-  // day of the cut and the thirteen after it must not flower, or "the
-  // aftermath comes back" would be true of an implementation with no
-  // aftermath at all.
-  bool dark_right_after_the_cut = true;
-  for (core::SimDay day = 16; day < 30; ++day) {
-    for (const core::SimDay lit : early) {
-      dark_right_after_the_cut = dark_right_after_the_cut && lit != day;
-    }
+  // AND THE LATCH LETS GO IN THE SPRING, not in the winter and not never.
+  // This is the half a one-year walk cannot see, and the half that a "days
+  // of regrowth" number got wrong: the aftermath does not flower in the year
+  // of the cut, and the stand comes back the next.
+  failures +=
+      Expect(count_in_year(earliest, 1) == kWindowLength && count_in_year(late, 1) == kWindowLength,
+             "and the year after a cut the meadow stands again, whenever it was cut");
+
+  // No day outside the window flowers, in either year — otherwise every
+  // count above could be satisfied by a rule that ignores the months.
+  bool only_inside_the_window = true;
+  for (const core::SimDay day : untouched) {
+    const core::SimDay in_year = day % core::kDaysPerYear;
+    only_inside_the_window = only_inside_the_window && in_year >= kWindowFirstDay &&
+                             in_year < kWindowFirstDay + kWindowLength;
   }
-  failures += Expect(dark_right_after_the_cut,
-                     "the fortnight after a cut is dark: cut grass does not flower the next "
-                     "morning");
+  failures += Expect(only_inside_the_window,
+                     "and nothing flowers outside May-July: August belongs to the yards, not to "
+                     "the meadow");
   return failures;
 }
 

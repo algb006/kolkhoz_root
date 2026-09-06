@@ -123,11 +123,8 @@ class FieldGrowthPhase final : public IParallelPhase {
       // The meadow's judgement first, and OUTSIDE the arable gate below: a
       // meadow has no crop row, so the gate would skip it and the flower
       // would never be judged at all.
-      field.in_flower = MeadowInFlower(field,
-                                       current.calendar.day,
-                                       farming.flower_from_month,
-                                       farming.flower_to_month,
-                                       farming.meadow_regrowth_days);
+      field.in_flower = MeadowInFlower(
+          field, current.calendar.day, farming.flower_from_month, farming.flower_to_month);
       if (field.phase != FieldPhase::kGrowing || field.crop.value >= config_->crops.size()) {
         continue;
       }

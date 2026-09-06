@@ -273,11 +273,12 @@ struct FieldRow {
   ///
   /// A DAY AND NOT A FLAG, for the same reason the leaf-fall word is a day's
   /// event and not a winter: a flag needs a reset date somebody picks, and a
-  /// wrong one lies silently. From a day, the aftermath comes out on its own
-  /// — a meadow cut early flowers again before the season ends, a meadow cut
-  /// late does not — so "an early cut gives the better hay and cuts the
-  /// nectar flow short" is one fact with one home, and the timing of the
-  /// mowing is the player's choice the design says it is.
+  /// wrong one lies silently. From a day, both halves of the rule come out on
+  /// their own — the meadow stands until the scythe reaches it, and the year
+  /// the day belongs to says when the latch lets go. So "an early cut gives
+  /// the better hay and cuts the nectar flow short" is one fact with one
+  /// home, and the timing of the mowing is the player's choice the design
+  /// says it is.
   ///
   /// SECOND READER, AND IT DOES NOT EXIST YET. The apiary's yield is the
   /// older of the two in the design and has no implementation in this core:
@@ -288,8 +289,10 @@ struct FieldRow {
 
   /// THE CORE'S JUDGEMENT that this meadow is in flower today, so that no
   /// reader invents its own — exactly as `weather_state` above it, and for
-  /// the same reason: the window and the regrowth are a MECHANIC, and a
-  /// mechanic the layer recomputes is a mechanic with two answers.
+  /// the same reason: the window and the cut are a MECHANIC, and a mechanic
+  /// the layer recomputes is a mechanic with two answers. ue confirmed on
+  /// 2026-09-06 that he stopped reading the field phase entirely and paints
+  /// butterflies from this word, which makes it the only opinion there is.
   ///
   /// Derived from `last_mown_day` and the day, and stored anyway, because
   /// the alternative is publishing the day and letting whoever reads it
@@ -305,37 +308,49 @@ struct FieldRow {
 /// layer paints butterflies from it and the apiary will draw its nectar flow
 /// from it, and a rule with two homes is a mechanic with two answers.
 ///
-/// A meadow is in flower when the season allows it and the grass has had
-/// time to come back since the cut. The aftermath falls out of the same
-/// arithmetic rather than needing a rule of its own: cut early and the
-/// regrowth still reaches the end of the window, cut late and it does not.
-/// That is the design's "an early cut gives the better hay and cuts the
-/// nectar flow short", and it makes the date of the mowing the player's
-/// choice rather than a switch.
+/// A meadow is in flower when the season allows it AND it has not been mown
+/// this year. That is what makes the date of the mowing a choice rather than
+/// a switch: cut in May and the nectar flow stops for two months, leave it
+/// to July and the meadow has stood almost the whole window — which is the
+/// design's "an early cut gives the better hay and cuts the nectar flow
+/// short", read from the side the player sees.
 ///
-/// @param today          The day being painted.
-/// @param first_month    First month of the flowering window, 0-based.
-/// @param last_month     Last month of the flowering window, inclusive.
-/// @param regrowth_days  Game days the aftermath needs to flower again.
+/// The cut ends the flowering for the REST OF THE YEAR and no longer: the
+/// stand comes back next spring. Deliberately a year and not a count of
+/// days — see the body.
+///
+/// @param today        The day being painted.
+/// @param first_month  First month of the flowering window, 0-based.
+/// @param last_month   Last month of the flowering window, inclusive.
 constexpr bool MeadowInFlower(const FieldRow& field,
                               SimDay today,
                               std::uint8_t first_month,
-                              std::uint8_t last_month,
-                              std::uint16_t regrowth_days) {
+                              std::uint8_t last_month) {
   if (field.kind != LandKind::kMeadow && field.kind != LandKind::kFloodplainMeadow) {
     return false;
   }
-  const std::uint8_t month = static_cast<std::uint8_t>(DateFromDay(today).month);
+  const Date date = DateFromDay(today);
+  const std::uint8_t month = static_cast<std::uint8_t>(date.month);
   if (month < first_month || month > last_month) {
     return false;
   }
   if (field.last_mown_day == kNeverMownDay) {
     return true;  // never cut in this world's memory: it stands
   }
-  if (today < field.last_mown_day) {
-    return false;  // a day before the cut cannot be after the regrowth
-  }
-  return today - field.last_mown_day >= regrowth_days;
+  // AN AFTERMATH DOES NOT FLOWER IN THE YEAR IT WAS MOWN, and that is a RULE
+  // and not a number (boss, 2026-09-06). What stood here until then was a
+  // regrowth of fourteen game days, invented by this core, and it was wrong
+  // twice over: hay cut in flower comes back as leaf, so a second flowering
+  // of the same stand would be a rarity in life and would blur the one
+  // choice the mowing date is for in the game.
+  //
+  // A NUMBER THAT MEANS "NEVER" WILL ONE DAY TURN OUT TO BE A DAY. Shift the
+  // window or the calendar and "a fortnight that will not fit" becomes
+  // August. So the fact is stored as the fact: the cut belongs to a YEAR,
+  // and the meadow is out of flower for the rest of it. The latch lets go in
+  // the spring, exactly as WeatherState::cover_since_leaf_fall counts from
+  // the leaf-fall and not from the snow.
+  return DateFromDay(field.last_mown_day).year != date.year;
 }
 
 /// @brief The fields table type used by WorldState.

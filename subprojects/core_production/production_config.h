@@ -272,21 +272,23 @@ struct UnitTypeDef {
 struct FarmingConfig {
   float fertility_neutral = 50.0F;
 
-  /// THE MEADOW'S FLOWERING WINDOW, 0-based months, and how many game days
-  /// the aftermath needs before it flowers again.
+  /// THE MEADOW'S FLOWERING WINDOW, 0-based months: MAY THROUGH JULY.
   ///
-  /// ASSUMPTION, all three, and named as one: the design says the timing of
-  /// the mowing is the player's choice — an early cut gives the better hay
-  /// and cuts the nectar flow short — but it names no month and no regrowth.
-  /// May through August, and a fortnight of game days to come back, are the
-  /// core's own numbers until rows arrive for them. They live here rather
-  /// than in the predicate so that the day they become rows, nothing but
-  /// this struct changes.
+  /// No longer this core's ASSUMPTION. Decided by boss on 2026-09-06 and
+  /// written down in manual/design/world/map/terrain.md, and the argument is
+  /// the haymaking, not the botany: the cut is June-July (farming design,
+  /// season table), and THE WINDOW ENDS WHERE THE CHOICE ENDS. An early cut
+  /// breaks off two months of nectar, a late one gives the meadow away
+  /// almost whole — and August adds nothing to that choice, because by then
+  /// the meadow is either mown or standing in aftermath and seed.
+  ///
+  /// The core counts months 0..11 and the layer's own yard-flower rows count
+  /// 1..12, so MAY IS 4 HERE AND 5 THERE. That is the very case the `reader`
+  /// column was added for; the yard is the layer's and flowers into
+  /// September, which makes a butterfly in August a sign of a YARD.
   std::uint8_t flower_from_month = 4;
 
-  std::uint8_t flower_to_month = 7;
-
-  std::uint16_t meadow_regrowth_days = 14;
+  std::uint8_t flower_to_month = 6;
 
   /// Plowing and harrowing norms in GAME man-days per hectare: one norm for
   /// any land and any crop (farming design §5). Same conversion as the crop
