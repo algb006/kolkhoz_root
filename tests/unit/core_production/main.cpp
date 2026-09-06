@@ -2178,6 +2178,95 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
+/// A MEADOW IN FLOWER IS A STATE, AND THE AFTERMATH FALLS OUT OF THE DATE.
+///
+/// ue took butterflies and had nowhere to put them: MowMeadow returned the
+/// field straight to kGrowing, so mown grass and standing grass were the same
+/// state, and reading kHarvest as "in flower" would have meant guessing the
+/// core's semantics — there kHarvest means "the work is not done", which is
+/// about the work order, not the grass.
+///
+/// The guard walks a year rather than sampling a point, because the whole
+/// claim is a SHAPE in time: in flower through the window, dark for the
+/// fortnight after a cut, and in flower again if the cut was early enough for
+/// the aftermath to make it. A single "is it flowering today" would pass on an
+/// implementation that always says yes.
+int CheckTheMeadowFlowersAndTheAftermathComesBack() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto system = core::CreateProductionSystem(tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "the meadow fixture builds a production system") != 0) {
+    return 1;
+  }
+
+  // Two identical meadows, cut on different days of the same window: one in
+  // May, one in August. Everything else about them is the same, so any
+  // difference below is the DATE and nothing else.
+  const auto flowering_days = [&system](core::SimDay mown_on) {
+    core::WorldState world;
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kMeadow;
+    meadow.area_ga = 10.0F;
+    meadow.phase = core::FieldPhase::kGrowing;
+    meadow.last_mown_day = mown_on;
+    core::AppendRow(world.fields, meadow);
+    std::vector<core::SimDay> flowering;
+    for (core::SimDay day = 0; day < core::kDaysPerYear; ++day) {
+      world.calendar.tick = day * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      const core::WorldState before = world;
+      system->ProductionPhase().RunItemRange(before, world, 0, 1);
+      if (world.fields.rows[0].in_flower) {
+        flowering.push_back(day);
+      }
+    }
+    return flowering;
+  };
+
+  // Never mown: it stands, and it flowers through the whole window — May to
+  // August is four months of four days, sixteen days.
+  const auto untouched = flowering_days(core::kNeverMownDay);
+  failures +=
+      Expect(untouched.size() == 16, "a meadow nobody has cut flowers through the whole window");
+
+  // THE DAYS ARE COUNTED, NOT GUESSED. A year is 48 days, four to a month,
+  // so May..August is days 16..31 — sixteen of them. The first draft cut on
+  // day 20 calling it "the start of May"; day 20 is June, the aftermath then
+  // lands on day 34 and the window has closed. The assertion failed on the
+  // calendar and not on the code.
+  //
+  // Cut on day 16, the first day of May: fourteen days of regrowth land on
+  // day 30 and two days of window remain.
+  const auto early = flowering_days(16);
+  // Cut on day 28, the first day of August: the regrowth lands on day 42,
+  // long past the end.
+  const auto late = flowering_days(28);
+  failures += Expect(!early.empty(),
+                     "a meadow cut at the start of the window flowers again after the aftermath "
+                     "grows back");
+  failures += Expect(early.size() > late.size(),
+                     "and an early cut leaves MORE flowering days than a late one — the nectar "
+                     "flow is the timing of the mowing, not a switch");
+  failures += Expect(untouched.size() > early.size(),
+                     "while cutting at all costs flowering days: otherwise the two above would "
+                     "agree with a rule that ignores the cut");
+
+  // AND THE FORTNIGHT AFTER THE CUT IS DARK. Named rather than implied: the
+  // day of the cut and the thirteen after it must not flower, or "the
+  // aftermath comes back" would be true of an implementation with no
+  // aftermath at all.
+  bool dark_right_after_the_cut = true;
+  for (core::SimDay day = 16; day < 30; ++day) {
+    for (const core::SimDay lit : early) {
+      dark_right_after_the_cut = dark_right_after_the_cut && lit != day;
+    }
+  }
+  failures += Expect(dark_right_after_the_cut,
+                     "the fortnight after a cut is dark: cut grass does not flower the next "
+                     "morning");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
@@ -2213,6 +2302,7 @@ int main() {
   failures += CheckWorkOnlyFeed();
   failures += CheckMangerReach();
   failures += CheckStableGate();
+  failures += CheckTheMeadowFlowersAndTheAftermathComesBack();
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();

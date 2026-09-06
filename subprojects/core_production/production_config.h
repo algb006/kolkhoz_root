@@ -272,6 +272,22 @@ struct UnitTypeDef {
 struct FarmingConfig {
   float fertility_neutral = 50.0F;
 
+  /// THE MEADOW'S FLOWERING WINDOW, 0-based months, and how many game days
+  /// the aftermath needs before it flowers again.
+  ///
+  /// ASSUMPTION, all three, and named as one: the design says the timing of
+  /// the mowing is the player's choice — an early cut gives the better hay
+  /// and cuts the nectar flow short — but it names no month and no regrowth.
+  /// May through August, and a fortnight of game days to come back, are the
+  /// core's own numbers until rows arrive for them. They live here rather
+  /// than in the predicate so that the day they become rows, nothing but
+  /// this struct changes.
+  std::uint8_t flower_from_month = 4;
+
+  std::uint8_t flower_to_month = 7;
+
+  std::uint16_t meadow_regrowth_days = 14;
+
   /// Plowing and harrowing norms in GAME man-days per hectare: one norm for
   /// any land and any crop (farming design §5). Same conversion as the crop
   /// norms above.

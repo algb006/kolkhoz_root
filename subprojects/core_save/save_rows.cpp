@@ -60,8 +60,18 @@ static_assert(AggregateArity<FamilyRow>() == 15,
 // plus two run counters and a judgement byte (the drought/waterlogging
 // split), and this time the tripwire fired before the codec did — which is
 // the one thing it is for.
-static_assert(sizeof(FieldRow) == 72, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 22,
+// TWO MEMBERS, AND ONLY THE SECOND ONE MOVED THE SIZE. last_mown_day landed
+// inside existing padding and left 72 bytes at 72 — the fifth time that has
+// happened here, and the second time the field count caught what the size
+// could not. in_flower then pushed the struct to 80. The pair is the whole
+// argument for keeping both asserts: either alone would have missed one of
+// the two.
+//
+// And 80 is MEASURED, not reasoned: 76 was the obvious answer from adding a
+// byte to 72 plus padding, and it was wrong. A size guessed to satisfy a
+// guard teaches the guard the guess.
+static_assert(sizeof(FieldRow) == 80, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 24,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(UnitRow) == 48 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
@@ -391,6 +401,15 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteFloat(row.haul_days_written);
   out.WriteI64(row.reaped_grams);
   sink.WriteDefId(DefKind::kResource, row.reaped_resource.value);
+  // The day this meadow was last mown (2026-09-06). History the simulation
+  // cannot rederive: from today alone there is no telling a meadow standing
+  // since spring from one cut a week ago, and the flowering the layer paints
+  // is exactly that difference.
+  out.WriteU32(row.last_mown_day);
+  // The judgement itself is saved beside the day it comes from, exactly as
+  // weather_state is saved beside its counters: a world just loaded has to
+  // be paintable before it has stepped once.
+  out.WriteU8(row.in_flower ? 1U : 0U);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -421,6 +440,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.haul_days_written = in.ReadFloat();
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.last_mown_day = in.ReadU32();
+  row.in_flower = source.ReadEnumValue(0, 1, "meadow in flower") != 0;
   return row;
 }
 

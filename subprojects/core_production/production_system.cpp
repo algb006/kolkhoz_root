@@ -120,6 +120,14 @@ class FieldGrowthPhase final : public IParallelPhase {
     const FarmingConfig& farming = config_->farming;
     for (std::uint32_t item = begin_item; item < end_item; ++item) {
       FieldRow& field = current.fields.rows[item];
+      // The meadow's judgement first, and OUTSIDE the arable gate below: a
+      // meadow has no crop row, so the gate would skip it and the flower
+      // would never be judged at all.
+      field.in_flower = MeadowInFlower(field,
+                                       current.calendar.day,
+                                       farming.flower_from_month,
+                                       farming.flower_to_month,
+                                       farming.meadow_regrowth_days);
       if (field.phase != FieldPhase::kGrowing || field.crop.value >= config_->crops.size()) {
         continue;
       }
@@ -1022,6 +1030,11 @@ class ProductionSystem final : public IProductionSystem {
     AddLedgerAmount(current.ledger.current.lost_no_room, config_.hay_resource, hay_lost);
     current.ledger.current.area_harvested_ha += field.area_ga;
     field.work_days_remaining = 0.0F;
+    // THE DAY IT WAS CUT, and it is the only trace the cut leaves. The phase
+    // goes straight back to kGrowing below — the grass does stand again —
+    // so without this day a mown meadow and an untouched one are the same
+    // state, and the layer had nowhere to put a flower or a butterfly.
+    field.last_mown_day = current.calendar.day;
     MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the grass stands again next summer
   }
 
