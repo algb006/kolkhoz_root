@@ -40,9 +40,9 @@ static_assert(AggregateArity<VitalsState>() == 4,
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
 static_assert(AggregateArity<CalendarState>() == 6,
               "CalendarState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(WeatherState) == 24,
+static_assert(sizeof(WeatherState) == 28,
               "WeatherState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WeatherState>() == 8,
+static_assert(AggregateArity<WeatherState>() == 9,
               "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
 static_assert(AggregateArity<ChairmanState>() == 4,
@@ -216,6 +216,12 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // cover is history, so losing it here would lose it for good, and a
   // loaded January would show bare ground until the next snowfall.
   out.WriteU16(world.weather.snow_cover_days);
+  // Whether a cover has lain since the last leaf fall (2026-09-06). NOT
+  // recomputable either, and for a sharper reason than the count above it:
+  // it separates the count's TWO ZEROS — no snow yet, and snow that melted —
+  // which is exactly the pair a loaded world cannot rediscover by looking at
+  // today.
+  out.WriteU8(world.weather.cover_since_leaf_fall ? 1U : 0U);
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -264,6 +270,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<WeatherPhenomenon>(source.ReadEnumValue(0, kMaxPhenomenon, "weather phenomenon"));
   world->weather.wind = static_cast<WindBand>(source.ReadEnumValue(0, kMaxWindBand, "wind band"));
   world->weather.snow_cover_days = in.ReadU16();
+  // Range-checked like every other narrow field: a byte that is neither 0
+  // nor 1 is a corrupt save, not a truthy value.
+  world->weather.cover_since_leaf_fall = source.ReadEnumValue(0, 1, "cover since leaf fall") != 0;
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

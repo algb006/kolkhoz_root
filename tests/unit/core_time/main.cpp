@@ -320,6 +320,224 @@ int main() {
                        "about the declaration and not about strictness");
   }
 
+  // THE TWO ZEROS OF snow_cover_days, TOLD APART. This is the whole order:
+  // ue's first leaf-fall run painted 1 January of every campaign with last
+  // year's leaves, over a zero the core reported honestly. "No snow yet" and
+  // "the snow melted" are the same zero and opposite answers for the leaf.
+  //
+  // The guard names its subject three times rather than asking "did the flag
+  // move": before any cover it must be false; the day a cover first lies it
+  // must be true; and — the one that matters — on a LATER bare day it must
+  // still be true, because the leaf rotted under the snow and a thaw brings
+  // nothing back.
+  {
+    core::ISequentialPhase& snow_phase = time_system->TimeAndWeatherPhase();
+    core::WorldState previous;
+    previous.world_seed = 12;
+    core::WorldState current;
+    bool seen_before_any_cover = false;
+    bool true_on_first_cover = false;
+    bool held_over_a_later_thaw = false;
+    bool ever_covered = false;
+    // COUNTED FROM DAY ZERO AND NOT FROM DAY ONE. The first version of this
+    // loop skipped day 0 by using it as the "already counted" sentinel — and
+    // day 0 is 1 January, the exact frame ue reported. A guard that cannot
+    // see the day it was written for is not a guard.
+    core::SimDay counted = core::kDaysPerYear * 4;  // no day equals this
+    while (previous.calendar.day < 2 * core::kDaysPerYear) {
+      current = previous;
+      snow_phase.RunSequential(previous, current);
+      std::swap(previous, current);
+      if (previous.calendar.day == counted) {
+        continue;
+      }
+      counted = previous.calendar.day;
+      const bool covered = previous.weather.snow_cover_days > 0;
+      const bool flag = previous.weather.cover_since_leaf_fall;
+      if (!ever_covered && !covered) {
+        seen_before_any_cover = seen_before_any_cover || !flag;
+      }
+      if (!ever_covered && covered) {
+        true_on_first_cover = flag;
+        ever_covered = true;
+      } else if (ever_covered && !covered) {
+        held_over_a_later_thaw = held_over_a_later_thaw || flag;
+      }
+    }
+    failures += Expect(seen_before_any_cover,
+                       "before any snow has lain the word is false — that zero still holds the "
+                       "leaf");
+    failures += Expect(true_on_first_cover,
+                       "the first day a cover lies it turns true, in the same step that counted "
+                       "the cover");
+    failures += Expect(held_over_a_later_thaw,
+                       "and a later bare day does NOT take it back: the leaf rotted under the "
+                       "snow, so the second zero is not the first one");
+  }
+
+  // AND IT COMES BACK DOWN AT THE LEAF FALL, once a year, on an event and not
+  // on a date picked in code. Measured on the day itself: after a winter that
+  // certainly laid a cover, the first day of the leaf-fall month must read
+  // false again — otherwise the flag is a one-way latch and the second year's
+  // leaf never lies at all.
+  //
+  // The month comes from world_params.csv, so the fixture NAMES it rather
+  // than trusting the default: a test that agrees with the compiled default
+  // cannot tell a table that was read from one that was ignored.
+  {
+    fs::create_directories(root / "leaf");
+    WriteFile(root / "leaf" / "weather.csv",
+              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+              "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
+    // July, deliberately NOT the October of the default: a summer reset is
+    // absurd as design and perfect as an instrument, because nothing else
+    // could put a false there.
+    WriteFile(root / "leaf" / "world_params.csv", "key,value,reader\nleaf_fall_month,7,both\n");
+    const auto leaf_tables = core::LoadTableSet((root / "leaf").string(), nullptr);
+    const auto leafy = leaf_tables == nullptr
+                           ? nullptr
+                           : core::CreateTimeSystem(*leaf_tables, core::StubTables::kRefused);
+    failures += Expect(leafy != nullptr, "a table set naming the leaf-fall month builds");
+    if (leafy != nullptr) {
+      core::ISequentialPhase& leaf_phase = leafy->TimeAndWeatherPhase();
+      core::WorldState previous;
+      previous.world_seed = 12;
+      core::WorldState current;
+      bool covered_before_july = false;
+      bool false_on_the_first_of_july = false;
+      bool raised_again_after_the_reset = false;
+      // THREE YEARS AND NOT TWO, and the number was measured rather than
+      // guessed: in this fixture the cover of the second year does not lay
+      // until January of the THIRD. Written as two, the last assertion failed
+      // on the window and not on the behaviour — the loop simply ended before
+      // the next snow. A guard whose horizon is shorter than the event it
+      // waits for reports the absence of the horizon.
+      core::SimDay counted = core::kDaysPerYear * 8;
+      while (previous.calendar.day < 3 * core::kDaysPerYear) {
+        current = previous;
+        leaf_phase.RunSequential(previous, current);
+        std::swap(previous, current);
+        if (previous.calendar.day == counted) {
+          continue;
+        }
+        counted = previous.calendar.day;
+        const core::Date date = core::DateFromDay(previous.calendar.day);
+        const bool flag = previous.weather.cover_since_leaf_fall;
+        if (date.year == 1) {
+          covered_before_july = covered_before_july || flag;
+          continue;
+        }
+        // Second year: July is month index 6 counting from zero.
+        if (date.month == core::Month::kJuly && date.day_in_month == 0) {
+          false_on_the_first_of_july = !flag;
+        }
+        // After the second year's reset, any later day that reads true is the
+        // proof: the switch is annual and not once-per-world.
+        if (date.year > 2 || (date.year == 2 && date.month > core::Month::kJuly)) {
+          raised_again_after_the_reset = raised_again_after_the_reset || flag;
+        }
+      }
+      failures += Expect(covered_before_july,
+                         "the first winter does raise the word — without that the reset below "
+                         "would be measuring nothing");
+      failures += Expect(false_on_the_first_of_july,
+                         "and the first day of the leaf-fall month puts it back to false: the "
+                         "new leaf has fallen and lies until the next cover");
+      failures += Expect(raised_again_after_the_reset,
+                         "and a later cover raises it again — the reset is annual, not a "
+                         "one-way switch that fires once per world");
+    }
+  }
+
+  // THE COVER IS COUNTED IN DAYS, AND THE UNIT IS THE ASSERTION. This phase
+  // runs every TICK, so a count advanced per call is a count of ticks — the
+  // shipped 0.17.55 number was twenty-four times its own name, and no guard
+  // saw it because every reader so far asked only whether it was zero. Found
+  // on 2026-09-06 by a probe that printed 145 lying days on the world's 48th.
+  //
+  // So the guard compares the count against DAYS ELAPSED, which is the one
+  // comparison a wrong unit cannot survive: an unbroken cover can never have
+  // lain more days than the world is old.
+  {
+    core::ISequentialPhase& unit_phase = time_system->TimeAndWeatherPhase();
+    core::WorldState previous;
+    previous.world_seed = 12;
+    core::WorldState current;
+    bool count_ever_exceeded_the_world_age = false;
+    std::uint16_t deepest = 0;
+    while (previous.calendar.day < core::kDaysPerYear) {
+      current = previous;
+      unit_phase.RunSequential(previous, current);
+      std::swap(previous, current);
+      const std::uint16_t lying = previous.weather.snow_cover_days;
+      deepest = lying > deepest ? lying : deepest;
+      count_ever_exceeded_the_world_age =
+          count_ever_exceeded_the_world_age || lying > previous.calendar.day + 1;
+    }
+    failures += Expect(deepest > 1,
+                       "a cover does lie for more than a single day in a year — otherwise the "
+                       "unit check below would pass on a counter stuck at zero");
+    failures += Expect(!count_ever_exceeded_the_world_age,
+                       "and it is never older than the world: the count advances once a DAY, not "
+                       "once a tick");
+  }
+
+  // AND ON THE RESET DAY ITSELF the word equals "does a cover lie today".
+  // The reset clears what was carried from yesterday; it does not throw away
+  // today. The leaf falls in the morning and snow that same evening rots it,
+  // so a reset day under snow reads TRUE, not false-until-tomorrow.
+  //
+  // The month is set to JANUARY here for one reason: in this climate a cover
+  // is on the ground then, so the reset day is a day with snow and the rule
+  // has something to be wrong about. A reset in July would make every reset
+  // day bare and the assertion vacuous — true of a correct implementation and
+  // equally true of one that always answers false.
+  {
+    fs::create_directories(root / "resetday");
+    WriteFile(root / "resetday" / "weather.csv",
+              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+              "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
+    WriteFile(root / "resetday" / "world_params.csv", "key,value,reader\nleaf_fall_month,1,both\n");
+    const auto reset_tables = core::LoadTableSet((root / "resetday").string(), nullptr);
+    const auto january = reset_tables == nullptr
+                             ? nullptr
+                             : core::CreateTimeSystem(*reset_tables, core::StubTables::kRefused);
+    if (january != nullptr) {
+      core::ISequentialPhase& reset_phase = january->TimeAndWeatherPhase();
+      core::WorldState previous;
+      previous.world_seed = 12;
+      core::WorldState current;
+      std::uint32_t reset_days_seen = 0;
+      std::uint32_t reset_days_under_snow = 0;
+      std::uint32_t reset_days_disagreeing = 0;
+      core::SimDay counted = core::kDaysPerYear * 8;
+      while (previous.calendar.day < 3 * core::kDaysPerYear) {
+        current = previous;
+        reset_phase.RunSequential(previous, current);
+        std::swap(previous, current);
+        if (previous.calendar.day == counted) {
+          continue;
+        }
+        counted = previous.calendar.day;
+        const core::Date date = core::DateFromDay(previous.calendar.day);
+        if (date.month != core::Month::kJanuary || date.day_in_month != 0) {
+          continue;
+        }
+        ++reset_days_seen;
+        const bool covered = previous.weather.snow_cover_days > 0;
+        reset_days_under_snow += covered ? 1U : 0U;
+        reset_days_disagreeing += previous.weather.cover_since_leaf_fall == covered ? 0U : 1U;
+      }
+      failures += Expect(reset_days_seen >= 3, "at least three reset days in three years");
+      failures += Expect(reset_days_under_snow > 0,
+                         "and at least one of them is under snow — otherwise the rule below has "
+                         "nothing to be wrong about");
+      failures += Expect(reset_days_disagreeing == 0,
+                         "on the reset day the word equals 'does a cover lie today': the reset "
+                         "clears yesterday, not today");
+    }
+  }
+
   // A month outside 1..12 is refused, not clamped — and 0 is refused too,
   // which is the whole point of the base being human here: a zero would be
   // the December of a 0-based reader and a nonsense of a human one.

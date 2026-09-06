@@ -269,6 +269,35 @@ struct WeatherState {
   /// this number, not by a second threshold on top of it: a dusting that
   /// thaws tomorrow never reaches a second day.
   std::uint16_t snow_cover_days = 0;
+
+  /// WHETHER A COVER HAS LAIN SINCE THE LAST LEAF FALL. False means the
+  /// fallen leaf is still on the ground; true means it rotted under snow and
+  /// is gone.
+  ///
+  /// TWO ZEROS LIVE IN snow_cover_days ABOVE, and only this word tells them
+  /// apart: "no snow has fallen yet" and "the snow melted in a thaw". The
+  /// first holds the leaf, the second does not — the design says the leaf
+  /// does not reappear from under the snow because it ROTTED there, so a
+  /// thaw returns nothing. The layer cannot separate them and must not try:
+  /// after a load it has no memory of the transition, and it is obliged to
+  /// paint a position (architecture §8г). Found by ue's first leaf-fall run,
+  /// where 1 January of every campaign — before a single snowflake — came
+  /// out with the forest in last year's leaves, over a zero that was honest.
+  ///
+  /// COUNTED FROM THE LEAF FALL AND NOT FROM THE WINTER. "This winter" was
+  /// the first shape asked for, and it needs a reset date; a wrong date lies
+  /// silently, and by this core's own weather the snow can lay in March, in
+  /// which year the leaf must lie until March. The leaf cycle is the clock
+  /// the design actually names, so the window is an event that is already
+  /// modelled rather than a month somebody picks.
+  ///
+  /// RESET AND RAISE ARE BOTH LIVE. The reset is an EVENT and not a date
+  /// picked in code: it falls on the first day of the month named by
+  /// `leaf_fall_month` in world_params.csv — a table of its own, because
+  /// weather_params.csv is named for weather and a month of leaf fall is not.
+  /// A cover lying on that day raises it again the same day: the leaf falls
+  /// in the morning and snow that evening rots it.
+  bool cover_since_leaf_fall = false;
 };
 
 /// @brief The chairman's standing. He is an abstract figure without a body or

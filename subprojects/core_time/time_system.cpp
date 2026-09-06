@@ -483,10 +483,17 @@ std::uint16_t SnowCoverAfter(const SeasonTable& seasons,
   return lying < 65000U ? static_cast<std::uint16_t>(lying + 1U) : lying;
 }
 
+/// The month the leaf falls, 0-based, when world_params.csv does not say.
+/// October, which is what the design's prose says today — and it is a DEFAULT
+/// and not the rule: the rule is the row, and the row exists so that no code
+/// has to hold a month.
+constexpr std::uint8_t kDefaultLeafFallMonth = 9;
+
 /// Phase 1 slot: clock, calendar caches, the day's weather.
 class TimeAndWeatherSlot final : public ISequentialPhase {
  public:
-  explicit TimeAndWeatherSlot(const SeasonTable& seasons) : seasons_(seasons) {}
+  TimeAndWeatherSlot(const SeasonTable& seasons, std::uint8_t leaf_fall_month)
+      : seasons_(seasons), leaf_fall_month_(leaf_fall_month) {}
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     current.calendar.tick = previous.calendar.tick + 1;
@@ -502,17 +509,61 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     // is on the ground because it fell and has not melted (world_state.h).
     // Read from `previous` and written to `current`, like everything else in
     // this phase, so a re-run of the same tick writes the same number.
+    // ONCE A DAY, NOT ONCE A TICK. This phase runs every tick and the cover
+    // is a count of DAYS, so advancing it per call made it a count of ticks —
+    // twenty-four times its own name. Shipped that way on 2026-09-05 and
+    // found on 2026-09-06 by a probe that printed 145 lying days on the
+    // world's 48th: `> 0` tests never noticed, because the error is in the
+    // MAGNITUDE and every reader so far asked only whether it was zero. The
+    // seam publishes this number to the layer as days.
+    //
+    // Carrying the value unchanged inside a day is what keeps a re-run of the
+    // same tick writing the same number (buffer law): the update is a pure
+    // function of the day boundary, not of how many times the phase ran.
+    const bool first_tick_of_a_day =
+        current.calendar.day != previous.calendar.day || previous.calendar.tick == 0;
     current.weather.snow_cover_days =
-        SnowCoverAfter(seasons_, previous.weather, current.weather, current.calendar.day);
+        first_tick_of_a_day
+            ? SnowCoverAfter(seasons_, previous.weather, current.weather, current.calendar.day)
+            : previous.weather.snow_cover_days;
+    // AND THE WORD THAT SEPARATES THE COUNT'S TWO ZEROS. It rises the first
+    // day a cover lies and does not fall when the cover melts — that is the
+    // whole point of it: the leaf rotted under the snow, so a thaw brings
+    // nothing back (world_state.h).
+    //
+    //
+    // THE RESET IS AN EVENT, NOT A DATE ON A CALENDAR I PICKED. It falls on
+    // the first day of the leaf-fall month, and that month arrives as a row
+    // (world_params.csv) precisely so that nobody has to guess it here. "This
+    // winter" was the first shape asked for and it needed a winter boundary;
+    // by this core's own weather the snow can lay in March, in which year the
+    // leaf must lie until March — a December window would cut it short and
+    // say nothing.
+    const Date date = DateFromDay(current.calendar.day);
+    const bool new_leaf_fall =
+        static_cast<std::uint8_t>(date.month) == leaf_fall_month_ && date.day_in_month == 0;
+    //
+    // THE RESET CLEARS YESTERDAY, NOT TODAY. Written first as
+    // `!new_leaf_fall && (carried || cover)`, which also threw away a cover
+    // lying on the reset day itself: the leaf falls that morning and snow on
+    // it that same evening rots it, so the day would have read false and
+    // corrected itself only tomorrow. One wrong day a year, in the one field
+    // whose whole purpose is telling two days apart.
+    current.weather.cover_since_leaf_fall =
+        (!new_leaf_fall && previous.weather.cover_since_leaf_fall) ||
+        current.weather.snow_cover_days > 0;
   }
 
  private:
   SeasonTable seasons_;
+
+  std::uint8_t leaf_fall_month_ = kDefaultLeafFallMonth;
 };
 
 class TimeSystem final : public ITimeSystem {
  public:
-  explicit TimeSystem(const SeasonTable& seasons) : seasons_(seasons), phase_(seasons) {}
+  TimeSystem(const SeasonTable& seasons, std::uint8_t leaf_fall_month)
+      : seasons_(seasons), phase_(seasons, leaf_fall_month) {}
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
 
@@ -625,6 +676,97 @@ bool ParseWeatherTable(const ITable& table, SeasonTable& seasons, std::string& e
 /// can see what they are citing. A row that IS there is validated strictly.
 ///
 /// @return false on a malformed value; `error` then says which knob and why.
+/// @brief Refuses a key/value table whose rows do not say who reads them.
+///
+/// EVERY ROW ANSWERS FOR ITSELF, and this is what a typo runs into. Until
+/// 2026-09-06 a key the core did not recognise was simply not looked for, so
+/// `snow_melt_celsius` written where `snow_melt_c` was meant left every guard
+/// green and the compiled default in force. Refusing the unknown outright was
+/// not available: `insect_buzz_min_c` is a legitimate row whose reader is the
+/// graphics layer. So the row declares its reader, in the design base beside
+/// the value — one home for the number and for its addressee.
+///
+/// A PRESENT TABLE MUST DECLARE. These tables are optional as a whole (every
+/// knob has a default), but one without a `reader` column cannot be checked at
+/// all: in it a typo and a layer knob are the same thing, and letting that
+/// pass would put the lenient answer back behind silence.
+///
+/// @param knows The keys the CALLING reader knows, collected by the readers
+///        themselves rather than written out a second time beside them.
+/// @note One home for the rule, two tables. THE DEBT IT CARRIES, named rather
+///       than papered over: `knows` is one MODULE's key set, and "the core" is
+///       many modules. That is exact for weather_params, which only core_time
+///       reads. world_params.csv is named for the world and will one day be
+///       read by more than one module — on that day a key of module B, honestly
+///       declared `core`, would be refused by module A. The check must then
+///       move to where every module's key set is known (the assembly), and
+///       that is an interface change and an event, not a patch. Modules
+///       reading world_params today: ONE. The number is written down because
+///       "no mechanism" and "the mechanism has not arrived" look identical.
+bool CheckDeclaredReaders(const ITable& table,
+                          const char* table_name,
+                          const std::vector<std::string_view>& knows,
+                          std::string& error) {
+  const std::uint32_t key_column = table.FindColumn("key");
+  const std::uint32_t reader_column = table.FindColumn("reader");
+  if (key_column == kNoTableColumn) {
+    error = std::string(table_name) + ": no 'key' column";
+    return false;
+  }
+  if (reader_column == kNoTableColumn) {
+    error = std::string(table_name) +
+            ": no 'reader' column — a table that does not say who reads each knob cannot tell a "
+            "misspelt core key from a layer one";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    const std::string_view key = table.CellText(row, key_column);
+    const std::string_view reader = table.CellText(row, reader_column);
+    if (reader != "core" && reader != "layer" && reader != "both") {
+      error = std::string(table_name) + ": row '" + std::string(key) + "' declares reader '" +
+              std::string(reader) + "' — it must be core, layer or both";
+      return false;
+    }
+    if (reader == "layer") {
+      continue;  // the graphics layer's knob; the core carries it, unread
+    }
+    if (std::find(knows.begin(), knows.end(), key) == knows.end()) {
+      error = std::string(table_name) + ": row '" + std::string(key) +
+              "' is declared for the core, and the core has no such knob — a misspelt key, or a "
+              "knob whose reader moved";
+      return false;
+    }
+  }
+  return true;
+}
+
+/// @brief Reads world_params.csv: constants of the world that are not weather.
+///
+/// A SEPARATE FILE AND NOT A ROW IN weather_params.csv, because that file's
+/// NAME is its contract: a month of leaf fall put there would make the name a
+/// lie. The same reader declaration applies from this table's first day —
+/// the weather table got it only after a typo had already passed in silence,
+/// and there is no reason to buy that lesson twice.
+bool ParseWorldParams(const ITable& table, std::uint8_t& leaf_fall_month, std::string& error) {
+  const std::uint32_t value_column = table.FindColumn("value");
+  if (value_column == kNoTableColumn) {
+    error = "world_params: no 'value' column";
+    return false;
+  }
+  std::vector<std::string_view> knows;
+  std::string local;
+  // HUMAN 1..12 across the seam, as everywhere else, and turned to the
+  // calendar's zero base HERE and nowhere else.
+  knows.push_back("leaf_fall_month");
+  float human = static_cast<float>(leaf_fall_month) + 1.0F;
+  if (!OptionalValue(table, "leaf_fall_month", Range{.low = 1.0F, .high = 12.0F}, human, local)) {
+    error = "world_params: " + local;
+    return false;
+  }
+  leaf_fall_month = static_cast<std::uint8_t>(human - 1.0F);
+  return CheckDeclaredReaders(table, "world_params", knows, error);
+}
+
 bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& error) {
   const std::uint32_t value_column = table.FindColumn("value");
   if (value_column == kNoTableColumn) {
@@ -715,35 +857,8 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
   // checked at all: in it a typo and a layer knob are the same thing. Letting
   // that pass would put the lenient answer back behind silence, which is the
   // one thing this delivery exists to stop.
-  const std::uint32_t key_column = table.FindColumn("key");
-  const std::uint32_t reader_column = table.FindColumn("reader");
-  if (key_column == kNoTableColumn) {
-    error = "weather_params: no 'key' column";
+  if (!CheckDeclaredReaders(table, "weather_params", knows, error)) {
     return false;
-  }
-  if (reader_column == kNoTableColumn) {
-    error =
-        "weather_params: no 'reader' column — a table that does not say who reads each knob "
-        "cannot tell a misspelt core key from a layer one";
-    return false;
-  }
-  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    const std::string_view key = table.CellText(row, key_column);
-    const std::string_view reader = table.CellText(row, reader_column);
-    if (reader != "core" && reader != "layer" && reader != "both") {
-      error = "weather_params: row '" + std::string(key) + "' declares reader '" +
-              std::string(reader) + "' — it must be core, layer or both";
-      return false;
-    }
-    if (reader == "layer") {
-      continue;  // the graphics layer's knob; the core carries it, unread
-    }
-    if (std::find(knows.begin(), knows.end(), key) == knows.end()) {
-      error = "weather_params: row '" + std::string(key) +
-              "' is declared for the core, and the core has no such knob — a misspelt key, or a "
-              "knob whose reader moved";
-      return false;
-    }
   }
 
   // The two shares decide a third between them: what is left after calm and
@@ -799,7 +914,18 @@ std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTable
       return nullptr;
     }
   }
-  return std::make_unique<TimeSystem>(seasons);
+  // The month of leaf fall, which is not weather and so has a table of its
+  // own. It comes here because the flag it clears lives in the weather block
+  // and is maintained by this phase; the day it is read by a second module,
+  // the declaration check has to move (see CheckDeclaredReaders).
+  std::uint8_t leaf_fall_month = kDefaultLeafFallMonth;
+  if (const ITable* world = tables.FindTable("world_params")) {
+    if (!ParseWorldParams(*world, leaf_fall_month, error)) {
+      LogError(error);
+      return nullptr;
+    }
+  }
+  return std::make_unique<TimeSystem>(seasons, leaf_fall_month);
 }
 
 }  // namespace core

@@ -100,6 +100,9 @@ core::WorldState MakeWorld() {
   // when the epoch landed on two bytes of snow. A round trip that omits a
   // field is a round trip that certifies the fields it happens to name.
   world.weather.snow_cover_days = 9;
+  // Set to the value that is NOT the default: a round trip that loses the
+  // field would still read back `false` and pass on a default-shaped world.
+  world.weather.cover_since_leaf_fall = true;
   world.epoch = core::Epoch::kTwo;
   world.world_seed = 0x0BADC0FFEEULL;
   world.rng = core::SeedRngState(world.world_seed, 3);
@@ -359,6 +362,9 @@ int main() {
                      "the day's name and its wind band survive the round trip");
   failures +=
       Expect(loaded.weather.snow_cover_days == 9, "and so does the snow lying on the ground");
+  failures += Expect(loaded.weather.cover_since_leaf_fall,
+                     "and the word that separates the count's two zeros — a cover having lain "
+                     "since the leaf fall — survives with it");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.residents.next_id_value == world.residents.next_id_value &&

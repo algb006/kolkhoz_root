@@ -1,0 +1,7 @@
+# generated from db/design.db — do not edit by hand
+# scalar constants of the world that are NOT weather, and that both sides of the seam need. Kept apart from weather_params.csv because that file's NAME is its contract and a file name is an address in this tree
+# WHO READS EACH ROW is the third column and it is the contract, exactly as in weather_params.csv: a key declared for the core that the core does not know is an ERROR, not a default. `both` means both read it TODAY
+# MONTHS ARE HUMAN 1..12, like every other month that crosses this seam
+key,value,reader
+leaf_fall_month,10,both
+apiary_buzz_radius_m,60,layer
