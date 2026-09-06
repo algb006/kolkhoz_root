@@ -2,11 +2,20 @@
 /// @brief IConstructionSystem — the boundary of the construction subsystem:
 /// a unit is built over time and costs materials and labour days.
 /// @threading SINGLE_THREADED
-/// The subsystem owns no phase slot: all its work runs sequentially inside
-/// the decisions slot (phase 3), on the sim thread, called by core_world
-/// LAST in that slot's fixed order — after assignments, demography and
-/// production decisions (manual/54-modules.md §3). It never sees worker
-/// threads and does not know core_sim. Sequential by decision: a site
+/// The subsystem owns no phase slot, and it works in TWO WINDOWS, both on
+/// the sim thread. One MUTATES: RunConstructionDecisions, sequentially
+/// inside the decisions slot (phase 3), called by core_world LAST in that
+/// slot's fixed order — after assignments, demography and production
+/// decisions (manual/54-modules.md §3). The other only READS, BETWEEN
+/// steps, off the completed buffer: CollectAlarms, WearDeadline and
+/// StinkAt, each of which says so again in its own @note.
+///
+/// UNTIL 2026-09-06 THIS BLOCK NAMED ONLY THE FIRST, and every one of the
+/// three readers contradicted it in its own line — a contract that three of
+/// its five methods deny is a contract nobody can use, and the reader who
+/// believes the block would think a between-step query illegal. The class
+/// is unchanged and was never wrong: it is all one thread, and it never
+/// sees worker threads or knows core_sim. Sequential by decision: a site
 /// appears, changes level and disappears, and every one of those is a
 /// change of table shape, which only a sequential slot may make (buffer-law
 /// rule 6, core_sim/step.h). The volume — a handful of sites a year — would
@@ -109,6 +118,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/deadline.h"
+#include "core_common/stink.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 
@@ -184,6 +194,39 @@ class IConstructionSystem {
   ///         tables carry no term to compute with.
   /// @note Called between steps on the sim thread. A pure read.
   virtual Deadline WearDeadline(const WorldState& completed, UnitId unit) const = 0;
+
+  /// @brief How badly it stinks at this point of the map today — the FULL
+  /// zone of every source that reaches it (water design §4).
+  ///
+  /// THE FULL ZONE AND NOT THE CURRENT ONE, and that is the design's own
+  /// distinction rather than a shortcut: "the full radius is drawn, not the
+  /// current one — the build-up must not mislead the player". This answer is
+  /// what the placement preview paints, what turns a house red, and what
+  /// forbids raising a dwelling where there is nothing to breathe. The
+  /// CURRENT zone — the one that grows while a source works and disperses at
+  /// a rate when it stops — is history, and history is saved: it arrives with
+  /// its own save format, and the chairman's cough and the flies wait for it.
+  ///
+  /// WHAT DOES NOT ANSWER YET, said out loud rather than left to look like a
+  /// clean zero. Five of the thirteen sources smell only WHILE THEY WORK —
+  /// the tannery, the slaughterhouse, the workshops' forge, the dye house,
+  /// the smokehouse — and this core has no work at a production unit to read:
+  /// WorkKind names seven kinds and not one of them targets a producing unit
+  /// (WorkAssignment::unit is the construction SITE), and the production
+  /// subsystem writes a unit only to pause it, to fill a manger and to grow
+  /// the manure heap. So every kStinkWhen::kWorking source reads as not
+  /// emitting, and it will go on doing so until unit work cycles exist.
+  /// STUB, and deliberately findable as one.
+  ///
+  /// It costs less than it sounds: of the six strong sources only two — the
+  /// tannery and the slaughterhouse — are of that kind, and the whole
+  /// planning conflict the field exists for (the heap, the sty, the poultry
+  /// and fur farms against the houses) is answered in full.
+  ///
+  /// Wind does not enter this answer and never will (water design §4).
+  /// @return The worst band reaching `point`; kNone for clean air.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual StinkStrength StinkAt(const WorldState& completed, Vec2 point) const = 0;
 };
 
 /// @brief Creates the construction subsystem.

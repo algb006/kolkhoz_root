@@ -166,6 +166,50 @@ class ConstructionSystem final : public IConstructionSystem {
     return DeadlineInDays(days);
   }
 
+  /// THE STINK FIELD, walked over the units (construction_system.h).
+  ///
+  /// IT SITS HERE AND NOT ABOVE WearDeadline, and the reason is a defect
+  /// this delta committed and the cycle caught: dropped in there, it stood
+  /// between the alarm paragraphs and the function they belong to, so the
+  /// prose about kSiteWithoutMaterials came to document the stink walk and
+  /// WearDeadline was left bare. THIRD TIME IN TWO CYCLES that inserting a
+  /// declaration stole the comment above it — kNeverMownDay took FieldRow's
+  /// @brief the same morning. A doc comment documents whatever FOLLOWS it,
+  /// and an insertion point is therefore never neutral: the question to ask
+  /// before adding a declaration is not "does it belong in this class" but
+  /// "whose comment am I standing under".
+  ///
+  /// Distances are compared SQUARED: the answer is "is it inside", and a
+  /// square root on the way to a comparison buys nothing but a chance for
+  /// two callers to round differently.
+  StinkStrength StinkAt(const WorldState& completed, Vec2 point) const override {
+    StinkStrength worst = StinkStrength::kNone;
+    for (const UnitRow& unit : completed.units.rows) {
+      // Level 0 is a site or a unit coming down, and it holds nothing yet:
+      // the one rule that replaces a flag in every table (unit_state.h).
+      if (unit.level == 0 || unit.type.value >= config_.types.size()) {
+        continue;
+      }
+      const BuildType& type = config_.types[unit.type.value];
+      if (type.stink == StinkStrength::kNone || type.stink <= worst) {
+        continue;  // nothing to add, or nothing WORSE to add
+      }
+      // The half that has nothing to read: a source that smells only while
+      // it works cannot be asked, because no unit in this core works yet.
+      // STUB — see the contract in construction_system.h.
+      if (type.stink_when == StinkWhen::kWorking) {
+        continue;
+      }
+      const float radius = config_.stink_radius_m[static_cast<std::size_t>(type.stink)];
+      const float dx = point.x - unit.position.x;
+      const float dy = point.y - unit.position.y;
+      if ((dx * dx) + (dy * dy) <= radius * radius) {
+        worst = WorseStink(worst, type.stink);
+      }
+    }
+    return worst;
+  }
+
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     for (std::uint32_t row = 0; row < completed.units.rows.size(); ++row) {
       const UnitRow& site = completed.units.rows[row];

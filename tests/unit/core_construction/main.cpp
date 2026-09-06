@@ -23,6 +23,7 @@
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_tables/tables.h"
+#include "core_world/world.h"
 
 static_assert(std::is_abstract_v<core::IConstructionSystem>, "IConstructionSystem is a contract");
 static_assert(static_cast<int>(core::ConstructionPhase::kNone) == 0,
@@ -938,6 +939,174 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
+/// THE STINK FIELD: the full zone, the band, and the half that has nothing
+/// to read.
+int TestTheStinkField() {
+  int failures = 0;
+  // A source table of its own, so that every assertion below has a subject
+  // only it rejects. Four types: a strong always-source, a medium one, a
+  // source that smells only while it works, and one that does not smell.
+  const test::FakeTable types{
+      {"key", "era", "player_built", "gate", "has_wear", "stink", "stink_when"},
+      {{"heap", "1", "1", "era", "0", "strong", "always"},
+       {"byre", "1", "1", "era", "1", "medium", "always"},
+       {"tannery", "1", "1", "era", "1", "strong", "working"},
+       {"house", "1", "1", "era", "1", "none", ""}}};
+  // The ladder needs its two columns even with no rows in it: "no unit or
+  // level column" is a refusal, and rightly — a ladder nobody can index is
+  // not an empty ladder.
+  const test::FakeTable no_levels{{"unit", "level"}, {}};
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+  const test::FakeTableSet tables{{{"unit_types", &types},
+                                   {"unit_levels", &no_levels},
+                                   {"unit_level_cost", &no_costs},
+                                   {"resources", &no_resources},
+                                   {"construction", &knobs}}};
+  const auto system = core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "the stink fixture builds a construction system") != 0) {
+    return 1;
+  }
+
+  core::WorldState world;
+  const auto place = [&world](std::uint16_t type, float x, float y, std::uint8_t level) {
+    core::UnitRow unit;
+    unit.type = core::UnitTypeId{type};
+    unit.position = core::Vec2{.x = x, .y = y};
+    unit.level = level;
+    core::AppendRow(world.units, unit);
+  };
+  place(0, 0.0F, 0.0F, 1);     // heap, strong, radius 200
+  place(1, 1000.0F, 0.0F, 1);  // byre, medium, radius 120
+  place(2, 2000.0F, 0.0F, 1);  // tannery, strong but only while working
+  place(0, 3000.0F, 0.0F, 0);  // a heap that is still a SITE
+
+  const auto at = [&system, &world](float x, float y) {
+    return system->StinkAt(world, core::Vec2{.x = x, .y = y});
+  };
+  failures += Expect(at(199.0F, 0.0F) == core::StinkStrength::kStrong,
+                     "inside a strong source's full radius the air is strong");
+  failures += Expect(at(201.0F, 0.0F) == core::StinkStrength::kNone,
+                     "and two metres outside it is clean — the zone has an edge");
+  failures += Expect(at(1119.0F, 0.0F) == core::StinkStrength::kMedium,
+                     "a medium source gives a medium band, not a strong one");
+  failures += Expect(at(1121.0F, 0.0F) == core::StinkStrength::kNone,
+                     "and its edge is nearer than a strong source's");
+  // The tannery sits at its own centre and answers nothing: the STUB, and
+  // the guard exists so that the day unit work cycles arrive, whoever wires
+  // them is told by a red test that this is where the wire goes.
+  failures += Expect(at(2000.0F, 0.0F) == core::StinkStrength::kNone,
+                     "a source that smells only WHILE IT WORKS reads as silent: this core has no "
+                     "work at a unit to read (STUB)");
+  failures += Expect(at(3000.0F, 0.0F) == core::StinkStrength::kNone,
+                     "and a source that is still a building site does not smell either");
+
+  // WHERE TWO ZONES OVERLAP THE WORSE ONE WINS. Measured on a point that is
+  // inside both, or the assertion would pass on a rule that never met a
+  // second source.
+  place(1, 150.0F, 0.0F, 1);
+  failures += Expect(at(150.0F, 0.0F) == core::StinkStrength::kStrong,
+                     "a point inside both a medium and a strong zone reads strong");
+  failures += Expect(at(250.0F, 0.0F) == core::StinkStrength::kMedium,
+                     "and just outside the strong one it drops to the medium band, not to clean");
+
+  // AND THE TABLE IS A CONTRACT OF TWO COLUMNS. Each refusal gets its own
+  // damaged row, so a fixture that several rules reject cannot hide which
+  // one spoke.
+  const auto refuses = [&no_levels, &no_costs, &no_resources, &knobs](
+                           std::vector<std::vector<std::string>> rows) {
+    const test::FakeTable broken{
+        {"key", "era", "player_built", "gate", "has_wear", "stink", "stink_when"}, std::move(rows)};
+    const test::FakeTableSet set{{{"unit_types", &broken},
+                                  {"unit_levels", &no_levels},
+                                  {"unit_level_cost", &no_costs},
+                                  {"resources", &no_resources},
+                                  {"construction", &knobs}}};
+    return core::CreateConstructionSystem(set, core::StubTables::kAllowed) == nullptr;
+  };
+  failures += Expect(refuses({{"heap", "1", "1", "era", "0", "stong", "always"}}),
+                     "a misspelt strength is refused, not read as odourless");
+  failures += Expect(refuses({{"heap", "1", "1", "era", "0", "strong", ""}}),
+                     "a source that does not say whether its contents or its work smells is "
+                     "refused");
+  failures += Expect(refuses({{"heap", "1", "1", "era", "0", "strong", "sometimes"}}),
+                     "and a word that is neither always nor working is refused");
+  failures += Expect(refuses({{"house", "1", "1", "era", "1", "none", "always"}}),
+                     "a type that does not smell may not say when it smells");
+  // AN EMPTY CELL IN A PRESENT COLUMN IS A HOLE, not an answer — the same
+  // line has_wear draws twelve lines above it in the parser. A blank
+  // disappears a strong source exactly as quietly as a typo does.
+  //
+  // BOTH CELLS BLANK, and the second blank is the whole subject. The first
+  // version of this row left stink_when = "always", and it passed the
+  // mutation that removes the rule it is written for — because a blank
+  // strength beside a named `when` is refused by the NEIGHBOURING rule
+  // ("a type that does not smell may not say when it smells"). Second time
+  // in one day that a guard drew its red from the rule next door; the fix
+  // is the same one — give it a subject only its own rule rejects.
+  failures += Expect(refuses({{"heap", "1", "1", "era", "0", "", ""}}),
+                     "a blank strength in a present column is refused, not read as odourless");
+  return failures;
+}
+
+/// THE ASSUMED RADII ARE MEASURED AGAINST THE SHIPPED SCENE, not against
+/// themselves.
+///
+/// The design defers the radii to polish item P30be and names no number, so
+/// this core picked three. A knob picked in isolation is a knob nobody has
+/// checked, and this one has a checkable consequence: a dwelling may not
+/// stand in a stink zone (water design §4), and the designed start places
+/// twenty-one houses and three sources by hand. If the strong radius grows
+/// past the 268 m between the manure heap and the nearest house, THE
+/// DESIGNED START BREAKS ITS OWN RULE ON DAY ONE — and it would do it in
+/// silence, because nothing else compares the two numbers.
+int TestTheShippedStartHasNoHouseInAStinkZone() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load") != 0) {
+    return 1;
+  }
+  const auto system = core::CreateConstructionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "and the shipped tables build a construction system") != 0) {
+    return 1;
+  }
+  const core::WorldState world = core::CreateStartWorld(*tables, 12345, nullptr);
+
+  const core::ITable* const unit_types = tables->FindTable("unit_types");
+  const std::uint32_t house_row = unit_types->FindRowByKey("old_house");
+  if (Expect(house_row != core::kNoTableRow, "the shipped tables name the start's house type") !=
+      0) {
+    return 1;
+  }
+  std::uint32_t houses = 0;
+  std::uint32_t houses_in_a_zone = 0;
+  for (const core::UnitRow& unit : world.units.rows) {
+    if (unit.type.value != house_row || unit.level == 0) {
+      continue;
+    }
+    ++houses;
+    houses_in_a_zone +=
+        system->StinkAt(world, unit.position) != core::StinkStrength::kNone ? 1U : 0U;
+  }
+  // The control first: without it the check below passes on a start with no
+  // houses in it, and on a field that answers kNone to everything.
+  failures += Expect(houses == 21, "the designed start stands its twenty-one houses");
+  bool any_zone_at_all = false;
+  for (const core::UnitRow& unit : world.units.rows) {
+    any_zone_at_all =
+        any_zone_at_all || system->StinkAt(world, unit.position) != core::StinkStrength::kNone;
+  }
+  failures += Expect(any_zone_at_all,
+                     "and the start's sources do make zones — otherwise the check below is "
+                     "vacuous");
+  failures += Expect(houses_in_a_zone == 0,
+                     "no house of the designed start stands in a stink zone: the assumed radii do "
+                     "not make the start illegal by its own rule");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
@@ -954,6 +1123,8 @@ int main() {
   failures += TestWearCeilingAndCollapse(tables);
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);
+  failures += TestTheStinkField();
+  failures += TestTheShippedStartHasNoHouseInAStinkZone();
   if (failures == 0) {
     std::cout << "unit_core_construction: marking, building, upgrading, refusals and demolition\n";
   }

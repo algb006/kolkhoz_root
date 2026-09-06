@@ -19,6 +19,7 @@
 #ifndef CORE_CONSTRUCTION_CONSTRUCTION_CONFIG_H_
 #define CORE_CONSTRUCTION_CONSTRUCTION_CONFIG_H_
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@
 #include "core_catalog/definitions.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
+#include "core_common/stink.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -152,6 +154,26 @@ struct BuildType {
   /// column = 0 for every type: no data, no wear, said out loud rather
   /// than guessed from the capacity flag.
   std::uint8_t has_wear = 0;
+
+  /// How badly this type smells at its core, from unit_types.csv `stink`
+  /// (water design §4). kNone for every type the column does not name, and
+  /// for every type at all when the column is absent.
+  StinkStrength stink = StinkStrength::kNone;
+
+  /// Whether the contents smell or the work does, from `stink_when`.
+  ///
+  /// A SECOND COLUMN AND NOT A DERIVATION. This module proposed deriving it
+  /// from the unit's class, and boss answered with a measurement rather than
+  /// an opinion: `manure_pile` and `silage_trench` are class `production`
+  /// and smell ALWAYS — the contents smell, not the work — so the class
+  /// answers wrongly for two of the thirteen sources. A derivation would
+  /// have become a list of names in this file, compiling green and drifting
+  /// from the table on the day a fourteenth source is added, with nothing
+  /// to compare it against.
+  ///
+  /// Meaningless while `stink` is kNone, and the table leaves it empty
+  /// exactly there.
+  StinkWhen stink_when = StinkWhen::kAlways;
 };
 
 /// The subsystem's own knobs (construction.csv) and the parsed tables.
@@ -159,6 +181,29 @@ struct ConstructionConfig {
   /// Demolition costs this share of the level's build norm in labour days
   /// (construction design §12: "noticeably less than building"). ASSUMPTION.
   float demolition_labor_share = 0.25F;
+
+  /// THE FULL RADIUS OF A STINK ZONE IN METRES, by strength — index by
+  /// StinkStrength, so index 0 (kNone) is a zero radius and never used.
+  ///
+  /// ASSUMPTION, ALL THREE, AND THE WORD IS DELIBERATE: the design defers
+  /// the radii to polish item P30be and gives no number anywhere. They live
+  /// here rather than in the walk so that the day rows arrive, nothing but
+  /// this struct changes.
+  ///
+  /// BUT THEY ARE NOT FREE, AND THE SHIPPED START MEASURES THE CEILING.
+  /// The scene the game begins with holds three sources — the manure heap
+  /// (strong), the cattle yard and the silage trench (medium) — and its
+  /// nearest house stands 268 m from the heap. A house may not stand in a
+  /// stink zone (water design §4), so a strong radius of 268 m or more
+  /// makes the designed start illegal by its own rule on day one. 200 m is
+  /// chosen with that 68 m of daylight, and a unit test walks the shipped
+  /// tables to keep the two facts from drifting apart in silence.
+  ///
+  /// The medium and weak radii have no such measured ceiling today, and
+  /// they are ordered rather than reasoned: a strong source reaches
+  /// further than a medium one, which reaches further than a weak one.
+  std::array<float, static_cast<std::size_t>(StinkStrength::kStinkStrengthCount)> stink_radius_m = {
+      0.0F, 40.0F, 120.0F, 200.0F};
 
   /// By UnitTypeId value. Sized to the unit_types table; a type the tables
   /// do not have is simply out of range, and every lookup checks.

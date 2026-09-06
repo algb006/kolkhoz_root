@@ -116,6 +116,38 @@ bool ReadResourceMass(const ITable& resources,
   return true;
 }
 
+/// @brief The stink band a `stink` cell names; `known` reports success.
+StinkStrength StinkFromText(std::string_view text, bool& known) {
+  known = true;
+  if (text == "none" || text.empty()) {
+    return StinkStrength::kNone;
+  }
+  if (text == "weak") {
+    return StinkStrength::kWeak;
+  }
+  if (text == "medium") {
+    return StinkStrength::kMedium;
+  }
+  if (text == "strong") {
+    return StinkStrength::kStrong;
+  }
+  known = false;
+  return StinkStrength::kNone;
+}
+
+/// @brief The two words `stink_when` may hold; `known` reports success.
+StinkWhen StinkWhenFromText(std::string_view text, bool& known) {
+  known = true;
+  if (text == "always") {
+    return StinkWhen::kAlways;
+  }
+  if (text == "working") {
+    return StinkWhen::kWorking;
+  }
+  known = false;
+  return StinkWhen::kAlways;
+}
+
 bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string& error) {
   const std::uint32_t gate_col = unit_types.FindColumn("gate");
   const std::uint32_t built_col = unit_types.FindColumn("player_built");
@@ -123,6 +155,8 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
   const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
   const std::uint32_t wear_factor_col = unit_types.FindColumn("wear_factor");
+  const std::uint32_t stink_col = unit_types.FindColumn("stink");
+  const std::uint32_t stink_when_col = unit_types.FindColumn("stink_when");
 
   config.wear_column_present = has_wear_col != kNoTableColumn;
   config.types.assign(unit_types.RowCount(), BuildType{});
@@ -213,6 +247,64 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
     }
     if (!(type.wear_factor > 0.0F)) {
       type.wear_factor = 1.0F;
+    }
+
+    // THE STINK, AND THE TWO COLUMNS ARE ONE FACT WITH TWO HALVES. An
+    // absent column is no data and every type is odourless, which is the
+    // same honest reading has_wear takes above; a PRESENT column with a
+    // word nobody knows is a refusal, because a misspelt "stong" reading as
+    // "no smell" is exactly how a strong source disappears in silence.
+    // AN ABSENT COLUMN AND AN EMPTY CELL ARE TWO ANSWERS, and this block
+    // treated them as one for an hour. `has_wear` twelve lines above already
+    // draws the line — "a present column must answer for every type" — and
+    // the comment below argues the very same case for a misspelt word, so
+    // reading a BLANK as "does not smell" was this file disagreeing with
+    // itself. A hole in the export disappears a strong source exactly as
+    // quietly as a typo does; found by the cycle, out of its own class.
+    const std::string_view stink_text =
+        stink_col == kNoTableColumn ? std::string_view{} : unit_types.CellText(row, stink_col);
+    if (stink_col != kNoTableColumn && stink_text.empty()) {
+      Fail(error,
+           "unit_types",
+           "stink is empty in row " + std::to_string(row) +
+               " — a present column must answer for every type");
+      return false;
+    }
+    type.stink = StinkFromText(stink_text, known);
+    if (!known) {
+      Fail(error,
+           "unit_types",
+           "stink is not none/weak/medium/strong in row " + std::to_string(row));
+      return false;
+    }
+    const std::string_view when_text = stink_when_col == kNoTableColumn
+                                           ? std::string_view{}
+                                           : unit_types.CellText(row, stink_when_col);
+    if (type.stink == StinkStrength::kNone) {
+      // The table leaves stink_when empty exactly where there is nothing to
+      // say, and a word here would be a second answer to a question nobody
+      // asked. Refused rather than ignored: the pair is a contract, and the
+      // export that breaks it on one row has broken it on more.
+      if (!when_text.empty()) {
+        Fail(error,
+             "unit_types",
+             "stink_when is set while stink is none in row " + std::to_string(row));
+        return false;
+      }
+      type.stink_when = StinkWhen::kAlways;
+      continue;
+    }
+    if (when_text.empty()) {
+      Fail(error,
+           "unit_types",
+           "stink_when is empty while stink is not none in row " + std::to_string(row) +
+               " — a source must say whether its contents or its work smells");
+      return false;
+    }
+    type.stink_when = StinkWhenFromText(when_text, known);
+    if (!known) {
+      Fail(error, "unit_types", "stink_when is not always/working in row " + std::to_string(row));
+      return false;
     }
   }
   return true;

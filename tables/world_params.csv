@@ -3,5 +3,17 @@
 # WHO READS EACH ROW is the third column and it is the contract, exactly as in weather_params.csv: a key declared for the core that the core does not know is an ERROR, not a default. `both` means both read it TODAY
 # MONTHS ARE HUMAN 1..12, like every other month that crosses this seam
 key,value,reader
-leaf_fall_month,10,both
+leaf_fall_month,10,core
 apiary_buzz_radius_m,60,layer
+butterfly_density_meadow_m2,0.08,layer
+butterfly_density_bed_m2,0.35,layer
+yard_flower_from_month,5,layer
+yard_flower_to_month,9,layer
+fence_yard_height_m,1.46,layer
+fence_low_height_m,0.7,layer
+eaves_overhang_m,0.5,layer
+eaves_span_fraction,0.2,layer
+apron_width_m,0.7,layer
+vehicle_wall_clearance_m,1.2,layer
+dragonfly_density_hole_m2,0.1,layer
+dragonfly_density_slow_m2,0.03,layer
