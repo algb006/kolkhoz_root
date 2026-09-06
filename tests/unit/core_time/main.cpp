@@ -46,6 +46,35 @@ core::WorldState RunToDay(core::ISequentialPhase& phase, std::uint64_t seed, cor
   return previous;
 }
 
+/// @brief Days of one year that lie under a snow cover, seed 12.
+///
+/// The cover is the one weather quantity that is NOT a pure function of
+/// (seed, day) — it remembers yesterday — so the free forecast cannot carry
+/// it and it has to be stepped.
+///
+/// COUNTED ONCE PER DAY, and the distinction cost a measurement: the phase
+/// runs every TICK, a day is kTicksPerDay of them, and counting per call
+/// answers in tick-days. The wrong number was 385 of 1152 where the right
+/// one is 16 of 48 — the same share, which is exactly why a threshold picked
+/// against it looked plausible.
+std::uint32_t CoveredDaysInAYear(core::ISequentialPhase& phase) {
+  core::WorldState previous;
+  previous.world_seed = 12;
+  core::WorldState current;
+  std::uint32_t covered = 0;
+  core::SimDay counted = 0;
+  while (previous.calendar.day < core::kDaysPerYear) {
+    current = previous;
+    phase.RunSequential(previous, current);
+    std::swap(previous, current);
+    if (previous.calendar.day != counted) {
+      counted = previous.calendar.day;
+      covered += previous.weather.snow_cover_days > 0 ? 1U : 0U;
+    }
+  }
+  return covered;
+}
+
 }  // namespace
 
 int main() {
@@ -204,6 +233,53 @@ int main() {
                          "sixth month counting from one");
       failures += Expect(all_still, "calm_share = 1 from the params table makes every day still");
     }
+  }
+
+  // THE THIRTEENTH KNOB IS READ FROM THE TABLE, and this test is what will
+  // tell the day the row arrives from the design base. snow_melt_c stayed
+  // compiled in when the other twelve moved out on 2026-09-05 — a missing
+  // ROW, not a missing band, which is the same rule broken a step earlier.
+  //
+  // The guard names its subject rather than the event: a melt threshold of
+  // +30 means no winter day is ever warm enough to take a cover away, so
+  // snow that falls stays until spring; the compiled default of +2 does not
+  // behave that way. Asserting "it parsed" would pass on either.
+  {
+    fs::create_directories(root / "melt");
+    WriteFile(root / "melt" / "weather.csv",
+              "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+              "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
+    WriteFile(root / "melt" / "weather_params.csv", "key,value\nsnow_melt_c,30\n");
+    const auto melt_tables = core::LoadTableSet((root / "melt").string(), nullptr);
+    const auto never_melts = melt_tables == nullptr
+                                 ? nullptr
+                                 : core::CreateTimeSystem(*melt_tables, core::StubTables::kRefused);
+    failures += Expect(never_melts != nullptr, "a weather_params naming snow_melt_c builds");
+    if (never_melts != nullptr) {
+      // The cover is the ONE weather quantity with a memory, so it is not in
+      // the free forecast and has to be walked day by day.
+      failures +=
+          Expect(CoveredDaysInAYear(never_melts->TimeAndWeatherPhase()) > 40,
+                 "a melt threshold of +30 leaves the cover lying over 40 of the year's 48 days — "
+                 "row was read, and it was read as the melt threshold");
+    }
+    WriteFile(root / "melt" / "weather_params.csv", "key,value\nsnow_melt_c,2\n");
+    const auto plain_tables = core::LoadTableSet((root / "melt").string(), nullptr);
+    const auto melts = plain_tables == nullptr
+                           ? nullptr
+                           : core::CreateTimeSystem(*plain_tables, core::StubTables::kRefused);
+    if (melts != nullptr) {
+      failures += Expect(CoveredDaysInAYear(melts->TimeAndWeatherPhase()) < 25,
+                         "while the same year at the shipped +2 does not — the control that makes "
+                         "the assertion above about snow_melt_c and not about the fixture");
+    }
+    WriteFile(root / "melt" / "weather_params.csv", "key,value\nsnow_melt_c,99\n");
+    const auto silly_melt = core::LoadTableSet((root / "melt").string(), nullptr);
+    failures +=
+        Expect(silly_melt != nullptr &&
+                   core::CreateTimeSystem(*silly_melt, core::StubTables::kRefused) == nullptr,
+               "and a melt threshold off the -15..+30 scale is refused, like every other "
+               "temperature that crosses this seam");
   }
 
   // A month outside 1..12 is refused, not clamped — and 0 is refused too,

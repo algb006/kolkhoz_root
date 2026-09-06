@@ -671,6 +671,15 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
       !number("blizzard_min_c", degrees, &knobs.blizzard_min_celsius) ||
       !number("frost_night_c", degrees, &knobs.frost_night_celsius) ||
       !number("sultry_afternoon_c", degrees, &knobs.sultry_afternoon_celsius) ||
+      // THE THIRTEENTH KNOB, and it is read here before it exists as a row.
+      // Twelve weather numbers moved into weather_params.csv on 2026-09-05
+      // and this one stayed compiled in — not a missing band but a missing
+      // row, which is the same rule broken one step earlier (parameters live
+      // in data, core rules §11). Reading it optionally costs nothing while
+      // the row is absent and starts working the day the design base grows
+      // it; the alternative — waiting for the row and then remembering to
+      // read it — is the shape that left it behind in the first place.
+      !number("snow_melt_c", degrees, &knobs.snow_melt_celsius) ||
       !month("thunder_from_month", &knobs.thunder_from_month) ||
       !month("thunder_to_month", &knobs.thunder_to_month) ||
       !month("frost_from_month", &knobs.frost_from_month) ||
@@ -693,6 +702,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
     season.blizzard_min_celsius = knobs.blizzard_min_celsius;
     season.frost_night_celsius = knobs.frost_night_celsius;
     season.sultry_afternoon_celsius = knobs.sultry_afternoon_celsius;
+    season.snow_melt_celsius = knobs.snow_melt_celsius;
     season.thunder_from_month = knobs.thunder_from_month;
     season.thunder_to_month = knobs.thunder_to_month;
     season.frost_from_month = knobs.frost_from_month;
