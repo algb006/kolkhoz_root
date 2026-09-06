@@ -12,7 +12,7 @@
 /// core_construction reads the book in its sub-step of the decisions slot
 /// (phase 3) and settles kBuildUnit, kStartBuild, kUpgradeUnit and
 /// kDemolishUnit — each to kDone or kRefused IN THE STEP IT IS READ, never
-/// to kAccepted or kActive. The events slot (phase 7) then emits every
+/// to kAccepted or kActive. The events slot (phase 6) then emits every
 /// terminal row's event and REMOVES the row, so the book is empty again by
 /// the end of the step that settled it. The work kinds are still
 /// unconsumed: kAssignWork, kReleaseWork, kPauseUnit, kResumeUnit and

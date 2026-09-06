@@ -49,7 +49,7 @@
 ///      phase never changes the shape of any table.
 ///   7. The sequential world RNG advances only in sequential phases; parallel
 ///      code draws counter-style from (world_seed, tick, entity id).
-///   8. After phase 7 the buffers swap; the just-built state becomes the
+///   8. After phase 6 the buffers swap; the just-built state becomes the
 ///      completed one.
 ///
 /// Under rules 4–7 the result cannot depend on worker count, chunk size or

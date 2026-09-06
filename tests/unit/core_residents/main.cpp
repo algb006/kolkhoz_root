@@ -573,7 +573,7 @@ core::FamilyId RunUntilWedding(core::IResidentsSystem& system, core::WorldState&
 int CheckSettleHouse() {
   int failures = 0;
   const HousingTables tables;
-  const auto system = core::CreateResidentsSystem(tables);
+  const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "a system over the housing tables");
 
   // A free house of a housing type stands in the village: the wedding takes it.
@@ -679,10 +679,28 @@ int CheckVacatedPostIsAnnounced(core::IResidentsSystem& system) {
   return failures;
 }
 
+/// A table set with nothing in it builds only for a caller that SAYS it wants
+/// the documented defaults (core_tables/stub_tables.h).
+///
+/// One assertion per factory and not one on the assembled simulation, which
+/// is what this check first was: the assembly refuses if ANY of the five
+/// refuses, so damaging one guard is masked by the other four. A guard has
+/// to name its own subject.
+int CheckStubTablesMustBeDeclared() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  failures += Expect(core::CreateResidentsSystem(nothing, core::StubTables::kRefused) == nullptr,
+                     "residents: a caller that did not allow the defaults is refused");
+  failures += Expect(core::CreateResidentsSystem(nothing, core::StubTables::kAllowed) != nullptr,
+                     "residents: and one that did gets them");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckStubTablesMustBeDeclared();
   const test::FakeTableSet tables;  // canonical defaults compiled into the config
-  const auto system = core::CreateResidentsSystem(tables);
+  const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "factory yields a system");
 
   // A hand-built village: three fertile couples, one old man, one single.

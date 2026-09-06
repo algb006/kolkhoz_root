@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -766,7 +767,22 @@ class LaborSystem final : public ILaborSystem {
 
 }  // namespace
 
-std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables) {
+std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables, StubTables stubs) {
+  // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
+  // (core_tables/stub_tables.h). A caller that has not said it wants
+  // this module's documented defaults is refused by name, so that a
+  // table set which is merely INCOMPLETE cannot pass for one that is
+  // as its author meant it.
+  if (stubs == StubTables::kRefused) {
+    for (const std::string_view required : {"labor", "professions", "unit_types"}) {
+      if (tables.FindTable(required) == nullptr) {
+        LogError(std::string("labor: the table set carries no '") + std::string(required) +
+                 "' table, and this caller did not allow the defaults");
+        return nullptr;
+      }
+    }
+  }
+
   LaborConfig config;
   std::string error;
   if (!ParseLaborConfig(tables, config, error)) {

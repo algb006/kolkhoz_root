@@ -216,7 +216,7 @@ int TestPlacementLevels() {
 int TestBoundarySystemStub() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto system = core::CreateLaborSystem(tables);
+  const auto system = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "factory yields a system");
   if (system != nullptr) {
     const core::WorldState previous;
@@ -358,7 +358,7 @@ int TestReferenceWorkerDeliversOneNorm() {
 int TestWholeWorkingDay() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (labor == nullptr) {
     return Expect(false, "factory yields a system");
   }
@@ -385,7 +385,7 @@ int TestWholeWorkingDay() {
 int TestWalkOffPaysAndStops() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (labor == nullptr) {
     return Expect(false, "factory yields a system");
   }
@@ -407,7 +407,7 @@ int TestWalkOffPaysAndStops() {
 int TestBarnRunsOnTheDayOff() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (labor == nullptr) {
     return Expect(false, "factory yields a system");
   }
@@ -435,24 +435,24 @@ int TestLaborTableParsing() {
       {"key", "value", "trudodni_rate", "rest_drain_per_norm_day"},
       {{"standard_day_hours", "12"}, {"travel_limit_hours", "3"}, {"harvest", "", "1.5", "5"}});
   const test::FakeTableSet good_set("labor", good);
-  failures +=
-      Expect(core::CreateLaborSystem(good_set) != nullptr, "a readable labor table is read");
+  failures += Expect(core::CreateLaborSystem(good_set, core::StubTables::kAllowed) != nullptr,
+                     "a readable labor table is read");
 
   const test::FakeTable not_a_number({"key", "value"}, {{"standard_day_hours", "рано"}});
   const test::FakeTableSet bad_text("labor", not_a_number);
-  failures += Expect(core::CreateLaborSystem(bad_text) == nullptr,
+  failures += Expect(core::CreateLaborSystem(bad_text, core::StubTables::kAllowed) == nullptr,
                      "a cell that is not a number refuses the factory");
 
   const test::FakeTable out_of_range({"key", "value"}, {{"path_factor", "99"}});
   const test::FakeTableSet bad_range("labor", out_of_range);
-  failures += Expect(core::CreateLaborSystem(bad_range) == nullptr,
+  failures += Expect(core::CreateLaborSystem(bad_range, core::StubTables::kAllowed) == nullptr,
                      "a value outside its range refuses the factory too");
 
   // A table of a shape the parser knows nothing about is not an error: every
   // key is optional, and what is absent keeps the canonical default.
   const test::FakeTable strange({"key", "value"}, {{"nobody_reads_this", "5"}});
   const test::FakeTableSet strange_set("labor", strange);
-  failures += Expect(core::CreateLaborSystem(strange_set) != nullptr,
+  failures += Expect(core::CreateLaborSystem(strange_set, core::StubTables::kAllowed) != nullptr,
                      "unknown keys are the balancer's notes, not a failure");
   return failures;
 }
@@ -631,7 +631,8 @@ int TestAppointmentTakesEffectAtTheDayClose() {
   const std::filesystem::path root = WritePostTables();
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
     return 1;
   }
@@ -702,7 +703,8 @@ int TestAppointmentRefusals() {
   const std::filesystem::path root = WritePostTables();
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
     return 1;
   }
@@ -986,7 +988,8 @@ int TestHolderIsOutOfThePoolAndOnHisOwnWork() {
   const std::filesystem::path root = WritePostTables();
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
     return 1;
   }
@@ -1057,7 +1060,8 @@ int TestYardWithoutGroomAlarm() {
   const std::filesystem::path root = WritePostTables();
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto labor = tables == nullptr ? nullptr : core::CreateLaborSystem(*tables);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "the post tables build a labor system") != 0) {
     return 1;
   }
@@ -1104,7 +1108,7 @@ int TestYardWithoutGroomAlarm() {
 int TestStandingWorkOrder() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
   }
@@ -1204,7 +1208,7 @@ int TestStandingWorkOrder() {
 int TestStandingWorkCorners() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
   }
@@ -1284,7 +1288,7 @@ int TestStandingWorkCorners() {
 int TestSecondIterationCorners() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
   }
@@ -1383,7 +1387,7 @@ int TestSecondIterationCorners() {
 int TestReleaseWork() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
   }
@@ -1443,7 +1447,7 @@ int TestReleaseWork() {
 int TestAssignWorkRefusals() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
   }
@@ -1504,7 +1508,7 @@ int TestAssignWorkRefusals() {
 int TestWorkforceIsTheLaborRule() {
   int failures = 0;
   const test::FakeTableSet tables;
-  const auto labor = core::CreateLaborSystem(tables);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
   if (Expect(labor != nullptr, "factory yields a system") != 0) {
     return 1;
   }
@@ -1540,8 +1544,26 @@ int TestWorkforceIsTheLaborRule() {
   return failures;
 }
 
+/// A table set with nothing in it builds only for a caller that SAYS it wants
+/// the documented defaults (core_tables/stub_tables.h).
+///
+/// One assertion per factory and not one on the assembled simulation, which
+/// is what this check first was: the assembly refuses if ANY of the five
+/// refuses, so damaging one guard is masked by the other four. A guard has
+/// to name its own subject.
+int CheckStubTablesMustBeDeclared() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  failures += Expect(core::CreateLaborSystem(nothing, core::StubTables::kRefused) == nullptr,
+                     "labor: a caller that did not allow the defaults is refused");
+  failures += Expect(core::CreateLaborSystem(nothing, core::StubTables::kAllowed) != nullptr,
+                     "labor: and one that did gets them");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckStubTablesMustBeDeclared();
   failures += TestSurplusIdles();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

@@ -8,6 +8,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "../../common/fake_tables.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -67,7 +68,7 @@ int main() {
     return 1;
   }
 
-  const auto time_system = core::CreateTimeSystem(*tables);
+  const auto time_system = core::CreateTimeSystem(*tables, core::StubTables::kRefused);
   failures += Expect(time_system != nullptr, "the factory accepts a good weather table");
   {
     // A season that swings past the scale is refused: +30 is the hottest
@@ -79,8 +80,10 @@ int main() {
            "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,26,5,6,25\nautumn,6,7,5,45\n";
     std::string hot_error;
     const auto hot_tables = core::LoadTableSet(hot.string(), &hot_error);
-    failures += Expect(hot_tables != nullptr && core::CreateTimeSystem(*hot_tables) == nullptr,
-                       "a season that swings past +30 is refused");
+    failures +=
+        Expect(hot_tables != nullptr &&
+                   core::CreateTimeSystem(*hot_tables, core::StubTables::kRefused) == nullptr,
+               "a season that swings past +30 is refused");
   }
   core::ISequentialPhase& phase = time_system->TimeAndWeatherPhase();
 
@@ -176,7 +179,9 @@ int main() {
               "key,value\nthunder_from_month,6\nthunder_to_month,6\nthunder_share,1\n"
               "thunder_min_c,-15\ncalm_share,1\nwind_share,0\n");
     const auto knob_tables = core::LoadTableSet((root / "knobs").string(), nullptr);
-    const auto knobbed = knob_tables == nullptr ? nullptr : core::CreateTimeSystem(*knob_tables);
+    const auto knobbed = knob_tables == nullptr
+                             ? nullptr
+                             : core::CreateTimeSystem(*knob_tables, core::StubTables::kRefused);
     failures += Expect(knobbed != nullptr, "a table set with weather_params builds");
     if (knobbed != nullptr) {
       std::uint32_t storms = 0;
@@ -213,9 +218,40 @@ int main() {
     const auto silly_tables = core::LoadTableSet((root / "silly").string(), nullptr);
     failures += Expect(silly_tables != nullptr, "the out-of-range table parses as CSV");
     if (silly_tables != nullptr) {
-      failures += Expect(core::CreateTimeSystem(*silly_tables) == nullptr,
-                         "but a month of 0 is refused: months here are human, 1..12");
+      failures +=
+          Expect(core::CreateTimeSystem(*silly_tables, core::StubTables::kRefused) == nullptr,
+                 "but a month of 0 is refused: months here are human, 1..12");
     }
+  }
+
+  // A TABLE SET WITH NO WEATHER TABLE IS REFUSED — unless the caller says it
+  // wants the stub climate.
+  //
+  // The stub is legitimate and stays: a unit test builds subsystems with no
+  // tables at all. What was not legitimate is that it happened to callers
+  // who had never considered it — on 2026-09-05 a set without weather.csv
+  // built silently and a day of measurements described a climate the game
+  // does not have. A log line would not have fixed that: a message nobody
+  // reads is not a guard. So the consent is a word at the CALL SITE.
+  {
+    fs::create_directories(root / "no_weather");
+    WriteFile(root / "no_weather" / "farming.csv", "key,value\nstress_per_day,0.02\n");
+    const auto bare = core::LoadTableSet((root / "no_weather").string(), nullptr);
+    failures += Expect(bare != nullptr, "a table set without weather still loads as tables");
+    if (bare != nullptr) {
+      failures += Expect(core::CreateTimeSystem(*bare, core::StubTables::kRefused) == nullptr,
+                         "a caller that did not allow the stub seasons is refused, not served "
+                         "a different climate in silence");
+      failures += Expect(core::CreateTimeSystem(*bare, core::StubTables::kAllowed) != nullptr,
+                         "and a caller that asked for them gets them");
+    }
+    // The table-LESS case is the same statement: a set with nothing in it is
+    // the unit test's own world, and it must still have to say so.
+    const test::FakeTableSet nothing;
+    failures += Expect(core::CreateTimeSystem(nothing, core::StubTables::kRefused) == nullptr,
+                       "no tables at all is refused on the same terms");
+    failures += Expect(core::CreateTimeSystem(nothing, core::StubTables::kAllowed) != nullptr,
+                       "and allowed on the same terms");
   }
 
   // A malformed weather table is refused, not patched over.
@@ -225,7 +261,7 @@ int main() {
   const auto bad_tables = core::LoadTableSet((root / "bad").string(), nullptr);
   failures += Expect(bad_tables != nullptr, "the malformed table itself parses as CSV");
   if (bad_tables != nullptr) {
-    failures += Expect(core::CreateTimeSystem(*bad_tables) == nullptr,
+    failures += Expect(core::CreateTimeSystem(*bad_tables, core::StubTables::kRefused) == nullptr,
                        "the factory refuses a malformed weather table");
   }
 

@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -72,7 +73,7 @@ class FamilyNeedsPhase final : public IParallelPhase {
   float life_speedup_;
 };
 
-/// The metrics slot (phase 6): family satisfaction from its four components
+/// The metrics slot (phase 5): family satisfaction from its four components
 /// with the epoch weights and the low-component law (metrics design §7).
 /// Parallel by family; each invocation owns its family rows.
 class FamilyMetricsPhase final : public IParallelPhase {
@@ -316,7 +317,22 @@ class ResidentsSystem final : public IResidentsSystem {
 
 }  // namespace
 
-std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables) {
+std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables, StubTables stubs) {
+  // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
+  // (core_tables/stub_tables.h). A caller that has not said it wants
+  // this module's documented defaults is refused by name, so that a
+  // table set which is merely INCOMPLETE cannot pass for one that is
+  // as its author meant it.
+  if (stubs == StubTables::kRefused) {
+    for (const std::string_view required : {"demography", "life", "satisfaction"}) {
+      if (tables.FindTable(required) == nullptr) {
+        LogError(std::string("residents: the table set carries no '") + std::string(required) +
+                 "' table, and this caller did not allow the defaults");
+        return nullptr;
+      }
+    }
+  }
+
   LifeConfig life;
   std::string error;
   if (!ParseLifeConfig(tables, life, error)) {

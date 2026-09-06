@@ -19,6 +19,7 @@
 
 #include "campaign_tables.h"
 #include "core_catalog/definitions.h"
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/random.h"
@@ -342,24 +343,66 @@ struct LayoutRow {
   bool derelict = false;
 };
 
-/// @brief Reads one cell as a number; an empty, unreadable, non-finite or
-/// absurd cell is 0 and says so. std::from_chars accepts "inf" and "nan",
-/// and these tables are exported and then hand-edited, so the reader refuses
-/// them here instead of passing them on to a cast (UB-002). Written
-/// positively for the same reason as everywhere else: nan fails the test.
-float LayoutNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
+/// @brief The state of one layout cell, and its value when it has one.
+///
+/// std::from_chars accepts "inf" and "nan", and these tables are exported and
+/// then hand-edited, so the reader refuses both here instead of passing them
+/// on to a cast (UB-002). Written positively for the same reason as
+/// everywhere else: nan fails the test rather than passing it.
+///
+/// Written here and not taken from core_catalog because the layout is read
+/// with a LIMIT rather than a range per column — every layout number shares
+/// one practical ceiling — and because genesis cannot refuse. What it takes
+/// from that module is the DISTINCTION, which is the part that was missing:
+/// absent, blank, present-and-wrong are three answers.
+CellState ReadLayoutCell(const ITable& table,
+                         std::uint32_t row,
+                         std::uint32_t column,
+                         float* value) {
   if (column == kNoTableColumn) {
-    return 0.0F;
+    return CellState::kAbsent;
+  }
+  if (table.CellText(row, column).empty()) {
+    return CellState::kAbsent;  // blank: this row simply does not say
   }
   const std::optional<float> cell = table.CellReal(row, column);
-  if (!cell) {
-    return 0.0F;
+  if (!cell || !(*cell >= -kLayoutNumberLimit && *cell <= kLayoutNumberLimit)) {
+    return CellState::kBad;
   }
-  if (!(*cell >= -kLayoutNumberLimit && *cell <= kLayoutNumberLimit)) {
-    LogWarning("genesis: a layout cell is not a usable number; it is read as zero");
-    return 0.0F;
+  *value = *cell;
+  return CellState::kRead;
+}
+
+/// @brief One layout number, or 0 when the cell does not give one.
+///
+/// The lossy face of ReadLayoutCell, kept because most callers have no answer
+/// to "absent" other than the neutral value. The ones that do call the cell
+/// reader directly.
+float LayoutNumber(const ITable& table, std::uint32_t row, std::uint32_t column) {
+  // THREE DIFFERENT FACTS USED TO LEAVE HERE AS ONE ZERO, and only the third
+  // of them said so out loud: no such column, a BLANK cell, and text that is
+  // not a number at all. Phase-2 task A6, the second half.
+  //
+  // A blank cell keeps its zero and stays silent, because in this table
+  // blank genuinely means nothing — a layout row that names no area has no
+  // area. TEXT THAT IS NOT A NUMBER IS A DEFECT OF THE TABLE and now says
+  // so: "12kg" in the area column used to lay out a field of nought
+  // hectares and go on with the founding, which is the shape of every
+  // silent substitution we have chased today — the missing table that
+  // swapped a whole climate for a stub one, and the missing cell that swaps
+  // a value.
+  //
+  // It warns rather than refuses because genesis has no way to refuse: it
+  // builds a world and returns it. The refusal belongs to the config
+  // parsers, which have one (core_catalog/table_value.h), and the layout
+  // has no parser of its own — that is itself an open item, and it is named
+  // in OPEN_ITEMS rather than half-fixed here.
+  float value = 0.0F;
+  const CellState state = ReadLayoutCell(table, row, column, &value);
+  if (state == CellState::kBad) {
+    LogWarning("genesis: a layout cell is not a number and is read as zero — check the table");
   }
-  return *cell;
+  return value;
 }
 
 /// @brief Fills the units, fields and meadows of the start from the layout

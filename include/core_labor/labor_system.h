@@ -58,6 +58,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/world_state.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -119,7 +120,11 @@ class ILaborSystem {
 ///               no post exists that can be filled.
 /// @return nullptr when a present table is malformed (missing tables mean
 ///         the documented defaults, like every subsystem factory).
-std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables);
+/// @param stubs Whether this subsystem may be built WITHOUT its balance
+///        tables, on the documented defaults (core_tables/stub_tables.h).
+///        There is no default value: a caller that has not thought about
+///        it cannot be served a different world in silence.
+std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables, StubTables stubs);
 
 }  // namespace core
 

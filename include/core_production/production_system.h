@@ -3,10 +3,14 @@
 /// @threading PARALLEL_WRITE
 /// The production phase (slot 4) writes world state from many workers, each
 /// over its own range of FIELD rows — and today over nothing else: the only
-/// parallel phase in the module is the field-growth one, which writes
-/// FieldRow::weather_stress and reads the calendar and weather blocks phase
-/// 1 froze. Unit work cycles are sequential, in the decisions sub-step; if
-/// they are ever parallelised the write map widens THEN, and this line says
+/// parallel phase in the module is the field-growth one, which writes five
+/// members of the owned row — FieldRow::drought_stress, ::wet_stress,
+/// ::drought_run_days, ::wet_run_days and ::weather_state — and reads the
+/// calendar and weather blocks phase 1 froze. The single ::weather_stress
+/// this line used to name was split in two on 2026-09-04, and the label
+/// outlived it by two days: a write map naming a field that no longer
+/// exists cannot be checked against the code at all. Unit work cycles are sequential, in the
+/// decisions sub-step; if they are ever parallelised the write map widens THEN, and this line says
 /// so then. A label wider than the truth is worse than none: it stops being
 /// an ownership contract a reader can use. All of it strictly under the
 /// buffer law (core_sim/step.h). The production-decisions sub-step runs sequentially
@@ -40,6 +44,7 @@
 #include <vector>
 
 #include "core_sim/step.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -122,7 +127,12 @@ class IProductionSystem {
 /// @param tables Balance tables (crops, unit types, livestock kinds, norms);
 ///               non-owning, must outlive the returned object.
 /// Implemented in core_production (stage 4 of the plan; no-op STUB — task O0).
-std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables);
+/// @param stubs Whether this subsystem may be built WITHOUT its balance
+///        tables, on the documented defaults (core_tables/stub_tables.h).
+///        There is no default value: a caller that has not thought about
+///        it cannot be served a different world in silence.
+std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables,
+                                                          StubTables stubs);
 
 }  // namespace core
 

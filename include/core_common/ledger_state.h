@@ -4,7 +4,7 @@
 /// @threading SINGLE_THREADED
 /// Written only in sequential slots: every writer is named in the write map
 /// below, and every one of them is a sequential sub-step (decisions, phase 3)
-/// or the events slot (phase 7). Nearly every counter has exactly one; where
+/// or the events slot (phase 6). Nearly every counter has exactly one; where
 /// a counter has two, the map says so and says why the sum stays exact. Parallel phases never
 /// touch the ledger — what they produce is folded into it afterwards, in row
 /// order, by the events slot (buffer-law rule 5). Read by anyone between

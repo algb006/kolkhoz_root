@@ -6,7 +6,7 @@
 /// discipline, and every write is sequential: the step engine CLEARS it
 /// right after the copy of `previous` into `current` (buffer-law rule 2,
 /// core_sim/step.h), sequential sub-steps append as things happen in them,
-/// and the events slot (phase 7) appends what the parallel phases produced,
+/// and the events slot (phase 6) appends what the parallel phases produced,
 /// folded in row order — a parallel phase itself never appends (buffer-law
 /// rule 5: no cross-row accumulators, and the outbox is one). Between steps
 /// the boundary reads the completed step's outbox and moves it into its own

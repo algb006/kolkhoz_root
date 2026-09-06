@@ -16,6 +16,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
@@ -129,6 +130,51 @@ int main() {
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
 
+  // A LAYOUT CELL THAT IS NOT A NUMBER SAYS SO, and a blank one does not.
+  //
+  // Three facts used to leave LayoutNumber as one silent zero: no such
+  // column, a blank cell, and text that is not a number. Only the third is a
+  // defect of the table — a blank layout row genuinely does not say — and it
+  // is the third that was silent. Phase-2 task A6, second half; the same
+  // shape as the missing weather table that swapped a whole climate for a
+  // stub one without a word on the same day.
+  //
+  // MEASURED THROUGH THE LOG, because genesis has no way to refuse: it
+  // builds a world and returns it. The log file is the only place the
+  // warning is observable from, so it is where the check looks.
+  {
+    const fs::path log_path = fs::temp_directory_path() / "unit_core_world_layout.log";
+    fs::remove(log_path);
+    const test::FakeTable layout({"key", "kind", "x_m", "y_m", "area_ha"},
+                                 {{"field_bad", "arable", "100", "100", "12kg"},
+                                  {"field_blank", "arable", "200", "200", ""}});
+    // Genesis stays people-only until unit_types, resources and crops are
+    // all there, so the smallest set that reaches the layout pass names all
+    // four. They may be empty: the layout row is arable and needs none of
+    // their contents.
+    const test::FakeTable empty({"key"}, {});
+    const test::FakeTableSet one_table({{"start_layout", &layout},
+                                        {"unit_types", &empty},
+                                        {"resources", &empty},
+                                        {"crops", &empty}});
+    failures += Expect(core::InitLogFile(log_path.string()), "the test can open a log file");
+    core::CreateStartWorld(one_table, 7);
+    core::ShutdownLogFile();
+    std::ifstream log(log_path);
+    const std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    const bool complained = text.find("a layout cell is not a number") != std::string::npos;
+    failures += Expect(complained,
+                       "a layout cell holding '12kg' is complained about, not read as "
+                       "a zero in silence");
+    // And exactly once: the blank cell beside it must not be complained
+    // about, or the warning becomes noise and stops being read.
+    const std::size_t first = text.find("a layout cell is not a number");
+    const bool only_once = first == std::string::npos || text.find("a layout cell is not a number",
+                                                                   first + 1) == std::string::npos;
+    failures += Expect(only_once, "and the blank cell beside it is not — blank is not a defect");
+    fs::remove(log_path);
+  }
+
   // Stage-3 genesis: the designed start, deterministic from the seed.
   failures += Expect(world.residents.rows.size() == 80, "genesis seats 80 residents");
   failures += Expect(world.families.rows.size() == 21, "genesis builds 21 yards");
@@ -158,7 +204,27 @@ int main() {
   config_single.tables = &tables;
   config_single.world_seed = 7;
   config_single.worker_count = 1;
+  // THIS TEST IS THE LEGITIMATE STUB CASE AND NOW SAYS SO: its table set is
+  // a fake with nothing in it, and the criterion it measures — one worker
+  // equals many, bit for bit — is about the engine and not about the
+  // balance. Since 2026-09-05 the silence would be a refusal instead
+  // (core_tables/stub_tables.h), which is the point: a caller that has not
+  // thought about its tables cannot be served another world quietly.
+  config_single.stub_tables = core::StubTables::kAllowed;
   const auto single = core::CreateStandardSimulation(config_single);
+  failures += Expect(single != nullptr, "a caller that allows the stub tables gets a simulation");
+  {
+    // And the same config WITHOUT that word is refused — the guard, and the
+    // reason this test could segfault when the refusal first appeared.
+    core::StandardSimulationConfig unstated = config_single;
+    unstated.stub_tables = core::StubTables::kRefused;
+    failures += Expect(core::CreateStandardSimulation(unstated) == nullptr,
+                       "and one that does not is refused, not served the defaults in silence");
+  }
+  if (single == nullptr) {
+    std::cout << "unit_core_world: FAILED\n";
+    return failures;
+  }
   for (std::uint32_t step = 0; step < kCriterionSteps; ++step) {
     single->AdvanceStep();
   }

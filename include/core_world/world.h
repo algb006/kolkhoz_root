@@ -9,7 +9,7 @@
 /// subsystems, wires the StepPhaseSet and owns the two composite sequential
 /// slots. The decisions slot (phase 3) calls the subsystems' sub-steps in a
 /// fixed order — assignments (core_labor), then demography (core_residents),
-/// then production decisions (core_production); the events slot (phase 7) is
+/// then production decisions (core_production); the events slot (phase 6) is
 /// a STUB until the event system exists (project phase 3). Consumers — unit
 /// tests, the balance run, later the UE layer — see only the two factories
 /// below and the ISimulation they yield.
@@ -22,6 +22,7 @@
 
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -53,6 +54,18 @@ struct StandardSimulationConfig {
   /// verification mode. Results are identical for every value — that is the
   /// determinism check, not an option.
   std::uint32_t worker_count = 1;
+
+  /// May the subsystems be built WITHOUT their balance tables, on the
+  /// documented defaults (core_tables/stub_tables.h)?
+  ///
+  /// THE DEFAULT IS THE REFUSAL, and that is the whole correction. Every
+  /// factory of this core used to fall back to its defaults in silence, so
+  /// an INCOMPLETE table set was indistinguishable from a complete one —
+  /// and on 2026-09-05 that cost a day of measurements taken in a climate
+  /// the game does not have. Silence now means the strict answer: a caller
+  /// who has thought about it says kAllowed, and a caller who has not
+  /// cannot be quietly served another world.
+  StubTables stub_tables = StubTables::kRefused;
 };
 
 /// @brief Creates the fully wired simulation: subsystems, phases, engine.
@@ -64,8 +77,12 @@ struct StandardSimulationConfig {
 /// CompletedState to observe, ResetWorld to rewind — subsystems hold no
 /// world state, so rewinding needs no notification (subsystem law,
 /// manual/52-state-model.md).
-/// @return nullptr when a subsystem factory refuses its configuration (a
-///         malformed balance table — the refusing factory logs why).
+/// @return nullptr when a subsystem factory refuses its configuration — a
+///         malformed balance table, or, under the default
+///         stub_tables = StubTables::kRefused, a table that is not there at
+///         all. The refusing factory logs which, and names the table.
+///         The absent case is new since 2026-09-06: it used to be served
+///         silently from the subsystem's own defaults.
 /// Implemented in core_world (stage 1, task O2 wires the stubs of task O0).
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config);
 

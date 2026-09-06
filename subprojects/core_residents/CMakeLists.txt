@@ -1,6 +1,6 @@
 # core_residents — the people (stage 3 of the plan): needs, food and cold,
 # households and personal plots, demography, family satisfaction. Owns two
-# parallel slots — needs (phase 2, by family) and metrics (phase 6, by
+# parallel slots — needs (phase 2, by family) and metrics (phase 5, by
 # family); its structural work (births, deaths, marriages) runs inside the
 # sequential decisions phase through the subsystem interface (task F4).
 

@@ -2,7 +2,7 @@
 # wiring of the StepPhaseSet, and the two composite sequential slots —
 # decisions (phase 3: accountant from core_labor, demography from
 # core_residents, production choices from core_production, in a fixed order)
-# and events (phase 7: a STUB until the event system exists).
+# and events (phase 6: a STUB until the event system exists).
 #
 # The one module allowed to name every other; nothing depends on it except
 # the executables in tests/ and src/.

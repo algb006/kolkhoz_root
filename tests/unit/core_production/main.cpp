@@ -567,7 +567,9 @@ int CheckDroughtReadsTheAfternoon() {
          "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the drought table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -623,6 +625,101 @@ int CheckDroughtReadsTheAfternoon() {
   failures += Expect(drowned.weather_state == core::FieldWeatherState::kSoaking,
                      "and the other one says soaking");
 
+  // TWO THRESHOLDS, AND THEY MOVE APART. They hold the same number today, so
+  // nothing above can tell whether the code reads one row or two — which is
+  // precisely the state the split was made to leave behind. A second table
+  // set names them separately, and each half must then follow its own row.
+  //
+  // THE ROWS ARE READ, NOT MERELY DECLARED: this fixture is also the check
+  // that a `drought_spell_days` added to farming.csv is not dropped in
+  // silence by a parser that knows every other name in the file.
+  {
+    const std::filesystem::path two = root / "two_spells";
+    std::filesystem::create_directories(two);
+    for (const char* name : {"resources.csv", "crops.csv", "weather.csv"}) {
+      std::filesystem::copy_file(
+          root / name, two / name, std::filesystem::copy_options::overwrite_existing);
+    }
+    std::ofstream(two / "farming.csv")
+        << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+           "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+           "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+           "weather_state_days,5\ndrought_spell_days,5\nwet_spell_days,3\n";
+    const auto split_tables = core::LoadTableSet(two.string(), nullptr);
+    const auto split = split_tables == nullptr ? nullptr
+                                               : core::CreateProductionSystem(
+                                                     *split_tables, core::StubTables::kAllowed);
+    failures += Expect(split != nullptr, "a farming table naming both spell lengths builds");
+    if (split != nullptr) {
+      const auto with = [&](float mean, core::Precipitation sky, int days) {
+        core::WorldState world;
+        world.calendar.tick = 30 * core::kTicksPerDay;
+        core::RefreshCalendarCaches(world.calendar);
+        world.weather.air_temperature_celsius = mean;
+        world.weather.temperature_swing_celsius = 6.0F;
+        world.weather.precipitation = sky;
+        core::FieldRow field;
+        field.area_ga = 10.0F;
+        field.phase = core::FieldPhase::kGrowing;
+        field.crop = core::CropId{0};
+        core::AppendRow(world.fields, field);
+        for (int day = 0; day < days; ++day) {
+          const core::WorldState previous = world;
+          split->ProductionPhase().RunItemRange(previous, world, 0, 1);
+          world.calendar.tick += core::kTicksPerDay;
+          core::RefreshCalendarCaches(world.calendar);
+        }
+        return world.fields.rows[0].weather_state;
+      };
+      failures +=
+          Expect(with(24.0F, core::Precipitation::kNone, 4) == core::FieldWeatherState::kNone,
+                 "four hot days are under a drought spell of five");
+      failures +=
+          Expect(with(24.0F, core::Precipitation::kNone, 5) == core::FieldWeatherState::kDrying,
+                 "and five reach it");
+      failures +=
+          Expect(with(10.0F, core::Precipitation::kRain, 3) == core::FieldWeatherState::kSoaking,
+                 "while three rain days already reach a wet spell of three — the two lengths come "
+                 "from two rows and not from one");
+    }
+  }
+
+  // A SPELL LENGTH OUT OF THE BAND IS REFUSED, and the check names the row it
+  // is about. The two spell rows never pass through the required loop, so the
+  // shared band did not reach them: for a day the floor was their only bound,
+  // while production_system.cpp cast both to std::uint32_t. A float past
+  // UINT32_MAX converts as undefined exactly as a negative one does.
+  //
+  // THE CONTROL IS THE POINT. "The build was refused" passes when it was
+  // refused for any reason at all — a typo in the fixture would do it. So the
+  // same table is built twice and differs in ONE cell: 1e9 is refused, 5 is
+  // taken. Only then does the refusal say something about drought_spell_days.
+  {
+    const std::filesystem::path band = root / "spell_band";
+    std::filesystem::create_directories(band);
+    for (const char* name : {"resources.csv", "crops.csv", "weather.csv"}) {
+      std::filesystem::copy_file(
+          root / name, band / name, std::filesystem::copy_options::overwrite_existing);
+    }
+    const auto build_with_spell = [&](const char* spell) {
+      std::ofstream(band / "farming.csv")
+          << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+             "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+             "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+             "weather_state_days,5\ndrought_spell_days,"
+          << spell << "\nwet_spell_days,3\n";
+      const auto set = core::LoadTableSet(band.string(), nullptr);
+      return set == nullptr ? nullptr
+                            : core::CreateProductionSystem(*set, core::StubTables::kAllowed);
+    };
+    failures += Expect(build_with_spell("1e9") == nullptr,
+                       "a drought spell of a billion days is refused, not cast to unsigned");
+    failures += Expect(build_with_spell("-1") == nullptr, "and a negative one is refused too");
+    failures += Expect(build_with_spell("5") != nullptr,
+                       "while the same table with a sane spell builds — the refusal above is "
+                       "about that row and not about the fixture");
+  }
+
   // The threshold is a RUN, not a tally: four days is under it, and a mild
   // day in the middle of a spell breaks it rather than pausing it.
   failures += Expect(after_days(24.0F, core::Precipitation::kNone, 4).weather_state ==
@@ -665,7 +762,9 @@ int CheckStoreCeilingAndAlarms() {
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,1\nbarn,2,5\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the ceiling table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1161,7 +1260,9 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the shared-room table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1283,7 +1384,9 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the reaping-claim table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1400,7 +1503,9 @@ int CheckTheStrawClaimsRoomToo() {
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the straw table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1496,7 +1601,9 @@ int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,10\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the burning table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1594,7 +1701,9 @@ int CheckTheRoomIsSpentInHarvestOrder() {
   std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the harvest-order table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1672,7 +1781,8 @@ int CheckCapacityWithoutALadderIsRefused() {
     }
     std::string error;
     const auto tables = core::LoadTableSet(root.string(), &error);
-    return tables != nullptr && core::CreateProductionSystem(*tables) != nullptr;
+    return tables != nullptr &&
+           core::CreateProductionSystem(*tables, core::StubTables::kAllowed) != nullptr;
   };
   failures += Expect(!loads("key,storage_capacity_t\nbarn,9\n", nullptr),
                      "a capacity with no ladder at all refuses the load");
@@ -1811,7 +1921,9 @@ int CheckTheTeamWithoutARoofSaysSo() {
       << "key,storage_capacity_t,capacity_by_plot\nhorse_yard,0,0\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the stable table set builds a production system") != 0) {
     std::cout << error << '\n';
     return 1;
@@ -1897,7 +2009,9 @@ int CheckPauseAndResume() {
   std::ofstream(root / "unit_types.csv") << "key\nbarn\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
-  const auto system = tables == nullptr ? nullptr : core::CreateProductionSystem(*tables);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "a thin table set still builds a production system") != 0) {
     return 1;
   }
@@ -1957,11 +2071,29 @@ int CheckPauseAndResume() {
   return failures;
 }
 
+/// A table set with nothing in it builds only for a caller that SAYS it wants
+/// the documented defaults (core_tables/stub_tables.h).
+///
+/// One assertion per factory and not one on the assembled simulation, which
+/// is what this check first was: the assembly refuses if ANY of the five
+/// refuses, so damaging one guard is masked by the other four. A guard has
+/// to name its own subject.
+int CheckStubTablesMustBeDeclared() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  failures += Expect(core::CreateProductionSystem(nothing, core::StubTables::kRefused) == nullptr,
+                     "production: a caller that did not allow the defaults is refused");
+  failures += Expect(core::CreateProductionSystem(nothing, core::StubTables::kAllowed) != nullptr,
+                     "production: and one that did gets them");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
   const test::FakeTableSet tables;
-  const auto system = core::CreateProductionSystem(tables);
+  const auto system = core::CreateProductionSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "factory yields a system");
 
   const core::WorldState previous;

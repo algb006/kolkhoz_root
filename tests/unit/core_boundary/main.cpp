@@ -171,6 +171,12 @@ std::unique_ptr<core::ISession> ScriptedSession(const core::ITableSet& tables,
 int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
+  // A fake table set with nothing in it: these tests are about the
+  // boundary, not the balance, so they declare that they want the
+  // documented defaults (core_tables/stub_tables.h). Since 2026-09-05
+  // saying nothing is a refusal instead — a caller that has not thought
+  // about its tables cannot be served another world in silence.
+  sim_config.stub_tables = core::StubTables::kAllowed;
   sim_config.tables = &tables;
   sim_config.worker_count = 1;
 
@@ -835,6 +841,7 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
 
   const auto run = [&tables](std::uint32_t worker_count) {
     core::StandardSimulationConfig sim_config;
+    sim_config.stub_tables = core::StubTables::kAllowed;
     sim_config.tables = &tables;
     sim_config.world_seed = 99;
     sim_config.worker_count = worker_count;
@@ -887,6 +894,7 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
 int TestCrewOrderShape(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
   sim_config.tables = &tables;
   sim_config.worker_count = 1;
   core::SessionConfig config;
@@ -1036,6 +1044,7 @@ int TestStockLights(const core::ITableSet& tables) {
 int TestWorkforceQuestions(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
   sim_config.tables = &tables;
   sim_config.worker_count = 1;
 

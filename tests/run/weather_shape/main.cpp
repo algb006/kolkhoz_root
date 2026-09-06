@@ -269,7 +269,7 @@ bool Measure(const std::string& tables_dir, Shape& shape) {
     std::cout << "FAIL: " << tables_dir << " did not load (" << error << ")\n";
     return false;
   }
-  const auto system = core::CreateTimeSystem(*tables);
+  const auto system = core::CreateTimeSystem(*tables, core::StubTables::kRefused);
   if (system == nullptr) {
     std::cout << "FAIL: the time system did not build over " << tables_dir << '\n';
     return false;

@@ -9,9 +9,11 @@
 /// block, the level and `wear`, `paused` is set by the production sub-step
 /// reading kPauseUnit and only read by construction and the boundary after
 /// it (task A8), and the parallel slots touch no unit at all — slot
-/// 4 is split by FIELD (land_state.h), slot 5 is the instant-delivery stub.
-/// When logistics becomes real and takes units as its unit of parallelism,
-/// that is a threading change and this block changes with it. Structural
+/// 4 is split by FIELD (land_state.h), slot 5 by FAMILY (metrics). The
+/// instant-delivery stub that used to sit between them was the logistics
+/// slot, removed with the seventh phase on 2026-09-05. When logistics becomes
+/// real and takes units as its unit of parallelism, that is a threading
+/// change and this block changes with it. Structural
 /// changes — a row appended for a marked site, a row removed after
 /// demolition — stay sequential regardless (buffer-law rule 6).
 ///

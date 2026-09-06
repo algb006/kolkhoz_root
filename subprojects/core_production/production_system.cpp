@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -165,13 +166,26 @@ class FieldGrowthPhase final : public IParallelPhase {
       // The judgement, made here rather than left to the reader. Whoever
       // draws the field would otherwise infer it from temperature, and a
       // second home for the rule is how a mechanic ends up with two.
-      // Non-negative by the parse (production_config.cpp gives this one knob
-      // its own floor): the conversion below would be undefined otherwise,
-      // and the `threshold > 0` test comes after it and could not help.
-      const auto threshold = static_cast<std::uint32_t>(farming.weather_state_days);
-      if (field.drought_run_days >= threshold && threshold > 0) {
+      // Inside 0..1e6 by the parse — BOTH bounds, and both matter to the two
+      // conversions below: a negative float and a float past UINT32_MAX are
+      // equally undefined when cast to unsigned, and the `spell > 0` test
+      // comes after the cast and could not help either way. The floor alone
+      // was what this note used to claim, back when one knob came this way;
+      // production_config.cpp bounds these two against a named limit, and
+      // keeps a floor on the row they fall back to.
+      // TWO THRESHOLDS AND NOT ONE, since 2026-09-05. They hold the same
+      // number today and are two facts all the same: the design wants a dry
+      // summer once in five to eight years and a waterlogged one once in two
+      // or three, because drowning is the worse of the pair and strikes
+      // twice — at the yield and at the calendar. One number set to two
+      // frequencies is a number set to neither, and the old rule of choice
+      // ("the largest at which both halves still fire") made each half's
+      // rarity hostage to the other's.
+      const auto drought_spell = static_cast<std::uint32_t>(farming.drought_spell_days);
+      const auto wet_spell = static_cast<std::uint32_t>(farming.wet_spell_days);
+      if (field.drought_run_days >= drought_spell && drought_spell > 0) {
         field.weather_state = FieldWeatherState::kDrying;
-      } else if (field.wet_run_days >= threshold && threshold > 0) {
+      } else if (field.wet_run_days >= wet_spell && wet_spell > 0) {
         field.weather_state = FieldWeatherState::kSoaking;
       } else {
         field.weather_state = FieldWeatherState::kNone;
@@ -1322,7 +1336,23 @@ class ProductionSystem final : public IProductionSystem {
 
 }  // namespace
 
-std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables) {
+std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables,
+                                                          StubTables stubs) {
+  // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
+  // (core_tables/stub_tables.h). A caller that has not said it wants
+  // this module's documented defaults is refused by name, so that a
+  // table set which is merely INCOMPLETE cannot pass for one that is
+  // as its author meant it.
+  if (stubs == StubTables::kRefused) {
+    for (const std::string_view required : {"crops", "livestock", "farming", "resources"}) {
+      if (tables.FindTable(required) == nullptr) {
+        LogError(std::string("production: the table set carries no '") + std::string(required) +
+                 "' table, and this caller did not allow the defaults");
+        return nullptr;
+      }
+    }
+  }
+
   ProductionConfig config;
   std::string error;
   if (!ParseProductionConfig(tables, config, error)) {

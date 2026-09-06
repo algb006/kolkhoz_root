@@ -24,6 +24,7 @@
 
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -68,14 +69,17 @@ class ITimeSystem {
 /// @brief Creates the time subsystem.
 /// @param tables Balance tables; non-owning, must outlive the returned
 ///               object. Reads `weather` (per-season temperature and
-///               precipitation parameters); a set without that table gets
-///               documented STUB defaults. Daylight needs no table: it
-///               follows the solar curve at the fixed campaign latitude —
-///               structural, computed in code.
+///               precipitation parameters) and `weather_params` (the naming
+///               knobs). Daylight needs no table: it follows the solar
+///               curve at the fixed campaign latitude — structural,
+///               computed in code.
+/// @param stubs  WHAT TO DO WHEN THERE IS NO WEATHER TABLE. There is no
+///               default value on purpose; see below.
 /// @return nullptr when a present weather table is malformed (missing
 ///         season row or column, non-numeric cell) — logged, never patched
-///         over silently.
-std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables);
+///         over silently — and nullptr when the table is ABSENT and the
+///         caller did not say kAllowed.
+std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs);
 
 }  // namespace core
 

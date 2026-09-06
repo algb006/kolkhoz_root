@@ -15,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -923,7 +924,24 @@ class ConstructionSystem final : public IConstructionSystem {
 
 }  // namespace
 
-std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables) {
+std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
+                                                              StubTables stubs) {
+  // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
+  // (core_tables/stub_tables.h). A caller that has not said it wants
+  // this module's documented defaults is refused by name, so that a
+  // table set which is merely INCOMPLETE cannot pass for one that is
+  // as its author meant it.
+  if (stubs == StubTables::kRefused) {
+    for (const std::string_view required :
+         {"construction", "unit_types", "unit_levels", "resources"}) {
+      if (tables.FindTable(required) == nullptr) {
+        LogError(std::string("construction: the table set carries no '") + std::string(required) +
+                 "' table, and this caller did not allow the defaults");
+        return nullptr;
+      }
+    }
+  }
+
   ConstructionConfig config;
   std::string error;
   if (!ParseConstructionConfig(tables, config, error)) {

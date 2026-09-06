@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 
+#include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/random.h"
 #include "core_common/world_state.h"
@@ -631,65 +632,49 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
   // climate, not of a season, and a per-season copy is what would let them
   // drift into four answers to one question.
   SeasonWeather knobs = seasons[0];
-  const auto cell = [&table, value_column](const char* key, std::optional<float>* out) {
-    const std::uint32_t row = table.FindRowByKey(key);
-    *out = row == kNoTableRow ? std::nullopt : table.CellReal(row, value_column);
-    return row != kNoTableRow;
-  };
-  const auto share = [&cell, &error](const char* key, float* out) {
-    std::optional<float> value;
-    if (!cell(key, &value)) {
-      return true;  // absent: the core's default stands
-    }
-    if (!value || !(*value >= 0.0F && *value <= 1.0F)) {
-      error = std::string("weather_params: ") + key + " must be a share, 0..1";
+  // THE ONE DOOR, and it was already built (core_catalog/table_value.h).
+  // These four readers were hand-rolled here on 2026-09-05 — a share, a
+  // temperature, a month, each with its own range test — which is the fifth
+  // time this project has written the same policy in a fifth place, and the
+  // module exists precisely because the fourth time cost two silent defects.
+  // A range written beside its reader drifts from the value it guards; a
+  // range passed INTO the one reader cannot.
+  std::string local;
+  const auto degrees = Range{.low = kTemperatureMinCelsius, .high = kTemperatureMaxCelsius};
+  const auto human_months = Range{.low = 1.0F, .high = 12.0F};
+  // A month crosses this seam as a HUMAN 1..12 and the calendar counts from
+  // zero, so the base changes HERE and in no other place. The error it
+  // guards is the quietest there is — 6 taken as written is July, not June,
+  // and both are legal months, so no range can see it. Only a test that
+  // names the month can, and one does.
+  const auto month = [&](const char* key, std::uint8_t* out) {
+    float human = static_cast<float>(*out) + 1.0F;
+    if (!OptionalValue(table, key, human_months, human, local)) {
+      error = "weather_params: " + local;
       return false;
     }
-    *out = *value;
+    *out = static_cast<std::uint8_t>(human - 1.0F);
     return true;
   };
-  const auto degrees = [&cell, &error](const char* key, float* out) {
-    std::optional<float> value;
-    if (!cell(key, &value)) {
-      return true;
-    }
-    if (!value || !(*value >= kTemperatureMinCelsius && *value <= kTemperatureMaxCelsius)) {
-      error =
-          std::string("weather_params: ") + key + " must be a temperature on the -15..+30 scale";
+  const auto number = [&](const char* key, Range range, float* out) {
+    if (!OptionalValue(table, key, range, *out, local)) {
+      error = "weather_params: " + local;
       return false;
     }
-    *out = *value;
     return true;
   };
-  // THE ONE PLACE A MONTH CHANGES BASE, and it is named so that there is a
-  // place to look. Every month crossing this seam is HUMAN 1..12 — crops.csv
-  // says so in its own header and the design base CHECKs it — while the
-  // calendar counts from zero. The error this guards is the quietest kind:
-  // 5 taken as written moves the thunderstorm from May to June, and BOTH
-  // numbers are legal months, so no range check anywhere can see it. Only a
-  // test that asserts which MONTH, by name, can (boss, 2026-09-05).
-  const auto human_month = [&cell, &error](const char* key, std::uint8_t* out) {
-    std::optional<float> value;
-    if (!cell(key, &value)) {
-      return true;
-    }
-    if (!value || !(*value >= 1.0F && *value <= 12.0F)) {
-      error = std::string("weather_params: ") + key + " must be a human month, 1..12";
-      return false;
-    }
-    *out = static_cast<std::uint8_t>(*value - 1.0F);
-    return true;
-  };
-  if (!share("calm_share", &knobs.calm_share) || !share("wind_share", &knobs.wind_share) ||
-      !share("thunder_share", &knobs.thunder_share) || !share("fog_share", &knobs.fog_share) ||
-      !degrees("thunder_min_c", &knobs.thunder_min_celsius) ||
-      !degrees("blizzard_min_c", &knobs.blizzard_min_celsius) ||
-      !degrees("frost_night_c", &knobs.frost_night_celsius) ||
-      !degrees("sultry_afternoon_c", &knobs.sultry_afternoon_celsius) ||
-      !human_month("thunder_from_month", &knobs.thunder_from_month) ||
-      !human_month("thunder_to_month", &knobs.thunder_to_month) ||
-      !human_month("frost_from_month", &knobs.frost_from_month) ||
-      !human_month("frost_to_month", &knobs.frost_to_month)) {
+  if (!number("calm_share", Range::Unit(), &knobs.calm_share) ||
+      !number("wind_share", Range::Unit(), &knobs.wind_share) ||
+      !number("thunder_share", Range::Unit(), &knobs.thunder_share) ||
+      !number("fog_share", Range::Unit(), &knobs.fog_share) ||
+      !number("thunder_min_c", degrees, &knobs.thunder_min_celsius) ||
+      !number("blizzard_min_c", degrees, &knobs.blizzard_min_celsius) ||
+      !number("frost_night_c", degrees, &knobs.frost_night_celsius) ||
+      !number("sultry_afternoon_c", degrees, &knobs.sultry_afternoon_celsius) ||
+      !month("thunder_from_month", &knobs.thunder_from_month) ||
+      !month("thunder_to_month", &knobs.thunder_to_month) ||
+      !month("frost_from_month", &knobs.frost_from_month) ||
+      !month("frost_to_month", &knobs.frost_to_month)) {
     return false;
   }
   // The two shares decide a third between them: what is left after calm and
@@ -718,10 +703,21 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
 
 }  // namespace
 
-std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables) {
+std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs) {
   SeasonTable seasons = kDefaultSeasons;
   std::string error;
-  if (const ITable* weather = tables.FindTable("weather")) {
+  const ITable* const weather_table = tables.FindTable("weather");
+  if (weather_table == nullptr && stubs == StubTables::kRefused) {
+    // THE STATE IS LEGITIMATE AND THE SILENCE WAS NOT. Building on the stub
+    // seasons is what a table-less unit test wants; it is never what a game
+    // wants, and until 2026-09-05 the two were indistinguishable from here.
+    // A caller that means it says so in its own call (StubTables).
+    LogError(
+        "time: the table set carries no weather table, and this caller did not allow the stub "
+        "seasons — a run on them would describe a different climate");
+    return nullptr;
+  }
+  if (const ITable* weather = weather_table) {
     if (!ParseWeatherTable(*weather, seasons, error)) {
       LogError(error);
       return nullptr;

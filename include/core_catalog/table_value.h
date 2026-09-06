@@ -76,6 +76,11 @@ struct Range {
   /// @brief Zero and up, to the same practical ceiling.
   static constexpr Range NonNegative() { return Range{.low = 0.0F, .high = kUnbounded}; }
 
+  /// @brief A SHARE: zero to one inclusive. Named because "0..1" written out
+  /// at each call site is a range that drifts one call at a time, and
+  /// because a share is the commonest knob in the balance tables.
+  static constexpr Range Unit() { return Range{.low = 0.0F, .high = 1.0F}; }
+
   /// The largest magnitude any balance number may carry. Not
   /// `float`'s maximum: every one of these ends up in a `float` sum, an
   /// `int32` cast or a gram count, and a number this size already means the

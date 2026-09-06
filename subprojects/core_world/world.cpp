@@ -93,7 +93,7 @@ std::vector<float> FoodValuePerResource(const ITableSet& tables) {
   return density;
 }
 
-/// The events slot (phase 7). The event system itself is still a STUB — it
+/// The events slot (phase 6). The event system itself is still a STUB — it
 /// is a phase-3 project feature — but the slot is no longer empty: since
 /// stage 7 it keeps the run ledger's two entries that cannot be kept where
 /// they happen (manual/68-run-ledger.md §3), and it turns the year's book.
@@ -508,11 +508,11 @@ float LifeSpeedupFromTables(const ITableSet& tables) {
 
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config) {
   assert(config.tables != nullptr);
-  auto time = CreateTimeSystem(*config.tables);
-  auto residents = CreateResidentsSystem(*config.tables);
-  auto production = CreateProductionSystem(*config.tables);
-  auto labor = CreateLaborSystem(*config.tables);
-  auto construction = CreateConstructionSystem(*config.tables);
+  auto time = CreateTimeSystem(*config.tables, config.stub_tables);
+  auto residents = CreateResidentsSystem(*config.tables, config.stub_tables);
+  auto production = CreateProductionSystem(*config.tables, config.stub_tables);
+  auto labor = CreateLaborSystem(*config.tables, config.stub_tables);
+  auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).
     return nullptr;

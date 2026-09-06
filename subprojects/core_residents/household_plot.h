@@ -2,7 +2,7 @@
 /// @brief The private plot: how many hours the day leaves for it, and what
 /// the garden gives back for them.
 /// @threading PARALLEL_WRITE
-/// Runs in the metrics phase (slot 6), parallel by FAMILY: a worker owns
+/// Runs in the metrics phase (slot 5), parallel by FAMILY: a worker owns
 /// whole family rows and reads the resident rows of their members. Only the
 /// owned family row is written — its hours, its season accumulators, its
 /// pantry.

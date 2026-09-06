@@ -110,6 +110,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/deadline.h"
 #include "core_common/world_state.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -209,7 +210,12 @@ class IConstructionSystem {
 ///         for, or a buildable type with no level 1. Missing tables mean
 ///         the documented defaults, like every subsystem factory — a
 ///         table-less world simply has nothing that can be built.
-std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables);
+/// @param stubs Whether this subsystem may be built WITHOUT its balance
+///        tables, on the documented defaults (core_tables/stub_tables.h).
+///        There is no default value: a caller that has not thought about
+///        it cannot be served a different world in silence.
+std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
+                                                              StubTables stubs);
 
 }  // namespace core
 

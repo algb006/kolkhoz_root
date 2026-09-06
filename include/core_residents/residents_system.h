@@ -1,9 +1,14 @@
 /// @file
 /// @brief IResidentsSystem — the boundary of the people subsystem.
 /// @threading PARALLEL_WRITE
-/// The subsystem's parallel phases — needs (slot 2) and metrics (slot 6) —
+/// The subsystem's parallel phases — needs (slot 2) and metrics (slot 5) —
 /// write world state from many workers, each over its own range of family
-/// rows, strictly under the buffer law (core_sim/step.h). Its demography
+/// rows AND over the resident rows of those families' members: the needs
+/// phase moves ResidentRow::satiety and ::health, which is the buffer law's
+/// own reading of ownership (an item owns every row that belongs to it, in
+/// any table — core_sim/step.h rule 4). Saying "family rows" alone made the
+/// map narrower than the truth, and a reader checking the resident writes
+/// against it would have called them a violation. Its demography
 /// sub-step runs sequentially inside the decisions slot (phase 3) on the sim
 /// thread; accessors and factory are wiring-time, sim thread only.
 ///
@@ -25,6 +30,7 @@
 #include <vector>
 
 #include "core_sim/step.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -40,7 +46,7 @@ class IResidentsSystem {
   /// Valid for the lifetime of the system; wired into StepPhaseSet::needs.
   virtual IParallelPhase& NeedsPhase() = 0;
 
-  /// @brief The metrics slot implementation (phase 6, parallel by family).
+  /// @brief The metrics slot implementation (phase 5, parallel by family).
   /// Valid for the lifetime of the system; wired into StepPhaseSet::metrics.
   virtual IParallelPhase& MetricsPhase() = 0;
 
@@ -99,7 +105,11 @@ class IResidentsSystem {
 /// @param tables Balance tables (consumption norms, demography rates);
 ///               non-owning, must outlive the returned object.
 /// Implemented in core_residents (stage 3 of the plan; no-op STUB — task O0).
-std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables);
+/// @param stubs Whether this subsystem may be built WITHOUT its balance
+///        tables, on the documented defaults (core_tables/stub_tables.h).
+///        There is no default value: a caller that has not thought about
+///        it cannot be served a different world in silence.
+std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables, StubTables stubs);
 
 }  // namespace core
 

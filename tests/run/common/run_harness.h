@@ -26,6 +26,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
+#include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
@@ -69,9 +70,16 @@ struct Simulation {
 /// @return An empty Simulation on failure, with the reason on stdout: a
 ///         stray working directory is a usage problem, not a run failure,
 ///         and the message says so.
+/// @param stubs Whether the run may be assembled WITHOUT the balance tables
+///        (core_tables/stub_tables.h). The default is the refusal, because a
+///        run that measures the village on stub numbers measures another
+///        village — which is what happened on 2026-09-05 and cost a day. A
+///        run that deliberately ships a two-table directory to measure the
+///        CLOCK says kAllowed and says why.
 inline Simulation Start(std::uint64_t seed,
                         std::uint32_t worker_count = 1,
-                        std::string_view tables_dir = "tables") {
+                        std::string_view tables_dir = "tables",
+                        core::StubTables stubs = core::StubTables::kRefused) {
   Simulation started;
   std::string error;
   started.tables = core::LoadTableSet(tables_dir, &error);
@@ -84,6 +92,7 @@ inline Simulation Start(std::uint64_t seed,
   config.tables = started.tables.get();
   config.world_seed = seed;
   config.worker_count = worker_count;
+  config.stub_tables = stubs;
   started.simulation = core::CreateStandardSimulation(config);
   if (started.simulation == nullptr) {
     std::cout << "FAIL: the simulation did not assemble\n";

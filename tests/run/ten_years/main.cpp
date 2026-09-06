@@ -38,7 +38,11 @@ int main() {
   WriteFile(root / "weather.csv",
             "key,temp_mean_c,temp_spread_c,precipitation_chance_percent\n"
             "winter,-10,5,35\nspring,5,7,35\nsummer,19,5,25\nautumn,6,7,45\n");
-  const run::Simulation world = run::Start(1929, 1, root.string());
+  // TWO TABLES ON PURPOSE: this run measures the CLOCK — ticks, days,
+  // Sundays, the daylight curve — and nothing that a balance table decides.
+  // Since 2026-09-05 an incomplete set is a refusal unless the caller says
+  // it meant one, so this one says so (core_tables/stub_tables.h).
+  const run::Simulation world = run::Start(1929, 1, root.string(), core::StubTables::kAllowed);
   if (!world) {
     return 1;
   }

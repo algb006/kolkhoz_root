@@ -187,7 +187,8 @@ void Run(core::IConstructionSystem& system, core::WorldState& world, std::uint32
 
 int TestMarkAndBuild(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   if (!system) {
     std::cout << "FAIL: the subsystem refused its tables\n";
     return 1;
@@ -261,7 +262,8 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
 
 int TestRefusals(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   core::WorldState world;
   PlaceStore(world, 0);
 
@@ -303,7 +305,8 @@ int TestRefusals(const core::ITableSet& tables) {
 
 int TestDemolition(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   core::WorldState world;
   const core::UnitId store = PlaceStore(world, 10 * kLogGrams);
 
@@ -365,7 +368,8 @@ int TestDemolition(const core::ITableSet& tables) {
 /// standing empty is 100 / (10 x 1.5 x 48) and a day in use is twice that.
 int TestWearGrows(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   if (system == nullptr) {
     std::cout << "FAIL: the wear table set builds no system\n";
     return 1;
@@ -484,7 +488,8 @@ class NoWearColumnTables final : public core::ITableSet {
 /// wear column says nothing at all (kNoData).
 int TestWearDeadline(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   if (system == nullptr) {
     std::cout << "FAIL: the deadline table set builds no system\n";
     return 1;
@@ -550,7 +555,7 @@ int TestWearDeadline(const core::ITableSet& tables) {
 
   // The third refusal: no column, so nothing is known about wear at all.
   const NoWearColumnTables silent;
-  const auto blind = core::CreateConstructionSystem(silent);
+  const auto blind = core::CreateConstructionSystem(silent, core::StubTables::kAllowed);
   if (blind != nullptr) {
     failures += Expect(blind->WearDeadline(world, ageing).kind == core::DeadlineKind::kNoData,
                        "no has_wear column is NO DATA — not 'nothing wears', which is what "
@@ -565,7 +570,8 @@ int TestWearDeadline(const core::ITableSet& tables) {
 /// old houses, which are the one kind that falls (start design §4).
 int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   core::WorldState world;
   core::UnitRow barn;
   barn.type = core::UnitTypeId{kBarnType};
@@ -610,7 +616,8 @@ int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
 /// wear it was ordered at, made of spare parts and nothing else.
 int TestRepair(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   core::WorldState world;
   // 200 parts in the store, which is more than any repair here asks for.
   core::UnitRow store;
@@ -682,7 +689,8 @@ int TestRepair(const core::ITableSet& tables) {
 /// "Any level upgrade repairs the unit entirely" (unit rules §11).
 int TestUpgradeHeals(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   core::WorldState world;
   PlaceStore(world, 100 * kLogGrams);
   core::UnitRow barn;
@@ -707,7 +715,8 @@ int TestUpgradeHeals(const core::ITableSet& tables) {
 int TestTableLessWorld() {
   int failures = 0;
   const test::FakeTableSet tables;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "a table-less world still gets a subsystem");
   if (!system) {
     return failures;
@@ -735,7 +744,8 @@ int TestTableLessWorld() {
 /// roads and walls the world does not have yet, and is deliberately unread.
 int TestABodyKeepsItsMetre(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   if (system == nullptr) {
     std::cout << "FAIL: the body table set builds no system\n";
     return 1;
@@ -790,7 +800,8 @@ int TestABodyKeepsItsMetre(const core::ITableSet& tables) {
 /// fact counted twice.
 int TestStepPaceMultipliesTypePace(const core::ITableSet& tables) {
   int failures = 0;
-  std::unique_ptr<core::IConstructionSystem> system = core::CreateConstructionSystem(tables);
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
   if (system == nullptr) {
     std::cout << "FAIL: the wear table set builds no system\n";
     return 1;
@@ -882,7 +893,7 @@ int TestCapacityNeedsALadder() {
                         std::vector<std::vector<std::string>> types,
                         std::vector<std::vector<std::string>> levels) {
     const LadderTables tables(std::move(type_columns), std::move(types), std::move(levels));
-    return core::CreateConstructionSystem(tables) != nullptr;
+    return core::CreateConstructionSystem(tables, core::StubTables::kAllowed) != nullptr;
   };
   failures += Expect(!loads(with_column,
                             {{"barn", "1", "1", "era", "9"}},
@@ -910,8 +921,26 @@ int TestCapacityNeedsALadder() {
 
 }  // namespace
 
+/// A table set with nothing in it builds only for a caller that SAYS it wants
+/// the documented defaults (core_tables/stub_tables.h).
+///
+/// One assertion per factory and not one on the assembled simulation, which
+/// is what this check first was: the assembly refuses if ANY of the five
+/// refuses, so damaging one guard is masked by the other four. A guard has
+/// to name its own subject.
+int CheckStubTablesMustBeDeclared() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  failures += Expect(core::CreateConstructionSystem(nothing, core::StubTables::kRefused) == nullptr,
+                     "construction: a caller that did not allow the defaults is refused");
+  failures += Expect(core::CreateConstructionSystem(nothing, core::StubTables::kAllowed) != nullptr,
+                     "construction: and one that did gets them");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckStubTablesMustBeDeclared();
   const BuildTables tables;
   failures += TestStepPaceMultipliesTypePace(tables);
   failures += TestABodyKeepsItsMetre(tables);

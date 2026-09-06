@@ -142,14 +142,23 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
     float* value;
   };
 
+  // The band every farming value is read within. It has a name because it now
+  // has TWO readers — the required loop below and the spell lambda above it —
+  // and a number written twice is a number that drifts apart once.
+  constexpr float kFarmingValueLimit = 1.0e6F;
+
   // ONE BAND FOR ALL NINE, AND A TRAP IN IT WORTH NAMING. Every row here is
   // read back as a float, and the shared band below admits negatives because
   // several of them legitimately are. The moment a row of this list ends up
   // cast to an UNSIGNED or narrower integer, that band stops being enough —
   // a negative float converted to unsigned is undefined, and the cast is far
   // from here. weather_state_days is that row today and carries its own floor
-  // below; the next one will need the same, and nothing but this comment says
-  // so. The shape that would say it structurally — a Range per Entry, as
+  // below — not because it is cast itself any more, but because two rows that
+  // ARE cast default to it. The next ones already arrived (drought_spell_days,
+  // wet_spell_days) and are NOT members of this list: they are optional, they
+  // never reach this loop, and they carry both their bounds where they are
+  // read, above. So the hazard now lives in two places, and nothing but these
+  // comments says so. The shape that would say it structurally — a Range per Entry, as
   // core_catalog's ScalarKnob already has — is in OPEN_ITEMS.
   const Entry entries[] = {{"fertility_neutral", &farming.fertility_neutral},
                            {"manure_norm_kg_per_ha", &farming.manure_norm_kg_per_ha},
@@ -160,6 +169,42 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
                            {"stress_per_day", &farming.stress_per_day},
                            {"stress_cap", &farming.stress_cap},
                            {"weather_state_days", &farming.weather_state_days}};
+  // THE TWO SPELL LENGTHS, optional and defaulting to the single row above.
+  // A table from before the split keeps one number for both, which is what
+  // it meant; a table that names either takes it. Read BEFORE the required
+  // loop below so the fallback is already in place — and after it, if the
+  // rows are absent, both are set from `weather_state_days` (see below).
+  //
+  // AND THEY CARRY THE CEILING THEMSELVES, not only the floor. These two rows
+  // never pass through the required loop below, so the shared band does not
+  // reach them — and these two are exactly the ones that get converted:
+  // production_system.cpp casts drought_spell_days and wet_spell_days to
+  // std::uint32_t, and nothing else here. A float above UINT32_MAX converts as
+  // undefined just as a negative one does. The floor came with the split on 2026-09-05 and the
+  // ceiling did not, which is the same hole as UB-001 below re-entered through the new door. Both
+  // bounds are stated here, in the one place that reads these rows.
+  const auto spell = [&table, value_col, &error](const char* key, float* out, bool* named) {
+    const std::uint32_t row = table.FindRowByKey(key);
+    if (row == kNoTableRow) {
+      return true;
+    }
+    const std::optional<float> cell = table.CellReal(row, value_col);
+    // Positive test: NaN and the infinities fail it, as everywhere else here.
+    if (!cell || !(*cell >= 0.0F && *cell <= kFarmingValueLimit)) {
+      error =
+          std::string("farming: row '") + key + "' must be a number of days between 0 and 1000000";
+      return false;
+    }
+    *out = *cell;
+    *named = true;
+    return true;
+  };
+  bool drought_named = false;
+  bool wet_named = false;
+  if (!spell("drought_spell_days", &farming.drought_spell_days, &drought_named) ||
+      !spell("wet_spell_days", &farming.wet_spell_days, &wet_named)) {
+    return false;
+  }
   for (const Entry& entry : entries) {
     const std::uint32_t row = table.FindRowByKey(entry.key);
     const std::optional<float> cell = table.CellReal(row, value_col);
@@ -168,7 +213,7 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
       return false;
     }
     // Positive test: NaN and the infinities fail it (see CellOrDefault).
-    if (!(*cell >= -1.0e6F && *cell <= 1.0e6F)) {
+    if (!(*cell >= -kFarmingValueLimit && *cell <= kFarmingValueLimit)) {
       error = std::string("farming: value of '") + entry.key + "' is out of range";
       return false;
     }
@@ -178,16 +223,25 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
     error = "farming: fertility_neutral must be positive";
     return false;
   }
-  // UB-001 fix: weather_state_days is the ONE knob of that list that becomes an
-  // UNSIGNED integer (production_system.cpp, the field's weather judgement).
-  // The shared band above admits negatives, and converting a negative float to
-  // an unsigned type is undefined ([conv.fpint]/1) — the `threshold > 0` test
-  // at the use site sits AFTER the conversion and cannot help. Every other
-  // entry is consumed as a float, which is why only this one needs a floor.
+  // UB-001 fix, and the reason it outlived the knob it was written for.
+  // weather_state_days is no longer converted anywhere: production_system.cpp
+  // casts the two spell rows and nothing else. This floor still has to be
+  // here, because the fallback below copies this row INTO those two when a
+  // table does not name them — so a negative here becomes a negative there,
+  // and converting a negative float to an unsigned type is undefined
+  // ([conv.fpint]/1), with the `spell > 0` test sitting after the conversion
+  // where it cannot help. The shared band above admits negatives on purpose;
+  // this is the one entry of the list that must not keep one.
   if (!(farming.weather_state_days >= 0.0F)) {
     error = "farming: weather_state_days must not be negative";
     return false;
   }
+  // A spell length nobody named falls back to the one row that used to be
+  // both. Done here, after the required loop, because that is where
+  // `weather_state_days` has finally been read.
+  farming.drought_spell_days =
+      drought_named ? farming.drought_spell_days : farming.weather_state_days;
+  farming.wet_spell_days = wet_named ? farming.wet_spell_days : farming.weather_state_days;
   return true;
 }
 

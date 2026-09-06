@@ -352,7 +352,39 @@ struct FarmingConfig {
   /// drought already dead at four. The threshold moved because the generator
   /// started producing spells, not because it was fitted to an answer.
   /// See manual/balance/69-reconciliation.md §13.10 and §13.11.
+  ///
+  /// AND THE RULE OF CHOICE DIED WITH THE SINGLE NUMBER, 2026-09-05. "The
+  /// largest value at which both halves still happen" is a good rule for ONE
+  /// threshold and only for one: it makes each half's frequency hostage to
+  /// the other's. The design wants them at different frequencies — a dry
+  /// summer once in five to eight years, a waterlogged one once in two or
+  /// three, because drowning is the worse of the two and strikes twice, at
+  /// the yield and at the calendar. One number cannot be set to two
+  /// frequencies.
+  ///
+  /// THE ROW IS KEPT AS THE FALLBACK OF BOTH and will be removed from
+  /// farming.csv when the two below have their own rows: while it is the
+  /// only one present, the two spells behave exactly as they did.
   float weather_state_days = 4.0F;
+
+  /// Consecutive HOT days before a field says it is drying. The design's
+  /// drought is "затяжные +25…+30 в июне–июле" and the frequency it names is
+  /// a dry summer once in five to eight years — a rarity, but one a player
+  /// lives to see twice.
+  ///
+  /// Optional in tables/farming.csv under `drought_spell_days`; absent, it
+  /// stands at `weather_state_days` and nothing changes. THE NUMBER IS NOT
+  /// SET HERE: it comes from a measurement over YEARS, because a drought is
+  /// a property of a summer and not of a day — one dry summer in thirty and
+  /// a dozen dry weeks scattered over all of them give the same share of
+  /// field-days and are two different worlds.
+  float drought_spell_days = 4.0F;
+
+  /// Consecutive RAIN days before a field says it is soaking. Same shape,
+  /// different frequency: once in two or three years.
+  ///
+  /// Optional in tables/farming.csv under `wet_spell_days`.
+  float wet_spell_days = 4.0F;
 
   // -- stage 6: herd-wide knobs (tables/farming.csv scalar rows) -----------
   /// Underfeeding: produce multiplier while unfed, and when deaths start.
