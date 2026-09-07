@@ -1561,6 +1561,97 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
+/// LAND THAT CAN NEVER CARRY THIS WORK IS REFUSED AT THE ORDER, and land
+/// that merely has no work TODAY is not.
+///
+/// The difference is the whole finding. A field's PHASE is cyclic: the one
+/// being ploughed this morning is harvested in the autumn, so "harvest
+/// ordered on a field still being ploughed" is early, not wrong, and an
+/// order that finds nothing to do simply leaves the man idle for the day.
+/// The core is right to stay silent there — there is no permanent fact in a
+/// phase to be silent ABOUT.
+///
+/// The land KIND is permanent. A meadow is mown where it grew and is never
+/// ploughed, harrowed or sown; derelict land takes no work at all until it
+/// is raised. An order of that shape used to be ACCEPTED, park at kAccepted
+/// for the rest of the campaign, put a man on work every morning and take
+/// him off the same hour — with no refusal, no event and no alarm. The
+/// chairman saw an accepted order and an idle man and could learn the reason
+/// from nowhere, which is "do not punish the unforeseeable" exactly.
+///
+/// Both halves are asserted. A test that only checked the refusal would pass
+/// just as well against a rule that refused every field order there is.
+int TestLandThatCannotCarryTheWork() {
+  int failures = 0;
+  DayWorld day(4);
+  const auto land = [&day](core::FieldId id, core::LandKind kind) {
+    day.world.fields.rows[core::FindRow(day.world.fields, id)].kind = kind;
+  };
+  const core::FieldId arable =
+      day.AddField(core::FieldPhase::kPlowing, 40.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  const core::FieldId meadow =
+      day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 60.0F, .y = 0.0F});
+  const core::FieldId waste =
+      day.AddField(core::FieldPhase::kIdle, 40.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+  land(arable, core::LandKind::kArable);
+  land(meadow, core::LandKind::kMeadow);
+  land(waste, core::LandKind::kDerelict);
+
+  const auto order = [&day](std::uint32_t man, core::WorkKind work, core::FieldId field) {
+    core::OrderRow row;
+    row.kind = core::OrderKind::kAssignWork;
+    row.status = core::OrderStatus::kPending;
+    row.resident = day.world.residents.row_ids[man];
+    row.work = work;
+    row.field = field;
+    return core::AppendRow(day.world.orders, row);
+  };
+  const core::OrderId plough_arable = order(0, core::WorkKind::kPlowing, arable);
+  const core::OrderId plough_meadow = order(1, core::WorkKind::kPlowing, meadow);
+  const core::OrderId mow_meadow = order(2, core::WorkKind::kHarvest, meadow);
+  const core::OrderId reap_waste = order(3, core::WorkKind::kHarvest, waste);
+  // HAULING NAMES A FIELD TOO. The first draft of the rule put it with herd
+  // care and building — the kinds that name none — and so left the one work
+  // kind whose land it never looked at carrying exactly the defect the rule
+  // is for. A meadow never has a load lying on it to carry: its hay goes
+  // straight through the store door and the overflow is booked to the year's
+  // loss. Not empty today — empty for ever.
+  const core::OrderId haul_meadow = order(0, core::WorkKind::kHauling, meadow);
+
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "the labour system builds for the land-kind check") != 0) {
+    return 1;
+  }
+  day.world.calendar.tick = 8;
+  core::RefreshCalendarCaches(day.world.calendar);
+  {
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const auto verdict = [&day](core::OrderId id) {
+    const std::uint32_t row = core::FindRow(day.world.orders, id);
+    return row == core::kNoRow ? core::OrderRefusal::kNoSuchSubject
+                               : day.world.orders.rows[row].refusal;
+  };
+
+  failures += Expect(verdict(plough_meadow) == core::OrderRefusal::kWrongLand,
+                     "ploughing a MEADOW is refused: it is not late, it is impossible");
+  failures += Expect(verdict(reap_waste) == core::OrderRefusal::kWrongLand,
+                     "derelict land carries no work of any kind until it is raised");
+  failures += Expect(verdict(haul_meadow) == core::OrderRefusal::kWrongLand,
+                     "and carrying from a MEADOW is refused too: hauling names a field, and this "
+                     "one never has a load lying on it");
+  // And the two that must NOT be refused, or the rule would be reading
+  // "field" where it means "the wrong kind of field".
+  failures += Expect(verdict(plough_arable) == core::OrderRefusal::kNone,
+                     "ploughing arable stands — and it stands even though the field is mid-phase, "
+                     "because a phase is not a permanent fact");
+  failures += Expect(verdict(mow_meadow) == core::OrderRefusal::kNone,
+                     "a meadow's harvest is the MOWING, and mowing a meadow is real work");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
@@ -1581,6 +1672,7 @@ int main() {
   failures += TestPostTablesParse();
   failures += TestAppointmentTakesEffectAtTheDayClose();
   failures += TestAppointmentRefusals();
+  failures += TestLandThatCannotCarryTheWork();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
   failures += TestYardWithoutGroomAlarm();
   failures += TestStandingWorkOrder();

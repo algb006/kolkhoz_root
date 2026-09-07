@@ -275,8 +275,40 @@ enum class OrderRefusal : std::uint8_t {
   /// shows, not a rule it has to guess).
   kNoVacancy,
 
-  // Appending a refusal means raising kMaxOrderRefusal in
-  // core_save/save_rows.cpp — see the note over OrderKind above.
+  /// The field cannot carry this kind of work AT ALL, and never will: a
+  /// meadow is mown and never ploughed, harrowed or sown (land design, the
+  /// meadow branch of the production day), and derelict land takes no work
+  /// of any kind until it is raised.
+  ///
+  /// THE POINT IS THE WORD "NEVER", AND IT IS WHY THIS HAS A NAME OF ITS
+  /// OWN rather than falling into kRuleForbids. An order whose field has
+  /// simply moved on to another phase today is REFUSED BY NOTHING and stands
+  /// — the phase comes round again, and "no work today" is honest silence.
+  /// This one never comes round. An accepted order that can never fire, and
+  /// says nothing, is exactly "do not punish the unforeseeable" (root rules
+  /// §7): the chairman sees a man standing idle and can learn the reason
+  /// from nowhere, because the reason is permanent and has no sign.
+  ///
+  /// The refused order carries the field and the work kind already, so the
+  /// presentation reads WHICH field and WHICH work off the order row and
+  /// needs no dictionary from the core — the same shape as kGateClosed.
+  kWrongLand,
+
+  // A REFUSAL APPENDED HERE NEEDS NOTHING DONE IN core_save: kMaxOrderRefusal
+  // is derived from the count below and raises itself. This comment used to
+  // say the opposite — "means raising kMaxOrderRefusal in save_rows.cpp" —
+  // and it was stale: the hand-written constant it names has not existed
+  // since the MEM-002 fix. A reader obeying it would have gone looking for a
+  // number that is not there, and the honest way to obey it is to write one,
+  // which is the very drift the counts were introduced to end.
+  //
+  // WHAT IT DOES COST is outside this tree: the graphics layer keeps a
+  // MIRROR of these reasons — the mirror lives over there, and the fact that
+  // it exists is recorded here, in core_save/save_rows.cpp, which says the
+  // layer once "had eight refusal reasons against our nine and had no way to
+  // notice". So appending one is a boundary event and the layer has to be
+  // told. Old saves keep opening either way — their values stay inside the
+  // widened range.
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

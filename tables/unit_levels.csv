@@ -94,7 +94,7 @@ beer_stall,1,2,300,brick_small,10,,,80,55,1
 road_canteen,1,3,600,brick_mid,16,,,90,60,1
 bathhouse,1,1,120,wood_small,8,,,50,30,1.1
 bathhouse,2,1,70,wood_small_ext,6,,,50,30,1
-barter_place,1,1,120,wood_small,8,,,50,30,1.1
+barter_place,1,1,120,,,,,,,1.1
 kolkhoz_market,1,2,300,brick_small,10,,,80,55,1
 roadside_market,1,3,,,,,,,,1
 school_sports_ground,1,2,0,plot,,,,,,1

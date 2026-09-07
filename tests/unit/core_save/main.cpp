@@ -32,6 +32,27 @@
 
 namespace {
 
+/// THE LAST VALUE OF EACH ORDER ENUM, derived rather than written out.
+///
+/// The codec range-checks each of these against kCount - 1 on the way in
+/// (core_save/save_rows.cpp), so the row that exercises the bound has to
+/// CARRY the bound: a value below the top passes the check even when the
+/// bound has been left behind by an append. All three HAD been left behind —
+/// the test said "the top of each enum" and named kDemolishUnit and
+/// kNotEmpty, neither of which had been the top since task A7, and the
+/// comment went on being believed.
+///
+/// Derived once and used both to write the row and to read it back. A
+/// literal in either half would be the fact's second home, and the two
+/// halves would part company on the next append without a word — which is
+/// exactly what the first draft of this repair did.
+constexpr core::OrderKind kTopOrderKind =
+    static_cast<core::OrderKind>(static_cast<std::uint8_t>(core::OrderKind::kOrderKindCount) - 1);
+constexpr core::OrderStatus kTopOrderStatus = static_cast<core::OrderStatus>(
+    static_cast<std::uint8_t>(core::OrderStatus::kOrderStatusCount) - 1);
+constexpr core::OrderRefusal kTopOrderRefusal = static_cast<core::OrderRefusal>(
+    static_cast<std::uint8_t>(core::OrderRefusal::kOrderRefusalCount) - 1);
+
 int Expect(bool condition, const char* label) {
   if (condition) {
     return 0;
@@ -253,10 +274,24 @@ core::WorldState MakeWorld() {
   core::AppendRow(world.orders, build);
 
   core::OrderRow refused;
-  // The top of each enum: their bounds are checked on the way in.
-  refused.kind = core::OrderKind::kDemolishUnit;
-  refused.status = core::OrderStatus::kCancelled;
-  refused.refusal = core::OrderRefusal::kNotEmpty;
+  // THE TOP OF EACH ENUM, and it has to BE the top, because the bound is what
+  // is under test: the codec range-checks against kCount - 1 on the way in,
+  // and a row carrying anything below the top exercises the check at a value
+  // it would pass even if the bound had been left behind.
+  //
+  // ALL THREE HAD DRIFTED (UB-004, 2026-09-07). `kDemolishUnit` stopped being
+  // the last OrderKind when task A7 appended the post orders, and
+  // `kNotEmpty` stopped being the last OrderRefusal twice over. The comment
+  // went on saying "the top of each enum" and was believed — which is the
+  // whole trouble with a top written out by hand beside an enum that grows:
+  // it is the one length in this codebase the counts did NOT abolish,
+  // because it lives in a test rather than in the codec.
+  //
+  // Written as the enumerator before the sentinel, so that the next append
+  // moves it by making this line a compile error rather than a lie.
+  refused.kind = kTopOrderKind;
+  refused.status = kTopOrderStatus;
+  refused.refusal = kTopOrderRefusal;
   refused.issued_tick = 69;
   refused.unit = core::UnitId{1};
   core::AppendRow(world.orders, refused);
@@ -437,8 +472,11 @@ int main() {
                          loaded.orders.rows[0].resident.value == 1,
                      "a waiting order kept its status, its target and the tick it was issued on");
   failures += Expect(loaded.orders.rows[2].position.x == -12.5F &&
-                         loaded.orders.rows[3].refusal == core::OrderRefusal::kNotEmpty,
-                     "the build order's position and the refusal reason survived");
+                         loaded.orders.rows[3].kind == kTopOrderKind &&
+                         loaded.orders.rows[3].status == kTopOrderStatus &&
+                         loaded.orders.rows[3].refusal == kTopOrderRefusal,
+                     "the build order's position and the TOP of every order enum survived the "
+                     "round trip — which is where the codec's bound is actually exercised");
 
   // The site came back mid-build, every field of it.
   const core::UnitRow& site_back = loaded.units.rows[2];

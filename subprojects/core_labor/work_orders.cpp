@@ -88,6 +88,74 @@ void CloseOrphanedWork(WorldState& current) {
   }
 }
 
+/// @brief Can this kind of land EVER carry this kind of work?
+///
+/// NOT "is there work here today" — that question is asked by KindOfPhase
+/// (core_common/work_seam.h) and answered fresh every morning, because a
+/// field's phase comes round: the field being ploughed today is harvested in
+/// the autumn, and an order that finds no work this morning is not wrong,
+/// it is early. THE PHASE HOLDS NOTHING PERMANENT, so nothing permanent can
+/// be read out of it, and the core is right to stay silent there.
+///
+/// The land KIND is the other axis, and it does hold "never": a meadow is
+/// mown where it grew and is never ploughed, harrowed or sown — the
+/// production day sends it down a branch of its own that opens no such
+/// phase — and derelict land takes no work of any kind until it is raised.
+/// An order of that shape is accepted today and then silently does nothing
+/// FOR EVER.
+///
+/// @return kWrongLand, or kNone for work that does not name a field at all.
+OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
+  switch (order.work) {
+    case WorkKind::kHerdCare:
+    case WorkKind::kConstruction:
+    case WorkKind::kNone:
+      return OrderRefusal::kNone;  // no field named; nothing to ask about
+    case WorkKind::kPlowing:
+    case WorkKind::kHarrowing:
+    case WorkKind::kSowing:
+    case WorkKind::kHarvest:
+    // HAULING NAMES A FIELD TOO, and the first draft of this rule said it did
+    // not — leaving the one work kind whose land it declined to look at with
+    // exactly the defect the rule exists to remove (UB-001, 2026-09-07).
+    // TargetExists eight lines up sends everything but herd care and
+    // construction to world.fields, and WorkSeamOf drains
+    // FieldRow::haul_days_remaining, which only opens while reaped_grams > 0.
+    // A meadow never sets it — its hay goes straight through the store door
+    // and the overflow is booked to the year's loss, so nothing is ever left
+    // lying there to carry (field_work.cpp, DeliverHarvest) — and derelict
+    // land is skipped by the production day entirely. "Carry from the
+    // meadow" is not empty today; it is empty for ever.
+    case WorkKind::kHauling:
+      break;
+    // Not a kind, and it names no land: handled beside the kinds that name
+    // none, so this switch keeps no default and a NEW work kind stays a
+    // compile error — the only way this question gets asked about it at all.
+    //
+    // WRITTEN OUT WITH ITS SCOPE, and that is not style. labor_state.h holds
+    // BOTH `WorkKind::kWorkKindCount` and a free `kWorkKindCount` beside it,
+    // and a bare name here binds to the free one — a std::uint32_t, which
+    // compiles as a comparison against nothing and leaves the enumerator
+    // unhandled. The compiler said so twice, in two different ways.
+    case WorkKind::kWorkKindCount:
+      return OrderRefusal::kNone;
+  }
+  const std::uint32_t field_row = FindRow(world.fields, order.field);
+  if (field_row == kNoRow) {
+    return OrderRefusal::kNone;  // TargetExists has the say on a missing field
+  }
+  const LandKind kind = world.fields.rows[field_row].kind;
+  if (kind == LandKind::kDerelict) {
+    return OrderRefusal::kWrongLand;  // no work at all until it is raised
+  }
+  if (kind != LandKind::kArable && order.work != WorkKind::kHarvest) {
+    // A meadow's "harvest" is the mowing, and that is real work. Ploughing,
+    // harrowing and sowing on one are not late — they are impossible.
+    return OrderRefusal::kWrongLand;
+  }
+  return OrderRefusal::kNone;
+}
+
 }  // namespace
 
 std::uint32_t StandingWorkRow(const WorldState& world, ResidentId resident, std::uint32_t self) {
@@ -164,7 +232,7 @@ OrderRefusal CheckAssignWork(const LaborConfig& config,
   if (age < config.adult_age_years) {
     return OrderRefusal::kNotEligible;  // child labour is deferred (life-cycle §7)
   }
-  return OrderRefusal::kNone;
+  return LandCarriesWork(world, order);
 }
 
 void ReadWorkOrders(const LaborConfig& config, WorldState& current) {

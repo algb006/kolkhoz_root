@@ -51,10 +51,19 @@ clean_arg=""
 allow_dirty=0
 both=0
 
-# How many versions stay on the host. Two: the one in use and the one to fall
-# back to. A third is not a safety net, it is a museum — and the host's disk
-# is shared with the editor's cooked content.
-kept_versions=2
+# How many versions stay on the host, ON TOP of every version somebody has
+# pinned (tools/publish_pin.sh in the ROOT tree — the claim is shared, so the
+# tool that makes one lives where all three roles look, beside host.sh).
+# Seven, raised from two on 2026-09-07 — but the
+# depth is the SECOND half of that day's fix and useless without the first.
+#
+# `ue` lost the version its acceptance run stood on twice in ninety minutes.
+# Raising two to seven would have bought five hours instead of ninety minutes
+# and returned the same trouble on the first day core ships eight versions:
+# THE DEPTH DEFENDS AGAINST FREQUENCY, and frequency was never the problem.
+# The problem was that the weeding could not see a claim. So the pin came
+# first, and the depth is here for whoever did not think to claim.
+kept_versions=7
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -260,8 +269,25 @@ echo "publish/current → ${version}"
 # current is a file, and anything a human left there by hand is not a number.
 old_versions=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d '\r' \
   | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | head -n -"${kept_versions}")
+
+# EVERY VERSION SOMEBODY IS STANDING ON, whatever its age. A pin is a claim
+# (tools/publish_pin.sh) and the weeding has to see it, because a sweep that cannot
+# see claims is the host lock's timeout all over again: it removes the ground
+# under a run that is legitimately still going.
+pinned=$(ssh "${host}" "ls -1 '${remote_dir}/publish/.pins' 2>/dev/null" | tr -d '\r' \
+  | sed 's/\.[^.]*$//' | sort -u)
+
 if [ -n "${old_versions}" ]; then
   for old in ${old_versions}; do
+    # SAID OUT LOUD, not skipped in silence. A sweep that quietly declines to
+    # sweep is indistinguishable from a sweep that failed, and the next
+    # person to wonder why the store is full has nothing to read.
+    holders=$(ssh "${host}" "ls -1 '${remote_dir}/publish/.pins/${old}.'* 2>/dev/null" \
+      | tr -d '\r' | sed 's/.*\.//' | sort -u | tr '\n' ' ')
+    if printf '%s\n' "${pinned}" | grep -qxF "${old}"; then
+      echo "ОСТАВЛЕНА под пином: ${old} — держит ${holders:-неизвестно кто}"
+      continue
+    fi
     ssh "${host}" "rm -rf '${remote_dir}/publish/${old}'"
     echo "Убрана старая версия: ${old}"
   done
