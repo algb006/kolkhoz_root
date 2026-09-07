@@ -68,7 +68,7 @@ barn,Хлев,livestock,1,0,1,era,,1,25,,,absorbed,1,1.6,0,strong,always,0
 chicken_farm,Куриная ферма,livestock,1,0,1,era,,1,15,,,absorbed,1,,0,strong,always,0
 duck_farm,Утиная ферма,livestock,1,0,1,era,,1,15,,,absorbed,1,,0,strong,always,0
 fur_farm,Звероферма,livestock,3,0,1,era,,1,45,,,absorbed,1,,0,strong,always,0
-summer_camp,Летний лагерь для скота,livestock,1,1,1,era,,1,25,,,follows,1,,0,none,,0
+summer_camp,Летний лагерь для скота,livestock,1,1,1,era,,1,20,,,follows,1,,0,none,,0
 school,Школа,social,1,0,1,era,,1,45,,,absorbed,1,,1,none,,0
 boarding_wing,Интернат,social,2,0,1,era,,1,30,,,absorbed,1,,1,none,,0
 culture_house,Учреждение культуры,social,1,0,1,era,,1,60,,,absorbed,1,,1,none,,0

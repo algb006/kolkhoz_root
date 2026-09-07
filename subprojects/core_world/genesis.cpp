@@ -669,7 +669,8 @@ bool BuildStartEconomy(WorldState& world,
     return UnitId{};
   };
   const UnitId stock_yard = unit_by_key("cattle_yard");
-  const UnitId compost = unit_by_key("manure_pile");
+  // The heap is looked up no more: its content comes from start_stock.csv
+  // like every other placement's, and nothing else here needs its id.
 
   // One decrepit house per starting family, and the houses are the layout's
   // own yard_01..yard_21 in the order it lists them — the canon places every
@@ -782,18 +783,33 @@ bool BuildStartEconomy(WorldState& world,
     // year irreversible, which the design forbids outright.
     PutPantry(family, GenesisResource(resources, "hay"), 1300);
   }
-  // Guarded like every other lookup on this path: unit_by_key answers with
-  // an invalid id when the layout carries no such row, FindRow turns that
-  // into kNoRow, and indexing the vector with kNoRow writes four gigabytes
-  // past its end. The shipped layout has the heap; a doctored table set for
-  // a test need not, and a start without manure is a table problem, not a
-  // crash. MEM-001 fix.
-  const std::uint32_t compost_row = FindRow(world.units, compost);
-  if (compost_row != kNoRow) {
-    PutStock(world.units.rows[compost_row], GenesisResource(resources, "manure"), 250000);
-  } else {
-    LogWarning("genesis: the layout has no manure_pile; the start begins without compost");
-  }
+  // THE HEAP'S CONTENT CAME FROM HERE UNTIL 2026-09-07, and the trouble was
+  // not that the number had no name. tables/start_stock.csv is exactly "what
+  // already lies in a start placement on the first morning", genesis reads
+  // it thirty lines up, and seven placements were filled from it. The heap
+  // was the eighth, filled past the table by a literal 250000 — and it had
+  // NO ROW there at all, which that table's header spells out as meaning
+  // something: a placement with no row "starts EMPTY, and that is a
+  // statement".
+  //
+  // So the table said the heap was empty by design and the code put 250
+  // tonnes in behind its back. That was not a homeless number, it was a
+  // number ARGUING WITH ITS HOME, and the two ask for different repairs: one
+  // wants moving, the other wants the lie taken out. A named constant here
+  // would have been a third home after the document and the code — the same
+  // mistake the wear terms above made for one afternoon before they went to
+  // a table.
+  //
+  // The row exists now, added in the same change that deleted this code, so
+  // the table and the world agree for the first time. Read the tense here as
+  // history: it says what WAS, not what the table says today.
+  //
+  // The row is start_stock.csv `manure_pile,manure,250,1000`, the same 250 t.
+  // Measured, because the value's own promise was not: no heap, 250 t and
+  // 500 t all give the same FIRST year — the heap goes into the first
+  // ploughing and the fertility it raises works on the next sowing. Over
+  // thirty years it decides a great deal, and 250 is the peak of the three
+  // (1357 / 1671 / 1572 residents), not the middle.
 
   // The land is in the layout table too, and its numbers are the core's own
   // going the other way: the areas and the three-year rotation were
