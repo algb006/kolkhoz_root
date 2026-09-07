@@ -944,6 +944,89 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
+/// A LADDER WITH A HOLE IS REFUSED, AND THE REFUSAL NAMES THE UNIT AND THE
+/// RUNG.
+///
+/// `unit_levels` grows a type's ladder to the highest level any row names,
+/// so a table whose only row for a type is level 3 used to hand the game a
+/// level 1 and a level 2 that cost nothing, need nothing and take no time —
+/// a FREE BUILDING assembled out of a missing line. Zero is the commonest
+/// way to arrange that mistake, because the language's default and the
+/// subject's default coincide by accident.
+///
+/// The subject of this check is the HOLE, so the fixture differs from an
+/// honest one in exactly that and nothing else: same unit, same columns,
+/// same numbers, one row instead of three.
+int TestALadderWithAHoleIsRefused() {
+  int failures = 0;
+  const test::FakeTable types{{"key", "era", "player_built", "gate", "has_wear"},
+                              {{"barn", "1", "1", "era", "1"}}};
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+
+  const std::string log_path = "unit_core_construction_ladder.txt";
+
+  // The hole: a ladder whose only row is level 3.
+  const test::FakeTable holed{{"unit", "level", "labor_days", "max_crew"},
+                              {{"barn", "3", "90", "5"}}};
+  failures += Expect(core::InitLogFile(log_path), "the log file opens for the ladder refusal");
+  {
+    const test::FakeTableSet tables{{{"unit_types", &types},
+                                     {"unit_levels", &holed},
+                                     {"unit_level_cost", &no_costs},
+                                     {"resources", &no_resources},
+                                     {"construction", &knobs}}};
+    failures +=
+        Expect(core::CreateConstructionSystem(tables, core::StubTables::kAllowed) == nullptr,
+               "a ladder whose only rung is level 3 is REFUSED, not filled with two free ones");
+  }
+  core::ShutdownLogFile();
+  std::ifstream file(log_path);
+  std::stringstream content;
+  content << file.rdbuf();
+  const std::string text = content.str();
+  failures += Expect(text.find("barn") != std::string::npos,
+                     "and the refusal names the unit, not just the table");
+  failures += Expect(text.find("no level 1") != std::string::npos,
+                     "and the rung that is missing, so the reader knows which line to write");
+  std::remove(log_path.c_str());
+
+  // AND A WHOLE LADDER STILL LOADS. Without this the check above would pass
+  // just as well if the parse refused every ladder it was given.
+  {
+    const test::FakeTable whole{
+        {"unit", "level", "labor_days", "max_crew"},
+        {{"barn", "1", "70", "5"}, {"barn", "2", "80", "5"}, {"barn", "3", "90", "5"}}};
+    const test::FakeTableSet tables{{{"unit_types", &types},
+                                     {"unit_levels", &whole},
+                                     {"unit_level_cost", &no_costs},
+                                     {"resources", &no_resources},
+                                     {"construction", &knobs}}};
+    failures +=
+        Expect(core::CreateConstructionSystem(tables, core::StubTables::kAllowed) != nullptr,
+               "three rungs written out in full are not refused by the new door");
+  }
+
+  // AND THE HOLE IS THE SUBJECT, NOT THE HEIGHT: a ladder of one rung at
+  // level 1 is complete and must load. Otherwise the check would be reading
+  // "short" where it means "holed", and every single-level unit in the
+  // shipped tables would stop the game.
+  {
+    const test::FakeTable one{{"unit", "level", "labor_days", "max_crew"},
+                              {{"barn", "1", "70", "5"}}};
+    const test::FakeTableSet tables{{{"unit_types", &types},
+                                     {"unit_levels", &one},
+                                     {"unit_level_cost", &no_costs},
+                                     {"resources", &no_resources},
+                                     {"construction", &knobs}}};
+    failures +=
+        Expect(core::CreateConstructionSystem(tables, core::StubTables::kAllowed) != nullptr,
+               "a single rung at level 1 is a whole ladder, not a short one");
+  }
+  return failures;
+}
+
 /// THE TWO READINGS OF unit_types MUST BE THE SAME LENGTH, AND THE PARSE
 /// SAYS SO.
 ///
@@ -1428,6 +1511,7 @@ int main() {
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);
   failures += TestTheTwoReadingsOfUnitTypesAgree();
+  failures += TestALadderWithAHoleIsRefused();
   failures += TestTheStinkField();
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();

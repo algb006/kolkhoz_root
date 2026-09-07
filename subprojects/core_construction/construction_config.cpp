@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
@@ -397,6 +398,15 @@ bool ReadLevels(const ITable& levels,
     return false;
   }
 
+  // WHICH RUNGS A ROW ACTUALLY FILLED. `ladder.resize(level)` below grows the
+  // ladder to the highest level a row names, and the rungs it steps over are
+  // default-constructed — a ladder whose only row is level 3 gains a level 1
+  // and a level 2 that no line of any table ever wrote. Nothing in
+  // BuildLevel can tell those apart afterwards, because a rung written as
+  // zero and a rung never written look identical once the loop is over. So
+  // the presence is recorded HERE, where the difference still exists.
+  std::vector<std::vector<std::uint8_t>> filled(config.types.size());
+
   for (std::uint32_t row = 0; row < levels.RowCount(); ++row) {
     const std::uint32_t type_row = unit_types.FindRowByKey(levels.CellText(row, unit_col));
     if (type_row == kNoTableRow || type_row >= config.types.size()) {
@@ -421,6 +431,10 @@ bool ReadLevels(const ITable& levels,
     if (ladder.size() < level) {
       ladder.resize(level);
     }
+    if (filled[type_row].size() < level) {
+      filled[type_row].resize(level, 0);
+    }
+    filled[type_row][level - 1] = 1;
     BuildLevel& step = ladder[level - 1];
 
     // Real man-days in the table, game man-days in the core: every consumer
@@ -506,6 +520,34 @@ bool ReadLevels(const ITable& levels,
     }
     step.is_marking = static_cast<std::uint8_t>(
         class_col != kNoTableColumn && levels.CellText(row, class_col) == kMarkingClass ? 1 : 0);
+  }
+
+  // A LADDER WITH A HOLE IS REFUSED, AND THE HOLE IS NOT A FREE BUILDING
+  // (boss, 2026-09-07). A rung the ladder grew past but no row ever wrote is
+  // not "a level that costs nothing" — it is A MISSING LINE READ AS A VALUE,
+  // and zero is the commonest way to arrange that mistake: the language's
+  // default and the subject's default coincide only by accident
+  // (architecture 8бе). In the design database an empty cell means "not
+  // written up yet", so a hole here is somebody's PLAN OF WORK, and letting
+  // it through would ship that plan as a building the player raises for
+  // free.
+  //
+  // A unit meant to start at its third rung would be a decision with a field
+  // of its own and a name said out loud. There is none today, and a silent
+  // door to it is not wanted.
+  for (std::uint32_t type_row = 0; type_row < config.types.size(); ++type_row) {
+    const std::vector<BuildLevel>& ladder = config.types[type_row].levels;
+    for (std::uint32_t rung = 0; rung < ladder.size(); ++rung) {
+      if (rung < filled[type_row].size() && filled[type_row][rung] != 0) {
+        continue;
+      }
+      Fail(error,
+           "unit_levels",
+           std::string(unit_types.CellText(type_row, 0)) + " has a level " +
+               std::to_string(ladder.size()) + " but no level " + std::to_string(rung + 1) +
+               " — a rung no row writes is a missing line, not a step that costs nothing");
+      return false;
+    }
   }
   return CheckCapacityLadder(unit_types, config, error);
 }

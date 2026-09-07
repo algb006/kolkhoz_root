@@ -9,6 +9,7 @@ kolkhoz_add_module(core_production
     production_config.cpp
     field_haul.cpp
     field_work.cpp
+    herd_life.cpp
     herd_system.cpp
     stable_horses.cpp
     production_alarms.cpp
