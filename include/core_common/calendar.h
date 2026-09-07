@@ -199,6 +199,24 @@ constexpr Weekday WeekdayFromDay(SimDay day, Weekday day_zero_weekday) {
   return static_cast<Weekday>((static_cast<std::uint32_t>(day_zero_weekday) + day) % kDaysPerWeek);
 }
 
+/// @brief Is `month` inside the inclusive band [from, to]? 0-based months.
+/// The band does not wrap the new year, and no caller needs it to: every
+/// season a table names — pasture, calving, sowing, the growing window of a
+/// kitchen plot — lies inside one year by construction.
+///
+/// THIS LIVED IN TWO PLACES UNTIL 2026-09-07: exported by
+/// core_production/herd_system.h and copied bodily into
+/// core_residents/household_plot.cpp, which could not include the first —
+/// core_residents does not depend on core_production, and rightly does not.
+/// The two BODIES had not drifted; the two CONTRACTS already had. Only one
+/// of them said the band does not wrap the year, so half the callers were
+/// obeying a rule nobody had written down for them. A fact with two homes
+/// is cured by moving it, not by comparing the copies — and a month band is
+/// a question about the calendar, not about a herd or a kitchen garden.
+constexpr bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
+  return month >= from && month <= to;
+}
+
 /// @brief Season of a month: December–February is winter, and so on by threes.
 constexpr Season SeasonOfMonth(Month month) {
   return static_cast<Season>(((static_cast<std::uint32_t>(month) + 1) / kMonthsPerSeason) %

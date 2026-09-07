@@ -906,10 +906,6 @@ bool StableBuilt(const WorldState& world, const ProductionConfig& config) {
   return false;
 }
 
-bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
-  return month >= from && month <= to;
-}
-
 /// The day's fodder need, in feed units. Adults eat the norm, juveniles the
 /// juvenile share of it, newborns at the dam nothing. In the pasture months
 /// the grass covers its share of the need — the norm is about NEED, not

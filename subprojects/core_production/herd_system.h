@@ -44,11 +44,6 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current);
 /// step one is a pen: it houses horses and breeds none.
 bool StableBuilt(const WorldState& world, const ProductionConfig& config);
 
-/// @brief Is `month` inside the inclusive band [from, to]? 0-based months.
-/// The band does not wrap the new year, and no caller needs it to: the
-/// pasture season lies inside one year by construction.
-bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to);
-
 /// @brief The day's fodder need of one herd, in feed units.
 /// @param month 0-based; inside the pasture season the grass covers its
 ///        share, outside it the whole norm comes from the stores.

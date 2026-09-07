@@ -19,10 +19,6 @@
 namespace core {
 namespace {
 
-bool MonthInRange(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
-  return month >= from && month <= to;
-}
-
 /// What the household looks like today, as the plot table asks about it.
 struct YardToday {
   float away_hours_total = 0.0F;
