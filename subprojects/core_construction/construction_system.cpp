@@ -199,10 +199,14 @@ class ConstructionSystem final : public IConstructionSystem {
  private:
   // -- orders ---------------------------------------------------------------
 
-  /// Every construction order is decided in the step it is read: kDone or
-  /// kRefused, never kAccepted or kActive (71-construction.md §3). The word
-  /// is the chairman's; the work that follows is the unit's own state.
-  /// Wear of a day (task A5, manual/73-wear-and-repair.md §2). Every BUILT
+  /// @brief Wear of a day (task A5, manual/73-wear-and-repair.md §2).
+  ///
+  /// The paragraph that opened this block belongs to ConsumeOrders and has
+  /// gone back to it: two descriptions had been welded into one with no
+  /// break between them, so the published brief of this function was a rule
+  /// about orders, which it neither reads nor settles.
+  ///
+  /// Every BUILT
   /// unit whose type has a building ages by the amortization of the level it
   /// STANDS at — a whole scale in `wear_years_idle` years standing empty, in
   /// `wear_years_in_use` years while a household lives there or somebody
@@ -328,6 +332,10 @@ class ConstructionSystem final : public IConstructionSystem {
     return static_cast<Grams>(pieces) * config_.spare_part_grams;
   }
 
+  /// @brief Every construction order is decided in the step it is read:
+  /// kDone or kRefused, never kAccepted or kActive (71-construction.md §3).
+  /// The word is the chairman's; the work that follows is the unit's own
+  /// state.
   void ConsumeOrders(WorldState& current) {
     // By index, because appending a unit row may reallocate nothing here but
     // the book itself is stable — orders are appended only by the engine.
@@ -496,10 +504,7 @@ class ConstructionSystem final : public IConstructionSystem {
     site.construction.labor_days_remaining = 0.0F;
   }
 
-  /// STUB of project phase 1's logistics: whatever the recipe still lacks is
-  /// taken from the stores in row order, distance ignored. Task A4 replaces
-  /// this with routing behind the same seam — the site's own stock.
-  /// The delivery half of a repair: bring the spare parts the frozen norm
+  /// @brief The delivery half of a repair: bring the spare parts the frozen norm
   /// calls for, and move to kRepairing when they are all on site. The same
   /// shape as a build's delivery — one resource instead of a recipe.
   void DeliverRepairParts(WorldState& current, std::uint32_t row) {
@@ -533,6 +538,13 @@ class ConstructionSystem final : public IConstructionSystem {
     Emit(current, EventKind::kUnitRepaired, EventSeverity::kNotable, unit);
   }
 
+  /// @brief STUB of project phase 1's logistics: whatever the recipe still
+  /// lacks is taken from the stores in row order, distance ignored. Task A4
+  /// replaces this with routing behind the same seam — the site's own stock.
+  ///
+  /// It had been standing over DeliverRepairParts, which has no recipe at
+  /// all — and that function's own next sentence said so, so one block
+  /// contradicted itself across two paragraphs.
   void DeliverMaterials(WorldState& current) {
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       if (current.units.rows[row].construction.phase != ConstructionPhase::kDelivering) {
@@ -670,7 +682,7 @@ class ConstructionSystem final : public IConstructionSystem {
       if (stock[index] <= 0) {
         continue;
       }
-      const ResourceId resource{static_cast<std::uint16_t>(index)};
+      const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams placed = DeliverOut(current, row, resource, stock[index]);
       AddLedgerAmount(current.ledger.current.lost_no_room, resource, stock[index] - placed);
     }

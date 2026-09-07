@@ -25,8 +25,9 @@
 namespace core {
 namespace {
 
-/// @brief Turns "a cell is not a number" into "labor: path_factor: a cell is
-/// not a number", building the message with appends only.
+/// @brief Reads the twelve scalar knobs of labor.csv, each with its range.
+/// The block that stood here described PrefixError, which moved to
+/// core_catalog and left its documentation over this function.
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
   const std::array<ScalarKnob, 12> knobs = {{
@@ -229,10 +230,7 @@ bool ParseLivestock(const ITable& table, LaborConfig& config, std::string& error
     }
     config.care_days_per_year[row] /= kRealDaysPerGameDay;
   }
-  const std::uint32_t horse = table.FindRowByKey("horse");
-  if (horse != kNoTableRow) {
-    config.horse_kind = LivestockKindId{static_cast<std::uint16_t>(horse)};
-  }
+  config.horse_kind = DefIdFromRow<LivestockKindIdTag>(table.FindRowByKey("horse"));
   return true;
 }
 
@@ -360,8 +358,8 @@ bool ParseUnitStaff(const ITable& table,
       return false;
     }
     StaffSlot slot;
-    slot.unit_type = UnitTypeId{static_cast<std::uint16_t>(type_row)};
-    slot.profession = ProfessionId{static_cast<std::uint16_t>(post_row)};
+    slot.unit_type = DefIdFromRow<UnitTypeIdTag>(type_row);
+    slot.profession = DefIdFromRow<ProfessionIdTag>(post_row);
     float level = 0.0F;
     float slots = 0.0F;
     if (!OptionalCell(table, row, level_column, Range{.low = 0.0F, .high = 255.0F}, level, error) ||
@@ -454,10 +452,7 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   // table-less test world has no posts at all, and then there is no yard
   // alarm to raise either.
   if (const ITable* professions = tables.FindTable("professions")) {
-    const std::uint32_t row = professions->FindRowByKey(kGroomPostKey);
-    if (row != kNoTableRow) {
-      config.groom_post = ProfessionId{static_cast<std::uint16_t>(row)};
-    }
+    config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey(kGroomPostKey));
   }
   return true;
 }

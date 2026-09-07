@@ -56,10 +56,6 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 
 /// @brief The figure knobs of world_params.csv, and the keys they came from.
 ///
-/// THE KEYS ARE COLLECTED BY THE READERS THEMSELVES, one push per knob read,
-/// so the list handed to the assembly cannot age away from the code that
-/// fills it. A second list written out beside this function would be right
-/// on the day it was written and silent ever after.
 /// The world_params.csv keys genesis reads, and the ONE place they are
 /// written. The knob list below takes its names from this array by index, so
 /// the list the assembly is handed and the list actually read cannot be two
@@ -151,7 +147,7 @@ UnitTypeId TypeByKey(const ITable* unit_types, std::string_view key) {
     return UnitTypeId{};
   }
   const std::uint32_t row = unit_types->FindRowByKey(key);
-  return row == kNoTableRow ? UnitTypeId{} : UnitTypeId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<UnitTypeIdTag>(row);
 }
 
 ResourceId GenesisResource(const ITable* resources, std::string_view key) {
@@ -159,7 +155,7 @@ ResourceId GenesisResource(const ITable* resources, std::string_view key) {
     return ResourceId{};
   }
   const std::uint32_t row = resources->FindRowByKey(key);
-  return row == kNoTableRow ? ResourceId{} : ResourceId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<ResourceIdTag>(row);
 }
 
 CropId CropByKey(const ITable* crops, std::string_view key) {
@@ -167,7 +163,7 @@ CropId CropByKey(const ITable* crops, std::string_view key) {
     return CropId{};
   }
   const std::uint32_t row = crops->FindRowByKey(key);
-  return row == kNoTableRow ? CropId{} : CropId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<CropIdTag>(row);
 }
 
 /// The band the start's old houses begin their wear in (start design §4:
@@ -323,7 +319,7 @@ void AddHerd(WorldState& world,
     return;  // a table set without this kind simply has none of it
   }
   HerdRow herd;
-  herd.kind = LivestockKindId{static_cast<std::uint16_t>(row)};
+  herd.kind = DefIdFromRow<LivestockKindIdTag>(row);
   herd.unit = unit;
   herd.household = household;
   herd.household_owned = household_owned ? 1U : 0U;

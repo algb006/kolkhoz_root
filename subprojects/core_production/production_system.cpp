@@ -270,7 +270,7 @@ class ProductionSystem final : public IProductionSystem {
   void DeliverPlan(WorldState& current) const {
     current.plan.delivered.assign(current.plan.due.size(), 0);
     for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
-      const ResourceId resource{static_cast<std::uint16_t>(index)};
+      const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams taken = TakeFromStorage(current, config_, resource, current.plan.due[index]);
       current.plan.delivered[index] = taken;
       AddLedgerAmount(current.ledger.current.delivered, resource, taken);

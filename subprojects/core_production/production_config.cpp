@@ -41,15 +41,22 @@ ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
   if (resources == nullptr) {
     return ResourceId{};
   }
-  const std::uint32_t row = resources->FindRowByKey(key);
-  return row == kNoTableRow ? ResourceId{} : ResourceId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<ResourceIdTag>(resources->FindRowByKey(key));
 }
 
-/// @brief Reads a cell as float with `fallback` for an empty cell; a present
-/// non-numeric cell fails the parse. The value is range-checked here, at
-/// parse time: everything downstream casts these numbers to integers or
-/// multiplies them into grams, and a NaN, an infinity or an absurd
-/// magnitude would be undefined behaviour there instead of a clear error.
+/// @brief Reads crops.csv into CropDef rows: sixteen numeric columns per
+/// crop plus the resource its harvest becomes.
+///
+/// EVERY COLUMN CARRIES ITS RANGE, and the check happens here, at parse
+/// time: everything downstream casts these numbers to integers or multiplies
+/// them into grams, so a NaN, an infinity or an absurd magnitude would be
+/// undefined behaviour there instead of a clear error at the door.
+///
+/// The block that stood here described CellOrDefault — a one-cell reader
+/// that moved to core_catalog and left its documentation over the next
+/// function down. The eighteenth comment theft of this shape, and the twin
+/// of the one construction_config.cpp names in its own prose; that file was
+/// repaired today and this copy was not.
 bool ParseCrops(const ITable& table,
                 const ITable* resources,
                 std::vector<CropDef>& crops,
@@ -686,8 +693,8 @@ bool ParseFeedLinks(const ITable& table,
       error = "feed_links: " + error;
       return false;
     }
-    links.push_back(FeedLinkDef{.kind = LivestockKindId{static_cast<std::uint16_t>(kind_row)},
-                                .resource = ResourceId{static_cast<std::uint16_t>(resource_row)},
+    links.push_back(FeedLinkDef{.kind = DefIdFromRow<LivestockKindIdTag>(kind_row),
+                                .resource = DefIdFromRow<ResourceIdTag>(resource_row),
                                 .reserve = static_cast<std::uint8_t>(reserve),
                                 .max_share = max_share,
                                 .work_only = static_cast<std::uint8_t>(work_only)});
@@ -701,7 +708,7 @@ LivestockKindId KindByKey(const ITable* livestock, std::string_view key) {
     return LivestockKindId{};
   }
   const std::uint32_t row = livestock->FindRowByKey(key);
-  return row == kNoTableRow ? LivestockKindId{} : LivestockKindId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<LivestockKindIdTag>(row);
 }
 
 /// @brief Says out loud which optional columns a table set does not carry.
@@ -733,7 +740,7 @@ UnitTypeId UnitTypeByKey(const ITable* unit_types, std::string_view key) {
     return UnitTypeId{};
   }
   const std::uint32_t row = unit_types->FindRowByKey(key);
-  return row == kNoTableRow ? UnitTypeId{} : UnitTypeId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<UnitTypeIdTag>(row);
 }
 
 }  // namespace
@@ -947,10 +954,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // (manual/74-posts.md §5). Reading a table core_labor also reads is not a
   // dependency on core_labor — a profession key is data.
   if (const ITable* professions = tables.FindTable("professions")) {
-    const std::uint32_t row = professions->FindRowByKey("groom");
-    if (row != kNoTableRow) {
-      config.groom_post = ProfessionId{static_cast<std::uint16_t>(row)};
-    }
+    config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("groom"));
   }
   config.pig_kind = KindByKey(livestock, "pig");
   return true;

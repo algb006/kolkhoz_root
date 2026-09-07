@@ -67,7 +67,7 @@ bool RequiredResource(const ITable* roster,
     return false;
   }
   if (row_index != kNoTableRow) {
-    id = ResourceId{static_cast<std::uint16_t>(row_index)};
+    id = DefIdFromRow<ResourceIdTag>(row_index);
   }
   return true;
 }

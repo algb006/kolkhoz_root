@@ -27,10 +27,15 @@
 namespace core {
 namespace {
 
-/// unit_types.csv `class` of every kind of dwelling.
-
-/// @brief Reads one key's value cell; a missing key is an error (see the
-/// file comment: the stage-3 keys are required).
+/// @brief Reads the fifteen keys of life.csv into LifeConfig, each with its
+/// range; a missing key is an error (see the file comment: the stage-3 keys
+/// are required).
+///
+/// Two orphans stood here. One documented a dwelling-class constant this
+/// file has not declared for some time — a comment describing nothing at
+/// all. The other was RequiredValue's brief, saying "one key" over a
+/// function that reads fifteen; it moved to core_catalog and left its
+/// documentation behind.
 bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error) {
   float epoch2 = 0.0F;
   float epoch3 = 0.0F;
@@ -318,10 +323,12 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     }
   }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
-    const std::uint32_t house = unit_types->FindRowByKey("wooden_house");
-    if (house != kNoTableRow) {
-      config.house_type = UnitTypeId{static_cast<std::uint16_t>(house)};
-    }
+    // No `!= kNoTableRow` guard any more, and it decided nothing even BEFORE
+    // the conversion existed: kNoTableRow is 0xFFFFFFFF, so the truncating
+    // cast it guarded already produced 0xFFFF — the invalid id — on exactly
+    // the path it was meant to keep the cast off. It was right by accident
+    // on the not-found path and pure ceremony on the other.
+    config.house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("wooden_house"));
   }
   return true;
 }

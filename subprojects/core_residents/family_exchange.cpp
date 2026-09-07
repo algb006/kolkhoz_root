@@ -238,7 +238,7 @@ void RunDistribution(const FoodConfig& config,
     if (wanted[index] <= 0) {
       continue;
     }
-    const ResourceId resource{static_cast<std::uint16_t>(index)};
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     // HALF THE MILK, and only half (boss answer Q4): the bundle carries a
     // share of what the farm holds, the rest stays the kolkhoz's. The share
     // is per resource and lives in the table — it is one for everything the
@@ -270,7 +270,7 @@ void RunDistribution(const FoodConfig& config,
       if (norm <= 0.0F || !(coverage[index] > 0.0F)) {
         continue;
       }
-      const ResourceId resource{static_cast<std::uint16_t>(index)};
+      const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams issue = KilogramsToGrams(norm * trudodni * coverage[index]);
       // What the store could actually give, not what the norm asked for:
       // the ledger records the hand-out, not the intention.
@@ -324,7 +324,7 @@ void RunRation(const FoodConfig& config,
       if (norm <= 0.0F) {
         continue;
       }
-      const ResourceId resource{static_cast<std::uint16_t>(index)};
+      const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams wanted = KilogramsToGrams(norm * static_cast<float>(eaters) * days);
       const Grams free_stock = FreeStock(current, reserve, resource);
       const Grams issue = wanted < free_stock ? wanted : free_stock;

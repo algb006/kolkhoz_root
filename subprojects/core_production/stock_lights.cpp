@@ -146,7 +146,7 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
     if (!(config.feed_values[resource] > 0.0F)) {
       continue;
     }
-    const ResourceId id{static_cast<std::uint16_t>(resource)};
+    const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
     held_kg[resource] =
         static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
   }
@@ -264,7 +264,7 @@ StockForecast SeedLight(const ProductionConfig& config, const WorldState& world)
     if (!(need_kg[resource] > 0.0F)) {
       continue;
     }
-    const ResourceId id{static_cast<std::uint16_t>(resource)};
+    const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
     const float have_kg =
         static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
     const float share = have_kg / need_kg[resource];

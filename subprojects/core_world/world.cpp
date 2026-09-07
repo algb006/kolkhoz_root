@@ -241,8 +241,11 @@ class EventsSlot final : public ISequentialPhase {
       const ResourceAmounts& now = current.families.rows[row].pantry;
       const ResourceAmounts& was = previous.families.rows[before].pantry;
       const std::size_t width = now.size() > was.size() ? now.size() : was.size();
+      // The one walk that already knew, and the loop bound stays: it stops
+      // the WALK, not just the id, and AmountAt past the sentinel would be
+      // counting columns no ledger can name.
       for (std::size_t index = 0; index < width && index < kInvalidDefIdValue; ++index) {
-        const ResourceId resource{static_cast<std::uint16_t>(index)};
+        const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
         const Grams delta = AmountAt(now, index) - AmountAt(was, index);
         AddLedgerAmount(
             plot_hour ? book.plot_harvest : book.eaten, resource, plot_hour ? delta : -delta);
@@ -250,12 +253,6 @@ class EventsSlot final : public ISequentialPhase {
     }
   }
 
-  /// The year's book closes on the FIRST tick of the new calendar year,
-  /// after its phases 1-6 have run — so the turn's own bookkeeping (the
-  /// trudodni burn, the plan delivery, the life-expectancy recompute), all
-  /// of which happens at hour 0, lands in the year it settles rather than
-  /// in the one that just began. The price, stated in ledger_state.h so
-  /// nobody hunts for it: day 0's demography is booked to the year before.
   /// @brief Writes the closed year onto the office wall (ledger_state.h,
   /// ChronicleYear).
   ///
@@ -356,6 +353,14 @@ class EventsSlot final : public ISequentialPhase {
   /// under a running campaign.
   std::vector<float> kcal_per_gram_;
 
+  /// @brief Closes the year's book and opens the next.
+  ///
+  /// It closes on the FIRST tick of the new calendar year, after its phases
+  /// 1-6 have run — so the turn's own bookkeeping (the trudodni burn, the
+  /// plan delivery, the life-expectancy recompute), all of which happens at
+  /// hour 0, lands in the year it settles rather than in the one that just
+  /// began. The price, stated in ledger_state.h so nobody hunts for it:
+  /// day 0's demography is booked to the year before.
   void RotateLedger(WorldState& current) const {
     if (current.calendar.tick == 0 || current.calendar.tick % kTicksPerYear != 0) {
       return;

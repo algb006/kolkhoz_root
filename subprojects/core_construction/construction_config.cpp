@@ -651,7 +651,7 @@ bool ReadRecipes(const ITable& costs,
     }
 
     BuildMaterial material;
-    material.resource = ResourceId{static_cast<std::uint16_t>(resource_row)};
+    material.resource = DefIdFromRow<ResourceIdTag>(resource_row);
     material.grams = static_cast<Grams>(static_cast<double>(number) *
                                         static_cast<double>(grams_per_unit[resource_row]));
     ladder[level - 1].recipe.push_back(material);
@@ -794,14 +794,10 @@ bool ParseConstructionConfig(const ITableSet& tables,
   const std::uint32_t spare_row = resources->FindRowByKey("spare_part");
   if (spare_row != kNoTableRow && spare_row < grams_per_unit.size() &&
       grams_per_unit[spare_row] > 0) {
-    config.spare_part_resource = ResourceId{static_cast<std::uint16_t>(spare_row)};
+    config.spare_part_resource = DefIdFromRow<ResourceIdTag>(spare_row);
     config.spare_part_grams = grams_per_unit[spare_row];
   }
-  config.old_house_type = UnitTypeId{};
-  const std::uint32_t old_house_row = unit_types->FindRowByKey("old_house");
-  if (old_house_row != kNoTableRow) {
-    config.old_house_type = UnitTypeId{static_cast<std::uint16_t>(old_house_row)};
-  }
+  config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
 
   // The walking pace, from the same table every other consumer reads it
   // from (transport.csv) and never copied into a table of this module's

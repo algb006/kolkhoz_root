@@ -382,8 +382,7 @@ ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
   if (resources == nullptr) {
     return ResourceId{};
   }
-  const std::uint32_t row = resources->FindRowByKey(key);
-  return row == kNoTableRow ? ResourceId{} : ResourceId{static_cast<std::uint16_t>(row)};
+  return DefIdFromRow<ResourceIdTag>(resources->FindRowByKey(key));
 }
 
 }  // namespace

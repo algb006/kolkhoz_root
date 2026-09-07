@@ -284,7 +284,7 @@ class ResidentsSystem final : public IResidentsSystem {
         if (!(density > 0.0F)) {
           continue;
         }
-        const ResourceId id{static_cast<std::uint16_t>(resource)};
+        const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
         kcal += static_cast<double>(EdibleHeld(completed, id)) * static_cast<double>(density);
       }
     }

@@ -24,6 +24,7 @@
 #define CORE_COMMON_IDS_H_
 
 #include <compare>
+#include <cstddef>
 #include <cstdint>
 
 namespace core {
@@ -105,6 +106,53 @@ struct DefId {
 
   friend constexpr auto operator<=>(const DefId&, const DefId&) = default;
 };
+
+/// @brief A dense table row index as a definition id — THE one conversion.
+/// @param row A 0-based row index, or any out-of-range value including
+///        ITable's kNoTableRow (0xFFFFFFFF).
+/// @return The id for that row, or an INVALID id when the row cannot be one.
+///
+/// WHY THIS EXISTS, AND WHY IT IS NOT A PATCH. The tree carried this cast
+/// raw in twenty-odd places, every one of them `Id{static_cast<uint16_t>(x)}`
+/// and every one relying on a bound kept somewhere else: csv_table_set.cpp
+/// refuses a file with more than 65535 data rows, so no row index could
+/// reach the sentinel. ONE DOOR KEPT THE LIMIT AND TWENTY PLACES TRUSTED IT
+/// (0.17.80), which is not "unlikely to matter" — it is a single point of
+/// failure with a twenty-fold blast radius, and the day a second loader
+/// appears (a save, a mod, a generated table) all of them break at once.
+///
+/// The conversion is TOTAL and it never lies. A row at or above the sentinel
+/// has no id, and it says so with the invalid id rather than by wrapping
+/// modulo 65536 onto some other row's meaning — silent aliasing was the real
+/// defect here, not the reaching of the sentinel.
+///
+/// It does not refuse, and that is deliberate: a refusal needs somewhere to
+/// put the reason, and the callers that have somewhere — the parsers — say
+/// it far better in their own words ("row 7: resource 'potatos' is unknown",
+/// core_catalog/table_lookup.h). What this removes is the case where a
+/// caller could not have noticed at all.
+///
+/// AND THE BOUND IS `>=`, WHICH BUYS CLARITY AND NOTHING ELSE. At exactly
+/// kInvalidDefIdValue the truncation IS the sentinel, so `>` and `>=` return
+/// the same id and no test can tell them apart — measured, by damaging it.
+/// The row worth guarding against is 65536, which truncates to ZERO: not a
+/// sentinel, not a failure, just the first row of the table wearing another
+/// row's meaning. Silent aliasing was the defect; reaching the sentinel
+/// never was.
+template <typename Tag>
+constexpr DefId<Tag> DefIdFromRow(std::uint32_t row) {
+  return row >= kInvalidDefIdValue ? DefId<Tag>{} : DefId<Tag>{static_cast<std::uint16_t>(row)};
+}
+
+/// @brief The same for an index into a dense per-definition vector, where the
+/// index came from walking the vector rather than from a table.
+/// A separate NAME and the same body: the two have different reasons to be
+/// in range (a table's row count, a vector's size), and a reader who sees
+/// which one is meant can check the right thing.
+template <typename Tag>
+constexpr DefId<Tag> DefIdFromIndex(std::size_t index) {
+  return index >= kInvalidDefIdValue ? DefId<Tag>{} : DefId<Tag>{static_cast<std::uint16_t>(index)};
+}
 
 struct ResourceIdTag {};
 

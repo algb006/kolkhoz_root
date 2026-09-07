@@ -2,6 +2,7 @@
 // Plain executable, exit code = number of failed expectations (framework not
 // chosen yet — tests/CMakeLists.txt).
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -744,9 +745,79 @@ int CheckTheFigureRule() {
   return failures;
 }
 
+/// ONE DOOR KEPT THE LIMIT AND TWENTY PLACES TRUSTED IT.
+///
+/// A definition id is a 16-bit dense row index with 0xFFFF reserved, and the
+/// only thing that kept a row index inside it was csv_table_set.cpp refusing
+/// a file of more than 65535 data rows. Every conversion in the tree spelled
+/// `Id{static_cast<std::uint16_t>(row)}` by hand and relied on that. The
+/// cost of the arrangement is not that the sentinel gets reached — it is
+/// that a row above it WRAPS, silently, onto another row's meaning.
+///
+/// The conversion is total: out of range has no id, and it says so.
+int TestDefIdFromRow() {
+  int failures = 0;
+
+  failures += Expect(core::DefIdFromRow<core::ResourceIdTag>(0).value == 0,
+                     "row zero is a real id, not mistaken for absence");
+  failures += Expect(core::DefIdFromRow<core::ResourceIdTag>(65534).value == 65534,
+                     "and the last row a table may have is still a real id");
+
+  // ROW 65535 PROVES NOTHING, AND THE LINE SAYING SO IS THE POINT OF IT.
+  // The truncation of 65535 to sixteen bits IS the sentinel, so the guarded
+  // and the unguarded conversion agree there exactly — damaging the bound
+  // reddens nothing on this row, measured. It is asserted anyway, as the
+  // statement that absence is what a caller gets; it is not evidence that
+  // the bound exists.
+  failures +=
+      Expect(core::DefIdFromRow<core::ResourceIdTag>(65535).value == core::kInvalidDefIdValue,
+             "the row that lands on the sentinel is refused an id (agrees either way)");
+
+  // THESE ARE THE EVIDENCE, and they are about WRAPPING, not about reaching
+  // the sentinel. 65536 truncated to 0 — the first row of the table, a
+  // perfectly valid id belonging to something else. Nothing downstream could
+  // have noticed: not a sentinel, not a failure, just the wrong resource.
+  failures +=
+      Expect(core::DefIdFromRow<core::ResourceIdTag>(65536).value == core::kInvalidDefIdValue,
+             "a row past the sentinel does not WRAP onto row zero's meaning");
+  failures +=
+      Expect(core::DefIdFromRow<core::ResourceIdTag>(70000).value == core::kInvalidDefIdValue,
+             "nor onto any other row's — 70000 would have become row 4464");
+
+  // ITable's own "no such row" is 0xFFFFFFFF, and it must keep arriving as
+  // absence: every `row == kNoTableRow ? Id{} : ...` in the tree collapsed
+  // into this call, so if it answered anything else those all changed
+  // meaning at once.
+  failures +=
+      Expect(core::DefIdFromRow<core::ResourceIdTag>(0xFFFFFFFFU).value == core::kInvalidDefIdValue,
+             "and kNoTableRow still arrives as absence, as the ternaries it replaced did");
+
+  // The tag is part of the type, so a crop id cannot be handed to something
+  // expecting a resource. That is the whole reason DefId is a template.
+  const core::CropId crop = core::DefIdFromRow<core::CropIdTag>(3);
+  failures += Expect(crop.value == 3, "the conversion is per tag, and keeps the tag");
+
+  // The index-shaped call: same rule, different reason to be in range, and a
+  // std::size_t on the way in rather than a table's uint32.
+  failures += Expect(core::DefIdFromIndex<core::ResourceIdTag>(std::size_t{5}).value == 5,
+                     "a vector index becomes the same id a row would");
+  failures += Expect(core::DefIdFromIndex<core::ResourceIdTag>(std::size_t{65536}).value ==
+                         core::kInvalidDefIdValue,
+                     "and it does not wrap either — 65536 would have become index zero");
+  failures += Expect(core::DefIdFromIndex<core::ResourceIdTag>(std::size_t{100000}).value ==
+                         core::kInvalidDefIdValue,
+                     "nor at any distance past it");
+
+  // constexpr, so a wrong answer here would not even compile through.
+  static_assert(core::DefIdFromRow<core::ResourceIdTag>(65536).value == core::kInvalidDefIdValue,
+                "the wrap must be closed at compile time too");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckTheFigureRule();
+  failures += TestDefIdFromRow();
   failures += TestCalendar();
   failures += TestStateTable();
   failures += TestRandom();
