@@ -109,7 +109,7 @@ class ScriptedSimulation final : public core::ISimulation {
 
   /// No subsystem here either, and so no rate: kNoData.
   core::Deadline WearDeadline(core::UnitId /*unit*/) const override {
-    return core::NoDeadline(core::DeadlineKind::kNoData);
+    return core::DeadlineNoData();
   }
 
   // The scripted double answers clean air for both stink questions: this

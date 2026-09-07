@@ -207,15 +207,15 @@ Deadline WearDeadline(const ConstructionConfig& config, const WorldState& comple
     // The tables carry no has_wear column at all, so nothing here knows
     // whether anything wears. "Nothing wears" and "nobody said" arrive at
     // this code as the same zero, and they are not the same answer.
-    return NoDeadline(DeadlineKind::kNoData);
+    return DeadlineNoData();
   }
   const std::uint32_t row = FindRow(completed.units, unit);
   if (row == kNoRow) {
-    return NoDeadline(DeadlineKind::kNotApplicable);  // no such unit: no question
+    return DeadlineNotApplicable();  // no such unit: no question
   }
   const UnitRow& built = completed.units.rows[row];
   if (built.type.value >= config.types.size()) {
-    return NoDeadline(DeadlineKind::kNotApplicable);  // no type, no term
+    return DeadlineNotApplicable();  // no type, no term
   }
   if (built.level == 0) {
     // A SITE IS "NEVER", NOT "NOT APPLICABLE". Pegs and string do not wear
@@ -223,12 +223,12 @@ Deadline WearDeadline(const ConstructionConfig& config, const WorldState& comple
     // and kNotApplicable tells the reader to drop the question for good
     // (deadline.h). The rate is what changes here, which is kNever's whole
     // meaning.
-    return NoDeadline(DeadlineKind::kNever);
+    return DeadlineNever();
   }
   const BuildType& type = config.types[built.type.value];
   if (type.has_wear == 0) {
     // A stack, a heap, a trench. Not "no deadline yet" — no wear, ever.
-    return NoDeadline(DeadlineKind::kNotApplicable);
+    return DeadlineNotApplicable();
   }
   if (built.wear >= kWearScale) {
     // Asked BEFORE the pause, because a unit already at the end is at the
@@ -239,7 +239,7 @@ Deadline WearDeadline(const ConstructionConfig& config, const WorldState& comple
   if (built.paused != 0) {
     // Stopped units do not wear (unit rules §15). An answer that changes
     // the moment somebody starts it, which is exactly what kNever means.
-    return NoDeadline(DeadlineKind::kNever);
+    return DeadlineNever();
   }
   const bool is_old_house = TypeIsOldHouse(config, built.type);
   const float years = is_old_house ? config.old_house_collapse_years
@@ -248,13 +248,13 @@ Deadline WearDeadline(const ConstructionConfig& config, const WorldState& comple
     // The ladder names no term for this level. Documented as "does not
     // wear" (construction_config.h), so the question does not arise —
     // and it is told apart from a missing column by the check above.
-    return NoDeadline(DeadlineKind::kNotApplicable);
+    return DeadlineNotApplicable();
   }
   // The same daily share AgeUnits adds, read forward instead of applied.
   const float pace = WearPace(type, built.level);
   const float per_day = kWearScale * pace / (years * static_cast<float>(kDaysPerYear));
   if (!(per_day > 0.0F)) {
-    return NoDeadline(DeadlineKind::kNever);  // a pace of nothing wears nothing
+    return DeadlineNever();  // a pace of nothing wears nothing
   }
   // COUNTED THE WAY THE WORLD COUNTS IT, day by day, and not by dividing.
   //

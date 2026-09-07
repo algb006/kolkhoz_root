@@ -10,6 +10,7 @@
 
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/deadline.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
 #include "core_common/quantities.h"
@@ -755,6 +756,57 @@ int CheckTheFigureRule() {
 /// that a row above it WRAPS, silently, onto another row's meaning.
 ///
 /// The conversion is total: out of range has no id, and it says so.
+/// A REFUSAL MUST NOT BE ABLE TO WEAR THE FACE OF A MEASUREMENT.
+///
+/// deadline.h says a `kDays` answer of 0 means "the limit is reached now" —
+/// the most alarming reading the type has — and it warns in its own header
+/// that the counterfeit to guard against is exactly a refusal dressed as a
+/// zero. Until 0.17.81 the one function that could produce that counterfeit
+/// was `NoDeadline(DeadlineKind)`, which accepted `kDays` without a word.
+///
+/// The three refusals are now three names with no argument, so the forgery
+/// cannot be written at all. What is left to check is that none of them
+/// carries `kDays`, and that a real zero-day forecast stays distinguishable
+/// from all three — which is the confusion the defect would have caused.
+int TestDeadlineRefusals() {
+  int failures = 0;
+
+  failures += Expect(core::DeadlineNever().kind == core::DeadlineKind::kNever &&
+                         core::DeadlineNotApplicable().kind == core::DeadlineKind::kNotApplicable &&
+                         core::DeadlineNoData().kind == core::DeadlineKind::kNoData,
+                     "each refusal answers with its own kind and no other");
+
+  // THE ASSERTION THE DEFECT WOULD HAVE FAILED. Not "days is 0" — days is 0
+  // in all three by construction and would be 0 in the forgery too; the
+  // question is the KIND, because that is what a reader switches on.
+  failures += Expect(core::DeadlineNever().kind != core::DeadlineKind::kDays &&
+                         core::DeadlineNotApplicable().kind != core::DeadlineKind::kDays &&
+                         core::DeadlineNoData().kind != core::DeadlineKind::kDays,
+                     "and no refusal is a forecast: none of the three answers kDays");
+
+  // The real thing it must not be confused with. A limit reached TODAY is a
+  // legitimate answer and looks identical in the `days` field alone.
+  const core::Deadline now = core::DeadlineInDays(0);
+  failures += Expect(now.kind == core::DeadlineKind::kDays && now.days == 0,
+                     "a limit reached today is a forecast of zero days, and stays one");
+  failures += Expect(now.kind != core::DeadlineNoData().kind,
+                     "and it is a different answer from 'nothing to answer with'");
+
+  // Negative days would be a limit already passed, which the type does not
+  // express: it clamps rather than carrying a number no reader expects.
+  failures += Expect(core::DeadlineInDays(-5).days == 0,
+                     "a limit already passed is reported as today, not as a negative count");
+
+  // The default is the refusal that shows nothing, deliberately: an unfilled
+  // field must not read as well-being.
+  failures += Expect(core::Deadline{}.kind == core::DeadlineKind::kNoData,
+                     "an unfilled deadline defaults to 'no data', never to a comfortable zero");
+
+  static_assert(core::DeadlineNever().kind != core::DeadlineKind::kDays,
+                "the refusals are constexpr, so this holds before the test even runs");
+  return failures;
+}
+
 int TestDefIdFromRow() {
   int failures = 0;
 
@@ -818,6 +870,7 @@ int main() {
   int failures = 0;
   failures += CheckTheFigureRule();
   failures += TestDefIdFromRow();
+  failures += TestDeadlineRefusals();
   failures += TestCalendar();
   failures += TestStateTable();
   failures += TestRandom();

@@ -165,9 +165,7 @@ class StepEngine final : public ISimulation {
   /// No subsystems, so no rate to forecast from. kNoData and not kNever:
   /// nothing here knows whether the unit wears, and saying "it never will"
   /// would be an answer this object has no business giving.
-  Deadline WearDeadline(UnitId /*unit*/) const override {
-    return NoDeadline(DeadlineKind::kNoData);
-  }
+  Deadline WearDeadline(UnitId /*unit*/) const override { return DeadlineNoData(); }
 
   // The bare engine knows no subsystems, so it knows no sources: clean air
   // rather than a refusal, exactly as WearDeadline answers kNoData.
