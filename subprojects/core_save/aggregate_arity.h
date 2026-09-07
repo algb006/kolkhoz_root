@@ -68,6 +68,17 @@ constexpr std::size_t CountUpwards() {
 ///       and an assert on 0 would pass for the wrong reason. Every struct
 ///       this module serialises is an aggregate by the state model's rule
 ///       that world state is plain data.
+/// @note AND IT COUNTS INITIALISERS, NOT MEMBERS, WHICH DIFFERS FOR A RAW
+///       ARRAY. `struct { int a; int b[3]; }` has two members and answers
+///       FOUR, because brace elision lets the array's elements be
+///       initialised as if they were fields of the outer struct. Nested
+///       STRUCTS are counted correctly — an inner aggregate takes one pair
+///       of braces and one slot — so the difference bites only on arrays.
+///       No serialised type has one today, and all thirteen counts in
+///       save_blocks.cpp and save_rows.cpp were checked by hand against
+///       their field lists on 2026-09-07. Whoever adds an array to a state
+///       row: the number here will not be the number you counted, and the
+///       static_assert will tell you so loudly rather than quietly.
 template <typename T>
 constexpr std::size_t AggregateArity() {
   static_assert(std::is_aggregate_v<T>, "arity is only meaningful for an aggregate");

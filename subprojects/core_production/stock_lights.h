@@ -54,13 +54,20 @@ std::int32_t DaysToPasture(const ProductionConfig& config, const WorldState& wor
 /// @brief Game days to the next sowing window, 0 when one is open.
 std::int32_t DaysToSowing(const ProductionConfig& config, const WorldState& world);
 
-/// @brief The seed light: will there be anything left to sow.
+/// @brief The seed light: is there enough to sow what the nearest campaign
+/// will put in the ground.
+///
+/// TWO @brief LINES STOOD HERE, and they said different things: the older
+/// one asked "will there be anything left to sow", which is the DAYS
+/// question this light stopped answering on 2026-09-04. Doxygen keeps the
+/// last and drops the first silently, so the contract a reader saw and the
+/// contract a tool saw were not the same one. The older sentence is kept
+/// below, where it belongs — as the reason the light exists rather than as
+/// a second statement of what it returns.
 ///
 /// Food and seed are the same grain and still two lights, because this is
 /// the start's most expensive mistake: an eaten seed fund shows nothing at
 /// all until sowing, and by then it costs a whole year (office design §5).
-/// @brief The seed light: is there enough to sow what the nearest campaign
-/// will put in the ground.
 ///
 /// COVERAGE, NOT DAYS, and that is boss's answer of 2026-09-04 rather than a
 /// simplification. Seed is not spent day by day — it goes in at once, on the

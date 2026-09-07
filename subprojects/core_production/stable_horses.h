@@ -29,6 +29,15 @@ namespace core {
 /// by construction: after it runs, no kolkhoz horse stands at a household,
 /// so a second call finds nothing to gather.
 ///
+/// AND A FOURTH CASE, which the sentence above missed: when a groom stands
+/// at a built yard but there was no horse to move — `moved_heads == 0` — the
+/// MILESTONE IS SET AND NO EVENT IS RAISED. That is deliberate rather than
+/// an oversight: the stable is manned, which is what the milestone records,
+/// and announcing a stabling that stabled nothing would put a line in the
+/// journal for something a player did not do. Written down because a
+/// contract that lists three of four cases invites the reader to assume the
+/// fourth behaves like one of them.
+///
 /// @pre Called once per day boundary, from the sequential decisions slot,
 ///      BEFORE billeting — a horse that arrives today needs a place under
 ///      the roof today, and billeting is what counts the places.

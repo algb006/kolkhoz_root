@@ -19,6 +19,17 @@
 namespace core {
 namespace {
 
+/// @brief Whether the settlement has an adult kolkhoz horse at all. The cart
+/// is not counted apart from the animal: the canon of the start hands out
+/// horses and horse tackle to the same yards together, so a free draught
+/// horse IS a cart of 750 kg (boss, 2026-09-03).
+///
+/// THIS BLOCK AND SettleHauling's HAD SWAPPED PLACES, and neither was where
+/// it belonged: this one stood over SettleHauling, and SettleHauling's own
+/// words floated above the closing brace of the namespace, attached to
+/// nothing at all. The sixteenth case of the same class, and the first found
+/// by reading a file the delta mechanism had never once looked at
+/// (2026-09-07).
 bool DraughtHorsesFree(const ProductionConfig& config, const WorldState& world) {
   if (config.horse_kind.value == kInvalidDefIdValue) {
     return false;
@@ -32,15 +43,6 @@ bool DraughtHorsesFree(const ProductionConfig& config, const WorldState& world) 
   return false;
 }
 
-/// @brief Turns the hauling labor delivered today into grain that actually
-/// moved, and re-sizes tomorrow's demand for what is still lying out.
-///
-/// Before task A4 this was a daily retry that moved everything the stores
-/// had room for, the instant they had it. The load now waits for HANDS,
-/// and the door still decides where it fits: capacity is production's
-/// rule and transport is labor's muscle, which is why one of them writes
-/// the seam and the other drains it.
-
 }  // namespace
 
 /// @brief Room a load could actually be delivered INTO, unlike
@@ -52,6 +54,25 @@ bool DraughtHorsesFree(const ProductionConfig& config, const WorldState& world) 
 /// village: the granaries were full, the heaps were not, and nobody was
 /// sent (task A4).
 /// @return The sum, or Grams max when any store has no ceiling at all.
+///
+/// AND THAT SECOND HALF CANNOT HAPPEN TODAY, which makes this function
+/// numerically identical to the number it was written to differ from
+/// (found 2026-09-07 by the first reading this file has ever had).
+///
+/// StoresGoods asks the LADDER for a capacity — `StorageCapacityKgAt() > 0`
+/// — and every outline store leaves that cell blank, so all five of them
+/// (threshing floor, manure heap, firewood yard, silage trench, summer camp)
+/// are dropped at the `continue` above and the unbounded branch is never
+/// reached. Meanwhile StorageCapacityGrams answers -1 for exactly those
+/// units, and its own contract says in as many words: "callers must treat a
+/// negative result as unbounded, NEVER as zero — a manure heap read as a
+/// zero-capacity store stops making manure".
+///
+/// So two readers of one property disagree, and one of them does precisely
+/// what the other forbids. The consequence is the defect this function
+/// exists to prevent: granaries full, heaps with room, and nobody sent.
+/// Recorded rather than repaired here — the cure belongs where StoresGoods
+/// is, not in its caller, and choosing it is a question about task A4.
 Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world) {
   Grams room = 0;
   for (const UnitRow& unit : world.units.rows) {
@@ -80,10 +101,14 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
   return RateBetween(field.center, destination, hours_per_km, load);
 }
 
-/// @brief Whether the settlement has an adult kolkhoz horse at all. The
-/// cart is not counted apart from the animal: the canon of the start hands
-/// out horses and horse tackle to the same yards together, so a free
-/// draught horse IS a cart of 750 kg (boss, 2026-09-03).
+/// @brief Turns the hauling labor delivered today into grain that actually
+/// moved, and re-sizes tomorrow's demand for what is still lying out.
+///
+/// Before task A4 this was a daily retry that moved everything the stores
+/// had room for, the instant they had it. The load now waits for HANDS,
+/// and the door still decides where it fits: capacity is production's
+/// rule and transport is labor's muscle, which is why one of them writes
+/// the seam and the other drains it.
 void SettleHauling(const ProductionConfig& config, WorldState& current) {
   for (FieldRow& field : current.fields.rows) {
     if (field.reaped_grams <= 0) {
