@@ -94,8 +94,8 @@ beer_stall,1,2,300,brick_small,10,,,80,55,1
 road_canteen,1,3,600,brick_mid,16,,,90,60,1
 bathhouse,1,1,120,wood_small,8,,,50,30,1.1
 bathhouse,2,1,70,wood_small_ext,6,,,50,30,1
-barter_place,1,1,120,,,,,,,1.1
-kolkhoz_market,1,2,300,brick_small,10,,,80,55,1
+barter_place,1,1,0,,,,,,,1.1
+kolkhoz_market,1,2,300,shelter,5,,,30,18,1
 roadside_market,1,3,,,,,,,,1
 school_sports_ground,1,2,0,plot,,,,,,1
 stadium,1,1,30,earthwork,8,,,60,40,1
@@ -123,7 +123,7 @@ mts,4,3,150,equipment,4,,,35,15,1
 machine_park,1,2,30,earthwork,8,,,60,40,1
 machine_park,2,2,60,gravel_pad,8,,,50,30,1
 bus_stop,1,3,600,brick_mid,16,,,90,60,1
-farm_stop,1,1,120,wood_small,8,,,50,30,1.1
+farm_stop,1,1,120,shelter,5,,,30,18,1.1
 well,1,1,0,plot,,,,,,1
 substation,1,1,300,brick_small,10,,,80,55,1
 power_line,1,1,0,plot,,,,,,1

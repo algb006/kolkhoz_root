@@ -23,3 +23,4 @@ body_height_sigma_frac,0.037,both
 body_height_clamp_sigma,2.5,both
 body_build_sigma_frac,0.07,both
 meadow_flower_density_m2,3,layer
+build_max_slope,0.25,layer

@@ -72,10 +72,39 @@ class DecisionsSlot final : public ISequentialPhase {
   IConstructionSystem* construction_;
 };
 
+/// The most calorie-dense thing a person eats is fat, at about 9 kcal per
+/// gram. Ten is the ceiling: generous enough that no real food approaches
+/// it, tight enough that a decimal point in the wrong place is caught. The
+/// shipped table runs 0.25 to 3.5.
+///
+/// THE BOUND EXISTS BECAUSE THE PRODUCT IS CAST TO AN INTEGER (UB-005). The
+/// year's harvest_kcal is `sum(grams * density)` accumulated in a double and
+/// then `static_cast<std::int64_t>`, and a conversion whose value will not
+/// fit the target is undefined behaviour, not a large number
+/// ([conv.fpint]/1). The cell was checked for being POSITIVE and nothing
+/// else, so one absurd figure in resources.csv reached that cast unopposed.
+///
+/// The door is here, where the vector is filled, and not beside the cast.
+/// Today the vector has exactly ONE reader, so the two places would be
+/// equally effective — and that is the reason to prefer this one rather than
+/// an argument against it: a guard beside the single reader is a guard the
+/// second reader will not inherit. Same rule as the plot radii and the level
+/// ladder.
+///
+/// It bounds this vector and not the column: food_config.cpp reads
+/// kcal_per_gram out of the same table by its own path and is not covered
+/// here. That is a separate reader with a separate door to write, and saying
+/// so is the difference between a bound and a belief.
+constexpr float kMaxKcalPerGram = 10.0F;
+
 /// @brief Caloric density per resource, dense by ResourceId.
 /// A resource without the column, or with a blank cell, reads zero — which
 /// is the right answer for hay and straw and the honest one for anything
 /// the design has not priced yet.
+/// @note A cell outside 0..kMaxKcalPerGram reads zero as well, but SAYS SO:
+///       a blank cell is the design not having priced a thing, and a figure
+///       of ten thousand is a typo, and the two must not arrive at the same
+///       silence.
 std::vector<float> FoodValuePerResource(const ITableSet& tables) {
   std::vector<float> density;
   const ITable* resources = tables.FindTable("resources");
@@ -89,7 +118,21 @@ std::vector<float> FoodValuePerResource(const ITableSet& tables) {
   }
   for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
     const std::optional<float> cell = resources->CellReal(row, column);
-    density[row] = cell && *cell > 0.0F ? *cell : 0.0F;
+    if (!cell) {
+      continue;  // blank: not priced yet, and the zero already there says so
+    }
+    // Written positively, so that a NaN fails it. CellReal refuses nan and
+    // inf already; this does not lean on that, because a test written as
+    // `> kMax` would pass one the day the reader beneath it changes.
+    if (*cell > 0.0F && *cell <= kMaxKcalPerGram) {
+      density[row] = *cell;
+      continue;
+    }
+    if (*cell != 0.0F) {
+      LogWarning("resources: kcal_per_gram in row " + std::to_string(row) +
+                 " is outside 0..10 and was read as zero — the densest food there is comes to "
+                 "about 9 kcal per gram");
+    }
   }
   return density;
 }
@@ -264,6 +307,45 @@ class EventsSlot final : public ISequentialPhase {
       if (grams > 0 && density > 0.0F) {
         kcal += static_cast<double>(grams) * static_cast<double>(density);
       }
+    }
+    // AND THE SUM IS BOUNDED TOO, BECAUSE THE CELL BOUND IS NOT ENOUGH.
+    // Ten kcal per gram makes each FACTOR safe and does nothing for their
+    // sum: this cap is the only thing that bounds the value at all.
+    //
+    // THE FIRST DRAFT OF THIS COMMENT GOT THE ARITHMETIC WRONG, AND WRONG IN
+    // THE DIRECTION THAT MADE THE CAP LOOK OPTIONAL. It said "102 resources
+    // times the 9.0e15 g ceiling of Grams times 10 leaves half a percent of
+    // room". kMaxGrams bounds ONE CONVERSION — GramsFromFloat refuses more
+    // than that in a single call — and bounds nothing that is stored: a
+    // harvest column is accumulated by AddLedgerAmount over every field and
+    // every day of the year, so one cell of it is bounded by int64 and by
+    // nothing else. The table cap is 65535 rows, not 102. The honest worst
+    // case is around 9e21, three orders past int64, and there never was a
+    // margin to lose.
+    //
+    // This is not a second home for the cell bound. "What may a density be"
+    // is answered where the vector is filled; "can this accumulation reach
+    // the target type" is a different question, and it needed a different
+    // answer rather than a comforting subtraction.
+    //
+    // Saturating rather than refusing: a year of 9e18 kcal is four billion
+    // years of one person's food, so the number is nonsense long before it
+    // gets here, and the chronicle's job is to carry the year rather than to
+    // judge it. It says so out loud, which is the part that matters.
+    //
+    // WRITTEN POSITIVELY, like every range test in this core: `kcal > kMax`
+    // would let a NaN through, because NaN compares false against everything.
+    // No NaN can reach here today — CellReal refuses non-finite cells, the
+    // density filter is positive, and a sum of finite terms stays finite —
+    // but the rule exists so that the day one of those doors moves, this line
+    // does not have to be found again.
+    constexpr double kMaxHarvestKcal = 9.0e18;
+    if (!(kcal >= 0.0 && kcal <= kMaxHarvestKcal)) {
+      LogWarning(
+          "chronicle: the year's harvest_kcal fell outside 0..9e18 and was capped — a "
+          "harvest column accumulates all year, so this is a quantity that ran away, not "
+          "a table that grew");
+      kcal = kcal > 0.0 ? kMaxHarvestKcal : 0.0;
     }
     row.harvest_kcal = static_cast<std::int64_t>(kcal);
     current.ledger.chronicle.push_back(row);

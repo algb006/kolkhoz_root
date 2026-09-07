@@ -86,7 +86,7 @@ beer_stall,Пивной ларёк,social,2,0,1,era,,1,30,,,absorbed,1,,0,none,,
 road_canteen,Дорожная столовая,social,3,0,1,era,,1,45,,,absorbed,1,,1,none,,0
 bathhouse,Баня,social,1,0,1,era,,1,25,,,absorbed,1,,1,none,,0
 barter_place,Место обмена,social,1,0,1,era,,1,25,,,follows,0,,0,none,,0
-kolkhoz_market,Колхозный рынок,social,2,0,1,era,,1,30,,,follows,0,,0,none,,0
+kolkhoz_market,Колхозный рынок,social,2,0,1,era,,1,30,,,follows,1,,0,none,,0
 roadside_market,Стихийный рынок у трассы,social,3,0,0,era,,1,,,,follows,0,,0,none,,0
 school_sports_ground,Спортплощадка при школе,social,2,0,1,era,,1,,,,follows,0,,0,none,,0
 stadium,Стадион,social,1,0,1,era,,1,25,,,follows,0,,0,none,,0
@@ -100,7 +100,7 @@ horse_yard,Колхозный двор,logistics,1,0,1,era,,1,45,,,absorbed,1,1.
 mts,МТС,logistics,2,0,1,event,event_04,1,45,,,absorbed,1,,0,none,,0
 machine_park,Стоянка техники,logistics,2,0,1,era,,1,17,,,levelled,0,,0,none,,0
 bus_stop,Автобусная остановка,infrastructure,3,0,1,era,,1,45,,,absorbed,1,,0,none,,0
-farm_stop,Остановка колхозного транспорта,infrastructure,1,0,1,era,,1,25,,,follows,0,,0,none,,0
+farm_stop,Остановка колхозного транспорта,infrastructure,1,0,1,era,,1,20,,,follows,1,,0,none,,0
 well,Колодец,infrastructure,1,0,1,era,,0,,1.2,open,follows,0,,0,none,,0
 substation,Трансформаторная подстанция,infrastructure,1,0,1,event,event_01,1,30,,,absorbed,1,,0,none,,0
 power_line,Линии электропередачи,infrastructure,1,0,1,event,event_01,0,,,route,follows,0,,0,none,,0
