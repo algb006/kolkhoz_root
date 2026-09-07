@@ -7,9 +7,12 @@
 // and a test that needs tables/ on disk stops being a unit test.
 
 #include <cstdint>
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -23,6 +26,7 @@
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
+#include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
@@ -940,6 +944,129 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
+/// THE TWO READINGS OF unit_types MUST BE THE SAME LENGTH, AND THE PARSE
+/// SAYS SO.
+///
+/// `ConstructionConfig::types` and the catalogue's `plot_radius_m` are both
+/// one row per unit_types row, and CheckPlots walks the first while indexing
+/// the second. Until 2026-09-07 nothing wrote that equality down, so the
+/// safety of that indexing rested on the two passes happening to see the same
+/// table — true today, and a property of nothing.
+///
+/// A SET THAT ANSWERS DIFFERENTLY TWICE IS THE SUBJECT, AND NOTHING ELSE IS.
+/// The shared FakeTableSet cannot pose this: it hands back the same pointer
+/// every time, which is exactly the invariant under test. So this check
+/// writes its own one-off set — the fake is plumbing, the water is the
+/// subject (fake_tables.h) — and that set is dishonest in the one way that
+/// matters: its two answers to "unit_types" have different row counts.
+///
+/// THE ORDER OF THE TWO IS THE WHOLE POINT, AND I GOT IT WRONG FIRST TRY.
+/// The catalogue is asked FIRST and the module's own pass second, so the
+/// dangerous set is the one where the catalogue is SHORT: CheckPlots then
+/// walks a three-type list and indexes a two-element `plot_radius_m`. The
+/// other order is harmless — a longer catalogue is merely never read to the
+/// end — and a test built on it would have watched the guard from a safe
+/// distance and called that a check. Both are asserted below; only the first
+/// reads past a buffer.
+///
+/// The refusal is read out of the LOG, because the parse is module-internal
+/// and a bare nullptr would not prove the failure named its table.
+int TestTheTwoReadingsOfUnitTypesAgree() {
+  int failures = 0;
+  const test::FakeTable three{{"key", "era", "player_built", "gate", "has_plot", "plot_radius_m"},
+                              {{"barn", "1", "1", "era", "1", "25"},
+                               {"byre", "1", "1", "era", "1", "30"},
+                               {"shed", "1", "1", "era", "1", "20"}}};
+  const test::FakeTable two{
+      {"key", "era", "player_built", "gate", "has_plot", "plot_radius_m"},
+      {{"barn", "1", "1", "era", "1", "25"}, {"byre", "1", "1", "era", "1", "30"}}};
+  const test::FakeTable no_levels{{"unit", "level"}, {}};
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+
+  /// A set that answers "unit_types" with a DIFFERENT table each time it is
+  /// asked: the first call is the catalogue's, the rest are the module's own
+  /// pass. Every other table answers honestly.
+  class TwoFacedSet final : public core::ITableSet {
+   public:
+    TwoFacedSet(const core::ITable& first, const core::ITable& later, test::FakeTableSet rest)
+        : first_(&first), later_(&later), rest_(std::move(rest)) {}
+
+    const core::ITable* FindTable(std::string_view name) const override {
+      if (name != "unit_types") {
+        return rest_.FindTable(name);
+      }
+      if (!asked_) {
+        asked_ = true;
+        return first_;
+      }
+      return later_;
+    }
+
+    std::uint32_t TableCount() const override { return rest_.TableCount() + 1; }
+
+    std::string_view TableName(std::uint32_t index) const override {
+      return index == 0 ? std::string_view("unit_types") : rest_.TableName(index - 1);
+    }
+
+   private:
+    const core::ITable* first_;
+    const core::ITable* later_;
+    test::FakeTableSet rest_;
+    mutable bool asked_ = false;
+  };
+
+  const test::FakeTableSet rest{{{"unit_levels", &no_levels},
+                                 {"unit_level_cost", &no_costs},
+                                 {"resources", &no_resources},
+                                 {"construction", &knobs}}};
+
+  const std::string log_path = "unit_core_construction_lengths.txt";
+  failures += Expect(core::InitLogFile(log_path), "the log file opens for the refusal");
+  {
+    // The catalogue short, the type pass long: three types, two radii.
+    const TwoFacedSet dangerous{two, three, rest};
+    const auto system = core::CreateConstructionSystem(dangerous, core::StubTables::kAllowed);
+    failures += Expect(system == nullptr,
+                       "a catalogue SHORTER than the type list is REFUSED, not walked past the end "
+                       "of `plot_radius_m` by CheckPlots");
+  }
+  {
+    // And the harmless order too: the equality is the rule, not the crash.
+    const TwoFacedSet harmless{three, two, rest};
+    failures +=
+        Expect(core::CreateConstructionSystem(harmless, core::StubTables::kAllowed) == nullptr,
+               "and so is a catalogue LONGER than the type list — the door is the equality, not "
+               "the direction that happens to read out of bounds");
+  }
+  core::ShutdownLogFile();
+
+  std::ifstream file(log_path);
+  std::stringstream content;
+  content << file.rdbuf();
+  const std::string text = content.str();
+  failures += Expect(text.find("unit_types") != std::string::npos,
+                     "and the refusal names the table it is about");
+  failures += Expect(text.find("plot_radius_m") != std::string::npos,
+                     "and the column, so the reader knows which of the two readings to look at");
+  std::remove(log_path.c_str());
+
+  // AND THE HONEST SET STILL LOADS. Without this the check above would pass
+  // just as well if the parse refused everything.
+  {
+    const test::FakeTableSet honest{{{"unit_types", &three},
+                                     {"unit_levels", &no_levels},
+                                     {"unit_level_cost", &no_costs},
+                                     {"resources", &no_resources},
+                                     {"construction", &knobs}}};
+    failures +=
+        Expect(core::CreateConstructionSystem(honest, core::StubTables::kAllowed) != nullptr,
+               "a set that answers the same table twice is not refused by the new door");
+  }
+  return failures;
+}
+
 /// THE STINK FIELD: the full zone, the band, and the half that has nothing
 /// to read.
 int TestTheStinkField() {
@@ -1300,6 +1427,7 @@ int main() {
   failures += TestWearCeilingAndCollapse(tables);
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);
+  failures += TestTheTwoReadingsOfUnitTypesAgree();
   failures += TestTheStinkField();
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();

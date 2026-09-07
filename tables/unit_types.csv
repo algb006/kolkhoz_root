@@ -16,7 +16,7 @@
 # capacity_by_plot=1: the player draws the outline and the capacity
 # follows the area — there is no number to read (manure heap, silage
 # trench, hay stack, log and stone piles, threshing floor)
-# has_wear=0: the thing does not age at all — nothing is built and there is nothing to fall apart
+# has_wear=0: the thing does not age at all. NOT the same as has_building=0: a lean-to, a fence or a roof wears too, and the measure is whether it HOLDS anything — the cemetery fence holds a perimeter and is repaired, the fence round the machine park holds nobody and does not (unit rules §15)
 # wear_factor: what this unit's own nature does to the period its build class gives it. Empty is 1.0. A cattle yard rots from damp and ammonia, a mill shakes itself apart (unit rules §15)
 key,title,class,era,capacity_by_plot,player_built,gate,gate_ref,has_plot,plot_radius_m,footprint_r_m,placement_ref,has_wear,wear_factor,has_heating,stink,stink_when,one_family
 threshing_floor,Ток,production,1,1,1,era,,1,25,,,0,,0,none,,0
@@ -48,7 +48,7 @@ sewing_shop,Швейная мастерская,production,1,0,1,era,,1,25,,,1,,
 shoemaking_shop,Сапожная мастерская,production,1,0,1,era,,1,25,,,1,,0,none,,0
 furrier_shop,Скорняжная мастерская,production,3,0,1,era,,1,45,,,1,,0,none,,0
 dye_house,Красильня,production,2,0,1,era,,1,30,,,1,,0,weak,working,0
-tannery,Дубильня,production,1,0,1,era,,1,20,,,0,,0,strong,working,0
+tannery,Дубильня,production,1,0,1,era,,1,20,,,1,,0,strong,working,0
 garment_factory,Швейный цех,production,3,0,1,era,,1,45,,,1,,0,none,,0
 shoe_factory,Обувной цех,production,3,0,1,era,,1,45,,,1,,0,none,,0
 winery,Винодельня,production,2,0,1,era,,1,30,,,1,,0,none,,0
@@ -56,7 +56,7 @@ brewery,Пивоварня,production,2,0,1,era,,1,30,,,1,,0,none,,0
 greenhouse,Теплица,production,3,0,1,era,,1,45,,,1,,0,none,,0
 orchard,Колхозный сад,production,1,0,1,era,,1,,,,0,,0,none,,0
 fishery,Рыболовная артель,production,2,0,1,era,,1,15,,,1,,0,none,,0
-apiary,Пасека,production,1,0,1,era,,1,,,,0,,0,none,,0
+apiary,Пасека,production,1,0,1,era,,1,,,,1,,0,none,,0
 silage_trench,Силосная траншея,production,1,1,1,era,,1,30,,,0,,0,medium,always,0
 hop_yard,Хмельник,production,2,0,1,era,,1,,,,0,,0,none,,0
 silage_tower,Силосная башня,production,3,0,1,era,,1,45,,,1,,0,none,,0
@@ -118,7 +118,7 @@ visitor_dorm,Общежитие для приезжих,housing,2,0,1,era,,1,30,
 fire_post,Пожарный пост,service,2,0,1,era,,1,45,,,1,,1,none,,0
 farm_office,Контора,service,1,0,1,era,,1,60,,,1,,1,none,,0
 village_council,Сельсовет,service,2,0,1,era,,1,30,,,1,,1,none,,0
-cemetery,Кладбище,service,1,0,1,era,,1,25,,,0,,0,none,,0
+cemetery,Кладбище,service,1,0,1,era,,1,25,,,1,,0,none,,0
 propaganda,Элементы наглядной агитации,service,1,0,1,era,,0,,1.5,wall,0,,0,none,,0
 honour_board,Доска почёта,service,1,0,1,era,,0,,1.5,wall,0,,0,none,,0
 church_store,Церковь — склад и кабинет,service,1,0,0,start,,1,35,,,1,,1,none,,0

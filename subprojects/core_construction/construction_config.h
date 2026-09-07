@@ -148,11 +148,20 @@ struct BuildType {
   /// nature of the unit corrects it (boss, 2026-09-03).
   float wear_factor = 1.0F;
 
-  /// 0/1 from unit_types.csv `has_wear` (the design db derives it: a unit
-  /// without a building has nothing to wear — unit rules §15). 0 keeps
+  /// 0/1 from unit_types.csv `has_wear` (unit rules §15). 0 keeps
   /// UnitRow::wear at zero for ever and refuses kRepairUnit. Missing
   /// column = 0 for every type: no data, no wear, said out loud rather
   /// than guessed from the capacity flag.
+  ///
+  /// THIS LINE USED TO DERIVE THE FLAG, AND THE DERIVATION WAS WRONG: "a
+  /// unit without a building has nothing to wear". The design says the
+  /// opposite — a lean-to, a fence or a roof wears too, and the cemetery
+  /// fence is named in §15 by name. The claim is removed rather than
+  /// corrected: it was copied from the same false premise that made the
+  /// design-db check hold `has_wear != has_building` to be an error, and
+  /// with that check green the data could not be anything but a copy. Which
+  /// column derives which is the database's business and not this core's;
+  /// here the flag is READ (boss, 2026-09-07).
   std::uint8_t has_wear = 0;
 
   /// How badly this type smells at its core, from unit_types.csv `stink`
@@ -329,8 +338,16 @@ struct ConstructionConfig {
 /// @param error Receives the reason on failure, table and row named.
 /// @return false when a present table is malformed or contradicts another —
 ///         a type that claims a plot and names neither radius nor marking
-///         class, a recipe naming a resource with no mass, a buildable type
-///         with no level 1.
+///         class, a recipe naming a resource with no mass, two readings of
+///         unit_types whose row counts disagree.
+/// @note   "A buildable type with no level 1" STOOD IN THIS LIST AND IS NOT
+///         CHECKED (UB-003, 2026-09-07). The claim is removed rather than
+///         implemented: a type with an empty ladder loads and is simply
+///         skipped by the build rules, and a ladder whose only row is level 3
+///         grows zero-cost levels 1 and 2 — which is a FREE building, not a
+///         missing one. Whether that should refuse the load is a question
+///         about the design, not about this parser, so it is written down as
+///         open rather than answered here.
 bool ParseConstructionConfig(const ITableSet& tables,
                              ConstructionConfig& config,
                              std::string& error);

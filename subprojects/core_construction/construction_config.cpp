@@ -66,9 +66,17 @@ void Fail(std::string& error, std::string_view table, std::string_view what) {
   error += what;
 }
 
-/// @brief A cell as a real number, `fallback` for an empty one; a present
-/// unreadable or out-of-range cell fails the parse. Written positively so a
-/// NaN fails it too.
+/// @brief The gate a `gate` cell names; `known` reports success. An empty
+/// cell is the era gate, which is why an unknown WORD cannot be told from a
+/// default by the return value alone.
+///
+/// THIS BLOCK USED TO DESCRIBE SOMEBODY ELSE (UB-001, 2026-09-07). It read
+/// "a cell as a real number, `fallback` for an empty one" — the contract of
+/// CellOrDefault, which has since moved to core_catalog/table_value.h and
+/// left its documentation standing over the next function down. Its two
+/// neighbours below say `known` reports success and this one said nothing,
+/// so a reader of the contract alone would have used the returned kEra
+/// without asking.
 UnitGate GateFromText(std::string_view text, bool& known) {
   known = true;
   if (text.empty() || text == "era") {
@@ -587,6 +595,10 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
     // The PLOT alone, never the body: this asks whether a type that claims
     // a plot names one, and a footprint is a different answer to a different
     // question. A well has a body and no plot, and it does not claim one.
+    //
+    // Indexed by the type row without a bound of its own: the equality of the
+    // two lengths is stated where they are filled, in ParseConstructionConfig,
+    // and a set that breaks it never reaches this function.
     if (config.definitions.units.plot_radius_m[row] > 0.0F) {
       continue;
     }
@@ -654,6 +666,38 @@ bool ParseConstructionConfig(const ITableSet& tables,
     return true;  // a table-less world: nothing can be built, and that is all
   }
   if (!ReadTypes(*unit_types, config, error)) {
+    return false;
+  }
+
+  // ONE DOOR, AND IT IS HERE, WHERE BOTH VECTORS HAVE JUST BEEN FILLED
+  // (boss, 2026-09-07). `config.types` above and the catalogue's
+  // `plot_radius_m` are two readings of the SAME table, one row each, so
+  // their lengths agree — and until this line nothing said so. CheckPlots
+  // walks `config.types` and indexes the catalogue with the same row; a guard
+  // standing next to that indexing would be the fourth of its kind and would
+  // still leave the next reader to invent its own. Refused by name rather
+  // than asserted: a table set is data, and data that disagrees with itself
+  // is a load failure, not a bug in this core.
+  //
+  // THE INHERITED FACT IS CONTAINMENT, NOT EQUALITY, AND THE DIFFERENCE IS
+  // NOT PEDANTRY (MEM-001, 2026-09-07). The early success six lines above —
+  // no `resources` table — returns with the catalogue filled and `types`
+  // still empty, so the two lengths are NOT equal on every path out of this
+  // function. What holds everywhere, and what a reader may build on, is the
+  // one direction that gets indexed:
+  //
+  //     for every row < config.types.size(), plot_radius_m[row] exists.
+  //
+  // Vacuously true where the type list is empty, enforced by this line where
+  // it is not. A comment promising the symmetric equality would have invited
+  // the opposite subscript — walking `Count()` and indexing `types` — and
+  // that one has no door at all.
+  if (config.definitions.units.Count() != config.types.size()) {
+    Fail(error,
+         "unit_types",
+         "plot_radius_m has " + std::to_string(config.definitions.units.Count()) +
+             " rows but the type list has " + std::to_string(config.types.size()) +
+             "; both are one row per unit_types row and must agree");
     return false;
   }
   std::vector<Grams> grams_per_unit;
