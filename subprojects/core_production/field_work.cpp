@@ -190,7 +190,7 @@ void Harvest(const ProductionConfig& config,
   // stub coming back in through the accounting, which is exactly what an
   // instrumented run caught it doing.
   if (field.reaped_grams > 0) {
-    const Grams room = ReceivableRoom(config, current);
+    const Grams room = ReceivableRoom(config, current, field.reaped_resource);
     field.haul_days_remaining = HaulDaysFor(room < field.reaped_grams ? room : field.reaped_grams,
                                             FieldHaulRate(config, current, field),
                                             config.standard_day_hours);

@@ -63,14 +63,56 @@ inline Grams KilogramsToGrams(float kilograms) {
   return GramsFromKilograms(kilograms);
 }
 
-/// @brief True when the unit type stores goods by a number rather than by
-/// the outline the player draws — and the unit is BUILT. A level-0 row is a
-/// construction site: it holds the materials of its own building and stores
-/// nothing for anybody (unit_state.h, task A2). One rule, checked wherever
-/// a level is read, is what replaces a flag in every table.
+/// @brief Storage capacity of a unit in grams, or a negative value meaning
+/// "no number to read": the capacity is the outline the PLAYER draws, and a
+/// heap bounded by its own area has no table figure to clamp against.
+/// Callers must treat a negative result as unbounded, never as zero — a
+/// manure heap read as a zero-capacity store stops making manure.
+inline Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& config) {
+  if (unit.type.value >= config.unit_types.size()) {
+    return 0;
+  }
+  const UnitTypeDef& type = config.unit_types[unit.type.value];
+  if (type.capacity_by_plot != 0) {
+    return -1;
+  }
+  // The ceiling of the level the unit STANDS at, not of the one being built:
+  // a store keeps its old ceiling until the day the level moves (unit rules
+  // §11, and ConstructionState says the same about every capacity). The
+  // ladder is the ONLY place a capacity comes from — the type's own figure
+  // was a copy of level 1 that the export made, so the fallback that read it
+  // could never differ from the step it was falling back from.
+  return GramsFromKilograms(type.StorageCapacityKgAt(unit.level));
+}
+
+/// @brief True when the unit KEEPS GOODS FOR THE SETTLEMENT — by a number
+/// or by the outline the player draws, both count — and is BUILT. A level-0
+/// row is a construction site: it holds the materials of its own building
+/// and stores nothing for anybody (unit_state.h, task A2). One rule, checked
+/// wherever a level is read, is what replaces a flag in every table.
+///
+/// It does NOT answer "has a ceiling to clamp against". That is a second
+/// question, it is asked of StorageCapacityGrams, and every caller that
+/// needs a ceiling asks it there and says so at its own site. No roster
+/// here on purpose: a list of callers spelled out beside a rule is read as
+/// a closed one, and the next caller added will not come back to extend it.
 inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
-  return unit.level > 0 && unit.type.value < config.unit_types.size() &&
-         config.unit_types[unit.type.value].StorageCapacityKgAt(unit.level) > 0.0F;
+  // ONE READER OF THE CAPACITY, AND IT IS StorageCapacityGrams (2026-09-07).
+  // This used to ask the LADDER directly, and the ladder is the wrong source
+  // for five of the types: a threshing floor, a manure heap, a silage trench,
+  // a firewood yard and a summer camp are bounded by an OUTLINE THE PLAYER
+  // DRAWS, so their capacity is an area and an area is not a property of the
+  // type. Their ladder cell is blank, and blank is the right answer there —
+  // "not from here" rather than a gap.
+  //
+  // Reading that blank as a zero dropped all five, and did precisely what
+  // StorageCapacityGrams forbids in as many words: "callers must treat a
+  // negative result as unbounded, NEVER as zero — a manure heap read as a
+  // zero-capacity store stops making manure". The cost was recorded before
+  // it was understood: ReceivableRoom exists to differ from the alarm's
+  // number because using that number once stopped every cart in the village,
+  // and with the five dropped it had quietly become the same number again.
+  return unit.level > 0 && StorageCapacityGrams(unit, config) != 0;
 }
 
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:
@@ -79,7 +121,16 @@ inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
 /// the caller's business, not a line in a log.
 inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionConfig& config) {
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    if (StoresGoods(world.units.rows[row], config)) {
+    // A NUMBER TO CLAMP AGAINST, and this function has to say so itself now.
+    // TakeFromStorage's note has always stated the rule — "a delivery needs a
+    // destination with a number to clamp against, so FindStorageRow asks for
+    // StoresGoods" — and until StoresGoods was fixed it got that for free
+    // from the same defect: outline stores were dropped by accident, and a
+    // requirement met by accident is met until the accident is repaired.
+    // Without this line the first heap in row order would become the
+    // settlement's delivery destination.
+    if (StorageCapacityGrams(world.units.rows[row], config) > 0 &&
+        StoresGoods(world.units.rows[row], config)) {
       return row;
     }
   }
@@ -120,28 +171,6 @@ inline std::uint32_t FindUnitRowOfType(const WorldState& world, UnitTypeId type)
     }
   }
   return kNoRow;
-}
-
-/// @brief Storage capacity of a unit in grams, or a negative value meaning
-/// "no number to read": the capacity is the outline the PLAYER draws, and a
-/// heap bounded by its own area has no table figure to clamp against.
-/// Callers must treat a negative result as unbounded, never as zero — a
-/// manure heap read as a zero-capacity store stops making manure.
-inline Grams StorageCapacityGrams(const UnitRow& unit, const ProductionConfig& config) {
-  if (unit.type.value >= config.unit_types.size()) {
-    return 0;
-  }
-  const UnitTypeDef& type = config.unit_types[unit.type.value];
-  if (type.capacity_by_plot != 0) {
-    return -1;
-  }
-  // The ceiling of the level the unit STANDS at, not of the one being built:
-  // a store keeps its old ceiling until the day the level moves (unit rules
-  // §11, and ConstructionState says the same about every capacity). The
-  // ladder is the ONLY place a capacity comes from — the type's own figure
-  // was a copy of level 1 that the export made, so the fallback that read it
-  // could never differ from the step it was falling back from.
-  return GramsFromKilograms(type.StorageCapacityKgAt(unit.level));
 }
 
 /// @brief What the settlement holds of one resource, anywhere a taker would
@@ -217,12 +246,13 @@ inline Grams DeliverToStores(WorldState& world,
   Grams placed = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
     UnitRow& unit = world.units.rows[row];
-    // A NUMBERED store, and the test has to say so itself: StoresGoods asks
-    // only whether the type carries a tonnage, and a type carrying both a
-    // tonnage and the by-plot flag would come back with unbounded room and
-    // swallow the whole load — leaving the second pass below unreachable and
-    // the ceiling unenforced. The shipped tables have no such row; the code
-    // must not depend on that.
+    // A NUMBERED store, and the test says so itself. It has always had to:
+    // an outline reports unbounded room and would swallow the whole load,
+    // leaving the second pass below unreachable and the ceiling unenforced.
+    // What changed on 2026-09-07 is only the reason it is not redundant —
+    // it used to guard against a hypothetical row carrying both a tonnage
+    // and the by-plot flag, and it now carries the whole weight, because
+    // StoresGoods counts outlines.
     if (!StoresGoods(unit, config) || StorageCapacityGrams(unit, config) < 0) {
       continue;
     }
@@ -267,8 +297,8 @@ inline Grams DeliverToStores(WorldState& world,
 /// settlement keeps it, in row order; returns what was actually taken.
 ///
 /// TAKING IS WIDER THAN DELIVERING, and deliberately so. A delivery needs a
-/// destination with a number to clamp against, so FindStorageRow asks for
-/// StoresGoods. Taking needs nothing of the sort: what lies in a heap or a
+/// destination with a number to clamp against, so FindStorageRow asks for a
+/// capacity it can read. Taking needs nothing of the sort: what lies in a heap or a
 /// haystack is there whether or not the table gives that heap a tonnage.
 /// The narrow rule made the start's hay INVISIBLE the day the start stock
 /// moved out of the church and into the haystack the canon actually
@@ -286,8 +316,13 @@ inline Grams TakeFromStorage(WorldState& world,
     if (unit.level == 0) {
       continue;  // a site: what is on it belongs to its own building
     }
-    if (!StoresGoods(unit, config) && StorageCapacityGrams(unit, config) >= 0) {
-      continue;  // neither a numbered store nor an outline the player drew
+    if (!StoresGoods(unit, config)) {
+      // Neither a numbered store nor an outline the player drew. This used to
+      // spell the second half out — `&& StorageCapacityGrams(...) >= 0` —
+      // because StoresGoods answered no for an outline; that compensation is
+      // what the predicate now does itself, and keeping it would leave a
+      // patch standing over a hole that has been filled.
+      continue;
     }
     const Grams here = StockOf(unit.stock, resource);
     const Grams take = here < wanted - taken ? here : wanted - taken;

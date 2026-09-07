@@ -45,35 +45,38 @@ bool DraughtHorsesFree(const ProductionConfig& config, const WorldState& world) 
 
 }  // namespace
 
-/// @brief Room a load could actually be delivered INTO, unlike
-/// FreeRoomOfStores below, which deliberately ignores stores bounded by an
-/// outline because the alarm it serves asks "will this fit in a building".
-/// A heap under the open sky takes everything, and a haul must be sent for
-/// a load a heap can receive. Told apart because the first version of the
-/// hauling cap used the alarm's number and stopped every cart in the
-/// village: the granaries were full, the heaps were not, and nobody was
-/// sent (task A4).
-/// @return The sum, or Grams max when any store has no ceiling at all.
+/// @brief Room a load of this resource could actually be delivered INTO,
+/// unlike FreeRoomOfStores in production_alarms.cpp, which deliberately
+/// ignores stores bounded by an outline because the alarm it serves asks
+/// "will this fit in a building". A heap under the open sky takes
+/// everything, and a haul must be sent for a load a heap can receive. Told
+/// apart because the first version of the hauling cap used the alarm's
+/// number and stopped every cart in the village: the granaries were full,
+/// the heaps were not, and nobody was sent (task A4).
+/// @return The sum over numbered stores, or Grams max when an outline
+///         holding this resource stands.
 ///
-/// AND THAT SECOND HALF CANNOT HAPPEN TODAY, which makes this function
-/// numerically identical to the number it was written to differ from
-/// (found 2026-09-07 by the first reading this file has ever had).
+/// THE SECOND HALF COULD NOT HAPPEN UNTIL 2026-09-07, which made this
+/// function numerically identical to the number it was written to differ
+/// from — found by the first reading this file had ever had, and cured
+/// where the fault was rather than here.
 ///
-/// StoresGoods asks the LADDER for a capacity — `StorageCapacityKgAt() > 0`
+/// StoresGoods asked the LADDER for a capacity — `StorageCapacityKgAt() > 0`
 /// — and every outline store leaves that cell blank, so all five of them
 /// (threshing floor, manure heap, firewood yard, silage trench, summer camp)
-/// are dropped at the `continue` above and the unbounded branch is never
-/// reached. Meanwhile StorageCapacityGrams answers -1 for exactly those
-/// units, and its own contract says in as many words: "callers must treat a
-/// negative result as unbounded, NEVER as zero — a manure heap read as a
-/// zero-capacity store stops making manure".
+/// were dropped at the `continue` below, and the unbounded branch under it
+/// was unreachable code that looked like a working rule. It now asks
+/// StorageCapacityGrams, whose contract says in as many words what the
+/// ladder reading was breaking: "callers must treat a negative result as
+/// unbounded, NEVER as zero — a manure heap read as a zero-capacity store
+/// stops making manure".
 ///
-/// So two readers of one property disagree, and one of them does precisely
-/// what the other forbids. The consequence is the defect this function
-/// exists to prevent: granaries full, heaps with room, and nobody sent.
-/// Recorded rather than repaired here — the cure belongs where StoresGoods
-/// is, not in its caller, and choosing it is a question about task A4.
-Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world) {
+/// The cost is worth keeping in view, because it was PAID BEFORE IT WAS
+/// UNDERSTOOD: this function exists at all because the hauling cap once used
+/// the alarm's number and stopped every cart in the village. The defect then
+/// quietly restored that very number here, and the separation survived as
+/// prose about a difference that had stopped existing.
+Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, ResourceId resource) {
   Grams room = 0;
   for (const UnitRow& unit : world.units.rows) {
     if (!StoresGoods(unit, config)) {
@@ -81,7 +84,25 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world) {
     }
     const Grams free_here = FreeRoomGrams(unit, config);
     if (free_here == std::numeric_limits<Grams>::max()) {
-      return free_here;  // an outline store: the load has somewhere to go
+      // AN OUTLINE THE PLAYER DREW, and it is not a destination for
+      // anything: THE DOOR takes a load into one only when that resource
+      // already lies in it, because the core has no routing table and
+      // "where this resource already lies" is the only rule available that
+      // does not invent one (DeliverToStores, second pass).
+      //
+      // The demand has to ask the door's own question, and until 2026-09-07
+      // it could not be caught asking a different one: StoresGoods dropped
+      // every outline a line earlier, so this branch was unreachable and its
+      // claim — that ANY heap can receive ANY load — was never tested. It
+      // came alive the day StoresGoods was repaired and cost the run its
+      // harvest in one build: the village hauled its rye to a log pile, the
+      // door refused it, and by year six the farm had stopped ploughing to
+      // do nothing but carry grain into a closed door. That is the exact
+      // failure SettleHauling's own comment says it exists to prevent.
+      if (StockOf(unit.stock, resource) > 0) {
+        return free_here;  // the haystack with the hay in it
+      }
+      continue;
     }
     room += free_here;
   }
@@ -131,7 +152,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     // room and it does the same thing more slowly: a gap of one kilogram
     // asks for two hundred tonnes to be carried, the whole village goes,
     // and one kilogram arrives — measured, twice, in the thirty-year run.
-    const Grams receivable = ReceivableRoom(config, current);
+    const Grams receivable = ReceivableRoom(config, current, field.reaped_resource);
     const Grams haulable = receivable < field.reaped_grams ? receivable : field.reaped_grams;
     // What was drained since the demand was written. Never negative: room
     // shrinks overnight as well as grows, and a demand that came out
@@ -165,7 +186,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
       }
     }
     // Tomorrow's demand: what is still out there and can still be taken.
-    const Grams left = ReceivableRoom(config, current);
+    const Grams left = ReceivableRoom(config, current, field.reaped_resource);
     field.haul_days_remaining = HaulDaysFor(
         left < field.reaped_grams ? left : field.reaped_grams, rate, config.standard_day_hours);
     // And remember it, because tomorrow this is the only honest baseline.

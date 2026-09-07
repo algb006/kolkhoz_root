@@ -22,13 +22,18 @@
 
 namespace core {
 
-/// @brief Room a load could actually be delivered INTO — unlike the alarm's
-/// own free-room sum, this one answers "has this got anywhere to go at all",
-/// so a store bounded by an outline (a heap under the open sky) makes it
-/// unbounded rather than contributing nothing.
-/// @return The sum over numbered stores, or Grams max when any store has no
-///         ceiling at all.
-Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world);
+/// @brief Room a load of THIS RESOURCE could actually be delivered into —
+/// unlike the alarm's own free-room sum, this one answers "has this got
+/// anywhere to go at all", so a store bounded by an outline (a heap under
+/// the open sky) makes it unbounded rather than contributing nothing.
+/// @param resource What is being hauled. It is a parameter because the door
+///        it has to agree with asks the same question: an outline takes a
+///        load only when that resource ALREADY LIES IN IT (DeliverToStores,
+///        second pass). A haystack is unbounded room for hay and no room at
+///        all for rye.
+/// @return The sum over numbered stores, or Grams max when an outline that
+///         already holds this resource stands built.
+Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, ResourceId resource);
 
 /// @brief What one carrier is worth on this field's shoulder today: a cart's
 /// load at harness speed when the settlement has a draught horse to spare, a

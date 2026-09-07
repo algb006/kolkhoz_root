@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -28,6 +29,7 @@
 #include "herd_system.h"
 #include "production_config.h"
 #include "stock_lights.h"
+#include "stock_ops.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::IProductionSystem>,
@@ -2088,6 +2090,77 @@ int CheckTheTeamWithoutARoofSaysSo() {
   return failures;
 }
 
+/// A HEAP UNDER THE OPEN SKY IS A STORE, and the whole village turns on it.
+///
+/// Five outline-bounded types exist (threshing floor, manure heap, silage
+/// trench, firewood yard, summer camp), and until 2026-09-07 StoresGoods
+/// dropped every one of them: it read the LADDER, an outline leaves that
+/// cell blank on purpose, and a blank read as a zero is exactly what
+/// StorageCapacityGrams forbids in as many words. Two readers of one
+/// property, one doing what the other forbids.
+///
+/// Nothing in the shipped thirty-year run moved when this was repaired —
+/// the run is identical to the byte — which is the reason this test had to
+/// be written rather than a run pointed at. The settlement it takes to see
+/// the defect is one the tables do not build today: a numbered store that
+/// is FULL, standing beside a heap that holds the very thing being carried.
+int CheckAHeapIsAStore() {
+  int failures = 0;
+
+  // Two types: a barn of one tonne by the ladder, and a haystack bounded by
+  // the outline the player draws — no ladder at all, which is the correct
+  // table row for it and not a gap in one.
+  core::ProductionConfig config;
+  config.unit_types.resize(2);
+  SetStorageKg(config.unit_types[0], 1.0F);
+  config.unit_types[1].capacity_by_plot = 1;
+
+  // The haystack stands FIRST in row order, and that is the point of it: a
+  // delivery needs a destination with a number to clamp against, and the
+  // only thing that used to keep FindStorageRow off the heap was the defect.
+  core::WorldState world;
+  core::UnitRow stack;
+  stack.type = core::UnitTypeId{1};
+  stack.level = 1;
+  stack.stock.assign(2, 0);
+  stack.stock[0] = 500 * core::kGramsPerKilogram;  // half a tonne of rye lies in it
+  const core::UnitId stack_id = core::AppendRow(world.units, stack);
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock.assign(2, 0);
+  barn.stock[0] = 1000 * core::kGramsPerKilogram;  // and the barn is full to its tonne
+  const core::UnitId barn_id = core::AppendRow(world.units, barn);
+
+  failures += Expect(core::StoresGoods(world.units.rows[0], config),
+                     "a heap the player outlined keeps goods for the settlement");
+  failures +=
+      Expect(core::FindStorageRow(world, config) == 1,
+             "but a DELIVERY still goes to the barn: a heap has no number to clamp against");
+
+  // Rye already lies in the heap, so a load of rye has somewhere to go even
+  // with every numbered store shut — this is the state the hauling cap was
+  // written to answer, and the one it could not reach.
+  failures += Expect(core::ReceivableRoom(config, world, core::ResourceId{0}) ==
+                         std::numeric_limits<core::Grams>::max(),
+                     "with rye in the heap, a load of rye has somewhere to go");
+  // And the same heap is no room at all for oats: the door takes a load into
+  // an outline only when that resource already lies in it, so the demand
+  // must ask the door's question and not a wider one.
+  failures += Expect(core::ReceivableRoom(config, world, core::ResourceId{1}) == 0,
+                     "and no room at all for oats, which the heap is not the home of");
+
+  // The door itself, unchanged by any of this and standing here as the
+  // subject the two answers above have to agree with.
+  const core::Grams placed =
+      core::DeliverToStores(world, config, core::ResourceId{0}, 200 * core::kGramsPerKilogram);
+  failures += Expect(placed == 200 * core::kGramsPerKilogram &&
+                         world.units.rows[0].stock[0] == 700 * core::kGramsPerKilogram,
+                     "and the door puts the load in that heap, past the barn that is full");
+  failures += Expect(stack_id.value != barn_id.value, "the two units are two units");
+  return failures;
+}
+
 int CheckPauseAndResume() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2338,6 +2411,7 @@ int main() {
   failures += CheckTheStrawClaimsRoomToo();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckTheTeamWithoutARoofSaysSo();
+  failures += CheckAHeapIsAStore();
   failures += CheckPauseAndResume();
 
   if (failures == 0) {

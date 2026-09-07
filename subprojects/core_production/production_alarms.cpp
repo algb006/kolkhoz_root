@@ -22,6 +22,12 @@ namespace {
 /// Free room of every numbered store together, in grams — what a harvest
 /// has to fit into. Outline-bounded stores are unbounded and are left out
 /// of the sum: counting them would make the answer meaningless.
+///
+/// The `continue` that drops them was UNREACHABLE until 2026-09-07 —
+/// StoresGoods read a blank ladder cell as a zero and dropped the outlines
+/// a line earlier — so this function has always been right, and until that
+/// day it was right for the wrong reason. Nothing here changed; the reason
+/// did.
 Grams FreeRoomOfStores(const ProductionConfig& config, const WorldState& world) {
   Grams room = 0;
   for (const UnitRow& unit : world.units.rows) {
