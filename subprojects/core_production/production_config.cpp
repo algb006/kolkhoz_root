@@ -26,6 +26,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -108,7 +109,20 @@ bool ParseCrops(const ITable& table,
       }
     }
     CropDef& crop = crops[row];
-    crop.resource = ResourceByKey(resources, table.CellText(row, resource_col));
+    // A NAME THE ROSTER DOES NOT HAVE IS A TYPO, AND IT FAILS HERE (0.17.79).
+    // It used to become an empty ResourceId and travel: AddToStock refuses
+    // to write an unnamed resource — silently, and rightly — while
+    // DeliverToStores counts the load as delivered anyway, and the caller
+    // then destroys the harvest against a number that never landed. THREE
+    // parses said nothing and this was one of them — the feed links below
+    // and core_residents' seed norms read the same kind of key and lost it
+    // the same way. Empty is refused too: a crop with no resource has
+    // nowhere to put what it grows.
+    if (!RequiredResource(
+            resources, table, row, resource_col, "resource", false, crop.resource, error)) {
+      error = "crops: " + error;
+      return false;
+    }
     crop.is_winter = values[0] != 0.0F;
     crop.is_perennial = values[1] != 0.0F;
     // Table months are human 1..12; the core's Month enum is 0-based.
@@ -644,13 +658,23 @@ bool ParseFeedLinks(const ITable& table,
   }
   links.clear();
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
-    const std::uint32_t kind_row =
-        livestock == nullptr ? kNoTableRow : livestock->FindRowByKey(table.CellText(row, kind_col));
-    const std::uint32_t resource_row =
-        resources == nullptr ? kNoTableRow
-                             : resources->FindRowByKey(table.CellText(row, resource_col));
+    // THE TOLERANCE STAYS, BUT IT NARROWS TO WHAT IT WAS FOR (0.17.79). This
+    // used to skip a link whenever either key failed to resolve, with a note
+    // saying "a kind or resource this table set does not have" — and that is
+    // a true description of ONE of the two cases it covered. The other was a
+    // misspelt key in a roster that was right there, and it dropped a feed
+    // link in silence: the animal simply stops having that fodder.
+    // RequiredRow tells the cases apart, so a missing ROSTER still skips and
+    // a missing KEY now fails the parse.
+    std::uint32_t kind_row = kNoTableRow;
+    std::uint32_t resource_row = kNoTableRow;
+    if (!RequiredRow(livestock, table, row, kind_col, "livestock", false, kind_row, error) ||
+        !RequiredRow(resources, table, row, resource_col, "resource", false, resource_row, error)) {
+      error = "feed_links: " + error;
+      return false;
+    }
     if (kind_row == kNoTableRow || resource_row == kNoTableRow) {
-      continue;  // a link to a kind or resource this table set does not have
+      continue;  // no roster to ask: a stub table set, and that is legal
     }
     float reserve = 0.0F;
     float max_share = 1.0F;

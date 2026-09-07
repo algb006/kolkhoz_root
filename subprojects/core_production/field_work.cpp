@@ -50,8 +50,12 @@ Grams DeliverHarvest(const ProductionConfig& config,
     // fodder buffer has no tonnage to be full against.
     const std::uint32_t manger = FindStockYardRow(current, config);
     if (manger != kNoRow) {
-      AddToStock(current.units.rows[manger].stock, resource, amount);
-      return 0;
+      // What the manger TOOK, not what it was offered. The two used to be
+      // assumed equal and the function answered a flat 0 — "nothing was left
+      // over" — for a cut that had not been stored at all: an unnamed
+      // hay_resource makes the branch above true by two 0xFFFF sentinels
+      // comparing equal, and AddToStock then writes nothing (0.17.79).
+      return amount - AddToStock(current.units.rows[manger].stock, resource, amount);
     }
   }
   placed = DeliverToStores(current, config, resource, amount);

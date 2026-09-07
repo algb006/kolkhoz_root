@@ -1,15 +1,22 @@
 /// @file
 /// @brief Moving resources into and out of stores, pantries and heaps.
 /// @threading SINGLE_THREADED
-/// Two callers, both on the sim thread and both outside any phase. The ones
-/// that WRITE — AddToStock, DeliverToStores, TakeFromStorage — are called
-/// only from the production decisions sub-step (slot 3), which is
-/// sequential: they walk whole tables and would race anywhere else. The
-/// pure readers — StoresGoods, StorageCapacityGrams, TotalStock,
-/// FreeRoomGrams, StockOf — are also read BETWEEN steps by the subsystem's
-/// alarm predicates (task A3, IProductionSystem::CollectAlarms), where
-/// nothing is running and nothing is written. Adding a caller means saying
-/// which of the two it is; the file holds both kinds side by side.
+/// Every caller is on the sim thread and outside any phase, and they come in
+/// two kinds. The ones that WRITE — AddToStock, DeliverToStores,
+/// TakeFromStorage, TakeFromAmounts — are called only from the production
+/// decisions sub-step (slot 3), which is sequential: they walk whole tables
+/// and would race anywhere else. The pure readers — StoresGoods,
+/// StorageCapacityGrams, TotalStock, FreeRoomGrams, StockOf, HeldEverywhere
+/// and the three Find* lookups — are also read BETWEEN steps by the
+/// subsystem's alarm predicates (task A3, IProductionSystem::CollectAlarms),
+/// where nothing is running and nothing is written. Adding a caller means
+/// saying which of the two it is; the file holds both kinds side by side.
+///
+/// NO COUNT OF CALLING FILES HERE, and that is the second correction this
+/// paragraph has needed. It used to open with "two callers", which was true
+/// when written and is now seven files; a number in prose beside a rule is
+/// read as part of the rule and nobody comes back to raise it. The KINDS are
+/// two, and that is the part which has to stay true.
 ///
 /// Not a bag of utilities: one subject — a dense ResourceAmounts vector and
 /// the arithmetic of adding to it and taking from it — used by the two files
@@ -30,16 +37,31 @@ namespace core {
 
 /// @brief Grows a stock vector on demand and adds grams (may be negative;
 /// clamps at zero).
-inline void AddToStock(ResourceAmounts& stock, ResourceId resource, Grams amount) {
+/// @return WHAT ACTUALLY LANDED, which is not always what was asked for: an
+///         unnamed resource has no column to go in and takes nothing, and a
+///         negative amount is clamped by what was there. Ignoring this is
+///         fine wherever the caller knows the id is good; ACCOUNTING for the
+///         load is not one of those places.
+///
+/// It answered nothing at all until 0.17.79, and the door above it paid for
+/// that: DeliverToStores counted its own intention as delivered, the caller
+/// subtracted that number from the field, and a harvest whose crop named a
+/// resource the roster did not have was destroyed on the way to a store
+/// that never received it. The parse now refuses that name at load time —
+/// but the CAUSE going away does not take the habit with it, and the first
+/// new reason for a refusal would have done the same thing again.
+inline Grams AddToStock(ResourceAmounts& stock, ResourceId resource, Grams amount) {
   if (resource.value == kInvalidDefIdValue) {
-    return;
+    return 0;
   }
   if (stock.size() <= resource.value) {
     stock.resize(resource.value + 1U, 0);
   }
   Grams& cell = stock[resource.value];
+  const Grams before = cell;
   cell += amount;
   cell = cell < 0 ? 0 : cell;
+  return cell - before;
 }
 
 /// @brief What a store holds of one resource. A one-line delegate since the
@@ -262,8 +284,10 @@ inline Grams DeliverToStores(WorldState& world,
     }
     const Grams left = amount - placed;
     const Grams take = room < left ? room : left;
-    AddToStock(unit.stock, resource, take);
-    placed += take;
+    // THE ANSWER, NOT THE INTENTION. `take` is what this door meant to put
+    // in; what the vector accepted is what the caller may subtract from the
+    // field, and the two part company the moment AddToStock refuses.
+    placed += AddToStock(unit.stock, resource, take);
   }
   if (placed >= amount) {
     return placed;
@@ -287,8 +311,7 @@ inline Grams DeliverToStores(WorldState& world,
     if (StockOf(unit.stock, resource) <= 0) {
       continue;  // an outline that is not this resource's home
     }
-    AddToStock(unit.stock, resource, amount - placed);
-    placed = amount;
+    placed += AddToStock(unit.stock, resource, amount - placed);
   }
   return placed;
 }

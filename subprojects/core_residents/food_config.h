@@ -19,8 +19,14 @@
 /// Filled ONCE by the factory, before the system object exists, and never
 /// written again. TWO parallel phases hold a pointer to it —
 /// FamilyNeedsPhase and FamilyMetricsPhase — so every worker of slots 2 and
-/// 6 reads it at the same time, and that is safe for exactly one reason:
+/// 5 reads it at the same time, and that is safe for exactly one reason:
 /// nothing writes it.
+///
+/// It said slot 6 until 2026-09-07, and 6 was right until the seventh phase
+/// was removed on 5 September: logistics stood at 4 and metrics behind it.
+/// The number outlived the phase, and it did not merely go stale — slot 6 is
+/// now kEvents, which is SEQUENTIAL, so the line named a place with no
+/// workers in it at all while claiming to say who reads this concurrently.
 ///
 /// SO: NO PER-STEP FIELD BELONGS HERE. A cache, a counter, anything the
 /// step writes turns this from a constant into shared mutable state read by

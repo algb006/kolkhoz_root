@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
 
@@ -349,6 +350,80 @@ int TestEntryPoints() {
   return failures;
 }
 
+/// FOUR ANSWERS TO A NAME, and three of them used to arrive as one empty id.
+///
+/// The lookup this exercises replaced four hand-written copies (crops in two
+/// modules, the feed links, and a second ResourceByKey). Every one of them
+/// answered "empty id" to a misspelt key, and an empty id is refused later
+/// by AddToStock — silently, and rightly, because an unnamed resource has no
+/// column to go in. The load was then counted as delivered anyway.
+///
+/// The three cases that must stay apart: NOBODY TO ASK (no roster at all —
+/// a stub table set, and legal), NOTHING ASKED (an empty cell), and A NAME
+/// THAT IS NOT THERE (a typo, and the only one that is an accusation).
+int TestLookupKey() {
+  int failures = 0;
+  // hay first, rye second, so the resolved row is 1 and not 0: a zero would
+  // pass the checks below by looking like an untouched default.
+  const test::FakeTable roster({"key"}, {{"hay"}, {"rye"}});
+  const test::FakeTable crops({"key", "resource"},
+                              {{"rye_winter", "rye"},
+                               {"clover", "hey"},  // the typo
+                               {"fallow", ""}});   // named nothing
+  const std::uint32_t column = crops.FindColumn("resource");
+  std::string error;
+
+  std::uint32_t row_index = core::kNoTableRow;
+  failures +=
+      Expect(core::LookupRow(&roster, crops, 0, column, row_index) == core::KeyState::kFound &&
+                 row_index == 1,
+             "a key the roster carries resolves to its row");
+  failures +=
+      Expect(core::LookupRow(&roster, crops, 1, column, row_index) == core::KeyState::kNotFound,
+             "a key the roster does not carry is NOT FOUND, not absent");
+  failures +=
+      Expect(core::LookupRow(&roster, crops, 2, column, row_index) == core::KeyState::kEmpty,
+             "an empty cell named nothing, which is a different thing");
+  failures +=
+      Expect(core::LookupRow(nullptr, crops, 1, column, row_index) == core::KeyState::kNoRoster,
+             "and with no roster at all there is nobody to ask");
+  failures += Expect(row_index == 1,
+                     "a failed lookup leaves the caller's value alone, so a default survives");
+  failures += Expect(!core::IsAbsent(core::KeyState::kNotFound),
+                     "a name that is not there is not 'absent': it is a claim that is false");
+
+  // RequiredRow: the refusal, and what it says.
+  row_index = core::kNoTableRow;
+  failures +=
+      Expect(!core::RequiredRow(&roster, crops, 1, column, "resource", false, row_index, error),
+             "RequiredRow refuses a name the roster does not have");
+  failures += Expect(error.find("hey") != std::string::npos,
+                     "and the message quotes the key AS WRITTEN, which is the part a person fixes");
+  failures += Expect(error.find("row 2") != std::string::npos,
+                     "and counts the row as the file does, data lines from one");
+
+  failures +=
+      Expect(!core::RequiredRow(&roster, crops, 2, column, "resource", false, row_index, error),
+             "an empty cell is refused when the column is not optional");
+  failures +=
+      Expect(core::RequiredRow(&roster, crops, 2, column, "resource", true, row_index, error),
+             "and allowed when it is");
+
+  // THE ONE THAT KEEPS STUB TABLE SETS LOADING. A null roster passes every
+  // time: refusing here would break the thing stubs exist for, and it is the
+  // case a two-state rule would have merged with the typo.
+  failures +=
+      Expect(core::RequiredRow(nullptr, crops, 1, column, "resource", false, row_index, error),
+             "no roster is not a refusal: there was nobody to ask");
+
+  core::ResourceId id{};
+  failures +=
+      Expect(core::RequiredResource(&roster, crops, 0, column, "resource", false, id, error) &&
+                 id.value == 1,
+             "and the resource-shaped call hands back the dense id");
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -357,6 +432,7 @@ int main() {
   failures += TestRequiredCell();
   failures += TestNotANumber();
   failures += TestEntryPoints();
+  failures += TestLookupKey();
   if (failures == 0) {
     std::cout << "unit_core_catalog: all checks passed\n";
   }

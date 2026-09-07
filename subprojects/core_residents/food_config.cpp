@@ -18,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -346,13 +347,23 @@ bool ParseSeedNorms(const ITable& crops,
       PrefixError("crops", "sowing_norm_kg_per_ha", error);
       return false;
     }
-    if (resources == nullptr || resource_column == kNoTableColumn) {
-      continue;  // no roster to resolve against: the crop reserves nothing
+    if (resource_column == kNoTableColumn) {
+      continue;  // an older crops table without the column at all
     }
-    const std::uint32_t resource_row =
-        resources->FindRowByKey(crops.CellText(row, resource_column));
-    if (resource_row != kNoTableRow) {
-      config.seed_norms[row].resource = ResourceId{static_cast<std::uint16_t>(resource_row)};
+    // The SAME cell core_production reads, and it refuses the same things
+    // there (0.17.79): a name resources.csv does not carry is a typo, and an
+    // unnamed crop has nowhere to put what it grows. A null roster still
+    // passes — there is nobody to ask, which is a stub table set and legal.
+    if (!RequiredResource(resources,
+                          crops,
+                          row,
+                          resource_column,
+                          "resource",
+                          false,
+                          config.seed_norms[row].resource,
+                          error)) {
+      PrefixError("crops", "resource", error);
+      return false;
     }
   }
   return true;
@@ -360,6 +371,13 @@ bool ParseSeedNorms(const ITable& crops,
 
 /// @brief Row of the resource roster by key, as the dense id; invalid when
 /// the roster has no such row (a hand-built world, an older table set).
+///
+/// NOT the same case as a key read out of a CELL, and it must not be
+/// "fixed" into one. The keys below are spelled by the core itself, so an
+/// absent row is not a typo somebody made — it is a table set that genuinely
+/// has no potato, and answering "invalid" is the right answer. The cell case
+/// is a claim the data makes about itself, and a false claim there fails the
+/// parse (core_catalog/table_lookup.h, RequiredResource).
 ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
   if (resources == nullptr) {
     return ResourceId{};

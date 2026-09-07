@@ -12,6 +12,7 @@
 
 kolkhoz_add_module(core_catalog
     definitions.cpp
+    table_lookup.cpp
     table_value.cpp)
 
 target_link_libraries(core_catalog

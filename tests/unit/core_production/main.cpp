@@ -2104,6 +2104,54 @@ int CheckTheTeamWithoutARoofSaysSo() {
 /// be written rather than a run pointed at. The settlement it takes to see
 /// the defect is one the tables do not build today: a numbered store that
 /// is FULL, standing beside a heap that holds the very thing being carried.
+/// THE DOOR COUNTS WHAT LANDED, NOT WHAT IT MEANT TO PUT IN.
+///
+/// DeliverToStores used to add its own `take` to the running total the
+/// moment it called AddToStock, and AddToStock refuses an unnamed resource
+/// in silence — rightly, because there is no column for it. The two together
+/// answered "delivered" for a load that was never written, and the caller
+/// then destroyed it against that number: SettleHauling subtracts the answer
+/// from the field, DeliverHarvest books the rest as lost.
+///
+/// The parse now refuses the misspelt key that produced the unnamed resource
+/// (core_catalog/table_lookup.h). This is the second lock, and it is the one
+/// that survives the next reason to refuse a write: the cause went away, the
+/// habit would not have.
+int CheckTheDoorCountsWhatLanded() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  SetStorageKg(config.unit_types[0], 1000.0F);  // one tonne, in KILOGRAMS
+
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock.assign(2, 0);
+  core::AppendRow(world.units, barn);
+
+  // An UNNAMED resource: nothing can be written, so nothing may be claimed.
+  const core::Grams unnamed =
+      core::DeliverToStores(world, config, core::ResourceId{}, 500 * core::kGramsPerKilogram);
+  failures += Expect(unnamed == 0, "a load with no resource is not delivered anywhere");
+  failures += Expect(world.units.rows[0].stock[0] == 0 && world.units.rows[0].stock[1] == 0,
+                     "and nothing was written under any id");
+
+  // A named one still goes in, and the count is the same number as before.
+  const core::Grams named =
+      core::DeliverToStores(world, config, core::ResourceId{0}, 500 * core::kGramsPerKilogram);
+  failures += Expect(named == 500 * core::kGramsPerKilogram &&
+                         world.units.rows[0].stock[0] == 500 * core::kGramsPerKilogram,
+                     "a named load goes in, and the door reports exactly what went in");
+
+  // And the ceiling still binds: half a tonne fits, the rest is refused.
+  const core::Grams over =
+      core::DeliverToStores(world, config, core::ResourceId{0}, 900 * core::kGramsPerKilogram);
+  failures += Expect(over == 500 * core::kGramsPerKilogram,
+                     "the ceiling refuses the remainder, and the door says how much it took");
+  return failures;
+}
+
 int CheckAHeapIsAStore() {
   int failures = 0;
 
@@ -2412,6 +2460,7 @@ int main() {
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckTheTeamWithoutARoofSaysSo();
   failures += CheckAHeapIsAStore();
+  failures += CheckTheDoorCountsWhatLanded();
   failures += CheckPauseAndResume();
 
   if (failures == 0) {
