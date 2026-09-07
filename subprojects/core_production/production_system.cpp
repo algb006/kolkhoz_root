@@ -42,6 +42,7 @@
 #include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "field_haul.h"
+#include "field_work.h"
 #include "herd_system.h"
 #include "production_alarms.h"
 #include "production_config.h"
@@ -50,52 +51,6 @@
 
 namespace core {
 namespace {
-
-/// Wipe the weather a field has been through: both accumulators, both
-/// run counters and the judgement made off them. Kept as one function
-/// because there are four places that end a growing spell (a perennial
-/// plan change, a field lost to snow, a fresh sowing, a finished harvest)
-/// and five fields to clear — four copies of five lines is how one of them
-/// eventually keeps a stale "kSoaking" on a field that is bare.
-void ClearFieldWeather(FieldRow& field) {
-  field.drought_stress = 0.0F;
-  field.wet_stress = 0.0F;
-  field.drought_run_days = 0;
-  field.wet_run_days = 0;
-  field.weather_state = FieldWeatherState::kNone;
-}
-
-/// @brief The id of a field row, from the row itself.
-///
-/// The field loops of this file hand a REFERENCE around — that is how they
-/// were written, and threading an id through a dozen helpers to say one
-/// sentence in the journal would be a larger change than the sentence. The
-/// rows live in a vector, so the reference names its own index.
-///
-/// PRECONDITION, and the only one: `field` is a row of `current.fields`, not
-/// a copy of one. Every caller here is inside a loop over those rows; the
-/// assert catches the day somebody passes a temporary.
-FieldId FieldIdOf(const WorldState& current, const FieldRow& field) {
-  const auto index = static_cast<std::size_t>(&field - current.fields.rows.data());
-  assert(index < current.fields.row_ids.size());
-  return index < current.fields.row_ids.size() ? current.fields.row_ids[index] : FieldId{};
-}
-
-/// @brief Moves a field into a phase AND says so.
-///
-/// One function because there are ten places that move a phase, and ten
-/// copies of "set it, then announce it" is exactly how eighteen event kinds
-/// came to have no emitter at all (boss, 2026-09-05). The announcement
-/// carries the NEW phase in `amount`, as the kind's contract says.
-void MoveFieldPhase(WorldState& current, FieldRow& field, FieldPhase phase) {
-  if (field.phase == phase) {
-    return;  // a phase that did not change is not news
-  }
-  field.phase = phase;
-  SimEvent& event = EmitEvent(current, EventKind::kFieldPhaseChanged);
-  event.field = FieldIdOf(current, field);
-  event.amount = static_cast<std::int64_t>(phase);
-}
 
 /// The production slot (phase 4), parallel by field: accumulates the
 /// growth-season weather stress. Reads the calendar and the day's weather
@@ -287,82 +242,25 @@ class ProductionSystem final : public IProductionSystem {
       field.work_days_remaining = 0.0F;
       switch (field.phase) {
         case FieldPhase::kPlowing:
-          OpenPhase(current, field, FieldPhase::kHarrowing);
+          OpenPhase(config_, current, field, FieldPhase::kHarrowing);
           break;
         case FieldPhase::kHarrowing:
           if (field.crop.value == kInvalidDefIdValue) {
-            FinishSowing(current, field);  // bare fallow: nothing to sow
+            FinishSowing(config_, current, field);  // bare fallow: nothing to sow
           } else {
-            OpenPhase(current, field, FieldPhase::kSowing);
+            OpenPhase(config_, current, field, FieldPhase::kSowing);
           }
           break;
         case FieldPhase::kSowing:
-          FinishSowing(current, field);
+          FinishSowing(config_, current, field);
           break;
         case FieldPhase::kHarvest:
-          FinishHarvest(current, field);
+          FinishHarvest(config_, current, field);
           break;
         default:
           break;
       }
     }
-  }
-
-  /// @brief kIdle for a phase that needs no work, the phase itself for the
-  /// four working ones.
-  static constexpr FieldPhase KindOfWorkingPhase(FieldPhase phase) {
-    switch (phase) {
-      case FieldPhase::kPlowing:
-      case FieldPhase::kHarrowing:
-      case FieldPhase::kSowing:
-      case FieldPhase::kHarvest:
-        return phase;
-      case FieldPhase::kIdle:
-      case FieldPhase::kGrowing:
-      // Not a phase: handled beside the phases that need no work, so this
-      // switch keeps no default and a new phase stays a compile error.
-      case FieldPhase::kFieldPhaseCount:
-        return FieldPhase::kIdle;
-    }
-    return FieldPhase::kIdle;
-  }
-
-  /// @brief Moves the field into a working phase and sizes its demand:
-  /// area x the phase's norm. The crop is the one in the ground or, while
-  /// the field is still being prepared, the one this year's rotation plans.
-  void OpenPhase(WorldState& current, FieldRow& field, FieldPhase phase) const {
-    MoveFieldPhase(current, field, phase);
-    if (field.kind != LandKind::kArable) {
-      // Grass is mown, never ploughed, harrowed or sown: the meadow has one
-      // working phase in the year and one norm to size it.
-      field.work_days_remaining = phase == FieldPhase::kHarvest
-                                      ? config_.farming.meadow_mow_days_per_ha * field.area_ga
-                                      : 0.0F;
-      return;
-    }
-    const CropId crop = field.crop;
-    float norm = 0.0F;
-    if (phase == FieldPhase::kPlowing) {
-      norm = config_.farming.plow_days_per_ha;
-    } else if (phase == FieldPhase::kHarrowing) {
-      norm = config_.farming.harrow_days_per_ha;
-    } else if (crop.value < config_.crops.size()) {
-      norm = phase == FieldPhase::kSowing ? config_.crops[crop.value].sow_days_per_ha
-                                          : config_.crops[crop.value].harvest_days_per_ha;
-    }
-    field.work_days_remaining = norm * field.area_ga;
-  }
-
-  /// January 1: the rotation plan advances one year, and fallow that stood
-  /// the whole year pays out its recovery.
-  /// @brief Is this one of the six bread grains the plan counts?
-  bool IsPlanGrain(ResourceId resource) const {
-    for (const ResourceId grain : config_.plan_grain_resources) {
-      if (grain.value == resource.value) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /// The year's delivery: what the plan asked for leaves the stores and is
@@ -380,6 +278,8 @@ class ProductionSystem final : public IProductionSystem {
     current.plan.due.assign(current.plan.due.size(), 0);
   }
 
+  /// January 1: the rotation plan advances one year, and fallow that stood
+  /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
     DeliverPlan(current);
     for (FieldRow& field : current.fields.rows) {
@@ -392,7 +292,7 @@ class ProductionSystem final : public IProductionSystem {
         MoveFieldPhase(current, field, FieldPhase::kIdle);  // the fallow stood its year
         if (field.manure_applied != 0) {
           // A fallow has no harvest to settle its manure at: it settles here.
-          field.fertility += ManureBonus(field);
+          field.fertility += ManureBonus(config_, field);
           field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
           field.manure_applied = 0;
         }
@@ -496,7 +396,7 @@ class ProductionSystem final : public IProductionSystem {
         continue;  // unraised land: nothing happens here until it is raised
       }
       if (field.kind != LandKind::kArable) {
-        RunMeadow(current, field, month);
+        RunMeadow(config_, current, field, month);
         continue;
       }
       if (field.phase == FieldPhase::kIdle) {
@@ -511,7 +411,7 @@ class ProductionSystem final : public IProductionSystem {
         // two jobs were sharing. The forbidding cost the village a quarter of
         // itself, because a field that could not be cleared could not be sown
         // either. The shared seam was the defect; the ban was a splint on it.
-        TrySow(current, field, month, temperature);
+        TrySow(config_, current, field, month, temperature);
         continue;
       }
       const bool standing =
@@ -520,7 +420,7 @@ class ProductionSystem final : public IProductionSystem {
         // Black fallow: ploughed this spring and standing bare (D11). It is
         // sown only from the NEXT slot, and only with a winter crop — the
         // canon's "fallow, then winter rye" — never re-ploughed as fallow.
-        TrySowWinter(current, field, month, temperature);
+        TrySowWinter(config_, current, field, month, temperature);
         continue;
       }
       if (!standing || field.crop.value >= config_.crops.size()) {
@@ -578,137 +478,9 @@ class ProductionSystem final : public IProductionSystem {
       const bool cut_today = !crop.is_perennial || (month == crop.harvest_from_month &&
                                                     current.calendar.date.day_in_month == 0);
       if (in_window && cut_today) {
-        OpenPhase(current, field, FieldPhase::kHarvest);
+        OpenPhase(config_, current, field, FieldPhase::kHarvest);
       }
     }
-  }
-
-  /// The meadow's whole year: it stands, and once a season the scythes go
-  /// out. No sowing window, no temperature gate, no snow loss (grass winters
-  /// where it grew), no fertility — a meadow is land, not a crop
-  /// (land_state.h, LandKind; boss answer Q6).
-  void RunMeadow(WorldState& current, FieldRow& field, std::uint8_t month) const {
-    if (field.phase != FieldPhase::kGrowing) {
-      return;  // already being mown, and one cut a year is all there is
-    }
-    if (month == config_.farming.meadow_cut_month && current.calendar.date.day_in_month == 0) {
-      OpenPhase(current, field, FieldPhase::kHarvest);
-    }
-  }
-
-  /// @brief Puts a harvested load where it belongs: hay at the manger, the
-  /// rest through the store door — none of them above its ceiling (task A3,
-  /// manual/72-storage-and-alarms.md §2).
-  /// @return What did NOT fit, in grams. The caller decides what that means:
-  ///         a field keeps it (FieldRow::reaped_grams), a meadow's hay has
-  ///         nowhere else and is booked to the year's lost_no_room.
-  Grams DeliverHarvest(WorldState& current, ResourceId resource, Grams amount) const {
-    Grams placed = 0;
-    if (resource.value == config_.hay_resource.value) {
-      // The manger first, and it is not a numbered store: the stock yard's
-      // table capacity is in HEADS, so the door does not find it and its
-      // fodder buffer has no tonnage to be full against.
-      const std::uint32_t manger = FindStockYardRow(current, config_);
-      if (manger != kNoRow) {
-        AddToStock(current.units.rows[manger].stock, resource, amount);
-        return 0;
-      }
-    }
-    placed = DeliverToStores(current, config_, resource, amount);
-    return amount - placed;
-  }
-
-  /// The season's cut. The yield is the land's own rate for the WHOLE
-  /// season, which is why one cut a year is not a simplification: the
-  /// second cut is inside the number (farming.csv, meadow_yield_kg_per_ha).
-  void MowMeadow(WorldState& current, FieldRow& field) const {
-    const float rate = field.kind == LandKind::kFloodplainMeadow
-                           ? config_.farming.meadow_floodplain_yield_kg_per_ha
-                           : config_.farming.meadow_yield_kg_per_ha;
-    const Grams hay = KilogramsToGrams(rate * field.area_ga);
-    // A meadow has no reaped buffer of its own: the cut either reaches the
-    // manger and the stores or it is lost, and either way it is booked.
-    const Grams hay_lost = DeliverHarvest(current, config_.hay_resource, hay);
-    AddLedgerAmount(current.ledger.current.harvest, config_.hay_resource, hay);
-    AddLedgerAmount(current.ledger.current.lost_no_room, config_.hay_resource, hay_lost);
-    current.ledger.current.area_harvested_ha += field.area_ga;
-    field.work_days_remaining = 0.0F;
-    // THE DAY IT WAS CUT, and it is the only trace the cut leaves. The phase
-    // goes straight back to kGrowing below — the grass does stand again —
-    // so without this day a mown meadow and an untouched one are the same
-    // state, and the layer had nowhere to put a flower or a butterfly.
-    field.last_mown_day = current.calendar.day;
-    MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the grass stands again next summer
-  }
-
-  /// The field year opens here: the sowing window and the temperature say
-  /// "go", and the field enters plowing. What follows — harrowing, sowing —
-  /// is paced by the crew, so the seed may well go into the ground after
-  /// the window has closed. That is the point of the seam: the window is
-  /// when the work STARTS, the crew decides when it ends.
-  void TrySow(WorldState& current, FieldRow& field, std::uint8_t month, float temperature) {
-    if (field.rotation_year0.value >= config_.crops.size()) {
-      // A FALLOW YEAR IS PLOUGHED (farming design §7, "fallow is ploughed";
-      // defect D11 of the reconciliation): the manure goes in with the
-      // plough and the ground stands bare until the year turns, or until the
-      // next slot's winter crop goes into it in the autumn (TrySowWinter).
-      if (month == config_.farming.fallow_plow_month && temperature >= 0.0F) {
-        OpenPlowing(current, field, CropId{});
-      }
-      return;
-    }
-    const CropDef& crop = config_.crops[field.rotation_year0.value];
-    if (crop.is_winter && field.last_crop.value == field.rotation_year0.value) {
-      // This year's winter crop was sown last autumn and is already off:
-      // the field is idle because it was HARVESTED, not because the sowing
-      // was missed. Sowing it again in August would put the same rye in two
-      // years running and eat the next slot with it — the field sheet caught
-      // exactly that. Only the next slot's winter crop may go in now.
-      TrySowWinter(current, field, month, temperature);
-      return;
-    }
-    // Otherwise a winter crop in THIS year's slot is the fallback path: it
-    // was meant to go in last autumn (TrySowWinter) and that autumn was
-    // missed, so it is sown in its window a year late. That costs the slot
-    // after it, but a winter crop never sown costs the plan its bread.
-    if (month < crop.sow_from_month || month > crop.sow_to_month ||
-        temperature < crop.sow_min_temp_c) {
-      TrySowWinter(current, field, month, temperature);
-      return;
-    }
-    OpenPlowing(current, field, field.rotation_year0);
-  }
-
-  /// The autumn sowing (defect D12). A winter crop is harvested the summer
-  /// AFTER it is sown, so the slot it belongs to is next year's — "winter rye
-  /// goes into the ground in the autumn of the same year, and the ring starts
-  /// turning in the second" (start canon §8). Sown from this year's slot it
-  /// arrived a year late and ate the following spring as well.
-  void TrySowWinter(WorldState& current, FieldRow& field, std::uint8_t month, float temperature) {
-    if (field.rotation_year1.value >= config_.crops.size()) {
-      return;
-    }
-    const CropDef& next = config_.crops[field.rotation_year1.value];
-    if (!next.is_winter || month < next.sow_from_month || month > next.sow_to_month ||
-        temperature < next.sow_min_temp_c) {
-      return;
-    }
-    OpenPlowing(current, field, field.rotation_year1);
-  }
-
-  /// @brief Opens the ploughing for `crop` (invalid = bare fallow). The
-  /// manure, if the winter's plan gave this field any, is already on the
-  /// row (PlanManure) and goes in with the plough (§8).
-  void OpenPlowing(WorldState& current, FieldRow& field, CropId crop) {
-    field.crop = crop;
-    if (field.manure_applied != 0) {
-      const float share = static_cast<float>(field.manure_applied) / 100.0F;
-      const auto dose =
-          GramsFromKilograms(config_.farming.manure_norm_kg_per_ha * field.area_ga * share);
-      current.ledger.current.manure_plowed_in += dose;
-      current.ledger.current.area_manured_ha += field.area_ga * share;
-    }
-    OpenPhase(current, field, FieldPhase::kPlowing);
   }
 
   /// THE WINTER'S MANURE PLAN, made at the year's turn: the heap is dealt out
@@ -773,192 +545,6 @@ class ProductionSystem final : public IProductionSystem {
         field.manure_applied = 1;  // a dribble still counts as touched
       }
     }
-  }
-
-  /// @brief The manure bonus this field has coming, by the share of its dose
-  /// it received (FieldRow::manure_applied is that share in percent).
-  float ManureBonus(const FieldRow& field) const {
-    return config_.farming.manure_fertility_bonus * static_cast<float>(field.manure_applied) /
-           100.0F;
-  }
-
-  /// The seed goes into the ground when the sowing phase is worked through.
-  void FinishSowing(WorldState& current, FieldRow& field) {
-    const CropId crop_id = field.crop;
-    if (crop_id.value == kInvalidDefIdValue) {
-      // Bare fallow: ploughed and harrowed, nothing goes in. It stands as
-      // ground with no crop until the year turns or a winter crop takes it.
-      MoveFieldPhase(current, field, FieldPhase::kGrowing);
-      field.work_days_remaining = 0.0F;
-      return;
-    }
-    if (crop_id.value < config_.crops.size()) {
-      const CropDef& crop = config_.crops[crop_id.value];
-      // Sowing consumes ordinary produce of the same crop (§7); partial
-      // seed sows the whole field anyway — the shortfall alarm is a UI
-      // concern.
-      if (crop.sowing_norm_kg_per_ha > 0.0F) {
-        const auto need = GramsFromKilograms(crop.sowing_norm_kg_per_ha * field.area_ga);
-        const Grams got = TakeFromStorage(current, config_, crop.resource, need);
-        AddLedgerAmount(current.ledger.current.seed, crop.resource, got);
-        // Short seed sows the whole field anyway, and the player is told by
-        // kSeedShort — standing from the day the rotation is set, not on the
-        // morning of the sowing (task A3; farming design §7). Phase code does
-        // not log (DEADLOCK-001).
-      }
-    }
-    current.ledger.current.area_sown_ha += field.area_ga;
-    field.crop = crop_id;
-    MoveFieldPhase(current, field, FieldPhase::kGrowing);
-    field.work_days_remaining = 0.0F;
-    ClearFieldWeather(field);
-  }
-
-  /// The reaped field pays out and leaves the harvest phase.
-  void FinishHarvest(WorldState& current, FieldRow& field) {
-    if (field.kind != LandKind::kArable) {
-      MowMeadow(current, field);
-      return;
-    }
-    if (field.crop.value >= config_.crops.size()) {
-      MoveFieldPhase(current, field, FieldPhase::kIdle);
-      return;
-    }
-    Harvest(current, field, config_.crops[field.crop.value]);
-  }
-
-  void Harvest(WorldState& current, FieldRow& field, const CropDef& crop) {
-    const float soil_factor = field.fertility / config_.farming.fertility_neutral;
-    // The sum of the two, capped exactly where the single number was.
-    const float stress_total = field.drought_stress + field.wet_stress;
-    const float capped =
-        stress_total > config_.farming.stress_cap ? config_.farming.stress_cap : stress_total;
-    const float weather_factor = 1.0F - capped;
-    const auto yield_grams =
-        GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor);
-    // THE REAPED CROP STAYS ON THE FIELD. Until task A4 it went into the
-    // stores in the same tick it was cut — the instant-delivery stub — and
-    // only the remainder that would not fit stayed out. It all stays out
-    // now: the field brigade's buffer of the transport design §9, and it
-    // empties when somebody comes for it with a back or a cart
-    // (SettleHauling). Nothing is lost here and nothing is forced in above
-    // a ceiling; what the field gave is booked below either way.
-    const Grams unplaced = yield_grams;
-    if (unplaced > 0) {
-      // A buffer already holding LAST year's produce of another crop cannot
-      // hold this one too — one number names one resource. The old load has
-      // stood a full season by now, so it is written off, loudly, rather
-      // than silently relabelled as this year's.
-      if (field.reaped_grams > 0 && field.reaped_resource.value != crop.resource.value) {
-        AddLedgerAmount(
-            current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
-        field.reaped_grams = 0;
-        field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
-      }
-      field.reaped_grams += unplaced;
-      field.reaped_resource = crop.resource;
-    }
-    // Booked whether or not a store took it in: what the field gave is what
-    // the reconciliation compares against the yield tables, and a settlement
-    // with nowhere to put its grain is a different finding entirely.
-    AddLedgerAmount(current.ledger.current.harvest, crop.resource, yield_grams);
-    current.ledger.current.area_harvested_ha += field.area_ga;
-    // What this field gave, and of what: the three fields the kind's
-    // contract names (event_state.h). Routine — a harvest is the year
-    // working, not news — but the panel and the story layer both read the
-    // journal, and a year of harvests that left no trace in it is a year
-    // they cannot describe.
-    SimEvent& reaped = EmitEvent(current, EventKind::kFieldHarvested);
-    reaped.field = FieldIdOf(current, field);
-    reaped.resource = crop.resource;
-    reaped.amount = static_cast<std::int64_t>(yield_grams);
-    // Straw is what the field leaves behind, and it is a feed of its own —
-    // own and free, a reserve ration with a lowered effect but plainly there
-    // in a winter manger (design db crop.straw_ratio).
-    if (crop.straw_ratio > 0.0F) {
-      const auto straw = GramsFromFloat(static_cast<float>(yield_grams) * crop.straw_ratio);
-      const Grams straw_placed = DeliverToStores(current, config_, config_.straw_resource, straw);
-      AddLedgerAmount(current.ledger.current.harvest, config_.straw_resource, straw);
-      // Straw has no buffer of its own — it is not why a field waits — so
-      // what did not fit is gone, and gone with a line in the book.
-      AddLedgerAmount(
-          current.ledger.current.lost_no_room, config_.straw_resource, straw - straw_placed);
-    }
-    // The district's plan accrues as the grain is reaped: it is "just a
-    // number" in phase 1 (plan §11), a share of the year's own harvest,
-    // handed over at the year's turn with no district mechanics behind it.
-    if (config_.plan_grain_share > 0.0F && IsPlanGrain(crop.resource)) {
-      AddToStock(current.plan.due,
-                 crop.resource,
-                 GramsFromFloat(static_cast<float>(yield_grams) * config_.plan_grain_share));
-    }
-    // Fertility bookkeeping (§2, §7, §8): the crop's delta, the manure
-    // bonus, the growing repeat penalty.
-    if (crop.is_perennial) {
-      // A standing meadow is one sowing cut year after year, not a repeat
-      // of that sowing: the rotation penalty must not accrue on it.
-      field.repeat_years = 0;
-    } else if (field.crop.value == field.last_crop.value) {
-      field.repeat_years =
-          field.repeat_years < 250 ? static_cast<std::uint8_t>(field.repeat_years + 1) : 250;
-    } else {
-      field.repeat_years = 0;
-    }
-    // The repeat penalty has a ceiling (boss answer Q3): the third year in a
-    // row is the limit of the punishment, so a rotation mistake costs the
-    // year and never the game. Uncapped it took a monocropped field from 65
-    // to 2 in six years while the manure heap was still working.
-    const auto repeated = static_cast<float>(field.repeat_years);
-    const float charged = repeated < config_.farming.repeat_penalty_max_years
-                              ? repeated
-                              : config_.farming.repeat_penalty_max_years;
-    field.fertility += crop.fertility_delta + ManureBonus(field) -
-                       charged * config_.farming.repeat_penalty_per_year;
-    // And a floor under it: an exhausted field bears little, but it bears.
-    const float floor_value = config_.farming.fertility_floor;
-    field.fertility = field.fertility < floor_value ? floor_value : field.fertility;
-    field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
-    field.manure_applied = 0;
-    field.last_crop = field.crop;
-    ClearFieldWeather(field);
-    // The reaping is over, so the PHASE seam is cleared — without this the
-    // field never leaves kHarvest and the whole rotation stops, which is
-    // what happened for one measured run when this line was swallowed by an
-    // edit to the lines around it.
-    field.work_days_remaining = 0.0F;
-    // The load names the price of CARRYING it at once, in its own seam. It
-    // has to be named here and not left to the evening: the first settlement
-    // works out what was carried from what is missing from this number, and
-    // a number nobody set reads as a full day's work — the instant-delivery
-    // stub coming back in through the accounting, which is exactly what an
-    // instrumented run caught it doing.
-    if (field.reaped_grams > 0) {
-      const Grams room = ReceivableRoom(config_, current);
-      field.haul_days_remaining = HaulDaysFor(room < field.reaped_grams ? room : field.reaped_grams,
-                                              FieldHaulRate(config_, current, field),
-                                              config_.standard_day_hours);
-    } else {
-      field.haul_days_remaining = 0.0F;
-    }
-    // And the settlement's baseline with it. The guard above stopped the
-    // FIRST evening from reading an unset number as a day's work; the same
-    // reading came back through the other door, because the evening measured
-    // today's demand against yesterday's leftover and the room grows every
-    // day as the village eats (seventh reconciliation pass).
-    field.haul_days_written = field.haul_days_remaining;
-    if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
-      MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the stand yields again
-      return;
-    }
-    // A perennial whose next slot is something else ends at this cut, not at
-    // the year's turn: the field must be free in the autumn for the winter
-    // crop the canon's ring puts after grass ("fallow or grass, then winter
-    // rye"). Left standing till January it could only be sown a year late.
-    if (crop.is_perennial) {
-      field.last_crop = field.crop;
-    }
-    field.crop = CropId{};
-    MoveFieldPhase(current, field, FieldPhase::kIdle);
   }
 
   ProductionConfig config_;
