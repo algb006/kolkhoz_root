@@ -27,8 +27,24 @@ CellState ReadCell(const ITable& table,
                    Range range,
                    float& value,
                    std::string& error) {
-  if (row == kNoTableRow || column == kNoTableColumn || table.CellText(row, column).empty()) {
-    return CellState::kAbsent;
+  // THE THREE KINDS OF NOTHING, TOLD APART (task A6, 2026-09-07). They used
+  // to share one answer, and the caller who wanted the difference had to ask
+  // the table again on its own — which made "is this column even here" a
+  // question every reader had to remember to re-ask, and only one did.
+  // BOTH WAYS A ROW CAN BE MISSING, and the second was found by the cycle
+  // rather than by me: CellText returns an empty view for an index past the
+  // end as well as for a blank cell, so a row beyond RowCount() used to fall
+  // through into kEmpty — and the refusal built on kEmpty would then have
+  // named a row number that does not exist. The sentinel alone is not "no
+  // such row"; it is only the way a lookup SAYS so.
+  if (row == kNoTableRow || row >= table.RowCount()) {
+    return CellState::kNoRow;
+  }
+  if (column == kNoTableColumn) {
+    return CellState::kNoColumn;
+  }
+  if (table.CellText(row, column).empty()) {
+    return CellState::kEmpty;
   }
   const std::optional<float> cell = table.CellReal(row, column);
   if (!cell) {
@@ -42,6 +58,37 @@ CellState ReadCell(const ITable& table,
   }
   value = *cell;
   return CellState::kRead;
+}
+
+bool RequiredCell(const ITable& table,
+                  std::string_view table_name,
+                  std::string_view column_name,
+                  std::uint32_t row,
+                  std::uint32_t column,
+                  Range range,
+                  float& value,
+                  std::string& error) {
+  const CellState state = ReadCell(table, row, column, range, value, error);
+  if (state == CellState::kNoRow) {
+    // A ROW THAT IS NOT THERE IS REFUSED TOO, and the first draft of this
+    // wrapper let it pass in silence. A missing COLUMN is a table this build
+    // was not given, which is a conversation held elsewhere; a missing ROW is
+    // a caller asking about something that does not exist, and answering
+    // "fine" to that is the same silent shape this wrapper was written
+    // against.
+    error = std::string(table_name) + ": " + std::string(column_name) + " was required of row " +
+            std::to_string(row) + ", and there is no such row";
+    return false;
+  }
+  if (state == CellState::kEmpty) {
+    // Named in full, because the reader of this message is looking at a
+    // spreadsheet and needs to be told which cell to fill, not which rule
+    // was broken.
+    error = std::string(table_name) + ": " + std::string(column_name) + " is empty in row " +
+            std::to_string(row) + " — a column that is there must answer for every row";
+    return false;
+  }
+  return state != CellState::kBad;
 }
 
 bool OptionalCell(const ITable& table,
@@ -61,7 +108,7 @@ bool CellOrDefault(const ITable& table,
                    float& value,
                    std::string& error) {
   const CellState state = ReadCell(table, row, column, range, value, error);
-  if (state == CellState::kAbsent) {
+  if (IsAbsent(state)) {
     value = fallback;
   }
   return state != CellState::kBad;
@@ -84,8 +131,8 @@ bool RequiredValue(const ITable& table,
   if (state == CellState::kRead) {
     return true;
   }
-  if (state == CellState::kAbsent) {
-    error = "no such row, or no value column";
+  if (IsAbsent(state)) {
+    error = "no such key, no value column, or the cell is blank";
   }
   PrefixError(table_name, key, error);
   return false;

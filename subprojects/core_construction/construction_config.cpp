@@ -215,6 +215,13 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
     // The column-level flag closed it at the level of the column; this
     // closes it at the level of the cell, which is where it was open.
     //
+    // AND IT USED TO ASK THE TABLE A SECOND TIME to get here — the branch
+    // re-tested `has_wear_col != kNoTableColumn` because one `kAbsent` stood
+    // for all three kinds of nothing. That was a patch on the enumerator
+    // rather than a fix of it, which is exactly why it never spread to the
+    // ninety other columns with the same hole. Task A6 split the enumerator;
+    // the second question is gone and the switch says what it means.
+    //
     // The answer is a REFUSAL and not a default. A column that is there is
     // a column the export means to fill: a blank in it is a hole in the
     // data, not a value, and the one thing that must not happen is for it
@@ -224,14 +231,14 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       case CellState::kRead:
         type.has_wear = static_cast<std::uint8_t>(number);
         break;
-      case CellState::kAbsent:
-        if (has_wear_col != kNoTableColumn) {
-          Fail(error,
-               "unit_types",
-               "has_wear is empty in row " + std::to_string(row) +
-                   " — a present column must answer for every type");
-          return false;
-        }
+      case CellState::kEmpty:
+        Fail(error,
+             "unit_types",
+             "has_wear is empty in row " + std::to_string(row) +
+                 " — a present column must answer for every type");
+        return false;
+      case CellState::kNoColumn:
+      case CellState::kNoRow:
         type.has_wear = 0;
         break;
       case CellState::kBad:

@@ -108,7 +108,7 @@ int TestThreeAnswers() {
                      "a good cell reads");
   failures += Expect(value == 4.0F, "and gives its value");
 
-  // kAbsent — and the caller's value is LEFT ALONE. This is the answer that
+  // три вида «ничего» — and the caller's value is LEFT ALONE. This is the answer that
   // did not exist before: an empty cell used to fall into zero, which is
   // how an empty has_wear came to mean "does not wear" (task A5's caveat).
   value = 7.0F;
@@ -117,8 +117,9 @@ int TestThreeAnswers() {
                                     value_column,
                                     core::Range{.low = 0.0F, .high = 10.0F},
                                     value,
-                                    error) == core::CellState::kAbsent,
-                     "an empty cell in a present column is ABSENT, not zero");
+                                    error) == core::CellState::kEmpty,
+                     "an empty cell in a PRESENT column has its own answer — not zero, and not "
+                     "the same answer as a column nobody wrote at all");
   failures += Expect(value == 7.0F, "and leaves the caller's value untouched");
   value = 7.0F;
   failures += Expect(core::ReadCell(table,
@@ -126,14 +127,34 @@ int TestThreeAnswers() {
                                     value_column,
                                     core::Range{.low = 0.0F, .high = 10.0F},
                                     value,
-                                    error) == core::CellState::kAbsent,
-                     "so is a row that is not there");
+                                    error) == core::CellState::kNoRow,
+                     "a row that is not there is its own answer too");
   failures += Expect(
       core::ReadCell(
           table, 0, core::kNoTableColumn, core::Range{.low = 0.0F, .high = 10.0F}, value, error) ==
-          core::CellState::kAbsent,
-      "and a column that is not there");
+          core::CellState::kNoColumn,
+      "and so is a column that is not there");
   failures += Expect(value == 7.0F, "none of which touch the value either");
+
+  // AND THE THREE MUST NOT COLLAPSE BACK. Asserting each against its own
+  // enumerator would pass just as well if two of them shared a value, so the
+  // separation is asserted directly: this is the whole subject of task A6,
+  // and it is the one thing a test of "the states are distinct" has to say.
+  const auto state_of = [&](std::uint32_t row, std::uint32_t column) {
+    float ignored = 0.0F;
+    std::string unused;
+    return core::ReadCell(
+        table, row, column, core::Range{.low = 0.0F, .high = 10.0F}, ignored, unused);
+  };
+  const core::CellState empty_cell = state_of(table.FindRowByKey("empty"), value_column);
+  const core::CellState no_row = state_of(core::kNoTableRow, value_column);
+  const core::CellState no_column = state_of(0, core::kNoTableColumn);
+  failures += Expect(empty_cell != no_row && empty_cell != no_column && no_row != no_column,
+                     "the three kinds of nothing are three values, not one — which is the whole "
+                     "of what task A6 changed");
+  failures +=
+      Expect(core::IsAbsent(empty_cell) && core::IsAbsent(no_row) && core::IsAbsent(no_column),
+             "and a caller that truly does not care can still say so in one word");
 
   // kBad — present and wrong, in each of the four ways a cell can be wrong.
   value = 7.0F;
@@ -159,6 +180,93 @@ int TestThreeAnswers() {
 /// refused by the RANGE, and the range test is written positively for
 /// exactly this reason — NaN compares false against everything, so a
 /// negated test would have let it through.
+/// A COLUMN THAT IS THERE MUST ANSWER FOR EVERY ROW — and the refusal names
+/// the cell rather than the rule.
+///
+/// This is the shape that was missing until task A6. The three wrappers that
+/// existed all answered "what do I do when there is no value": keep the
+/// caller's, write a fallback, hand the question back. None could say THERE
+/// MUST BE ONE, so a column meant to be filled for every row had no way to
+/// say so — and a hole in an export read as a number, silently, which is the
+/// one outcome that costs nothing to notice.
+///
+/// Each of the four cases is asserted separately BECAUSE THE SUBJECT IS THE
+/// DIFFERENCE BETWEEN THEM. A test that only checked the refusal would pass
+/// against a rule that refused everything, and a test that only checked the
+/// good cell would pass against a rule that refused nothing.
+int TestRequiredCell() {
+  int failures = 0;
+  const test::FakeTable table{{"key", "value"},
+                              {{"good", "3"}, {"empty", ""}, {"wrong", "x"}, {"big", "99"}}};
+  const std::uint32_t value_column = table.FindColumn("value");
+  const core::Range band{.low = 0.0F, .high = 10.0F};
+  const auto required =
+      [&](std::string_view key, std::uint32_t column, float& out, std::string& error) {
+        return core::RequiredCell(
+            table, "fake", "value", table.FindRowByKey(key), column, band, out, error);
+      };
+
+  float value = 7.0F;
+  std::string error;
+  failures += Expect(required("good", value_column, value, error) && value == 3.0F,
+                     "a filled cell inside its band is read, and the refusal does not fire on it");
+
+  value = 7.0F;
+  error.clear();
+  failures += Expect(!required("empty", value_column, value, error),
+                     "an EMPTY cell in a present column is REFUSED — this is the whole point");
+  failures += Expect(value == 7.0F, "and a refused cell leaves the caller's value alone");
+  // The message is for somebody looking at a spreadsheet, so it has to name
+  // the cell. "A required value is missing" would be true and useless.
+  failures +=
+      Expect(error.find("fake") != std::string::npos && error.find("value") != std::string::npos &&
+                 error.find("row 1") != std::string::npos,
+             "and the refusal names the table, the column and the row");
+
+  value = 7.0F;
+  error.clear();
+  failures += Expect(!required("wrong", value_column, value, error),
+                     "a cell that is not a number is still refused, as it always was");
+  error.clear();
+  failures +=
+      Expect(!required("big", value_column, value, error), "and so is one outside its band");
+
+  // A ROW THAT IS NOT THERE IS REFUSED, and the first draft of this wrapper
+  // let it pass in silence. Two ways to have no row, and BOTH are asserted:
+  // the sentinel a lookup returns, and an index simply past the end — the
+  // second used to fall through into kEmpty, because CellText answers an
+  // out-of-range index with the same empty view it gives a blank cell, so
+  // the refusal would have named a row number that does not exist.
+  value = 7.0F;
+  error.clear();
+  failures +=
+      Expect(!core::RequiredCell(
+                 table, "fake", "value", core::kNoTableRow, value_column, band, value, error),
+             "a row named by the no-such-row sentinel is refused");
+  error.clear();
+  failures +=
+      Expect(!core::RequiredCell(
+                 table, "fake", "value", table.RowCount() + 5, value_column, band, value, error),
+             "and so is an index past the end — which is not a blank cell, however much "
+             "the table's answer looks like one");
+  failures += Expect(error.find("no such row") != std::string::npos,
+                     "and it is refused AS a missing row, not as an empty cell");
+  failures += Expect(value == 7.0F, "neither touches the caller's value");
+
+  // A MISSING COLUMN IS NOT A REFUSAL, and that is deliberate rather than an
+  // oversight: a column absent for every row is a table this build was not
+  // given, which is stub_tables.h's conversation, not this one. Asserting it
+  // here is what keeps the two apart — without this line the wrapper could
+  // quietly grow into a second answer to "were we given the tables".
+  value = 7.0F;
+  error.clear();
+  failures += Expect(required("good", core::kNoTableColumn, value, error),
+                     "a column that is not there at all is NOT a refusal — that is a different "
+                     "question, asked elsewhere");
+  failures += Expect(value == 7.0F, "and it leaves the value alone too");
+  return failures;
+}
+
 int TestNotANumber() {
   int failures = 0;
   const LeakyTable table = KnobTable();
@@ -246,6 +354,7 @@ int TestEntryPoints() {
 int main() {
   int failures = 0;
   failures += TestThreeAnswers();
+  failures += TestRequiredCell();
   failures += TestNotANumber();
   failures += TestEntryPoints();
   if (failures == 0) {
