@@ -270,6 +270,14 @@ int TestRefusals(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
       core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  // A REFUSED PARSE MUST FAIL THIS TEST, NOT KILL THE BINARY. Without this
+  // the unique_ptr is dereferenced and the process aborts, taking every
+  // assertion after it with it — which is how a DAMAGE run comes to report
+  // three failures that have nothing to do with the damage, and a test that
+  // never ran at all reads as a test that passed (2026-09-07).
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
   core::WorldState world;
   PlaceStore(world, 0);
 
@@ -313,6 +321,14 @@ int TestDemolition(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
       core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  // A REFUSED PARSE MUST FAIL THIS TEST, NOT KILL THE BINARY. Without this
+  // the unique_ptr is dereferenced and the process aborts, taking every
+  // assertion after it with it — which is how a DAMAGE run comes to report
+  // three failures that have nothing to do with the damage, and a test that
+  // never ran at all reads as a test that passed (2026-09-07).
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
   core::WorldState world;
   const core::UnitId store = PlaceStore(world, 10 * kLogGrams);
 
@@ -578,6 +594,14 @@ int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
       core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  // A REFUSED PARSE MUST FAIL THIS TEST, NOT KILL THE BINARY. Without this
+  // the unique_ptr is dereferenced and the process aborts, taking every
+  // assertion after it with it — which is how a DAMAGE run comes to report
+  // three failures that have nothing to do with the damage, and a test that
+  // never ran at all reads as a test that passed (2026-09-07).
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
   core::WorldState world;
   core::UnitRow barn;
   barn.type = core::UnitTypeId{kBarnType};
@@ -624,6 +648,14 @@ int TestRepair(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
       core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  // A REFUSED PARSE MUST FAIL THIS TEST, NOT KILL THE BINARY. Without this
+  // the unique_ptr is dereferenced and the process aborts, taking every
+  // assertion after it with it — which is how a DAMAGE run comes to report
+  // three failures that have nothing to do with the damage, and a test that
+  // never ran at all reads as a test that passed (2026-09-07).
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
   core::WorldState world;
   // 200 parts in the store, which is more than any repair here asks for.
   core::UnitRow store;
@@ -697,6 +729,14 @@ int TestUpgradeHeals(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
       core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  // A REFUSED PARSE MUST FAIL THIS TEST, NOT KILL THE BINARY. Without this
+  // the unique_ptr is dereferenced and the process aborts, taking every
+  // assertion after it with it — which is how a DAMAGE run comes to report
+  // three failures that have nothing to do with the damage, and a test that
+  // never ran at all reads as a test that passed (2026-09-07).
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
   core::WorldState world;
   PlaceStore(world, 100 * kLogGrams);
   core::UnitRow barn;
@@ -941,6 +981,62 @@ int CheckStubTablesMustBeDeclared() {
                      "construction: a caller that did not allow the defaults is refused");
   failures += Expect(core::CreateConstructionSystem(nothing, core::StubTables::kAllowed) != nullptr,
                      "construction: and one that did gets them");
+  return failures;
+}
+
+/// A WEAR TERM MAY BE UNNAMED, BUT IT MAY NOT BE WRITTEN AS ZERO.
+///
+/// Fifteen levels of the shipped ladder are a PLACE rather than a building —
+/// an orchard, a road, a well, a cemetery's marked plot — and a place names
+/// no amortization term. Their cells are blank, that blank reads as zero, and
+/// WearDeadline turns a zero term into "never wears", which is right.
+///
+/// A WRITTEN zero would land on the same stored value and be INVERTED on the
+/// way: no years means the whole scale is spent the day the thing is built —
+/// ruined at once — and it would come out as the opposite, never wearing at
+/// all. Nothing in the shipped tables writes one, and that is exactly why it
+/// is worth a guard rather than a note: the day somebody does, nothing else
+/// would say so.
+///
+/// Both halves are asserted, because the subject is the DIFFERENCE. A test
+/// that only refused the zero would pass against a rule that refused blanks
+/// too — and blanks are fifteen legitimate rows of the shipped data.
+int TestAWearTermMayBeUnnamedButNotZero() {
+  int failures = 0;
+  const test::FakeTable types{{"key", "era", "player_built", "gate", "has_wear"},
+                              {{"barn", "1", "1", "era", "1"}}};
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+  const auto build = [&](const test::FakeTable& levels) {
+    const test::FakeTableSet tables{{{"unit_types", &types},
+                                     {"unit_levels", &levels},
+                                     {"unit_level_cost", &no_costs},
+                                     {"resources", &no_resources},
+                                     {"construction", &knobs}}};
+    return core::CreateConstructionSystem(tables, core::StubTables::kAllowed) != nullptr;
+  };
+
+  // BLANK: the level names no term, and that is fifteen rows of the shipped
+  // ladder. It must load.
+  const test::FakeTable blank{{"unit", "level", "labor_days", "max_crew", "wear_years_idle"},
+                              {{"barn", "1", "70", "5", ""}}};
+  failures += Expect(build(blank),
+                     "a BLANK wear term loads — a place that is not a building names no term, "
+                     "and fifteen shipped levels are exactly that");
+
+  // WRITTEN ZERO: refused, because it would be read as its own opposite.
+  const test::FakeTable zero{{"unit", "level", "labor_days", "max_crew", "wear_years_idle"},
+                             {{"barn", "1", "70", "5", "0"}}};
+  failures += Expect(!build(zero),
+                     "a wear term WRITTEN as zero is refused — a term of no years is not a term, "
+                     "and it would otherwise arrive as 'never wears', its opposite");
+
+  // And an honest term still loads, or the rule would be refusing the column
+  // rather than the zero.
+  const test::FakeTable good{{"unit", "level", "labor_days", "max_crew", "wear_years_idle"},
+                             {{"barn", "1", "70", "5", "40"}}};
+  failures += Expect(build(good), "and a term of forty years loads, as it always did");
   return failures;
 }
 
@@ -1512,6 +1608,7 @@ int main() {
   failures += TestUpgradeHeals(tables);
   failures += TestTheTwoReadingsOfUnitTypesAgree();
   failures += TestALadderWithAHoleIsRefused();
+  failures += TestAWearTermMayBeUnnamedButNotZero();
   failures += TestTheStinkField();
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();

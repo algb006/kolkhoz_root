@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core_catalog/table_value.h"
@@ -491,22 +492,52 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
     step.storage_capacity_grams = static_cast<Grams>(number) * kGramsPerTonne;
-    if (!CellOrDefault(levels,
-                       row,
-                       idle_col,
-                       Range{.low = 0.0F, .high = kMaxWearYears},
-                       0.0F,
-                       step.wear_years_idle,
-                       error) ||
-        !CellOrDefault(levels,
-                       row,
-                       in_use_col,
-                       Range{.low = 0.0F, .high = kMaxWearYears},
-                       0.0F,
-                       step.wear_years_in_use,
-                       error)) {
-      Fail(error, "unit_levels", "a wear term is out of range in row " + std::to_string(row));
-      return false;
+    // A TERM MAY BE UNNAMED, BUT IT MAY NOT BE ZERO, and telling those two
+    // apart is what task A6's split bought (2026-09-07).
+    //
+    // A BLANK is legitimate and common: fifteen levels — an orchard, a road,
+    // a well, a cemetery's marked plot — are a place rather than a building,
+    // and a place names no amortization term. It reads as zero, and
+    // WearDeadline's `!(years > 0)` turns that into "never wears", which is
+    // the right answer.
+    //
+    // A WRITTEN ZERO would arrive at exactly the same stored value and be
+    // INVERTED on the way: a term of zero years means the whole scale is
+    // consumed in no time — ruined the day it is built — and it would come
+    // out as "never wears at all", the opposite. Nothing in the shipped
+    // tables writes one today, which is precisely why this is worth a guard
+    // rather than a note: the day somebody does, nothing would say so.
+    //
+    // Only the columns where blank and zero MEAN DIFFERENT THINGS get this.
+    // labor_days carries fourteen written zeros that are honest — a barter
+    // place costs no labour — and max_crew's blank and zero both mean "no
+    // crew", so a floor there would be strictness with no subject, which is
+    // how a checker becomes noisy and then ignored.
+    for (const auto& term : {std::pair{idle_col, &BuildLevel::wear_years_idle},
+                             std::pair{in_use_col, &BuildLevel::wear_years_in_use}}) {
+      float years = 0.0F;
+      switch (ReadCell(
+          levels, row, term.first, Range{.low = 0.0F, .high = kMaxWearYears}, years, error)) {
+        case CellState::kRead:
+          if (!(years > 0.0F)) {
+            Fail(error,
+                 "unit_levels",
+                 "a wear term is written as zero in row " + std::to_string(row) +
+                     " — a term of no years is not a term; leave the cell BLANK to say this "
+                     "level names none");
+            return false;
+          }
+          step.*term.second = years;
+          break;
+        case CellState::kEmpty:
+        case CellState::kNoColumn:
+        case CellState::kNoRow:
+          step.*term.second = 0.0F;
+          break;
+        case CellState::kBad:
+          Fail(error, "unit_levels", "a wear term is out of range in row " + std::to_string(row));
+          return false;
+      }
     }
     // An empty cell is 1.0 — this step adds nothing to its class's term —
     // and the floor is the same as the type column's, for the same reason:
