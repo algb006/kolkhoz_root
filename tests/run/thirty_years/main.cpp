@@ -702,7 +702,10 @@ int main(int argc, char** argv) {
   // A property of the state is checked over the state.
   core::Definitions definitions;
   std::string catalog_error;
-  core::LoadDefinitions(*world.tables, definitions, catalog_error);
+  // kRefused, like the run itself: this reads the catalogue of the SAME full
+  // table set the village was built on, so a missing table here would mean
+  // the run had already been assembled on one.
+  core::LoadDefinitions(*world.tables, core::StubTables::kRefused, definitions, catalog_error);
   const core::PlotRules plot_rules = definitions.Plots();
   const std::span<const float> plot_radii = definitions.units.plot_radius_m;
   std::uint32_t overlapping = 0;

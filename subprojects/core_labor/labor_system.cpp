@@ -48,6 +48,7 @@
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
+#include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "labor_config.h"
 #include "labor_day.h"
@@ -773,14 +774,23 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables, StubTab
   // this module's documented defaults is refused by name, so that a
   // table set which is merely INCOMPLETE cannot pass for one that is
   // as its author meant it.
-  if (stubs == StubTables::kRefused) {
-    for (const std::string_view required : {"labor", "professions", "unit_types"}) {
-      if (tables.FindTable(required) == nullptr) {
-        LogError(std::string("labor: the table set carries no '") + std::string(required) +
-                 "' table, and this caller did not allow the defaults");
-        return nullptr;
-      }
-    }
+  //
+  // THE LIST IS THE WHOLE READ SET (core_tables/required_tables.h): the last
+  // five joined it on 2026-09-08, having been read by ParseLaborConfig and
+  // silently defaulted when absent.
+  if (!RequireTables(tables,
+                     stubs,
+                     "labor",
+                     {"labor",
+                      "professions",
+                      "unit_types",
+                      "transport",
+                      "life",
+                      "livestock",
+                      "crops",
+                      "unit_staff"},
+                     nullptr)) {
+    return nullptr;
   }
 
   LaborConfig config;

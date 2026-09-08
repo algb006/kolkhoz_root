@@ -29,6 +29,7 @@
 #include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
+#include "core_tables/required_tables.h"
 #include "unit_decay.h"
 
 namespace core {
@@ -811,20 +812,26 @@ std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& t
   // this module's documented defaults is refused by name, so that a
   // table set which is merely INCOMPLETE cannot pass for one that is
   // as its author meant it.
-  if (stubs == StubTables::kRefused) {
-    for (const std::string_view required :
-         {"construction", "unit_types", "unit_levels", "resources"}) {
-      if (tables.FindTable(required) == nullptr) {
-        LogError(std::string("construction: the table set carries no '") + std::string(required) +
-                 "' table, and this caller did not allow the defaults");
-        return nullptr;
-      }
-    }
+  //
+  // THE LIST IS THE WHOLE READ SET (core_tables/required_tables.h). The two
+  // at the end joined it on 2026-09-08: the cost table and the transport
+  // table are read by ParseConstructionConfig and defaulted in silence.
+  if (!RequireTables(tables,
+                     stubs,
+                     "construction",
+                     {"construction",
+                      "unit_types",
+                      "unit_levels",
+                      "resources",
+                      "unit_level_cost",
+                      "transport"},
+                     nullptr)) {
+    return nullptr;
   }
 
   ConstructionConfig config;
   std::string error;
-  if (!ParseConstructionConfig(tables, config, error)) {
+  if (!ParseConstructionConfig(tables, stubs, config, error)) {
     LogError("construction: " + error);
     return nullptr;
   }

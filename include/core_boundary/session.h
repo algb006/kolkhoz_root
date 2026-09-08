@@ -124,6 +124,7 @@
 #include "core_common/stink.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -401,9 +402,19 @@ struct SessionConfig {
   /// (core_world/world.h). Read for the two knobs behind the derived
   /// signals: tables/life.csv, keys `life_speedup` and `infant_age_months`.
   /// A table set without them keeps the canonical defaults (four times the
-  /// calendar, eighteen months); a present but malformed cell refuses the
-  /// session.
+  /// calendar, eighteen months) ONLY when the field below says so; by
+  /// default a set without life.csv refuses the session by name. A present
+  /// but malformed cell refuses it either way.
   const ITableSet* tables = nullptr;
+
+  /// Whether a set WITHOUT the tables this session reads is legitimate.
+  /// THE DEFAULT IS THE REFUSAL, as everywhere this choice lives in a config
+  /// struct (core_tables/stub_tables.h): a caller that says nothing gets the
+  /// answer that cannot quietly lie. Until 2026-09-08 the sentence above was
+  /// the whole policy — a missing life.csv kept the canonical defaults in
+  /// silence, which is the same silence that cost a day of measurements on
+  /// the weather.
+  StubTables stub_tables = StubTables::kRefused;
 
   /// The assembled simulation, usually CreateStandardSimulation's; owned by
   /// the session from here on. The session drives it and nothing else
@@ -422,7 +433,7 @@ class ISession {
 
   /// @brief Runs one step: stages the orders issued and cancelled since
   /// the last step into the engine, then ISimulation::AdvanceStep — copy,
-  /// orders applied before phase 1, phases 1–7, swap. Then moves the
+  /// orders applied before phase 1, the six phases, swap. Then moves the
   /// completed step's outbox into the event log and refreshes the alarms.
   /// Blocks until done. Game speed is the caller's business: speed changes
   /// how often this is called, never what it computes (time design §1).

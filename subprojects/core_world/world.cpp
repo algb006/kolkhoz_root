@@ -28,6 +28,7 @@
 #include "core_log/log.h"
 #include "core_production/production_system.h"
 #include "core_residents/residents_system.h"
+#include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "core_time/time_system.h"
 
@@ -613,6 +614,27 @@ float LifeSpeedupFromTables(const ITableSet& tables) {
 
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config) {
   assert(config.tables != nullptr);
+  // THE ASSEMBLER'S OWN READ SET, refused before any subsystem is built
+  // (core_tables/required_tables.h). Genesis and the speedup knob read these
+  // after the five factories have each passed their own list, so without
+  // this line a set missing start_stock produced a village with empty barns
+  // and a run that converged on it.
+  if (!RequireTables(*config.tables,
+                     config.stub_tables,
+                     "world",
+                     {"campaign",
+                      "construction",
+                      "crops",
+                      "life",
+                      "livestock",
+                      "resources",
+                      "start_layout",
+                      "start_stock",
+                      "unit_types",
+                      "world_params"},
+                     nullptr)) {
+    return nullptr;
+  }
   auto time = CreateTimeSystem(*config.tables, config.stub_tables);
   auto residents = CreateResidentsSystem(*config.tables, config.stub_tables);
   auto production = CreateProductionSystem(*config.tables, config.stub_tables);
@@ -653,8 +675,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // And the start layout is refused on the same terms as a subsystem's
   // table: the parser has already logged the row and the column.
   std::string layout_error;
-  WorldState start =
-      CreateStartWorld(*config.tables, construction.get(), config.world_seed, &layout_error);
+  WorldState start = CreateStartWorld(
+      *config.tables, config.stub_tables, construction.get(), config.world_seed, &layout_error);
   if (!layout_error.empty()) {
     return nullptr;
   }

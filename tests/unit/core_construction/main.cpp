@@ -1528,7 +1528,8 @@ int TestTheShippedStartHasNoHouseInAStinkZone() {
   if (Expect(system != nullptr, "and the shipped tables build a construction system") != 0) {
     return 1;
   }
-  const core::WorldState world = core::CreateStartWorld(*tables, system.get(), 12345, nullptr);
+  const core::WorldState world =
+      core::CreateStartWorld(*tables, core::StubTables::kAllowed, system.get(), 12345, nullptr);
 
   const core::ITable* const unit_types = tables->FindTable("unit_types");
   // ONE DOOR TO THE LADDER (boss, 2026-09-06). genesis measured the start

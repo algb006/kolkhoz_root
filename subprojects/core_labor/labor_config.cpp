@@ -2,10 +2,13 @@
 // the columns labor needs from transport.csv, life.csv, livestock.csv and
 // crops.csv.
 //
-// Policy, shared with every other subsystem factory: a MISSING table keeps
-// the canonical defaults (a unit test's world has no tables at all), while a
-// PRESENT table that cannot be read is an error — a half-understood balance
-// is worse than none. Numbers are range-checked here, at parse time, because
+// Policy, shared with every other subsystem factory, and it has two halves
+// since 2026-09-08: a MISSING table keeps the canonical defaults ONLY for a
+// caller that asked for them (StubTables::kAllowed — a unit test's world has
+// no tables at all); under kRefused the factory refuses and names the file
+// (core_tables/required_tables.h). A PRESENT table that cannot be read is an
+// error either way — a half-understood balance is worse than none. Numbers
+// are range-checked here, at parse time, because
 // everything downstream multiplies them into hours and hundredths.
 
 #include "labor_config.h"

@@ -5,9 +5,13 @@
 // the id came from (core_common/ids.h). Parsed once at factory time; the
 // simulation never opens a table again.
 //
-// The policy is every factory's: a MISSING table or key keeps the canonical
-// default — a unit test's world has no tables at all, and then nothing can
-// be built, which is the honest answer — while a PRESENT row that cannot be
+// The policy is every factory's, and it has two halves since 2026-09-08: a
+// MISSING table keeps the canonical default ONLY for a caller that asked for
+// it (StubTables::kAllowed — a unit test's world has no tables at all, and
+// then nothing can be built, which is the honest answer); under kRefused the
+// parse refuses and names the file (core_tables/required_tables.h). A
+// MISSING KEY inside a present table still keeps its default — a key is not
+// a file, and the required list is of tables. A PRESENT row that cannot be
 // read or contradicts another table refuses the whole subsystem.
 
 /// @threading PARALLEL_READONLY
@@ -348,7 +352,10 @@ struct ConstructionConfig {
 ///         missing one. Whether that should refuse the load is a question
 ///         about the design, not about this parser, so it is written down as
 ///         open rather than answered here.
+/// @param stubs Passed straight to the catalogue, which owns unit_types and
+///        map and refuses their absence itself (core_catalog/definitions.h).
 bool ParseConstructionConfig(const ITableSet& tables,
+                             StubTables stubs,
                              ConstructionConfig& config,
                              std::string& error);
 

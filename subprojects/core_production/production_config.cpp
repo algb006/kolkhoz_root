@@ -9,9 +9,12 @@
 // the parse has to fail loudly or fall back visibly, never quietly return a
 // default that looks plausible.
 //
-// Policy, shared with every other subsystem factory: a MISSING table keeps
-// the canonical defaults (a unit test's world has no tables at all), while a
-// PRESENT table that cannot be read is an error. Numbers are range-checked
+// Policy, shared with every other subsystem factory, and it has two halves
+// since 2026-09-08: a MISSING table keeps the canonical defaults ONLY for a
+// caller that asked for them (StubTables::kAllowed — a unit test's world has
+// no tables at all); under kRefused the factory refuses and names the file
+// (core_tables/required_tables.h). A PRESENT table that cannot be read is an
+// error either way. Numbers are range-checked
 // here, at parse time, because everything downstream casts them to integers
 // or multiplies them into grams.
 

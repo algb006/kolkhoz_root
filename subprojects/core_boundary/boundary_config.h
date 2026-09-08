@@ -14,15 +14,21 @@
 /// the whole reason the projections are methods of a subsystem instead of free
 /// functions (manual/70-boundary.md §3).
 ///
-/// The policy is every factory's: a MISSING table or key keeps the canonical
-/// default — a unit test's world has no tables at all — while a PRESENT cell
-/// that cannot be read or falls out of range refuses the session. A
-/// half-understood balance is worse than none.
+/// The policy is every factory's, and it has two halves since 2026-09-08: a
+/// MISSING table keeps the canonical default ONLY for a caller that asked for
+/// it (SessionConfig::stub_tables — a unit test's world has no tables at
+/// all); under kRefused the session refuses and names the file
+/// (core_tables/required_tables.h). A MISSING KEY inside a present table
+/// still keeps its default. A PRESENT cell that cannot be read or falls out
+/// of range refuses the session either way: a half-understood balance is
+/// worse than none.
 
 #ifndef CORE_BOUNDARY_BOUNDARY_CONFIG_H_
 #define CORE_BOUNDARY_BOUNDARY_CONFIG_H_
 
 #include <string>
+
+#include "core_tables/stub_tables.h"
 
 namespace core {
 
@@ -48,8 +54,13 @@ struct BoundaryConfig {
 
 /// @brief Reads the knobs out of `tables`.
 /// @param error Receives the reason on failure, table and key named.
-/// @return false only when a present cell is malformed or out of range.
-bool ParseBoundaryConfig(const ITableSet& tables, BoundaryConfig& config, std::string& error);
+/// @return false when a present cell is malformed or out of range, and —
+///         under StubTables::kRefused — when a table this parse reads is
+///         absent, `error` naming the file.
+bool ParseBoundaryConfig(const ITableSet& tables,
+                         StubTables stubs,
+                         BoundaryConfig& config,
+                         std::string& error);
 
 }  // namespace core
 

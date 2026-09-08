@@ -30,6 +30,13 @@
 /// read or falls out of range REFUSES the configuration. A half-understood
 /// balance is worse than none.
 ///
+/// THE FIRST CLAUSE IS ABOUT THIS READER AND NOT ABOUT THE RUN. Since
+/// 2026-09-08 a caller may declare that a set without the tables it reads is
+/// broken, and then the factory refuses by name before any of these
+/// functions is reached (core_tables/required_tables.h). What is written
+/// here stays exactly true of the reader: it never invents a refusal out of
+/// an absence, because absence is not its question.
+///
 /// AND THE POLICY HAS ONE NAMED EXCEPTION SINCE TASK A6, said here rather
 /// than left to be discovered twenty lines below. A blank cell in a column
 /// that EXISTS is not a missing cell in the sense above: the column is there

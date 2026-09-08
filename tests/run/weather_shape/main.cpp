@@ -262,14 +262,18 @@ bool WriteMemorylessWeather(const std::filesystem::path& into) {
 /// @return false when the table set or the system refused to build.
 std::uint32_t forecast_disagreements = 0;
 
-bool Measure(const std::string& tables_dir, Shape& shape) {
+/// @param stubs The control directory holds ONE table on purpose — the
+///        memoryless weather it is built to compare against — so it asks for
+///        the defaults out loud, while the shipped set is measured under the
+///        refusal like any run (core_tables/stub_tables.h).
+bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape) {
   std::string error;
   const auto tables = core::LoadTableSet(tables_dir, &error);
   if (tables == nullptr) {
     std::cout << "FAIL: " << tables_dir << " did not load (" << error << ")\n";
     return false;
   }
-  const auto system = core::CreateTimeSystem(*tables, core::StubTables::kRefused);
+  const auto system = core::CreateTimeSystem(*tables, stubs);
   if (system == nullptr) {
     std::cout << "FAIL: the time system did not build over " << tables_dir << '\n';
     return false;
@@ -558,7 +562,7 @@ int main(int argc, char** argv) {
       return 1;
     }
     Shape swept;
-    if (!Measure(dir.string(), swept)) {
+    if (!Measure(dir.string(), core::StubTables::kAllowed, swept)) {
       return 1;
     }
     std::cout << std::fixed << std::setprecision(3);
@@ -578,7 +582,8 @@ int main(int argc, char** argv) {
 
   Shape memoryless;
   Shape shipped;
-  if (!Measure(control_dir.string(), memoryless) || !Measure("tables", shipped)) {
+  if (!Measure(control_dir.string(), core::StubTables::kAllowed, memoryless) ||
+      !Measure("tables", core::StubTables::kRefused, shipped)) {
     return 1;
   }
   std::cout << std::fixed << std::setprecision(3);

@@ -604,6 +604,7 @@ void PlaceStartStock(WorldState& world,
 ///         absent table is not a wrong one.
 bool BuildStartEconomy(WorldState& world,
                        const ITableSet& tables,
+                       StubTables stubs,
                        const IConstructionSystem* capacities,
                        std::string* error) {
   const ITable* unit_types = tables.FindTable("unit_types");
@@ -649,9 +650,20 @@ bool BuildStartEconomy(WorldState& world,
   // it (task A6).
   Definitions definitions;
   std::string catalog_error;
-  const float map_side_m =
-      LoadDefinitions(tables, definitions, catalog_error) ? definitions.map_side_m : 0.0F;
-  PlaceStartLayout(world, scene, unit_types, crops, kStartFertility, map_side_m, placed);
+  // THE VERDICT IS READ. It was thrown away until 2026-09-08 — the ternary
+  // took the zero and walked on, so the catalogue's refusal went nowhere and
+  // the village was laid out with no map at all. A guard whose answer nobody
+  // reads is the silenced guard this whole delivery is about, and it was
+  // sitting inside the delivery.
+  if (!LoadDefinitions(tables, stubs, definitions, catalog_error)) {
+    LogError("genesis: " + catalog_error);
+    if (error != nullptr) {
+      *error = catalog_error;
+    }
+    return false;
+  }
+  PlaceStartLayout(
+      world, scene, unit_types, crops, kStartFertility, definitions.map_side_m, placed);
 
   // The units the rest of this function needs by name. A layout without one
   // of them is not an error here: the herd simply has nowhere to stand, and
@@ -835,6 +847,7 @@ std::span<const std::string_view> GenesisWorldParamKeys() {
 }
 
 WorldState CreateStartWorld(const ITableSet& tables,
+                            StubTables stubs,
                             const IConstructionSystem* capacities,
                             std::uint64_t world_seed,
                             std::string* error) {
@@ -982,7 +995,7 @@ WorldState CreateStartWorld(const ITableSet& tables,
     LogWarning("genesis: start parameters rounded population to " +
                std::to_string(world.residents.rows.size()));
   }
-  BuildStartEconomy(world, tables, capacities, error);
+  BuildStartEconomy(world, tables, stubs, capacities, error);
   return world;
 }
 

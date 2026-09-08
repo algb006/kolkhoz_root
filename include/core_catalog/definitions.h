@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "core_common/plot.h"
+#include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -99,13 +100,24 @@ struct Definitions {
 };
 
 /// @brief Reads the catalogue out of a table set.
-/// @param error Receives the reason on failure, table and column named.
+/// @param stubs Whether a set WITHOUT the catalogue's tables is legitimate.
+///        Positional and without a default, like every subsystem factory
+///        (core_tables/stub_tables.h): the caller says the word or gets the
+///        refusal. Under kAllowed a missing table keeps the documented
+///        defaults — a unit test's world has no tables at all, and then
+///        nothing has a plot and there is no map.
+/// @param error Receives the reason on failure, table and column named —
+///        including the name of a missing table under kRefused.
 /// @return false when a PRESENT table is malformed — a value that is not a
-///         number or out of range. A MISSING table keeps the documented
-///         defaults, like every subsystem factory: a unit test's world has
-///         no tables at all, and then nothing has a plot and there is no
+///         number or out of range — and, under kRefused, when unit_types or
+///         map is absent. THE CATALOGUE ASKS FOR ITS OWN TABLES because it
+///         is the one place that knows it reads them: its four callers used
+///         to require what they thought it read, and none of them named the
 ///         map.
-bool LoadDefinitions(const ITableSet& tables, Definitions& definitions, std::string& error);
+bool LoadDefinitions(const ITableSet& tables,
+                     StubTables stubs,
+                     Definitions& definitions,
+                     std::string& error);
 
 }  // namespace core
 

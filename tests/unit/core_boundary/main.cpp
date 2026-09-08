@@ -171,6 +171,8 @@ std::unique_ptr<core::ISession> ScriptedSession(const core::ITableSet& tables,
   auto simulation = std::make_unique<ScriptedSimulation>(world);
   *out = simulation.get();
   core::SessionConfig config;
+  // The boundary, not the balance: the defaults are asked for out loud.
+  config.stub_tables = core::StubTables::kAllowed;
   config.tables = &tables;
   config.simulation = std::move(simulation);
   return core::CreateSession(std::move(config));
@@ -193,6 +195,8 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   sim_config.worker_count = 1;
 
   core::SessionConfig config;
+  // The boundary, not the balance: the defaults are asked for out loud.
+  config.stub_tables = core::StubTables::kAllowed;
   config.tables = &tables;
   config.simulation = core::CreateStandardSimulation(sim_config);
   std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
@@ -858,6 +862,8 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
     sim_config.world_seed = 99;
     sim_config.worker_count = worker_count;
     core::SessionConfig config;
+    // The boundary, not the balance: the defaults are asked for out loud.
+    config.stub_tables = core::StubTables::kAllowed;
     config.tables = &tables;
     config.simulation = core::CreateStandardSimulation(sim_config);
     std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
@@ -910,6 +916,8 @@ int TestCrewOrderShape(const core::ITableSet& tables) {
   sim_config.tables = &tables;
   sim_config.worker_count = 1;
   core::SessionConfig config;
+  // The boundary, not the balance: the defaults are asked for out loud.
+  config.stub_tables = core::StubTables::kAllowed;
   config.tables = &tables;
   config.simulation = core::CreateStandardSimulation(sim_config);
   std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
@@ -1061,6 +1069,8 @@ int TestWorkforceQuestions(const core::ITableSet& tables) {
   sim_config.worker_count = 1;
 
   core::SessionConfig config;
+  // The boundary, not the balance: the defaults are asked for out loud.
+  config.stub_tables = core::StubTables::kAllowed;
   config.tables = &tables;
   config.simulation = core::CreateStandardSimulation(sim_config);
   std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));

@@ -10,8 +10,11 @@
 // OPTIONAL: a table set written before this stage must still load, and its
 // defaults here equal the canonical table contents anyway.
 //
-// A MISSING table always keeps the defaults whole: a unit test's world has
-// no tables at all.
+// A MISSING table keeps the defaults whole HERE, in the parser — a unit
+// test's world has no tables at all. Whether the caller may have that answer
+// is decided before the parser runs, at the factory
+// (core_tables/required_tables.h): under StubTables::kRefused a set without
+// this module's tables never reaches this file.
 
 #include "life_config.h"
 

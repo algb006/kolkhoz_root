@@ -3,7 +3,8 @@
 # unit-type definitions through its interface; it knows nothing about them.
 
 kolkhoz_add_module(core_tables
-    csv_table_set.cpp)
+    csv_table_set.cpp
+    required_tables.cpp)
 
 target_link_libraries(core_tables
     PUBLIC core_common

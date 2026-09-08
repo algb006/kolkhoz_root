@@ -638,7 +638,7 @@ std::unique_ptr<ISession> CreateSession(SessionConfig config) {
   }
   BoundaryConfig knobs;
   std::string error;
-  if (!ParseBoundaryConfig(*config.tables, knobs, error)) {
+  if (!ParseBoundaryConfig(*config.tables, config.stub_tables, knobs, error)) {
     LogError("boundary: " + error);
     return nullptr;
   }

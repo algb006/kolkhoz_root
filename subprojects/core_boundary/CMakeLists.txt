@@ -20,5 +20,8 @@ kolkhoz_add_module(core_boundary
     signals.cpp)
 
 target_link_libraries(core_boundary
-    PUBLIC core_common core_sim
-    PRIVATE core_catalog core_tables core_log)
+    # core_tables is PUBLIC since 2026-09-08: SessionConfig carries the
+    # caller's StubTables answer, so the header of this module now names a
+    # type of that one.
+    PUBLIC core_common core_sim core_tables
+    PRIVATE core_catalog core_log)

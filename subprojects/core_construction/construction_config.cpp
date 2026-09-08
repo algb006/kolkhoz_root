@@ -9,10 +9,13 @@
 // taught its own lesson — a comment with quotation marks in it took the
 // whole table set down, so it now carries none.
 //
-// Policy, shared with every subsystem factory: a MISSING table keeps the
-// documented defaults (a unit test's world has no tables at all, and then
-// nothing can be built — the honest answer), while a PRESENT table that
-// cannot be read, or that contradicts another, refuses the subsystem.
+// Policy, shared with every subsystem factory, and it has two halves since
+// 2026-09-08: a MISSING table keeps the documented defaults ONLY for a caller
+// that asked for them (StubTables::kAllowed — a unit test's world has no
+// tables at all, and then nothing can be built, which is the honest answer);
+// under kRefused the factory refuses and names the file
+// (core_tables/required_tables.h). A PRESENT table that cannot be read, or
+// that contradicts another, refuses the subsystem either way.
 
 #include "construction_config.h"
 
@@ -697,6 +700,7 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
 }  // namespace
 
 bool ParseConstructionConfig(const ITableSet& tables,
+                             StubTables stubs,
                              ConstructionConfig& config,
                              std::string& error) {
   const ITable* const knobs = tables.FindTable("construction");
@@ -736,7 +740,7 @@ bool ParseConstructionConfig(const ITableSet& tables,
   // this module reads them from there rather than from its own pass over
   // unit_types.csv — those two columns have a second reader, and a column
   // with two readers has an owner (core_catalog/definitions.h).
-  if (!LoadDefinitions(tables, config.definitions, error)) {
+  if (!LoadDefinitions(tables, stubs, config.definitions, error)) {
     return false;
   }
 

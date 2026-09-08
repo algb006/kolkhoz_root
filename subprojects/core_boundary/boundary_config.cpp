@@ -14,6 +14,7 @@
 
 #include "core_catalog/definitions.h"
 #include "core_catalog/table_value.h"
+#include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -23,14 +24,23 @@ constexpr std::uint32_t kMonthsPerBioYear = 12;
 
 }  // namespace
 
-bool ParseBoundaryConfig(const ITableSet& tables, BoundaryConfig& config, std::string& error) {
+bool ParseBoundaryConfig(const ITableSet& tables,
+                         StubTables stubs,
+                         BoundaryConfig& config,
+                         std::string& error) {
+  // The boundary reads one table of its own, and the catalogue's two behind
+  // LoadDefinitions. Both refusals are the caller's word, carried in from
+  // SessionConfig (core_tables/stub_tables.h).
+  if (!RequireTables(tables, stubs, "boundary", {"life"}, &error)) {
+    return false;
+  }
   // The map side comes from the CATALOGUE, which is its one reader. This
   // module used to read the column itself and, alone among the three
   // readers, treated a zero as a REFUSAL rather than as "the table set
   // declares no map" — one cell with two meanings, and nothing that would
   // ever have made them disagree out loud (task A6).
   Definitions definitions;
-  if (!LoadDefinitions(tables, definitions, error)) {
+  if (!LoadDefinitions(tables, stubs, definitions, error)) {
     return false;
   }
   config.map_side_m = definitions.map_side_m;

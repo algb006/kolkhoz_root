@@ -1,10 +1,12 @@
 // Unit test of core_time: the solar daylight curve, table-driven weather,
 // determinism of the daily draws, and factory validation.
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -97,7 +99,7 @@ int main() {
     return 1;
   }
 
-  const auto time_system = core::CreateTimeSystem(*tables, core::StubTables::kRefused);
+  const auto time_system = core::CreateTimeSystem(*tables, core::StubTables::kAllowed);
   failures += Expect(time_system != nullptr, "the factory accepts a good weather table");
   {
     // A season that swings past the scale is refused: +30 is the hottest
@@ -111,7 +113,7 @@ int main() {
     const auto hot_tables = core::LoadTableSet(hot.string(), &hot_error);
     failures +=
         Expect(hot_tables != nullptr &&
-                   core::CreateTimeSystem(*hot_tables, core::StubTables::kRefused) == nullptr,
+                   core::CreateTimeSystem(*hot_tables, core::StubTables::kAllowed) == nullptr,
                "a season that swings past +30 is refused");
   }
   core::ISequentialPhase& phase = time_system->TimeAndWeatherPhase();
@@ -211,7 +213,7 @@ int main() {
     const auto knob_tables = core::LoadTableSet((root / "knobs").string(), nullptr);
     const auto knobbed = knob_tables == nullptr
                              ? nullptr
-                             : core::CreateTimeSystem(*knob_tables, core::StubTables::kRefused);
+                             : core::CreateTimeSystem(*knob_tables, core::StubTables::kAllowed);
     failures += Expect(knobbed != nullptr, "a table set with weather_params builds");
     if (knobbed != nullptr) {
       std::uint32_t storms = 0;
@@ -254,7 +256,7 @@ int main() {
     const auto melt_tables = core::LoadTableSet((root / "melt").string(), nullptr);
     const auto never_melts = melt_tables == nullptr
                                  ? nullptr
-                                 : core::CreateTimeSystem(*melt_tables, core::StubTables::kRefused);
+                                 : core::CreateTimeSystem(*melt_tables, core::StubTables::kAllowed);
     failures += Expect(never_melts != nullptr, "a weather_params naming snow_melt_c builds");
     if (never_melts != nullptr) {
       // The cover is the ONE weather quantity with a memory, so it is not in
@@ -268,7 +270,7 @@ int main() {
     const auto plain_tables = core::LoadTableSet((root / "melt").string(), nullptr);
     const auto melts = plain_tables == nullptr
                            ? nullptr
-                           : core::CreateTimeSystem(*plain_tables, core::StubTables::kRefused);
+                           : core::CreateTimeSystem(*plain_tables, core::StubTables::kAllowed);
     if (melts != nullptr) {
       failures += Expect(CoveredDaysInAYear(melts->TimeAndWeatherPhase()) < 25,
                          "while the same year at the shipped +2 does not — the control that makes "
@@ -278,7 +280,7 @@ int main() {
     const auto silly_melt = core::LoadTableSet((root / "melt").string(), nullptr);
     failures +=
         Expect(silly_melt != nullptr &&
-                   core::CreateTimeSystem(*silly_melt, core::StubTables::kRefused) == nullptr,
+                   core::CreateTimeSystem(*silly_melt, core::StubTables::kAllowed) == nullptr,
                "and a melt threshold off the -15..+30 scale is refused, like every other "
                "temperature that crosses this seam");
   }
@@ -301,7 +303,7 @@ int main() {
                 "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n");
       WriteFile(root / "declared" / "weather_params.csv", body);
       const auto set = core::LoadTableSet((root / "declared").string(), nullptr);
-      return set == nullptr ? nullptr : core::CreateTimeSystem(*set, core::StubTables::kRefused);
+      return set == nullptr ? nullptr : core::CreateTimeSystem(*set, core::StubTables::kAllowed);
     };
     failures += Expect(with_params("key,value,reader\nsnow_melt_celsius,2,core\n") == nullptr,
                        "a misspelt core key is refused — it is not the core's and not declared "
@@ -396,7 +398,7 @@ int main() {
     const auto leaf_tables = core::LoadTableSet((root / "leaf").string(), nullptr);
     const auto leafy = leaf_tables == nullptr
                            ? nullptr
-                           : core::CreateTimeSystem(*leaf_tables, core::StubTables::kRefused);
+                           : core::CreateTimeSystem(*leaf_tables, core::StubTables::kAllowed);
     failures += Expect(leafy != nullptr, "a table set naming the leaf-fall month builds");
     if (leafy != nullptr) {
       core::ISequentialPhase& leaf_phase = leafy->TimeAndWeatherPhase();
@@ -501,7 +503,7 @@ int main() {
     const auto reset_tables = core::LoadTableSet((root / "resetday").string(), nullptr);
     const auto january = reset_tables == nullptr
                              ? nullptr
-                             : core::CreateTimeSystem(*reset_tables, core::StubTables::kRefused);
+                             : core::CreateTimeSystem(*reset_tables, core::StubTables::kAllowed);
     if (january != nullptr) {
       core::ISequentialPhase& reset_phase = january->TimeAndWeatherPhase();
       core::WorldState previous;
@@ -552,7 +554,7 @@ int main() {
     failures += Expect(silly_tables != nullptr, "the out-of-range table parses as CSV");
     if (silly_tables != nullptr) {
       failures +=
-          Expect(core::CreateTimeSystem(*silly_tables, core::StubTables::kRefused) == nullptr,
+          Expect(core::CreateTimeSystem(*silly_tables, core::StubTables::kAllowed) == nullptr,
                  "but a month of 0 is refused: months here are human, 1..12");
     }
   }
@@ -587,6 +589,40 @@ int main() {
                        "and allowed on the same terms");
   }
 
+  // AND THE OTHER TWO TABLES THIS FACTORY READS, one at a time. The check
+  // above was written for the weather and named only the weather, while
+  // weather_params and world_params went on falling back in silence — the
+  // refusal existed and covered a third of its own subject. Each case here
+  // is a full set with ONE file taken out, because a set missing everything
+  // would go red on the first name and prove nothing about the rest.
+  {
+    const std::array<std::string_view, 2> forgotten = {"weather_params", "world_params"};
+    for (const std::string_view missing : forgotten) {
+      const fs::path dir = root / std::string("without_") / std::string(missing);
+      fs::create_directories(dir);
+      WriteFile(dir / "weather.csv",
+                "key,temp_mean_c,temp_spread_c,precipitation_chance_percent\n"
+                "winter,-10,5,35\nspring,5,7,35\nsummer,19,5,25\nautumn,6,7,45\n");
+      if (missing != "weather_params") {
+        // With the `reader` column: a knob table that does not say who reads
+        // each key is refused on its own terms, which is a different fault
+        // from the one under test.
+        WriteFile(dir / "weather_params.csv", "key,value,reader\n");
+      }
+      if (missing != "world_params") {
+        WriteFile(dir / "world_params.csv", "key,value,reader\n");
+      }
+      const auto set = core::LoadTableSet(dir.string(), nullptr);
+      failures += Expect(set != nullptr, "the doctored set loads as tables");
+      if (set != nullptr) {
+        failures += Expect(core::CreateTimeSystem(*set, core::StubTables::kRefused) == nullptr,
+                           "a set without one of the tables the clock reads is refused");
+        failures += Expect(core::CreateTimeSystem(*set, core::StubTables::kAllowed) != nullptr,
+                           "and served to a caller that asked for the defaults");
+      }
+    }
+  }
+
   // A malformed weather table is refused, not patched over.
   fs::create_directories(root / "bad");
   WriteFile(root / "bad" / "weather.csv",
@@ -594,7 +630,7 @@ int main() {
   const auto bad_tables = core::LoadTableSet((root / "bad").string(), nullptr);
   failures += Expect(bad_tables != nullptr, "the malformed table itself parses as CSV");
   if (bad_tables != nullptr) {
-    failures += Expect(core::CreateTimeSystem(*bad_tables, core::StubTables::kRefused) == nullptr,
+    failures += Expect(core::CreateTimeSystem(*bad_tables, core::StubTables::kAllowed) == nullptr,
                        "the factory refuses a malformed weather table");
   }
 

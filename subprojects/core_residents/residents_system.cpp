@@ -38,6 +38,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
+#include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "demography.h"
 #include "family_exchange.h"
@@ -340,14 +341,25 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
   // this module's documented defaults is refused by name, so that a
   // table set which is merely INCOMPLETE cannot pass for one that is
   // as its author meant it.
-  if (stubs == StubTables::kRefused) {
-    for (const std::string_view required : {"demography", "life", "satisfaction"}) {
-      if (tables.FindTable(required) == nullptr) {
-        LogError(std::string("residents: the table set carries no '") + std::string(required) +
-                 "' table, and this caller did not allow the defaults");
-        return nullptr;
-      }
-    }
+  //
+  // THE LIST IS THE WHOLE READ SET, and it named only the first three until
+  // 2026-09-08. The rest are read by this module's own config parsers, fell
+  // back to their defaults when absent, and passed a check that had been
+  // written to catch exactly that (core_tables/required_tables.h).
+  if (!RequireTables(tables,
+                     stubs,
+                     "residents",
+                     {"demography",
+                      "life",
+                      "satisfaction",
+                      "resources",
+                      "food",
+                      "crops",
+                      "labor",
+                      "unit_types",
+                      "world_params"},
+                     nullptr)) {
+    return nullptr;
   }
 
   LifeConfig life;
@@ -358,9 +370,14 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
   }
   // The plot rules come from the CATALOGUE, which is the one reader of
   // those columns — not from a courier hand-carrying them across a module
-  // seam, which is what this was until the catalogue existed. Copied and
-  // never held as a span: `definitions` dies with this function.
-  if (!LoadDefinitions(tables, life.definitions, error)) {
+  // seam, which is what this was until the catalogue existed. NOTHING HERE
+  // POINTS BACK AT THE TABLE SET: the catalogue holds values, not spans or
+  // views into it, so the table set is free to die first. The catalogue
+  // itself does NOT die with this function — it is a member of `life`, which
+  // the system below stores by value, and it outlives this factory. The
+  // sentence that stood here said the opposite and named the wrong owner,
+  // which is the claim somebody later builds a span on.
+  if (!LoadDefinitions(tables, stubs, life.definitions, error)) {
     LogError(error);
     return nullptr;
   }

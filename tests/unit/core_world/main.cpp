@@ -1,6 +1,8 @@
 // Unit test of core_world: the wiring config contract and the O0 world
 // genesis STUB. CreateStandardSimulation coverage arrives with task O2.
 
+#include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -152,7 +154,8 @@ int main() {
 
   // Genesis STUB: an empty world at day 0, deterministic from the seed.
   const test::FakeTableSet tables;
-  const core::WorldState world = core::CreateStartWorld(tables, nullptr, 12345, nullptr);
+  const core::WorldState world =
+      core::CreateStartWorld(tables, core::StubTables::kAllowed, nullptr, 12345, nullptr);
   failures += Expect(world.world_seed == 12345, "genesis stores the seed");
   failures += Expect(world.calendar.tick == 0, "genesis starts at tick 0");
   failures +=
@@ -161,8 +164,10 @@ int main() {
   failures += Expect(world.epoch == core::Epoch::kOne, "the campaign starts in Epoch I");
   failures += Expect((world.rng.stream & 1U) == 1U, "the world RNG is seeded (odd stream)");
 
-  const core::WorldState same_seed = core::CreateStartWorld(tables, nullptr, 12345, nullptr);
-  const core::WorldState other_seed = core::CreateStartWorld(tables, nullptr, 54321, nullptr);
+  const core::WorldState same_seed =
+      core::CreateStartWorld(tables, core::StubTables::kAllowed, nullptr, 12345, nullptr);
+  const core::WorldState other_seed =
+      core::CreateStartWorld(tables, core::StubTables::kAllowed, nullptr, 54321, nullptr);
   failures += Expect(same_seed.rng.state == world.rng.state, "same seed — same world RNG");
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
@@ -250,7 +255,8 @@ int main() {
                                     {"resources", &empty},
                                     {"crops", &empty}});
       std::string error;
-      const core::WorldState refused_world = core::CreateStartWorld(set, nullptr, 7, &error);
+      const core::WorldState refused_world =
+          core::CreateStartWorld(set, core::StubTables::kAllowed, nullptr, 7, &error);
       failures += Expect(!error.empty(), item.label);
       failures += Expect(error.find(item.names_column) != std::string::npos,
                          "and the refusal names the column it choked on");
@@ -274,7 +280,7 @@ int main() {
                                     {"resources", &empty},
                                     {"crops", &empty}});
       std::string error;
-      core::CreateStartWorld(set, nullptr, 7, &error);
+      core::CreateStartWorld(set, core::StubTables::kAllowed, nullptr, 7, &error);
       failures += Expect(error.find("no such column") != std::string::npos,
                          "a unit row with no unit_type COLUMN is told the column is missing");
       failures +=
@@ -295,7 +301,8 @@ int main() {
                                     {"resources", &empty},
                                     {"crops", &empty}});
       std::string error;
-      const core::WorldState placed = core::CreateStartWorld(set, nullptr, 7, &error);
+      const core::WorldState placed =
+          core::CreateStartWorld(set, core::StubTables::kAllowed, nullptr, 7, &error);
       failures += Expect(error.empty(), "a layout whose blanks are blanks is accepted");
       failures += Expect(placed.fields.rows.size() == 3,
                          "and every row of it is placed — two fields and a meadow");
@@ -420,8 +427,8 @@ int main() {
     const auto banded_tables = core::LoadTableSet(banded.string(), &band_error);
     failures += Expect(banded_tables != nullptr, "the re-banded table set loads");
     if (banded_tables != nullptr) {
-      const core::WorldState banded_world =
-          core::CreateStartWorld(*banded_tables, nullptr, 4242, nullptr);
+      const core::WorldState banded_world = core::CreateStartWorld(
+          *banded_tables, core::StubTables::kAllowed, nullptr, 4242, nullptr);
       const core::UnitTypeId old_house{static_cast<std::uint16_t>(
           banded_tables->FindTable("unit_types")->FindRowByKey("old_house"))};
       std::uint32_t houses = 0;
@@ -466,7 +473,8 @@ int main() {
   const auto spoiled_tables = core::LoadTableSet(spoiled.string(), &spoil_error);
   failures += Expect(spoiled_tables != nullptr, "the spoiled table set still loads");
   if (spoiled_tables != nullptr) {
-    const core::WorldState wild = core::CreateStartWorld(*spoiled_tables, nullptr, 12345, nullptr);
+    const core::WorldState wild = core::CreateStartWorld(
+        *spoiled_tables, core::StubTables::kAllowed, nullptr, 12345, nullptr);
     failures += Expect(!wild.herds.rows.empty(),
                        "the roster reaches the herds — otherwise the check below is vacuous");
     bool ages_are_sane = true;
@@ -483,8 +491,8 @@ int main() {
     }
     failures += Expect(some_age_is_set,
                        "and the herds are aged at all — otherwise the check above is vacuous");
-    const core::WorldState wild_again =
-        core::CreateStartWorld(*spoiled_tables, nullptr, 12345, nullptr);
+    const core::WorldState wild_again = core::CreateStartWorld(
+        *spoiled_tables, core::StubTables::kAllowed, nullptr, 12345, nullptr);
     failures += Expect(wild_again.rng.state == wild.rng.state,
                        "and the fallback keeps genesis deterministic");
   }
@@ -542,9 +550,11 @@ int main() {
     failures += Expect(figure_tables != nullptr, "the tables for the figure guard load");
     if (figure_tables != nullptr) {
       const core::WorldState village =
-          core::CreateStartWorld(*figure_tables, nullptr, 777, nullptr);
-      const core::WorldState same = core::CreateStartWorld(*figure_tables, nullptr, 777, nullptr);
-      const core::WorldState other = core::CreateStartWorld(*figure_tables, nullptr, 778, nullptr);
+          core::CreateStartWorld(*figure_tables, core::StubTables::kAllowed, nullptr, 777, nullptr);
+      const core::WorldState same =
+          core::CreateStartWorld(*figure_tables, core::StubTables::kAllowed, nullptr, 777, nullptr);
+      const core::WorldState other =
+          core::CreateStartWorld(*figure_tables, core::StubTables::kAllowed, nullptr, 778, nullptr);
 
       bool all_alike = true;
       bool inside_the_clamp = true;
@@ -604,7 +614,8 @@ int main() {
       std::string wide_error;
       const auto wide_tables = core::LoadTableSet(widened.string(), &wide_error);
       if (wide_tables != nullptr) {
-        const core::WorldState wider = core::CreateStartWorld(*wide_tables, nullptr, 777, nullptr);
+        const core::WorldState wider =
+            core::CreateStartWorld(*wide_tables, core::StubTables::kAllowed, nullptr, 777, nullptr);
         failures += Expect(wider.rng.state == village.rng.state,
                            "changing the figure knobs does not move the world's RNG by one step: "
                            "a new fact must not move the facts that were already there");
@@ -664,10 +675,10 @@ int main() {
       const auto capacities =
           core::CreateConstructionSystem(*overfilled_tables, core::StubTables::kRefused);
       failures += Expect(capacities != nullptr, "and it builds a construction subsystem");
-      const core::WorldState measured =
-          core::CreateStartWorld(*overfilled_tables, capacities.get(), 999, nullptr);
-      const core::WorldState unmeasured =
-          core::CreateStartWorld(*overfilled_tables, nullptr, 999, nullptr);
+      const core::WorldState measured = core::CreateStartWorld(
+          *overfilled_tables, core::StubTables::kAllowed, capacities.get(), 999, nullptr);
+      const core::WorldState unmeasured = core::CreateStartWorld(
+          *overfilled_tables, core::StubTables::kAllowed, nullptr, 999, nullptr);
       core::Grams cut = 0;
       for (const core::Grams lost : measured.ledger.current.lost_no_room) {
         cut += lost;
@@ -682,6 +693,66 @@ int main() {
                          "not from a number genesis kept for itself");
     }
     fs::remove_all(overfilled);
+  }
+
+  // EVERY TABLE OF THE SHIPPED SET, TAKEN OUT ONE AT A TIME. The order this
+  // answers (boss, 2026-09-07) came from `host`, who removed alarms.csv to
+  // test an instrument of his own and found that the run did not refuse —
+  // it converged, printed plausible numbers and said nothing.
+  //
+  // WHY THE LIST HERE IS OF TABLES THE CORE DOES NOT READ, and not of the
+  // ones it does. A list of the required would be a third home for a rule
+  // that already has two (the module lists and the readers themselves), and
+  // it would age towards agreeing with them. This one ages the other way: a
+  // NEW file in tables/ is red until somebody says which side it is on, and
+  // a table that stops being required is red as well. Neither can happen in
+  // silence, which is the whole complaint.
+  {
+    // Read by the host, the layer, or nobody yet — the core never asks for
+    // them, so their absence cannot change a single number it computes.
+    const std::array<std::string_view, 10> not_read_by_the_core = {"alarms",
+                                                                   "difficulty",
+                                                                   "diseases",
+                                                                   "disease_severity",
+                                                                   "event_sites",
+                                                                   "farm_health_bands",
+                                                                   "forest_biome_mix",
+                                                                   "forest_biomes",
+                                                                   "forest_forage",
+                                                                   "tree_species"};
+    const std::array<std::string_view, 2> also_not_read = {"resident_activities",
+                                                           "resident_activity_details"};
+    const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
+    for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
+      if (file.path().extension() != ".csv") {
+        continue;
+      }
+      const std::string name = file.path().stem().string();
+      const bool ignored =
+          std::ranges::find(not_read_by_the_core, name) != not_read_by_the_core.end() ||
+          std::ranges::find(also_not_read, name) != also_not_read.end();
+      fs::remove_all(doctored);
+      fs::copy(fs::path(KOLKHOZ_TABLES_DIR), doctored, fs::copy_options::recursive);
+      fs::remove(doctored / file.path().filename());
+      const auto set = core::LoadTableSet(doctored.string(), nullptr);
+      if (Expect(set != nullptr, "a set with one file taken out still loads as tables") != 0) {
+        continue;
+      }
+      core::StandardSimulationConfig probe_config;
+      probe_config.tables = set.get();
+      probe_config.world_seed = 1929;
+      probe_config.worker_count = 1;
+      // The refusal is the subject, so this is the strict word — the one a
+      // game, a run and the ledger tool all use.
+      probe_config.stub_tables = core::StubTables::kRefused;
+      const bool assembled = core::CreateStandardSimulation(probe_config) != nullptr;
+      const std::string label =
+          ignored ? "a table the core never reads does not stop the assembly (" + name +
+                        ") — if it is read now, it belongs on the other side of that list"
+                  : "the assembly refuses a set missing a table the core reads (" + name + ")";
+      failures += Expect(ignored == assembled, label.c_str());
+    }
+    fs::remove_all(doctored);
   }
 
   if (failures == 0) {

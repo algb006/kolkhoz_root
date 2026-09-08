@@ -23,6 +23,7 @@
 #include "core_common/random.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
+#include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "daylight_table.h"
 
@@ -855,18 +856,22 @@ std::span<const std::string_view> TimeWorldParamKeys() {
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs) {
   SeasonTable seasons = kDefaultSeasons;
   std::string error;
-  const ITable* const weather_table = tables.FindTable("weather");
-  if (weather_table == nullptr && stubs == StubTables::kRefused) {
-    // THE STATE IS LEGITIMATE AND THE SILENCE WAS NOT. Building on the stub
-    // seasons is what a table-less unit test wants; it is never what a game
-    // wants, and until 2026-09-05 the two were indistinguishable from here.
-    // A caller that means it says so in its own call (StubTables).
-    LogError(
-        "time: the table set carries no weather table, and this caller did not allow the stub "
-        "seasons — a run on them would describe a different climate");
+  // THE STATE IS LEGITIMATE AND THE SILENCE WAS NOT. Building on the stub
+  // seasons is what a table-less unit test wants; it is never what a game
+  // wants, and until 2026-09-05 the two were indistinguishable from here.
+  // A caller that means it says so in its own call (StubTables).
+  //
+  // weather_params and world_params joined the list on 2026-09-08: the
+  // weather refusal was written the day a run on stub SEASONS cost a day of
+  // measurements, and the two tables this same function reads right after it
+  // were left to fall back in silence — the same defect, in the same
+  // function, at the same hour. The message says which file to put back; the
+  // climate remark it used to carry lives here now, where it belongs.
+  if (!RequireTables(
+          tables, stubs, "time", {"weather", "weather_params", "world_params"}, nullptr)) {
     return nullptr;
   }
-  if (const ITable* weather = weather_table) {
+  if (const ITable* weather = tables.FindTable("weather")) {
     if (!ParseWeatherTable(*weather, seasons, error)) {
       LogError(error);
       return nullptr;
@@ -880,8 +885,11 @@ std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTable
   }
   // The month of leaf fall, which is not weather and so has a table of its
   // own. It comes here because the flag it clears lives in the weather block
-  // and is maintained by this phase; the day it is read by a second module,
-  // the declaration check has to move (see CheckDeclaredReaders).
+  // and is maintained by this phase. The declaration check it used to carry
+  // HAS moved — to the assembly, on 2026-09-06, the day genesis became the
+  // second core reader of world_params.csv (core_world/world.cpp). The
+  // sentence here still spoke of that as something a future day would
+  // require.
   std::uint8_t leaf_fall_month = kDefaultLeafFallMonth;
   if (const ITable* world = tables.FindTable("world_params")) {
     if (!ParseWorldParams(*world, leaf_fall_month, nullptr, error)) {

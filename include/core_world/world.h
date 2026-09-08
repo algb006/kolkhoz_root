@@ -68,7 +68,12 @@ class IConstructionSystem;  // Defined in core_construction.
 /// exactly enough for the empty-world criterion of stage 1. Of the tables
 /// only the campaign setup is read (day-zero weekday); a missing campaign
 /// table means the documented defaults.
+/// @param stubs Whether a set without the tables genesis reads is
+///        legitimate; passed on to the catalogue, which owns unit_types and
+///        map and refuses their absence by name
+///        (core_catalog/definitions.h).
 WorldState CreateStartWorld(const ITableSet& tables,
+                            StubTables stubs,
                             const IConstructionSystem* capacities,
                             std::uint64_t world_seed,
                             std::string* error);

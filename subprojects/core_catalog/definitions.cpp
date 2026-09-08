@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "core_catalog/table_value.h"
+#include "core_tables/required_tables.h"
 
 namespace core {
 namespace {
@@ -65,7 +66,17 @@ bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& er
 
 }  // namespace
 
-bool LoadDefinitions(const ITableSet& tables, Definitions& definitions, std::string& error) {
+bool LoadDefinitions(const ITableSet& tables,
+                     StubTables stubs,
+                     Definitions& definitions,
+                     std::string& error) {
+  // The catalogue's own read set. It asks here rather than in its callers,
+  // because a caller can only require what it BELIEVES the catalogue reads —
+  // and until 2026-09-08 not one of them named the map, whose absence left
+  // map_side_m at the zero that means "this table set declares no map".
+  if (!RequireTables(tables, stubs, "catalogue", {"unit_types", "map"}, &error)) {
+    return false;
+  }
   if (const ITable* const unit_types = tables.FindTable("unit_types")) {
     if (!ReadUnitTypes(*unit_types, definitions.units, error)) {
       return false;

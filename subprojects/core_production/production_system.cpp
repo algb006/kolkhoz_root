@@ -40,6 +40,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
+#include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "field_haul.h"
 #include "field_work.h"
@@ -561,14 +562,29 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
   // this module's documented defaults is refused by name, so that a
   // table set which is merely INCOMPLETE cannot pass for one that is
   // as its author meant it.
-  if (stubs == StubTables::kRefused) {
-    for (const std::string_view required : {"crops", "livestock", "farming", "resources"}) {
-      if (tables.FindTable(required) == nullptr) {
-        LogError(std::string("production: the table set carries no '") + std::string(required) +
-                 "' table, and this caller did not allow the defaults");
-        return nullptr;
-      }
-    }
+  //
+  // THE LIST IS THE WHOLE READ SET (core_tables/required_tables.h), and it
+  // named four of these until 2026-09-08. The rest are read by
+  // ParseProductionConfig below and fell back to their defaults in silence,
+  // which is the state this very check exists to refuse.
+  if (!RequireTables(tables,
+                     stubs,
+                     "production",
+                     {"crops",
+                      "livestock",
+                      "farming",
+                      "resources",
+                      "unit_types",
+                      "unit_levels",
+                      "feed_links",
+                      "meadow_kinds",
+                      "field_phases",
+                      "campaign",
+                      "transport",
+                      "labor",
+                      "professions"},
+                     nullptr)) {
+    return nullptr;
   }
 
   ProductionConfig config;
