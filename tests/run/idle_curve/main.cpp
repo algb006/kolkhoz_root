@@ -726,6 +726,19 @@ int main(int argc, char** argv) {
       const auto column = [](const core::ResourceAmounts& amounts, std::uint32_t row) {
         return row != core::kNoTableRow && amounts.size() > row ? amounts[row] : core::Grams{0};
       };
+      // AND THE TABLE, because the arm's newest question is why the opened
+      // land carries FEWER people while doing more work (boss, 2026-09-12).
+      float satiety_sum = 0.0F;
+      float health_sum = 0.0F;
+      for (const core::ResidentRow& resident : done.residents.rows) {
+        satiety_sum += resident.satiety;
+        health_sum += resident.health;
+      }
+      const auto people = static_cast<float>(done.residents.rows.size());
+      std::cout << "; сытость " << (people > 0.0F ? satiety_sum / people : 0.0F) << ", здоровье "
+                << (people > 0.0F ? health_sum / people : 0.0F) << ", ожидаемая жизнь "
+                << done.vitals.life_expectancy_years << ", родилось " << book.births << ", умерло "
+                << book.deaths;
       std::cout << "; СЕНО: накошено " << (column(book.harvest, hay) / 1000000) << " ц, съедено "
                 << (column(book.feed, hay) / 1000000) << " ц; уборка и косьба "
                 << book.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)]
