@@ -650,7 +650,15 @@ class LaborSystem final : public ILaborSystem {
   AssignmentParams DayParams(const WorldState& current) const {
     AssignmentParams params;
     params.window_hours = current.weather.daylight_hours;
-    params.walk_hours_per_km = HoursPerKm(config_, WorkKind::kSowing);
+    // THE EXEMPLAR OF WALKING WORK IS THE HARVEST, not the sowing, and the
+    // difference is not academic: HoursPerKm answers by KIND, so a probe that
+    // made sowing horse work (the drill measurement of 2026-09-12) turned
+    // this line into the harness rate for every walking job in the village —
+    // barn care included, which lost 24 man-days of care a year to an
+    // instrument, not to a drill. A parameter named for a SPEED must be
+    // taken from a kind that cannot change its speed under the question
+    // being asked.
+    params.walk_hours_per_km = HoursPerKm(config_, WorkKind::kHarvest);
     params.harness_hours_per_km = HoursPerKm(config_, WorkKind::kPlowing);
     params.travel_limit_hours = config_.travel_limit_hours;
     // The queue advances by one a day and wraps on the roster.

@@ -206,7 +206,10 @@ int main(int argc, char** argv) {
   // bands BIND only at the default, so a swept run reports and asserts
   // nothing about them.
   const std::string traction_factor = argc > 2 ? argv[2] : "1";
-  g_bands_bind = seed == 1930 && traction_factor == "1";
+  // PROBE: the drill's assumed gain over hand sowing (argv[3]); 1 is the
+  // shipped village and the only arrangement the bands bind on.
+  const float sow_gain = argc > 3 ? std::strtof(argv[3], nullptr) : 1.0F;
+  g_bands_bind = seed == 1930 && traction_factor == "1" && sow_gain == 1.0F;
   int failures = 0;
   // THE AGRONOMY BANDS ARE CHECKED ON A SETTLEMENT THAT FEEDS ITS HARNESS,
   // and that is not a convenience — it is what the bands MEAN. They come from
@@ -264,6 +267,75 @@ int main(int argc, char** argv) {
     }
     std::ofstream(fed / "farming.csv", std::ios::trunc) << knobs;
   }
+  // PROBE 2026-09-12, NOT SHIPPED: the drill. argv[3] is the gain a horse
+  // drill is assumed to give over hand sowing, and it divides every crop's
+  // sow_days_per_ha in this fixture's own copy. 1 is the shipped village.
+  //
+  // THE GAIN IS AN ASSUMPTION AND IS SAID SO OUT LOUD. The design has no
+  // number for it: the horse mower has a measured one (120 t of dry meadow on
+  // foot against 210 in harness) and the drill has none, which is exactly why
+  // "+35 % on sowing" could live for a day in three decisions. So the run is
+  // swept over gains rather than given one, and what it answers is the shape:
+  // AT WHAT GAIN DOES THE DRILL STOP PAYING FOR THE HORSE IT TAKES OFF THE
+  // PLOUGH — because the spring window is one window and the team is one team.
+  if (sow_gain > 1.0F) {
+    std::ifstream source(fed / "crops.csv");
+    std::string rows;
+    std::string line;
+    std::uint32_t column = 0;
+    bool header_seen = false;
+    std::uint32_t changed = 0;
+    while (std::getline(source, line)) {
+      if (!line.empty() && line[0] == '#') {
+        rows += line + "\n";
+        continue;
+      }
+      std::vector<std::string> cells;
+      std::string cell;
+      for (const char symbol : line) {
+        if (symbol == ',') {
+          cells.push_back(cell);
+          cell.clear();
+          continue;
+        }
+        cell += symbol;
+      }
+      cells.push_back(cell);
+      if (!header_seen) {
+        header_seen = true;
+        for (std::uint32_t index = 0; index < cells.size(); ++index) {
+          if (cells[index] == "sow_days_per_ha") {
+            column = index;
+          }
+        }
+        if (column == 0) {
+          std::cout << "FAIL: crops.csv names no sow_days_per_ha — the drill fixture would "
+                       "measure the shipped norms instead\n";
+          return 1;
+        }
+        rows += line + "\n";
+        continue;
+      }
+      if (column < cells.size() && !cells[column].empty()) {
+        const float norm = std::strtof(cells[column].c_str(), nullptr) / sow_gain;
+        cells[column] = std::to_string(norm);
+        ++changed;
+      }
+      std::string joined;
+      for (std::uint32_t index = 0; index < cells.size(); ++index) {
+        joined += (index == 0 ? "" : ",") + cells[index];
+      }
+      rows += joined + "\n";
+    }
+    source.close();
+    if (changed == 0) {
+      std::cout << "FAIL: the drill fixture divided nothing — no crop row carried a sowing norm\n";
+      return 1;
+    }
+    std::ofstream(fed / "crops.csv", std::ios::trunc) << rows;
+    std::cout << "labor_year: DRILL PROBE — sowing norms divided by " << sow_gain << " on "
+              << changed << " crops. The gain is an ASSUMPTION, not a measurement\n";
+  }
   const run::Simulation started = run::Start(seed, 1, fed.string());
   if (!started) {
     return 1;
@@ -296,10 +368,44 @@ int main(int argc, char** argv) {
   bool sowing_overran = false;
   std::uint32_t latest_overrun = 0;
 
+  // PROBE: the spring window as ONE window. A drill puts a horse under the
+  // sower and the horse comes off the plough, so the question is not what
+  // sowing costs but what the whole preparation costs and when it ENDS.
+  std::uint32_t last_plow_day = 0;
+  std::uint32_t last_sow_day = 0;
+  std::uint32_t horse_bound_days = 0;
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
     const core::WorldState& world = simulation->CompletedState();
     SampleDay(world, seen, tally);
+    if (core::HourFromTick(world.calendar.tick) == 12) {
+      float plow_left = 0.0F;
+      float sow_left = 0.0F;
+      for (const core::FieldRow& field : world.fields.rows) {
+        if (field.work_days_remaining <= 0.0F) {
+          continue;
+        }
+        if (field.phase == core::FieldPhase::kPlowing ||
+            field.phase == core::FieldPhase::kHarrowing) {
+          plow_left += field.work_days_remaining;
+        } else if (field.phase == core::FieldPhase::kSowing) {
+          sow_left += field.work_days_remaining;
+        }
+      }
+      std::uint32_t horses = 0;
+      for (const core::HerdRow& herd : world.herds.rows) {
+        horses += herd.kind.value == 3 ? herd.adult_count : 0;  // livestock.csv row 3: horse
+      }
+      std::uint32_t harnessed = 0;
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        harnessed += core::IsHorseWork(resident.work.kind) ? 1U : 0U;
+      }
+      last_plow_day = plow_left > 0.0F ? world.calendar.day : last_plow_day;
+      last_sow_day = sow_left > 0.0F ? world.calendar.day : last_sow_day;
+      if ((plow_left > 0.0F || sow_left > 0.0F) && horses > 0 && harnessed >= horses) {
+        ++horse_bound_days;
+      }
+    }
     // THE SOWING WINDOW, watched day by day. `look`, `art` and `sound` are all
     // building the living signal for an underfed harness and none of them will
     // set its own threshold, rightly: the number they need is the coverage at
@@ -346,6 +452,11 @@ int main(int argc, char** argv) {
             << "\n";
 
   const core::WorldState& state = simulation->CompletedState();
+  std::cout << "labor_year: SPRING WINDOW — last day with ploughing or harrowing standing "
+            << last_plow_day << ", last day with sowing standing " << last_sow_day
+            << ", days the horse pool was full while field work stood " << horse_bound_days
+            << ", sown " << state.ledger.closed.area_sown_ha + state.ledger.current.area_sown_ha
+            << " ha\n";
 
   const double plowing = tally.by_kind[1];
   const double harrowing = tally.by_kind[2];
