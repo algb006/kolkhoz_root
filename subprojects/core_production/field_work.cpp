@@ -23,16 +23,6 @@
 namespace core {
 namespace {
 
-/// @brief Is this one of the six bread grains the plan counts?
-bool IsPlanGrain(const ProductionConfig& config, ResourceId resource) {
-  for (const ResourceId grain : config.plan_grain_resources) {
-    if (grain.value == resource.value) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /// @brief Puts a harvested load where it belongs: hay at the manger, the
 /// rest through the store door — none of them above its ceiling (task A3,
 /// manual/72-storage-and-alarms.md §2).
@@ -145,14 +135,11 @@ void Harvest(const ProductionConfig& config,
     AddLedgerAmount(
         current.ledger.current.lost_no_room, config.straw_resource, straw - straw_placed);
   }
-  // The district's plan accrues as the grain is reaped: it is "just a
-  // number" in phase 1 (plan §11), a share of the year's own harvest,
-  // handed over at the year's turn with no district mechanics behind it.
-  if (config.plan_grain_share > 0.0F && IsPlanGrain(config, crop.resource)) {
-    AddToStock(current.plan.due,
-               crop.resource,
-               GramsFromFloat(static_cast<float>(yield_grams) * config.plan_grain_share));
-  }
+  // THE PLAN NO LONGER ACCRUES HERE, and its absence is the point of the
+  // 2026-09-12 pass. A share of the reaping made the plan a function of the
+  // harvest: a poor year asked for less, so every year was met and the
+  // verdict on it could not fail. The district names its figure in
+  // plan.csv and hands it down at the year's turn (production_system.cpp).
   // Fertility bookkeeping (§2, §7, §8): the crop's delta, the manure
   // bonus, the growing repeat penalty.
   if (crop.is_perennial) {

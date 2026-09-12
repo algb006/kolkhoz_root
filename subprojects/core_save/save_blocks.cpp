@@ -47,6 +47,21 @@ static_assert(AggregateArity<WeatherState>() == 9,
 static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
 static_assert(AggregateArity<ChairmanState>() == 4,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
+// PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
+// serialized block without one: six blocks go into the save, five were
+// guarded. A field added to the plan would have been dropped by the codec in
+// silence — exactly the case the pair of guards exists for, found on the way
+// in to adding two. The size is not asserted as a literal because the struct
+// holds two vectors whose size is the standard library's business (the same
+// reason YearLedger's assert is written in terms of kAmountsSize).
+static_assert(sizeof(PlanState) == (2 * kAmountsSize) + 8,
+              "PlanState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<PlanState>() == 5,
+              "PlanState gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(FundReleaseState) == 2 * kAmountsSize,
+              "FundReleaseState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FundReleaseState>() == 2,
+              "FundReleaseState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RngState>() == 2,
               "RngState gained or lost a field — update the codec and VERSION_SAVE");
@@ -56,6 +71,9 @@ constexpr std::uint8_t kMinEpoch = static_cast<std::uint8_t>(Epoch::kOne);
 constexpr std::uint8_t kMaxEpoch = static_cast<std::uint8_t>(Epoch::kEpochEnd) - 1;
 
 constexpr std::uint8_t kMaxPrecipitation = static_cast<std::uint8_t>(Precipitation::kSnow);
+
+constexpr std::uint8_t kMaxPlanVerdict =
+    static_cast<std::uint8_t>(PlanVerdict::kPlanVerdictCount) - 1;
 
 // The two names the day carries beside its numbers (world_state.h). Bounded
 // by the LAST VALUE and not by the count, the way every other enum here is:
@@ -236,6 +254,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
 
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
+  out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
+  out.WriteU8(world.plan.failed_years_in_a_row);
+  out.WriteU8(world.plan.met_years_in_a_row);
+  sink.WriteAmounts(DefKind::kResource, world.unsealed.from_seed);
+  sink.WriteAmounts(DefKind::kResource, world.unsealed.from_plan);
 
   out.WriteFloat(world.vitals.life_expectancy_years);
   WriteFloatArray(out, world.vitals.satiety_year_means);
@@ -287,6 +310,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
 
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
+  world->plan.last_verdict =
+      static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));
+  world->plan.failed_years_in_a_row = in.ReadU8();
+  world->plan.met_years_in_a_row = in.ReadU8();
+  world->unsealed.from_seed = source.ReadAmounts(DefKind::kResource);
+  world->unsealed.from_plan = source.ReadAmounts(DefKind::kResource);
 
   world->vitals.life_expectancy_years = in.ReadFloat();
   ReadFloatArray(in, world->vitals.satiety_year_means);

@@ -23,6 +23,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/quantities.h"
 
 namespace core {
 
@@ -573,17 +574,43 @@ struct ProductionConfig {
 
   LivestockKindId pig_kind;  ///< livestock.csv "pig": the only kind with an autumn slaughter.
 
-  /// The share of the year's grain harvest the district expects
-  /// (campaign.csv plan_grain_share_percent, v4 anchor 28). The plan is
-  /// "just a number" in phase 1 (plan §11): it accrues as grain is reaped
-  /// and is handed over at the year's turn, with no district mechanics.
+  /// The share of a NORMAL yield off the worked arable that the district
+  /// expects (campaign.csv plan_grain_share_percent, v4 anchor 28).
+  ///
+  /// THE SHARE IS THE SAME NUMBER IT ALWAYS WAS; what changed on 2026-09-12
+  /// is what it is a share OF. It used to be a share of the year's actual
+  /// reaping, accrued as the crop came in — so what was owed WAS what had
+  /// been cut, every year was met by construction, and a verdict on such a
+  /// plan could not fail. Now it is a share of what the land that was worked
+  /// last year SHOULD give at a normal yield: the norm stands whatever the
+  /// weather does, and a poor year no longer forgives itself (boss's
+  /// decision of 2026-09-12; district design §9).
+  ///
+  /// Three consequences of "worked LAST year", each deliberate:
+  /// raised derelict enters the plan the year AFTER it is broken, so that
+  /// ploughing is not punished in the season it was paid for; sowing less
+  /// does not owe less, because the norm is off worked land and not off sown
+  /// land; and the figure is knowable in spring and does not move again.
   float plan_grain_share = 0.0F;
 
-  /// Which resources the plan counts, by key of the roster: the six bread
-  /// grains. Named here rather than derived, for the same reason manure and
-  /// hay are named here — the core has no notion of a resource category, and
-  /// inventing one to hold six rows would be the expensive kind of guess.
-  std::vector<ResourceId> plan_grain_resources;
+  /// The share of the plan that counts as met, 0..1 (campaign.csv
+  /// plan_met_share). 1.0 — delivered in full on every position — is the
+  /// plain reading of "сорванный план" (epochs design §8), and the knob
+  /// exists so that softening it later is a balance edit and not a rebuild.
+  float plan_met_share = 1.0F;
+
+  /// How many failed years in a row make the "Под суд" condition (epochs
+  /// design §8: "три сорванных плана подряд"). campaign.csv.
+  std::uint8_t plan_failed_years_to_trial = 3;
+
+  /// What a met and a failed year do to the chairman's raikom reputation,
+  /// in points of its 0..100 scale (campaign.csv). District design §5 gives
+  /// the DIRECTIONS — "растёт: выполнение и перевыполнение плана", "падает:
+  /// срыв плана" — and no magnitudes; these are an ASSUMPTION living in the
+  /// table where a balance pass can reach them.
+  float plan_met_reputation = 4.0F;
+
+  float plan_failed_reputation = -8.0F;
 };
 
 /// @brief Parses every table core_production reads into `config`.

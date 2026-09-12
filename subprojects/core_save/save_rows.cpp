@@ -86,8 +86,8 @@ static_assert(AggregateArity<UnitRow>() == 10,
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<OrderRow>() == 15,
+static_assert(sizeof(OrderRow) == 64, "OrderRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<OrderRow>() == 18,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 24,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
@@ -139,6 +139,8 @@ constexpr std::uint8_t kMaxFieldWeatherState =
 // enumerator of their enum, and order_state.h says so where a new one gets
 // appended.
 constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kOrderKindCount) - 1;
+
+constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
 constexpr std::uint8_t kMaxOrderStatus =
     static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount) - 1;
 constexpr std::uint8_t kMaxOrderRefusal =
@@ -597,6 +599,14 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   sink.WriteDefId(DefKind::kCrop, row.rotation_year2.value);
 
   WriteVec2(out, row.position);
+
+  // The unsealing (kUnsealFund, 2026-09-12). The resource goes through the
+  // DICTIONARY like every other definition id in a save — unlike the
+  // journal's raw one — so that a reordered resources.csv does not turn the
+  // chairman's grain into somebody else's.
+  out.WriteU8(static_cast<std::uint8_t>(row.fund));
+  sink.WriteDefId(DefKind::kResource, row.resource.value);
+  out.WriteU64(static_cast<std::uint64_t>(row.amount));
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -621,6 +631,10 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.rotation_year2 = CropId{source.ReadDefId(DefKind::kCrop)};
 
   row.position = ReadVec2(in);
+
+  row.fund = static_cast<FundKind>(source.ReadEnumValue(0, kMaxFundKind, "fund kind"));
+  row.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.amount = static_cast<Grams>(in.ReadU64());
   return row;
 }
 

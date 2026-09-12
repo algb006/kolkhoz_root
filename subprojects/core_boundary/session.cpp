@@ -55,6 +55,18 @@ bool ShapeIsValid(const OrderRow& order) {
     // what makes a genuinely new kind a compile error (order_state.h).
     case OrderKind::kOrderKindCount:
       return false;
+    case OrderKind::kUnsealFund:
+      // SHAPE ONLY, and for this kind the shape is the whole of what the
+      // boundary can judge: a fund, a resource, and a figure above nothing.
+      // WHETHER THE FUND HOLDS THAT MUCH is the consumer's verdict and comes
+      // back as an event — it changes with the day, and this check must not.
+      //
+      // The amount is required above zero rather than merely non-negative:
+      // "осознанный выбор, а не незаметная утечка" (resources design §6)
+      // means the chairman NAMES a figure, and an unsealing of nothing is
+      // not a smaller decision, it is no decision at all.
+      return order.fund != FundKind::kNone && order.fund != FundKind::kFundKindCount &&
+             order.resource.value != kInvalidDefIdValue && order.amount > 0;
     case OrderKind::kAssignWork:
       // The kind of work decides which target is required, and the list is
       // the whole of WorkKind, not the part of it that existed when this

@@ -2209,6 +2209,376 @@ int CheckAHeapIsAStore() {
   return failures;
 }
 
+// THE DISTRICT'S VERDICT ON THE YEAR (district design §9, epochs design §8).
+//
+// What these checks are really about: until 2026-09-12 the plan accrued as a
+// share of the settlement's own reaping, so what was owed WAS what had been
+// cut, every year was met by construction, and a counter of failed years on
+// such a plan would have been a structural zero wearing the clothes of a
+// check. So the first thing asserted here is that a year CAN fail — and each
+// check below is shaped so that a plan which cannot fail would redden it.
+// THE CHAIRMAN'S DOOR OUT OF A SEALED FUND (kUnsealFund; resources design
+// §6: "Распечатать фонд не по назначению может только председатель —
+// отдельным решением, в чрезвычайной ситуации").
+//
+// The verb exists because the reserve became real and the way out of it did
+// not: a village with grain it may not touch and no order that touches it
+// breaks "никаких безвыходных ситуаций" literally.
+int CheckTheChairmanCanUnsealAFund() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load for the fund door") != 0) {
+    return 1;
+  }
+  const auto system = core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "and they build a production system") != 0) {
+    return 1;
+  }
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ResourceId rye{static_cast<std::uint16_t>(resources->FindRowByKey("rye"))};
+
+  const auto order_unseal = [&](core::FundKind fund, core::Grams owed, core::Grams asked) {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    if (owed > 0) {
+      previous.plan.due.assign(static_cast<std::size_t>(rye.value) + 1U, 0);
+      previous.plan.due[rye.value] = owed;
+    }
+    core::OrderRow order;
+    order.kind = core::OrderKind::kUnsealFund;
+    order.fund = fund;
+    order.resource = rye;
+    order.amount = asked;
+    core::AppendRow(previous.orders, order);
+
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    return current;
+  };
+
+  // -- a winter unsealing survives the spring -------------------------------
+  //
+  // The spring is when the district names the new norm, and for one
+  // afternoon it also wiped the releases — so a seed fund opened in the
+  // hungry end of winter was forgotten on the very day the sowing year it
+  // was opened for began. Found by the delivery cycle, not by reading.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = (2U * core::kDaysPerMonth * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(previous.calendar);
+    previous.unsealed.from_seed.assign(static_cast<std::size_t>(rye.value) + 1U, 0);
+    previous.unsealed.from_seed[rye.value] = 500'000;
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    failures += Expect(current.calendar.season == core::Season::kSpring &&
+                           previous.calendar.season != core::Season::kSpring,
+                       "the fixture crosses into spring");
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.unsealed.from_seed[rye.value] == 500'000,
+                       "a seed fund opened in winter is still open when the sowing begins");
+  }
+
+  // -- the plan reserve opens, and by the figure the chairman named --------
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kPlanReserve, 900'000, 400'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
+                       "the chairman may open the plan reserve in an emergency");
+    const core::Grams opened =
+        rye.value < after.unsealed.from_plan.size() ? after.unsealed.from_plan[rye.value] : 0;
+    failures += Expect(opened == 400'000,
+                       "and exactly the figure he named comes out, not as much as is there — "
+                       "the design calls the alternative a leak, not a decision");
+    failures += Expect(after.unsealed.from_seed.empty() || after.unsealed.from_seed[rye.value] == 0,
+                       "and the seed fund he did not name stays shut");
+  }
+
+  // -- past what the district asked for, the door refuses ------------------
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kPlanReserve, 900'000, 1'000'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "the plan reserve cannot be opened past what the district asked for");
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
+                       "and the chairman is told why rather than quietly given what there is");
+  }
+
+  // -- a fund nobody named opens nothing ------------------------------------
+  //
+  // kNone reaches the consumer: the codecs accept it, because it is the value
+  // every other kind of order carries, and only the boundary refuses it — so
+  // an order replayed out of a journal never passes ShapeIsValid at all. The
+  // quiet answer would have been the plan reserve, which is what an `else`
+  // gives you.
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kNone, 900'000, 100'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "an unsealing that names no fund opens none");
+    failures += Expect(after.unsealed.from_plan.empty() || after.unsealed.from_plan[rye.value] == 0,
+                       "and above all does not quietly open the plan reserve instead");
+  }
+
+  // -- a resource the roster does not carry is refused, and grows nothing ---
+  //
+  // Dense-by-ResourceId is a contract, and an id no table row backs would
+  // stretch these vectors to 65535 cells — a length the save codec refuses,
+  // which turns one mistyped order into a campaign that can never be saved.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kUnsealFund;
+    order.fund = core::FundKind::kSeed;
+    order.resource = core::ResourceId{60000};  // no such row in resources.csv
+    order.amount = 1'000;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "an unsealing of a resource the roster does not carry is refused");
+    failures += Expect(current.unsealed.from_seed.size() < 60000,
+                       "and the dense vector is not stretched to hold it");
+  }
+
+  // -- a refused order leaves the state the size it found it ----------------
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kPlanReserve, 900'000, 1'000'000);
+    failures += Expect(after.unsealed.from_plan.empty(),
+                       "a refused unsealing grows nothing: the vector used to be resized "
+                       "before the refusal that turned the order down");
+  }
+
+  // -- the seed fund's running total stays a number -------------------------
+  //
+  // The seed fund has no ceiling in this module and honestly cannot: its size
+  // is the sowing norms over the fields still to be sown, which another
+  // module computes. What is checked is the one thing that CAN be checked
+  // from here — that a second order does not wrap the running total, which a
+  // signed 64-bit `+=` does silently and undefinedly.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    previous.unsealed.from_seed.assign(static_cast<std::size_t>(rye.value) + 1U, 0);
+    previous.unsealed.from_seed[rye.value] = std::numeric_limits<core::Grams>::max() - 10;
+    core::OrderRow order;
+    order.kind = core::OrderKind::kUnsealFund;
+    order.fund = core::FundKind::kSeed;
+    order.resource = rye;
+    order.amount = 1'000'000;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "an unsealing that would wrap the running total is refused, not wrapped");
+    failures += Expect(
+        current.unsealed.from_seed[rye.value] == std::numeric_limits<core::Grams>::max() - 10,
+        "and the total it was refused by is untouched");
+  }
+
+  // -- the seed fund is the same door ---------------------------------------
+  //
+  // One verb for both funds: the design gives the same emergency to each,
+  // and this check is what would redden if the seed half were ever split off
+  // into a second verb that nobody wired up.
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kSeed, 0, 250'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
+                       "the seed fund opens by the same verb");
+    const core::Grams opened =
+        rye.value < after.unsealed.from_seed.size() ? after.unsealed.from_seed[rye.value] : 0;
+    failures += Expect(opened == 250'000, "and by the figure the chairman named");
+  }
+  return failures;
+}
+
+int CheckThePlanIsJudgedAtTheYearsTurn() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load for the plan verdict") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto system = core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "and they build a production system") != 0) {
+    return 1;
+  }
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ITable* const types = tables->FindTable("unit_types");
+  const core::ResourceId wheat{static_cast<std::uint16_t>(resources->FindRowByKey("wheat"))};
+  const core::UnitTypeId granary{static_cast<std::uint16_t>(types->FindRowByKey("granary"))};
+
+  // One year turn, driven at the tick that crosses it. `stocked` is what lies
+  // in the granary when the collector comes.
+  const auto turn = [&](core::Grams due, core::Grams stocked, core::PlanState before) {
+    core::WorldState previous;
+    previous.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1;
+    core::RefreshCalendarCaches(previous.calendar);
+    previous.plan = before;
+    if (due > 0) {
+      previous.plan.due.assign(static_cast<std::size_t>(wheat.value) + 1U, 0);
+      previous.plan.due[wheat.value] = due;
+    }
+    core::UnitRow barn;
+    barn.type = granary;
+    barn.level = 1;
+    barn.stock.assign(static_cast<std::size_t>(wheat.value) + 1U, 0);
+    barn.stock[wheat.value] = stocked;
+    core::AppendRow(previous.units, barn);
+
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    return current;
+  };
+
+  // -- a year delivered in full ---------------------------------------------
+  {
+    const core::WorldState after = turn(1'000'000, 5'000'000, core::PlanState{});
+    failures += Expect(after.plan.last_verdict == core::PlanVerdict::kMet,
+                       "a plan delivered in full closes the year as met");
+    // "and the failed run stands at nothing" stood here and was REMOVED: the
+    // counter starts at nothing, so the claim held whether the verdict ran
+    // or not — true under both implementations, which is decoration and not
+    // a check (§6.2а of the delivery cycle). What it meant to say is said in
+    // the block below, from a fixture that carries two failed years, where
+    // it can fail.
+    failures += Expect(after.plan.met_years_in_a_row == 1, "while the met run has begun");
+    failures += Expect(after.chairman.raikom_reputation > 50.0F,
+                       "and the district thinks better of the chairman for it");
+  }
+
+  // -- a year short by ONE GRAM ---------------------------------------------
+  //
+  // By one gram deliberately: a check written against an empty store would
+  // pass on an implementation that judged "delivered nothing at all" instead
+  // of "delivered less than was asked".
+  {
+    const core::WorldState after = turn(1'000'000, 999'999, core::PlanState{});
+    failures += Expect(after.plan.last_verdict == core::PlanVerdict::kFailed,
+                       "one gram short of the plan is a failed year, not a rounded one");
+    failures += Expect(after.plan.failed_years_in_a_row == 1, "and the failed run has begun");
+    failures += Expect(after.chairman.raikom_reputation < 50.0F,
+                       "and the district thinks worse of the chairman for it");
+  }
+
+  // -- a met year clears a run of failures ----------------------------------
+  {
+    core::PlanState carried;
+    carried.last_verdict = core::PlanVerdict::kFailed;
+    carried.failed_years_in_a_row = 2;
+    const core::WorldState after = turn(1'000'000, 5'000'000, carried);
+    failures += Expect(after.plan.failed_years_in_a_row == 0,
+                       "a met year wipes the run of failed ones: the trigger is three IN A ROW, "
+                       "not three in a campaign");
+  }
+
+  // -- the third failure raises the condition, and only the third -----------
+  {
+    core::PlanState carried;
+    carried.last_verdict = core::PlanVerdict::kFailed;
+    carried.failed_years_in_a_row = 2;
+    const core::WorldState third = turn(1'000'000, 0, carried);
+    std::uint32_t raised = 0;
+    for (const core::SimEvent& event : third.step_events) {
+      raised += event.kind == core::EventKind::kPlanTrialDue ? 1U : 0U;
+    }
+    failures += Expect(third.plan.failed_years_in_a_row == 3, "three failed years stand in a row");
+    failures += Expect(raised == 1, "and the third of them raises the trial condition");
+
+    carried.failed_years_in_a_row = 3;
+    const core::WorldState fourth = turn(1'000'000, 0, carried);
+    std::uint32_t again = 0;
+    for (const core::SimEvent& event : fourth.step_events) {
+      again += event.kind == core::EventKind::kPlanTrialDue ? 1U : 0U;
+    }
+    failures += Expect(again == 0,
+                       "and a fourth failed year does not raise it a second time: a condition "
+                       "that re-announces itself yearly is an alarm, not an event");
+  }
+
+  // -- a district that asked for nothing judges nothing ---------------------
+  //
+  // The check that keeps the four above from being a machine which always
+  // says something. A world whose tables carry no plan is a world with no
+  // district, and it must not accumulate triumphs nobody asked it for.
+  {
+    const core::WorldState after = turn(0, 5'000'000, core::PlanState{});
+    failures += Expect(after.plan.last_verdict == core::PlanVerdict::kNone,
+                       "a year the district asked nothing of is not a year it was pleased with");
+    failures += Expect(after.plan.met_years_in_a_row == 0, "and no run of met years begins");
+  }
+
+  // -- the norm is announced in the spring, off the land that was worked ----
+  //
+  // THE CHECK THAT KEEPS THE PLAN FROM BEING A SHARE OF THE REAPING AGAIN.
+  // It asserts the figure against area x normal yield x share — numbers a
+  // plan accrued from the harvest could not produce, because in this fixture
+  // nothing has been reaped at all.
+  {
+    const core::ITable* const crops = tables->FindTable("crops");
+    const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+
+    core::WorldState previous;
+    // The last day of winter: the step below crosses into spring.
+    previous.calendar.tick = (2U * core::kDaysPerMonth * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::FieldRow worked;
+    worked.kind = core::LandKind::kArable;
+    worked.area_ga = 10.0F;
+    worked.rotation_year0 = oat;
+    core::AppendRow(previous.fields, worked);
+    // AND A DERELICT FIELD BESIDE IT, of the same size and the same crop.
+    // Land nobody worked owes nothing until it is broken — and a norm that
+    // counted it would punish the chairman for ground he never touched.
+    core::FieldRow resting = worked;
+    resting.kind = core::LandKind::kDerelict;
+    core::AppendRow(previous.fields, resting);
+
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    const bool crossed = previous.calendar.season != current.calendar.season &&
+                         current.calendar.season == core::Season::kSpring;
+    failures += Expect(crossed, "the fixture really does cross into spring");
+    system->RunProductionDecisions(previous, current);
+
+    core::Grams asked = 0;
+    for (const core::Grams due : current.plan.due) {
+      asked += due;
+    }
+    failures += Expect(asked > 0,
+                       "the district names the year's norm in the spring, off land that has "
+                       "reaped nothing yet — a norm a share of the harvest could not produce");
+    // Ten hectares of the worked field and NOT twenty: the derelict ten owe
+    // nothing. The two figures are READ BACK OUT OF THE TABLES rather than
+    // written here — a second copy of a balance number in a test is a copy
+    // that drifts, and this project has been bitten by that more than once.
+    const core::ITable* const campaign = tables->FindTable("campaign");
+    const float yield_kg_per_ha = std::stof(std::string(
+        crops->CellText(crops->FindRowByKey("oat"), crops->FindColumn("yield_kg_per_ha"))));
+    const float share_percent = std::stof(std::string(campaign->CellText(
+        campaign->FindRowByKey("plan_grain_share_percent"), campaign->FindColumn("value"))));
+    const auto expected = static_cast<double>(yield_kg_per_ha) * 10.0 * 1000.0 *
+                          (static_cast<double>(share_percent) / 100.0);
+    failures += Expect(static_cast<double>(asked) > expected * 0.99 &&
+                           static_cast<double>(asked) < expected * 1.01,
+                       "and the norm is the worked ten hectares at a normal yield, not the "
+                       "twenty that include the land lying derelict");
+  }
+  return failures;
+}
+
 int CheckPauseAndResume() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2462,6 +2832,8 @@ int main() {
   failures += CheckAHeapIsAStore();
   failures += CheckTheDoorCountsWhatLanded();
   failures += CheckPauseAndResume();
+  failures += CheckThePlanIsJudgedAtTheYearsTurn();
+  failures += CheckTheChairmanCanUnsealAFund();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

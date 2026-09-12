@@ -832,10 +832,61 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     }
   }
   if (const ITable* campaign = tables.FindTable("campaign")) {
+    const std::uint32_t value_col = campaign->FindColumn("value");
+    float share = config.plan_met_share;
+    if (!CellOrDefault(*campaign,
+                       campaign->FindRowByKey("plan_met_share"),
+                       value_col,
+                       Range::Unit(),
+                       config.plan_met_share,
+                       share,
+                       error)) {
+      error = "campaign: plan_met_share: " + error;
+      return false;
+    }
+    config.plan_met_share = share;
+    float years = config.plan_failed_years_to_trial;
+    if (!CellOrDefault(*campaign,
+                       campaign->FindRowByKey("plan_failed_years_to_trial"),
+                       value_col,
+                       Range{.low = 1.0F, .high = 255.0F},
+                       years,
+                       years,
+                       error)) {
+      error = "campaign: plan_failed_years_to_trial: " + error;
+      return false;
+    }
+    config.plan_failed_years_to_trial = static_cast<std::uint8_t>(years);
+    // THE BAND ADMITS BOTH SIGNS on purpose. A met year raises the
+    // reputation and a failed one drops it (district design §5), so the two
+    // knobs carry opposite signs in the shipped table — and a balance pass
+    // that wants to flip one must be able to. Range::Any() would have taken
+    // a six-digit typo; a hundred points is the whole scale.
+    const Range reputation_step = Range{.low = -kMetricMax, .high = kMetricMax};
+    if (!CellOrDefault(*campaign,
+                       campaign->FindRowByKey("plan_met_reputation"),
+                       value_col,
+                       reputation_step,
+                       config.plan_met_reputation,
+                       config.plan_met_reputation,
+                       error)) {
+      error = "campaign: plan_met_reputation: " + error;
+      return false;
+    }
+    if (!CellOrDefault(*campaign,
+                       campaign->FindRowByKey("plan_failed_reputation"),
+                       value_col,
+                       reputation_step,
+                       config.plan_failed_reputation,
+                       config.plan_failed_reputation,
+                       error)) {
+      error = "campaign: plan_failed_reputation: " + error;
+      return false;
+    }
     float percent = 0.0F;
     if (!CellOrDefault(*campaign,
                        campaign->FindRowByKey("plan_grain_share_percent"),
-                       campaign->FindColumn("value"),
+                       value_col,
                        Range{.low = 0.0F, .high = 100.0F},
                        0.0F,
                        percent,
@@ -844,15 +895,6 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     config.plan_grain_share = percent / 100.0F;
-  }
-  constexpr std::array<std::string_view, 6> kGrainKeys = {
-      "rye", "wheat", "oat", "barley", "buckwheat", "pea"};
-  config.plan_grain_resources.clear();
-  for (const std::string_view key : kGrainKeys) {
-    const ResourceId grain = ResourceByKey(resources, key);
-    if (grain.value != kInvalidDefIdValue) {
-      config.plan_grain_resources.push_back(grain);
-    }
   }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");

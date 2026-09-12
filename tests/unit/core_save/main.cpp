@@ -132,6 +132,12 @@ core::WorldState MakeWorld() {
   world.chairman.horses_stabled = 1;  // the campaign's one-time milestone (task A7)
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
+  // The district's verdict on the year and the two runs it keeps. Set to
+  // three DIFFERENT values on purpose: equal ones would survive a codec that
+  // wrote the same field three times.
+  world.plan.last_verdict = core::PlanVerdict::kFailed;
+  world.plan.failed_years_in_a_row = 2;
+  world.plan.met_years_in_a_row = 5;
   world.vitals.life_expectancy_years = 61.75F;
   world.vitals.satiety_year_means = {71.5F, 68.25F, 0.1F + 0.2F};
   world.vitals.satiety_running_days = 19;
@@ -317,6 +323,22 @@ core::WorldState MakeWorld() {
   appoint.profession = core::ProfessionId{0};
   core::AppendRow(world.orders, appoint);
 
+  // The unsealing (kUnsealFund, 2026-09-12): the three fields that grew
+  // OrderRow from 48 bytes to 64 and that the journal's hand-counted record
+  // length had to be brought along for.
+  core::OrderRow unseal;
+  unseal.kind = core::OrderKind::kUnsealFund;
+  unseal.status = core::OrderStatus::kDone;
+  unseal.issued_tick = 91;
+  unseal.fund = core::FundKind::kSeed;
+  unseal.resource = core::ResourceId{2};
+  unseal.amount = 640'000;
+  core::AppendRow(world.orders, unseal);
+
+  // And the release it left behind, which is world state of its own.
+  world.unsealed.from_seed = Amounts({0, 0, 640'000});
+  world.unsealed.from_plan = Amounts({0, 310'000});
+
   world.ledger.closed.year = 2;
   world.ledger.closed.births = 6;
   world.ledger.closed.deaths = 3;
@@ -452,6 +474,26 @@ int main() {
                      "pantries came back with their exact lengths, the empty one still empty");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
+  // PlanState carried no tripwire at all until 2026-09-12 — the only
+  // serialized block without one — so these three are the first thing that
+  // would have noticed a field quietly dropped by the codec.
+  failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
+                     "the district's verdict on the year survives the round trip");
+  failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");
+  failures += Expect(loaded.plan.met_years_in_a_row == 5,
+                     "and the run of met ones, which is a different number");
+  // The unsealing, field by field: an order kind whose payload is three new
+  // fields is three chances for one of them to be dropped.
+  const core::OrderRow& unseal_back = loaded.orders.rows[5];
+  failures += Expect(unseal_back.kind == core::OrderKind::kUnsealFund,
+                     "the unsealing order comes back as an unsealing");
+  failures += Expect(unseal_back.fund == core::FundKind::kSeed, "and names the fund it opened");
+  failures += Expect(unseal_back.resource.value == 2, "and the resource taken out of it");
+  failures += Expect(unseal_back.amount == 640'000, "and the figure the chairman named");
+  failures += Expect(loaded.unsealed.from_seed[2] == 640'000,
+                     "and the release against the seed fund is world state that survives");
+  failures += Expect(loaded.unsealed.from_plan[1] == 310'000,
+                     "as is the one against the plan reserve, which is a different number");
   failures +=
       Expect(loaded.ledger.closed.year == 2 && loaded.ledger.closed.trudodni_burned == 4200 &&
                  loaded.ledger.current.births == 1,
@@ -466,7 +508,7 @@ int main() {
   // The order book: a campaign saved with an order waiting resumes with it
   // waiting, and the waiting row keeps every field the consumer will read.
   failures += Expect(
-      loaded.orders.rows.size() == 5 && loaded.orders.next_id_value == world.orders.next_id_value,
+      loaded.orders.rows.size() == 6 && loaded.orders.next_id_value == world.orders.next_id_value,
       "the order book came back whole");
   failures += Expect(loaded.orders.rows[4].status == core::OrderStatus::kAccepted &&
                          loaded.orders.rows[4].profession.value == 0 &&

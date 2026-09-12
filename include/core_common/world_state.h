@@ -302,9 +302,16 @@ struct WeatherState {
 
 /// @brief The chairman's standing. He is an abstract figure without a body or
 /// personal metrics (design: chairman), but his reputations are world state.
-/// @note STUB until the relevant systems arrive (phase 1 does not simulate
-/// reputation): fields exist so that saves and interfaces are final, values
-/// stay at their neutral defaults.
+/// @note NO LONGER A STUB, and the note that said so was already false when
+/// it was written: `horses_stabled` below is set by the herd day. Since
+/// 2026-09-12 `raikom_reputation` moves as well — the district's verdict on
+/// the year steps it up or down (core_production, JudgePlan). `authority`
+/// and `shadow_reputation` DO still stand at their neutral defaults, and
+/// naming which two is the whole repair: a blanket "STUB" over a struct
+/// half of whose fields are alive tells a reader the opposite of the truth
+/// about the other half.
+/// @note Written only from the sequential decisions slot (slot 3): the herd
+/// day and the production decisions sub-step. No parallel phase touches it.
 struct ChairmanState {
   /// Reputation with the district committee, 0..100. The chairman's main
   /// metric (metrics design, §3).
@@ -354,17 +361,88 @@ struct VitalsState {
   std::uint32_t satiety_running_days = 0;
 };
 
-/// @brief The yearly delivery plan, reduced to numbers.
-/// Phase 1 of the project models the district as "the plan is just a number
-/// per resource" (plan, §11): no mechanics, only the target and how much has
-/// been delivered against it this economic year.
-/// @note STUB: real district mechanics are a later phase; the shape is final.
+/// @brief What the chairman has taken out of the sealed funds, by resource.
+///
+/// THE FUNDS ARE NOTIONAL AND THE GRAIN IS ONE HEAP, so unsealing cannot
+/// move anything: the seed fund and the plan reserve are computed each day
+/// out of the sowing norms and the plan (resources design §6), and what a
+/// release does is make that computation ask for less. Two vectors and not
+/// one, because the two funds fail differently — the seed fund's release
+/// costs the spring sowing, the plan reserve's costs the autumn delivery —
+/// and a single number could not say which risk the chairman took.
+///
+/// @note Zeroed at the YEAR'S TURN and nowhere else. The design's door is for
+/// an emergency ("нечем кормить людей"), and one that carried over would
+/// quietly become a lower fund — but one cleared a second time in the spring
+/// would erase the hungry winter it was opened for on the very day the
+/// sowing year begins, which is what it did for one afternoon.
+struct FundReleaseState {
+  /// Released against the seed fund, dense by ResourceId.
+  ResourceAmounts from_seed;
+
+  /// Released against the plan reserve, dense by ResourceId.
+  ResourceAmounts from_plan;
+};
+
+/// @brief How the district judged the economic year that has just closed.
+///
+/// THREE VALUES AND NOT A BOOLEAN, because "no year has been judged yet" is
+/// news of its own: the first winter closes before the first harvest, and a
+/// campaign that has never been judged must not read as a campaign that
+/// passed. The same distinction the table readers keep making between "the
+/// cell says nothing" and "the cell says zero".
+enum class PlanVerdict : std::uint8_t {
+  /// No economic year has closed yet. The value a new campaign carries.
+  kNone = 0,
+
+  /// Delivered in full on every position the district named.
+  kMet,
+
+  /// Short on at least one position. Three of these in a row is the first
+  /// trigger of "Под суд" (epochs design §8).
+  kFailed,
+
+  /// NOT A VALUE: the count, for the codec's range check and for a
+  /// consumer's mirror. Values are appended BEFORE it.
+  kPlanVerdictCount,
+};
+
+/// @brief The yearly delivery plan and how the district judged the last one.
+///
+/// THE PLAN IS HANDED DOWN, and until 2026-09-12 it was not: `due` accrued
+/// as the grain was reaped — a share of the settlement's own harvest (plan
+/// §11, the phase-1 stub) — and was shipped at the year's turn. That made a
+/// verdict impossible to fail: what you owed WAS what you had cut, so every
+/// year was met by construction, and a counter of failed years would have
+/// been a structural zero dressed as a check. The district names the figure
+/// now, a bad year no longer forgives itself, and the counter can move.
+///
+/// The plan carries only what is GROWN (district design §9): grain by crop,
+/// potato, vegetables, flax, milk, meat, egg, wool. Boards, workshop goods,
+/// honey and fish never enter it.
 struct PlanState {
   /// What the district expects this year, by resource. Dense by ResourceId.
   ResourceAmounts due;
 
   /// What has been delivered against `due` so far this year.
   ResourceAmounts delivered;
+
+  /// The verdict on the year that closed last. kNone until the first one
+  /// closes.
+  PlanVerdict last_verdict = PlanVerdict::kNone;
+
+  /// How many economic years in a row closed kFailed. Reset to zero by a
+  /// met year. Reaching the threshold is the "три сорванных плана подряд"
+  /// trigger of epochs design §8 — the CONDITION, which is the core's half;
+  /// the commission, the case and the court are the presentation's.
+  std::uint8_t failed_years_in_a_row = 0;
+
+  /// How many in a row closed kMet — what "стабильное перевыполнение"
+  /// (district design §9) will be counted on when the district starts
+  /// raising norms. STUB: kept truthfully, read by nothing yet, because
+  /// "раз в несколько лет район решает" names no period and a period
+  /// invented here would be a mechanic invented here.
+  std::uint8_t met_years_in_a_row = 0;
 };
 
 /// @brief The complete state of the simulated world at one step.
@@ -406,7 +484,17 @@ struct WorldState {
 
   ChairmanState chairman;
 
+  /// The district's demand and its verdict on the last year. Written only
+  /// in the production decisions sub-step of the sequential decisions slot
+  /// (slot 3) — announced in the spring, judged at the year's turn — and
+  /// read there and by core_residents' distribution, which runs earlier in
+  /// the same slot.
   PlanState plan;
+
+  /// What the chairman has taken out of the sealed funds this economic year
+  /// (FundReleaseState). Zeroed at the year's turn with the plan it belongs
+  /// to — an unsealing is an emergency of ITS year, not a standing licence.
+  FundReleaseState unsealed;
 
   /// Life expectancy and its factor window (stage 6, decision 105).
   VitalsState vitals;

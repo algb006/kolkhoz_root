@@ -95,6 +95,12 @@ const char* KindName(core::EventKind kind) {
       return "dismissed";
     case core::EventKind::kPostVacated:
       return "post_vacated";
+    case core::EventKind::kPlanMet:
+      return "plan_met";
+    case core::EventKind::kPlanFailed:
+      return "plan_failed";
+    case core::EventKind::kPlanTrialDue:
+      return "plan_trial_due";
     case core::EventKind::kHorsesStabled:
       return "horses_stabled";
     case core::EventKind::kEventKindCount:

@@ -26,6 +26,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -205,6 +206,12 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
     }
+    // THE NORM IS ANNOUNCED IN THE SPRING, on the day the season turns
+    // (boss, 2026-09-12). Not at the year's turn: by spring the worked land
+    // and its rotation are settled, and the figure never moves again.
+    if (current.calendar.season == Season::kSpring && previous.calendar.season != Season::kSpring) {
+      AnnouncePlan(current);
+    }
     RunFields(current);
     RunHerdDay(config_, current);
   }
@@ -265,9 +272,9 @@ class ProductionSystem final : public IProductionSystem {
   }
 
   /// The year's delivery: what the plan asked for leaves the stores and is
-  /// recorded as delivered. A shortfall is simply a smaller delivery — the
-  /// district has no mechanics in phase 1, and inventing consequences for it
-  /// would be inventing the district.
+  /// recorded as delivered. A shortfall is a shortfall now — it used to be
+  /// "simply a smaller delivery" because the district had no mechanics, and
+  /// JudgePlan below is those mechanics arriving.
   void DeliverPlan(WorldState& current) const {
     current.plan.delivered.assign(current.plan.due.size(), 0);
     for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
@@ -276,13 +283,153 @@ class ProductionSystem final : public IProductionSystem {
       current.plan.delivered[index] = taken;
       AddLedgerAmount(current.ledger.current.delivered, resource, taken);
     }
+  }
+
+  /// @brief Was every position delivered to the share that counts as met?
+  ///
+  /// EVERY POSITION AND NOT THE TOTAL. Grain is not potato: a settlement
+  /// that shipped double the oat and no wheat at all has not met a plan
+  /// that asked for both, and a tonnage summed across resources would say
+  /// it had. The design's word is "сорванный план", one plan, and a plan is
+  /// its positions.
+  ///
+  /// A position the district asked nothing of is met by anything, including
+  /// nothing — which is why the zero case is tested for rather than divided
+  /// through.
+  bool PlanWasMet(const WorldState& current) const {
+    for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+      const Grams due = current.plan.due[index];
+      if (due == 0) {
+        continue;
+      }
+      const Grams delivered =
+          index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+      const float share = static_cast<float>(delivered) / static_cast<float>(due);
+      if (share < config_.plan_met_share) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// @brief The district's verdict on the year that has just been shipped,
+  /// and the next year's plan handed down in its place.
+  ///
+  /// THE CORE'S HALF OF "ПОД СУД" IS THE CONDITION, not the court (epochs
+  /// design §8; boss, 2026-09-12: "твоё — условие и событие"). The counter
+  /// reaching its threshold raises kPlanTrialDue once, on the day it
+  /// reaches it, and the commission, the case and the courtroom belong to
+  /// the presentation.
+  ///
+  /// A PLAN OF NOTHING IS NOT A MET PLAN. A world whose tables carry no
+  /// plan.csv — every unit test's world — is a world with no district, and
+  /// it must not accumulate a record of triumphs it was never asked for.
+  /// The verdict is simply not taken there, which is what kNone is for.
+  /// @brief The district names the year's norm in the spring: a share of
+  /// what the arable WORKED LAST YEAR should give at a normal yield
+  /// (boss's decision of 2026-09-12; district design §9).
+  ///
+  /// OFF THE LAND AND NOT OFF THE REAPING, which is the whole repair. A
+  /// share of the reaping was owed only by a settlement that had already
+  /// cut it, so the plan could not be missed and a verdict on it could not
+  /// fail. A norm off the land stands whatever the weather does.
+  ///
+  /// OFF WORKED LAND AND NOT OFF SOWN LAND, so that sowing less does not owe
+  /// less: undersowing is a way to FAIL a plan, not a way to shrink one.
+  ///
+  /// And off LAST year's working, so that breaking derelict enters the plan
+  /// the year after it is broken — ploughing must not be punished in the
+  /// same season it was paid for, which is the "не наказывать за
+  /// непредвидимое" rule read forwards.
+  void AnnouncePlan(WorldState& current) const {
+    // THE RELEASES ARE NOT CLEARED HERE, and they were for one afternoon:
+    // the edit that put the clearing into JudgePlan matched this line too,
+    // because both functions open by assigning the plan away. The spring
+    // clearing wiped a SEED fund opened in the hungry end of winter — on the
+    // very day the sowing year begins, which is the day that release was
+    // taken for. A scripted edit that finds a second anchor is silently
+    // successful; this one was found by the delivery cycle's RACE pass.
     current.plan.due.assign(current.plan.due.size(), 0);
+    if (!(config_.plan_grain_share > 0.0F)) {
+      return;
+    }
+    for (const FieldRow& field : current.fields.rows) {
+      // Derelict is land nobody worked: it owes nothing until it is broken,
+      // and then it owes from the year after.
+      if (field.kind != LandKind::kArable) {
+        continue;
+      }
+      const CropId crop = field.rotation_year0;
+      if (crop.value >= config_.crops.size()) {
+        continue;  // an empty rotation slot is a fallow year, and fallow owes nothing
+      }
+      const CropDef& sown = config_.crops[crop.value];
+      if (sown.yield_kg_per_ha <= 0.0F || sown.resource.value == kInvalidDefIdValue) {
+        continue;
+      }
+      const float normal_kg = sown.yield_kg_per_ha * field.area_ga;
+      AddToStock(current.plan.due,
+                 sown.resource,
+                 GramsFromKilograms(normal_kg * config_.plan_grain_share));
+    }
+  }
+
+  void JudgePlan(WorldState& current) const {
+    bool asked = false;
+    for (const Grams due : current.plan.due) {
+      asked = asked || due > 0;
+    }
+    if (asked) {
+      const bool met = PlanWasMet(current);
+      current.plan.last_verdict = met ? PlanVerdict::kMet : PlanVerdict::kFailed;
+      current.plan.failed_years_in_a_row =
+          met ? 0U : static_cast<std::uint8_t>(current.plan.failed_years_in_a_row + 1U);
+      current.plan.met_years_in_a_row =
+          met ? static_cast<std::uint8_t>(current.plan.met_years_in_a_row + 1U) : 0U;
+      const float step = met ? config_.plan_met_reputation : config_.plan_failed_reputation;
+      // Clamped to the metric's own scale, both ends. A reputation that
+      // walked past 100 on a run of good years would make the fall back
+      // through the bands take years of nothing happening — the band table
+      // of district design §5 is read off this number, so the number has
+      // to mean what the table says it means.
+      const float moved = current.chairman.raikom_reputation + step;
+      current.chairman.raikom_reputation =
+          moved < kMetricMin ? kMetricMin : (moved > kMetricMax ? kMetricMax : moved);
+      SimEvent& judged = EmitEvent(
+          current, met ? EventKind::kPlanMet : EventKind::kPlanFailed, EventSeverity::kNotable);
+      judged.amount = met ? current.plan.met_years_in_a_row : current.plan.failed_years_in_a_row;
+      // ON THE DAY IT REACHES THE THRESHOLD AND NOT AFTERWARDS: the
+      // equality rather than >= is what keeps a fourth failed year from
+      // announcing the same news again. A condition that re-announces
+      // itself every year is an alarm, and this is an event.
+      if (current.plan.failed_years_in_a_row == config_.plan_failed_years_to_trial) {
+        // kInterrupting, and it is the only one of the three: a met year and
+        // a failed year are news the player reads in his own time, while
+        // the district deciding to take him to court is the thing a
+        // fast-forward must not run past (time design §1).
+        SimEvent& trial =
+            EmitEvent(current, EventKind::kPlanTrialDue, EventSeverity::kInterrupting);
+        trial.amount = current.plan.failed_years_in_a_row;
+      }
+    }
+    // THE NEXT NORM IS NOT ANNOUNCED HERE. It is announced in the spring
+    // (AnnouncePlan below), off the land that was worked last year — which
+    // is knowable by then and does not move again. Clearing it is what the
+    // year's turn does: an undelivered remainder is a failed year, not a
+    // debt carried forward, and the district keeps no tab (district §9).
+    current.plan.due.assign(current.plan.due.size(), 0);
+    // The unsealings go with the year they were an emergency of. Carried
+    // over, they would quietly become a lower fund instead of a decision
+    // somebody took on a particular hungry winter.
+    current.unsealed.from_plan.assign(current.unsealed.from_plan.size(), 0);
+    current.unsealed.from_seed.assign(current.unsealed.from_seed.size(), 0);
   }
 
   /// January 1: the rotation plan advances one year, and fallow that stood
   /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
     DeliverPlan(current);
+    JudgePlan(current);
     for (FieldRow& field : current.fields.rows) {
       if (field.kind != LandKind::kArable) {
         continue;  // no rotation to shift, no fallow to pay out; derelict rests as it is
@@ -341,10 +488,88 @@ class ProductionSystem final : public IProductionSystem {
         case OrderKind::kResumeUnit:
           Settle(order, SetPaused(current, order.unit, 0));
           break;
+        case OrderKind::kUnsealFund:
+          Settle(order, UnsealFund(current, order));
+          break;
         default:
           break;  // not ours: another consumer's, or the events slot's refusal
       }
     }
+  }
+
+  /// @brief The chairman opens a sealed fund (resources design §6).
+  ///
+  /// IT SUBTRACTS AND NOTHING ELSE. The funds are notional — the grain is
+  /// one heap and the ladder is a computation over it — so an unsealing is
+  /// recorded as a release the fund's computation then asks for less by.
+  /// The consequences the design names are already there and need no code:
+  /// less in the store come the delivery is a plan fallen short, less come
+  /// the sowing is a spring undersown.
+  ///
+  /// REFUSED WHEN THE FUND DOES NOT HOLD IT, because a door that opens on to
+  /// nothing has not been opened. The chairman is told so and the figure he
+  /// named stands — the alternative, quietly giving him whatever is there,
+  /// is the "незаметная утечка" the design refuses by name.
+  OrderRefusal UnsealFund(WorldState& current, const OrderRow& order) const {
+    // THE FUND IS NAMED EXPLICITLY AND NOT BY A TERNARY'S "else". A ternary
+    // on kSeed makes every other value of the enum mean the PLAN reserve,
+    // including kNone — and kNone reaches here, because the codecs accept it
+    // (kMaxFundKind includes zero, rightly: it is the value every other kind
+    // of order carries) while only the boundary refuses it. An order replayed
+    // out of a journal therefore skips ShapeIsValid, and the quiet answer
+    // would have been to open the plan reserve nobody named.
+    ResourceAmounts* released = nullptr;
+    if (order.fund == FundKind::kSeed) {
+      released = &current.unsealed.from_seed;
+    } else if (order.fund == FundKind::kPlanReserve) {
+      released = &current.unsealed.from_plan;
+    } else {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    // THE RESOURCE IS CHECKED AGAINST THE ROSTER and not merely against the
+    // invalid marker. These vectors are dense by ResourceId, and resizing one
+    // to an id that no table row backs would take it past that contract — up
+    // to 65535 cells for a 16-bit id — and the save refuses to write a vector
+    // that long, which turns a mistyped order into a campaign that can never
+    // be saved again. The boundary cannot make this check: a table-less world
+    // is legal there by design, and the roster is the factory's knowledge.
+    const std::uint32_t index = order.resource.value;
+    if (index == kInvalidDefIdValue || index >= config_.spoil_days.size()) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    const Grams opened = index < released->size() ? (*released)[index] : 0;
+    // What the fund is holding RIGHT NOW is the fund's own business and is
+    // recomputed by its owner every day, so the only ceiling this verb can
+    // honestly enforce is the one it can see: the plan reserve may not be
+    // opened past what the district asked for.
+    //
+    // WRITTEN AS A SUBTRACTION, because the sum it replaces overflowed inside
+    // the very check meant to catch it: `opened + amount > owed` on a signed
+    // 64-bit pair is undefined before it is false.
+    if (order.fund == FundKind::kPlanReserve) {
+      const Grams owed = index < current.plan.due.size() ? current.plan.due[index] : 0;
+      if (opened > owed || order.amount > owed - opened) {
+        return OrderRefusal::kRuleForbids;
+      }
+    }
+    // THE SEED FUND HAS NO CEILING HERE, and inventing one would be worse
+    // than having none: its size comes from the sowing norms over the fields
+    // still to be sown, which core_residents computes and this module does
+    // not know. What CAN be checked from here is that the running total
+    // stays a number — an unbounded `+=` of a signed 64-bit amount is
+    // undefined the moment it wraps, and the seed side has nothing else
+    // stopping it from being ordered twice.
+    if (order.amount > std::numeric_limits<Grams>::max() - opened) {
+      return OrderRefusal::kRuleForbids;
+    }
+    // AND THE VECTOR GROWS ONLY AFTER THE REFUSALS. It grew before them for
+    // one afternoon, so an order that was turned down still enlarged the
+    // state it was refused by.
+    if (released->size() <= index) {
+      released->resize(static_cast<std::size_t>(index) + 1U, 0);
+    }
+    (*released)[index] += order.amount;
+    return OrderRefusal::kNone;
   }
 
   static void Settle(OrderRow& order, OrderRefusal refusal) {

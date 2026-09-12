@@ -123,9 +123,16 @@ std::uint32_t EaterCount(const FoodConfig& config,
 ///     phase closed, and reserving for it twice would freeze grain the
 ///     settlement has already spent. "Yet to be sown" is the CROP's state
 ///     and not the field's phase — see the loop.
-///   * plan — WorldState::plan.due, which accrues as the grain is reaped and
-///     is handed over at the turn of the year. Its absence here is what let
-///     the issue eat the district's share all summer.
+///   * plan — as much of WorldState::plan.due as THIS YEAR'S REAPING has
+///     covered so far, and no more. The norm itself is announced in the
+///     spring off the land worked last year, but the ladder of funds is a
+///     distribution of the HARVEST (resources design §6), so in April there
+///     is nothing yet to set aside and the granary of last year is free.
+///     Reserving the whole norm from January instead locks that granary
+///     against a plan that will be met out of a crop still in the ground,
+///     and the settlement starves in the spring beside grain it may not
+///     touch — measured, on 2026-09-12, as a leanest day of 20 against 38.
+///     Less whatever the chairman has unsealed (kUnsealFund).
 ///   * fodder — what the kolkhoz herds ATE LAST YEAR, straight off the
 ///     closed book. It needs no forecast and no second copy of the feeding
 ///     order, and it corrects itself as the herd grows or shrinks. In the
@@ -162,9 +169,48 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
       reserve[seed.resource.value] += KilogramsToGrams(seed.sowing_norm_kg_per_ha * field.area_ga);
     }
   }
+  // THE PLAN RESERVE IS FILLED BY THE HARVEST, NOT BY THE CALENDAR, and the
+  // distinction cost a lean spring to find (boss, 2026-09-12). Resources
+  // design §6 opens with what the ladder of funds distributes: "Урожай не
+  // лежит одной кучей — он расписан по фондам". The seed fund stands all
+  // winter because it is for the sowing to come; the plan reserve is the
+  // undelivered remainder of THIS year's plan, and in April this year has
+  // reaped nothing, so there is nothing yet to set aside.
+  //
+  // Reserving the whole norm from January instead locks last year's granary
+  // against a plan that will be met out of a crop still in the ground — and
+  // the village starves in the spring beside grain it may not touch.
+  //
+  // THE SIZE OF THE PLAN STILL COMES FROM THE WORKED LAND; only the GRAIN
+  // held against it comes from the reaping. The two were both taken off the
+  // harvest before, which is why no year could be failed, and taking both
+  // off the land swung the instrument through the middle to the other side.
+  const ResourceAmounts& reaped = world.ledger.current.harvest;
   for (std::uint32_t index = 0; index < world.plan.due.size() && index < reserve.size(); ++index) {
-    reserve[index] += world.plan.due[index];
+    const Grams owed = world.plan.due[index];
+    const Grams gathered = index < reaped.size() ? reaped[index] : 0;
+    reserve[index] += owed < gathered ? owed : gathered;
   }
+  // AND WHAT THE CHAIRMAN HAS UNSEALED IS NO LONGER HELD (kUnsealFund;
+  // resources design §6). This is the whole mechanism of that verb: the
+  // funds are a computation over one heap of grain, so opening one means
+  // this sum asks for less.
+  //
+  // AND THE RESERVE IS ONE TOTAL, so both releases come off the same number
+  // and it makes no arithmetic difference which fund the chairman named.
+  // Said plainly because the obvious comment to write here is that the seed
+  // release comes off the seed's share — it does not, and a sentence
+  // claiming a separation the code does not make is worse than no sentence.
+  // The two are tracked apart for the save and for the player: which fund
+  // was opened is which RISK was taken, and that difference is real even
+  // where the subtraction's is not.
+  const auto release = [&reserve](const ResourceAmounts& opened) {
+    for (std::uint32_t index = 0; index < opened.size() && index < reserve.size(); ++index) {
+      reserve[index] = reserve[index] > opened[index] ? reserve[index] - opened[index] : 0;
+    }
+  };
+  release(world.unsealed.from_plan);
+  release(world.unsealed.from_seed);
   const ResourceAmounts& fodder = world.ledger.closed.feed;
   for (std::uint32_t index = 0; index < fodder.size() && index < reserve.size(); ++index) {
     reserve[index] += fodder[index];

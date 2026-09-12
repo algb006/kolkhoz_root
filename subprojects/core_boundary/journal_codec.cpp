@@ -43,12 +43,14 @@ namespace {
 /// are FIXED, which is what lets the reader check a file's length before it
 /// reads a single field — the journal's answer to a truncated file.
 ///
-/// Read as: four one-byte enums, the tick, four entity ids, FIVE definition
-/// ids, the position. Task A7 taught the arithmetic something the sizeof
-/// tripwire below cannot teach it: a field added into a struct's PADDING
-/// changes the wire and not sizeof, so this line has to be counted by hand
-/// against WriteOrder every time the row grows.
-constexpr std::size_t kOrderBytes = 4 + 8 + (4 * 4) + (5 * 2) + (2 * 4);
+/// Read as: FIVE one-byte enums (the fund is the fifth, 2026-09-12), the
+/// tick, four entity ids, SIX definition ids (the unsealed resource is the
+/// sixth), the position, and the unsealed amount. Task A7 taught the
+/// arithmetic something the sizeof tripwire below cannot teach it: a field
+/// added into a struct's PADDING changes the wire and not sizeof, so this
+/// line has to be counted by hand against WriteOrder every time the row
+/// grows — and it was counted by hand again for kUnsealFund.
+constexpr std::size_t kOrderBytes = 5 + 8 + (4 * 4) + (6 * 2) + (2 * 4) + 8;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -62,7 +64,9 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// makes the build fail until WriteOrder, ReadOrder and kOrderBytes have all
 /// been brought along — and VERSION_SAVE bumped by the human, since an order
 /// row is a state row.
-static_assert(sizeof(OrderRow) == 48, "OrderRow changed — update the journal codec too");
+static_assert(sizeof(OrderRow) == 64, "OrderRow changed — update the journal codec too");
+
+constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
 
 constexpr std::uint8_t kMaxJournalVerb =
     static_cast<std::uint8_t>(JournalVerb::kJournalVerbCount) - 1;
@@ -207,6 +211,13 @@ void WriteOrder(Writer& out, const OrderRow& row) {
 
   out.Float(row.position.x);
   out.Float(row.position.y);
+
+  // The unsealing (kUnsealFund, 2026-09-12). Three fields and each counted
+  // into kOrderBytes above by hand, because the length is fixed and nothing
+  // recomputes it.
+  out.U8(static_cast<std::uint8_t>(row.fund));
+  out.U16(row.resource.value);
+  out.U64(static_cast<std::uint64_t>(row.amount));
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -230,6 +241,10 @@ OrderRow ReadOrder(Reader& in) {
 
   row.position.x = in.Float();
   row.position.y = in.Float();
+
+  row.fund = static_cast<FundKind>(in.EnumValue(kMaxFundKind));
+  row.resource = ResourceId{in.U16()};
+  row.amount = static_cast<Grams>(in.U64());
   return row;
 }
 

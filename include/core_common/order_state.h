@@ -9,15 +9,26 @@
 /// and MARKS cancellations before phase 1, in arrival order (buffer-law
 /// rule 2, core_sim/step.h). The consuming half is wired for the
 /// construction kinds and only for those (project phase 2, task A2):
-/// core_construction reads the book in its sub-step of the decisions slot
-/// (phase 3) and settles kBuildUnit, kStartBuild, kUpgradeUnit and
-/// kDemolishUnit — each to kDone or kRefused IN THE STEP IT IS READ, never
-/// to kAccepted or kActive. The events slot (phase 6) then emits every
-/// terminal row's event and REMOVES the row, so the book is empty again by
-/// the end of the step that settled it. The work kinds are still
-/// unconsumed: kAssignWork, kReleaseWork, kPauseUnit, kResumeUnit and
-/// kSetRotation have no subsystem reading them (task O3), and the sweep
-/// refuses them with kNoConsumer rather than letting them accumulate.
+/// THERE ARE THREE CONSUMERS NOW, all in sub-steps of the decisions slot
+/// (phase 3), and each settles its own kinds to kDone or kRefused IN THE
+/// STEP THE ROW IS READ — never to kAccepted or kActive, except where a kind
+/// says otherwise:
+///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
+///     kDemolishUnit, kRepairUnit;
+///   * core_production — kPauseUnit, kResumeUnit and kUnsealFund;
+///   * core_labor — kAssignWork, kReleaseWork, kAppoint and kDismiss, the
+///     last two applied at the day's close rather than at once.
+/// The events slot (phase 6) then emits every terminal row's event and
+/// REMOVES the row, so the book is empty again by the end of the step that
+/// settled it. What is still unconsumed is kSetRotation, and the sweep
+/// refuses it with kNoConsumer rather than letting it accumulate.
+///
+/// This paragraph said "wired for the construction kinds and only for those"
+/// until 2026-09-12, listing the pause verbs among the unconsumed while the
+/// kind entries below named core_production as their consumer — the file
+/// disagreeing with itself, which is how a reader comes away certain of the
+/// wrong half. A CONSUMER LIST IS A CONTRACT, and one short by two modules
+/// is the shape in which a fourth consumer lands unchallenged.
 /// Parallel phases never touch the table — an order is a structural fact,
 /// and structure changes only in sequential slots (buffer-law rule 6).
 ///
@@ -80,6 +91,7 @@
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/quantities.h"
 #include "core_common/state_table.h"
 
 namespace core {
@@ -187,6 +199,27 @@ enum class OrderKind : std::uint8_t {
   /// applied at the day's close. Refused with kRuleForbids when the
   /// resident holds no post. Consumer: core_labor.
   kDismiss,
+
+  /// UNSEAL A FUND (resources design §6): take `amount` of `resource` out of
+  /// the sealed `fund` and let the automation touch it. The design's own
+  /// emergency door — "нечем кормить людей — можно взять из резерва плана и
+  /// даже из семенного" — and it is a door the chairman opens by NAMING A
+  /// FIGURE, because the same paragraph calls it "осознанный выбор, а не
+  /// незаметная утечка".
+  ///
+  /// ONE VERB FOR BOTH FUNDS, not two: the design gives the same door to the
+  /// plan reserve and to the seed fund, and a second verb for the second
+  /// fund would be one decision with two homes (boss, 2026-09-12).
+  ///
+  /// THE CORE INVENTS NO CONSEQUENCE. It subtracts, and that is all: the
+  /// grain becomes issuable, so come the delivery there is less in the store
+  /// and the plan falls short, or come the sowing there is less seed. The
+  /// design already calls those consequences natural and deferred, and
+  /// anything added here would be a punishment nobody wrote down.
+  ///
+  /// Settled in the step it is read, like the pause verbs. Consumer:
+  /// core_production.
+  kUnsealFund,
 
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
@@ -319,6 +352,25 @@ enum class OrderRefusal : std::uint8_t {
   kOrderRefusalCount,
 };
 
+/// @brief Which of the sealed funds an order unseals (resources design §6).
+/// The ladder has three rungs and only the top two are sealed: the kolkhoz
+/// fund is what the automation already spends, so there is nothing in it to
+/// unseal.
+enum class FundKind : std::uint8_t {
+  /// Not a fund order. The value every other kind of order carries.
+  kNone = 0,
+
+  /// The seed fund — next year's sowing. Unsealing it risks the spring.
+  kSeed,
+
+  /// The plan reserve — what is still owed to the district out of this
+  /// year's harvest. Unsealing it risks the autumn's delivery.
+  kPlanReserve,
+
+  /// NOT A VALUE: the count, for the codecs' range check. Append before it.
+  kFundKindCount,
+};
+
 /// @brief One order. Plain data; `kind` says which target fields are read,
 /// the rest stay at their invalid defaults. Sized for the save codec's
 /// tripwire like every row.
@@ -335,8 +387,14 @@ struct OrderRow {
   /// For kAppoint: which post (task A7). It stands here, among the flavour
   /// fields and not down with the targets, for the same reason `work` does —
   /// both say WHICH KIND of a thing the order is about, not which thing —
-  /// and because the four leading bytes leave a hole exactly this wide: the
-  /// row stays 48 bytes and the book stays cheap to copy every step.
+  /// and because the four leading bytes leave a hole exactly this wide.
+  ///
+  /// THE ROW IS 64 BYTES SINCE 2026-09-12, not the 48 this sentence claimed
+  /// until then: kUnsealFund's fund, resource and amount took it past the
+  /// alignment boundary. Corrected here rather than left as a stale aside
+  /// because BOTH hand-counted wire lengths stand on this prose — the save
+  /// codec's tripwire and the journal's kOrderBytes — and a comment naming
+  /// the old size is the second home of a fact whose first home moved.
   ProfessionId profession;
 
   /// The completed tick the order was issued after (boundary stamp at the
@@ -362,6 +420,19 @@ struct OrderRow {
   CropId rotation_year2;
 
   Vec2 position;  ///< kBuildUnit.
+
+  /// kUnsealFund: which fund is being opened. kNone on every other kind.
+  FundKind fund = FundKind::kNone;
+
+  /// kUnsealFund: what is being taken out of it.
+  ResourceId resource;
+
+  /// kUnsealFund: how much, in grams. THE FIGURE IS THE CHAIRMAN'S and the
+  /// order carries it rather than meaning "as much as is needed": resources
+  /// design §6 calls the unsealing "осознанный выбор, а не незаметная
+  /// утечка", and a door that opens by itself to whatever width is wanted is
+  /// the leak that sentence refuses.
+  Grams amount = 0;
 };
 
 /// @brief The order book type used by WorldState.

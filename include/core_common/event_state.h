@@ -144,6 +144,27 @@ enum class EventKind : std::uint8_t {
   /// is free to work again.
   kHorsesStabled,
 
+  // -- the district's plan (2026-09-12) --------------------------------------
+
+  /// The economic year closed and the district was satisfied; amount = how
+  /// many met years stand in a row. Raised at the year's turn, after the
+  /// delivery it judges.
+  kPlanMet,
+
+  /// The economic year closed short on at least one position (epochs design
+  /// §8, "сорванный план"); amount = how many failed years stand in a row.
+  kPlanFailed,
+
+  /// The failed years have reached the district's limit — the CONDITION of
+  /// "Под суд" (epochs design §8), raised once, on the day the count
+  /// reaches it. amount = that count.
+  ///
+  /// THE CORE STOPS HERE ON PURPOSE. The signal, the commission, the case
+  /// and the courtroom are the presentation's (boss, 2026-09-12: "подача
+  /// концов не твоя; твоё — условие и событие"), and a core that removed
+  /// the chairman itself would be deciding how the game ends.
+  kPlanTrialDue,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.
