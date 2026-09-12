@@ -261,6 +261,19 @@ FieldId PlaceField(WorldState& world,
   field.rotation_year0 = year0;
   field.rotation_year1 = year1;
   field.rotation_year2 = year2;
+  // GENESIS COUNTS AS THE PLAYER HERE, and only where the layout named a
+  // chain THIS BUILD'S crops.csv can resolve. A start row with all three
+  // slots empty is ground the district handed over and nobody has yet decided
+  // anything about — the start's ninety-three hectares — and it must not read
+  // as "three fallow years" (land_state.h, rotation_assigned). The test is on
+  // the RESOLVED ids, so a layout naming three crops the table does not carry
+  // reads as never assigned: the layout parser deliberately does not refuse
+  // an unknown crop key, and of the two readings this is the safe one.
+  field.rotation_assigned = year0.value != kInvalidDefIdValue ||
+                                    year1.value != kInvalidDefIdValue ||
+                                    year2.value != kInvalidDefIdValue
+                                ? 1U
+                                : 0U;
   return AppendRow(world.fields, field);
 }
 

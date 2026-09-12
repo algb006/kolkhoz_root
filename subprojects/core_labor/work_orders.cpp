@@ -108,14 +108,17 @@ void CloseOrphanedWork(WorldState& current) {
 /// and that raising it is ploughing it at the same norm as any other ground.
 ///
 /// AND THAT LEAVES ONE CASE UNANSWERED, NAMED HERE RATHER THAN PATCHED. Work
-/// is opened off the rotation, so a field whose three slots are all empty
-/// never has any — and an order sent there now stands for ever with its man
-/// beside it, where the old kind would have refused it. Two things have to
-/// arrive before that can be closed honestly. The player must be able to SET
-/// a rotation at all (OrderKind::kSetRotation has no consumer yet), because
-/// until then the refusal would name a condition he cannot change; and it
-/// wants a reason of its own rather than kWrongLand, whose whole point is
-/// the word NEVER — a field waiting to be told what to grow is not that.
+/// is opened off the rotation, so a field nobody has assigned a chain has
+/// none opened (FieldRow::rotation_assigned) — and an order sent there now
+/// stands for ever with its man beside it, where the old kind would have
+/// refused it. Two things had to arrive before that could be closed
+/// honestly, AND ONE OF THEM HAS. The player can SET a rotation since
+/// 2026-09-12 — kSetRotation got its consumer in core_production, so the
+/// refusal would no longer name a condition he cannot change. What is still
+/// missing is the second: a reason of its own rather than kWrongLand, whose
+/// whole point is the word NEVER — a field waiting to be told what to grow
+/// is not that, it is a field waiting. That is one boss question away, and
+/// it is the only thing holding the case open now.
 /// A first draft refused it here as kWrongLand and reddened four assertions
 /// about how orders legitimately stand: the rule was wider than the case.
 ///

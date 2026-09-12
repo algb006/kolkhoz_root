@@ -423,10 +423,12 @@ void TrySow(const ProductionConfig& config,
     //
     // BUT A FIELD WITH NO CHAIN AT ALL IS NOT ON FALLOW — NOBODY HAS TOLD IT
     // ANYTHING. The player gives each field a chain of three seasons, crop or
-    // fallow (farming design §7); a field whose three slots are all empty has
-    // never been given one, and the start hands over ninety-three hectares in
-    // exactly that condition. Ploughing them would be the core making the
-    // player's decision for him — and it would cost the village about a
+    // fallow (farming design §7); a field that has never been ASSIGNED one is
+    // the one meant here — FieldRow::rotation_assigned, and no longer inferred
+    // from the slots, because since 2026-09-12 three empty slots on an
+    // assigned field are three deliberate fallow years and are ploughed. The
+    // start hands over ninety-three hectares that were never assigned at all. Ploughing them would
+    // be the core making the player's decision for him — and it would cost the village about a
     // hundred and fifty man-days a year nobody asked for, which is defect D11
     // under a new name. It became reachable on 2026-09-12, when
     // LandKind::kDerelict went and that ground stopped being skipped whole.

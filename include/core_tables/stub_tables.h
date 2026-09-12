@@ -46,6 +46,15 @@ enum class StubTables : std::uint8_t {
   /// The caller knows there may be no tables and wants the documented
   /// defaults. Unit tests and probes mean this, and now say so.
   kAllowed,
+
+  /// NOT A VALUE: the count, for a mirror's range check. Append before it.
+  ///
+  /// IT WAS MISSING FROM 0.17.82, when this enum first became reachable from
+  /// the boundary through WorldOptions, TO 0.17.96 — fourteen deliveries with
+  /// `make check-tests` failing on it, which means the gate was not being run
+  /// at delivery or its exit code was not being read. The enum itself never
+  /// changed; what changed was who can be handed it.
+  kStubTablesCount,
 };
 
 }  // namespace core

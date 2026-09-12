@@ -249,12 +249,25 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   failures +=
       Expect(session->Stamp().tick == 1 && session->Stamp().serial == 1, "one step, one serial");
   // The batch was applied before phase 1 and answered before the step ended,
-  // and the two refusals are of DIFFERENT kinds on purpose. kAssignWork has
-  // had a consumer since task A8, so it is core_labor that turns it down —
-  // resident 7 is not in this empty world. kSetRotation still has none, and
-  // the events slot refuses it with kNoConsumer rather than meeting it with
-  // silence. Both rows are swept (order_state.h). The proof that the promised
-  // ids named the rows the engine made is in the answers.
+  // and BOTH are now refused by the consumers that own them — resident 7 and
+  // field 2 are each absent from this empty world. Both rows are swept
+  // (order_state.h). The proof that the promised ids named the rows the
+  // engine made is in the answers.
+  //
+  // THE SECOND ONE USED TO PROVE SOMETHING ELSE, and what happened to it is
+  // worth the lines. It was staged as kSetRotation precisely because that
+  // kind had NO consumer, and the assertion was that the events slot refuses
+  // an unconsumed kind with kNoConsumer rather than meeting it with silence.
+  // kSetRotation got its consumer on 2026-09-12 — the player's lever for
+  // telling a field what to grow — and with it every one of the thirteen
+  // order kinds now has one.
+  //
+  // SO kNoConsumer HAS BECOME UNREACHABLE FROM A WELL-FORMED ORDER, and the
+  // sweep that emits it is not therefore dead: it is the guard for a kind
+  // ADDED WITHOUT A CONSUMER, which is exactly the mistake it was written
+  // against and exactly the one that leaves no other trace. A test cannot
+  // demonstrate it any more without inventing a kind, and inventing one to
+  // keep an assertion green would be testing the test.
   failures += Expect(session->State().orders.rows.empty(),
                      "an order nobody consumes does not outlive its step");
   const std::span<const core::SimEvent> answered = session->Events();
@@ -267,10 +280,12 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
         answered[0].kind == core::EventKind::kOrderRefused &&
             answered[0].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoSuchSubject),
         "work for a man who does not exist is refused by the consumer that has him");
-    failures +=
-        Expect(answered[1].kind == core::EventKind::kOrderRefused &&
-                   answered[1].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer),
-               "an order kind with no consumer is refused, never met with silence");
+    failures += Expect(
+        answered[1].kind == core::EventKind::kOrderRefused &&
+            answered[1].amount == static_cast<std::int64_t>(core::OrderRefusal::kNoSuchSubject),
+        "and a rotation for a field that is not there is refused by the consumer that owns "
+        "fields — not by the sweep for having nobody, which is what this row proved until "
+        "kSetRotation was wired");
   }
   session->AcknowledgeEvents(answered.size());
 

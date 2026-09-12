@@ -212,6 +212,14 @@ int main(int argc, char** argv) {
       field.rotation_year0 = slots[0];
       field.rotation_year1 = slots[1];
       field.rotation_year2 = slots[2];
+      // AND THE BYTE, WHICH IS WHAT THE CORE ACTUALLY ASKS. Since 2026-09-12
+      // a chain is announced by rotation_assigned and not by the slots: the
+      // sowing gates on the slot, but the manure queue, the year's fallow
+      // recovery and both mean-fertility walks gate on HasRotation. Set the
+      // three and not the byte and this arm sows its lifted fields, looks as
+      // if it worked, and measures ground that is never manured, never
+      // recovered and absent from the very figure the arm exists to compare.
+      field.rotation_assigned = 1;
       ++lifted;
     }
     world.simulation->ResetWorld(raised);

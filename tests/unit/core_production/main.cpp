@@ -2695,18 +2695,21 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     worked.kind = core::LandKind::kArable;
     worked.area_ga = 10.0F;
     worked.rotation_year0 = oat;
+    worked.rotation_assigned = 1;
     core::AppendRow(previous.fields, worked);
     // AND AN UNWORKED FIELD BESIDE IT, of the same size and the same land.
     // Land nobody worked owes nothing — a norm that counted it would punish
     // the chairman for ground he never touched.
     //
-    // WHAT MAKES IT UNWORKED IS THE EMPTY ROTATION, and that is the point of
-    // this pair. The field used to be LandKind::kDerelict here, and the kind
-    // was never what excused it: a field with no rotation owed nothing
-    // whichever kind it was. When the kind went on 2026-09-12 this test had
-    // to say what it had always been testing.
+    // WHAT MAKES IT UNWORKED IS THAT NOBODY ASSIGNED IT, and this pair has
+    // been renamed twice in one evening as the tree learned what it was
+    // really testing. The field was LandKind::kDerelict here first, and the
+    // kind was never what excused it; then it was an empty rotation slot,
+    // and that could not tell "no chain" from "a fallow year"; now it is the
+    // fact itself (land_state.h, rotation_assigned).
     core::FieldRow resting = worked;
     resting.rotation_year0 = core::CropId{};
+    resting.rotation_assigned = 0;
     resting.overgrown = 1;
     core::AppendRow(previous.fields, resting);
 
@@ -2792,10 +2795,16 @@ int CheckUnworkedGroundDoesNotRecover() {
   fallow.area_ga = 10.0F;
   fallow.fertility = 65.0F;
   fallow.phase = core::FieldPhase::kIdle;
-  fallow.rotation_year1 = rye;  // this year fallow, rye the year after
+  fallow.rotation_year1 = rye;   // this year fallow, rye the year after
+  fallow.rotation_assigned = 1;  // and the chain was GIVEN, which is the point
   core::AppendRow(previous.fields, fallow);
   core::FieldRow unworked = fallow;
   unworked.rotation_year1 = core::CropId{};
+  // AND THE CHAIN WAS NEVER GIVEN, which since 2026-09-12 is a fact of its
+  // own and not an inference from three empty slots. Clearing the slot alone
+  // would now leave this field "assigned to three fallow years", which is a
+  // legal rotation and the opposite of what this pair is testing.
+  unworked.rotation_assigned = 0;
   unworked.overgrown = 1;
   core::AppendRow(previous.fields, unworked);
   // AND A HEAP WITH MANURE IN IT, so the same turn exercises the SECOND
@@ -2827,6 +2836,116 @@ int CheckUnworkedGroundDoesNotRecover() {
   failures += Expect(current.fields.rows[1].manure_applied == 0,
                      "and none of it to ground that is never ploughed, which would simply lose "
                      "it — the poorest-first queue would otherwise hand it the lot");
+  return failures;
+}
+
+/// THE PLAYER'S ONE DECISION ABOUT A FIELD, and until 2026-09-12 the core
+/// could not take it: OrderKind::kSetRotation existed from the first day and
+/// had no consumer, so a field could only ever carry the chain genesis gave
+/// it. That is why ninety-three of the start's hundred and sixty-three
+/// hectares lay unworked through every thirty-year run this project has
+/// measured — work is opened off the rotation, and nothing could give a
+/// field one.
+int CheckTheChairmanSetsARotation() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load for the rotation order") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto system = core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "and they build a production system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+
+  // One field, one order, one step. `land` is what the field is made of and
+  // `slots` what the chairman names.
+  const auto order_rotation = [&](core::LandKind land, std::array<core::CropId, 3> slots) {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::FieldRow field;
+    field.kind = land;
+    field.area_ga = 10.0F;
+    field.fertility = 65.0F;
+    const core::FieldId id = core::AppendRow(previous.fields, field);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = id;
+    order.rotation_year0 = slots[0];
+    order.rotation_year1 = slots[1];
+    order.rotation_year2 = slots[2];
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    return current;
+  };
+
+  // -- the chain lands on the field ----------------------------------------
+  {
+    const core::WorldState after =
+        order_rotation(core::LandKind::kArable, {oat, core::CropId{}, oat});
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
+                       "the chairman may tell a field what to grow");
+    const core::FieldRow& field = after.fields.rows[0];
+    failures += Expect(field.rotation_year0.value == oat.value &&
+                           field.rotation_year1.value == core::kInvalidDefIdValue &&
+                           field.rotation_year2.value == oat.value,
+                       "and all three seasons land as he named them, gap and all");
+    failures += Expect(core::HasRotation(field),
+                       "and the field now says it HAS been told, which is a fact of its own");
+  }
+
+  // -- THREE FALLOW YEARS ARE A ROTATION, and this is the whole reason the
+  //    field carries "assigned" apart from the slots --------------------------
+  //
+  // The boundary has always said so — "the three crops may all be invalid:
+  // that is three years of fallow, a legal rotation and not an empty order" —
+  // while the production side read the same three invalid ids as "nobody has
+  // told this field anything". Both are defensible and they cannot both be
+  // right, and the day this order got a consumer was the day it mattered: a
+  // chairman who deliberately rested a field for three years would have had
+  // it stop being ploughed, recovered and manured, which is the opposite of
+  // what he asked for.
+  {
+    const core::WorldState after =
+        order_rotation(core::LandKind::kArable, {core::CropId{}, core::CropId{}, core::CropId{}});
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
+                       "three fallow years are an order and not an empty one");
+    failures +=
+        Expect(core::HasRotation(after.fields.rows[0]),
+               "and the field reads as ASSIGNED, not as ground nobody has spoken to — the two "
+               "were the same three invalid ids until they became two different bits");
+  }
+
+  // -- a meadow is mown where it grew and is never sown ---------------------
+  {
+    const core::WorldState after = order_rotation(core::LandKind::kMeadow, {oat, oat, oat});
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kWrongLand,
+                       "a meadow carries no rotation, and never will");
+    failures += Expect(!core::HasRotation(after.fields.rows[0]),
+                       "and a refused order leaves the field as it found it");
+  }
+
+  // -- a crop this build does not know is refused, not written --------------
+  //
+  // An id that names no row is not a fallow year: it is a layer and a core
+  // disagreeing about the crop table. Writing it in would put a subject into
+  // the rotation that every reader of crop norms would then question.
+  {
+    const core::WorldState after = order_rotation(
+        core::LandKind::kArable, {oat, core::CropId{static_cast<std::uint16_t>(60000)}, oat});
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNoSuchSubject,
+                       "a crop this build has never heard of is refused");
+    failures += Expect(!core::HasRotation(after.fields.rows[0]),
+                       "and NOTHING of the order is written — the first slot was valid and it "
+                       "is not in the field either");
+  }
   return failures;
 }
 
@@ -3085,6 +3204,7 @@ int main() {
   failures += CheckPauseAndResume();
   failures += CheckThePlanIsJudgedAtTheYearsTurn();
   failures += CheckUnworkedGroundDoesNotRecover();
+  failures += CheckTheChairmanSetsARotation();
   failures += CheckTheChairmanCanUnsealAFund();
 
   if (failures == 0) {

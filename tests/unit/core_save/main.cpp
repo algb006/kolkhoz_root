@@ -197,6 +197,7 @@ core::WorldState MakeWorld() {
   field.drought_run_days = 6;
   field.wet_run_days = 0;
   field.weather_state = core::FieldWeatherState::kDrying;
+  field.rotation_assigned = 1;  // this one was told what to grow
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -217,6 +218,7 @@ core::WorldState MakeWorld() {
   core::FieldRow overgrown;
   overgrown.kind = core::LandKind::kFloodplainMeadow;
   overgrown.overgrown = 1;
+  overgrown.rotation_assigned = 0;  // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
   core::AppendRow(world.fields, overgrown);
@@ -492,6 +494,16 @@ int main() {
   // not to this round trip is a field the codec may quietly forget.
   failures += Expect(loaded.fields.rows[2].overgrown == 1,
                      "the weeds on the unworked ground survive the round trip");
+  // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
+  // crop slots beside it cannot say: an empty slot in a chain that exists is
+  // a fallow year, and the same emptiness in a field nobody assigned is
+  // nothing at all. Lose this byte and every unworked hectare comes back as
+  // three fallow years — ploughed, recovered and manured for ever after.
+  failures += Expect(loaded.fields.rows[0].rotation_assigned == 1,
+                     "a field that was given a chain comes back holding one");
+  failures += Expect(loaded.fields.rows[2].rotation_assigned == 0,
+                     "and ground nobody assigned comes back unassigned, not as three fallow "
+                     "years — a codec writing a constant would satisfy one of these two");
   failures += Expect(loaded.fields.rows[0].overgrown == 0,
                      "and a worked field does not come back overgrown, which a codec writing a "
                      "constant would also satisfy the other way round");

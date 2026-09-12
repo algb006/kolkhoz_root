@@ -70,11 +70,17 @@ static_assert(AggregateArity<FamilyRow>() == 15,
 // argument for keeping both asserts: either alone would have missed one of
 // the two.
 //
-// And 80 is MEASURED, not reasoned: 76 was the obvious answer from adding a
-// byte to 72 plus padding, and it was wrong. A size guessed to satisfy a
-// guard teaches the guard the guess.
-static_assert(sizeof(FieldRow) == 80, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 25,
+// And 88 is MEASURED, not reasoned: 76 was once the obvious answer from
+// adding a byte to 72 plus padding, and it was wrong. A size guessed to
+// satisfy a guard teaches the guard the guess.
+//
+// TWO BYTES WENT IN ON 2026-09-12 AND THEY LANDED DIFFERENTLY, which is the
+// argument for measuring each time rather than once. `overgrown` fell into
+// padding the row already had and moved nothing; `rotation_assigned` did not,
+// and took the row from 80 to 88 — eight bytes for one, because it opened a
+// fresh alignment slot.
+static_assert(sizeof(FieldRow) == 88, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 26,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -404,6 +410,13 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // as the 0/1 it is and read back the same way — see the read side for why
   // that is not the same as trusting the byte.
   out.WriteU8(row.overgrown);
+  // WHETHER THE FIELD WAS EVER GIVEN A CHAIN, which the three crop slots
+  // beside it cannot say: an empty slot in a chain that exists is a fallow
+  // year, and the same emptiness in a field nobody assigned is nothing at
+  // all (land_state.h). Lose this byte on a round trip and every unworked
+  // hectare comes back as three fallow years — ploughed, recovered and
+  // manured for ever after.
+  out.WriteU8(row.rotation_assigned);
   // Drought and waterlogging, apart. One number could not say which, and
   // the two are cured by opposite things (boss, 2026-09-04).
   out.WriteFloat(row.drought_stress);
@@ -463,6 +476,12 @@ FieldRow ReadFieldRow(LoadSource& source) {
   // in the open-items list for it. Naming a neighbour as precedent without
   // reading the neighbour is how a practice gets invented backwards.
   row.overgrown = in.ReadU8() != 0 ? 1U : 0U;
+  // Narrowed the same way and for the same reason: the domain is two values
+  // and a save can carry any of two hundred and fifty-six. Unlike `overgrown`
+  // above, the core DOES branch on this one — in five places — so a stray
+  // byte here would not merely paint weeds, it would decide whether ninety
+  // three hectares are farmed.
+  row.rotation_assigned = in.ReadU8() != 0 ? 1U : 0U;
   row.drought_stress = in.ReadFloat();
   row.wet_stress = in.ReadFloat();
   row.drought_run_days = in.ReadU8();

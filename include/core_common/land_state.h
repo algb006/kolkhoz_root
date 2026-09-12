@@ -210,6 +210,45 @@ struct FieldRow {
   /// on this byte, and if anything ever does, that is the bug: it is a look.
   std::uint8_t overgrown = 0;
 
+  /// WHETHER THE PLAYER HAS EVER TOLD THIS FIELD WHAT TO GROW, 0 or 1 — and
+  /// it is a fact of its own because the three rotation slots cannot carry
+  /// it. The player gives a field a chain of three seasons, crop or fallow
+  /// (farming design §7), so an EMPTY SLOT means "fallow that year" in a
+  /// chain that was given, and means nothing at all in a field that never
+  /// got one. Three empty slots said both things at once.
+  ///
+  /// THE TREE HELD BOTH READINGS, in two modules, until 2026-09-12: the
+  /// boundary's shape check for kSetRotation called three invalid crops "a
+  /// legal rotation, three years of fallow", while the production side read
+  /// them as "nobody has told this field anything". Nothing broke, because
+  /// only genesis wrote three invalid slots and it wrote them for exactly
+  /// the ground nobody works — but the day the player could order three
+  /// fallow years, his field would have stopped being ploughed, recovered
+  /// and manured, which is the opposite of what he asked for.
+  ///
+  /// So the two questions are two fields now. Boss's ruling of that evening:
+  /// an empty slot means NOT ASSIGNED, deliberate fallow gets a word of its
+  /// own, and fallow is never a row in the crop table — a row of zeros would
+  /// be a counterfeit crop, and every check that reads norms per crop would
+  /// get a subject that lies to it.
+  ///
+  /// IT STANDS AFTER `overgrown` BECAUSE THE CODEC WRITES IT THERE. A row is
+  /// encoded in the declaration order of this header (save.h), and the first
+  /// draft of the two crossed: declared before, written after. The pair was
+  /// symmetric, so nothing was ever mis-read — what was lost is the only
+  /// property that lets a codec be checked against its header by reading
+  /// them side by side, and neither the sizeof nor the arity tripwire can
+  /// see an order swap, because both numbers stay right (analysis, 0.17.96).
+  ///
+  /// ONE-WAY BY CONSTRUCTION, and nothing in the tree sets it back to 0.
+  /// Genesis sets it from the layout, SetRotation sets it, the codec carries
+  /// it. A field told once is worked for ever; the nearest thing to taking
+  /// the decision back is an all-fallow chain, which is still ploughed,
+  /// recovered and manured every year (farming design §3). Whether releasing
+  /// a field is a decision the chairman should have is a design question and
+  /// is with boss (2026-09-12), not something this core decided quietly.
+  std::uint8_t rotation_assigned = 0;
+
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
   /// growing (farming design §6).
   ///
@@ -374,41 +413,32 @@ struct FieldRow {
 /// 65 → 100 in six years, six a year, which is defect D5 of the
 /// reconciliation returning under a new name.
 ///
-/// AND THE TREE ALREADY CARRIES THE OPPOSITE READING OF THESE THREE BITS.
-/// The boundary's shape check for OrderKind::kSetRotation says, in as many
-/// words, that "the three crops may all be invalid: that is three years of
-/// fallow, a legal rotation and not an empty order" (core_boundary/
-/// session.cpp). This function reads the same three invalid ids as "nobody
-/// has told this field anything". Both are defensible and they cannot both
-/// be right.
+/// THE TREE CARRIED THE OPPOSITE READING OF THESE THREE SLOTS FOR A DAY, and
+/// this is what the byte above was made for. The boundary's shape check for
+/// OrderKind::kSetRotation says, in as many words, that "the three crops may
+/// all be invalid: that is three years of fallow, a legal rotation and not an
+/// empty order", while this function had read the same three invalid ids as
+/// "nobody has told this field anything". Both are defensible and they cannot
+/// both be right.
 ///
-/// NOTHING BREAKS TODAY, and the date it does is knowable: only genesis
-/// writes three invalid slots, and it writes them for exactly the ground
-/// nobody has worked. The two readings meet the day OrderKind::kSetRotation
-/// gets a consumer — a player who deliberately orders three fallow years
-/// would have his field read here as never assigned, and it would stop being
-/// ploughed, stop recovering and stop being manured, which is the opposite
-/// of what he asked for.
+/// SO THE QUESTION STOPPED BEING INFERRED. It is answered by
+/// FieldRow::rotation_assigned, which genesis sets where the layout named a
+/// chain and SetRotation sets when the player names one. An empty slot means
+/// a fallow year in a chain that exists, and nothing at all in a field that
+/// has none — and the two are now different bits rather than the same three
+/// read two ways. Boss's ruling, 2026-09-12, the evening kSetRotation got
+/// its consumer and the reading would otherwise have started to matter.
 ///
-/// REPORTED RATHER THAN DECIDED (2026-09-12). Which of the two the design
-/// means is not the core's to settle quietly, and the fix is probably
-/// neither: a field that has been ASSIGNED wants to say so on its own,
-/// rather than being inferred from three empty slots by two readers who
-/// disagree about what empty means.
-/// @note IT ASKS "IS THERE AN ID HERE", not "does the roster know it". Every
-///       other slot test in core_production reads `value < config.crops.size()`,
-///       and the two cannot differ today: the crop vector is sized to the
-///       table's row count, genesis ids come from that same table, and a
-///       saved id is remapped to a live row or to the sentinel on the way
-///       in. They part the day something writes a slot without checking it
-///       against the roster — which is exactly what a consumer for
-///       OrderKind::kSetRotation would have to be careful of, and it has
-///       none yet. Then a field would read as "assigned" here and as fallow
-///       everywhere else, which is the worse half of the disagreement.
+/// @note IT NO LONGER ASKS ANYTHING ABOUT THE IDS, which closes a hazard the
+///       previous version carried in its own note: reading "is there an id
+///       here" would have parted company with core_production's `value <
+///       crops.size()` the day something wrote a slot without checking it
+///       against the roster. SetRotation is exactly that something, and it
+///       checks — every slot it writes is either invalid or a live crop row,
+///       refused otherwise — but this function no longer depends on that
+///       being true.
 inline bool HasRotation(const FieldRow& field) {
-  return field.rotation_year0.value != kInvalidDefIdValue ||
-         field.rotation_year1.value != kInvalidDefIdValue ||
-         field.rotation_year2.value != kInvalidDefIdValue;
+  return field.rotation_assigned != 0;
 }
 
 /// @brief Is this meadow in flower today?

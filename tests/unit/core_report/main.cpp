@@ -95,7 +95,8 @@ int main() {
   state.epoch = core::Epoch::kTwo;
   state.vitals.life_expectancy_years = 61.5F;
   core::FieldRow field;
-  field.rotation_year0 = core::CropId{0};  // a chain: this land is worked
+  field.rotation_year0 = core::CropId{0};
+  field.rotation_assigned = 1;  // a chain was GIVEN: this land is worked
   field.area_ga = 10.0F;
   field.fertility = 60.0F;
   core::AppendRow(state.fields, field);

@@ -7,28 +7,43 @@
 ///
 /// WHO WRITES, and what is wired TODAY. The step engine APPENDS issued rows
 /// and MARKS cancellations before phase 1, in arrival order (buffer-law
-/// rule 2, core_sim/step.h). The consuming half is wired for the
-/// construction kinds and only for those (project phase 2, task A2):
+/// rule 2, core_sim/step.h). The consuming half is wired for EVERY kind
+/// since 2026-09-12:
 /// THERE ARE THREE CONSUMERS NOW, all in sub-steps of the decisions slot
 /// (phase 3), and each settles its own kinds to kDone or kRefused IN THE
 /// STEP THE ROW IS READ — never to kAccepted or kActive, except where a kind
 /// says otherwise:
 ///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
 ///     kDemolishUnit, kRepairUnit;
-///   * core_production — kPauseUnit, kResumeUnit and kUnsealFund;
+///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund and
+///     kSetRotation;
 ///   * core_labor — kAssignWork, kReleaseWork, kAppoint and kDismiss, the
 ///     last two applied at the day's close rather than at once.
 /// The events slot (phase 6) then emits every terminal row's event and
 /// REMOVES the row, so the book is empty again by the end of the step that
-/// settled it. What is still unconsumed is kSetRotation, and the sweep
-/// refuses it with kNoConsumer rather than letting it accumulate.
+/// settled it.
+///
+/// NOTHING IS UNCONSUMED ANY MORE, and this paragraph named kSetRotation as
+/// the last one until 2026-09-12. It got its consumer that evening — the
+/// player's lever for telling a field what to grow, and the reason
+/// ninety-three of the start's hundred and sixty-three hectares had lain
+/// unworked through every thirty-year run the project had measured: work is
+/// opened off the rotation, and nothing could give a field one after genesis.
+///
+/// The sweep's kNoConsumer is not dead for that. It is the guard for a kind
+/// ADDED WITHOUT A CONSUMER, which is the mistake that otherwise leaves no
+/// trace at all — an order accepted, answered by nobody, and quietly gone.
 ///
 /// This paragraph said "wired for the construction kinds and only for those"
 /// until 2026-09-12, listing the pause verbs among the unconsumed while the
 /// kind entries below named core_production as their consumer — the file
 /// disagreeing with itself, which is how a reader comes away certain of the
 /// wrong half. A CONSUMER LIST IS A CONTRACT, and one short by two modules
-/// is the shape in which a fourth consumer lands unchallenged.
+/// is the shape in which a fourth consumer lands unchallenged. It was short
+/// by two kinds that morning and by one that evening — the delivery that
+/// gave kSetRotation a consumer announced the fact in the paragraph below
+/// and left the list two lines above unchanged (analysis, 0.17.96). A list
+/// repaired by hand stays short until the next reader counts it.
 /// Parallel phases never touch the table — an order is a structural fact,
 /// and structure changes only in sequential slots (buffer-law rule 6).
 ///
@@ -126,7 +141,14 @@ enum class OrderKind : std::uint8_t {
   kResumeUnit,
 
   /// Set the three-year rotation of `field` to rotation_year0..2 (farming
-  /// design §7). Consumer: core_production.
+  /// design §7). An empty slot is a FALLOW year and is a legal thing to
+  /// order — the field carries "somebody assigned me" apart from the slots
+  /// (land_state.h, rotation_assigned). Refused with kNoSuchSubject for a
+  /// field that is not there AND for a crop id outside this build's roster —
+  /// one code for two subjects, so the presentation cannot yet say which was
+  /// missing; splitting it is a second refusal value and a boss question.
+  /// Refused with kWrongLand for a meadow, which is mown where it grew and
+  /// is never sown at all. Consumer: core_production.
   kSetRotation,
 
   /// MARK a new unit of `unit_type` at `position`: pegs and string, the
@@ -337,6 +359,11 @@ enum class OrderRefusal : std::uint8_t {
   /// The refused order carries the field and the work kind already, so the
   /// presentation reads WHICH field and WHICH work off the order row and
   /// needs no dictionary from the core — the same shape as kGateClosed.
+  /// EXCEPT FOR ITS NEWEST CALLER: a kSetRotation row names a field and
+  /// carries WorkKind::kNone, so there the presentation has the field and
+  /// nothing else to read. The word "never" still fits — a meadow is mown
+  /// where it grew and can carry no sowing ever — but the sentence above
+  /// describes the work orders only (analysis, 0.17.96).
   kWrongLand,
 
   /// The district has not named this year's plan yet, so a SHARE of it does

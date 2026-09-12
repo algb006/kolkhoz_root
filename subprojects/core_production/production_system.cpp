@@ -529,6 +529,9 @@ class ProductionSystem final : public IProductionSystem {
         case OrderKind::kUnsealFund:
           Settle(order, UnsealFund(current, order));
           break;
+        case OrderKind::kSetRotation:
+          Settle(order, SetRotation(current, order));
+          break;
         default:
           break;  // not ours: another consumer's, or the events slot's refusal
       }
@@ -739,6 +742,78 @@ class ProductionSystem final : public IProductionSystem {
       released->resize(static_cast<std::size_t>(index) + 1U, 0);
     }
     (*released)[index] += order.amount;
+    return OrderRefusal::kNone;
+  }
+
+  /// @brief The player tells a field what to grow for three years.
+  ///
+  /// THE ONE DECISION THE CORE COULD NOT TAKE UNTIL NOW, and its absence is
+  /// why ninety-three of the start's hundred and sixty-three hectares lay
+  /// unworked through every thirty-year run this project has measured. Work
+  /// is opened off the rotation; a field with no chain has none opened; and
+  /// nothing anywhere could give a field a chain after genesis. The order
+  /// existed from the first day and had no consumer (order_state.h said so),
+  /// so the lever was drawn on the boundary and connected to nothing.
+  ///
+  /// A CHAIN, NOT A CROP. It sets the three seasons and never touches
+  /// `field.crop` — what is in the ground this minute is this year's sowing
+  /// and was settled when it went in.
+  ///
+  /// AND THE CHAIN IS LIVE THE SAME STEP IT SETTLES, not at the year's turn:
+  /// this runs in ConsumeOrders at the top of RunProductionDecisions and
+  /// RunFields runs at the bottom of the same call, so an idle arable field
+  /// sows from the new year0 the moment the month enters that crop's window,
+  /// and the autumn sowing reads the new year1 in the same August-September.
+  /// AnnouncePlan says the same thing about the norm and says it correctly.
+  /// A first draft of this comment claimed the opposite (analysis, 0.17.96);
+  /// deferring the chain to the year's turn would be a staged slot set
+  /// applied in RunYearStart — a code change and a boss question, not a
+  /// sentence.
+  ///
+  /// WHICH LEAVES SLOT ZERO ANCHORED TO THE CALENDAR YEAR, and nothing tells
+  /// the player so. RunYearStart rotates the three on 1 January, so a chain
+  /// laid out in November — which is when a chairman with a finished harvest
+  /// would lay one out — has its first named crop shifted into the third
+  /// slot before any sowing window opens. Asked of boss 2026-09-12; the core
+  /// is not deciding it quietly, it is writing the slots as the order names
+  /// them and the shift is the year's, not this order's.
+  ///
+  /// AN EMPTY SLOT IS A FALLOW YEAR, and it is only that because the FIELD
+  /// carries "somebody assigned me" apart from the slots. Without that byte
+  /// the same three invalid ids meant both "three fallow years" and "nobody
+  /// has told this field anything", which is the contradiction the boundary
+  /// and the production side each answered differently until 2026-09-12
+  /// (land_state.h, rotation_assigned).
+  ///
+  /// @return kNoSuchSubject for a field that is not there or a crop id that
+  ///         names no crop; kWrongLand for a meadow, which is mown where it
+  ///         grew and is never sown at all.
+  OrderRefusal SetRotation(WorldState& current, const OrderRow& order) const {
+    const std::uint32_t row = FindRow(current.fields, order.field);
+    if (row == kNoRow) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    FieldRow& field = current.fields.rows[row];
+    if (field.kind != LandKind::kArable) {
+      return OrderRefusal::kWrongLand;
+    }
+    // EVERY SLOT IS EITHER A CROP THIS BUILD KNOWS OR NOTHING AT ALL. An id
+    // that names no row is not a fallow year — it is a layer and a core
+    // disagreeing about the crop table, and writing it into the field would
+    // put a subject into the rotation that every reader of crop norms would
+    // then ask questions of. The boundary checks the SHAPE of an order and
+    // says so; the roster is this module's knowledge.
+    const std::array<CropId, 3> slots = {
+        order.rotation_year0, order.rotation_year1, order.rotation_year2};
+    for (const CropId slot : slots) {
+      if (slot.value != kInvalidDefIdValue && slot.value >= config_.crops.size()) {
+        return OrderRefusal::kNoSuchSubject;
+      }
+    }
+    field.rotation_year0 = slots[0];
+    field.rotation_year1 = slots[1];
+    field.rotation_year2 = slots[2];
+    field.rotation_assigned = 1;
     return OrderRefusal::kNone;
   }
 
