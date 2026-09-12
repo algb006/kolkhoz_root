@@ -16,6 +16,13 @@
 /// | never | will not reach the limit at the current rate | **asks again tomorrow** |
 /// | not applicable | the question does not exist here | **drops it for good** |
 /// | no data | a fair question, nothing to answer with | **shows nothing** |
+/// | overdue | the window CLOSED, this many days ago | shows it; never sorts on it |
+///
+/// The last is the odd one and was added on 2026-09-12: it carries a number
+/// like `days` and is not a deadline at all. A deadline says how long is
+/// left; this says how long ago it ran out, and the two must never meet in
+/// one comparison — which is exactly what happened when a single integer
+/// answered both (core_labor/assignment.h, the three tiers).
 ///
 /// "Never" and "not applicable" look alike and are not: a house that will
 /// not wear out at today's rate gets a deadline the moment somebody moves
@@ -51,6 +58,30 @@ enum class DeadlineKind : std::uint8_t {
   /// silence that reads as comfort.
   kNoData,
 
+  /// THE WINDOW HAS CLOSED, and `days` counts how long ago. A measurement
+  /// like kDays and not a refusal — which is why it takes a number — but it
+  /// is NOT A DEADLINE and must never be compared with one.
+  ///
+  /// It exists because a single integer had to answer two questions and
+  /// answered them with the same value (2026-09-12, labor_system.cpp): the
+  /// day-counter returned 0 both for "this closes today" and for "this
+  /// closed three months ago", and the work queue, ranking the smallest
+  /// first, therefore put work that can no longer produce anything ABOVE
+  /// work whose own window was closing. Measured on a village given all its
+  /// land at once: the team ploughed ground it could no longer sow, never
+  /// cut the hay, and the draught horses were gone by the fifth year.
+  ///
+  /// A SENTINEL THAT COINCIDES WITH A LEGAL EXTREME IS INVISIBLE TO EVERY
+  /// RANGE CHECK (architecture §8ву). Zero was inside the range, the test
+  /// for "burning today" stayed green, and on the shipped seventy hectares
+  /// the case never arises at all.
+  ///
+  /// AND OVERDUE WORK IS NOT RANKED BY HOW OVERDUE IT IS. Between two jobs
+  /// that both missed their window, age says nothing about which matters
+  /// more; ranking them by it would be the same defect turned round (boss,
+  /// 2026-09-12). The number is here to be SHOWN, not to be sorted on.
+  kOverdue,
+
   kDeadlineKindCount,
 };
 
@@ -58,7 +89,9 @@ enum class DeadlineKind : std::uint8_t {
 struct Deadline {
   DeadlineKind kind = DeadlineKind::kNoData;
 
-  /// Game days until the limit. Meaningful only for kDays, and 0 otherwise.
+  /// Game days. Meaningful for the two kinds that MEASURE something — kDays
+  /// counts forward to the limit, kOverdue counts back from the day a window
+  /// shut — and 0 for the three refusals, where it means nothing at all.
   std::int32_t days = 0;
 };
 
@@ -124,6 +157,13 @@ constexpr Deadline DeadlineNotApplicable() {
 /// as comfort.
 constexpr Deadline DeadlineNoData() {
   return Deadline{.kind = DeadlineKind::kNoData, .days = 0};
+}
+
+/// @brief The window closed `days` ago. Takes a number, like DeadlineInDays
+/// and unlike the three refusals, because it IS a measurement — of the wrong
+/// quantity to sort by, and the right one to show.
+constexpr Deadline DeadlineOverdue(std::int32_t days) {
+  return Deadline{.kind = DeadlineKind::kOverdue, .days = days < 0 ? 0 : days};
 }
 
 }  // namespace core

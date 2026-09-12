@@ -58,26 +58,34 @@
 namespace core {
 namespace {
 
-/// @brief Whole days left until the end of `month_end`, capped at 254 (255
-/// is the "no window" value of AssignmentJob).
-std::uint8_t DaysLeftInWindow(const CalendarState& calendar, std::uint8_t month_end) {
+/// @brief The window as a PAIR: open with days left, or closed with the days
+/// since (core_common/deadline.h).
+///
+/// THIS RETURNED A BARE COUNT UNTIL 2026-09-12, and the count answered two
+/// questions with the same value: 0 meant both "the window closes today" and
+/// "the window closed three months ago". The queue ranks the smallest first,
+/// so hopeless work outranked work that still mattered — measured on a
+/// village handed all its land at once: it ploughed ground it could no longer
+/// sow, never cut the hay, and lost its last draught horse in the fifth year.
+/// The counterfactual, the same line answering 254, brought that run back to
+/// fifty-two horses. Neither number was the repair: "closed" and "due today"
+/// want different KINDS of answer, and a number cannot carry a kind.
+/// BOTH COUNTS ARE WITHIN THE YEAR, and neither wraps: the day is taken
+/// modulo the year, so a window that shut in May reads as 200-odd days
+/// overdue in December and starts again from the new year. That is right for
+/// a ranking that only ever compares jobs of the same day, and it is written
+/// down because "overdue by N" invites being read as a history.
+///
+/// The open count is 0 on the window's LAST day — "closes today", the one
+/// honest zero — and the overdue count is 1 on the first day after, never 0:
+/// the two kinds carry numbers on different scales and share no value.
+Deadline WindowOf(const CalendarState& calendar, std::uint8_t month_end) {
   const std::uint32_t day_of_year = calendar.day % kDaysPerYear;
   const std::uint32_t window_end = (static_cast<std::uint32_t>(month_end) + 1U) * kDaysPerMonth;
   if (window_end <= day_of_year) {
-    // THE WINDOW HAS CLOSED, AND THIS ZERO IS UNDER QUESTION (2026-09-12).
-    // It says "as urgent as it gets", and OrderJobs ranks the smallest first,
-    // so work that can no longer produce anything this year outranks work
-    // whose window is still open. On the shipped seventy hectares it never
-    // shows. On a hundred and sixty-three it is a ratchet: the village goes
-    // on ploughing ground it can no longer sow, never cuts the hay, and the
-    // team starves — measured, and the counterfactual (this line returning
-    // 254) brings the same run back to fifty-two horses and a green arm.
-    // Reported to boss; the repair is his call, because "closed" and "due
-    // today" wanting different values is a design decision, not a typo.
-    return 0;
+    return DeadlineOverdue(static_cast<std::int32_t>(day_of_year - window_end) + 1);
   }
-  const std::uint32_t left = window_end - day_of_year - 1U;
-  return left > 254U ? 254U : static_cast<std::uint8_t>(left);
+  return DeadlineInDays(static_cast<std::int32_t>(window_end - day_of_year - 1U));
 }
 
 /// The two places the labour day is measured between live in
@@ -403,7 +411,22 @@ class LaborSystem final : public ILaborSystem {
         job.field = current.fields.row_ids[row];
         job.position = field.center;
         job.work_days_remaining = field.work_days_remaining;
-        job.window_days_left = FieldWindow(current.calendar, field, kind);
+        job.window = FieldWindow(current.calendar, field, kind);
+        // THE THIRD TIER IS NOT WIRED, AND THE REASON IS MEASURED. The rule
+        // asked for is "an overdue sowing is not offered at all" — seed put
+        // in after the window does not ripen (boss, 2026-09-12). Written as
+        // `kind == kSowing && window.kind == kOverdue`, it cost the first
+        // year NINE TENTHS OF ITS SOWING: 6.2 game man-days against 56, the
+        // harvest 197 against 280, five runs red.
+        //
+        // The reason is that the crop's `sow_to_month` is the window for
+        // OPENING the work, not for finishing it: ploughing and harrowing
+        // come first, so a field that opened in time routinely arrives at
+        // the sowing phase after the month has turned. The model has always
+        // let it finish — labor_year measures the overrun and prints it —
+        // and cutting the crew off at the month's edge abandons a crop that
+        // is all but in the ground. The tier needs a rule about the PHASE
+        // that was opened in time, not about the calendar alone; with boss.
         // The meadow cut rides out: horse mower, horse rake, hay carted home
         // (farming design §5; the start canon issues both implements). The
         // crop harvest stays hand work — sickles and scythes on the strips.
@@ -443,7 +466,7 @@ class LaborSystem final : public ILaborSystem {
         // Urgency is the load's own: before the snow it is the most urgent
         // thing in the village, in June it can wait. The window of the crop
         // that is lying there says which.
-        job.window_days_left = HaulWindow(current);
+        job.window = HaulWindow(current);
         jobs.push_back(job);
       }
     }
@@ -458,7 +481,10 @@ class LaborSystem final : public ILaborSystem {
       job.herd = current.herds.row_ids[row];
       job.position = position;
       job.work_days_remaining = herd.care_days_remaining;
-      job.window_days_left = 0;  // undone barn work expires tonight
+      // Undone barn work expires tonight: an open window with nothing left in
+      // it, which is what a zero under kDays means and the one honest use of
+      // that zero (deadline.h).
+      job.window = DeadlineInDays(0);
       jobs.push_back(job);
     }
     // Construction sites (task A2). The seam is the same shape as a field's,
@@ -503,25 +529,24 @@ class LaborSystem final : public ILaborSystem {
   /// urgent as work gets" — so through the whole of spring the carts
   /// outranked the plough and took every horse in the village. The load was
   /// indeed old; it was not due tonight.
-  std::uint8_t HaulWindow(const WorldState& current) const {
+  static Deadline HaulWindow(const WorldState& current) {
     const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
-    const std::uint32_t left = kDaysPerYear - day_of_year - 1U;
-    return left > 254U ? 254U : static_cast<std::uint8_t>(left);
+    return DeadlineInDays(static_cast<std::int32_t>(kDaysPerYear - day_of_year - 1U));
   }
 
-  /// Urgency of a field job: days until the crop's own window closes. The
+  /// Urgency of a field job: the crop's own window, open or closed. The
   /// crop is the one in the ground, or — while the field is still being
   /// prepared — the one the rotation plans for this year.
-  std::uint8_t FieldWindow(const CalendarState& calendar,
-                           const FieldRow& field,
-                           WorkKind kind) const {
+  Deadline FieldWindow(const CalendarState& calendar, const FieldRow& field, WorkKind kind) const {
     const CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
     if (crop.value >= config_.crops.size()) {
-      return 255;  // an unknown crop has no window; anything else outranks it
+      // FALLOW, OR A CROP THIS BUILD DOES NOT KNOW: no window to miss, and
+      // no claim on the hands ahead of work that has one.
+      return DeadlineNotApplicable();
     }
     const CropWindows& windows = config_.crops[crop.value];
-    return DaysLeftInWindow(
-        calendar, kind == WorkKind::kHarvest ? windows.harvest_to_month : windows.sow_to_month);
+    return WindowOf(calendar,
+                    kind == WorkKind::kHarvest ? windows.harvest_to_month : windows.sow_to_month);
   }
 
   /// @brief Whether this man could be put to work at all — THE SAME TEST

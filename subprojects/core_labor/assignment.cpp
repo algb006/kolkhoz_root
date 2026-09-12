@@ -18,12 +18,18 @@
 namespace core {
 namespace {
 
-/// Kind order at equal window urgency: the barn first, then the field work
-/// that loses most by waiting. The barn leads because its demand is small,
-/// daily and alive — an unfed cow is not a delayed job — and because the
-/// tie only ever happens when a field's window has ALSO run out, and then
-/// the reaping crew would otherwise swallow every hand in the village
-/// (found by the labor_year run: day 31 left the cows unserved).
+/// Kind order INSIDE A TIER: the barn first, then the field work that loses
+/// most by waiting. The barn leads because its demand is small, daily and
+/// alive — an unfed cow is not a delayed job — and because the reaping crew
+/// would otherwise swallow every hand in the village (found by the labor_year
+/// run: day 31 left the cows unserved).
+///
+/// WHAT THE TIE IS, SINCE 2026-09-12: barn care carries kDays 0 and so does a
+/// field whose window closes TODAY, and those are the two that meet here. A
+/// field whose window has already RUN OUT is kOverdue — a tier below both,
+/// and no longer a tie at all. This comment said "the tie only ever happens
+/// when a field's window has ALSO run out" while that was true, and the three
+/// tiers made it false the same evening.
 constexpr std::uint8_t KindPriority(WorkKind kind) {
   switch (kind) {
     case WorkKind::kHerdCare:
@@ -96,8 +102,9 @@ float TravelHours(const Vec2& home, const Vec2& place, float hours_per_km) {
   return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
 }
 
-/// Deterministic job order: urgency, then kind, then target id. Input
-/// position is the last resort only for degenerate duplicate targets.
+/// Deterministic job order: TIER first (window open, then overdue, then no
+/// window), and only inside a tier the days left, the kind and the target id.
+/// Input position is the last resort only for degenerate duplicate targets.
 std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
   std::vector<std::uint32_t> order;
   order.reserve(jobs.size());
@@ -106,11 +113,38 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
       order.push_back(index);
     }
   }
-  std::ranges::sort(order, [&jobs](std::uint32_t left, std::uint32_t right) {
+  // THREE TIERS, AND THEY ARE NOT ONE SCALE (boss, 2026-09-12). Work whose
+  // window is still open goes first and is ranked by the days it has left;
+  // then ALL the overdue work, whatever its age; then work that has no
+  // window at all. Between two overdue jobs the age of the miss is not a
+  // reason to prefer either, and sorting on it would be the defect of the
+  // single integer turned round rather than repaired: the plough that missed
+  // its window still has to turn the ground, and no arithmetic on how badly
+  // it missed makes that more or less true.
+  const auto tier = [](const AssignmentJob& job) {
+    switch (job.window.kind) {
+      case DeadlineKind::kDays:
+        return 0;
+      case DeadlineKind::kOverdue:
+        return 1;
+      default:
+        return 2;
+    }
+  };
+  std::ranges::sort(order, [&jobs, &tier](std::uint32_t left, std::uint32_t right) {
     const AssignmentJob& a = jobs[left];
     const AssignmentJob& b = jobs[right];
-    if (a.window_days_left != b.window_days_left) {
-      return a.window_days_left < b.window_days_left;
+    if (tier(a) != tier(b)) {
+      return tier(a) < tier(b);
+    }
+    // BOTH SIDES ASKED, not just the left one. Inside a tier the two kinds
+    // are always the same, so one test would do — until the tier above is
+    // edited, and then a comparator that reads a's kind and b's NUMBER gives
+    // a different answer depending on which argument the sort hands it
+    // first, which is not an ordering at all.
+    if (a.window.kind == DeadlineKind::kDays && b.window.kind == DeadlineKind::kDays &&
+        a.window.days != b.window.days) {
+      return a.window.days < b.window.days;
     }
     if (KindPriority(a.kind) != KindPriority(b.kind)) {
       return KindPriority(a.kind) < KindPriority(b.kind);

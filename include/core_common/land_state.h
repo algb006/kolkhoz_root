@@ -240,14 +240,57 @@ struct FieldRow {
   /// them side by side, and neither the sizeof nor the arity tripwire can
   /// see an order swap, because both numbers stay right (analysis, 0.17.96).
   ///
-  /// ONE-WAY BY CONSTRUCTION, and nothing in the tree sets it back to 0.
-  /// Genesis sets it from the layout, SetRotation sets it, the codec carries
-  /// it. A field told once is worked for ever; the nearest thing to taking
-  /// the decision back is an all-fallow chain, which is still ploughed,
-  /// recovered and manured every year (farming design §3). Whether releasing
-  /// a field is a decision the chairman should have is a design question and
-  /// is with boss (2026-09-12), not something this core decided quietly.
+  /// AND IT CLEARS AGAIN ON AN EMPTY CHAIN. A kSetRotation naming no crop at
+  /// all is the chairman taking his word back: the slots are cleared with the
+  /// byte and the field is ground nobody has spoken to again (boss's ruling,
+  /// 2026-09-12). It was one-way for one afternoon, and that was a trap — a
+  /// field told once would have been worked for ever, the nearest release
+  /// being an all-fallow chain which is still ploughed, recovered and
+  /// manured every year (farming design §3), so a layout mistake cost work
+  /// for the rest of the campaign. No new order kind carries the release:
+  /// the same door sets a chain and withdraws one.
+  ///
+  /// ONE OR TWO EMPTY SLOTS STILL MEAN FALLOW YEARS. The bit's whole job is
+  /// this difference and it survives the release rule: emptiness INSIDE a
+  /// chain is a rested season, emptiness of the WHOLE chain is no chain.
   std::uint8_t rotation_assigned = 0;
+
+  /// THE CHAIN'S FIRST SEASON HAS NOT BEEN USED YET, 0 or 1 — and while it
+  /// stands, the year's turn does not advance the three slots.
+  ///
+  /// The slots are a cycle and the turn advances it, so the chain a chairman
+  /// writes down would mean different years depending on the month he wrote
+  /// it. Boss's requirement of 2026-09-12: THE CROP HE NAMES FIRST IS THE ONE
+  /// THE NEXT SOWING PUTS IN THE GROUND. A chairman laying his three years
+  /// out in November, with the harvest in and time to think, must not find
+  /// his first crop in the third season for having given the order on time —
+  /// that is "do not punish the unforeseeable" lost to a calendar detail.
+  ///
+  /// SO THE MARK IS A FACT ABOUT THE CHAIN, NOT ABOUT THE MONTH. SetRotation
+  /// sets it on every chain it writes; OpenPlowing clears it, because that
+  /// call is the one place every use of a rotation passes through — this
+  /// year's crop, a fallow year's ploughing, and the autumn sowing of the
+  /// next slot's winter crop all open their work there. RunYearStart holds
+  /// the slots still while it stands and never clears it.
+  ///
+  /// A FIRST DRAFT ASKED THE CALENDAR INSTEAD — "was the first named crop's
+  /// window past when the order arrived" — and the analysis pass found three
+  /// reachable holes before it shipped: a field still carrying last year's
+  /// standing crop is not sown in April however open April is; an order
+  /// settling after the day's field walk misses a window that closes that
+  /// night; and a cold spring opens nothing at all. In each the month said
+  /// "there is still time", the ground said otherwise, and January carried
+  /// the chairman's first crop away. THE MONTH WAS A PROXY FOR THE QUESTION,
+  /// AND THE QUESTION IS ANSWERABLE DIRECTLY.
+  ///
+  /// WHAT IT DOES NOT DO, said rather than left to be found: a winter crop
+  /// standing LATER in the chain is still sown in the autumn that precedes
+  /// its year, because that is what a winter crop in a rotation means — and
+  /// that sowing is a use of the chain, so it spends the mark. A chain named
+  /// in August as (oats, winter rye, …) puts the rye in the ground that
+  /// September, and the turn that follows moves the rye into year0, where
+  /// the repeat guard in TrySow keeps it from going in twice.
+  std::uint8_t rotation_skips_turn = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
   /// growing (farming design §6).
@@ -415,11 +458,14 @@ struct FieldRow {
 ///
 /// THE TREE CARRIED THE OPPOSITE READING OF THESE THREE SLOTS FOR A DAY, and
 /// this is what the byte above was made for. The boundary's shape check for
-/// OrderKind::kSetRotation says, in as many words, that "the three crops may
-/// all be invalid: that is three years of fallow, a legal rotation and not an
-/// empty order", while this function had read the same three invalid ids as
-/// "nobody has told this field anything". Both are defensible and they cannot
-/// both be right.
+/// OrderKind::kSetRotation SAID, until the evening of 2026-09-12, that "the
+/// three crops may all be invalid: that is three years of fallow, a legal
+/// rotation and not an empty order", while this function had read the same
+/// three invalid ids as "nobody has told this field anything". Both were
+/// defensible and they could not both be right. The sentence is gone from
+/// session.cpp now — quoted here in the past tense, because a quotation in
+/// the present tense of words no longer in the tree is a promise the reader
+/// cannot check.
 ///
 /// SO THE QUESTION STOPPED BEING INFERRED. It is answered by
 /// FieldRow::rotation_assigned, which genesis sets where the layout named a

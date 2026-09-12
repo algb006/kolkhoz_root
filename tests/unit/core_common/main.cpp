@@ -797,6 +797,21 @@ int TestDeadlineRefusals() {
   failures += Expect(core::DeadlineInDays(-5).days == 0,
                      "a limit already passed is reported as today, not as a negative count");
 
+  // AND THE FIFTH ANSWER, WHICH IS A MEASUREMENT AND NOT A REFUSAL
+  // (2026-09-12). It carries a number like kDays and means the opposite: not
+  // "so long left" but "so long since the window shut". The whole reason it
+  // exists is that one integer was answering both questions with the same
+  // zero, and a work queue ranking the smallest first therefore put hopeless
+  // work above work that still mattered.
+  const core::Deadline late = core::DeadlineOverdue(30);
+  failures += Expect(late.kind == core::DeadlineKind::kOverdue && late.days == 30,
+                     "an overdue answer carries its own kind and the days since");
+  failures += Expect(late.kind != core::DeadlineKind::kDays,
+                     "and it is NOT a forecast: a reader switching on the kind cannot mistake "
+                     "'thirty days late' for 'thirty days left'");
+  failures += Expect(core::DeadlineOverdue(-5).days == 0,
+                     "and it clamps like the forecast does, for the same reason");
+
   // The default is the refusal that shows nothing, deliberately: an unfilled
   // field must not read as well-being.
   failures += Expect(core::Deadline{}.kind == core::DeadlineKind::kNoData,

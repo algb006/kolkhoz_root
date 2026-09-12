@@ -801,8 +801,14 @@ int main(int argc, char** argv) {
   // cheaper at an empty fodder fund (223.6 to 203.8 game man-days), and
   // the settlement's yearly mean fell from 67.54 to 64.84 — through a
   // threshold that had no ground to stand on either side of.
+  //
+  // AND IT ROSE AGAIN ON 12 SEPTEMBER, 64.8391647 to 68.361969, when the
+  // work queue stopped putting a closed window ahead of an open one: the
+  // ratchet follows the model up as well as down, or it stops catching the
+  // return. The same change cost a point on the leanest day below — the
+  // trade is named there.
   failures += ExpectNoLower(
-      good.mean_satiety, 64.8391647F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 68.361969F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -837,12 +843,22 @@ int main(int argc, char** argv) {
   failures += ExpectBand(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                          "and the settlement is not sliding year on year");
   // BAND WITHDRAWN, REGRESSION KEPT. The stage-6 criterion asked for 25 on
-  // the leanest day; the model gives 19.8146267 and has done since spoilage
+  // the leanest day; the model gives 18.5974369 and has done since spoilage
   // arrived. Whether 25 is the right thing to want is the model's question,
   // and it is boss's to schedule — so what is watched here is only that the
   // leanest day does not sink below what it already was.
+  //
+  // MOVED DOWN FROM 19.8146267 ON 2026-09-12, deliberately and with the
+  // cause: the day's work queue stopped ranking work whose window had CLOSED
+  // above work whose window was still open (assignment.h, the three tiers).
+  // The year's mean satiety rose by three and a half points in the same
+  // change — 64.8391647 to 68.361969 — and the leanest day fell by one and
+  // two tenths: the village now does the work that still pays and the peak
+  // of its hunger sits a little deeper. The ratchet moves only as a
+  // deliberate act with a stated cause, and both numbers stand here beside
+  // each other so the next reader can see the trade rather than the loss.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 19.8146267F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 18.5974369F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -857,8 +873,11 @@ int main(int argc, char** argv) {
                                               : 0.0F;
   failures += run::Expect(good.most_hungry_at_once < good.people,
                           "and hunger never takes the whole village at once");
+  // 0.862903237 until 2026-09-12, moved for the same reason as the leanest
+  // day above and in the same change: 107 of 122 instead of 107 of 124 — the
+  // count of the hungry did not move at all, the village did, by two people.
   failures += ExpectNoHigher(
-      hungry_share, 0.862903237F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.877049208F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -892,8 +911,11 @@ int main(int argc, char** argv) {
   // itself.
   failures += run::Expect(bad.leanest_day_satiety < good.leanest_day_satiety,
                           "and the lean season is worse without the issue");
+  // 0.778614044 until 2026-09-12, and it rose to 0.794485092 in the same
+  // change that moved the two records above: the queue's three tiers. The
+  // ratchet follows the model.
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            0.778614044F,
+                            0.794485092F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

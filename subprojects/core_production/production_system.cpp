@@ -489,10 +489,20 @@ class ProductionSystem final : public IProductionSystem {
         field.last_crop = CropId{};
         field.repeat_years = 0;
       }
-      const CropId shifted = field.rotation_year0;
-      field.rotation_year0 = field.rotation_year1;
-      field.rotation_year1 = field.rotation_year2;
-      field.rotation_year2 = shifted;
+      if (field.rotation_skips_turn != 0) {
+        // A CHAIN WHOSE FIRST SEASON HAS NOT BEEN USED STANDS STILL
+        // (land_state.h, rotation_skips_turn). The mark is NOT spent here: it
+        // is spent by the field, on the day work opens from the chain, and
+        // until then the turn may not carry year0 away. A chairman who laid
+        // his three years out in November finds the crop he named first in
+        // the season that is sown first — and so does one whose field was
+        // still carrying last year's rye when he gave the order.
+      } else {
+        const CropId shifted = field.rotation_year0;
+        field.rotation_year0 = field.rotation_year1;
+        field.rotation_year1 = field.rotation_year2;
+        field.rotation_year2 = shifted;
+      }
       // A perennial stand ends when the plan moves on (farming design §5).
       if (field.phase == FieldPhase::kGrowing && field.crop.value < config_.crops.size() &&
           config_.crops[field.crop.value].is_perennial &&
@@ -770,23 +780,62 @@ class ProductionSystem final : public IProductionSystem {
   /// applied in RunYearStart — a code change and a boss question, not a
   /// sentence.
   ///
-  /// WHICH LEAVES SLOT ZERO ANCHORED TO THE CALENDAR YEAR, and nothing tells
-  /// the player so. RunYearStart rotates the three on 1 January, so a chain
-  /// laid out in November — which is when a chairman with a finished harvest
-  /// would lay one out — has its first named crop shifted into the third
-  /// slot before any sowing window opens. Asked of boss 2026-09-12; the core
-  /// is not deciding it quietly, it is writing the slots as the order names
-  /// them and the shift is the year's, not this order's.
+  /// AND THE FIRST NAMED CROP IS THE ONE THE NEXT SOWING PUTS IN THE GROUND,
+  /// whatever month the order arrives (boss, 2026-09-12). RunYearStart
+  /// rotates the three slots on 1 January, so a chain written as named in
+  /// November — which is exactly when a chairman with a finished harvest
+  /// would lay one out — would have its first crop shifted into the third
+  /// slot before any window opened: THREE YEARS LATE FOR GIVING THE ORDER ON
+  /// TIME, and nothing would have told him. That is "do not punish the
+  /// unforeseeable" broken by a calendar detail.
   ///
-  /// AN EMPTY SLOT IS A FALLOW YEAR, and it is only that because the FIELD
-  /// carries "somebody assigned me" apart from the slots. Without that byte
-  /// the same three invalid ids meant both "three fallow years" and "nobody
-  /// has told this field anything", which is the contradiction the boundary
-  /// and the production side each answered differently until 2026-09-12
-  /// (land_state.h, rotation_assigned).
+  /// THE CHAIN IS WRITTEN AS NAMED AND THE TURN IS HELD UNTIL IT IS USED,
+  /// which is the third answer to this and the first that holds.
   ///
-  /// @return kNoSuchSubject for a field that is not there or a crop id that
-  ///         names no crop; kWrongLand for a meadow, which is mown where it
+  /// The first answer rotated the slots on the way in — write (c, a, b) and
+  /// let January bring a to the top — and had three reachable holes: a winter
+  /// crop in the LAST named slot landed in year0 and was sown that same
+  /// autumn ahead of the crop named first; "is spring over" asked the whole
+  /// crop table instead of the named crop; and an order settled on the year's
+  /// first day was rotated by the turn a few lines below it. Worse than any
+  /// of them, the field then held a chain the chairman's own order sheet did
+  /// not match.
+  ///
+  /// The second asked the CALENDAR — hold the turn if the first named crop's
+  /// window is past — and the analysis pass found that the month is only a
+  /// proxy: a field carrying a standing crop, an order settling after the
+  /// day's field walk, and a cold spring all leave the ground unsown while
+  /// the month says there is time.
+  ///
+  /// So the slots go in exactly as ordered, FieldRow::rotation_skips_turn is
+  /// set on every chain written here, and the FIELD spends it when work opens
+  /// from the chain (OpenPlowing). The turn holds while it stands. A chain
+  /// whose first season is used the same year — a spring order, or a winter
+  /// crop named first in August — turns with everything else.
+  ///
+  /// AN EMPTY SLOT IS A FALLOW YEAR, AND THREE OF THEM ARE THE CHAIRMAN
+  /// TAKING HIS WORD BACK (boss, 2026-09-12). One or two empty slots in a
+  /// chain are fallow years and the field is worked; all three empty and the
+  /// field goes back to "nobody has told it anything" — `rotation_assigned`
+  /// is cleared. The alternative was a field told once and worked for ever,
+  /// whose nearest release was an all-fallow chain that is still ploughed,
+  /// recovered and manured every year: a layout mistake costing work for the
+  /// rest of the campaign, against "a planning mistake must not cost the
+  /// game". No new order kind for it — the door is this one.
+  ///
+  /// WHAT THE RELEASE DOES NOT TOUCH, and it is worth saying because the
+  /// word "release" sounds wider than the act: work already opened on the
+  /// field runs to its end. The phase machine keys off `field.phase` and
+  /// `field.crop`, both settled when the ploughing opened, so a field
+  /// released mid-season is still harrowed, sown, grown and reaped, and the
+  /// manure already spread stays in the ground. Only the NEXT year finds no
+  /// chain to open. Taking the standing work back would be a second decision
+  /// — abandoning a sown field — and this order does not carry it.
+  ///
+  /// @return kNoSuchSubject for a field that is not there; kNoSuchCrop for a
+  ///         slot naming a crop this build's table does not carry — two
+  ///         cases with two repairs, which is why they are two words since
+  ///         2026-09-12; kWrongLand for a meadow, which is mown where it
   ///         grew and is never sown at all.
   OrderRefusal SetRotation(WorldState& current, const OrderRow& order) const {
     const std::uint32_t row = FindRow(current.fields, order.field);
@@ -803,17 +852,40 @@ class ProductionSystem final : public IProductionSystem {
     // put a subject into the rotation that every reader of crop norms would
     // then ask questions of. The boundary checks the SHAPE of an order and
     // says so; the roster is this module's knowledge.
-    const std::array<CropId, 3> slots = {
+    std::array<CropId, 3> slots = {
         order.rotation_year0, order.rotation_year1, order.rotation_year2};
+    std::uint32_t named = 0;
     for (const CropId slot : slots) {
-      if (slot.value != kInvalidDefIdValue && slot.value >= config_.crops.size()) {
-        return OrderRefusal::kNoSuchSubject;
+      if (slot.value == kInvalidDefIdValue) {
+        continue;
       }
+      if (slot.value >= config_.crops.size()) {
+        return OrderRefusal::kNoSuchCrop;
+      }
+      ++named;
+    }
+    if (named == 0) {
+      // THE WORD TAKEN BACK, and the slots are cleared with the byte: a
+      // released field must not keep the crops of the chain it no longer
+      // has, or TrySow would sow from a rotation nobody owns.
+      field.rotation_year0 = CropId{};
+      field.rotation_year1 = CropId{};
+      field.rotation_year2 = CropId{};
+      field.rotation_assigned = 0;
+      // And the standing turn goes with them: a field with no chain has no
+      // phase to hold still, and a bit left set would spend itself on
+      // whatever chain the next order writes.
+      field.rotation_skips_turn = 0;
+      return OrderRefusal::kNone;
     }
     field.rotation_year0 = slots[0];
     field.rotation_year1 = slots[1];
     field.rotation_year2 = slots[2];
     field.rotation_assigned = 1;
+    // A FRESH CHAIN HAS NOT USED ITS FIRST SEASON YET, and that — not the
+    // month — is what the mark says (land_state.h, rotation_skips_turn). It
+    // is cleared by the field itself, the moment work opens from the chain.
+    field.rotation_skips_turn = 1;
     return OrderRefusal::kNone;
   }
 

@@ -79,8 +79,16 @@ static_assert(AggregateArity<FamilyRow>() == 15,
 // padding the row already had and moved nothing; `rotation_assigned` did not,
 // and took the row from 80 to 88 — eight bytes for one, because it opened a
 // fresh alignment slot.
+//
+// AND A THIRD BYTE ON THE SAME DAY, rotation_skips_turn, WHICH THE SIZE DID
+// NOT SEE AT ALL: 88 before and 88 after, because it landed in the padding
+// the second byte had opened. The field count caught it alone, and it is the
+// plainest argument yet for keeping the two asserts side by side rather than
+// choosing between them. (No tally of how often that has happened: the
+// running count above was written when it was true and is the kind of number
+// that ages beside a rule without anybody noticing.)
 static_assert(sizeof(FieldRow) == 88, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 26,
+static_assert(AggregateArity<FieldRow>() == 27,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -417,6 +425,13 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // hectare comes back as three fallow years — ploughed, recovered and
   // manured for ever after.
   out.WriteU8(row.rotation_assigned);
+  // AND WHETHER THE COMING YEAR'S TURN SKIPS THIS FIELD, once. A chain
+  // written for the year that is starting stands still at that turn so the
+  // crop the chairman named first is the one the next sowing puts in
+  // (land_state.h). Lose it on a round trip and a campaign saved in November
+  // and loaded in December sows the chairman's SECOND crop — silently, and
+  // with his own order sheet in front of him saying otherwise.
+  out.WriteU8(row.rotation_skips_turn);
   // Drought and waterlogging, apart. One number could not say which, and
   // the two are cured by opposite things (boss, 2026-09-04).
   out.WriteFloat(row.drought_stress);
@@ -482,6 +497,10 @@ FieldRow ReadFieldRow(LoadSource& source) {
   // byte here would not merely paint weeds, it would decide whether ninety
   // three hectares are farmed.
   row.rotation_assigned = in.ReadU8() != 0 ? 1U : 0U;
+  // Narrowed like its two neighbours, and read raw it would decide whether a
+  // year's rotation happens at all — the one write in the core that the
+  // player can see in his own order sheet.
+  row.rotation_skips_turn = in.ReadU8() != 0 ? 1U : 0U;
   row.drought_stress = in.ReadFloat();
   row.wet_stress = in.ReadFloat();
   row.drought_run_days = in.ReadU8();

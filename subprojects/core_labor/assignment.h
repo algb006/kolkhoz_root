@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/deadline.h"
 #include "core_common/geometry.h"
 #include "core_common/labor_state.h"
 #include "core_common/quantities.h"
@@ -63,12 +64,28 @@ struct AssignmentJob {
   /// pool, like ploughing.
   bool harnessed = false;
 
-  /// Whole days until this job's calendar window closes (sowing window,
-  /// harvest before snow). Smaller = more urgent; the placement fills
-  /// urgent jobs first. Daily work that expires tonight — barn care —
-  /// passes 0; windowless seasonal work passes 255. At equal urgency the
-  /// kind decides (care > harvest > sowing > plowing > harrowing).
-  std::uint8_t window_days_left = 255;
+  /// THIS JOB'S CALENDAR WINDOW, as a PAIR — the kind of answer and, where
+  /// there is one, the number (core_common/deadline.h).
+  ///
+  /// | kDays, N | the window is open and closes in N days; 0 is "today" |
+  /// | kOverdue, N | it closed N days ago — NOT a deadline, and never
+  ///   compared with one |
+  /// | kNotApplicable | no window at all: a building site |
+  ///
+  /// THE PLACEMENT FILLS IN THREE TIERS, and they are tiers and not numbers
+  /// on one scale (boss, 2026-09-12): everything with an open window first,
+  /// by days; then ALL the overdue work, in no particular order of its own,
+  /// because between two jobs that both missed their window the age of the
+  /// miss says nothing; then the windowless. Inside a tier the kind decides
+  /// (care > harvest > sowing > plowing > harrowing), then the target id.
+  ///
+  /// A bare `std::uint8_t window_days_left` stood here until 2026-09-12,
+  /// with 0 meaning "burning today" AND "closed months ago", and 255 meaning
+  /// "no window". The queue put hopeless work first for as long as it
+  /// existed, and no range check could see it: the sentinel WAS a legal
+  /// value. Daily work that expires tonight — barn care — still passes
+  /// kDays with 0, which is the one honest use of that zero.
+  Deadline window = DeadlineNotApplicable();
 };
 
 /// @brief One available worker, in placement terms.

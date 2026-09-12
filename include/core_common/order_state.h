@@ -142,13 +142,14 @@ enum class OrderKind : std::uint8_t {
 
   /// Set the three-year rotation of `field` to rotation_year0..2 (farming
   /// design §7). An empty slot is a FALLOW year and is a legal thing to
-  /// order — the field carries "somebody assigned me" apart from the slots
-  /// (land_state.h, rotation_assigned). Refused with kNoSuchSubject for a
-  /// field that is not there AND for a crop id outside this build's roster —
-  /// one code for two subjects, so the presentation cannot yet say which was
-  /// missing; splitting it is a second refusal value and a boss question.
-  /// Refused with kWrongLand for a meadow, which is mown where it grew and
-  /// is never sown at all. Consumer: core_production.
+  /// order; ALL THREE EMPTY is the chairman taking his word back, and the
+  /// field goes back to unassigned (land_state.h, rotation_assigned). The
+  /// crop named FIRST is the one the next sowing puts in the ground, whatever
+  /// month the order arrives — the chain is a cycle and the consumer sets its
+  /// phase. Refused with kNoSuchSubject for a field that is not there,
+  /// kNoSuchCrop for a slot naming a crop this build does not carry, and
+  /// kWrongLand for a meadow, which is mown where it grew and is never sown
+  /// at all. Consumer: core_production.
   kSetRotation,
 
   /// MARK a new unit of `unit_type` at `position`: pegs and string, the
@@ -392,6 +393,29 @@ enum class OrderRefusal : std::uint8_t {
   /// difficulty and irritation (root rules §7 — a problem must be
   /// preventable, and an unintelligible one cannot be).
   kNoPlanYet,
+
+  /// A slot of a rotation names a crop this build's table does not carry.
+  ///
+  /// SPLIT OFF kNoSuchSubject ON 2026-09-12, and for the reason kGateClosed
+  /// and kWrongLand have names of their own: THE TWO CASES HAVE DIFFERENT
+  /// REPAIRS. No such field — choose another field. No such crop — choose
+  /// another crop. One code answering for both tells the chairman that
+  /// something was missing and leaves him to guess which, which is "do not
+  /// punish the unforeseeable" turned inside out (root rules §7).
+  ///
+  /// THE ORDER ROW CARRIES ALL THREE SLOTS AND THE REFUSAL NAMES NO ONE OF
+  /// THEM. The presentation can say "one of these crops is not in this
+  /// build" and can find it by checking the three against its own copy of
+  /// crops.csv, which is exactly the check the core just made — but the core
+  /// does not hand it the answer. Naming the slot would be a field on the
+  /// refusal, and nothing has asked for one yet.
+  ///
+  /// IT IS A LAYER AND A CORE DISAGREEING ABOUT THE CROP TABLE, never a
+  /// player's mistake: the boundary checks the SHAPE of an order and the
+  /// roster is core_production's knowledge. An empty slot is not this — it
+  /// is a fallow year, and three of them are the chairman taking his word
+  /// back (land_state.h, rotation_assigned).
+  kNoSuchCrop,
 
   // A REFUSAL APPENDED HERE NEEDS NOTHING DONE IN core_save: kMaxOrderRefusal
   // is derived from the count below and raises itself. This comment used to

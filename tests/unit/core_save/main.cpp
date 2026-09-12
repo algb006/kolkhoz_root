@@ -198,6 +198,11 @@ core::WorldState MakeWorld() {
   field.wet_run_days = 0;
   field.weather_state = core::FieldWeatherState::kDrying;
   field.rotation_assigned = 1;  // this one was told what to grow
+  // ...and told in the autumn, so the coming year's turn leaves its chain
+  // standing. Set on the SAME row as rotation_assigned on purpose: the two
+  // bytes sit side by side in the row and in the stream, and a codec that
+  // wrote one of them twice would pass a fixture that set only one.
+  field.rotation_skips_turn = 1;
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -497,10 +502,16 @@ int main() {
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
   // crop slots beside it cannot say: an empty slot in a chain that exists is
   // a fallow year, and the same emptiness in a field nobody assigned is
-  // nothing at all. Lose this byte and every unworked hectare comes back as
-  // three fallow years — ploughed, recovered and manured for ever after.
+  // nothing at all. Lose this byte and every unworked hectare comes back
+  // farmed — ploughed, recovered and manured for ever after.
   failures += Expect(loaded.fields.rows[0].rotation_assigned == 1,
                      "a field that was given a chain comes back holding one");
+  failures += Expect(loaded.fields.rows[0].rotation_skips_turn == 1,
+                     "and the held turn comes back held: a campaign saved in November and "
+                     "loaded in December still sows the crop the chairman named first");
+  failures += Expect(loaded.fields.rows[2].rotation_skips_turn == 0,
+                     "while a field that never asked for one comes back turning normally — the "
+                     "pair a codec writing a constant would fail on");
   failures += Expect(loaded.fields.rows[2].rotation_assigned == 0,
                      "and ground nobody assigned comes back unassigned, not as three fallow "
                      "years — a codec writing a constant would satisfy one of these two");

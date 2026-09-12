@@ -218,6 +218,14 @@ void OpenPlowing(const ProductionConfig& config,
                  FieldRow& field,
                  CropId crop) {
   field.crop = crop;
+  // AND THE CHAIN'S FIRST SEASON IS SPENT HERE, which is the one place every
+  // way of using a rotation passes through: this year's crop, a fallow year's
+  // ploughing, and the autumn sowing of the next slot's winter crop all open
+  // their work by this call. Until it happens the year's turn holds the chain
+  // still (land_state.h, rotation_skips_turn), so a chairman's first named
+  // crop cannot be carried away by a January that arrived while his field was
+  // busy, or cold, or already sown.
+  field.rotation_skips_turn = 0;
   // AND THE WEEDS GO WITH THE FIRST FURROW. "Одна вспашка возвращает всё
   // назад. Ступень сбрасывается сразу" (farming design) — a black field
   // looks like a black field however many years it stood. The byte was set
@@ -425,12 +433,13 @@ void TrySow(const ProductionConfig& config,
     // ANYTHING. The player gives each field a chain of three seasons, crop or
     // fallow (farming design §7); a field that has never been ASSIGNED one is
     // the one meant here — FieldRow::rotation_assigned, and no longer inferred
-    // from the slots, because since 2026-09-12 three empty slots on an
-    // assigned field are three deliberate fallow years and are ploughed. The
-    // start hands over ninety-three hectares that were never assigned at all. Ploughing them would
-    // be the core making the player's decision for him — and it would cost the village about a
-    // hundred and fifty man-days a year nobody asked for, which is defect D11
-    // under a new name. It became reachable on 2026-09-12, when
+    // from the slots: emptiness INSIDE a chain is a rested season and this
+    // guard lets it through, emptiness of the whole chain is the chairman
+    // withdrawing his word and clears the byte (SetRotation). The start hands
+    // over ninety-three hectares that were never assigned at all. Ploughing
+    // them would be the core making the player's decision for him — and it
+    // would cost the village about a hundred and fifty man-days a year nobody
+    // asked for, which is defect D11 under a new name. It became reachable on 2026-09-12, when
     // LandKind::kDerelict went and that ground stopped being skipped whole.
     //
     // HasRotation asks it in one place for every asker (land_state.h).

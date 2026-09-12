@@ -58,7 +58,15 @@ namespace {
 ///
 /// A window too short to reach a state is the same defect as a list built
 /// from the output: both can only confirm what they already contain.
-constexpr std::uint32_t kYears = 5;
+///
+/// AND SIX SINCE 2026-09-12, for the second time and by the same reasoning.
+/// The day's work queue stopped ranking work whose window had closed above
+/// work whose window was still open (assignment.h, the three tiers), the
+/// hands spread differently again, and the first walk-offs moved from the
+/// fifth year to the sixth: measured on tests/run/idle_curve, 0 man-hours of
+/// truancy through year five and 1198 in year six. The waiver was not
+/// touched — the state is reachable, the window was short.
+constexpr std::uint32_t kYears = 6;
 
 /// The names, in enum order, for the roll-call to print. Kept beside the
 /// enum rather than read from the table on purpose: the roster the check

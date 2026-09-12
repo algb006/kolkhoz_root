@@ -112,8 +112,17 @@ bool ShapeIsValid(const OrderRow& order) {
       // disagree.
       return has_resident;
     case OrderKind::kSetRotation:
-      // The three crops may all be invalid: that is three years of fallow,
-      // a legal rotation and not an empty order.
+      // The three crops may all be invalid, and that is the chairman TAKING
+      // HIS WORD BACK: the field goes back to ground nobody has spoken to
+      // (boss, 2026-09-12; production_system.cpp SetRotation). One or two
+      // empty slots are fallow years inside a chain that stands. Either way
+      // it is a well-formed order and the shape check has nothing to say —
+      // which crop ids exist is the consumer's roster, not the shape.
+      //
+      // This comment said "three years of fallow, a legal rotation" until
+      // that evening, and the production side read the same three ids as
+      // "nobody has told this field anything". Both were defensible, both
+      // were in the tree, and the order had no consumer to make them differ.
       return has_field;
     case OrderKind::kBuildUnit:
       // The position is NOT checked against the map: what is a buildable

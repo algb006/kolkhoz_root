@@ -57,7 +57,7 @@ core::AssignmentJob FieldJob(core::WorkKind kind,
   job.field = core::FieldId{field_id};
   job.position = position;
   job.work_days_remaining = work_days;
-  job.window_days_left = window_days;
+  job.window = core::DeadlineInDays(window_days);
   return job;
 }
 
@@ -457,9 +457,16 @@ int TestLaborTableParsing() {
   return failures;
 }
 
-/// The barn leads the field at equal urgency: on a day when the harvest
-/// window has run out too, the reaping crew must not swallow every hand.
-int TestBarnLeadsTheClosedWindow() {
+/// The barn leads the field at equal urgency: on the day the harvest window
+/// closes, the reaping crew must not swallow every hand.
+///
+/// THE NAME SAID "CLOSED WINDOW" AND THE FIXTURE MEANT "CLOSING TODAY", and
+/// the two were the same number until 2026-09-12 — which is the conflation
+/// the three tiers exist to end. Both jobs here carry kDays 0: a window that
+/// shuts tonight, for the field, and work that expires tonight, for the barn.
+/// An overdue harvest is a tier below and cannot reach this comparison at
+/// all; that case is TestTheQueueRanksInTiers.
+int TestBarnLeadsTheDayTheWindowShuts() {
   int failures = 0;
   const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
   const std::vector<core::AssignmentJob> jobs = {
@@ -469,7 +476,7 @@ int TestBarnLeadsTheClosedWindow() {
         care.kind = core::WorkKind::kHerdCare;
         care.herd = core::HerdId{7};
         care.work_days_remaining = 1.0F;
-        care.window_days_left = 0;
+        care.window = core::DeadlineInDays(0);
         return care;
       }(),
   };
@@ -483,6 +490,73 @@ int TestBarnLeadsTheClosedWindow() {
     on_barn += job == 1 ? 1 : 0;
   }
   failures += Expect(on_barn >= 1, "somebody feeds the cows even at the peak of the harvest");
+  return failures;
+}
+
+/// THE THREE TIERS OF THE DAY'S QUEUE (boss, 2026-09-12): an open window
+/// first, then everything overdue, then work with no window at all.
+///
+/// The defect this is the guard for cost a village its horses. A closed
+/// window and a window closing today were the same number — zero — and the
+/// queue ranks the smallest first, so ground that could no longer be sown
+/// took the hands off the hay that still could be cut. The counted proof is
+/// that the crew goes to the OPEN window with plenty of days left rather than
+/// to the overdue job, which is the opposite of what the old rule did.
+int TestTheQueueRanksInTiers() {
+  int failures = 0;
+  const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
+  // THE KINDS ARE CHOSEN SO THAT ONLY THE TIER CAN EXPLAIN THE ANSWER. The
+  // overdue job is a HARVEST and the open one a SOWING, and the kind
+  // tiebreaker ranks harvest above sowing — so a comparator that had merely
+  // swapped the numbers round, or lost the tier and fallen through to the
+  // kind, would send the crew to the harvest. A first draft had it the other
+  // way about and stayed green with the tiers taken out: it was measuring
+  // the kind order and reading it as the tier rule. (And neither job is
+  // horse work, because this fixture's day has no horses at all: a ploughing
+  // here would be skipped for want of one and prove nothing either way.)
+  core::AssignmentJob overdue = FieldJob(core::WorkKind::kHarvest, 1, origin, 40.0F, 0);
+  overdue.window = core::DeadlineOverdue(30);
+  core::AssignmentJob open_window = FieldJob(core::WorkKind::kSowing, 2, origin, 40.0F, 20);
+  core::AssignmentJob windowless = FieldJob(core::WorkKind::kConstruction, 3, origin, 40.0F, 0);
+  windowless.window = core::DeadlineNotApplicable();
+  const std::vector<core::AssignmentJob> jobs = {overdue, open_window, windowless};
+  std::vector<core::AssignmentCandidate> candidates;
+  for (std::uint32_t row = 0; row < 4; ++row) {
+    candidates.push_back(Worker(row, origin));
+  }
+  const auto plan = core::PlanDayAssignments(jobs, candidates, DayParams());
+  std::uint32_t on_open = 0;
+  std::uint32_t on_overdue = 0;
+  std::uint32_t on_windowless = 0;
+  for (const std::uint32_t job : plan) {
+    on_open += job == 1 ? 1 : 0;
+    on_overdue += job == 0 ? 1 : 0;
+    on_windowless += job == 2 ? 1 : 0;
+  }
+  failures += Expect(on_open == candidates.size(),
+                     "work whose window is still open takes the whole crew before work whose "
+                     "window has closed — twenty days left outrank thirty days late");
+  failures += Expect(on_overdue == 0 && on_windowless == 0,
+                     "and neither the overdue job nor the windowless one gets a hand while the "
+                     "open one still wants them");
+
+  // AND BETWEEN TWO OVERDUE JOBS THE AGE OF THE MISS DECIDES NOTHING. Rank
+  // them by it and the same defect comes back facing the other way: a field
+  // three hundred days late would outrank one two hundred and fifty days
+  // late, which is true by arithmetic and meaningless on the ground.
+  core::AssignmentJob late = FieldJob(core::WorkKind::kPlowing, 4, origin, 1.0F, 0);
+  late.window = core::DeadlineOverdue(300);
+  core::AssignmentJob later = FieldJob(core::WorkKind::kHarvest, 5, origin, 1.0F, 0);
+  later.window = core::DeadlineOverdue(2);
+  const std::vector<core::AssignmentJob> overdue_pair = {late, later};
+  const auto pair_plan = core::PlanDayAssignments(overdue_pair, candidates, DayParams());
+  std::uint32_t on_harvest = 0;
+  for (const std::uint32_t job : pair_plan) {
+    on_harvest += job == 1 ? 1 : 0;
+  }
+  failures += Expect(on_harvest >= 1,
+                     "between two overdue jobs the KIND decides, not the age of the miss: the "
+                     "harvest two days late is served though the ploughing is three hundred");
   return failures;
 }
 
@@ -1676,7 +1750,8 @@ int main() {
   failures += TestWalkOffPaysAndStops();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestLaborTableParsing();
-  failures += TestBarnLeadsTheClosedWindow();
+  failures += TestBarnLeadsTheDayTheWindowShuts();
+  failures += TestTheQueueRanksInTiers();
   failures += TestPostTablesParse();
   failures += TestAppointmentTakesEffectAtTheDayClose();
   failures += TestAppointmentRefusals();

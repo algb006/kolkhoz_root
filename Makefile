@@ -87,7 +87,18 @@ clean:
 distclean:
 	rm -rf $(BUILD_DIR)
 
-test: build
+# THE GATES RUN BEFORE THE SUITE, and that is the whole of their teeth.
+#
+# `check-tests` was red from 0.17.82 through 0.17.95 — fourteen deliveries —
+# and not one of them stopped, because nothing depended on its exit code: it
+# was a target somebody had to remember. A check whose failure stops nothing
+# is a sign, not a guard (architecture §8вс), and the repair is not attention
+# but a DEPENDENCY. Now `make test` cannot be green while the module roster,
+# the include discipline, the boundary enums, the exported tables or the
+# event sites are wrong.
+#
+# The cost is seconds; the alternative was fourteen deliveries.
+test: build check-tests
 	ctest --test-dir $(BUILD_DIR) --output-on-failure -j $(JOBS)
 
 # Only the obligatory per-module tests, without the long simulation runs.

@@ -2886,6 +2886,27 @@ int CheckTheChairmanSetsARotation() {
     return current;
   };
 
+  // A SECOND ORDER ON A WORLD THAT ALREADY RAN ONE: the release case needs a
+  // field that was told something first, and telling it is the other lambda's
+  // job. The order book is emptied by the events slot, which is not run here,
+  // so the fresh row is appended and read on the next step.
+  const auto order_again = [&](core::WorldState world, std::array<core::CropId, 3> slots) {
+    world.orders.rows.clear();
+    world.orders.row_ids.clear();
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = world.fields.row_ids[0];
+    order.rotation_year0 = slots[0];
+    order.rotation_year1 = slots[1];
+    order.rotation_year2 = slots[2];
+    core::AppendRow(world.orders, order);
+    core::WorldState current = world;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(world, current);
+    return current;
+  };
+
   // -- the chain lands on the field ----------------------------------------
   {
     const core::WorldState after =
@@ -2901,26 +2922,30 @@ int CheckTheChairmanSetsARotation() {
                        "and the field now says it HAS been told, which is a fact of its own");
   }
 
-  // -- THREE FALLOW YEARS ARE A ROTATION, and this is the whole reason the
-  //    field carries "assigned" apart from the slots --------------------------
+  // -- AN EMPTY CHAIN IS THE CHAIRMAN TAKING HIS WORD BACK -------------------
   //
-  // The boundary has always said so — "the three crops may all be invalid:
-  // that is three years of fallow, a legal rotation and not an empty order" —
-  // while the production side read the same three invalid ids as "nobody has
-  // told this field anything". Both are defensible and they cannot both be
-  // right, and the day this order got a consumer was the day it mattered: a
-  // chairman who deliberately rested a field for three years would have had
-  // it stop being ploughed, recovered and manured, which is the opposite of
-  // what he asked for.
+  // Boss's ruling of 2026-09-12, and the door is this order rather than a
+  // new kind. One or two empty slots are fallow YEARS and the field stays
+  // worked (asserted above, gap and all); all three empty and the field goes
+  // back to ground nobody has spoken to. Without it a field told once was
+  // worked for ever — the nearest release being an all-fallow chain, which
+  // is still ploughed, recovered and manured every year — so a layout
+  // mistake cost work for the rest of the campaign.
   {
-    const core::WorldState after =
-        order_rotation(core::LandKind::kArable, {core::CropId{}, core::CropId{}, core::CropId{}});
-    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
-                       "three fallow years are an order and not an empty one");
-    failures +=
-        Expect(core::HasRotation(after.fields.rows[0]),
-               "and the field reads as ASSIGNED, not as ground nobody has spoken to — the two "
-               "were the same three invalid ids until they became two different bits");
+    const core::WorldState after = order_rotation(core::LandKind::kArable, {oat, oat, oat});
+    failures += Expect(core::HasRotation(after.fields.rows[0]), "a field told what to grow");
+    const core::WorldState released =
+        order_again(after, {core::CropId{}, core::CropId{}, core::CropId{}});
+    failures += Expect(released.orders.rows[0].status == core::OrderStatus::kDone,
+                       "an empty chain is an order and not a malformed one");
+    const core::FieldRow& field = released.fields.rows[0];
+    failures += Expect(!core::HasRotation(field),
+                       "and the field is released: told once is no longer told for ever");
+    failures += Expect(field.rotation_year0.value == core::kInvalidDefIdValue &&
+                           field.rotation_year1.value == core::kInvalidDefIdValue &&
+                           field.rotation_year2.value == core::kInvalidDefIdValue,
+                       "and the slots go with the byte — a released field keeps no crops of the "
+                       "chain it no longer has");
   }
 
   // -- a meadow is mown where it grew and is never sown ---------------------
@@ -2940,11 +2965,211 @@ int CheckTheChairmanSetsARotation() {
   {
     const core::WorldState after = order_rotation(
         core::LandKind::kArable, {oat, core::CropId{static_cast<std::uint16_t>(60000)}, oat});
-    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNoSuchSubject,
-                       "a crop this build has never heard of is refused");
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNoSuchCrop,
+                       "a crop this build has never heard of is refused, and refused by its own "
+                       "word: 'no such field' and 'no such crop' have different repairs");
     failures += Expect(!core::HasRotation(after.fields.rows[0]),
                        "and NOTHING of the order is written — the first slot was valid and it "
                        "is not in the field either");
+  }
+
+  // -- a field that is not there is still kNoSuchSubject --------------------
+  //
+  // The other half of the split: one code for both was the defect, and a
+  // test that only checked the new word would not notice the old one going
+  // with it.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = core::FieldId{4242};
+    order.rotation_year0 = oat;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.orders.rows[0].refusal == core::OrderRefusal::kNoSuchSubject,
+                       "a field that is not there is refused as a missing SUBJECT, not as a "
+                       "missing crop");
+  }
+
+  // -- THE FIRST NAMED CROP IS WHAT THE NEXT SOWING PUTS IN ------------------
+  //
+  // Boss's ruling of 2026-09-12. A chairman lays his three years out in
+  // November, with the harvest in and time to think — and the year's turn
+  // would rotate his first crop into the third slot before any window
+  // opened. Three years late for giving the order on time, and nothing
+  // anywhere would have told him. The chain is a cycle, so the phase is the
+  // whole decision: an order after the last spring window is written one
+  // turn back, and January brings the named first crop to the top.
+  {
+    const core::ITable* const crops_table = tables->FindTable("crops");
+    const core::CropId rye{static_cast<std::uint16_t>(crops_table->FindRowByKey("rye_winter"))};
+    const core::CropId potato{static_cast<std::uint16_t>(crops_table->FindRowByKey("potato"))};
+    core::WorldState previous;
+    // Day 42 of forty-eight: four days to a month, so month 10 of twelve,
+    // 0-based — November, past every spring window. (The first draft wrote
+    // day 44 and called it November in the comment; day 44 is December, and
+    // the assertions would have passed either way. A comment that names the
+    // month is the only thing here that can be wrong out loud.)
+    previous.calendar.tick = 42U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.fertility = 65.0F;
+    const core::FieldId id = core::AppendRow(previous.fields, field);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = id;
+    order.rotation_year0 = oat;
+    order.rotation_year1 = potato;
+    order.rotation_year2 = rye;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    const core::FieldRow& told = current.fields.rows[0];
+    // Written AS NAMED — the chairman's sheet and the field say the same
+    // thing — and the coming turn is marked to leave it alone.
+    failures += Expect(told.rotation_year0.value == oat.value &&
+                           told.rotation_year1.value == potato.value &&
+                           told.rotation_year2.value == rye.value,
+                       "a November chain is written exactly as the chairman named it");
+    failures += Expect(told.rotation_skips_turn == 1,
+                       "and the coming year's turn is marked to leave it standing, because the "
+                       "first crop he named can no longer go in this year");
+    failures += Expect(core::HasRotation(told), "and the field is assigned all the same");
+
+    // AND NOW THE TURN ITSELF, because a bit nobody spends is a bit that
+    // does nothing. The year rolls: the chain must stand still, the bit must
+    // clear, and the crop named first must be what year0 offers the spring.
+    core::WorldState before_turn = current;
+    before_turn.calendar.tick = (48U * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(before_turn.calendar);
+    before_turn.orders.rows.clear();
+    before_turn.orders.row_ids.clear();
+    core::WorldState turned = before_turn;
+    turned.calendar.tick = 48U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(turned.calendar);
+    system->RunProductionDecisions(before_turn, turned);
+    const core::FieldRow& after_turn = turned.fields.rows[0];
+    failures += Expect(after_turn.rotation_year0.value == oat.value,
+                       "the year turns and the chain stands still: the spring sows the crop he "
+                       "named first, not the one he named second");
+    failures += Expect(after_turn.rotation_skips_turn == 1,
+                       "and the mark is NOT spent by the turn: it stands until the field opens "
+                       "work from the chain, so a January that arrives while the ground is busy "
+                       "cannot carry the first named crop away either");
+  }
+
+  // -- THE WINDOW THAT DECIDES IS THE NAMED CROP'S OWN ----------------------
+  //
+  // Oats and peas close in April while potatoes and barley run to May. Ask
+  // "is spring over" of the TABLE and the answer in May is no; ask it of the
+  // oats the chairman actually named and it is yes. The first reading writes
+  // his chain as named, lets January carry the oats into the third season,
+  // and hides the trap behind another crop's calendar.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = 18U * core::kTicksPerDay;  // month 4 of twelve, 0-based: May
+    core::RefreshCalendarCaches(previous.calendar);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.fertility = 65.0F;
+    const core::FieldId id = core::AppendRow(previous.fields, field);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = id;
+    order.rotation_year0 = oat;  // sown to April, so May is already too late
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.fields.rows[0].rotation_skips_turn == 1,
+                       "oats named in May wait for the next spring: the window that decides is "
+                       "the named crop's own, not the latest in the table");
+  }
+
+  // -- AND THE YEAR'S FIRST DAY, WHERE THE TURN IS STILL AHEAD ---------------
+  //
+  // The order book is read at the top of the production slot and the year's
+  // turn a few lines below it, in the same call. A chain settled on that
+  // tick, with every window of the year ahead of it, would be advanced past
+  // its own first season within the minute — so the turn that is about to
+  // run is the one this mark holds off.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = (48U * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.fertility = 65.0F;
+    const core::FieldId id = core::AppendRow(previous.fields, field);
+    core::WorldState current = previous;
+    current.calendar.tick = 48U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(current.calendar);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = id;
+    order.rotation_year0 = oat;
+    order.rotation_year1 = core::CropId{};
+    order.rotation_year2 = core::CropId{};
+    core::AppendRow(current.orders, order);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.fields.rows[0].rotation_year0.value == oat.value,
+                       "a chain settled on the year's first day is not advanced past its own "
+                       "first season by the turn that runs in the same call");
+  }
+
+  // -- THE FIELD SPENDS THE MARK WHEN IT USES THE CHAIN ---------------------
+  //
+  // A winter rye named first in August has its own window that fortnight, so
+  // the ploughing opens the same day the order lands — and THAT is what
+  // clears the mark. The month never enters into it: what is asked is
+  // whether the chain has been used, and the one place every use passes
+  // through is OpenPlowing.
+  {
+    const core::ITable* const crops_table = tables->FindTable("crops");
+    const core::CropId rye{static_cast<std::uint16_t>(crops_table->FindRowByKey("rye_winter"))};
+    core::WorldState previous;
+    // The day BEFORE, so the step below turns the day and the field walk
+    // runs: RunFields is daily, and a step inside one day never reaches it.
+    previous.calendar.tick = (30U * core::kTicksPerDay) - 1U;  // month 7, 0-based: August
+    core::RefreshCalendarCaches(previous.calendar);
+    previous.weather.air_temperature_celsius = 12.0F;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.fertility = 65.0F;
+    const core::FieldId id = core::AppendRow(previous.fields, field);
+    core::WorldState current = previous;
+    current.calendar.tick = 30U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(current.calendar);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetRotation;
+    order.field = id;
+    order.rotation_year0 = rye;
+    order.rotation_year1 = oat;
+    order.rotation_year2 = oat;
+    core::AppendRow(current.orders, order);
+    system->RunProductionDecisions(previous, current);
+    const core::FieldRow& sown = current.fields.rows[0];
+    failures += Expect(sown.rotation_year0.value == rye.value,
+                       "the chain is written as the chairman named it");
+    failures += Expect(sown.phase == core::FieldPhase::kPlowing,
+                       "and the rye's own window is this fortnight, so the ploughing opens the "
+                       "same day the order lands");
+    failures += Expect(sown.rotation_skips_turn == 0,
+                       "and THAT is what spends the mark: the chain has been used, so the "
+                       "coming turn may carry it on");
   }
   return failures;
 }
