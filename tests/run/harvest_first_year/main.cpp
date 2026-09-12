@@ -162,6 +162,28 @@ int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& man
 /// number would freeze the answer and lose the reason it moves. What is
 /// written down is the thing that has a derivation of its own:
 /// household_food_coverage.
+///
+/// AND THAT ROW IS A DESIGN INTENT, NOT A MEASUREMENT — which makes this
+/// floor a statement about a settlement we do not have. The re-shoot of
+/// 2026-09-12 measured what the private plots actually close, against what
+/// the village actually ate: 31 % in the first year, 23 in the second, 40 by
+/// the thirtieth. The table says 0.59 and the model never reaches it in any
+/// year of thirty, so "the yards are young yet" does not explain it.
+///
+/// SO THE FLOOR IS TOO LOW, AND KNOWINGLY. At the measured 31 % the `keep`
+/// term is more than twice what it is here and the floor rises with it —
+/// the run would go red, and it would go red about a settlement that has
+/// ninety-three of its hundred and sixty-three hectares lying unworked
+/// because nothing in the core lets the player raise them.
+///
+/// NEITHER SIDE IS PATCHED, and boss's reason is worth keeping: fitting the
+/// constant to the model would fit the design to a world that is about to
+/// stop existing, and fitting the model to the constant would answer a lack
+/// of LAND with a change to what a garden yields. What is fixed instead is
+/// the LABEL. A check that stands on an intent must say so, or the next
+/// reader takes its silence for a measurement — and the difference between
+/// red-by-decision and red-by-breakage is the label and nothing else
+/// (architecture §8бш).
 double FirstHarvestFloorTonnes(const core::ITableSet& tables, std::uint32_t people) {
   const core::ITable* const crops = tables.FindTable("crops");
   const core::ITable* const layout = tables.FindTable("start_layout");
@@ -355,8 +377,14 @@ int main() {
             << " t of grain by the tables (seed, the district's share, and what "
                "the yards do not cover), against "
             << grain_tonnes << " t measured\n";
+  std::cout << "harvest_first_year: THE FLOOR STANDS ON AN INTENT, NOT A MEASUREMENT — "
+               "food.csv's household_food_coverage is 0.59 and the model's own first year "
+               "closes 31 %, so this floor is the one a settlement with all its land would "
+               "need, and ours has ninety-three hectares it cannot raise (reconciliation "
+               "§16.5)\n";
   failures += run::Expect(grain_tonnes > floor_tonnes && grain_tonnes < 53.0,
-                          "the first harvest carries the village to the second");
+                          "the first harvest carries the village to the second, measured against "
+                          "a floor built on a design intent and not on this settlement");
 
   // And what the FIELDS gave, which is a different number and always was:
   // the peak above includes the start set's own eleven tonnes sitting in the
