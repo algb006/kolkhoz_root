@@ -596,6 +596,7 @@ int TestSignals(const core::ITableSet& tables) {
   core::UnitRow barn;
   barn.position = core::Vec2{.x = 400.0F, .y = 300.0F};
   barn.paused = 1;  // the chairman stopped it; the layer has to see that
+  barn.dead = 1;    // and it was inherited wrecked, which is not the same news
   const core::UnitId barn_id = core::AppendRow(world.units, barn);
 
   core::HerdRow herd;
@@ -653,6 +654,11 @@ int TestSignals(const core::ITableSet& tables) {
   // this is the only place the presentation can learn that a yard stands
   // still, so the byte core_production writes has to arrive here (task A8).
   failures += Expect(barn_signals.paused == 1, "and the stopped barn reports itself stopped");
+  // SEPARATELY FROM THE PAUSE, and that is the whole point of the second
+  // byte: a wrecked unit the chairman never touched has to read as wrecked,
+  // and the house next door proves the signal is not simply always 1.
+  failures += Expect(barn_signals.dead == 1, "and a unit standing dead reports itself dead");
+  failures += Expect(house_signals.dead == 0, "while a working house does not");
   failures += Expect(session->SignalsOfUnit(core::UnitId{404}).unit.value == 0,
                      "a unit that does not exist gives a default");
 

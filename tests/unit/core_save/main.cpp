@@ -217,6 +217,13 @@ core::WorldState MakeWorld() {
   core::UnitRow house;
   house.type = core::UnitTypeId{1};
   house.level = 2;
+  // The three bytes that keep landing in the row's padding, set here so the
+  // stream is what carries them: sizeof has stayed still for four
+  // extensions running (67-save-format §7б), so the round trip is the only
+  // guard that ever notices.
+  house.paused = 1;
+  house.dead = 1;
+  house.wear = 70.0F;
   core::AppendRow(world.units, house);
 
   // And a construction site (task A2): a unit row at level 0 with its site
@@ -477,6 +484,13 @@ int main() {
                          loaded.orders.rows[3].refusal == kTopOrderRefusal,
                      "the build order's position and the TOP of every order enum survived the "
                      "round trip — which is where the codec's bound is actually exercised");
+
+  // The condition bytes came back as well, each one separately: a check
+  // that read them together would pass on a codec that swapped them.
+  const core::UnitRow& house_back = loaded.units.rows[1];
+  failures += Expect(house_back.paused == 1, "a stopped unit resumes stopped");
+  failures += Expect(house_back.dead == 1, "and a dead one resumes dead, not merely worn");
+  failures += Expect(house_back.wear == 70.0F, "and its wear is its own number");
 
   // The site came back mid-build, every field of it.
   const core::UnitRow& site_back = loaded.units.rows[2];

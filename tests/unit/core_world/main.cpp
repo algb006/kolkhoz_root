@@ -190,6 +190,17 @@ int main() {
         "key", "kind", "unit_type", "x_m", "y_m", "area_ha", "is_derelict", "meadow_kind"};
     const std::vector<std::string> good_field = {
         "field_a", "field", "", "100", "200", "7.5", "0", ""};
+    // The same header with the two condition columns of the first morning.
+    const std::vector<std::string> condition_header = {"key",
+                                                       "kind",
+                                                       "unit_type",
+                                                       "x_m",
+                                                       "y_m",
+                                                       "area_ha",
+                                                       "is_derelict",
+                                                       "meadow_kind",
+                                                       "start_wear_pct",
+                                                       "start_dead"};
     const test::FakeTable empty({"key"}, {});
 
     // Each case brings its OWN subject, differing from the good row in the
@@ -247,6 +258,29 @@ int main() {
          {{"meadow_a", "meadow", "", "100", "200", "20", "0", ""}},
          "meadow_a",
          "meadow_kind"},
+        // THE CONDITION COLUMNS DESCRIBE A BUILDING. A wear on a field is a
+        // cell nothing reads, and the first morning's scene would come out
+        // exactly as if it had been blank — the silence these two columns
+        // were added to end.
+        {"a field may not be worn: wear is a property of a building",
+         condition_header,
+         {{"field_a", "field", "", "100", "200", "7.5", "0", "", "30", "0"}},
+         "field_a",
+         "start_wear_pct"},
+        {"a meadow may not start dead",
+         condition_header,
+         {{"meadow_a", "meadow", "", "100", "200", "20", "0", "upland", "-1", "1"}},
+         "meadow_a",
+         "start_dead"},
+        // MINUS ONE IS THE ONLY NEGATIVE THE COLUMN ADMITS. Were the rule
+        // written as "negative means as built", a mistyped -10 would land
+        // as the same "nothing said" and the wrecked mill would come out of
+        // the table looking new.
+        {"a wear of -10 is a typo, not a second way of saying 'as built'",
+         condition_header,
+         {{"barn", "unit", "barn", "100", "200", "", "0", "", "-10", "0"}},
+         "barn",
+         "start_wear_pct"},
     };
     for (const Case& item : refused) {
       const test::FakeTable layout(item.columns, item.rows);
@@ -450,6 +484,79 @@ int main() {
                          "each is drawn separately: twenty-one roofs must not fall in one night");
     }
     fs::remove_all(banded);
+  }
+
+  // THE INHERITED YARD COMES OUT OF THE TABLE AND NOT OUT OF PROSE. Until
+  // the column existed the canon's worn church and half-ruined build yard
+  // lived only in the design text, and the core founded them as new — which
+  // is precisely what the prologue's first morning is a picture of.
+  //
+  // Checked against the SHIPPED tables, by key, and the numbers are read
+  // back from the CSV rather than written here twice: a second copy of a
+  // balance figure in a test is the drift this project keeps finding.
+  {
+    std::string shipped_error;
+    const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &shipped_error);
+    failures += Expect(shipped != nullptr, "the shipped table set loads");
+    if (shipped != nullptr) {
+      const core::ITable* const layout = shipped->FindTable("start_layout");
+      const core::ITable* const types = shipped->FindTable("unit_types");
+      const core::WorldState morning =
+          core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 4242, nullptr);
+      const std::uint32_t wear_col = layout->FindColumn("start_wear_pct");
+      failures += Expect(wear_col != core::kNoTableColumn,
+                         "the shipped layout carries the first morning's wear");
+      std::uint32_t worn = 0;
+      bool every_one_arrived = true;
+      for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
+        const std::string_view kind = layout->CellText(row, layout->FindColumn("kind"));
+        const std::string_view text = layout->CellText(row, wear_col);
+        if (kind != "unit" || text.empty() || text == "-1") {
+          continue;
+        }
+        ++worn;
+        const float expected = std::stof(std::string(text));
+        const core::UnitTypeId type{static_cast<std::uint16_t>(
+            types->FindRowByKey(layout->CellText(row, layout->FindColumn("unit_type"))))};
+        bool found = false;
+        for (const core::UnitRow& unit : morning.units.rows) {
+          found = found || (unit.type.value == type.value && unit.wear == expected);
+        }
+        every_one_arrived = every_one_arrived && found;
+      }
+      // THE COUNT IS ASSERTED TOO. Without it the loop above passes on an
+      // empty table — a check that cannot fail is the shape this project
+      // has caught in itself more than once.
+      failures += Expect(worn >= 4, "the shipped start names several inherited buildings");
+      failures += Expect(every_one_arrived,
+                         "and each of them stands at the wear its row gives it, not at nought");
+
+      // AND THE MILL IS DEAD, which no wear can say: the scale ends at "a
+      // ruin that still works". Asserted by key rather than by counting
+      // dead units, so that the day a second one is added this check still
+      // names the one it is about.
+      const std::uint32_t dead_col = layout->FindColumn("start_dead");
+      failures += Expect(dead_col != core::kNoTableColumn,
+                         "the shipped layout says which buildings start dead");
+      std::uint32_t dead_rows = 0;
+      bool every_dead_one_arrived = true;
+      for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
+        if (layout->CellText(row, dead_col) != "1") {
+          continue;
+        }
+        ++dead_rows;
+        const core::UnitTypeId type{static_cast<std::uint16_t>(
+            types->FindRowByKey(layout->CellText(row, layout->FindColumn("unit_type"))))};
+        bool found = false;
+        for (const core::UnitRow& unit : morning.units.rows) {
+          found = found || (unit.type.value == type.value && unit.dead == 1);
+        }
+        every_dead_one_arrived = every_dead_one_arrived && found;
+      }
+      failures += Expect(dead_rows >= 1, "the first morning has something standing dead in it");
+      failures += Expect(every_dead_one_arrived,
+                         "and it comes out of genesis dead rather than merely worn");
+    }
   }
 
   // The table-value debt (phase-2 task A6), tested where it bites. The

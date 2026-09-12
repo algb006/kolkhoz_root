@@ -9,6 +9,7 @@
 // (families design §1, life-cycle §1). Fields the later stages own (houses,
 // education mechanics) stay at their defaults.
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -222,10 +223,25 @@ void PutPantry(FamilyRow& family, ResourceId resource, float kilograms) {
   family.pantry[resource.value] = GramsFromKilograms(kilograms);
 }
 
-UnitId PlaceUnit(WorldState& world, UnitTypeId type, float x_meters, float y_meters) {
+/// @brief Puts one unit of the start scene on the map.
+/// @param wear_pct How worn it already is, 0..100, or -1 for "as built" —
+///        the layout's own word, checked by its parser. A negative leaves
+///        the row's zero standing, which is what lets the old houses take
+///        their band from construction.csv afterwards.
+/// @param dead Stands and does not work until it is restored. Genesis is
+///        the only writer that ever SETS this — nothing in play makes a unit
+///        dead — while construction clears it when a repair or an upgrade
+///        finishes. The two halves are not symmetric, and saying so is the
+///        point: "the only writer" would have been false in one direction.
+UnitId PlaceUnit(
+    WorldState& world, UnitTypeId type, float x_meters, float y_meters, float wear_pct, bool dead) {
   UnitRow unit;
   unit.type = type;
   unit.position = Vec2{.x = x_meters, .y = y_meters};
+  if (wear_pct >= 0.0F) {
+    unit.wear = wear_pct;
+  }
+  unit.dead = dead ? 1U : 0U;
   return AppendRow(world.units, unit);
 }
 
@@ -484,7 +500,9 @@ void PlaceStartLayout(WorldState& world,
       if (type.value == kInvalidDefIdValue) {
         continue;  // a type the core's tables do not carry: nothing to place
       }
-      placed.emplace_back(row.key, PlaceUnit(world, type, row.place.x, row.place.y));
+      placed.emplace_back(
+          row.key,
+          PlaceUnit(world, type, row.place.x, row.place.y, row.start_wear_pct, row.start_dead));
       continue;
     }
     if (row.kind == LayoutKind::kMeadow) {
@@ -737,8 +755,26 @@ bool BuildStartEconomy(WorldState& world,
     wear_min = kOldHouseWearMinDefault;
     wear_max = kOldHouseWearMaxDefault;
   }
-  for (UnitRow& unit : world.units.rows) {
+  // AND IT DOES NOT TOUCH A HOUSE THE LAYOUT ALREADY WORE. The band is the
+  // answer for a house nobody said anything about; a row carrying
+  // start_wear_pct HAS been spoken about, and overwriting it would be the
+  // second reader of one quantity winning silently — the same shape as the
+  // shared ceiling above. No shipped house carries the column today, so
+  // this guard changes nothing now and is exactly the day-one guard that
+  // was missing every time this went wrong.
+  std::vector<UnitId> worn_by_layout;
+  for (const StartLayoutRow& row : scene.rows) {
+    if (row.kind == LayoutKind::kUnit && row.start_wear_pct >= 0.0F) {
+      worn_by_layout.push_back(unit_by_key(row.key));
+    }
+  }
+  for (std::uint32_t unit_row = 0; unit_row < world.units.rows.size(); ++unit_row) {
+    UnitRow& unit = world.units.rows[unit_row];
     if (unit.type.value != house_type.value || unit.level == 0) {
+      continue;
+    }
+    const UnitId id = world.units.row_ids[unit_row];
+    if (std::find(worn_by_layout.begin(), worn_by_layout.end(), id) != worn_by_layout.end()) {
       continue;
     }
     unit.wear = wear_min + (NextRandomUnitFloat(world.rng) * (wear_max - wear_min));

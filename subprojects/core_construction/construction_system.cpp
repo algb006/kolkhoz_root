@@ -535,6 +535,10 @@ class ConstructionSystem final : public IConstructionSystem {
     const Grams used = RepairPartsGrams(site.construction.labor_days_total);
     AddTo(site.stock, config_.spare_part_resource, -used);
     site.wear = 0.0F;
+    // AND THIS IS THE "UNTIL IT IS RESTORED" of the dead byte (unit_state.h).
+    // The start's wrecked mill comes back into service here and nowhere
+    // else — a state nothing clears is not a state, it is a verdict.
+    site.dead = 0;
     site.construction = ConstructionState{};
     Emit(current, EventKind::kUnitRepaired, EventSeverity::kNotable, unit);
   }
@@ -626,6 +630,9 @@ class ConstructionSystem final : public IConstructionSystem {
     // amortization term starts again, and that is why repairing before an
     // upgrade is pointless rather than merely wasteful.
     site.wear = 0.0F;
+    // An upgrade repairs on its way, and a rebuild is the fullest repair
+    // there is: it revives as surely as CompleteRepair does.
+    site.dead = 0;
     site.construction = ConstructionState{};
     Emit(current, EventKind::kUnitBuilt, EventSeverity::kNotable, unit);
   }

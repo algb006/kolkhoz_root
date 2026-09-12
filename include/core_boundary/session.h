@@ -186,6 +186,15 @@ struct UnitSignals {
   /// nothing else about the unit changes when this turns 1.
   std::uint8_t paused = 0;
 
+  /// 0/1: the unit stands and does not work at all until it is restored —
+  /// UnitRow::dead. Today only the start scene sets it, and the wrecked
+  /// water mill of the first morning is what it is for.
+  ///
+  /// A SECOND FIELD BESIDE `wear` AND NOT A HIGH WEAR, for the reason the
+  /// row itself gives: wear tops out at "a ruin that still works", so a
+  /// hundred per cent would have told the layer to draw the mill grinding.
+  std::uint8_t dead = 0;
+
   /// Fresh marks of children's pranks — the broken panes that do not move
   /// the wear scale (crime design §3). STUB: 0 until project phase 3.
   std::uint8_t prank_marks = 0;

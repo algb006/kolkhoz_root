@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "core_catalog/table_value.h"
+#include "core_common/quantities.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -108,6 +109,12 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
   // cycle, found in the parser written that same morning).
   const std::uint32_t type_col = table.FindColumn("unit_type");
   const std::uint32_t derelict_col = table.FindColumn("is_derelict");
+  // The two columns of the first morning's condition. Optional as columns
+  // for the same reason as the rotation: a table exported before they
+  // existed describes a start where nothing is inherited, which is a
+  // poorer scene and not a broken one.
+  const std::uint32_t wear_col = table.FindColumn("start_wear_pct");
+  const std::uint32_t dead_col = table.FindColumn("start_dead");
   const std::uint32_t meadow_kind_col = table.FindColumn("meadow_kind");
   const std::array<std::uint32_t, 3> rotation_cols = {table.FindColumn("rotation_year0"),
                                                       table.FindColumn("rotation_year1"),
@@ -169,11 +176,61 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
       trouble = ReadLayoutNumber(
           table, row, derelict_col, Range::Unit(), "is_derelict", entry.key, &derelict);
     }
+    // THE BAND STARTS AT MINUS ONE ON PURPOSE, and it is the only range in
+    // this parser that admits a negative: -1 is the column's own word for
+    // "as built", so it has to pass the same door the real wears come
+    // through. Anything BELOW it is a typo, and -1 is exactly what a typo
+    // of -10 would otherwise be silently rounded into if the band were
+    // written as "negative means absent".
+    //
+    // AND THE BAND IS ONE NOTCH LOOSER THAN THAT SENTENCE, which is said
+    // here rather than left to be discovered: it also admits the open
+    // interval (-1, 0), and every reader downstream asks `>= 0`, so a
+    // mistyped -0.5 would read as "nothing was said" instead of refusing.
+    // Unreachable from the shipped table, which carries only -1 and
+    // 0..100; open as UB-001 of the 0.17.83 cycle, to be closed by a
+    // predicate rather than by a range. A comment claiming a guard is
+    // stricter than the guard is exactly the described door this project
+    // keeps finding, so the claim is corrected before the code is.
+    float wear = -1.0F;
+    if (trouble.empty()) {
+      trouble = ReadLayoutNumber(table,
+                                 row,
+                                 wear_col,
+                                 Range{.low = -1.0F, .high = kWearScale},
+                                 "start_wear_pct",
+                                 entry.key,
+                                 &wear);
+    }
+    float dead = 0.0F;
+    if (trouble.empty()) {
+      trouble =
+          ReadLayoutNumber(table, row, dead_col, Range::Unit(), "start_dead", entry.key, &dead);
+    }
     if (!trouble.empty()) {
       error = trouble;
       return false;
     }
     entry.derelict = derelict > 0.5F;
+    entry.start_wear_pct = wear;
+    entry.start_dead = dead > 0.5F;
+
+    // A DEAD FIELD IS NOT A THING, and neither is a worn meadow: both
+    // columns describe a BUILDING, and a value on a land row would be read
+    // by nobody — the silent kind of wrong table this parser exists to
+    // stop. Said as a refusal rather than ignored, because ignoring it is
+    // what "the core has no rule for that cell" looked like every previous
+    // time it cost a day.
+    if (entry.kind != LayoutKind::kUnit) {
+      if (wear >= 0.0F) {
+        error = Refuse(entry.key, row, "start_wear_pct", "only a unit row can be worn");
+        return false;
+      }
+      if (entry.start_dead) {
+        error = Refuse(entry.key, row, "start_dead", "only a unit row can start dead");
+        return false;
+      }
+    }
 
     if (entry.kind == LayoutKind::kUnit) {
       entry.unit_type = std::string(table.CellText(row, type_col));

@@ -40,7 +40,7 @@ water_mill,Водяная мельница,production,1,0,0,start,,1,20,,,absorb
 utility_yard,Хозяйственный двор,production,1,0,1,era,,1,35,,,absorbed,1,,0,none,,0
 goods_store,Товарный склад,production,1,0,1,era,,1,25,,,absorbed,1,,0,none,,0
 workshops,Мастерские,production,1,0,1,era,,1,25,,,absorbed,1,,0,weak,working,0
-sawmill,Лесопилка,production,1,0,1,era,,1,15,,,absorbed,1,1.4,0,none,,0
+sawmill,Лесопилка,production,1,0,1,era,,1,15,,,follows,1,1.4,0,none,,0
 firewood_yard,Дровяной участок,production,1,1,1,era,,1,25,,,follows,0,,0,none,,0
 fuel_point,Пункт заправки,production,2,0,1,era,,1,15,,,follows,0,,0,weak,always,0
 crafts_yard,Промысловый двор,production,1,0,1,era,,1,45,,,absorbed,1,,1,none,,0
@@ -126,3 +126,4 @@ church_store,Церковь — склад и кабинет,service,1,0,0,start
 manor_ruins,Развалины усадьбы,service,1,0,0,start,,1,35,,,absorbed,0,,0,none,,0
 water_intake,Водозаборный узел,infrastructure,2,0,1,event,event_01,1,30,,,follows,0,,0,none,,0
 water_standpipe,Уличная колонка,infrastructure,2,0,1,event,event_21,0,,0.8,verge,follows,0,,0,none,,0
+fire_gong,Пожарный гонг,infrastructure,1,0,1,era,,0,,0.6,open,follows,0,,0,none,,0

@@ -58,6 +58,26 @@ struct StartLayoutRow {
   std::array<std::string, 3> rotation;  ///< Crop keys; an empty slot is a fallow year.
   bool derelict = false;                ///< Land that has rested and waits to be raised.
   bool floodplain = false;              ///< Meadow kind; false means upland.
+
+  /// How worn this thing already is on the first morning, 0..100, or -1 for
+  /// "as built" — the value the column carries for everything the canon
+  /// does not describe as inherited.
+  ///
+  /// MINUS ONE IS NOT A WEAR, it is the absence of one, and it has to be
+  /// told apart from an explicit zero: a row that says 0 says "as new", and
+  /// a row that says nothing leaves the wear to whoever else has a rule for
+  /// it. The old houses are exactly that case — their 45..60 spread is
+  /// drawn from construction.csv and would be overwritten by a zero read as
+  /// an answer (start design §4).
+  float start_wear_pct = -1.0F;
+
+  /// The unit stands and does not work at all until it is restored.
+  ///
+  /// NOT WEAR, and that is the whole reason it is a second field: wear
+  /// never stops anything (unit rules §15 — at 100 it is a ruin that still
+  /// works), so the wrecked mill of the first morning cannot be said with a
+  /// number of it. Only the start layout sets this.
+  bool start_dead = false;
 };
 
 /// @brief The whole hand-designed start scene, in table order.

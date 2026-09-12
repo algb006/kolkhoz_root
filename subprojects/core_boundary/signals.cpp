@@ -110,6 +110,11 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   // in the slice, that is the wear that no longer grows.
   signals.paused = world.units.rows[unit_row].paused;
 
+  // The dead byte of a start placement. Read straight off the row like the
+  // pause, and told apart from it on purpose: one is an order the chairman
+  // can take back, the other is the condition the mill was inherited in.
+  signals.dead = world.units.rows[unit_row].dead;
+
   // prank_marks: STUB at its neutral value until project phase 3.
   return signals;
 }

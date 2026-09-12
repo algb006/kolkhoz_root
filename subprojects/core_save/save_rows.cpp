@@ -81,7 +81,7 @@ static_assert(AggregateArity<FieldRow>() == 24,
 // which is the whole reason both asserts stand here.
 static_assert(sizeof(UnitRow) == 56 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<UnitRow>() == 9,
+static_assert(AggregateArity<UnitRow>() == 10,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
@@ -482,6 +482,11 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // A7 sprang with OrderRow::profession. The wire grew all the same, and
   // that is what VERSION_SAVE counts.
   out.WriteU8(row.paused);
+  // The dead byte of a start placement (2026-09-12) went into the same
+  // padding, and the tripwire stayed silent for the third time running —
+  // which is the documented usual outcome, not the surprise. VERSION_SAVE
+  // is 20 for it.
+  out.WriteU8(row.dead);
   out.WriteFloat(row.stink_radius_m);
 }
 
@@ -502,6 +507,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.max_crew = in.ReadU8();
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
+  row.dead = in.ReadU8();
   row.stink_radius_m = in.ReadFloat();
   return row;
 }

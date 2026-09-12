@@ -6,7 +6,7 @@
 /// write to a unit row is sequential: stores move in the production
 /// decisions sub-step (slot 3), houses appear in the demography sub-step,
 /// the construction sub-step of the same slot moves the `construction`
-/// block, the level and `wear`, `paused` is set by the production sub-step
+/// block, the level, `wear` and `dead`, `paused` is set by the production sub-step
 /// reading kPauseUnit and only read by construction and the boundary after
 /// it (task A8), and the parallel slots touch no unit at all — slot
 /// 4 is split by FIELD (land_state.h), slot 5 by FAMILY (metrics). The
@@ -212,6 +212,29 @@ struct UnitRow {
   /// implement yet and everything to remember: when cycles arrive, this flag
   /// is what they will consult, and the ORDER is what will wait.
   std::uint8_t paused = 0;
+
+  /// THE UNIT STANDS AND DOES NOT WORK AT ALL until it is restored — the
+  /// wrecked water mill of the first morning (start design; boss's decision
+  /// of 2026-09-12). Set by genesis from start_layout.csv and by nothing
+  /// else; cleared by a finished repair OR UPGRADE, like `wear` — an upgrade
+  /// rebuilds, and a rebuild revives as surely as a repair does.
+  ///
+  /// The second writer is named here on purpose. In this module the
+  /// per-field writer sentence IS the threading contract: it is what a later
+  /// reader checks a proposed new writer against before deciding which slot
+  /// may touch a unit row, so a list short by one is the shape in which a
+  /// parallel writer slips in unchallenged.
+  ///
+  /// A STATE OF ITS OWN AND NOT A WEAR, because wear never stops anything:
+  /// unit rules §15 ends the scale at "a ruin that still works". A hundred
+  /// per cent said "worn to the limit and still grinding", which is the
+  /// opposite of the picture the canon opens on, and there was no other
+  /// number left to say it with.
+  ///
+  /// And not `paused` either: that is an ORDER the chairman gave and can
+  /// take back, and the two would be told apart by nothing once both were
+  /// bytes in a row. A dead mill is a fact about the mill.
+  std::uint8_t dead = 0;
 
   /// HOW FAR THE STINK OF THIS SOURCE REACHES TODAY, in metres from the unit
   /// (water design §4). 0 for everything that does not smell, and for a
