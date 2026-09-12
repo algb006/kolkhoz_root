@@ -5,8 +5,10 @@
 // band is asymmetric around the anchor.
 
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
@@ -126,6 +128,91 @@ int CompareWorkerCounts(const core::WorldState& one, const core::WorldState& man
 }
 
 }  // namespace
+
+/// @brief The first harvest's floor, COMPUTED FROM THE TABLES and never
+/// written down as a number.
+///
+/// WHY IT IS COMPUTED. The floor that stood here was 33 tonnes against a
+/// measured 33.38 — a band edge sitting on the expected value, which measures
+/// the last bit of a float rather than the model, and it duly flipped the day
+/// the district's plan became real. The cure is not a new number: a number
+/// fitted to today's run is tomorrow's memory of it. The cure is a DERIVATION,
+/// so that the floor moves when the design moves and cannot go stale on its
+/// own (boss, 2026-09-12).
+///
+/// THE ARGUMENT, in one sentence: the first harvest must carry the village to
+/// the second. That is three things and no more —
+///
+///   seed   what next spring's sowing takes back out of it, by the sowing
+///          norms of the crops standing in each field's rotation;
+///   plan   what the district will take, the same share of a normal yield
+///          off the worked arable that the plan itself is computed from;
+///   keep   what the people eat that the yards do not already cover. The
+///          yearly figure is a GRAIN EQUIVALENT of the whole diet, and the
+///          private plots carry most of it — potatoes, vegetables, the milk
+///          of one's own cow — so what grain must carry is the remainder.
+///
+/// GRAIN ONLY, and the first draft of this sum forgot it: seed potatoes and
+/// the potato half of the plan walked in and made the floor 822 kg of seed
+/// per hectare. The claim is about grain, so the sum is about grain.
+///
+/// THE COVERAGE IS A TABLE ROW AND THE GRAIN SHARE IS NOT, deliberately. The
+/// share of the diet grain carries is a REMAINDER — it rises the year the
+/// herd stops milking and falls when it starts — so writing it down as a
+/// number would freeze the answer and lose the reason it moves. What is
+/// written down is the thing that has a derivation of its own:
+/// household_food_coverage.
+double FirstHarvestFloorTonnes(const core::ITableSet& tables, std::uint32_t people) {
+  const core::ITable* const crops = tables.FindTable("crops");
+  const core::ITable* const layout = tables.FindTable("start_layout");
+  const core::ITable* const food = tables.FindTable("food");
+  const core::ITable* const campaign = tables.FindTable("campaign");
+  if (crops == nullptr || layout == nullptr || food == nullptr || campaign == nullptr) {
+    return 0.0;
+  }
+  const auto cell = [](const core::ITable& table, std::uint32_t row, const char* column) {
+    const std::string text(table.CellText(row, table.FindColumn(column)));
+    return text.empty() ? 0.0 : std::strtod(text.c_str(), nullptr);
+  };
+  const auto knob = [&cell](const core::ITable& table, const char* key) {
+    const std::uint32_t row = table.FindRowByKey(key);
+    return row == core::kNoTableRow ? 0.0 : cell(table, row, "value");
+  };
+
+  const double share = knob(*campaign, "plan_grain_share_percent") / 100.0;
+  const double per_head = knob(*food, "adult_kg_grain_eq_per_year");
+  const double coverage = knob(*food, "household_food_coverage");
+
+  double seed_kg = 0.0;
+  double plan_kg = 0.0;
+  for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
+    const std::string_view kind = layout->CellText(row, layout->FindColumn("kind"));
+    if (kind != "field" && kind != "reserve_field") {
+      continue;
+    }
+    if (cell(*layout, row, "is_derelict") > 0.5) {
+      continue;  // land nobody worked sows nothing and owes nothing
+    }
+    const std::string_view crop_key = layout->CellText(row, layout->FindColumn("rotation_year0"));
+    const std::uint32_t crop = crops->FindRowByKey(crop_key);
+    if (crop_key.empty() || crop == core::kNoTableRow) {
+      continue;  // a fallow year takes no seed and owes no plan
+    }
+    // GRAIN ONLY: the claim this floor serves is about grain, and a potato
+    // field's seed is measured in tonnes a hectare.
+    const std::string_view resource = crops->CellText(crop, crops->FindColumn("resource"));
+    const bool is_grain = resource == "rye" || resource == "wheat" || resource == "oat" ||
+                          resource == "barley" || resource == "buckwheat" || resource == "pea";
+    if (!is_grain) {
+      continue;
+    }
+    const double area = cell(*layout, row, "area_ha");
+    seed_kg += area * cell(*crops, crop, "sowing_norm_kg_per_ha");
+    plan_kg += area * cell(*crops, crop, "yield_kg_per_ha") * share;
+  }
+  const double keep_kg = per_head * (1.0 - coverage) * static_cast<double>(people);
+  return (seed_kg + plan_kg + keep_kg) / 1000.0;
+}
 
 int main() {
   int failures = 0;
@@ -256,8 +343,20 @@ int main() {
             << " t waiting on the fields and " << static_cast<double>(lost_for_want_of_room) / 1.0e6
             << " t with nowhere to go at all\n";
 
-  failures += run::Expect(grain_tonnes > 33.0 && grain_tonnes < 53.0,
-                          "first-year grain matches the sim_v6 anchor (~48 t, weather may shave)");
+  // THE FLOOR IS DERIVED, and the ceiling is not: nothing says a first harvest
+  // can be too large, and a ceiling with no argument is the defect this floor
+  // was just cured of. 53 stays only as a tripwire against an absurdity —
+  // a harvest ten times the land could give means the model broke, not that
+  // the village did well.
+  const double floor_tonnes = FirstHarvestFloorTonnes(
+      *world.tables, static_cast<std::uint32_t>(state.residents.rows.size()));
+  std::cout << "harvest_first_year: the first harvest must carry the village to the second — "
+            << floor_tonnes
+            << " t of grain by the tables (seed, the district's share, and what "
+               "the yards do not cover), against "
+            << grain_tonnes << " t measured\n";
+  failures += run::Expect(grain_tonnes > floor_tonnes && grain_tonnes < 53.0,
+                          "the first harvest carries the village to the second");
 
   // And what the FIELDS gave, which is a different number and always was:
   // the peak above includes the start set's own eleven tonnes sitting in the

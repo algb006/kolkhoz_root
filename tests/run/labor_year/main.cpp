@@ -199,7 +199,14 @@ int main(int argc, char** argv) {
   // is unchanged — but the same binary can now be swept over seeds to say
   // how OFTEN a year comes out the way it did (69-reconciliation.md §13.11).
   const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1930;
-  g_bands_bind = seed == 1930;
+  // The fed-harness factor, settable so the same binary can be swept to find
+  // the coverage at which the field work stops fitting its window — the number
+  // `look`, `art` and `sound` are all waiting on. One is "fully fed", which is
+  // what the agronomy bands are measured at and therefore the default; the
+  // bands BIND only at the default, so a swept run reports and asserts
+  // nothing about them.
+  const std::string traction_factor = argc > 2 ? argv[2] : "1";
+  g_bands_bind = seed == 1930 && traction_factor == "1";
   int failures = 0;
   // THE AGRONOMY BANDS ARE CHECKED ON A SETTLEMENT THAT FEEDS ITS HARNESS,
   // and that is not a convenience — it is what the bands MEAN. They come from
@@ -234,7 +241,7 @@ int main(int argc, char** argv) {
     bool knob_found = false;
     while (std::getline(source, line)) {
       if (line.rfind("traction_hungry_factor,", 0) == 0) {
-        line = "traction_hungry_factor,1";
+        line = "traction_hungry_factor," + traction_factor;
         knob_found = true;
       }
       knobs += line + "\n";
@@ -268,10 +275,47 @@ int main(int argc, char** argv) {
   double care_left = 0.0;
   double accounts_before_burn = 0.0;
   double accrued_before_burn = 0.0;
+  // The end of each crop's sowing window, by CropId, straight off the table:
+  // a second copy of these months in the run would be the drift this project
+  // keeps finding. Zero means the crop names no window.
+  std::vector<std::uint32_t> sow_window_end;
+  if (const core::ITable* const crops = started.tables->FindTable("crops")) {
+    const std::uint32_t column = crops->FindColumn("sow_to_month");
+    sow_window_end.assign(crops->RowCount(), 0);
+    for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+      const std::string_view cell = crops->CellText(row, column);
+      sow_window_end[row] =
+          cell.empty()
+              ? 0U
+              : static_cast<std::uint32_t>(std::strtoul(std::string(cell).c_str(), nullptr, 10));
+    }
+  }
+  bool sowing_overran = false;
+  std::uint32_t latest_overrun = 0;
+
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
     const core::WorldState& world = simulation->CompletedState();
     SampleDay(world, seen, tally);
+    // THE SOWING WINDOW, watched day by day. `look`, `art` and `sound` are all
+    // building the living signal for an underfed harness and none of them will
+    // set its own threshold, rightly: the number they need is the coverage at
+    // which the field work stops fitting its agronomic window, and that is a
+    // fact about the model, not about the picture. This is where it is
+    // measured — the last day any field is still being sown, against the end
+    // of that crop's own window in crops.csv.
+    for (const core::FieldRow& field : world.fields.rows) {
+      if (field.phase != core::FieldPhase::kSowing || field.crop.value >= sow_window_end.size()) {
+        continue;
+      }
+      const std::uint32_t window_end = sow_window_end[field.crop.value];
+      const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+      if (window_end != 0 && month > window_end) {
+        sowing_overran = true;
+        const std::uint32_t over = world.calendar.day - (window_end + 1) * core::kDaysPerMonth + 1;
+        latest_overrun = over > latest_overrun ? over : latest_overrun;
+      }
+    }
     // Hour 22, not 23: the day's close clears the assignments, and with them
     // the hours the family spent out.
     if (core::HourFromTick(world.calendar.tick) == 22) {
@@ -291,6 +335,13 @@ int main(int argc, char** argv) {
       }
     }
   }
+  std::cout << "labor_year: sowing "
+            << (sowing_overran ? "OVERRAN its window by up to " : "fitted its window (")
+            << (sowing_overran ? std::to_string(latest_overrun) + " days"
+                               : std::string("0 days over"))
+            << (sowing_overran ? "" : ")") << ", at a traction factor of " << traction_factor
+            << "\n";
+
   const core::WorldState& state = simulation->CompletedState();
 
   const double plowing = tally.by_kind[1];
