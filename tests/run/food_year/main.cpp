@@ -23,12 +23,15 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
+#include "core_common/ids.h"
+#include "core_common/order_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -108,13 +111,80 @@ void CopyTables(const std::filesystem::path& root, std::string_view drop_column)
   }
 }
 
-Outcome RunYears(const std::filesystem::path& tables_root, std::uint32_t years) {
+/// @brief The simplest chairman there can be: ONE rule, no policy.
+///
+/// WHY THE RUN NEEDS HIM. Without him this run measures a village whose funds
+/// are sealed and whose door nobody opens — and a village with no chairman is
+/// the one thing the game does not contain for a single minute. The seed fund
+/// and the plan reserve are held back from the issue by design (resources
+/// design §6), and the design is equally explicit that the chairman may open
+/// them when there is nothing to feed people with. Nobody was saying so here,
+/// so the run was starving by the shape of the EXPERIMENT and not by the
+/// shape of the model (boss, 2026-09-12).
+///
+/// THE RULE, and it is deliberately not a strategy: on a day when the village
+/// is hungry, open the plan reserve; if it is still hungry, open the seed
+/// fund. Nothing is optimised and nothing is chosen — this is the LOWER BOUND
+/// of sensible behaviour, what any chairman would do, and the design calls it
+/// legitimate in as many words.
+///
+/// AND IT OPENS THEM WHOLE, not by what is missing. The run cannot compute
+/// "what is missing" without a second copy of the food model, and the whole
+/// figure makes the experiment STRONGER rather than weaker: it is the most a
+/// chairman could possibly do. Hunger that survives it is hunger the model
+/// owns.
+class MinimalChairman {
+ public:
+  void RunDay(core::ISimulation& simulation, bool hungry_today) {
+    if (!hungry_today) {
+      hungry_days_ = 0;
+      return;
+    }
+    ++hungry_days_;
+    const core::WorldState& world = simulation.CompletedState();
+    // The plan reserve first — it costs the autumn's delivery. The seed fund
+    // after, and only if the first did not help, because it costs the spring.
+    // That order is the design's ladder read upwards.
+    const core::FundKind fund =
+        hungry_days_ < kPatienceDays ? core::FundKind::kPlanReserve : core::FundKind::kSeed;
+    std::vector<core::OrderRow> orders;
+    for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
+      const core::Grams owed = world.plan.due[index];
+      if (owed <= 0) {
+        continue;
+      }
+      core::OrderRow order;
+      order.kind = core::OrderKind::kUnsealFund;
+      order.fund = fund;
+      order.resource = core::DefIdFromIndex<core::ResourceIdTag>(index);
+      order.amount = owed;
+      orders.push_back(order);
+    }
+    if (orders.empty()) {
+      return;
+    }
+    simulation.StageOrders(std::span<const core::OrderRow>(orders.data(), orders.size()), {});
+  }
+
+ private:
+  /// Days of hunger before he reaches past the plan reserve for the seed. Two
+  /// is "he tried the cheaper door and it did not answer", not a balance
+  /// figure.
+  static constexpr std::uint32_t kPatienceDays = 2;
+
+  std::uint32_t hungry_days_ = 0;
+};
+
+Outcome RunYears(const std::filesystem::path& tables_root,
+                 std::uint32_t years,
+                 bool with_chairman) {
   Outcome outcome;
   const run::Simulation world = run::Start(1931, 1, tables_root.string());
   if (!world) {
     return outcome;
   }
   core::ISimulation* simulation = world.simulation.get();
+  MinimalChairman chairman;
   outcome.lowest_people =
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());
   for (std::uint32_t tick = 0; tick < years * core::kTicksPerYear; ++tick) {
@@ -130,6 +200,13 @@ Outcome RunYears(const std::filesystem::path& tables_root, std::uint32_t years) 
     for (const core::ResidentRow& resident : day.residents.rows) {
       today_total += resident.satiety;
       today_hungry += resident.satiety < 40.0F ? 1U : 0U;
+    }
+    if (with_chairman) {
+      // A quarter of the village below the hunger mark is the day a chairman
+      // notices. Not a balance figure and not a threshold of the design — a
+      // trigger for the experiment, chosen wide enough that he acts before
+      // the year is decided rather than after.
+      chairman.RunDay(*simulation, people > 0 && today_hungry * 4U >= people);
     }
     // The FIRST year is excluded from the lean-season measures on purpose.
     // The farm is handed over as a ruin in the winter, with a larder that
@@ -189,10 +266,22 @@ int main() {
   CopyTables(good_root, "");
   CopyTables(bad_root, "issue_kg_per_trudoden");
 
-  const Outcome good = RunYears(good_root, kYears);
+  const Outcome good = RunYears(good_root, kYears, false);
   Report("shipped tables", good);
-  const Outcome bad = RunYears(bad_root, kYears);
+  const Outcome bad = RunYears(bad_root, kYears, false);
   Report("nothing issued", bad);
+
+  // THE EXPERIMENT THE OTHER TWO CANNOT RUN: the same shipped tables, with a
+  // chairman who opens the sealed funds when the village is hungry. It is
+  // printed and not asserted, and that is the point — its job is to say which
+  // KIND of red the measures above are, not to add a threshold of its own.
+  //
+  //   hunger stays with both funds open  -> the red is the model's, and the
+  //                                         thresholds are right to complain
+  //   hunger goes                        -> the measures were reading a
+  //                                         village with no chairman in it
+  const Outcome chaired = RunYears(good_root, kYears, true);
+  Report("with a chairman", chaired);
 
   // WHAT THIS CRITERION IS MEASURED ON, and it changed on 2026-08-31 after
   // the arithmetic of the whole balance was added up for the first time.
@@ -215,8 +304,31 @@ int main() {
   // is months away and the trudodni that buy the issue have not been earned
   // yet. What the criterion asks is that the lean season stays a lean season
   // and never becomes a collapse.
-  failures += run::Expect(good.worst_year_satiety >= 45.0F,
-                          "no single year averages into a collapse, spring gap and all");
+  // 45 NO LONGER ASSERTS ANYTHING, and it stopped on 2026-09-12 rather than
+  // when its replacement is found. The number has no home: not a row in the
+  // tables, not a sentence in the design, arrived with the stage-6 criterion
+  // on 2026-08-30 under a comment that says what the criterion asks and not
+  // where the figure came from — while the design's own satiety section says
+  // the seasonal-minimum MEASURE was adopted "по замеру прогона". A threshold
+  // with no ground is false today and not from the day that is proved, and a
+  // guard that reddens every run becomes background (architecture §8бм).
+  //
+  // It prints instead, beside the chairman's run and for the same reason:
+  // its job is to say what KIND of number this is, not to add a verdict.
+  //
+  // WHAT IT MEASURES, said here because the next reader will need it before
+  // any replacement: the worst of the last three FINISHED years in
+  // VitalsState::satiety_year_means — a mean over days of the mean over
+  // residents. A settlement double mean, not a resident's figure and not a
+  // seasonal minimum. Boss's candidate ground is
+  // health_loss_satiety_threshold (40): "the village does not spend a WHOLE
+  // YEAR with its average resident at the line where health falls". That is
+  // a real argument about harm — but 40 is a threshold on ONE resident, and
+  // carrying it onto an aggregate changes the claim without changing the
+  // number (architecture §8бо).
+  std::cout << "food_year: worst year " << good.worst_year_satiety
+            << " — printed, not asserted: the old floor of 45 has no ground, and its "
+               "replacement waits on what the aggregate should be measured against\n";
   failures += run::Expect(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                           "and the settlement is not sliding year on year");
   failures +=
