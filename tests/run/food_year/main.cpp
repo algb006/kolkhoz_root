@@ -19,6 +19,7 @@
 // the point is that the MECHANICS bite, and the shortest honest way to make
 // them bite is to take away what the chairman hands out.
 
+#include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -26,6 +27,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -93,6 +95,45 @@ struct Outcome {
   /// settlement collapse — and "no more than N" wants an argument out of the
   /// food and health tables, not out of this run.
   std::uint32_t worst_year_below_health_line = 0;
+
+  /// WHAT THE CHAIRMAN AUTHORISED out of the sealed funds over the run, in
+  /// grams, by fund — AND AUTHORISED IS THE WORD. UnsealFund moves no grain:
+  /// it adds the amount to this tally and returns, and the keepers elsewhere
+  /// read the tally to know how much of the store they may stop protecting.
+  /// So a chairman who asks for the same fund on a hundred days records a
+  /// hundred permissions, not a hundred loads of rye, and this figure is not
+  /// a cost and must never be read as one.
+  ///
+  /// IT IS STILL WORTH PRINTING, for two reasons. It is the only witness
+  /// that the chairman reached at all, which is what the anchor below tests;
+  /// and the seed fund has no ceiling in the verb (production_system.cpp
+  /// says so and says why — the fund's size lives in core_residents), so the
+  /// figure grows without bound and SAYING that is more useful than hiding
+  /// it. The run prints the figure rather than this comment quoting one:
+  /// a number in prose beside a number the binary computes goes stale on the
+  /// first delivery that moves it, and this one already did.
+  ///
+  /// ACCUMULATED ACROSS YEARS, because the core zeroes the release state at
+  /// the year's turn — an unsealing is an emergency of ITS year, not a
+  /// standing licence (world_state.h). The run watches the per-fund total
+  /// rise and adds the last standing figure whenever it drops, which is the
+  /// ordinary way to total a counter that resets.
+  std::array<std::int64_t, static_cast<std::size_t>(core::FundKind::kFundKindCount)> released{};
+
+  /// How many times the run watched a fund's tally drop to nothing under
+  /// it — the year's turn, and the only thing that can lower it. IT EXISTS
+  /// BECAUSE THE RESET RULE HAS NO OTHER WITNESS: the totals above are the
+  /// sum of what the rule collected, so a rule that stopped collecting
+  /// reports a smaller number and nothing says which of the two happened.
+  std::uint32_t fund_wipes_seen = 0;
+
+  /// How many per-fund tally reads the run made: one per fund per tick. IT
+  /// EXISTS BECAUSE THE MOVE HAS NO OTHER WITNESS — the tally is read every
+  /// TICK and not once a day, so that an authorisation written at hour 1 and
+  /// wiped at hour 0 of the next day is seen, and putting the block back
+  /// under the daily guard leaves every other assertion in this run green.
+  /// This one falls by a factor of twenty-four and says so.
+  std::uint32_t tally_reads = 0;
 
   /// The satiety line every count in this outcome was measured against, read
   /// from food.csv. Zero means the run never found it — the anchor assert in
@@ -172,13 +213,53 @@ void CopyTables(const std::filesystem::path& root, std::string_view drop_column)
 /// of sensible behaviour, what any chairman would do, and the design calls it
 /// legitimate in as many words.
 ///
-/// AND IT OPENS THEM WHOLE, not by what is missing. The run cannot compute
-/// "what is missing" without a second copy of the food model, and the whole
-/// figure makes the experiment STRONGER rather than weaker: it is the most a
-/// chairman could possibly do. Hunger that survives it is hunger the model
-/// owns.
+/// AND IT OPENS A PORTION OF WHAT IS DUE, a share given at construction.
+///
+/// WHY A SHARE AND NOT "WHAT IS MISSING". The run cannot compute what is
+/// missing without a second copy of the food model, and a second copy is how
+/// a measurement comes to agree with itself rather than with the village. A
+/// share needs no model at all: the chairman reaches for a tenth of WHAT THE
+/// DISTRICT IS OWED each hungry day, so how much he ends up spending is
+/// MEASURED by the run rather than decided by it.
+///
+/// That is a tenth of the DOOR only at the plan reserve, whose ceiling is
+/// that very figure. At the seed fund it is a probe size and nothing more,
+/// because the seed fund's size is not visible from here at all. And he does
+/// not keep reaching at the same door: kPatienceDays sends him past the
+/// reserve to the seed from the second hungry day of a streak, so the reserve
+/// gets at most one portion per streak — and none at all from a streak that
+/// opened in the mute window below, because hungry_days_ goes on counting
+/// while he stages nothing and is already past his patience by the time the
+/// district names a figure again.
+///
+/// AND HE IS MUTE FOR EIGHT DAYS OF EVERY YEAR, which is a finding about
+/// the MODEL and deliberately not repaired here. `plan.due` is zeroed by
+/// JudgePlan on the first of January and refilled by AnnouncePlan on the
+/// first of March, so for the two months between them the chairman has no
+/// figure to size a reach by and stages nothing.
+///
+/// A DRAFT OF THIS RUN GAVE HIM A MEMORY of the district's last figure, and
+/// it was withdrawn because it repaired nothing. UnsealFund's plan-reserve
+/// ceiling reads the CURRENT plan.due — the same all-zero vector — so every
+/// reserve order in that window is refused whatever the chairman remembers.
+/// The only door a memory opens is the seed fund, which has no ceiling at
+/// all, and there it authorised a whole remembered year per resource per
+/// hungry day: 578 t more of a figure that was already meaningless, and the
+/// ceiling arm came out very slightly WORSE for it.
+///
+/// So the window stands, named: the door kept for a hungry winter is bolted
+/// through January and February, as a side effect of the plan being cleared
+/// at the year's turn and announced again in spring. Whether that is the
+/// design (no plan, no reserve) or an accident is boss's to say.
+///
+/// The whole share, 1.0, is the CEILING arm: the most this chairman can do
+/// with what he can see. The small share is the question boss asked —
+/// whether the door has to be taken off its hinges or only opened. Both are
+/// printed; neither asserts a level.
 class MinimalChairman {
  public:
+  explicit MinimalChairman(float portion) : portion_(portion) {}
+
   void RunDay(core::ISimulation& simulation, bool hungry_today) {
     if (!hungry_today) {
       hungry_days_ = 0;
@@ -197,11 +278,17 @@ class MinimalChairman {
       if (owed <= 0) {
         continue;
       }
+      // At least one gram whenever anything is owed: a share small enough to
+      // round to nothing would make "he reached and the door gave nothing"
+      // indistinguishable from "he never reached", and the second is what the
+      // no-chairman arm already measures.
+      const auto share =
+          static_cast<core::Grams>(static_cast<double>(owed) * static_cast<double>(portion_));
       core::OrderRow order;
       order.kind = core::OrderKind::kUnsealFund;
       order.fund = fund;
       order.resource = core::DefIdFromIndex<core::ResourceIdTag>(index);
-      order.amount = owed;
+      order.amount = share > 0 ? share : 1;
       orders.push_back(order);
     }
     if (orders.empty()) {
@@ -216,6 +303,7 @@ class MinimalChairman {
   /// figure.
   static constexpr std::uint32_t kPatienceDays = 2;
 
+  float portion_ = 1.0F;
   std::uint32_t hungry_days_ = 0;
 };
 
@@ -301,7 +389,7 @@ int ExpectNoHigher(float value, float recorded, const char* label) {
 
 Outcome RunYears(const std::filesystem::path& tables_root,
                  std::uint32_t years,
-                 bool with_chairman,
+                 float chairman_portion,
                  std::uint64_t seed) {
   Outcome outcome;
   const run::Simulation world = run::Start(seed, 1, tables_root.string());
@@ -309,7 +397,8 @@ Outcome RunYears(const std::filesystem::path& tables_root,
     return outcome;
   }
   core::ISimulation* simulation = world.simulation.get();
-  MinimalChairman chairman;
+  MinimalChairman chairman(chairman_portion);
+  std::array<std::int64_t, static_cast<std::size_t>(core::FundKind::kFundKindCount)> standing{};
   // THE LINE IS THE TABLE'S, not a repeat of it here. 40 is
   // health_loss_satiety_threshold in food.csv — the level below which health
   // falls — and a second copy of it in this file would be a number with two
@@ -348,6 +437,44 @@ Outcome RunYears(const std::filesystem::path& tables_root,
   for (std::uint32_t tick = 0; tick < years * core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
     const core::WorldState& day = simulation->CompletedState();
+    // THE FUND TALLY IS READ EVERY TICK, and everything below it once a day.
+    // It stood with the daily work at first and lost a day at every year's
+    // turn: an order staged at hour 0 is applied at hour 1, and JudgePlan
+    // wipes the tally at hour 0 of the first of January — so the last day's
+    // authorisation was written and erased between two daily readings, and a
+    // year whose only unsealing fell on its last day vanished whole.
+    for (std::size_t fund = 0; fund < day.unsealed.by_fund.size(); ++fund) {
+      // COUNTED INSIDE THE LOOP BODY, and the first draft counted at the top
+      // of the tick instead — which witnessed the tick loop and not this
+      // block: move the block back under the daily guard, leave the
+      // increment where it was, and the anchor still read 3456. A witness
+      // that can be separated from its subject is not a witness.
+      ++outcome.tally_reads;
+      std::int64_t total = 0;
+      for (const core::Grams amount : day.unsealed.by_fund[fund]) {
+        // Saturating at BOTH ends, and the first draft guarded only the
+        // top — which left it undefined in exactly the case its own comment
+        // invoked, a negative amount off a loaded save. Nothing the
+        // simulation writes can come near either end (UnsealFund refuses an
+        // amount that is not positive), but this shape read off a save has
+        // no range check behind it, and a total that wraps is worse than one
+        // that pins.
+        constexpr std::int64_t kTop = std::numeric_limits<std::int64_t>::max();
+        constexpr std::int64_t kBottom = std::numeric_limits<std::int64_t>::min();
+        if (amount > 0 && total > kTop - amount) {
+          total = kTop;
+        } else if (amount < 0 && total < kBottom - amount) {
+          total = kBottom;
+        } else {
+          total += amount;
+        }
+      }
+      if (total < standing[fund]) {
+        outcome.released[fund] += standing[fund];  // the year turned, the slate was wiped
+        ++outcome.fund_wipes_seen;
+      }
+      standing[fund] = total;
+    }
     if (core::HourFromTick(day.calendar.tick) != 0) {
       continue;
     }
@@ -388,7 +515,7 @@ Outcome RunYears(const std::filesystem::path& tables_root,
       days.below += resident.satiety < health_line ? 1U : 0U;
     }
 
-    if (with_chairman) {
+    if (chairman_portion > 0.0F) {
       // A quarter of the village below the hunger mark is the day a chairman
       // notices. Not a balance figure and not a threshold of the design — a
       // trigger for the experiment, chosen wide enough that he acts before
@@ -429,6 +556,13 @@ Outcome RunYears(const std::filesystem::path& tables_root,
   outcome.mean_satiety = count > 0.0F ? satiety_total / count : 0.0F;
   outcome.mean_health = count > 0.0F ? health_total / count : 0.0F;
   outcome.life_expectancy = state.vitals.life_expectancy_years;
+  for (std::size_t fund = 0; fund < standing.size(); ++fund) {
+    // The last stretch, which for a whole number of years is empty: the
+    // final tick IS a turn, so the tally has already been collected and
+    // zeroed. It is here for a run that stops mid-year, and it adds nothing
+    // to this one.
+    outcome.released[fund] += standing[fund];
+  }
   return outcome;
 }
 
@@ -440,7 +574,17 @@ void Report(const char* label, const Outcome& outcome) {
             << " under the health line all year"
             << ", life expectancy " << outcome.life_expectancy << ", leanest day "
             << outcome.leanest_day_satiety << ", worst " << outcome.most_hungry_at_once
-            << " hungry at once, " << outcome.hungry << " under " << outcome.health_line
+            << " hungry at once, chairman authorised "
+            << static_cast<double>(
+                   outcome.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)]) /
+                   1000000.0
+            << " t of reserve and "
+            << static_cast<double>(
+                   outcome.released[static_cast<std::size_t>(core::FundKind::kSeed)]) /
+                   1000000.0
+            << " t of seed (permissions, not grain) over " << outcome.fund_wipes_seen
+            << " fund-wipes (per FUND: one turn with two funds open counts twice), "
+            << outcome.hungry << " under " << outcome.health_line
             << " at the end, population never "
             << "below " << outcome.lowest_people << '\n';
 }
@@ -451,6 +595,11 @@ int main(int argc, char** argv) {
   namespace fs = std::filesystem;
   int failures = 0;
   constexpr std::uint32_t kYears = 3;
+  /// A tenth of what is due, per hungry day. Not a balance figure and not a
+  /// rule of the design — a probe: small enough that the difference from the
+  /// ceiling arm is visible, large enough to reach the village inside a lean
+  /// season rather than after it.
+  constexpr float kChairmanPortion = 0.1F;
   // A SEED ARGUMENT, so the same binary can be swept. The bands in this file
   // were read on kCanonSeed and are claims about the model, not about the
   // weather of one year — but they are MEASURED on one seed, so on any other
@@ -479,9 +628,9 @@ int main(int argc, char** argv) {
   CopyTables(good_root, "");
   CopyTables(bad_root, "issue_kg_per_trudoden");
 
-  const Outcome good = RunYears(good_root, kYears, false, seed);
+  const Outcome good = RunYears(good_root, kYears, 0.0F, seed);
   Report("shipped tables", good);
-  const Outcome bad = RunYears(bad_root, kYears, false, seed);
+  const Outcome bad = RunYears(bad_root, kYears, 0.0F, seed);
   Report("nothing issued", bad);
 
   // THE EXPERIMENT THE OTHER TWO CANNOT RUN: the same shipped tables, with a
@@ -493,8 +642,81 @@ int main(int argc, char** argv) {
   //                                         thresholds are right to complain
   //   hunger goes                        -> the measures were reading a
   //                                         village with no chairman in it
-  const Outcome chaired = RunYears(good_root, kYears, true, seed);
-  Report("with a chairman", chaired);
+  const Outcome chaired = RunYears(good_root, kYears, 1.0F, seed);
+  Report("chairman, door off its hinges", chaired);
+  // AND THE SAME CHAIRMAN REACHING BY TENTHS. The pair answers the question
+  // the ceiling arm cannot: a fund opened wide tells you what is possible,
+  // and only a fund opened by portions tells you what was NEEDED.
+  const Outcome portioned = RunYears(good_root, kYears, kChairmanPortion, seed);
+  Report("chairman, a tenth at a time", portioned);
+
+  // THE DOOR'S ACCOUNTING, and the two are NOT the same kind of statement —
+  // an earlier draft of this comment said they were.
+  //
+  // The first is a model claim and binds on every seed: a village with
+  // nobody to open a fund must show an untouched fund, and if it does not,
+  // every release figure below is measuring something else.
+  //
+  // The second goes through ExpectBand and therefore prints on a swept seed
+  // rather than judging. It reads like a direction — reaching by tenths
+  // cannot cost more than taking the door off its hinges — but it is not
+  // structural: a chairman kept hungry longer by his own thrift could reach
+  // on more days and authorise more in the end.
+  // AND THE OTHER HALF OF THE ANCHOR, without which the pair above is
+  // satisfied by a tally that has stopped recording: zero equals zero and
+  // zero is no more than zero, so a broken counter would read as a village
+  // whose chairman behaved perfectly. This says the wide-open arm reached.
+  failures +=
+      run::Expect(chaired.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)] > 0,
+                  "the wide-open chairman did reach the reserve (anchor)");
+  failures += run::Expect(chaired.released[static_cast<std::size_t>(core::FundKind::kSeed)] > 0,
+                          "and the seed fund too (anchor)");
+  // AND THE PORTIONED ARM REACHED AS WELL — but not for the reason the first
+  // draft of this comment gave. It said a chairman whose share had been lost
+  // would authorise nothing; the one-gram clamp in RunDay, added by this same
+  // change, makes that impossible, so this anchor cannot catch a lost share
+  // at all. What catches that is the strict `<` band further down. This one
+  // catches the portioned arm falling silent for any other reason — a hunger
+  // trigger that stops firing, an order shape the verb refuses.
+  failures +=
+      run::Expect(portioned.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)] > 0,
+                  "the portioned chairman reached the reserve too (anchor)");
+  // THE RESET RULE'S OWN WITNESS. The totals are the sum of what the rule
+  // collected, so a rule that stopped collecting reports a smaller number
+  // and nothing distinguishes that from a thriftier chairman. Both
+  // directions are structural: a three-year run whose chairman reaches must
+  // cross a year's turn with a fund open, and a village with no chairman
+  // has nothing for the turn to wipe.
+  failures += run::Expect(
+      good.tally_reads ==
+          kYears * core::kTicksPerYear * static_cast<std::uint32_t>(core::FundKind::kFundKindCount),
+      "the fund tally was read every tick, not once a day (anchor)");
+  failures += run::Expect(chaired.fund_wipes_seen > 0,
+                          "the year's turn wiped an open fund at least once (anchor)");
+  failures += run::Expect(good.fund_wipes_seen == 0,
+                          "and a village with no chairman had nothing to wipe (anchor)");
+  for (std::size_t fund = 0; fund < good.released.size(); ++fund) {
+    failures += run::Expect(good.released[fund] == 0,
+                            "a village with no chairman leaves the funds sealed (anchor)");
+    // A BAND AND NOT A MODEL CLAIM, though it reads like one. It held on
+    // every seed sampled and the ratio sat near the tenth it was given —
+    // but it is not STRUCTURAL: a chairman kept hungry longer by his own
+    // thrift could reach on more days and authorise more in the end. A
+    // direction that happens to hold is a measurement, and measurements
+    // print on a seed they were not read on.
+    failures += ExpectBand(portioned.released[fund] <= chaired.released[fund],
+                           "and reaching by tenths authorised no more than opening wide");
+  }
+
+  // AND STRICTLY LESS AT THE RESERVE. The per-fund `<=` above is green under
+  // the one regression it exists to catch: lose the share and the two
+  // deterministic arms become the same run, and equality satisfies it. This
+  // says the two arms really are two. A band and not a model claim — the
+  // MARGIN between them is a measurement, even though its direction is not.
+  failures +=
+      ExpectBand(portioned.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)] <
+                     chaired.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)],
+                 "and a tenth at a time really is less than the door off its hinges");
 
   // WHAT THIS CRITERION IS MEASURED ON, and it changed on 2026-08-31 after
   // the arithmetic of the whole balance was added up for the first time.
