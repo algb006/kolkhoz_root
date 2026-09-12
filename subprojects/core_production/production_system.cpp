@@ -505,9 +505,18 @@ class ProductionSystem final : public IProductionSystem {
   /// difference between this rung and the plan reserve above it. The seed
   /// fund is counted from the sowing to come; this one from the animals that
   /// will pull the plough, in feed units, and a share of the year's need is
-  /// what a working animal may take as grain at all
-  /// (traction_full_ration_share; livestock design §11 — "больше половины
-  /// нормы им не закроешь").
+  /// what a working animal may take as grain at all.
+  ///
+  /// THE SHARE IS THE RESOURCE'S OWN CAP — `max_share` of its `work_only`
+  /// row in feed_links.csv — and NOT traction_full_ration_share, which this
+  /// comment named until 2026-09-12. The two are different numbers that
+  /// happen to agree on oats, 0.5 in both places; barley and compound feed
+  /// are 0.4. They answer different questions: the fund is opened in ONE
+  /// grain and is capped by what that grain may be, while the ration is one
+  /// figure for the whole working stock and is measured against the balance
+  /// knob (livestock design §11 — "больше половины нормы им не закроешь").
+  /// Move the knob and this ceiling does not move; the comment said it
+  /// would.
   ///
   /// The daily need is taken at the CURRENT month and multiplied by the
   /// year: the pasture months discount it, so a ceiling read in July would

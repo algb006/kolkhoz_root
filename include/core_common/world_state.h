@@ -524,11 +524,19 @@ struct WorldState {
   /// nothing else. Milk, deaths and the alarm stay with `unfed_days`, where
   /// they belong and where they already work.
   ///
-  /// YESTERDAY'S, not today's: the horses are fed in the herd day, which
-  /// runs after the field work that opens a phase, so a phase opened this
-  /// morning is pulled by animals fed last night. Written once a day by the
-  /// herd day of the production decisions sub-step; read by field work in
-  /// the same sub-step, off the value the previous day left.
+  /// YESTERDAY'S ONLY AT THE DAY'S FIRST TICK, and this block said
+  /// "yesterday's" flatly until 2026-09-12, which was wrong for twenty-three
+  /// hours in twenty-four. The herd day writes the ration ONCE, at the tick
+  /// that turns the day. Phases are opened by AdvanceFinishedPhases, which
+  /// runs on EVERY tick on purpose — a field ploughed by noon opens its
+  /// harrowing at noon rather than losing the afternoon. So a phase opened
+  /// at the day's turn is pulled by animals fed last night, and one opened
+  /// later the same day by animals fed that morning.
+  ///
+  /// NOTHING RACES: both live in the same sequential sub-step and the order
+  /// inside a tick is fixed, so the run is deterministic either way. What
+  /// was wrong was the SENTENCE — and the sentence is what the next reader
+  /// would have built on.
   ///
   /// One number for the whole settlement rather than one per herd: a phase
   /// is opened on a field and the core does not say which horse pulls it.

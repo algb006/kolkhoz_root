@@ -434,6 +434,15 @@ struct FarmingConfig {
   /// ASSUMPTION until the balance pass. A yellow light that is yellow
   /// always is noise and stops being seen inside a week; if that happens
   /// these are what is wrong, not the player.
+  float feed_light_margin_days = 12.0F;  ///< A season of slack on the fodder.
+
+  /// The seed light measures COVERAGE, not days, so its margin is a SHARE
+  /// on top of a whole covering: 0.1 means green wants a tenth in hand.
+  /// Seed is spent all at once and "days of seed" does not exist (boss,
+  /// 2026-09-04) — a margin in days would have been a slack on a number
+  /// that is not there.
+  float seed_light_margin_share = 0.1F;
+
   /// What the ploughing and the sowing are multiplied BY when the working
   /// stock has had none of its fodder grain, 0..1 (farming.csv
   /// traction_hungry_factor). Full fodder is 1.0 and the scale is linear
@@ -466,15 +475,6 @@ struct FarmingConfig {
   /// a working animal actually eats, so it lives in the balance table where
   /// a design decision can reach it.
   float traction_full_ration_share = 0.5F;
-
-  float feed_light_margin_days = 12.0F;  ///< A season of slack on the fodder.
-
-  /// The seed light measures COVERAGE, not days, so its margin is a SHARE
-  /// on top of a whole covering: 0.1 means green wants a tenth in hand.
-  /// Seed is spent all at once and "days of seed" does not exist (boss,
-  /// 2026-09-04) — a margin in days would have been a slack on a number
-  /// that is not there.
-  float seed_light_margin_share = 0.1F;
 
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.

@@ -19,13 +19,18 @@
 // the point is that the MECHANICS bite, and the shortest honest way to make
 // them bite is to take away what the chairman hands out.
 
+#include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../common/run_harness.h"
@@ -54,6 +59,35 @@ struct Outcome {
   /// piling up somewhere.
   float leanest_day_satiety = 100.0F;
   std::uint32_t most_hungry_at_once = 0;
+
+  /// HOW MANY PEOPLE SPENT A WHOLE YEAR LOSING HEALTH — residents who were
+  /// under food.csv's health_loss_satiety_threshold on more than half of the
+  /// days they lived through a year, counted at that year's end and kept at
+  /// the worst of the years measured.
+  ///
+  /// WHY A COUNT OF PEOPLE AND NOT A MEAN. The yearly figure this stands
+  /// beside is a mean over days of a mean over residents — a settlement
+  /// double mean — and a threshold on that asserts nothing about anybody:
+  /// the mean is not the median, and hunger is not symmetric, it gathers in
+  /// the poor yards. The share of people under a line at a given settlement
+  /// mean can be far more than half or far less, and the number does not say
+  /// which (boss, 2026-09-12; architecture 8bo — a threshold is a claim
+  /// about a DISTRIBUTION).
+  ///
+  /// So the claim is put where it belongs. The line stays where it was born,
+  /// on one resident, and what becomes yearly is the COUNT.
+  ///
+  /// PRINTED AND ASSERTING NOTHING, deliberately. The count has no edge yet,
+  /// and an edge invented here would be one more threshold with no home.
+  /// Zero is too strict — one sick old man in a bad year does not make a
+  /// settlement collapse — and "no more than N" wants an argument out of the
+  /// food and health tables, not out of this run.
+  std::uint32_t worst_year_below_health_line = 0;
+
+  /// The satiety line every count in this outcome was measured against, read
+  /// from food.csv. Zero means the run never found it — the anchor assert in
+  /// main() is what turns that into a failure rather than a quiet nought.
+  float health_line = 0.0F;
   float life_expectancy = 0.0F;
   std::uint32_t people = 0;
   std::uint32_t hungry = 0;   ///< Under the health-loss threshold at the end.
@@ -175,16 +209,75 @@ class MinimalChairman {
   std::uint32_t hungry_days_ = 0;
 };
 
+/// The seed this run's bands were read on. Another seed is another weather,
+/// another set of births and another village: the figures move with it, so
+/// the verdict below binds here and the sweep only prints.
+constexpr std::uint64_t kCanonSeed = 1931;
+
+/// Whether the bands below judge or only print. Set false by a swept seed.
+bool g_bands_bind = true;
+
+/// A BAND carries a measured number — a level, a margin, a share — and the
+/// number was read on kCanonSeed. On another seed it measures the same
+/// quantity and must not pretend the level applies, so it prints instead.
+///
+/// A MODEL CLAIM carries only a DIRECTION: hunger reaches health, a starved
+/// village is still a village. Those bind on every seed and go through
+/// run::Expect directly — the first draft of the sweep gated them too, and
+/// an automated sweep would have read green over the red line that nobody
+/// starves to death.
+int ExpectBand(bool holds, const char* label) {
+  if (holds || g_bands_bind) {
+    return run::Expect(holds, label);
+  }
+  std::cout << "off-band (other seed): " << label << '\n';
+  return 0;
+}
+
 Outcome RunYears(const std::filesystem::path& tables_root,
                  std::uint32_t years,
-                 bool with_chairman) {
+                 bool with_chairman,
+                 std::uint64_t seed) {
   Outcome outcome;
-  const run::Simulation world = run::Start(1931, 1, tables_root.string());
+  const run::Simulation world = run::Start(seed, 1, tables_root.string());
   if (!world) {
     return outcome;
   }
   core::ISimulation* simulation = world.simulation.get();
   MinimalChairman chairman;
+  // THE LINE IS THE TABLE'S, not a repeat of it here. 40 is
+  // health_loss_satiety_threshold in food.csv — the level below which health
+  // falls — and a second copy of it in this file would be a number with two
+  // homes, which is the drift this run has already been bitten by once.
+  //
+  // READ THROUGH CellReal, which is this project's CHECKED door: it refuses an
+  // unparsable cell and a non-finite one. Reaching past it to strtof was the
+  // first draft, and it turned every way of losing the number into the same
+  // silent 40 — a renamed column, a blank cell, the text "nan". The last of
+  // those is the worst: no satiety is ever below a NaN, so the run would print
+  // a fed village and assert on it.
+  //
+  // AND THE FIXTURE ASSERTS ITS OWN ANCHOR. There is no fallback value here on
+  // purpose: a measurement that quietly substitutes a remembered number for
+  // the one it could not read is not a measurement.
+  float health_line = 0.0F;
+  if (const core::ITable* const food = world.tables->FindTable("food")) {
+    const std::uint32_t row = food->FindRowByKey("health_loss_satiety_threshold");
+    const std::uint32_t column = food->FindColumn("value");
+    if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+      if (const std::optional<float> cell = food->CellReal(row, column)) {
+        health_line = *cell;
+        outcome.health_line = health_line;
+      }
+    }
+  }
+
+  struct Days {
+    std::uint32_t lived = 0;
+    std::uint32_t below = 0;
+  };
+
+  std::unordered_map<std::uint32_t, Days> alive_days;
   outcome.lowest_people =
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());
   for (std::uint32_t tick = 0; tick < years * core::kTicksPerYear; ++tick) {
@@ -197,10 +290,39 @@ Outcome RunYears(const std::filesystem::path& tables_root,
     outcome.lowest_people = people < outcome.lowest_people ? people : outcome.lowest_people;
     float today_total = 0.0F;
     std::uint32_t today_hungry = 0;
-    for (const core::ResidentRow& resident : day.residents.rows) {
-      today_total += resident.satiety;
-      today_hungry += resident.satiety < 40.0F ? 1U : 0U;
+    // THE YEAR IS CLOSED BEFORE TODAY JOINS IT. This block stood below the
+    // tally at first, so the first day of the new year was already in the map
+    // when the old one was counted — one day in forty-eight attributed to the
+    // year it opens rather than the year it closes, against a comment that
+    // said "the one that just ended".
+    if (day.calendar.date.day_in_month == 0 &&
+        static_cast<std::uint32_t>(day.calendar.date.month) == 0) {
+      // Count who spent the year that just ended under the line, then start
+      // the tally over. More than HALF the days he was alive for — a man who
+      // arrived in the autumn is judged on his autumn and not on a year he
+      // did not see.
+      std::uint32_t below_all_year = 0;
+      for (const std::pair<const std::uint32_t, Days>& entry : alive_days) {
+        below_all_year += entry.second.below * 2U > entry.second.lived ? 1U : 0U;
+      }
+      outcome.worst_year_below_health_line = below_all_year > outcome.worst_year_below_health_line
+                                                 ? below_all_year
+                                                 : outcome.worst_year_below_health_line;
+      alive_days.clear();
     }
+    for (std::uint32_t row = 0; row < day.residents.rows.size(); ++row) {
+      const core::ResidentRow& resident = day.residents.rows[row];
+      today_total += resident.satiety;
+      today_hungry += resident.satiety < health_line ? 1U : 0U;
+      // Kept BY RESIDENT ID, not by row: rows shift as people are born and
+      // die, and a tally kept by position would follow the position rather
+      // than the person — counting one man's hungry spring against whoever
+      // inherits his row in the autumn.
+      Days& days = alive_days[day.residents.row_ids[row].value];
+      ++days.lived;
+      days.below += resident.satiety < health_line ? 1U : 0U;
+    }
+
     if (with_chairman) {
       // A quarter of the village below the hunger mark is the day a chairman
       // notices. Not a balance figure and not a threshold of the design — a
@@ -234,7 +356,7 @@ Outcome RunYears(const std::filesystem::path& tables_root,
   for (const core::ResidentRow& resident : state.residents.rows) {
     satiety_total += resident.satiety;
     health_total += resident.health;
-    outcome.hungry += resident.satiety < 40.0F ? 1U : 0U;
+    outcome.hungry += resident.satiety < health_line ? 1U : 0U;
   }
   outcome.people = static_cast<std::uint32_t>(state.residents.rows.size());
   const auto count = static_cast<float>(outcome.people);
@@ -248,27 +370,52 @@ void Report(const char* label, const Outcome& outcome) {
   std::cout << "food_year: " << label << " — " << outcome.people << " residents, mean satiety "
             << outcome.mean_satiety << ", mean health " << outcome.mean_health << ", worst year "
             << outcome.worst_year_satiety << ", last year " << outcome.last_year_satiety
+            << ", worst year with " << outcome.worst_year_below_health_line
+            << " under the health line all year"
             << ", life expectancy " << outcome.life_expectancy << ", leanest day "
             << outcome.leanest_day_satiety << ", worst " << outcome.most_hungry_at_once
-            << " hungry at once, " << outcome.hungry << " under 40 at the end, population never "
+            << " hungry at once, " << outcome.hungry << " under " << outcome.health_line
+            << " at the end, population never "
             << "below " << outcome.lowest_people << '\n';
 }
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   namespace fs = std::filesystem;
   int failures = 0;
   constexpr std::uint32_t kYears = 3;
+  // A SEED ARGUMENT, so the same binary can be swept. The bands in this file
+  // were read on kCanonSeed and are claims about the model, not about the
+  // weather of one year — but they are MEASURED on one seed, so on any other
+  // the run measures and does not judge (labor_year carries the same rule for
+  // the same reason).
+  std::uint64_t seed = kCanonSeed;
+  if (argc > 1) {
+    // REFUSED, not defaulted. strtoull reports failure only through errno and
+    // endptr, so "--verbose" or "19e31" would have become seed 0 — a run that
+    // judges nothing, exits green, and is indistinguishable from a passing
+    // sweep. A typo in a sweep script must not read as a result.
+    char* end = nullptr;
+    errno = 0;
+    seed = std::strtoull(argv[1], &end, 10);
+    if (end == argv[1] || *end != '\0' || errno == ERANGE) {
+      std::cout << "food_year: seed argument is not a number: " << argv[1] << '\n';
+      return 2;
+    }
+  }
+  g_bands_bind = seed == kCanonSeed;
+  std::cout << "food_year: seed " << seed
+            << (g_bands_bind ? "\n" : " — swept: bands print, model claims still bind\n");
 
   const fs::path good_root = fs::temp_directory_path() / "run_food_year_good";
   const fs::path bad_root = fs::temp_directory_path() / "run_food_year_bad";
   CopyTables(good_root, "");
   CopyTables(bad_root, "issue_kg_per_trudoden");
 
-  const Outcome good = RunYears(good_root, kYears, false);
+  const Outcome good = RunYears(good_root, kYears, false, seed);
   Report("shipped tables", good);
-  const Outcome bad = RunYears(bad_root, kYears, false);
+  const Outcome bad = RunYears(bad_root, kYears, false, seed);
   Report("nothing issued", bad);
 
   // THE EXPERIMENT THE OTHER TWO CANNOT RUN: the same shipped tables, with a
@@ -280,7 +427,7 @@ int main() {
   //                                         thresholds are right to complain
   //   hunger goes                        -> the measures were reading a
   //                                         village with no chairman in it
-  const Outcome chaired = RunYears(good_root, kYears, true);
+  const Outcome chaired = RunYears(good_root, kYears, true, seed);
   Report("with a chairman", chaired);
 
   // WHAT THIS CRITERION IS MEASURED ON, and it changed on 2026-08-31 after
@@ -296,8 +443,10 @@ int main() {
   // mean food arrives faster than it is eaten and is piling up somewhere.
   // That is not a hypothetical — a level curve is exactly what 241 tonnes of
   // hay in the larders looked like before anyone added the numbers up.
-  failures += run::Expect(good.mean_satiety >= 65.0F,
-                          "with the shipped tables the village is fed on the year (reference)");
+  failures += run::Expect(good.health_line > 0.0F,
+                          "the run found its health line in food.csv (fixture anchor)");
+  failures += ExpectBand(good.mean_satiety >= 65.0F,
+                         "with the shipped tables the village is fed on the year (reference)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -329,19 +478,19 @@ int main() {
   std::cout << "food_year: worst year " << good.worst_year_satiety
             << " — printed, not asserted: the old floor of 45 has no ground, and its "
                "replacement waits on what the aggregate should be measured against\n";
-  failures += run::Expect(good.last_year_satiety > good.worst_year_satiety - 5.0F,
-                          "and the settlement is not sliding year on year");
+  failures += ExpectBand(good.last_year_satiety > good.worst_year_satiety - 5.0F,
+                         "and the settlement is not sliding year on year");
   failures +=
-      run::Expect(good.leanest_day_satiety >= 25.0F, "the lean season is a dip and not a collapse");
+      ExpectBand(good.leanest_day_satiety >= 25.0F, "the lean season is a dip and not a collapse");
   // Since task A4 food GOES BAD where it lies (transport design §10), and
   // the lean season bites harder for it: the autumn's abundance no longer
   // waits in the store until March. Four fifths rather than seven tenths,
   // and the claim is unchanged — hunger touches most of the village at the
   // worst moment of the year and never all of it.
-  failures += run::Expect(good.most_hungry_at_once * 10U <= good.people * 8U,
-                          "and it never takes the whole village at once");
-  failures += run::Expect(good.hungry * 6U <= good.people,
-                          "the year ends with hardly anyone under the threshold");
+  failures += ExpectBand(good.most_hungry_at_once * 10U <= good.people * 8U,
+                         "and it never takes the whole village at once");
+  failures += ExpectBand(good.hungry * 6U <= good.people,
+                         "the year ends with hardly anyone under the threshold");
 
   // And it does go hungry when the kolkhoz hands out nothing.
   //
@@ -363,10 +512,10 @@ int main() {
   // year they differ by ten, in health by four, and in life expectancy by
   // nearly two. Averaging over a year that has a lean season in it is how a
   // model hides the very thing the run exists to see.
-  failures += run::Expect(bad.mean_health < good.mean_health - 2.0F,
-                          "striking out the issue norms is felt");
-  failures += run::Expect(bad.leanest_day_satiety < good.leanest_day_satiety - 5.0F,
-                          "and the lean season is a different animal without the issue");
+  failures +=
+      ExpectBand(bad.mean_health < good.mean_health - 2.0F, "striking out the issue norms is felt");
+  failures += ExpectBand(bad.leanest_day_satiety < good.leanest_day_satiety - 5.0F,
+                         "and the lean season is a different animal without the issue");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
   // a thin ration and many are slightly short; hand it nothing and the
@@ -375,8 +524,8 @@ int main() {
   // the lean day fell eight points and life expectancy two — the count was
   // never the witness, the depth was. Same trap as the yearly mean: a number
   // that averages or tallies across a village hides what happens inside it.
-  failures += run::Expect(bad.life_expectancy < good.life_expectancy - 1.0F,
-                          "and it is paid for in years of life, not in the head count");
+  failures += ExpectBand(bad.life_expectancy < good.life_expectancy - 1.0F,
+                         "and it is paid for in years of life, not in the head count");
   failures += run::Expect(bad.mean_health < good.mean_health,
                           "hunger reaches health, which is the only way it reaches anyone");
   failures += run::Expect(bad.life_expectancy < good.life_expectancy,
