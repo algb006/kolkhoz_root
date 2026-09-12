@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "core_boundary/session.h"
+#include "core_common/aggregate_arity.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -65,6 +66,21 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// been brought along — and VERSION_SAVE bumped by the human, since an order
 /// row is a state row.
 static_assert(sizeof(OrderRow) == 64, "OrderRow changed — update the journal codec too");
+
+/// AND THE FIELD COUNT BESIDE THE SIZE, for the reason the size alone cannot
+/// give (2026-09-12). The size tripwire caught kUnsealFund — three fields
+/// took the row past an alignment boundary — and that is exactly what makes
+/// it dangerous to trust: it fired by luck of the layout, and the next field
+/// will land in the padding and move the wire without moving sizeof. A guard
+/// that happened to work reads like a guard that works, and the difference
+/// only shows on the case where it is silent, where nobody is checking it
+/// any more.
+///
+/// It matters more here than in the save codec, because kOrderBytes above is
+/// counted BY HAND: a row that grows without this assert leaves the journal's
+/// writer walking past its own reader, which is how task A7 broke it.
+static_assert(AggregateArity<OrderRow>() == 18,
+              "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
 

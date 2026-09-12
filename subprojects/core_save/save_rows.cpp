@@ -24,7 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "aggregate_arity.h"
+#include "core_common/aggregate_arity.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"

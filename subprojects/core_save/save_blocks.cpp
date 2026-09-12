@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <span>
 
-#include "aggregate_arity.h"
+#include "core_common/aggregate_arity.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/world_state.h"

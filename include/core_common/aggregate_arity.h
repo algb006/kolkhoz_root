@@ -2,7 +2,18 @@
 /// @brief How many fields an aggregate has, at compile time.
 /// @threading SINGLE_THREADED
 /// Pure compile-time arithmetic over a type; no state, no runtime cost, no
-/// call from any phase. Included only by the codecs.
+/// call from any phase. Included only by the codecs — and since 2026-09-12
+/// there are TWO of them, which is why it lives here and not beside one.
+///
+/// IT MOVED OUT OF core_save BECAUSE IT GAINED A SECOND CONSUMER. The
+/// journal's encoder (core_boundary) is the second hand-written encoder of an
+/// OrderRow and carries the same size tripwire, so it needs the same field
+/// count — and reaching into another module's source directory for it would
+/// be two modules pulling at each other, which in this project means the
+/// boundary was drawn wrong (CLAUDE.md §7). The boundary IS wrong here rather
+/// than the rule being inconvenient: this is compile-time arithmetic over a
+/// type, and core_common is where the types and the mathematics live. The two
+/// codecs still know nothing about each other.
 ///
 /// WHY THIS EXISTS, and it is one defect and not a wish. Every serialised
 /// struct here is guarded by `static_assert(sizeof(T) == N)`, so that adding
@@ -24,8 +35,8 @@
 /// largest that compiles. Aggregates only — a type with a constructor is not
 /// one, and the assert would then be measuring something else.
 
-#ifndef CORE_SAVE_AGGREGATE_ARITY_H_
-#define CORE_SAVE_AGGREGATE_ARITY_H_
+#ifndef CORE_COMMON_AGGREGATE_ARITY_H_
+#define CORE_COMMON_AGGREGATE_ARITY_H_
 
 #include <cstddef>
 #include <type_traits>
@@ -87,4 +98,4 @@ constexpr std::size_t AggregateArity() {
 
 }  // namespace core
 
-#endif  // CORE_SAVE_AGGREGATE_ARITY_H_
+#endif  // CORE_COMMON_AGGREGATE_ARITY_H_
