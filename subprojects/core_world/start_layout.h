@@ -56,8 +56,12 @@ struct StartLayoutRow {
   Vec2 place{};                         ///< Metres from the map's south-west corner.
   float area_ha = 0.0F;                 ///< Hectares; 0 on a unit row.
   std::array<std::string, 3> rotation;  ///< Crop keys; an empty slot is a fallow year.
-  bool derelict = false;                ///< Land that has rested and waits to be raised.
-  bool floodplain = false;              ///< Meadow kind; false means upland.
+  /// Land that has rested: the start's ninety-three hectares nobody has
+  /// worked. It sets FieldRow::overgrown and NOTHING ELSE — the look, not a
+  /// state. What keeps the ground unworked is its empty rotation, which is
+  /// the player's to fill (land_state.h, HasRotation).
+  bool derelict = false;
+  bool floodplain = false;  ///< Meadow kind; false means upland.
 
   /// How worn this thing already is on the first morning, 0..100, or -1 for
   /// "as built" — the value the column carries for everything the canon

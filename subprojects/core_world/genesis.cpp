@@ -510,8 +510,9 @@ void PlaceStartLayout(WorldState& world,
       continue;
     }
     // Arable, and the reserve field held back for building on: both are
-    // field rows, and the reserve is derelict like the rest of the ninety
-    // hectares nobody has raised (start canon §2).
+    // field rows, and the reserve carries the same unworked look as the two
+    // big fields beside it — ninety-three hectares of the start's hundred
+    // and sixty-three, counting the reserve's three (start canon §2).
     std::array<CropId, 3> rotation;
     for (std::size_t slot = 0; slot < rotation.size(); ++slot) {
       rotation[slot] = CropByKey(crops, row.rotation[slot]);
@@ -519,7 +520,12 @@ void PlaceStartLayout(WorldState& world,
     const FieldId field = PlaceField(
         world, row.area_ha, row.place, start_fertility, rotation[0], rotation[1], rotation[2]);
     if (row.derelict) {
-      world.fields.rows[FindRow(world.fields, field)].kind = LandKind::kDerelict;
+      // THE START'S NINETY-THREE HECTARES OF WEEDS, and they are a LOOK now
+      // and not a kind of land. The field is ordinary arable with an empty
+      // rotation — nobody works it because nobody has told it what to grow,
+      // which is the player's decision and not the core's, and not because
+      // some rule forbids the plough.
+      world.fields.rows[FindRow(world.fields, field)].overgrown = 1;
     }
   }
 }

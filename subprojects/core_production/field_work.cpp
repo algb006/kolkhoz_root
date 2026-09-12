@@ -217,6 +217,12 @@ void OpenPlowing(const ProductionConfig& config,
                  FieldRow& field,
                  CropId crop) {
   field.crop = crop;
+  // AND THE WEEDS GO WITH THE FIRST FURROW. "Одна вспашка возвращает всё
+  // назад. Ступень сбрасывается сразу" (farming design) — a black field
+  // looks like a black field however many years it stood. The byte was set
+  // at genesis and never cleared for one afternoon, so ground the village
+  // had ploughed six times running went on reading overgrown from the road.
+  field.overgrown = 0;
   if (field.manure_applied != 0) {
     const float share = static_cast<float>(field.manure_applied) / 100.0F;
     const auto dose =
@@ -345,7 +351,19 @@ void TrySow(const ProductionConfig& config,
     // defect D11 of the reconciliation): the manure goes in with the
     // plough and the ground stands bare until the year turns, or until the
     // next slot's winter crop goes into it in the autumn (TrySowWinter).
-    if (month == config.farming.fallow_plow_month && temperature >= 0.0F) {
+    //
+    // BUT A FIELD WITH NO CHAIN AT ALL IS NOT ON FALLOW — NOBODY HAS TOLD IT
+    // ANYTHING. The player gives each field a chain of three seasons, crop or
+    // fallow (farming design §7); a field whose three slots are all empty has
+    // never been given one, and the start hands over ninety-three hectares in
+    // exactly that condition. Ploughing them would be the core making the
+    // player's decision for him — and it would cost the village about a
+    // hundred and fifty man-days a year nobody asked for, which is defect D11
+    // under a new name. It became reachable on 2026-09-12, when
+    // LandKind::kDerelict went and that ground stopped being skipped whole.
+    //
+    // HasRotation asks it in one place for every asker (land_state.h).
+    if (HasRotation(field) && month == config.farming.fallow_plow_month && temperature >= 0.0F) {
       OpenPlowing(config, current, field, CropId{});
     }
     return;

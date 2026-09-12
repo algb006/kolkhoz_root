@@ -114,7 +114,7 @@ float SeamsStanding(const core::WorldState& world) {
 
 int main(int argc, char** argv) {
   const std::uint32_t seed = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1930;
-  bool raise_derelict = false;
+  bool sow_idle_land = false;
   // ONE ARM, ONE VARIABLE. The other instrument runs without a chairman and
   // finds winter the QUIET season; this one runs with one and finds winter
   // among the busiest. The chairman builds, and building is winter work, so
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
   bool herd_alarm = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
-    raise_derelict = raise_derelict || argument == "--raise-derelict";
+    sow_idle_land = sow_idle_land || argument == "--sow-idle-land";
     no_chairman = no_chairman || argument == "--no-chairman";
     yard_only = yard_only || argument == "--yard-only";
     watch_build = watch_build || argument == "--watch-build";
@@ -162,23 +162,36 @@ int main(int argc, char** argv) {
     return 1;
   }
   // THE CONTROL ARM, and it answers the question the two curves alone
-  // cannot. Ninety of the start canon's hundred and sixty hectares are
-  // DERELICT — two fields of forty-five — and nothing in the core can raise
-  // them: LandKind::kDerelict is skipped whole, and the work that would
-  // clear it is phase-2 (land_state.h). So the farm's labour demand is
-  // bounded by seventy hectares for ever.
+  // cannot. Ninety-three of the start canon's hundred and sixty-three
+  // hectares lie unworked — two fields of forty-five and a reserve of three —
+  // so the farm's labour demand is bounded by seventy hectares for ever, and
+  // the settlement grows sixteenfold over thirty years without touching one
+  // of them.
   //
   // If the handing out of work were broken, giving the village more land
   // would change nothing. If the demand is the ceiling, the working hours
-  // must rise. Raising them here is a PROBE and ships nowhere: it hands the
-  // two fields the rotation of the field nearest them in size, because a
-  // field with no rotation is sown with nothing and would measure the
-  // rotation instead of the land.
-  if (raise_derelict) {
+  // must rise.
+  //
+  // AND THE RUN STANDS IN FOR THE PLAYER HERE, deliberately and out loud.
+  // Until 2026-09-12 this arm had to change a LandKind, because the core
+  // refused every order on unraised land; that kind is gone and raising the
+  // ground is now ploughing it at the ordinary norm. What is still missing
+  // is not a mechanic but a DECISION: the three-year rotation is the
+  // player's to set (farming design §7, "the player gives each field a chain
+  // of three seasons"), and a headless run has no player, so a field nobody
+  // has told what to grow is sown with nothing for ever.
+  //
+  // So the arm hands the idle fields the rotation of the first field that
+  // has one. That is the run playing chairman, exactly as food_year's
+  // MinimalChairman plays him at the door of the sealed funds — a PROBE, and
+  // nothing of it ships. Inventing a rotation in the core instead would be
+  // the core making the player's decision for him.
+  if (sow_idle_land) {
     core::WorldState raised = world.State();
     core::CropId slots[3]{};
     for (const core::FieldRow& field : raised.fields.rows) {
-      if (field.kind == core::LandKind::kArable && field.rotation_year0.value != 0) {
+      if (field.kind == core::LandKind::kArable &&
+          field.rotation_year0.value != core::kInvalidDefIdValue) {
         slots[0] = field.rotation_year0;
         slots[1] = field.rotation_year1;
         slots[2] = field.rotation_year2;
@@ -187,10 +200,15 @@ int main(int argc, char** argv) {
     }
     std::uint32_t lifted = 0;
     for (core::FieldRow& field : raised.fields.rows) {
-      if (field.kind != core::LandKind::kDerelict) {
+      // ALL THREE SLOTS EMPTY, and not just the first: a field on a fallow
+      // YEAR has a chain with a gap in it, and handing it somebody else's
+      // rotation would overwrite a decision rather than supply a missing one.
+      if (field.kind != core::LandKind::kArable ||
+          field.rotation_year0.value != core::kInvalidDefIdValue ||
+          field.rotation_year1.value != core::kInvalidDefIdValue ||
+          field.rotation_year2.value != core::kInvalidDefIdValue) {
         continue;
       }
-      field.kind = core::LandKind::kArable;
       field.rotation_year0 = slots[0];
       field.rotation_year1 = slots[1];
       field.rotation_year2 = slots[2];
@@ -198,8 +216,9 @@ int main(int argc, char** argv) {
     }
     world.simulation->ResetWorld(raised);
     std::cout << "idle_curve: CONTROL ARM — " << lifted
-              << " derelict fields raised to arable. A PROBE, not a mechanic: nothing in the "
-                 "core can do this, and nothing of it ships\n";
+              << " idle fields given a rotation. A PROBE, not a mechanic: the rotation is the "
+                 "PLAYER's decision and the core does not make it, so a headless run has to "
+                 "stand in for him. Nothing of this ships\n";
   }
   int failures = 0;
   const core::ActivityRules rules = RulesOfRun(*world.tables);

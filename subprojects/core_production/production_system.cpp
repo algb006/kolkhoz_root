@@ -337,10 +337,15 @@ class ProductionSystem final : public IProductionSystem {
   /// OFF WORKED LAND AND NOT OFF SOWN LAND, so that sowing less does not owe
   /// less: undersowing is a way to FAIL a plan, not a way to shrink one.
   ///
-  /// And off LAST year's working, so that breaking derelict enters the plan
-  /// the year after it is broken — ploughing must not be punished in the
-  /// same season it was paid for, which is the "не наказывать за
-  /// непредвидимое" rule read forwards.
+  /// AND IT WAS MEANT TO BE OFF LAST YEAR'S WORKING, so that raising ground
+  /// enters the plan the year AFTER it is broken — ploughing must not be
+  /// punished in the season it was paid for, which is the "не наказывать за
+  /// непредвидимое" rule read forwards. THAT IS NOT WHAT IT DOES, and saying
+  /// so plainly here is the honest half: the rotation is shifted at the
+  /// year's turn and this runs at the spring announcement eight days later,
+  /// so it reads THIS year's slot. The core keeps no record of last year's
+  /// worked area at all. See the walk below, where the same correction is
+  /// written beside the code that does the reading.
   void AnnouncePlan(WorldState& current) const {
     // THE RELEASES ARE NOT CLEARED HERE, and they were for one afternoon:
     // the edit that put the clearing into JudgePlan matched this line too,
@@ -354,10 +359,25 @@ class ProductionSystem final : public IProductionSystem {
       return;
     }
     for (const FieldRow& field : current.fields.rows) {
-      // Derelict is land nobody worked: it owes nothing until it is broken,
-      // and then it owes from the year after.
+      // LAND NOBODY WORKED OWES NOTHING, and what says so is the empty
+      // rotation below rather than any kind of land. That was true while
+      // LandKind::kDerelict existed too — a field with no rotation owed
+      // nothing whichever kind it was — so removing the kind on 2026-09-12
+      // moved not one gram of anybody's norm.
+      //
+      // AND IT DOES NOT READ LAST YEAR'S WORKING, though the comment here
+      // said so until the analysis checked it. The rotation is shifted at the
+      // year's turn, day 0, and this walk runs at the spring announcement,
+      // day 8 — so what it reads is THIS year's slot. The core keeps no
+      // record of what was worked last year at all. District design §9 asks
+      // that raised land enter the plan the year AFTER it is broken, and what
+      // stands here delivers that only for a rotation set after the spring
+      // announcement; a rotation set in January is owed on in the same season
+      // it was paid for. NAMED AND NOT PATCHED: remembering last year's
+      // worked area is state the core does not carry, and inventing it here
+      // would be a mechanic rather than a repair (boss, 2026-09-12).
       if (field.kind != LandKind::kArable) {
-        continue;
+        continue;  // a meadow is mown, not sown, and owes the district nothing
       }
       const CropId crop = field.rotation_year0;
       if (crop.value >= config_.crops.size()) {
@@ -413,10 +433,16 @@ class ProductionSystem final : public IProductionSystem {
       }
     }
     // THE NEXT NORM IS NOT ANNOUNCED HERE. It is announced in the spring
-    // (AnnouncePlan below), off the land that was worked last year — which
-    // is knowable by then and does not move again. Clearing it is what the
+    // (AnnouncePlan below), off the land carrying a rotation then — which is
+    // knowable by then and does not move again. Clearing it is what the
     // year's turn does: an undelivered remainder is a failed year, not a
     // debt carried forward, and the district keeps no tab (district §9).
+    //
+    // THIS SENTENCE SAID "worked LAST year" AND WAS THE FOURTH COPY OF IT.
+    // Three were corrected in one pass and this one stood; it reads the slot
+    // that has just been shifted forward, eight days later. Four copies of a
+    // claim is four chances to leave one standing, which is the argument for
+    // the claim having one home and the other three pointing at it.
     current.plan.due.assign(current.plan.due.size(), 0);
     // The unsealings go with the year they were an emergency of. Carried
     // over, they would quietly become a lower fund instead of a decision
@@ -433,7 +459,7 @@ class ProductionSystem final : public IProductionSystem {
     JudgePlan(current);
     for (FieldRow& field : current.fields.rows) {
       if (field.kind != LandKind::kArable) {
-        continue;  // no rotation to shift, no fallow to pay out; derelict rests as it is
+        continue;  // a meadow has no rotation to shift and no fallow to pay out
       }
       const bool bare =
           field.phase == FieldPhase::kGrowing && field.crop.value == kInvalidDefIdValue;
@@ -446,7 +472,18 @@ class ProductionSystem final : public IProductionSystem {
           field.manure_applied = 0;
         }
       }
-      if ((field.phase == FieldPhase::kIdle) && field.rotation_year0.value == kInvalidDefIdValue) {
+      // RESTING FALLOW RECOVERS; UNWORKED GROUND MERELY KEEPS WHAT IT HAS.
+      // The two were told apart by the land kind until 2026-09-12, and when
+      // LandKind::kDerelict went this branch started paying the fallow rate
+      // to ninety-three hectares nobody has ever ploughed. Measured on the
+      // delivery's own field sheet before it was believed: 71, 77, 83, 89,
+      // 95, 100 — six a year, which is fallow_recovery — and 100 from the
+      // sixth year to the thirtieth. That is defect D5 of the reconciliation
+      // returning under a new name, and it would have handed a player who
+      // raised the land a hundred-point field instead of the canon's sixty-
+      // five.
+      if ((field.phase == FieldPhase::kIdle) && field.rotation_year0.value == kInvalidDefIdValue &&
+          HasRotation(field)) {
         field.fertility += config_.farming.fallow_recovery;
         field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
         field.last_crop = CropId{};
@@ -661,6 +698,26 @@ class ProductionSystem final : public IProductionSystem {
     }
     if (order.fund == FundKind::kPlanReserve) {
       const Grams owed = index < current.plan.due.size() ? current.plan.due[index] : 0;
+      // "THE PLAN HAS NOT BEEN NAMED YET" IS ITS OWN ANSWER, and it was
+      // kRuleForbids until 2026-09-12 — which sent a chairman looking for a
+      // rule that does not exist. JudgePlan clears plan.due at the year's
+      // turn and AnnouncePlan fills it again on the first day of spring, so
+      // for eight days of forty-eight the share this door is measured by has
+      // no number behind it. The fund is not empty and the rule does not
+      // forbid; what is missing is the figure, and waiting for the spring
+      // announcement is a move the player can actually make.
+      //
+      // Told apart from a fund already drawn to its ceiling by looking at
+      // the WHOLE vector and not this one resource: a plan that names no rye
+      // is a plan, and refusing rye with "no plan yet" would be a lie about
+      // a district that simply asked for something else.
+      bool announced = false;
+      for (const Grams due : current.plan.due) {
+        announced = announced || due > 0;
+      }
+      if (!announced) {
+        return OrderRefusal::kNoPlanYet;
+      }
       if (opened > owed || order.amount > owed - opened) {
         return OrderRefusal::kRuleForbids;
       }
@@ -731,9 +788,6 @@ class ProductionSystem final : public IProductionSystem {
       // somebody carries it, and the carrying is settled at the day's last
       // tick (SettleHauling). What A3 wrote about room still holds; what it
       // said about the retry does not.
-      if (field.kind == LandKind::kDerelict) {
-        continue;  // unraised land: nothing happens here until it is raised
-      }
       if (field.kind != LandKind::kArable) {
         RunMeadow(config_, current, field, month);
         continue;
@@ -848,11 +902,21 @@ class ProductionSystem final : public IProductionSystem {
     std::vector<std::uint32_t> candidates;
     for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
       const FieldRow& field = current.fields.rows[row];
-      // Ploughed this year: idle arable, whether a crop is in the slot or it
-      // is fallow. A winter crop already standing was manured when IT was
-      // ploughed, last autumn.
+      // Ploughed this year: idle arable with a rotation, whether a crop is in
+      // the slot or it is fallow. A winter crop already standing was manured
+      // when IT was ploughed, last autumn.
+      //
+      // THE ROTATION TEST IS HALF OF ONE FIX AND NOT A SECOND ONE. Ground
+      // nobody has told anything is never ploughed, so manure spread on it
+      // is never turned in — it would simply be gone. It was safe here only
+      // by accident until 2026-09-12: the same missing guard in the year's
+      // fertility recovery had run the weeds up to a hundred points, which
+      // put them at the BACK of the poorest-first queue below. Repair that
+      // and they become the poorest land on the farm, and the first two
+      // years' manure goes into the burdock. The analysis said so before it
+      // happened; the two lines are one repair.
       if (field.kind == LandKind::kArable && field.phase == FieldPhase::kIdle &&
-          field.manure_applied == 0) {
+          field.manure_applied == 0 && HasRotation(field)) {
         candidates.push_back(row);
       }
     }

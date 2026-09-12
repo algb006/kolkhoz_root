@@ -100,9 +100,24 @@ void CloseOrphanedWork(WorldState& current) {
 /// The land KIND is the other axis, and it does hold "never": a meadow is
 /// mown where it grew and is never ploughed, harrowed or sown — the
 /// production day sends it down a branch of its own that opens no such
-/// phase — and derelict land takes no work of any kind until it is raised.
-/// An order of that shape is accepted today and then silently does nothing
-/// FOR EVER.
+/// phase. An order of that shape is accepted today and then silently does
+/// nothing FOR EVER.
+///
+/// IT NAMED UNRAISED LAND TOO until 2026-09-12, when LandKind::kDerelict was
+/// removed: the design says an overgrown field is a look and not a state,
+/// and that raising it is ploughing it at the same norm as any other ground.
+///
+/// AND THAT LEAVES ONE CASE UNANSWERED, NAMED HERE RATHER THAN PATCHED. Work
+/// is opened off the rotation, so a field whose three slots are all empty
+/// never has any — and an order sent there now stands for ever with its man
+/// beside it, where the old kind would have refused it. Two things have to
+/// arrive before that can be closed honestly. The player must be able to SET
+/// a rotation at all (OrderKind::kSetRotation has no consumer yet), because
+/// until then the refusal would name a condition he cannot change; and it
+/// wants a reason of its own rather than kWrongLand, whose whole point is
+/// the word NEVER — a field waiting to be told what to grow is not that.
+/// A first draft refused it here as kWrongLand and reddened four assertions
+/// about how orders legitimately stand: the rule was wider than the case.
 ///
 /// @return kWrongLand, or kNone for work that does not name a field at all.
 OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
@@ -123,8 +138,7 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     // FieldRow::haul_days_remaining, which only opens while reaped_grams > 0.
     // A meadow never sets it — its hay goes straight through the store door
     // and the overflow is booked to the year's loss, so nothing is ever left
-    // lying there to carry (field_work.cpp, DeliverHarvest) — and derelict
-    // land is skipped by the production day entirely. "Carry from the
+    // lying there to carry (field_work.cpp, DeliverHarvest). "Carry from the
     // meadow" is not empty today; it is empty for ever.
     case WorkKind::kHauling:
       break;
@@ -144,10 +158,13 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
   if (field_row == kNoRow) {
     return OrderRefusal::kNone;  // TargetExists has the say on a missing field
   }
+  // AN OVERGROWN FIELD IS REFUSED NOTHING on account of its look:
+  // LandKind::kDerelict went on 2026-09-12 and FieldRow::overgrown carries
+  // the look and no rule. The one case that IS still unanswered — ground
+  // with no rotation, where work never opens — is named in the @brief above
+  // and deliberately not refused here; a draft that refused it reddened four
+  // assertions about how orders legitimately stand.
   const LandKind kind = world.fields.rows[field_row].kind;
-  if (kind == LandKind::kDerelict) {
-    return OrderRefusal::kWrongLand;  // no work at all until it is raised
-  }
   if (kind != LandKind::kArable && order.work != WorkKind::kHarvest) {
     // A meadow's "harvest" is the mowing, and that is real work. Ploughing,
     // harrowing and sowing on one are not late — they are impossible.

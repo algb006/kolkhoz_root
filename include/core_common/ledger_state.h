@@ -293,8 +293,17 @@ struct ChronicleYear {
 
   /// SOIL FERTILITY OF THE WHOLE FARM AS ONE NUMBER, 0-100 — and one number
   /// about many fields is an assertion, so here is which one it is: the
-  /// mean over ARABLE fields WEIGHTED BY AREA, meadows excluded because a
-  /// meadow has no fertility to improve or exhaust (land_state.h, LandKind).
+  /// mean over the WORKED arable WEIGHTED BY AREA. Meadows are out because a
+  /// meadow has no fertility to improve or exhaust, and ground the player
+  /// has given no rotation is out because it is not being farmed
+  /// (land_state.h, LandKind and HasRotation).
+  ///
+  /// THE SECOND HALF USED TO BE THE LAND KIND and this line said so: unworked
+  /// ground carried LandKind::kDerelict and fell out unremarked. The kind was
+  /// removed on 2026-09-12 and the walk kept the same SET by testing the
+  /// rotation instead — the numbers the reconciliation was taken against are
+  /// unchanged — but for one afternoon this contract went on naming a filter
+  /// that no longer existed.
   ///
   /// Weighted and not plain: a hundred hectares at 40 beside one hectare at
   /// 90 is not a farm at 65, and the plain mean would let a scrap of good

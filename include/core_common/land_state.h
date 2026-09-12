@@ -68,7 +68,38 @@ enum class LandKind : std::uint8_t {
   kArable = 0,        ///< Ploughed land: rotation, fertility, sowing, manure.
   kMeadow,            ///< Natural grassland, mown once a season.
   kFloodplainMeadow,  ///< The best grass of the farm; STUB until terrain zones.
-  kDerelict,          ///< Arable nobody has raised: weeds and sod, no work until it is (phase 2).
+
+  // THERE IS NO kDerelict, AND THERE WAS ONE UNTIL 2026-09-12. It made an
+  // overgrown field a KIND of land that refused every order and was skipped
+  // whole by the production day, so ninety-three of the start's hundred and
+  // sixty-three hectares could never be worked by anybody — and the thirty
+  // year run grew sixteenfold without touching a hectare of them.
+  //
+  // The design says the opposite in as many words, and the words are these:
+  // «медленно зарастает — и это только картинка… заброшенность нигде не
+  // считается, работ не требует и ни на что в игре не влияет», and of the
+  // field card, «фаза там стоит прежняя — простой. Это вид, а не состояние»
+  // (farming design). An English rendering of those two stood here inside
+  // quotation marks until 2026-09-12 — faithful in substance and findable in
+  // the document by nobody, which is the same defect this file condemns two
+  // paragraphs further down. A quotation is a promise that the words are
+  // there. One ploughing brings it all back, at the same norm as
+  // any other ground: "целина, залежь, задерневшее поле, пашня, которую
+  // держат двадцать лет подряд — норма вспашки одна."
+  //
+  // So the look moved to FieldRow::overgrown and the kind went. What the
+  // core could never do, it now simply does not forbid: raising the land is
+  // ploughing it.
+  //
+  // AND NOT "the hectares enter the plan the year after", which this block
+  // said until the second analysis pass read it. District design §9 asks for
+  // that; the core does not do it. The norm is read at the spring
+  // announcement, eight days after the rotation has already been shifted, so
+  // it sees THIS year's slot and the core remembers no earlier year at all.
+  // The same correction is written twice more, beside AnnouncePlan and beside
+  // plan_grain_share — and it survived HERE through the repair that fixed
+  // those two, which is the whole reason this file keeps saying that a fix
+  // lands where it was noticed and not where it belongs.
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kLandKindCount-1 and this is what they check against.
@@ -156,18 +187,28 @@ struct FieldRow {
   /// unmanured for thirty years.
   std::uint8_t manure_applied = 0;
 
-  /// Arable land, meadow or derelict (see LandKind). A meadow ignores every
-  /// field above it except `area_ga` and `phase`: no crop, no rotation, no
-  /// fertility, no manure. Derelict land is arable that nobody has raised
-  /// yet — the start's ninety hectares of weeds and sod: it keeps its
-  /// fertility ("the land has rested", start canon §8) and gets no work of
-  /// any kind until construction raises it. It is NOT rotation fallow, which
-  /// is ploughed every year it stands (defect D11 taught the difference:
-  /// ploughing the derelict cost 150 man-days a year nobody had asked for).
-  /// The byte sits in the padding the row already had, so sizeof(FieldRow)
-  /// is unchanged — but the SAVE STREAM grew by a byte per field, which the
-  /// sizeof tripwire cannot see and VERSION_SAVE must (manual/67-save-format.md §7).
+  /// Arable land or meadow (see LandKind). A meadow ignores every field
+  /// above it except `area_ga` and `phase`: no crop, no rotation, no
+  /// fertility, no manure.
   LandKind kind = LandKind::kArable;
+
+  /// WEEDS AND SOD, AND NOTHING ELSE: the field has not been ploughed since
+  /// the campaign began, so it reads overgrown from the road. Zero work, zero
+  /// rules, zero arithmetic — the design is explicit that neglect "affects
+  /// nothing in the game" and that the field's card goes on showing idle.
+  ///
+  /// STUB, and the shape of the stub is the honest part. The design computes
+  /// the look from the LAST PLOUGHING — "the stage counts from the last
+  /// ploughing, not from the last harvest" — and the core keeps no such day,
+  /// so this is the start condition frozen: set from start_layout's
+  /// `is_derelict` at genesis, cleared the first time the field is ploughed,
+  /// and never set again. A field left idle for ten years will not grow over
+  /// until there is a day to count from, and writing a year counter here to
+  /// fake it would be inventing the mechanic rather than stubbing it.
+  ///
+  /// The layer that draws it is the only reader. Nothing in the core branches
+  /// on this byte, and if anything ever does, that is the bug: it is a look.
+  std::uint8_t overgrown = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
   /// growing (farming design §6).
@@ -301,6 +342,74 @@ struct FieldRow {
   /// apiary's nectar flow, which the core does not yet model at all.
   bool in_flower = false;
 };
+
+/// @brief Whether the player has given this field a rotation at all.
+///
+/// A CHAIN WITH A GAP IN IT IS STILL A CHAIN. The player gives each field a
+/// chain of three seasons, crop or fallow (farming design §7), so a single
+/// empty slot is a FALLOW YEAR and the field is worked: ploughed bare, left
+/// to stand, sown from the next slot in the autumn. Three empty slots are
+/// something else — nobody has told this ground anything, and the start
+/// hands over ninety-three hectares of exactly that.
+///
+/// IT LIVES IN core_common BECAUSE FIVE PLACES ASK IT, in three modules:
+/// sowing, the year's fertility recovery and the manure queue in
+/// core_production, the office-wall mean fertility in core_world, and the
+/// ledger's mean in core_report. The question is about a ROW, not about a
+/// configuration, so the row's own header is where it belongs.
+///
+/// THE REASON RECORDED HERE FIRST WAS THE WRONG ONE, and the second analysis
+/// pass caught it: it said core_labor needed the question and must not reach
+/// into core_production. core_labor's asker was a refusal that was written
+/// and then withdrawn the same hour, so by the time the move was justified
+/// the justification had evaporated — and the move turned out to be right
+/// for readers nobody had walked yet.
+///
+/// THE ASKERS, and for one afternoon only one of them had an answer.
+/// The guard went into TrySow when LandKind::kDerelict was removed on
+/// 2026-09-12; the fallow fertility recovery and the manure queue had both
+/// been correct only because that land carried a kind they filtered out, and
+/// went on treating unworked ground as resting fallow. Measured on the
+/// delivery's own field sheet: the unworked ninety-three hectares climbed
+/// 65 → 100 in six years, six a year, which is defect D5 of the
+/// reconciliation returning under a new name.
+///
+/// AND THE TREE ALREADY CARRIES THE OPPOSITE READING OF THESE THREE BITS.
+/// The boundary's shape check for OrderKind::kSetRotation says, in as many
+/// words, that "the three crops may all be invalid: that is three years of
+/// fallow, a legal rotation and not an empty order" (core_boundary/
+/// session.cpp). This function reads the same three invalid ids as "nobody
+/// has told this field anything". Both are defensible and they cannot both
+/// be right.
+///
+/// NOTHING BREAKS TODAY, and the date it does is knowable: only genesis
+/// writes three invalid slots, and it writes them for exactly the ground
+/// nobody has worked. The two readings meet the day OrderKind::kSetRotation
+/// gets a consumer — a player who deliberately orders three fallow years
+/// would have his field read here as never assigned, and it would stop being
+/// ploughed, stop recovering and stop being manured, which is the opposite
+/// of what he asked for.
+///
+/// REPORTED RATHER THAN DECIDED (2026-09-12). Which of the two the design
+/// means is not the core's to settle quietly, and the fix is probably
+/// neither: a field that has been ASSIGNED wants to say so on its own,
+/// rather than being inferred from three empty slots by two readers who
+/// disagree about what empty means.
+/// @note IT ASKS "IS THERE AN ID HERE", not "does the roster know it". Every
+///       other slot test in core_production reads `value < config.crops.size()`,
+///       and the two cannot differ today: the crop vector is sized to the
+///       table's row count, genesis ids come from that same table, and a
+///       saved id is remapped to a live row or to the sentinel on the way
+///       in. They part the day something writes a slot without checking it
+///       against the roster — which is exactly what a consumer for
+///       OrderKind::kSetRotation would have to be careful of, and it has
+///       none yet. Then a field would read as "assigned" here and as fallow
+///       everywhere else, which is the worse half of the disagreement.
+inline bool HasRotation(const FieldRow& field) {
+  return field.rotation_year0.value != kInvalidDefIdValue ||
+         field.rotation_year1.value != kInvalidDefIdValue ||
+         field.rotation_year2.value != kInvalidDefIdValue;
+}
 
 /// @brief Is this meadow in flower today?
 ///

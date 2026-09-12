@@ -310,8 +310,20 @@ enum class OrderRefusal : std::uint8_t {
 
   /// The field cannot carry this kind of work AT ALL, and never will: a
   /// meadow is mown and never ploughed, harrowed or sown (land design, the
-  /// meadow branch of the production day), and derelict land takes no work
-  /// of any kind until it is raised.
+  /// meadow branch of the production day).
+  ///
+  /// It named unraised land too until 2026-09-12, and that reading is gone
+  /// with the land kind behind it: the design says an overgrown field is a
+  /// LOOK and not a state, ploughed by the same norm as any other ground
+  /// (farming design, «Вспашка одна на любую землю»: "целина, залежь,
+  /// задерневшее поле, пашня, которую держат двадцать лет подряд — норма
+  /// вспашки одна").
+  ///
+  /// THE QUOTATION HERE WAS WRONG UNTIL THE SECOND ANALYSIS PASS CHECKED IT
+  /// against the document — close in substance, invented in form, and inside
+  /// quotation marks, which is the part that makes it a defect rather than a
+  /// paraphrase. A reader searching the design for the sentence would not
+  /// have found it.
   ///
   /// THE POINT IS THE WORD "NEVER", AND IT IS WHY THIS HAS A NAME OF ITS
   /// OWN rather than falling into kRuleForbids. An order whose field has
@@ -326,6 +338,33 @@ enum class OrderRefusal : std::uint8_t {
   /// presentation reads WHICH field and WHICH work off the order row and
   /// needs no dictionary from the core — the same shape as kGateClosed.
   kWrongLand,
+
+  /// The district has not named this year's plan yet, so a SHARE of it does
+  /// not exist to open.
+  ///
+  /// RAISED BY AN EMPTY `plan.due` AND NOT BY THE CALENDAR, which is wider
+  /// than the window it was written for. In a running campaign that window
+  /// is the eight game days of forty-eight between the year's turn, where
+  /// JudgePlan clears the vector, and the first day of spring, where
+  /// AnnouncePlan fills it again (boss, 2026-09-12; district design §9). But
+  /// a settlement whose fields carry no crop in any rotation slot, or whose
+  /// `plan_grain_share` is zero, is announced an empty plan and gets this
+  /// answer all year — which is still TRUE, and still the most useful thing
+  /// that can be said, but a reader expecting "only in February" would be
+  /// wrong about it.
+  ///
+  /// A NAME OF ITS OWN BECAUSE THE OTHER TWO READINGS ARE BOTH FALSE. The
+  /// fund is not empty — the grain is in the stores where it always was. The
+  /// rule does not forbid it — unsealing the reserve in a hungry winter is
+  /// exactly what the design says a chairman may do. What is missing is the
+  /// NUMBER the share is taken from, and a chairman told "rule forbids"
+  /// would go looking for a rule that does not exist.
+  ///
+  /// And the move it teaches is a real one: wait for the spring
+  /// announcement. A refusal a player can act on is the difference between
+  /// difficulty and irritation (root rules §7 — a problem must be
+  /// preventable, and an unintelligible one cannot be).
+  kNoPlanYet,
 
   // A REFUSAL APPENDED HERE NEEDS NOTHING DONE IN core_save: kMaxOrderRefusal
   // is derived from the count below and raises itself. This comment used to

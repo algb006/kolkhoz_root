@@ -267,12 +267,22 @@ class EventsSlot final : public ISequentialPhase {
     ChronicleYear row;
     row.year = current.ledger.closed.year;
     row.residents = static_cast<std::uint32_t>(current.residents.rows.size());
-    // Area-weighted over the arable, meadows excluded — the reasoning is on
+    // Area-weighted over the WORKED arable — meadows excluded, and ground
+    // nobody has given a rotation excluded with them. The reasoning is on
     // the field itself, and it is a decision rather than an average.
+    //
+    // THE SECOND HALF OF THAT TEST WAS A LAND KIND until 2026-09-12: the
+    // start's ninety-three unworked hectares carried LandKind::kDerelict and
+    // fell out here without anyone saying so. The kind went, and with it the
+    // silence — ninety-three of a hundred and sixty-three hectares, frozen
+    // at the start's sixty-five for ever, would have entered both numerator
+    // and denominator of the figure the player reads off the office wall.
+    // Nothing asserted it either way; the analysis walked the readers of the
+    // removed kind and found this one.
     float weighted = 0.0F;
     float area = 0.0F;
     for (const FieldRow& field : current.fields.rows) {
-      if (field.kind != LandKind::kArable) {
+      if (field.kind != LandKind::kArable || !HasRotation(field)) {
         continue;
       }
       weighted += field.fertility * field.area_ga;

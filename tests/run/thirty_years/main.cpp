@@ -506,9 +506,9 @@ int main(int argc, char** argv) {
       }
       const FieldSample sample = field < sampled.size() ? sampled[field] : FieldSample{};
       field_sheet << (year + 1) << ',' << field << ','
-                  << (row.kind == core::LandKind::kDerelict ? "derelict" : "arable") << ','
-                  << row.area_ga << ',' << sample.crop << ',' << (sample.manured ? 1 : 0) << ','
-                  << row.fertility << ',' << sample.stress << '\n';
+                  << (row.overgrown != 0 ? "overgrown" : "arable") << ',' << row.area_ga << ','
+                  << sample.crop << ',' << (sample.manured ? 1 : 0) << ',' << row.fertility << ','
+                  << sample.stress << '\n';
     }
     // The book closes on the first tick of the new year, so a whole year of
     // ticks always leaves exactly one new closed book to take.
@@ -550,7 +550,13 @@ int main(int argc, char** argv) {
         state.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)];
     years_without_plowing += plowed > 0.0F ? 0U : 1U;
     for (const core::FieldRow& field : state.fields.rows) {
-      if (field.kind == core::LandKind::kArable) {
+      // WORKED arable, and the second half of that used to be the land kind:
+      // unworked ground carried LandKind::kDerelict and fell out here. The
+      // kind went on 2026-09-12, and without this the walk would take in
+      // ground frozen at the start's sixty-five and call it the lowest a
+      // field was WORKED to — which is the sentence the assertion below
+      // makes, and it would have stopped being true of the number.
+      if (field.kind == core::LandKind::kArable && core::HasRotation(field)) {
         lowest_fertility = field.fertility < lowest_fertility ? field.fertility : lowest_fertility;
       }
     }

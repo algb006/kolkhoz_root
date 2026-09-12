@@ -193,8 +193,15 @@ float MeanFertility(const WorldState& state) {
   float area = 0.0F;
   float weighted = 0.0F;
   for (const FieldRow& field : state.fields.rows) {
-    if (field.kind != LandKind::kArable) {
-      continue;  // a meadow has no fertility to average in (land_state.h)
+    // A meadow has no fertility to average in, and ground nobody has given a
+    // rotation is not being farmed — the mean is over the land the
+    // settlement WORKS. The second half was a land kind until 2026-09-12
+    // (land_state.h): unworked ground carried LandKind::kDerelict and fell
+    // out here unremarked, and when the kind went it would have dragged this
+    // figure — which the header calls the mean the balance calculations use —
+    // by ninety-three hectares of a hundred and sixty-three.
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
     }
     area += field.area_ga;
     weighted += field.fertility * field.area_ga;

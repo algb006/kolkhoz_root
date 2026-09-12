@@ -619,11 +619,14 @@ struct ProductionConfig {
   /// weather does, and a poor year no longer forgives itself (boss's
   /// decision of 2026-09-12; district design §9).
   ///
-  /// Three consequences of "worked LAST year", each deliberate:
-  /// raised derelict enters the plan the year AFTER it is broken, so that
-  /// ploughing is not punished in the season it was paid for; sowing less
-  /// does not owe less, because the norm is off worked land and not off sown
-  /// land; and the figure is knowable in spring and does not move again.
+  /// Two consequences hold today, and one was claimed and does not: sowing
+  /// less does not owe less, because the norm is off worked land and not off
+  /// sown land, and the figure is knowable in spring and does not move
+  /// again. What does NOT hold is "raised ground enters the plan the year
+  /// after": the reading happens after the year's rotation shift, so it sees
+  /// this year's slot, and the core remembers no earlier year. District
+  /// design §9 asks for it; production_system.cpp AnnouncePlan carries the
+  /// same note beside the code.
   float plan_grain_share = 0.0F;
 
   /// The share of the plan that counts as met, 0..1 (campaign.csv

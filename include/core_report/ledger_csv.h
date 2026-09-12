@@ -34,10 +34,12 @@
 ///   year                              ledger.closed.year
 ///   -- state at the turn --
 ///   population, families, epoch, life_expectancy_years,
-///   fertility_mean                    AREA-WEIGHTED over every field, which
-///                                     is the mean the balance calculations
-///                                     use ("плодородие по участкам —
-///                                     считается среднее"); 0 with no land
+///   fertility_mean                    AREA-WEIGHTED over the WORKED arable —
+///                                     meadows out, and ground with no
+///                                     rotation out with them; the mean the
+///                                     balance calculations use ("плодородие
+///                                     по участкам — считается среднее");
+///                                     0 with no land
 ///   -- people flows --
 ///   births, deaths, arrivals, departures, weddings
 ///   -- satiety --

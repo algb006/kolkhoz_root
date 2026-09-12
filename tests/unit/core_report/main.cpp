@@ -95,12 +95,25 @@ int main() {
   state.epoch = core::Epoch::kTwo;
   state.vitals.life_expectancy_years = 61.5F;
   core::FieldRow field;
+  field.rotation_year0 = core::CropId{0};  // a chain: this land is worked
   field.area_ga = 10.0F;
   field.fertility = 60.0F;
   core::AppendRow(state.fields, field);
   field.area_ga = 30.0F;
   field.fertility = 80.0F;
   core::AppendRow(state.fields, field);  // area-weighted mean is 75, not 70
+  // AND GROUND NOBODY HAS GIVEN A ROTATION IS NOT IN IT EITHER, which was a
+  // land KIND until 2026-09-12: unworked land carried LandKind::kDerelict and
+  // fell out of this walk unremarked. When the kind went, ninety-three of the
+  // start canon's hundred and sixty-three hectares — frozen at sixty-five —
+  // would have entered the mean the balance calculations are read off, and
+  // nothing here would have said a word. Forty hectares at ten would drag 75
+  // to 40.6.
+  core::FieldRow unworked;
+  unworked.area_ga = 40.0F;
+  unworked.fertility = 10.0F;
+  unworked.overgrown = 1;
+  core::AppendRow(state.fields, unworked);
   // A meadow has no fertility to average in: 200 ha of grass at the neutral
   // default would drag the mean of the ARABLE to something nobody sowed.
   core::FieldRow meadow;
@@ -157,7 +170,8 @@ int main() {
                      "the state columns describe the world, not the book");
   failures += Expect(cell("epoch") == "2", "the epoch prints as its number");
   failures += Expect(cell("fertility_mean") == "75",
-                     "fertility is weighted by area, and meadows are not in it");
+                     "fertility is weighted by area; meadows are not in it, and neither is "
+                     "ground nobody has given a rotation — 40 ha at ten would drag 75 to 40.6");
   failures += Expect(cell("births") == "12" && cell("deaths") == "5", "the people flows");
   failures += Expect(cell("satiety_mean") == "70.5", "the yearly mean is the sum over the days");
   failures += Expect(cell("satiety_day_min") == "31.25" && cell("hungry_at_once_max") == "9",

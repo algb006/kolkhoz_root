@@ -2342,6 +2342,53 @@ int CheckTheChairmanCanUnsealAFund() {
                        "and the chairman is told why rather than quietly given what there is");
   }
 
+  // -- before the district has named the plan, the reserve says so ---------
+  //
+  // THE WINDOW IS REAL AND IT IS EIGHT DAYS OF FORTY-EIGHT: JudgePlan clears
+  // plan.due at the year's turn, AnnouncePlan fills it again on the first day
+  // of spring, and in between the share this door is measured by has no
+  // number behind it. Until 2026-09-12 the answer was kRuleForbids, which
+  // sent a chairman looking for a rule that does not exist — the fund is not
+  // empty and the design says plainly that he may open it in a hungry winter.
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kPlanReserve, 0, 400'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "a plan reserve that has no plan behind it yet opens nothing");
+    failures +=
+        Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNoPlanYet,
+               "and the reason is that the plan has not been named, not that a rule forbids — "
+               "the move it teaches is to wait for the spring announcement");
+  }
+
+  // -- but a plan that simply asks for something else is still a plan -------
+  //
+  // The two are told apart by the WHOLE vector and not by this resource, and
+  // that is the half a narrower check would have got wrong: a district that
+  // names oats and no rye HAS named a plan, and answering "no plan yet" to
+  // the rye would be a lie about it. Here the plan names rye at 900 kg, the
+  // chairman asks for wheat, and the answer must be the ordinary ceiling.
+  {
+    const core::ResourceId other{static_cast<std::uint16_t>(resources->FindRowByKey("wheat"))};
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    previous.plan.due.assign(static_cast<std::size_t>(rye.value) + 1U, 0);
+    previous.plan.due[rye.value] = 900'000;
+    core::OrderRow order;
+    order.kind = core::OrderKind::kUnsealFund;
+    order.fund = core::FundKind::kPlanReserve;
+    order.resource = other;
+    order.amount = 400'000;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
+                       "a plan that names another crop is still a plan, and the door refuses by "
+                       "the ceiling rather than by 'no plan yet'");
+  }
+
   // -- a fund nobody named opens nothing ------------------------------------
   //
   // kNone reaches the consumer: the codecs accept it, because it is the value
@@ -2649,11 +2696,18 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     worked.area_ga = 10.0F;
     worked.rotation_year0 = oat;
     core::AppendRow(previous.fields, worked);
-    // AND A DERELICT FIELD BESIDE IT, of the same size and the same crop.
-    // Land nobody worked owes nothing until it is broken — and a norm that
-    // counted it would punish the chairman for ground he never touched.
+    // AND AN UNWORKED FIELD BESIDE IT, of the same size and the same land.
+    // Land nobody worked owes nothing — a norm that counted it would punish
+    // the chairman for ground he never touched.
+    //
+    // WHAT MAKES IT UNWORKED IS THE EMPTY ROTATION, and that is the point of
+    // this pair. The field used to be LandKind::kDerelict here, and the kind
+    // was never what excused it: a field with no rotation owed nothing
+    // whichever kind it was. When the kind went on 2026-09-12 this test had
+    // to say what it had always been testing.
     core::FieldRow resting = worked;
-    resting.kind = core::LandKind::kDerelict;
+    resting.rotation_year0 = core::CropId{};
+    resting.overgrown = 1;
     core::AppendRow(previous.fields, resting);
 
     core::WorldState current = previous;
@@ -2671,7 +2725,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     failures += Expect(asked > 0,
                        "the district names the year's norm in the spring, off land that has "
                        "reaped nothing yet — a norm a share of the harvest could not produce");
-    // Ten hectares of the worked field and NOT twenty: the derelict ten owe
+    // Ten hectares of the worked field and NOT twenty: the unworked ten owe
     // nothing. The two figures are READ BACK OUT OF THE TABLES rather than
     // written here — a second copy of a balance number in a test is a copy
     // that drifts, and this project has been bitten by that more than once.
@@ -2685,8 +2739,94 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     failures += Expect(static_cast<double>(asked) > expected * 0.99 &&
                            static_cast<double>(asked) < expected * 1.01,
                        "and the norm is the worked ten hectares at a normal yield, not the "
-                       "twenty that include the land lying derelict");
+                       "twenty that include the ground nobody has told what to grow");
   }
+  return failures;
+}
+
+/// RESTING FALLOW RECOVERS; UNWORKED GROUND KEEPS WHAT IT HAS — and nothing
+/// in this suite said so until 2026-09-12, which is how the repair of one
+/// defect resurrected another.
+///
+/// While LandKind::kDerelict existed, the year's fertility recovery was kept
+/// off unworked land by a filter on the KIND. The kind was removed because
+/// the design says an overgrown field is a look and not a state, and the
+/// recovery started paying six points a year to ninety-three hectares nobody
+/// has ever ploughed: 65 to 100 in six years, and 100 from the sixth year to
+/// the thirtieth. That is defect D5 of the reconciliation under a new name,
+/// it poisons every area-weighted fertility reading in the project, and it
+/// would have handed a player who raised the land a hundred-point field
+/// instead of the canon's sixty-five.
+///
+/// THE WHOLE SUITE STAYED GREEN THROUGH IT. The analysis found it by walking
+/// the readers of a removed enum, and the field sheet confirmed it — but
+/// neither is a check, and a defect that can come back twice needs one.
+int CheckUnworkedGroundDoesNotRecover() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load for the fallow check") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto system = core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "and they build a production system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ITable* const types = tables->FindTable("unit_types");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::ResourceId manure{static_cast<std::uint16_t>(resources->FindRowByKey("manure"))};
+  const core::UnitTypeId heap_type{static_cast<std::uint16_t>(types->FindRowByKey("manure_pile"))};
+
+  // TWO FIELDS THAT DIFFER IN ONE THING ONLY: the fallow one is on a fallow
+  // YEAR — a chain with a gap in it — and the unworked one has no chain at
+  // all. Same phase, same fertility, same area. If the recovery read
+  // anything but the chain, both would move together.
+  core::WorldState previous;
+  previous.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1;
+  core::RefreshCalendarCaches(previous.calendar);
+  core::FieldRow fallow;
+  fallow.kind = core::LandKind::kArable;
+  fallow.area_ga = 10.0F;
+  fallow.fertility = 65.0F;
+  fallow.phase = core::FieldPhase::kIdle;
+  fallow.rotation_year1 = rye;  // this year fallow, rye the year after
+  core::AppendRow(previous.fields, fallow);
+  core::FieldRow unworked = fallow;
+  unworked.rotation_year1 = core::CropId{};
+  unworked.overgrown = 1;
+  core::AppendRow(previous.fields, unworked);
+  // AND A HEAP WITH MANURE IN IT, so the same turn exercises the SECOND
+  // guard. The winter's manure plan takes the poorest land first, and the
+  // unworked ground is deliberately the poorest here: without the guard it
+  // heads the queue and takes the dose, which is manure spread on ground
+  // that is never ploughed and so never turned in.
+  core::UnitRow heap;
+  heap.type = heap_type;
+  heap.level = 1;
+  heap.stock.assign(static_cast<std::size_t>(manure.value) + 1U, 0);
+  heap.stock[manure.value] = 400'000'000;
+  core::AppendRow(previous.units, heap);
+  previous.fields.rows[1].fertility = 10.0F;  // the poorest on the farm
+
+  core::WorldState current = previous;
+  current.calendar.tick += 1;
+  core::RefreshCalendarCaches(current.calendar);
+  system->RunProductionDecisions(previous, current);
+
+  failures += Expect(current.fields.rows[0].fertility > 65.0F,
+                     "a field on a fallow YEAR recovers over the winter: it was ploughed bare "
+                     "and left to stand, which is what fallow is for");
+  failures += Expect(current.fields.rows[1].fertility == 10.0F,
+                     "and ground nobody has told anything KEEPS what it has — it is not resting "
+                     "fallow, it is land the plough has never touched (defect D5)");
+  failures += Expect(current.fields.rows[0].manure_applied > 0,
+                     "the winter's manure plan gives the fallow field its dose");
+  failures += Expect(current.fields.rows[1].manure_applied == 0,
+                     "and none of it to ground that is never ploughed, which would simply lose "
+                     "it — the poorest-first queue would otherwise hand it the lot");
   return failures;
 }
 
@@ -2944,6 +3084,7 @@ int main() {
   failures += CheckTheDoorCountsWhatLanded();
   failures += CheckPauseAndResume();
   failures += CheckThePlanIsJudgedAtTheYearsTurn();
+  failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanCanUnsealAFund();
 
   if (failures == 0) {

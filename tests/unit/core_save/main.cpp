@@ -209,11 +209,17 @@ core::WorldState MakeWorld() {
   meadow.area_ga = 20.0F;
   meadow.phase = core::FieldPhase::kGrowing;
   core::AppendRow(world.fields, meadow);
-  core::FieldRow derelict;
-  derelict.kind = core::LandKind::kDerelict;  // the top of the enum: its bound is checked too
-  derelict.area_ga = 45.0F;
-  derelict.fertility = 65.0F;
-  core::AppendRow(world.fields, derelict);
+  // The TOP of the land enum, so its bound is exercised, and the overgrown
+  // byte set so the round trip carries it. The byte replaced a whole
+  // LandKind value on 2026-09-12 — an overgrown field used to BE a kind of
+  // land — so a row that sets one and not the other would test the shape
+  // this delivery removed rather than the one it left.
+  core::FieldRow overgrown;
+  overgrown.kind = core::LandKind::kFloodplainMeadow;
+  overgrown.overgrown = 1;
+  overgrown.area_ga = 45.0F;
+  overgrown.fertility = 65.0F;
+  core::AppendRow(world.fields, overgrown);
 
   core::UnitRow barn;
   barn.type = core::UnitTypeId{0};
@@ -479,6 +485,16 @@ int main() {
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.
+  // THE LOOK OF THE GROUND, and it is here because dropping it cost nothing
+  // in the first draft of this delivery: the byte replaced a whole LandKind
+  // value on 2026-09-12, the damage test wrote a zero instead of it, and
+  // every assertion in this file stayed green. A field added to a row and
+  // not to this round trip is a field the codec may quietly forget.
+  failures += Expect(loaded.fields.rows[2].overgrown == 1,
+                     "the weeds on the unworked ground survive the round trip");
+  failures += Expect(loaded.fields.rows[0].overgrown == 0,
+                     "and a worked field does not come back overgrown, which a codec writing a "
+                     "constant would also satisfy the other way round");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

@@ -1572,8 +1572,9 @@ int CheckStubTablesMustBeDeclared() {
 /// phase to be silent ABOUT.
 ///
 /// The land KIND is permanent. A meadow is mown where it grew and is never
-/// ploughed, harrowed or sown; derelict land takes no work at all until it
-/// is raised. An order of that shape used to be ACCEPTED, park at kAccepted
+/// ploughed, harrowed or sown. It named unraised land too until 2026-09-12,
+/// when LandKind::kDerelict went — the weeds are a look, and the plough norm
+/// is one for any ground. An order of that shape used to be ACCEPTED, park at kAccepted
 /// for the rest of the campaign, put a man on work every morning and take
 /// him off the same hour — with no refusal, no event and no alarm. The
 /// chairman saw an accepted order and an idle man and could learn the reason
@@ -1591,11 +1592,17 @@ int TestLandThatCannotCarryTheWork() {
       day.AddField(core::FieldPhase::kPlowing, 40.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
   const core::FieldId meadow =
       day.AddField(core::FieldPhase::kHarvest, 40.0F, core::Vec2{.x = 60.0F, .y = 0.0F});
+  // OVERGROWN GROUND, and it is here to prove a REFUSAL THAT NO LONGER
+  // HAPPENS. Until 2026-09-12 this field was LandKind::kDerelict and carried
+  // no work of any kind; the design says the weeds are a look and that the
+  // plough norm is one for any land, so the kind went and the look moved to
+  // FieldRow::overgrown. The order below must now be refused by nothing.
   const core::FieldId waste =
       day.AddField(core::FieldPhase::kIdle, 40.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
   land(arable, core::LandKind::kArable);
   land(meadow, core::LandKind::kMeadow);
-  land(waste, core::LandKind::kDerelict);
+  land(waste, core::LandKind::kArable);
+  day.world.fields.rows[core::FindRow(day.world.fields, waste)].overgrown = 1;
 
   const auto order = [&day](std::uint32_t man, core::WorkKind work, core::FieldId field) {
     core::OrderRow row;
@@ -1609,7 +1616,7 @@ int TestLandThatCannotCarryTheWork() {
   const core::OrderId plough_arable = order(0, core::WorkKind::kPlowing, arable);
   const core::OrderId plough_meadow = order(1, core::WorkKind::kPlowing, meadow);
   const core::OrderId mow_meadow = order(2, core::WorkKind::kHarvest, meadow);
-  const core::OrderId reap_waste = order(3, core::WorkKind::kHarvest, waste);
+  const core::OrderId plough_waste = order(3, core::WorkKind::kPlowing, waste);
   // HAULING NAMES A FIELD TOO. The first draft of the rule put it with herd
   // care and building — the kinds that name none — and so left the one work
   // kind whose land it never looked at carrying exactly the defect the rule
@@ -1637,8 +1644,9 @@ int TestLandThatCannotCarryTheWork() {
 
   failures += Expect(verdict(plough_meadow) == core::OrderRefusal::kWrongLand,
                      "ploughing a MEADOW is refused: it is not late, it is impossible");
-  failures += Expect(verdict(reap_waste) == core::OrderRefusal::kWrongLand,
-                     "derelict land carries no work of any kind until it is raised");
+  failures += Expect(verdict(plough_waste) != core::OrderRefusal::kWrongLand,
+                     "an OVERGROWN field is refused nothing: the weeds are a look, and raising "
+                     "the land is ploughing it at the same norm as any other ground");
   failures += Expect(verdict(haul_meadow) == core::OrderRefusal::kWrongLand,
                      "and carrying from a MEADOW is refused too: hauling names a field, and this "
                      "one never has a load lying on it");

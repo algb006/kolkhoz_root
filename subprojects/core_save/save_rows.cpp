@@ -74,7 +74,7 @@ static_assert(AggregateArity<FamilyRow>() == 15,
 // byte to 72 plus padding, and it was wrong. A size guessed to satisfy a
 // guard teaches the guard the guess.
 static_assert(sizeof(FieldRow) == 80, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 24,
+static_assert(AggregateArity<FieldRow>() == 25,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -141,6 +141,11 @@ constexpr std::uint8_t kMaxFieldWeatherState =
 constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kOrderKindCount) - 1;
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
+// AND THIS ONE HAD NO SELF-CHECK while the block below said every bound has
+// one. Found on 2026-09-12 by an analysis walking the enum bounds after a
+// value was removed from a different enum; the assertion is one line and the
+// claim it was missing from is the reason it is worth writing down.
+static_assert(kMaxFundKind < static_cast<std::uint8_t>(FundKind::kFundKindCount));
 constexpr std::uint8_t kMaxOrderStatus =
     static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount) - 1;
 constexpr std::uint8_t kMaxOrderRefusal =
@@ -393,6 +398,12 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(row.repeat_years);
   out.WriteU8(row.manure_applied);
   out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  // WEEDS AND SOD, AND NOTHING ELSE (land_state.h). It replaced a whole
+  // LandKind value on 2026-09-12: an overgrown field used to be a KIND of
+  // land that refused every order, and the design says it is a look. Written
+  // as the 0/1 it is and read back the same way — see the read side for why
+  // that is not the same as trusting the byte.
+  out.WriteU8(row.overgrown);
   // Drought and waterlogging, apart. One number could not say which, and
   // the two are cured by opposite things (boss, 2026-09-04).
   out.WriteFloat(row.drought_stress);
@@ -441,6 +452,17 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.repeat_years = in.ReadU8();
   row.manure_applied = in.ReadU8();
   row.kind = static_cast<LandKind>(source.ReadEnumValue(0, kMaxLandKind, "land kind"));
+  // NARROWED TO 0/1 ON THE WAY IN. The byte's domain is two values and a
+  // save can carry any of two hundred and fifty-six. Nothing in the core
+  // branches on it — it is a look — so a stray 7 would harm no arithmetic,
+  // and that is exactly why it would never be caught: the layer would paint
+  // weeds on a ploughed field and nothing would ever say why.
+  //
+  // A first draft of this comment claimed `paused` and `dead` beside it do
+  // the same. They do not — both are read raw — and one of them is already
+  // in the open-items list for it. Naming a neighbour as precedent without
+  // reading the neighbour is how a practice gets invented backwards.
+  row.overgrown = in.ReadU8() != 0 ? 1U : 0U;
   row.drought_stress = in.ReadFloat();
   row.wet_stress = in.ReadFloat();
   row.drought_run_days = in.ReadU8();
