@@ -58,6 +58,28 @@ static_assert(sizeof(PlanState) == (2 * kAmountsSize) + 8,
               "PlanState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<PlanState>() == 5,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
+// THE CONTAINER ITSELF, and it was the one thing here without a guard.
+// Seventeen asserts below watch the BLOCKS of a world and not one watched the
+// world: a new top-level member of WorldState — a float beside the chairman,
+// say — would simply not be written, and nothing would say so. Every tripwire
+// in this file exists because a field once went missing from a stream; this
+// is the outermost place that could happen and the last one still open.
+//
+// The number is the count of WorldState's own members, not of anything
+// inside them. Raise it only together with the code that actually carries the
+// new member — and that is NOT always this pair of functions: of the eighteen
+// members, ten live here, six row tables go through save_rows.cpp, the ledger
+// through WriteLedger, and `step_events` is deliberately never written at all.
+// The first draft of this note said "a line in WriteWorldBlocks and one in
+// ReadWorldBlocks", which would have sent the next reader to the wrong file
+// for eight members out of eighteen.
+//
+// And raise VERSION_SAVE with it, because a member nobody writes is a save
+// that silently forgets it.
+static_assert(AggregateArity<WorldState>() == 18,
+              "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
+              "raised");
+
 // AND THE COUNT ITSELF, SPELLED OUT — the one number neither tripwire below
 // can see. Both of them are written in terms of kFundKindCount: the size
 // assert multiplies by it and the arity assert counts the whole array as one
@@ -268,6 +290,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.chairman.shadow_reputation);
   out.WriteU8(world.chairman.horses_stabled);
 
+  out.WriteFloat(world.traction_ration);
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
@@ -325,6 +348,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.shadow_reputation = in.ReadFloat();
   world->chairman.horses_stabled = in.ReadU8();
 
+  world->traction_ration = in.ReadFloat();
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
   world->plan.last_verdict =

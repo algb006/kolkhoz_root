@@ -434,6 +434,39 @@ struct FarmingConfig {
   /// ASSUMPTION until the balance pass. A yellow light that is yellow
   /// always is noise and stops being seen inside a week; if that happens
   /// these are what is wrong, not the player.
+  /// What the ploughing and the sowing are multiplied BY when the working
+  /// stock has had none of its fodder grain, 0..1 (farming.csv
+  /// traction_hungry_factor). Full fodder is 1.0 and the scale is linear
+  /// between; the norm is divided by it, so 0.7 makes the work half again
+  /// as long.
+  ///
+  /// A DESIGNER'S NUMBER AND NOT A MEASURED ONE, and boss says so in the
+  /// document too: it is the price of unsealing the fodder fund, and the
+  /// price has to be visible in the sowing calendar without being a wall.
+  /// Zero switches the whole rule off, which is what a table set that has
+  /// never heard of traction gets.
+  float traction_hungry_factor = 0.7F;
+
+  /// What share of the working stock's need counts as a FULL work ration,
+  /// 0..1 (farming.csv traction_full_ration_share). The traction ration is
+  /// measured against this and not against the whole need.
+  ///
+  /// BECAUSE A HORSE ON GRAIN ALONE IS NOT A HORSE. The agronomy bands the
+  /// runs check against were measured on a model with no traction rule at
+  /// all — that is, on a settlement whose horses were fed normally — so a
+  /// multiplier laid over them counts the horse twice unless its 1.0 means
+  /// the NORMAL farm rather than an impossible one. Livestock design §11:
+  /// "больше половины нормы им не закроешь — остальное сено".
+  ///
+  /// Not derived from the roster's own caps, and that is worth saying: they
+  /// sum to 2.2 of the need for a horse (oats .5, barley .4, compound .4,
+  /// three bread grains .3 each), so any sum of them clamped by the need is
+  /// just the need again and the number would go back to meaning the
+  /// impossible farm. The achievable share is a DESIGN statement about what
+  /// a working animal actually eats, so it lives in the balance table where
+  /// a design decision can reach it.
+  float traction_full_ration_share = 0.5F;
+
   float feed_light_margin_days = 12.0F;  ///< A season of slack on the fodder.
 
   /// The seed light measures COVERAGE, not days, so its margin is a SHARE

@@ -505,6 +505,36 @@ struct WorldState {
   /// the same slot.
   PlanState plan;
 
+  /// HOW MUCH OF THE WORKING STOCK'S WORK RATION WAS COVERED BY FODDER GRAIN
+  /// yesterday, 0..1 — the traction ration (boss's decision of 2026-09-12;
+  /// resources design §6).
+  ///
+  /// WHY THIS EXISTS, and the reason is a defect rather than a wish. Hay
+  /// carries a horse's whole need (`max_share` 1.0 in feed_links.csv), so a
+  /// horse on hay alone is FED: `unfed_days` stays nil, and unfed_days is
+  /// the only thing anything reads. The model therefore said "alive, so it
+  /// pulls at full strength", and unsealing the fodder fund cost the
+  /// chairman nothing whatever — oats paid for what hay gives away. That is
+  /// not a wage without a holder; it is A PRICE WITH NO SUBJECT.
+  ///
+  /// Hay is the MAINTENANCE ration and fodder grain the WORK ration, which
+  /// is what the `work_only` column of feed_links.csv has said from the
+  /// first day — a flag that was right all along and had not one reader.
+  /// This is its reader: the share scales the ploughing and the sowing and
+  /// nothing else. Milk, deaths and the alarm stay with `unfed_days`, where
+  /// they belong and where they already work.
+  ///
+  /// YESTERDAY'S, not today's: the horses are fed in the herd day, which
+  /// runs after the field work that opens a phase, so a phase opened this
+  /// morning is pulled by animals fed last night. Written once a day by the
+  /// herd day of the production decisions sub-step; read by field work in
+  /// the same sub-step, off the value the previous day left.
+  ///
+  /// One number for the whole settlement rather than one per herd: a phase
+  /// is opened on a field and the core does not say which horse pulls it.
+  /// Naming a horse would be a precision the order book does not carry.
+  float traction_ration = 0.0F;
+
   /// What the chairman has taken out of the sealed funds this economic year
   /// (FundReleaseState). Zeroed at the year's turn with the plan it belongs
   /// to — an unsealing is an emergency of ITS year, not a standing licence.

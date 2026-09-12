@@ -22,11 +22,11 @@ pig,compound_feed,0,1,0
 pig,wheat,1,0.5,0
 pig,rye,1,0.5,0
 pig,buckwheat,1,0.5,0
+horse,oat,0,0.5,1
+horse,barley,1,0.4,1
+horse,compound_feed,0,0.4,1
 horse,hay,0,1,0
 horse,straw,1,0.2,0
-horse,oat,0,0.5,1
-horse,compound_feed,0,0.4,1
-horse,barley,1,0.4,1
 horse,wheat,1,0.3,1
 horse,rye,1,0.3,1
 horse,buckwheat,1,0.3,1

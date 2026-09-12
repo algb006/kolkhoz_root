@@ -209,6 +209,15 @@ float WorkingShare(const WorldState& world,
   return share < 1.0F ? share : 1.0F;
 }
 
+/// @brief The two running sums whose quotient is the day's traction ration:
+/// what the work-only feeds could have covered under their caps, and what
+/// they actually did. Summed across every herd of the day's walk.
+struct WorkRation {
+  float room = 0.0F;
+
+  float covered = 0.0F;
+};
+
 /// Feeds one herd down the feeding order of feed_links.csv. ROW ORDER IS THE
 /// PRIORITY — staple before reserve, own feed before bought concentrate,
 /// fodder grain before bread grain — and nothing is sorted here: the order
@@ -216,17 +225,48 @@ float WorkingShare(const WorldState& world,
 /// two places.
 /// @param working_share What WorkingShare said today; scales the cap of the
 ///        work-only feeds and nothing else.
+/// @param work Optional out, two running sums whose quotient is the traction
+///        ration: what the work-only feeds COULD have covered under their
+///        caps, and what they actually did. Hay keeps a horse alive and
+///        fodder grain makes it pull (world_state.h), and the `work_only`
+///        column has said which is which since the first day without a
+///        single reader.
+///
+///        Filled from THIS walk rather than from a second one: the caps and
+///        the order are the feeding rule, and a second place computing the
+///        same coverage would be that rule's second home.
+///
+///        ONE STRUCT AND NOT TWO `float*`, because two adjacent pointers of
+///        one type are swappable by a typo that compiles: the quotient then
+///        comes out inverted, lands above one, and the clamp pins it to
+///        "fully fed" — the most flattering possible wrong answer. Named
+///        fields cannot be swapped silently.
 /// @return true when the whole need was covered.
 bool RunFeeding(const ProductionConfig& config,
                 LivestockKindId kind_id,
                 const HerdPlace& place,
                 float need_units,
                 float working_share,
-                WorldState& world) {
+                WorldState& world,
+                WorkRation* work = nullptr) {
   if (!(need_units > 0.0F)) {
     return true;
   }
   float covered = 0.0F;
+  float work_covered = 0.0F;
+  // DOES THIS KIND HAVE A WORK RATION AT ALL — asked in its own walk, before
+  // the feeding one and not inside it. Inside, the answer depended on the
+  // feeding getting AS FAR AS a work-only row: a herd filled up by
+  // maintenance feeds listed earlier would break out of the loop first, the
+  // flag would stay false, and that herd would drop out of BOTH halves of
+  // the traction ratio without a trace. The shipped roster is safe only
+  // because oats happen to be the horse's first row — and row order lives in
+  // another repository's database, so a table edit there could silence this
+  // measurement with nothing on this side to notice.
+  bool has_work_feed = false;
+  for (const FeedLinkDef& link : config.feed_links) {
+    has_work_feed = has_work_feed || (link.kind.value == kind_id.value && link.work_only != 0);
+  }
   for (const FeedLinkDef& link : config.feed_links) {
     if (covered >= need_units) {
       break;
@@ -254,7 +294,38 @@ bool RunFeeding(const ProductionConfig& config,
     }
     const Grams wanted = KilogramsToGrams(take_units / value);
     const Grams got = TakeFeed(world, config, place, link.resource, wanted);
-    covered += static_cast<float>(got) / static_cast<float>(kGramsPerKilogram) * value;
+    const float gained = static_cast<float>(got) / static_cast<float>(kGramsPerKilogram) * value;
+    if (link.work_only != 0) {
+      work_covered += gained;
+    }
+    covered += gained;
+  }
+  // THE ROOM IS CAPPED AT WHAT THE ANIMAL CAN EAT, and the cap is the whole
+  // reason this is summed here instead of straight into the caller. The
+  // work-only caps of a horse add up to 1.3 of its need (oats 0.5, barley
+  // 0.4, compound 0.4) — so a plain sum made the denominator half again as
+  // large as any achievable numerator, and the ration could not reach 1.0
+  // however the settlement fed. A ratio whose top is unreachable is not a
+  // ratio: it reads as permanent underfeeding at a farm doing everything
+  // right. Boss asked for "the answer about a reachable 1.0" before the
+  // measurement said so, and he was right to.
+  if (work != nullptr && has_work_feed) {
+    // THE DENOMINATOR IS THE ACHIEVABLE WORK RATION, not the whole need and
+    // not the roster's caps. The caps sum to 2.2 of a horse's need, so any
+    // clamp of them by the need is the need again — and a ration measured
+    // against the whole need makes 1.0 mean a horse living on grain alone,
+    // which is not a horse. The agronomy bands were measured without this
+    // rule, i.e. on a normally fed animal, so the rule's 1.0 has to mean the
+    // NORMAL farm or it counts the horse twice (boss, 2026-09-12).
+    //
+    // AND ONLY FOR KINDS THAT HAVE A WORK RATION AT ALL. It was every herd
+    // for one draft — cows, pigs and sheep included — so the denominator
+    // carried the whole settlement's keep while the numerator carried the
+    // horses' oats, and the ration read a third of what it was. The bug is
+    // invisible in the quotient: it just looks like a poorly fed farm.
+    const float full = need_units * working_share * config.farming.traction_full_ration_share;
+    work->room += full;
+    work->covered += work_covered < full ? work_covered : full;
   }
   // A hair of tolerance: the need is a float and the take is integer grams,
   // so an exactly-fed herd can land a milligram short of its own norm.
@@ -526,6 +597,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // quotient pass 1 and made the drift invisible, because a quotient of two
   // wrong things still looks like a quotient.
   current.ledger.current.horse_backed_assignment_days += horse_backed_days;
+  // The day's work ration of the working stock, summed over every herd the
+  // walk below feeds and turned into the traction ration at the end of it.
+  WorkRation work;
   for (const ResidentRow& resident : current.residents.rows) {
     if (resident.work.kind != WorkKind::kNone) {
       current.ledger.current.total_assignment_days += 1.0F;
@@ -558,7 +632,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
                                             place,
                                             FeedNeedUnits(config, kind, herd, month),
                                             working_share,
-                                            current);
+                                            current,
+                                            &work);
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
     if (fed) {
       herd.hunger_progress = 0.0F;  // a fed day clears the debt, not just the count
@@ -588,6 +663,19 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     RunAgeDeaths(kind, herd, herd_id, current);
     RunHungerDeaths(config, kind, herd, herd_id, current, current.ledger.current);
     RunAutumnSlaughter(config, kind, herd.kind, place, herd, current, current.calendar);
+  }
+  // THE TRACTION RATION of the day (world_state.h): how much of what the
+  // work-only feeds COULD have covered they actually did. Taken after the
+  // walk, because the walk is where the feeding rule lives and a second
+  // computation of the same coverage would be that rule's second home.
+  //
+  // No room means no working stock out today — and then the ration is not
+  // nought, it is UNCHANGED: a horse that stood idle yesterday is neither
+  // better nor worse fed for it, and writing a zero would tell the sowing
+  // that the animals had been starved.
+  if (work.room > 0.0F) {
+    const float ration = work.covered / work.room;
+    current.traction_ration = ration < 1.0F ? ration : 1.0F;
   }
   for (const HerdRow& gift : gifts) {
     AppendRow(current.herds, gift);

@@ -25,8 +25,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 #include <vector>
 
@@ -198,7 +201,60 @@ int main(int argc, char** argv) {
   const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1930;
   g_bands_bind = seed == 1930;
   int failures = 0;
-  const run::Simulation started = run::Start(seed);
+  // THE AGRONOMY BANDS ARE CHECKED ON A SETTLEMENT THAT FEEDS ITS HARNESS,
+  // and that is not a convenience — it is what the bands MEAN. They come from
+  // agronomy, not from this model: so many man-days a hectare behind a horse
+  // in normal working condition. Since 2026-09-12 the core lengthens ploughing
+  // and sowing when the working stock goes without its fodder grain
+  // (world_state.h traction_ration), and the shipped village feeds its horses
+  // nothing at all for thirty years — so measuring the norm on it asks "is
+  // this a healthy farm", while the claim being made is "does the model cost
+  // the work correctly". Two different questions, and the band answers its own.
+  //
+  // Done by handing the run its OWN copy of the tables with
+  // traction_hungry_factor at 1, which is "a fully fed harness" by
+  // construction: the multiplier is hungry + (1 - hungry) * ration, so a
+  // hungry factor of one is one whatever the ration. Nothing else is touched,
+  // and the doctored copy is named in the fixture so the next reader sees
+  // which village these numbers are about.
+  std::error_code copy_failed;
+  const std::filesystem::path fed =
+      std::filesystem::temp_directory_path() / ("labor_year_fed_" + std::to_string(seed));
+  std::filesystem::remove_all(fed, copy_failed);
+  std::filesystem::copy("tables", fed, std::filesystem::copy_options::recursive, copy_failed);
+  if (copy_failed) {
+    std::cout << "FAIL: could not lay out the fed-harness tables (" << copy_failed.message()
+              << ") — run from the repo root\n";
+    return 1;
+  }
+  {
+    std::ifstream source(fed / "farming.csv");
+    std::string knobs;
+    std::string line;
+    bool knob_found = false;
+    while (std::getline(source, line)) {
+      if (line.rfind("traction_hungry_factor,", 0) == 0) {
+        line = "traction_hungry_factor,1";
+        knob_found = true;
+      }
+      knobs += line + "\n";
+    }
+    source.close();
+    // THE FIXTURE ASSERTS ITS OWN ANCHOR. A rename of the knob would leave
+    // this copy byte-identical to the shipped tables, and the agronomy bands
+    // would go back to being measured on the starving village that the whole
+    // block above says they must not be measured on — silently, and still
+    // green, because the bands would then be met by a different accident.
+    // The same rule the scripted edits live by: a replacement that matches
+    // nothing succeeds.
+    if (!knob_found) {
+      std::cout << "FAIL: tables/farming.csv names no traction_hungry_factor — the fed-harness "
+                   "fixture would measure the shipped village instead\n";
+      return 1;
+    }
+    std::ofstream(fed / "farming.csv", std::ios::trunc) << knobs;
+  }
+  const run::Simulation started = run::Start(seed, 1, fed.string());
   if (!started) {
     return 1;
   }
@@ -349,7 +405,9 @@ int main(int argc, char** argv) {
   failures += run::Expect(after_burn == 0.0, "the economic year's turn burns what was not spent");
 
   // --- the same year with three workers ------------------------------------
-  const run::Simulation parallel = run::Start(seed, 3);
+  // The SAME doctored tables: a determinism check that compares two worlds
+  // built on different numbers compares nothing.
+  const run::Simulation parallel = run::Start(seed, 3, fed.string());
   if (!parallel) {
     return failures + 1;
   }

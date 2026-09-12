@@ -498,6 +498,54 @@ class ProductionSystem final : public IProductionSystem {
     }
   }
 
+  /// @brief What the fodder fund holds of one resource, in grams: the
+  /// working stock's WORK RATION FOR THE YEAR.
+  ///
+  /// MEASURED OFF THE HARNESS AND NOT OFF THE HARVEST, which is the whole
+  /// difference between this rung and the plan reserve above it. The seed
+  /// fund is counted from the sowing to come; this one from the animals that
+  /// will pull the plough, in feed units, and a share of the year's need is
+  /// what a working animal may take as grain at all
+  /// (traction_full_ration_share; livestock design §11 — "больше половины
+  /// нормы им не закроешь").
+  ///
+  /// The daily need is taken at the CURRENT month and multiplied by the
+  /// year: the pasture months discount it, so a ceiling read in July would
+  /// be smaller than one read in January for the same herd. That is a
+  /// simplification and it is named rather than hidden — the alternative is
+  /// a twelve-month walk for a number the chairman uses once.
+  Grams FodderFundGrams(const WorldState& current, ResourceId resource) const {
+    const float value =
+        resource.value < config_.feed_values.size() ? config_.feed_values[resource.value] : 0.0F;
+    if (!(value > 0.0F)) {
+      return 0;
+    }
+    float share = 0.0F;
+    for (const FeedLinkDef& link : config_.feed_links) {
+      if (link.work_only != 0 && link.resource.value == resource.value) {
+        share = link.max_share;
+        break;
+      }
+    }
+    const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+    float units = 0.0F;
+    for (const HerdRow& herd : current.herds.rows) {
+      if (herd.household_owned != 0 || herd.kind.value >= config_.livestock.size()) {
+        continue;  // the fund is the kolkhoz's; a yard's animals feed themselves
+      }
+      bool works = false;
+      for (const FeedLinkDef& link : config_.feed_links) {
+        works = works || (link.kind.value == herd.kind.value && link.work_only != 0);
+      }
+      if (!works) {
+        continue;  // a cow has no work ration, so it holds nothing in this fund
+      }
+      units += FeedNeedUnits(config_, config_.livestock[herd.kind.value], herd, month);
+    }
+    const float year_units = units * static_cast<float>(kDaysPerYear) * share;
+    return GramsFromKilograms(year_units / value);
+  }
+
   /// @brief The chairman opens a sealed fund (resources design §6).
   ///
   /// IT SUBTRACTS AND NOTHING ELSE. The funds are notional — the grain is
@@ -551,6 +599,18 @@ class ProductionSystem final : public IProductionSystem {
       return OrderRefusal::kNoSuchSubject;
     }
     const Grams opened = index < released->size() ? (*released)[index] : 0;
+    // NEITHER NUMBER MAY BE NEGATIVE, and both can arrive so. The releases
+    // come back from a save through ReadAmounts with no range check, and the
+    // order's own amount through a raw ReadU64 cast — and a row replayed out
+    // of a save never passes the boundary's ShapeIsValid, which is where the
+    // "amount > 0" rule lives. A negative `opened` turns each of the three
+    // ceilings below into `held + |opened|`, signed overflow inside the very
+    // comparison the subtraction was written to keep safe: the same defect
+    // arriving from the other side. Guarded once for all three rather than
+    // patched at the one the analysis happened to name.
+    if (opened < 0 || order.amount <= 0) {
+      return OrderRefusal::kRuleForbids;
+    }
     // What the fund is holding RIGHT NOW is the fund's own business and is
     // recomputed by its owner every day, so the only ceiling this verb can
     // honestly enforce is the one it can see: the plan reserve may not be
@@ -559,6 +619,37 @@ class ProductionSystem final : public IProductionSystem {
     // WRITTEN AS A SUBTRACTION, because the sum it replaces overflowed inside
     // the very check meant to catch it: `opened + amount > owed` on a signed
     // 64-bit pair is undefined before it is false.
+    // THE FODDER FUND OPENS FODDER GRAIN AND NOTHING ELSE. Its ceiling is a
+    // ceiling on WHAT, not on how much: the fund is the working stock's oats
+    // and barley (resources design §6), and a door that let hay out of it
+    // would put four hundred tonnes nobody but the animals can eat into the
+    // kolkhoz fund — a release with no cost, which is the shape this whole
+    // verb was built to avoid.
+    //
+    // Told apart by the feed roster's own `work_only` flag rather than by a
+    // list of keys here: that flag IS the statement "this is the working
+    // ration and not the maintenance one", it comes from the design db, and
+    // a second list of fodder grains in this file would be its second home.
+    if (order.fund == FundKind::kFodder) {
+      bool work_feed = false;
+      for (const FeedLinkDef& link : config_.feed_links) {
+        if (link.work_only != 0 && link.resource.value == index) {
+          work_feed = true;
+          break;
+        }
+      }
+      if (!work_feed) {
+        return OrderRefusal::kRuleForbids;
+      }
+      // AND NOT WIDER THAN THE FUND ITSELF. Its size is the year's work
+      // ration of the working stock in feed units (resources design §6,
+      // boss's decision of 2026-09-12) — the seed fund is measured off the
+      // sowing to come, and this one off the harness that will plough.
+      const Grams held = FodderFundGrams(current, order.resource);
+      if (opened > held || order.amount > held - opened) {
+        return OrderRefusal::kRuleForbids;
+      }
+    }
     if (order.fund == FundKind::kPlanReserve) {
       const Grams owed = index < current.plan.due.size() ? current.plan.due[index] : 0;
       if (opened > owed || order.amount > owed - opened) {

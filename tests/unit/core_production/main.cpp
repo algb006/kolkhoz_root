@@ -2286,6 +2286,33 @@ int CheckTheChairmanCanUnsealAFund() {
         "a seed fund opened in winter is still open when the sowing begins");
   }
 
+  // A settlement WITH a kolkhoz horse herd: only then does the fodder fund
+  // hold anything at all, because its size is the harness's year of work
+  // ration. A fixture with no herds is the sharpest form of the other check
+  // below: whatever the chairman names, there is no fund to name it out of.
+  const auto order_unseal_with_horses = [&](core::FundKind fund, core::Grams asked) {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    const core::ITable* const livestock = tables->FindTable("livestock");
+    core::HerdRow horses;
+    horses.kind =
+        core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
+    horses.adult_count = 40;
+    core::AppendRow(previous.herds, horses);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kUnsealFund;
+    order.fund = fund;
+    order.resource = rye;
+    order.amount = asked;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    return current;
+  };
+
   // -- the plan reserve opens, and by the figure the chairman named --------
   {
     const core::WorldState after = order_unseal(core::FundKind::kPlanReserve, 900'000, 400'000);
@@ -2407,7 +2434,9 @@ int CheckTheChairmanCanUnsealAFund() {
   // fund arrived the same day the second was written, and it needed no field
   // of its own. A fourth will need none either.
   {
-    const core::WorldState after = order_unseal(core::FundKind::kFodder, 0, 120'000);
+    // Rye is a fodder grain for the horse in the shipped roster (feed_links
+    // marks it work_only), so it may come out of this fund.
+    const core::WorldState after = order_unseal_with_horses(core::FundKind::kFodder, 120'000);
     failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
                        "the fodder fund opens by the same verb as the other two");
     const auto slot = static_cast<std::size_t>(core::FundKind::kFodder);
@@ -2420,6 +2449,48 @@ int CheckTheChairmanCanUnsealAFund() {
                            after.unsealed.by_fund[plan_slot][rye.value] == 0,
                        "and the funds he did not name stay shut — the index is the enum, and "
                        "an off-by-one there would open the neighbour");
+  }
+
+  // -- and a fund with nothing in it opens nothing --------------------------
+  //
+  // The fodder fund's size is the working stock's work ration for the YEAR,
+  // so a settlement with no horses holds none of it. The ceiling is on the
+  // amount and not only on the resource: without it the door would open onto
+  // a fund that does not exist.
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kFodder, 0, 1'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "a settlement with no working stock holds no fodder fund to open");
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
+                       "and is told it is a rule, not a missing resource");
+  }
+
+  // -- but the fodder fund opens FODDER GRAIN and nothing else --------------
+  //
+  // Its ceiling is on WHAT, not on how much. A door that let hay out of the
+  // fodder fund would free four hundred tonnes nobody but the animals eat —
+  // a release with no cost, and a release with no cost is what this whole
+  // verb exists not to be.
+  {
+    const core::ITable* const resources_table = tables->FindTable("resources");
+    const core::ResourceId hay{static_cast<std::uint16_t>(resources_table->FindRowByKey("hay"))};
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kUnsealFund;
+    order.fund = core::FundKind::kFodder;
+    order.resource = hay;
+    order.amount = 50'000;
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "hay does not come out of the fodder fund");
+    failures += Expect(current.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
+                       "and the chairman is told it is a rule and not a shortage");
   }
 
   // -- the seed fund is the same door ---------------------------------------

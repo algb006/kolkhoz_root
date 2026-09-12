@@ -268,13 +268,37 @@ void OpenPhase(const ProductionConfig& config,
   }
   const CropId crop = field.crop;
   float norm = 0.0F;
+  bool horse_pulled = false;
   if (phase == FieldPhase::kPlowing) {
     norm = config.farming.plow_days_per_ha;
+    horse_pulled = true;
   } else if (phase == FieldPhase::kHarrowing) {
     norm = config.farming.harrow_days_per_ha;
+    horse_pulled = true;
   } else if (crop.value < config.crops.size()) {
-    norm = phase == FieldPhase::kSowing ? config.crops[crop.value].sow_days_per_ha
-                                        : config.crops[crop.value].harvest_days_per_ha;
+    const bool sowing = phase == FieldPhase::kSowing;
+    norm = sowing ? config.crops[crop.value].sow_days_per_ha
+                  : config.crops[crop.value].harvest_days_per_ha;
+    horse_pulled = sowing;
+  }
+  // THE TRACTION RATION LENGTHENS THE WORK THE HORSE PULLS, and only that
+  // work (boss's decision of 2026-09-12). Hay keeps a horse alive; fodder
+  // grain makes it pull, and until today the model said "alive, therefore
+  // full strength" — so unsealing the fodder fund cost the chairman nothing
+  // at all. This is the price, and the chairman reads it off the sowing
+  // calendar the same spring, which is the only place he could.
+  //
+  // NOT A STOP AT THE BOTTOM: an empty fodder fund makes the sowing half
+  // again as long and it still finishes. A chairman who fed his people out
+  // of the horses' grain loses a week, not a year — "никаких безвыходных
+  // ситуаций" read forwards.
+  //
+  // The harvest is left out on purpose: reaping is a scythe and a sickle in
+  // Epoch I. Mowing likewise, above.
+  if (horse_pulled && config.farming.traction_hungry_factor > 0.0F) {
+    const float factor = config.farming.traction_hungry_factor +
+                         (1.0F - config.farming.traction_hungry_factor) * current.traction_ration;
+    norm = factor > 0.0F ? norm / factor : norm;
   }
   field.work_days_remaining = norm * field.area_ga;
 }

@@ -868,7 +868,8 @@ int main(int argc, char** argv) {
                                     static_cast<double>(book.total_assignment_days)
                               : 0.0;
   std::cout << "thirty_years: " << (traction * 100.0) << "% of the last year's assignment-days "
-            << "had a horse behind them\n";
+            << "had a horse behind them, and the working stock's fodder ration stood at "
+            << (state.traction_ration * 100.0F) << "% on the last day\n";
   failures += run::Expect(book.total_assignment_days > 0.0F,
                           "the settlement worked at all in its thirtieth year");
   failures += run::Expect(traction <= 1.0,
