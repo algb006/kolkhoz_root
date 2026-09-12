@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -58,6 +59,15 @@ struct Outcome {
   /// a success — it means food arrives faster than it is eaten and is
   /// piling up somewhere.
   float leanest_day_satiety = 100.0F;
+
+  /// How many days actually went into `leanest_day_satiety`. IT EXISTS
+  /// BECAUSE A FLOOR CANNOT TELL A GOOD YEAR FROM AN UNMEASURED ONE: the
+  /// figure above starts at 100 and is only ever lowered, so a measurement
+  /// that never ran leaves the most-passing value a floor can meet, and the
+  /// direction claim and the gap floor clear as well. Asserted in main()
+  /// against the number of days the run is supposed to walk, so the hole has
+  /// a name and a breakage rather than a hope.
+  std::uint32_t leanest_days_measured = 0;
   std::uint32_t most_hungry_at_once = 0;
 
   /// HOW MANY PEOPLE SPENT A WHOLE YEAR LOSING HEALTH — residents who were
@@ -234,6 +244,61 @@ int ExpectBand(bool holds, const char* label) {
   return 0;
 }
 
+/// A RECORDED VALUE IS NOT A DESIGN BAND, AND THE NAME IS THE WHOLE OF THE
+/// DIFFERENCE (boss's decision of 2026-09-12; architecture §8бш).
+///
+/// Three checks below carried numbers that had been red for days — 25 on
+/// the leanest day from the stage-6 criterion, four fifths of the village
+/// hungry at once, and five points of margin between the fed village and the
+/// unfed one. Only the first of the three came with the criterion; the other
+/// two were written later, beside measurements of the day. The model meets
+/// none of them, and boss has ruled that answering them is the MODEL's debt
+/// and not this run's — so the band is withdrawn and the regression is kept.
+/// A guard that reddens on every run becomes background, and a gate that can
+/// never be satisfied stops meaning "broken" at all, which costs more than
+/// the guard was worth.
+///
+/// What stands in their place is what this run measured on kCanonSeed, and
+/// the only claim made about it is that the settlement does not get WORSE
+/// than that without someone noticing. THAT is an honest instrument
+/// precisely because it says so: what would make it a lie is not the
+/// comparison with yesterday's number — it is the label "design band" laid
+/// on top of one. The debt itself lives in boss's decision register with his
+/// name and a date for the re-shoot, and deliberately not here: a floor
+/// written down in a test is not a design decision and must never be read as
+/// one by whoever comes next.
+///
+/// A recorded value is a MEASURED number, so it is a band by this file's own
+/// rule and goes through the same seed gate: on a swept seed it prints.
+///
+/// THERE IS NO TOLERANCE, and the first draft's was worse than none. It
+/// allowed 2 % and justified itself by the second compiler — Clang here,
+/// MSVC on the Windows host — but the host build makes `core.lib` and never
+/// runs ctest, so the tolerance guarded a run that does not happen while
+/// permitting a fifth of a point of real degradation every time. The run IS
+/// deterministic: the same seed over the same tables gives the same float,
+/// and the suite already leans on that in `determinism`, which compares one
+/// worker against four byte for byte.
+///
+/// So the recorded values are written to nine figures and compared exactly.
+/// If the day comes that the host runs the suite, a tolerance may be owed —
+/// and it will be owed a MEASUREMENT of how far the two compilers actually
+/// part, not a number chosen in advance to be comfortable.
+///
+/// @brief Regression check where a HIGHER number is the healthier village.
+int ExpectNoLower(float value, float recorded, const char* label) {
+  std::cout << "food_year: " << label << " — " << std::setprecision(9) << value << ", recorded "
+            << recorded << std::setprecision(6) << '\n';
+  return ExpectBand(value >= recorded, label);
+}
+
+/// @brief Regression check where a LOWER number is the healthier village.
+int ExpectNoHigher(float value, float recorded, const char* label) {
+  std::cout << "food_year: " << label << " — " << std::setprecision(9) << value << ", recorded "
+            << recorded << std::setprecision(6) << '\n';
+  return ExpectBand(value <= recorded, label);
+}
+
 Outcome RunYears(const std::filesystem::path& tables_root,
                  std::uint32_t years,
                  bool with_chairman,
@@ -340,6 +405,7 @@ Outcome RunYears(const std::filesystem::path& tables_root,
         const float today_mean = today_total / static_cast<float>(people);
         outcome.leanest_day_satiety =
             today_mean < outcome.leanest_day_satiety ? today_mean : outcome.leanest_day_satiety;
+        ++outcome.leanest_days_measured;
       }
       outcome.most_hungry_at_once =
           today_hungry > outcome.most_hungry_at_once ? today_hungry : outcome.most_hungry_at_once;
@@ -445,6 +511,24 @@ int main(int argc, char** argv) {
   // hay in the larders looked like before anyone added the numbers up.
   failures += run::Expect(good.health_line > 0.0F,
                           "the run found its health line in food.csv (fixture anchor)");
+  // TWO MORE ANCHORS, and they are about the fixture and not the weather, so
+  // they bind on every seed. The first says the lean-day measurement really
+  // walked the days it claims; the second says there is a village to measure
+  // at all, because a settlement of nobody scores perfectly under a ceiling
+  // on the share of it that goes hungry — the one catastrophe the guard
+  // exists to notice would have read as the best run ever made.
+  // Days 1..kYears*48 are observed and day 0 never is, because the first
+  // hour-zero tick of the loop lands on day 1; of those the lean-day measure
+  // takes the ones in year 2 and later, which is days 48..144 inclusive. The
+  // count is printed as well as asserted: an anchor that says only "wrong"
+  // leaves the next reader to rediscover the off-by-one I just did.
+  constexpr std::uint32_t kLeanDaysExpected = (kYears - 1U) * core::kDaysPerYear + 1U;
+  std::cout << "food_year: the lean-day measure walked " << good.leanest_days_measured
+            << " days, expected " << kLeanDaysExpected << '\n';
+  failures += run::Expect(good.leanest_days_measured == kLeanDaysExpected,
+                          "the lean-day measure walked every day it claims (fixture anchor)");
+  failures += run::Expect(good.people > 0U && bad.people > 0U,
+                          "there is a village on both arms to measure (fixture anchor)");
   failures += ExpectBand(good.mean_satiety >= 65.0F,
                          "with the shipped tables the village is fed on the year (reference)");
   // A YEAR's mean sits well below the year's end, and that is the model
@@ -480,15 +564,28 @@ int main(int argc, char** argv) {
                "replacement waits on what the aggregate should be measured against\n";
   failures += ExpectBand(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                          "and the settlement is not sliding year on year");
-  failures +=
-      ExpectBand(good.leanest_day_satiety >= 25.0F, "the lean season is a dip and not a collapse");
-  // Since task A4 food GOES BAD where it lies (transport design §10), and
-  // the lean season bites harder for it: the autumn's abundance no longer
-  // waits in the store until March. Four fifths rather than seven tenths,
-  // and the claim is unchanged — hunger touches most of the village at the
-  // worst moment of the year and never all of it.
-  failures += ExpectBand(good.most_hungry_at_once * 10U <= good.people * 8U,
-                         "and it never takes the whole village at once");
+  // BAND WITHDRAWN, REGRESSION KEPT. The stage-6 criterion asked for 25 on
+  // the leanest day; the model gives 20.4899788 and has done since spoilage
+  // arrived. Whether 25 is the right thing to want is the model's question,
+  // and it is boss's to schedule — so what is watched here is only that the
+  // leanest day does not sink below what it already was.
+  failures += ExpectNoLower(
+      good.leanest_day_satiety, 20.4899788F, "the leanest day of the year (recorded, not a band)");
+  // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
+  // two things in one sentence. "Hunger never takes the WHOLE village" is a
+  // direction and stands above, binding on every seed. "Four fifths and no
+  // more" was a level: it went from seven tenths to four fifths when task A4
+  // made food go bad where it lies (transport design §10), so the autumn's
+  // abundance stopped waiting in the store until March. The model now stands
+  // at 99 of 122, a hair over four fifths, and where the edge belongs is not
+  // this run's to say — so the share is watched against itself.
+  const float hungry_share = good.people > 0U ? static_cast<float>(good.most_hungry_at_once) /
+                                                    static_cast<float>(good.people)
+                                              : 0.0F;
+  failures += run::Expect(good.most_hungry_at_once < good.people,
+                          "and hunger never takes the whole village at once");
+  failures += ExpectNoHigher(
+      hungry_share, 0.811475396F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -514,8 +611,16 @@ int main(int argc, char** argv) {
   // model hides the very thing the run exists to see.
   failures +=
       ExpectBand(bad.mean_health < good.mean_health - 2.0F, "striking out the issue norms is felt");
-  failures += ExpectBand(bad.leanest_day_satiety < good.leanest_day_satiety - 5.0F,
-                         "and the lean season is a different animal without the issue");
+  // THIS ONE SPLITS IN TWO, by this file's own rule. The DIRECTION is a
+  // claim about the model — striking out the issue makes the lean season
+  // worse — and it binds on every seed. The five points of margin were a
+  // measured number wearing a claim's clothes: the model gives a gap of
+  // 1.61, and it is the gap that is watched, against itself.
+  failures += run::Expect(bad.leanest_day_satiety < good.leanest_day_satiety,
+                          "and the lean season is worse without the issue");
+  failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
+                            1.61304283F,
+                            "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
   // a thin ration and many are slightly short; hand it nothing and the
