@@ -65,7 +65,15 @@ bool ShapeIsValid(const OrderRow& order) {
       // "осознанный выбор, а не незаметная утечка" (resources design §6)
       // means the chairman NAMES a figure, and an unsealing of nothing is
       // not a smaller decision, it is no decision at all.
-      return order.fund != FundKind::kNone && order.fund != FundKind::kFundKindCount &&
+      //
+      // THE FUND IS CHECKED AS A RANGE, not against two named values. A
+      // blacklist here let every value from five up through to a consumer
+      // that indexes a fixed-size array with it: the enum has a fixed
+      // underlying type, and this is the door the layer's own copy of it
+      // comes through.
+      return static_cast<std::uint32_t>(order.fund) > static_cast<std::uint32_t>(FundKind::kNone) &&
+             static_cast<std::uint32_t>(order.fund) <
+                 static_cast<std::uint32_t>(FundKind::kFundKindCount) &&
              order.resource.value != kInvalidDefIdValue && order.amount > 0;
     case OrderKind::kAssignWork:
       // The kind of work decides which target is required, and the list is

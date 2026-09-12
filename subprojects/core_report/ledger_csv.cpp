@@ -295,6 +295,11 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   }
   // Trudodni are stored in hundredths and reported whole: the sheet speaks
   // the design's unit, not the state's storage.
+  // The two halves of the mechanisation share, as figures rather than as a
+  // ratio: a sheet that carried only the quotient could not say whether a
+  // low year was a poor one or a short one.
+  out.Number("horse_backed_assignment_days", book.horse_backed_assignment_days);
+  out.Number("total_assignment_days", book.total_assignment_days);
   out.Number("trudodni_accrued",
              static_cast<float>(book.trudodni_accrued) / static_cast<float>(kTrudodniScale));
   out.Number("trudodni_burned",

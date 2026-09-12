@@ -30,9 +30,9 @@ namespace {
 // telling the truth about its layout, not a format that changed.
 constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
-static_assert(sizeof(YearLedger) == 136 + (13 * kAmountsSize),
+static_assert(sizeof(YearLedger) == 144 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 37,
+static_assert(AggregateArity<YearLedger>() == 39,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -58,9 +58,21 @@ static_assert(sizeof(PlanState) == (2 * kAmountsSize) + 8,
               "PlanState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<PlanState>() == 5,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(FundReleaseState) == 2 * kAmountsSize,
+// AND THE COUNT ITSELF, SPELLED OUT — the one number neither tripwire below
+// can see. Both of them are written in terms of kFundKindCount: the size
+// assert multiplies by it and the arity assert counts the whole array as one
+// member, so appending a FIFTH fund would add a fifth vector to the save
+// stream and leave both of them green. A guard that adapts to the change it
+// exists to catch is no guard at all, and this is the shape aggregate_arity.h
+// warns about in its own closing note — whoever puts an array in a state row
+// takes its length out of the tripwires' reach.
+static_assert(static_cast<std::size_t>(FundKind::kFundKindCount) == 4,
+              "a fund was added or removed — the save stream gained or lost a vector, so "
+              "update the codec and have VERSION_SAVE raised");
+static_assert(sizeof(FundReleaseState) ==
+                  static_cast<std::size_t>(FundKind::kFundKindCount) * kAmountsSize,
               "FundReleaseState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FundReleaseState>() == 2,
+static_assert(AggregateArity<FundReleaseState>() == 1,
               "FundReleaseState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(RngState) == 16, "RngState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RngState>() == 2,
@@ -145,6 +157,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI32(book.trudodni_accrued);
   out.WriteI32(book.trudodni_burned);
   out.WriteU32(book.walk_offs);
+  out.WriteFloat(book.horse_backed_assignment_days);
+  out.WriteFloat(book.total_assignment_days);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -194,6 +208,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.trudodni_accrued = in.ReadI32();
   book.trudodni_burned = in.ReadI32();
   book.walk_offs = in.ReadU32();
+  book.horse_backed_assignment_days = in.ReadFloat();
+  book.total_assignment_days = in.ReadFloat();
   return book;
 }
 
@@ -257,8 +273,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
   out.WriteU8(world.plan.failed_years_in_a_row);
   out.WriteU8(world.plan.met_years_in_a_row);
-  sink.WriteAmounts(DefKind::kResource, world.unsealed.from_seed);
-  sink.WriteAmounts(DefKind::kResource, world.unsealed.from_plan);
+  for (const ResourceAmounts& opened : world.unsealed.by_fund) {
+    sink.WriteAmounts(DefKind::kResource, opened);
+  }
 
   out.WriteFloat(world.vitals.life_expectancy_years);
   WriteFloatArray(out, world.vitals.satiety_year_means);
@@ -314,8 +331,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));
   world->plan.failed_years_in_a_row = in.ReadU8();
   world->plan.met_years_in_a_row = in.ReadU8();
-  world->unsealed.from_seed = source.ReadAmounts(DefKind::kResource);
-  world->unsealed.from_plan = source.ReadAmounts(DefKind::kResource);
+  for (ResourceAmounts& opened : world->unsealed.by_fund) {
+    opened = source.ReadAmounts(DefKind::kResource);
+  }
 
   world->vitals.life_expectancy_years = in.ReadFloat();
   ReadFloatArray(in, world->vitals.satiety_year_means);

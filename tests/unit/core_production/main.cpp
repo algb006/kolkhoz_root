@@ -2270,8 +2270,9 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState previous;
     previous.calendar.tick = (2U * core::kDaysPerMonth * core::kTicksPerDay) - 1U;
     core::RefreshCalendarCaches(previous.calendar);
-    previous.unsealed.from_seed.assign(static_cast<std::size_t>(rye.value) + 1U, 0);
-    previous.unsealed.from_seed[rye.value] = 500'000;
+    previous.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)].assign(
+        static_cast<std::size_t>(rye.value) + 1U, 0);
+    previous.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value] = 500'000;
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
@@ -2279,8 +2280,10 @@ int CheckTheChairmanCanUnsealAFund() {
                            previous.calendar.season != core::Season::kSpring,
                        "the fixture crosses into spring");
     system->RunProductionDecisions(previous, current);
-    failures += Expect(current.unsealed.from_seed[rye.value] == 500'000,
-                       "a seed fund opened in winter is still open when the sowing begins");
+    failures += Expect(
+        current.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value] ==
+            500'000,
+        "a seed fund opened in winter is still open when the sowing begins");
   }
 
   // -- the plan reserve opens, and by the figure the chairman named --------
@@ -2289,12 +2292,18 @@ int CheckTheChairmanCanUnsealAFund() {
     failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
                        "the chairman may open the plan reserve in an emergency");
     const core::Grams opened =
-        rye.value < after.unsealed.from_plan.size() ? after.unsealed.from_plan[rye.value] : 0;
+        rye.value < after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)]
+                        .size()
+            ? after.unsealed
+                  .by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)][rye.value]
+            : 0;
     failures += Expect(opened == 400'000,
                        "and exactly the figure he named comes out, not as much as is there — "
                        "the design calls the alternative a leak, not a decision");
-    failures += Expect(after.unsealed.from_seed.empty() || after.unsealed.from_seed[rye.value] == 0,
-                       "and the seed fund he did not name stays shut");
+    failures += Expect(
+        after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)].empty() ||
+            after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value] == 0,
+        "and the seed fund he did not name stays shut");
   }
 
   // -- past what the district asked for, the door refuses ------------------
@@ -2317,8 +2326,11 @@ int CheckTheChairmanCanUnsealAFund() {
     const core::WorldState after = order_unseal(core::FundKind::kNone, 900'000, 100'000);
     failures += Expect(after.orders.rows[0].status == core::OrderStatus::kRefused,
                        "an unsealing that names no fund opens none");
-    failures += Expect(after.unsealed.from_plan.empty() || after.unsealed.from_plan[rye.value] == 0,
-                       "and above all does not quietly open the plan reserve instead");
+    failures += Expect(
+        after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)].empty() ||
+            after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)]
+                                  [rye.value] == 0,
+        "and above all does not quietly open the plan reserve instead");
   }
 
   // -- a resource the roster does not carry is refused, and grows nothing ---
@@ -2342,16 +2354,18 @@ int CheckTheChairmanCanUnsealAFund() {
     system->RunProductionDecisions(previous, current);
     failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
                        "an unsealing of a resource the roster does not carry is refused");
-    failures += Expect(current.unsealed.from_seed.size() < 60000,
-                       "and the dense vector is not stretched to hold it");
+    failures += Expect(
+        current.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)].size() < 60000,
+        "and the dense vector is not stretched to hold it");
   }
 
   // -- a refused order leaves the state the size it found it ----------------
   {
     const core::WorldState after = order_unseal(core::FundKind::kPlanReserve, 900'000, 1'000'000);
-    failures += Expect(after.unsealed.from_plan.empty(),
-                       "a refused unsealing grows nothing: the vector used to be resized "
-                       "before the refusal that turned the order down");
+    failures += Expect(
+        after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)].empty(),
+        "a refused unsealing grows nothing: the vector used to be resized "
+        "before the refusal that turned the order down");
   }
 
   // -- the seed fund's running total stays a number -------------------------
@@ -2365,8 +2379,10 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState previous;
     previous.calendar.tick = 10U * core::kTicksPerDay;
     core::RefreshCalendarCaches(previous.calendar);
-    previous.unsealed.from_seed.assign(static_cast<std::size_t>(rye.value) + 1U, 0);
-    previous.unsealed.from_seed[rye.value] = std::numeric_limits<core::Grams>::max() - 10;
+    previous.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)].assign(
+        static_cast<std::size_t>(rye.value) + 1U, 0);
+    previous.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value] =
+        std::numeric_limits<core::Grams>::max() - 10;
     core::OrderRow order;
     order.kind = core::OrderKind::kUnsealFund;
     order.fund = core::FundKind::kSeed;
@@ -2380,8 +2396,30 @@ int CheckTheChairmanCanUnsealAFund() {
     failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
                        "an unsealing that would wrap the running total is refused, not wrapped");
     failures += Expect(
-        current.unsealed.from_seed[rye.value] == std::numeric_limits<core::Grams>::max() - 10,
+        current.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value] ==
+            std::numeric_limits<core::Grams>::max() - 10,
         "and the total it was refused by is untouched");
+  }
+
+  // -- and so is the fodder fund, the third rung ----------------------------
+  //
+  // THE POINT OF THE ARRAY, checked rather than asserted in prose: a third
+  // fund arrived the same day the second was written, and it needed no field
+  // of its own. A fourth will need none either.
+  {
+    const core::WorldState after = order_unseal(core::FundKind::kFodder, 0, 120'000);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
+                       "the fodder fund opens by the same verb as the other two");
+    const auto slot = static_cast<std::size_t>(core::FundKind::kFodder);
+    const core::Grams opened = rye.value < after.unsealed.by_fund[slot].size()
+                                   ? after.unsealed.by_fund[slot][rye.value]
+                                   : 0;
+    failures += Expect(opened == 120'000, "and by the figure the chairman named");
+    const auto plan_slot = static_cast<std::size_t>(core::FundKind::kPlanReserve);
+    failures += Expect(after.unsealed.by_fund[plan_slot].empty() ||
+                           after.unsealed.by_fund[plan_slot][rye.value] == 0,
+                       "and the funds he did not name stay shut — the index is the enum, and "
+                       "an off-by-one there would open the neighbour");
   }
 
   // -- the seed fund is the same door ---------------------------------------
@@ -2394,7 +2432,9 @@ int CheckTheChairmanCanUnsealAFund() {
     failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
                        "the seed fund opens by the same verb");
     const core::Grams opened =
-        rye.value < after.unsealed.from_seed.size() ? after.unsealed.from_seed[rye.value] : 0;
+        rye.value < after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)].size()
+            ? after.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value]
+            : 0;
     failures += Expect(opened == 250'000, "and by the figure the chairman named");
   }
   return failures;

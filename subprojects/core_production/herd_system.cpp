@@ -144,7 +144,30 @@ void RunBilleting(const HerdRow& herd,
 ///
 /// Read from `current` after the labor sub-step of the same sequential slot
 /// has written today's orders (manual/54-modules.md §3).
-float WorkingShare(const WorldState& world, const ProductionConfig& config) {
+/// @param horse_backed_days Optional out: today's assignment-days that a horse
+///        ACTUALLY pulled — the mechanisation numerator (epochs design §6,
+///        boss's decision of 2026-09-12). Filled from the same single walk
+///        that feeds the oats, because the two are one question asked twice:
+///        "how much of the pool was in the traces today". A second walk of
+///        its own would be the same fact with two homes, and the two would
+///        part company the first time one of them learned about a mower.
+///
+///        NOT the horse-work man-days themselves. `IsHorseWork` is a
+///        `constexpr` over the KIND of work and calls ploughing horse work
+///        in a village with an empty stable, so those man-days measure the
+///        rotation. What is booked is the share of them the horses could
+///        actually carry: more ploughmen than horses means the surplus
+///        pulled by hand.
+float WorkingShare(const WorldState& world,
+                   const ProductionConfig& config,
+                   float* horse_backed_days = nullptr) {
+  // THE OUT-PARAM IS ANSWERED ON EVERY PATH, including the two that give up
+  // early. It was left untouched there, and the doc's "stays at nothing" was
+  // then a promise kept by the CALLER's initialiser — true today and true
+  // only while every caller keeps writing one.
+  if (horse_backed_days != nullptr) {
+    *horse_backed_days = 0.0F;
+  }
   if (config.horse_kind.value == kInvalidDefIdValue) {
     return 0.0F;
   }
@@ -155,15 +178,34 @@ float WorkingShare(const WorldState& world, const ProductionConfig& config) {
     }
   }
   if (horses == 0) {
-    return 0.0F;
+    return 0.0F;  // no horses, no traction, and the out-param already says so
   }
+  // THE ASSIGNMENT, NOT THE HOURS ALREADY WORKED. The condition here asked
+  // `worked_norm_days_today > 0` until 2026-09-12 and was therefore false
+  // for everybody: this runs in the daily block at the first tick of a day,
+  // when labor has just handed out today's orders and NOBODY has worked an
+  // hour yet. The oats ration is "the horse's wage" (livestock design), and
+  // in thirty measured years it paid zero — hay carried the whole keep and
+  // no line anywhere said so.
+  //
+  // The ration is decided at the START of the day, for the horses that are
+  // going into the traces, so the assignment is the right thing to read and
+  // the hours are the wrong one. Found while wiring the mechanisation share,
+  // which reads the same quantity and would have shipped as a constant nil.
   std::uint32_t working = 0;
   for (const ResidentRow& resident : world.residents.rows) {
-    if (resident.work.worked_norm_days_today > 0.0F && IsHorseWork(resident.work.kind)) {
+    if (IsHorseWork(resident.work.kind)) {
       ++working;
     }
   }
   const float share = static_cast<float>(working) / static_cast<float>(horses);
+  if (horse_backed_days != nullptr) {
+    // Assignment-days: one per man ordered out today, and what the horses
+    // can carry is the lesser of the two counts. The denominator is counted
+    // in the same walk (see the caller) so that both halves of the ratio
+    // are the same unit, taken at the same hour, by the same module.
+    *horse_backed_days = static_cast<float>(working < horses ? working : horses);
+  }
   return share < 1.0F ? share : 1.0F;
 }
 
@@ -475,7 +517,20 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   StableHorses(config, current);
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   std::vector<float> room = RoofRoom(current, config);
-  const float working_share = WorkingShare(current, config);
+  float horse_backed_days = 0.0F;
+  const float working_share = WorkingShare(current, config, &horse_backed_days);
+  // BOTH HALVES OF THE MECHANISATION SHARE, here and only here (epochs
+  // design §6; ledger_state.h). The denominator was booked by core_labor for
+  // one afternoon, from delivered norm-days — a different unit at a
+  // different hour on the other side of the year's close, which let the
+  // quotient pass 1 and made the drift invisible, because a quotient of two
+  // wrong things still looks like a quotient.
+  current.ledger.current.horse_backed_assignment_days += horse_backed_days;
+  for (const ResidentRow& resident : current.residents.rows) {
+    if (resident.work.kind != WorkKind::kNone) {
+      current.ledger.current.total_assignment_days += 1.0F;
+    }
+  }
   const bool stable_built = StableBuilt(current, config);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);

@@ -209,8 +209,9 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
       reserve[index] = reserve[index] > opened[index] ? reserve[index] - opened[index] : 0;
     }
   };
-  release(world.unsealed.from_plan);
-  release(world.unsealed.from_seed);
+  for (const ResourceAmounts& opened : world.unsealed.by_fund) {
+    release(opened);
+  }
   const ResourceAmounts& fodder = world.ledger.closed.feed;
   for (std::uint32_t index = 0; index < fodder.size() && index < reserve.size(); ++index) {
     reserve[index] += fodder[index];

@@ -336,8 +336,10 @@ core::WorldState MakeWorld() {
   core::AppendRow(world.orders, unseal);
 
   // And the release it left behind, which is world state of its own.
-  world.unsealed.from_seed = Amounts({0, 0, 640'000});
-  world.unsealed.from_plan = Amounts({0, 310'000});
+  world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)] =
+      Amounts({0, 0, 640'000});
+  world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] =
+      Amounts({0, 310'000});
 
   world.ledger.closed.year = 2;
   world.ledger.closed.births = 6;
@@ -490,10 +492,12 @@ int main() {
   failures += Expect(unseal_back.fund == core::FundKind::kSeed, "and names the fund it opened");
   failures += Expect(unseal_back.resource.value == 2, "and the resource taken out of it");
   failures += Expect(unseal_back.amount == 640'000, "and the figure the chairman named");
-  failures += Expect(loaded.unsealed.from_seed[2] == 640'000,
-                     "and the release against the seed fund is world state that survives");
-  failures += Expect(loaded.unsealed.from_plan[1] == 310'000,
-                     "as is the one against the plan reserve, which is a different number");
+  failures +=
+      Expect(loaded.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][2] == 640'000,
+             "and the release against the seed fund is world state that survives");
+  failures += Expect(
+      loaded.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)][1] == 310'000,
+      "as is the one against the plan reserve, which is a different number");
   failures +=
       Expect(loaded.ledger.closed.year == 2 && loaded.ledger.closed.trudodni_burned == 4200 &&
                  loaded.ledger.current.births == 1,

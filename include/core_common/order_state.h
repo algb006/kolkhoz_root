@@ -367,6 +367,17 @@ enum class FundKind : std::uint8_t {
   /// year's harvest. Unsealing it risks the autumn's delivery.
   kPlanReserve,
 
+  /// The fodder fund — the working stock's year of feed grain, oats and
+  /// barley (resources design §6, third rung; boss's decision of
+  /// 2026-09-12). Unsealing it risks the SPRING SOWING, and risks it
+  /// slowly: horses that wintered on hay alone still plough, they plough
+  /// for longer, and the chairman learns the price of his decision from the
+  /// calendar rather than from a window.
+  ///
+  /// It sits BELOW the plan on purpose: in a poor year the district takes
+  /// first and the horse goes thin before the delivery falls short.
+  kFodder,
+
   /// NOT A VALUE: the count, for the codecs' range check. Append before it.
   kFundKindCount,
 };

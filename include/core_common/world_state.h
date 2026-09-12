@@ -364,24 +364,38 @@ struct VitalsState {
 /// @brief What the chairman has taken out of the sealed funds, by resource.
 ///
 /// THE FUNDS ARE NOTIONAL AND THE GRAIN IS ONE HEAP, so unsealing cannot
-/// move anything: the seed fund and the plan reserve are computed each day
-/// out of the sowing norms and the plan (resources design §6), and what a
-/// release does is make that computation ask for less. Two vectors and not
-/// one, because the two funds fail differently — the seed fund's release
-/// costs the spring sowing, the plan reserve's costs the autumn delivery —
-/// and a single number could not say which risk the chairman took.
+/// move anything: every rung of the ladder is computed afresh each day out
+/// of the sowing norms, the plan and the herds' keep (resources design §6),
+/// and what a release does is make that computation ask for less.
+///
+/// ONE SLOT PER FUND, because the rungs fail differently: the seed fund's
+/// release costs the spring sowing, the plan reserve's costs the autumn
+/// delivery, the fodder fund's costs the horses their winter and so the
+/// sowing its speed. A single number could not say which risk the chairman
+/// took, and the risk is the whole content of the decision.
+///
+/// Written only where the order that fills it is consumed — the production
+/// decisions sub-step of the sequential decisions slot (slot 3) — and read
+/// by core_residents' distribution earlier in that same slot, off the
+/// previous step's value.
 ///
 /// @note Zeroed at the YEAR'S TURN and nowhere else. The design's door is for
 /// an emergency ("нечем кормить людей"), and one that carried over would
 /// quietly become a lower fund — but one cleared a second time in the spring
 /// would erase the hungry winter it was opened for on the very day the
 /// sowing year begins, which is what it did for one afternoon.
+/// AN ARRAY OVER THE FUNDS AND NOT A FIELD PER FUND. It was two named
+/// vectors for one afternoon, and a third rung of the ladder — the fodder
+/// fund — would have cost a save format of its own for nothing but a name.
+/// Indexed by FundKind, the fourth fund costs no format at all: the rung is
+/// data, and the ladder is what the design keeps extending.
+///
+/// The kNone slot is carried and never written. Paying one empty vector to
+/// keep the index and the enum the same number is the cheaper half of the
+/// bargain — an index that needs shifting by one is the arithmetic nobody
+/// gets wrong twice, only once.
 struct FundReleaseState {
-  /// Released against the seed fund, dense by ResourceId.
-  ResourceAmounts from_seed;
-
-  /// Released against the plan reserve, dense by ResourceId.
-  ResourceAmounts from_plan;
+  std::array<ResourceAmounts, static_cast<std::size_t>(FundKind::kFundKindCount)> by_fund;
 };
 
 /// @brief How the district judged the economic year that has just closed.

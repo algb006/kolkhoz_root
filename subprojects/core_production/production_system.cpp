@@ -421,8 +421,9 @@ class ProductionSystem final : public IProductionSystem {
     // The unsealings go with the year they were an emergency of. Carried
     // over, they would quietly become a lower fund instead of a decision
     // somebody took on a particular hungry winter.
-    current.unsealed.from_plan.assign(current.unsealed.from_plan.size(), 0);
-    current.unsealed.from_seed.assign(current.unsealed.from_seed.size(), 0);
+    for (ResourceAmounts& opened : current.unsealed.by_fund) {
+      opened.assign(opened.size(), 0);
+    }
   }
 
   /// January 1: the rotation plan advances one year, and fallow that stood
@@ -518,14 +519,26 @@ class ProductionSystem final : public IProductionSystem {
     // of order carries) while only the boundary refuses it. An order replayed
     // out of a journal therefore skips ShapeIsValid, and the quiet answer
     // would have been to open the plan reserve nobody named.
-    ResourceAmounts* released = nullptr;
-    if (order.fund == FundKind::kSeed) {
-      released = &current.unsealed.from_seed;
-    } else if (order.fund == FundKind::kPlanReserve) {
-      released = &current.unsealed.from_plan;
-    } else {
+    // BOUNDED BY THE ARRAY, NOT BY A LIST OF BAD VALUES. The guard named
+    // kNone and the count sentinel for one afternoon, and that was a
+    // blacklist where the code needed a range: `FundKind` has a fixed
+    // underlying type, so an object of it may hold 0..255, and everything
+    // from 5 up walked past both names into `operator[]` on a four-slot
+    // array — not for a stray read, because the next lines call `resize()`
+    // and assign. The boundary could not be relied on to have screened it
+    // either: it carried the identical two-value test, and an order built by
+    // the graphics layer off a stale copy of this enum is a drift this very
+    // file already records as having happened once.
+    //
+    // The if/else chain this replaced was a WHITELIST and was immune. The
+    // hole arrived with the array, which is worth saying out loud: a reshape
+    // that makes data cheaper to extend can quietly move a guard from naming
+    // what is allowed to naming what is not.
+    const auto slot = static_cast<std::size_t>(order.fund);
+    if (order.fund == FundKind::kNone || slot >= current.unsealed.by_fund.size()) {
       return OrderRefusal::kNoSuchSubject;
     }
+    ResourceAmounts* const released = &current.unsealed.by_fund[slot];
     // THE RESOURCE IS CHECKED AGAINST THE ROSTER and not merely against the
     // invalid marker. These vectors are dense by ResourceId, and resizing one
     // to an id that no table row backs would take it past that contract — up

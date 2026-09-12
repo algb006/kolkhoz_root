@@ -855,6 +855,31 @@ int main(int argc, char** argv) {
   failures += run::Expect(book.satiety_days == core::kDaysPerYear,
                           "a closed book holds exactly one year of days");
 
+  // MECHANISATION IS A SHARE, and a share of two quantities counted in
+  // different units is not one. The first draft counted the numerator in
+  // whole assignment-days at hour 0 and the denominator in delivered
+  // norm-days at hour 23 — fractions, short on a winter day and shorter
+  // after a walk-off — so the quotient could pass 1 and mean nothing on the
+  // way there. Both halves are assignment-days now, booked in one loop, and
+  // THIS is the check that would have caught it: a share above one is
+  // arithmetically impossible and was not.
+  const double traction = book.total_assignment_days > 0.0F
+                              ? static_cast<double>(book.horse_backed_assignment_days) /
+                                    static_cast<double>(book.total_assignment_days)
+                              : 0.0;
+  std::cout << "thirty_years: " << (traction * 100.0) << "% of the last year's assignment-days "
+            << "had a horse behind them\n";
+  failures += run::Expect(book.total_assignment_days > 0.0F,
+                          "the settlement worked at all in its thirtieth year");
+  failures += run::Expect(traction <= 1.0,
+                          "and the traction share is a share: more horse-backed days than days "
+                          "worked would mean the two halves are counted in different units");
+  // AND IT IS NOT NOTHING. A numerator that quietly stayed at zero is what
+  // the oats ration hid for thirty years, and a share of zero reads exactly
+  // like a village that owns no horse.
+  failures +=
+      run::Expect(traction > 0.0, "and the horses of the kolkhoz yard are in the traces at all");
+
   if (failures == 0) {
     std::cout << "thirty_years: all checks passed\n";
   }

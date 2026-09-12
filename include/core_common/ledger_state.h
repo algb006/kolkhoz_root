@@ -83,6 +83,15 @@ namespace core {
 ///                             pantry difference between `previous` and
 ///                             `current` at that hour IS that flow
 ///   land, herds, delivered .. core_production, production decisions
+///   mechanisation share ..... core_production, the HERD DAY — both halves of
+///                             it, numerator and denominator, in one loop at
+///                             one hour. It sits under the labor banner
+///                             below because it is about work, and it is
+///                             named here because the banner would otherwise
+///                             say core_labor and be wrong: the denominator
+///                             WAS booked there for one afternoon, in a
+///                             different unit on the other side of the
+///                             year's close
 ///   labor ................... core_labor, the day close-out. The BURN has
 ///                             TWO writers, and this is the one block that
 ///                             does: the exchange burns the unspent accounts
@@ -219,6 +228,46 @@ struct YearLedger {
   TrudodniHundredths trudodni_burned = 0;
 
   std::uint32_t walk_offs = 0;  ///< Fatigue walk-offs from an assignment.
+
+  /// MECHANISATION, AND IT IS MEASURED BY TRACTION RATHER THAN BY ENGINE
+  /// (boss's decision of 2026-09-12; epochs design §6). The component is
+  /// "доля работ НЕ ВРУЧНУЮ", and a horse mower is not hand work: in Epoch I
+  /// the traction is the horse, in Epoch II an engine joins it. Without that
+  /// reading the settlement's own progression would be unmeasurable — the
+  /// village starts pulling by hand and ends pulling by horse, and that IS
+  /// its mechanisation.
+  ///
+  /// BOTH HALVES ARE ASSIGNMENT-DAYS, counted in ONE loop at ONE hour by ONE
+  /// module, and the unit is in the name because the first draft got it
+  /// wrong: the numerator counted whole days at hour 0 while the denominator
+  /// summed `worked_norm_days_today` at hour 23 — delivered fractions, short
+  /// on a winter day, shorter still after a walk-off. A quotient of a count
+  /// over a sum of fractions can pass 1 and means nothing on the way there.
+  /// Splitting it across two modules made that easy to miss and bought a
+  /// second defect free: the two halves were booked on opposite sides of the
+  /// year's close, so each book divided 48 days shifted by one against 48
+  /// unshifted.
+  ///
+  /// A day's assignment is the right unit anyway. Mechanisation asks whether
+  /// the day's work had traction behind it; how many hours the man got in
+  /// before dusk is a different question with its own column above.
+  ///
+  /// NOT COUNTED OFF `work_days_by_kind` AND `IsHorseWork`, which would have
+  /// cost nothing: that predicate is a `constexpr` over the KIND of work and
+  /// calls ploughing horse work in a village with no horse at all, so the
+  /// share would measure the ROTATION — standing near-still for thirty years
+  /// and reading positive at a farm with an empty stable. A quantity with no
+  /// subject behind it adds up, compares against a threshold, and lies.
+  ///
+  /// Written only by the herd day of the production decisions sub-step.
+  float horse_backed_assignment_days = 0.0F;
+
+  /// Every assignment-day of the year, the denominator of the share above.
+  /// Written in the same loop as the numerator, and that is the whole point:
+  /// two halves of one ratio derived in two places drift, and a ratio is the
+  /// one shape where drift is invisible — the quotient still looks like a
+  /// quotient.
+  float total_assignment_days = 0.0F;
 };
 
 /// @brief The two books of the world: the year being written and the last
