@@ -665,6 +665,75 @@ int main(int argc, char** argv) {
       }
       std::cout << " | лошадей " << adults << "/" << sires << " жеребцов, молодняк " << young;
     }
+    // WHAT RUNS OUT FIRST, and it is printed only under the control arm
+    // (2026-09-12, boss's question). The arm's red line says the team can
+    // die; it does not say WHY, and "the herd died" has four different
+    // repairs depending on the cause. The year's closed book carries the
+    // causes apart: births, deaths by age, deaths by hunger, the cull, the
+    // hay cut against the hay eaten, and the man-days that went to the
+    // plough instead. Measured answer: the HAY, and not because there is too
+    // little meadow — because a closed window outranks an open one
+    // (labor_system.cpp, DaysLeftInWindow) and the village ploughs ground it
+    // can no longer sow while the grass stands uncut.
+    if (sow_idle_land) {
+      const core::YearLedger& book = done.ledger.closed;
+      const core::ITable* const resources = world.tables->FindTable("resources");
+      const auto stock_of = [&done](std::uint32_t resource_row) {
+        core::Grams total = 0;
+        if (resource_row == core::kNoTableRow) {
+          return total;
+        }
+        for (const core::UnitRow& unit : done.units.rows) {
+          if (unit.stock.size() > resource_row) {
+            total += unit.stock[resource_row];
+          }
+        }
+        return total;
+      };
+      const std::uint32_t hay =
+          resources == nullptr ? core::kNoTableRow : resources->FindRowByKey("hay");
+      const std::uint32_t oat =
+          resources == nullptr ? core::kNoTableRow : resources->FindRowByKey("oat");
+      std::cout << "\nidle_curve:   год " << (year + 1) << " — приплод " << book.herd_births
+                << ", пало от старости " << book.herd_deaths_age << ", от бескормицы "
+                << book.herd_deaths_hunger << ", забито " << book.herd_culled
+                << ", голодных голово-дней " << book.herd_hungry_head_days << "; сена "
+                << (stock_of(hay) / 1000000) << " ц, овса " << (stock_of(oat) / 1000000)
+                << " ц; рабочий паёк " << done.traction_ration << "; посеяно " << book.area_sown_ha
+                << " га, убрано " << book.area_harvested_ha << " га";
+      const core::ITable* const kinds2 = world.tables->FindTable("livestock");
+      const std::uint32_t horse_row =
+          kinds2 == nullptr ? core::kNoTableRow : kinds2->FindRowByKey("horse");
+      float age_total = 0.0F;
+      std::uint32_t horse_adults = 0;
+      float unfed_max = 0.0F;
+      float care_left_horses = 0.0F;
+      std::uint32_t horse_newborn = 0;
+      for (const core::HerdRow& herd : done.herds.rows) {
+        if (horse_row == core::kNoTableRow || herd.kind.value != horse_row) {
+          continue;
+        }
+        horse_adults += herd.adult_count;
+        age_total += herd.adult_age_game_years_total;
+        unfed_max = herd.unfed_days > unfed_max ? herd.unfed_days : unfed_max;
+        care_left_horses += herd.care_days_remaining;
+        horse_newborn += static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count;
+      }
+      std::cout << "; ЛОШАДИ: взрослых " << horse_adults << ", средний возраст "
+                << (horse_adults == 0 ? 0.0F : age_total / static_cast<float>(horse_adults))
+                << ", молодняк " << horse_newborn << ", без корма дней " << unfed_max
+                << ", ухода не сделано " << care_left_horses;
+      const auto column = [](const core::ResourceAmounts& amounts, std::uint32_t row) {
+        return row != core::kNoTableRow && amounts.size() > row ? amounts[row] : core::Grams{0};
+      };
+      std::cout << "; СЕНО: накошено " << (column(book.harvest, hay) / 1000000) << " ц, съедено "
+                << (column(book.feed, hay) / 1000000) << " ц; уборка и косьба "
+                << book.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)]
+                << " чел-дней, пахота "
+                << book.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)]
+                << ", сев "
+                << book.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kSowing)];
+    }
     std::cout << '\n';
   }
   // THE SEASONAL ARITHMETIC, and it answers the question boss's second

@@ -64,7 +64,17 @@ std::uint8_t DaysLeftInWindow(const CalendarState& calendar, std::uint8_t month_
   const std::uint32_t day_of_year = calendar.day % kDaysPerYear;
   const std::uint32_t window_end = (static_cast<std::uint32_t>(month_end) + 1U) * kDaysPerMonth;
   if (window_end <= day_of_year) {
-    return 0;  // the window has closed; the work is as urgent as it gets
+    // THE WINDOW HAS CLOSED, AND THIS ZERO IS UNDER QUESTION (2026-09-12).
+    // It says "as urgent as it gets", and OrderJobs ranks the smallest first,
+    // so work that can no longer produce anything this year outranks work
+    // whose window is still open. On the shipped seventy hectares it never
+    // shows. On a hundred and sixty-three it is a ratchet: the village goes
+    // on ploughing ground it can no longer sow, never cuts the hay, and the
+    // team starves — measured, and the counterfactual (this line returning
+    // 254) brings the same run back to fifty-two horses and a green arm.
+    // Reported to boss; the repair is his call, because "closed" and "due
+    // today" wanting different values is a design decision, not a typo.
+    return 0;
   }
   const std::uint32_t left = window_end - day_of_year - 1U;
   return left > 254U ? 254U : static_cast<std::uint8_t>(left);
