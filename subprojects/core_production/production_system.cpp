@@ -212,6 +212,13 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.season == Season::kSpring && previous.calendar.season != Season::kSpring) {
       AnnouncePlan(current);
     }
+    // THE YEAR'S HIGH-WATER MARK OF WORKED LAND, raised once a day. The
+    // district's next norm comes off it (world_state.h), and it is a MAXIMUM
+    // so that no single day's order can decide a year's figure.
+    const float worked_today = WorkedArableHa(current);
+    current.plan.worked_ha_this_year = worked_today > current.plan.worked_ha_this_year
+                                           ? worked_today
+                                           : current.plan.worked_ha_this_year;
     RunFields(current);
     RunHerdDay(config_, current);
   }
@@ -337,15 +344,15 @@ class ProductionSystem final : public IProductionSystem {
   /// OFF WORKED LAND AND NOT OFF SOWN LAND, so that sowing less does not owe
   /// less: undersowing is a way to FAIL a plan, not a way to shrink one.
   ///
-  /// AND IT WAS MEANT TO BE OFF LAST YEAR'S WORKING, so that raising ground
-  /// enters the plan the year AFTER it is broken — ploughing must not be
-  /// punished in the season it was paid for, which is the "не наказывать за
-  /// непредвидимое" rule read forwards. THAT IS NOT WHAT IT DOES, and saying
-  /// so plainly here is the honest half: the rotation is shifted at the
-  /// year's turn and this runs at the spring announcement eight days later,
-  /// so it reads THIS year's slot. The core keeps no record of last year's
-  /// worked area at all. See the walk below, where the same correction is
-  /// written beside the code that does the reading.
+  /// AND OFF LAST YEAR'S WORKING SINCE 2026-09-13, which this block said for
+  /// a day was NOT what the code did — it is now. The figure comes off
+  /// PlanState::worked_ha_last_year, the largest worked area the closing year
+  /// held, so raising ground enters the plan the year AFTER it is broken
+  /// (district §9) and no order settled today can move today's norm.
+  ///
+  /// THE POSITIONS ARE THE DISTRICT'S, not the chairman's crops: campaign.csv
+  /// names them and the share of the worked arable counted under each. A norm
+  /// priced off what he planted is a norm he sets.
   void AnnouncePlan(WorldState& current) const {
     // THE RELEASES ARE NOT CLEARED HERE, and they were for one afternoon:
     // the edit that put the clearing into JudgePlan matched this line too,
@@ -355,43 +362,76 @@ class ProductionSystem final : public IProductionSystem {
     // taken for. A scripted edit that finds a second anchor is silently
     // successful; this one was found by the delivery cycle's RACE pass.
     current.plan.due.assign(current.plan.due.size(), 0);
-    if (!(config_.plan_grain_share > 0.0F)) {
-      return;
+    current.plan.announced = 0;
+    if (!(config_.plan_grain_share > 0.0F) || config_.plan_positions.empty()) {
+      return;  // no district in these tables: nothing is asked and nothing is judged
     }
-    for (const FieldRow& field : current.fields.rows) {
-      // LAND NOBODY WORKED OWES NOTHING, and what says so is the empty
-      // rotation below rather than any kind of land. That was true while
-      // LandKind::kDerelict existed too — a field with no rotation owed
-      // nothing whichever kind it was — so removing the kind on 2026-09-12
-      // moved not one gram of anybody's norm.
-      //
-      // AND IT DOES NOT READ LAST YEAR'S WORKING, though the comment here
-      // said so until the analysis checked it. The rotation is shifted at the
-      // year's turn, day 0, and this walk runs at the spring announcement,
-      // day 8 — so what it reads is THIS year's slot. The core keeps no
-      // record of what was worked last year at all. District design §9 asks
-      // that raised land enter the plan the year AFTER it is broken, and what
-      // stands here delivers that only for a rotation set after the spring
-      // announcement; a rotation set in January is owed on in the same season
-      // it was paid for. NAMED AND NOT PATCHED: remembering last year's
-      // worked area is state the core does not carry, and inventing it here
-      // would be a mechanic rather than a repair (boss, 2026-09-12).
-      if (field.kind != LandKind::kArable) {
-        continue;  // a meadow is mown, not sown, and owes the district nothing
-      }
-      const CropId crop = field.rotation_year0;
-      if (crop.value >= config_.crops.size()) {
-        continue;  // an empty rotation slot is a fallow year, and fallow owes nothing
-      }
-      const CropDef& sown = config_.crops[crop.value];
-      if (sown.yield_kg_per_ha <= 0.0F || sown.resource.value == kInvalidDefIdValue) {
+    // THE AREA IS LAST YEAR'S WORKED ARABLE, AND THE POSITIONS ARE THE
+    // DISTRICT'S. Both halves are repairs of the same defect, and the defect
+    // was a button: until 2026-09-13 the norm was priced off the crop
+    // standing in each field's year0 slot, so a fallow year — an empty slot —
+    // cost nothing, and a chairman who laid every field to fallow, or who
+    // withdrew every chain (the order book allows it on purpose, as the move
+    // that forgives a layout mistake), owed the district NOTHING AT ALL: no
+    // norm, no verdict, no failed year, no trial. The epoch's main pressure
+    // switched off by a decision not to sow.
+    //
+    // District design §9 says the opposite in the paragraph the share comes
+    // from, and these are its own words: "Норма идёт с обработанной земли, а
+    // не с посеянной. Недосев — способ провалить план, а не уменьшить его"
+    //
+    // A norm computed from what the chairman planted is a norm the chairman
+    // SETS. So neither half of the figure is his any more: the area is what
+    // was worked in the year that closed (PlanState::worked_ha_last_year,
+    // written at the turn) and the shares are the district's, computed off
+    // the canon layout's 210 hectare-years and written in campaign.csv.
+    // Taking LAST year's area also delivers §9's other line for free: raised
+    // ground enters the plan the year AFTER it is broken.
+    //
+    // A FIRST DRAFT SPLIT THE AREA EVENLY between the positions, for want of
+    // the shares, and the analysis measured what that costs: the district
+    // asked for oats on a third of the arable every year while the canon
+    // rotation sows them on 10.5 ha every third year, and the reference run
+    // failed the plan in nineteen years of thirty and reached the trial
+    // condition in its FOURTH. The instrument had gone from "cannot be
+    // failed" straight through the middle to "cannot be met".
+    for (const ProductionConfig::PlanPosition& position : config_.plan_positions) {
+      if (position.crop.value >= config_.crops.size()) {
         continue;
       }
-      const float normal_kg = sown.yield_kg_per_ha * field.area_ga;
+      const CropDef& crop = config_.crops[position.crop.value];
+      if (crop.yield_kg_per_ha <= 0.0F || crop.resource.value == kInvalidDefIdValue) {
+        continue;
+      }
+      const float area = current.plan.worked_ha_last_year * position.area_share;
       AddToStock(current.plan.due,
-                 sown.resource,
-                 GramsFromKilograms(normal_kg * config_.plan_grain_share));
+                 crop.resource,
+                 GramsFromKilograms(crop.yield_kg_per_ha * area * config_.plan_grain_share));
     }
+    // ANNOUNCED EVEN WHEN THE FIGURE IS ZERO, and that is the whole point of
+    // the byte: a settlement that worked no land last year is one the
+    // district HAS spoken to and asked nothing of, which is not the same
+    // state as a world with no district in its tables (world_state.h).
+    current.plan.announced = 1;
+  }
+
+  /// @brief The arable the village actually worked this year, in hectares —
+  /// written at the year's turn for next spring's norm to be computed from.
+  ///
+  /// WORKED MEANS A CHAIN WAS GIVEN, which is the same test every other
+  /// reader of worked land uses (HasRotation, land_state.h): the fallow
+  /// ploughing, the fertility recovery, the manure queue and both mean
+  /// fertility walks. Read at the TURN rather than in spring, so that what
+  /// the chairman does between January and the announcement cannot move the
+  /// figure — which is exactly what the old reading allowed.
+  static float WorkedArableHa(const WorldState& current) {
+    float worked_ha = 0.0F;
+    for (const FieldRow& field : current.fields.rows) {
+      if (field.kind == LandKind::kArable && HasRotation(field)) {
+        worked_ha += field.area_ga;
+      }
+    }
+    return worked_ha;
   }
 
   void JudgePlan(WorldState& current) const {
@@ -432,18 +472,20 @@ class ProductionSystem final : public IProductionSystem {
         trial.amount = current.plan.failed_years_in_a_row;
       }
     }
-    // THE NEXT NORM IS NOT ANNOUNCED HERE. It is announced in the spring
-    // (AnnouncePlan below), off the land carrying a rotation then — which is
-    // knowable by then and does not move again. Clearing it is what the
-    // year's turn does: an undelivered remainder is a failed year, not a
-    // debt carried forward, and the district keeps no tab (district §9).
+    // THE NEXT NORM IS NOT ANNOUNCED HERE, and what it is computed from has
+    // ONE home: PlanState::worked_ha_last_year, written a few lines below.
+    // Clearing the old figure is what the year's turn does — an undelivered
+    // remainder is a failed year, not a debt carried forward, and the
+    // district keeps no tab (district §9).
     //
-    // THIS SENTENCE SAID "worked LAST year" AND WAS THE FOURTH COPY OF IT.
-    // Three were corrected in one pass and this one stood; it reads the slot
-    // that has just been shifted forward, eight days later. Four copies of a
-    // claim is four chances to leave one standing, which is the argument for
-    // the claim having one home and the other three pointing at it.
+    // AND THE "THE DISTRICT HAS SPOKEN" BYTE GOES WITH THE FIGURE IT
+    // DESCRIBES. It was cleared only in AnnouncePlan for one round, which
+    // left the first eight days of every year saying "a figure was named and
+    // it asked for nothing" — the one state the byte exists to tell apart
+    // from "no figure yet", wrong for a sixth of every year, and a save
+    // taken in that window carried the lie across a load.
     current.plan.due.assign(current.plan.due.size(), 0);
+    current.plan.announced = 0;
     // The unsealings go with the year they were an emergency of. Carried
     // over, they would quietly become a lower fund instead of a decision
     // somebody took on a particular hungry winter.
@@ -457,6 +499,17 @@ class ProductionSystem final : public IProductionSystem {
   void RunYearStart(WorldState& current) const {
     DeliverPlan(current);
     JudgePlan(current);
+    // THE CLOSING YEAR'S LARGEST WORKED AREA becomes next spring's figure,
+    // and the running maximum is what makes it un-gameable: a single tick's
+    // reading could be emptied by an order settled that same tick — the order
+    // book is consumed at the top of this very call — and re-filled the next
+    // morning at no cost at all. Against the year's maximum the same escape
+    // costs the whole harvest (world_state.h).
+    const float worked_today = WorkedArableHa(current);
+    current.plan.worked_ha_last_year = worked_today > current.plan.worked_ha_this_year
+                                           ? worked_today
+                                           : current.plan.worked_ha_this_year;
+    current.plan.worked_ha_this_year = worked_today;
     for (FieldRow& field : current.fields.rows) {
       if (field.kind != LandKind::kArable) {
         continue;  // a meadow has no rotation to shift and no fallow to pay out

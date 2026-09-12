@@ -807,8 +807,15 @@ int main(int argc, char** argv) {
   // ratchet follows the model up as well as down, or it stops catching the
   // return. The same change cost a point on the leanest day below — the
   // trade is named there.
+  //
+  // AND AGAIN ON 13 SEPTEMBER, 68.361969 to 69.9886627, when the district's
+  // norm stopped being priced off the crop standing in each field's slot and
+  // started coming off last year's worked arable at the positions' own
+  // shares. The village owes a different figure, and on the shipped rotation
+  // it is a lighter one at the lean end of the year. The ratchet follows the
+  // model up as well as down, or it stops catching the return.
   failures += ExpectNoLower(
-      good.mean_satiety, 68.361969F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 69.9886627F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -843,10 +850,11 @@ int main(int argc, char** argv) {
   failures += ExpectBand(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                          "and the settlement is not sliding year on year");
   // BAND WITHDRAWN, REGRESSION KEPT. The stage-6 criterion asked for 25 on
-  // the leanest day; the model gives 18.5974369 and has done since spoilage
-  // arrived. Whether 25 is the right thing to want is the model's question,
-  // and it is boss's to schedule — so what is watched here is only that the
-  // leanest day does not sink below what it already was.
+  // the leanest day; the model gives 19.4991512 since the district's norm
+  // moved off the crop in the slot (2026-09-13) — it had been 18.5974369
+  // since the queue's three tiers, and 19.8146267 before that. Whether 25 is the right thing to
+  // want is the model's question, and it is boss's to schedule — so what is watched here is only
+  // that the leanest day does not sink below what it already was.
   //
   // MOVED DOWN FROM 19.8146267 ON 2026-09-12, deliberately and with the
   // cause: the day's work queue stopped ranking work whose window had CLOSED
@@ -858,7 +866,7 @@ int main(int argc, char** argv) {
   // deliberate act with a stated cause, and both numbers stand here beside
   // each other so the next reader can see the trade rather than the loss.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 18.5974369F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 19.4991512F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -877,7 +885,7 @@ int main(int argc, char** argv) {
   // day above and in the same change: 107 of 122 instead of 107 of 124 — the
   // count of the hungry did not move at all, the village did, by two people.
   failures += ExpectNoHigher(
-      hungry_share, 0.877049208F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.853658557F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -915,7 +923,7 @@ int main(int argc, char** argv) {
   // change that moved the two records above: the queue's three tiers. The
   // ratchet follows the model.
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            0.794485092F,
+                            1.77744102F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

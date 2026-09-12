@@ -457,6 +457,60 @@ struct PlanState {
   /// "раз в несколько лет район решает" names no period and a period
   /// invented here would be a mechanic invented here.
   std::uint8_t met_years_in_a_row = 0;
+
+  /// WHETHER THE DISTRICT HAS NAMED A FIGURE THIS YEAR, 0 or 1 — and it is a
+  /// fact of its own because a zero tonnage cannot carry it.
+  ///
+  /// An all-zero `due` is four different worlds: a settlement that worked no
+  /// land last year, a table set with no campaign in it, a mistyped plan
+  /// roster, and a year in which the district genuinely asked for nothing.
+  /// Three of them must be quiet and one must be loud, and they are the same
+  /// state in a tonnage of zero — so `kNoPlanYet`, the reserve door and the
+  /// verdict all read one vector and cannot tell them apart.
+  ///
+  /// WRITTEN AND READ BY NOBODY YET, and that is said rather than implied:
+  /// the three readers above still key off the tonnage, and moving them is a
+  /// change to what a chairman is told, which is boss's to schedule. What the
+  /// byte buys today is that the fact EXISTS and survives a save; what it
+  /// does not buy is a different answer at the door. Set at the spring
+  /// announcement even when the figure is zero, cleared at the year's turn
+  /// beside the figure it describes.
+  std::uint8_t announced = 0;
+
+  /// THE WORKED ARABLE OF THE YEAR THAT CLOSED, in hectares — the area the
+  /// spring's norm is computed from. District design §9 asks for it in those
+  /// words, and the emphasis is mine and outside the quotation: "по
+  /// обработанной пашне прошлого года и нормальному урожаю с гектара" — LAST
+  /// year's, which is the half that makes the figure un-gameable.
+  ///
+  /// IT IS LAST YEAR'S BECAUSE THIS YEAR'S IS THE CHAIRMAN'S TO CHANGE. The
+  /// norm was priced off the crop standing in each field's slot until
+  /// 2026-09-13, and an empty slot priced at nothing: a chairman who laid
+  /// every field to fallow — or who withdrew every chain, which the order
+  /// book allows on purpose as the forgiving move — owed the district
+  /// NOTHING, verdict and trial included. A figure a player can zero on the
+  /// morning it is read is not a norm, it is a button.
+  ///
+  /// Written at the year's turn, read at the spring announcement, and that
+  /// order is also what district design §9 asks for in another line: raised
+  /// ground enters the plan the year AFTER it is broken.
+  ///
+  /// IT IS THE LARGEST AREA THE YEAR HELD, not the area of one day, and the
+  /// difference is the whole of the repair. A first draft sampled the fields
+  /// at the turn — and the order book is read at the TOP of the same call, so
+  /// a chairman could withdraw every chain on the last tick of December, let
+  /// the figure be taken as zero, and re-issue the chains the next morning:
+  /// two orders per field per year, nothing sown in January anyway, the
+  /// harvest untouched and the district asking NOTHING for ever. The escape
+  /// must cost something, and against a yearly maximum it costs the whole
+  /// harvest: the fields have to stay released all year for the figure to
+  /// fall.
+  float worked_ha_last_year = 0.0F;
+
+  /// The largest worked arable seen so far THIS year, in hectares — the
+  /// running half of the pair above, raised daily and moved into it at the
+  /// turn. Not a number anybody reads on its own.
+  float worked_ha_this_year = 0.0F;
 };
 
 /// @brief The complete state of the simulated world at one step.

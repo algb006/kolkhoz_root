@@ -51,6 +51,48 @@ struct BodyKnobs {
 
   /// The same for width.
   float build_sigma_frac = 0.07F;
+
+  /// HOW TALL A CHILD IS AS A FRACTION OF THE ADULT OF THE SAME SEX, by step
+  /// of childhood (world_params.csv, 2026-09-13). One fraction for both
+  /// sexes on purpose: the difference between a man and a woman already sits
+  /// in the number the fraction multiplies, and two rows per step would be
+  /// two places for one number to drift (boss, the same argument the sigma
+  /// is single for).
+  ///
+  /// THE FRACTIONS ARRIVED WITHOUT THEIR BANDS, and for half an hour they
+  /// were unusable: the steps of childhood lived as NAMES in the asset work
+  /// and had no boundary in years anywhere in the tables. Boss named them the
+  /// same night (world_params.csv, age_*_from_years), and the pair is the
+  /// rule: a fraction without a band is a name without a value.
+  float height_infant_frac = 0.45F;
+
+  float height_preschool_frac = 0.65F;
+
+  float height_school_junior_frac = 0.78F;
+
+  float height_school_senior_frac = 0.93F;
+
+  /// WHERE ONE STEP OF CHILDHOOD ENDS AND THE NEXT BEGINS, in biological
+  /// years (world_params.csv age_*_from_years; boss, 2026-09-13, drawn out of
+  /// the design's prose). Below the first a person is an infant.
+  ///
+  /// THESE ARE THE BANDS OF THE FIGURE AND NOT OF WORK, and the two are
+  /// different numbers on purpose (boss's caveat with the same message): the
+  /// labour bands are 7-12 and 13-16, and folding either pair into the other
+  /// would make one table row answer two questions — which is the defect this
+  /// project has spent two days naming.
+  float age_preschool_from_years = 3.0F;
+
+  float age_school_junior_from_years = 7.0F;
+
+  float age_school_senior_from_years = 11.0F;
+
+  /// Adulthood, in the same units. IT IS ALSO IN life.csv as
+  /// `adult_age_years`, and that is a second home for one fact: the two are
+  /// 16 today and nothing keeps them equal. Named here rather than quietly
+  /// preferred — the figure reads this one because the four bands must come
+  /// from one row set or the steps can overlap.
+  float age_adult_from_years = 16.0F;
 };
 
 /// @brief One draw from a clamped normal distribution, in fractions.
@@ -104,17 +146,25 @@ void RollBodyFromParents(std::uint64_t world_seed,
                          const ResidentRow& father,
                          ResidentRow& child);
 
-/// @brief How tall this person is in metres.
+/// @brief How tall this person is in metres, at any age.
 ///
-/// ADULTS ONLY, and that is named rather than forgotten: the world has no
-/// base height for the steps of childhood — the asset generator carries two
-/// figures, a man and a woman — so a child's height in metres is a question
-/// nobody can answer, and this returns 0 for one. The FRACTION is valid at
-/// every age, because it is a fact about the person and not about their
-/// current size.
-/// @param adult Whether this person has reached adulthood; the caller knows
-///        the age rule and this header must not learn it.
-float HeightMeters(const ResidentRow& person, const BodyKnobs& knobs, bool adult);
+/// AN ADULT IS THE BASE OF THEIR SEX AND A CHILD IS A FRACTION OF IT — the
+/// fraction of the step they are at (BodyKnobs, world_params.csv). One
+/// fraction for both sexes on purpose: the difference between a man and a
+/// woman already sits in the number the fraction multiplies, and two rows per
+/// step would be two places for one number to drift.
+///
+/// IT ANSWERED 0 FOR A CHILD UNTIL 2026-09-13, and said so in this header:
+/// the world carried a base for a man and a woman and nothing for the steps
+/// of childhood. The fractions arrived that night; the BANDS arrived an hour
+/// later, and the hour in between is the whole lesson — a fraction with no
+/// band is a name with no value, and nothing could be done with it.
+///
+/// The person's own deviation applies at every age: it is a fact about them
+/// and not about their present size.
+/// @param age_years Biological age. The bands live in `knobs`, so the caller
+///        supplies the age and nothing else — it does not need the rule.
+float HeightMeters(const ResidentRow& person, const BodyKnobs& knobs, float age_years);
 
 }  // namespace core
 

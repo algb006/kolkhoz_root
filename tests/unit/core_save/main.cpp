@@ -137,6 +137,14 @@ core::WorldState MakeWorld() {
   // wrote the same field three times.
   world.plan.last_verdict = core::PlanVerdict::kFailed;
   world.plan.failed_years_in_a_row = 2;
+  // THE TWO THE NORM IS BUILT FROM (2026-09-13). The district has spoken this
+  // year, and the area its next figure comes off is seventy hectares — last
+  // year's, not today's. Lose the first on a round trip and a loaded campaign
+  // cannot tell "asked for nothing" from "was never asked"; lose the second
+  // and the spring after a load names a norm off nothing at all, which is the
+  // plan that cannot be failed.
+  world.plan.announced = 1;
+  world.plan.worked_ha_last_year = 70.0F;
   world.plan.met_years_in_a_row = 5;
   world.vitals.life_expectancy_years = 61.75F;
   world.vitals.satiety_year_means = {71.5F, 68.25F, 0.1F + 0.2F};
@@ -521,6 +529,12 @@ int main() {
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");
+  failures += Expect(loaded.plan.announced == 1,
+                     "the district's having spoken survives the round trip — a tonnage of zero "
+                     "cannot carry that fact");
+  failures +=
+      Expect(loaded.plan.worked_ha_last_year > 69.9F && loaded.plan.worked_ha_last_year < 70.1F,
+             "and so does the area next spring's norm is computed from");
   failures += Expect(loaded.plan.met_years_in_a_row == 5,
                      "and the run of met ones, which is a different number");
   // The unsealing, field by field: an order kind whose payload is three new

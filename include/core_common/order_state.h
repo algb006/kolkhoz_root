@@ -375,11 +375,18 @@ enum class OrderRefusal : std::uint8_t {
   /// is the eight game days of forty-eight between the year's turn, where
   /// JudgePlan clears the vector, and the first day of spring, where
   /// AnnouncePlan fills it again (boss, 2026-09-12; district design §9). But
-  /// a settlement whose fields carry no crop in any rotation slot, or whose
-  /// `plan_grain_share` is zero, is announced an empty plan and gets this
+  /// a settlement that worked NO ARABLE last year, or whose tables name no
+  /// plan positions or a zero share, is announced an empty plan and gets this
   /// answer all year — which is still TRUE, and still the most useful thing
   /// that can be said, but a reader expecting "only in February" would be
   /// wrong about it.
+  ///
+  /// THE CROPS IN THE ROTATION SLOTS ARE NO LONGER THE TEST, and this
+  /// sentence named them until 2026-09-13: the norm came off the crop
+  /// standing in each field's year0, so a settlement that sowed nothing owed
+  /// nothing. It is off the area worked last year and the district's own
+  /// positions now, which is what makes "sowing less does not owe less" true
+  /// (production_system.cpp, AnnouncePlan).
   ///
   /// A NAME OF ITS OWN BECAUSE THE OTHER TWO READINGS ARE BOTH FALSE. The
   /// fund is not empty — the grain is in the stores where it always was. The

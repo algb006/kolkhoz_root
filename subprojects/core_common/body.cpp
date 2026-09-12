@@ -128,12 +128,23 @@ void RollBodyFromParents(std::uint64_t world_seed,
       ((mother.build_deviation + father.build_deviation) * 0.5F) + build, build_band);
 }
 
-float HeightMeters(const ResidentRow& person, const BodyKnobs& knobs, bool adult) {
-  if (!adult) {
-    return 0.0F;  // no base for the steps of childhood; see the header
-  }
+float HeightMeters(const ResidentRow& person, const BodyKnobs& knobs, float age_years) {
   const float base = person.sex == Sex::kMale ? knobs.height_male_m : knobs.height_female_m;
-  return base * (1.0F + person.height_deviation);
+  // THE STEPS IN ORDER, and the first band that the age falls short of wins.
+  // Written as a ladder rather than a table lookup because the four bands are
+  // four different rows and the order between them is the fact: a child is
+  // never in two steps at once, and an age below the first band is an infant.
+  float fraction = 1.0F;
+  if (age_years < knobs.age_preschool_from_years) {
+    fraction = knobs.height_infant_frac;
+  } else if (age_years < knobs.age_school_junior_from_years) {
+    fraction = knobs.height_preschool_frac;
+  } else if (age_years < knobs.age_school_senior_from_years) {
+    fraction = knobs.height_school_junior_frac;
+  } else if (age_years < knobs.age_adult_from_years) {
+    fraction = knobs.height_school_senior_frac;
+  }
+  return base * fraction * (1.0F + person.height_deviation);
 }
 
 }  // namespace core

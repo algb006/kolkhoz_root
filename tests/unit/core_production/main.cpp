@@ -2600,6 +2600,66 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     return current;
   };
 
+  // -- THE TURN WRITES DOWN THE WORKED ARABLE, and next spring reads it -----
+  //
+  // The figure the norm is computed from is state now, and it is taken at the
+  // TURN: what the chairman does between January and the announcement must
+  // not move it, because moving it was the defect — a plan priced off today's
+  // fields is a plan he can zero on the morning it is read.
+  //
+  // This is also the assertion that was missing when the write was first
+  // made: the damage "the turn records nothing" left the whole suite green,
+  // because the other plan tests set the area by hand and no run looks at it.
+  {
+    core::WorldState previous;
+    previous.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1;
+    core::RefreshCalendarCaches(previous.calendar);
+    core::FieldRow worked;
+    worked.kind = core::LandKind::kArable;
+    worked.area_ga = 12.0F;
+    worked.rotation_assigned = 1;  // a chain was given: this is worked land
+    core::AppendRow(previous.fields, worked);
+    core::FieldRow untold = worked;
+    untold.rotation_assigned = 0;  // nobody has told this ground anything
+    core::AppendRow(previous.fields, untold);
+    core::FieldRow meadow = worked;
+    meadow.kind = core::LandKind::kMeadow;
+    core::AppendRow(previous.fields, meadow);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    system->RunProductionDecisions(previous, current);
+    failures +=
+        Expect(current.plan.worked_ha_last_year > 11.9F && current.plan.worked_ha_last_year < 12.1F,
+               "the year's turn writes down the arable that was WORKED — twelve "
+               "hectares, not the thirty-six that count ground nobody told and a meadow");
+
+    // -- AND A RELEASE ON THE TURN'S OWN TICK CANNOT EMPTY IT --------------
+    //
+    // THE ESCAPE THE ANALYSIS FOUND, and it was two orders per field per
+    // year. The order book is consumed at the TOP of the production slot and
+    // the year's turn runs lower down the same call, so a chairman who
+    // withdrew every chain on the last tick of December had the figure taken
+    // as zero — and re-issued the chains the next morning at no cost at all:
+    // nothing is sown in January anyway, the mark that holds a fresh chain is
+    // spent in spring, the harvest is untouched, and the district asks
+    // nothing for ever. Against the YEAR'S MAXIMUM the same escape costs the
+    // whole harvest, because the fields have to stay released all year.
+    core::WorldState held = previous;
+    held.plan.worked_ha_this_year = 12.0F;  // the year has seen twelve worked hectares
+    for (core::FieldRow& field : held.fields.rows) {
+      field.rotation_assigned = 0;  // ...and the chairman withdraws every chain today
+    }
+    core::WorldState turned = held;
+    turned.calendar.tick += 1;
+    core::RefreshCalendarCaches(turned.calendar);
+    system->RunProductionDecisions(held, turned);
+    failures +=
+        Expect(turned.plan.worked_ha_last_year > 11.9F && turned.plan.worked_ha_last_year < 12.1F,
+               "a chain withdrawn on the turn's own tick does not empty the year's figure: the "
+               "district counts the LARGEST area the year held");
+  }
+
   // -- a year delivered in full ---------------------------------------------
   {
     const core::WorldState after = turn(1'000'000, 5'000'000, core::PlanState{});
@@ -2691,6 +2751,11 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     // The last day of winter: the step below crosses into spring.
     previous.calendar.tick = (2U * core::kDaysPerMonth * core::kTicksPerDay) - 1U;
     core::RefreshCalendarCaches(previous.calendar);
+    // THE AREA THE NORM IS COMPUTED FROM IS LAST YEAR'S, and it is state now
+    // rather than a walk over today's fields: ten worked hectares, written at
+    // the year's turn. What this fixture's fields carry TODAY must not enter
+    // the figure at all — that is the whole repair (world_state.h).
+    previous.plan.worked_ha_last_year = 10.0F;
     core::FieldRow worked;
     worked.kind = core::LandKind::kArable;
     worked.area_ga = 10.0F;
@@ -2728,21 +2793,79 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     failures += Expect(asked > 0,
                        "the district names the year's norm in the spring, off land that has "
                        "reaped nothing yet — a norm a share of the harvest could not produce");
-    // Ten hectares of the worked field and NOT twenty: the unworked ten owe
-    // nothing. The two figures are READ BACK OUT OF THE TABLES rather than
-    // written here — a second copy of a balance number in a test is a copy
-    // that drifts, and this project has been bitten by that more than once.
+    // THE FIGURE IS THE DISTRICT'S POSITIONS ON LAST YEAR'S TEN HECTARES,
+    // and every number in it is read back out of the tables: a second copy of
+    // balance data in a test is a copy that drifts, and this project has been
+    // bitten by that more than once.
     const core::ITable* const campaign = tables->FindTable("campaign");
-    const float yield_kg_per_ha = std::stof(std::string(
-        crops->CellText(crops->FindRowByKey("oat"), crops->FindColumn("yield_kg_per_ha"))));
     const float share_percent = std::stof(std::string(campaign->CellText(
         campaign->FindRowByKey("plan_grain_share_percent"), campaign->FindColumn("value"))));
-    const auto expected = static_cast<double>(yield_kg_per_ha) * 10.0 * 1000.0 *
-                          (static_cast<double>(share_percent) / 100.0);
+    const std::string positions(campaign->CellText(campaign->FindRowByKey("plan_positions"),
+                                                   campaign->FindColumn("value")));
+    double expected = 0.0;
+    std::uint32_t position_count = 0;
+    std::string token;
+    for (std::size_t index = 0; index <= positions.size(); ++index) {
+      if (index < positions.size() && positions[index] != ' ') {
+        token += positions[index];
+        continue;
+      }
+      if (!token.empty()) {
+        const std::size_t equals = token.find('=');
+        failures += Expect(equals != std::string::npos,
+                           "every plan position carries its share of the worked arable");
+        const std::string key = token.substr(0, equals);
+        const double area_share = std::stod(token.substr(equals + 1)) / 100.0;
+        const double yield_kg_per_ha = std::stod(std::string(
+            crops->CellText(crops->FindRowByKey(key), crops->FindColumn("yield_kg_per_ha"))));
+        expected += yield_kg_per_ha * 10.0 * area_share * 1000.0 *
+                    (static_cast<double>(share_percent) / 100.0);
+        ++position_count;
+        token.clear();
+      }
+    }
+    failures += Expect(position_count > 0, "campaign.csv names the plan's positions");
     failures += Expect(static_cast<double>(asked) > expected * 0.99 &&
                            static_cast<double>(asked) < expected * 1.01,
-                       "and the norm is the worked ten hectares at a normal yield, not the "
-                       "twenty that include the ground nobody has told what to grow");
+                       "and the norm is the district's positions on last year's ten hectares — "
+                       "not a share of what happens to be standing in the fields today");
+
+    // -- AND NEITHER FALLOW NOR A WITHDRAWN CHAIN CAN MOVE IT --------------
+    //
+    // THE HOLE THIS CLOSES WAS A BUTTON THAT TURNED THE EPOCH OFF, and it had
+    // two doors. The norm used to be priced off the crop in each field's
+    // year0 slot: a fallow YEAR is an empty slot and cost nothing, and a
+    // field whose chain has been WITHDRAWN — the move the order book allows
+    // on purpose, to forgive a layout mistake — cost nothing either. Either
+    // way a chairman could owe the district NOTHING on the morning the norm
+    // was read: no figure, no verdict, no failed year, no trial.
+    //
+    // Both doors are shut by the same change, and this asserts both at once:
+    // the fields are laid to fallow AND released, and the figure does not
+    // move, because it is last year's area and the district's positions and
+    // neither is his to touch today.
+    core::WorldState fallow_previous = previous;
+    for (core::FieldRow& field : fallow_previous.fields.rows) {
+      field.rotation_year0 = core::CropId{};
+      field.rotation_year1 = core::CropId{};
+      field.rotation_year2 = core::CropId{};
+      field.rotation_assigned = 0;
+    }
+    core::WorldState fallow_current = fallow_previous;
+    fallow_current.calendar.tick += 1;
+    core::RefreshCalendarCaches(fallow_current.calendar);
+    system->RunProductionDecisions(fallow_previous, fallow_current);
+    core::Grams asked_on_fallow = 0;
+    for (const core::Grams due : fallow_current.plan.due) {
+      asked_on_fallow += due;
+    }
+    failures += Expect(asked_on_fallow == asked,
+                       "a chairman who rests every field, or withdraws every chain, owes the "
+                       "district exactly what he owed: undersowing is a way to FAIL the plan, "
+                       "not to shrink it");
+    failures += Expect(fallow_current.plan.announced == 1,
+                       "and the district is on record as having spoken, which a tonnage of zero "
+                       "cannot say");
   }
   return failures;
 }

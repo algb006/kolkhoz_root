@@ -62,11 +62,33 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 /// the list the assembly is handed and the list actually read cannot be two
 /// lists: they are the same array. A second copy written out beside the
 /// reader would be correct on the day it was written and mute ever after.
-constexpr std::array<std::string_view, 5> kGenesisWorldParamKeys = {"body_height_male_m",
-                                                                    "body_height_female_m",
-                                                                    "body_height_sigma_frac",
-                                                                    "body_height_clamp_sigma",
-                                                                    "body_build_sigma_frac"};
+constexpr std::array<std::string_view, 13> kGenesisWorldParamKeys = {
+    "body_height_male_m",
+    "body_height_female_m",
+    "body_height_sigma_frac",
+    "body_height_clamp_sigma",
+    "body_build_sigma_frac",
+    // The four steps of childhood, as fractions of the adult of the same sex
+    // (boss's export of 2026-09-13), and the bands they apply on. Genesis
+    // reads them because it builds the people; core_residents reads the same
+    // rows because it answers ResidentHeightMeters, and the two lists are
+    // deliberately separate — each is the single source for ITS module.
+    //
+    // They were read and NOT applied for one hour, between the export that
+    // brought the fractions and the export that brought the bands. That hour
+    // is the whole lesson and it is why the pair is written next to each
+    // other here: a fraction with no band is a name with no value.
+    "body_height_infant_frac",
+    "body_height_preschool_frac",
+    "body_height_school_junior_frac",
+    "body_height_school_senior_frac",
+    // ...and the bands they apply on. THE FRACTION AND THE BAND ARE ONE FACT
+    // IN TWO ROWS: the fractions arrived an hour before the bands and could
+    // do nothing at all in between.
+    "age_preschool_from_years",
+    "age_school_junior_from_years",
+    "age_school_senior_from_years",
+    "age_adult_from_years"};
 
 BodyKnobs ReadBodyKnobs(const ITableSet& tables) {
   BodyKnobs knobs;
@@ -89,7 +111,31 @@ BodyKnobs ReadBodyKnobs(const ITableSet& tables) {
                  .range = Range{.low = 0.5F, .high = 6.0F}},
       ScalarKnob{.key = kGenesisWorldParamKeys[4],
                  .value = &knobs.build_sigma_frac,
-                 .range = Range{.low = 0.0F, .high = 0.5F}}};
+                 .range = Range{.low = 0.0F, .high = 0.5F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[5],
+                 .value = &knobs.height_infant_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[6],
+                 .value = &knobs.height_preschool_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[7],
+                 .value = &knobs.height_school_junior_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[8],
+                 .value = &knobs.height_school_senior_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[9],
+                 .value = &knobs.age_preschool_from_years,
+                 .range = Range{.low = 0.0F, .high = 20.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[10],
+                 .value = &knobs.age_school_junior_from_years,
+                 .range = Range{.low = 0.0F, .high = 20.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[11],
+                 .value = &knobs.age_school_senior_from_years,
+                 .range = Range{.low = 0.0F, .high = 20.0F}},
+      ScalarKnob{.key = kGenesisWorldParamKeys[12],
+                 .value = &knobs.age_adult_from_years,
+                 .range = Range{.low = 0.0F, .high = 30.0F}}};
   std::string trouble;
   if (!ReadKnobs(*world, "world_params", rows, trouble)) {
     LogError("genesis: " + trouble + " — the documented figure is used");
@@ -1051,6 +1097,19 @@ WorldState CreateStartWorld(const ITableSet& tables,
                std::to_string(world.residents.rows.size()));
   }
   BuildStartEconomy(world, tables, stubs, capacities, error);
+  // THE DISTRICT ASKS IN THE VERY FIRST SPRING, and it can only do that if
+  // the world starts with a year behind it. The norm is computed off the
+  // arable worked LAST year (world_state.h, PlanState::worked_ha_last_year),
+  // and at day zero there is no last year in the simulation — but there is
+  // one in the fiction: the kolkhoz was farming before the player arrived,
+  // and the start layout IS what it was farming. Leave this at zero and the
+  // hardest year of the campaign is the one year the district asks nothing
+  // of, which is the opposite of the epoch the design describes.
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind == LandKind::kArable && HasRotation(field)) {
+      world.plan.worked_ha_last_year += field.area_ga;
+    }
+  }
   return world;
 }
 

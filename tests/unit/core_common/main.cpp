@@ -699,7 +699,12 @@ int CheckTheFigureRule() {
     core::BodyKnobs wild;
     wild.height_sigma_frac = 0.5F;
     wild.clamp_sigma = 6.0F;
-    failures += Expect(core::HeightMeters(tall, wild, true) > 0.0F,
+    // THE AGE IS SPELLED OUT because the parameter stopped being a boolean on
+    // 2026-09-13: a surviving `true` still compiles and now means "aged one
+    // year", which is a toddler and not the grown man this line is about. The
+    // analysis caught it here, where the assertion — "greater than zero" —
+    // would have passed on either reading.
+    failures += Expect(core::HeightMeters(tall, wild, 30.0F) > 0.0F,
                        "and the metres that come out of it are a height and not a hole");
   }
 
@@ -728,21 +733,45 @@ int CheckTheFigureRule() {
                        "the knobs describe");
   }
 
-  // THE METRES, and the one rule about them: adults only.
+  // THE METRES, AND THE FOUR STEPS OF CHILDHOOD (2026-09-13). The answer for
+  // a child was 0 until the fractions and their bands arrived together; the
+  // hour between the two exports is the lesson, and this block is what makes
+  // it hard to lose again.
   core::ResidentRow man;
   man.sex = core::Sex::kMale;
   man.height_deviation = 0.1F;
   core::BodyKnobs knobs;
-  const float grown = core::HeightMeters(man, knobs, true);
+  const float grown = core::HeightMeters(man, knobs, 30.0F);
   failures += Expect(grown > 1.82F && grown < 1.83F,
                      "an adult's height is his base raised by his own fraction");
-  failures += Expect(core::HeightMeters(man, knobs, false) == 0.0F,
-                     "and a child has none: the world carries no base for the steps of childhood, "
-                     "so the answer is 'nobody can say' rather than a number");
+  // THE LADDER, STEP BY STEP, and each rung asserted against the NEXT rather
+  // than against a number of its own: the fractions are balance data and the
+  // ORDER is the fact. A test written against 0.45 and 0.65 would go red on a
+  // balance edit that changed nothing about the rule.
+  const float infant = core::HeightMeters(man, knobs, 1.0F);
+  const float preschool = core::HeightMeters(man, knobs, 4.0F);
+  const float junior = core::HeightMeters(man, knobs, 8.0F);
+  const float senior = core::HeightMeters(man, knobs, 13.0F);
+  failures += Expect(infant > 0.0F,
+                     "a child has a height now: the fractions of childhood arrived with the bands "
+                     "they apply on, and a fraction without a band could do nothing at all");
+  failures += Expect(infant < preschool && preschool < junior && junior < senior && senior < grown,
+                     "and the four steps climb in order, each shorter than the next and all "
+                     "shorter than the grown man");
+  // THE EDGES BELONG TO THE STEP THEY OPEN, and that is asserted rather than
+  // assumed: a band read as "up to and including" would put a seven-year-old
+  // in the preschool step and nothing else in the suite would notice.
+  failures += Expect(core::HeightMeters(man, knobs, knobs.age_school_junior_from_years) == junior,
+                     "a child on the day a step opens is already in it");
+  failures += Expect(core::HeightMeters(man, knobs, knobs.age_adult_from_years) == grown,
+                     "and the day adulthood opens he is grown");
   core::ResidentRow woman = man;
   woman.sex = core::Sex::kFemale;
-  failures += Expect(core::HeightMeters(woman, knobs, true) < grown,
+  failures += Expect(core::HeightMeters(woman, knobs, 30.0F) < grown,
                      "the two bases are told apart — the same fraction of a smaller base is less");
+  failures += Expect(core::HeightMeters(woman, knobs, 4.0F) < preschool,
+                     "and so are the children's: ONE fraction per step for both sexes, because "
+                     "the difference already sits in the base it multiplies");
   return failures;
 }
 

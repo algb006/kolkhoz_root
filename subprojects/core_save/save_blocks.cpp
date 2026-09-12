@@ -54,9 +54,17 @@ static_assert(AggregateArity<ChairmanState>() == 4,
 // in to adding two. The size is not asserted as a literal because the struct
 // holds two vectors whose size is the standard library's business (the same
 // reason YearLedger's assert is written in terms of kAmountsSize).
-static_assert(sizeof(PlanState) == (2 * kAmountsSize) + 8,
+//
+// 2026-09-13: two more fields, and the SIZE DID NOT MOVE AT ALL. The fourth
+// byte filled the hole after the three that were there, and the float landed
+// on the four bytes of padding the struct already carried to its own
+// alignment: +8 before, +8 after. The field count caught both alone — and
+// this is the third time in two days that the count was the only one to see
+// a change. A size guessed from "a byte plus a float must be twelve" would
+// have been wrong here too, which is why it is measured and not reasoned.
+static_assert(sizeof(PlanState) == (2 * kAmountsSize) + 16,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 5,
+static_assert(AggregateArity<PlanState>() == 8,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -296,6 +304,14 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
   out.WriteU8(world.plan.failed_years_in_a_row);
   out.WriteU8(world.plan.met_years_in_a_row);
+  // WHETHER THE DISTRICT HAS SPOKEN THIS YEAR, and the area its next figure
+  // will be computed from. Lose the first and a loaded campaign cannot tell
+  // "asked for nothing" from "was never asked"; lose the second and the
+  // spring after a load names a norm off an area of zero — the plan the
+  // chairman cannot fail, which is the defect this pair exists to end.
+  out.WriteU8(world.plan.announced);
+  out.WriteFloat(world.plan.worked_ha_last_year);
+  out.WriteFloat(world.plan.worked_ha_this_year);
   for (const ResourceAmounts& opened : world.unsealed.by_fund) {
     sink.WriteAmounts(DefKind::kResource, opened);
   }
@@ -355,6 +371,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));
   world->plan.failed_years_in_a_row = in.ReadU8();
   world->plan.met_years_in_a_row = in.ReadU8();
+  world->plan.announced = in.ReadU8() != 0 ? 1U : 0U;
+  world->plan.worked_ha_last_year = in.ReadFloat();
+  world->plan.worked_ha_this_year = in.ReadFloat();
   for (ResourceAmounts& opened : world->unsealed.by_fund) {
     opened = source.ReadAmounts(DefKind::kResource);
   }

@@ -333,6 +333,26 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   EmitResourceBlock(out, resources, "store", VillageStores(state, resources.size()));
   EmitResourceBlock(out, resources, "pantry", VillagePantries(state, resources.size()));
   EmitResourceBlock(out, resources, "plan_due", state.plan.due);
+  EmitResourceBlock(out, resources, "plan_delivered", state.plan.delivered);
+  // THE DISTRICT'S VERDICT, AND IT WAS MISSING FROM A SHEET OF 1716 COLUMNS.
+  //
+  // The sheet carried a plan_due column for every resource and not one for
+  // what the district then SAID — and the due columns are all zero in it
+  // besides, because the row is written at the year's turn, after JudgePlan
+  // has cleared the figure and before the spring names the next one. So the
+  // sheet had the plan's SHAPE and nothing of its outcome: a thirty-year run
+  // could fail the plan in nineteen years of thirty, reach the trial
+  // condition in its fourth, and print "all checks passed" — measured on
+  // 2026-09-13, on a plan change that was withdrawn because of what these
+  // columns show. A change nobody can see is a change nobody can measure, and
+  // the instrument has to come first.
+  //
+  // 0 none, 1 met, 2 failed — the enum's own order, as every other mirrored
+  // enum is written here.
+  out.Integer("plan_verdict", static_cast<std::uint64_t>(state.plan.last_verdict));
+  out.Integer("plan_failed_in_a_row", state.plan.failed_years_in_a_row);
+  out.Integer("plan_met_in_a_row", state.plan.met_years_in_a_row);
+  out.Number("raikom_reputation", state.chairman.raikom_reputation);
 
   // -- per livestock kind --------------------------------------------------
   const std::vector<KindHeads> heads = CountHeads(state, livestock.size());

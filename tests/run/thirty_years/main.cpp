@@ -244,11 +244,21 @@ void PrintYear(const core::WorldState& state) {
   const float mean = book.satiety_days > 0
                          ? book.satiety_day_mean_sum / static_cast<float>(book.satiety_days)
                          : 0.0F;
+  // THE DISTRICT'S VERDICT ON THE YEAR, and it is printed because a thirty-
+  // year run could fail the plan nineteen times and say "all checks passed"
+  // until 2026-09-13: the sheet carried what was ASKED of every resource and
+  // nothing of what was SAID back. A figure nobody can see is a figure
+  // nobody can measure, and the verdict is the whole point of the plan.
+  const char* const verdict = state.plan.last_verdict == core::PlanVerdict::kMet      ? "met"
+                              : state.plan.last_verdict == core::PlanVerdict::kFailed ? "FAILED"
+                                                                                      : "not asked";
   std::cout << "year " << book.year << ": " << state.residents.rows.size() << " residents, satiety "
             << mean << " (leanest day " << book.satiety_day_mean_min << "), " << book.births
             << " born, " << book.deaths << " died, " << book.departures << " left, herd "
             << book.herd_births << "/+" << " -" << (book.herd_deaths_age + book.herd_deaths_hunger)
-            << ", LE " << state.vitals.life_expectancy_years << '\n';
+            << ", LE " << state.vitals.life_expectancy_years << ", plan " << verdict << " ("
+            << static_cast<std::uint32_t>(state.plan.failed_years_in_a_row) << " failed in a row)"
+            << '\n';
 }
 
 /// What the herd looks like at the end, kolkhoz and yard apart. NOT an
@@ -450,6 +460,9 @@ int main(int argc, char** argv) {
   std::uint64_t growing_field_days = 0;
   std::uint64_t drying_field_days = 0;
   std::uint64_t soaking_field_days = 0;
+  std::uint32_t plan_failed_years = 0;
+  std::uint32_t worst_failed_run = 0;
+  std::uint32_t worst_failed_year = 0;
 
   for (std::uint32_t year = 0; year < g_years; ++year) {
     double year_seconds = 0.0;
@@ -519,6 +532,15 @@ int main(int argc, char** argv) {
     sheet << core::LedgerCsvRow(state, *world.tables);
     ++rows_written;
     PrintYear(state);
+    // THE DISTRICT'S TALLY OVER THE RUN, kept because the epoch's ending
+    // condition lives in it: three failed plans in a row put the chairman
+    // under the court (epochs design §8), and until 2026-09-13 a run could
+    // reach that in its fourth year and print "all checks passed".
+    plan_failed_years += state.plan.last_verdict == core::PlanVerdict::kFailed ? 1U : 0U;
+    if (state.plan.failed_years_in_a_row > worst_failed_run) {
+      worst_failed_run = state.plan.failed_years_in_a_row;
+      worst_failed_year = state.ledger.closed.year;
+    }
     for (const core::Grams grams : state.ledger.closed.harvest) {
       harvested_tonnes += static_cast<double>(grams) / 1.0e6;
     }
@@ -569,6 +591,10 @@ int main(int argc, char** argv) {
             << "run\n";
 
   PrintHerdFinding(state);
+  std::cout << "thirty_years: the district's plan was failed in " << plan_failed_years << " of "
+            << rows_written << " years; the longest run of failures was " << worst_failed_run
+            << ", reached in year " << worst_failed_year << " (three in a row is the trial "
+            << "condition, epochs design §8)\n";
 
   // -- the floor -----------------------------------------------------------
   // The book of year N closes on the first tick of year N+1, which is the
@@ -606,6 +632,37 @@ int main(int argc, char** argv) {
   if (g_canonical_run) {
     failures += run::Expect(population >= kCanonLow,
                             "the village reaches the canon's thirtieth year and not a smaller one");
+    // THE PLAN GATES BOTH WAYS, and it is a gate rather than a printed line
+    // because a measurement nobody has to read is the exact failure this run
+    // was caught in: it printed nineteen failed years and "all checks passed"
+    // on the same screen (2026-09-13).
+    //
+    // The ceiling is the epoch's own condition — three failed years in a row
+    // put the chairman under the court (epochs design §8) — and a run that
+    // reaches it without a player doing anything wrong is a balance finding
+    // and not a pass. The floor is the other direction and the older defect:
+    // a plan that is never failed is the plan that could not be failed, which
+    // is what a share of the reaping was.
+    // The threshold is READ OUT OF THE TABLE the core reads it from, not
+    // written here: a copy of a balance number in a gate is a copy that
+    // drifts, and this run has been bitten by that before.
+    const core::ITable* const campaign = world.tables->FindTable("campaign");
+    const std::uint32_t trial_row = campaign == nullptr
+                                        ? core::kNoTableRow
+                                        : campaign->FindRowByKey("plan_failed_years_to_trial");
+    const std::uint32_t value_col =
+        campaign == nullptr ? core::kNoTableColumn : campaign->FindColumn("value");
+    const std::uint32_t trial_threshold =
+        trial_row == core::kNoTableRow || value_col == core::kNoTableColumn
+            ? 3U
+            : static_cast<std::uint32_t>(std::strtoul(
+                  std::string(campaign->CellText(trial_row, value_col)).c_str(), nullptr, 10));
+    failures += run::Expect(worst_failed_run < trial_threshold,
+                            "the district's plan is failable but not fatal on a run nobody plays "
+                            "badly: fewer failures in a row than the trial condition");
+    failures += run::Expect(plan_failed_years > 0,
+                            "and it IS failable — a plan met in all thirty years is a plan the "
+                            "weather cannot touch, which is the defect this one replaced");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";

@@ -19,9 +19,17 @@ dragonfly_density_hole_m2,0.1,layer
 dragonfly_density_slow_m2,0.03,layer
 body_height_male_m,1.66,both
 body_height_female_m,1.58,both
+body_height_infant_frac,0.45,both
 body_height_sigma_frac,0.037,both
 body_height_clamp_sigma,2.5,both
+body_height_preschool_frac,0.65,both
 body_build_sigma_frac,0.07,both
+body_height_school_junior_frac,0.78,both
+body_height_school_senior_frac,0.93,both
 meadow_flower_density_m2,3,layer
+age_preschool_from_years,3,both
 build_max_slope,0.25,layer
+age_school_junior_from_years,7,both
 fence_poles_height_m,0.95,layer
+age_school_senior_from_years,11,both
+age_adult_from_years,16,both

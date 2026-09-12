@@ -252,7 +252,12 @@ class ResidentsSystem final : public IResidentsSystem {
     const ResidentRow& person = completed.residents.rows[row];
     const float age =
         BiologicalAgeYears(config_.life_speedup, person.birth_day, completed.calendar.day);
-    return core::HeightMeters(person, config_.body, age >= config_.adult_age_years);
+    // THE AGE AND NOTHING ELSE. This used to hand over a BOOLEAN — "is he an
+    // adult" — computed here against life.csv's adult year, and the answer
+    // for a child was zero. Since 2026-09-13 the figure carries four bands of
+    // childhood and their fractions, and the rule lives with them: a caller
+    // that decided the band here would be the rule's second home.
+    return core::HeightMeters(person, config_.body, age);
   }
 
   void CollectStockForecast(const WorldState& completed,

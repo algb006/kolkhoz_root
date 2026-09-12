@@ -629,6 +629,32 @@ struct ProductionConfig {
   /// same note beside the code.
   float plan_grain_share = 0.0F;
 
+  /// One position of the district's plan: which crop, and what share of the
+  /// WORKED arable the district counts against it (campaign.csv
+  /// plan_positions, "crop_key=percent").
+  struct PlanPosition {
+    CropId crop;
+
+    /// 0..1. The shares do not add up to one and are not meant to: the rest
+    /// of the land grows crops the start's plan does not ask for.
+    float area_share = 0.0F;
+  };
+
+  /// THE POSITIONS THE DISTRICT ASKS BY, and the area it counts under each.
+  /// District design §9 says only what is GROWN goes into a plan, and names
+  /// grain by crop, potatoes and vegetables, flax, milk, meat, egg and wool;
+  /// the start's plan is the short list of them. (Said in my own words rather
+  /// than quoted: the document is in Russian, and a translation inside quote
+  /// marks is a promise the reader cannot check against the file.)
+  ///
+  /// THE NORM IS OFF THE POSITION AND OFF THE AREA, NOT OFF THE SLOT, which
+  /// is the whole point: a norm computed from what the chairman planted is a
+  /// norm the chairman sets, and the district does not ask what he planted.
+  /// Empty means no plan at all, which is how a table-less world and every
+  /// unit test keep working — and PlanState::announced, not the tonnage, is
+  /// what tells that apart from a year the district asked nothing of.
+  std::vector<PlanPosition> plan_positions;
+
   /// The share of the plan that counts as met, 0..1 (campaign.csv
   /// plan_met_share). 1.0 — delivered in full on every position — is the
   /// plain reading of "сорванный план" (epochs design §8), and the knob

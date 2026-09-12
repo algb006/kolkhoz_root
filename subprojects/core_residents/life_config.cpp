@@ -278,11 +278,26 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 5> kLifeWorldParamKeys = {"body_height_male_m",
-                                                                 "body_height_female_m",
-                                                                 "body_height_sigma_frac",
-                                                                 "body_height_clamp_sigma",
-                                                                 "body_build_sigma_frac"};
+constexpr std::array<std::string_view, 13> kLifeWorldParamKeys = {
+    "body_height_male_m",
+    "body_height_female_m",
+    "body_height_sigma_frac",
+    "body_height_clamp_sigma",
+    "body_build_sigma_frac",
+    // The steps of childhood and the bands they apply on (2026-09-13). This
+    // module reads them because it is the one that answers
+    // ResidentHeightMeters: a child's height is a fraction of the adult of
+    // the same sex, and the fraction without its band is a name with no
+    // value — which is exactly what the four fractions were for the hour
+    // between the two exports.
+    "body_height_infant_frac",
+    "body_height_preschool_frac",
+    "body_height_school_junior_frac",
+    "body_height_school_senior_frac",
+    "age_preschool_from_years",
+    "age_school_junior_from_years",
+    "age_school_senior_from_years",
+    "age_adult_from_years"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
@@ -300,7 +315,31 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.5F, .high = 6.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[4],
                  .value = &config.body.build_sigma_frac,
-                 .range = Range{.low = 0.0F, .high = 0.5F}}};
+                 .range = Range{.low = 0.0F, .high = 0.5F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[5],
+                 .value = &config.body.height_infant_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[6],
+                 .value = &config.body.height_preschool_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[7],
+                 .value = &config.body.height_school_junior_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[8],
+                 .value = &config.body.height_school_senior_frac,
+                 .range = Range{.low = 0.1F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[9],
+                 .value = &config.body.age_preschool_from_years,
+                 .range = Range{.low = 0.0F, .high = 20.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[10],
+                 .value = &config.body.age_school_junior_from_years,
+                 .range = Range{.low = 0.0F, .high = 20.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[11],
+                 .value = &config.body.age_school_senior_from_years,
+                 .range = Range{.low = 0.0F, .high = 20.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[12],
+                 .value = &config.body.age_adult_from_years,
+                 .range = Range{.low = 0.0F, .high = 30.0F}}};
   return ReadKnobs(world, "world_params", rows, error);
 }
 

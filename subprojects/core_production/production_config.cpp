@@ -21,12 +21,14 @@
 #include "production_config.h"
 
 #include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "core_catalog/table_lookup.h"
@@ -929,6 +931,99 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     config.plan_grain_share = percent / 100.0F;
+    // THE PLAN'S POSITIONS: "crop_key=percent", space separated.
+    //
+    // AND IT SAYS SO WHEN IT READS NOTHING. The share two lines above refuses
+    // the whole config when its cell is bad, and an optional COLUMN gets a
+    // warning — while this datum, whose absence disables the epoch's ending
+    // condition, was read in silence in the first draft. A settlement with no
+    // positions is a settlement the district never asks anything of: that is
+    // a legitimate world (a table-less unit test) and a catastrophic typo,
+    // and the log line is the only thing that tells them apart.
+    const ITable* const plan_crops = tables.FindTable("crops");
+    const std::uint32_t positions_row = campaign->FindRowByKey("plan_positions");
+    const std::string list(positions_row == kNoTableRow || value_col == kNoTableColumn
+                               ? std::string()
+                               : std::string(campaign->CellText(positions_row, value_col)));
+    if (list.empty()) {
+      LogWarning(
+          "production: campaign.csv names no plan_positions — the district will ask "
+          "for nothing, and no year can be failed");
+    } else if (plan_crops == nullptr) {
+      LogWarning("production: plan_positions is set but there is no crops table to price it");
+    } else {
+      // EVERY REFUSAL NAMES ITS OWN CAUSE. A first draft answered "not a
+      // known crop with a share" to four different mistakes at once — an
+      // unknown key, a missing '=', a share that is not a number and a share
+      // of zero — which is a message that tells the reader only that
+      // something is wrong with a line he can already see.
+      std::string token;
+      for (std::size_t index = 0; index <= list.size(); ++index) {
+        if (index < list.size() && list[index] != ' ') {
+          token += list[index];
+          continue;
+        }
+        if (token.empty()) {
+          continue;
+        }
+        const std::size_t equals = token.find('=');
+        if (equals == std::string::npos) {
+          LogWarning("production: plan_positions: '" + token +
+                     "' carries no '=' and so no share of the arable");
+          token.clear();
+          continue;
+        }
+        const std::string key = token.substr(0, equals);
+        const std::uint32_t row = plan_crops->FindRowByKey(key);
+        if (row == kNoTableRow) {
+          LogWarning("production: plan_positions: crops.csv has no crop '" + key + "'");
+          token.clear();
+          continue;
+        }
+        // FROM_CHARS AND NOT STRTOF: the C runtime's float parse follows the
+        // locale, and a library linked into somebody else's process does not
+        // choose the locale. A decimal comma would read 6.7 as 6 in one host
+        // and 6.7 in another — the same table, two worlds, and a determinism
+        // this core promises to hold.
+        const std::string share_text = token.substr(equals + 1);
+        float share_percent = 0.0F;
+        const std::from_chars_result parsed = std::from_chars(
+            share_text.data(), share_text.data() + share_text.size(), share_percent);
+        if (parsed.ec != std::errc{} || parsed.ptr != share_text.data() + share_text.size()) {
+          LogWarning("production: plan_positions: '" + share_text + "' is not a number, so '" +
+                     key + "' asks for nothing");
+          token.clear();
+          continue;
+        }
+        // A SHARE IS A PERCENTAGE OF THE ARABLE, so it lives in 0..100 and
+        // the bound is here rather than downstream: past the float ceiling
+        // GramsFromKilograms answers zero, and an absurd typo would flip from
+        // "impossible norm" to "free year" without a word.
+        if (!(share_percent > 0.0F && share_percent <= 100.0F)) {
+          LogWarning("production: plan_positions: '" + key + "' asks for " + share_text +
+                     "% of the arable, which is outside 0..100");
+          token.clear();
+          continue;
+        }
+        const CropId crop{DefIdFromRow<CropIdTag>(row)};
+        bool already_named = false;
+        for (const ProductionConfig::PlanPosition& seen : config.plan_positions) {
+          already_named = already_named || seen.crop.value == crop.value;
+        }
+        if (already_named) {
+          // Silently accepting it would ADD the two shares, so a list that
+          // named potatoes twice would ask for half again as much and look
+          // like a balance decision nobody made.
+          LogWarning("production: plan_positions: '" + key +
+                     "' is named twice; the second share is ignored");
+          token.clear();
+          continue;
+        }
+        config.plan_positions.push_back(
+            ProductionConfig::PlanPosition{.crop = crop, .area_share = share_percent / 100.0F});
+        token.clear();
+      }
+    }
   }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
