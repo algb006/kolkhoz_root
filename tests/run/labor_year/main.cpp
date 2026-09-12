@@ -417,9 +417,16 @@ int main(int argc, char** argv) {
       if (field.phase != core::FieldPhase::kSowing || field.crop.value >= sow_window_end.size()) {
         continue;
       }
-      const std::uint32_t window_end = sow_window_end[field.crop.value];
+      // THE TABLE COUNTS MONTHS FROM ONE AND THE CALENDAR FROM ZERO, and
+      // this instrument compared them directly until 2026-09-12: it read
+      // "4" for oats out of crops.csv and tested it against a month index
+      // where April is 3, so it called the window a month wider than it is
+      // and reported three days of overrun where the true figure is over a
+      // month. The parser does the same subtraction (production_config.cpp);
+      // a run that reads the CSV itself has to do it too.
+      const std::uint32_t window_end = sow_window_end[field.crop.value] - 1U;
       const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
-      if (window_end != 0 && month > window_end) {
+      if (sow_window_end[field.crop.value] != 0 && month > window_end) {
         sowing_overran = true;
         const std::uint32_t over = world.calendar.day - (window_end + 1) * core::kDaysPerMonth + 1;
         latest_overrun = over > latest_overrun ? over : latest_overrun;
