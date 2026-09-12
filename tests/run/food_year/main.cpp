@@ -335,6 +335,45 @@ int ExpectBand(bool holds, const char* label) {
 /// A RECORDED VALUE IS NOT A DESIGN BAND, AND THE NAME IS THE WHOLE OF THE
 /// DIFFERENCE (boss's decision of 2026-09-12; architecture §8бш).
 ///
+/// RE-RECORDED ONCE, AND THE ACT IS WRITTEN DOWN BECAUSE IT IS THE DANGEROUS
+/// HALF OF THIS WHOLE IDEA. A value re-recorded on every delivery is a
+/// ratchet that follows the model wherever it goes and never says no — it
+/// would read as a check and behave as a diary. What keeps it honest is that
+/// moving it is a deliberate act with a stated cause, and here is the cause
+/// and the cost.
+///
+/// THE CAUSE: sowing stopped being horse-pulled on 2026-09-12. Three places
+/// in the tree said it is hand work and one said it is not; the equipment
+/// registry has no seed drill in any era, so the design's "a seed drill or by
+/// hand" was a promise with nothing behind it, and boss ruled the prose to
+/// match. THE SIZE, stated because the prediction below is compared against
+/// it: at an empty fodder fund the three field phases fell from 223.6 to
+/// 203.8 game man-days, about a ninth of themselves — and rather less than a
+/// twentieth of the settlement's working year, which also carries the
+/// harvest, the herd and the hauling. "About a tenth of field work" was the
+/// first draft of this line and it was two and a half times too large.
+///
+/// THE COST, and every one of the four moved the WRONG way: the yearly mean
+/// 67.54 to 64.84, the leanest day 20.49 to 19.81, the share hungry at once
+/// 0.811 to 0.863, the gap the issue makes 1.61 to 0.78. THIS LINE STANDS
+/// BESIDE THE NUMBERS AND NOT IN A COMMIT MESSAGE, because here it outlives
+/// the message.
+///
+/// AND THE REASON IS A PROPERTY OF THE MODEL WITH A PREDICTION ATTACHED
+/// (boss, 2026-09-12). Cheaper work did not feed anybody: it freed hands, the
+/// hands became two more residents, and the same harvest was spread over
+/// them. THE LAND IS THE CEILING — there is nowhere else to work, seventy
+/// hectares in the first year and seventy in the thirtieth — so spare labour
+/// turns into people and not into food. idle_curve says the same thing from
+/// the other side.
+///
+/// THE PREDICTION, AND IT CAN BE WRONG: once the player can raise the
+/// ninety-three unworked hectares, this same experiment must come out the
+/// other way — cheaper work should RAISE the table, not lower it. Repeat it
+/// then with the same damage, so the comparison is honest. If cheap work
+/// still lowers the table after the land opens, the ceiling was never the
+/// land and the real one is still unnamed.
+///
 /// Three checks below carried numbers that had been red for days — 25 on
 /// the leanest day from the stage-6 criterion, four fifths of the village
 /// hungry at once, and five points of margin between the fed village and the
@@ -751,8 +790,19 @@ int main(int argc, char** argv) {
                           "the lean-day measure walked every day it claims (fixture anchor)");
   failures += run::Expect(good.people > 0U && bad.people > 0U,
                           "there is a village on both arms to measure (fixture anchor)");
-  failures += ExpectBand(good.mean_satiety >= 65.0F,
-                         "with the shipped tables the village is fed on the year (reference)");
+  // THE FOURTH BARE NUMBER OF THIS RUN, withdrawn 2026-09-12 on boss's
+  // decision and by the same argument as the three before it — 45 on the
+  // yearly mean, 25 on the leanest day, four fifths on the share hungry at
+  // once. 65 is not derived, not measured against anything, and asserts
+  // nothing about the world; it asserts that somebody once wrote it down.
+  //
+  // AND IT WENT RED BY A DECISION, not by a breakage. Sowing stopped being
+  // horse-pulled the same day, the three field phases got about a ninth
+  // cheaper at an empty fodder fund (223.6 to 203.8 game man-days), and
+  // the settlement's yearly mean fell from 67.54 to 64.84 — through a
+  // threshold that had no ground to stand on either side of.
+  failures += ExpectNoLower(
+      good.mean_satiety, 64.8391647F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -787,19 +837,20 @@ int main(int argc, char** argv) {
   failures += ExpectBand(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                          "and the settlement is not sliding year on year");
   // BAND WITHDRAWN, REGRESSION KEPT. The stage-6 criterion asked for 25 on
-  // the leanest day; the model gives 20.4899788 and has done since spoilage
+  // the leanest day; the model gives 19.8146267 and has done since spoilage
   // arrived. Whether 25 is the right thing to want is the model's question,
   // and it is boss's to schedule — so what is watched here is only that the
   // leanest day does not sink below what it already was.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 20.4899788F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 19.8146267F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
   // more" was a level: it went from seven tenths to four fifths when task A4
   // made food go bad where it lies (transport design §10), so the autumn's
   // abundance stopped waiting in the store until March. The model now stands
-  // at 99 of 122, a hair over four fifths, and where the edge belongs is not
+  // at 107 of 124 — 86 %, well past four fifths now that hand sowing has
+  // freed labour into more mouths — and where the edge belongs is not
   // this run's to say — so the share is watched against itself.
   const float hungry_share = good.people > 0U ? static_cast<float>(good.most_hungry_at_once) /
                                                     static_cast<float>(good.people)
@@ -807,7 +858,7 @@ int main(int argc, char** argv) {
   failures += run::Expect(good.most_hungry_at_once < good.people,
                           "and hunger never takes the whole village at once");
   failures += ExpectNoHigher(
-      hungry_share, 0.811475396F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.862903237F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -837,11 +888,12 @@ int main(int argc, char** argv) {
   // claim about the model — striking out the issue makes the lean season
   // worse — and it binds on every seed. The five points of margin were a
   // measured number wearing a claim's clothes: the model gives a gap of
-  // 1.61, and it is the gap that is watched, against itself.
+  // 0.78 since hand sowing, and it is the gap that is watched, against
+  // itself.
   failures += run::Expect(bad.leanest_day_satiety < good.leanest_day_satiety,
                           "and the lean season is worse without the issue");
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            1.61304283F,
+                            0.778614044F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

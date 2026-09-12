@@ -15,6 +15,7 @@
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "field_haul.h"
 #include "production_config.h"
@@ -274,18 +275,49 @@ void OpenPhase(const ProductionConfig& config,
   }
   const CropId crop = field.crop;
   float norm = 0.0F;
-  bool horse_pulled = false;
+  // ASKED THROUGH THE SEAM'S OWN FUNCTIONS AND NOT BY A LOCAL BOOL. The
+  // bool is how the numerator and this divisor came to describe different
+  // horses for a day; they agree now because they read the same two
+  // functions, which is a stronger thing than agreeing because somebody kept
+  // them in step.
+  //
+  // AND KindOfPhase COMES FROM core_common/work_seam.h, where it already
+  // was. The first draft of this repair wrote a second copy of it, here, in
+  // the very edit whose subject is two places answering one question — and
+  // work_seam.h's own header forbids that copy in as many words. The
+  // analysis found it; I did not.
+  const bool horse_pulled = IsHorseWork(KindOfPhase(phase));
   if (phase == FieldPhase::kPlowing) {
     norm = config.farming.plow_days_per_ha;
-    horse_pulled = true;
   } else if (phase == FieldPhase::kHarrowing) {
     norm = config.farming.harrow_days_per_ha;
-    horse_pulled = true;
   } else if (crop.value < config.crops.size()) {
-    const bool sowing = phase == FieldPhase::kSowing;
-    norm = sowing ? config.crops[crop.value].sow_days_per_ha
-                  : config.crops[crop.value].harvest_days_per_ha;
-    horse_pulled = sowing;
+    // AND SOWING IS NOT AMONG THEM, though it was from 0.17.87 to 2026-09-12.
+    // Three places in this tree said it is hand work and one said it is not,
+    // and the one was here: WorkKind::kSowing's own comment says "by hand in
+    // Epoch I", IsHorseWork excludes it from the kinds a horse is harnessed
+    // to, and labor_day sends the sower at walking speed and not at the
+    // harness's. So a sower needed no horse, was capped by no horse and
+    // walked to the field — and his work still got longer when the horses
+    // were hungry.
+    //
+    // BOSS SETTLED IT BY THE REGISTRY — the design said "a seed drill or by
+    // hand" and the equipment registry has no seed drill in any era, a
+    // promise with nothing behind it (2026-09-12; architecture §8бн).
+    //
+    // THAT ARGUMENT PROVES TOO MUCH AND THE ANALYSIS SAID SO: the same
+    // registry has no plough and no harrow either, and both of those are
+    // horse work beyond dispute — the design keeps those in the start
+    // inventory instead. Nor is the registry implement-free, which was this
+    // block's first attempt at saying why: `horse_mower` sits in it as a
+    // trailed implement. So the registry simply does not settle the
+    // question either way.
+    //
+    // WHAT CARRIES THE CHANGE is the core's own three statements, which are
+    // not silences: WorkKind::kSowing's comment, the crew cap that never
+    // takes a horse for it, and the walking speed it is sent at.
+    norm = phase == FieldPhase::kSowing ? config.crops[crop.value].sow_days_per_ha
+                                        : config.crops[crop.value].harvest_days_per_ha;
   }
   // THE TRACTION RATION LENGTHENS THE WORK THE HORSE PULLS, and only that
   // work (boss's decision of 2026-09-12). Hay keeps a horse alive; fodder
@@ -294,13 +326,50 @@ void OpenPhase(const ProductionConfig& config,
   // at all. This is the price, and the chairman reads it off the sowing
   // calendar the same spring, which is the only place he could.
   //
-  // NOT A STOP AT THE BOTTOM: an empty fodder fund makes the sowing half
-  // again as long and it still finishes. A chairman who fed his people out
-  // of the horses' grain loses a week, not a year — "никаких безвыходных
-  // ситуаций" read forwards.
+  // NOT A STOP AT THE BOTTOM: an empty fodder fund makes the PLOUGHING
+  // about two fifths longer — the norm divided by traction_hungry_factor,
+  // 0.7, so 1.43 times — and it still finishes. A chairman who fed his
+  // people out of the horses' grain loses a week, not a year: "никаких
+  // безвыходных ситуаций" read forwards.
+  //
+  // THE SENTENCE HAS BEEN WRONG TWICE IN ONE EVENING and is worth the extra
+  // line for it. It said "the SOWING" until 2026-09-12 and survived by an
+  // hour the repair that took sowing out of this rule; then it said "half
+  // again", which is 1.5 and not 1.43. Across the settlement's ploughing,
+  // harrowing and sowing together the price is about a ninth — 184.5 to
+  // 203.8 game man-days (reconciliation §16.5), because two of those three
+  // are not divided at all.
   //
   // The harvest is left out on purpose: reaping is a scythe and a sickle in
-  // Epoch I. Mowing likewise, above.
+  // Epoch I. Sowing likewise since 2026-09-12 — see the branch above.
+  //
+  // AND MOWING IS NOT LEFT OUT FOR THAT REASON, though this block said so
+  // until the analysis checked it. The meadow cut HARNESSES A HORSE: the
+  // registry carries `horse_mower` in Epoch I, labor_system sets
+  // `job.harnessed` for meadow land, and the labour model says in as many
+  // words that three works go out with traction — ploughing, harrowing and
+  // THE HAY CUT. So mowing is pulled and is not lengthened, and the same is
+  // true of a cart on the hauling.
+  //
+  // AND THEY CANNOT BE BROUGHT UNDER A KIND-KEYED RULE AT ALL, which is the
+  // half this block missed at first: the meadow cut is not a WorkKind of its
+  // own — its kind is kHarvest, and the horse is keyed off the LAND
+  // (AssignmentJob::harnessed). A predicate over kinds that took it in would
+  // drag the arable reaping in with it, and reaping is a sickle.
+  //
+  // NAMED AND NOT CHANGED: the hay cut is 229 man-days of the settlement's
+  // year, and moving it under the rule would move every balance number in
+  // the reconciliation. Whether an underfed horse mows slower is a design
+  // question and boss's to answer (2026-09-12).
+  //
+  // THE NUMERATOR AND THIS CONSUMER MUST TRAVEL AS A PAIR, and for a day
+  // they did not. herd_system sums the working share over IsHorseWork — two
+  // kinds — while this divided the norms of three, so the two numbers were
+  // plausible apart and described different horses together (architecture
+  // §8вб). They read the same predicate now, through KindOfPhase, rather
+  // than being kept in step by hand — but `AssignmentJob::harnessed` is a
+  // THIRD way of saying "a horse is in this", and until all three are one
+  // question this can open again.
   if (horse_pulled && config.farming.traction_hungry_factor > 0.0F) {
     const float factor = config.farming.traction_hungry_factor +
                          (1.0F - config.farming.traction_hungry_factor) * current.traction_ration;

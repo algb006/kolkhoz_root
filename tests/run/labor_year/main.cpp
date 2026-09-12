@@ -212,7 +212,10 @@ int main(int argc, char** argv) {
   // and that is not a convenience — it is what the bands MEAN. They come from
   // agronomy, not from this model: so many man-days a hectare behind a horse
   // in normal working condition. Since 2026-09-12 the core lengthens ploughing
-  // and sowing when the working stock goes without its fodder grain
+  // and harrowing when the working stock goes without its fodder grain — and
+  // sowing was among them until the evening of that same day, when it turned
+  // out three other places in the tree called sowing hand work and only this
+  // rule did not
   // (world_state.h traction_ration), and the shipped village feeds its horses
   // nothing at all for thirty years — so measuring the norm on it asks "is
   // this a healthy farm", while the claim being made is "does the model cost
