@@ -286,18 +286,50 @@ bool ParseFieldPhases(const ITable& table, FarmingConfig& farming, std::string& 
   };
 
   const std::array<Phase, 2> phases = {
-      {{"plough", &farming.plow_days_per_ha}, {"harrow", &farming.harrow_days_per_ha}}};
+      {{"plowing", &farming.plow_days_per_ha}, {"harrowing", &farming.harrow_days_per_ha}}};
   const std::uint32_t days_col = table.FindColumn("labor_days_per_ha");
+  // AND THE COLUMN IS REQUIRED TOO, which the first draft of this repair
+  // forgot — it moved the silence one axis over instead of removing it.
+  // RequiredCell refuses a missing ROW and deliberately does NOT refuse a
+  // missing COLUMN: a column absent for every row means "a table this build
+  // was not given", which is stub_tables.h's conversation and not this one.
+  // But field_phases stands in RequireTables, so this build IS given it, and
+  // a renamed column here would leave the norms at their compiled-in
+  // defaults exactly as the renamed rows just did. The library is right in
+  // general and the guard belongs at the call site.
+  if (days_col == kNoTableColumn) {
+    error = "field_phases: no labor_days_per_ha column";
+    return false;
+  }
   for (const Phase& phase : phases) {
+    // THE ROW IS REQUIRED, and reading it with a fallback let the table stop
+    // being read in silence. This file held the DESIGN DB's spelling of the
+    // phases, `plough`/`harrow`; the seam's own work kinds have always said
+    // `plowing`/`harrowing`, and on 2026-09-12 the db adopted the seam's
+    // spelling so that one work would have one word in both dictionaries.
+    // The export changed under this file, FindRowByKey returned kNoTableRow,
+    // and CellOrDefault treats a missing row as "absent" and answers with
+    // the caller's own value. The defaults happen to equal the table's
+    // numbers — 10 and 3 real man-days a hectare, in both places — so
+    // nothing moved, nothing reddened, and the table had simply stopped
+    // being read. It was minutes rather than days, and only because the
+    // guard that found it was watching both sides at once.
+    //
+    // A GENERATED TABLE IS EXACTLY WHERE THIS BITES: its keys change without
+    // anybody editing this file, and a reader that shrugs at a missing row
+    // turns an export into a decoration. RequiredCell refuses instead, and
+    // its own header says why — a missing row "is a caller asking about
+    // something that does not exist".
     float days = *phase.value * kRealDaysPerGameDay;  // back to REAL for the read
-    if (!CellOrDefault(table,
-                       table.FindRowByKey(phase.key),
-                       days_col,
-                       Range{.low = 0.0F, .high = 1000.0F},
-                       days,
-                       days,
-                       error)) {
-      error = std::string("field_phases: ") + phase.key + ": " + error;
+    if (!RequiredCell(table,
+                      "field_phases",
+                      "labor_days_per_ha",
+                      table.FindRowByKey(phase.key),
+                      days_col,
+                      Range{.low = 0.0F, .high = 1000.0F},
+                      days,
+                      error)) {
+      error = std::string("row '") + phase.key + "': " + error;
       return false;
     }
     *phase.value = days / kRealDaysPerGameDay;  // the table keeps REAL man-days
