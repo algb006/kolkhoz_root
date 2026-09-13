@@ -255,7 +255,16 @@ enum class OrderKind : std::uint8_t {
   /// порубку назначить нельзя, пока идёт эта"): refused with
   /// kConflictsWithActive while any stand still has timber marked. Refused
   /// with kNoSuchSubject for a stand that is not there, and kRuleForbids for a
-  /// volume that is not positive or exceeds the stand's unmarked stock.
+  /// volume that exceeds the stand's unmarked stock. A volume that is not
+  /// positive NEVER REACHES THE CONSUMER through the session: the boundary's
+  /// shape check refuses it at issue (core_boundary/session.cpp, ShapeIsValid)
+  /// and the caller gets no order at all. The consumer refuses it too, with
+  /// kRuleForbids, for an order staged past the boundary (host found the
+  /// header saying only the second, 2026-09-13).
+  ///
+  /// A STAND WITH NO STOCK IS NORMAL at the start: every old-forest square
+  /// begins empty and gains only the trunks that fall each year (timber
+  /// design §8a); marking one refuses with kRuleForbids until they have.
   ///
   /// Settled in the step it is read, so the order itself is past cancelling
   /// at once. TAKING THE MARK OFF BEFORE THE CREW STARTS — terrain design §7,
