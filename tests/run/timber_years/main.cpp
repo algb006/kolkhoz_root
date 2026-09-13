@@ -32,6 +32,7 @@
 #include "../common/fixture_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
+#include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/timber_catalog.h"
@@ -83,6 +84,18 @@ struct YearTally {
   core::Grams logs_from_old = 0;     ///< logs laid down on old forest
   core::Grams logs_used = 0;         ///< logs that left the village's hands
   float felling_man_days = 0.0F;
+  // §8a criterion 2 as boss re-set it (parcel 196): do the logs wait on the
+  // carting or on the felling? Counted in stand-days.
+  std::uint32_t stand_days_marked = 0;  ///< a mark still being felled
+  std::uint32_t stand_days_load = 0;    ///< logs lying, waiting for carts
+  float stand_haul_man_days = 0.0F;     ///< man-days spent carting logs off stands
+  // §8б: the sawmill.
+  float sawing_man_days = 0.0F;            ///< ledger, kUnitWork
+  float building_man_days = 0.0F;          ///< ledger, kConstruction
+  std::uint32_t days_open_logs_short = 0;  ///< saw open while a site lacked logs
+  std::uint32_t days_boards_idle = 0;      ///< boards in the stores, no site needing any
+  double boards_year_end_m3 = 0.0;
+  double most_idle_boards_m3 = 0.0;  ///< most boards lying on such a day
 };
 
 }  // namespace
@@ -108,8 +121,10 @@ int main(int argc, char** argv) {
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);
   run::RepairPolicy repairs(*started.tables);
+  run::SawmillPolicy sawmill(*started.tables);
   run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
   run::FellingPolicy::Declare("timber_years");
+  run::SawmillPolicy::Declare("timber_years");
 
   // CRITERION 2, THE BOUND: one winter of the start's people. A felled cubic
   // metre costs timber_felling_days_per_m3 game man-days; the crew is capped
@@ -156,13 +171,50 @@ int main(int argc, char** argv) {
   for (std::uint32_t year = 0; year < kYears; ++year) {
     YearTally& tally = years[year];
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      run::AdvanceDays(*started, 1);
+      // THE CARTING OF LOGS, IN MAN-DAYS: the stand's seam is drained through
+      // the day and settled at its last tick (field_haul.cpp, SettleLoad), so
+      // what was drained is the most the gap reached over the day's ticks: the
+      // settle closes it to zero. The ledger cannot say it — its hauling
+      // column is the fields' and the stands' together. (A first version read
+      // one tick before the last and read zero on every seed: the settle had
+      // already run by then.)
+      std::vector<float> drained(started.State().stands.rows.size(), 0.0F);
+      for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        started->AdvanceStep();
+        const std::vector<core::TimberStandRow>& stands = started.State().stands.rows;
+        for (std::size_t row = 0; row < stands.size() && row < drained.size(); ++row) {
+          const float gap = stands[row].haul_days_written - stands[row].haul_days_remaining;
+          drained[row] = std::max(drained[row], gap);
+        }
+      }
+      for (const float drained_today : drained) {
+        tally.stand_haul_man_days += drained_today;
+      }
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
+      sawmill.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
+      for (const core::TimberStandRow& stand : world.stands.rows) {
+        tally.stand_days_marked += stand.marked_m3 > 0.0F ? 1U : 0U;
+        tally.stand_days_load += stand.load_grams > 0 ? 1U : 0U;
+      }
+      const core::Grams log_need = sawmill.NearestNeed(world, catalog.log_resource);
+      tally.days_open_logs_short +=
+          sawmill.SawmillOpen(world) &&
+                  log_need > run::SawmillPolicy::Held(world, catalog.log_resource)
+              ? 1U
+              : 0U;
+      const core::Grams boards_held = run::SawmillPolicy::Held(world, catalog.board_resource);
+      if (boards_held > 0 && sawmill.NearestNeed(world, catalog.board_resource) == 0) {
+        ++tally.days_boards_idle;
+        tally.most_idle_boards_m3 =
+            std::max(tally.most_idle_boards_m3,
+                     static_cast<double>(boards_held) /
+                         static_cast<double>(std::max<core::Grams>(catalog.board_grams_per_m3, 1)));
+      }
       // LOGS LAID DOWN are what a stand's load grew by; the carting only ever
       // takes a load down, so a rise is a felling and nothing else.
       for (std::size_t row = 0; row < world.stands.rows.size() && row < yesterday.size(); ++row) {
@@ -183,6 +235,17 @@ int main(int argc, char** argv) {
             world.ledger.current
                 .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kFelling)];
         tally.felling_man_days = felling_days;
+        tally.sawing_man_days =
+            world.ledger.current
+                .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kUnitWork)];
+        tally.building_man_days =
+            world.ledger.current
+                .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kConstruction)];
+        tally.boards_year_end_m3 =
+            catalog.board_grams_per_m3 > 0
+                ? static_cast<double>(run::SawmillPolicy::Held(world, catalog.board_resource)) /
+                      static_cast<double>(catalog.board_grams_per_m3)
+                : 0.0;
       }
     }
     if (year + 1 == 5) {
@@ -199,6 +262,15 @@ int main(int argc, char** argv) {
   double old_total = 0.0;
   double max_used = 0.0;
   double max_felled = 0.0;
+  double sawn_total = 0.0;
+  double sawing_total = 0.0;
+  double building_total = 0.0;
+  std::uint32_t open_short_total = 0;
+  std::uint32_t boards_idle_total = 0;
+  std::uint32_t marked_total = 0;
+  std::uint32_t load_total = 0;
+  double felling_total = 0.0;
+  double stand_haul_total = 0.0;
   for (std::uint32_t year = 0; year < kYears; ++year) {
     const YearTally& tally = years[year];
     const double from_groves = Logs(tally.logs_from_groves, catalog.log_grams);
@@ -212,7 +284,29 @@ int main(int argc, char** argv) {
     std::cout << "timber_years:   year " << (year + 1) << " — logs felled: groves and belts "
               << std::lround(from_groves) << ", old forest " << std::lround(from_old)
               << "; logs used " << std::lround(used) << "; felling man-days "
-              << tally.felling_man_days << "\n";
+              << tally.felling_man_days << ", carting them off the stands "
+              << tally.stand_haul_man_days << "; stand-days marked " << tally.stand_days_marked
+              << ", with logs waiting for carts " << tally.stand_days_load << "\n";
+    const double boards_sawn = catalog.sawing_days_per_board_m3 > 0.0F
+                                   ? static_cast<double>(tally.sawing_man_days) /
+                                         static_cast<double>(catalog.sawing_days_per_board_m3)
+                                   : 0.0;
+    sawn_total += boards_sawn;
+    sawing_total += static_cast<double>(tally.sawing_man_days);
+    building_total += static_cast<double>(tally.building_man_days);
+    open_short_total += tally.days_open_logs_short;
+    boards_idle_total += tally.days_boards_idle;
+    marked_total += tally.stand_days_marked;
+    load_total += tally.stand_days_load;
+    felling_total += static_cast<double>(tally.felling_man_days);
+    stand_haul_total += static_cast<double>(tally.stand_haul_man_days);
+    std::cout << "timber_years:   year " << (year + 1) << " — SAWMILL: sawing man-days "
+              << tally.sawing_man_days << " (" << boards_sawn
+              << " m3 of boards), building man-days " << tally.building_man_days
+              << "; days the saw ran while a site lacked logs " << tally.days_open_logs_short
+              << "; days boards lay with no site needing any " << tally.days_boards_idle
+              << " (up to " << tally.most_idle_boards_m3 << " m3); boards at year end "
+              << tally.boards_year_end_m3 << " m3\n";
   }
   const double felled_total = groves_total + old_total;
   std::cout << "timber_years: seed " << seed << ": THIRTY YEARS — logs used "
@@ -224,6 +318,16 @@ int main(int argc, char** argv) {
             << " m3 at the start, " << std::lround(grove_at[0]) << " at year 5, "
             << std::lround(grove_at[1]) << " at year 10, " << std::lround(grove_at[2])
             << " at year 30\n";
+  std::cout << "timber_years: seed " << seed << ": CARTING OR FELLING — man-days felling "
+            << felling_total << ", carting logs off the stands " << stand_haul_total
+            << "; stand-days with a mark " << marked_total << ", with logs waiting for carts "
+            << load_total << "\n";
+  std::cout << "timber_years: seed " << seed << ": SAWMILL — " << std::lround(sawing_total)
+            << " sawing man-days (" << std::lround(sawn_total) << " m3 of boards) against "
+            << std::lround(building_total) << " building man-days; the saw ran " << open_short_total
+            << " days while a site lacked logs; boards lay " << boards_idle_total
+            << " days with no site needing any\n";
   felling.Report("timber_years", started.State());
+  sawmill.Report("timber_years");
   return 0;
 }

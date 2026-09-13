@@ -30,6 +30,7 @@
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
+#include "../common/sawmill_policy.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/definitions.h"
 #include "core_common/calendar.h"
@@ -450,6 +451,8 @@ int main(int argc, char** argv) {
   run::FixturePolicy::Declare();
   run::FellingPolicy felling(*world.tables);
   run::FellingPolicy::Declare("thirty_years");
+  run::SawmillPolicy sawmill(*world.tables);
+  run::SawmillPolicy::Declare("thirty_years");
   // And the two verbs the runs had never said: a standing work order and a
   // pause (orders_policy.h). A verb the run does not say is not checked by
   // the run, however many unit tests stand behind it (boss, 2026-09-04).
@@ -475,6 +478,7 @@ int main(int argc, char** argv) {
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
       felling.RunDay(*world.simulation);
+      sawmill.RunDay(*world.simulation);
       orders.RunDay(*world.simulation);
       repairs.RunDay(*world.simulation);
       year_seconds +=
@@ -767,6 +771,7 @@ int main(int argc, char** argv) {
   // was wrong about the model rather than about the run.
   fixture.Report(state);
   felling.Report("thirty_years", state);
+  sawmill.Report("thirty_years");
   failures += orders.Report();
   failures += repairs.Report(state);
   std::cout << "repair: that is " << (repairs.LaborDays() / total_work_days * 100.0) << "% of the "
@@ -801,8 +806,14 @@ int main(int argc, char** argv) {
     if (!(radius > 0.0F)) {
       continue;
     }
+    // A YARD AND ITS PARTS SHARE ONE PLOT (boss, 2026-09-13, parcel 206): a
+    // module is asked with its parent, and a unit that is nobody's module with
+    // itself — which skips its own modules and nothing else. The sawmill at
+    // the centre of its yard failed this line the first run it stood there.
+    const core::UnitId own_yard =
+        unit.parent.value != core::kInvalidEntityIdValue ? unit.parent : state.units.row_ids[row];
     if (core::PlotOverlaps(
-            state.units, plot_rules, unit.position, radius, state.units.row_ids[row])) {
+            state.units, plot_rules, unit.position, radius, state.units.row_ids[row], own_yard)) {
       ++overlapping;
     }
   }

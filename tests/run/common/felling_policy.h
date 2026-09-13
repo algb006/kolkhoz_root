@@ -76,8 +76,17 @@ class FellingPolicy {
     // LOGS IN HAND, and the logs already felled and lying count as in hand: a
     // chairman who has a heap in the grove does not fell another for want of
     // carts.
+    //
+    // A SITE'S LOGS ARE NOT IN HAND. They were delivered to their own building
+    // and nothing else can take them (construction_system.cpp). Counting them
+    // stopped the village for twenty years on 2026-09-13: a granary site held
+    // its sixty logs and waited for boards, the stores had none, this policy
+    // saw sixty in hand and never felled, and the sawmill had nothing to saw.
     core::Grams logs = 0;
     for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.level == 0) {
+        continue;
+      }
       logs += catalog_.log_resource.value < unit.stock.size()
                   ? unit.stock[catalog_.log_resource.value]
                   : 0;

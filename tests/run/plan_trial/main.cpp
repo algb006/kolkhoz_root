@@ -47,6 +47,7 @@
 #include "../common/fixture_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
+#include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
 #include "../common/yard_policy.h"
 #include "core_common/calendar.h"
@@ -299,6 +300,7 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);
+  run::SawmillPolicy sawmill(*started.tables);
   run::RepairPolicy repairs(*started.tables);
   // The ripening span and the season's end, read the way the core reads them:
   // the oat gap (last sowing day to first reaping day) and the day before the
@@ -316,6 +318,7 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
+      sawmill.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
       if (play.obvious_chairman) {
         chairman.RunDay(*started.simulation);
@@ -413,6 +416,7 @@ int main(int argc, char** argv) {
             << " years a variant, the district takes him to court after " << trial_threshold
             << " failed years in a row\n";
   run::FellingPolicy::Declare("plan_trial");
+  run::SawmillPolicy::Declare("plan_trial");
 
   // THE FLOOR, and its name says what it is. It used to be called "the
   // canonical play", which is how the whole project came to read a village

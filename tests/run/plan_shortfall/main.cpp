@@ -42,6 +42,7 @@
 #include "../common/fixture_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
+#include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
 #include "../common/yard_policy.h"
 #include "core_common/calendar.h"
@@ -624,6 +625,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);
+  run::SawmillPolicy sawmill(*started.tables);
   run::RepairPolicy repairs(*started.tables);
   // The obvious chairman, so that what is measured is a village somebody
   // steers. Without him the run is the FLOOR and the answer would be "nobody
@@ -650,6 +652,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
+      sawmill.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
@@ -757,6 +760,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   // half an answer until it says whether anybody built one.
   fixture.Report(started.State());
   felling.Report("plan_shortfall", started.State());
+  sawmill.Report("plan_shortfall");
   chairman.Report();
   std::cout << "plan_shortfall: " << label << " — the plan was failed in " << failures << " of "
             << kYears << " years\n";
@@ -780,6 +784,7 @@ int main(int argc, char** argv) {
       argc > 3 ? static_cast<std::uint32_t>(std::strtoul(argv[3], nullptr, 10)) : kYears;
 
   run::FellingPolicy::Declare("plan_shortfall");
+  run::SawmillPolicy::Declare("plan_shortfall");
   int failures = WalkOneSeed(suspect, "THE LAYOUT UNDER QUESTION", trace_year);
   failures += WalkOneSeed(canon, "THE CANONICAL LAYOUT", kYears);
 
