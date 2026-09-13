@@ -168,8 +168,10 @@ class SowingPolicy {
 
   /// THE ONE OBVIOUS ANSWER TO THE PLAN ALARM: the position is missing in
   /// year N, so the missing crop goes into year N of the poorest field whose
-  /// year N does not already grow a plan position — poorest first, as
-  /// everywhere in this policy. One field per alarm.
+  /// year N does not already grow a plan position — or, when every field's
+  /// year N does, of the poorest whose year N grows a position some other
+  /// field grows too. Poorest first, as everywhere in this policy. One field
+  /// per alarm.
   void AnswerThePlanAlarm(core::ISimulation& simulation, const core::WorldState& world) {
     std::vector<core::Alarm> alarms;
     simulation.CollectAlarms(alarms);
@@ -192,21 +194,59 @@ class SowingPolicy {
       }
       const core::CropId crop = crop_of_resource_[alarm.resource.value];
       const auto year = static_cast<std::size_t>(alarm.amount);
+      // The chain a field will have once today's orders land.
+      const auto chain_of = [&world, &orders](std::uint32_t row) {
+        const core::FieldRow& field = world.fields.rows[row];
+        std::array<core::CropId, 3> chain = {
+            field.rotation_year0, field.rotation_year1, field.rotation_year2};
+        for (const core::OrderRow& order : orders) {
+          if (order.field == world.fields.row_ids[row]) {
+            chain = {order.rotation_year0, order.rotation_year1, order.rotation_year2};
+          }
+        }
+        return chain;
+      };
+      // How many fields grow this crop's produce in `year`.
+      const auto growers = [this, &fields, &chain_of, year](core::CropId of) {
+        std::uint32_t count = 0;
+        for (const std::uint32_t row : fields) {
+          const core::CropId slot = chain_of(row)[year];
+          count += slot.value < crop_resource_.size() && of.value < crop_resource_.size() &&
+                           crop_resource_[slot.value] == crop_resource_[of.value]
+                       ? 1U
+                       : 0U;
+        }
+        return count;
+      };
+      // TWO PASSES, POOREST FIRST IN EACH. First a year that grows no plan
+      // position at all. Only if there is none, a year growing a position that
+      // another field ALSO grows that year — a spare, whose loss uncovers
+      // nothing. Measured on seed 1933 before the second pass existed: the
+      // answers had filled every field's year with positions, potato found no
+      // free year, and its alarm stood forty-eight days a year from year 14 on,
+      // with no potato delivered in years 16 and 19.
+      std::uint32_t target = core::kNoRow;
+      for (int pass = 0; pass < 2 && target == core::kNoRow; ++pass) {
+        for (const std::uint32_t row : fields) {
+          const core::CropId slot = chain_of(row)[year];
+          const bool free_slot = !GrowsAPosition(slot);
+          const bool spare_slot = GrowsAPosition(slot) && growers(slot) > 1;
+          if (pass == 0 ? free_slot : spare_slot) {
+            target = row;
+            break;
+          }
+        }
+      }
       bool placed = false;
       for (const std::uint32_t row : fields) {
+        if (row != target) {
+          continue;
+        }
         core::OrderRow* pending = nullptr;
         for (core::OrderRow& order : orders) {
           pending = order.field == world.fields.row_ids[row] ? &order : pending;
         }
-        const core::FieldRow& field = world.fields.rows[row];
-        std::array<core::CropId, 3> chain = {
-            field.rotation_year0, field.rotation_year1, field.rotation_year2};
-        if (pending != nullptr) {
-          chain = {pending->rotation_year0, pending->rotation_year1, pending->rotation_year2};
-        }
-        if (GrowsAPosition(chain[year])) {
-          continue;
-        }
+        std::array<core::CropId, 3> chain = chain_of(row);
         chain[year] = crop;
         if (pending == nullptr) {
           core::OrderRow order;

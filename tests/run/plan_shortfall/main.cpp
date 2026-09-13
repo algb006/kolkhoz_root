@@ -107,7 +107,60 @@ struct Carting {
   std::uint32_t days_reaping_instead = 0;    ///< ...and somebody was reaping
   core::Grams peak_waiting = 0;              ///< the worst the heap ever got
   std::uint32_t free_horses_when_idle = 0;   ///< horses out of harness on those days
+
+  // WHY NOBODY CARTED, split into the three things that can stop it (boss,
+  // parcel 131 §4: hands, horses, room, place in the queue — measured, not
+  // guessed). The core offers a carting job only while the field's demand is
+  // above zero, and the demand is the SMALLER of the load and the room the
+  // stores can take (field_haul.cpp, SettleHauling): no room, no job at all.
+  std::uint32_t days_no_room = 0;        ///< ...a load out, and no demand: the stores are full
+  std::uint32_t days_nobody_worked = 0;  ///< ...demand, and not one person at any work: a day off
+  std::uint32_t days_outranked = 0;      ///< ...demand, people at work, none carting
+  /// On the outranked days: the most adults left with no work at all, and the
+  /// most at each of the other kinds — whether the hands were short or busy.
+  std::uint32_t idle_adults_when_outranked = 0;
+  std::array<std::uint32_t, core::kWorkKindCount> busy_when_outranked{};
 };
+
+/// Adult age for "a hand": life.csv adult_age_years. The core's own test also
+/// asks for a home, which every resident of the start has; mirrored here, not
+/// shared, as a second tally by another road.
+constexpr float kAdultAgeYears = 16.0F;
+
+/// One day a load lay out and nobody carried it: which of the three stopped it.
+void ClassifyNoCarting(const core::WorldState& world, float life_speedup, Carting& carting) {
+  float demand = 0.0F;
+  for (const core::FieldRow& field : world.fields.rows) {
+    demand += field.reaped_grams > 0 ? field.haul_days_remaining : 0.0F;
+  }
+  if (!(demand > 0.0F)) {
+    ++carting.days_no_room;
+    return;
+  }
+  std::uint32_t idle_adults = 0;
+  std::uint32_t working = 0;
+  std::array<std::uint32_t, core::kWorkKindCount> busy{};
+  for (const core::ResidentRow& resident : world.residents.rows) {
+    const auto kind = static_cast<std::size_t>(resident.work.kind);
+    if (resident.work.kind != core::WorkKind::kNone && kind < busy.size()) {
+      ++busy[kind];
+      ++working;
+      continue;
+    }
+    const float age =
+        core::BiologicalAgeYears(life_speedup, resident.birth_day, world.calendar.day);
+    idle_adults += age >= kAdultAgeYears ? 1U : 0U;
+  }
+  if (working == 0) {
+    ++carting.days_nobody_worked;
+    return;
+  }
+  ++carting.days_outranked;
+  carting.idle_adults_when_outranked = std::max(carting.idle_adults_when_outranked, idle_adults);
+  for (std::size_t kind = 0; kind < busy.size(); ++kind) {
+    carting.busy_when_outranked[kind] = std::max(carting.busy_when_outranked[kind], busy[kind]);
+  }
+}
 
 /// WHAT THE GAME SAID BEFORE THE VERDICT (boss, 2026-09-13): "зажигается ли
 /// хоть одна тревога или прогноз ДО года срыва?" A failure no signal foretold
@@ -263,6 +316,17 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
             << Tonnes(sample.carting.peak_waiting) << " t, and up to "
             << sample.carting.free_horses_when_idle
             << " horses stood out of harness on the days nobody carted\n";
+  static constexpr std::array<const char*, core::kWorkKindCount> kKindNames = {
+      "none", "plough", "harrow", "sow", "reap", "barn", "build", "haul"};
+  const Carting& why = sample.carting;
+  std::cout << "plan_shortfall:     WHY NOBODY CARTED — no room in the stores " << why.days_no_room
+            << " days, a day nobody worked " << why.days_nobody_worked
+            << ", outranked by other work " << why.days_outranked << "; on those, up to "
+            << why.idle_adults_when_outranked << " adults had no work at all, and up to:";
+  for (std::size_t kind = 1; kind < kKindNames.size(); ++kind) {
+    std::cout << ' ' << kKindNames[kind] << ' ' << why.busy_when_outranked[kind];
+  }
+  std::cout << '\n';
   const Signals& signals = sample.signals;
   std::cout << "plan_shortfall:     THE SIGNALS over the year — alarm days by kind:";
   bool any_alarm = false;
@@ -304,6 +368,14 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
     return 1;
   }
   const core::ITable* const resources = started.tables->FindTable("resources");
+  // life.csv life_speedup, for telling a hand from a child on the days nobody
+  // carted. A missing table falls back to the canon's four.
+  float life_speedup = 4.0F;
+  if (const core::ITable* const life = started.tables->FindTable("life")) {
+    const std::optional<float> cell =
+        life->CellReal(life->FindRowByKey("life_speedup"), life->FindColumn("value"));
+    life_speedup = cell.has_value() ? *cell : life_speedup;
+  }
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::RepairPolicy repairs(*started.tables);
@@ -361,6 +433,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
           const std::uint32_t horses = Horses(world);
           running.free_horses_when_idle =
               std::max(running.free_horses_when_idle, horses > harnessed ? horses - harnessed : 0U);
+          ClassifyNoCarting(world, life_speedup, running);
         }
       }
 
