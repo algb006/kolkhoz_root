@@ -3871,7 +3871,8 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   world.fields.rows[0].rotation_year2 = core::CropId{2};
   world.fields.rows[1].area_ga = 4.0F;
   const auto after = uncovered();
-  const std::vector<std::pair<std::uint16_t, std::int64_t>> expected_after = {{2, 1}, {6, 2}};
+  const std::vector<Uncovered> expected_after = {Uncovered{std::uint16_t{2}, std::int64_t{1}},
+                                                 Uncovered{std::uint16_t{6}, std::int64_t{2}}};
   failures += Expect(after == expected_after,
                      "plan alarm: the owed hectares put it out, and another crop of the same "
                      "produce covers the year");
