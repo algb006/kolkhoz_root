@@ -34,6 +34,7 @@
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
+#include "unit_production.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::IProductionSystem>,
@@ -3679,6 +3680,87 @@ int CheckFelling() {
   return failures;
 }
 
+/// The sawmill's day (timber design §8б): what was worked becomes boards out
+/// of the logs in the stores, tomorrow's demand is what the logs could still
+/// give up to the room the boards need, and a sawmill that cannot saw — paused
+/// itself, or its yard paused — asks for nobody.
+int CheckSawing() {
+  int failures = 0;
+  constexpr core::Grams kLog = 200 * core::kGramsPerKilogram;
+  constexpr core::Grams kTolerance = 1;
+  core::ProductionConfig config;
+  config.unit_types.resize(3);
+  SetStorageKg(config.unit_types[0], 10000.0F);  // row 0: a store of ten tonnes
+  core::TimberCatalog& timber = config.timber;
+  timber.log_m3 = 0.25F;
+  timber.log_grams = kLog;
+  timber.board_yield = 0.55F;
+  timber.sawing_days_per_board_m3 = 1.0F;
+  timber.board_grams_per_m3 = 600 * core::kGramsPerKilogram;
+  timber.log_resource = core::ResourceId{0};
+  timber.board_resource = core::ResourceId{1};
+  timber.sawmill_type = core::UnitTypeId{2};
+
+  core::WorldState world;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.level = 1;
+  store.stock.assign(2, 0);
+  store.stock[0] = 10 * kLog;
+  core::AppendRow(world.units, store);
+  core::UnitRow yard;
+  yard.type = core::UnitTypeId{1};
+  yard.level = 1;
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  core::UnitRow sawmill;
+  sawmill.type = core::UnitTypeId{2};
+  sawmill.level = 1;
+  sawmill.parent = yard_id;
+  core::AppendRow(world.units, sawmill);
+  const auto near = [](float value, float expected) {
+    return value > expected - 0.001F && value < expected + 0.001F;
+  };
+
+  core::SettleUnitProduction(config, world);
+  // Ten logs of 0.25 m3 at 0.55 are 1.375 m3 of boards, a man-day each.
+  failures += Expect(near(world.units.rows[2].production_days_remaining, 1.375F) &&
+                         near(world.units.rows[2].production_days_written, 1.375F),
+                     "sawing: the demand is the boards the logs in the stores make");
+  failures += Expect(world.units.rows[0].stock[0] == 10 * kLog && world.units.rows[0].stock[1] == 0,
+                     "sawing: writing the demand saws nothing");
+
+  // The sawyers drained 0.55 man-days: 0.55 m3 of boards out of 1 m3 of logs.
+  world.units.rows[2].production_days_remaining -= 0.55F;
+  core::SettleUnitProduction(config, world);
+  failures += Expect(world.units.rows[0].stock[0] == 6 * kLog,
+                     "sawing: the man-days worked take their logs out of the store");
+  const core::Grams boards = world.units.rows[0].stock[1];
+  failures += Expect(boards > 330 * core::kGramsPerKilogram - kTolerance &&
+                         boards < 330 * core::kGramsPerKilogram + kTolerance,
+                     "sawing: and put their boards into it — 0.55 m3 at 600 kg");
+  failures += Expect(near(world.units.rows[2].production_days_remaining, 0.825F),
+                     "sawing: tomorrow's demand is what the six logs left can give");
+
+  world.units.rows[2].paused = 1;
+  core::SettleUnitProduction(config, world);
+  failures += Expect(world.units.rows[2].production_days_remaining == 0.0F,
+                     "sawing: a paused sawmill asks for nobody");
+  world.units.rows[2].paused = 0;
+  world.units.rows[1].paused = 1;
+  core::SettleUnitProduction(config, world);
+  failures += Expect(world.units.rows[2].production_days_remaining == 0.0F,
+                     "sawing: nor does one whose yard does not stand sound");
+  world.units.rows[1].paused = 0;
+
+  // Room for 60 kg of anything: a tenth of a cubic metre of boards.
+  world.units.rows[0].stock[1] =
+      10000 * core::kGramsPerKilogram - 6 * kLog - 60 * core::kGramsPerKilogram;
+  core::SettleUnitProduction(config, world);
+  failures += Expect(near(world.units.rows[2].production_days_remaining, 0.1F),
+                     "sawing: nobody is sent to saw more boards than there is room for");
+  return failures;
+}
+
 /// At the year's turn a field still being prepared for the year that ended
 /// lets its crop go (oat_balance, 2026-09-13: a cabbage harrowed too late to
 /// sow went into the next year's oat slot). Finished ploughing is kept as
@@ -3797,6 +3879,7 @@ int main() {
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
+  failures += CheckSawing();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
   const test::FakeTableSet tables;

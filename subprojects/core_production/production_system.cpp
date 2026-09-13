@@ -51,6 +51,7 @@
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
+#include "unit_production.h"
 
 namespace core {
 namespace {
@@ -198,6 +199,9 @@ class ProductionSystem final : public IProductionSystem {
     if (HourFromTick(current.calendar.tick) + 1U >= kTicksPerDay) {
       SettleHauling(config_, current);
       SettleStandHauling(config_, current);
+      // The sawmill after the carting, so tonight's logs off the stands are
+      // in tomorrow's demand (unit_production.h).
+      SettleUnitProduction(config_, current);
       // AND ONLY THEN does the day's food go bad. The village has eaten by
       // now — the meal is the needs slot, phase 2, and this is phase 3 of
       // the same tick — and eaten food cannot rot. The other way round and

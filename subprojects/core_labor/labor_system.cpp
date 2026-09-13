@@ -41,6 +41,7 @@
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/module_rules.h"
 #include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
@@ -360,7 +361,16 @@ class LaborSystem final : public ILaborSystem {
   /// puts him on it. It is also silent: no event, no journal line, no alarm
   /// (boss's condition of 2026-09-03), because being reserved is what the
   /// player asked for.
+  ///
+  /// A MODULE'S WORK IS THE PARENT'S POST HOLDERS' WORK (timber design §8б,
+  /// boss 2026-09-13): the sawmill has no post of its own, it takes the
+  /// yard's craftsmen, no more than its places at once, and on those days the
+  /// craftsman neither forges nor splits. Barn care still comes first — a
+  /// herd eats today, a log pile waits. No work on a day off, like every
+  /// other windowless work; barn care is the one exception, as it always was.
   void AssignPostHolders(WorldState& current) const {
+    const bool day_off = IsDayOff(current.calendar.weekday, current.epoch);
+    std::vector<std::uint32_t> places_taken(current.units.rows.size(), 0);
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.post.profession.value == kInvalidDefIdValue) {
         continue;
@@ -374,6 +384,39 @@ class LaborSystem final : public ILaborSystem {
         resident.work.herd = current.herds.row_ids[row];
         break;
       }
+      if (resident.work.kind != WorkKind::kNone || day_off) {
+        continue;
+      }
+      PutOnModuleWork(current, resident, places_taken);
+    }
+  }
+
+  /// The first module of the holder's unit, in row order, that has work
+  /// today and a free place. Whether it can work at all is asked of the same
+  /// seam the working hour drains (WorkSeamOf): a paused sawmill or a yard
+  /// that fell still answers nullptr there, and one rule serves both.
+  void PutOnModuleWork(WorldState& current,
+                       ResidentRow& resident,
+                       std::vector<std::uint32_t>& places_taken) const {
+    if (resident.post.unit.value == kInvalidEntityIdValue) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      const UnitRow& unit = current.units.rows[row];
+      if (unit.parent.value != resident.post.unit.value ||
+          places_taken[row] >= UnitWorkPlaces(config_.timber, unit.type)) {
+        continue;
+      }
+      WorkAssignment work;
+      work.kind = WorkKind::kUnitWork;
+      work.unit = current.units.row_ids[row];
+      const float* const seam = WorkSeamOf(current, work);
+      if (seam == nullptr || *seam <= 0.0F) {
+        continue;
+      }
+      resident.work = work;
+      ++places_taken[row];
+      return;
     }
   }
 
@@ -525,7 +568,9 @@ class LaborSystem final : public ILaborSystem {
     if (!day_off) {
       for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
         const UnitRow& unit = current.units.rows[row];
-        if (unit.construction.labor_days_remaining <= 0.0F) {
+        // A module whose parent does not stand sound is not built (unit
+        // rules §11): its site keeps its seam and nobody is sent to it.
+        if (unit.construction.labor_days_remaining <= 0.0F || !ModuleParentSound(current, unit)) {
           continue;
         }
         AssignmentJob job;

@@ -1129,6 +1129,88 @@ int TestHolderIsOutOfThePoolAndOnHisOwnWork() {
   return failures;
 }
 
+/// The sawmill's sawyers are the yard's craftsmen (timber design §8б): no
+/// more than its places at once, the rest of the post stays reserved, and
+/// nobody saws at a sawmill that is paused or whose yard does not stand.
+int TestSawyersAreTheYardsCraftsmen() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_sawyers";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "unit_types.csv") << "key,parent\nutility_yard,\nsawmill,utility_yard\n";
+  std::ofstream(root / "professions.csv")
+      << "key,min_education,min_age,max_age,gender,single_post\nfarm_craftsman,any,16,,any,0\n";
+  std::ofstream(root / "unit_staff.csv") << "unit,profession,level,slots\n"
+                                            "utility_yard,farm_craftsman,,3\n";
+  std::ofstream(root / "world_params.csv") << "key,value,reader\nsawmill_sawyers_max,2,core\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "sawyers: the tables build a labor system") != 0) {
+    return 1;
+  }
+
+  DayWorld day(3);
+  core::WorldState& world = day.world;
+  core::UnitRow yard;
+  yard.type = core::UnitTypeId{0};
+  yard.level = 1;
+  yard.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  core::UnitRow sawmill;
+  sawmill.type = core::UnitTypeId{1};
+  sawmill.level = 1;
+  sawmill.parent = yard_id;
+  sawmill.position = core::Vec2{.x = 15.0F, .y = 0.0F};
+  const core::UnitId sawmill_id = core::AppendRow(world.units, sawmill);
+  for (core::ResidentRow& resident : world.residents.rows) {
+    resident.post.profession = core::ProfessionId{0};
+    resident.post.unit = yard_id;
+  }
+  const auto row_of = [&world](core::UnitId unit) { return core::FindRow(world.units, unit); };
+  const auto sawing = [&world, sawmill_id]() {
+    std::uint32_t count = 0;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      count += resident.work.kind == core::WorkKind::kUnitWork &&
+                       resident.work.unit.value == sawmill_id.value
+                   ? 1U
+                   : 0U;
+    }
+    return count;
+  };
+  const auto morning = [&labor, &world](std::uint32_t last_hour) {
+    for (std::uint32_t hour = 0; hour <= last_hour; ++hour) {
+      world.calendar.tick = hour;
+      core::RefreshCalendarCaches(world.calendar);
+      const core::WorldState previous = world;
+      labor->RunAssignmentDecisions(previous, world);
+    }
+  };
+
+  world.units.rows[row_of(sawmill_id)].production_days_remaining = 5.0F;
+  morning(8);
+  failures += Expect(sawing() == 2, "sawyers: two of the yard's three craftsmen go to the saw");
+  failures += Expect(world.units.rows[row_of(sawmill_id)].production_days_remaining < 5.0F,
+                     "sawyers: and the working hours drain the sawmill's seam");
+
+  world.calendar.tick = 0;
+  world.units.rows[row_of(sawmill_id)].paused = 1;
+  morning(0);
+  failures += Expect(sawing() == 0, "sawyers: nobody saws at a paused sawmill");
+  world.units.rows[row_of(sawmill_id)].paused = 0;
+  world.units.rows[row_of(yard_id)].paused = 1;
+  morning(0);
+  failures += Expect(sawing() == 0, "sawyers: nor at one whose yard is paused");
+  world.units.rows[row_of(yard_id)].paused = 0;
+  world.units.rows[row_of(sawmill_id)].production_days_remaining = 0.0F;
+  morning(0);
+  failures += Expect(sawing() == 0, "sawyers: nor when the logs give no work");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 int TestYardWithoutGroomAlarm() {
   int failures = 0;
   const std::filesystem::path root = WritePostTables();
@@ -1757,6 +1839,7 @@ int main() {
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
+  failures += TestSawyersAreTheYardsCraftsmen();
   failures += TestYardWithoutGroomAlarm();
   failures += TestStandingWorkOrder();
   failures += TestReleaseWork();

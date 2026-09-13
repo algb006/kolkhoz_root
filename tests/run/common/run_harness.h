@@ -23,12 +23,14 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "store_prosthesis.h"
 
 namespace run {
 
@@ -88,6 +90,9 @@ inline Simulation Start(std::uint64_t seed,
               << ") — run from the repo root\n";
     return started;
   }
+  // Every run measures with stores standing alone until store modularity is
+  // switched on as a move of its own (store_prosthesis.h).
+  started.tables = StoresStandAlone(std::move(started.tables));
   core::StandardSimulationConfig config;
   config.tables = started.tables.get();
   config.world_seed = seed;

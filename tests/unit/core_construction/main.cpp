@@ -1591,9 +1591,131 @@ int TestTheShippedStartHasNoHouseInAStinkZone() {
   return failures;
 }
 
+/// A yard, a shed that is its module, and a barn that stands on its own
+/// (unit rules §11, "Модули"; boss, 2026-09-13). Radii chosen so the
+/// arithmetic is by eye: the yard's plot is 35 m, the shed's 15 m, so a shed
+/// fits wholly inside while its centre is within 20 m of the yard's.
+class ModuleTables final : public core::ITableSet {
+ public:
+  const core::ITable* FindTable(std::string_view name) const override {
+    if (name == "unit_types") {
+      return &types_;
+    }
+    if (name == "unit_levels") {
+      return &levels_;
+    }
+    if (name == "unit_level_cost") {
+      return &costs_;
+    }
+    if (name == "resources") {
+      return &resources_;
+    }
+    return nullptr;
+  }
+
+  std::uint32_t TableCount() const override { return 4; }
+
+  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
+
+ private:
+  test::FakeTable types_{
+      {"key", "era", "player_built", "gate", "has_plot", "plot_radius_m", "parent"},
+      {{"store", "1", "0", "start", "1", "10", ""},
+       {"yard", "1", "1", "era", "1", "35", ""},
+       {"shed", "1", "1", "era", "1", "15", "yard"},
+       {"barn", "1", "1", "era", "1", "20", ""}}};
+
+  test::FakeTable levels_{{"unit", "level", "era", "labor_days", "build_class", "max_crew"},
+                          {{"store", "1", "1", "70", "wood_small", "5"},
+                           {"yard", "1", "1", "0", "plot", ""},
+                           {"shed", "1", "1", "70", "wood_small", "5"},
+                           {"shed", "2", "1", "70", "wood_small", "5"},
+                           {"barn", "1", "1", "70", "wood_small", "5"}}};
+
+  test::FakeTable costs_{{"unit", "level", "resource", "amount"}, {{"shed", "1", "log", "10"}}};
+
+  test::FakeTable resources_{{"key", "measure", "kg_per_unit"}, {{"log", "pcs", "200"}}};
+};
+
+int TestAModuleStandsOnItsParent() {
+  constexpr std::uint16_t kYard = 1;
+  constexpr std::uint16_t kShed = 2;
+  constexpr std::uint16_t kFreeBarn = 3;
+  int failures = 0;
+  const ModuleTables tables;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "modules: the subsystem refused its tables");
+  }
+  core::WorldState world;
+  PlaceStore(world, 30 * kLogGrams);
+
+  const core::OrderId orphan = Issue(world, BuildOrder(kShed, 1000.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, orphan) == core::OrderRefusal::kNoParent,
+                     "modules: a shed with no yard at all is refused with its own word");
+
+  Issue(world, BuildOrder(kYard, 1000.0F, 1000.0F));
+  Run(*system, world, 0);
+  const core::UnitId yard = world.units.row_ids.back();
+  const core::OrderId unbuilt = Issue(world, BuildOrder(kShed, 1010.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, unbuilt) == core::OrderRefusal::kNoParent,
+                     "modules: a yard only marked out is no parent yet");
+
+  Issue(world, UnitOrder(core::OrderKind::kStartBuild, yard));
+  Run(*system, world, 0);
+  const core::OrderId inside = Issue(world, BuildOrder(kShed, 1010.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, inside) == core::OrderRefusal::kNone,
+                     "modules: a shed inside its built yard's plot is marked, overlap or not");
+  const core::UnitId shed = world.units.row_ids.back();
+  failures += Expect(world.units.rows.back().parent.value == yard.value,
+                     "modules: and the site names the yard it stands on");
+
+  const core::OrderId over_fence = Issue(world, BuildOrder(kShed, 1030.0F, 1000.0F));
+  const core::OrderId sibling = Issue(world, BuildOrder(kShed, 995.0F, 1000.0F));
+  const core::OrderId neighbour = Issue(world, BuildOrder(kFreeBarn, 1040.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, over_fence) == core::OrderRefusal::kNoParent,
+                     "modules: a shed reaching over the fence is not on the yard's plot");
+  failures += Expect(RefusalOf(world, sibling) == core::OrderRefusal::kTooClose,
+                     "modules: two sheds of one yard still keep apart from each other");
+  failures += Expect(RefusalOf(world, neighbour) == core::OrderRefusal::kTooClose,
+                     "modules: and a unit of its own keeps off the yard's plot as before");
+
+  world.units.rows[core::FindRow(world.units, yard)].dead = 1;
+  const core::OrderId dead_yard = Issue(world, UnitOrder(core::OrderKind::kStartBuild, shed));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, dead_yard) == core::OrderRefusal::kNoParent,
+                     "modules: the works do not start while the yard is dead");
+  world.units.rows[core::FindRow(world.units, yard)].dead = 0;
+  // THE SITE'S PHASE, NOT THE SECOND ORDER'S WORD: asked of the order, this
+  // reddened together with the one above whenever that one let the works
+  // start early — a second start of a started site is refused for being
+  // second (damage run D2, 2026-09-13).
+  Issue(world, UnitOrder(core::OrderKind::kStartBuild, shed));
+  Run(*system, world, 0);
+  failures += Expect(world.units.rows[core::FindRow(world.units, shed)].construction.phase ==
+                         core::ConstructionPhase::kBuilding,
+                     "modules: and start once it stands again");
+
+  world.units.rows[core::FindRow(world.units, shed)].construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 5);
+  world.units.rows[core::FindRow(world.units, yard)].paused = 1;
+  const core::OrderId paused_yard = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, shed));
+  Run(*system, world, 0);
+  failures += Expect(world.units.rows[core::FindRow(world.units, shed)].level == 1 &&
+                         RefusalOf(world, paused_yard) == core::OrderRefusal::kNoParent,
+                     "modules: a built shed is not raised while its yard is paused");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
+  failures += TestAModuleStandsOnItsParent();
   const BuildTables tables;
   failures += TestStepPaceMultipliesTypePace(tables);
   failures += TestABodyKeepsItsMetre(tables);

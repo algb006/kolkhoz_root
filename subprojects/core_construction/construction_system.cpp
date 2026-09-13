@@ -25,6 +25,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/ids.h"
+#include "core_common/module_rules.h"
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
@@ -408,15 +409,25 @@ class ConstructionSystem final : public IConstructionSystem {
     // The plot where the type has one, the BODY where it does not: a well
     // and a lamp post cannot stand in the same metre either, and until
     // 2026-09-05 they took no part in this rule at all.
-    const float radius = type_row < config_.definitions.units.keep_out_radius_m.size()
-                             ? config_.definitions.units.keep_out_radius_m[type_row]
-                             : 0.0F;
-    if (PlotOverlaps(current, order.position, radius, UnitId{})) {
+    const float radius = KeepOutRadius(type_row);
+    // A MODULE stands on its parent's plot, and only while the parent stands
+    // sound (unit rules §11, "Модули"; boss, 2026-09-13). Its own parent is
+    // the one plot it may come inside; every other plot keeps the rule.
+    UnitId parent;
+    if (IsModuleType(type_row)) {
+      parent = ParentForModule(
+          current, config_.definitions.units.parent[type_row], order.position, radius);
+      if (parent.value == kInvalidEntityIdValue) {
+        return OrderRefusal::kNoParent;
+      }
+    }
+    if (PlotOverlaps(current, order.position, radius, parent)) {
       return OrderRefusal::kTooClose;
     }
 
     UnitRow site;
     site.type = order.unit_type;
+    site.parent = parent;
     site.position = order.position;
     site.level = 0;
     site.construction.phase = ConstructionPhase::kMarked;
@@ -436,6 +447,9 @@ class ConstructionSystem final : public IConstructionSystem {
     if (site.construction.phase != ConstructionPhase::kMarked) {
       return OrderRefusal::kRuleForbids;
     }
+    if (!ModuleParentSound(current, site)) {
+      return OrderRefusal::kNoParent;
+    }
     OpenWorks(current, unit, site, site.construction.target_level);
     return OrderRefusal::kNone;
   }
@@ -451,6 +465,9 @@ class ConstructionSystem final : public IConstructionSystem {
     UnitRow& site = current.units.rows[row];
     if (site.level == 0 || site.construction.phase != ConstructionPhase::kNone) {
       return OrderRefusal::kRuleForbids;
+    }
+    if (!ModuleParentSound(current, site)) {
+      return OrderRefusal::kNoParent;
     }
     const std::uint32_t type_row = site.type.value;
     if (type_row >= config_.types.size()) {
@@ -567,6 +584,12 @@ class ConstructionSystem final : public IConstructionSystem {
       if (current.units.rows[row].construction.phase != ConstructionPhase::kDelivering) {
         continue;
       }
+      // A module is not built while its parent does not stand sound (unit
+      // rules §11): nothing is carried to it either, so no material is locked
+      // in a site that cannot move.
+      if (!ModuleParentSound(current, current.units.rows[row])) {
+        continue;
+      }
       // A REPAIR asks for spare parts and nothing else (construction design
       // §2), so its "recipe" is one line computed from the frozen norm — the
       // level's own recipe would rebuild the barn instead of mending it.
@@ -675,6 +698,49 @@ class ConstructionSystem final : public IConstructionSystem {
   /// module appends — was outside it (boss, 2026-09-04).
   bool PlotOverlaps(const WorldState& current, const Vec2& place, float radius, UnitId ignore) {
     return core::PlotOverlaps(current.units, config_.definitions.Plots(), place, radius, ignore);
+  }
+
+  float KeepOutRadius(std::uint32_t type_row) const {
+    const std::vector<float>& radii = config_.definitions.units.keep_out_radius_m;
+    return type_row < radii.size() ? radii[type_row] : 0.0F;
+  }
+
+  bool IsModuleType(std::uint32_t type_row) const {
+    const std::vector<UnitTypeId>& parents = config_.definitions.units.parent;
+    return type_row < parents.size() && parents[type_row].value != kInvalidDefIdValue;
+  }
+
+  /// @brief The unit a module marked at `place` belongs to: the first unit, in
+  /// row order, of `parent_type` that stands sound and whose plot holds the
+  /// module's whole plot (`radius` around `place`). Invalid when none does —
+  /// no such unit, not built yet, dead, paused, or the module reaches past
+  /// the edge of every yard.
+  ///
+  /// THE WHOLE PLOT, NOT ITS CENTRE. "Inside the parent's plot" read as "the
+  /// centre inside" would let a module's own yard stick over the fence into a
+  /// neighbour's plot — and the overlap rule would then refuse it against the
+  /// neighbour, with kTooClose instead of the word that names the cause.
+  UnitId ParentForModule(const WorldState& current,
+                         UnitTypeId parent_type,
+                         const Vec2& place,
+                         float radius) const {
+    const float parent_radius = KeepOutRadius(parent_type.value);
+    const float reach = parent_radius - radius;
+    if (reach < 0.0F) {
+      return UnitId{};
+    }
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      const UnitRow& unit = current.units.rows[row];
+      if (unit.type.value != parent_type.value || !StandsSoundAsParent(unit)) {
+        continue;
+      }
+      const float dx = unit.position.x - place.x;
+      const float dy = unit.position.y - place.y;
+      if ((dx * dx) + (dy * dy) <= reach * reach) {
+        return current.units.row_ids[row];
+      }
+    }
+    return UnitId{};
   }
 
   static bool HerdStandsAt(const WorldState& current, UnitId unit) {

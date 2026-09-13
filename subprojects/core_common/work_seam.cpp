@@ -7,6 +7,7 @@
 
 #include <cstdint>
 
+#include "core_common/module_rules.h"
 #include "core_common/state_table_ops.h"
 
 namespace core {
@@ -22,6 +23,20 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // simply has nothing to drain, exactly as with a field production has
     // moved on.
     return row == kNoRow ? nullptr : &world.units.rows[row].construction.labor_days_remaining;
+  }
+  // A PRODUCING UNIT (2026-09-13): its own production seam, and only while it
+  // can produce at all — built, alive, not paused, its parent sound. A pause
+  // or a yard falling still sends the sawyers home the same hour.
+  if (work.kind == WorkKind::kUnitWork) {
+    const std::uint32_t row = FindRow(world.units, work.unit);
+    if (row == kNoRow) {
+      return nullptr;
+    }
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.level == 0 || unit.dead != 0 || unit.paused != 0 || !ModuleParentSound(world, unit)) {
+      return nullptr;
+    }
+    return &unit.production_days_remaining;
   }
   // A STAND: felling drains the felling seam while timber is marked, and
   // carting drains the stand's own carting seam while logs lie there — the
@@ -71,7 +86,7 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
     place = world.units.rows[unit_row].position;
     return true;
   }
-  if (work.kind == WorkKind::kConstruction) {
+  if (work.kind == WorkKind::kConstruction || work.kind == WorkKind::kUnitWork) {
     const std::uint32_t row = FindRow(world.units, work.unit);
     if (row == kNoRow) {
       return false;

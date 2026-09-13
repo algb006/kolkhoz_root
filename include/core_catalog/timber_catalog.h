@@ -81,6 +81,15 @@ struct TimberCatalog {
   /// measured in m³).
   ResourceId board_resource;
   Grams board_grams_per_m3 = 0;
+
+  /// The sawmill in the unit roster (unit_types.csv "sawmill"); invalid when
+  /// the roster has none.
+  ///
+  /// STUB — A KEY, NOT A NOMENCLATURE. Production units turn out "their
+  /// position" (unit rules §6), and the sawmill has one; the core has no
+  /// nomenclature table yet, so the one producing unit is known by its key.
+  /// The bakery and the smokehouse replace this with a table, not a second key.
+  UnitTypeId sawmill_type;
 };
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's
@@ -119,6 +128,22 @@ Grams LogGramsFromVolume(const TimberCatalog& catalog,
 ///        per-feller need caps nothing and answers the largest crew a job
 ///        can name.
 std::uint32_t FellingCrewCap(const TimberCatalog& catalog, Grams tool_grams_held);
+
+/// @brief How many may work at once at a producing unit of `type`: the
+///        sawmill's `sawmill_sawyers_max` places (timber design §8б), and none
+///        at a type that produces nothing the core models.
+std::uint32_t UnitWorkPlaces(const TimberCatalog& catalog, UnitTypeId type);
+
+/// @brief Cubic metres of boards that `log_grams` of logs saw into:
+///        logs' volume × `timber_board_yield`. Zero for a catalogue without a
+///        log mass or a log volume.
+float BoardM3FromLogGrams(const TimberCatalog& catalog, Grams log_grams);
+
+/// @brief Grams of logs that saw into `board_m3` of boards — the inverse of
+///        BoardM3FromLogGrams, rounded up to the gram so that sawing never
+///        makes boards out of less wood than the yield allows. Zero when the
+///        yield is not positive.
+Grams LogGramsForBoardM3(const TimberCatalog& catalog, float board_m3);
 
 }  // namespace core
 
