@@ -24,6 +24,7 @@
 #ifndef TESTS_RUN_COMMON_FIXTURE_POLICY_H_
 #define TESTS_RUN_COMMON_FIXTURE_POLICY_H_
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <span>
@@ -204,9 +205,27 @@ class FixturePolicy {
   bool Mark(const core::WorldState& world, core::UnitTypeId type, core::OrderRow& order) {
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = type;
+    // RINGS AROUND THE CENTRE, NOT A LINE AWAY FROM IT. Until 2026-09-13 every
+    // order went kStepAside further east than the last, so by the thirtieth
+    // the site stood kilometres out — past the accountant's road limit, where
+    // nobody is ever sent. On seed 1933 a granary stood crewless for a year
+    // with 300 hands idle, and because this policy starts nothing new while a
+    // site of its own is still up, the farm stopped raising stores for good.
+    // Eight places a ring, each ring kStepAside further out: thirty orders
+    // stay within four rings.
+    static constexpr std::array<std::array<float, 2>, 8> kRing = {{{1.0F, 0.0F},
+                                                                   {0.0F, 1.0F},
+                                                                   {-1.0F, 0.0F},
+                                                                   {0.0F, -1.0F},
+                                                                   {1.0F, 1.0F},
+                                                                   {-1.0F, 1.0F},
+                                                                   {-1.0F, -1.0F},
+                                                                   {1.0F, -1.0F}}};
     const core::Vec2 centre = Centre(world);
-    order.position = core::Vec2{.x = centre.x + (static_cast<float>(attempts_) * kStepAside),
-                                .y = centre.y + kStepAside};
+    const auto ring = static_cast<float>(1U + (attempts_ / kRing.size()));
+    const std::array<float, 2>& heading = kRing[attempts_ % kRing.size()];
+    order.position = core::Vec2{.x = centre.x + (heading[0] * ring * kStepAside),
+                                .y = centre.y + (heading[1] * ring * kStepAside)};
     ++attempts_;
     ++ordered_;
     return true;

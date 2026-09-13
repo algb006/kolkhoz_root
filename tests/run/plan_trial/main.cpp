@@ -476,15 +476,16 @@ int main(int argc, char** argv) {
   // over nine seeds 1929..1937 neither holds as a property of the game:
   // measured the same day, once the herds stayed below the plan reserve and
   // the chairman answered the uncovered-position alarm, the floor reaches the
-  // trial on 4 of 9 and the obvious chairman — answering the alarm on the best
-  // fields up to the district's hectares — on 2 of 9, failing 2 to 12 plan
-  // years of 20: the potato now grows and lies on the fields for want of room. A 4.4 m move of the
+  // trial on 3 of 9 and the obvious chairman — answering the alarm on the best
+  // fields up to the district's hectares, his stores now raised within reach —
+  // on 1 of 9 (seed 1929 itself, a run of four), failing 2 to 8 plan years of
+  // 20. What binds late on seed 1933 is sites short of materials. A 4.4 m move of the
   // well alone moved the floor by one or two years on four seeds of nine. Turning the gates into
   // shares waits for the carting cure: a share set on a world whose harvest lies on the field would
   // record that defect as the norm.
   if (!floor_reached_trial || canon_reached_trial) {
     std::cout << "plan_trial: KNOWN RED — both gates stand on seed 1929 alone; over nine seeds "
-                 "the floor reaches the trial on 4 of 9 and the obvious chairman on 2 of 9. "
+                 "the floor reaches the trial on 3 of 9 and the obvious chairman on 1 of 9. "
                  "They wait to become shares after the carting cure\n";
   }
   failures += run::Expect(floor_reached_trial,
