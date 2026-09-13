@@ -296,7 +296,9 @@ class ProductionSystem final : public IProductionSystem {
           // right: the window says when the sowing may START, the crew decides
           // when it ends. A field that misses its window entirely is a
           // different question — sowing late for a smaller crop is a YIELD
-          // mechanic the design does not have, and adding one is boss's.
+          // mechanic, and boss added it on 2026-09-13 (LateSowingFactor,
+          // field_work.h); a field that cannot ripen before snow is not sown
+          // at all (SowingMayOpen).
           break;
         case FieldPhase::kSowing:
           FinishSowing(config_, current, field);
@@ -1103,8 +1105,8 @@ class ProductionSystem final : public IProductionSystem {
       // from the day the seed went in, and this is the half of boss's chain
       // that makes the other half bite: without it a late sowing still ripens
       // instantly and nothing is ever lost to snow.
-      const bool in_window = month >= crop.harvest_from_month && month <= crop.harvest_to_month &&
-                             CropHasRipened(config_, field, current.calendar.day);
+      // One home for the condition; its back edge is open defect UB-001.
+      const bool in_window = ReapingMayOpen(config_, field, month, current.calendar.day);
       // A perennial stand stays growing after its cut, so gate it to one
       // cut a year — the first day of its window; an annual leaves the
       // growing phase at harvest and cannot double-fire.

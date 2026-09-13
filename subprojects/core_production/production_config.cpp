@@ -252,6 +252,13 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
       !share("late_sowing_yield_floor", &farming.late_sowing_yield_floor)) {
     return false;
   }
+  // THE FLOOR IS STRICTLY ABOVE ZERO, as its declaration says. The share test
+  // above admitted 0, and a zero floor makes a late field sown for nothing —
+  // exactly the loss the back edge of the sowing exists to refuse (UB-006).
+  if (!(farming.late_sowing_yield_floor > 0.0F)) {
+    error = "farming: row 'late_sowing_yield_floor' must be above zero";
+    return false;
+  }
   bool drought_named = false;
   bool wet_named = false;
   if (!spell("drought_spell_days", &farming.drought_spell_days, &drought_named) ||

@@ -26,6 +26,7 @@
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
 #include "field_haul.h"
+#include "field_work.h"
 #include "herd_system.h"
 #include "production_config.h"
 #include "stock_lights.h"
@@ -3512,8 +3513,52 @@ int CheckTheMeadowFlowersAndTheAftermathComesBack() {
   return failures;
 }
 
+/// The reaping gate in one home: front edge, ripeness, back edge. The case the
+/// static analysis named (UB-001, a late same-year sowing ripening past its
+/// window) is deliberately NOT asserted either way — the repair is held for
+/// boss's decision, and an assertion holding the defect would be a claim
+/// invented to give the test one.
+int CheckTheReapingGate() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::CropDef spring;
+  spring.sow_from_month = 3;
+  spring.sow_to_month = 4;
+  spring.harvest_from_month = 7;
+  spring.harvest_to_month = 8;
+  core::CropDef winter = spring;
+  winter.is_winter = true;
+  winter.harvest_from_month = 6;
+  winter.harvest_to_month = 6;
+  config.crops = {spring, winter};
+
+  const std::int32_t ripen = core::RipenDays(config, core::CropId{0});
+  failures += Expect(ripen == 9, "reaping gate: the fixture crop ripens in nine days");
+
+  core::FieldRow in_time;
+  in_time.crop = core::CropId{0};
+  in_time.sown_day = (4U * core::kDaysPerMonth) + 3U;  // last sowing day: ripe on day 28
+  failures += Expect(core::ReapingMayOpen(config, in_time, 7, 7U * core::kDaysPerMonth),
+                     "reaping gate: a ripe crop opens inside its window");
+  failures += Expect(!core::ReapingMayOpen(config, in_time, 6, 6U * core::kDaysPerMonth),
+                     "reaping gate: the front edge holds");
+  core::FieldRow just_sown = in_time;
+  just_sown.sown_day = 7U * core::kDaysPerMonth;
+  failures += Expect(!core::ReapingMayOpen(config, just_sown, 7, just_sown.sown_day + 8U),
+                     "reaping gate: an unripe crop does not open inside its window");
+
+  core::FieldRow winter_field;
+  winter_field.crop = core::CropId{1};
+  failures += Expect(core::ReapingMayOpen(config, winter_field, 6, 6U * core::kDaysPerMonth),
+                     "reaping gate: a winter crop opens inside its window");
+  failures += Expect(!core::ReapingMayOpen(config, winter_field, 7, 7U * core::kDaysPerMonth),
+                     "reaping gate: a winter crop keeps the window's back edge");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckTheReapingGate();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
   const test::FakeTableSet tables;

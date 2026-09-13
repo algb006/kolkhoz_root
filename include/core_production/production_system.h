@@ -50,9 +50,11 @@
 #ifndef CORE_PRODUCTION_PRODUCTION_SYSTEM_H_
 #define CORE_PRODUCTION_PRODUCTION_SYSTEM_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "core_common/calendar.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
 

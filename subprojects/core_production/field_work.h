@@ -141,11 +141,26 @@ std::int32_t RipenDays(const ProductionConfig& config, CropId crop);
 
 /// @brief Whether the crop standing on this field has ripened by `day`.
 ///
-/// False for a field that carries no sowing day (kNeverSownDay): ripeness is
-/// measured FROM the sowing, and a field nobody sowed cannot be judged by it.
-/// True whenever RipenDays is 0 — a winter crop and a perennial are ruled by
-/// their windows alone, as they always were.
+/// True for a stand that carries no sowing day (kNeverSownDay): a crop whose
+/// sowing this core never saw — genesis stands, worlds from older saves — has
+/// stood longer than any ripening. True whenever RipenDays is 0 — a winter
+/// crop and a perennial are ruled by their windows alone, as they always were.
 bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDay day);
+
+/// @brief Whether the crop standing on this field may be opened for reaping
+///        in `month` of the day `day`.
+///
+/// Inside `harvest_from_month..harvest_to_month`, and ripe (CropHasRipened).
+///
+/// @note OPEN DEFECT UB-001 (static analysis, 2026-09-13): the sowing is
+///       bounded by the snow, this by the harvest window, so a same-year crop
+///       sown late ripens after its window and is never reaped — snow takes it.
+///       Dropping the back edge for such crops was measured and moves the
+///       balance a long way (field_work.cpp); it is held for boss's decision.
+bool ReapingMayOpen(const ProductionConfig& config,
+                    const FieldRow& field,
+                    std::uint8_t month,
+                    SimDay day);
 
 /// @brief Whether a crop's seed may START going into the ground today: its
 ///        window has OPENED and the ground is warm enough for it.
@@ -166,7 +181,8 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
 ///        sows, so this answers false for it.
 /// @param day_of_year Today within the year, 0..kDaysPerYear-1. The back edge
 ///        is measured in DAYS and not months: "sown today + RipenDays" has to
-///        land inside the reaping window, and a month is too coarse to say so.
+///        land on or before `growing_season_last_day` — the snow, not the
+///        reaping window — and a month is too coarse to say so.
 bool SowingMayOpen(const ProductionConfig& config,
                    CropId crop,
                    std::uint8_t month,

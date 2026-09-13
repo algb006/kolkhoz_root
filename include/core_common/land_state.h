@@ -151,8 +151,9 @@ inline constexpr SimDay kNeverMownDay = static_cast<SimDay>(-1);
 
 /// @brief No crop has been sown on this field — bare fallow, a meadow, or
 /// ground still being prepared. Ripening is measured FROM the sowing day
-/// (FieldRow::sown_day), so a field carrying this cannot be judged ripe and
-/// must not be reaped on the strength of the calendar alone.
+/// (FieldRow::sown_day); a STANDING crop carrying this is one whose sowing the
+/// core never saw — a genesis stand or an older save — and is taken as ripe
+/// (CropHasRipened), since it has stood longer than any ripening.
 ///
 /// Its own name rather than a shared "no day" constant: the two sentinels
 /// answer different questions on the same row, and a single one would read as

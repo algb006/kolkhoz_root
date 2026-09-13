@@ -622,10 +622,20 @@ void PlowLastAutumn(WorldState& world, const ITable* crops, float share) {
   if (!(share > 0.0F)) {
     return;
   }
-  const std::uint32_t perennial_col = crops != nullptr ? crops->FindColumn("is_perennial") : 0;
+  const std::uint32_t perennial_col =
+      crops != nullptr ? crops->FindColumn("is_perennial") : kNoTableColumn;
+  if (crops != nullptr && perennial_col == kNoTableColumn) {
+    // The guard below would read column 0 and silently stop guarding
+    // (UB-005): a table without the flag is refused here, not guessed at.
+    LogError("genesis: crops table has no is_perennial column; autumn ploughing skipped");
+    return;
+  }
   const auto stands_over_winter = [crops, perennial_col](CropId crop) {
-    return crops != nullptr && crop.value < crops->RowCount() &&
-           crops->CellText(crop.value, perennial_col) == "1";
+    if (crops == nullptr || crop.value >= crops->RowCount()) {
+      return false;
+    }
+    const std::optional<float> flag = crops->CellReal(crop.value, perennial_col);
+    return flag.has_value() && *flag > 0.0F;
   };
   float worked_ha = 0.0F;
   std::vector<std::uint32_t> candidates;
@@ -823,7 +833,12 @@ bool BuildStartEconomy(WorldState& world,
   // autumn. A balance knob and not a constant: the figure is chosen by
   // measurement — the smallest share at which the first harvest still carries
   // the village to the second.
-  PlowLastAutumn(world, crops, CampaignValue(tables, "start_autumn_plowed_share", 0.0F));
+  float autumn_share = CampaignValue(tables, "start_autumn_plowed_share", 0.0F);
+  if (!(autumn_share >= 0.0F && autumn_share <= 1.0F)) {
+    LogError("campaign: start_autumn_plowed_share out of range; using 0");
+    autumn_share = 0.0F;
+  }
+  PlowLastAutumn(world, crops, autumn_share);
 
   // The units the rest of this function needs by name. A layout without one
   // of them is not an error here: the herd simply has nowhere to stand, and

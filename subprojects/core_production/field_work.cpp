@@ -521,6 +521,31 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
   return static_cast<std::int64_t>(day) - static_cast<std::int64_t>(field.sown_day) >= ripen;
 }
 
+bool ReapingMayOpen(const ProductionConfig& config,
+                    const FieldRow& field,
+                    std::uint8_t month,
+                    SimDay day) {
+  if (field.crop.value >= config.crops.size()) {
+    return false;  // nothing standing, or a crop this build does not know
+  }
+  const CropDef& crop = config.crops[field.crop.value];
+  if (month < crop.harvest_from_month) {
+    return false;
+  }
+  // THE BACK EDGE STILL HOLDS FOR EVERY CROP, and for a same-year crop sown
+  // late that is the open defect UB-001: it ripens past harvest_to_month and
+  // is never opened for reaping. Opening it was measured on 2026-09-13 and is
+  // NOT a local repair — the late reaping takes the hands the carting needed
+  // (reaping outranks hauling in the work queue): plan_trial's floor went from
+  // 8 failed years of 20 to 15, the obvious chairman from 2 to 4 and to trial,
+  // the canonical layout from 2 failures to 4 with 740 t lying on the fields.
+  // The repair waits on the carting measurement and on boss's call.
+  if (month > crop.harvest_to_month) {
+    return false;
+  }
+  return CropHasRipened(config, field, day);
+}
+
 bool SowingMayOpen(const ProductionConfig& config,
                    CropId crop,
                    std::uint8_t month,
