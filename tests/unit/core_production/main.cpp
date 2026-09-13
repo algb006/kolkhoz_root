@@ -3857,8 +3857,13 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   };
 
   const auto before = uncovered();
-  const std::vector<std::pair<std::uint16_t, std::int64_t>> expected = {
-      {2, 1}, {2, 2}, {6, 0}, {6, 2}};
+  // Typed pairs: from bare ints MSVC's std::pair narrows int to uint16_t in
+  // its converting constructor and warns (C4244) under /WX.
+  using Uncovered = std::pair<std::uint16_t, std::int64_t>;
+  const std::vector<Uncovered> expected = {Uncovered{std::uint16_t{2}, std::int64_t{1}},
+                                           Uncovered{std::uint16_t{2}, std::int64_t{2}},
+                                           Uncovered{std::uint16_t{6}, std::int64_t{0}},
+                                           Uncovered{std::uint16_t{6}, std::int64_t{2}}};
   failures += Expect(before == expected,
                      "plan alarm: oat missing in years 1 and 2, potato in year 2, potato in "
                      "year 0 on 3 ha against 4 owed, and the unassigned field covers nothing");
