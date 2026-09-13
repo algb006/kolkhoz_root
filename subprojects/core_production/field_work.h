@@ -147,6 +147,24 @@ std::int32_t RipenDays(const ProductionConfig& config, CropId crop);
 /// crop and a perennial are ruled by their windows alone, as they always were.
 bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDay day);
 
+/// @brief At the year's turn, lets go of a field still being prepared for the
+///        crop of the year that has just ended.
+///
+/// A field ploughed on the thaw waits, harrowed, for its crop's sowing to
+/// open; when the harrow finished too late for that crop to ripen, the sowing
+/// never opens, and until 2026-09-13 the field carried that crop through the
+/// turn and sowed it next spring IN THE NEXT SLOT's place. Measured on
+/// oat_balance: cabbage harrowed on day 26 of the first year stood harrowed
+/// all year and went into the oat slot of the second, so oats were never sown
+/// again and the run had nothing to balance for fifteen years.
+///
+/// The crop is dropped and the field is idle. Ploughing that WAS finished is
+/// kept as autumn ploughing (FieldRow::autumn_plowed): the furrow is in the
+/// ground whichever crop it was turned for. A fallow being ploughed is left
+/// alone — it carries no crop to go stale.
+/// @return true when the field was released.
+bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field);
+
 /// @brief Whether the crop standing on this field may be opened for reaping
 ///        in `month` of the day `day`.
 ///
@@ -156,7 +174,10 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
 ///       bounded by the snow, this by the harvest window, so a same-year crop
 ///       sown late ripens after its window and is never reaped — snow takes it.
 ///       Dropping the back edge for such crops was measured and moves the
-///       balance a long way (field_work.cpp); it is held for boss's decision.
+///       balance a long way (field_work.cpp). The design already decides the
+///       rule — farming.md, "за окном уборки, вызревание ДО СНЕГА: хлеб стоит,
+///       косят поздно" — so the repair is owed; it waits for the carting cure
+///       it would otherwise starve (boss, 2026-09-13).
 bool ReapingMayOpen(const ProductionConfig& config,
                     const FieldRow& field,
                     std::uint8_t month,

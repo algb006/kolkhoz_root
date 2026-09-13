@@ -3556,8 +3556,51 @@ int CheckTheReapingGate() {
   return failures;
 }
 
+/// At the year's turn a field still being prepared for the year that ended
+/// lets its crop go (oat_balance, 2026-09-13: a cabbage harrowed too late to
+/// sow went into the next year's oat slot). Finished ploughing is kept as
+/// autumn ploughing; a fallow being ploughed and a sown field are untouched.
+int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
+  int failures = 0;
+  core::WorldState world;
+  const core::CropId cabbage{2};
+  const auto add_field = [&world](core::CropId crop, core::FieldPhase phase) {
+    core::FieldRow row;
+    row.crop = crop;
+    row.phase = phase;
+    core::AppendRow(world.fields, row);
+  };
+  add_field(cabbage, core::FieldPhase::kHarrowing);
+  add_field(cabbage, core::FieldPhase::kPlowing);
+  add_field(core::CropId{}, core::FieldPhase::kPlowing);
+  add_field(cabbage, core::FieldPhase::kGrowing);
+  core::FieldRow& harrowed = world.fields.rows[0];
+  core::FieldRow& half_ploughed = world.fields.rows[1];
+  core::FieldRow& fallow = world.fields.rows[2];
+  core::FieldRow& sown = world.fields.rows[3];
+
+  failures += Expect(core::ReleaseUnsownPreparation(world, harrowed),
+                     "turn release: a harrowed, unsown field is released");
+  failures += Expect(
+      harrowed.phase == core::FieldPhase::kIdle && harrowed.crop.value == core::kInvalidDefIdValue,
+      "turn release: the stale crop is gone and the field is idle");
+  failures += Expect(harrowed.autumn_plowed == 1,
+                     "turn release: the finished furrow is kept as autumn ploughing");
+  failures += Expect(
+      core::ReleaseUnsownPreparation(world, half_ploughed) && half_ploughed.autumn_plowed == 0,
+      "turn release: an unfinished ploughing is released without the credit");
+  failures += Expect(
+      !core::ReleaseUnsownPreparation(world, fallow) && fallow.phase == core::FieldPhase::kPlowing,
+      "turn release: a fallow being ploughed is left alone");
+  failures +=
+      Expect(!core::ReleaseUnsownPreparation(world, sown) && sown.crop.value == cabbage.value,
+             "turn release: a sown field keeps its crop");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();

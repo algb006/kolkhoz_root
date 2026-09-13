@@ -576,6 +576,9 @@ class ProductionSystem final : public IProductionSystem {
         field.last_crop = CropId{};
         field.repeat_years = 0;
       }
+      // A field still waiting to sow last year's crop lets it go before the
+      // chain moves on, or it sows that crop in the next slot's place.
+      ReleaseUnsownPreparation(current, field);
       if (field.rotation_skips_turn != 0) {
         // A CHAIN WHOSE FIRST SEASON HAS NOT BEEN USED STANDS STILL
         // (land_state.h, rotation_skips_turn). The mark is NOT spent here: it
@@ -1058,7 +1061,16 @@ class ProductionSystem final : public IProductionSystem {
       // takes a field the crew is still reaping, which is exactly why the
       // harvest window outranks every other job (assignment.cpp). Winter
       // crops and perennials winter under snow by design.
-      if (snowing && !crop.is_winter && !crop.is_perennial) {
+      //
+      // AND IT IS A LOSS OF THE HARVEST SEASON, not of any snowy day: "снег
+      // остаётся бедой УБОРКИ" (farming design). Until 2026-09-13 a spring
+      // flurry took a field sown three days earlier — oats sown on day 11 of
+      // the second year in oat_balance vanished on day 14 at −0.05 °C, and
+      // together with the stale-crop turn that kept the run from sowing oats
+      // for fifteen years. Snow before the crop's own reaping season finds
+      // seedlings, not a standing harvest.
+      const bool reaping_season = month >= crop.harvest_from_month;
+      if (snowing && reaping_season && !crop.is_winter && !crop.is_perennial) {
         // What was already reaped and still waiting for a cart goes with the
         // standing crop, and it is booked as lost room rather than vanishing
         // (task A3, STUB with a named term: this bounds free storage, it does

@@ -521,6 +521,21 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
   return static_cast<std::int64_t>(day) - static_cast<std::int64_t>(field.sown_day) >= ripen;
 }
 
+bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field) {
+  const bool preparing =
+      field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing;
+  if (!preparing || field.crop.value == kInvalidDefIdValue) {
+    return false;
+  }
+  if (field.phase == FieldPhase::kHarrowing) {
+    field.autumn_plowed = 1;  // the furrow is turned; only the harrow is owed
+  }
+  field.crop = CropId{};
+  MoveFieldPhase(current, field, FieldPhase::kIdle);
+  field.work_days_remaining = 0.0F;
+  return true;
+}
+
 bool ReapingMayOpen(const ProductionConfig& config,
                     const FieldRow& field,
                     std::uint8_t month,
