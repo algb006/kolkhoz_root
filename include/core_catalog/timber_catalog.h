@@ -50,14 +50,11 @@ struct TimberCatalog {
   float log_m3 = 0.25F;                       ///< One log, cubic metres.
   float grove_stock_m3_per_ha = 30.0F;        ///< A grove's standing stock.
   float shelterbelt_stock_m3_per_ha = 40.0F;  ///< A belt's standing stock.
-  float log_share_full = 0.60F;               ///< The map tool's bake; see Parse.
-  float log_share_part = 0.25F;
-  float log_share_none = 0.0F;
-  float forest_old_m3_per_ha_year = 0.05F;  ///< Old trunks falling in a year.
-  float old_log_share_factor = 0.5F;        ///< An old trunk's logs, of the species' share.
-  float fallen_vanish_years = 2.0F;         ///< Years a fallen trunk lies (Epoch I).
-  float felling_days_per_m3 = 0.05F;        ///< Game man-days per cubic metre felled.
-  float tools_per_feller = 1.0F;            ///< Tools in the stores per feller, not spent.
+  float forest_old_m3_per_ha_year = 0.05F;    ///< Old trunks falling in a year.
+  float old_log_share_factor = 0.5F;          ///< An old trunk's logs, of the species' share.
+  float fallen_vanish_years = 2.0F;           ///< Years a fallen trunk lies (Epoch I).
+  float felling_days_per_m3 = 0.05F;          ///< Game man-days per cubic metre felled.
+  float tools_per_feller = 1.0F;              ///< Tools in the stores per feller, not spent.
 
   /// Every stand, in table row order: TimberStandRow::table_row indexes it.
   std::vector<TimberStandDef> stands;

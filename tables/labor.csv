@@ -73,3 +73,6 @@ harvest,,1,4
 herd_care,,1,2
 # a day on a construction site (task A2): ordinary work, ordinary drain
 construction,,1,2
+# порубка (Древесина §8а): тяжёлая работа — валка топором и пилой, разделка,
+# погрузка брёвен; ставка как у пахоты (boss, 2026-09-13)
+felling,,1,4

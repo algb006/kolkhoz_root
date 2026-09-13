@@ -159,7 +159,7 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
   // neither row. The keys are listed so that the day the db grows them the
   // core reads them without a rebuild — and so that the reader is not left
   // wondering why two of the eight kinds are missing. Felling joined on
-  // 2026-09-13 the same way: no row yet, the compiled default until one lands.
+  // 2026-09-13 with its row in labor.csv from the first day (heavy, boss).
   constexpr std::array<std::string_view, kWorkKindCount - 1> kKeys = {"plowing",
                                                                       "harrowing",
                                                                       "sowing",

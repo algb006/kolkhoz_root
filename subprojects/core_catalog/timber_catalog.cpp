@@ -15,19 +15,15 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in Parse.
-constexpr std::array<std::string_view, 11> kTimberWorldParamKeys = {
+// NO LOG SHARES HERE. timber_log_share_full/part/none are the export's knobs
+// (reader `export` in the design base): db.py works each stand's share out of
+// its biome and ships only the result, in timber_stands.csv. The core read
+// them for one commit because they were declared `core`; boss re-declared
+// them on 2026-09-13 and they left world_params.csv.
+constexpr std::array<std::string_view, 8> kTimberWorldParamKeys = {
     "timber_log_m3",
     "timber_grove_stock_m3_per_ha",
     "timber_shelterbelt_stock_m3_per_ha",
-    // THE THREE LOG SHARES ARE THE MAP TOOL'S, not the core's: timber_stands.csv
-    // arrives with each stand's share already worked out from its biome
-    // (tools/map.py). They are read — and range-checked — because the table
-    // declares them `core`, and a knob declared for the core that nothing
-    // reads is refused at assembly. Named to boss as a declaration to fix
-    // rather than a reader to keep (2026-09-13).
-    "timber_log_share_full",
-    "timber_log_share_part",
-    "timber_log_share_none",
     "timber_forest_old_m3_per_ha_year",
     "timber_old_log_share_factor",
     "timber_fallen_vanish_years",
@@ -114,27 +110,18 @@ bool ParseTimberCatalog(const ITableSet& tables, TimberCatalog& catalog, std::st
          .value = &catalog.shelterbelt_stock_m3_per_ha,
          .range = {.low = 0.0F, .high = 2000.0F}},
         {.key = kTimberWorldParamKeys[3],
-         .value = &catalog.log_share_full,
-         .range = {.low = 0.0F, .high = 1.0F}},
-        {.key = kTimberWorldParamKeys[4],
-         .value = &catalog.log_share_part,
-         .range = {.low = 0.0F, .high = 1.0F}},
-        {.key = kTimberWorldParamKeys[5],
-         .value = &catalog.log_share_none,
-         .range = {.low = 0.0F, .high = 1.0F}},
-        {.key = kTimberWorldParamKeys[6],
          .value = &catalog.forest_old_m3_per_ha_year,
          .range = {.low = 0.0F, .high = 100.0F}},
-        {.key = kTimberWorldParamKeys[7],
+        {.key = kTimberWorldParamKeys[4],
          .value = &catalog.old_log_share_factor,
          .range = {.low = 0.0F, .high = 1.0F}},
-        {.key = kTimberWorldParamKeys[8],
+        {.key = kTimberWorldParamKeys[5],
          .value = &catalog.fallen_vanish_years,
          .range = {.low = 0.0F, .high = 100.0F}},
-        {.key = kTimberWorldParamKeys[9],
+        {.key = kTimberWorldParamKeys[6],
          .value = &catalog.felling_days_per_m3,
          .range = {.low = 0.0F, .high = 10.0F}},
-        {.key = kTimberWorldParamKeys[10],
+        {.key = kTimberWorldParamKeys[7],
          .value = &catalog.tools_per_feller,
          .range = {.low = 0.0F, .high = 100.0F}},
     }};
