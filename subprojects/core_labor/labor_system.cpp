@@ -471,6 +471,35 @@ class LaborSystem final : public ILaborSystem {
         jobs.push_back(job);
       }
     }
+    // The timber stands (timber design §8a, 2026-09-13): felling, windowless
+    // and capped by the tools in the stores, and the carting of the logs lying
+    // there, exactly as a field's load is carted.
+    if (!day_off) {
+      const std::uint32_t crew_cap =
+          FellingCrewCap(config_.timber, TotalHeld(current, config_.timber.tool_resource));
+      for (std::uint32_t row = 0; row < current.stands.rows.size(); ++row) {
+        const TimberStandRow& stand = current.stands.rows[row];
+        if (stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F && crew_cap > 0) {
+          AssignmentJob job;
+          job.kind = WorkKind::kFelling;
+          job.stand = current.stands.row_ids[row];
+          job.position = stand.position;
+          job.work_days_remaining = stand.work_days_remaining;
+          job.max_crew = static_cast<std::uint8_t>(crew_cap);
+          jobs.push_back(job);
+        }
+        if (stand.load_grams > 0 && stand.haul_days_remaining > 0.0F) {
+          AssignmentJob job;
+          job.kind = WorkKind::kHauling;
+          job.stand = current.stands.row_ids[row];
+          job.position = stand.position;
+          job.work_days_remaining = stand.haul_days_remaining;
+          job.harnessed = DraughtHorses(current) > 0;
+          job.window = HaulWindow(current);
+          jobs.push_back(job);
+        }
+      }
+    }
     for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
       const HerdRow& herd = current.herds.rows[row];
       Vec2 position;
@@ -509,6 +538,18 @@ class LaborSystem final : public ILaborSystem {
       }
     }
     return jobs;
+  }
+
+  /// Grams of `resource` lying in every unit's stock — the tools a felling
+  /// crew can pick up. Counted here rather than asked of core_production's
+  /// store lookups, which this module does not reach (manual/65-labor-model.md
+  /// §2: the two meet only at the seams).
+  static Grams TotalHeld(const WorldState& current, ResourceId resource) {
+    Grams held = 0;
+    for (const UnitRow& unit : current.units.rows) {
+      held += resource.value < unit.stock.size() ? unit.stock[resource.value] : 0;
+    }
+    return held;
   }
 
   static bool HerdPosition(const WorldState& current, const HerdRow& herd, Vec2& position) {

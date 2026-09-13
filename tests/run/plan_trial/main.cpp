@@ -43,6 +43,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
@@ -297,6 +298,7 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
   }
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
+  run::FellingPolicy felling(*started.tables);
   run::RepairPolicy repairs(*started.tables);
   // The ripening span and the season's end, read the way the core reads them:
   // the oat gap (last sowing day to first reaping day) and the day before the
@@ -313,6 +315,7 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
       run::AdvanceDays(*started, 1);
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
+      felling.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
       if (play.obvious_chairman) {
         chairman.RunDay(*started.simulation);
@@ -365,6 +368,7 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
   // cattle yard go up in all of them — the store lever is not missing from the
   // instrument, it is already pulled.
   fixture.Report(started.State());
+  felling.Report("plan_trial", started.State());
   if (play.obvious_chairman) {
     // SAID OUT LOUD, and boss made it the condition of the prosthetic existing
     // at all: the giving-back is a crutch for a verb the seam does not have,
@@ -408,6 +412,7 @@ int main(int argc, char** argv) {
   std::cout << "plan_trial: " << kYears
             << " years a variant, the district takes him to court after " << trial_threshold
             << " failed years in a row\n";
+  run::FellingPolicy::Declare("plan_trial");
 
   // THE FLOOR, and its name says what it is. It used to be called "the
   // canonical play", which is how the whole project came to read a village

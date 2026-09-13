@@ -32,6 +32,8 @@
 namespace core {
 
 class ITable;
+class ITableSet;
+struct WorldState;
 
 /// @brief What one layout row describes. The four values the shipped table
 /// uses; anything else is a refusal, because the old code read an unknown
@@ -122,6 +124,15 @@ struct StartLayout {
 ///         is what this parser exists to stop.
 /// @note Called at setup on the sim thread. Reads the table, nothing else.
 bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error);
+
+/// @brief Makes one timber stand per row of tables/timber_stands.csv, with
+///        its starting stock (timber design §8a): a grove or a belt at area ×
+///        its density, an old-forest square empty until its trunks fall.
+/// @param error Receives the catalogue's sentence when a present table cannot
+///        be read, and is left alone otherwise; the stands are then not made.
+/// @note Called at setup on the sim thread, after the scene is laid. A world
+///       with no timber table simply has no stands.
+void MakeTimberStands(const ITableSet& tables, WorldState& world, std::string* error);
 
 }  // namespace core
 

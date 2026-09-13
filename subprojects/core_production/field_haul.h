@@ -50,6 +50,18 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
 /// @pre The day's last tick, sequential slot, after labor has run.
 void SettleHauling(const ProductionConfig& config, WorldState& current);
 
+/// @brief What one carrier is worth on a timber stand's shoulder today —
+/// measured to the heap where logs already lie, else to the shared store.
+HaulRate StandHaulRate(const ProductionConfig& config,
+                       const WorldState& world,
+                       const TimberStandRow& stand);
+
+/// @brief The same settlement for the logs lying on the timber stands, by the
+/// same rules and the same arithmetic as a field's load (timber design §8a:
+/// "груз на участке, как урожай на поле").
+/// @pre The day's last tick, sequential slot, after labor has run.
+void SettleStandHauling(const ProductionConfig& config, WorldState& current);
+
 /// @brief A day in the life of everything lying in a unit's store.
 /// @pre Called AFTER the village has eaten: the meal is the needs slot,
 ///      phase 2, and this is phase 3 of the same tick. Eaten food cannot

@@ -1202,6 +1202,7 @@ WorldState CreateStartWorld(const ITableSet& tables,
       world.plan.worked_ha_last_year += field.area_ga;
     }
   }
+  MakeTimberStands(tables, world, error);
   return world;
 }
 

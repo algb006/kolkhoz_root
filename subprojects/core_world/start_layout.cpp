@@ -12,7 +12,11 @@
 #include <utility>
 
 #include "core_catalog/table_value.h"
+#include "core_catalog/timber_catalog.h"
 #include "core_common/quantities.h"
+#include "core_common/state_table_ops.h"
+#include "core_common/world_state.h"
+#include "core_log/log.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -286,6 +290,27 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
 
   out = std::move(parsed);
   return true;
+}
+
+void MakeTimberStands(const ITableSet& tables, WorldState& world, std::string* error) {
+  TimberCatalog catalog;
+  std::string trouble;
+  if (!ParseTimberCatalog(tables, catalog, trouble)) {
+    LogError("genesis: " + trouble);
+    if (error != nullptr) {
+      *error = trouble;
+    }
+    return;
+  }
+  for (std::uint32_t row = 0; row < catalog.stands.size(); ++row) {
+    const TimberStandDef& def = catalog.stands[row];
+    TimberStandRow stand;
+    stand.table_row = row;
+    stand.kind = def.kind;
+    stand.position = def.position;
+    stand.stock_m3 = StartStockM3(catalog, def);
+    AppendRow(world.stands, stand);
+  }
 }
 
 }  // namespace core

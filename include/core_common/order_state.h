@@ -257,10 +257,11 @@ enum class OrderKind : std::uint8_t {
   /// with kNoSuchSubject for a stand that is not there, and kRuleForbids for a
   /// volume that is not positive or exceeds the stand's unmarked stock.
   ///
-  /// CANCELLING IT BEFORE THE CREW STARTS takes the mark off whole (terrain
-  /// design §7, "отменил — значит передумал целиком"); once any of it is
-  /// felled the order is past cancelling. Settled in the step it is read.
-  /// Consumer: core_production.
+  /// Settled in the step it is read, so the order itself is past cancelling
+  /// at once. TAKING THE MARK OFF BEFORE THE CREW STARTS — terrain design §7,
+  /// "отменил — значит передумал целиком" — has no verb yet (STUB): it wants
+  /// its own order, the way kReleaseWork answers kAssignWork, and none was
+  /// ordered. Consumer: core_production.
   kMarkFelling,
 
   // Reserved, appended by their tasks and named here so the numbering is

@@ -50,6 +50,7 @@
 #include "production_config.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
+#include "timber_felling.h"
 
 namespace core {
 namespace {
@@ -172,6 +173,9 @@ class ProductionSystem final : public IProductionSystem {
     // order nobody reads is refused by the events slot with kNoConsumer, and
     // "the tables were thin" is not a reason the chairman should ever see.
     ConsumeOrders(current);
+    // A felling the crew finished this hour is lying on the ground this hour
+    // (timber_felling.h) — the same reasoning as the field phases below.
+    FellFinishedStands(config_, current);
     if (config_.crops.empty()) {
       return;  // a table-less world idles (STUB)
     }
@@ -193,6 +197,7 @@ class ProductionSystem final : public IProductionSystem {
     // an empty demand and send nobody (task A4).
     if (HourFromTick(current.calendar.tick) + 1U >= kTicksPerDay) {
       SettleHauling(config_, current);
+      SettleStandHauling(config_, current);
       // AND ONLY THEN does the day's food go bad. The village has eaten by
       // now — the meal is the needs slot, phase 2, and this is phase 3 of
       // the same tick — and eaten food cannot rot. The other way round and
@@ -534,6 +539,7 @@ class ProductionSystem final : public IProductionSystem {
   void RunYearStart(WorldState& current) const {
     DeliverPlan(current);
     JudgePlan(current);
+    GrowOldForest(config_, current);
     // THE CLOSING YEAR'S LARGEST WORKED AREA becomes next spring's figure,
     // and the running maximum is what makes it un-gameable: a single tick's
     // reading could be emptied by an order settled that same tick — the order
@@ -632,6 +638,9 @@ class ProductionSystem final : public IProductionSystem {
           break;
         case OrderKind::kSetRotation:
           Settle(order, SetRotation(current, order));
+          break;
+        case OrderKind::kMarkFelling:
+          Settle(order, MarkFelling(config_, current, order));
           break;
         default:
           break;  // not ours: another consumer's, or the events slot's refusal
@@ -1260,7 +1269,9 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
                       "campaign",
                       "transport",
                       "labor",
-                      "professions"},
+                      "professions",
+                      "world_params",
+                      "timber_stands"},
                      nullptr)) {
     return nullptr;
   }

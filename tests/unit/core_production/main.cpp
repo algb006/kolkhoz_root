@@ -33,6 +33,7 @@
 #include "production_config.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
+#include "timber_felling.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::IProductionSystem>,
@@ -3596,6 +3597,88 @@ int CheckTheReapingGate() {
   return failures;
 }
 
+/// Felling (timber design §8a, 2026-09-13): the mark, its refusals, the logs
+/// laid down when the crew is done, and the old forest's ceiling.
+int CheckFelling() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::TimberCatalog& timber = config.timber;
+  timber.log_m3 = 0.25F;
+  timber.log_grams = 200000;
+  timber.felling_days_per_m3 = 0.05F;
+  timber.forest_old_m3_per_ha_year = 0.05F;
+  timber.old_log_share_factor = 0.5F;
+  timber.fallen_vanish_years = 2.0F;
+  timber.stands = {{.kind = core::TimberStandKind::kGrove,
+                    .position = core::Vec2{.x = 0.0F, .y = 0.0F},
+                    .area_ha = 10.0F,
+                    .log_share = 0.25F},
+                   {.kind = core::TimberStandKind::kForestOld,
+                    .position = core::Vec2{.x = 0.0F, .y = 0.0F},
+                    .area_ha = 100.0F,
+                    .log_share = 0.5F}};
+
+  core::WorldState world;
+  core::TimberStandRow grove;
+  grove.table_row = 0;
+  grove.kind = core::TimberStandKind::kGrove;
+  grove.stock_m3 = 300.0F;
+  const core::TimberStandId grove_id = core::AppendRow(world.stands, grove);
+  core::TimberStandRow forest;
+  forest.table_row = 1;
+  forest.kind = core::TimberStandKind::kForestOld;
+  core::AppendRow(world.stands, forest);
+
+  core::OrderRow order;
+  order.kind = core::OrderKind::kMarkFelling;
+  order.stand = core::TimberStandId{999};
+  order.volume_m3 = 10.0F;
+  failures += Expect(core::MarkFelling(config, world, order) == core::OrderRefusal::kNoSuchSubject,
+                     "felling: a stand that is not there is no such subject");
+  order.stand = grove_id;
+  order.volume_m3 = 301.0F;
+  failures += Expect(core::MarkFelling(config, world, order) == core::OrderRefusal::kRuleForbids,
+                     "felling: more than the stand holds is refused");
+  order.volume_m3 = 40.0F;
+  failures += Expect(core::MarkFelling(config, world, order) == core::OrderRefusal::kNone,
+                     "felling: a volume the stand holds is marked");
+  core::TimberStandRow& marked = world.stands.rows[0];
+  failures += Expect(marked.marked_m3 == 40.0F && marked.work_days_remaining == 2.0F,
+                     "felling: the mark opens a seam of volume x days per m3");
+  failures +=
+      Expect(core::MarkFelling(config, world, order) == core::OrderRefusal::kConflictsWithActive,
+             "felling: a second mark while one is going is a conflict");
+
+  core::FellFinishedStands(config, world);
+  failures +=
+      Expect(world.stands.rows[0].stock_m3 == 300.0F && world.stands.rows[0].load_grams == 0,
+             "felling: nothing is felled while the crew still has work");
+  world.stands.rows[0].work_days_remaining = 0.0F;
+  core::FellFinishedStands(config, world);
+  // 40 m3 x 0.25 of logs / 0.25 m3 a log = 40 logs of 200 kg.
+  failures +=
+      Expect(world.stands.rows[0].stock_m3 == 260.0F && world.stands.rows[0].marked_m3 == 0.0F &&
+                 world.stands.rows[0].load_grams == 40 * 200000,
+             "felling: the finished mark leaves the stock and lies as logs");
+
+  for (int turn = 0; turn < 3; ++turn) {
+    core::GrowOldForest(config, world);
+  }
+  // 100 ha x 0.05 = 5 m3 a year, two years at most: 10, not 15.
+  failures += Expect(world.stands.rows[1].stock_m3 == 10.0F,
+                     "felling: the old forest holds no more than the vanish years of trunks");
+  failures += Expect(world.stands.rows[0].stock_m3 == 260.0F,
+                     "felling: the old forest's turn leaves a grove alone");
+
+  timber.tool_resource = core::ResourceId{3};
+  timber.tool_grams = 3000;
+  timber.tools_per_feller = 1.0F;
+  failures +=
+      Expect(core::FellingCrewCap(timber, 5 * 3000) == 5 && core::FellingCrewCap(timber, 2999) == 0,
+             "felling: the crew is capped by whole tools in the stores");
+  return failures;
+}
+
 /// At the year's turn a field still being prepared for the year that ended
 /// lets its crop go (oat_balance, 2026-09-13: a cabbage harrowed too late to
 /// sow went into the next year's oat slot). Finished ploughing is kept as
@@ -3713,6 +3796,7 @@ int main() {
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
+  failures += CheckFelling();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
   const test::FakeTableSet tables;

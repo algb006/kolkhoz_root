@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -701,6 +702,9 @@ struct ProductionConfig {
   float plan_met_reputation = 4.0F;
 
   float plan_failed_reputation = -8.0F;
+
+  /// Timber design §8a: the stands and the felling numbers (2026-09-13).
+  TimberCatalog timber;
 };
 
 /// @brief Parses every table core_production reads into `config`.

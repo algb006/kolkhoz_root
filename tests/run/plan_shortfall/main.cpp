@@ -38,6 +38,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
@@ -426,8 +427,12 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
             << Tonnes(sample.carting.peak_waiting) << " t, and up to "
             << sample.carting.free_horses_when_idle
             << " horses stood out of harness on the days nobody carted\n";
+  // EVERY CELL NAMED, and checked: this array takes its length from the enum,
+  // so a work kind appended without a name left a null here and the run died
+  // printing it (kFelling, 2026-09-13 — caught on the first run after).
   static constexpr std::array<const char*, core::kWorkKindCount> kKindNames = {
-      "none", "plough", "harrow", "sow", "reap", "barn", "build", "haul"};
+      "none", "plough", "harrow", "sow", "reap", "barn", "build", "haul", "fell"};
+  static_assert(kKindNames.back() != nullptr, "every work kind needs a name in this run");
   const Carting& why = sample.carting;
   std::cout << "plan_shortfall:     WHY NOBODY CARTED — no room in the stores " << why.days_no_room
             << " days, a day nobody worked " << why.days_nobody_worked
@@ -618,6 +623,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   }
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
+  run::FellingPolicy felling(*started.tables);
   run::RepairPolicy repairs(*started.tables);
   // The obvious chairman, so that what is measured is a village somebody
   // steers. Without him the run is the FLOOR and the answer would be "nobody
@@ -643,6 +649,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
       run::AdvanceDays(*started, 1);
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
+      felling.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
@@ -749,6 +756,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   // What the building chairman did, because "no room in the stores" is only
   // half an answer until it says whether anybody built one.
   fixture.Report(started.State());
+  felling.Report("plan_shortfall", started.State());
   chairman.Report();
   std::cout << "plan_shortfall: " << label << " — the plan was failed in " << failures << " of "
             << kYears << " years\n";
@@ -771,6 +779,7 @@ int main(int argc, char** argv) {
   const std::uint32_t trace_year =
       argc > 3 ? static_cast<std::uint32_t>(std::strtoul(argv[3], nullptr, 10)) : kYears;
 
+  run::FellingPolicy::Declare("plan_shortfall");
   int failures = WalkOneSeed(suspect, "THE LAYOUT UNDER QUESTION", trace_year);
   failures += WalkOneSeed(canon, "THE CANONICAL LAYOUT", kYears);
 

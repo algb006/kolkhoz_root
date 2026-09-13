@@ -15,6 +15,7 @@
 
 #include "campaign_tables.h"
 #include "core_catalog/table_value.h"
+#include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/ids.h"
@@ -677,6 +678,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       const std::span<const std::string_view> from_time = TimeWorldParamKeys();
       const std::span<const std::string_view> from_genesis = GenesisWorldParamKeys();
       const std::span<const std::string_view> from_life = LifeWorldParamKeys();
+      const std::span<const std::string_view> from_timber = TimberWorldParamKeys();
+      known.insert(known.end(), from_timber.begin(), from_timber.end());
       known.insert(known.end(), from_time.begin(), from_time.end());
       known.insert(known.end(), from_genesis.begin(), from_genesis.end());
       known.insert(known.end(), from_life.begin(), from_life.end());

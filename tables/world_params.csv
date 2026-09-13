@@ -33,3 +33,14 @@ age_school_junior_from_years,7,both
 fence_poles_height_m,0.95,layer
 age_school_senior_from_years,11,both
 age_adult_from_years,16,both
+timber_log_m3,0.25,core
+timber_grove_stock_m3_per_ha,30,core
+timber_shelterbelt_stock_m3_per_ha,40,core
+timber_log_share_full,0.6,core
+timber_log_share_part,0.25,core
+timber_log_share_none,0,core
+timber_forest_old_m3_per_ha_year,0.05,core
+timber_old_log_share_factor,0.5,core
+timber_fallen_vanish_years,2,core
+timber_felling_days_per_m3,0.05,core
+timber_tools_per_feller,1,core

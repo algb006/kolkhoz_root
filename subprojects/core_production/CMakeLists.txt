@@ -13,7 +13,8 @@ kolkhoz_add_module(core_production
     herd_system.cpp
     stable_horses.cpp
     production_alarms.cpp
-    stock_lights.cpp)
+    stock_lights.cpp
+    timber_felling.cpp)
 
 target_link_libraries(core_production
     PUBLIC core_common core_sim

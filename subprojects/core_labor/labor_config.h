@@ -30,6 +30,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/timber_catalog.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/resident_state.h"
@@ -326,6 +327,10 @@ struct LaborConfig {
   /// accountant, the chairman places naively. Rises when the post is filled
   /// (a later stage wires that; the knob exists now).
   std::uint8_t placement_level = 0;
+
+  /// Timber design §8a: how many tools a feller needs, and the tool's mass,
+  /// to cap a felling crew by the tools in the stores (2026-09-13).
+  TimberCatalog timber;
 };
 
 /// @brief Fills `config` from the table set.

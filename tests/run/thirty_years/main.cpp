@@ -25,6 +25,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
@@ -447,6 +448,8 @@ int main(int argc, char** argv) {
   // away (granary_policy.h).
   run::FixturePolicy fixture(*world.tables);
   run::FixturePolicy::Declare();
+  run::FellingPolicy felling(*world.tables);
+  run::FellingPolicy::Declare("thirty_years");
   // And the two verbs the runs had never said: a standing work order and a
   // pause (orders_policy.h). A verb the run does not say is not checked by
   // the run, however many unit tests stand behind it (boss, 2026-09-04).
@@ -471,6 +474,7 @@ int main(int argc, char** argv) {
       run::AdvanceDays(*world, 1);
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
+      felling.RunDay(*world.simulation);
       orders.RunDay(*world.simulation);
       repairs.RunDay(*world.simulation);
       year_seconds +=
@@ -762,6 +766,7 @@ int main(int argc, char** argv) {
   // purpose, because the first draft of this check asserted the opposite and
   // was wrong about the model rather than about the run.
   fixture.Report(state);
+  felling.Report("thirty_years", state);
   failures += orders.Report();
   failures += repairs.Report(state);
   std::cout << "repair: that is " << (repairs.LaborDays() / total_work_days * 100.0) << "% of the "
