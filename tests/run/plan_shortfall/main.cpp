@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iomanip>
@@ -246,6 +247,9 @@ struct YearEnd {
   float area_sown_ha = 0.0F;
   float area_harvested_ha = 0.0F;
   float area_lost_ha = 0.0F;
+  /// Tonnes already DUG on fields the snow then took mid-reaping (boss, parcel
+  /// 172: "сколько тонн выкопанного пропало под снегом"). See DugLossWatch.
+  double dug_lost_tonnes = 0.0;
   std::array<float, core::kWorkKindCount> work_days{};
 
   // WHY THE CARTING DOES NOT GO, counted rather than reasoned about.
@@ -303,7 +307,9 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
   std::cout << "plan_shortfall:     in store " << Tonnes(sample.grain_in_store)
             << " t, waiting on the fields " << Tonnes(sample.waiting_on_fields) << " t, "
             << sample.horses << " horses; sown " << sample.area_sown_ha << " ha, reaped "
-            << sample.area_harvested_ha << " ha, lost to snow " << sample.area_lost_ha << " ha\n";
+            << sample.area_harvested_ha << " ha, lost to snow " << sample.area_lost_ha
+            << " ha, of it already dug " << std::lround(sample.dug_lost_tonnes)
+            << " t (estimate)\n";
   std::cout << "plan_shortfall:     man-days — plough " << sample.work_days[1] << ", harrow "
             << sample.work_days[2] << ", sow " << sample.work_days[3] << ", reap "
             << sample.work_days[4] << ", barn " << sample.work_days[5] << ", haul "
@@ -407,6 +413,72 @@ void TraceCropDay(const core::WorldState& world, core::CropId crop) {
   }
 }
 
+/// @brief What the snow took of a field ALREADY BEING DUG, in tonnes (boss,
+/// parcel 172: the two thirds of a potato field dug and lost on seed 1935 read
+/// to the player as a trap, and he decides by the number).
+///
+/// AN ESTIMATE, AND IT SAYS WHICH. The core books a harvest once, when its
+/// phase ends (farming design §6, "жатва разовая"), so a field lost mid-reaping
+/// never carries a dug tonnage. The watch keeps yesterday's field and the work
+/// the reaping began with; when a field that was being reaped is found idle,
+/// empty and with nothing lying on it, the dug share is 1 − left/started and
+/// the tonnage is that share of the table yield × area × fertility / neutral —
+/// the same expected crop the store alarm claims room for
+/// (production_alarms.cpp, RoomClaimOf), weather stress NOT applied.
+class DugLossWatch {
+ public:
+  explicit DugLossWatch(const core::ITableSet& tables) {
+    const core::ITable* const crops = tables.FindTable("crops");
+    if (crops != nullptr) {
+      const std::uint32_t column = crops->FindColumn("yield_kg_per_ha");
+      for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+        yield_kg_per_ha_.push_back(crops->CellReal(row, column).value_or(0.0F));
+      }
+    }
+    if (const core::ITable* const farming = tables.FindTable("farming")) {
+      fertility_neutral_ =
+          farming
+              ->CellReal(farming->FindRowByKey("fertility_neutral"), farming->FindColumn("value"))
+              .value_or(fertility_neutral_);
+    }
+  }
+
+  /// @brief Call once a day after the day ran; returns the tonnes dug and lost
+  /// since yesterday.
+  double Observe(const core::WorldState& world) {
+    double lost = 0.0;
+    yesterday_.resize(world.fields.rows.size());
+    started_work_.resize(world.fields.rows.size(), 0.0F);
+    for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
+      const core::FieldRow& today = world.fields.rows[row];
+      const core::FieldRow& before = yesterday_[row];
+      const bool was_reaping = before.phase == core::FieldPhase::kHarvest;
+      const bool lost_today = was_reaping && today.phase == core::FieldPhase::kIdle &&
+                              today.crop.value == core::kInvalidDefIdValue &&
+                              today.reaped_grams == 0;
+      if (lost_today && started_work_[row] > 0.0F && before.crop.value < yield_kg_per_ha_.size()) {
+        const float left = std::max(before.work_days_remaining, 0.0F);
+        const float dug_share = 1.0F - std::min(left / started_work_[row], 1.0F);
+        const float soil = before.fertility / fertility_neutral_;
+        lost += static_cast<double>(dug_share * yield_kg_per_ha_[before.crop.value] *
+                                    before.area_ga * soil) /
+                1000.0;
+      }
+      if (today.phase == core::FieldPhase::kHarvest && !was_reaping) {
+        started_work_[row] = today.work_days_remaining;
+      }
+      yesterday_[row] = today;
+    }
+    return lost;
+  }
+
+ private:
+  std::vector<float> yield_kg_per_ha_;
+  float fertility_neutral_ = 50.0F;
+  std::vector<core::FieldRow> yesterday_;
+  std::vector<float> started_work_;
+};
+
 int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year) {
   run::Simulation started = run::Start(seed);
   if (!started) {
@@ -437,6 +509,8 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   YearEnd last_day;
   Carting running;
   Signals signals_running = FreshSignals(resources);
+  DugLossWatch dug_watch(*started.tables);
+  double dug_lost_running = 0.0;
   std::uint8_t failed_before = 0;
   std::uint32_t failures = 0;
   for (std::uint32_t year = 0; year < kYears; ++year) {
@@ -465,7 +539,9 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
       if (world.calendar.day % core::kDaysPerYear == 0) {
         running = Carting{};
         signals_running = FreshSignals(resources);
+        dug_lost_running = 0.0;
       }
+      dug_lost_running += dug_watch.Observe(world);
       RecordSignals(*started.simulation, signals_running);
       const core::Grams waiting_today = WaitingOnFields(world);
       if (waiting_today > 0) {
@@ -499,6 +575,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
         last_day.area_sown_ha = world.ledger.current.area_sown_ha;
         last_day.area_harvested_ha = world.ledger.current.area_harvested_ha;
         last_day.area_lost_ha = world.ledger.current.area_lost_ha;
+        last_day.dug_lost_tonnes = dug_lost_running;
         last_day.work_days = world.ledger.current.work_days_by_kind;
         last_day.book = world.ledger.current;
         last_day.carting = running;
