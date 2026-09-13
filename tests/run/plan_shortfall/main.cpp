@@ -362,7 +362,52 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
 }
 
 /// Walks one layout and prints a line for every year the district was not paid.
-int WalkOneSeed(std::uint64_t seed, const char* label) {
+/// @brief One day of every field standing in `crop`: its phase, the day it was
+/// sown, the work left on it and who is on it doing what.
+///
+/// WHY IT EXISTS: on the layout the human approved on 2026-09-13 the obvious
+/// chairman failed the plan in 70 years of 180 against 35 before, every
+/// failure a potato, and on seed 1935 year 1's potato was dug to zero tonnes
+/// against 230 on the old yards, with 28 ha under the snow. The year's totals
+/// cannot say whether the crop never ripened inside its reaping window, ripened
+/// and was never opened, or was opened and nobody came. A day-by-day line can.
+void TraceCropDay(const core::WorldState& world, core::CropId crop) {
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const core::FieldRow& field = world.fields.rows[row];
+    // THE LAST CROP TOO: a harvest that ends, or a snow that takes the stand,
+    // clears `crop` the same day, and the trace went silent at exactly the
+    // moment it was written to watch.
+    if (field.crop.value != crop.value && field.last_crop.value != crop.value) {
+      continue;
+    }
+    std::array<std::uint32_t, 4> crew{};  // plow+harrow, sow, harvest, haul
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      if (resident.work.field != world.fields.row_ids[row]) {
+        continue;
+      }
+      const core::WorkKind kind = resident.work.kind;
+      crew[0] += kind == core::WorkKind::kPlowing || kind == core::WorkKind::kHarrowing ? 1U : 0U;
+      crew[1] += kind == core::WorkKind::kSowing ? 1U : 0U;
+      crew[2] += kind == core::WorkKind::kHarvest ? 1U : 0U;
+      crew[3] += kind == core::WorkKind::kHauling ? 1U : 0U;
+    }
+    std::cout << "plan_shortfall:   trace day " << world.calendar.day << " month "
+              << static_cast<int>(world.calendar.date.month) << " weekday "
+              << static_cast<int>(world.calendar.weekday) << " precip "
+              << static_cast<int>(world.weather.precipitation) << " phenomenon "
+              << static_cast<int>(world.weather.phenomenon) << " t "
+              << world.weather.air_temperature_celsius << " field " << row << " (" << field.area_ga
+              << " ha) phase " << static_cast<int>(field.phase) << " sown "
+              << (field.sown_day == core::kNeverSownDay ? -1
+                                                        : static_cast<std::int64_t>(field.sown_day))
+              << " work_left " << field.work_days_remaining << " crop " << field.crop.value
+              << " last " << field.last_crop.value << " reaped_t " << Tonnes(field.reaped_grams)
+              << " crew plow " << crew[0] << " sow " << crew[1] << " reap " << crew[2] << " haul "
+              << crew[3] << "\n";
+  }
+}
+
+int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year) {
   run::Simulation started = run::Start(seed);
   if (!started) {
     return 1;
@@ -383,6 +428,10 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
   // steers. Without him the run is the FLOOR and the answer would be "nobody
   // was making decisions", which we already know.
   run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
+  const core::ITable* const crops = started.tables->FindTable("crops");
+  const std::uint32_t potato_row =
+      crops == nullptr ? core::kNoTableRow : crops->FindRowByKey("potato");
+  const core::CropId potato{static_cast<std::uint16_t>(potato_row)};
 
   std::cout << "plan_shortfall: === " << label << " (seed " << seed << ") ===\n";
   YearEnd last_day;
@@ -398,6 +447,9 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
+      if (year == trace_year && potato_row != core::kNoTableRow) {
+        TraceCropDay(world, potato);
+      }
 
       // THE CARTING, WATCHED EVERY DAY. Counted where it happens rather than
       // inferred from the year's totals: "hauling got 34 man-days" cannot tell
@@ -505,9 +557,16 @@ int main(int argc, char** argv) {
   // question has never once been asked.
   const std::uint64_t suspect = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1931;
   const std::uint64_t canon = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1929;
+  // An optional third argument traces the potato fields of that run year,
+  // day by day, on the layout under question only. COUNTED FROM ZERO, while
+  // the shortfall lines print the year from one: "year 1 THE DEBT" is traced
+  // with 0. The first trace of 2026-09-13 was run on 1 and watched a year
+  // whose potato came in whole.
+  const std::uint32_t trace_year =
+      argc > 3 ? static_cast<std::uint32_t>(std::strtoul(argv[3], nullptr, 10)) : kYears;
 
-  int failures = WalkOneSeed(suspect, "THE LAYOUT UNDER QUESTION");
-  failures += WalkOneSeed(canon, "THE CANONICAL LAYOUT");
+  int failures = WalkOneSeed(suspect, "THE LAYOUT UNDER QUESTION", trace_year);
+  failures += WalkOneSeed(canon, "THE CANONICAL LAYOUT", kYears);
 
   // NO GATE, AND THAT IS DELIBERATE. This run answers a question; it does not
   // hold a claim. A gate here would be a claim invented to give the file one,
