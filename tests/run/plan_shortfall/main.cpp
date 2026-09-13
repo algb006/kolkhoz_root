@@ -109,6 +109,72 @@ struct Carting {
   std::uint32_t free_horses_when_idle = 0;   ///< horses out of harness on those days
 };
 
+/// WHAT THE GAME SAID BEFORE THE VERDICT (boss, 2026-09-13): "зажигается ли
+/// хоть одна тревога или прогноз ДО года срыва?" A failure no signal foretold
+/// is a trap; one foretold is the price of not listening. Counted over the
+/// year that ends in the verdict, every day, from the core's own two outputs a
+/// player sees: the standing alarms and the stock lights.
+struct Signals {
+  /// Days each alarm kind stood, any subject.
+  std::array<std::uint32_t, static_cast<std::size_t>(core::AlarmKind::kAlarmKindCount)>
+      alarm_days{};
+  /// Days an alarm NAMING a given resource stood, per kind — "an alarm about
+  /// oat" is not an answer until it says whether it spoke of the plan or of
+  /// next spring's seed.
+  std::vector<std::array<std::uint32_t, static_cast<std::size_t>(core::AlarmKind::kAlarmKindCount)>>
+      alarm_days_by_resource;
+  /// Days each light was yellow, and red.
+  std::array<std::uint32_t, static_cast<std::size_t>(core::StockKind::kStockKindCount)>
+      yellow_days{};
+  std::array<std::uint32_t, static_cast<std::size_t>(core::StockKind::kStockKindCount)> red_days{};
+  /// Last day of the year each light was not green; -1 when it never left green.
+  std::array<std::int32_t, static_cast<std::size_t>(core::StockKind::kStockKindCount)>
+      last_warning_day{};
+};
+
+/// An empty year of signals, sized to the resource table.
+Signals FreshSignals(const core::ITable* resources) {
+  Signals signals;
+  signals.alarm_days_by_resource.resize(resources != nullptr ? resources->RowCount() : 0U);
+  signals.last_warning_day.fill(-1);
+  return signals;
+}
+
+void RecordSignals(const core::ISimulation& simulation, Signals& signals) {
+  const std::uint32_t day_of_year = simulation.CompletedState().calendar.day % core::kDaysPerYear;
+  std::vector<core::Alarm> alarms;
+  simulation.CollectAlarms(alarms);
+  std::array<bool, static_cast<std::size_t>(core::AlarmKind::kAlarmKindCount)> kind_seen{};
+  std::vector<std::array<bool, static_cast<std::size_t>(core::AlarmKind::kAlarmKindCount)>>
+      resource_seen(signals.alarm_days_by_resource.size());
+  for (const core::Alarm& alarm : alarms) {
+    const auto kind = static_cast<std::size_t>(alarm.kind);
+    if (kind >= kind_seen.size()) {
+      continue;
+    }
+    if (!kind_seen[kind]) {
+      kind_seen[kind] = true;
+      ++signals.alarm_days[kind];
+    }
+    if (alarm.resource.value < resource_seen.size() && !resource_seen[alarm.resource.value][kind]) {
+      resource_seen[alarm.resource.value][kind] = true;
+      ++signals.alarm_days_by_resource[alarm.resource.value][kind];
+    }
+  }
+  std::vector<core::StockForecast> lights;
+  simulation.CollectStockForecast(lights);
+  for (const core::StockForecast& light : lights) {
+    const auto kind = static_cast<std::size_t>(light.kind);
+    if (kind >= signals.red_days.size()) {
+      continue;
+    }
+    if (light.light == core::StockLight::kYellow || light.light == core::StockLight::kRed) {
+      signals.last_warning_day[kind] = static_cast<std::int32_t>(day_of_year);
+      ++(light.light == core::StockLight::kRed ? signals.red_days : signals.yellow_days)[kind];
+    }
+  }
+}
+
 /// One year, sampled on its LAST day — before the turn clears the debt.
 struct YearEnd {
   std::uint32_t year = 0;
@@ -138,6 +204,8 @@ struct YearEnd {
   // outranks carting for as long as anything is left to reap — by
   // construction, not by accident. These three numbers say what that costs.
   Carting carting;
+
+  Signals signals;
 };
 
 void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
@@ -195,6 +263,38 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
             << Tonnes(sample.carting.peak_waiting) << " t, and up to "
             << sample.carting.free_horses_when_idle
             << " horses stood out of harness on the days nobody carted\n";
+  const Signals& signals = sample.signals;
+  std::cout << "plan_shortfall:     THE SIGNALS over the year — alarm days by kind:";
+  bool any_alarm = false;
+  for (std::size_t kind = 1; kind < signals.alarm_days.size(); ++kind) {
+    if (signals.alarm_days[kind] > 0) {
+      std::cout << " #" << kind << "=" << signals.alarm_days[kind];
+      any_alarm = true;
+    }
+  }
+  std::cout << (any_alarm ? "" : " none") << "; alarms naming a short position:";
+  for (std::uint32_t index = 0; index < sample.due.size(); ++index) {
+    const core::Grams got = index < sample.delivered.size() ? sample.delivered[index] : 0;
+    if (sample.due[index] <= got) {
+      continue;
+    }
+    std::cout << " resource " << index << " {";
+    if (index < signals.alarm_days_by_resource.size()) {
+      for (std::size_t kind = 1; kind < signals.alarm_days_by_resource[index].size(); ++kind) {
+        if (signals.alarm_days_by_resource[index][kind] > 0) {
+          std::cout << " #" << kind << "=" << signals.alarm_days_by_resource[index][kind];
+        }
+      }
+    }
+    std::cout << " }";
+  }
+  static constexpr std::array<const char*, 4> kLightNames = {"food", "feed", "firewood", "seed"};
+  std::cout << "; lights (yellow/red days, last warning day):";
+  for (std::size_t kind = 0; kind < kLightNames.size(); ++kind) {
+    std::cout << ' ' << kLightNames[kind] << ' ' << signals.yellow_days[kind] << '/'
+              << signals.red_days[kind] << " @" << signals.last_warning_day[kind];
+  }
+  std::cout << '\n';
 }
 
 /// Walks one layout and prints a line for every year the district was not paid.
@@ -215,6 +315,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
   std::cout << "plan_shortfall: === " << label << " (seed " << seed << ") ===\n";
   YearEnd last_day;
   Carting running;
+  Signals signals_running = FreshSignals(resources);
   std::uint8_t failed_before = 0;
   std::uint32_t failures = 0;
   for (std::uint32_t year = 0; year < kYears; ++year) {
@@ -239,7 +340,9 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
       // was wrong on its own.
       if (world.calendar.day % core::kDaysPerYear == 0) {
         running = Carting{};
+        signals_running = FreshSignals(resources);
       }
+      RecordSignals(*started.simulation, signals_running);
       const core::Grams waiting_today = WaitingOnFields(world);
       if (waiting_today > 0) {
         ++running.days_with_load_waiting;
@@ -274,6 +377,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
         last_day.work_days = world.ledger.current.work_days_by_kind;
         last_day.book = world.ledger.current;
         last_day.carting = running;
+        last_day.signals = signals_running;
         core::Grams grain = 0;
         last_day.in_store_by_position.assign(world.plan.due.size(), 0);
         last_day.on_fields_by_position.assign(world.plan.due.size(), 0);
