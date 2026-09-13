@@ -274,7 +274,7 @@ old_versions=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d
 # (tools/publish_pin.sh) and the weeding has to see it, because a sweep that cannot
 # see claims is the host lock's timeout all over again: it removes the ground
 # under a run that is legitimately still going.
-pinned=$(ssh "${host}" "ls -1 '${remote_dir}/publish/.pins' 2>/dev/null" | tr -d '\r' \
+pinned=$(ssh "${host}" "ls -1 '${remote_dir}/publish/.pins' 2>/dev/null; true" | tr -d '\r' \
   | sed 's/\.[^.]*$//' | sort -u)
 
 if [ -n "${old_versions}" ]; then
@@ -282,7 +282,10 @@ if [ -n "${old_versions}" ]; then
     # SAID OUT LOUD, not skipped in silence. A sweep that quietly declines to
     # sweep is indistinguishable from a sweep that failed, and the next
     # person to wonder why the store is full has nothing to read.
-    holders=$(ssh "${host}" "ls -1 '${remote_dir}/publish/.pins/${old}.'* 2>/dev/null" \
+    # `; true` on the far side: a version NOBODY pins has no match, ls exits 2,
+    # and under pipefail that ended the whole publish after current had moved
+    # — the 0.20.0 publish stopped here with nothing weeded (2026-09-13).
+    holders=$(ssh "${host}" "ls -1 '${remote_dir}/publish/.pins/${old}.'* 2>/dev/null; true" \
       | tr -d '\r' | sed 's/.*\.//' | sort -u | tr '\n' ' ')
     if printf '%s\n' "${pinned}" | grep -qxF "${old}"; then
       echo "ОСТАВЛЕНА под пином: ${old} — держит ${holders:-неизвестно кто}"
