@@ -229,6 +229,109 @@ void RecordSignals(const core::ISimulation& simulation, Signals& signals) {
   }
 }
 
+/// The store sites of one year: what stands, what waits, and for what (boss,
+/// parcel 174: "чего не хватает стройкам складов, числом").
+struct StoreSites {
+  std::uint32_t granaries_standing = 0;
+  std::uint32_t cattle_yards_standing = 0;
+  std::uint32_t granary_sites_waiting = 0;  ///< delivering on the year's last day
+  std::uint32_t cattle_sites_waiting = 0;
+  /// Days kSiteWithoutMaterials named each material on a granary or cattle
+  /// yard site, in the order of kMaterialKeys.
+  std::array<std::uint32_t, 6> short_days{};
+  /// What the village holds of each on the year's last day, in the resource's
+  /// own unit (pieces, cubic metres, tonnes).
+  std::array<double, 6> held_units{};
+};
+
+/// The materials of the granary and the cattle yard recipes (unit_level_cost.csv).
+constexpr std::array<const char*, 6> kMaterialKeys = {
+    "log", "board", "stone", "clay", "glass", "straw"};
+
+/// WATCHES THE STORE SITES, and only them. kSiteWithoutMaterials speaks of
+/// every site in the village; the question is the stores, so an alarm counts
+/// here only when its unit is a granary or a cattle yard.
+class StoreSiteWatch {
+ public:
+  explicit StoreSiteWatch(const core::ITableSet& tables) {
+    const core::ITable* const resources = tables.FindTable("resources");
+    for (std::size_t index = 0; index < kMaterialKeys.size(); ++index) {
+      const std::uint32_t row =
+          resources == nullptr ? core::kNoTableRow : resources->FindRowByKey(kMaterialKeys[index]);
+      material_rows_[index] = row;
+      if (row != core::kNoTableRow) {
+        grams_per_unit_[index] =
+            static_cast<double>(
+                resources->CellReal(row, resources->FindColumn("kg_per_unit")).value_or(0.0F)) *
+            1000.0;
+      }
+    }
+    const core::ITable* const types = tables.FindTable("unit_types");
+    granary_ = types == nullptr ? core::kNoTableRow : types->FindRowByKey("granary");
+    cattle_ = types == nullptr ? core::kNoTableRow : types->FindRowByKey("cattle_yard");
+  }
+
+  /// @brief One day: counts which material each store site was short of.
+  void Observe(const core::ISimulation& simulation, StoreSites& year) const {
+    const core::WorldState& world = simulation.CompletedState();
+    std::vector<core::Alarm> alarms;
+    simulation.CollectAlarms(alarms);
+    std::array<bool, kMaterialKeys.size()> seen{};
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind != core::AlarmKind::kSiteWithoutMaterials || !IsStoreSite(world, alarm.unit)) {
+        continue;
+      }
+      for (std::size_t index = 0; index < kMaterialKeys.size(); ++index) {
+        if (alarm.resource.value == material_rows_[index] && !seen[index]) {
+          seen[index] = true;
+          ++year.short_days[index];
+        }
+      }
+    }
+  }
+
+  /// @brief The year's last day: what stands, what waits, what is held.
+  void Close(const core::WorldState& world, StoreSites& year) const {
+    for (const core::UnitRow& unit : world.units.rows) {
+      const bool granary = unit.type.value == granary_;
+      const bool cattle = unit.type.value == cattle_;
+      if (!granary && !cattle) {
+        continue;
+      }
+      if (unit.level > 0) {
+        ++(granary ? year.granaries_standing : year.cattle_yards_standing);
+      }
+      if (unit.construction.phase == core::ConstructionPhase::kDelivering) {
+        ++(granary ? year.granary_sites_waiting : year.cattle_sites_waiting);
+      }
+    }
+    for (std::size_t index = 0; index < kMaterialKeys.size(); ++index) {
+      if (material_rows_[index] == core::kNoTableRow || !(grams_per_unit_[index] > 0.0)) {
+        continue;
+      }
+      const auto resource = core::DefIdFromIndex<core::ResourceIdTag>(material_rows_[index]);
+      year.held_units[index] =
+          static_cast<double>(VillageStock(world, resource)) / grams_per_unit_[index];
+    }
+  }
+
+ private:
+  bool IsStoreSite(const core::WorldState& world, core::UnitId unit) const {
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      if (world.units.row_ids[row] == unit) {
+        const std::uint32_t type = world.units.rows[row].type.value;
+        return type == granary_ || type == cattle_;
+      }
+    }
+    return false;
+  }
+
+  std::array<std::uint32_t, kMaterialKeys.size()> material_rows_{};
+  std::array<double, kMaterialKeys.size()> grams_per_unit_{};
+  std::uint32_t granary_ = core::kNoTableRow;
+  std::uint32_t cattle_ = core::kNoTableRow;
+};
+
 /// One year, sampled on its LAST day — before the turn clears the debt.
 struct YearEnd {
   std::uint32_t year = 0;
@@ -250,6 +353,7 @@ struct YearEnd {
   /// Tonnes already DUG on fields the snow then took mid-reaping (boss, parcel
   /// 172: "сколько тонн выкопанного пропало под снегом"). See DugLossWatch.
   double dug_lost_tonnes = 0.0;
+  StoreSites store_sites;
   std::array<float, core::kWorkKindCount> work_days{};
 
   // WHY THE CARTING DOES NOT GO, counted rather than reasoned about.
@@ -333,6 +437,25 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
     std::cout << ' ' << kKindNames[kind] << ' ' << why.busy_when_outranked[kind];
   }
   std::cout << '\n';
+  const StoreSites& sites = sample.store_sites;
+  // A granary of the first level holds 150 t (unit_levels.csv); the heap at
+  // its worst divided by that is how many more the harvest wanted.
+  static constexpr double kGranaryTonnes = 150.0;
+  std::cout << "plan_shortfall:     THE STORE SITES — standing: " << sites.granaries_standing
+            << " granaries, " << sites.cattle_yards_standing
+            << " cattle yards; waiting for materials at year end: " << sites.granary_sites_waiting
+            << " granary, " << sites.cattle_sites_waiting
+            << " cattle yard; days a store site was short of:";
+  for (std::size_t index = 0; index < kMaterialKeys.size(); ++index) {
+    std::cout << ' ' << kMaterialKeys[index] << ' ' << sites.short_days[index];
+  }
+  std::cout << "; the village holds:";
+  for (std::size_t index = 0; index < kMaterialKeys.size(); ++index) {
+    std::cout << ' ' << kMaterialKeys[index] << ' ' << std::lround(sites.held_units[index]);
+  }
+  std::cout << "; the worst heap wanted "
+            << std::lround(std::ceil(Tonnes(sample.carting.peak_waiting) / kGranaryTonnes))
+            << " granaries of room\n";
   const Signals& signals = sample.signals;
   std::cout << "plan_shortfall:     THE SIGNALS over the year — alarm days by kind:";
   bool any_alarm = false;
@@ -511,6 +634,8 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   Signals signals_running = FreshSignals(resources);
   DugLossWatch dug_watch(*started.tables);
   double dug_lost_running = 0.0;
+  const StoreSiteWatch site_watch(*started.tables);
+  StoreSites sites_running;
   std::uint8_t failed_before = 0;
   std::uint32_t failures = 0;
   for (std::uint32_t year = 0; year < kYears; ++year) {
@@ -540,8 +665,10 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
         running = Carting{};
         signals_running = FreshSignals(resources);
         dug_lost_running = 0.0;
+        sites_running = StoreSites{};
       }
       dug_lost_running += dug_watch.Observe(world);
+      site_watch.Observe(*started.simulation, sites_running);
       RecordSignals(*started.simulation, signals_running);
       const core::Grams waiting_today = WaitingOnFields(world);
       if (waiting_today > 0) {
@@ -576,6 +703,8 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
         last_day.area_harvested_ha = world.ledger.current.area_harvested_ha;
         last_day.area_lost_ha = world.ledger.current.area_lost_ha;
         last_day.dug_lost_tonnes = dug_lost_running;
+        site_watch.Close(world, sites_running);
+        last_day.store_sites = sites_running;
         last_day.work_days = world.ledger.current.work_days_by_kind;
         last_day.book = world.ledger.current;
         last_day.carting = running;
