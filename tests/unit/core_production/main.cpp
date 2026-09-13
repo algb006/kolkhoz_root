@@ -26,6 +26,7 @@
 #include "core_common/world_state.h"
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
+#include "district_limit.h"
 #include "field_haul.h"
 #include "field_work.h"
 #include "herd_system.h"
@@ -3773,6 +3774,103 @@ int CheckSawing() {
   return failures;
 }
 
+/// The district's limit (district design §1, §4; boss, parcels 208, 211):
+/// what may be bought, the year's grant, buying, the cart, the year's turn.
+int CheckDistrictLimit() {
+  int failures = 0;
+  constexpr core::Grams kPane = 5 * core::kGramsPerKilogram;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  SetStorageKg(config.unit_types[0], 100.0F);  // a store of 100 kg
+  core::LimitCatalog& limit = config.limit;
+  // Row 0 glass (goods, Epoch I), row 1 a horse (livestock), row 2 a tractor
+  // lot of Epoch II, row 3 goods with no price, row 4 goods with no amount.
+  limit.lots.resize(5);
+  limit.lots[0] = {
+      .points = 25, .era = 1, .kind = core::LimitLotKind::kGoods, .goods = {24 * kPane}};
+  // THE HORSE CARRIES AN AMOUNT on purpose: with none, the "nothing written"
+  // rule refused it too and the kind rule went untested — damage run D10
+  // removed the kind check and nothing reddened (2026-09-13).
+  limit.lots[1] = {
+      .points = 70, .era = 1, .kind = core::LimitLotKind::kLivestock, .goods = {kPane}};
+  limit.lots[2] = {.points = 45, .era = 2, .kind = core::LimitLotKind::kGoods, .goods = {kPane}};
+  limit.lots[3] = {.points = -1, .era = 1, .kind = core::LimitLotKind::kGoods, .goods = {kPane}};
+  limit.lots[4] = {.points = 20, .era = 1, .kind = core::LimitLotKind::kGoods, .goods = {0}};
+  const auto orderable = [&limit](std::uint16_t lot) {
+    return core::LotOrderable(limit, core::LimitLotId{lot}, core::Epoch::kOne);
+  };
+  failures += Expect(orderable(0) == core::OrderRefusal::kNone &&
+                         orderable(9) == core::OrderRefusal::kNoSuchSubject &&
+                         orderable(2) == core::OrderRefusal::kGateClosed,
+                     "limit: glass is bought in Epoch I, an unknown lot is no subject, a later "
+                     "epoch's gate is shut");
+  failures += Expect(orderable(1) == core::OrderRefusal::kRuleForbids &&
+                         orderable(3) == core::OrderRefusal::kRuleForbids &&
+                         orderable(4) == core::OrderRefusal::kRuleForbids,
+                     "limit: livestock, an unpriced lot and a lot with no written amount are not "
+                     "bought here");
+
+  failures += Expect(core::LimitReputationMultiplier(10.0F) == 0.7F &&
+                         core::LimitReputationMultiplier(50.0F) == 1.0F &&
+                         core::LimitReputationMultiplier(90.0F) == 1.4F,
+                     "limit: the raikom's reputation multiplies the grant by the design's bands");
+  failures += Expect(
+      core::YearLimitPoints(limit, core::FarmStatusTier::kLagging, false, 0.0F, 50.0F) == 350 &&
+          core::YearLimitPoints(limit, core::FarmStatusTier::kLagging, true, 0.0F, 50.0F) == 500 &&
+          core::YearLimitPoints(limit, core::FarmStatusTier::kLagging, true, 0.0F, 10.0F) == 350 &&
+          core::YearLimitPoints(limit, core::FarmStatusTier::kLeading, false, 35.0F, 50.0F) == 450,
+      "limit: base by tier, +150 for a plan in full, x0.7 at a poor reputation, and the "
+      "overfulfilment term capped at 200");
+
+  core::WorldState world;
+  world.epoch = core::Epoch::kOne;
+  world.calendar.day = 100;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.level = 1;
+  store.stock.assign(1, 0);
+  core::AppendRow(world.units, store);
+  world.limit.points = 30;
+
+  core::OrderRow order;
+  order.kind = core::OrderKind::kOrderLimitLot;
+  order.lot = core::LimitLotId{0};
+  failures += Expect(core::OrderLimitLot(config, world, order) == core::OrderRefusal::kNone &&
+                         world.limit.points == 5 && world.ledger.current.limit_points_spent == 25,
+                     "limit: buying glass takes its 25 points and books them as spent");
+  failures += Expect(core::OrderLimitLot(config, world, order) == core::OrderRefusal::kLimitShort &&
+                         world.limit.points == 5 && world.limit_deliveries.rows.size() == 1,
+                     "limit: a second lot the points no longer cover is refused and costs nothing");
+  const std::uint32_t arrive = world.limit_deliveries.rows[0].arrive_day;
+  failures += Expect(arrive >= 102 && arrive <= 104,
+                     "limit: the cart is due in two days plus a delay of zero to two");
+
+  world.calendar.day = arrive - 1;
+  core::ArriveLimitDeliveries(config, world);
+  failures +=
+      Expect(world.units.rows[0].stock[0] == 0, "limit: nothing comes before the cart's day");
+  world.calendar.day = arrive;
+  core::ArriveLimitDeliveries(config, world);
+  // 24 panes of 5 kg into a 100 kg store: 20 go in, 4 wait at the gate.
+  failures += Expect(world.units.rows[0].stock[0] == 100 * core::kGramsPerKilogram &&
+                         world.limit_deliveries.rows.size() == 1 &&
+                         world.limit_deliveries.rows[0].goods[0] == 4 * kPane,
+                     "limit: what fits goes in, what does not waits on the cart");
+  world.units.rows[0].stock[0] = 0;
+  world.calendar.day = arrive + 1;
+  core::ArriveLimitDeliveries(config, world);
+  failures +=
+      Expect(world.units.rows[0].stock[0] == 4 * kPane && world.limit_deliveries.rows.empty(),
+             "limit: the rest comes the next day and the empty cart leaves");
+
+  world.chairman.raikom_reputation = 50.0F;
+  core::TurnLimitYear(config, world, true);
+  failures += Expect(world.ledger.current.limit_points_burned == 5 && world.limit.points == 500,
+                     "limit: at the year's turn the unspent points burn and a plan in full earns "
+                     "base plus 150");
+  return failures;
+}
+
 /// At the year's turn a field still being prepared for the year that ended
 /// lets its crop go (oat_balance, 2026-09-13: a cabbage harrowed too late to
 /// sow went into the next year's oat slot). Finished ploughing is kept as
@@ -3898,6 +3996,7 @@ int main() {
   failures += CheckTheReapingGate();
   failures += CheckFelling();
   failures += CheckSawing();
+  failures += CheckDistrictLimit();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
   const test::FakeTableSet tables;

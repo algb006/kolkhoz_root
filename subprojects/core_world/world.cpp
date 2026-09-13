@@ -384,6 +384,10 @@ class EventsSlot final : public ISequentialPhase {
     current.ledger.closed = std::move(current.ledger.current);
     current.ledger.closed.year = ended;
     current.ledger.current = YearLedger{};
+    // THE NEW YEAR'S LIMIT GRANT, booked in the book it belongs to. Production
+    // made it earlier in this very tick, at its year start, while `current`
+    // was still the closing year's book (core_production/district_limit.h).
+    current.ledger.current.limit_points_granted = current.limit.points;
     AppendChronicleYear(current);
     // The books rotated, and the year that closed rides in `amount` as the
     // kind's contract says. Interrupting on purpose: a fast-forward that

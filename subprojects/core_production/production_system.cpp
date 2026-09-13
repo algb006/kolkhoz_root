@@ -43,6 +43,7 @@
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
+#include "district_limit.h"
 #include "field_haul.h"
 #include "field_work.h"
 #include "herd_system.h"
@@ -189,6 +190,9 @@ class ProductionSystem final : public IProductionSystem {
       // day zero is no year's turn for the daily bookkeeping below. Without
       // this the inherited 250 t lay untouched through the whole first year.
       PlanManure(current);
+      // And the first year's limit, for the same reason: genesis hands over a
+      // world, and the district's plan stands from the first day.
+      GrantFirstLimitYear(config_, current);
     }
     // The day's hauling is settled at its LAST tick, and the hour matters.
     // Labor runs earlier in this same slot, so by now the carriers have
@@ -202,6 +206,8 @@ class ProductionSystem final : public IProductionSystem {
       // The sawmill after the carting, so tonight's logs off the stands are
       // in tomorrow's demand (unit_production.h).
       SettleUnitProduction(config_, current);
+      // The district's carts: what came today goes through the same door.
+      ArriveLimitDeliveries(config_, current);
       // AND ONLY THEN does the day's food go bad. The village has eaten by
       // now — the meal is the needs slot, phase 2, and this is phase 3 of
       // the same tick — and eaten food cannot rot. The other way round and
@@ -334,6 +340,27 @@ class ProductionSystem final : public IProductionSystem {
       current.plan.delivered[index] = taken;
       AddLedgerAmount(current.ledger.current.delivered, resource, taken);
     }
+  }
+
+  /// @brief Was every position delivered IN FULL — 100 %, not the share that
+  /// counts as met? The limit's premium is for full delivery and the met
+  /// share decides failure and trial (boss, parcel 211). A plan of nothing is
+  /// not delivered in full: there was nothing to deliver.
+  bool PlanFullyDelivered(const WorldState& current) const {
+    bool asked = false;
+    for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+      const Grams due = current.plan.due[index];
+      if (due == 0) {
+        continue;
+      }
+      asked = true;
+      const Grams delivered =
+          index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+      if (delivered < due) {
+        return false;
+      }
+    }
+    return asked;
   }
 
   /// @brief Was every position delivered to the share that counts as met?
@@ -542,7 +569,10 @@ class ProductionSystem final : public IProductionSystem {
   /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
     DeliverPlan(current);
+    // Read before JudgePlan hands the next year's plan down over this one.
+    const bool plan_fully_met = PlanFullyDelivered(current);
     JudgePlan(current);
+    TurnLimitYear(config_, current, plan_fully_met);
     GrowOldForest(config_, current);
     // THE CLOSING YEAR'S LARGEST WORKED AREA becomes next spring's figure,
     // and the running maximum is what makes it un-gameable: a single tick's
@@ -645,6 +675,9 @@ class ProductionSystem final : public IProductionSystem {
           break;
         case OrderKind::kMarkFelling:
           Settle(order, MarkFelling(config_, current, order));
+          break;
+        case OrderKind::kOrderLimitLot:
+          Settle(order, OrderLimitLot(config_, current, order));
           break;
         default:
           break;  // not ours: another consumer's, or the events slot's refusal
