@@ -42,7 +42,9 @@ void CollectFieldAlarms(const ProductionConfig& config,
                         std::vector<Alarm>& alarms);
 
 /// @brief Appends kPlanPositionUncovered for every position of the district's
-/// plan that no arable chain grows in one of its three years (alarm_state.h).
+/// plan and every one of the chains' three years in which the arable grows
+/// its crop on fewer hectares than worked arable × area share × plan share
+/// (alarm_state.h; year 0 priced off last year's worked arable).
 /// @param alarms Appended to; never cleared.
 void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,

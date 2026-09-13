@@ -64,15 +64,22 @@ struct HerdPlace {
   bool at_unit = false;
 
   /// What the kolkhoz's stores may still give the herds today, by resource:
-  /// the stock above the seed fund and the plan reserve (resources design §6
-  /// — the fodder claim is rung 3, and "при нехватке первым страдает нижний").
-  /// Spent by every take out of a unit, the herd's own barn included. Null
-  /// means no limit, for a caller that has no ladder to respect.
+  /// the stock above the plan reserve, and above nothing else (boss,
+  /// 2026-09-13). The seed fund is deliberately NOT held back from the herds:
+  /// holding it too was measured and more than doubled the floor's failed
+  /// plan years on two seeds (herd_system.cpp, FeedAllowance, has the
+  /// numbers). Spent by every take out of a unit, the herd's own barn
+  /// included. Null means no limit, for a caller that has no ladder to
+  /// respect. It points at a vector the CALLER owns (RunHerdDay builds it on
+  /// its own stack for one day's walk), so it lives by that caller's scope,
+  /// not by the row-count rule below.
   ResourceAmounts* feed_allowance = nullptr;
 };
 
-/// THE LIFETIME CONTRACT OF THOSE TWO POINTERS, WHICH USED TO NEED NO
-/// WRITING DOWN (MEM-001, 2026-09-07). While this struct was a private type
+/// THE LIFETIME CONTRACT OF THE TWO POINTERS INTO THE WORLD, the pantry and
+/// the unit stock (`feed_allowance` points at caller-owned memory and has its
+/// own rule above). They used to need no writing down (MEM-001,
+/// 2026-09-07). While this struct was a private type
 /// of one .cpp, the only code that could build one was the walk that also
 /// guaranteed its validity, and the guarantee could stay unsaid. Moving the
 /// struct into a header did not change a character of it — and changed who
