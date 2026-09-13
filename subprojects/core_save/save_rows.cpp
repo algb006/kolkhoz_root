@@ -46,7 +46,7 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-06: 164 -> 172, and MEASURED rather than reasoned, as ever. Two
 // floats — the height and build deviations of the figure — and this time the
 // size moved with the field count instead of hiding in padding.
-static_assert(sizeof(ResidentRow) == 172,
+static_assert(sizeof(ResidentRow) == 176,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ResidentRow>() == 38,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
@@ -104,13 +104,20 @@ static_assert(AggregateArity<UnitRow>() == 10,
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(OrderRow) == 64, "OrderRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<OrderRow>() == 18,
+// 2026-09-13: the felling mark — a stand id and a volume — took the order row
+// from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
+// row that carries it with it).
+static_assert(sizeof(OrderRow) == 72, "OrderRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<OrderRow>() == 20,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(WorkAssignment) == 24,
+static_assert(sizeof(WorkAssignment) == 28,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorkAssignment>() == 6,
+static_assert(AggregateArity<WorkAssignment>() == 7,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(TimberStandRow) == 48,
+              "TimberStandRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<TimberStandRow>() == 9,
+              "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
 
 /// Highest valid value of each u8 enum a row carries. The reader refuses
 /// anything above (LoadSource::ReadEnumValue) — see its docs for why.
@@ -164,6 +171,10 @@ constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundK
 // value was removed from a different enum; the assertion is one line and the
 // claim it was missing from is the reason it is worth writing down.
 static_assert(kMaxFundKind < static_cast<std::uint8_t>(FundKind::kFundKindCount));
+constexpr std::uint8_t kMaxTimberStandKind =
+    static_cast<std::uint8_t>(TimberStandKind::kTimberStandKindCount) - 1;
+static_assert(kMaxTimberStandKind <
+              static_cast<std::uint8_t>(TimberStandKind::kTimberStandKindCount));
 constexpr std::uint8_t kMaxOrderStatus =
     static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount) - 1;
 constexpr std::uint8_t kMaxOrderRefusal =
@@ -240,6 +251,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.field);
   WriteEntityId(out, row.work.herd);
   WriteEntityId(out, row.work.unit);
+  WriteEntityId(out, row.work.stand);
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
 
@@ -301,6 +313,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.field = ReadEntityId<FieldId>(in);
   row.work.herd = ReadEntityId<HerdId>(in);
   row.work.unit = ReadEntityId<UnitId>(in);
+  row.work.stand = ReadEntityId<TimberStandId>(in);
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
 
@@ -682,6 +695,10 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.fund));
   sink.WriteDefId(DefKind::kResource, row.resource.value);
   out.WriteU64(static_cast<std::uint64_t>(row.amount));
+
+  // The felling mark (kMarkFelling, 2026-09-13).
+  WriteEntityId(out, row.stand);
+  out.WriteFloat(row.volume_m3);
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -710,6 +727,48 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.fund = static_cast<FundKind>(source.ReadEnumValue(0, kMaxFundKind, "fund kind"));
   row.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   row.amount = static_cast<Grams>(in.ReadU64());
+  row.stand = ReadEntityId<TimberStandId>(in);
+  row.volume_m3 = in.ReadFloat();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// TimberStandRow — timber_state.h (2026-09-13)
+// ---------------------------------------------------------------------------
+//
+// `table_row` goes out raw, not through a dictionary: tables/timber_stands.csv
+// is a baked export of the map, not a registry the player's campaign names
+// things by, and a stand made from row 7 means row 7 of the same bake. A bake
+// that reorders its rows under a save is caught by the loader's range check
+// on the row only — which is why the stand's own kind and loading point are
+// saved beside it and not re-read from the table.
+
+void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU32(row.table_row);
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  WriteVec2(out, row.position);
+  out.WriteFloat(row.stock_m3);
+  out.WriteFloat(row.marked_m3);
+  out.WriteFloat(row.work_days_remaining);
+  out.WriteU64(static_cast<std::uint64_t>(row.load_grams));
+  out.WriteFloat(row.haul_days_remaining);
+  out.WriteFloat(row.haul_days_written);
+}
+
+TimberStandRow ReadTimberStandRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  TimberStandRow row;
+  row.table_row = in.ReadU32();
+  row.kind = static_cast<TimberStandKind>(
+      source.ReadEnumValue(0, kMaxTimberStandKind, "timber stand kind"));
+  row.position = ReadVec2(in);
+  row.stock_m3 = in.ReadFloat();
+  row.marked_m3 = in.ReadFloat();
+  row.work_days_remaining = in.ReadFloat();
+  row.load_grams = static_cast<Grams>(in.ReadU64());
+  row.haul_days_remaining = in.ReadFloat();
+  row.haul_days_written = in.ReadFloat();
   return row;
 }
 

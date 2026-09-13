@@ -244,6 +244,25 @@ enum class OrderKind : std::uint8_t {
   /// core_production.
   kUnsealFund,
 
+  /// MARK `volume_m3` of `stand` for felling (timber design §8a; terrain
+  /// design §7, "разметка, порубка, вывоз"). The crew fells it, the logs lie
+  /// on the stand as a load, and the ordinary carting brings them in. The
+  /// chairman names A VOLUME, because the core keeps a stand's stock and not
+  /// its trees: "these trees" on the layer's map is "this many cubic metres"
+  /// here.
+  ///
+  /// ONE FELLING AT A TIME in the whole village (time design §11, "новую
+  /// порубку назначить нельзя, пока идёт эта"): refused with
+  /// kConflictsWithActive while any stand still has timber marked. Refused
+  /// with kNoSuchSubject for a stand that is not there, and kRuleForbids for a
+  /// volume that is not positive or exceeds the stand's unmarked stock.
+  ///
+  /// CANCELLING IT BEFORE THE CREW STARTS takes the mark off whole (terrain
+  /// design §7, "отменил — значит передумал целиком"); once any of it is
+  /// felled the order is past cancelling. Settled in the step it is read.
+  /// Consumer: core_production.
+  kMarkFelling,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -541,6 +560,13 @@ struct OrderRow {
   /// утечка", and a door that opens by itself to whatever width is wanted is
   /// the leak that sentence refuses.
   Grams amount = 0;
+
+  /// kMarkFelling: the stand to fell on.
+  TimberStandId stand;
+
+  /// kMarkFelling: how much of the stand's stock to fell, cubic metres. The
+  /// chairman's figure, for the same reason `amount` is.
+  float volume_m3 = 0.0F;
 };
 
 /// @brief The order book type used by WorldState.

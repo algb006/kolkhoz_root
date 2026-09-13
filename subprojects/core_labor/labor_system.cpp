@@ -322,6 +322,7 @@ class LaborSystem final : public ILaborSystem {
           work.field = job.field;
           work.herd = job.herd;
           work.unit = job.unit;
+          work.stand = job.stand;
         }
       }
     }

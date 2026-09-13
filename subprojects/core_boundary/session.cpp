@@ -47,6 +47,7 @@ bool ShapeIsValid(const OrderRow& order) {
   const bool has_unit = order.unit.value != kInvalidEntityIdValue;
   const bool has_field = order.field.value != kInvalidEntityIdValue;
   const bool has_herd = order.herd.value != kInvalidEntityIdValue;
+  const bool has_stand = order.stand.value != kInvalidEntityIdValue;
   switch (order.kind) {
     case OrderKind::kNone:
     // The count is not a kind. It is refused beside kNone and for the same
@@ -91,7 +92,18 @@ bool ShapeIsValid(const OrderRow& order) {
       if (order.work == WorkKind::kHerdCare) {
         return has_herd;
       }
-      return order.work == WorkKind::kConstruction ? has_unit : has_field;
+      if (order.work == WorkKind::kConstruction) {
+        return has_unit;
+      }
+      // Felling names the STAND (2026-09-13), and carting names whichever
+      // holder the load lies on — a field or a stand, exactly one.
+      if (order.work == WorkKind::kFelling) {
+        return has_stand;
+      }
+      if (order.work == WorkKind::kHauling) {
+        return has_field != has_stand;
+      }
+      return has_field;
     case OrderKind::kReleaseWork:
       return has_resident;
     case OrderKind::kPauseUnit:
@@ -129,6 +141,12 @@ bool ShapeIsValid(const OrderRow& order) {
       // spot is construction's rule (task A2), and the start layout itself
       // still runs negative until the map editor's export lands.
       return order.unit_type.value != kInvalidDefIdValue;
+    case OrderKind::kMarkFelling:
+      // A stand and a volume above nothing: the chairman names a figure, as
+      // with an unsealing. Whether the stand holds that much unmarked timber,
+      // and whether another felling is still going, change with the day —
+      // the consumer's verdict (order_state.h).
+      return has_stand && order.volume_m3 > 0.0F;
   }
   return false;
 }

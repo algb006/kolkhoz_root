@@ -30,6 +30,11 @@ bool TargetExists(const WorldState& world, const OrderRow& order) {
     // whether the order stands was reading the wrong book.
     return FindRow(world.units, order.unit) != kNoRow;
   }
+  // A stand for felling, and for carting the logs lying on one (2026-09-13).
+  if (order.work == WorkKind::kFelling ||
+      (order.work == WorkKind::kHauling && order.stand.value != kInvalidEntityIdValue)) {
+    return FindRow(world.stands, order.stand) != kNoRow;
+  }
   return FindRow(world.fields, order.field) != kNoRow;
 }
 
@@ -127,6 +132,7 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
   switch (order.work) {
     case WorkKind::kHerdCare:
     case WorkKind::kConstruction:
+    case WorkKind::kFelling:
     case WorkKind::kNone:
       return OrderRefusal::kNone;  // no field named; nothing to ask about
     case WorkKind::kPlowing:
@@ -144,6 +150,9 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     // lying there to carry (field_work.cpp, DeliverHarvest). "Carry from the
     // meadow" is not empty today; it is empty for ever.
     case WorkKind::kHauling:
+      if (order.stand.value != kInvalidEntityIdValue) {
+        return OrderRefusal::kNone;  // logs on a stand: no field named
+      }
       break;
     // Not a kind, and it names no land: handled beside the kinds that name
     // none, so this switch keeps no default and a NEW work kind stays a
@@ -331,6 +340,7 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     work.field = order.field;
     work.herd = order.herd;
     work.unit = order.unit;
+    work.stand = order.stand;
   }
 }
 

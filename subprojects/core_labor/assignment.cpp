@@ -54,15 +54,22 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
     // window is what says which (task A4).
     case WorkKind::kHauling:
       return 6;
+    // Felling comes last of the real work (2026-09-13). It has no window —
+    // "круглый год" (timber design §8a) — so it only ever meets the other
+    // windowless kinds here, and among them the carting of what is already
+    // down goes first: a felled log lying in the grove builds nothing, and
+    // felling more while it lies there only lengthens the heap.
+    case WorkKind::kFelling:
+      return 7;
     // Not a kind of work, and neither is the terminator. Handled beside
     // kNone so this switch keeps no default and a genuinely new kind stays
     // a build error here — which is exactly where a new kind must declare
     // where it stands in the queue.
     case WorkKind::kNone:
     case WorkKind::kWorkKindCount:
-      return 7;
+      return 8;
   }
-  return 6;
+  return 8;
 }
 
 /// The stable identity of a job's target, for deterministic tie-breaks.
@@ -72,6 +79,11 @@ constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
   }
   if (job.kind == WorkKind::kConstruction) {
     return job.unit.value;
+  }
+  // A stand's id and a field's may be the same number; a tie there falls to
+  // the job's place in the list, which is deterministic (the comparator).
+  if (job.stand.value != kInvalidEntityIdValue) {
+    return job.stand.value;
   }
   return job.field.value;
 }

@@ -40,8 +40,12 @@ struct AssignmentJob {
 
   UnitId unit;  ///< Valid for kConstruction: the site. Copied into WorkAssignment.
 
+  /// Valid for kFelling, and for kHauling of logs lying on a stand. Copied
+  /// into WorkAssignment.
+  TimberStandId stand;
+
   /// At most this many workers on this job at once; 0 = no cap beyond the
-  /// demand ceiling below. Only construction sites carry one — the build
+  /// demand ceiling below. Construction sites carry one — the build
   /// class's brigade (unit_levels.csv max_crew): without it a 250-day site
   /// takes every free hand in the village and "a couple of weeks for a
   /// brigade" becomes three days (construction design §8).

@@ -61,7 +61,7 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work);
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work);
 
 /// @brief Where the work of this assignment is done: the field's centre, the
-///        site, or the unit the herd stands at.
+///        site, the unit the herd stands at, or a timber stand's loading point.
 /// @return false when the target is gone — the same case WorkSeamOf answers
 ///         with nullptr, and for the same reason.
 bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& place);

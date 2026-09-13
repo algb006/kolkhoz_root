@@ -23,6 +23,23 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // moved on.
     return row == kNoRow ? nullptr : &world.units.rows[row].construction.labor_days_remaining;
   }
+  // A STAND: felling drains the felling seam while timber is marked, and
+  // carting drains the stand's own carting seam while logs lie there — the
+  // same two rules a field follows, on the stand's row (2026-09-13).
+  if (work.stand.value != kInvalidEntityIdValue) {
+    const std::uint32_t stand_row = FindRow(world.stands, work.stand);
+    if (stand_row == kNoRow) {
+      return nullptr;
+    }
+    const TimberStandRow& stand = world.stands.rows[stand_row];
+    if (work.kind == WorkKind::kFelling) {
+      return stand.marked_m3 > 0.0F ? &stand.work_days_remaining : nullptr;
+    }
+    if (work.kind == WorkKind::kHauling) {
+      return stand.load_grams > 0 ? &stand.haul_days_remaining : nullptr;
+    }
+    return nullptr;
+  }
   const std::uint32_t row = FindRow(world.fields, work.field);
   if (row == kNoRow) {
     return nullptr;
@@ -60,6 +77,14 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
       return false;
     }
     place = world.units.rows[row].position;
+    return true;
+  }
+  if (work.stand.value != kInvalidEntityIdValue) {
+    const std::uint32_t stand_row = FindRow(world.stands, work.stand);
+    if (stand_row == kNoRow) {
+      return false;
+    }
+    place = world.stands.rows[stand_row].position;
     return true;
   }
   const std::uint32_t row = FindRow(world.fields, work.field);

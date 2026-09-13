@@ -214,6 +214,11 @@ struct LaborConfig {
       // timber (transport design §2: "a heavy load over a long shoulder
       // piles up fatigue").
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
+      // Felling (2026-09-13): ordinary grade and ORDINARY drain, because
+      // decision 107 names ploughing and hand reaping as the heavy kinds and
+      // nothing names the axe. An open question to boss, not a finding; a
+      // `felling` row in labor.csv overrides it without a rebuild.
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
   }};
 
   // -- the day (labor.csv; time design §6-§7) ------------------------------

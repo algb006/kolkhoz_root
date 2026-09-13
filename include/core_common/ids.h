@@ -64,6 +64,8 @@ struct HerdIdTag {};
 
 struct OrderIdTag {};
 
+struct TimberStandIdTag {};
+
 /// @brief One person. The central entity of the game (stage 3 of the plan).
 using ResidentId = EntityId<ResidentIdTag>;
 
@@ -84,6 +86,10 @@ using HerdId = EntityId<HerdIdTag>;
 /// core_common/order_state.h). Issued by the step engine alone, so the
 /// boundary can name the id the row will carry before the row exists.
 using OrderId = EntityId<OrderIdTag>;
+
+/// @brief One place timber can be taken from: a grove, a shelterbelt, or a
+/// square of old forest within a team's reach (core_common/timber_state.h).
+using TimberStandId = EntityId<TimberStandIdTag>;
 
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers

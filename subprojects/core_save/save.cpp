@@ -59,6 +59,7 @@ constexpr const char* kSectionFields = "fields";
 constexpr const char* kSectionUnits = "units";
 constexpr const char* kSectionHerds = "herds";
 constexpr const char* kSectionOrders = "orders";
+constexpr const char* kSectionStands = "stands";
 constexpr const char* kSectionLedger = "ledger";
 constexpr const char* kSectionStaged = "staged";
 
@@ -317,6 +318,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.orders, WriteOrderRow);
   CloseSection(out, length_offset);
 
+  // The timber stands (timber design §8a, save format 29).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.stands, WriteTimberStandRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -436,7 +442,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionFields, &loaded.fields, ReadFieldRow) ||
       !read_table_section(kSectionUnits, &loaded.units, ReadUnitRow) ||
       !read_table_section(kSectionHerds, &loaded.herds, ReadHerdRow) ||
-      !read_table_section(kSectionOrders, &loaded.orders, ReadOrderRow)) {
+      !read_table_section(kSectionOrders, &loaded.orders, ReadOrderRow) ||
+      !read_table_section(kSectionStands, &loaded.stands, ReadTimberStandRow)) {
     return false;
   }
 

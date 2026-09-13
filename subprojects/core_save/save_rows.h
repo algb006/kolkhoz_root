@@ -22,6 +22,7 @@
 #include "core_common/land_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
+#include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
 #include "save_dictionary.h"
 
@@ -44,6 +45,9 @@ HerdRow ReadHerdRow(LoadSource& source);
 
 void WriteOrderRow(SaveSink& sink, const OrderRow& row);
 OrderRow ReadOrderRow(LoadSource& source);
+
+void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row);
+TimberStandRow ReadTimberStandRow(LoadSource& source);
 
 }  // namespace core
 

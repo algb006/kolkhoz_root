@@ -41,6 +41,7 @@
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/resident_state.h"
+#include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
 
 namespace core {
@@ -614,6 +615,11 @@ struct WorldState {
   /// subsystem whose rules apply. Appended only by the step engine before
   /// phase 1; SAVED — a waiting order survives a load. order_state.h.
   OrderTable orders;
+
+  /// Every place timber can be taken from (timber design §8a, 2026-09-13):
+  /// groves, shelterbelts and the old-forest squares within a team's reach.
+  /// Made at genesis from tables/timber_stands.csv; SAVED. timber_state.h.
+  TimberStandTable stands;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

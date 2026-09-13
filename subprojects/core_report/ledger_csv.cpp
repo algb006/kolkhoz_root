@@ -35,8 +35,15 @@ constexpr const char* kKilogramSuffix = "_kg";
 
 /// The work kinds that carry a column: everything but kNone, which is the
 /// absence of an assignment and delivers nothing by definition.
-constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {
-    "none", "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction", "hauling"};
+constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {"none",
+                                                                    "plowing",
+                                                                    "harrowing",
+                                                                    "sowing",
+                                                                    "harvest",
+                                                                    "herd_care",
+                                                                    "construction",
+                                                                    "hauling",
+                                                                    "felling"};
 
 // EVERY CELL HAS A NAME, which is not the same question as "are there as
 // many cells" (host, 2026-09-04). The array takes its length from the enum

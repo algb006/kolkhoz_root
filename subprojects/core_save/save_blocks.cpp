@@ -84,7 +84,8 @@ static_assert(AggregateArity<PlanState>() == 8,
 //
 // And raise VERSION_SAVE with it, because a member nobody writes is a save
 // that silently forgets it.
-static_assert(AggregateArity<WorldState>() == 18,
+// 2026-09-13: nineteen — the timber stands, a row table in save_rows.cpp.
+static_assert(AggregateArity<WorldState>() == 19,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

@@ -67,6 +67,12 @@ enum class WorkKind : std::uint8_t {
   /// inventory per household, which is the micromanagement the design avoids.
   kHauling,
 
+  /// Felling what the chairman marked on a timber stand (timber design §8a,
+  /// 2026-09-13): any adult, and only as many at once as there are tools in
+  /// the stores (`timber_tools_per_feller` each, not spent — a STUB of wear).
+  /// All the year round, no window. Target: WorkAssignment::stand.
+  kFelling,
+
   /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
   /// appended BEFORE it.
   kWorkKindCount,
@@ -116,10 +122,11 @@ struct WorkforceCount {
 
 /// @brief The assignment block of one resident. Plain data.
 /// Exactly one target id is valid, matching the kind: a field for the four
-/// field kinds, a herd for kHerdCare, a unit for kConstruction, none for
-/// kNone. Travel time and eligibility are NOT stored — they are pure
-/// functions of positions and state (state model law: derived values are
-/// recomputed, never cached in state).
+/// field kinds, a herd for kHerdCare, a unit for kConstruction, a stand for
+/// kFelling, none for kNone. kHauling has TWO possible targets — a field or a
+/// stand, whichever the load lies on — and exactly one of them is valid. Travel time and
+/// eligibility are NOT stored — they are pure functions of positions and state (state model law:
+/// derived values are recomputed, never cached in state).
 struct WorkAssignment {
   WorkKind kind = WorkKind::kNone;
 
@@ -128,6 +135,10 @@ struct WorkAssignment {
   HerdId herd;  ///< Valid for kHerdCare; invalid otherwise.
 
   UnitId unit;  ///< Valid for kConstruction: the site; invalid otherwise.
+
+  /// Valid for kFelling, and for kHauling of logs lying on a stand; invalid
+  /// otherwise (timber_state.h).
+  TimberStandId stand;
 
   /// Norm-days of output delivered since the day started, in game man-days
   /// of the assigned kind. Accumulated hourly while working; converted into

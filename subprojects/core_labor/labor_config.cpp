@@ -158,9 +158,16 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
   // stand today: labor.csv is generated from the design db and carries
   // neither row. The keys are listed so that the day the db grows them the
   // core reads them without a rebuild — and so that the reader is not left
-  // wondering why two of the eight kinds are missing.
-  constexpr std::array<std::string_view, 7> kKeys = {
-      "plowing", "harrowing", "sowing", "harvest", "herd_care", "construction", "hauling"};
+  // wondering why two of the eight kinds are missing. Felling joined on
+  // 2026-09-13 the same way: no row yet, the compiled default until one lands.
+  constexpr std::array<std::string_view, kWorkKindCount - 1> kKeys = {"plowing",
+                                                                      "harrowing",
+                                                                      "sowing",
+                                                                      "harvest",
+                                                                      "herd_care",
+                                                                      "construction",
+                                                                      "hauling",
+                                                                      "felling"};
   const std::uint32_t rate_column = table.FindColumn("trudodni_rate");
   const std::uint32_t drain_column = table.FindColumn("rest_drain_per_norm_day");
   for (std::uint32_t index = 0; index < kKeys.size(); ++index) {
