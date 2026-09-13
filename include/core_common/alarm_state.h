@@ -240,18 +240,27 @@ enum class AlarmKind : std::uint8_t {
 
   // -- the district: core_production ---------------------------------------------
 
-  /// A position of the district's plan that NO FIELD will grow in one of the
-  /// three years the rotation chains lay out (boss's decision of 2026-09-13).
-  /// Subject: `resource` — the position's produce; `amount` = the year it is
-  /// missing in, counted from the current one: 0 this year, 1 next, 2 the one
-  /// after.
+  /// A position of the district's plan that the fields will NOT GROW ON ENOUGH
+  /// HECTARES in one of the three years the rotation chains lay out (boss's
+  /// decisions of 2026-09-13). Subject: `resource` — the position's produce;
+  /// `amount` = the year it is short in, counted from the current one: 0 this
+  /// year, 1 next, 2 the one after. Not grams.
   ///
-  /// A CHECK OF PRESENCE, NOT A FORECAST OF QUANTITY. How much will fall short
-  /// is the accountant's forecast, and Epoch I has no specialists at all
-  /// (society design §1a); whether any field sows the crop at all is visible
-  /// from the chains and the positions, which the core already holds. The
-  /// same shape as the seed alarm the registry settled: "аларм сразу при
-  /// назначении — закрыть до посевной, а не узнать весной".
+  /// THE DISTRICT'S RATE READ BACKWARDS, NOT A FORECAST. The position is
+  /// yield × worked arable × area share × plan share, so the hectares that pay
+  /// it at a normal yield are worked arable × area share × plan share. The
+  /// alarm stands while the chains grow the crop on fewer hectares than that
+  /// in the year — year 0 priced off last year's worked arable, years 1 and 2
+  /// off today's — and goes out when they grow at least that. How much this
+  /// field's fertility will fall short is not in it: that is the accountant's
+  /// forecast, Epoch I has no specialists (society design §1a), and fertility
+  /// is visible on the ground. The same shape as the seed alarm the registry
+  /// settled: "аларм сразу при назначении — закрыть до посевной, а не узнать
+  /// весной".
+  ///
+  /// IT WAS A CHECK OF PRESENCE until the same day, and presence lied: on seed
+  /// 1933 a 3.5 ha field closed a missing potato against 4.63 ha owed, the
+  /// alarm went out, and the plan failed anyway.
   ///
   /// WHY IT EXISTS: measured on seeds 1929 and 1936, the start layout's chains
   /// leave one year in three without oats while the district asks for oats
@@ -259,8 +268,7 @@ enum class AlarmKind : std::uint8_t {
   /// before the verdict. A failure no signal foretold is a trap; this makes
   /// it a decision — the chairman sees it on the first day and the rotation
   /// is his lever. It stands from the first day of a world whose inherited
-  /// layout has the gap and goes out when any field's chain grows the crop
-  /// in that year.
+  /// layout has the gap.
   kPlanPositionUncovered,
 
   // Appended by later tasks and phases: children out of school, sewage,
