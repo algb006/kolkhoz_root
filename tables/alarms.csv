@@ -16,3 +16,4 @@ site_unreachable,unit,8
 site_without_crew,unit,9
 site_without_materials,unit,10
 store_full,unit,11
+plan_position_uncovered,resource,12
