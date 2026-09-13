@@ -3179,6 +3179,17 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState turned = before_turn;
     turned.calendar.tick = 48U * core::kTicksPerDay;
     core::RefreshCalendarCaches(turned.calendar);
+    // A FROZEN JANUARY, AND IT IS THE POINT OF THE FIXTURE RATHER THAN
+    // SCENERY. What is asserted below is that THE TURN does not spend the
+    // mark — so the turn must be the only thing that could have. Since the
+    // plough gate was separated from the sowing gate (2026-09-13,
+    // field_work.h) a field opens work on the thaw, and this fixture left the
+    // temperature at its default of exactly 0.0 °C: warm enough to break
+    // ground. The field then opened its ploughing in this very call and spent
+    // the mark legitimately, and the assertion went red while the rule it
+    // guards was intact. Below zero, nothing but the turn can move.
+    before_turn.weather.air_temperature_celsius = -12.0F;
+    turned.weather.air_temperature_celsius = -12.0F;
     system->RunProductionDecisions(before_turn, turned);
     const core::FieldRow& after_turn = turned.fields.rows[0];
     failures += Expect(after_turn.rotation_year0.value == oat.value,

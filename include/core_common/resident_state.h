@@ -165,6 +165,24 @@ struct ResidentRow {
   Metric self_education = 0.0F;  ///< What was gained beyond the diploma, 0-100.
 
   // -- professionalism: three skills, schooled and earned (education §11) --
+  //
+  // STUB, ALL SIX, AND THE LABOUR MODEL ALREADY LEANS ON THEM. Nothing in the
+  // core writes any of them: they are zero here, carried through a save and
+  // read back, and `core_save/save_rows.cpp` is their only other mention —
+  // except that `core_labor/labor_day.cpp` READS them, blending earned and
+  // schooled into what a day of work is worth. So productivity is computed
+  // from six constants, and the man who has ploughed for thirty years is
+  // exactly as good at it as the boy beside him.
+  //
+  // THE MARKER IS HERE FOR THE REASON THE ONE ON attitude_to_chairman IS:
+  // unmarked, in a file where stubs are marked, these read as working, and a
+  // script asking "who is the best agronomist" gets a constant back and no
+  // warning (host, 2026-09-13, who found them by listing every seam field the
+  // core never writes). The difference is that this pair of readers makes them
+  // look alive from the inside too — there IS an arithmetic, and it runs.
+  //
+  // What moves them is not decided here: skills belong to the education
+  // mechanics, which are a later phase.
   Metric skill_agriculture_schooled = 0.0F;
 
   Metric skill_agriculture_earned = 0.0F;
@@ -199,7 +217,30 @@ struct ResidentRow {
 
   std::uint16_t offense_count = 0;  ///< Recorded offenses; the village remembers.
 
-  Metric attitude_to_chairman = 50.0F;  ///< Personal, per resident (metrics §4).
+  /// How this person regards the chairman, 0..100 (metrics §4).
+  ///
+  /// STUB, AND IT NEVER MOVES: nothing in the core writes it. It is set to 50
+  /// here, carried through a save and read back, and that is the whole of its
+  /// life — `core_save/save_rows.cpp` is its only other mention anywhere.
+  ///
+  /// THE MARKER IS HERE BECAUSE ITS ABSENCE COST SOMEBODY A DAY. The line used
+  /// to read "Personal, per resident (metrics §4)" with no STUB while the
+  /// fields around it carried one, and in a file where stubs ARE marked an
+  /// unmarked field reads as working — fairly. host wrote a real Epoch I scene
+  /// whose entry condition asks whether an adult trusts the chairman enough to
+  /// come of his own accord, loaded it clean, and it did not fire once in 120
+  /// days: the best attitude in the whole village, on any day, is exactly 50.0
+  /// (host, 2026-09-13).
+  ///
+  /// A comment describing the INTENT as the ACTUALITY is the mirror of the
+  /// project's own rule that a note calling live work absent reads as leave to
+  /// skip it. This direction is the dearer of the two — a note calling absent
+  /// work live reads as leave to BUILD ON IT, and somebody did.
+  ///
+  /// What it becomes is not decided here: whether attitude moves in Epoch I,
+  /// and on what, is boss's open question №23. Until he answers, a reader who
+  /// needs a chairman's standing has nothing to read.
+  Metric attitude_to_chairman = 50.0F;
 
   std::uint8_t has_passport = 0;  ///< 0/1. Kolkhozniks have none until Epoch III.
 

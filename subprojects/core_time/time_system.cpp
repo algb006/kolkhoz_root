@@ -573,6 +573,23 @@ class TimeSystem final : public ITimeSystem {
     return DayForecast{.phenomenon = weather.phenomenon, .wind = weather.wind};
   }
 
+  std::uint32_t GrowingSeasonLastDay() const override {
+    // WALKED FORWARD FROM MIDSUMMER, because the mean crosses freezing TWICE
+    // in a year and only the autumn crossing is the one being asked about.
+    // Starting the walk at day 0 would find the spring thaw and answer with a
+    // day in March.
+    constexpr std::uint32_t kMidsummer = static_cast<std::uint32_t>(kSeasonCenterDay[2]);
+    for (std::uint32_t day = kMidsummer; day < kDaysPerYear; ++day) {
+      if (SeasonalMeanTemperature(seasons_, day) <= 0.0F) {
+        return day > 0 ? day - 1U : 0U;
+      }
+    }
+    // A climate whose autumn never reaches freezing: the year itself is the
+    // limit. Not a fallback for a broken table — a legitimate warm world, and
+    // the answer it deserves.
+    return kDaysPerYear - 1U;
+  }
+
  private:
   SeasonTable seasons_;
   TimeAndWeatherSlot phase_;

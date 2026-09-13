@@ -657,9 +657,27 @@ int main(int argc, char** argv) {
             ? 3U
             : static_cast<std::uint32_t>(std::strtoul(
                   std::string(campaign->CellText(trial_row, value_col)).c_str(), nullptr, 10));
-    failures += run::Expect(worst_failed_run < trial_threshold,
-                            "the district's plan is failable but not fatal on a run nobody plays "
-                            "badly: fewer failures in a row than the trial condition");
+    // THE TRIAL GATE MOVED OUT OF HERE ON 2026-09-13, and the reason is what
+    // this run turned out to BE rather than anything it does wrong.
+    //
+    // It asserted "the plan is failable but not fatal on a run nobody plays
+    // badly". Nobody plays this run badly — nobody plays it AT ALL: not one
+    // policy in the project issues kSetRotation, so thirty campaign years work
+    // exactly the layout genesis laid down, never raising the derelict ground
+    // and never releasing a field. That is a FLOOR, and a village nobody
+    // steers SHOULD be taken to court; the sentence above quietly held it to a
+    // chairman's standard (boss's decision, 2026-09-13).
+    //
+    // The canon now has its own instrument — plan_trial's "obvious chairman"
+    // arm, one rule and a real order book — and the assertion lives there,
+    // beside the floor's opposite: the floor is asserted to REACH the trial
+    // and the canon to avoid it. Two homes for one claim is what this project
+    // spends its days removing, so this one keeps the half that is still its
+    // own and prints the other.
+    std::cout << "gate: the longest run of failed plan years was " << worst_failed_run
+              << " against a trial at " << trial_threshold
+              << " — PRINTED, NOT ASSERTED: this run is the floor (no land decision in thirty "
+                 "years), and what a chairman may suffer is gated in plan_trial\n";
     failures += run::Expect(plan_failed_years > 0,
                             "and it IS failable — a plan met in all thirty years is a plan the "
                             "weather cannot touch, which is the defect this one replaced");

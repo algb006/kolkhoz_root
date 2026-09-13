@@ -121,14 +121,75 @@ void TrySowWinter(const ProductionConfig& config,
                   std::uint8_t month,
                   float temperature);
 
-/// @brief Opens the ploughing for this year's slot when the spring window
-///        and the temperature both allow it.
+/// @brief How long this crop takes to ripen, in game days.
 ///
-/// The field year opens here: the sowing window and the temperature say
-/// "go", and the field enters plowing. What follows — harrowing, sowing —
-/// is paced by the crew, so the seed may well go into the ground after
-/// the window has closed. That is the point of the seam: the window is
-/// when the work STARTS, the crew decides when it ends.
+/// THE NUMBER IS ALREADY CHOSEN, AND IT IS CHOSEN TWICE OVER BY THE WINDOWS:
+/// from the LAST day the crop may be sown to the FIRST day it may be reaped.
+/// Oats 13, spring wheat and barley 9, potato 13, cabbage 17 — boss's decision
+/// of 2026-09-13.
+///
+/// WHY NOT A COLUMN IN crops.csv. Real growing seasons give figures of the
+/// same order but in places LARGER than this gap, and a larger one would mean
+/// a sowing on the last legal day never ripens — a new number contradicting
+/// windows that have already been balanced. The gap does not invent the
+/// duration; it NAMES what the windows already rest on.
+///
+/// @return 0 for a crop that is not reaped in the year it is sown — a winter
+///         crop or a perennial — where the gap runs backwards through the year
+///         and means nothing. Callers treat 0 as "ripening does not gate this".
+std::int32_t RipenDays(const ProductionConfig& config, CropId crop);
+
+/// @brief Whether the crop standing on this field has ripened by `day`.
+///
+/// False for a field that carries no sowing day (kNeverSownDay): ripeness is
+/// measured FROM the sowing, and a field nobody sowed cannot be judged by it.
+/// True whenever RipenDays is 0 — a winter crop and a perennial are ruled by
+/// their windows alone, as they always were.
+bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDay day);
+
+/// @brief Whether a crop's seed may START going into the ground today: its
+///        window has OPENED and the ground is warm enough for it.
+///
+/// THE FRONT EDGE ONLY, and `sow_to_month` is deliberately not asked. The back
+/// edge belongs to the crew: a sowing that began inside its window finishes
+/// when the hands finish it, and a field that reached the harrow late is sown
+/// late rather than not at all. Closing this on the back edge too was measured
+/// on 2026-09-13 and costs the canonical village its first harvest — 10.5
+/// hectares sown instead of 66.5 — and puts it on trial in the third year.
+///
+/// ONE HOME FOR THE CONDITION, with one asker today (AdvanceFinishedPhases,
+/// where a harrowed field moves into the sowing) and a second expected the day
+/// a late sowing starts costing yield instead of nothing. A test spelt out
+/// twice is how one of the two eventually forgets the temperature.
+///
+/// @param crop The crop being sown; an invalid id is a bare fallow and never
+///        sows, so this answers false for it.
+/// @param day_of_year Today within the year, 0..kDaysPerYear-1. The back edge
+///        is measured in DAYS and not months: "sown today + RipenDays" has to
+///        land inside the reaping window, and a month is too coarse to say so.
+bool SowingMayOpen(const ProductionConfig& config,
+                   CropId crop,
+                   std::uint8_t month,
+                   std::uint32_t day_of_year,
+                   float temperature);
+
+/// @brief Opens the ploughing for this year's slot as soon as the GROUND can
+///        be worked — not when the sowing window opens.
+///
+/// THE TWO CONDITIONS ARE SEPARATE, and they were one until 2026-09-13.
+/// "Пахать можно, как только земля открыта. Сеять — только в свой
+/// агрономический срок" (boss's decision): a sowing window is an agronomic
+/// fact about SEED, and using it to gate the plough made it a gate on field
+/// work as such. Oats name one month — four game days — and ploughing,
+/// harrowing and sowing together are 2.29 game man-days a hectare, so the
+/// spring could not fit however many hands the village had. Measured before
+/// the repair: the sowing overran its window in ALL TWELVE years walked, the
+/// twelfth with 247 able-bodied residents and 46 horses, and 49.5 hectares
+/// stood untouched through the first twelve days of that year
+/// (tests/run/sowing_window).
+///
+/// So the field enters the plough on the thaw and waits, harrowed, for its own
+/// window; the sowing's condition is asked where the sowing opens.
 void TrySow(const ProductionConfig& config,
             WorldState& current,
             FieldRow& field,

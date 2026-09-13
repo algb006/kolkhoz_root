@@ -41,6 +41,26 @@ enum class LayoutKind : std::uint8_t {
   kField,         ///< Arable land, with a three-year rotation.
   kReserveField,  ///< Arable land held back to be built on (start canon §2).
   kMeadow,        ///< Hay meadow; upland or floodplain.
+
+  /// A ROAD, AND THE CORE PLACES NOTHING FOR IT. Roads arrived in the start
+  /// layout on 2026-09-13 carrying `start_wear_pct`, because the human's
+  /// ruling is that a road's WEAR is its relief — the ruts and puddles the
+  /// cart rides over — and the graphics layer reads that number to build the
+  /// surface. The geometry stays in db/map.db where it has always been.
+  ///
+  /// The core has no road entity, no traffic and no road repair, so genesis
+  /// skips these rows: they exist here so that the TABLE PARSES, and the
+  /// wear reaches the layer through the same file as everything else.
+  ///
+  /// WITHOUT THIS VALUE THE WHOLE TABLE IS REFUSED — an unrecognised kind is
+  /// a hard error by design, and rightly — so the fifteen road rows would have
+  /// stopped every run and the game itself from starting. Found before the
+  /// export landed, because the export was announced first (root rules §6а).
+  ///
+  /// When traffic wears a road and a repair mends it, this stops being a
+  /// skipped row and becomes a subsystem. That is a later phase and boss's
+  /// order to give.
+  kRoad,
 };
 
 /// @brief One row of start_layout.csv, checked and converted.

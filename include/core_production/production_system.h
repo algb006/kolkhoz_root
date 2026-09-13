@@ -141,8 +141,20 @@ class IProductionSystem {
 ///        tables, on the documented defaults (core_tables/stub_tables.h).
 ///        There is no default value: a caller that has not thought about
 ///        it cannot be served a different world in silence.
-std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables,
-                                                          StubTables stubs);
+/// @param growing_season_last_day The last day of the year a standing crop is
+///        safe from the snow (ITimeSystem::GrowingSeasonLastDay). Production
+///        refuses a sowing that cannot ripen before it, so the seed stays in
+///        the fund instead of going into ground that will freeze.
+///
+///        PASSED IN RATHER THAN COMPUTED, because the seasonal curve belongs
+///        to core_time and a second copy of its interpolation here is the
+///        drift this project keeps finding. The default is the last day of the
+///        year — the value that changes nothing — so a caller with no time
+///        system (unit fixtures) behaves exactly as before.
+std::unique_ptr<IProductionSystem> CreateProductionSystem(
+    const ITableSet& tables,
+    StubTables stubs,
+    std::uint32_t growing_season_last_day = kDaysPerYear - 1U);
 
 }  // namespace core
 

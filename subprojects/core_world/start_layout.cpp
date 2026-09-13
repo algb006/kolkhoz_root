@@ -148,12 +148,14 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
       entry.kind = LayoutKind::kReserveField;
     } else if (kind == "meadow") {
       entry.kind = LayoutKind::kMeadow;
+    } else if (kind == "road") {
+      entry.kind = LayoutKind::kRoad;
     } else {
       error = Refuse(entry.key,
                      row,
                      "kind",
                      "'" + std::string(kind) + "' is not a layout kind (unit, field, " +
-                         "reserve_field, meadow)");
+                         "reserve_field, meadow, road)");
       return false;
     }
 
@@ -221,15 +223,25 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
     // stop. Said as a refusal rather than ignored, because ignoring it is
     // what "the core has no rule for that cell" looked like every previous
     // time it cost a day.
-    if (entry.kind != LayoutKind::kUnit) {
-      if (wear >= 0.0F) {
-        error = Refuse(entry.key, row, "start_wear_pct", "only a unit row can be worn");
-        return false;
-      }
-      if (entry.start_dead) {
-        error = Refuse(entry.key, row, "start_dead", "only a unit row can start dead");
-        return false;
-      }
+    // A ROAD IS WORN, AND ITS WEAR IS THE ONE THING ITS ROW CARRIES. The
+    // human's ruling of 2026-09-13: "этот рельеф дороги должен остаться дальше
+    // в игре, и он у нас определяется износом дорог" — the ruts and the
+    // puddles the cart rides over ARE the wear number, and the graphics layer
+    // builds the surface from it (roads design §4). So the road joins the unit
+    // as a row that may be worn, while a field and a meadow still may not.
+    // AND THE TWO COLUMNS ARE ASKED SEPARATELY, which the first draft of this
+    // repair got wrong: it widened one test and let the road slip past BOTH,
+    // so a road could have started dead and nobody would have said a word.
+    // Being worn and being dead are different claims, and a road can only make
+    // the first — there is nothing there to stop working.
+    const bool may_be_worn = entry.kind == LayoutKind::kUnit || entry.kind == LayoutKind::kRoad;
+    if (!may_be_worn && wear >= 0.0F) {
+      error = Refuse(entry.key, row, "start_wear_pct", "only a unit or a road row can be worn");
+      return false;
+    }
+    if (entry.kind != LayoutKind::kUnit && entry.start_dead) {
+      error = Refuse(entry.key, row, "start_dead", "only a unit row can start dead");
+      return false;
     }
 
     if (entry.kind == LayoutKind::kUnit) {

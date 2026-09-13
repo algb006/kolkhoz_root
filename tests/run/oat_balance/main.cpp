@@ -146,6 +146,8 @@ int main(int argc, char** argv) {
   std::uint16_t last_closed = 0;
   double worst_residual_tonnes = 0.0;
   bool cycle_ever_above_one = false;
+  /// Years whose sowing was large enough for the ratio to mean anything.
+  std::uint32_t evidence_years = 0;
   bool ever_sown = false;
 
   for (std::uint32_t year = 1; year <= kYears; ++year) {
@@ -210,7 +212,24 @@ int main(int argc, char** argv) {
     const double cycle = sown_last_year > 0
                              ? static_cast<double>(harvest) / static_cast<double>(sown_last_year)
                              : 0.0;
-    cycle_ever_above_one = cycle_ever_above_one || cycle > 1.0;
+    // A FLOOR UNDER THE DENOMINATOR, and the ratio is worth nothing without
+    // one (boss, 2026-09-13; architecture §8вя).
+    //
+    // A RATIO DOES NOT KNOW ITS SCALE. It is equally pleased by a field and by
+    // a window-box, and a DEGENERATING sowing looks like health to it —
+    // numerator and denominator fall together. Measured here: the run was
+    // content while the village put in 208 kilograms of oats, a ninth of the
+    // norm, because the ninth it put in came back ninefold. The question this
+    // run is asked is about a FARM; the ratio alone answers about a yield.
+    //
+    // The floor is a fifth of the canonical year's sowing — about 1.9 t, so
+    // roughly 380 kg — which is far below any real year and far above the
+    // dribble a collapsing rotation leaves. A year under it does not count as
+    // evidence in either direction: it is not a refutation, it is an absence.
+    constexpr double kSowingFloorGrams = 380.0 * 1000.0;
+    const bool year_is_evidence = static_cast<double>(sown_last_year) >= kSowingFloorGrams;
+    cycle_ever_above_one = cycle_ever_above_one || (year_is_evidence && cycle > 1.0);
+    evidence_years += year_is_evidence ? 1U : 0U;
     ever_sown = ever_sown || sown > 0;
 
     std::cout << std::setw(4) << book.year << std::setw(9) << Tonnes(opening) << std::setw(9)
@@ -246,6 +265,14 @@ int main(int argc, char** argv) {
   // that it cannot quietly stop being true: a kilogram sown gives back more
   // than a kilogram, so the staircase down is not the crop failing to
   // reproduce. Measured at 4.29 on the canonical seed.
+  // AND THE FLOOR HAS TO BE REACHED AT ALL, said before the ratio is read.
+  // Without this line the two checks together still pass a world that sowed a
+  // handful once: `ever_sown` is true of a single gram, and the ratio simply
+  // has no year to speak about. The run then reports success for a rotation
+  // that has collapsed — which is exactly what it did while the village put in
+  // a ninth of the norm.
+  failures += run::Expect(evidence_years > 0,
+                          "at least one year sowed enough oats for the ratio to mean anything");
   failures +=
       run::Expect(cycle_ever_above_one, "a kilogram of oats sown gives back more than a kilogram");
   std::cout << (failures == 0 ? "oat_balance: the books close\n" : "oat_balance: FAILURES ABOVE\n");

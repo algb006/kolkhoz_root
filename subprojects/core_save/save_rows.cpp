@@ -87,8 +87,12 @@ static_assert(AggregateArity<FamilyRow>() == 15,
 // choosing between them. (No tally of how often that has happened: the
 // running count above was written when it was true and is the kind of number
 // that ages beside a rule without anybody noticing.)
+// 2026-09-13: `sown_day` — the day ripening is counted from — landed in
+// padding beside `last_mown_day` and left 88 bytes at 88. The SIZE assert said
+// nothing; the FIELD COUNT caught it, which is now the third time the pair has
+// split this way and the reason neither is allowed to stand alone.
 static_assert(sizeof(FieldRow) == 88, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 27,
+static_assert(AggregateArity<FieldRow>() == 29,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -457,6 +461,15 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // since spring from one cut a week ago, and the flowering the layer paints
   // is exactly that difference.
   out.WriteU32(row.last_mown_day);
+  // The day the seed went in (2026-09-13). History the simulation cannot
+  // rederive either, and the whole ripening rule is measured from it: a world
+  // loaded without it would reap on the calendar alone, which is the behaviour
+  // the rule removes.
+  out.WriteU32(row.sown_day);
+  // Ploughed last autumn and owing no spring furrow (2026-09-13). Set at
+  // genesis and spent by the first ploughing, so a save taken in the first
+  // spring has to carry which fields still hold it.
+  out.WriteU8(row.autumn_plowed);
   // The judgement itself is saved beside the day it comes from, exactly as
   // weather_state is saved beside its counters: a world just loaded has to
   // be paintable before it has stepped once.
@@ -513,6 +526,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   row.last_mown_day = in.ReadU32();
+  row.sown_day = in.ReadU32();
+  row.autumn_plowed = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "autumn ploughed"));
   row.in_flower = source.ReadEnumValue(0, 1, "meadow in flower") != 0;
   return row;
 }

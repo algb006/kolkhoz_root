@@ -249,6 +249,9 @@ class ProductionSystem final : public IProductionSystem {
   /// work_days_remaining, and only then moves on. No workers, no progress —
   /// deliberately.
   void AdvanceFinishedPhases(WorldState& current) {
+    const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+    const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
+    const float temperature = current.weather.air_temperature_celsius;
     for (FieldRow& field : current.fields.rows) {
       if (KindOfWorkingPhase(field.phase) == FieldPhase::kIdle ||
           field.work_days_remaining > 0.0F) {
@@ -262,9 +265,38 @@ class ProductionSystem final : public IProductionSystem {
         case FieldPhase::kHarrowing:
           if (field.crop.value == kInvalidDefIdValue) {
             FinishSowing(config_, current, field);  // bare fallow: nothing to sow
-          } else {
+          } else if (SowingMayOpen(config_, field.crop, month, day_of_year, temperature)) {
             OpenPhase(config_, current, field, FieldPhase::kSowing);
           }
+          // THE SOWING MAY NOT START EARLY, AND MAY STILL FINISH LATE — and
+          // that asymmetry is the whole of this repair. Both halves were
+          // measured wrong before they were measured right.
+          //
+          // Boss's decision of 2026-09-13: "пахать можно, как только земля
+          // открыта; сеять — только в свой агрономический срок". The plough
+          // half is done in field_work.h (TrySow). This is the sowing half, and
+          // SowingMayOpen asks the crop's own front edge and its temperature.
+          //
+          // WITHOUT IT the repair sowed oats in January. Moving the window off
+          // the plough and putting nothing in its place left the seed following
+          // the plough straight into frozen ground, below the crop's own
+          // growth temperature: oat_balance went to all zeros — a kilogram of
+          // seed giving back nothing, every year of the run.
+          //
+          // WITH IT ON BOTH EDGES the opposite cliff appeared. A field harrowed
+          // one day after its window shut was then never sown at all: the first
+          // year put in 10.5 hectares instead of 66.5, five fields stood
+          // harrowed to the end of the year, satiety fell by a fifth and the
+          // plan was failed SIX YEARS RUNNING — the village reached «Под суд»
+          // in its third year with the chairman doing nothing wrong. That reads
+          // straight against "никаких безвыходных ситуаций" and "не наказывать
+          // за непредвидимое".
+          //
+          // So the back edge stays open and the old seam is kept where it was
+          // right: the window says when the sowing may START, the crew decides
+          // when it ends. A field that misses its window entirely is a
+          // different question — sowing late for a smaller crop is a YIELD
+          // mechanic the design does not have, and adding one is boss's.
           break;
         case FieldPhase::kSowing:
           FinishSowing(config_, current, field);
@@ -1064,7 +1096,15 @@ class ProductionSystem final : public IProductionSystem {
       if (field.phase != FieldPhase::kGrowing) {
         continue;  // already being reaped
       }
-      const bool in_window = month >= crop.harvest_from_month && month <= crop.harvest_to_month;
+      // THE CALENDAR AND THE RIPENING, and until 2026-09-13 it was the
+      // calendar alone — so a crop sown the day before its window opened gave
+      // a full yield, and `growth_min_temp_c` sat in crops.csv with no reader
+      // at all. Ripening is a DURATION now (field_work.h, RipenDays), measured
+      // from the day the seed went in, and this is the half of boss's chain
+      // that makes the other half bite: without it a late sowing still ripens
+      // instantly and nothing is ever lost to snow.
+      const bool in_window = month >= crop.harvest_from_month && month <= crop.harvest_to_month &&
+                             CropHasRipened(config_, field, current.calendar.day);
       // A perennial stand stays growing after its cut, so gate it to one
       // cut a year — the first day of its window; an annual leaves the
       // growing phase at harvest and cannot double-fire.
@@ -1115,8 +1155,28 @@ class ProductionSystem final : public IProductionSystem {
       // and they become the poorest land on the farm, and the first two
       // years' manure goes into the burdock. The analysis said so before it
       // happened; the two lines are one repair.
+      // THE QUESTION IS "WILL THIS GROUND BE WORKED", NOT "DOES IT HAVE A
+      // CHAIN", and those were the same question only until a field could skip
+      // a year (boss's decision of 2026-09-13).
+      //
+      // `HasRotation` asks whether the chairman has EVER told this field what
+      // to grow. That answered the right question while the only fields
+      // without a chain were the derelict ninety hectares nobody had claimed.
+      // The moment a chairman could withdraw a chain from ground he means to
+      // go on working — which is what he does when the spring will not fit —
+      // the two came apart: such a field fell out of the manure plan, grew
+      // poorer, and so was chosen to be dropped again the next year. A circle
+      // the gate made itself.
+      //
+      // Agronomy says the same thing: manure goes under the sowing to come,
+      // and a field that has rested a year is the FIRST candidate, not the
+      // last.
+      //
+      // Land never cropped stays out, and the test tells it apart on its own:
+      // the derelict ground has never been sown, so it has no sowing day.
+      const bool will_be_worked = HasRotation(field) || field.sown_day != kNeverSownDay;
       if (field.kind == LandKind::kArable && field.phase == FieldPhase::kIdle &&
-          field.manure_applied == 0 && HasRotation(field)) {
+          field.manure_applied == 0 && will_be_worked) {
         candidates.push_back(row);
       }
     }
@@ -1158,7 +1218,8 @@ class ProductionSystem final : public IProductionSystem {
 }  // namespace
 
 std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables,
-                                                          StubTables stubs) {
+                                                          StubTables stubs,
+                                                          std::uint32_t growing_season_last_day) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1195,6 +1256,7 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
     LogError(error);
     return nullptr;
   }
+  config.growing_season_last_day = growing_season_last_day;
   return std::make_unique<ProductionSystem>(config);
 }
 

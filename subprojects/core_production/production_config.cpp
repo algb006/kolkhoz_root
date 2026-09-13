@@ -225,6 +225,33 @@ bool ParseFarming(const ITable& table, FarmingConfig& farming, std::string& erro
     *named = true;
     return true;
   };
+  // THE LATE-SOWING PRICE IS OPTIONAL FOR THE SAME REASON THE SPELLS ARE: a
+  // table written before the rule existed keeps the documented defaults rather
+  // than refusing to load. Putting these two through the required loop below
+  // broke every unit fixture in the module at once — those worlds ship a
+  // four-row farming table on purpose, and a knob added upstream must not
+  // invalidate them.
+  //
+  // Bounded here, where they are read: the slope is a share per day and the
+  // floor a share, so both live in 0..1, and the floor is what keeps a late
+  // sowing from being worth nothing at all.
+  const auto share = [&table, value_col, &error](const char* key, float* out) {
+    const std::uint32_t row = table.FindRowByKey(key);
+    if (row == kNoTableRow) {
+      return true;
+    }
+    const std::optional<float> cell = table.CellReal(row, value_col);
+    if (!cell || !(*cell >= 0.0F && *cell <= 1.0F)) {
+      error = std::string("farming: row '") + key + "' must be a share between 0 and 1";
+      return false;
+    }
+    *out = *cell;
+    return true;
+  };
+  if (!share("late_sowing_yield_loss_per_day", &farming.late_sowing_yield_loss_per_day) ||
+      !share("late_sowing_yield_floor", &farming.late_sowing_yield_floor)) {
+    return false;
+  }
   bool drought_named = false;
   bool wet_named = false;
   if (!spell("drought_spell_days", &farming.drought_spell_days, &drought_named) ||

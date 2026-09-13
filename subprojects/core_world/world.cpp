@@ -647,7 +647,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   }
   auto time = CreateTimeSystem(*config.tables, config.stub_tables);
   auto residents = CreateResidentsSystem(*config.tables, config.stub_tables);
-  auto production = CreateProductionSystem(*config.tables, config.stub_tables);
+  // The growing season's last day travels from the clock to the fields: it is
+  // derived from the seasonal curve, which is core_time's, and production
+  // refuses a sowing that cannot ripen before it.
+  auto production =
+      CreateProductionSystem(*config.tables,
+                             config.stub_tables,
+                             time == nullptr ? kDaysPerYear - 1U : time->GrowingSeasonLastDay());
   auto labor = CreateLaborSystem(*config.tables, config.stub_tables);
   auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
   if (!time || !residents || !production || !labor || !construction) {

@@ -814,8 +814,16 @@ int main(int argc, char** argv) {
   // shares. The village owes a different figure, and on the shipped rotation
   // it is a lighter one at the lean end of the year. The ratchet follows the
   // model up as well as down, or it stops catching the return.
+  //
+  // AND IT CAME DOWN ON 13 SEPTEMBER, 69.9886627 to 69.7490158, with the
+  // ripening rule and the price of a late sowing. Two tenths, and they are
+  // paid for a model that no longer reaps a crop sown the day before its
+  // window: a field put in late now gives less, and one that cannot ripen at
+  // all is not sown. THE RATCHET FOLLOWS THE MODEL DOWN TOO, or it is not a
+  // ratchet but a wish — and the leanest day below went the other way in the
+  // same change, which is the trade and is named there.
   failures += ExpectNoLower(
-      good.mean_satiety, 69.9886627F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 69.7490158F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -865,8 +873,15 @@ int main(int argc, char** argv) {
   // of its hunger sits a little deeper. The ratchet moves only as a
   // deliberate act with a stated cause, and both numbers stand here beside
   // each other so the next reader can see the trade rather than the loss.
+  //
+  // AND UP AGAIN ON 13 SEPTEMBER, 19.4991512 to 21.1246548, with the ripening
+  // rule and the late-sowing price — the OTHER half of the same trade: the
+  // year's mean lost two tenths above and the leanest day gained a point and
+  // six. The village sows less and sows it in time, so what it does reap is
+  // reaped whole, and the deepest point of the hunger is shallower. This is
+  // the half that matters more to us of the two.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 19.4991512F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 21.1246548F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -884,8 +899,12 @@ int main(int argc, char** argv) {
   // 0.862903237 until 2026-09-12, moved for the same reason as the leanest
   // day above and in the same change: 107 of 122 instead of 107 of 124 — the
   // count of the hungry did not move at all, the village did, by two people.
+  // And down again on 2026-09-13 with the ripening rule: 0.842519701. A
+  // smaller sowing reaped whole feeds more mouths at the lean end than a
+  // bigger one reaped late, which is the same trade the two records above
+  // carry.
   failures += ExpectNoHigher(
-      hungry_share, 0.853658557F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.842519701F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -922,8 +941,12 @@ int main(int argc, char** argv) {
   // 0.778614044 until 2026-09-12, and it rose to 0.794485092 in the same
   // change that moved the two records above: the queue's three tiers. The
   // ratchet follows the model.
+  // And to 3.65788269 on 2026-09-13 with the ripening rule — the direction
+  // "the issue feeds the lean season" not merely surviving the change but
+  // widening to twice what it was. A village that reaps what it sows has more
+  // to hand out, and the difference between handing it out and not is larger.
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            1.77744102F,
+                            3.65788269F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

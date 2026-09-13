@@ -352,6 +352,23 @@ struct FarmingConfig {
 
   float stress_cap = 0.3F;
 
+  /// THE PRICE OF A LATE SOWING, per game day past the end of the crop's
+  /// sowing window, and it is a SLOPE rather than a coin (boss, 2026-09-13).
+  ///
+  /// The price used to be the snow — a total loss — and that was wrong not in
+  /// size but in kind: nobody CHOOSES to sow late. The chairman hands out
+  /// rotations; when to sow is the accountant's arithmetic, and it sows
+  /// whatever it can whenever it can. A full price on a band nobody entered is
+  /// a trap, not a price (measured: the first year sowed 66.5 ha and lost 28
+  /// of them to snow). A diminishing return puts the decision back where one
+  /// actually exists — upstream, in how much land to raise.
+  float late_sowing_yield_loss_per_day = 0.06F;
+
+  /// The floor the slope above may not go under, and it is STRICTLY ABOVE
+  /// ZERO: a field sown late gives less, never nothing. Nothing is what a
+  /// field gives when it cannot ripen at all, and such a field is not sown.
+  float late_sowing_yield_floor = 0.35F;
+
   /// How many CONSECUTIVE growing days of one kind of weather it takes
   /// before the field says out loud that it is drying or soaking
   /// (FieldWeatherState). The design gives the phenomenon — "long heat
@@ -511,6 +528,17 @@ struct FarmingConfig {
 };
 
 struct ProductionConfig {
+  /// The last day of the year a standing crop is safe from the snow — the
+  /// physical end of the growing season, handed in by the assembly from
+  /// ITimeSystem::GrowingSeasonLastDay because the seasonal curve is
+  /// core_time's and must not be interpolated twice.
+  ///
+  /// NOT PARSED FROM A TABLE and deliberately absent from ParseProductionConfig:
+  /// it is derived from the weather table rather than written in one, and a
+  /// row of its own would be a second home that goes stale the day the climate
+  /// moves. The default changes nothing.
+  std::uint32_t growing_season_last_day = kDaysPerYear - 1U;
+
   std::vector<CropDef> crops;  ///< Indexed by CropId row.
 
   std::vector<LivestockDef> livestock;  ///< Indexed by LivestockKindId row.

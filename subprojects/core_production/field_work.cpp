@@ -76,6 +76,57 @@ void MowMeadow(const ProductionConfig& config, WorldState& current, FieldRow& fi
   MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the grass stands again next summer
 }
 
+/// What a late sowing costs this field: 1.0 sown inside its window, falling by
+/// `late_sowing_yield_loss_per_day` for every day past it, never below the
+/// floor.
+///
+/// THE SLOPE IS THE PRICE OF A BAND NOBODY CHOOSES TO ENTER, which is why it is
+/// a slope. The price used to be the snow taking the crop whole, and that was
+/// wrong in kind rather than in size: the chairman hands out rotations, the
+/// accountant decides when to sow, and it sows whatever it can whenever it can.
+/// A total price on a band entered by nobody is a trap (measured: the opening
+/// year sowed 66.5 hectares and lost 28 of them to snow). Diminishing returns
+/// put the decision back where one exists — upstream, in how much land to
+/// raise, which is what the sowing alarm points at.
+///
+/// A field with no sowing day — one genesis stood up, or a world loaded from
+/// before the rule — is not late: it is not judged by a day nobody recorded.
+float LateSowingFactor(const ProductionConfig& config, const FieldRow& field) {
+  if (field.sown_day == kNeverSownDay || field.crop.value >= config.crops.size()) {
+    return 1.0F;
+  }
+  const CropDef& def = config.crops[field.crop.value];
+  if (def.is_winter || def.is_perennial) {
+    return 1.0F;  // sown in another year's reckoning; its window is not this one
+  }
+  const auto last_sowing =
+      static_cast<std::int32_t>(((def.sow_to_month + 1U) * kDaysPerMonth) - 1U);
+  // THE FIRST SPRING IS FREE OF IT, and the design's own grace period is the
+  // reason rather than a kindness invented here (difficulty §3, "Первая весна:
+  // ни распутицы, ни разлива"). Its stated cause is our case word for word:
+  // the mire "would eat exactly the weeks in which the farm has to be set up
+  // and the first fields laid, and the player would sit out the first sowing
+  // waiting for the road to dry, and lose a year for nothing".
+  //
+  // Replace the mire with this slope and the sentence does not change. In the
+  // first year the chairman has NO land decision — the layout was handed to
+  // him, not chosen — so a late sowing is not his mistake, and charging the
+  // full price for a band nobody entered is the trap this whole rule exists to
+  // remove. From the second spring on it is his.
+  if (field.sown_day < kDaysPerYear) {
+    return 1.0F;
+  }
+  const auto sown_on = static_cast<std::int32_t>(field.sown_day % kDaysPerYear);
+  const std::int32_t late_days = sown_on - last_sowing;
+  if (late_days <= 0) {
+    return 1.0F;
+  }
+  const float factor =
+      1.0F - (static_cast<float>(late_days) * config.farming.late_sowing_yield_loss_per_day);
+  return factor < config.farming.late_sowing_yield_floor ? config.farming.late_sowing_yield_floor
+                                                         : factor;
+}
+
 void Harvest(const ProductionConfig& config,
              WorldState& current,
              FieldRow& field,
@@ -86,8 +137,8 @@ void Harvest(const ProductionConfig& config,
   const float capped =
       stress_total > config.farming.stress_cap ? config.farming.stress_cap : stress_total;
   const float weather_factor = 1.0F - capped;
-  const auto yield_grams =
-      GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor);
+  const auto yield_grams = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor *
+                                              weather_factor * LateSowingFactor(config, field));
   // THE REAPED CROP STAYS ON THE FIELD. Until task A4 it went into the
   // stores in the same tick it was cut — the instant-delivery stub — and
   // only the remainder that would not fit stayed out. It all stays out
@@ -239,6 +290,19 @@ void OpenPlowing(const ProductionConfig& config,
     current.ledger.current.manure_plowed_in += dose;
     current.ledger.current.area_manured_ha += field.area_ga * share;
   }
+  // GROUND THAT CAME OUT OF THE AUTUMN BLACK OWES NO SPRING FURROW. The byte
+  // is spent here, at the one call every way of using a rotation passes
+  // through, so a field gets its free ploughing exactly once and the next
+  // year's work opens normally.
+  //
+  // The manure above still goes in: it was dealt out at the year's turn onto
+  // ground that had not been worked yet, and the harrow turns it under just as
+  // the plough would have.
+  if (field.autumn_plowed != 0) {
+    field.autumn_plowed = 0;
+    OpenPhase(config, current, field, FieldPhase::kHarrowing);
+    return;
+  }
   OpenPhase(config, current, field, FieldPhase::kPlowing);
 }
 
@@ -273,6 +337,21 @@ void OpenPhase(const ProductionConfig& config,
                FieldRow& field,
                FieldPhase phase) {
   MoveFieldPhase(current, field, phase);
+  if (phase == FieldPhase::kSowing) {
+    // THE DAY RIPENING IS COUNTED FROM, stamped WHERE THE SOWING OPENS and not
+    // where it closes — because that is the same instant SowingMayOpen asked
+    // its question about, and boss's rule is one inequality with the sowing
+    // day on both sides: "день сева + срок вызревания ≤ последний день окна
+    // уборки".
+    //
+    // Stamping it at FinishSowing instead put the two ends days apart: the
+    // gate cleared a field on the day the crew STARTED, the seed landed
+    // whenever the crew got through, and the ripening then ran from the later
+    // day and missed the reaping the gate had just guaranteed. Measured with
+    // the two ends split: the first year reaped 0.0375 Gkcal against 0.29, and
+    // the plan failed twenty-seven years of thirty.
+    field.sown_day = current.calendar.day;
+  }
   if (field.kind != LandKind::kArable) {
     // Grass is mown, never ploughed, harrowed or sown: the meadow has one
     // working phase in the year and one norm to size it.
@@ -402,6 +481,99 @@ void RunMeadow(const ProductionConfig& config,
   }
 }
 
+std::int32_t RipenDays(const ProductionConfig& config, CropId crop) {
+  if (crop.value >= config.crops.size()) {
+    return 0;
+  }
+  const CropDef& def = config.crops[crop.value];
+  if (def.is_winter || def.is_perennial) {
+    return 0;  // reaped in another year: the gap runs backwards and says nothing
+  }
+  // From the LAST day the crop may be sown to the FIRST day it may be reaped.
+  const auto last_sowing =
+      static_cast<std::int32_t>(((def.sow_to_month + 1U) * kDaysPerMonth) - 1U);
+  const auto first_reaping = static_cast<std::int32_t>(def.harvest_from_month * kDaysPerMonth);
+  const std::int32_t gap = first_reaping - last_sowing;
+  return gap > 0 ? gap : 0;
+}
+
+bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDay day) {
+  const std::int32_t ripen = RipenDays(config, field.crop);
+  if (ripen == 0) {
+    return true;  // winter or perennial: ruled by its windows, as it always was
+  }
+  if (field.sown_day == kNeverSownDay) {
+    // A CROP STANDING WITH NO SOWING DAY HAS ALREADY RIPENED, and the first
+    // draft of this line said the opposite "to be safe". It was the unsafe
+    // direction and the run said so at once: genesis hands the village fields
+    // with the crop already in the ground, none of which carries a day, so
+    // they became unreapable FOR EVER — the first year's harvest fell from
+    // 0.29 Gkcal to 0.0375 and the plan failed twenty-seven years of thirty.
+    //
+    // The honest reading is the other one: a stand whose sowing this core
+    // never saw has been there at least as long as the core has been counting,
+    // which is longer than any ripening. Same for a world loaded from a save
+    // older than this rule — it keeps the calendar-only behaviour it was saved
+    // under, for the one spell it is already in, and every sowing after that
+    // carries a real day.
+    return true;
+  }
+  return static_cast<std::int64_t>(day) - static_cast<std::int64_t>(field.sown_day) >= ripen;
+}
+
+bool SowingMayOpen(const ProductionConfig& config,
+                   CropId crop,
+                   std::uint8_t month,
+                   std::uint32_t day_of_year,
+                   float temperature) {
+  if (crop.value >= config.crops.size()) {
+    return false;  // bare fallow, or a crop this build does not know
+  }
+  const CropDef& def = config.crops[crop.value];
+  // THE FRONT EDGE AND THE TEMPERATURE, AND DELIBERATELY NOT `sow_to_month`.
+  // The back edge of the SOWING window is the crew's, not the calendar's: a
+  // sowing that began in its window finishes when the hands finish it, and a
+  // field that reached the harrow late is sown late rather than lost. Closing
+  // this test on `sow_to_month` costs the canonical village its first harvest
+  // and puts it on trial in the third year (production_system.cpp,
+  // AdvanceFinishedPhases).
+  if (month < def.sow_from_month || temperature < def.sow_min_temp_c) {
+    return false;
+  }
+  // THE BACK EDGE IS A QUESTION ABOUT THE OUTCOME, not about the calendar:
+  // "поле сеют, пока посеянное успевает вызреть; не успевает — НЕ СЕЮТ, и
+  // семена остаются в фонде" (boss, 2026-09-13). Seed that cannot ripen in
+  // time to be reaped is seed spent for nothing — the first snow takes an
+  // unreaped annual whole, which is the one TOTAL loss of a harvest in the
+  // game — so the field is left unsown instead: a readable lost year rather
+  // than a silent loss of next spring's seed.
+  //
+  // AND THE LIMIT IS THE SNOW, NOT THE REAPING WINDOW. Boss's rule of
+  // 2026-09-13, second redaction, and the correction is the whole of it:
+  //
+  //   THE HARVEST WINDOW SAYS WHEN A CROP SHOULD BE CUT. THE SNOW SAYS WHEN IT
+  //   CAN NO LONGER BE CUT AT ALL.
+  //
+  // Grain that ripens after its window does not vanish — it STANDS, and it can
+  // be cut late, worse, and at risk. Refusing the sowing at the window's edge
+  // forbade the merely UNPROFITABLE rather than the impossible, and it showed:
+  // with the edge there, the gambling band was four game days wide for oats
+  // and not one hectare in twelve years went into the ground past its window.
+  // A cost with no way to incur it is not a cost.
+  //
+  // So the band between the reaping window and the snow is open, and it is
+  // exactly the gamble the design wants: sow late, cut late, and the first
+  // snow may take the lot (production_system.cpp — the one TOTAL loss of a
+  // harvest in the game). Past the snow there is nothing to gamble on, and the
+  // seed stays in the fund.
+  const std::int32_t ripen = RipenDays(config, crop);
+  if (ripen == 0) {
+    return true;  // winter or perennial: reaped in another year, no gap to miss
+  }
+  return static_cast<std::int32_t>(day_of_year) + ripen <=
+         static_cast<std::int32_t>(config.growing_season_last_day);
+}
+
 void TrySowWinter(const ProductionConfig& config,
                   WorldState& current,
                   FieldRow& field,
@@ -458,13 +630,23 @@ void TrySow(const ProductionConfig& config,
     TrySowWinter(config, current, field, month, temperature);
     return;
   }
-  // Otherwise a winter crop in THIS year's slot is the fallback path: it
-  // was meant to go in last autumn (TrySowWinter) and that autumn was
-  // missed, so it is sown in its window a year late. That costs the slot
-  // after it, but a winter crop never sown costs the plan its bread.
-  if (month < crop.sow_from_month || month > crop.sow_to_month ||
-      temperature < crop.sow_min_temp_c) {
+  // THE WINDOW IS STILL WHAT SAYS THE YEAR IS OVER FOR THIS CROP. Past
+  // `sow_to_month` the slot cannot be sown at all, so there is nothing to
+  // prepare the ground for, and the field falls through to the autumn path —
+  // exactly as before. What is gone from this test is its FRONT half:
+  // `month < crop.sow_from_month` used to send the field away too, which made
+  // the sowing window a gate on the ploughing (see the header).
+  if (month > crop.sow_to_month) {
     TrySowWinter(config, current, field, month, temperature);
+    return;
+  }
+  // AND THE GROUND'S OWN CONDITION IN ITS PLACE, which is the thaw and nothing
+  // else. It is the same test the fallow ploughing has always used above —
+  // `temperature >= 0.0F` — and that is the point: a fallow field and a field
+  // waiting for its oats are the same ground under the same plough, and they
+  // disagreed about when it could be broken for no reason anybody had written
+  // down.
+  if (temperature < 0.0F) {
     return;
   }
   OpenPlowing(config, current, field, field.rotation_year0);

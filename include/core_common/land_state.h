@@ -149,6 +149,16 @@ enum class FieldWeatherState : std::uint8_t {
 /// brief ended up over the wrong declaration.
 inline constexpr SimDay kNeverMownDay = static_cast<SimDay>(-1);
 
+/// @brief No crop has been sown on this field — bare fallow, a meadow, or
+/// ground still being prepared. Ripening is measured FROM the sowing day
+/// (FieldRow::sown_day), so a field carrying this cannot be judged ripe and
+/// must not be reaped on the strength of the calendar alone.
+///
+/// Its own name rather than a shared "no day" constant: the two sentinels
+/// answer different questions on the same row, and a single one would read as
+/// "never mown" on arable land, where mowing is not a thing that happens.
+inline constexpr SimDay kNeverSownDay = static_cast<SimDay>(-1);
+
 /// @brief One field. Plain data.
 struct FieldRow {
   /// Center of the contour. The shape itself is presentation/routing data
@@ -409,6 +419,51 @@ struct FieldRow {
   /// resources, and no line of production anywhere. So this field can be
   /// checked today only through the layer's eyes.
   SimDay last_mown_day = kNeverMownDay;
+
+  /// THE DAY THE SEED WENT IN, and the whole of the ripening model rests on
+  /// it (boss's decision of 2026-09-13).
+  ///
+  /// Until that day the harvest opened on the CALENDAR alone — phase kGrowing
+  /// plus the month window — so a crop sown the day before its harvest window
+  /// gave a full yield, and `growth_min_temp_c` sat in crops.csv with no
+  /// reader at all. Ripening is now a DURATION, and a duration needs a start:
+  /// this is it.
+  ///
+  /// THE DURATION ITSELF IS NOT STORED AND IS NOT A NEW TABLE COLUMN. It is
+  /// the gap the two windows already describe — from the last day a crop may
+  /// be sown to the first day it may be reaped (RipenDays, field_work.h) —
+  /// because a figure taken from a handbook instead would sometimes exceed
+  /// that gap, and then a sowing on the last legal day would not ripen: a new
+  /// number contradicting balanced windows.
+  ///
+  /// kNeverSownDay on a field that carries no sown crop: bare fallow, a
+  /// meadow, ground still being prepared. A perennial keeps the day of the
+  /// sowing that established the stand.
+  SimDay sown_day = kNeverSownDay;
+
+  /// PLOUGHED LAST AUTUMN AND LYING BLACK — «чёрная зябь», 0 or 1. The field
+  /// owes no spring ploughing: work opens straight at the harrowing, and the
+  /// byte is spent there.
+  ///
+  /// SET ONLY AT GENESIS, and that is the whole of it today (boss's decision
+  /// of 2026-09-13). Autumn ploughing as something the CHAIRMAN chooses is a
+  /// separate mechanic with a separate price, and it stays an open question:
+  /// this byte is a STATE the village inherits, not an action it takes. Fixing
+  /// the first spring with the action would have brought the mechanic into the
+  /// game as a side effect of debugging, rather than as a decision somebody
+  /// made.
+  ///
+  /// WHY THE START NEEDS IT. The canonical first spring cannot get its seed in
+  /// on time: every field opens on the thaw at once, the queue jams, and under
+  /// the ripening rule a third of the sowing is refused as unable to ripen —
+  /// measured at 31 hectares sown against 66.5, with the first harvest falling
+  /// short of what the village must eat before the second. That is a trouble
+  /// no decision of the player's could have prevented, which the design forbids
+  /// outright. A ruined kolkhoz that ploughed SOME of its land last autumn is
+  /// both the cure and the truth: spring ploughing everywhere is the mark of a
+  /// farm that has collapsed, and how much black field is left says what the
+  /// chairman inherited.
+  std::uint8_t autumn_plowed = 0;
 
   /// THE CORE'S JUDGEMENT that this meadow is in flower today, so that no
   /// reader invents its own — exactly as `weather_state` above it, and for

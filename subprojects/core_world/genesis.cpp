@@ -568,6 +568,15 @@ void PlaceStartLayout(WorldState& world,
       PlaceMeadow(world, row.area_ha, row.place, row.floodplain);
       continue;
     }
+    if (row.kind == LayoutKind::kRoad) {
+      // A ROAD PLACES NOTHING IN THE CORE, and the skip is deliberate rather
+      // than an omission (start_layout.h, LayoutKind::kRoad). The row exists so
+      // that the layer can read `start_wear_pct` — a road's wear IS its relief,
+      // the ruts and the puddles — and so that the table parses at all. There
+      // is no road entity, no traffic and no repair here yet; the day there is,
+      // this branch becomes a subsystem.
+      continue;
+    }
     // Arable, and the reserve field held back for building on: both are
     // field rows, and the reserve carries the same unworked look as the two
     // big fields beside it — ninety-three hectares of the start's hundred
@@ -586,6 +595,69 @@ void PlaceStartLayout(WorldState& world,
       // some rule forbids the plough.
       world.fields.rows[FindRow(world.fields, field)].overgrown = 1;
     }
+  }
+}
+
+/// @brief Marks the share of the worked arable that comes out of last autumn
+/// already ploughed — «чёрная зябь» (boss's decision of 2026-09-13).
+///
+/// WHY THE START CARRIES IT AT ALL. The canonical first spring cannot get its
+/// seed into the ground in time: every field opens on the thaw together, the
+/// queue jams, and the ripening rule then refuses a third of the sowing as
+/// unable to ripen — 31 hectares sown against 66.5, and a first harvest short
+/// of what the village must eat before the second. The chairman can do nothing
+/// about it: he does not exist yet and the land is already laid out. A trouble
+/// that no decision could have prevented is the one thing the design forbids
+/// outright, so the world changes rather than the criterion.
+///
+/// AND IT IS THE TRUTH OF A RUINED FARM, not a concession. Autumn ploughing is
+/// the norm; its ABSENCE is the mark of collapse. How much black field the new
+/// chairman finds is a sentence about what he inherited, and it reads off the
+/// ground — black against stubble.
+///
+/// POOREST FIRST AND THEN ROW ORDER, so the same seed gives the same village:
+/// the fields a failing farm got round to in the autumn are the ones it most
+/// needed to, and any rule here has to be a function of the layout alone.
+void PlowLastAutumn(WorldState& world, const ITable* crops, float share) {
+  if (!(share > 0.0F)) {
+    return;
+  }
+  const std::uint32_t perennial_col = crops != nullptr ? crops->FindColumn("is_perennial") : 0;
+  const auto stands_over_winter = [crops, perennial_col](CropId crop) {
+    return crops != nullptr && crop.value < crops->RowCount() &&
+           crops->CellText(crop.value, perennial_col) == "1";
+  };
+  float worked_ha = 0.0F;
+  std::vector<std::uint32_t> candidates;
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;  // a meadow is not ploughed; derelict ground nobody has claimed
+    }
+    // AND A PERENNIAL STAND IS NOT PLOUGHED EITHER, in the autumn or ever: the
+    // grass was sown once and is cut for years, so there is no furrow for last
+    // autumn to have turned. Caught by measurement rather than by reading —
+    // the share that first took the opening year's criterion did it by
+    // ploughing the timothy, which is 10.5 of the settlement's 70 hectares and
+    // was quietly carrying the result.
+    if (stands_over_winter(field.rotation_year0)) {
+      continue;
+    }
+    worked_ha += field.area_ga;
+    candidates.push_back(row);
+  }
+  std::stable_sort(
+      candidates.begin(), candidates.end(), [&world](std::uint32_t a, std::uint32_t b) {
+        return world.fields.rows[a].fertility < world.fields.rows[b].fertility;
+      });
+  const float wanted_ha = worked_ha * share;
+  float marked_ha = 0.0F;
+  for (const std::uint32_t row : candidates) {
+    if (marked_ha >= wanted_ha) {
+      break;
+    }
+    world.fields.rows[row].autumn_plowed = 1;
+    marked_ha += world.fields.rows[row].area_ga;
   }
 }
 
@@ -747,6 +819,11 @@ bool BuildStartEconomy(WorldState& world,
   }
   PlaceStartLayout(
       world, scene, unit_types, crops, kStartFertility, definitions.map_side_m, placed);
+  // The share of the worked arable the old chairman managed to plough last
+  // autumn. A balance knob and not a constant: the figure is chosen by
+  // measurement — the smallest share at which the first harvest still carries
+  // the village to the second.
+  PlowLastAutumn(world, crops, CampaignValue(tables, "start_autumn_plowed_share", 0.0F));
 
   // The units the rest of this function needs by name. A layout without one
   // of them is not an error here: the herd simply has nowhere to stand, and

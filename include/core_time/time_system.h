@@ -66,6 +66,24 @@ class ITimeSystem {
   ///         weather table answers from its STUB seasons, the same ones the
   ///         phase would use.
   virtual DayForecast WeatherOn(std::uint64_t world_seed, SimDay day) const = 0;
+
+  /// @brief The last day of the year on which a standing crop is still safe
+  /// from the snow — the day before the SEASONAL MEAN temperature falls to
+  /// freezing, 0..kDaysPerYear-1.
+  ///
+  /// THE CLIMATE'S ANSWER AND NOT THE SEED'S, deliberately. Whether a
+  /// particular day snows is a coin the generator flips from (world_seed,
+  /// day), and a rule that asked THAT would make the chairman's decision hang
+  /// on a flip he cannot see and cannot be blamed for. The mean is a property
+  /// of the place: the same in every campaign, knowable in advance, and the
+  /// thing a farmer actually plans against.
+  ///
+  /// WHY core_time OWNS IT. The seasonal curve — four season means and the
+  /// interpolation between their centre days — lives here and nowhere else.
+  /// Production needs the figure to refuse a sowing that cannot ripen before
+  /// the snow (field_work.h), and a second copy of the interpolation there is
+  /// exactly the drift this project keeps finding.
+  virtual std::uint32_t GrowingSeasonLastDay() const = 0;
 };
 
 /// @brief Creates the time subsystem.
