@@ -459,23 +459,28 @@ CropId ChainSlot(const FieldRow& field, std::uint32_t year) {
   return year == 1 ? field.rotation_year1 : field.rotation_year2;
 }
 
-/// Whether any arable chain grows `produce` in `year` of its three. BY PRODUCE
-/// AND NOT BY CROP KEY: the district's figure is owed in resource, and any
-/// crop that yields it pays it.
-bool SomeChainGrows(const ProductionConfig& config,
+/// Hectares of arable whose chain grows `produce` in `year` of its three. BY
+/// PRODUCE AND NOT BY CROP KEY: the district's figure is owed in resource, and
+/// any crop that yields it pays it. Also returns the worked arable, the area
+/// the district prices next year's norm from.
+float ChainHectares(const ProductionConfig& config,
                     const WorldState& world,
                     ResourceId produce,
-                    std::uint32_t year) {
+                    std::uint32_t year,
+                    float& worked_ha) {
+  float grown_ha = 0.0F;
+  worked_ha = 0.0F;
   for (const FieldRow& field : world.fields.rows) {
     if (field.kind != LandKind::kArable || !HasRotation(field)) {
       continue;
     }
+    worked_ha += field.area_ga;
     const CropId slot = ChainSlot(field, year);
     if (slot.value < config.crops.size() && config.crops[slot.value].resource == produce) {
-      return true;
+      grown_ha += field.area_ga;
     }
   }
-  return false;
+  return grown_ha;
 }
 
 }  // namespace
@@ -491,7 +496,24 @@ void CollectPlanAlarms(const ProductionConfig& config,
     }
     const ResourceId produce = config.crops[position.crop.value].resource;
     for (std::uint32_t year = 0; year < kChainYears; ++year) {
-      if (SomeChainGrows(config, world, produce, year)) {
+      float worked_ha = 0.0F;
+      const float grown_ha = ChainHectares(config, world, produce, year, worked_ha);
+      // THE DISTRICT'S OWN RATE, READ BACKWARDS, and not a forecast (boss,
+      // 2026-09-13; district design §9: the norm is off the worked arable and
+      // a normal yield per hectare). The position is yield × area × share, so
+      // the hectares that pay it at a normal yield are area × share. This year
+      // is priced off last year's worked land, the two after off today's.
+      //
+      // IT WAS PRESENCE UNTIL THE SAME DAY, and presence lied: on seed 1933 the
+      // chairman closed a missing potato with a 3.5 ha field against 4.63 ha
+      // owed — the alarm went out on a correct-looking action that did not
+      // help, and the plan failed anyway. What this one still does not say is
+      // how much THAT field's fertility will fall short; fertility is visible
+      // on the ground, and that is the player's call.
+      const float priced_ha = year == 0 ? world.plan.worked_ha_last_year : worked_ha;
+      const float owed_ha = priced_ha * position.area_share * config.plan_grain_share;
+      const bool covered = owed_ha > 0.0F ? grown_ha >= owed_ha : grown_ha > 0.0F;
+      if (covered) {
         continue;
       }
       Alarm alarm;

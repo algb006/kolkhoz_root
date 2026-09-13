@@ -3644,17 +3644,29 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   potato.resource = core::ResourceId{6};
   core::CropDef oat_again = oat;  // a second crop yielding the same produce
   config.crops = {oat, potato, oat_again};
-  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F},
-                           {.crop = core::CropId{1}, .area_share = 0.2F}};
+  config.plan_grain_share = 0.5F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.2F},
+                           {.crop = core::CropId{1}, .area_share = 0.4F}};
 
+  // Owed hectares = priced area × share × plan share. This year is priced off
+  // LAST year's 20 ha (oat 2, potato 4); the two after off today's worked 13 ha
+  // (oat 1.3, potato 2.6).
   core::WorldState world;
-  core::FieldRow chained;
-  chained.rotation_assigned = 1;
-  chained.rotation_year0 = core::CropId{0};
-  chained.rotation_year1 = core::CropId{1};
-  chained.rotation_year2 = core::CropId{};  // a rested season
-  core::AppendRow(world.fields, chained);
+  world.plan.worked_ha_last_year = 20.0F;
+  core::FieldRow wide;
+  wide.area_ga = 10.0F;
+  wide.rotation_assigned = 1;
+  wide.rotation_year0 = core::CropId{0};
+  wide.rotation_year1 = core::CropId{1};
+  wide.rotation_year2 = core::CropId{};  // a rested season
+  core::AppendRow(world.fields, wide);
+  core::FieldRow small;  // potato this year on 3 ha against 4 owed
+  small.area_ga = 3.0F;
+  small.rotation_assigned = 1;
+  small.rotation_year0 = core::CropId{1};
+  core::AppendRow(world.fields, small);
   core::FieldRow unassigned;  // grows oats in every slot, but nobody assigned it
+  unassigned.area_ga = 45.0F;
   unassigned.rotation_year0 = unassigned.rotation_year1 = unassigned.rotation_year2 =
       core::CropId{0};
   core::AppendRow(world.fields, unassigned);
@@ -3675,16 +3687,16 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   const std::vector<std::pair<std::uint16_t, std::int64_t>> expected = {
       {2, 1}, {2, 2}, {6, 0}, {6, 2}};
   failures += Expect(before == expected,
-                     "plan alarm: oat missing in years 1 and 2, potato in years 0 and 2, "
-                     "and the unassigned field covers nothing");
+                     "plan alarm: oat missing in years 1 and 2, potato in year 2, potato in "
+                     "year 0 on 3 ha against 4 owed, and the unassigned field covers nothing");
 
   world.fields.rows[0].rotation_year2 = core::CropId{2};
+  world.fields.rows[1].area_ga = 4.0F;
   const auto after = uncovered();
-  const std::vector<std::pair<std::uint16_t, std::int64_t>> expected_after = {
-      {2, 1}, {6, 0}, {6, 2}};
+  const std::vector<std::pair<std::uint16_t, std::int64_t>> expected_after = {{2, 1}, {6, 2}};
   failures += Expect(after == expected_after,
-                     "plan alarm: another crop of the same produce covers the year and the "
-                     "alarm for it goes out");
+                     "plan alarm: the owed hectares put it out, and another crop of the same "
+                     "produce covers the year");
   return failures;
 }
 

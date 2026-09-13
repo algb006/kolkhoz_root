@@ -36,7 +36,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -118,9 +120,10 @@ class SowingPolicy {
               << " chains from fields whose sowing would not have ripened, and gave " << restored_
               << " of them back at the year's turn\n";
     if (!crop_of_resource_.empty()) {
-      std::cout << "sowing_policy: he answered " << answered_
-                << " plan alarms by putting the missing crop into the poorest field's chain, and "
-                << unanswered_ << " found no field to take it\n";
+      std::cout
+          << "sowing_policy: he answered " << answered_
+          << " plan alarms by putting the missing crop onto the best fields of that year, and "
+          << unanswered_ << " found no field to take it\n";
     }
     std::cout << "sowing_policy: THE GIVING BACK IS A PROSTHETIC, NOT A DECISION — the order book "
                  "has no verb for \"do not sow this field THIS year\". kSetRotation with empty "
@@ -153,25 +156,90 @@ class SowingPolicy {
     if (positions_row == core::kNoTableRow) {
       return;
     }
-    const std::string list(campaign->CellText(positions_row, campaign->FindColumn("value")));
+    const std::uint32_t value_col = campaign->FindColumn("value");
+    const std::string list(campaign->CellText(positions_row, value_col));
     std::size_t start = 0;
     while (start < list.size()) {
       const std::size_t end = std::min(list.find(' ', start), list.size());
       const std::string token = list.substr(start, end - start);
-      const std::uint32_t crop = crops->FindRowByKey(token.substr(0, token.find('=')));
-      if (crop < crop_resource_.size()) {
+      const std::size_t equals = token.find('=');
+      const std::uint32_t crop = crops->FindRowByKey(token.substr(0, equals));
+      if (crop < crop_resource_.size() && equals != std::string::npos) {
         plan_resources_.push_back(crop_resource_[crop]);
+        plan_shares_.push_back(std::strtof(token.substr(equals + 1).c_str(), nullptr) / 100.0F);
       }
       start = end + 1;
     }
+    const std::optional<float> percent =
+        campaign->CellReal(campaign->FindRowByKey("plan_grain_share_percent"), value_col);
+    plan_grain_share_ = percent.has_value() ? *percent / 100.0F : 0.0F;
   }
 
-  /// THE ONE OBVIOUS ANSWER TO THE PLAN ALARM: the position is missing in
-  /// year N, so the missing crop goes into year N of the poorest field whose
-  /// year N does not already grow a plan position — or, when every field's
-  /// year N does, of the poorest whose year N grows a position some other
-  /// field grows too. Poorest first, as everywhere in this policy. One field
-  /// per alarm.
+  /// A field's chain once today's orders land.
+  static std::array<core::CropId, 3> ChainOf(const core::WorldState& world,
+                                             const std::vector<core::OrderRow>& orders,
+                                             std::uint32_t row) {
+    const core::FieldRow& field = world.fields.rows[row];
+    std::array<core::CropId, 3> chain = {
+        field.rotation_year0, field.rotation_year1, field.rotation_year2};
+    for (const core::OrderRow& order : orders) {
+      if (order.field == world.fields.row_ids[row]) {
+        chain = {order.rotation_year0, order.rotation_year1, order.rotation_year2};
+      }
+    }
+    return chain;
+  }
+
+  /// The produce a crop yields, or an out-of-range value for none.
+  std::uint32_t ResourceOf(core::CropId crop) const {
+    return crop.value < crop_resource_.size() ? crop_resource_[crop.value] : ~0U;
+  }
+
+  /// Hectares the district's rate asks for `resource` in `year`, the core's
+  /// own arithmetic mirrored (production_alarms.cpp): priced area × position
+  /// share × plan share. 0 for a resource no position asks by.
+  float OwedHectares(const core::WorldState& world,
+                     const std::vector<std::uint32_t>& fields,
+                     std::uint32_t resource,
+                     std::size_t year) const {
+    const auto at = std::ranges::find(plan_resources_, resource);
+    if (at == plan_resources_.end()) {
+      return 0.0F;
+    }
+    float worked_ha = 0.0F;
+    for (const std::uint32_t row : fields) {
+      worked_ha += world.fields.rows[row].area_ga;
+    }
+    const float priced_ha = year == 0 ? world.plan.worked_ha_last_year : worked_ha;
+    return priced_ha * plan_shares_[static_cast<std::size_t>(at - plan_resources_.begin())] *
+           plan_grain_share_;
+  }
+
+  /// Hectares whose chain (after today's orders) grows `resource` in `year`.
+  float GrownHectares(const core::WorldState& world,
+                      const std::vector<std::uint32_t>& fields,
+                      const std::vector<core::OrderRow>& orders,
+                      std::uint32_t resource,
+                      std::size_t year) const {
+    float grown_ha = 0.0F;
+    for (const std::uint32_t row : fields) {
+      grown_ha += ResourceOf(ChainOf(world, orders, row)[year]) == resource
+                      ? world.fields.rows[row].area_ga
+                      : 0.0F;
+    }
+    return grown_ha;
+  }
+
+  /// THE ONE OBVIOUS ANSWER TO THE PLAN ALARM (boss, 2026-09-13): a plan
+  /// position is a QUANTITY, so the missing crop goes onto the BEST fields of
+  /// year N — best first, the opposite of the release rule, which is about
+  /// giving land away — until the hectares reach the district's rate. First the
+  /// years growing no position; then, only if still short, years growing a
+  /// position whose hectares would stay covered without this field.
+  ///
+  /// POOREST FIRST UNTIL THE SAME DAY, and measured wrong: on seed 1933 the
+  /// answer closed a missing potato with a 3.5 ha field at fertility 20 —
+  /// 18 t reaped against 41.63 t owed.
   void AnswerThePlanAlarm(core::ISimulation& simulation, const core::WorldState& world) {
     std::vector<core::Alarm> alarms;
     simulation.CollectAlarms(alarms);
@@ -183,7 +251,7 @@ class SowingPolicy {
       }
     }
     std::ranges::stable_sort(fields, [&world](std::uint32_t a, std::uint32_t b) {
-      return world.fields.rows[a].fertility < world.fields.rows[b].fertility;
+      return world.fields.rows[a].fertility > world.fields.rows[b].fertility;
     });
     std::vector<core::OrderRow> orders;
     for (const core::Alarm& alarm : alarms) {
@@ -192,88 +260,67 @@ class SowingPolicy {
           alarm.amount > 2) {
         continue;
       }
-      const core::CropId crop = crop_of_resource_[alarm.resource.value];
       const auto year = static_cast<std::size_t>(alarm.amount);
-      // The chain a field will have once today's orders land.
-      const auto chain_of = [&world, &orders](std::uint32_t row) {
-        const core::FieldRow& field = world.fields.rows[row];
-        std::array<core::CropId, 3> chain = {
-            field.rotation_year0, field.rotation_year1, field.rotation_year2};
-        for (const core::OrderRow& order : orders) {
-          if (order.field == world.fields.row_ids[row]) {
-            chain = {order.rotation_year0, order.rotation_year1, order.rotation_year2};
-          }
-        }
-        return chain;
-      };
-      // How many fields grow this crop's produce in `year`.
-      const auto growers = [this, &fields, &chain_of, year](core::CropId of) {
-        std::uint32_t count = 0;
+      const std::uint32_t wanted = alarm.resource.value;
+      const float owed_ha = OwedHectares(world, fields, wanted, year);
+      bool placed_any = false;
+      for (int pass = 0; pass < 2; ++pass) {
         for (const std::uint32_t row : fields) {
-          const core::CropId slot = chain_of(row)[year];
-          count += slot.value < crop_resource_.size() && of.value < crop_resource_.size() &&
-                           crop_resource_[slot.value] == crop_resource_[of.value]
-                       ? 1U
-                       : 0U;
-        }
-        return count;
-      };
-      // TWO PASSES, POOREST FIRST IN EACH. First a year that grows no plan
-      // position at all. Only if there is none, a year growing a position that
-      // another field ALSO grows that year — a spare, whose loss uncovers
-      // nothing. Measured on seed 1933 before the second pass existed: the
-      // answers had filled every field's year with positions, potato found no
-      // free year, and its alarm stood forty-eight days a year from year 14 on,
-      // with no potato delivered in years 16 and 19.
-      std::uint32_t target = core::kNoRow;
-      for (int pass = 0; pass < 2 && target == core::kNoRow; ++pass) {
-        for (const std::uint32_t row : fields) {
-          const core::CropId slot = chain_of(row)[year];
-          const bool free_slot = !GrowsAPosition(slot);
-          const bool spare_slot = GrowsAPosition(slot) && growers(slot) > 1;
-          if (pass == 0 ? free_slot : spare_slot) {
-            target = row;
+          if (GrownHectares(world, fields, orders, wanted, year) >= owed_ha &&
+              (owed_ha > 0.0F || placed_any)) {
             break;
           }
+          std::array<core::CropId, 3> chain = ChainOf(world, orders, row);
+          const std::uint32_t there = ResourceOf(chain[year]);
+          if (there == wanted) {
+            continue;
+          }
+          const float there_owed = OwedHectares(world, fields, there, year);
+          const bool position_there =
+              std::ranges::find(plan_resources_, there) != plan_resources_.end();
+          const bool free_year = !position_there;
+          const bool spare_year =
+              position_there &&
+              GrownHectares(world, fields, orders, there, year) - world.fields.rows[row].area_ga >=
+                  there_owed;
+          if (!(pass == 0 ? free_year : spare_year)) {
+            continue;
+          }
+          chain[year] = crop_of_resource_[wanted];
+          SetChain(world, orders, row, chain);
+          placed_any = true;
         }
       }
-      bool placed = false;
-      for (const std::uint32_t row : fields) {
-        if (row != target) {
-          continue;
-        }
-        core::OrderRow* pending = nullptr;
-        for (core::OrderRow& order : orders) {
-          pending = order.field == world.fields.row_ids[row] ? &order : pending;
-        }
-        std::array<core::CropId, 3> chain = chain_of(row);
-        chain[year] = crop;
-        if (pending == nullptr) {
-          core::OrderRow order;
-          order.kind = core::OrderKind::kSetRotation;
-          order.field = world.fields.row_ids[row];
-          orders.push_back(order);
-          pending = &orders.back();
-        }
-        pending->rotation_year0 = chain[0];
-        pending->rotation_year1 = chain[1];
-        pending->rotation_year2 = chain[2];
-        placed = true;
-        break;
-      }
-      ++(placed ? answered_ : unanswered_);
+      ++(placed_any ? answered_ : unanswered_);
     }
     if (!orders.empty()) {
       simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
     }
   }
 
-  bool GrowsAPosition(core::CropId crop) const {
-    if (crop.value >= crop_resource_.size()) {
-      return false;
+  /// Writes (or rewrites) today's order for a field's chain.
+  static void SetChain(const core::WorldState& world,
+                       std::vector<core::OrderRow>& orders,
+                       std::uint32_t row,
+                       const std::array<core::CropId, 3>& chain) {
+    core::OrderRow* pending = nullptr;
+    for (core::OrderRow& order : orders) {
+      pending = order.field == world.fields.row_ids[row] ? &order : pending;
     }
-    return std::ranges::find(plan_resources_, crop_resource_[crop.value]) != plan_resources_.end();
+    if (pending == nullptr) {
+      core::OrderRow order;
+      order.kind = core::OrderKind::kSetRotation;
+      order.field = world.fields.row_ids[row];
+      orders.push_back(order);
+      pending = &orders.back();
+    }
+    pending->rotation_year0 = chain[0];
+    pending->rotation_year1 = chain[1];
+    pending->rotation_year2 = chain[2];
   }
+
+  std::vector<float> plan_shares_;
+  float plan_grain_share_ = 0.0F;
 
   std::vector<core::CropId> crop_of_resource_;
   std::vector<std::uint32_t> crop_resource_;
