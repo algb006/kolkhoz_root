@@ -116,6 +116,13 @@ struct YearEnd {
   core::ResourceAmounts delivered;
   core::Grams grain_in_store = 0;
   core::Grams waiting_on_fields = 0;
+  /// PER POSITION, because a sum across the positions hid the answer on seed
+  /// 1936: 19 to 51 t "in store" every year beside a potato delivery of zero.
+  core::ResourceAmounts in_store_by_position;
+  core::ResourceAmounts on_fields_by_position;
+  /// And where each position WENT over the year, because an empty store at
+  /// the year's end does not say whether nothing grew or everything left.
+  core::YearLedger book;
   std::uint32_t horses = 0;
   float area_sown_ha = 0.0F;
   float area_harvested_ha = 0.0F;
@@ -150,6 +157,21 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
               << Tonnes(sample.due[index]) << " t";
     if (shortfall > 0) {
       std::cout << " (SHORT " << Tonnes(shortfall) << ")";
+    }
+    const core::Grams stored =
+        index < sample.in_store_by_position.size() ? sample.in_store_by_position[index] : 0;
+    const core::Grams lying =
+        index < sample.on_fields_by_position.size() ? sample.on_fields_by_position[index] : 0;
+    std::cout << " [store " << Tonnes(stored) << ", field " << Tonnes(lying) << "]";
+    if (shortfall > 0) {
+      const auto amount = [index](const core::ResourceAmounts& amounts) {
+        return Tonnes(index < amounts.size() ? amounts[index] : 0);
+      };
+      const core::YearLedger& book = sample.book;
+      std::cout << " {year: harvest " << amount(book.harvest) << ", issued " << amount(book.issued)
+                << ", ration " << amount(book.ration) << ", eaten " << amount(book.eaten)
+                << ", fed " << amount(book.feed) << ", seed " << amount(book.seed) << ", spoiled "
+                << amount(book.spoiled) << ", lost " << amount(book.lost_no_room) << "}";
     }
     any = true;
   }
@@ -250,11 +272,23 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
         last_day.area_harvested_ha = world.ledger.current.area_harvested_ha;
         last_day.area_lost_ha = world.ledger.current.area_lost_ha;
         last_day.work_days = world.ledger.current.work_days_by_kind;
+        last_day.book = world.ledger.current;
         last_day.carting = running;
         core::Grams grain = 0;
+        last_day.in_store_by_position.assign(world.plan.due.size(), 0);
+        last_day.on_fields_by_position.assign(world.plan.due.size(), 0);
         for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
           if (world.plan.due[index] > 0) {
-            grain += VillageStock(world, core::DefIdFromIndex<core::ResourceIdTag>(index));
+            const core::Grams held =
+                VillageStock(world, core::DefIdFromIndex<core::ResourceIdTag>(index));
+            last_day.in_store_by_position[index] = held;
+            grain += held;
+          }
+        }
+        for (const core::FieldRow& field : world.fields.rows) {
+          if (field.reaped_grams > 0 &&
+              field.reaped_resource.value < last_day.on_fields_by_position.size()) {
+            last_day.on_fields_by_position[field.reaped_resource.value] += field.reaped_grams;
           }
         }
         last_day.grain_in_store = grain;
@@ -264,6 +298,14 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
       const std::uint8_t failed_now = world.plan.failed_years_in_a_row;
       if (failed_now > failed_before) {
         ++failures;
+        // THE DELIVERY IS READ HERE, ON THE TURN, and not with the rest of the
+        // last day. The core delivers and judges in one call at the year's
+        // turn (RunYearStart: DeliverPlan, then JudgePlan, which clears `due`),
+        // so on the last day `plan.delivered` still holds LAST year's shipment.
+        // Until 2026-09-13 this run printed the due of one year beside the
+        // delivery of the year before — "potato 41.63/41.63" on a failed year,
+        // and every debt reported that morning one year out of step.
+        last_day.delivered = world.plan.delivered;
         PrintShortfall(last_day, resources);
       }
       failed_before = failed_now;

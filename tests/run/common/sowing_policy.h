@@ -132,6 +132,22 @@ class SowingPolicy {
       if (field.kind != core::LandKind::kArable || !awaiting || !core::HasRotation(field)) {
         continue;
       }
+      // AN IDLE FIELD IS NOT NECESSARILY WAITING — it may already have been
+      // sown and reaped this year. Until 2026-09-13 this test took those too:
+      // every field harvested before the deadline was "released" and handed
+      // back unmoved at the turn, and a chain handed back unmoved does not
+      // advance (rotation_skips_turn). The obvious chairman froze the rotation
+      // of nearly the whole farm, every year — 139 chains in twenty years — and
+      // on seed 1936, whose potato stood in no field's first slot, the district's
+      // largest position was never grown again: twenty failed years of twenty,
+      // read as the harshest answer the game had given. It was this line.
+      // A crop sown within the last year has had its season.
+      const bool sown_this_season =
+          field.sown_day != core::kNeverSownDay &&
+          static_cast<std::uint64_t>(field.sown_day) + core::kDaysPerYear > world.calendar.day;
+      if (sown_this_season) {
+        continue;
+      }
       doomed.push_back(row);
     }
     if (doomed.empty()) {
