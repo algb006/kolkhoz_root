@@ -34,17 +34,20 @@
 #define TESTS_RUN_COMMON_SOWING_POLICY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <span>
 #include <string>
 #include <vector>
 
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_tables/tables.h"
 #include "core_world/world.h"
 
 namespace run {
@@ -72,12 +75,21 @@ class SowingPolicy {
   ///        at all? "Nobody could have coped" is a defect of the world and
   ///        "somebody cleverer could" is ordinary difficulty, and the two look
   ///        identical until one of them is tried (boss, 2026-09-13).
+  /// @param tables When given, the chairman also ANSWERS THE PLAN ALARM
+  ///        (kPlanPositionUncovered): the obvious chairman is the one who
+  ///        reacts to what the game shows him, one obvious answer per signal
+  ///        (boss, 2026-09-13). Null keeps the release-only policy.
   SowingPolicy(std::int32_t ripen_days,
                std::uint32_t growing_season_last_day,
-               bool looks_ahead = false)
+               bool looks_ahead = false,
+               const core::ITableSet* tables = nullptr)
       : ripen_days_(ripen_days),
         growing_season_last_day_(growing_season_last_day),
-        looks_ahead_(looks_ahead) {}
+        looks_ahead_(looks_ahead) {
+    if (tables != nullptr) {
+      ReadCropsAndPositions(*tables);
+    }
+  }
 
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
@@ -85,6 +97,13 @@ class SowingPolicy {
     if (day_of_year == 0) {
       GiveTheChainsBack(simulation, world);
       return;
+    }
+    if (day_of_year == 1 && !crop_of_resource_.empty()) {
+      // ON THE FIRST WORKING DAY and not on the day the alarm lights: every
+      // borrowed chain is back by then, and a chain set before any work opens
+      // from it is spent the ordinary way (rotation_skips_turn) instead of
+      // standing still through a turn.
+      AnswerThePlanAlarm(simulation, world);
     }
     if (looks_ahead_ && day_of_year == 1) {
       KeepOnlyWhatTheSpringCanSow(simulation, world);
@@ -98,6 +117,11 @@ class SowingPolicy {
     std::cout << "sowing_policy: the obvious chairman released " << released_
               << " chains from fields whose sowing would not have ripened, and gave " << restored_
               << " of them back at the year's turn\n";
+    if (!crop_of_resource_.empty()) {
+      std::cout << "sowing_policy: he answered " << answered_
+                << " plan alarms by putting the missing crop into the poorest field's chain, and "
+                << unanswered_ << " found no field to take it\n";
+    }
     std::cout << "sowing_policy: THE GIVING BACK IS A PROSTHETIC, NOT A DECISION — the order book "
                  "has no verb for \"do not sow this field THIS year\". kSetRotation with empty "
                  "slots means \"I take my word back\", and it means it for ever, so a policy that "
@@ -106,6 +130,117 @@ class SowingPolicy {
   }
 
  private:
+  /// Which crop yields each resource (the first crops.csv row that does), and
+  /// which crops the district's plan asks by — read once off the tables.
+  void ReadCropsAndPositions(const core::ITableSet& tables) {
+    const core::ITable* const crops = tables.FindTable("crops");
+    const core::ITable* const resources = tables.FindTable("resources");
+    const core::ITable* const campaign = tables.FindTable("campaign");
+    if (crops == nullptr || resources == nullptr || campaign == nullptr) {
+      return;
+    }
+    const std::uint32_t resource_col = crops->FindColumn("resource");
+    crop_of_resource_.assign(resources->RowCount(), core::CropId{});
+    for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+      const std::uint32_t resource = resources->FindRowByKey(crops->CellText(row, resource_col));
+      if (resource < crop_of_resource_.size() &&
+          crop_of_resource_[resource].value == core::kInvalidDefIdValue) {
+        crop_of_resource_[resource] = core::CropId{static_cast<std::uint16_t>(row)};
+      }
+      crop_resource_.push_back(resource);
+    }
+    const std::uint32_t positions_row = campaign->FindRowByKey("plan_positions");
+    if (positions_row == core::kNoTableRow) {
+      return;
+    }
+    const std::string list(campaign->CellText(positions_row, campaign->FindColumn("value")));
+    std::size_t start = 0;
+    while (start < list.size()) {
+      const std::size_t end = std::min(list.find(' ', start), list.size());
+      const std::string token = list.substr(start, end - start);
+      const std::uint32_t crop = crops->FindRowByKey(token.substr(0, token.find('=')));
+      if (crop < crop_resource_.size()) {
+        plan_resources_.push_back(crop_resource_[crop]);
+      }
+      start = end + 1;
+    }
+  }
+
+  /// THE ONE OBVIOUS ANSWER TO THE PLAN ALARM: the position is missing in
+  /// year N, so the missing crop goes into year N of the poorest field whose
+  /// year N does not already grow a plan position — poorest first, as
+  /// everywhere in this policy. One field per alarm.
+  void AnswerThePlanAlarm(core::ISimulation& simulation, const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    simulation.CollectAlarms(alarms);
+    std::vector<std::uint32_t> fields;
+    for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+      if (world.fields.rows[row].kind == core::LandKind::kArable &&
+          core::HasRotation(world.fields.rows[row])) {
+        fields.push_back(row);
+      }
+    }
+    std::ranges::stable_sort(fields, [&world](std::uint32_t a, std::uint32_t b) {
+      return world.fields.rows[a].fertility < world.fields.rows[b].fertility;
+    });
+    std::vector<core::OrderRow> orders;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind != core::AlarmKind::kPlanPositionUncovered ||
+          alarm.resource.value >= crop_of_resource_.size() || alarm.amount < 0 ||
+          alarm.amount > 2) {
+        continue;
+      }
+      const core::CropId crop = crop_of_resource_[alarm.resource.value];
+      const auto year = static_cast<std::size_t>(alarm.amount);
+      bool placed = false;
+      for (const std::uint32_t row : fields) {
+        core::OrderRow* pending = nullptr;
+        for (core::OrderRow& order : orders) {
+          pending = order.field == world.fields.row_ids[row] ? &order : pending;
+        }
+        const core::FieldRow& field = world.fields.rows[row];
+        std::array<core::CropId, 3> chain = {
+            field.rotation_year0, field.rotation_year1, field.rotation_year2};
+        if (pending != nullptr) {
+          chain = {pending->rotation_year0, pending->rotation_year1, pending->rotation_year2};
+        }
+        if (GrowsAPosition(chain[year])) {
+          continue;
+        }
+        chain[year] = crop;
+        if (pending == nullptr) {
+          core::OrderRow order;
+          order.kind = core::OrderKind::kSetRotation;
+          order.field = world.fields.row_ids[row];
+          orders.push_back(order);
+          pending = &orders.back();
+        }
+        pending->rotation_year0 = chain[0];
+        pending->rotation_year1 = chain[1];
+        pending->rotation_year2 = chain[2];
+        placed = true;
+        break;
+      }
+      ++(placed ? answered_ : unanswered_);
+    }
+    if (!orders.empty()) {
+      simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
+    }
+  }
+
+  bool GrowsAPosition(core::CropId crop) const {
+    if (crop.value >= crop_resource_.size()) {
+      return false;
+    }
+    return std::ranges::find(plan_resources_, crop_resource_[crop.value]) != plan_resources_.end();
+  }
+
+  std::vector<core::CropId> crop_of_resource_;
+  std::vector<std::uint32_t> crop_resource_;
+  std::vector<std::uint32_t> plan_resources_;
+  std::uint32_t answered_ = 0;
+  std::uint32_t unanswered_ = 0;
+
   /// A chain taken away, and the field it came from.
   struct Borrowed {
     core::FieldId field;

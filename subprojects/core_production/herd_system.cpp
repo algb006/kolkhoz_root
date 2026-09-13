@@ -68,7 +68,8 @@ Grams TakeFeed(WorldState& world,
   if (!place.at_unit) {
     return 0;
   }
-  // BELOW THE PLAN AND THE SEED, and not through them. Until 2026-09-13 the
+  // BELOW THE PLAN RESERVE, and not through it (the seed rung is left out and
+  // FeedAllowance says why). Until 2026-09-13 the
   // herds took straight out of the stores, so in a year with no oat harvest
   // the horses ate the grain owed to the district and the plan fell short —
   // seven failed years of twenty on the canonical seed, every third year —

@@ -290,7 +290,8 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
   // the oat gap (last sowing day to first reaping day) and the day before the
   // seasonal mean falls to freezing. One figure for every crop is the obvious
   // chairman's whole agronomy.
-  run::SowingPolicy chairman(kObviousRipenDays, kObviousSeasonLastDay, play.looks_ahead);
+  run::SowingPolicy chairman(
+      kObviousRipenDays, kObviousSeasonLastDay, play.looks_ahead, started.tables.get());
 
   Pulled pulled;
   std::uint32_t run_length = 0;
@@ -473,15 +474,16 @@ int main(int argc, char** argv) {
   // RED WITH ITS REASON PRINTED, so that a familiar red is not read as "that
   // one again" (boss, 2026-09-13). Both gates stand on seed 1929 alone, and
   // over nine seeds 1929..1937 neither holds as a property of the game:
-  // measured the same day, the floor reaches the trial on 4 of 9 and the
-  // obvious chairman — once the policy stopped freezing his rotations — on 2
-  // of 9, failing 6 to 12 plan years of 20. A 4.4 m move of the well alone
-  // moved the floor by one or two years on four seeds of nine. Turning the
-  // gates into shares waits for the carting cure: a share set on a world
-  // whose harvest lies on the field would record that defect as the norm.
+  // measured the same day, once the herds stayed below the plan reserve and
+  // the chairman answered the uncovered-position alarm, the floor reaches the
+  // trial on 4 of 9 and the obvious chairman on 4 of 9, failing 0 to 13 plan
+  // years of 20. A 4.4 m move of the well alone moved the floor by one or two
+  // years on four seeds of nine. Turning the gates into shares waits for the
+  // carting cure: a share set on a world whose harvest lies on the field would
+  // record that defect as the norm.
   if (!floor_reached_trial || canon_reached_trial) {
     std::cout << "plan_trial: KNOWN RED — both gates stand on seed 1929 alone; over nine seeds "
-                 "the floor reaches the trial on 4 of 9 and the obvious chairman on 2 of 9. "
+                 "the floor reaches the trial on 4 of 9 and the obvious chairman on 4 of 9. "
                  "They wait to become shares after the carting cure\n";
   }
   failures += run::Expect(floor_reached_trial,

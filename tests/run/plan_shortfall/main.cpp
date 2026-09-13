@@ -310,7 +310,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
   // The obvious chairman, so that what is measured is a village somebody
   // steers. Without him the run is the FLOOR and the answer would be "nobody
   // was making decisions", which we already know.
-  run::SowingPolicy chairman(kRipenDays, kSeasonLastDay);
+  run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
 
   std::cout << "plan_shortfall: === " << label << " (seed " << seed << ") ===\n";
   YearEnd last_day;
