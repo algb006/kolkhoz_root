@@ -39,7 +39,8 @@ struct LimitDeliveryRow {
 
   /// The campaign day the cart reaches the village: the order's day plus
   /// limit_delivery_days plus a delay of 0..limit_delivery_delay_days_max drawn
-  /// from the world's seed. From that day on the goods go through the store
+  /// from the world's generator state at the order and the order's tick
+  /// (district_limit.cpp, OrderLimitLot). From that day on the goods go through the store
   /// door every day until none is left.
   std::uint32_t arrive_day = 0;
 
