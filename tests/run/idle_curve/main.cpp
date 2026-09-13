@@ -136,6 +136,11 @@ int main(int argc, char** argv) {
   // be built on. A hint without a deadline is an alarm with no answer.
   std::uint32_t yard_delay = 0;
   bool far_site = false;
+  // --gap: a site in the band the accountant will not walk to but a summer day
+  // would fit twice over — (10900, 9313), where seed 1933's granary stood
+  // crewless for a year in plan_shortfall. The alarm must say "unreachable",
+  // because the accountant's own travel limit is the rule (2026-09-13).
+  bool gap_site = false;
   // --herd-alarm: the kHerdWithoutStable timeline, and nothing else.
   //
   // Three dates decide whether the kind is a warning or an obituary: the day
@@ -155,6 +160,7 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--yard-delay=").size())).c_str()));
     }
     far_site = far_site || argument == "--far";
+    gap_site = gap_site || argument == "--gap";
     herd_alarm = herd_alarm || argument == "--herd-alarm";
   }
   const run::Simulation world = run::Start(seed);
@@ -257,8 +263,9 @@ int main(int argc, char** argv) {
     // numbers "about the middle" without asking the map where the middle
     // is. The question this run asks is not his arithmetic but MINE: does
     // the order book say anything at all about a site nobody can reach?
-    mark.position =
-        far_site ? core::Vec2{.x = 505.0F, .y = 495.0F} : core::Vec2{.x = 8600.0F, .y = 9700.0F};
+    mark.position = far_site   ? core::Vec2{.x = 505.0F, .y = 495.0F}
+                    : gap_site ? core::Vec2{.x = 10900.0F, .y = 9313.0F}
+                               : core::Vec2{.x = 8600.0F, .y = 9700.0F};
     world->StageOrders(std::span<const core::OrderRow>(&mark, 1), {});
     world->AdvanceStep();
     std::uint32_t site = core::kNoRow;
@@ -279,6 +286,11 @@ int main(int argc, char** argv) {
     start.unit = id;
     world->StageOrders(std::span<const core::OrderRow>(&start, 1), {});
     float last_seam = -1.0F;
+    // Days the site stood crewless while the reach alarm was silent. For the
+    // gap site it must stay zero on EVERY day, summer included: the day-zero
+    // guard alone is taken in January, when a short daylight made the old
+    // rule fire too and the check could not tell the two rules apart.
+    std::uint32_t silent_crewless_days = 0;
     for (std::uint32_t day = 0; day < 200; ++day) {
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world->AdvanceStep();
@@ -315,10 +327,14 @@ int main(int argc, char** argv) {
       // THE GUARD, and it is the one boss asked for: a site in the corner of
       // the map must say so from the FIRST day, and a site by the village
       // must never say it. Checked by damage — the same run raises both.
+      silent_crewless_days += crewless == 1 && unreachable == 0 ? 1U : 0U;
       if (day == 0) {
-        failures += run::Expect(far_site == (unreachable == 1),
-                                far_site ? "a site eleven kilometres out says so on day zero"
-                                         : "and a site by the village never says it");
+        const bool out_of_reach = far_site || gap_site;
+        failures += run::Expect(out_of_reach == (unreachable == 1),
+                                far_site   ? "a site eleven kilometres out says so on day zero"
+                                : gap_site ? "a site past the accountant's road limit says so on "
+                                             "day zero, whatever the daylight"
+                                           : "and a site by the village never says it");
       }
       if (unit.construction.labor_days_remaining != last_seam || day < 3 || unit.level > 0) {
         std::cout << "idle_curve:   тревоги — без бригады " << crewless << ", НЕДОСТИЖИМА "
@@ -333,9 +349,16 @@ int main(int argc, char** argv) {
         return failures;
       }
     }
+    if (gap_site) {
+      std::cout << "idle_curve: без бригады при молчащей недостижимости — " << silent_crewless_days
+                << " суток\n";
+      failures += run::Expect(silent_crewless_days == 0,
+                              "a site past the accountant's road limit never stands crewless in "
+                              "silence, summer included");
+    }
     std::cout << "idle_curve: за двести суток НЕ ПОСТРОЕНА"
-              << (far_site ? " — и это правильно: до неё не дойти\n" : "\n");
-    return far_site ? failures : failures + 1;
+              << (far_site || gap_site ? " — и это правильно: до неё не дойти\n" : "\n");
+    return far_site || gap_site ? failures : failures + 1;
   }
   run::YardPolicy yard(*world.tables);
   run::FixturePolicy fixture(*world.tables);

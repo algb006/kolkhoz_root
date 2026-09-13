@@ -270,6 +270,14 @@ struct ConstructionConfig {
   /// module holds a number and not a second opinion.
   float walk_hours_per_km = 2.4F;
 
+  /// labor.csv `travel_limit_hours`: the longest one-way road, in game hours,
+  /// the accountant sends anybody down. The same number core_labor reads.
+  float travel_limit_hours = 4.0F;
+
+  /// labor.csv `min_usable_hours`: the least working time that must be left
+  /// of a day after the road there and back. The same number core_labor reads.
+  float min_usable_hours = 1.0F;
+
   /// The catalogue, read at parse time: the plot radii and the map side
   /// come from there and not from this module's own read of unit_types.csv,
   /// because those columns have a second reader (core_residents' wedding

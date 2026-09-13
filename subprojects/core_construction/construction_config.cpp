@@ -822,6 +822,29 @@ bool ParseConstructionConfig(const ITableSet& tables,
       config.walk_hours_per_km = static_cast<float>(kClockScale) / kmh;
     }
   }
+  // THE ACCOUNTANT'S TWO ROAD RULES, read from labor.csv as core_labor reads
+  // them, because a site the accountant will not send anybody to is the site
+  // this module must call unreachable (construction_system.cpp).
+  if (const ITable* const labor = tables.FindTable("labor")) {
+    const std::uint32_t value_col = labor->FindColumn("value");
+    if (!CellOrDefault(*labor,
+                       labor->FindRowByKey("travel_limit_hours"),
+                       value_col,
+                       Range{.low = 0.0F, .high = 24.0F},
+                       config.travel_limit_hours,
+                       config.travel_limit_hours,
+                       error) ||
+        !CellOrDefault(*labor,
+                       labor->FindRowByKey("min_usable_hours"),
+                       value_col,
+                       Range{.low = 0.0F, .high = 24.0F},
+                       config.min_usable_hours,
+                       config.min_usable_hours,
+                       error)) {
+      Fail(error, "labor", "a road rule is out of range");
+      return false;
+    }
+  }
 
   const ITable* const levels = tables.FindTable("unit_levels");
   if (levels == nullptr) {

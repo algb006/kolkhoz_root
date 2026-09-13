@@ -488,6 +488,10 @@ int WalkOneSeed(std::uint64_t seed, const char* label) {
       failed_before = failed_now;
     }
   }
+  // What the building chairman did, because "no room in the stores" is only
+  // half an answer until it says whether anybody built one.
+  fixture.Report(started.State());
+  chairman.Report();
   std::cout << "plan_shortfall: " << label << " — the plan was failed in " << failures << " of "
             << kYears << " years\n";
   return 0;

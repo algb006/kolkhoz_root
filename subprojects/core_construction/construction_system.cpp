@@ -145,7 +145,19 @@ class ConstructionSystem final : public IConstructionSystem {
       if (site.construction.phase == ConstructionPhase::kDelivering ||
           site.construction.phase == ConstructionPhase::kBuilding) {
         const float road = core::NearestDwellingHours(config_, completed, site.position);
-        if (road > 0.0F && 2.0F * road >= completed.weather.daylight_hours) {
+        // THE ACCOUNTANT'S QUESTION AND NOT A GENEROUS ONE (2026-09-13): the
+        // road is too long for him past travel_limit_hours, or when the road
+        // there and back leaves less than min_usable_hours of the day
+        // (core_labor/assignment.cpp, ConsiderCandidate). The alarm asked only
+        // whether the round trip fits in daylight — a summer day of sixteen
+        // hours let it stay silent up to eight hours of road while the
+        // accountant stopped at four, and on seed 1933 a granary two and a
+        // half kilometres out stood crewless all year with 300 hands idle and
+        // no word of why but "no crew".
+        const bool too_long = road > config_.travel_limit_hours;
+        const bool no_day_left =
+            completed.weather.daylight_hours - (2.0F * road) < config_.min_usable_hours;
+        if (road > 0.0F && (too_long || no_day_left)) {
           Alarm alarm;
           alarm.kind = AlarmKind::kSiteUnreachable;
           alarm.unit = completed.units.row_ids[row];

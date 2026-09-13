@@ -170,9 +170,15 @@ enum class AlarmKind : std::uint8_t {
   /// that he could mistake for progress.
   kSiteWithoutCrew,
 
-  /// NOBODY CAN GET THERE AND BACK IN A DAY: twice the road from the
-  /// NEAREST dwelling does not fit in the daylight window. Subject: `unit`;
-  /// `amount` = the hours of road, one way, in game hours.
+  /// NOBODY CAN GET THERE AND BACK IN A DAY: the road from the NEAREST
+  /// dwelling is one the accountant will not send anybody down — longer than
+  /// labor.csv travel_limit_hours, or leaving less than min_usable_hours of
+  /// the daylight after the road there and back. Subject: `unit`; `amount` =
+  /// the hours of road, one way, in game hours.
+  ///
+  /// THE ACCOUNTANT'S OWN TEST, since 2026-09-13. It was "the round trip does
+  /// not fit in daylight", which is laxer than the assignment's travel limit:
+  /// a site between the two stood crewless all year with no word of why.
   ///
   /// FROM THE NEAREST HOUSE AND NOT FROM THE VILLAGE'S MIDDLE, because
   /// distance is not a vice: a homestead two kilometres out is legitimate
