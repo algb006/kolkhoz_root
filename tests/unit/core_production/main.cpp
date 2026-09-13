@@ -3758,6 +3758,18 @@ int CheckSawing() {
   core::SettleUnitProduction(config, world);
   failures += Expect(near(world.units.rows[2].production_days_remaining, 0.1F),
                      "sawing: nobody is sent to saw more boards than there is room for");
+
+  // PAST THE GRAMS CEILING THE ANSWER IS ZERO, NOT A WRAPPED INT (UB-001,
+  // UB-201): on x86 the undefined cast came out as INT64_MIN, which is what
+  // these two would read without the guard.
+  failures += Expect(core::LogGramsForBoardM3(timber, 3.0e38F) == 0,
+                     "sawing: boards past any mass the core counts ask for no logs");
+  const core::TimberStandDef huge_grove{.kind = core::TimberStandKind::kGrove,
+                                        .position = core::Vec2{.x = 0.0F, .y = 0.0F},
+                                        .area_ha = 1.0F,
+                                        .log_share = 1.0F};
+  failures += Expect(core::LogGramsFromVolume(timber, huge_grove, 1.0e30F) == 0,
+                     "felling: a volume past any mass the core counts lays no logs");
   return failures;
 }
 

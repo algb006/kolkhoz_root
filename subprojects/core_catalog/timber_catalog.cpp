@@ -34,6 +34,20 @@ constexpr std::array<std::string_view, 11> kTimberWorldParamKeys = {
     "timber_sawing_days_per_m3",
     "sawmill_sawyers_max"};
 
+/// The largest mass any conversion of the core accepts — the same ceiling as
+/// GramsFromFloat's (quantities.cpp), nine thousand million tonnes.
+constexpr double kMostGrams = 9.0e15;
+
+/// Whole grams from a double, or 0 for a value that is not finite, negative
+/// or past kMostGrams: the same refusal GramsFromFloat makes, because a cast
+/// of such a value to int64 is undefined rather than merely wrong.
+Grams WholeGramsOrZero(double grams) {
+  if (!std::isfinite(grams) || grams < 0.0 || grams > kMostGrams) {
+    return 0;
+  }
+  return static_cast<Grams>(grams);
+}
+
 bool ParseKind(std::string_view text, TimberStandKind& kind) {
   if (text == "grove") {
     kind = TimberStandKind::kGrove;
@@ -128,14 +142,16 @@ bool ParseTimberCatalog(const ITableSet& tables, TimberCatalog& catalog, std::st
         {.key = kTimberWorldParamKeys[7],
          .value = &catalog.tools_per_feller,
          .range = {.low = 0.0F, .high = 100.0F}},
-        // The sawmill (timber design §8б). Ranges wide enough for any number
-        // the design base allows (its min_ok/max_ok sit well inside).
+        // The sawmill (timber design §8б). The ranges are the design base's
+        // own min_ok/max_ok (boss, parcel 208). They were 0..1 and 0..100
+        // until the 0.20.0 delivery analysis (UB-001): a yield or a sawing
+        // norm near zero sent the log-gram arithmetic past int64.
         {.key = kTimberWorldParamKeys[8],
          .value = &catalog.board_yield,
-         .range = {.low = 0.0F, .high = 1.0F}},
+         .range = {.low = 0.3F, .high = 0.8F}},
         {.key = kTimberWorldParamKeys[9],
          .value = &catalog.sawing_days_per_board_m3,
-         .range = {.low = 0.0F, .high = 100.0F}},
+         .range = {.low = 0.2F, .high = 5.0F}},
         {.key = kTimberWorldParamKeys[10],
          .value = &catalog.sawyers_max,
          .range = {.low = 0.0F, .high = 50.0F}},
@@ -238,7 +254,9 @@ Grams LogGramsFromVolume(const TimberCatalog& catalog,
                           ? stand.log_share * catalog.old_log_share_factor
                           : stand.log_share;
   const double logs = std::floor(static_cast<double>(volume_m3 * share / catalog.log_m3));
-  return static_cast<Grams>(logs) * catalog.log_grams;
+  // UB-201 fix: multiplied in double and refused past the grams ceiling —
+  // logs × grams in int64 had no bound at all.
+  return WholeGramsOrZero(logs * static_cast<double>(catalog.log_grams));
 }
 
 std::uint32_t FellingCrewCap(const TimberCatalog& catalog, Grams tool_grams_held) {
@@ -279,7 +297,9 @@ Grams LogGramsForBoardM3(const TimberCatalog& catalog, float board_m3) {
   const double log_m3 = static_cast<double>(board_m3) / static_cast<double>(catalog.board_yield);
   const double grams = std::ceil(log_m3 / static_cast<double>(catalog.log_m3) *
                                  static_cast<double>(catalog.log_grams));
-  return static_cast<Grams>(grams);
+  // UB-001 fix: the cast is refused past the grams ceiling and for a
+  // non-finite value, where it was undefined.
+  return WholeGramsOrZero(grams);
 }
 
 }  // namespace core
