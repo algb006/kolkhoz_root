@@ -254,6 +254,31 @@ struct UnitRow {
   /// sub-step, read by the two seam queries. A unit whose type does not
   /// smell keeps this at zero for ever.
   float stink_radius_m = 0.0F;
+
+  /// THE UNIT THIS ONE IS A MODULE OF — invalid for a free-standing unit
+  /// (unit rules §11, "Модули"; boss's decisions of 2026-09-13, parcel 198).
+  /// A type is a module when unit_types.csv names a `parent` for it. The row
+  /// names the parent UNIT, not only its type, because two yards of one type
+  /// may stand and a module belongs to the one whose plot it was put on. Set
+  /// when the module is marked (kBuildUnit) and never moved. A module stands
+  /// on its parent's plot, is built only while the parent stands sound, and
+  /// does not work while it does not (ModuleParentSound, module_rules.h).
+  UnitId parent;
+
+  /// THE UNIT'S OWN WORK SEAM, game man-days — what a producing unit asks of
+  /// its workers today (unit rules §4: "the unit turns out its item while its
+  /// workers stand at it, there is raw material and it is not paused").
+  /// Written by production at the day's last tick from the raw material it
+  /// holds, drained by labor (WorkKind::kUnitWork), settled by production the
+  /// next last tick into the product. The same contract as a field's carting
+  /// seam (land_state.h, haul_days_remaining). Zero for every unit that turns
+  /// out nothing — which is every unit but the sawmill on 2026-09-13.
+  float production_days_remaining = 0.0F;
+
+  /// What production last wrote into the seam above, so that it can tell
+  /// what the workers did from what the raw material allowed. Same contract
+  /// as FieldRow::haul_days_written.
+  float production_days_written = 0.0F;
 };
 
 /// @brief The units table type used by WorldState.

@@ -97,9 +97,12 @@ static_assert(AggregateArity<FieldRow>() == 29,
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
 // which is the whole reason both asserts stand here.
-static_assert(sizeof(UnitRow) == 56 + kAmountsSize,
+// 2026-09-13: the module's parent and the production seam — three 4-byte
+// fields — took it only to 64 + amounts: four of the twelve bytes landed in
+// the tail padding. The field count below moved by three regardless.
+static_assert(sizeof(UnitRow) == 64 + kAmountsSize,
               "UnitRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<UnitRow>() == 10,
+static_assert(AggregateArity<UnitRow>() == 13,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
@@ -578,6 +581,10 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // is 20 for it.
   out.WriteU8(row.dead);
   out.WriteFloat(row.stink_radius_m);
+  // Modules and the production seam (2026-09-13, VERSION_SAVE 30).
+  WriteEntityId(out, row.parent);
+  out.WriteFloat(row.production_days_remaining);
+  out.WriteFloat(row.production_days_written);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -599,6 +606,9 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.paused = in.ReadU8();
   row.dead = in.ReadU8();
   row.stink_radius_m = in.ReadFloat();
+  row.parent = ReadEntityId<UnitId>(in);
+  row.production_days_remaining = in.ReadFloat();
+  row.production_days_written = in.ReadFloat();
   return row;
 }
 

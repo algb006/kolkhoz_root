@@ -56,6 +56,11 @@ struct TimberCatalog {
   float felling_days_per_m3 = 0.05F;          ///< Game man-days per cubic metre felled.
   float tools_per_feller = 1.0F;              ///< Tools in the stores per feller, not spent.
 
+  /// The sawmill (timber design §8б, boss 2026-09-13 — assigned, not measured).
+  float board_yield = 0.55F;              ///< Share of a log's volume that becomes boards.
+  float sawing_days_per_board_m3 = 1.0F;  ///< Game man-days per cubic metre of BOARDS.
+  float sawyers_max = 2.0F;               ///< Craftsmen at the saw at once.
+
   /// Every stand, in table row order: TimberStandRow::table_row indexes it.
   std::vector<TimberStandDef> stands;
 
@@ -70,6 +75,12 @@ struct TimberCatalog {
   /// Mass of one tool, grams (resources.csv kg_per_unit), to count the tools
   /// lying in the stores in pieces.
   Grams tool_grams = 0;
+
+  /// The board in the resource roster, invalid without one, and the mass of
+  /// one cubic metre of boards (resources.csv kg_per_unit; boards are
+  /// measured in m³).
+  ResourceId board_resource;
+  Grams board_grams_per_m3 = 0;
 };
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's

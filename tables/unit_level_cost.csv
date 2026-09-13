@@ -9,12 +9,6 @@ slaughterhouse,1,board,8
 slaughterhouse,1,stone,5
 slaughterhouse,1,clay,3
 slaughterhouse,1,glass,6
-food_yard,1,straw,4
-food_yard,1,log,60
-food_yard,1,board,8
-food_yard,1,stone,5
-food_yard,1,clay,3
-food_yard,1,glass,6
 granary,1,straw,4
 granary,1,log,60
 granary,1,board,8
@@ -121,12 +115,6 @@ dryer,1,glass,25
 dryer,1,cement,5
 dryer,1,insulation,8
 dryer,1,spare_part,6
-utility_yard,1,straw,4
-utility_yard,1,log,60
-utility_yard,1,board,8
-utility_yard,1,stone,5
-utility_yard,1,clay,3
-utility_yard,1,glass,6
 goods_store,1,straw,4
 goods_store,1,log,60
 goods_store,1,board,8

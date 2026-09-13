@@ -73,6 +73,16 @@ enum class WorkKind : std::uint8_t {
   /// All the year round, no window. Target: WorkAssignment::stand.
   kFelling,
 
+  /// Work at a PRODUCING UNIT, turning its raw material into its item (unit
+  /// rules §4; timber design §8b, 2026-09-13): the sawmill's sawing today,
+  /// the bakery's baking tomorrow. One kind for every producing unit, because
+  /// what differs between them — the item, the rate — is the unit's table
+  /// data, and a work kind per unit type would be a class per unit type
+  /// (core rule §11). Done by the holders of the post the parent unit carries
+  /// for it (the farm craftsman of the utility yard), no more at once than
+  /// the unit's places. Target: WorkAssignment::unit, the producing unit.
+  kUnitWork,
+
   /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
   /// appended BEFORE it.
   kWorkKindCount,

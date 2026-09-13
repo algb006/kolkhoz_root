@@ -150,6 +150,8 @@ class OrdersPolicy {
         return "hauling";
       case core::WorkKind::kFelling:
         return "felling";
+      case core::WorkKind::kUnitWork:
+        return "unit work";
       case core::WorkKind::kNone:
       case core::WorkKind::kWorkKindCount:
         break;

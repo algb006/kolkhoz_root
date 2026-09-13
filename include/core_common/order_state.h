@@ -469,6 +469,15 @@ enum class OrderRefusal : std::uint8_t {
   // told. Old saves keep opening either way — their values stay inside the
   // widened range.
 
+  /// A MODULE WITHOUT ITS PARENT (unit rules §11, "Модули"; boss, parcel
+  /// 198): kBuildUnit of a module type found no parent unit it could go on —
+  /// none of the parent type standing sound (built, not dead, not paused),
+  /// or the position is not inside such a parent's plot. Also the answer to
+  /// kStartBuild and kUpgradeUnit of a module whose parent has since stopped
+  /// standing sound. Named apart from kRuleForbids because the chairman's
+  /// remedy is a different building, not a different figure.
+  kNoParent,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a

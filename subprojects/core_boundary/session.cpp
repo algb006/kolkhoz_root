@@ -92,7 +92,8 @@ bool ShapeIsValid(const OrderRow& order) {
       if (order.work == WorkKind::kHerdCare) {
         return has_herd;
       }
-      if (order.work == WorkKind::kConstruction) {
+      // A producing unit's work names the unit, as a building site does.
+      if (order.work == WorkKind::kConstruction || order.work == WorkKind::kUnitWork) {
         return has_unit;
       }
       // Felling names the STAND (2026-09-13), and carting names whichever

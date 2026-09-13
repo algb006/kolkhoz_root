@@ -30,7 +30,9 @@ namespace {
 // telling the truth about its layout, not a format that changed.
 constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
-static_assert(sizeof(YearLedger) == 144 + (13 * kAmountsSize),
+// 2026-09-13: work at a producing unit widened work_days_by_kind by a float,
+// and the alignment of the block rounded the four bytes up to eight.
+static_assert(sizeof(YearLedger) == 152 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 39,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");

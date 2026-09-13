@@ -2,6 +2,7 @@
 
 #include "core_catalog/definitions.h"
 
+#include <string>
 #include <string_view>
 
 #include "core_catalog/table_value.h"
@@ -30,7 +31,23 @@ bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& er
   defs.plot_radius_m.assign(unit_types.RowCount(), 0.0F);
   defs.keep_out_radius_m.assign(unit_types.RowCount(), 0.0F);
   defs.is_housing.assign(unit_types.RowCount(), 0);
+  defs.parent.assign(unit_types.RowCount(), UnitTypeId{});
+  const std::uint32_t parent_column = unit_types.FindColumn("parent");
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
+    // A parent the roster does not carry is a table error, not a free-standing
+    // unit: reading it as "no parent" would let a module stand anywhere.
+    if (parent_column != kNoTableColumn) {
+      const std::string_view parent_key = unit_types.CellText(row, parent_column);
+      if (!parent_key.empty()) {
+        const std::uint32_t parent_row = unit_types.FindRowByKey(parent_key);
+        if (parent_row == kNoTableRow || parent_row == row) {
+          error = "unit_types: row " + std::to_string(row) + ": parent '" +
+                  std::string(parent_key) + "' is not another unit type";
+          return false;
+        }
+        defs.parent[row] = UnitTypeId{static_cast<std::uint16_t>(parent_row)};
+      }
+    }
     if (!CellOrDefault(unit_types,
                        row,
                        radius_column,

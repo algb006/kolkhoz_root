@@ -9,7 +9,7 @@
 unit,level,era,labor_days,build_class,max_crew,storage_capacity_t,livestock_capacity_head,wear_years_idle,wear_years_in_use,wear_factor
 threshing_floor,1,1,30,earthwork,8,,,60,40,1
 slaughterhouse,1,1,120,wood_small,8,,,50,30,1.1
-food_yard,1,1,120,wood_small,8,,,50,30,1
+food_yard,1,1,0,plot,,,,,,1
 granary,1,1,120,wood_small,8,150,,50,30,1.1
 granary,2,1,70,wood_small_ext,6,300,,50,30,1
 food_store,1,1,120,wood_small,8,60,,50,30,1.1
@@ -31,7 +31,7 @@ build_yard,2,2,600,brick_mid,16,,,90,60,1
 manure_pile,1,1,30,earthwork,8,,,60,40,1
 dryer,1,2,300,brick_small,10,,,80,55,1
 water_mill,1,1,,wood_large,12,,,55,32,1
-utility_yard,1,1,120,wood_small,8,,,50,30,1
+utility_yard,1,1,0,plot,,,,,,1
 goods_store,1,1,120,wood_small,8,80,,50,30,1.1
 workshops,1,1,120,wood_small,8,,,50,30,1.1
 sawmill,1,1,60,gear,4,,,30,14,1

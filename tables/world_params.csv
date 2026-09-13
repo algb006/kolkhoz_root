@@ -41,3 +41,6 @@ timber_old_log_share_factor,0.5,core
 timber_fallen_vanish_years,2,core
 timber_felling_days_per_m3,0.05,core
 timber_tools_per_feller,1,core
+timber_board_yield,0.55,core
+timber_sawing_days_per_m3,1,core
+sawmill_sawyers_max,2,core

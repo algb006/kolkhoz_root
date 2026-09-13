@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 
+#include "core_common/ids.h"
 #include "core_common/plot.h"
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
@@ -74,6 +75,11 @@ struct UnitTypeDefs {
   /// of one of these with no household in it is a FREE HOUSE, which is what
   /// a wedding needs first (life-cycle §12).
   std::vector<std::uint8_t> is_housing;
+
+  /// The type this one is a MODULE of (unit_types.csv `parent`), invalid for
+  /// a free-standing type (unit rules §11, "Модули"). A module is built on a
+  /// unit of this type, inside its plot, while it stands sound.
+  std::vector<UnitTypeId> parent;
 
   /// @brief Number of types the tables define. Zero in a table-less world.
   std::uint32_t Count() const { return static_cast<std::uint32_t>(plot_radius_m.size()); }

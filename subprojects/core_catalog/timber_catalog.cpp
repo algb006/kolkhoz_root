@@ -20,7 +20,7 @@ namespace {
 // its biome and ships only the result, in timber_stands.csv. The core read
 // them for one commit because they were declared `core`; boss re-declared
 // them on 2026-09-13 and they left world_params.csv.
-constexpr std::array<std::string_view, 8> kTimberWorldParamKeys = {
+constexpr std::array<std::string_view, 11> kTimberWorldParamKeys = {
     "timber_log_m3",
     "timber_grove_stock_m3_per_ha",
     "timber_shelterbelt_stock_m3_per_ha",
@@ -28,7 +28,10 @@ constexpr std::array<std::string_view, 8> kTimberWorldParamKeys = {
     "timber_old_log_share_factor",
     "timber_fallen_vanish_years",
     "timber_felling_days_per_m3",
-    "timber_tools_per_feller"};
+    "timber_tools_per_feller",
+    "timber_board_yield",
+    "timber_sawing_days_per_m3",
+    "sawmill_sawyers_max"};
 
 bool ParseKind(std::string_view text, TimberStandKind& kind) {
   if (text == "grove") {
@@ -124,6 +127,17 @@ bool ParseTimberCatalog(const ITableSet& tables, TimberCatalog& catalog, std::st
         {.key = kTimberWorldParamKeys[7],
          .value = &catalog.tools_per_feller,
          .range = {.low = 0.0F, .high = 100.0F}},
+        // The sawmill (timber design §8б). Ranges wide enough for any number
+        // the design base allows (its min_ok/max_ok sit well inside).
+        {.key = kTimberWorldParamKeys[8],
+         .value = &catalog.board_yield,
+         .range = {.low = 0.0F, .high = 1.0F}},
+        {.key = kTimberWorldParamKeys[9],
+         .value = &catalog.sawing_days_per_board_m3,
+         .range = {.low = 0.0F, .high = 100.0F}},
+        {.key = kTimberWorldParamKeys[10],
+         .value = &catalog.sawyers_max,
+         .range = {.low = 0.0F, .high = 50.0F}},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -132,8 +146,26 @@ bool ParseTimberCatalog(const ITableSet& tables, TimberCatalog& catalog, std::st
   if (const ITable* const resources = tables.FindTable("resources")) {
     const std::uint32_t log_row = resources->FindRowByKey("log");
     const std::uint32_t tool_row = resources->FindRowByKey("tool");
+    const std::uint32_t board_row = resources->FindRowByKey("board");
     catalog.log_resource = DefIdFromRow<ResourceIdTag>(log_row);
     catalog.tool_resource = DefIdFromRow<ResourceIdTag>(tool_row);
+    catalog.board_resource = DefIdFromRow<ResourceIdTag>(board_row);
+    if (board_row != kNoTableRow) {
+      // Boards are measured in cubic metres (resources.csv `measure`), so
+      // kg_per_unit is the mass of one cubic metre.
+      float board_kg = 0.0F;
+      if (!RequiredCell(*resources,
+                        "resources",
+                        "kg_per_unit",
+                        board_row,
+                        resources->FindColumn("kg_per_unit"),
+                        Range{.low = 0.001F, .high = 100000.0F},
+                        board_kg,
+                        error)) {
+        return false;
+      }
+      catalog.board_grams_per_m3 = GramsFromKilograms(board_kg);
+    }
     if (log_row != kNoTableRow) {
       float log_kg = 0.0F;
       if (!RequiredCell(*resources,

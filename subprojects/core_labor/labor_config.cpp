@@ -160,6 +160,9 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
   // core reads them without a rebuild — and so that the reader is not left
   // wondering why two of the eight kinds are missing. Felling joined on
   // 2026-09-13 with its row in labor.csv from the first day (heavy, boss).
+  // Work at a producing unit joined the same day WITHOUT a row: labor.csv is
+  // boss's export, and until it carries `unit_work` the compiled default
+  // stands (ordinary work).
   constexpr std::array<std::string_view, kWorkKindCount - 1> kKeys = {"plowing",
                                                                       "harrowing",
                                                                       "sowing",
@@ -167,7 +170,8 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
                                                                       "herd_care",
                                                                       "construction",
                                                                       "hauling",
-                                                                      "felling"};
+                                                                      "felling",
+                                                                      "unit_work"};
   const std::uint32_t rate_column = table.FindColumn("trudodni_rate");
   const std::uint32_t drain_column = table.FindColumn("rest_drain_per_norm_day");
   for (std::uint32_t index = 0; index < kKeys.size(); ++index) {

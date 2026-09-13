@@ -23,7 +23,7 @@ bool TargetExists(const WorldState& world, const OrderRow& order) {
   if (order.work == WorkKind::kHerdCare) {
     return FindRow(world.herds, order.herd) != kNoRow;
   }
-  if (order.work == WorkKind::kConstruction) {
+  if (order.work == WorkKind::kConstruction || order.work == WorkKind::kUnitWork) {
     // The site is a UNIT row, not a field (task A2). This used to fall
     // through to the fields table below, so a crew order named its target
     // in one table and had it looked for in another — the seam that decides
@@ -133,6 +133,7 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     case WorkKind::kHerdCare:
     case WorkKind::kConstruction:
     case WorkKind::kFelling:
+    case WorkKind::kUnitWork:
     case WorkKind::kNone:
       return OrderRefusal::kNone;  // no field named; nothing to ask about
     case WorkKind::kPlowing:
