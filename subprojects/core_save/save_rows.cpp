@@ -110,13 +110,18 @@ static_assert(AggregateArity<HerdRow>() == 18,
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
 // row that carries it with it).
-static_assert(sizeof(OrderRow) == 72, "OrderRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<OrderRow>() == 20,
+// 2026-09-13: the limit lot (a definition id) took it from 72 to 80.
+static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<OrderRow>() == 21,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 28,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<WorkAssignment>() == 7,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
+              "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<LimitDeliveryRow>() == 3,
+              "LimitDeliveryRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(TimberStandRow) == 48,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TimberStandRow>() == 9,
@@ -709,6 +714,9 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // The felling mark (kMarkFelling, 2026-09-13).
   WriteEntityId(out, row.stand);
   out.WriteFloat(row.volume_m3);
+
+  // The limit lot (kOrderLimitLot, 2026-09-13), through the dictionary.
+  sink.WriteDefId(DefKind::kLimitLot, row.lot.value);
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -739,6 +747,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.amount = static_cast<Grams>(in.ReadU64());
   row.stand = ReadEntityId<TimberStandId>(in);
   row.volume_m3 = in.ReadFloat();
+  row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   return row;
 }
 
@@ -782,6 +791,28 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.load_grams = static_cast<Grams>(in.ReadU64());
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// LimitDeliveryRow — limit_state.h (2026-09-13)
+// ---------------------------------------------------------------------------
+// The lot through the dictionary, so a reordered catalogue keeps a cart's
+// name; the goods are frozen grams by resource and go out as amounts.
+
+void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row) {
+  ByteWriter& out = sink.Out();
+  sink.WriteDefId(DefKind::kLimitLot, row.lot.value);
+  out.WriteU32(row.arrive_day);
+  sink.WriteAmounts(DefKind::kResource, row.goods);
+}
+
+LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  LimitDeliveryRow row;
+  row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
+  row.arrive_day = in.ReadU32();
+  row.goods = source.ReadAmounts(DefKind::kResource);
   return row;
 }
 

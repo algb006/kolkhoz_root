@@ -44,3 +44,12 @@ timber_tools_per_feller,1,core
 timber_board_yield,0.55,core
 timber_sawing_days_per_m3,1,core
 sawmill_sawyers_max,2,core
+limit_base_points_lagging,350,core
+limit_base_points_average,320,core
+limit_base_points_strong,285,core
+limit_base_points_leading,250,core
+limit_plan_met_points,150,core
+limit_overfulfil_points_per_percent,10,core
+limit_overfulfil_points_max,200,core
+limit_delivery_days,2,core
+limit_delivery_delay_days_max,2,core

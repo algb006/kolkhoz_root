@@ -1165,7 +1165,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("groom"));
   }
   config.pig_kind = KindByKey(livestock, "pig");
-  return ParseTimberCatalog(tables, config.timber, error);
+  return ParseTimberCatalog(tables, config.timber, error) &&
+         ParseLimitCatalog(tables, config.limit, error);
 }
 
 }  // namespace core

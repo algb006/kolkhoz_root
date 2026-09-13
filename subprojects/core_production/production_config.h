@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/limit_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -705,6 +706,10 @@ struct ProductionConfig {
 
   /// Timber design §8a: the stands and the felling numbers (2026-09-13).
   TimberCatalog timber;
+
+  /// District design §1, §4: the limit catalogue and the year's points
+  /// knobs (2026-09-13).
+  LimitCatalog limit;
 };
 
 /// @brief Parses every table core_production reads into `config`.

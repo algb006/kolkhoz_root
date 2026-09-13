@@ -1,0 +1,41 @@
+# generated from db/design.db — do not edit by hand
+# what one lot brings, in the resource's own measure (resources.csv)
+# an empty amount is not zero: it is a lot whose contents are not written yet, and a goods lot with one is refused at load
+lot,resource,amount
+compound_feed_lot,compound_feed,10
+timber_lot,log,30
+timber_lot,board,4
+roofing_lot,roofing,40
+consumer_goods_lot,consumer_goods,30
+consumer_goods_lot,watch,
+consumer_goods_lot,radio,
+consumer_goods_lot,television,
+consumer_goods_lot,refrigerator,
+consumer_goods_lot,washing_machine,
+consumer_goods_lot,carpet,
+consumer_goods_lot,furniture_set,
+consumer_goods_lot,shoes_summer,
+kerosene_lot,kerosene,400
+hops_lot,hops,0.5
+steel_lot,steel,1
+spare_part_lot,spare_part,10
+industrial_equipment_lot,industrial_equipment,
+bottled_gas_lot,bottled_gas,20
+school_uniform_lot,school_uniform,30
+tackle_lot,gun_and_tackle,
+bicycle_lot,bicycle,
+cement_brick_lot,brick,
+cement_brick_lot,cement,
+fertilizer_lot,mineral_fertilizer,
+motor_fuel_lot,motor_fuel,2000
+grocery_lot,grocery,500
+glass_container_lot,glass,24
+glass_container_lot,container,20
+lime_gravel_lot,lime,2
+lime_gravel_lot,gravel,10
+tool_lot,tool,20
+insulation_lot,insulation,
+paint_lot,paint,
+concrete_lot,reinforced_concrete,
+coal_lot,coal,5
+textile_lot,factory_textile,

@@ -42,9 +42,10 @@ enum class DefKind : std::uint8_t {
   kUnitType,
   kLivestock,
   kProfession,  ///< tables/professions.csv; ResidentRow::post, OrderRow::profession (task A7).
+  kLimitLot,    ///< tables/limit_catalog.csv; OrderRow::lot, LimitDeliveryRow::lot (2026-09-13).
 };
 
-inline constexpr std::uint32_t kDefKindCount = 5;
+inline constexpr std::uint32_t kDefKindCount = 6;
 
 /// @brief The tables/ file name backing a kind: "resources", "crops"...
 const char* DefTableName(DefKind kind);

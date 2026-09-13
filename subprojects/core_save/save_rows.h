@@ -20,6 +20,7 @@
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
+#include "core_common/limit_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/timber_state.h"
@@ -48,6 +49,9 @@ OrderRow ReadOrderRow(LoadSource& source);
 
 void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row);
 TimberStandRow ReadTimberStandRow(LoadSource& source);
+
+void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row);
+LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source);
 
 }  // namespace core
 

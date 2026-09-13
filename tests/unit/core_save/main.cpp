@@ -90,6 +90,9 @@ void WriteTableSet(const std::filesystem::path& root, const std::vector<std::str
   // The fifth dictionary (task A7): a post is a key like any other, and a
   // save that names one must find it again in a reshuffled roster.
   WriteTableFile(root / "professions.csv", {"groom", "storekeeper"}, "min_age");
+  // The sixth (2026-09-13): the limit's lots, named by key in an order and on
+  // a cart.
+  WriteTableFile(root / "limit_catalog.csv", {"glass_container_lot", "roofing_lot"}, "points");
 }
 
 core::ResourceAmounts Amounts(std::initializer_list<core::Grams> values) {
@@ -328,7 +331,17 @@ core::WorldState MakeWorld() {
   refused.refusal = kTopOrderRefusal;
   refused.issued_tick = 69;
   refused.unit = core::UnitId{1};
+  refused.lot = core::LimitLotId{1};
   core::AppendRow(world.orders, refused);
+
+  // The district's limit (save format 31): the year's points, a cart on the
+  // road carrying a lot's frozen goods, and the year's three flows.
+  world.limit.points = 215;
+  core::LimitDeliveryRow cart;
+  cart.lot = core::LimitLotId{0};
+  cart.arrive_day = 131;
+  cart.goods = Amounts({0, 0, 4'800'000});
+  core::AppendRow(world.limit_deliveries, cart);
 
   // An appointment still waiting (task A7): kAccepted is exactly the status
   // that has to survive a save — the order is visible, cancellable, and
@@ -381,6 +394,9 @@ core::WorldState MakeWorld() {
   };
   world.ledger.current.year = 0;
   world.ledger.current.births = 1;
+  world.ledger.current.limit_points_granted = 350;
+  world.ledger.current.limit_points_spent = 135;
+  world.ledger.current.limit_points_burned = 7;
   return world;
 }
 
@@ -583,6 +599,17 @@ int main() {
                          loaded.orders.rows[3].refusal == kTopOrderRefusal,
                      "the build order's position and the TOP of every order enum survived the "
                      "round trip — which is where the codec's bound is actually exercised");
+  failures += Expect(loaded.orders.rows[3].lot.value == 1, "the order's limit lot came back");
+  failures += Expect(loaded.limit.points == 215, "the year's limit points came back");
+  failures += Expect(loaded.limit_deliveries.rows.size() == 1 &&
+                         loaded.limit_deliveries.rows[0].lot.value == 0 &&
+                         loaded.limit_deliveries.rows[0].arrive_day == 131 &&
+                         AmountAt(loaded.limit_deliveries.rows[0].goods, 2) == 4'800'000,
+                     "a cart on the road came back with its lot, its day and its goods");
+  failures += Expect(loaded.ledger.current.limit_points_granted == 350 &&
+                         loaded.ledger.current.limit_points_spent == 135 &&
+                         loaded.ledger.current.limit_points_burned == 7,
+                     "the year's limit flows came back, each its own number");
 
   // The condition bytes came back as well, each one separately: a check
   // that read them together would pass on a codec that swapped them.

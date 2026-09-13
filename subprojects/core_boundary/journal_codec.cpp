@@ -52,8 +52,9 @@ namespace {
 /// line has to be counted by hand against WriteOrder every time the row
 /// grows — and it was counted by hand again for kUnsealFund, and again for
 /// kMarkFelling (2026-09-13): the stand is a fifth entity id and the volume a
-/// third float.
-constexpr std::size_t kOrderBytes = 5 + 8 + (5 * 4) + (6 * 2) + (3 * 4) + 8;
+/// third float; and for kOrderLimitLot the same day: the lot is a seventh
+/// definition id.
+constexpr std::size_t kOrderBytes = 5 + 8 + (5 * 4) + (7 * 2) + (3 * 4) + 8;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -67,7 +68,7 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// makes the build fail until WriteOrder, ReadOrder and kOrderBytes have all
 /// been brought along — and VERSION_SAVE bumped by the human, since an order
 /// row is a state row.
-static_assert(sizeof(OrderRow) == 72, "OrderRow changed — update the journal codec too");
+static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the journal codec too");
 
 /// AND THE FIELD COUNT BESIDE THE SIZE, for the reason the size alone cannot
 /// give (2026-09-12). The size tripwire caught kUnsealFund — three fields
@@ -81,7 +82,7 @@ static_assert(sizeof(OrderRow) == 72, "OrderRow changed — update the journal c
 /// It matters more here than in the save codec, because kOrderBytes above is
 /// counted BY HAND: a row that grows without this assert leaves the journal's
 /// writer walking past its own reader, which is how task A7 broke it.
-static_assert(AggregateArity<OrderRow>() == 20,
+static_assert(AggregateArity<OrderRow>() == 21,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -241,6 +242,8 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   // kOrderBytes above.
   out.U32(row.stand.value);
   out.Float(row.volume_m3);
+  // The limit lot (kOrderLimitLot, 2026-09-13), the seventh definition id.
+  out.U16(row.lot.value);
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -270,6 +273,7 @@ OrderRow ReadOrder(Reader& in) {
   row.amount = static_cast<Grams>(in.U64());
   row.stand = TimberStandId{in.U32()};
   row.volume_m3 = in.Float();
+  row.lot = LimitLotId{in.U16()};
   return row;
 }
 

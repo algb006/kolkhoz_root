@@ -91,6 +91,12 @@ using OrderId = EntityId<OrderIdTag>;
 /// square of old forest within a team's reach (core_common/timber_state.h).
 using TimberStandId = EntityId<TimberStandIdTag>;
 
+struct LimitDeliveryIdTag {};
+
+/// @brief One lot bought on the district's limit and still on the road to
+/// the village (core_common/limit_state.h).
+using LimitDeliveryId = EntityId<LimitDeliveryIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------
@@ -189,6 +195,13 @@ struct ProfessionIdTag {};
 /// to (professions design §1; project phase 2, task A7). The eleventh id
 /// kind, and the first that names a role rather than a thing.
 using ProfessionId = DefId<ProfessionIdTag>;
+
+struct LimitLotIdTag {};
+
+/// @brief Row of tables/limit_catalog.csv — a lot of the district's limit
+/// catalogue (district design §1). Saved and journalled by key, like every
+/// definition id.
+using LimitLotId = DefId<LimitLotIdTag>;
 
 }  // namespace core
 

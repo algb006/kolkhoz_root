@@ -32,9 +32,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 
 // 2026-09-13: work at a producing unit widened work_days_by_kind by a float,
 // and the alignment of the block rounded the four bytes up to eight.
-static_assert(sizeof(YearLedger) == 152 + (13 * kAmountsSize),
+// 2026-09-13: the limit's three int32 flows took it to 160.
+static_assert(sizeof(YearLedger) == 160 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 39,
+static_assert(AggregateArity<YearLedger>() == 42,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -87,7 +88,10 @@ static_assert(AggregateArity<PlanState>() == 8,
 // And raise VERSION_SAVE with it, because a member nobody writes is a save
 // that silently forgets it.
 // 2026-09-13: nineteen — the timber stands, a row table in save_rows.cpp.
-static_assert(AggregateArity<WorldState>() == 19,
+// Twenty-one the same night: the limit's points (here, WriteWorldBlocks) and
+// its carts (a row table in save_rows.cpp).
+static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 21,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -192,6 +196,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.walk_offs);
   out.WriteFloat(book.horse_backed_assignment_days);
   out.WriteFloat(book.total_assignment_days);
+  out.WriteI32(book.limit_points_granted);
+  out.WriteI32(book.limit_points_spent);
+  out.WriteI32(book.limit_points_burned);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -243,6 +250,9 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.walk_offs = in.ReadU32();
   book.horse_backed_assignment_days = in.ReadFloat();
   book.total_assignment_days = in.ReadFloat();
+  book.limit_points_granted = in.ReadI32();
+  book.limit_points_spent = in.ReadI32();
+  book.limit_points_burned = in.ReadI32();
   return book;
 }
 
@@ -323,6 +333,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   WriteFloatArray(out, world.vitals.satiety_year_means);
   out.WriteFloat(world.vitals.satiety_running_sum);
   out.WriteU32(world.vitals.satiety_running_days);
+
+  // The limit's points left this year (district design §1, save format 31).
+  out.WriteU32(static_cast<std::uint32_t>(world.limit.points));
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -385,6 +398,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   ReadFloatArray(in, world->vitals.satiety_year_means);
   world->vitals.satiety_running_sum = in.ReadFloat();
   world->vitals.satiety_running_days = in.ReadU32();
+
+  world->limit.points = static_cast<std::int32_t>(in.ReadU32());
 }
 
 /// A campaign is fifty to seventy years; the ceiling is four orders above

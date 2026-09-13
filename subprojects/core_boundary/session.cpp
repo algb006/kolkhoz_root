@@ -148,6 +148,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // and whether another felling is still going, change with the day —
       // the consumer's verdict (order_state.h).
       return has_stand && order.volume_m3 > 0.0F;
+    case OrderKind::kOrderLimitLot:
+      // A lot named, and nothing else. Whether the catalogue carries it, its
+      // epoch is open and the year's points cover it change with the world —
+      // the consumer's verdict (order_state.h).
+      return order.lot.value != kInvalidDefIdValue;
   }
   return false;
 }

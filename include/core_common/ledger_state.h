@@ -268,6 +268,16 @@ struct YearLedger {
   /// one shape where drift is invisible — the quotient still looks like a
   /// quotient.
   float total_assignment_days = 0.0F;
+
+  // The district's limit (district design §1; limit_state.h). A point is
+  // spent or burnt, never kept, so the year's book is the three flows.
+  /// Points granted for this year — on the first tick for the first, at the
+  /// turn that opened it for every later one.
+  std::int32_t limit_points_granted = 0;
+  /// Points spent on lots this year.
+  std::int32_t limit_points_spent = 0;
+  /// Points left unspent when this year closed and burnt with it.
+  std::int32_t limit_points_burned = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last

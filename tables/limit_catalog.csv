@@ -1,0 +1,48 @@
+# generated from db/design.db — do not edit by hand
+# one row per lot of the district catalogue (district.md §1)
+# an empty points is a lot not yet priced: it cannot be ordered
+# era is the first epoch the lot is open in; kind decides the window — the core orders goods, livestock/vehicle/person/choice have their own
+key,points,era,kind
+compound_feed_lot,20,1,goods
+horse_head,70,1,livestock
+cow_head,80,1,livestock
+sheep_head,25,1,livestock
+piglet_lot,20,1,livestock
+chick_lot,10,1,livestock
+seed_grain_lot,30,1,choice
+timber_lot,20,1,goods
+roofing_lot,25,1,goods
+consumer_goods_lot,20,1,goods
+kerosene_lot,15,1,goods
+hops_lot,25,2,goods
+steel_lot,15,1,goods
+spare_part_lot,35,1,goods
+industrial_equipment_lot,120,2,goods
+bottled_gas_lot,35,3,goods
+school_uniform_lot,15,2,goods
+tackle_lot,10,2,goods
+bicycle_lot,45,2,goods
+teacher_vocational,60,2,person
+teacher_higher,120,2,person
+cement_brick_lot,30,2,goods
+fertilizer_lot,45,2,goods
+tractor_unit,350,2,vehicle
+truck_unit,300,2,vehicle
+tanker_unit,320,2,vehicle
+motorcycle_sidecar_unit,90,2,vehicle
+motorcycle_messenger_unit,70,2,vehicle
+motor_fuel_lot,40,2,goods
+uaz_unit,280,3,vehicle
+combine_unit,500,2,vehicle
+milking_rig_unit,200,2,vehicle
+workshop_rig_unit,180,2,vehicle
+imported_machine_unit,700,3,vehicle
+grocery_lot,20,1,goods
+glass_container_lot,25,1,goods
+lime_gravel_lot,15,1,goods
+tool_lot,20,1,goods
+insulation_lot,,2,goods
+paint_lot,,2,goods
+concrete_lot,,3,goods
+coal_lot,20,1,goods
+textile_lot,25,2,goods

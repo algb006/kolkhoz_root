@@ -37,6 +37,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/limit_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -620,6 +621,16 @@ struct WorldState {
   /// groves, shelterbelts and the old-forest squares within a team's reach.
   /// Made at genesis from tables/timber_stands.csv; SAVED. timber_state.h.
   TimberStandTable stands;
+
+  /// The district's limit (district design §1): the points left this year.
+  /// Granted on the first tick and at every year's turn, burnt at the turn;
+  /// SAVED.
+  /// limit_state.h.
+  LimitState limit;
+
+  /// Lots bought on the limit and still on the district's cart (§4); SAVED.
+  /// limit_state.h.
+  LimitDeliveryTable limit_deliveries;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

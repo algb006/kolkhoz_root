@@ -273,6 +273,19 @@ enum class OrderKind : std::uint8_t {
   /// ordered. Consumer: core_production.
   kMarkFelling,
 
+  /// BUY one `lot` of the district's limit catalogue (district design §1;
+  /// boss, parcels 208 and 211). Its points leave LimitState::points at once,
+  /// and the goods travel on the district's cart (§4): they reach the stores
+  /// limit_delivery_days plus a seeded delay of 0..limit_delivery_delay_days_max
+  /// later (limit_state.h). Refused with kNoSuchSubject for a lot the catalogue
+  /// does not carry; kGateClosed for a lot of a later epoch; kRuleForbids for
+  /// a lot that is not goods (livestock, machines, people and "choice" have
+  /// their own windows — STUB), for a lot with no price, and for one none of
+  /// whose resources has an amount yet; kLimitShort when the points left this
+  /// year are fewer than the price. Settled in the step it is read.
+  /// Consumer: core_production.
+  kOrderLimitLot,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -478,6 +491,11 @@ enum class OrderRefusal : std::uint8_t {
   /// remedy is a different building, not a different figure.
   kNoParent,
 
+  /// kOrderLimitLot: the lot costs more points than are left this year.
+  /// Named apart from kRuleForbids because the remedy is the next year's
+  /// grant or a cheaper lot, not a different order (boss, parcel 211).
+  kLimitShort,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a
@@ -586,6 +604,9 @@ struct OrderRow {
   /// kMarkFelling: how much of the stand's stock to fell, cubic metres. The
   /// chairman's figure, for the same reason `amount` is.
   float volume_m3 = 0.0F;
+
+  /// kOrderLimitLot: the catalogue row to buy.
+  LimitLotId lot;
 };
 
 /// @brief The order book type used by WorldState.
