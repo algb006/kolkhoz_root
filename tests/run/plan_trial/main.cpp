@@ -31,9 +31,9 @@
 //
 // IT ASSERTS ALMOST NOTHING ON PURPOSE. The threshold is boss's to set (his
 // words: "если и там подряд не больше двух — порог смягчаю я, и это моя
-// работа"), so this run MEASURES and does not judge. Its one gate is that the
-// canonical play still cannot reach the trial — the claim 0.17.99 shipped, and
-// the one thing here that would be a regression rather than a balance opinion.
+// работа"), so this run MEASURES and does not judge. Its two gates are shares
+// over nine seeds, one at each end: the village nobody steers can reach the
+// trial, and the obvious chairman reaches it on at most one seed (main).
 
 #include <algorithm>
 #include <cstdint>
@@ -66,6 +66,18 @@ namespace {
 /// answered; carrying it to thirty would cost half the run's time to re-ask a
 /// question already settled. Said out loud because it is a choice, not a given.
 constexpr std::uint32_t kYears = 20;
+
+/// THE GATES STAND ON NINE SEEDS, NOT ON ONE (boss, parcel 181, 2026-09-13).
+/// Until then both stood on seed 1929 alone, and a 4.4 m move of the well had
+/// already flipped a verdict: one seed measured the seed, not the game.
+constexpr std::uint64_t kFirstGateSeed = 1929;
+constexpr std::uint64_t kGateSeedCount = 9;
+
+/// Boss's shares for the two gates, in his words: the floor's gate says the
+/// trial is REACHABLE, and one seed of nine is enough for that; the obvious
+/// chairman is taken to court on no more than one seed of nine.
+constexpr std::uint32_t kFloorTrialsAtLeast = 1;
+constexpr std::uint32_t kCanonTrialsAtMost = 1;
 
 /// Mean satiety at which a chairman reaches for the seed fund. Not a model
 /// constant — a reading of "his people are thin": the canonical year's mean is
@@ -393,20 +405,46 @@ int main(int argc, char** argv) {
     std::cout << "FAIL: plan_failed_years_to_trial did not read off campaign.csv\n";
     return 1;
   }
-  std::cout << "plan_trial: seed " << seed << ", " << kYears
+  std::cout << "plan_trial: " << kYears
             << " years a variant, the district takes him to court after " << trial_threshold
             << " failed years in a row\n";
 
+  // THE FLOOR, and its name says what it is. It used to be called "the
+  // canonical play", which is how the whole project came to read a village
+  // nobody steers as the village a player would have. Not one kSetRotation is
+  // issued here in twenty years: the layout genesis laid down is worked
+  // unchanged, the derelict ninety hectares are never raised, no field is ever
+  // released. The trial IS the expected end.
+  const BadPlay floor = {.name = "THE FLOOR: not one land decision in twenty years"};
+  // AND THE CANON, which is this one. One rule, the obvious one.
+  const BadPlay canon = {.name = "the obvious chairman: releases what will not ripen",
+                         .obvious_chairman = true};
+
+  const auto print_verdict = [](const BadPlay& play, const Verdict& verdict) {
+    std::cout << "plan_trial: " << play.name << " — plan failed in " << verdict.failed_years
+              << " years of " << kYears << ", longest run " << verdict.worst_run << " (year "
+              << verdict.worst_run_year << "), " << verdict.residents_at_end << " residents; "
+              << (verdict.reached_trial ? "REACHED «ПОД СУД»" : "never reached the trial") << "\n";
+  };
+
+  // THE GATED ARMS, on every gate seed.
+  std::uint32_t floor_trials = 0;
+  std::uint32_t canon_trials = 0;
+  for (std::uint64_t gate_seed = kFirstGateSeed; gate_seed < kFirstGateSeed + kGateSeedCount;
+       ++gate_seed) {
+    std::cout << "plan_trial: gate seed " << gate_seed << "\n";
+    const Verdict floor_verdict = Play(floor, gate_seed, trial_threshold);
+    print_verdict(floor, floor_verdict);
+    floor_trials += floor_verdict.reached_trial ? 1U : 0U;
+    const Verdict canon_verdict = Play(canon, gate_seed, trial_threshold);
+    print_verdict(canon, canon_verdict);
+    canon_trials += canon_verdict.reached_trial ? 1U : 0U;
+  }
+
+  // THE PROBES, on one seed: they answer questions about kinds of bad play and
+  // gate nothing, so nine seeds of them would cost minutes for no verdict.
+  std::cout << "plan_trial: the probes, on seed " << seed << "\n";
   const std::vector<BadPlay> plays = {
-      // THE FLOOR, and its name says what it is. It used to be called "the
-      // canonical play", which is how the whole project came to read a
-      // village nobody steers as the village a player would have. Not one
-      // kSetRotation is issued here in twenty years: the layout genesis laid
-      // down is worked unchanged, the derelict ninety hectares are never
-      // raised, no field is ever released. The trial IS the expected end.
-      {.name = "THE FLOOR: not one land decision in twenty years"},
-      // AND THE CANON, which is this one. One rule, the obvious one.
-      {.name = "the obvious chairman: releases what will not ripen", .obvious_chairman = true},
       // AND ONE RULE SMARTER, asked only to tell "he was dim" apart from
       // "nobody could have". Same verb, same order, same poorest-first — said
       // on the first day of the spring instead of at the deadline.
@@ -423,14 +461,9 @@ int main(int argc, char** argv) {
   };
 
   int failures = 0;
-  bool canon_reached_trial = false;
-  bool floor_reached_trial = false;
   for (const BadPlay& play : plays) {
     const Verdict verdict = Play(play, seed, trial_threshold);
-    std::cout << "plan_trial: " << play.name << " — plan failed in " << verdict.failed_years
-              << " years of " << kYears << ", longest run " << verdict.worst_run << " (year "
-              << verdict.worst_run_year << "), " << verdict.residents_at_end << " residents; "
-              << (verdict.reached_trial ? "REACHED «ПОД СУД»" : "never reached the trial") << "\n";
+    print_verdict(play, verdict);
     if (play.unseal_the_fund) {
       std::string opened =
           "THE FUND WAS NEVER OPENED — the winter never got hungry enough, so "
@@ -446,18 +479,6 @@ int main(int argc, char** argv) {
       }
       std::cout << "plan_trial:   " << opened << "\n";
     }
-    const bool nothing_done_wrong =
-        !play.all_land_at_once && !play.fallow_everywhere && !play.unseal_the_fund;
-    // THE CANON IS THE OBVIOUS CHAIRMAN AND ONLY HIM. The look-ahead arm shares
-    // his flag because it shares his verb, but it is a PROBE — asked on one
-    // layout to tell "he was dim" apart from "nobody could have" — and gating
-    // on it would let a probe's answer fail the run.
-    if (nothing_done_wrong && play.obvious_chairman && !play.looks_ahead) {
-      canon_reached_trial = verdict.reached_trial;
-    }
-    if (nothing_done_wrong && !play.obvious_chairman) {
-      floor_reached_trial = verdict.reached_trial;
-    }
   }
 
   // TWO GATES, ONE AT EACH END, and they used to be one — which is how the
@@ -471,26 +492,19 @@ int main(int argc, char** argv) {
   // So the floor is asserted to REACH the trial and the canon to avoid it. The
   // first is the one that would be a finding if it went red: it would mean the
   // game forgives a chairman for never making a decision.
-  // RED WITH ITS REASON PRINTED, so that a familiar red is not read as "that
-  // one again" (boss, 2026-09-13). Both gates stand on seed 1929 alone, and
-  // over nine seeds 1929..1937 neither holds as a property of the game:
-  // measured the same day, once the herds stayed below the plan reserve and
-  // the chairman answered the uncovered-position alarm, the floor reaches the
-  // trial on 3 of 9 and the obvious chairman — answering the alarm on the best
-  // fields up to the district's hectares, his stores now raised within reach —
-  // on 1 of 9 (seed 1929 itself, a run of four), failing 2 to 8 plan years of
-  // 20. What binds late on seed 1933 is sites short of materials. A 4.4 m move of the
-  // well alone moved the floor by one or two years on four seeds of nine. Turning the gates into
-  // shares waits for the carting cure: a share set on a world whose harvest lies on the field would
-  // record that defect as the norm.
-  if (!floor_reached_trial || canon_reached_trial) {
-    std::cout << "plan_trial: KNOWN RED — both gates stand on seed 1929 alone; over nine seeds "
-                 "the floor reaches the trial on 3 of 9 and the obvious chairman on 1 of 9. "
-                 "They wait to become shares after the carting cure\n";
-  }
-  failures += run::Expect(floor_reached_trial,
-                          "a village nobody steers is taken to court: the trial is reachable");
-  failures += run::Expect(!canon_reached_trial, "the obvious chairman is never taken to court");
+  // SHARES OVER NINE SEEDS since 2026-09-13 (boss, parcel 181). Until then
+  // both gates stood on seed 1929 alone and printed a KNOWN RED line whose
+  // counts belonged to a layout that no longer existed — the line had become
+  // a lie about itself. On the approved layout with UB-001 repaired, measured
+  // before the gates moved: the floor reached the trial on 1 of 9 (1933), the
+  // obvious chairman on 0 of 9.
+  std::cout << "plan_trial: over " << kGateSeedCount << " seeds the floor reached the trial on "
+            << floor_trials << " and the obvious chairman on " << canon_trials << "\n";
+  failures += run::Expect(floor_trials >= kFloorTrialsAtLeast,
+                          "a village nobody steers is taken to court on at least one seed of "
+                          "nine: the trial is reachable");
+  failures += run::Expect(canon_trials <= kCanonTrialsAtMost,
+                          "the obvious chairman is taken to court on at most one seed of nine");
   std::cout << (failures == 0 ? "plan_trial: all checks passed\n"
                               : "plan_trial: FAILURES " + std::to_string(failures) + "\n");
   return failures == 0 ? 0 : 1;
