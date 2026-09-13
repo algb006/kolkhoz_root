@@ -220,6 +220,12 @@ struct LaborConfig {
       // compiled default was ordinary until he answered). labor.csv carries
       // the same row.
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
+      // Work at a producing unit: ordinary work, one kind for every producing
+      // unit (boss, 2026-09-13); labor.csv carries the same row. The first
+      // commit of the kind left this cell out, and the brace initialiser
+      // filled it with zeros — a table set without the row sawed unpaid and
+      // untiring (found by the delivery analysis, 2026-09-13).
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
   }};
 
   // -- the day (labor.csv; time design §6-§7) ------------------------------

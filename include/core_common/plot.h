@@ -6,13 +6,12 @@
 /// core_residents) and the order book (core_construction). No state of its
 /// own.
 ///
-/// "Read-only" is NOT what makes this safe, and the const reference must
-/// not be read as a promise that it is. UnitRow is PARALLEL_WRITE in the
-/// logistics slot, and both calls here scan the WHOLE units table,
-/// including rows another worker would own — FreePlot up to 128 rings'
-/// worth of scans. A call from a parallel phase would therefore race over
-/// every unit in the settlement. What keeps it safe is the barrier before
-/// the sequential slot, and nothing else.
+/// Both calls scan the WHOLE units table — FreePlot up to 128 rings' worth
+/// of scans — and what keeps that safe is that every write to a unit row is
+/// sequential (unit_state.h): the scan never meets a row being written.
+/// This paragraph used to say UnitRow was PARALLEL_WRITE in the logistics
+/// slot; that slot was removed on 2026-09-05 and the sentence outlived it
+/// by eight days (delivery analysis, 2026-09-13).
 ///
 /// WHY THE RULE LIVES HERE AND NOT WITH THE ORDER THAT CARRIES IT. It used
 /// to live inside core_construction, as a private method of the system that
