@@ -1,0 +1,295 @@
+// Simulation run: WHEN THE PLAN IS FAILED, WHAT WAS ACTUALLY MISSING?
+//
+// Boss's order of 2026-09-13, and the order matters as much as the question:
+// "не «проверь склад». А вот что: в момент КАЖДОГО срыва плана напечатай, чего
+// не хватило — числом и в натуре."
+//
+// THE POINT IS THAT NOBODY NAMES A LEVER FIRST. Three hypotheses were put to
+// the runs in one morning — the land, the store, the carting — and all three
+// were wrong, in the same way each time: a lever was named and the instrument
+// was asked to confirm it. An instrument asked "чего не хватило" cannot be led
+// by a hypothesis. It will say what it says, and if that turns out to be the
+// weather and nothing else, then there is no lever and that is an answer too.
+//
+// WHAT IT PRINTS, at the close of every failed year, for the layout under
+// question and for the canonical one beside it:
+//
+//   THE DEBT     per resource: asked, delivered, short — in kilograms
+//   THE GRAIN    what the settlement holds when the district comes
+//   THE FIELDS   tonnes still lying unfetched on the fields that day
+//   THE ROOM     free store room, because "nowhere to put it" is a shortfall
+//   THE HANDS    game man-days by kind over the year
+//   THE TEAM     horses, which is what the spring is actually bounded by
+//   THE LAND     hectares sown and hectares reaped
+//
+// READ AT THE LAST DAY OF THE YEAR AND NOT AFTER. `PlanState::due` is cleared
+// at the turn, a few lines after the verdict is struck, so a reader that waits
+// for the verdict finds the debt already gone — the same trap the ledger row
+// fell into, where every plan_due cell was structurally zero because the row
+// was written at the turn.
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "../common/fixture_policy.h"
+#include "../common/repair_policy.h"
+#include "../common/run_harness.h"
+#include "../common/sowing_policy.h"
+#include "../common/yard_policy.h"
+#include "core_common/calendar.h"
+#include "core_common/land_state.h"
+#include "core_common/ledger_state.h"
+#include "core_common/quantities.h"
+#include "core_common/unit_state.h"
+#include "core_common/work_seam.h"
+#include "core_common/world_state.h"
+#include "core_tables/tables.h"
+#include "core_world/world.h"
+
+namespace {
+
+constexpr std::uint32_t kYears = 20;
+
+/// The obvious chairman's agronomy, as in plan_trial: the oat gap and the last
+/// day a standing crop is safe from the snow.
+constexpr std::int32_t kRipenDays = 13;
+constexpr std::uint32_t kSeasonLastDay = 42;
+
+/// Everything the settlement holds of one resource, across every store.
+core::Grams VillageStock(const core::WorldState& world, core::ResourceId resource) {
+  core::Grams held = 0;
+  for (const core::UnitRow& unit : world.units.rows) {
+    if (resource.value < unit.stock.size()) {
+      held += unit.stock[resource.value];
+    }
+  }
+  return held;
+}
+
+/// What is still lying on the fields, unfetched, of every resource together.
+core::Grams WaitingOnFields(const core::WorldState& world) {
+  core::Grams waiting = 0;
+  for (const core::FieldRow& field : world.fields.rows) {
+    waiting += field.reaped_grams;
+  }
+  return waiting;
+}
+
+std::uint32_t Horses(const core::WorldState& world) {
+  std::uint32_t horses = 0;
+  for (const core::HerdRow& herd : world.herds.rows) {
+    horses += herd.kind.value == 3 ? herd.adult_count : 0;
+  }
+  return horses;
+}
+
+double Tonnes(core::Grams grams) {
+  return static_cast<double>(grams) / 1.0e6;
+}
+
+/// WHY THE CARTING DOES NOT GO, counted rather than reasoned about.
+///
+/// The work queue sorts by DAYS LEFT IN THE WINDOW, ascending
+/// (core_labor/assignment.cpp). A load waiting on a field carries the days to
+/// the YEAR'S END; a standing crop carries the days to the end of its own
+/// harvest window. In the autumn the second is always the smaller, so reaping
+/// outranks carting for as long as anything is left to reap — by construction,
+/// not by accident. These numbers say what that costs.
+struct Carting {
+  std::uint32_t days_with_load_waiting = 0;  ///< days a load lay on a field
+  std::uint32_t days_nobody_carted = 0;      ///< ...and not one man was carting
+  std::uint32_t days_reaping_instead = 0;    ///< ...and somebody was reaping
+  core::Grams peak_waiting = 0;              ///< the worst the heap ever got
+  std::uint32_t free_horses_when_idle = 0;   ///< horses out of harness on those days
+};
+
+/// One year, sampled on its LAST day — before the turn clears the debt.
+struct YearEnd {
+  std::uint32_t year = 0;
+  core::ResourceAmounts due;
+  core::ResourceAmounts delivered;
+  core::Grams grain_in_store = 0;
+  core::Grams waiting_on_fields = 0;
+  std::uint32_t horses = 0;
+  float area_sown_ha = 0.0F;
+  float area_harvested_ha = 0.0F;
+  float area_lost_ha = 0.0F;
+  std::array<float, core::kWorkKindCount> work_days{};
+
+  // WHY THE CARTING DOES NOT GO, counted rather than reasoned about.
+  //
+  // The work queue sorts by DAYS LEFT IN THE WINDOW, ascending
+  // (core_labor/assignment.cpp). A load waiting on a field carries the days to
+  // the YEAR'S END; a standing crop carries the days to the end of its own
+  // harvest window. In the autumn the second is always the smaller, so reaping
+  // outranks carting for as long as anything is left to reap — by
+  // construction, not by accident. These three numbers say what that costs.
+  Carting carting;
+};
+
+void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
+  std::cout << "plan_shortfall:   year " << sample.year << " THE DEBT —";
+  bool any = false;
+  for (std::uint32_t index = 0; index < sample.due.size(); ++index) {
+    if (sample.due[index] <= 0) {
+      continue;
+    }
+    const core::Grams got = index < sample.delivered.size() ? sample.delivered[index] : 0;
+    const core::Grams shortfall = sample.due[index] > got ? sample.due[index] - got : 0;
+    const std::string key =
+        resources != nullptr && index < resources->RowCount()
+            ? std::string(resources->CellText(index, resources->FindColumn("key")))
+            : std::to_string(index);
+    std::cout << ' ' << key << ' ' << std::fixed << std::setprecision(2) << Tonnes(got) << '/'
+              << Tonnes(sample.due[index]) << " t";
+    if (shortfall > 0) {
+      std::cout << " (SHORT " << Tonnes(shortfall) << ")";
+    }
+    any = true;
+  }
+  if (!any) {
+    std::cout << " nothing was asked";
+  }
+  std::cout << '\n';
+  std::cout << "plan_shortfall:     in store " << Tonnes(sample.grain_in_store)
+            << " t, waiting on the fields " << Tonnes(sample.waiting_on_fields) << " t, "
+            << sample.horses << " horses; sown " << sample.area_sown_ha << " ha, reaped "
+            << sample.area_harvested_ha << " ha, lost to snow " << sample.area_lost_ha << " ha\n";
+  std::cout << "plan_shortfall:     man-days — plough " << sample.work_days[1] << ", harrow "
+            << sample.work_days[2] << ", sow " << sample.work_days[3] << ", reap "
+            << sample.work_days[4] << ", barn " << sample.work_days[5] << ", haul "
+            << sample.work_days[static_cast<std::size_t>(core::WorkKind::kHauling)] << '\n';
+  std::cout << "plan_shortfall:     THE CARTING — a load lay on a field on "
+            << sample.carting.days_with_load_waiting << " days of the year; on "
+            << sample.carting.days_nobody_carted << " of them NOT ONE MAN was carting, and on "
+            << sample.carting.days_reaping_instead
+            << " of those somebody was reaping instead; the heap peaked at "
+            << Tonnes(sample.carting.peak_waiting) << " t, and up to "
+            << sample.carting.free_horses_when_idle
+            << " horses stood out of harness on the days nobody carted\n";
+}
+
+/// Walks one layout and prints a line for every year the district was not paid.
+int WalkOneSeed(std::uint64_t seed, const char* label) {
+  run::Simulation started = run::Start(seed);
+  if (!started) {
+    return 1;
+  }
+  const core::ITable* const resources = started.tables->FindTable("resources");
+  run::YardPolicy yard(*started.tables);
+  run::FixturePolicy fixture(*started.tables);
+  run::RepairPolicy repairs(*started.tables);
+  // The obvious chairman, so that what is measured is a village somebody
+  // steers. Without him the run is the FLOOR and the answer would be "nobody
+  // was making decisions", which we already know.
+  run::SowingPolicy chairman(kRipenDays, kSeasonLastDay);
+
+  std::cout << "plan_shortfall: === " << label << " (seed " << seed << ") ===\n";
+  YearEnd last_day;
+  Carting running;
+  std::uint8_t failed_before = 0;
+  std::uint32_t failures = 0;
+  for (std::uint32_t year = 0; year < kYears; ++year) {
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      run::AdvanceDays(*started, 1);
+      yard.RunDay(*started.simulation);
+      fixture.RunDay(*started.simulation);
+      repairs.RunDay(*started.simulation);
+      chairman.RunDay(*started.simulation);
+      const core::WorldState& world = started.State();
+
+      // THE CARTING, WATCHED EVERY DAY. Counted where it happens rather than
+      // inferred from the year's totals: "hauling got 34 man-days" cannot tell
+      // a village that carted a little every day from one that never carted
+      // at all until November.
+      // THE TALLIES ACCUMULATE INTO `running` AND ARE SNAPSHOTTED AT THE
+      // YEAR'S LAST DAY, never printed live — because the verdict is struck at
+      // the TURN, which is the next year's first day, and a counter cleared on
+      // that day is cleared BEFORE the print. The first draft did exactly that
+      // and reported "a load lay on a field on 1 day of the year" beside a heap
+      // of 367 tonnes. The two numbers came from different years and neither
+      // was wrong on its own.
+      if (world.calendar.day % core::kDaysPerYear == 0) {
+        running = Carting{};
+      }
+      const core::Grams waiting_today = WaitingOnFields(world);
+      if (waiting_today > 0) {
+        ++running.days_with_load_waiting;
+        running.peak_waiting = std::max(running.peak_waiting, waiting_today);
+        std::uint32_t carting = 0;
+        std::uint32_t reaping = 0;
+        std::uint32_t harnessed = 0;
+        for (const core::ResidentRow& resident : world.residents.rows) {
+          carting += resident.work.kind == core::WorkKind::kHauling ? 1U : 0U;
+          reaping += resident.work.kind == core::WorkKind::kHarvest ? 1U : 0U;
+          harnessed += core::IsHorseWork(resident.work.kind) ? 1U : 0U;
+        }
+        if (carting == 0) {
+          ++running.days_nobody_carted;
+          running.days_reaping_instead += reaping > 0 ? 1U : 0U;
+          const std::uint32_t horses = Horses(world);
+          running.free_horses_when_idle =
+              std::max(running.free_horses_when_idle, horses > harnessed ? horses - harnessed : 0U);
+        }
+      }
+
+      // THE LAST DAY OF THE YEAR, sampled before the turn clears the debt.
+      if (world.calendar.day % core::kDaysPerYear == core::kDaysPerYear - 1) {
+        last_day.year = year + 1;
+        last_day.due = world.plan.due;
+        last_day.delivered = world.plan.delivered;
+        last_day.waiting_on_fields = WaitingOnFields(world);
+        last_day.horses = Horses(world);
+        last_day.area_sown_ha = world.ledger.current.area_sown_ha;
+        last_day.area_harvested_ha = world.ledger.current.area_harvested_ha;
+        last_day.area_lost_ha = world.ledger.current.area_lost_ha;
+        last_day.work_days = world.ledger.current.work_days_by_kind;
+        last_day.carting = running;
+        core::Grams grain = 0;
+        for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
+          if (world.plan.due[index] > 0) {
+            grain += VillageStock(world, core::DefIdFromIndex<core::ResourceIdTag>(index));
+          }
+        }
+        last_day.grain_in_store = grain;
+      }
+
+      // The verdict lands at the turn; the rising edge is the judgement.
+      const std::uint8_t failed_now = world.plan.failed_years_in_a_row;
+      if (failed_now > failed_before) {
+        ++failures;
+        PrintShortfall(last_day, resources);
+      }
+      failed_before = failed_now;
+    }
+  }
+  std::cout << "plan_shortfall: " << label << " — the plan was failed in " << failures << " of "
+            << kYears << " years\n";
+  return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  // The layout under question and the canonical one beside it: the DIFFERENCE
+  // between the two lists is the answer to "what makes 1931 worse", and that
+  // question has never once been asked.
+  const std::uint64_t suspect = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1931;
+  const std::uint64_t canon = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1929;
+
+  int failures = WalkOneSeed(suspect, "THE LAYOUT UNDER QUESTION");
+  failures += WalkOneSeed(canon, "THE CANONICAL LAYOUT");
+
+  // NO GATE, AND THAT IS DELIBERATE. This run answers a question; it does not
+  // hold a claim. A gate here would be a claim invented to give the file one,
+  // and the project has spent the day removing exactly that shape.
+  std::cout << (failures == 0 ? "plan_shortfall: both layouts walked\n"
+                              : "plan_shortfall: a layout did not start\n");
+  return failures == 0 ? 0 : 1;
+}
