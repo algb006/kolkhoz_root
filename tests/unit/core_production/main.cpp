@@ -3578,6 +3578,14 @@ int CheckTheReapingGate() {
   just_sown.sown_day = 7U * core::kDaysPerMonth;
   failures += Expect(!core::ReapingMayOpen(config, just_sown, 7, just_sown.sown_day + 8U),
                      "reaping gate: an unripe crop does not open inside its window");
+  // UB-001: a spring crop that ripened after its window stands and may still
+  // be reaped. Reddens on the old gate, which closed every crop at the back edge.
+  core::FieldRow late = in_time;
+  late.sown_day = (8U * core::kDaysPerMonth) + 2U;
+  failures += Expect(core::ReapingMayOpen(config, late, 10, late.sown_day + 9U),
+                     "reaping gate: a late spring crop ripe past its window may still be reaped");
+  failures += Expect(!core::ReapingMayOpen(config, late, 10, late.sown_day + 8U),
+                     "reaping gate: past its window a spring crop still has to be ripe");
 
   core::FieldRow winter_field;
   winter_field.crop = core::CropId{1};

@@ -547,15 +547,21 @@ bool ReapingMayOpen(const ProductionConfig& config,
   if (month < crop.harvest_from_month) {
     return false;
   }
-  // THE BACK EDGE STILL HOLDS FOR EVERY CROP, and for a same-year crop sown
-  // late that is the open defect UB-001: it ripens past harvest_to_month and
-  // is never opened for reaping. Opening it was measured on 2026-09-13 and is
-  // NOT a local repair — the late reaping takes the hands the carting needed
-  // (reaping outranks hauling in the work queue): plan_trial's floor went from
-  // 8 failed years of 20 to 15, the obvious chairman from 2 to 4 and to trial,
-  // the canonical layout from 2 failures to 4 with 740 t lying on the fields.
-  // The repair waits on the carting measurement and on boss's call.
-  if (month > crop.harvest_to_month) {
+  // THE BACK EDGE HOLDS ONLY FOR WINTER AND PERENNIAL CROPS (UB-001, repaired
+  // 2026-09-13). "Окно уборки говорит, когда убирать СЛЕДУЕТ, а не когда
+  // МОЖНО" (farming design): a same-year crop sown late ripens late and STANDS
+  // until reaped or taken by the snow (RunFields) — the third region of the
+  // design, "за окном уборки, вызревание ДО СНЕГА". Until the repair it was
+  // never opened at all, and the snow took a crop nobody was allowed to cut.
+  // A winter crop's window is its calendar; a perennial is cut once a year on
+  // its window's first day (RunFields, cut_today).
+  //
+  // The first attempt of the same morning was held back because the late
+  // reaping outranks carting in the work queue (its deadline is already
+  // past); it was measured then on the old yards and before the store limit
+  // was understood. The measurement for this commit is in its message.
+  const bool calendar_crop = crop.is_winter || crop.is_perennial;
+  if (calendar_crop && month > crop.harvest_to_month) {
     return false;
   }
   return CropHasRipened(config, field, day);

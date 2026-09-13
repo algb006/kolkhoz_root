@@ -168,16 +168,11 @@ bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field);
 /// @brief Whether the crop standing on this field may be opened for reaping
 ///        in `month` of the day `day`.
 ///
-/// Inside `harvest_from_month..harvest_to_month`, and ripe (CropHasRipened).
-///
-/// @note OPEN DEFECT UB-001 (static analysis, 2026-09-13): the sowing is
-///       bounded by the snow, this by the harvest window, so a same-year crop
-///       sown late ripens after its window and is never reaped — snow takes it.
-///       Dropping the back edge for such crops was measured and moves the
-///       balance a long way (field_work.cpp). The design already decides the
-///       rule — farming.md, "за окном уборки, вызревание ДО СНЕГА: хлеб стоит,
-///       косят поздно" — so the repair is owed; it waits for the carting cure
-///       it would otherwise starve (boss, 2026-09-13).
+/// From `harvest_from_month` on, and ripe (CropHasRipened). A winter or
+/// perennial crop also stops at `harvest_to_month`; a same-year annual does
+/// not — ripened past its window it stands and may be reaped until the snow
+/// takes it (farming design, "за окном уборки, вызревание ДО СНЕГА: хлеб
+/// стоит, косят поздно"). That was defect UB-001 until 2026-09-13.
 bool ReapingMayOpen(const ProductionConfig& config,
                     const FieldRow& field,
                     std::uint8_t month,
