@@ -738,10 +738,13 @@ OrderRow ReadOrderRow(LoadSource& source) {
 //
 // `table_row` goes out raw, not through a dictionary: tables/timber_stands.csv
 // is a baked export of the map, not a registry the player's campaign names
-// things by, and a stand made from row 7 means row 7 of the same bake. A bake
-// that reorders its rows under a save is caught by the loader's range check
-// on the row only — which is why the stand's own kind and loading point are
-// saved beside it and not re-read from the table.
+// things by, and a stand made from row 7 means row 7 of the same bake. THE
+// LOADER DOES NOT CHECK THE ROW (MEM-201, 2026-09-13): a save from a bake
+// with fewer rows loads, and production's own index check (timber_felling.cpp,
+// DefOf) then leaves such a stand without logs from a felling and without
+// old trunks. A bake that merely reorders its rows is not caught at all. The
+// stand's own kind and loading point are saved beside the row so that the
+// accountant's road and the layer's marker never depend on the bake.
 
 void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
   ByteWriter& out = sink.Out();
