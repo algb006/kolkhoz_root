@@ -11,6 +11,7 @@
 #include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/deadline.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
 #include "core_common/quantities.h"
@@ -19,6 +20,7 @@
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
+#include "core_common/world_state.h"
 
 namespace core_test {
 /// Defined in version_linkage_probe.cpp — a second translation unit, so that
@@ -910,8 +912,44 @@ int TestDefIdFromRow() {
   return failures;
 }
 
+/// The top two rungs of the ladder of funds (fund_ladder.h): seed for a field
+/// not yet sown, the plan reserve only as far as this year's reaping covers
+/// it, and every unsealing off the one total.
+int CheckTheTopOfTheLadder() {
+  int failures = 0;
+  core::WorldState world;
+  const std::vector<core::SeedNorm> norms = {
+      {.resource = core::ResourceId{2}, .sowing_norm_kg_per_ha = 100.0F}};
+  core::FieldRow waiting;
+  waiting.area_ga = 2.0F;
+  waiting.rotation_year0 = core::CropId{0};
+  waiting.phase = core::FieldPhase::kHarrowing;
+  core::AppendRow(world.fields, waiting);
+  core::FieldRow sown = waiting;
+  sown.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(world.fields, sown);
+
+  world.plan.due = {0, 0, 500'000};
+  world.ledger.current.harvest = {0, 0, 300'000};
+
+  const core::ResourceAmounts held = core::HeldAboveFodder(world, norms, 3, true);
+  failures += Expect(held.size() == 3 && held[2] == 200'000 + 300'000,
+                     "ladder: seed for the unsown field only, plan only as far as reaped");
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, false)[2] == 300'000,
+                     "ladder: the seed rung can be switched off, the plan rung cannot");
+
+  world.unsealed.by_fund[0] = {0, 0, 450'000};
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 50'000,
+                     "ladder: an unsealing comes off the one total");
+  world.unsealed.by_fund[1] = {0, 0, 900'000};
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 0,
+                     "ladder: releases past the total clamp at zero");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
   failures += TestDefIdFromRow();
   failures += TestDeadlineRefusals();

@@ -41,6 +41,13 @@ void CollectFieldAlarms(const ProductionConfig& config,
                         const WorldState& world,
                         std::vector<Alarm>& alarms);
 
+/// @brief Appends kPlanPositionUncovered for every position of the district's
+/// plan that no arable chain grows in one of its three years (alarm_state.h).
+/// @param alarms Appended to; never cleared.
+void CollectPlanAlarms(const ProductionConfig& config,
+                       const WorldState& world,
+                       std::vector<Alarm>& alarms);
+
 /// @brief Appends the herd alarms standing in `world`, the stable's among
 /// them: fodder running out, a byre over its head count, horses unfed.
 /// @param alarms Appended to; never cleared.

@@ -62,6 +62,13 @@ struct HerdPlace {
   ResourceAmounts* unit_stock = nullptr;
 
   bool at_unit = false;
+
+  /// What the kolkhoz's stores may still give the herds today, by resource:
+  /// the stock above the seed fund and the plan reserve (resources design §6
+  /// — the fodder claim is rung 3, and "при нехватке первым страдает нижний").
+  /// Spent by every take out of a unit, the herd's own barn included. Null
+  /// means no limit, for a caller that has no ladder to respect.
+  ResourceAmounts* feed_allowance = nullptr;
 };
 
 /// THE LIFETIME CONTRACT OF THOSE TWO POINTERS, WHICH USED TO NEED NO

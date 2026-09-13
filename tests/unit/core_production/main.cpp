@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -28,6 +29,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "herd_system.h"
+#include "production_alarms.h"
 #include "production_config.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
@@ -184,6 +186,36 @@ int CheckFeeding() {
     failures += Expect(world.herds.rows[0].unfed_days == 1.0F, "an empty store makes a hungry day");
     failures += Expect(StoreOf(world, 1) == 10 * kKilo,
                        "and a hungry day halves the milk: two cows at 10 l, halved");
+  }
+  return failures;
+}
+
+/// THE HERDS STAY BELOW THE PLAN RESERVE (resources design §6; boss,
+/// 2026-09-13): grain this year's reaping has set aside for the district is
+/// not fodder, and a herd that finds only that grain goes hungry.
+int CheckTheHerdDoesNotEatThePlan() {
+  int failures = 0;
+  const core::ProductionConfig config = MakeHerdConfig();
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.plan.due.assign(1, 98 * kKilo);
+    world.ledger.current.harvest.assign(1, 98 * kKilo);
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    failures += Expect(StoreOf(world, 0) == 98 * kKilo,
+                       "a herd eats only the two kilograms above the plan reserve");
+    failures += Expect(world.herds.rows[0].unfed_days == 1.0F,
+                       "and goes hungry rather than into the district's grain");
+  }
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.plan.due.assign(1, 98 * kKilo);
+    world.ledger.current.harvest.assign(1, 0);  // nothing reaped: nothing set aside yet
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    failures += Expect(StoreOf(world, 0) == 96 * kKilo,
+                       "before the reaping the reserve holds nothing and the herd eats in full");
   }
   return failures;
 }
@@ -3598,8 +3630,67 @@ int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
   return failures;
 }
 
+/// kPlanPositionUncovered (boss, 2026-09-13): a district position that no
+/// chain grows in one of its three years stands as an alarm naming the
+/// produce and the year, and goes out once any chain grows it then. By
+/// produce, so a second crop of the same produce covers it; fallow and
+/// unassigned ground cover nothing.
+int CheckAnUncoveredPlanPositionIsAnAlarm() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::CropDef oat;
+  oat.resource = core::ResourceId{2};
+  core::CropDef potato;
+  potato.resource = core::ResourceId{6};
+  core::CropDef oat_again = oat;  // a second crop yielding the same produce
+  config.crops = {oat, potato, oat_again};
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F},
+                           {.crop = core::CropId{1}, .area_share = 0.2F}};
+
+  core::WorldState world;
+  core::FieldRow chained;
+  chained.rotation_assigned = 1;
+  chained.rotation_year0 = core::CropId{0};
+  chained.rotation_year1 = core::CropId{1};
+  chained.rotation_year2 = core::CropId{};  // a rested season
+  core::AppendRow(world.fields, chained);
+  core::FieldRow unassigned;  // grows oats in every slot, but nobody assigned it
+  unassigned.rotation_year0 = unassigned.rotation_year1 = unassigned.rotation_year2 =
+      core::CropId{0};
+  core::AppendRow(world.fields, unassigned);
+
+  const auto uncovered = [&config, &world]() {
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    std::vector<std::pair<std::uint16_t, std::int64_t>> found;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionUncovered) {
+        found.emplace_back(alarm.resource.value, alarm.amount);
+      }
+    }
+    return found;
+  };
+
+  const auto before = uncovered();
+  const std::vector<std::pair<std::uint16_t, std::int64_t>> expected = {
+      {2, 1}, {2, 2}, {6, 0}, {6, 2}};
+  failures += Expect(before == expected,
+                     "plan alarm: oat missing in years 1 and 2, potato in years 0 and 2, "
+                     "and the unassigned field covers nothing");
+
+  world.fields.rows[0].rotation_year2 = core::CropId{2};
+  const auto after = uncovered();
+  const std::vector<std::pair<std::uint16_t, std::int64_t>> expected_after = {
+      {2, 1}, {6, 0}, {6, 2}};
+  failures += Expect(after == expected_after,
+                     "plan alarm: another crop of the same produce covers the year and the "
+                     "alarm for it goes out");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckAnUncoveredPlanPositionIsAnAlarm();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckStubTablesMustBeDeclared();
@@ -3619,6 +3710,7 @@ int main() {
              "stubs leave the world unchanged");
 
   failures += CheckFeeding();
+  failures += CheckTheHerdDoesNotEatThePlan();
   failures += CheckFeedCaps();
   failures += CheckFeedLightCountsTheWinter();
   failures += CheckFeedLightRespectsTheCeiling();

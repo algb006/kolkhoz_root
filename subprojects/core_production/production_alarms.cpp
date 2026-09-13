@@ -446,4 +446,60 @@ void CollectHerdAlarms(const ProductionConfig& config,
   }
   CollectStableAlarms(config, world, alarms);
 }
+
+namespace {
+
+/// The three seasons a chain lays out: year0, year1, year2.
+constexpr std::uint32_t kChainYears = 3;
+
+CropId ChainSlot(const FieldRow& field, std::uint32_t year) {
+  if (year == 0) {
+    return field.rotation_year0;
+  }
+  return year == 1 ? field.rotation_year1 : field.rotation_year2;
+}
+
+/// Whether any arable chain grows `produce` in `year` of its three. BY PRODUCE
+/// AND NOT BY CROP KEY: the district's figure is owed in resource, and any
+/// crop that yields it pays it.
+bool SomeChainGrows(const ProductionConfig& config,
+                    const WorldState& world,
+                    ResourceId produce,
+                    std::uint32_t year) {
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const CropId slot = ChainSlot(field, year);
+    if (slot.value < config.crops.size() && config.crops[slot.value].resource == produce) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+void CollectPlanAlarms(const ProductionConfig& config,
+                       const WorldState& world,
+                       std::vector<Alarm>& alarms) {
+  // Positions in table order, years in chain order: the emission order is a
+  // function of the tables and the chains, and the session sorts it anyway.
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (position.crop.value >= config.crops.size() || !(position.area_share > 0.0F)) {
+      continue;
+    }
+    const ResourceId produce = config.crops[position.crop.value].resource;
+    for (std::uint32_t year = 0; year < kChainYears; ++year) {
+      if (SomeChainGrows(config, world, produce, year)) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kPlanPositionUncovered;
+      alarm.resource = produce;
+      alarm.amount = year;
+      alarms.push_back(alarm);
+    }
+  }
+}
 }  // namespace core

@@ -830,8 +830,14 @@ int main(int argc, char** argv) {
   // A first export put the yard 103 m away on the other side and cost 3.3
   // points; that was withdrawn as a misreading, and this is the real price of
   // a yard that no longer stands on the road.
+  //
+  // AND 69.7065887 LATER THE SAME DAY, when the herds stopped eating the plan
+  // reserve (resources design §6: fodder is the rung below the plan). The
+  // horses go thinner in the months the reaped grain is set aside for the
+  // district, and the village with them — two hundredths, the price of the
+  // ladder's own sentence "лошадь худеет раньше, чем срывается сдача".
   failures += ExpectNoLower(
-      good.mean_satiety, 69.7271729F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 69.7065887F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -889,9 +895,10 @@ int main(int argc, char** argv) {
   // reaped whole, and the deepest point of the hunger is shallower. This is
   // the half that matters more to us of the two.
   // And 21.0634956 the same day with the cattle yard moved off the road (see
-  // the mean above: the same export, measured apart).
+  // the mean above: the same export, measured apart). And 20.9036217 when the
+  // herds stopped eating the plan reserve (the mean above says why).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 21.0634956F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 20.9036217F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -955,9 +962,10 @@ int main(int argc, char** argv) {
   // "the issue feeds the lean season" not merely surviving the change but
   // widening to twice what it was. A village that reaps what it sows has more
   // to hand out, and the difference between handing it out and not is larger.
-  // And 3.59672356 the same day with the cattle yard moved off the road.
+  // And 3.59672356 the same day with the cattle yard moved off the road, and
+  // 3.43684959 when the herds stopped eating the plan reserve.
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            3.59672356F,
+                            3.43684959F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

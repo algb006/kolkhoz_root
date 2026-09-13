@@ -34,6 +34,11 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
       return alarm.herd.value;
     case AlarmKind::kFamilyGoingHungry:
       return alarm.family.value;
+    case AlarmKind::kPlanPositionUncovered:
+      // The resource, times the three years a chain lays out, plus the year:
+      // one value per alarm, so two years of one position sort by the year.
+      return (static_cast<std::uint32_t>(alarm.resource.value) * 3U) +
+             static_cast<std::uint32_t>(alarm.amount);
   }
   return 0;
 }

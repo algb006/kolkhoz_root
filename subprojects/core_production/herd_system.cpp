@@ -8,10 +8,12 @@
 #include "herd_system.h"
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -66,6 +68,17 @@ Grams TakeFeed(WorldState& world,
   if (!place.at_unit) {
     return 0;
   }
+  // BELOW THE PLAN AND THE SEED, and not through them. Until 2026-09-13 the
+  // herds took straight out of the stores, so in a year with no oat harvest
+  // the horses ate the grain owed to the district and the plan fell short —
+  // seven failed years of twenty on the canonical seed, every third year —
+  // against the ladder's own line: "в плохой год район забирает первым, и
+  // лошадь худеет раньше, чем срывается сдача" (resources design §6).
+  if (place.feed_allowance != nullptr) {
+    const Grams allowed =
+        resource.value < place.feed_allowance->size() ? (*place.feed_allowance)[resource.value] : 0;
+    wanted = wanted < allowed ? wanted : allowed;
+  }
   Grams taken =
       place.unit_stock != nullptr ? TakeFromAmounts(*place.unit_stock, resource, wanted) : 0;
   // Then the MANGER, and only then the general store. The hay of the whole
@@ -83,8 +96,38 @@ Grams TakeFeed(WorldState& world,
   if (taken < wanted) {
     taken += TakeFromStorage(world, config, resource, wanted - taken);
   }
+  if (place.feed_allowance != nullptr && resource.value < place.feed_allowance->size()) {
+    (*place.feed_allowance)[resource.value] -= taken;
+  }
   AddLedgerAmount(world.ledger.current.feed, resource, taken);
   return taken;
+}
+
+/// WHAT THE STORES MAY GIVE THE HERDS TODAY: everything above the plan reserve
+/// (core_common/fund_ladder.h). Computed once for the whole walk and spent by
+/// it, so the first herd in row order cannot eat what the ladder holds for the
+/// rest. Dense by ResourceId over the feed values.
+///
+/// THE PLAN RUNG AND NOT THE SEED RUNG, and the seed rung was measured before
+/// it was left out. Boss's decision of 2026-09-13 named the plan: "стадо берёт
+/// корм, не залезая в резерв плана". The ladder in resources design §6 puts the
+/// seed fund above fodder too, and holding it from the herds as well was tried
+/// on nine seeds: the floor went from 7 failed plan years to 15 on seed 1929
+/// and from 6 to 17 on 1935 — horses kept off the oat seed all spring plough
+/// slower — while the plan rung alone left the floor unchanged on every seed.
+/// Whether the herds should stay below the seed fund is put to boss with those
+/// numbers; until he says, they stay below the plan only.
+ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& world) {
+  ResourceAmounts allowance =
+      HeldAboveFodder(world, std::span<const SeedNorm>{}, config.feed_values.size(), false);
+  for (std::size_t index = 0; index < allowance.size(); ++index) {
+    Grams stock = 0;
+    for (const UnitRow& unit : world.units.rows) {
+      stock += index < unit.stock.size() ? unit.stock[index] : 0;
+    }
+    allowance[index] = stock > allowance[index] ? stock - allowance[index] : 0;
+  }
+  return allowance;
 }
 
 // -- the day, step by step ---------------------------------------------------
@@ -606,6 +649,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     }
   }
   const bool stable_built = StableBuilt(current, config);
+  ResourceAmounts feed_allowance = FeedAllowance(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
   for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
@@ -619,7 +663,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     // from starvation, a table edit — leaves the same invariant behind, and
     // "females" can never come out negative.
     herd.adult_male_count = TargetMales(kind, herd.adult_count);
-    const HerdPlace place = PlaceOf(current, config, herd);
+    HerdPlace place = PlaceOf(current, config, herd);
+    place.feed_allowance = &feed_allowance;
     RunBilleting(herd, room, current, herd.billeted_count);
     // The yard's hens, ducks and pig feed themselves (question Q1): range,
     // scraps and the garden, and the winter handful of grain out of the

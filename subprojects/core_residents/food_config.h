@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 
 namespace core {
@@ -278,11 +279,8 @@ struct PlotConfig {
 /// tables/crops.csv. Read here rather than borrowed from core_production:
 /// a module parses the cells it needs itself and never depends on another
 /// module's parsed configuration (the labor precedent, labor_config.cpp).
-struct SeedNormDef {
-  ResourceId resource;  ///< What the seed of this crop is.
-
-  float sowing_norm_kg_per_ha = 0.0F;  ///< 0 = the crop needs no seed stock.
-};
+/// The TYPE is core_common's, because the ladder of funds that reads it is.
+using SeedNormDef = SeedNorm;
 
 /// @brief The parsed stage-6 food configuration of core_residents.
 struct FoodConfig {

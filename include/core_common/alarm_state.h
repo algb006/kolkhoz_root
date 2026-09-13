@@ -232,6 +232,31 @@ enum class AlarmKind : std::uint8_t {
   /// groom": the yard at step one is a pen, and a pen breeds nobody.
   kHerdWithoutStable,
 
+  // -- the district: core_production ---------------------------------------------
+
+  /// A position of the district's plan that NO FIELD will grow in one of the
+  /// three years the rotation chains lay out (boss's decision of 2026-09-13).
+  /// Subject: `resource` — the position's produce; `amount` = the year it is
+  /// missing in, counted from the current one: 0 this year, 1 next, 2 the one
+  /// after.
+  ///
+  /// A CHECK OF PRESENCE, NOT A FORECAST OF QUANTITY. How much will fall short
+  /// is the accountant's forecast, and Epoch I has no specialists at all
+  /// (society design §1a); whether any field sows the crop at all is visible
+  /// from the chains and the positions, which the core already holds. The
+  /// same shape as the seed alarm the registry settled: "аларм сразу при
+  /// назначении — закрыть до посевной, а не узнать весной".
+  ///
+  /// WHY IT EXISTS: measured on seeds 1929 and 1936, the start layout's chains
+  /// leave one year in three without oats while the district asks for oats
+  /// every year, and in thirteen such years not one alarm or light said so
+  /// before the verdict. A failure no signal foretold is a trap; this makes
+  /// it a decision — the chairman sees it on the first day and the rotation
+  /// is his lever. It stands from the first day of a world whose inherited
+  /// layout has the gap and goes out when any field's chain grows the crop
+  /// in that year.
+  kPlanPositionUncovered,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

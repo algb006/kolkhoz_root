@@ -14,6 +14,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -140,78 +141,16 @@ std::uint32_t EaterCount(const FoodConfig& config,
 ///     is right, because the first year's fodder is the start stock, and
 ///     that was measured from the first cut for exactly this reason.
 std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
-  std::vector<Grams> reserve(config.resources.size(), 0);
-  if (config.distribution.reserve_seed_fund != 0) {
-    for (const FieldRow& field : world.fields.rows) {
-      // UNTIL THE SOWING TAKES IT, not until the ploughing starts.
-      //
-      // The condition was `phase == kIdle` until 2026-09-05, and that held
-      // the seed for the wrong thing: the plough opened, the field left the
-      // idle phase, and the grain went free WEEKS BEFORE the sowing came for
-      // it — eleven protected days of forty-eight in one measured year, ONE
-      // day in two others (69-reconciliation.md §13.16). The fund was
-      // guarding A PHASE OF THE FIELD rather than A QUANTITY OF GRAIN.
-      //
-      // A field is done needing seed once the crop is in the ground: growing
-      // or being reaped. Everything before that — idle, ploughing,
-      // harrowing, sowing itself — is a field that still has to be sown, and
-      // the design's rule is that the fund opens only by the chairman's own
-      // decision (resources design §6), never by a plough.
-      const bool already_sown =
-          field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
-      if (already_sown || field.rotation_year0.value >= config.seed_norms.size()) {
-        continue;
-      }
-      const SeedNormDef& seed = config.seed_norms[field.rotation_year0.value];
-      if (seed.resource.value >= reserve.size() || seed.sowing_norm_kg_per_ha <= 0.0F) {
-        continue;
-      }
-      reserve[seed.resource.value] += KilogramsToGrams(seed.sowing_norm_kg_per_ha * field.area_ga);
-    }
-  }
-  // THE PLAN RESERVE IS FILLED BY THE HARVEST, NOT BY THE CALENDAR, and the
-  // distinction cost a lean spring to find (boss, 2026-09-12). Resources
-  // design §6 opens with what the ladder of funds distributes: "Урожай не
-  // лежит одной кучей — он расписан по фондам". The seed fund stands all
-  // winter because it is for the sowing to come; the plan reserve is the
-  // undelivered remainder of THIS year's plan, and in April this year has
-  // reaped nothing, so there is nothing yet to set aside.
-  //
-  // Reserving the whole norm from January instead locks last year's granary
-  // against a plan that will be met out of a crop still in the ground — and
-  // the village starves in the spring beside grain it may not touch.
-  //
-  // THE SIZE OF THE PLAN STILL COMES FROM THE WORKED LAND; only the GRAIN
-  // held against it comes from the reaping. The two were both taken off the
-  // harvest before, which is why no year could be failed, and taking both
-  // off the land swung the instrument through the middle to the other side.
-  const ResourceAmounts& reaped = world.ledger.current.harvest;
-  for (std::uint32_t index = 0; index < world.plan.due.size() && index < reserve.size(); ++index) {
-    const Grams owed = world.plan.due[index];
-    const Grams gathered = index < reaped.size() ? reaped[index] : 0;
-    reserve[index] += owed < gathered ? owed : gathered;
-  }
-  // AND WHAT THE CHAIRMAN HAS UNSEALED IS NO LONGER HELD (kUnsealFund;
-  // resources design §6). This is the whole mechanism of that verb: the
-  // funds are a computation over one heap of grain, so opening one means
-  // this sum asks for less.
-  //
-  // AND THE RESERVE IS ONE TOTAL, so both releases come off the same number
-  // and it makes no arithmetic difference which fund the chairman named.
-  // Said plainly because the obvious comment to write here is that the seed
-  // release comes off the seed's share — it does not, and a sentence
-  // claiming a separation the code does not make is worse than no sentence.
-  // The two are tracked apart for the save and for the player: which fund
-  // was opened is which RISK was taken, and that difference is real even
-  // where the subtraction's is not.
-  const auto release = [&reserve](const ResourceAmounts& opened) {
-    for (std::uint32_t index = 0; index < opened.size() && index < reserve.size(); ++index) {
-      reserve[index] = reserve[index] > opened[index] ? reserve[index] - opened[index] : 0;
-    }
-  };
-  for (const ResourceAmounts& opened : world.unsealed.by_fund) {
-    release(opened);
-  }
+  // THE SEED FUND AND THE PLAN RESERVE, AND THE UNSEALINGS OFF BOTH, live in
+  // core_common/fund_ladder.h since 2026-09-13, because the herds must stay
+  // below the same two rungs and a rule with two homes grows two answers. The
+  // reasons each half is computed the way it is — seed until the SOWING takes
+  // it, plan filled by the HARVEST and not by the calendar, one total the
+  // releases come off — are written there beside the arithmetic.
+  std::vector<Grams> reserve = HeldAboveFodder(world,
+                                               config.seed_norms,
+                                               config.resources.size(),
+                                               config.distribution.reserve_seed_fund != 0);
   const ResourceAmounts& fodder = world.ledger.closed.feed;
   for (std::uint32_t index = 0; index < fodder.size() && index < reserve.size(); ++index) {
     reserve[index] += fodder[index];
