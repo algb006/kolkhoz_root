@@ -38,15 +38,21 @@ bool PlotOverlaps(const UnitTable& units,
                   const PlotRules& rules,
                   const Vec2& place,
                   float radius,
-                  UnitId ignore) {
+                  UnitId ignore,
+                  UnitId module_parent) {
   if (!(radius > 0.0F)) {
     return false;
   }
+  const bool placing_a_module = module_parent.value != kInvalidEntityIdValue;
   for (std::uint32_t row = 0; row < units.rows.size(); ++row) {
     if (units.row_ids[row].value == ignore.value) {
       continue;
     }
     const UnitRow& other = units.rows[row];
+    if (placing_a_module && (units.row_ids[row].value == module_parent.value ||
+                             other.parent.value == module_parent.value)) {
+      continue;  // its own yard, and the yard's other parts
+    }
     if (other.type.value >= rules.radius_by_type.size()) {
       continue;
     }

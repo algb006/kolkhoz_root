@@ -411,17 +411,17 @@ class ConstructionSystem final : public IConstructionSystem {
     // 2026-09-05 they took no part in this rule at all.
     const float radius = KeepOutRadius(type_row);
     // A MODULE stands on its parent's plot, and only while the parent stands
-    // sound (unit rules §11, "Модули"; boss, 2026-09-13). Its own parent is
-    // the one plot it may come inside; every other plot keeps the rule.
+    // sound (unit rules §11, "Модули"; boss, 2026-09-13). Its own parent and
+    // the parent's other modules are the plots it may come inside; every
+    // other plot keeps the rule.
     UnitId parent;
     if (IsModuleType(type_row)) {
-      parent = ParentForModule(
-          current, config_.definitions.units.parent[type_row], order.position, radius);
+      parent = ParentForModule(current, config_.definitions.units.parent[type_row], order.position);
       if (parent.value == kInvalidEntityIdValue) {
         return OrderRefusal::kNoParent;
       }
     }
-    if (PlotOverlaps(current, order.position, radius, parent)) {
+    if (PlotOverlaps(current, order.position, radius, UnitId{}, parent)) {
       return OrderRefusal::kTooClose;
     }
 
@@ -696,8 +696,13 @@ class ConstructionSystem final : public IConstructionSystem {
   /// stub can reach it too: it used to be private to this class, and every
   /// unit row that appeared WITHOUT an order — the houses the residents
   /// module appends — was outside it (boss, 2026-09-04).
-  bool PlotOverlaps(const WorldState& current, const Vec2& place, float radius, UnitId ignore) {
-    return core::PlotOverlaps(current.units, config_.definitions.Plots(), place, radius, ignore);
+  bool PlotOverlaps(const WorldState& current,
+                    const Vec2& place,
+                    float radius,
+                    UnitId ignore,
+                    UnitId module_parent = UnitId{}) {
+    return core::PlotOverlaps(
+        current.units, config_.definitions.Plots(), place, radius, ignore, module_parent);
   }
 
   float KeepOutRadius(std::uint32_t type_row) const {
@@ -712,23 +717,19 @@ class ConstructionSystem final : public IConstructionSystem {
 
   /// @brief The unit a module marked at `place` belongs to: the first unit, in
   /// row order, of `parent_type` that stands sound and whose plot holds the
-  /// module's whole plot (`radius` around `place`). Invalid when none does —
-  /// no such unit, not built yet, dead, paused, or the module reaches past
-  /// the edge of every yard.
+  /// module's CENTRE. Invalid when none does — no such unit, not built yet,
+  /// dead, paused, or the centre lies outside every yard.
   ///
-  /// THE WHOLE PLOT, NOT ITS CENTRE. "Inside the parent's plot" read as "the
-  /// centre inside" would let a module's own yard stick over the fence into a
-  /// neighbour's plot — and the overlap rule would then refuse it against the
-  /// neighbour, with kTooClose instead of the word that names the cause.
+  /// THE CENTRE, NOT THE WHOLE PLOT (boss, 2026-09-13, parcel 206). The first
+  /// version asked for the module's whole circle inside the yard's, and by the
+  /// shipped radii a food yard of 45 m then held one 25-metre module and no
+  /// second: a module's radius is its patch in the view, not a claim on land.
+  /// Where its edge reaches over the fence onto a neighbour, the overlap rule
+  /// still refuses it with kTooClose.
   UnitId ParentForModule(const WorldState& current,
                          UnitTypeId parent_type,
-                         const Vec2& place,
-                         float radius) const {
-    const float parent_radius = KeepOutRadius(parent_type.value);
-    const float reach = parent_radius - radius;
-    if (reach < 0.0F) {
-      return UnitId{};
-    }
+                         const Vec2& place) const {
+    const float reach = KeepOutRadius(parent_type.value);
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       const UnitRow& unit = current.units.rows[row];
       if (unit.type.value != parent_type.value || !StandsSoundAsParent(unit)) {

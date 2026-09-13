@@ -1674,16 +1674,25 @@ int TestAModuleStandsOnItsParent() {
   failures += Expect(world.units.rows.back().parent.value == yard.value,
                      "modules: and the site names the yard it stands on");
 
-  const core::OrderId over_fence = Issue(world, BuildOrder(kShed, 1030.0F, 1000.0F));
+  // THE CENTRE DECIDES, NOT THE WHOLE CIRCLE, and a yard's parts do not
+  // refuse each other (boss, parcel 206): a shed at 1030 reaches five metres
+  // past the fence and is still the yard's; one at 1040 is not.
+  const core::OrderId over_fence = Issue(world, BuildOrder(kShed, 1040.0F, 1000.0F));
   const core::OrderId sibling = Issue(world, BuildOrder(kShed, 995.0F, 1000.0F));
   const core::OrderId neighbour = Issue(world, BuildOrder(kFreeBarn, 1040.0F, 1000.0F));
+  const core::OrderId next_door = Issue(world, BuildOrder(kFreeBarn, 1000.0F, 1060.0F));
   Run(*system, world, 0);
   failures += Expect(RefusalOf(world, over_fence) == core::OrderRefusal::kNoParent,
-                     "modules: a shed reaching over the fence is not on the yard's plot");
-  failures += Expect(RefusalOf(world, sibling) == core::OrderRefusal::kTooClose,
-                     "modules: two sheds of one yard still keep apart from each other");
+                     "modules: a shed whose centre is past the fence is not on the yard's plot");
+  failures += Expect(RefusalOf(world, sibling) == core::OrderRefusal::kNone,
+                     "modules: two sheds of one yard do not refuse each other");
   failures += Expect(RefusalOf(world, neighbour) == core::OrderRefusal::kTooClose,
                      "modules: and a unit of its own keeps off the yard's plot as before");
+  const core::OrderId edge_on_neighbour = Issue(world, BuildOrder(kShed, 1000.0F, 1030.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, next_door) == core::OrderRefusal::kNone &&
+                         RefusalOf(world, edge_on_neighbour) == core::OrderRefusal::kTooClose,
+                     "modules: a shed inside its yard whose edge lies on the neighbour is refused");
 
   world.units.rows[core::FindRow(world.units, yard)].dead = 1;
   const core::OrderId dead_yard = Issue(world, UnitOrder(core::OrderKind::kStartBuild, shed));

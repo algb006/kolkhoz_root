@@ -71,13 +71,22 @@ struct PlotRules {
 /// @param radius Radius of the plot being placed; zero or less means the
 ///        thing being placed has no plot, and nothing can overlap it.
 /// @param ignore A unit to skip — itself, when an existing unit is moved.
+/// @param module_parent For a MODULE being placed, the unit it is a module
+///        of: that unit's plot and the plots of its other modules take no
+///        part (boss, 2026-09-13, parcel 206 — "the parts of a yard stand
+///        apart from each other as a question of look, not of mechanics").
+///        Every other plot keeps the rule. Invalid for a free-standing unit.
 /// @note Plots that TOUCH do not overlap: the comparison is strict, so two
 ///       25-metre yards exactly 50 metres apart are both legal and stable.
 /// @note The map edge takes no part here: this answers "is it crowded",
 ///       and a position off the map is a different refusal with a different
 ///       name (kRuleForbids, not kTooClose).
-bool PlotOverlaps(
-    const UnitTable& units, const PlotRules& rules, const Vec2& place, float radius, UnitId ignore);
+bool PlotOverlaps(const UnitTable& units,
+                  const PlotRules& rules,
+                  const Vec2& place,
+                  float radius,
+                  UnitId ignore,
+                  UnitId module_parent = UnitId{});
 
 /// @brief `wanted` itself when it is free, otherwise the nearest place that
 /// is free AND on the map, searched outward on a square lattice of
