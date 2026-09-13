@@ -30,6 +30,7 @@
 
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
+#include "../common/limit_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
@@ -122,9 +123,11 @@ int main(int argc, char** argv) {
   run::FellingPolicy felling(*started.tables);
   run::RepairPolicy repairs(*started.tables);
   run::SawmillPolicy sawmill(*started.tables);
+  run::LimitPolicy limit(*started.tables);
   run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
   run::FellingPolicy::Declare("timber_years");
   run::SawmillPolicy::Declare("timber_years");
+  run::LimitPolicy::Declare("timber_years");
 
   // CRITERION 2, THE BOUND: one winter of the start's people. A felled cubic
   // metre costs timber_felling_days_per_m3 game man-days; the crew is capped
@@ -194,6 +197,7 @@ int main(int argc, char** argv) {
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
       sawmill.RunDay(*started.simulation);
+      limit.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
@@ -329,6 +333,7 @@ int main(int argc, char** argv) {
             << " days with no site needing any\n";
   felling.Report("timber_years", started.State());
   sawmill.Report("timber_years");
+  limit.Report("timber_years");
   sawmill.ReportState("timber_years", started.State());
   return 0;
 }

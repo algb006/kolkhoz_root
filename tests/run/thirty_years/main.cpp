@@ -27,6 +27,7 @@
 
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
+#include "../common/limit_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
@@ -453,6 +454,8 @@ int main(int argc, char** argv) {
   run::FellingPolicy::Declare("thirty_years");
   run::SawmillPolicy sawmill(*world.tables);
   run::SawmillPolicy::Declare("thirty_years");
+  run::LimitPolicy limit(*world.tables);
+  run::LimitPolicy::Declare("thirty_years");
   // And the two verbs the runs had never said: a standing work order and a
   // pause (orders_policy.h). A verb the run does not say is not checked by
   // the run, however many unit tests stand behind it (boss, 2026-09-04).
@@ -479,6 +482,7 @@ int main(int argc, char** argv) {
       fixture.RunDay(*world.simulation);
       felling.RunDay(*world.simulation);
       sawmill.RunDay(*world.simulation);
+      limit.RunDay(*world.simulation);
       orders.RunDay(*world.simulation);
       repairs.RunDay(*world.simulation);
       year_seconds +=
@@ -772,6 +776,7 @@ int main(int argc, char** argv) {
   fixture.Report(state);
   felling.Report("thirty_years", state);
   sawmill.Report("thirty_years");
+  limit.Report("thirty_years");
   sawmill.ReportState("thirty_years", state);
   failures += orders.Report();
   failures += repairs.Report(state);
