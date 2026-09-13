@@ -761,6 +761,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   fixture.Report(started.State());
   felling.Report("plan_shortfall", started.State());
   sawmill.Report("plan_shortfall");
+  sawmill.ReportState("plan_shortfall", started.State());
   chairman.Report();
   std::cout << "plan_shortfall: " << label << " — the plan was failed in " << failures << " of "
             << kYears << " years\n";

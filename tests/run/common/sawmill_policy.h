@@ -39,14 +39,17 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/definitions.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/order_state.h"
+#include "core_common/plot.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
@@ -58,11 +61,15 @@ class SawmillPolicy {
     std::string error;
     const bool parsed = core::ParseTimberCatalog(tables, catalog_, error);
     yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "utility_yard");
+    granary_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "granary");
     craftsman_post_ = RowId<core::ProfessionIdTag>(tables, "professions", "farm_craftsman");
     adult_age_years_ = Knob(tables, "life", "adult_age_years", 16.0F);
     life_speedup_ = Knob(tables, "life", "life_speedup", 4.0F);
     ReadCosts(tables);
-    ready_ = parsed && yard_type_.value != core::kInvalidDefIdValue &&
+    std::string definitions_error;
+    const bool defined =
+        core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, definitions_error);
+    ready_ = parsed && defined && yard_type_.value != core::kInvalidDefIdValue &&
              catalog_.sawmill_type.value != core::kInvalidDefIdValue &&
              craftsman_post_.value != core::kInvalidDefIdValue &&
              catalog_.board_resource.value != core::kInvalidDefIdValue &&
@@ -74,7 +81,8 @@ class SawmillPolicy {
   static void Declare(const char* run) {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman puts up the UTILITY "
-                 "YARD and its SAWMILL at once, appoints ONE craftsman, and lets him saw only "
+                 "YARD and its SAWMILL once the boards in the stores are fewer than the queue of "
+                 "sites lacks, appoints ONE craftsman, and lets him saw only "
                  "while boards are fewer than the nearest site needs and logs more than the log "
                  "site of the queue needs; otherwise the sawmill is paused (timber design §8б; "
                  "boss, 2026-09-13)\n";
@@ -103,13 +111,39 @@ class SawmillPolicy {
   /// wanted, for the run's own lines.
   std::uint32_t DaysSawing() const { return days_sawing_; }
 
+  /// @brief Where the yard and the sawmill stand at the end: level and
+  /// construction phase, or that there is none — the difference between
+  /// "never wanted" and "wanted and stuck".
+  void ReportState(const char* run, const core::WorldState& world) const {
+    const auto describe = [&world](std::uint32_t row) {
+      if (row == core::kNoRow) {
+        return std::string("none");
+      }
+      const core::UnitRow& unit = world.units.rows[row];
+      std::string held;
+      for (std::size_t resource = 0; resource < unit.stock.size(); ++resource) {
+        if (unit.stock[resource] > 0) {
+          held +=
+              " r" + std::to_string(resource) + "=" + std::to_string(unit.stock[resource]) + "g";
+        }
+      }
+      return "level " + std::to_string(unit.level) + ", phase " +
+             std::to_string(static_cast<int>(unit.construction.phase)) + ", parent " +
+             std::to_string(unit.parent.value) + ", holds" + (held.empty() ? " nothing" : held);
+    };
+    std::cout << run << ": at the end the utility yard is "
+              << describe(FindOfType(world, yard_type_)) << "; the sawmill is "
+              << describe(FindOfType(world, catalog_.sawmill_type)) << "\n";
+  }
+
   /// @brief What the policy did, for the run to print at the end.
   void Report(const char* run) const {
     std::cout << run << ": the run's chairman put up the sawmill on day "
               << (sawmill_built_day_ == kNever ? std::string("never")
                                                : std::to_string(sawmill_built_day_))
               << ", paused it " << pauses_ << " times and resumed it " << resumes_
-              << " times; it stood open " << days_sawing_ << " days\n";
+              << " times; it stood open " << days_sawing_ << " days; the yard was marked "
+              << yard_attempts_ << " times\n";
   }
 
   /// @brief Grams of `resource` in built units — what the stores hold.
@@ -142,6 +176,24 @@ class SawmillPolicy {
       }
     }
     return 0;
+  }
+
+  /// @brief What every site of the queue still lacks of `resource`, in grams.
+  core::Grams QueueNeed(const core::WorldState& world, core::ResourceId resource) const {
+    core::Grams need = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      const bool queued = unit.construction.phase == core::ConstructionPhase::kMarked ||
+                          unit.construction.phase == core::ConstructionPhase::kDelivering;
+      const bool repair = unit.level > 0 && unit.construction.target_level == unit.level;
+      if (!queued || repair) {
+        continue;
+      }
+      const core::Grams cost = CostGrams(unit.type, unit.construction.target_level, resource);
+      const core::Grams on_site =
+          resource.value < unit.stock.size() ? unit.stock[resource.value] : 0;
+      need += cost > on_site ? cost - on_site : 0;
+    }
+    return need;
   }
 
   /// @brief Whether a built sawmill stands unpaused today.
@@ -279,6 +331,11 @@ class SawmillPolicy {
     return count > 0.0F ? core::Vec2{.x = sum.x / count, .y = sum.y / count} : sum;
   }
 
+  float YardRadius() const {
+    const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
+    return yard_type_.value < radii.size() ? radii[yard_type_.value] : 0.0F;
+  }
+
   static bool Mark(core::UnitTypeId type, core::Vec2 place, core::OrderRow& order) {
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = type;
@@ -298,23 +355,40 @@ class SawmillPolicy {
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
     const std::uint32_t yard = FindOfType(world, yard_type_);
+    // NOT BEFORE THE BOARDS RUN SHORT (boss, parcel 208). The first version
+    // put the yard and the saw up on day one and took the craftsman off the
+    // fields for good, years before the start's 82 m3 of boards ran out; on
+    // seed 1931 that turned three separate failed years into a run of three
+    // and the obvious chairman into the dock.
+    //
+    // AND WHILE THE SAWMILL CAN STILL BE BUILT: it takes boards itself (five
+    // cubic metres at level 1). The first "by the boards" version waited for
+    // the boards to run short, and then the sawmill's own site waited for the
+    // boards it was built to make — never built on any seed (2026-09-13). So
+    // the yard goes up once the stores hold fewer boards than the queue lacks
+    // AND the sawmill costs.
+    //
+    // PLUS ONE GRANARY'S BOARDS OF SLACK. Measured the same night: with the
+    // sawmill's own cost alone the yard went up on time and the sawmill's
+    // site then stood holding its steel for twenty years, because the four
+    // days it takes to mark and start the yard and the saw are four days of
+    // deliveries to the granary sites marked before it, which come first in
+    // row order and took the last boards.
+    const core::Grams sawmill_boards = CostGrams(catalog_.sawmill_type, 1, catalog_.board_resource);
+    const core::Grams slack = CostGrams(granary_type_, 1, catalog_.board_resource);
+    if (yard == core::kNoRow && FindOfType(world, catalog_.sawmill_type) == core::kNoRow &&
+        Held(world, catalog_.board_resource) >=
+            QueueNeed(world, catalog_.board_resource) + sawmill_boards + slack) {
+      return false;
+    }
     if (yard == core::kNoRow) {
-      // Rings around the centre, a place further each time the last was refused.
-      static constexpr std::array<std::array<float, 2>, 8> kRing = {{{1.0F, 0.0F},
-                                                                     {0.0F, 1.0F},
-                                                                     {-1.0F, 0.0F},
-                                                                     {0.0F, -1.0F},
-                                                                     {1.0F, 1.0F},
-                                                                     {-1.0F, 1.0F},
-                                                                     {-1.0F, -1.0F},
-                                                                     {1.0F, -1.0F}}};
-      const core::Vec2 centre = Centre(world);
-      const auto ring = static_cast<float>(2U + (yard_attempts_ / kRing.size()));
-      const std::array<float, 2>& heading = kRing[yard_attempts_ % kRing.size()];
+      // THE NEAREST FREE PLACE BY THE CORE'S OWN RULE (plot.h, FreePlot), not
+      // rings guessed around the centre. The rings found a place on day one
+      // and none in a grown village: put up late, the yard was marked forty
+      // times on seed 1931 and refused for crowding every time (2026-09-13).
       ++yard_attempts_;
       return Mark(yard_type_,
-                  core::Vec2{.x = centre.x + (heading[0] * ring * kStepAside),
-                             .y = centre.y + (heading[1] * ring * kStepAside)},
+                  core::FreePlot(world.units, definitions_.Plots(), Centre(world), YardRadius()),
                   order);
     }
     if (world.units.rows[yard].level == 0) {
@@ -377,7 +451,11 @@ class SawmillPolicy {
   }
 
   core::TimberCatalog catalog_;
+  /// The plot radii and the map, for FreePlot. Owned here: PlotRules is a
+  /// span into it.
+  core::Definitions definitions_;
   core::UnitTypeId yard_type_;
+  core::UnitTypeId granary_type_;
   core::ProfessionId craftsman_post_;
   float adult_age_years_ = 16.0F;
   float life_speedup_ = 4.0F;

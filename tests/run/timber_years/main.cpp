@@ -329,5 +329,6 @@ int main(int argc, char** argv) {
             << " days with no site needing any\n";
   felling.Report("timber_years", started.State());
   sawmill.Report("timber_years");
+  sawmill.ReportState("timber_years", started.State());
   return 0;
 }

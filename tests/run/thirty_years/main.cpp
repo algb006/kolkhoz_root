@@ -772,6 +772,7 @@ int main(int argc, char** argv) {
   fixture.Report(state);
   felling.Report("thirty_years", state);
   sawmill.Report("thirty_years");
+  sawmill.ReportState("thirty_years", state);
   failures += orders.Report();
   failures += repairs.Report(state);
   std::cout << "repair: that is " << (repairs.LaborDays() / total_work_days * 100.0) << "% of the "
