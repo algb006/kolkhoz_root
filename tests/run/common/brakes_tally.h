@@ -17,11 +17,13 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "core_common/labor_state.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
@@ -37,6 +39,14 @@ class BrakesTally {
       board_ = resources->FindRowByKey("board");
       log_ = resources->FindRowByKey("log");
     }
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      sawmill_ = types->FindRowByKey("sawmill");
+    }
+    if (const core::ITable* const params = tables.FindTable("world_params")) {
+      const std::optional<float> places = params->CellReal(
+          params->FindRowByKey("sawmill_sawyers_max"), params->FindColumn("value"));
+      saw_places_ = places.has_value() && *places > 0.0F ? static_cast<std::uint32_t>(*places) : 0;
+    }
   }
 
   /// @brief One day's reading, at the day's middle. Call once a day.
@@ -47,6 +57,7 @@ class BrakesTally {
     year.idle_sum += force.idle;
     year.employable_sum += force.employable;
     ++year.days;
+    CountSaw(world, year);
     core::Grams logs_lying = 0;
     for (const core::TimberStandRow& stand : world.stands.rows) {
       logs_lying += stand.load_grams;
@@ -78,6 +89,12 @@ class BrakesTally {
       }
       std::cout << "; idle hands " << year.idle_sum / year.days << " of "
                 << year.employable_sum / year.days << " employable a day\n";
+      // THE SAW AGAINST ITS CEILING (boss, parcel 316): sawyers at the saw at
+      // noon, against its places times the days anybody worked at all.
+      std::cout << run_name << ": SAW year " << index + 1 << " — sawyer-days " << year.sawyer_days
+                << " of a ceiling " << saw_places_ * year.work_days << " (" << saw_places_
+                << " places x " << year.work_days << " work days); the sawmill stood open "
+                << year.saw_open_days << " days\n";
     }
   }
 
@@ -107,7 +124,34 @@ class BrakesTally {
     std::uint64_t idle_sum = 0;
     std::uint64_t employable_sum = 0;
     std::uint32_t days = 0;
+    std::uint32_t sawyer_days = 0;
+    std::uint32_t work_days = 0;
+    std::uint32_t saw_open_days = 0;
   };
+
+  /// The saw's day: who is at it at noon, whether it stands built and unpaused,
+  /// and whether this is a day anybody works at all (a day off has nobody at
+  /// field or site work; herd care goes on and does not count).
+  void CountSaw(const core::WorldState& world, Year& year) const {
+    bool worked = false;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      const core::WorkKind kind = resident.work.kind;
+      worked = worked || (kind != core::WorkKind::kNone && kind != core::WorkKind::kHerdCare);
+      if (kind != core::WorkKind::kUnitWork) {
+        continue;
+      }
+      const std::uint32_t row = core::FindRow(world.units, resident.work.unit);
+      year.sawyer_days +=
+          row != core::kNoRow && world.units.rows[row].type.value == sawmill_ ? 1U : 0U;
+    }
+    year.work_days += worked ? 1U : 0U;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.type.value == sawmill_ && unit.level > 0 && unit.paused == 0) {
+        ++year.saw_open_days;
+        break;
+      }
+    }
+  }
 
   SiteCause Cause(core::ISimulation& simulation,
                   const core::WorldState& world,
@@ -150,6 +194,10 @@ class BrakesTally {
   std::uint32_t board_ = core::kNoTableRow;
 
   std::uint32_t log_ = core::kNoTableRow;
+
+  std::uint32_t sawmill_ = core::kNoTableRow;
+
+  std::uint32_t saw_places_ = 0;
 
   std::vector<Year> years_;
 };

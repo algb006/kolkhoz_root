@@ -484,6 +484,13 @@ class SawmillPolicy {
     if (world.units.rows[mill].level == 0) {
       return Start(world, mill, order);
     }
+    // R5, ANYONE SAWS (boss, parcel 316): the two-handed saw is a peasant's
+    // winter work, not a trade. No craftsman is appointed; the chairman sends
+    // adults to the saw by a standing order, no more than its places and the
+    // tools in the stores, and takes them back when the boards are enough.
+    if (saw_by_anyone_) {
+      return NextAnyoneOrder(world, mill, order);
+    }
     // AS MANY CRAFTSMEN AS THE SAW HAS PLACES while the boards are short
     // (2026-09-14). One was the whole policy while granaries were the only
     // sites; once houses stopped coming from nothing, three house sites on
@@ -513,6 +520,64 @@ class SawmillPolicy {
     return true;
   }
 
+  /// The standing orders on the sawmill, by the resident each names.
+  static std::vector<core::ResidentId> SawOrders(const core::WorldState& world, core::UnitId mill) {
+    std::vector<core::ResidentId> sawyers;
+    for (const core::OrderRow& standing : world.orders.rows) {
+      if (standing.kind == core::OrderKind::kAssignWork &&
+          standing.status == core::OrderStatus::kAccepted &&
+          standing.work == core::WorkKind::kUnitWork && standing.unit.value == mill.value) {
+        sawyers.push_back(standing.resident);
+      }
+    }
+    return sawyers;
+  }
+
+  /// R5's day: the saw paused or open as boards are wanted, adults sent up to
+  /// the places and the tools while wanted, and sent back when not.
+  bool NextAnyoneOrder(const core::WorldState& world, std::uint32_t mill, core::OrderRow& order) {
+    const core::UnitId mill_id = world.units.row_ids[mill];
+    const bool wanted = WantsSawing(world);
+    const bool paused = world.units.rows[mill].paused != 0;
+    if (wanted == paused) {
+      order.kind = wanted ? core::OrderKind::kResumeUnit : core::OrderKind::kPauseUnit;
+      order.unit = mill_id;
+      (wanted ? resumes_ : pauses_) += 1;
+      return true;
+    }
+    const std::vector<core::ResidentId> sawyers = SawOrders(world, mill_id);
+    if (!wanted) {
+      if (sawyers.empty()) {
+        return false;
+      }
+      order.kind = core::OrderKind::kReleaseWork;
+      order.resident = sawyers.front();
+      return true;
+    }
+    const core::Grams tool_grams = Held(world, catalog_.tool_resource);
+    const auto tools = catalog_.tool_grams > 0
+                           ? static_cast<std::uint32_t>(tool_grams / catalog_.tool_grams)
+                           : static_cast<std::uint32_t>(catalog_.sawyers_max);
+    const auto places = static_cast<std::uint32_t>(catalog_.sawyers_max);
+    if (sawyers.size() >= places || sawyers.size() >= tools) {
+      return false;
+    }
+    const std::uint32_t candidate = NextCandidate(world);
+    if (candidate == core::kNoRow) {
+      return false;
+    }
+    order.kind = core::OrderKind::kAssignWork;
+    order.resident = world.residents.row_ids[candidate];
+    order.work = core::WorkKind::kUnitWork;
+    order.unit = mill_id;
+    return true;
+  }
+
+ public:
+  /// @brief R5 (boss, parcel 316): adults saw by standing order, no craftsman.
+  void SawByAnyone(bool anyone) { saw_by_anyone_ = anyone; }
+
+ private:
   /// An adult with no post, a different one each time the last did not take.
   std::uint32_t NextCandidate(const core::WorldState& world) {
     const std::uint32_t skip = candidate_++;
@@ -549,6 +614,8 @@ class SawmillPolicy {
   core::UnitTypeId house_type_;
 
   bool keep_reserve_ = false;
+
+  bool saw_by_anyone_ = false;
   core::ProfessionId craftsman_post_;
   float adult_age_years_ = 16.0F;
   float life_speedup_ = 4.0F;

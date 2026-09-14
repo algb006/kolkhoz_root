@@ -94,6 +94,10 @@ std::string g_tables_dir = "tables";
 bool g_saw_reserve = false;
 std::uint32_t g_house_sites = 3;
 
+/// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
+/// order up to the saw's places, and no craftsman is appointed.
+bool g_saw_by_anyone = false;
+
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
 
@@ -358,6 +362,7 @@ int main(int argc, char** argv) {
     const std::string_view argument(argv[index]);
     g_free_materials = g_free_materials || argument == "--free-materials";
     g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
+    g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -373,7 +378,8 @@ int main(int argc, char** argv) {
   // and a check that fires there would be measuring the argument rather than
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
-                    g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3;
+                    g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
+                    !g_saw_by_anyone;
   run::Simulation world = run::Start(g_seed, 1, g_tables_dir);
   if (!world) {
     return 1;
@@ -495,6 +501,7 @@ int main(int argc, char** argv) {
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
   sawmill.KeepBoardReserve(g_saw_reserve);
+  sawmill.SawByAnyone(g_saw_by_anyone);
   houses.SetSitesAtOnce(g_house_sites);
   run::TimberChainTally timber_chain(*world.tables);
   // What the sites stood on in the first fourteen years (boss, parcel 312).
