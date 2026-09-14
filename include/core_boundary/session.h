@@ -161,9 +161,13 @@ struct UnitSignals {
   /// Zero for units nobody lives in.
   std::uint16_t residents_living = 0;
 
-  /// Residents assigned to work here today — the barn crew, through the
-  /// herd that stands here. A field is not a unit: its crew is
-  /// FieldSignals::residents_working.
+  /// Residents whose work today is at this unit: the barn crew, through the
+  /// herd that stands here; the sawyers of a sawmill (kUnitWork) and the crew
+  /// of a site (kConstruction), which name the unit itself. A module's workers
+  /// count at the module, not at its parent. A post holder whose post's work
+  /// the core does not model yet is idle (STUB, labor_system.h) and is not
+  /// counted — he is at home by WhereaboutsOf too. A field is not a unit: its
+  /// crew is FieldSignals::residents_working.
   std::uint16_t residents_working = 0;
 
   /// Residents of the household under the infant age (life-cycle design
@@ -244,7 +248,8 @@ struct ResidentWhereabouts {
 
   Whereabouts place = Whereabouts::kUnknown;
 
-  /// The place, by kind: the house or the barn (`unit`), the field
+  /// The place, by kind: the house, the barn, the sawmill a sawyer works or
+  /// the site a crew builds (`unit`), the field
   /// (`field`), the herd (`herd`). Ids the place does not need stay invalid.
   UnitId unit;
 

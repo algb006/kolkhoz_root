@@ -647,6 +647,36 @@ int TestSignals(const core::ITableSet& tables) {
   baby.birth_day = 4;
   const core::ResidentId baby_id = core::AppendRow(world.residents, baby);
 
+  // THE WORK AT A UNIT BY NAME (2026-09-14; host, seq 218): two sawyers at a
+  // sawmill, one mason at a site, and a bath attendant holding a post whose
+  // work the core does not model yet — idle, so neither working nor away.
+  // None of them belongs to the household above, so its counts stay as they
+  // were.
+  core::UnitRow sawmill;
+  sawmill.position = core::Vec2{.x = 700.0F, .y = 100.0F};
+  const core::UnitId sawmill_id = core::AppendRow(world.units, sawmill);
+  core::UnitRow site;
+  site.position = core::Vec2{.x = 800.0F, .y = 150.0F};
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+  core::UnitRow bath;
+  bath.position = core::Vec2{.x = 900.0F, .y = 200.0F};
+  const core::UnitId bath_id = core::AppendRow(world.units, bath);
+  core::ResidentRow sawyer;
+  sawyer.birth_day = -30 * static_cast<std::int32_t>(core::kDaysPerYear);
+  sawyer.work.kind = core::WorkKind::kUnitWork;
+  sawyer.work.unit = sawmill_id;
+  const core::ResidentId sawyer_id = core::AppendRow(world.residents, sawyer);
+  core::AppendRow(world.residents, sawyer);
+  core::ResidentRow mason = sawyer;
+  mason.work.kind = core::WorkKind::kConstruction;
+  mason.work.unit = site_id;
+  const core::ResidentId mason_id = core::AppendRow(world.residents, mason);
+  core::ResidentRow attendant;
+  attendant.birth_day = sawyer.birth_day;
+  attendant.post.profession = core::ProfessionId{0};
+  attendant.post.unit = bath_id;
+  core::AppendRow(world.residents, attendant);
+
   ScriptedSimulation* script = nullptr;
   std::unique_ptr<core::ISession> session = ScriptedSession(tables, world, &script);
   if (!session) {
@@ -679,6 +709,13 @@ int TestSignals(const core::ITableSet& tables) {
   failures += Expect(house_signals.dead == 0, "while a working house does not");
   failures += Expect(session->SignalsOfUnit(core::UnitId{404}).unit.value == 0,
                      "a unit that does not exist gives a default");
+  failures += Expect(session->SignalsOfUnit(sawmill_id).residents_working == 2,
+                     "the two sawyers are counted at the sawmill they name");
+  failures +=
+      Expect(session->SignalsOfUnit(site_id).residents_working == 1, "and the mason at his site");
+  failures += Expect(session->SignalsOfUnit(bath_id).residents_working == 0,
+                     "while a post whose work is not modelled leaves its holder idle, not "
+                     "working");
 
   const core::FieldSignals field_signals = session->SignalsOfField(field_id);
   failures +=
@@ -697,6 +734,14 @@ int TestSignals(const core::ITableSet& tables) {
   failures += Expect(at_barn.place == core::Whereabouts::kAtWork &&
                          at_barn.herd.value == herd_id.value && at_barn.unit.value == barn_id.value,
                      "the milkmaid is at the barn her herd stands in");
+  const core::ResidentWhereabouts at_saw = session->WhereaboutsOf(sawyer_id);
+  failures += Expect(at_saw.place == core::Whereabouts::kAtWork &&
+                         at_saw.unit.value == sawmill_id.value && at_saw.to.x == 700.0F,
+                     "the sawyer is at work at his sawmill, and at its address");
+  const core::ResidentWhereabouts at_site = session->WhereaboutsOf(mason_id);
+  failures += Expect(at_site.place == core::Whereabouts::kAtWork &&
+                         at_site.unit.value == site_id.value && at_site.to.x == 800.0F,
+                     "the mason is at work at his site, and at its address");
   const core::ResidentWhereabouts at_home = session->WhereaboutsOf(baby_id);
   failures +=
       Expect(at_home.place == core::Whereabouts::kAtHome && at_home.unit.value == house_id.value,

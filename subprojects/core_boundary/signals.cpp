@@ -79,17 +79,31 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   signals.residents_living = Saturate16(living);
   signals.infants = Saturate8(infants);
 
-  // Who works here. A unit is not a field: the only work that happens AT a
-  // unit today is the barn's, and a resident reaches it through the herd
-  // that stands here (labor_state.h: kHerdCare names a herd, never a unit).
+  // Who works here today: every resident whose day's work is AT this unit.
+  // The barn crew reaches it through the herd that stands here (kHerdCare
+  // names a herd, never a unit); the sawyers of a sawmill and the crew of a
+  // site name the unit itself (kUnitWork, kConstruction: WorkAssignment::unit).
+  //
+  // THIS COUNTED THE BARN CREW ALONE until 2026-09-14, under a comment saying
+  // the barn's was the only work at a unit. That stopped being true with the
+  // sawmill's unit_work in 0.20.0, and the seam went on answering "nobody works
+  // here" at every sawmill — host found it by fixture (seq 218). A module's
+  // sawyers count at the module they work, not at the yard that holds it.
   std::uint32_t working = 0;
   for (const ResidentRow& resident : world.residents.rows) {
-    if (resident.work.kind != WorkKind::kHerdCare) {
-      continue;
-    }
-    const std::uint32_t herd_row = FindRow(world.herds, resident.work.herd);
-    if (herd_row != kNoRow && world.herds.rows[herd_row].unit.value == unit.value) {
-      ++working;
+    switch (resident.work.kind) {
+      case WorkKind::kHerdCare: {
+        const std::uint32_t herd_row = FindRow(world.herds, resident.work.herd);
+        working +=
+            herd_row != kNoRow && world.herds.rows[herd_row].unit.value == unit.value ? 1U : 0U;
+        break;
+      }
+      case WorkKind::kUnitWork:
+      case WorkKind::kConstruction:
+        working += resident.work.unit.value == unit.value ? 1U : 0U;
+        break;
+      default:
+        break;  // a field's or a stand's work, or none  // a field's or a stand's work, or none
     }
   }
   signals.residents_working = Saturate16(working);
@@ -179,6 +193,15 @@ ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId reside
         where.unit = world.families.rows[yard].house;
       }
     }
+    where.to = UnitPosition(world, where.unit);
+    return where;
+  }
+  // AT A UNIT BY NAME: the sawyer at his sawmill, the crew at its site. Until
+  // 2026-09-14 both fell through to the field branch below and came back "at
+  // work" with no field and no address — the same blindness as the count in
+  // DeriveUnitSignals, found beside it.
+  if (person.work.kind == WorkKind::kUnitWork || person.work.kind == WorkKind::kConstruction) {
+    where.unit = person.work.unit;
     where.to = UnitPosition(world, where.unit);
     return where;
   }
