@@ -143,6 +143,9 @@ class DepartureTally {
         case core::EventKind::kWeddingAwaitsHouse:
           ++year_.couples_began_waiting;
           break;
+        case core::EventKind::kResidentArrived:
+          ++year_.arrived;  // a stranger comes only to a free house
+          break;
         default:
           break;
       }
@@ -162,7 +165,7 @@ class DepartureTally {
       std::cout << run_name << ": PEOPLE year " << index << " — born " << year.born << ", left "
                 << year.left << " (for want of a house " << year.left_for_no_house << ", other "
                 << (year.left - year.left_for_no_house) << "), couples began waiting "
-                << year.couples_began_waiting << "\n";
+                << year.couples_began_waiting << ", strangers arrived " << year.arrived << "\n";
     }
   }
 
@@ -172,6 +175,7 @@ class DepartureTally {
     std::uint32_t left = 0;
     std::uint32_t left_for_no_house = 0;
     std::uint32_t couples_began_waiting = 0;
+    std::uint32_t arrived = 0;
   };
 
   Year year_;

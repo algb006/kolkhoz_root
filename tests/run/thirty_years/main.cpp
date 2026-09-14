@@ -25,6 +25,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../common/brakes_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/extraction_policy.h"
 #include "../common/felling_policy.h"
@@ -480,6 +481,8 @@ int main(int argc, char** argv) {
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
   run::TimberChainTally timber_chain(*world.tables);
+  // What the sites stood on in the first fourteen years (boss, parcel 312).
+  run::BrakesTally brakes(*world.tables);
   run::DepartureTally departures;
 
   std::uint64_t growing_field_days = 0;
@@ -504,6 +507,9 @@ int main(int argc, char** argv) {
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world.simulation->AdvanceStep();
         departures.CountStep(world.State());
+        if (tick == core::kTicksPerDay / 2) {
+          brakes.CountDay(*world.simulation);  // the working day's middle
+        }
       }
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
@@ -551,6 +557,7 @@ int main(int argc, char** argv) {
     // village grows all the way through, so the run's mean would hide the
     // only year that matters — the last and largest.
     departures.CloseYear();
+    brakes.CloseYear();
     harvest_waited_days += harvest_waited_days_this_year;
     harvest_waited_worst = std::max(harvest_waited_worst, harvest_waited_days_this_year);
     const double day_seconds = year_seconds / static_cast<double>(core::kDaysPerYear);
@@ -819,6 +826,7 @@ int main(int argc, char** argv) {
   digging.Report(state, "thirty_years");
   timber_chain.Report("thirty_years", g_years);
   departures.Report("thirty_years");
+  brakes.Report("thirty_years", 14);
   std::cout << "thirty_years: a reaped harvest waited in the field for room (over 3 days "
                "running) on "
             << harvest_waited_days << " days over " << g_years << " years, worst year "
