@@ -25,6 +25,7 @@
 
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
+#include "core_common/district_visit_state.h"
 #include "core_common/event_state.h"
 #include "core_common/world_state.h"
 
@@ -152,6 +153,10 @@ int main() {
   std::uint32_t herd_births = 0;
   std::uint32_t walk_offs = 0;
   std::uint16_t last_closed_year = 0;
+  // The district's visits by who came: Korenev answers a failed plan, a
+  // junior answers an announcement (boss, parcel 324).
+  std::uint32_t korenev_arrived = 0;
+  std::uint32_t regular_arrived = 0;
 
   for (std::uint32_t tick = 0; tick < kDays * core::kTicksPerDay; ++tick) {
     world->AdvanceStep();
@@ -163,6 +168,12 @@ int main() {
       }
       if (event.kind == core::EventKind::kHerdBorn) {
         herd_born_heads += event.amount;
+      }
+      core::DistrictVisitOutcome visit;
+      if (event.kind == core::EventKind::kDistrictVisit &&
+          core::UnpackDistrictVisit(event.amount, visit)) {
+        korenev_arrived += visit.face == core::DistrictFace::kKorenev ? 1U : 0U;
+        regular_arrived += visit.kind == core::DistrictVisitKind::kRegular ? 1U : 0U;
       }
     }
     // A closed book is counted once, on the tick it closed.
@@ -224,6 +235,26 @@ int main() {
   // sides. The measure has to prove it measured.
   failures +=
       run::Expect(births > 0 && herd_births > 0, "the run actually produced births to compare");
+
+  // THE DISTRICT AGAINST ITS CAUSES. Every failed plan brings Korenev once and
+  // every announcement its junior once — counting the visits still on the
+  // road when the run stops, so the last year's call is not a miss.
+  std::uint32_t korenev_on_road = 0;
+  std::uint32_t regular_on_road = 0;
+  for (const core::DistrictVisitRow& row : world.State().district_visits.rows) {
+    korenev_on_road += row.face == core::DistrictFace::kKorenev ? 1U : 0U;
+    regular_on_road += row.kind == core::DistrictVisitKind::kRegular ? 1U : 0U;
+  }
+  failures +=
+      run::Expect(count(core::EventKind::kPlanFailed) > 0 &&
+                      korenev_arrived + korenev_on_road == count(core::EventKind::kPlanFailed),
+                  "every failed plan brought Korenev, once");
+  failures += run::Expect(
+      count(core::EventKind::kDistrictVisitAnnounced) > 0 &&
+          regular_arrived + regular_on_road == count(core::EventKind::kDistrictVisitAnnounced),
+      "every announced regular visit arrived, once");
+  std::cout << "  district: Korenev " << korenev_arrived << " (+" << korenev_on_road
+            << " on the road), regular " << regular_arrived << " (+" << regular_on_road << ")\n";
   std::cout << "  books: births " << births << ", deaths " << deaths << ", arrivals " << arrivals
             << ", departures " << departures << ", weddings " << weddings << ", walk-offs "
             << walk_offs << ", herd births " << herd_births << " (journal heads " << herd_born_heads

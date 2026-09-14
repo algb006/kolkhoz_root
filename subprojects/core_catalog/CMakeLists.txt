@@ -16,7 +16,8 @@ kolkhoz_add_module(core_catalog
     table_value.cpp
     timber_catalog.cpp
     extraction_catalog.cpp
-    limit_catalog.cpp)
+    limit_catalog.cpp
+    district_visit_catalog.cpp)
 
 target_link_libraries(core_catalog
     PUBLIC core_common core_tables)

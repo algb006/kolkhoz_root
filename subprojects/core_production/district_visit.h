@@ -10,11 +10,10 @@
 /// the year's turn. They write WorldState::district_visits and the step's
 /// events, so they can only live in a sequential slot.
 ///
-/// THE ORDER OF ONE DAY. Arrivals first, then announcements: a visit that
-/// arrives today and finds something calls its senior for tomorrow, and an
-/// announcement made today cannot be for a visit arriving today unless the
-/// notice is zero days — in which case the announcement and the arrival are
-/// the same tick, announced first by construction of AnnounceRegularVisits.
+/// THE ORDER OF ONE DAY. Announcements first, then arrivals: with a notice of
+/// zero days a regular visit is announced and arrives on the same tick, and
+/// the announcement must come first. A visit arriving today that finds
+/// something calls its senior for tomorrow, never for today.
 
 #ifndef CORE_PRODUCTION_DISTRICT_VISIT_H_
 #define CORE_PRODUCTION_DISTRICT_VISIT_H_
@@ -34,7 +33,7 @@ DistrictFace SeniorOfChannel(DistrictFace junior);
 ///        arrives `notice_days` from today — the first day of their month —
 ///        adds a row and raises kDistrictVisitAnnounced. Once per junior per
 ///        year; a row already standing for that face and day is not doubled.
-/// @pre Called once per day, at the day's first tick, AFTER
+/// @pre Called once per day, at the day's first tick, BEFORE
 ///      ArriveDistrictVisits.
 void AnnounceRegularVisits(const ProductionConfig& config, WorldState& current);
 

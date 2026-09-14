@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
@@ -451,8 +452,40 @@ int TestServiceLotKind() {
   return failures;
 }
 
+/// The district's regular visits (boss, parcel 324): the three knobs read, and
+/// a month outside the year, a half month and a notice longer than a month
+/// refuse the catalogue.
+int TestDistrictVisitKnobs() {
+  int failures = 0;
+  const auto parse = [](const char* karasev,
+                        const char* polushkina,
+                        const char* notice,
+                        core::DistrictVisitCatalog& catalog) {
+    const test::FakeTable world({"key", "value", "reader"},
+                                {{"district_visit_karasev_month", karasev, "core"},
+                                 {"district_visit_polushkina_month", polushkina, "core"},
+                                 {"district_visit_notice_days", notice, "core"}});
+    const test::FakeTableSet set({{"world_params", &world}});
+    std::string error;
+    return core::ParseDistrictVisitCatalog(set, catalog, error);
+  };
+  core::DistrictVisitCatalog read;
+  failures += Expect(parse("7", "11", "3", read) && read.karasev_month == 7 &&
+                         read.polushkina_month == 11 && read.notice_days == 3,
+                     "district visits: the months and the notice come off world_params");
+  core::DistrictVisitCatalog thirteenth;
+  core::DistrictVisitCatalog half;
+  core::DistrictVisitCatalog long_notice;
+  failures += Expect(!parse("13", "12", "2", thirteenth) && !parse("6", "6.5", "2", half) &&
+                         !parse("6", "12", "5", long_notice),
+                     "district visits: a thirteenth month, half a month and a notice past a "
+                     "month are refused");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
   failures += TestThreeAnswers();
   failures += TestRequiredCell();

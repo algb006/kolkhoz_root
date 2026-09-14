@@ -11,6 +11,7 @@
 #include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/deadline.h"
+#include "core_common/district_visit_state.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
@@ -948,8 +949,49 @@ int CheckTheTopOfTheLadder() {
   return failures;
 }
 
+/// The visit's outcome crosses the seam packed into one amount: every field
+/// comes back, and an amount that is not a visit's is refused rather than read
+/// as a face that does not exist.
+int TestDistrictVisitPacking() {
+  int failures = 0;
+  // Every field off its default, and each a different value, so a byte
+  // written into the wrong place or not at all comes back different.
+  const core::DistrictVisitOutcome sent{.face = core::DistrictFace::kZhernova,
+                                        .kind = core::DistrictVisitKind::kGift,
+                                        .found = core::DistrictVisitFinding::kJuniorMiss,
+                                        .miss_by = core::DistrictFace::kPolushkina,
+                                        .has_miss_by = true,
+                                        .gift = core::DistrictGiftOutcome::kReturned};
+  core::DistrictVisitOutcome read;
+  failures +=
+      Expect(core::UnpackDistrictVisit(core::PackDistrictVisit(sent), read) &&
+                 read.face == sent.face && read.kind == sent.kind && read.found == sent.found &&
+                 read.miss_by == sent.miss_by && read.has_miss_by && read.gift == sent.gift,
+             "district visit: every field survives the packing");
+  // Korenev is face 0, so an empty miss_by must not read back as "Korenev's".
+  core::DistrictVisitOutcome nobody;
+  failures += Expect(core::UnpackDistrictVisit(core::PackDistrictVisit(core::DistrictVisitOutcome{
+                                                   .face = core::DistrictFace::kKarasev,
+                                                   .kind = core::DistrictVisitKind::kRegular}),
+                                               nobody) &&
+                         !nobody.has_miss_by,
+                     "district visit: an empty miss_by is empty, not Korenev");
+  core::DistrictVisitOutcome untouched;
+  constexpr std::int64_t kSixthFace = 5;
+  constexpr std::int64_t kMissBySeventh = std::int64_t{6} << 24U;
+  constexpr std::int64_t kSixthByte = std::int64_t{1} << 40U;
+  failures += Expect(!core::UnpackDistrictVisit(-1, untouched) &&
+                         !core::UnpackDistrictVisit(kSixthFace, untouched) &&
+                         !core::UnpackDistrictVisit(kMissBySeventh, untouched) &&
+                         !core::UnpackDistrictVisit(kSixthByte, untouched),
+                     "district visit: a negative amount, a face past the five, a miss_by past "
+                     "them and a byte past the gift are not visits");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += TestDistrictVisitPacking();
   {
     // The night shift's word is accepted and held as a workday (STUB, boss
     // parcel 274) — and a word the design base never wrote is still refused.

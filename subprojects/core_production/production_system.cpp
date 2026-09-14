@@ -44,6 +44,7 @@
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "district_limit.h"
+#include "district_visit.h"
 #include "extraction_digging.h"
 #include "field_haul.h"
 #include "field_removal.h"
@@ -233,6 +234,10 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.season == Season::kSpring && previous.calendar.season != Season::kSpring) {
       AnnouncePlan(current);
     }
+    // The district's people: announced first, so a notice of zero days
+    // announces a visit before it arrives on the same tick (district_visit.h).
+    AnnounceRegularVisits(config_, current);
+    ArriveDistrictVisits(current);
     // THE YEAR'S HIGH-WATER MARK OF WORKED LAND, raised once a day. The
     // district's next norm comes off it (world_state.h), and it is a MAXIMUM
     // so that no single day's order can decide a year's figure.
@@ -548,6 +553,10 @@ class ProductionSystem final : public IProductionSystem {
         SimEvent& trial =
             EmitEvent(current, EventKind::kPlanTrialDue, EventSeverity::kInterrupting);
         trial.amount = current.plan.failed_years_in_a_row;
+      }
+      if (!met) {
+        // And the raikom comes to ask about it, tomorrow (boss, parcel 324).
+        CallPlanFailedVisit(current);
       }
     }
     // THE NEXT NORM IS NOT ANNOUNCED HERE, and what it is computed from has

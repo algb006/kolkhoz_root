@@ -28,6 +28,7 @@
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
 #include "district_limit.h"
+#include "district_visit.h"
 #include "extraction_digging.h"
 #include "field_haul.h"
 #include "field_work.h"
@@ -4028,6 +4029,114 @@ int CheckAnUpgradesRecipeIsNobodysElse() {
 
 /// The district's limit (district design §1, §4; boss, parcels 208, 211):
 /// what may be bought, the year's grant, buying, the cart, the year's turn.
+/// The district's visits (characters design §2; boss, parcel 324): a regular
+/// visit announced its notice ahead and arriving on the first day of its
+/// month, Korenev the day after a failed plan, none doubled.
+int CheckDistrictVisits() {
+  int failures = 0;
+  core::ProductionConfig config;  // the catalogue's defaults: June, December, two days
+  core::WorldState world;
+  const auto count = [&world](core::EventKind kind) {
+    std::uint32_t seen = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      seen += event.kind == kind ? 1U : 0U;
+    }
+    return seen;
+  };
+  const auto day = [&world](std::uint32_t value) {
+    world.calendar.day = value;
+    world.step_events.clear();
+  };
+  constexpr std::uint32_t kJuneFirst = 5U * core::kDaysPerMonth;  // day 20
+  constexpr std::uint32_t kDecemberFirst = 11U * core::kDaysPerMonth;
+
+  day(kJuneFirst - 3U);
+  core::AnnounceRegularVisits(config, world);
+  failures += Expect(
+      world.district_visits.rows.empty() && count(core::EventKind::kDistrictVisitAnnounced) == 0,
+      "visits: three days before June nothing is announced yet");
+  day(kJuneFirst - 2U);
+  core::AnnounceRegularVisits(config, world);
+  core::AnnounceRegularVisits(config, world);
+  core::DistrictVisitOutcome announced;
+  failures += Expect(
+      world.district_visits.rows.size() == 1 &&
+          world.district_visits.rows[0].face == core::DistrictFace::kKarasev &&
+          world.district_visits.rows[0].arrive_day == kJuneFirst &&
+          count(core::EventKind::kDistrictVisitAnnounced) == 1 &&
+          core::UnpackDistrictVisit(world.step_events[0].amount, announced) &&
+          announced.face == core::DistrictFace::kKarasev &&
+          announced.kind == core::DistrictVisitKind::kRegular,
+      "visits: two days before June Karasev's regular visit is announced, once however often "
+      "the day asks");
+  day(kJuneFirst - 1U);
+  core::ArriveDistrictVisits(world);
+  failures +=
+      Expect(world.district_visits.rows.size() == 1 && count(core::EventKind::kDistrictVisit) == 0,
+             "visits: the day before, he has not arrived");
+  day(kJuneFirst);
+  core::ArriveDistrictVisits(world);
+  core::DistrictVisitOutcome arrived;
+  failures +=
+      Expect(world.district_visits.rows.empty() && count(core::EventKind::kDistrictVisit) == 1 &&
+                 world.step_events[0].severity == core::EventSeverity::kNotable &&
+                 core::UnpackDistrictVisit(world.step_events[0].amount, arrived) &&
+                 arrived.face == core::DistrictFace::kKarasev &&
+                 arrived.kind == core::DistrictVisitKind::kRegular &&
+                 arrived.found == core::DistrictVisitFinding::kNone,
+             "visits: on June's first day Karasev arrives, notable, and finds nothing");
+
+  day(core::kDaysPerYear + kDecemberFirst - 2U);
+  core::AnnounceRegularVisits(config, world);
+  failures +=
+      Expect(world.district_visits.rows.size() == 1 &&
+                 world.district_visits.rows[0].face == core::DistrictFace::kPolushkina &&
+                 world.district_visits.rows[0].arrive_day == core::kDaysPerYear + kDecemberFirst,
+             "visits: in the second year Polushkina is announced for December");
+  world.district_visits = core::DistrictVisitTable{};
+
+  day(2U * core::kDaysPerYear);
+  core::CallPlanFailedVisit(world);
+  core::CallPlanFailedVisit(world);
+  core::ArriveDistrictVisits(world);
+  failures +=
+      Expect(world.district_visits.rows.size() == 1 &&
+                 world.district_visits.rows[0].face == core::DistrictFace::kKorenev &&
+                 world.district_visits.rows[0].kind == core::DistrictVisitKind::kExtraordinary &&
+                 world.district_visits.rows[0].cause == core::DistrictVisitCause::kPlanFailed &&
+                 count(core::EventKind::kDistrictVisit) == 0 &&
+                 count(core::EventKind::kDistrictVisitAnnounced) == 0,
+             "visits: a failed plan calls Korenev once, unannounced, not for today");
+  day((2U * core::kDaysPerYear) + 1U);
+  core::ArriveDistrictVisits(world);
+  core::DistrictVisitOutcome korenev;
+  failures +=
+      Expect(world.district_visits.rows.empty() && count(core::EventKind::kDistrictVisit) == 1 &&
+                 world.step_events[0].severity == core::EventSeverity::kInterrupting &&
+                 core::UnpackDistrictVisit(world.step_events[0].amount, korenev) &&
+                 korenev.face == core::DistrictFace::kKorenev &&
+                 korenev.kind == core::DistrictVisitKind::kExtraordinary,
+             "visits: the next morning Korenev's extraordinary visit interrupts");
+
+  // A notice of zero days: the announcement and the arrival share one tick,
+  // the announcement first.
+  config.district_visits.notice_days = 0;
+  day(kJuneFirst);
+  core::AnnounceRegularVisits(config, world);
+  core::ArriveDistrictVisits(world);
+  failures += Expect(world.step_events.size() == 2 &&
+                         world.step_events[0].kind == core::EventKind::kDistrictVisitAnnounced &&
+                         world.step_events[1].kind == core::EventKind::kDistrictVisit,
+                     "visits: with no notice the visit is announced and arrives the same tick");
+
+  failures += Expect(
+      core::SeniorOfChannel(core::DistrictFace::kKarasev) == core::DistrictFace::kStozharov &&
+          core::SeniorOfChannel(core::DistrictFace::kPolushkina) == core::DistrictFace::kZhernova &&
+          core::SeniorOfChannel(core::DistrictFace::kKorenev) == core::DistrictFace::kKorenev,
+      "visits: a junior's senior is the senior of the channel");
+  return failures;
+}
+
 int CheckDistrictLimit() {
   int failures = 0;
   constexpr core::Grams kPane = 5 * core::kGramsPerKilogram;
@@ -4368,6 +4477,7 @@ int main() {
   failures += CheckSawing();
   failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
+  failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
   const test::FakeTableSet tables;

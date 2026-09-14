@@ -1239,7 +1239,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.pig_kind = KindByKey(livestock, "pig");
   return ParseTimberCatalog(tables, config.timber, error) &&
          ParseExtractionCatalog(tables, config.extraction, error) &&
-         ParseLimitCatalog(tables, config.limit, error);
+         ParseLimitCatalog(tables, config.limit, error) &&
+         ParseDistrictVisitCatalog(tables, config.district_visits, error);
 }
 
 }  // namespace core

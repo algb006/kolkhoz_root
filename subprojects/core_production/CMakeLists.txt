@@ -18,6 +18,7 @@ kolkhoz_add_module(core_production
     extraction_digging.cpp
     unit_production.cpp
     district_limit.cpp
+    district_visit.cpp
     field_removal.cpp)
 
 target_link_libraries(core_production

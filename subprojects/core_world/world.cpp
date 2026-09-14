@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "campaign_tables.h"
+#include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/table_value.h"
@@ -694,6 +695,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_extraction.begin(), from_extraction.end());
       const std::span<const std::string_view> from_limit = LimitWorldParamKeys();
       known.insert(known.end(), from_limit.begin(), from_limit.end());
+      const std::span<const std::string_view> from_visits = DistrictVisitWorldParamKeys();
+      known.insert(known.end(), from_visits.begin(), from_visits.end());
       known.insert(known.end(), from_time.begin(), from_time.end());
       known.insert(known.end(), from_genesis.begin(), from_genesis.end());
       known.insert(known.end(), from_life.begin(), from_life.end());
@@ -703,13 +706,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // rather than an absence (boss, parcel 277).
       //   store_leak_complaint_kg — the "raw material leak" door for the quest
       //   «Кто гонит», queued behind digging (STUB).
-      //   district_visit_* — the district's regular visits (boss, parcel 324),
-      //   read by core_catalog/district_visit_catalog.h once its body lands.
-      constexpr std::array<std::string_view, 4> kDeclaredNotYetRead = {
-          "store_leak_complaint_kg",
-          "district_visit_karasev_month",
-          "district_visit_polushkina_month",
-          "district_visit_notice_days"};
+      constexpr std::array<std::string_view, 1> kDeclaredNotYetRead = {"store_leak_complaint_kg"};
       known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
