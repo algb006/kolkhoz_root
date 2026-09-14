@@ -718,6 +718,39 @@ int CheckWeddingQueueOrder() {
   failures += Expect(world.wedding_waits.rows.size() == 1 &&
                          world.wedding_waits.rows[0].bride.value == new_bride.value,
                      "queue: the broken couple is gone and the younger one still waits");
+
+  // THE ROW ORDER IS NOT THE QUEUE. A removal swaps the table's last row into
+  // the hole (state_table_ops.h, RemoveRow), so a younger couple can stand in
+  // a lower row than an older one; the queue is since_day. Found by the static
+  // cycle of 0.24.0 (boss, parcel 326: the player would see it).
+  core::WorldState swapped;
+  swapped.world_seed = 3;
+  swapped.rng = core::SeedRngState(3, 0);
+  const core::FamilyId swapped_yard = AppendRow(swapped.families, core::FamilyRow{});
+  AddHouse(swapped, swapped_yard, core::Vec2{.x = 5000.0F, .y = 6000.0F});
+  const core::ResidentId young_bride = AddAdult(swapped, swapped_yard, core::Sex::kFemale, 24.0F);
+  const core::ResidentId young_groom = AddAdult(swapped, swapped_yard, core::Sex::kMale, 25.0F);
+  const core::ResidentId elder_bride = AddAdult(swapped, swapped_yard, core::Sex::kFemale, 24.0F);
+  const core::ResidentId elder_groom = AddAdult(swapped, swapped_yard, core::Sex::kMale, 25.0F);
+  core::WeddingWaitRow young;
+  young.bride = young_bride;
+  young.groom = young_groom;
+  young.since_day = 9;
+  AppendRow(swapped.wedding_waits, young);
+  core::WeddingWaitRow elder;
+  elder.bride = elder_bride;
+  elder.groom = elder_groom;
+  elder.since_day = 4;
+  AppendRow(swapped.wedding_waits, elder);
+  AppendRow(swapped.units, built);
+  RunDays(*system, swapped, 1);
+  const std::uint32_t elder_row = FindRow(swapped.residents, elder_bride);
+  failures += Expect(elder_row != core::kNoRow &&
+                         swapped.residents.rows[elder_row].spouse.value == elder_groom.value &&
+                         swapped.wedding_waits.rows.size() == 1 &&
+                         swapped.wedding_waits.rows[0].bride.value == young_bride.value,
+                     "queue: the couple waiting since the earlier day marries first, whatever "
+                     "row it stands in");
   return failures;
 }
 

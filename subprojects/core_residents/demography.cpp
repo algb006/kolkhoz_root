@@ -2,7 +2,9 @@
 
 #include "demography.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -571,9 +573,24 @@ void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId h
 /// THE CHAIRMAN'S DECISION IS A STUB (§13: the application, the approval, a
 /// date on a non-working day, the house reserved): the couple marries on the
 /// day a free house stands (boss, parcel 257).
+///
+/// THE QUEUE IS since_day, NOT THE ROW ORDER: a removal swaps the table's last
+/// row into the hole (RemoveRow), so after the first couple left the queue a
+/// younger one could stand above an older one and marry first. Equal days go
+/// by id, which is the order the couples joined.
 void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
+  std::vector<std::uint32_t> queue(current.wedding_waits.rows.size());
+  std::iota(queue.begin(), queue.end(), 0U);
+  std::ranges::sort(queue, [&current](std::uint32_t left, std::uint32_t right) {
+    const std::uint32_t left_day = current.wedding_waits.rows[left].since_day;
+    const std::uint32_t right_day = current.wedding_waits.rows[right].since_day;
+    if (left_day != right_day) {
+      return left_day < right_day;
+    }
+    return current.wedding_waits.row_ids[left].value < current.wedding_waits.row_ids[right].value;
+  });
   std::vector<WeddingWaitId> done;
-  for (std::uint32_t row = 0; row < current.wedding_waits.rows.size(); ++row) {
+  for (const std::uint32_t row : queue) {
     const WeddingWaitRow couple = current.wedding_waits.rows[row];
     const WeddingWaitId id = current.wedding_waits.row_ids[row];
     const std::uint32_t bride_row = FindRow(current.residents, couple.bride);
