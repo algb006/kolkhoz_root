@@ -706,7 +706,24 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // rather than an absence (boss, parcel 277).
       //   store_leak_complaint_kg — the "raw material leak" door for the quest
       //   «Кто гонит», queued behind digging (STUB).
-      constexpr std::array<std::string_view, 1> kDeclaredNotYetRead = {"store_leak_complaint_kg"};
+      //   night_* — the night trades (boss, parcel 346), read by
+      //   core_residents/night_trade.h once its body lands.
+      constexpr std::array<std::string_view, 15> kDeclaredNotYetRead = {
+          "store_leak_complaint_kg",
+          "night_distillers_max",
+          "night_fisher_age_from_years",
+          "night_fisher_age_to_years",
+          "night_hunter_age_from_years",
+          "night_hunter_age_to_years",
+          "night_moon_day_in_month",
+          "night_trade_hour_out",
+          "night_trade_hour_back",
+          "night_fishing_min_mean_celsius",
+          "night_hunt_reach_min_m",
+          "night_hunt_reach_max_m",
+          "night_fishing_catch_kg",
+          "night_hunt_catch_kg",
+          "night_hunt_success_chance"};
       known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {

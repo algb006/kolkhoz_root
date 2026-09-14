@@ -90,6 +90,21 @@ enum class SocialStatus : std::uint8_t {
   kSocialStatusCount,
 };
 
+/// @brief The quiet trade a resident keeps at night (crime design §7, §9;
+/// "Ночной промысел в ядре Эпохи I — числами"). Assigned by the core at the
+/// year's turn (core_residents/night_trade.h); kept until he is gone, as the
+/// chairman's orders against it are a later door. Stored in a save: append
+/// only.
+enum class NightTrade : std::uint8_t {
+  kNone = 0,
+  kDistiller,  ///< Distils at home and sells at his gate.
+  kNetFisher,  ///< One of the pair who net the lake and the river pools.
+  kHunter,     ///< The one who shoots in the forest at night.
+
+  /// NOT A VALUE: the count, for the codecs' range check and a mirror.
+  kNightTradeCount,
+};
+
 /// @brief A standing appointment: which post, at which unit. Plain data;
 /// both invalid means "holds no post", and the two are set and cleared
 /// together — a profession with no unit, or a unit with no profession, is a
@@ -210,6 +225,9 @@ struct ResidentRow {
 
   // -- social and other (crime design §2, §6; metrics design §2a, §4) ------
   SocialStatus social_status = SocialStatus::kNone;
+
+  /// The night trade he keeps (NightTrade); kNone for nearly everyone.
+  NightTrade night_trade = NightTrade::kNone;
 
   Metric alcoholism = 0.0F;
 

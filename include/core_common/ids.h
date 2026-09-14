@@ -109,6 +109,12 @@ struct SpecialistArrivalIdTag {};
 /// (core_common/specialist_state.h).
 using SpecialistArrivalId = EntityId<SpecialistArrivalIdTag>;
 
+struct NightOutingIdTag {};
+
+/// @brief One resident's outing on his night trade
+/// (core_common/night_trade_state.h).
+using NightOutingId = EntityId<NightOutingIdTag>;
+
 struct DistrictVisitIdTag {};
 
 /// @brief One visit of the district announced or called and not arrived yet

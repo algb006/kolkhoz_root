@@ -160,6 +160,7 @@ core::WorldState MakeWorld() {
   first.work.kind = core::WorkKind::kHarvest;
   first.education_stage = core::EducationStage::kVocational;
   first.social_status = core::SocialStatus::kKomsomol;
+  first.night_trade = core::NightTrade::kHunter;  // the top of the enum, save format 39
   first.offense_count = 2;
   first.traits = 0xBEEF;
   // A post he HOLDS (task A7): the second half of the row that only the
@@ -372,6 +373,16 @@ core::WorldState MakeWorld() {
   visit.kind = core::DistrictVisitKind::kExtraordinary;
   visit.cause = core::DistrictVisitCause::kJuniorSignal;
   core::AppendRow(world.district_visits, visit);
+
+  // A night fisher out tonight (save format 39): every field off its default.
+  core::NightOutingRow outing;
+  outing.resident = core::ResidentId{5};
+  outing.trade = core::NightTrade::kNetFisher;
+  outing.day = 146;
+  outing.position = core::Vec2{.x = 8650.0F, .y = 10160.0F};
+  outing.hour_out = 23;
+  outing.hour_back = 3;
+  core::AppendRow(world.night_outings, outing);
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -704,6 +715,18 @@ int main() {
           loaded.district_visits.rows[0].kind == core::DistrictVisitKind::kExtraordinary &&
           loaded.district_visits.rows[0].cause == core::DistrictVisitCause::kJuniorSignal,
       "a district visit on its way came back with its day, face, kind and cause");
+  failures += Expect(loaded.night_outings.rows.size() == 1 &&
+                         loaded.night_outings.rows[0].resident.value == 5 &&
+                         loaded.night_outings.rows[0].trade == core::NightTrade::kNetFisher &&
+                         loaded.night_outings.rows[0].day == 146 &&
+                         loaded.night_outings.rows[0].position.x == 8650.0F &&
+                         loaded.night_outings.rows[0].position.y == 10160.0F &&
+                         loaded.night_outings.rows[0].hour_out == 23 &&
+                         loaded.night_outings.rows[0].hour_back == 3,
+                     "a night outing came back with who, what, the night, the place and the hours");
+  failures += Expect(!loaded.residents.rows.empty() &&
+                         loaded.residents.rows[0].night_trade == core::NightTrade::kHunter,
+                     "a resident came back with his night trade");
   failures += Expect(loaded.ledger.current.limit_points_granted == 350 &&
                          loaded.ledger.current.limit_points_spent == 135 &&
                          loaded.ledger.current.limit_points_burned == 7,

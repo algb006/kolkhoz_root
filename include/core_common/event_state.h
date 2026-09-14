@@ -251,6 +251,15 @@ enum class EventKind : std::uint8_t {
   /// komsomol member. kRoutine. Seam key `social_status_changed`.
   kSocialStatusChanged,
 
+  // -- the night trades (2026-09-15; crime design §7, §9) --------------------
+
+  /// resident, family — he went out on his night trade in this hour; amount =
+  /// the NightTrade value. Where he is and until when: the NightOutingRow of
+  /// this night (night_trade_state.h). kRoutine: nobody in the village is
+  /// told, and the chairman finds out by being there. Seam key
+  /// `night_trade_outing`.
+  kNightTradeOuting,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

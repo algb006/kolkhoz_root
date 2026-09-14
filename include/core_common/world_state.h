@@ -40,6 +40,7 @@
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/limit_state.h"
+#include "core_common/night_trade_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -644,6 +645,10 @@ struct WorldState {
   /// The district's visits announced or called and not arrived yet
   /// (characters design §2); SAVED. district_visit_state.h.
   DistrictVisitTable district_visits;
+
+  /// The quiet trades out tonight (crime design §9); SAVED.
+  /// night_trade_state.h.
+  NightOutingTable night_outings;
 
   /// The couples ready to marry who wait for a free house (life-cycle design
   /// §12); SAVED. wedding_state.h.

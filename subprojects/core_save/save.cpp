@@ -65,6 +65,7 @@ constexpr const char* kSectionSpecialistArrivals = "specialist_arrivals";
 constexpr const char* kSectionWeddingWaits = "wedding_waits";
 constexpr const char* kSectionExtractionSites = "extraction_sites";
 constexpr const char* kSectionDistrictVisits = "district_visits";
+constexpr const char* kSectionNightOutings = "night_outings";
 constexpr const char* kSectionLedger = "ledger";
 constexpr const char* kSectionStaged = "staged";
 
@@ -355,6 +356,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.district_visits, WriteDistrictVisitRow);
   CloseSection(out, length_offset);
 
+  // The night trades out tonight (crime design §9, save format 39).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.night_outings, WriteNightOutingRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -483,7 +489,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionWeddingWaits, &loaded.wedding_waits, ReadWeddingWaitRow) ||
       !read_table_section(
           kSectionExtractionSites, &loaded.extraction_sites, ReadExtractionSiteRow) ||
-      !read_table_section(kSectionDistrictVisits, &loaded.district_visits, ReadDistrictVisitRow)) {
+      !read_table_section(kSectionDistrictVisits, &loaded.district_visits, ReadDistrictVisitRow) ||
+      !read_table_section(kSectionNightOutings, &loaded.night_outings, ReadNightOutingRow)) {
     return false;
   }
 

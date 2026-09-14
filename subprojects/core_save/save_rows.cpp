@@ -47,9 +47,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // floats — the height and build deviations of the figure — and this time the
 // size moved with the field count instead of hiding in padding.
 // 2026-09-14: 176 -> 180, the assignment's extraction site.
+// 2026-09-15: the night trade byte landed in padding beside social_status —
+// 180 still, 39 fields.
 static_assert(sizeof(ResidentRow) == 180,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ResidentRow>() == 38,
+static_assert(AggregateArity<ResidentRow>() == 39,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -156,6 +158,10 @@ static_assert(sizeof(ExtractionSiteRow) == 64,
               "ExtractionSiteRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ExtractionSiteRow>() == 10,
               "ExtractionSiteRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(NightOutingRow) == 24,
+              "NightOutingRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<NightOutingRow>() == 6,
+              "NightOutingRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictVisitRow) == 8,
               "DistrictVisitRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<DistrictVisitRow>() == 4,
@@ -191,6 +197,9 @@ constexpr std::uint8_t kMaxEducationStage =
 
 constexpr std::uint8_t kMaxSocialStatus =
     static_cast<std::uint8_t>(SocialStatus::kSocialStatusCount) - 1;
+
+constexpr std::uint8_t kMaxNightTrade = static_cast<std::uint8_t>(NightTrade::kNightTradeCount) - 1;
+static_assert(kMaxNightTrade < static_cast<std::uint8_t>(NightTrade::kNightTradeCount));
 
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kFieldPhaseCount) - 1;
 constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kLandKindCount) - 1;
@@ -337,6 +346,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.sport_inclination);
 
   out.WriteU8(static_cast<std::uint8_t>(row.social_status));
+  out.WriteU8(static_cast<std::uint8_t>(row.night_trade));
   out.WriteFloat(row.alcoholism);
   out.WriteFloat(row.crime_inclination);
   out.WriteU16(row.offense_count);
@@ -401,6 +411,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
 
   row.social_status =
       static_cast<SocialStatus>(source.ReadEnumValue(0, kMaxSocialStatus, "social status"));
+  row.night_trade = static_cast<NightTrade>(source.ReadEnumValue(0, kMaxNightTrade, "night trade"));
   row.alcoholism = in.ReadFloat();
   row.crime_inclination = in.ReadFloat();
   row.offense_count = in.ReadU16();
@@ -965,6 +976,34 @@ SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source) {
   row.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
   row.unit = ReadEntityId<UnitId>(in);
   row.arrive_day = in.ReadU32();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// NightOutingRow — night_trade_state.h (2026-09-15)
+// ---------------------------------------------------------------------------
+
+void WriteNightOutingRow(SaveSink& sink, const NightOutingRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteEntityId(out, row.resident);
+  out.WriteU8(static_cast<std::uint8_t>(row.trade));
+  out.WriteU32(row.day);
+  out.WriteFloat(row.position.x);
+  out.WriteFloat(row.position.y);
+  out.WriteU8(row.hour_out);
+  out.WriteU8(row.hour_back);
+}
+
+NightOutingRow ReadNightOutingRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  NightOutingRow row;
+  row.resident = ReadEntityId<ResidentId>(in);
+  row.trade = static_cast<NightTrade>(source.ReadEnumValue(0, kMaxNightTrade, "night trade"));
+  row.day = in.ReadU32();
+  row.position.x = in.ReadFloat();
+  row.position.y = in.ReadFloat();
+  row.hour_out = static_cast<std::uint8_t>(source.ReadEnumValue(0, 23, "night outing hour"));
+  row.hour_back = static_cast<std::uint8_t>(source.ReadEnumValue(0, 23, "night outing hour"));
   return row;
 }
 

@@ -23,6 +23,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/limit_state.h"
+#include "core_common/night_trade_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/specialist_state.h"
@@ -65,6 +66,9 @@ WeddingWaitRow ReadWeddingWaitRow(LoadSource& source);
 
 void WriteExtractionSiteRow(SaveSink& sink, const ExtractionSiteRow& row);
 ExtractionSiteRow ReadExtractionSiteRow(LoadSource& source);
+
+void WriteNightOutingRow(SaveSink& sink, const NightOutingRow& row);
+NightOutingRow ReadNightOutingRow(LoadSource& source);
 
 void WriteDistrictVisitRow(SaveSink& sink, const DistrictVisitRow& row);
 DistrictVisitRow ReadDistrictVisitRow(LoadSource& source);
