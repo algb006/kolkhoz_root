@@ -15,6 +15,7 @@ kolkhoz_add_module(core_residents
     household_plot.cpp
     specialist_arrival.cpp
     membership.cpp
+    alcoholism.cpp
     night_trade.cpp
     schooling.cpp
     vitals.cpp)

@@ -380,6 +380,16 @@ int TestWholeWorkingDay() {
               resident.work.worked_norm_days_today == 0.0F;
   }
   failures += Expect(cleared, "the close of the day clears every assignment");
+  // The month's worked days (the drinking's count): the day's crew went out,
+  // and a day is one day however much of it was worked.
+  std::uint32_t days_counted = 0;
+  bool at_most_one = true;
+  for (const core::ResidentRow& resident : day.world.residents.rows) {
+    days_counted += resident.days_worked_this_month;
+    at_most_one = at_most_one && resident.days_worked_this_month <= 1;
+  }
+  failures += Expect(days_counted >= 1 && at_most_one,
+                     "the close of the day counts a worked day once for each who went out");
   return failures;
 }
 

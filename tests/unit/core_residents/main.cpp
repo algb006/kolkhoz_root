@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "alcoholism.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -1526,6 +1527,116 @@ int CheckRawMaterialLeak() {
   return failures;
 }
 
+/// The drinking (crime design §6; boss, parcels 364 and 370): the month's
+/// change by supply, winter idleness, an unhappy yard, work, a post and a
+/// wife; a woman's quarter; the cap; the crossings both ways; the counter
+/// cleared; a child untouched; nothing on a day that is not a month's first.
+int CheckAlcoholism() {
+  int failures = 0;
+  const core::AlcoholismConfig config;  // boss's numbers
+  constexpr float kSpeedup = 4.0F;
+  // Day 48: the first day of January, so the month that closed is December.
+  constexpr core::SimDay kJanuaryFirst = core::kDaysPerYear;
+  constexpr std::int32_t kAdultBirth = -192;  // 20 bio years at day 48
+  constexpr std::int32_t kChildBirth = -72;   // 10 bio years
+
+  core::WorldState world;
+  core::FamilyRow happy;
+  happy.satisfaction = 55.0F;
+  const core::FamilyId happy_yard = AppendRow(world.families, happy);
+  core::FamilyRow unhappy;
+  unhappy.satisfaction = 30.0F;
+  const core::FamilyId unhappy_yard = AppendRow(world.families, unhappy);
+
+  const auto add = [&world](core::Sex sex,
+                            std::int32_t birth,
+                            core::FamilyId family,
+                            float alcoholism,
+                            std::uint8_t days) {
+    core::ResidentRow person;
+    person.sex = sex;
+    person.birth_day = birth;
+    person.family = family;
+    person.alcoholism = alcoholism;
+    person.days_worked_this_month = days;
+    return AppendRow(world.residents, person);
+  };
+  const core::ResidentId distiller = add(core::Sex::kMale, kAdultBirth, happy_yard, 18.0F, 0);
+  const core::ResidentId husband = add(core::Sex::kMale, kAdultBirth, happy_yard, 0.0F, 3);
+  const core::ResidentId woman = add(core::Sex::kFemale, kAdultBirth, unhappy_yard, 10.0F, 4);
+  const core::ResidentId watchman = add(core::Sex::kMale, kAdultBirth, happy_yard, 59.8F, 0);
+  const core::ResidentId child = add(core::Sex::kMale, kChildBirth, happy_yard, 0.0F, 2);
+  const core::ResidentId drinking_husband =
+      add(core::Sex::kMale, kAdultBirth, happy_yard, 40.5F, 3);
+  const auto row_of = [&world](core::ResidentId id) -> core::ResidentRow& {
+    return world.residents.rows[FindRow(world.residents, id)];
+  };
+  row_of(distiller).night_trade = core::NightTrade::kDistiller;
+  row_of(husband).spouse = woman;
+  row_of(drinking_husband).spouse = woman;
+  row_of(watchman).post =
+      core::PostAssignment{.profession = core::ProfessionId{1}, .unit = core::UnitId{1}};
+  const auto crossings = [&world](core::ResidentId id) {
+    std::vector<std::int64_t> bands;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kAlcoholismBandCrossed && event.resident == id) {
+        bands.push_back(event.amount);
+      }
+    }
+    return bands;
+  };
+
+  // Not a month's first day: nothing moves, the count is kept.
+  world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst + 1U) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  failures += Expect(row_of(distiller).alcoholism == 18.0F &&
+                         row_of(husband).days_worked_this_month == 3 && world.step_events.empty(),
+                     "drinking: a day that is not a month's first changes nothing");
+
+  world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  // The distiller himself: supply +2, an idle December +1 — 18 to 21, over 20.
+  failures += Expect(row_of(distiller).alcoholism == 21.0F && crossings(distiller).size() == 1 &&
+                         crossings(distiller)[0] == 20,
+                     "drinking: supply and an idle winter month take a single man over 20");
+  failures += Expect(row_of(husband).alcoholism == 0.0F && crossings(husband).empty(),
+                     "drinking: a married man who worked 3 of 4 days holds against the supply");
+  // +2 supply, +1 an unhappy yard, -1 four days worked, times a quarter.
+  failures += Expect(row_of(woman).alcoholism == 10.5F,
+                     "drinking: a woman moves by a quarter of a man's change");
+  // A post keeps him from idleness: +2 -1 = +1, and 60.8 stops at the cap.
+  failures += Expect(row_of(watchman).alcoholism == 60.0F && crossings(watchman).size() == 1 &&
+                         crossings(watchman)[0] == 60,
+                     "drinking: a post is work and not idleness, and 60 is the ceiling");
+  failures += Expect(row_of(child).alcoholism == 0.0F && row_of(child).days_worked_this_month == 0,
+                     "drinking: a child does not drink, and his count is cleared too");
+  failures += Expect(
+      row_of(drinking_husband).alcoholism == 40.5F && row_of(husband).days_worked_this_month == 0,
+      "drinking: the month's worked days start again after the turn");
+  failures += Expect(world.step_events.size() == 2, "drinking: two crossings in January");
+
+  // February's first day, the distiller gone: the drinkers come down.
+  world.step_events.clear();
+  row_of(distiller).night_trade = core::NightTrade::kNone;
+  row_of(drinking_husband).days_worked_this_month = 3;
+  row_of(husband).days_worked_this_month = 3;  // -1 work, -1 wife, from 0
+  world.calendar.tick =
+      static_cast<core::Tick>(kJanuaryFirst + core::kDaysPerMonth) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  failures +=
+      Expect(row_of(drinking_husband).alcoholism == 38.5F &&
+                 crossings(drinking_husband).size() == 1 && crossings(drinking_husband)[0] == 20,
+             "drinking: without supply work and a wife bring a man down under 40");
+  failures += Expect(row_of(watchman).alcoholism == 59.0F && crossings(watchman).size() == 1 &&
+                         crossings(watchman)[0] == 40,
+                     "drinking: a crossing downward is said with the band he is in now");
+  failures += Expect(row_of(husband).alcoholism == 0.0F, "drinking: never below zero");
+  return failures;
+}
+
 /// The school's pupils (education design §10; boss, parcel 354): the intake in
 /// September by age, radius and capacity with the elder first, the stage in
 /// June only with a teacher, and a gone school letting its pupils go.
@@ -1812,6 +1923,7 @@ int main() {
   failures += CheckNightTrades();
   failures += CheckSchooling();
   failures += CheckRawMaterialLeak();
+  failures += CheckAlcoholism();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
   }

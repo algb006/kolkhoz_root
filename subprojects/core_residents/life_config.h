@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include "alcoholism.h"
 #include "core_catalog/definitions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
@@ -155,6 +156,9 @@ struct LifeConfig {
 
   /// The school's pupils (schooling.h; boss, parcel 354).
   SchoolingConfig schooling;
+
+  /// The drinking (alcoholism.h; boss, parcel 364).
+  AlcoholismConfig alcoholism;
 
   float life_speedup = 4.0F;
 

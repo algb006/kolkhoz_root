@@ -343,6 +343,9 @@ class ResidentsSystem final : public IResidentsSystem {
       // year's membership left outside the organizations.
       AssignNightTrades(config_.night_trade, config_.life_speedup, current);
     }
+    // The month's drinking, over the month the labor day close has just
+    // finished counting (alcoholism.h).
+    TurnAlcoholismMonth(config_.alcoholism, config_.life_speedup, current);
     // The school before the wave: a child enrolled in September is a pupil
     // on the day the autumn wave asks.
     RunSchoolDay(config_.schooling, config_.life_speedup, current);

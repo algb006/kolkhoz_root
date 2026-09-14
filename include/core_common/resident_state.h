@@ -233,8 +233,9 @@ struct ResidentRow {
   /// The night trade he keeps (NightTrade); kNone for nearly everyone.
   NightTrade night_trade = NightTrade::kNone;
 
-  /// Days of the current calendar month on which he delivered any work —
-  /// counted by the labor day close, read and cleared at the month's turn by
+  /// Days of the current calendar month on which he went out to work (hours
+  /// away above zero) — counted by the labor day close, read and cleared at
+  /// the month's turn by
   /// the drinking rule (core_residents/alcoholism.h). 0..kDaysPerMonth.
   std::uint8_t days_worked_this_month = 0;
 

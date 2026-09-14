@@ -937,6 +937,12 @@ class LaborSystem final : public ILaborSystem {
       // working day is worth +4, a whole day off +8. (The +15 with leisure
       // and the +20 of a holiday wait for clubs and events.)
       const bool worked = resident.work.hours_away_today > 0.0F;
+      // The month's worked days, read and cleared by the drinking's month
+      // turn (core_residents/alcoholism.h). Held at the byte's top, which a
+      // four-day month never reaches.
+      if (worked && resident.days_worked_this_month < UINT8_MAX) {
+        ++resident.days_worked_this_month;
+      }
       if (!worked) {
         resident.rest += day_off ? config_.rest_recovery_day_off : config_.rest_recovery_idle_day;
         resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
