@@ -42,6 +42,13 @@ enum class PostShift : std::uint8_t {
   kWorkday = 0,
   kEvening,
   kBathDay,
+
+  /// The night: from sunset to sunrise, every night, weekends too — the
+  /// watchman (crime design §11) and, if the tables ever carry one, the
+  /// firefighter (time design: the only two night posts). Takes the holder
+  /// off the day's list: "сторож не выходит на другие работы". Each night's
+  /// start is said (EventKind::kPostShiftStarted). Boss, parcel 360.
+  kNight,
 };
 
 /// @brief The hour the village goes to bed: evening shifts end at it.
@@ -101,6 +108,8 @@ constexpr bool InPostShift(PostShift shift,
     case PostShift::kBathDay:
       return (weekday == Weekday::kSaturday && HourOverlaps(hour, window.sunset, bedtime)) ||
              (weekday == Weekday::kSunday && HourOverlaps(hour, window.sunrise, bedtime));
+    case PostShift::kNight:
+      return false;  // STUB: the night shift's hours land with its body
   }
   return false;
 }

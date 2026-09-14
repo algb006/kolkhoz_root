@@ -93,6 +93,12 @@ bool AppointmentIsWaiting(const WorldState& world, ResidentId resident);
 /// its way out.
 bool DismissalIsInTheBook(const WorldState& world, ResidentId resident);
 
+/// @brief The hour a night shift begins — the tick whose hour holds sunset:
+///        every holder of a post with PostShift::kNight at a standing unit
+///        raises kPostShiftStarted. Nothing at any other hour.
+/// @pre Called once per tick of the decisions slot, on the sim thread.
+void AnnounceNightShifts(const LaborConfig& config, WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_LABOR_POSTS_H_

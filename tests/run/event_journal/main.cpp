@@ -130,6 +130,8 @@ const char* KindName(core::EventKind kind) {
       return "pupil_enrolled";
     case core::EventKind::kPupilLeftSchool:
       return "pupil_left_school";
+    case core::EventKind::kPostShiftStarted:
+      return "post_shift_started";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

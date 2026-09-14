@@ -272,6 +272,14 @@ enum class EventKind : std::uint8_t {
   /// `pupil_left_school`.
   kPupilLeftSchool,
 
+  // -- night posts (2026-09-15; crime design §11, time design) -----------------
+
+  /// resident, unit — the holder of a night-shift post went on his shift at
+  /// `unit` at sunset; amount = the ProfessionId value. Once a night per
+  /// holder; night shifts only (an evening or a bath day would fill the
+  /// journal every day). kRoutine. Seam key `post_shift_started`.
+  kPostShiftStarted,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

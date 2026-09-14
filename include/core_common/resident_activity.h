@@ -41,10 +41,12 @@
 #define CORE_COMMON_RESIDENT_ACTIVITY_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/day_window.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/post_shift.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -191,6 +193,12 @@ struct ActivityRules {
   float school_from_bio_years = 7.0F;
 
   float school_to_bio_years = 17.0F;
+
+  /// The shift of every post, by ProfessionId (professions.csv `shift`). A
+  /// holder of a night post is kWorking at his post's unit through the hours
+  /// of his shift (boss, parcel 360); empty — no post has a shift the
+  /// activity knows of.
+  std::vector<PostShift> post_shift;
 
   /// Hours of the game day given to sleep, for telling kAtHome asleep from
   /// kAtHome awake. Not a mechanic: the model has no sleep, and this is the
