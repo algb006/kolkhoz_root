@@ -169,6 +169,16 @@ void Arrive(const LifeConfig& config,
   arrived.family = family;
   arrived.unit = arrival.unit;
   arrived.amount = arrival.profession.value;
+  // "Приехавший по путёвке обязательно комсомолец" (district design §3; boss,
+  // parcel 334): up to the komsomol's age he comes a member.
+  if (age <= config.membership.specialist_komsomol_age_max_years) {
+    const std::uint32_t row = FindRow(current.residents, id);
+    current.residents.rows[row].social_status = SocialStatus::kKomsomol;
+    SimEvent& joined = EmitEvent(current, EventKind::kSocialStatusChanged, EventSeverity::kRoutine);
+    joined.resident = id;
+    joined.family = family;
+    joined.amount = static_cast<std::int64_t>(SocialStatus::kKomsomol);
+  }
 }
 
 void ArriveThoseDue(const LifeConfig& config, WorldState& current) {

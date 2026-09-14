@@ -23,6 +23,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
@@ -375,6 +376,9 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       return false;
     }
   }
+  if (!ParseMembershipConfig(tables, config.membership, error)) {
+    return false;
+  }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
     // No `!= kNoTableRow` guard any more, and it decided nothing even BEFORE
     // the conversion existed: kNoTableRow is 0xFFFFFFFF, so the truncating
@@ -394,7 +398,16 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
 }
 
 std::span<const std::string_view> LifeWorldParamKeys() {
-  return kLifeWorldParamKeys;
+  // The module's two readers of the table: this file's knobs and the
+  // organizations' (membership.cpp), each list the single source for its own
+  // read, joined once for the assembly.
+  static const std::vector<std::string_view> kAll = [] {
+    std::vector<std::string_view> keys(kLifeWorldParamKeys.begin(), kLifeWorldParamKeys.end());
+    const std::span<const std::string_view> membership = MembershipWorldParamKeys();
+    keys.insert(keys.end(), membership.begin(), membership.end());
+    return keys;
+  }();
+  return kAll;
 }
 
 }  // namespace core

@@ -26,7 +26,9 @@
 ///     mean satiety of the year below 50); fixed at 16;
 ///   * while in an organization, once a year: +0.5 pioneer, +1 komsomol, +1.5
 ///     party, never past 80 by this road; what was gained stays on leaving;
-///   * one wave on the campaign's first day, so the start has members;
+///   * one wave in genesis, so the start has members — silently, as they were
+///     members before the campaign began (ApplyStartMembership,
+///     core_residents/residents_system.h);
 ///   * a teacher or librarian of up to 26 arrives a komsomol member.
 ///
 /// STUB, each with its place: "учится в школе" is the school-age band until

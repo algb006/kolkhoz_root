@@ -328,6 +328,19 @@ class ResidentsSystem final : public IResidentsSystem {
     RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
+    // After the vitals: at the year's turn they have just folded the closing
+    // year's satiety, which is what a hungry year is judged by.
+    if (current.calendar.day % kDaysPerYear == 0) {
+      TurnIdeologyYear(config_.membership,
+                       config_.life_speedup,
+                       config_.body.age_school_junior_from_years,
+                       config_.body.age_adult_from_years,
+                       current);
+    }
+    RunMembershipWave(config_.membership,
+                      config_.life_speedup,
+                      WaveOfDay(config_.membership, current.calendar.day),
+                      current);
   }
 
  private:

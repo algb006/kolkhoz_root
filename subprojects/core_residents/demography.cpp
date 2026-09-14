@@ -371,9 +371,10 @@ void RunBirths(const LifeConfig& config,
     child.intellect = BlendInclination(current.rng, mother.intellect, father.intellect, 0.25F);
     child.stamina = BlendInclination(current.rng, mother.stamina, father.stamina, 0.15F);
     child.optimism = BlendInclination(current.rng, mother.optimism, father.optimism, 0.15F);
-    // STUB: ideology forms from childhood conditions and locks at 16
-    // (metrics design §2); until schools exist it rolls uniform.
-    child.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
+    // Ideology starts from the parents' and forms until 16 (metrics design
+    // §2; membership.h, TurnIdeologyYear).
+    child.ideology = BirthIdeology(
+        config.membership, current.rng, mother, father_row == kNoRow ? nullptr : &father);
     child.satiety = 70.0F;
     child.health = DrawInRange(current.rng, 70.0F, 95.0F);
     // THE FIGURE TAKES AFTER THE PARENTS and costs the RNG stream nothing:

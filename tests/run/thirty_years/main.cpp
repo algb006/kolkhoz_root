@@ -280,6 +280,43 @@ void PrintYear(const core::WorldState& state) {
             << '\n';
 }
 
+/// The organizations at the year's turn (boss, parcel 334): who is in which,
+/// and the ideology of the village and of its sixteen-year-olds — the age it
+/// is fixed at, so the one number that says what the childhood gave. A
+/// separate line, so the year line the analysis scripts read keeps its shape.
+void PrintMembers(const core::WorldState& state, const core::ITableSet& tables) {
+  float life_speedup = 4.0F;
+  if (const core::ITable* const life = tables.FindTable("life")) {
+    const std::uint32_t row = life->FindRowByKey("life_speedup");
+    const std::uint32_t column = life->FindColumn("value");
+    if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+      life_speedup = life->CellReal(row, column).value_or(life_speedup);
+    }
+  }
+  std::array<std::uint32_t, static_cast<std::size_t>(core::SocialStatus::kSocialStatusCount)>
+      count{};
+  float ideology_sum = 0.0F;
+  float sixteen_sum = 0.0F;
+  std::uint32_t sixteen = 0;
+  std::uint32_t adults = 0;
+  for (const core::ResidentRow& person : state.residents.rows) {
+    ++count[static_cast<std::size_t>(person.social_status)];
+    ideology_sum += person.ideology;
+    const float age = core::BiologicalAgeYears(life_speedup, person.birth_day, state.calendar.day);
+    adults += age >= 18.0F ? 1U : 0U;
+    if (age >= 16.0F && age < 17.0F) {
+      sixteen_sum += person.ideology;
+      ++sixteen;
+    }
+  }
+  const auto residents = static_cast<float>(state.residents.rows.size());
+  std::cout << "  members: pioneers " << count[1] << ", komsomol " << count[2] << ", party "
+            << count[3] << " of " << adults << " adults; ideology "
+            << (residents > 0.0F ? ideology_sum / residents : 0.0F) << ", at 16 "
+            << (sixteen > 0 ? sixteen_sum / static_cast<float>(sixteen) : 0.0F) << " (" << sixteen
+            << ")\n";
+}
+
 /// What the herd looks like at the end, kolkhoz and yard apart. NOT an
 /// assertion: the floor below deliberately does not judge the balance. It
 /// is printed because the first thing this instrument found was a herd
@@ -610,6 +647,7 @@ int main(int argc, char** argv) {
     sheet << core::LedgerCsvRow(state, *world.tables);
     ++rows_written;
     PrintYear(state);
+    PrintMembers(state, *world.tables);
     // THE DISTRICT'S TALLY OVER THE RUN, kept because the epoch's ending
     // condition lives in it: three failed plans in a row put the chairman
     // under the court (epochs design §8), and until 2026-09-13 a run could

@@ -35,6 +35,7 @@
 #include "food_config.h"
 #include "household_plot.h"
 #include "life_config.h"
+#include "membership.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
 
@@ -1062,6 +1063,13 @@ int CheckTheDistrictSendsSpecialists() {
                  age <= 30.0F && home != core::kNoRow &&
                  world.units.rows[home].household.value == teacher.family.value,
              "specialists: vocational, twenty to thirty, a household of one in a free house");
+  // A komsomol member exactly when young enough, and said so (boss, parcel
+  // 334). The age is drawn, so both sides of the line are asserted by it.
+  const bool young = age <= config.membership.specialist_komsomol_age_max_years;
+  failures +=
+      Expect((teacher.social_status == core::SocialStatus::kKomsomol) == young &&
+                 count_events(core::EventKind::kSocialStatusChanged) == (young ? 1U : 0U),
+             "specialists: a teacher up to 26 arrives a komsomol member, an older one does not");
   // -- the next month: the second teacher the norm owes ---------------------
   day(4);
   core::RunSpecialistArrivals(config, world);
@@ -1089,6 +1097,165 @@ int CheckTheDistrictSendsSpecialists() {
   core::RunSpecialistArrivals(config, world);
   failures += Expect(world.specialist_arrivals.rows.empty() && world.step_events.empty(),
                      "specialists: after Epoch I the district sends nobody for free");
+  return failures;
+}
+
+/// The organizations (society design §3, §5; boss, parcel 334): who a wave
+/// takes, keeps and lets go, what a birth and a year do to ideology, and the
+/// start's wave that says nothing.
+int CheckMembership() {
+  int failures = 0;
+  const core::MembershipConfig config;  // boss's numbers
+  constexpr float kSpeedup = 4.0F;      // 12 days a biological year, as AddAdult
+  constexpr core::SimDay kSeptemberFirst = 8U * core::kDaysPerMonth;
+  constexpr core::SimDay kMarchFirst = 2U * core::kDaysPerMonth;
+  failures +=
+      Expect(core::WaveOfDay(config, kSeptemberFirst) == core::MembershipWave::kAutumn &&
+                 core::WaveOfDay(config, kMarchFirst) == core::MembershipWave::kSpring &&
+                 core::WaveOfDay(config, kSeptemberFirst + 1U) == core::MembershipWave::kNone &&
+                 core::WaveOfDay(config, core::kDaysPerYear + kMarchFirst) ==
+                     core::MembershipWave::kSpring,
+             "membership: the waves are the first days of September and March, every year");
+
+  const auto person = [](core::SocialStatus status, float ideology, float mood) {
+    core::ResidentRow row;
+    row.social_status = status;
+    row.ideology = ideology;
+    row.mood = mood;
+    return row;
+  };
+  const auto after = [&config](const core::ResidentRow& row, float age, core::MembershipWave wave) {
+    return core::StatusAfterWave(config, row, age, wave);
+  };
+  using core::MembershipWave;
+  using core::SocialStatus;
+
+  core::ResidentRow child = person(SocialStatus::kNone, 50.0F, 60.0F);
+  failures += Expect(after(child, 11.0F, MembershipWave::kAutumn) == SocialStatus::kNone &&
+                         after(child, 11.0F, MembershipWave::kSpring) == SocialStatus::kPioneer,
+                     "pioneers: a child with no grade kept waits for the spring wave");
+  child.current_grade = 4.0F;
+  core::ResidentRow middling = child;
+  middling.current_grade = 3.5F;
+  failures += Expect(after(child, 11.0F, MembershipWave::kAutumn) == SocialStatus::kPioneer &&
+                         after(middling, 11.0F, MembershipWave::kAutumn) == SocialStatus::kNone &&
+                         after(middling, 11.0F, MembershipWave::kSpring) == SocialStatus::kPioneer,
+                     "pioneers: a good pupil in autumn, the rest in spring");
+  core::ResidentRow naughty = child;
+  naughty.offense_count = 1;
+  failures += Expect(after(naughty, 11.0F, MembershipWave::kSpring) == SocialStatus::kNone,
+                     "pioneers: an offence closes even the pioneers");
+
+  const core::ResidentRow pioneer = person(SocialStatus::kPioneer, 40.0F, 60.0F);
+  const core::ResidentRow outsider = person(SocialStatus::kNone, 40.0F, 60.0F);
+  const core::ResidentRow cool_pioneer = person(SocialStatus::kPioneer, 30.0F, 60.0F);
+  failures += Expect(after(pioneer, 14.5F, MembershipWave::kSpring) == SocialStatus::kKomsomol &&
+                         after(outsider, 14.5F, MembershipWave::kSpring) == SocialStatus::kNone &&
+                         after(cool_pioneer, 14.5F, MembershipWave::kSpring) == SocialStatus::kNone,
+                     "komsomol: a pioneer at 40 goes on, an outsider at 40 does not, a pioneer "
+                     "below 35 leaves at 14");
+
+  const core::ResidentRow young_member = person(SocialStatus::kKomsomol, 70.0F, 55.0F);
+  const core::ResidentRow keen_member = person(SocialStatus::kKomsomol, 82.0F, 55.0F);
+  const core::ResidentRow old_member = person(SocialStatus::kKomsomol, 60.0F, 55.0F);
+  failures +=
+      Expect(after(young_member, 20.0F, MembershipWave::kAutumn) == SocialStatus::kKomsomol &&
+                 after(keen_member, 20.0F, MembershipWave::kAutumn) == SocialStatus::kParty &&
+                 after(old_member, 26.5F, MembershipWave::kAutumn) == SocialStatus::kNone,
+             "party: at 20 only ideology 80 opens it; at 26 the komsomol lets a member go");
+
+  const core::ResidentRow sour = person(SocialStatus::kNone, 66.0F, 49.0F);
+  const core::ResidentRow content = person(SocialStatus::kNone, 66.0F, 51.0F);
+  const core::ResidentRow veteran = person(SocialStatus::kParty, 10.0F, 10.0F);
+  failures += Expect(after(sour, 30.0F, MembershipWave::kAutumn) == SocialStatus::kNone &&
+                         after(content, 30.0F, MembershipWave::kAutumn) == SocialStatus::kParty &&
+                         after(veteran, 70.0F, MembershipWave::kAutumn) == SocialStatus::kParty,
+                     "party: mood 50 is the door, and a member stays one for life");
+
+  // The wave over a village: the event, and the crime written off on joining.
+  core::WorldState world;
+  const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+  const core::ResidentId joiner = AddAdult(world, yard, core::Sex::kMale, 30.0F);
+  const core::ResidentId stayer = AddAdult(world, yard, core::Sex::kFemale, 30.0F);
+  core::ResidentRow& joiner_row = world.residents.rows[FindRow(world.residents, joiner)];
+  joiner_row.ideology = 70.0F;
+  joiner_row.mood = 60.0F;
+  world.residents.rows[FindRow(world.residents, stayer)].ideology = 40.0F;
+  core::RunMembershipWave(config, kSpeedup, MembershipWave::kAutumn, world);
+  failures +=
+      Expect(world.step_events.size() == 1 &&
+                 world.step_events[0].kind == core::EventKind::kSocialStatusChanged &&
+                 world.step_events[0].resident.value == joiner.value &&
+                 world.step_events[0].amount == static_cast<std::int64_t>(SocialStatus::kParty),
+             "wave: the one who joined is said, once, with the party as his status");
+
+  // The start's wave is the same rule and says nothing.
+  core::WorldState start;
+  const core::FamilyId start_yard = AppendRow(start.families, core::FamilyRow{});
+  const core::ResidentId start_child = AddAdult(start, start_yard, core::Sex::kFemale, 11.0F);
+  const test::FakeTableSet no_tables;
+  std::string error;
+  failures +=
+      Expect(core::ApplyStartMembership(no_tables, kSpeedup, start, error) &&
+                 start.residents.rows[FindRow(start.residents, start_child)].social_status ==
+                     SocialStatus::kPioneer &&
+                 start.step_events.empty(),
+             "start: genesis's wave takes the eleven-year-old and raises nothing");
+
+  // Ideology at birth: the parents' mean, within the spread.
+  core::MembershipConfig still = config;
+  still.ideology_birth_spread = 0.0F;
+  core::ResidentRow mother = person(SocialStatus::kNone, 60.0F, 60.0F);
+  const core::ResidentRow father = person(SocialStatus::kNone, 40.0F, 60.0F);
+  core::RngState rng = core::SeedRngState(5, 0);
+  bool within = true;
+  for (int draw = 0; draw < 200; ++draw) {
+    const float ideology = core::BirthIdeology(config, rng, mother, &father);
+    within = within && ideology >= 35.0F && ideology <= 65.0F;
+  }
+  failures += Expect(core::BirthIdeology(still, rng, mother, &father) == 50.0F &&
+                         core::BirthIdeology(still, rng, mother, nullptr) == 60.0F && within,
+                     "birth: the parents' mean, the mother's alone without a father, and never "
+                     "past fifteen either side");
+
+  // The year's turn: a hungry year for a child pioneer, the cap for a party
+  // member, nothing for an adult outside, the lock for a seventeen-year-old.
+  core::WorldState year;
+  year.vitals.satiety_year_means.back() = 40.0F;
+  const core::FamilyId year_yard = AppendRow(year.families, core::FamilyRow{});
+  const auto with = [&year, year_yard](float age, SocialStatus status, float ideology) {
+    const core::ResidentId id = AddAdult(year, year_yard, core::Sex::kMale, age);
+    core::ResidentRow& row = year.residents.rows[FindRow(year.residents, id)];
+    row.social_status = status;
+    row.ideology = ideology;
+    return id;
+  };
+  const core::ResidentId young_pioneer = with(10.0F, SocialStatus::kPioneer, 50.0F);
+  const core::ResidentId capped = with(30.0F, SocialStatus::kParty, 79.0F);
+  const core::ResidentId plain = with(30.0F, SocialStatus::kNone, 50.0F);
+  const core::ResidentId locked = with(17.0F, SocialStatus::kKomsomol, 50.0F);
+  core::TurnIdeologyYear(config, kSpeedup, 7.0F, 16.0F, year);
+  const auto ideology_of = [&year](core::ResidentId id) {
+    return year.residents.rows[FindRow(year.residents, id)].ideology;
+  };
+  failures += Expect(ideology_of(young_pioneer) == 51.5F && ideology_of(capped) == 80.0F &&
+                         ideology_of(plain) == 50.0F && ideology_of(locked) == 51.0F,
+                     "year: +2 school +2 pioneer -3 hunger +0.5 status; the party stops at 80; "
+                     "an adult outside keeps his; past 16 only the status moves it");
+
+  // The knobs refuse what cannot be a wave or a band.
+  const auto parse = [](const char* key, const char* value) {
+    const test::FakeTable world_params({"key", "value", "reader"}, {{key, value, "core"}});
+    const test::FakeTableSet set({{"world_params", &world_params}});
+    core::MembershipConfig read;
+    std::string trouble;
+    return core::ParseMembershipConfig(set, read, trouble);
+  };
+  failures += Expect(
+      parse("membership_autumn_wave_month", "9") && !parse("membership_autumn_wave_month", "13") &&
+          !parse("membership_spring_wave_month", "2.5") && !parse("pioneer_age_to_years", "9"),
+      "knobs: a thirteenth month, half a month and a band ending before it begins "
+      "are refused");
   return failures;
 }
 
@@ -1238,6 +1405,7 @@ int main() {
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();
   failures += CheckRooflessLadder();
+  failures += CheckMembership();
 
   if (failures == 0) {
     std::cout << "unit_core_residents: all checks passed\n";

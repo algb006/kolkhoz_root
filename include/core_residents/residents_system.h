@@ -28,6 +28,7 @@
 
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -134,13 +135,29 @@ class IResidentsSystem {
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables, StubTables stubs);
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
-/// figure a newborn is given).
+/// figure a newborn is given, and the organizations' and ideology's numbers).
 ///
 /// Declared for the assembly to union with every other module's: a module
 /// cannot judge the table's `reader` column, because "the core" is more than
 /// any one of them (core_catalog/table_value.h).
 /// @return A view of a static array; valid for the life of the program.
 std::span<const std::string_view> LifeWorldParamKeys();
+
+/// @brief The start's wave of the organizations, applied to a world genesis
+/// has just peopled (boss, parcel 334: "в генезисе одна волна приёма"): the
+/// spring rule over every resident, as no grade is kept yet.
+///
+/// SILENT ON PURPOSE. The start's members were members before the campaign
+/// began, so nothing JOINS on the first day: no kSocialStatusChanged is
+/// raised, and the waves of the running campaign are the ones that speak
+/// (core_residents/membership.h).
+/// @param life_speedup The life table's, for the biological age.
+/// @return false with `error` set when world_params' membership knobs cannot
+///         be read; the world is left untouched then.
+bool ApplyStartMembership(const ITableSet& tables,
+                          float life_speedup,
+                          WorldState& world,
+                          std::string& error);
 
 /// A NOTE ON WHERE THIS STANDS, because putting it anywhere else cost a
 /// finding. Declared first between CreateResidentsSystem's doc block and

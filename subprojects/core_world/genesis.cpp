@@ -29,6 +29,7 @@
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_log/log.h"
+#include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "start_layout.h"
@@ -1249,6 +1250,15 @@ WorldState CreateStartWorld(const ITableSet& tables,
   if (world.residents.rows.size() != population) {
     LogWarning("genesis: start parameters rounded population to " +
                std::to_string(world.residents.rows.size()));
+  }
+  // The start's members (boss, parcel 334): the organizers are chosen from
+  // them before the first wave's month comes.
+  std::string membership_trouble;
+  if (!ApplyStartMembership(tables, life_speedup, world, membership_trouble)) {
+    LogError("genesis: " + membership_trouble);
+    if (error != nullptr) {
+      *error = membership_trouble;
+    }
   }
   BuildStartEconomy(world, tables, stubs, capacities, error);
   // THE DISTRICT ASKS IN THE VERY FIRST SPRING, and it can only do that if
