@@ -36,6 +36,12 @@ enum class LimitLotKind : std::uint8_t {
   kVehicle,
   kPerson,
   kChoice,
+
+  /// A service the district sends rather than goods it delivers — the MTS
+  /// column of spring and autumn (boss, parcel 235; mts.md §1). STUB: read so
+  /// the catalogue loads, refused as not goods when ordered, until the column
+  /// has its own move in the queue.
+  kService,
 };
 
 /// @brief The farm's status tier (core loop §3), which sets the base grant.

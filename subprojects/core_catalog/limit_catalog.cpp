@@ -32,8 +32,9 @@ constexpr std::array<std::string_view, 9> kLimitWorldParamKeys = {
 constexpr float kMostPoints = 100000.0F;
 
 bool ParseKind(std::string_view text, LimitLotKind& kind) {
-  static constexpr std::array<std::string_view, 5> kKinds = {
-      "goods", "livestock", "vehicle", "person", "choice"};
+  // Index order is the enum's (limit_catalog.h, LimitLotKind).
+  static constexpr std::array<std::string_view, 6> kKinds = {
+      "goods", "livestock", "vehicle", "person", "choice", "service"};
   for (std::size_t index = 0; index < kKinds.size(); ++index) {
     if (text == kKinds[index]) {
       kind = static_cast<LimitLotKind>(index);
@@ -58,7 +59,7 @@ bool ReadLots(const ITable& table, LimitCatalog& catalog, std::string& error) {
     const std::string prefix = "limit_catalog: row " + std::to_string(row) + ": ";
     if (!ParseKind(table.CellText(row, kind_column), lot.kind)) {
       error = prefix + "kind '" + std::string(table.CellText(row, kind_column)) +
-              "' is none of goods, livestock, vehicle, person, choice";
+              "' is none of goods, livestock, vehicle, person, choice, service";
       return false;
     }
     // An EMPTY price is a lot not yet priced (insulation, paint): it stays

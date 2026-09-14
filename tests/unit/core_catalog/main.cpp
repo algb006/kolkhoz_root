@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_catalog/limit_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
@@ -426,8 +427,33 @@ int TestLookupKey() {
 
 }  // namespace
 
+/// THE MTS COLUMN'S LOT KIND (boss, parcel 235): `service` is read, and a
+/// misspelt kind still refuses the catalogue.
+int TestServiceLotKind() {
+  int failures = 0;
+  const test::FakeTable resources({"key", "kg_per_unit"}, {{"glass", "1"}});
+  const test::FakeTable goods({"lot", "resource", "amount"}, {});
+  const auto parse = [&](const char* kind, core::LimitCatalog& catalog) {
+    const test::FakeTable lots({"key", "points", "era", "kind"},
+                               {{"mts_column_spring", "120", "1", kind}});
+    const test::FakeTableSet set(
+        {{"resources", &resources}, {"limit_catalog", &lots}, {"limit_lot_goods", &goods}});
+    std::string error;
+    return core::ParseLimitCatalog(set, catalog, error);
+  };
+  core::LimitCatalog read;
+  failures += Expect(parse("service", read) && read.lots.size() == 1 &&
+                         read.lots[0].kind == core::LimitLotKind::kService,
+                     "a service lot is read as a service");
+  core::LimitCatalog misspelt;
+  failures +=
+      Expect(!parse("servise", misspelt), "and a misspelt kind still refuses the catalogue");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += TestServiceLotKind();
   failures += TestThreeAnswers();
   failures += TestRequiredCell();
   failures += TestNotANumber();
