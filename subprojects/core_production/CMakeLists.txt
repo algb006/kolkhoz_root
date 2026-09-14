@@ -19,6 +19,8 @@ kolkhoz_add_module(core_production
     unit_production.cpp
     district_limit.cpp
     district_visit.cpp
+    district_plan.cpp
+    production_orders.cpp
     field_removal.cpp)
 
 target_link_libraries(core_production
