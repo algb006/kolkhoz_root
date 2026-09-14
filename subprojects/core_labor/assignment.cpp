@@ -139,14 +139,22 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
   // single integer turned round rather than repaired: the plough that missed
   // its window still has to turn the ground, and no arithmetic on how badly
   // it missed makes that more or less true.
+  //
+  // AND A FOURTH BETWEEN THE LAST TWO (boss, parcel 233): the preparation of
+  // a fallow for this autumn's winter crop has a window, and still yields to
+  // every job that has one of its own — bread in the field before a sowing to
+  // come — while going ahead of work with no window at all.
   const auto tier = [](const AssignmentJob& job) {
+    if (job.prepares_winter_crop) {
+      return 2;
+    }
     switch (job.window.kind) {
       case DeadlineKind::kDays:
         return 0;
       case DeadlineKind::kOverdue:
         return 1;
       default:
-        return 2;
+        return 3;
     }
   };
   std::ranges::sort(order, [&jobs, &tier](std::uint32_t left, std::uint32_t right) {

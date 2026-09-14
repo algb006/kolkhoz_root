@@ -61,6 +61,11 @@ struct CropWindows {
   std::uint8_t sow_to_month = 11;
 
   std::uint8_t harvest_to_month = 11;
+
+  /// 1 for a winter crop (crops.csv `is_winter`): sown in the autumn before
+  /// its year, so a fallow ahead of it in the rotation is ploughed for it
+  /// this same year (FieldWindow).
+  std::uint8_t is_winter = 0;
 };
 
 /// Shape of the worker-efficiency product (manual/65-labor-model.md §5).

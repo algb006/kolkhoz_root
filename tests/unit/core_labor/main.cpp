@@ -1738,6 +1738,92 @@ int CheckStubTablesMustBeDeclared() {
 ///
 /// Both halves are asserted. A test that only checked the refusal would pass
 /// just as well against a rule that refused every field order there is.
+/// THE FALLOW BEFORE WINTER RYE HAS THE RYE'S WINDOW (2026-09-14). One man,
+/// one horse, two fallow fields in their ploughing, equal work at equal
+/// distance: the one whose next crop is winter rye — sown this autumn — must
+/// get the plough over the one whose next crop is spring oats, sown next
+/// year. The oat fallow is added FIRST, so the queue's last tie-break (the
+/// lower target id) would pick it; only the window can explain the answer.
+/// Found on labor_year: the start's fallow stood unploughed from day 16 to
+/// the year's end while windowed harness work took every horse.
+/// THE FALLOW'S TIER (boss, parcel 233): ploughing for this autumn's winter
+/// crop yields to a harvest with a relaxed window even when its own window is
+/// the tighter one — bread in the field before a sowing to come — and still
+/// goes ahead of work with no window at all.
+int TestWinterPreparationYieldsToWindowedWork() {
+  int failures = 0;
+  const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
+  const auto prepare = [&origin]() {
+    core::AssignmentJob job = FieldJob(core::WorkKind::kPlowing, 1, origin, 3.0F, 1);
+    job.prepares_winter_crop = true;
+    return job;
+  };
+  const std::vector<core::AssignmentCandidate> candidates = {Worker(0, origin)};
+  auto params = DayParams();
+  params.draught_horses = 1;
+  {
+    const std::vector<core::AssignmentJob> jobs = {
+        prepare(), FieldJob(core::WorkKind::kHarvest, 2, origin, 3.0F, 30)};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures +=
+        Expect(plan[0] == 1, "winter preparation due in 1 day yields to a harvest due in 30");
+  }
+  {
+    core::AssignmentJob unwindowed = FieldJob(core::WorkKind::kPlowing, 2, origin, 3.0F, 0);
+    unwindowed.window = core::DeadlineNotApplicable();
+    const std::vector<core::AssignmentJob> jobs = {unwindowed, prepare()};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1, "and goes ahead of ploughing with no window at all");
+  }
+  return failures;
+}
+
+int TestFallowBeforeWinterRyeHasTheRyesWindow() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_fallow";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "rye_winter,9,7,1\noat,5,8,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "fallow: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(1);
+  const core::HerdId team = day.AddUnitHerd(1, 5.0F);
+  day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+  const core::CropId rye{0};
+  const core::CropId oat{1};
+  const core::FieldId before_oats =
+      day.AddField(core::FieldPhase::kPlowing, 5.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+  const core::FieldId before_rye =
+      day.AddField(core::FieldPhase::kPlowing, 5.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+  for (core::FieldRow& field : day.world.fields.rows) {
+    field.rotation_assigned = 1;
+  }
+  day.world.fields.rows[core::FindRow(day.world.fields, before_oats)].rotation_year1 = oat;
+  day.world.fields.rows[core::FindRow(day.world.fields, before_rye)].rotation_year1 = rye;
+  // Day 16 is May of the first year (four days a month) and a Wednesday.
+  constexpr std::uint32_t kMayDay = 16;
+  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+    day.world.calendar.tick = (static_cast<core::Tick>(kMayDay) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  const core::WorkAssignment& work = day.world.residents.rows[0].work;
+  failures += Expect(work.kind == core::WorkKind::kPlowing && work.field.value == before_rye.value,
+                     "fallow: the plough goes to the fallow the winter rye is sown on this "
+                     "autumn, not to the one before next year's oats");
+  return failures;
+}
+
 int TestLandThatCannotCarryTheWork() {
   int failures = 0;
   DayWorld day(4);
@@ -1838,6 +1924,8 @@ int main() {
   failures += TestAppointmentTakesEffectAtTheDayClose();
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();
+  failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
+  failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
   failures += TestSawyersAreTheYardsCraftsmen();
   failures += TestYardWithoutGroomAlarm();

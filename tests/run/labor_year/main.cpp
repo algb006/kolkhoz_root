@@ -344,6 +344,26 @@ int main(int argc, char** argv) {
 
   failures += CheckTheRoad(simulation->CompletedState());
 
+  // THE BLACK FIELD THE START INHERITS (boss's decision of 2026-09-13,
+  // campaign.csv start_autumn_plowed_share): those hectares owe no spring
+  // furrow, so the ploughing band below is lowered by their norm. Read off the
+  // start world and the field_phases norm, not written down.
+  double autumn_plowed_ha = 0.0;
+  for (const core::FieldRow& field : simulation->CompletedState().fields.rows) {
+    autumn_plowed_ha += field.autumn_plowed != 0 ? static_cast<double>(field.area_ga) : 0.0;
+  }
+  double plow_days_per_ha = 0.0;
+  if (const core::ITable* const phases = started.tables->FindTable("field_phases")) {
+    plow_days_per_ha = static_cast<double>(phases
+                                               ->CellReal(phases->FindRowByKey("plowing"),
+                                                          phases->FindColumn("labor_days_per_ha"))
+                                               .value_or(0.0F)) /
+                       static_cast<double>(core::kRealDaysPerGameDay);
+  }
+  const double autumn_saved_days = autumn_plowed_ha * plow_days_per_ha;
+  std::cout << "labor_year: the start inherits " << autumn_plowed_ha << " ha ploughed last autumn, "
+            << autumn_saved_days << " game man-days of spring ploughing not owed\n";
+
   // --- one year of work ----------------------------------------------------
   std::unordered_map<std::uint32_t, LastSeen> seen;
   LaborTally tally;
@@ -495,7 +515,22 @@ int main(int argc, char** argv) {
   // trajectory by a millionth. (It flipped when task A4 gave the larders
   // spoilage.) The claim is "ploughing costs the raised land's norm", and
   // the band should be wide enough to be about that and no wider.
-  failures += ExpectBand(plowing, 95.0, 110.0, "plowing costs the raised land's norm");
+  //
+  // LOWERED BY THE START'S AUTUMN PLOUGHING, and red from 1eae2e2 (0.18.0)
+  // until 2026-09-14 by boss's order while ripening settled. The red value,
+  // 84.29, was two things at once: 10.71 of the 7.5 ha black field that owes
+  // no spring furrow — which this band had never heard of — and 5.00 of the
+  // 3.5 ha fallow that was never ploughed at all, because a fallow before
+  // winter rye had no window and lost every horse to work that had one
+  // (labor_system.cpp, FieldWindow). The fallow is repaired in the core; the
+  // black field is subtracted here, read off the world. Lowering the band
+  // for the black field alone before the fallow was repaired would have put
+  // its lower edge exactly on 84.29 and hidden the fallow for good.
+  failures +=
+      ExpectBand(plowing,
+                 95.0 - autumn_saved_days,
+                 110.0 - autumn_saved_days,
+                 "plowing costs the raised land's norm, less the land ploughed last autumn");
   // Harrowing is horse work, and since task A4 the day's horses are a REAL
   // pool: sixteen of them, wanted at once by the plough, by the meadow
   // mowers and by the carts. The band was measured when a harnessed job took

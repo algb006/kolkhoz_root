@@ -456,6 +456,7 @@ class LaborSystem final : public ILaborSystem {
         job.position = field.center;
         job.work_days_remaining = field.work_days_remaining;
         job.window = FieldWindow(current.calendar, field, kind);
+        job.prepares_winter_crop = PreparesWinterCrop(field, kind);
         // THE THIRD TIER IS NOT WIRED, AND THE REASON IS MEASURED. The rule
         // asked for is "an overdue sowing is not offered at all" — seed put
         // in after the window does not ripen (boss, 2026-09-12). Written as
@@ -621,11 +622,47 @@ class LaborSystem final : public ILaborSystem {
     return DeadlineInDays(static_cast<std::int32_t>(kDaysPerYear - day_of_year - 1U));
   }
 
+  /// The crop a field job works toward: the one opened on the field, else
+  /// this year's in the rotation, else — a fallow year — next year's.
+  static CropId JobCrop(const FieldRow& field) {
+    if (field.crop.value != kInvalidDefIdValue) {
+      return field.crop;
+    }
+    return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
+                                                            : field.rotation_year1;
+  }
+
+  /// Whether this field job — ploughing, harrowing or sowing — works toward a
+  /// WINTER crop of next year's slot: the fallow ploughed for it in spring,
+  /// and the autumn's ploughing and sowing of it. The job then takes that
+  /// crop's window and ranks below every job with a window of its own
+  /// (assignment.h, prepares_winter_crop). A winter crop already of this
+  /// year's slot is standing and only reaped, so it never qualifies.
+  bool PreparesWinterCrop(const FieldRow& field, WorkKind kind) const {
+    const CropId crop = JobCrop(field);
+    return kind != WorkKind::kHarvest && crop.value < config_.crops.size() &&
+           config_.crops[crop.value].is_winter != 0 && crop.value != field.rotation_year0.value;
+  }
+
   /// Urgency of a field job: the crop's own window, open or closed. The
   /// crop is the one in the ground, or — while the field is still being
-  /// prepared — the one the rotation plans for this year.
+  /// prepared — the one the rotation plans for this year, or, in a FALLOW
+  /// year, the winter crop that follows it.
+  ///
+  /// THE FALLOW BEFORE A WINTER CROP HAS A DEADLINE, and until 2026-09-14 it
+  /// had none. Its ploughing is the preparation for the rye sown that same
+  /// autumn (farming design §7; start canon §8, "winter rye goes in the
+  /// autumn of the same year"), but with no window it ranked below every job
+  /// that had one — and from the thaw to the snow the windowed harness work
+  /// (the ploughs, then the meadow cut) took every horse. Measured on
+  /// labor_year, seed 1930: the start's 3.5 ha fallow opened for ploughing on
+  /// day 16 and stood unworked to the year's end with sixty people idle a
+  /// day; the rye was never sown and the ploughing band read 84.29.
   Deadline FieldWindow(const CalendarState& calendar, const FieldRow& field, WorkKind kind) const {
-    const CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
+    CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
+    if (PreparesWinterCrop(field, kind)) {
+      crop = JobCrop(field);
+    }
     if (crop.value >= config_.crops.size()) {
       // FALLOW, OR A CROP THIS BUILD DOES NOT KNOW: no window to miss, and
       // no claim on the hands ahead of work that has one.

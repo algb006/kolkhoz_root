@@ -836,8 +836,18 @@ int main(int argc, char** argv) {
   // horses go thinner in the months the reaped grain is set aside for the
   // district, and the village with them — two hundredths, the price of the
   // ladder's own sentence "лошадь худеет раньше, чем срывается сдача".
+  //
+  // AND 66.9979935 ON 14 SEPTEMBER, with the fallow before winter rye getting
+  // a place in the queue (labor_system.cpp, PreparesWinterCrop). Until then
+  // that fallow was never ploughed and its rye never sown; now it is, the
+  // work yields to every job with a window, and this ONE seed's three years
+  // lost 3.5 points of mean — the rye seed out of the stores and a different
+  // harvest calendar after it. The same change on thirty_years' nine seeds
+  // moved the mean satiety of years 1-3 from 58.1 to 58.7 and the potato of
+  // those years by -8 t against a spread of 31 t: no loss the village carries,
+  // a trajectory this seed follows. The four records below moved together.
   failures += ExpectNoLower(
-      good.mean_satiety, 69.7065887F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 66.9979935F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -898,7 +908,7 @@ int main(int argc, char** argv) {
   // the mean above: the same export, measured apart). And 20.9036217 when the
   // herds stopped eating the plan reserve (the mean above says why).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 20.9036217F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 19.7282429F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -921,7 +931,7 @@ int main(int argc, char** argv) {
   // bigger one reaped late, which is the same trade the two records above
   // carry.
   failures += ExpectNoHigher(
-      hungry_share, 0.842519701F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.847457647F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -965,7 +975,7 @@ int main(int argc, char** argv) {
   // And 3.59672356 the same day with the cattle yard moved off the road, and
   // 3.43684959 when the herds stopped eating the plan reserve.
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            3.43684959F,
+                            1.9328289F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

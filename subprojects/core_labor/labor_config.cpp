@@ -391,19 +391,23 @@ bool ParseUnitStaff(const ITable& table,
 bool ParseCropWindows(const ITable& table, LaborConfig& config, std::string& error) {
   const std::uint32_t sow_column = table.FindColumn("sow_to_month");
   const std::uint32_t harvest_column = table.FindColumn("harvest_to_month");
+  const std::uint32_t winter_column = table.FindColumn("is_winter");
   config.crops.assign(table.RowCount(), CropWindows{});
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     // Table months are human 1..12; the core's Month enum is 0-based.
     float sow_to = 12.0F;
     float harvest_to = 12.0F;
+    float winter = 0.0F;
     if (!OptionalCell(table, row, sow_column, Range{.low = 1.0F, .high = 12.0F}, sow_to, error) ||
         !OptionalCell(
-            table, row, harvest_column, Range{.low = 1.0F, .high = 12.0F}, harvest_to, error)) {
+            table, row, harvest_column, Range{.low = 1.0F, .high = 12.0F}, harvest_to, error) ||
+        !OptionalCell(table, row, winter_column, Range::Unit(), winter, error)) {
       PrefixError("crops", "window", error);
       return false;
     }
     config.crops[row].sow_to_month = static_cast<std::uint8_t>(sow_to - 1.0F);
     config.crops[row].harvest_to_month = static_cast<std::uint8_t>(harvest_to - 1.0F);
+    config.crops[row].is_winter = winter > 0.5F ? 1U : 0U;
   }
   return true;
 }

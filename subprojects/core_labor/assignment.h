@@ -68,6 +68,14 @@ struct AssignmentJob {
   /// pool, like ploughing.
   bool harnessed = false;
 
+  /// True for the ploughing and harrowing of a FALLOW whose next crop is a
+  /// winter one: the ground is prepared for a sowing this same autumn, so the
+  /// job has that sowing's window — but it ranks BELOW every job with a
+  /// window of its own, open or overdue, and above work with none (boss,
+  /// parcel 233: "хлеб в поле старше будущего посева"). With the window alone
+  /// it outranked the potato harvest and sent potatoes under the snow.
+  bool prepares_winter_crop = false;
+
   /// THIS JOB'S CALENDAR WINDOW, as a PAIR — the kind of answer and, where
   /// there is one, the number (core_common/deadline.h).
   ///
