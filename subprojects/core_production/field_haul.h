@@ -63,8 +63,9 @@ HaulRate StandHaulRate(const ProductionConfig& config,
 void SettleStandHauling(const ProductionConfig& config, WorldState& current);
 
 /// @brief What one carrier is worth on an extraction site's shoulder today —
-/// measured to the heap where that resource already lies, else to the shared
-/// store (the stand's rule, for the stand's reason).
+/// measured to the outline heap that is that resource's home by
+/// resource_stores.csv (IsHomeOf), else to the shared store (the stand's rule,
+/// for the stand's reason).
 HaulRate SiteHaulRate(const ProductionConfig& config,
                       const WorldState& world,
                       const ExtractionSiteRow& site);

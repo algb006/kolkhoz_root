@@ -2,7 +2,7 @@
 /// @brief FamilyRow — the per-household state.
 /// @threading PARALLEL_READONLY
 /// Rows live in WorldState::families under the double-buffer discipline: the
-/// family is the unit of parallelism of phases 2 and 6, so a worker owns
+/// family is the unit of parallelism of phases 2 and 5, so a worker owns
 /// whole family rows; structural changes (marriages, the last member dying
 /// or leaving) happen only in the sequential demography sub-step.
 ///
