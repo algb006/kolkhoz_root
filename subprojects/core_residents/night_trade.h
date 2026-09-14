@@ -25,8 +25,9 @@
 ///     the same one;
 ///   * what it brings — the net fishers 3 kg of fish between them into their
 ///     yards' pantries; the hunter 5 kg of meat with a chance of 0.3; the
-///     distiller nothing until the door of the raw-material leak and of
-///     drinking (queue item 6).
+///     distiller carries 50 kg of raw material off the kolkhoz stores, less
+///     60 % from a unit whose watchman is at his post, and it leaves the world
+///     (boss, parcel 364; StealRawMaterial).
 ///
 /// STUB, each with its place: the truancy and the lost rest of the night out
 /// wait for the rest door; the chairman's orders against a trade (talk, take
@@ -69,6 +70,21 @@ struct NightTradeConfig {
   float hunt_catch_kg = 5.0F;              ///< `night_hunt_catch_kg`
   float hunt_success_chance = 0.3F;        ///< `night_hunt_success_chance`
 
+  /// Raw material a distiller carries off the kolkhoz stores on his night,
+  /// kilograms (`night_distiller_raw_kg`), and the share a watchman at his
+  /// post cuts from what is taken out of the unit he keeps
+  /// (`night_watchman_theft_cut`). Boss, parcel 364: 50 kg, 60 %.
+  float distiller_raw_kg = 50.0F;
+  float watchman_theft_cut = 0.6F;
+
+  /// The month's loss at which the village complains (`store_leak_complaint_kg`).
+  float store_leak_complaint_kg = 100.0F;
+
+  /// The raw material, in the order it is taken: grain (rye, wheat, barley,
+  /// oat), then potato, then sugar — resources.csv rows; an absent one is
+  /// skipped.
+  std::vector<ResourceId> raw_material;
+
   /// The resources.csv rows the catch goes in as: `fish` and `meat`.
   ResourceId fish;
   ResourceId meat;
@@ -102,6 +118,16 @@ void AssignNightTrades(const NightTradeConfig& config, float life_speedup, World
 ///        at any other hour or on any other night.
 /// @pre Called once per tick of the decisions slot.
 void RunNightOutings(const NightTradeConfig& config, WorldState& current);
+
+/// @brief A distiller's night at the stores: up to `distiller_raw_kg` of the
+///        raw material, unreserved, unit by unit in row order and resource by
+///        resource in the config's order; from a unit kept by a watchman at
+///        his post a share `watchman_theft_cut` smaller. What is taken leaves
+///        the world and is booked as `stolen`; the month's tally grows, and at
+///        `store_leak_complaint_kg` the complaint is raised, once a campaign
+///        (the constable's post is a STUB: Epoch I has none).
+/// @return Grams taken.
+Grams StealRawMaterial(const NightTradeConfig& config, WorldState& current);
 
 }  // namespace core
 

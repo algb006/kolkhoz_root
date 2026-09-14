@@ -287,6 +287,14 @@ enum class EventKind : std::uint8_t {
   /// temperature in tenths of a degree. kRoutine. Seam key `hot_afternoon`.
   kHotAfternoon,
 
+  // -- the raw-material leak (2026-09-15; crime design §7) -------------------
+
+  /// The raw material carried off the kolkhoz stores this calendar month has
+  /// reached `store_leak_complaint_kg` and there is no constable in the
+  /// village: somebody comes to complain. amount = the month's grams. Once a
+  /// campaign. kNotable. Seam key `store_leak_complaint`.
+  kStoreLeakComplaint,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

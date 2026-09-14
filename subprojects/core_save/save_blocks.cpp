@@ -37,9 +37,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // float: 168, measured.
 // 2026-09-15: the night trades' catch, a fourteenth amounts vector (save
 // format 40).
-static_assert(sizeof(YearLedger) == 168 + (14 * kAmountsSize),
+// 2026-09-15 again: what the distillers stole, a fifteenth (save format 42).
+static_assert(sizeof(YearLedger) == 168 + (15 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 43,
+static_assert(AggregateArity<YearLedger>() == 44,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -104,7 +105,11 @@ static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec 
 // in save_rows.cpp).
 // Twenty-six the same day: the night trades' outings (a row table in
 // save_rows.cpp).
-static_assert(AggregateArity<WorldState>() == 26,
+// Twenty-seven the same day: the distillers' month at the stores (a block
+// here, WriteWorldBlocks).
+static_assert(sizeof(NightTheftTally) == 16,
+              "NightTheftTally changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 27,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -180,6 +185,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.ration);
   sink.WriteAmounts(DefKind::kResource, book.nets);
   sink.WriteAmounts(DefKind::kResource, book.night_catch);
+  sink.WriteAmounts(DefKind::kResource, book.stolen);
   sink.WriteAmounts(DefKind::kResource, book.yard_produce);
   sink.WriteAmounts(DefKind::kResource, book.plot_harvest);
   sink.WriteAmounts(DefKind::kResource, book.eaten);
@@ -235,6 +241,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.ration = source.ReadAmounts(DefKind::kResource);
   book.nets = source.ReadAmounts(DefKind::kResource);
   book.night_catch = source.ReadAmounts(DefKind::kResource);
+  book.stolen = source.ReadAmounts(DefKind::kResource);
   book.yard_produce = source.ReadAmounts(DefKind::kResource);
   book.plot_harvest = source.ReadAmounts(DefKind::kResource);
   book.eaten = source.ReadAmounts(DefKind::kResource);
@@ -351,6 +358,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
 
   // The limit's points left this year (district design §1, save format 31).
   out.WriteU32(static_cast<std::uint32_t>(world.limit.points));
+
+  // The distillers' month at the stores (crime design §7, save format 42).
+  out.WriteU64(static_cast<std::uint64_t>(world.night_theft.stolen_this_month));
+  out.WriteU32(world.night_theft.month_index);
+  out.WriteU8(world.night_theft.complaint_raised);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -415,6 +427,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->vitals.satiety_running_days = in.ReadU32();
 
   world->limit.points = static_cast<std::int32_t>(in.ReadU32());
+
+  world->night_theft.stolen_this_month = static_cast<Grams>(in.ReadU64());
+  world->night_theft.month_index = in.ReadU32();
+  world->night_theft.complaint_raised = in.ReadU8();
 }
 
 /// A campaign is fifty to seventy years; the ceiling is four orders above

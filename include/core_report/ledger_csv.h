@@ -60,7 +60,7 @@
 ///   -- per resource, kilograms; one column per row of resources.csv --
 ///   harvest_<key>_kg, seed_<key>_kg, delivered_<key>_kg,
 ///   herd_produce_<key>_kg, feed_<key>_kg,
-///   issued_<key>_kg, ration_<key>_kg, nets_<key>_kg, night_catch_<key>_kg,
+///   issued_<key>_kg, ration_<key>_kg, nets_<key>_kg, night_catch_<key>_kg, stolen_<key>_kg,
 ///   yard_produce_<key>_kg, plot_harvest_<key>_kg, eaten_<key>_kg,
 ///   store_<key>_kg                    sum of every unit's stock now
 ///   pantry_<key>_kg                   sum of every family's pantry now

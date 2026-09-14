@@ -22,6 +22,7 @@
 
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
 
@@ -49,6 +50,21 @@ struct NightOutingRow {
 
 /// @brief The night's outings, in the order they were laid down.
 using NightOutingTable = StateTable<NightOutingId, NightOutingRow>;
+
+/// @brief What the distillers have carried off the kolkhoz stores this
+/// calendar month, and whether the village has come to complain yet (crime
+/// design §7, "Утечка сырья… числами"; boss, parcel 364). SAVED.
+struct NightTheftTally {
+  /// Grams of raw material taken since the first day of `month_index`.
+  Grams stolen_this_month = 0;
+
+  /// The month the tally counts: year × 12 + month, from the campaign's
+  /// calendar. A day of another month starts the tally again.
+  std::uint32_t month_index = 0;
+
+  /// 0/1: kStoreLeakComplaint has been raised — once a campaign.
+  std::uint8_t complaint_raised = 0;
+};
 
 }  // namespace core
 

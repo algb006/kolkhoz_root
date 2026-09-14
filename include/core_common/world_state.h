@@ -650,6 +650,10 @@ struct WorldState {
   /// night_trade_state.h.
   NightOutingTable night_outings;
 
+  /// What the distillers took off the stores this month (crime design §7);
+  /// SAVED. night_trade_state.h.
+  NightTheftTally night_theft;
+
   /// The couples ready to marry who wait for a free house (life-cycle design
   /// §12); SAVED. wedding_state.h.
   WeddingWaitTable wedding_waits;

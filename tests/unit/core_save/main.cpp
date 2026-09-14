@@ -463,6 +463,11 @@ core::WorldState MakeWorld() {
   world.ledger.current.limit_points_burned = 7;
   // The night trades' catch (save format 40): a vector of its own.
   world.ledger.current.night_catch = Amounts({0, 1'500, 5'000});
+  // What the distillers stole, and their month at the stores (save format 42).
+  world.ledger.current.stolen = Amounts({48'000, 0, 2'000});
+  world.night_theft.stolen_this_month = 73'000;
+  world.night_theft.month_index = 17;
+  world.night_theft.complaint_raised = 1;
   return world;
 }
 
@@ -739,6 +744,12 @@ int main() {
   failures += Expect(AmountAt(loaded.ledger.current.night_catch, 1) == 1'500 &&
                          AmountAt(loaded.ledger.current.night_catch, 2) == 5'000,
                      "the night trades' catch came back in the year's book");
+  failures +=
+      Expect(AmountAt(loaded.ledger.current.stolen, 0) == 48'000 &&
+                 AmountAt(loaded.ledger.current.stolen, 2) == 2'000 &&
+                 loaded.night_theft.stolen_this_month == 73'000 &&
+                 loaded.night_theft.month_index == 17 && loaded.night_theft.complaint_raised == 1,
+             "the stolen and the distillers' month came back, each its own number");
 
   // The condition bytes came back as well, each one separately: a check
   // that read them together would pass on a codec that swapped them.

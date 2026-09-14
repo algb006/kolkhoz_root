@@ -134,6 +134,8 @@ const char* KindName(core::EventKind kind) {
       return "post_shift_started";
     case core::EventKind::kHotAfternoon:
       return "hot_afternoon";
+    case core::EventKind::kStoreLeakComplaint:
+      return "store_leak_complaint";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

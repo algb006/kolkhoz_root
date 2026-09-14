@@ -59,6 +59,7 @@ namespace core {
 ///   people, satiety ......... core_residents, demography sub-step
 ///   issued, ration, nets .... core_residents, the family exchange
 ///   night_catch ............. core_residents, the night trades' return hour
+///   stolen .................. core_residents, the night trades' hour out
 ///   lost_no_room ............ every sequential writer that delivers through
 ///                             the store door and cannot keep the remainder:
 ///                             production (harvest, herds, straw), construction
@@ -148,6 +149,10 @@ struct YearLedger {
   /// and game (crime design §9: "идёт мимо колхоза"). Its own line and not
   /// `nets`, so the open fishing and the poaching stay two quantities.
   ResourceAmounts night_catch;
+
+  /// What the distillers carried off the kolkhoz stores — grain, potato,
+  /// sugar — and out of the world (crime design §7; boss, parcel 364).
+  ResourceAmounts stolen;
 
   ResourceAmounts yard_produce;  ///< Household herds' milk and eggs.
 
