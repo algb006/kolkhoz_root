@@ -76,8 +76,8 @@ pioneer_autumn_grade_min,4,core
 pioneer_spring_grade_min,3,core
 komsomol_age_from_years,14,core
 komsomol_age_to_years,26,core
-komsomol_ideology_min,45,core
-komsomol_pioneer_ideology_min,35,core
+komsomol_ideology_min,55,core
+komsomol_pioneer_ideology_min,45,core
 komsomol_mood_min,40,core
 party_age_from_years,18,core
 party_ideology_min,65,core
