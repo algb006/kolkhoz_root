@@ -1746,6 +1746,47 @@ int CheckStubTablesMustBeDeclared() {
 /// lower target id) would pick it; only the window can explain the answer.
 /// Found on labor_year: the start's fallow stood unploughed from day 16 to
 /// the year's end while windowed harness work took every horse.
+/// AN EVENING POST LEAVES THE DAY TO THE ACCOUNTANT (post_shift.h; the human's
+/// word of 2026-09-14, "днём оба в наряде"): of two holders and one sowing,
+/// the librarian goes to the field and the teacher stays off the list.
+int TestEveningPostIsOnTheDaysList() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_shifts";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "professions.csv")
+      << "key,min_education,min_age,max_age,gender,single_post,shift\n"
+         "librarian,any,16,,any,0,evening\n"
+         "primary_teacher,any,16,,any,0,workday\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "shifts: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(2);
+  core::UnitRow hut;
+  const core::UnitId hut_id = core::AppendRow(day.world.units, hut);
+  day.world.residents.rows[0].post.profession = core::ProfessionId{0};
+  day.world.residents.rows[0].post.unit = hut_id;
+  day.world.residents.rows[1].post.profession = core::ProfessionId{1};
+  day.world.residents.rows[1].post.unit = hut_id;
+  day.AddField(core::FieldPhase::kSowing, 5.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+    day.world.calendar.tick = (1U * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  failures += Expect(day.world.residents.rows[0].work.kind == core::WorkKind::kSowing &&
+                         day.world.residents.rows[1].work.kind == core::WorkKind::kNone,
+                     "shifts: the evening librarian sows by day; the workday teacher is not sent");
+  return failures;
+}
+
 /// THE FALLOW'S TIER (boss, parcel 233): ploughing for this autumn's winter
 /// crop yields to a harvest with a relaxed window even when its own window is
 /// the tighter one — bread in the field before a sowing to come — and still
@@ -1926,6 +1967,7 @@ int main() {
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestWinterPreparationYieldsToWindowedWork();
+  failures += TestEveningPostIsOnTheDaysList();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
   failures += TestSawyersAreTheYardsCraftsmen();
   failures += TestYardWithoutGroomAlarm();

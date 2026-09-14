@@ -44,6 +44,22 @@ bool ParseBoundaryConfig(const ITableSet& tables,
     return false;
   }
   config.map_side_m = definitions.map_side_m;
+  // The posts' shifts (post_shift.h), dense by ProfessionId. The labor
+  // module reads the same column for its own question — who is on the
+  // accountant's list — and a profession key is data, not a dependency.
+  if (const ITable* const professions = tables.FindTable("professions")) {
+    const std::uint32_t shift_column = professions->FindColumn("shift");
+    config.post_shift.assign(professions->RowCount(), PostShift::kWorkday);
+    for (std::uint32_t row = 0; row < professions->RowCount() && shift_column != kNoTableColumn;
+         ++row) {
+      if (!ParsePostShift(professions->CellText(row, shift_column), config.post_shift[row])) {
+        error = "professions: " + std::string(professions->CellText(row, 0)) + ": shift '" +
+                std::string(professions->CellText(row, shift_column)) +
+                "' is none of workday, evening, bath_day";
+        return false;
+      }
+    }
+  }
   const ITable* const life = tables.FindTable("life");
   if (life == nullptr) {
     return true;  // no table: the defaults above are the canonical values

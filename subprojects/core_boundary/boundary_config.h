@@ -27,7 +27,9 @@
 #define CORE_BOUNDARY_BOUNDARY_CONFIG_H_
 
 #include <string>
+#include <vector>
 
+#include "core_common/post_shift.h"
 #include "core_tables/stub_tables.h"
 
 namespace core {
@@ -50,6 +52,11 @@ struct BoundaryConfig {
   /// the table set declares no map — the presentation must then take the
   /// size from somewhere else rather than be handed a plausible lie.
   float map_side_m = 0.0F;
+
+  /// Each post's shift (professions.csv `shift`), dense by ProfessionId:
+  /// when its holder counts at his unit and stands there. A post past the
+  /// end — a table-less world — is a workday post.
+  std::vector<PostShift> post_shift;
 };
 
 /// @brief Reads the knobs out of `tables`.

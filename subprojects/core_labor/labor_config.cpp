@@ -300,9 +300,17 @@ bool ParseProfessions(const ITable& table, LaborConfig& config, std::string& err
   const std::uint32_t max_age_column = table.FindColumn("max_age");
   const std::uint32_t gender_column = table.FindColumn("gender");
   const std::uint32_t single_column = table.FindColumn("single_post");
+  const std::uint32_t shift_column = table.FindColumn("shift");
   config.professions.assign(table.RowCount(), ProfessionDef{});
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     ProfessionDef& post = config.professions[row];
+    if (shift_column != kNoTableColumn &&
+        !ParsePostShift(table.CellText(row, shift_column), post.shift)) {
+      error = "shift '" + std::string(table.CellText(row, shift_column)) +
+              "' is none of workday, evening, bath_day";
+      PrefixError("professions", table.CellText(row, 0), error);
+      return false;
+    }
     if (education_column != kNoTableColumn &&
         !ParseEducationStage(table.CellText(row, education_column), post.min_education, error)) {
       PrefixError("professions", table.CellText(row, 0), error);

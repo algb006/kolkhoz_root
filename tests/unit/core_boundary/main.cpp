@@ -594,6 +594,85 @@ int TestEventsAndFastForward(const core::ITableSet& tables) {
 // The derived signals
 // ---------------------------------------------------------------------------
 
+/// THE POSTS' SHIFTS (post_shift.h; the human's word of 2026-09-14, boss
+/// parcels 242 and 244): the bath keeper on the bath day, the librarian every
+/// evening, the teacher through the working daylight when he has no day's
+/// work. Sunset at 18, bedtime at 22; day 0 is a Monday.
+int TestPostShifts() {
+  int failures = 0;
+  const test::FakeTable professions(
+      {"key", "shift"},
+      {{"bathhouse_keeper", "bath_day"}, {"librarian", "evening"}, {"primary_teacher", ""}});
+  const test::FakeTableSet tables("professions", professions);
+
+  core::WorldState world;
+  world.weather.daylight_hours = 12.0F;
+  core::UnitRow place;
+  place.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+  const core::UnitId bath = core::AppendRow(world.units, place);
+  place.position = core::Vec2{.x = 20.0F, .y = 0.0F};
+  const core::UnitId hut = core::AppendRow(world.units, place);
+  place.position = core::Vec2{.x = 30.0F, .y = 0.0F};
+  const core::UnitId school = core::AppendRow(world.units, place);
+  core::FieldRow field;
+  const core::FieldId field_id = core::AppendRow(world.fields, field);
+  const auto holder = [&world, field_id](std::uint16_t post, core::UnitId unit) {
+    core::ResidentRow person;
+    person.birth_day = -30 * static_cast<std::int32_t>(core::kDaysPerYear);
+    person.post.profession = core::ProfessionId{post};
+    person.post.unit = unit;
+    person.work.kind = core::WorkKind::kHarvest;  // the accountant's day's work
+    person.work.field = field_id;
+    return core::AppendRow(world.residents, person);
+  };
+  const core::ResidentId keeper = holder(0, bath);
+  const core::ResidentId librarian = holder(1, hut);
+  const core::ResidentId teacher = holder(2, school);
+  world.residents.rows.back().work = core::WorkAssignment{};  // no day's work
+
+  ScriptedSimulation* script = nullptr;
+  std::unique_ptr<core::ISession> session = ScriptedSession(tables, world, &script);
+  if (!session) {
+    std::cout << "FAIL: the shifts session was refused\n";
+    return 1;
+  }
+  const auto at = [&](std::uint32_t day, std::uint32_t hour) {
+    core::WorldState moment = world;
+    moment.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(moment.calendar);
+    session->ReplaceWorld(moment);
+  };
+  const auto count = [&session](core::UnitId unit) {
+    return session->SignalsOfUnit(unit).residents_working;
+  };
+
+  at(1, 12);  // Tuesday noon
+  failures += Expect(count(bath) == 0 && count(hut) == 0 && count(school) == 1,
+                     "shifts: a weekday noon — the teacher at school, the keeper and the "
+                     "librarian not at their posts");
+  failures += Expect(session->WhereaboutsOf(keeper).field.value == field_id.value &&
+                         session->WhereaboutsOf(librarian).field.value == field_id.value,
+                     "shifts: and both are on the field the accountant sent them to");
+  at(1, 20);  // Tuesday evening
+  failures += Expect(count(hut) == 1 && count(bath) == 0 && count(school) == 0,
+                     "shifts: a weekday evening — the librarian at the reading hut, nobody else");
+  failures += Expect(session->WhereaboutsOf(librarian).unit.value == hut.value,
+                     "shifts: and he stands there");
+  at(1, 23);  // past bedtime
+  failures += Expect(count(hut) == 0, "shifts: past bedtime the reading hut is empty");
+  at(5, 20);  // Saturday evening
+  failures += Expect(count(bath) == 1, "shifts: Saturday evening — the bath is heated");
+  at(5, 12);  // Saturday noon
+  failures += Expect(count(bath) == 0, "shifts: but not on Saturday by day");
+  at(6, 12);  // Sunday noon
+  failures += Expect(count(bath) == 1 && session->WhereaboutsOf(keeper).unit.value == bath.value,
+                     "shifts: Sunday by day — the keeper at the bath, and standing there");
+  at(1, 12);
+  failures += Expect(session->WhereaboutsOf(teacher).unit.value == school.value,
+                     "shifts: and the teacher with no day's work stands at school by day");
+  return failures;
+}
+
 int TestSignals(const core::ITableSet& tables) {
   int failures = 0;
   core::WorldState world;
@@ -1225,6 +1304,7 @@ int main() {
   failures += TestEventsAndFastForward(tables);
   failures += TestEventReaders(tables);
   failures += TestSignals(tables);
+  failures += TestPostShifts();
   failures += TestJournalCodec();
   failures += TestWorkerIndependence(tables);
   failures += TestCrewOrderShape(tables);

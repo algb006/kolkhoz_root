@@ -47,8 +47,12 @@ FieldSignals DeriveFieldSignals(const WorldState& world, FieldId field);
 /// @brief Where a resident is, derived from `world` now.
 /// @note STUB while the labor model records no departure and arrival: at home
 /// outside the solar window, at his assignment's place inside it, never on
-/// the road (manual/70-boundary.md §10).
-ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId resident);
+/// the road (manual/70-boundary.md §10). A post holder stands at his post in
+/// his post's shift (core_common/post_shift.h), which is why the config is
+/// asked.
+ResidentWhereabouts DeriveWhereabouts(const BoundaryConfig& config,
+                                      const WorldState& world,
+                                      ResidentId resident);
 
 // The alarms are NOT derived here since task A3: they are the subsystems'
 // predicates, collected through ISimulation::CollectAlarms and sorted by

@@ -244,7 +244,7 @@ class Session final : public ISession {
   WorkforceCount Workforce() const override { return simulation_->Workforce(); }
 
   ResidentWhereabouts WhereaboutsOf(ResidentId resident) const override {
-    return DeriveWhereabouts(State(), resident);
+    return DeriveWhereabouts(config_, State(), resident);
   }
 
   std::span<const Alarm> ActiveAlarms() const override { return alarms_; }

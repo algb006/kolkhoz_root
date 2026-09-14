@@ -41,6 +41,25 @@ bool InsideDaylight(std::uint32_t hour, const DayWindow& window) {
   return tick_start + 1.0F > window.sunrise && tick_start < window.sunset;
 }
 
+/// @brief Whether `resident` holds a post and stands at it this tick: inside
+/// the post's shift, and — for a working-day post — with no day's work of his
+/// own to be at instead. The unit is not asked; the caller compares it.
+bool AtPostNow(const BoundaryConfig& config, const WorldState& world, const ResidentRow& resident) {
+  const std::uint32_t profession = resident.post.profession.value;
+  if (profession == kInvalidDefIdValue) {
+    return false;
+  }
+  const PostShift shift =
+      profession < config.post_shift.size() ? config.post_shift[profession] : PostShift::kWorkday;
+  if (shift == PostShift::kWorkday && resident.work.kind != WorkKind::kNone) {
+    return false;
+  }
+  return InPostShift(shift,
+                     world.calendar.weekday,
+                     HourFromTick(world.calendar.tick),
+                     SolarWindow(world.weather.daylight_hours));
+}
+
 /// @brief Position of a unit, or the origin when it is gone.
 Vec2 UnitPosition(const WorldState& world, UnitId unit) {
   const std::uint32_t row = FindRow(world.units, unit);
@@ -90,21 +109,20 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   // here" at every sawmill — host found it by fixture (seq 218). A module's
   // sawyers count at the module they work, not at the yard that holds it.
   //
-  // AND THE HOLDER OF A POST HERE, IN HIS SHIFT, with no day's work of his own:
-  // the bath attendant, the librarian, the teacher (boss, parcel 238: "the
-  // holder of a post counts in his shift"). The core models no work for those
-  // posts yet and leaves the holder unassigned; he still stands at his unit
-  // through the working daylight, and WhereaboutsOf says the same.
-  const bool in_shift =
-      InsideDaylight(HourFromTick(world.calendar.tick), SolarWindow(world.weather.daylight_hours));
+  // AND THE HOLDER OF A POST HERE, IN HIS POST'S SHIFT (post_shift.h): the
+  // teacher through the working daylight when he has no day's work of his
+  // own; the librarian every evening and the bath keeper on the bath day,
+  // whatever the accountant gave them by day. 88fc001 counted every holder
+  // through the daylight, and the human's word of the same afternoon was
+  // the opposite for those two: "днём оба в наряде" (boss, parcel 242).
   std::uint32_t working = 0;
   for (const ResidentRow& resident : world.residents.rows) {
+    if (resident.post.unit.value == unit.value && AtPostNow(config, world, resident)) {
+      ++working;
+      continue;
+    }
     switch (resident.work.kind) {
       case WorkKind::kNone:
-        working += in_shift && resident.post.unit.value == unit.value &&
-                           resident.post.profession.value != kInvalidDefIdValue
-                       ? 1U
-                       : 0U;
         break;
       case WorkKind::kHerdCare: {
         const std::uint32_t herd_row = FindRow(world.herds, resident.work.herd);
@@ -171,7 +189,9 @@ FieldSignals DeriveFieldSignals(const WorldState& world, FieldId field) {
   return signals;
 }
 
-ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId resident) {
+ResidentWhereabouts DeriveWhereabouts(const BoundaryConfig& config,
+                                      const WorldState& world,
+                                      ResidentId resident) {
   ResidentWhereabouts where;
   const std::uint32_t row = FindRow(world.residents, resident);
   if (row == kNoRow) {
@@ -192,11 +212,10 @@ ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId reside
 
   const DayWindow window = SolarWindow(world.weather.daylight_hours);
   const bool in_shift = InsideDaylight(HourFromTick(world.calendar.tick), window);
-  // A POST HOLDER WITH NO DAY'S WORK stands at his post through the shift
-  // (boss, parcel 238), as DeriveUnitSignals counts him there.
-  const bool at_post = person.work.kind == WorkKind::kNone && in_shift &&
-                       person.post.profession.value != kInvalidDefIdValue &&
-                       FindRow(world.units, person.post.unit) != kNoRow;
+  // A POST HOLDER IN HIS POST'S SHIFT stands at his post, as DeriveUnitSignals
+  // counts him there (post_shift.h).
+  const bool at_post =
+      AtPostNow(config, world, person) && FindRow(world.units, person.post.unit) != kNoRow;
   if (at_post) {
     where.place = Whereabouts::kAtWork;
     where.unit = person.post.unit;

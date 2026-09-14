@@ -33,6 +33,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/post_shift.h"
 #include "core_common/resident_state.h"
 
 namespace core {
@@ -170,6 +171,11 @@ struct ProfessionDef {
   /// "the place is taken" and "no such place here" are different things,
   /// and the player fixes them differently.
   std::uint8_t single_post = 0;
+
+  /// When the holder stands at his post (professions.csv `shift`,
+  /// core_common/post_shift.h): only a workday post takes him off the
+  /// accountant's daily list.
+  PostShift shift = PostShift::kWorkday;
 };
 
 /// One row of tables/unit_staff.csv: which unit type carries which post, on

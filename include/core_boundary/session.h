@@ -165,9 +165,11 @@ struct UnitSignals {
   /// herd that stands here; the sawyers of a sawmill (kUnitWork) and the crew
   /// of a site (kConstruction), which name the unit itself. A module's workers
   /// count at the module, not at its parent. And the holder of a post at this
-  /// unit with no day's work of his own, inside the daylight shift — the bath
-  /// attendant, the librarian (boss, parcel 238); WhereaboutsOf puts him at
-  /// the unit over the same hours. A field is not a unit: its
+  /// unit in his post's shift (core_common/post_shift.h): a workday post's
+  /// holder with no day's work of his own through the daylight, the
+  /// librarian every evening, the bath keeper on the bath day, whatever the
+  /// accountant gave them by day; WhereaboutsOf puts him at the unit over
+  /// the same hours. A field is not a unit: its
   /// crew is FieldSignals::residents_working.
   std::uint16_t residents_working = 0;
 

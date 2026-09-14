@@ -703,8 +703,14 @@ class LaborSystem final : public ILaborSystem {
         continue;
       }
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
-      if (resident.post.profession.value != kInvalidDefIdValue) {
-        continue;  // he has a place of his own; the accountant does not touch him
+      // A post of the working day is a place of his own, and the accountant
+      // does not touch him. An evening or bath-day post leaves his day to the
+      // list like anybody's (post_shift.h; the human's word of 2026-09-14,
+      // "днём оба в наряде").
+      if (resident.post.profession.value != kInvalidDefIdValue &&
+          (resident.post.profession.value >= config_.professions.size() ||
+           PostHoldsTheDay(config_.professions[resident.post.profession.value].shift))) {
+        continue;
       }
       AssignmentCandidate candidate;
       candidate.resident_row = row;
