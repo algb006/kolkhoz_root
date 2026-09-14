@@ -58,6 +58,7 @@ namespace core {
 /// WRITE MAP — all writers sequential, one per block except where said:
 ///   people, satiety ......... core_residents, demography sub-step
 ///   issued, ration, nets .... core_residents, the family exchange
+///   night_catch ............. core_residents, the night trades' return hour
 ///   lost_no_room ............ every sequential writer that delivers through
 ///                             the store door and cannot keep the remainder:
 ///                             production (harvest, herds, straw), construction
@@ -142,6 +143,11 @@ struct YearLedger {
   ResourceAmounts ration;  ///< The safety ration handed out below the floor.
 
   ResourceAmounts nets;  ///< The yards' fish.
+
+  /// What the night trades brought home past the kolkhoz — the poached fish
+  /// and game (crime design §9: "идёт мимо колхоза"). Its own line and not
+  /// `nets`, so the open fishing and the poaching stay two quantities.
+  ResourceAmounts night_catch;
 
   ResourceAmounts yard_produce;  ///< Household herds' milk and eggs.
 

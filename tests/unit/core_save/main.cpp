@@ -460,6 +460,8 @@ core::WorldState MakeWorld() {
   world.ledger.current.limit_points_granted = 350;
   world.ledger.current.limit_points_spent = 135;
   world.ledger.current.limit_points_burned = 7;
+  // The night trades' catch (save format 40): a vector of its own.
+  world.ledger.current.night_catch = Amounts({0, 1'500, 5'000});
   return world;
 }
 
@@ -731,6 +733,9 @@ int main() {
                          loaded.ledger.current.limit_points_spent == 135 &&
                          loaded.ledger.current.limit_points_burned == 7,
                      "the year's limit flows came back, each its own number");
+  failures += Expect(AmountAt(loaded.ledger.current.night_catch, 1) == 1'500 &&
+                         AmountAt(loaded.ledger.current.night_catch, 2) == 5'000,
+                     "the night trades' catch came back in the year's book");
 
   // The condition bytes came back as well, each one separately: a check
   // that read them together would pass on a codec that swapped them.

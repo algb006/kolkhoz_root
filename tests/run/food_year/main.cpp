@@ -1020,9 +1020,14 @@ int main(int argc, char** argv) {
   // with the meadow cut's window (the mean above says why). And 8.09285831
   // with the building chairman: the issue matters four times as much in a
   // village of working migrants (the mean above says why). And 7.63584423
-  // with the felling brigade riding.
+  // with the felling brigade riding. And 7.49144745 with the night trades
+  // (2026-09-15) — LOWERED, so the cause is named with its two control arms:
+  // the same run with the catch set to zero gave 7.49144745 again, so it is
+  // not the fish and game in the pantries; the run with no trade handed out at
+  // all gave 9.81330967. The lots the trades draw from the world's stream moved
+  // every later draw, and this gap swings by two points on the stream alone.
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            7.63584423F,
+                            7.49144745F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

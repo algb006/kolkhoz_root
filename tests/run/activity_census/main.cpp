@@ -123,7 +123,13 @@ constexpr std::array<std::string_view,
 /// to look. The moment truancy started firing the census refused the run,
 /// because a state that is both waived and happening means one of the two
 /// is out of date; that refusal is what this line records.
-constexpr std::array<std::string_view, 3> kWaived = {"treated", "away", "resting"};
+///
+/// AND TREATED CAME OFF IT ON 2026-09-15 THE SAME WAY. It stood as "no source"
+/// while its source was there all along — health below `treated_health` —
+/// and simply had not been reached on these nine seeds. The night trades'
+/// lots moved the stream, a resident on one seed fell under the line, and the
+/// census refused the waiver. The state is reachable; the waiver was luck.
+constexpr std::array<std::string_view, 2> kWaived = {"away", "resting"};
 
 /// THE OPEN QUESTION THIS CHECK RAISED IS CLOSED, and the way it closed is
 /// the reason to keep the check. It found not_worker and too_young

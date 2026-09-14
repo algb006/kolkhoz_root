@@ -36,6 +36,7 @@
 #include "household_plot.h"
 #include "life_config.h"
 #include "membership.h"
+#include "night_trade.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
 
@@ -1259,6 +1260,211 @@ int CheckMembership() {
   return failures;
 }
 
+/// The night trades (crime design §9; boss, parcel 346): who is handed one,
+/// the moonlit night, where each goes, and what comes home at the return hour.
+int CheckNightTrades() {
+  int failures = 0;
+  constexpr float kSpeedup = 4.0F;
+  core::NightTradeConfig config;  // boss's numbers
+  config.fish = core::ResourceId{1};
+  config.meat = core::ResourceId{2};
+  config.fishing_spots = {core::Vec2{.x = 3850.0F, .y = 8350.0F}};
+  config.hunt_success_chance = 1.0F;  // the hunter's luck is asserted, not drawn
+
+  failures += Expect(core::IsMoonlitNight(config, 2) && core::IsMoonlitNight(config, 50) &&
+                         !core::IsMoonlitNight(config, 3) && !core::IsMoonlitNight(config, 0),
+                     "night: the moonlit night is the third day of every month");
+
+  core::WorldState world;
+  world.world_seed = 11;
+  world.rng = core::SeedRngState(11, 0);
+  const auto yard = [&world](float x) {
+    const core::FamilyId family = AppendRow(world.families, core::FamilyRow{});
+    AddHouse(world, family, core::Vec2{.x = x, .y = 0.0F});
+    return family;
+  };
+  const core::FamilyId yard_a = yard(1000.0F);
+  const core::FamilyId yard_b = yard(2000.0F);
+  const core::FamilyId yard_c = yard(3000.0F);
+  const auto man = [&world](core::FamilyId family, float age, core::SocialStatus status) {
+    const core::ResidentId id = AddAdult(world, family, core::Sex::kMale, age);
+    world.residents.rows[FindRow(world.residents, id)].social_status = status;
+    return id;
+  };
+  const core::ResidentId member = man(yard_a, 30.0F, core::SocialStatus::kParty);
+  const core::ResidentId komsomol = man(yard_a, 20.0F, core::SocialStatus::kKomsomol);
+  man(yard_a, 30.0F, core::SocialStatus::kNone);
+  man(yard_b, 30.0F, core::SocialStatus::kNone);
+  man(yard_c, 40.0F, core::SocialStatus::kNone);
+  man(yard_c, 55.0F, core::SocialStatus::kNone);
+  // Six free men for five trades, two of fishing age in every yard, so no lot
+  // can leave the pair without a second yard.
+  man(yard_a, 35.0F, core::SocialStatus::kNone);
+  man(yard_b, 35.0F, core::SocialStatus::kNone);
+  man(yard_c, 35.0F, core::SocialStatus::kNone);
+  const core::ResidentId woman = AddAdult(world, yard_b, core::Sex::kFemale, 30.0F);
+  // An old-forest square within the hunter's reach of every yard.
+  core::TimberStandRow forest;
+  forest.kind = core::TimberStandKind::kForestOld;
+  forest.position = core::Vec2{.x = 2000.0F, .y = 1500.0F};
+  AppendRow(world.stands, forest);
+
+  core::AssignNightTrades(config, kSpeedup, world);
+  std::array<std::uint32_t, 4> kept{};
+  core::FamilyId first_fisher_yard;
+  bool fishers_apart = true;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    ++kept[static_cast<std::size_t>(person.night_trade)];
+    if (person.night_trade == core::NightTrade::kNetFisher) {
+      fishers_apart = fishers_apart && person.family.value != first_fisher_yard.value;
+      first_fisher_yard = person.family;
+    }
+  }
+  const auto trade_of = [&world](core::ResidentId id) {
+    return world.residents.rows[FindRow(world.residents, id)].night_trade;
+  };
+  failures += Expect(kept[1] == 2 && kept[2] == 2 && kept[3] == 1 && fishers_apart,
+                     "trades: two distillers, a pair of net fishers from two yards, one hunter");
+  failures += Expect(trade_of(member) == core::NightTrade::kNone &&
+                         trade_of(komsomol) == core::NightTrade::kNone &&
+                         trade_of(woman) == core::NightTrade::kNone,
+                     "trades: never a party member, a komsomol member or a woman");
+  core::AssignNightTrades(config, kSpeedup, world);
+  std::uint32_t still = 0;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    still += person.night_trade != core::NightTrade::kNone ? 1U : 0U;
+  }
+  failures += Expect(still == 5, "trades: a second turn hands out nothing to a full village");
+
+  // A village of members only: not a lot can pick one. (The mixed village
+  // above passes whenever the lot happens to miss them, so it cannot say
+  // this.)
+  core::WorldState members;
+  members.world_seed = 11;
+  members.rng = core::SeedRngState(11, 0);
+  const core::FamilyId members_yard = AppendRow(members.families, core::FamilyRow{});
+  AddHouse(members, members_yard, core::Vec2{.x = 1000.0F, .y = 0.0F});
+  for (int index = 0; index < 4; ++index) {
+    const core::ResidentId id = AddAdult(members, members_yard, core::Sex::kMale, 30.0F);
+    members.residents.rows[FindRow(members.residents, id)].social_status =
+        index % 2 == 0 ? core::SocialStatus::kParty : core::SocialStatus::kKomsomol;
+  }
+  core::AssignNightTrades(config, kSpeedup, members);
+  bool none_kept = true;
+  for (const core::ResidentRow& person : members.residents.rows) {
+    none_kept = none_kept && person.night_trade == core::NightTrade::kNone;
+  }
+  failures += Expect(none_kept, "trades: in a village of members nobody is handed a trade");
+
+  const auto at = [&world](core::SimDay day, std::uint32_t hour) {
+    world.calendar.tick = (day * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(world.calendar);
+    world.step_events.clear();
+  };
+  world.weather.air_temperature_celsius = 20.0F;
+  at(2, 22);
+  core::RunNightOutings(config, world);
+  failures += Expect(world.night_outings.rows.empty() && world.step_events.empty(),
+                     "night: at 22 of the moonlit day nobody is out yet");
+  at(2, 23);
+  core::RunNightOutings(config, world);
+  bool places_right = true;
+  for (const core::NightOutingRow& outing : world.night_outings.rows) {
+    const core::ResidentRow& person =
+        world.residents.rows[FindRow(world.residents, outing.resident)];
+    const core::UnitRow& house = world.units.rows[FindRow(
+        world.units, world.families.rows[FindRow(world.families, person.family)].house)];
+    switch (outing.trade) {
+      case core::NightTrade::kDistiller:
+        places_right = places_right && outing.position.x == house.position.x;
+        break;
+      case core::NightTrade::kNetFisher:
+        places_right = places_right && outing.position.x == 3850.0F;
+        break;
+      case core::NightTrade::kHunter:
+        places_right = places_right && outing.position.x == 2000.0F && outing.position.y == 1500.0F;
+        break;
+      default:
+        places_right = false;
+    }
+    places_right =
+        places_right && outing.day == 2 && outing.hour_out == 23 && outing.hour_back == 3;
+  }
+  failures +=
+      Expect(world.night_outings.rows.size() == 5 && world.step_events.size() == 5 &&
+                 world.step_events[0].kind == core::EventKind::kNightTradeOuting && places_right,
+             "night: at 23 all five go out — the distillers at their gates, the fishers "
+             "at the spot, the hunter in the forest — each said once");
+
+  at(3, 3);
+  core::RunNightOutings(config, world);
+  core::Grams fish = 0;
+  core::Grams game = 0;
+  for (const core::FamilyRow& family : world.families.rows) {
+    fish += family.pantry.size() > 1 ? family.pantry[1] : 0;
+    game += family.pantry.size() > 2 ? family.pantry[2] : 0;
+  }
+  failures += Expect(fish == 3 * core::kGramsPerKilogram && game == 5 * core::kGramsPerKilogram,
+                     "night: at 3 the fishers bring 3 kg and the hunter 5 kg home");
+  // The book separately: a catch in the pantry and not in the book is exactly
+  // what the year's balance cannot see.
+  failures += Expect(world.ledger.current.night_catch.size() > 2 &&
+                         world.ledger.current.night_catch[1] == fish &&
+                         world.ledger.current.night_catch[2] == game,
+                     "night: the book carries the night's fish and game");
+
+  world.weather.air_temperature_celsius = 10.0F;
+  at(6, 23);
+  core::RunNightOutings(config, world);
+  std::uint32_t fishers_out = 0;
+  for (const core::NightOutingRow& outing : world.night_outings.rows) {
+    fishers_out += outing.trade == core::NightTrade::kNetFisher ? 1U : 0U;
+  }
+  failures += Expect(world.night_outings.rows.size() == 3 && fishers_out == 0,
+                     "night: on a cold moonlit night the fishers stay home, the others go out, "
+                     "and last month's rows are gone");
+
+  const auto parse = [](const char* key, const char* value) {
+    const test::FakeTable world_params({"key", "value", "reader"}, {{key, value, "core"}});
+    const test::FakeTableSet set({{"world_params", &world_params}});
+    core::NightTradeConfig read;
+    std::string trouble;
+    return core::ParseNightTradeConfig(set, read, trouble);
+  };
+  failures +=
+      Expect(parse("night_moon_day_in_month", "3") && !parse("night_moon_day_in_month", "4") &&
+                 !parse("night_trade_hour_out", "24") && !parse("night_trade_hour_back", "23") &&
+                 !parse("night_hunt_success_chance", "1.5"),
+             "knobs: a moon day past the month, hour 24, the same hour out and back and "
+             "a chance past one are refused");
+  return failures;
+}
+
+/// Old age takes the old — asserted where it cannot be luck.
+///
+/// THE ASSERTION THAT STOOD IN THE VILLAGE TEST WAS A COIN. It said a
+/// 74-year-old is "gone within two game years — eight biological years" at
+/// 20 % a year, as if the rate were biological; RunDeaths divides it by the
+/// GAME year (demography.cpp), so the daily chance is 0.2 / 48 and he outlives
+/// two game years with probability (1 - 0.2/48)^96 ≈ 0.67. Seed 77 happened
+/// to take him, and the night trades' lots moved the stream on 2026-09-15 and
+/// he lived. Here he is alone for thirty game years: (1 - 0.2/48)^1440 ≈
+/// 0.0024 — still a lot, but one the stream would have to be very unlucky to
+/// draw, and the arithmetic stands beside it.
+int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
+  int failures = 0;
+  core::WorldState world;
+  world.world_seed = 77;
+  world.rng = core::SeedRngState(77, 0);
+  const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+  const core::ResidentId old_man = AddAdult(world, yard, core::Sex::kMale, 74.0F);
+  AddHouse(world, yard, core::Vec2{.x = 400.0F, .y = 0.0F});
+  RunDays(system, world, 30 * core::kDaysPerYear);
+  failures += Expect(FindRow(world.residents, old_man) == core::kNoRow,
+                     "old age takes a 74-year-old within thirty game years");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckTheDistrictSendsSpecialists();
@@ -1325,15 +1531,9 @@ int main() {
   failures += Expect(world.residents.next_id_value >= start_ids + births,
                      "ids grow monotonically, never reused");
 
-  // The 74-year-old (20%/year at 4x life speed) is gone within two game
-  // years — eight biological years beyond the old-age band.
-  bool old_man_alive = false;
-  for (const core::ResidentRow& resident : world.residents.rows) {
-    if (resident.birth_day <= -880) {
-      old_man_alive = true;
-    }
-  }
-  failures += Expect(!old_man_alive, "the old man died of age within two years");
+  // The old man's death has a check of its own (CheckOldAgeTakesTheOld): in
+  // two game years he survives two times in three, and this village's luck
+  // was all that held the assertion that used to stand here.
 
   // The single woman married (a migrant or widower): spouse symmetry holds
   // for every married resident.
@@ -1406,6 +1606,10 @@ int main() {
   failures += CheckWeddingQueueOrder();
   failures += CheckRooflessLadder();
   failures += CheckMembership();
+  failures += CheckNightTrades();
+  if (system != nullptr) {
+    failures += CheckOldAgeTakesTheOld(*system);
+  }
 
   if (failures == 0) {
     std::cout << "unit_core_residents: all checks passed\n";

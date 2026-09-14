@@ -336,6 +336,7 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   EmitResourceBlock(out, resources, "issued", book.issued);
   EmitResourceBlock(out, resources, "ration", book.ration);
   EmitResourceBlock(out, resources, "nets", book.nets);
+  EmitResourceBlock(out, resources, "night_catch", book.night_catch);
   EmitResourceBlock(out, resources, "yard_produce", book.yard_produce);
   EmitResourceBlock(out, resources, "plot_harvest", book.plot_harvest);
   EmitResourceBlock(out, resources, "eaten", book.eaten);

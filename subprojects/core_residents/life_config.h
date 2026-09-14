@@ -36,6 +36,7 @@
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
 #include "membership.h"
+#include "night_trade.h"
 
 namespace core {
 
@@ -147,6 +148,9 @@ struct LifeConfig {
 
   /// The organizations and ideology (membership.h; boss, parcel 334).
   MembershipConfig membership;
+
+  /// The night trades (night_trade.h; boss, parcel 346).
+  NightTradeConfig night_trade;
 
   float life_speedup = 4.0F;
 

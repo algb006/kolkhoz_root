@@ -35,9 +35,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-13: the limit's three int32 flows took it to 160.
 // 2026-09-14: digging (WorkKind::kExtraction) widened work_days_by_kind by a
 // float: 168, measured.
-static_assert(sizeof(YearLedger) == 168 + (13 * kAmountsSize),
+// 2026-09-15: the night trades' catch, a fourteenth amounts vector (save
+// format 40).
+static_assert(sizeof(YearLedger) == 168 + (14 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 42,
+static_assert(AggregateArity<YearLedger>() == 43,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -177,6 +179,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.issued);
   sink.WriteAmounts(DefKind::kResource, book.ration);
   sink.WriteAmounts(DefKind::kResource, book.nets);
+  sink.WriteAmounts(DefKind::kResource, book.night_catch);
   sink.WriteAmounts(DefKind::kResource, book.yard_produce);
   sink.WriteAmounts(DefKind::kResource, book.plot_harvest);
   sink.WriteAmounts(DefKind::kResource, book.eaten);
@@ -231,6 +234,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.issued = source.ReadAmounts(DefKind::kResource);
   book.ration = source.ReadAmounts(DefKind::kResource);
   book.nets = source.ReadAmounts(DefKind::kResource);
+  book.night_catch = source.ReadAmounts(DefKind::kResource);
   book.yard_produce = source.ReadAmounts(DefKind::kResource);
   book.plot_harvest = source.ReadAmounts(DefKind::kResource);
   book.eaten = source.ReadAmounts(DefKind::kResource);

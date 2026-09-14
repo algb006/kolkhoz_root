@@ -317,6 +317,9 @@ class ResidentsSystem final : public IResidentsSystem {
   /// the exchange counts eaters and hands out food, and the vitals window
   /// closes the day last, over the settlement demography has just finalized.
   void RunDemographyDecisions(const WorldState& previous, WorldState& current) override {
+    // The night trades go out and come back in their own hours, not at the
+    // day's turn (night_trade.h).
+    RunNightOutings(config_.night_trade, current);
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
     }
@@ -336,6 +339,9 @@ class ResidentsSystem final : public IResidentsSystem {
                        config_.body.age_school_junior_from_years,
                        config_.body.age_adult_from_years,
                        current);
+      // And the trades still missing are handed out, among those whom the
+      // year's membership left outside the organizations.
+      AssignNightTrades(config_.night_trade, config_.life_speedup, current);
     }
     RunMembershipWave(config_.membership,
                       config_.life_speedup,
@@ -378,7 +384,8 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
                       "labor",
                       "unit_types",
                       "professions",
-                      "world_params"},
+                      "world_params",
+                      "night_fishing_spots"},
                      nullptr)) {
     return nullptr;
   }
