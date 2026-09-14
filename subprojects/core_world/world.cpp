@@ -704,14 +704,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees
       // rather than an absence (boss, parcel 277).
-      //   store_leak_complaint_kg — the "raw material leak" door for the quest
-      //   «Кто гонит», queued behind digging (STUB).
-      //   night_distiller_raw_kg, night_watchman_theft_cut — the leak's
-      //   numbers (boss, parcel 364), read with store_leak_complaint_kg by
-      //   core_residents/night_trade.h once the leak's body lands.
-      constexpr std::array<std::string_view, 3> kDeclaredNotYetRead = {
-          "store_leak_complaint_kg", "night_distiller_raw_kg", "night_watchman_theft_cut"};
-      known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
+      //   None today: store_leak_complaint_kg and the leak's two numbers are
+      //   read by core_residents/night_trade.h since the leak's body.
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

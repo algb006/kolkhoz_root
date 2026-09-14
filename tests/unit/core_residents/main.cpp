@@ -1462,6 +1462,70 @@ int CheckNightTrades() {
   return failures;
 }
 
+/// The raw-material leak (crime design §7; boss, parcel 364): a distiller's
+/// night at the stores, a watchman cutting it, the month's tally and the
+/// complaint once a campaign.
+int CheckRawMaterialLeak() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::NightTradeConfig config;  // 50 kg, 60 %, 100 kg
+  config.raw_material = {core::ResourceId{0}};
+  config.post_shift = {core::PostShift::kWorkday, core::PostShift::kNight};
+
+  core::WorldState world;
+  core::UnitRow open_store;
+  open_store.level = 1;
+  open_store.stock = {30 * kKilo};
+  const core::UnitId open_id = AppendRow(world.units, open_store);
+  core::UnitRow kept_store;
+  kept_store.level = 1;
+  kept_store.stock = {100 * kKilo};
+  const core::UnitId kept_id = AppendRow(world.units, kept_store);
+  core::ResidentRow watchman;
+  watchman.post = core::PostAssignment{.profession = core::ProfessionId{1}, .unit = kept_id};
+  AppendRow(world.residents, watchman);
+  const auto stock_of = [&world](core::UnitId unit) {
+    return world.units.rows[FindRow(world.units, unit)].stock[0];
+  };
+
+  // 30 kg from the open store, then the remaining 20 attempted at the kept
+  // one, of which 40 % — 8 kg — is carried off.
+  const core::Grams first = core::StealRawMaterial(config, world);
+  failures += Expect(
+      first == 38 * kKilo && stock_of(open_id) == 0 && stock_of(kept_id) == 92 * kKilo &&
+          world.ledger.current.stolen.size() == 1 && world.ledger.current.stolen[0] == 38 * kKilo,
+      "leak: the open store gives all it holds, the watchman's store 60 % less, "
+      "and the book carries what went");
+  failures += Expect(world.step_events.empty() && world.night_theft.complaint_raised == 0,
+                     "leak: 38 kg in the month raises no complaint");
+
+  // Two more nights in the same month from a refilled open store — 50 kg each:
+  // past 100 kg, the complaint, once.
+  world.units.rows[FindRow(world.units, open_id)].stock[0] = 200 * kKilo;
+  core::StealRawMaterial(config, world);
+  core::StealRawMaterial(config, world);
+  std::uint32_t complaints = 0;
+  for (const core::SimEvent& event : world.step_events) {
+    complaints += event.kind == core::EventKind::kStoreLeakComplaint ? 1U : 0U;
+  }
+  failures += Expect(complaints == 1 && world.night_theft.complaint_raised == 1 &&
+                         world.night_theft.stolen_this_month >= 100 * kKilo,
+                     "leak: past 100 kg in a month the village complains, once");
+
+  // Next month: the tally starts again, and no second complaint ever.
+  world.step_events.clear();
+  world.calendar.tick = static_cast<core::Tick>(core::kDaysPerMonth) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  world.units.rows[FindRow(world.units, open_id)].stock[0] = 500 * kKilo;
+  core::StealRawMaterial(config, world);
+  core::StealRawMaterial(config, world);
+  core::StealRawMaterial(config, world);
+  failures +=
+      Expect(world.night_theft.stolen_this_month == 150 * kKilo && world.step_events.empty(),
+             "leak: a new month counts from zero, and the complaint does not come again");
+  return failures;
+}
+
 /// The school's pupils (education design §10; boss, parcel 354): the intake in
 /// September by age, radius and capacity with the elder first, the stage in
 /// June only with a teacher, and a gone school letting its pupils go.
@@ -1747,6 +1811,7 @@ int main() {
   failures += CheckMembership();
   failures += CheckNightTrades();
   failures += CheckSchooling();
+  failures += CheckRawMaterialLeak();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
   }

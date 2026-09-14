@@ -46,6 +46,7 @@
 
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/post_shift.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 
@@ -84,6 +85,10 @@ struct NightTradeConfig {
   /// oat), then potato, then sugar — resources.csv rows; an absent one is
   /// skipped.
   std::vector<ResourceId> raw_material;
+
+  /// The posts' shifts by ProfessionId (professions.csv `shift`): a unit is
+  /// kept tonight when a holder of a night post stands at it.
+  std::vector<PostShift> post_shift;
 
   /// The resources.csv rows the catch goes in as: `fish` and `meat`.
   ResourceId fish;

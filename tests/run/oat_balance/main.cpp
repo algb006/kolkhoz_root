@@ -198,9 +198,12 @@ int main(int argc, char** argv) {
     // up short.
     const core::Grams lost_no_room = core::AmountOf(book.lost_no_room, oat);
     const core::Grams closing = HeldEverywhere(state, oat);
+    // What the distillers carried off the stores (crime design §7, 2026-09-15):
+    // a road out of the world, named in the book as `stolen`.
+    const core::Grams stolen = core::AmountOf(book.stolen, oat);
 
     const core::Grams expected =
-        opening + harvest - fed - eaten - spoiled - sown - shipped - lost_no_room;
+        opening + harvest - fed - eaten - spoiled - sown - shipped - lost_no_room - stolen;
     const core::Grams residual = closing - expected;
     // A kilogram of one crop over a year of a whole settlement is the width
     // of the rounding, not of a leak.
