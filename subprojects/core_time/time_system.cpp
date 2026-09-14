@@ -208,6 +208,12 @@ struct SeasonWeather {
   /// facts have two (boss, 2026-09-05).
   float sultry_afternoon_celsius = 28.0F;
 
+  /// Afternoon at or above which the day is HOT — ЖАРА, "единый порог на всю
+  /// игру" (camera design §4): +25. Not a name of the day (a rainy hot day is
+  /// still hot) but a fact of it, said by EventKind::kHotAfternoon (boss,
+  /// parcel 364).
+  float hot_afternoon_celsius = 25.0F;
+
   /// Share of still dry days that fog over.
   float fog_share = 0.2F;
 
@@ -811,6 +817,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
       // it; the alternative — waiting for the row and then remembering to
       // read it — is the shape that left it behind in the first place.
       !number("snow_melt_c", degrees, &knobs.snow_melt_celsius) ||
+      !number("hot_afternoon_c", degrees, &knobs.hot_afternoon_celsius) ||
       !month("thunder_from_month", &knobs.thunder_from_month) ||
       !month("thunder_to_month", &knobs.thunder_to_month) ||
       !month("frost_from_month", &knobs.frost_from_month) ||
@@ -856,6 +863,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
     season.frost_night_celsius = knobs.frost_night_celsius;
     season.sultry_afternoon_celsius = knobs.sultry_afternoon_celsius;
     season.snow_melt_celsius = knobs.snow_melt_celsius;
+    season.hot_afternoon_celsius = knobs.hot_afternoon_celsius;
     season.thunder_from_month = knobs.thunder_from_month;
     season.thunder_to_month = knobs.thunder_to_month;
     season.frost_from_month = knobs.frost_from_month;

@@ -280,6 +280,13 @@ enum class EventKind : std::uint8_t {
   /// journal every day). kRoutine. Seam key `post_shift_started`.
   kPostShiftStarted,
 
+  // -- the day's heat (2026-09-15; camera design §4) ---------------------------
+
+  /// The day's afternoon is at or above +25 (`hot_afternoon_c`), whatever the
+  /// day is called; raised at the day's first tick; amount = the afternoon
+  /// temperature in tenths of a degree. kRoutine. Seam key `hot_afternoon`.
+  kHotAfternoon,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
