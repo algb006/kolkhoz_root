@@ -155,6 +155,19 @@ bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home) {
   return true;
 }
 
+bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
+  if (RidesOut(work.kind)) {
+    return true;
+  }
+  if (work.kind != WorkKind::kHarvest) {
+    return false;
+  }
+  // The same test the labour sub-step's CollectJobs sets `harnessed` by.
+  const std::uint32_t row = FindRow(world.fields, work.field);
+  return row != kNoRow && (world.fields.rows[row].kind == LandKind::kMeadow ||
+                           world.fields.rows[row].kind == LandKind::kFloodplainMeadow);
+}
+
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {
   // One body, two constnesses: the const overload does the reasoning and
   // this one only gives the answer back writable. Two bodies would be two

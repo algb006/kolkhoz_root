@@ -127,10 +127,9 @@ constexpr bool IsHorseWork(WorkKind kind) {
 /// three kilometres out by the ride and then walk it, with no day left
 /// (time design §7: "Порог и норма считают одно и то же плечо").
 ///
-/// The meadow cut rides in the assignment (AssignmentJob::harnessed) and still
-/// walks in the labour hour — a gap older than this function, named here
-/// rather than closed in passing because closing it moves the hay; it is put
-/// to boss with the felling commit.
+/// A KIND ANSWERS FOR A KIND. The meadow cut shares kHarvest with the hand
+/// harvest of a strip and rides where that walks, so the question of an
+/// assignment is WorkRidesOut (work_seam.h), which asks this and the field.
 constexpr bool RidesOut(WorkKind kind) {
   return IsHorseWork(kind) || kind == WorkKind::kFelling;
 }

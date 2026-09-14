@@ -73,6 +73,18 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
 ///         hand-built world.
 bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home);
 
+/// @brief Whether this assignment's road is measured at harness speed: its
+///        kind rides out (labor_state.h, RidesOut), or it is the cut of a
+///        meadow — the one harvest that rides, with a horse mower and hay
+///        carts (time design §7; farming design §5).
+///
+/// THE LABOUR HOUR AND THE RESIDENT'S ACTIVITY ASK THIS, and the assignment
+/// asks the same question of its job (AssignmentJob::harnessed). Until
+/// 2026-09-14 the meadow cut rode in the assignment and walked in the hour:
+/// mowers were sent by the ride and then lost the ride's hours from their
+/// day (boss, parcel 312: "плечо и выработка меряются одной меркой").
+bool WorkRidesOut(const WorldState& world, const WorkAssignment& work);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_WORK_SEAM_H_

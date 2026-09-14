@@ -2074,6 +2074,81 @@ int TestFellersRideOut() {
   return failures;
 }
 
+/// THE MEADOW CUT RIDES IN THE HOUR TOO, AND TAKES ONE HORSE FOR THE BRIGADE
+/// (time design §7; boss, parcel 312). A meadow 3 km out is 7.2 hours on foot
+/// and 3 on the mower's cart: the mowers are sent and mow there. The day's
+/// pool gives the brigade one horse, not one a mower — a ploughing job after
+/// the cut still gets the rest — and with no horse at all the grass is still
+/// cut.
+int TestMeadowCutRidesAndTakesOneHorse() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_cut_ride";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::ofstream(root / "farming.csv") << "key,value\nmeadow_cut_month_end,8\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "cut ride: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(2);
+  const core::FieldId meadow =
+      day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 3000.0F, .y = 0.0F});
+  day.world.fields.rows[core::FindRow(day.world.fields, meadow)].kind = core::LandKind::kMeadow;
+  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+    day.world.calendar.tick = (static_cast<core::Tick>(30) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  std::uint32_t mowers = 0;
+  for (const core::ResidentRow& resident : day.world.residents.rows) {
+    mowers +=
+        resident.work.kind == core::WorkKind::kHarvest && resident.work.field.value == meadow.value
+            ? 1U
+            : 0U;
+  }
+  failures += Expect(mowers == 2, "cut ride: both adults are sent to a meadow 3 km out");
+  failures += Expect(day.world.fields.rows[0].work_days_remaining < 5.0F,
+                     "cut ride: and they mow there, their day measured by the ride");
+
+  const core::Vec2 origin{0.0F, 0.0F};
+  core::AssignmentJob cut = FieldJob(core::WorkKind::kHarvest, 1, origin, 2.0F, 5);
+  cut.harnessed = true;
+  core::AssignmentJob plough = FieldJob(core::WorkKind::kPlowing, 2, origin, 5.0F, 0);
+  plough.window = core::Deadline{};  // no window: after the cut in the queue
+  const std::vector<core::AssignmentJob> jobs = {cut, plough};
+  std::vector<core::AssignmentCandidate> candidates;
+  for (std::uint32_t row = 0; row < 6; ++row) {
+    candidates.push_back(Worker(row, origin));
+  }
+  auto params = DayParams();
+  params.draught_horses = 2;
+  const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+  std::uint32_t cutting = 0;
+  std::uint32_t ploughing = 0;
+  for (const std::uint32_t job : plan) {
+    cutting += job == 0 ? 1U : 0U;
+    ploughing += job == 1 ? 1U : 0U;
+  }
+  failures += Expect(cutting >= 2 && ploughing == 1,
+                     "cut horse: the mowers take one horse for the brigade, and the plough "
+                     "behind them gets the other");
+  params.draught_horses = 0;
+  const auto horseless = core::PlanDayAssignments(jobs, candidates, params);
+  std::uint32_t scything = 0;
+  for (const std::uint32_t job : horseless) {
+    scything += job == 0 ? 1U : 0U;
+  }
+  failures += Expect(scything >= 1, "cut horse: with no horse at all the grass is still cut");
+  return failures;
+}
+
 /// A PAUSED BUILDING ASKS FOR NOBODY (construction design §6; the human's word
 /// of 2026-09-14): the same site draws the accountant's crew unpaused and no
 /// one paused, its seam untouched.
@@ -2230,6 +2305,7 @@ int main() {
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();
+  failures += TestMeadowCutRidesAndTakesOneHorse();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -417,7 +418,44 @@ int main() {
   // ploughing and harrowing truly cannot be done without one, and that is
   // now the rule (assignment.cpp): a horse is taken if one is free and makes
   // the work faster, and its absence stops nothing but the plough.
-  failures += run::Expect(hay_tonnes > 150.0 && hay_tonnes < 250.0,
+  //
+  // AND THE CUT, NOT THE STACK, SINCE 2026-09-14. The band above stood on the
+  // PEAK of the stores' hay, which carries what is left of the start's 165 t
+  // haystack beside the year's cut; it held while mowers walked in their
+  // working hour and took a horse each. With the cut riding in the hour as it
+  // does in the assignment and one mower for the brigade (time design §7;
+  // boss, parcel 312) the peak rose to 367 t. What the canon speaks of is the
+  // CUT, so that is what is asserted now, read off the ledger like the grain
+  // above, against the most the meadows can give: every hectare cut in time,
+  // at its kind's yield (meadow_kinds.csv). The "200 ha at 1.5 t/ha, 300 t"
+  // above is older than the floodplain meadows — the shipped layout is seven
+  // upland and three floodplain meadows of 20 ha, 360 t.
+  double hay_ceiling_tonnes = 0.0;
+  const core::ITable* const layout = world.tables->FindTable("start_layout");
+  const core::ITable* const meadow_kinds = world.tables->FindTable("meadow_kinds");
+  if (layout != nullptr && meadow_kinds != nullptr) {
+    const std::uint32_t kind_col = layout->FindColumn("kind");
+    const std::uint32_t area_col = layout->FindColumn("area_ha");
+    const std::uint32_t meadow_col = layout->FindColumn("meadow_kind");
+    const std::uint32_t yield_col = meadow_kinds->FindColumn("yield_kg_per_ha");
+    for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
+      if (layout->CellText(row, kind_col) != "meadow") {
+        continue;
+      }
+      const std::optional<float> area = layout->CellReal(row, area_col);
+      const std::optional<float> yield = meadow_kinds->CellReal(
+          meadow_kinds->FindRowByKey(layout->CellText(row, meadow_col)), yield_col);
+      if (area.has_value() && yield.has_value()) {
+        hay_ceiling_tonnes += static_cast<double>(*area) * static_cast<double>(*yield) / 1000.0;
+      }
+    }
+  }
+  const double hay_cut_tonnes = static_cast<double>(reaped_of(hay)) / 1.0e6;
+  std::cout << "harvest_first_year: the meadows were cut for " << hay_cut_tonnes << " t of hay of "
+            << hay_ceiling_tonnes << " t they can give (the stack peaked at " << hay_tonnes
+            << " t)\n";
+  failures += run::Expect(hay_ceiling_tonnes > 0.0 && hay_cut_tonnes > 150.0 &&
+                              hay_cut_tonnes <= hay_ceiling_tonnes + 1.0,
                           "the meadows deliver what the hands and the window allow");
 
   // The manure loop runs: the cows fill the heap (~351 t a year at full

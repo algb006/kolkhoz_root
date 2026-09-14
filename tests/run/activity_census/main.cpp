@@ -80,7 +80,13 @@ constexpr std::uint32_t kYears = 10;
 /// chairman truancy came on 1931 (509 man-hours), 1932 (1370) and 1936 (4563),
 /// and on none of the other six. The state is reachable; it is rarer than it
 /// was, and the six seeds without it are a number for the building chain.
-constexpr std::uint64_t kSeed = 1931;
+///
+/// AND 1932 THE SAME NIGHT, by the same rule, once the meadow cut rode in its
+/// working hour and took one horse for the brigade (parcel 312): on 1931 the
+/// walk-offs went, and of the nine seeds truancy came on 1932 (14 man-hours),
+/// 1933 (3799) and 1937 (3298). A census whose seed moves with every change of
+/// the world is a finding in itself, and it is put to boss.
+constexpr std::uint64_t kSeed = 1932;
 
 /// The names, in enum order, for the roll-call to print. Kept beside the
 /// enum rather than read from the table on purpose: the roster the check

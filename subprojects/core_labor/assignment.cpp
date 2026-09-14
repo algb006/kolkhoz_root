@@ -169,7 +169,7 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
       return 3;
     }
     // The meadow cut is the one harvest that rides out (labor_system.cpp,
-    // CollectJobs sets `harnessed` for a meadow and nothing else).
+    // CollectJobs sets `harnessed` on a harvest for a meadow and no other).
     const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
     if (meadow_cut) {
       return job.window.kind == DeadlineKind::kDays ? 2 : 4;
@@ -340,9 +340,18 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // came to rely on it. Without it the village could field an unlimited
     // number of horse mowers, and hauling would have put a cart behind
     // every carrier at once.
-    const bool horse_work = IsHorseWork(job.kind) || job.harnessed;
+    //
+    // EXCEPT THE MEADOW CUT, which takes ONE horse for the brigade (time design
+    // §7: "косилка одна на бригаду, а не всадник на косца"; boss, parcel 312).
+    // It took one a mower until 2026-09-14, and with no horse left it was not
+    // cut at all — while the rule below says a scythe is still work.
+    const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
+    const bool horse_work = IsHorseWork(job.kind) || (job.harnessed && !meadow_cut);
     if (horse_work && horses_left == 0) {
       continue;
+    }
+    if (meadow_cut && horses_left > 0) {
+      --horses_left;  // the mower, once for the whole brigade
     }
 
     // Fill until today's demand is covered: no more hands than the day can

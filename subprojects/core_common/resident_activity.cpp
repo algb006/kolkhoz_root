@@ -80,8 +80,8 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   const bool nothing_to_work_with = assigned && (seam == nullptr || *seam <= 0.0F);
   // HIS OWN ROAD, not the village's average: from his house to his job, at
   // the speed his kind of work travels. Harnessed work rides out.
-  // The same answer the labour hour asks (labor_state.h, RidesOut).
-  const bool harnessed = RidesOut(resident.work.kind);
+  // The same answer the labour hour asks (work_seam.h, WorkRidesOut).
+  const bool harnessed = assigned && WorkRidesOut(world, resident.work);
   const float hours_per_km = harnessed ? rules.harness_hours_per_km : rules.walk_hours_per_km;
   float travel = 0.0F;
   if (assigned && has_home && has_target) {

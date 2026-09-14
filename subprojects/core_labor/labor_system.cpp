@@ -870,7 +870,12 @@ class LaborSystem final : public ILaborSystem {
         PayDay(current, current.residents.rows[row]);
         continue;
       }
-      const float travel = TravelHours(home, target, HoursPerKm(config_, kind));
+      // Asked of the ASSIGNMENT and not of the kind: a meadow's cut rides and
+      // a strip's harvest walks, one kind between them (work_seam.h).
+      const WorkKind road_kind = WorkRidesOut(current, current.residents.rows[row].work)
+                                     ? WorkKind::kPlowing
+                                     : WorkKind::kHarvest;
+      const float travel = TravelHours(home, target, HoursPerKm(config_, road_kind));
       const float worked = HoursInside(hour, window.sunrise + travel, window.sunset - travel);
       if (worked <= 0.0F) {
         continue;
