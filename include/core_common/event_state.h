@@ -295,6 +295,14 @@ enum class EventKind : std::uint8_t {
   /// campaign. kNotable. Seam key `store_leak_complaint`.
   kStoreLeakComplaint,
 
+  // -- drinking (2026-09-15; crime design §6) ----------------------------------
+
+  /// resident, family — his alcoholism crossed a band's edge (20, 40, 60) in
+  /// either direction at the month's turn; amount = the lower edge of the band
+  /// he is in now (0, 20, 40 or 60). kRoutine. Seam key
+  /// `alcoholism_band_crossed`.
+  kAlcoholismBandCrossed,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

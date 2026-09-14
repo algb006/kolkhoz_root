@@ -704,8 +704,22 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees
       // rather than an absence (boss, parcel 277).
-      //   None today: store_leak_complaint_kg and the leak's two numbers are
-      //   read by core_residents/night_trade.h since the leak's body.
+      //   store_leak_complaint_kg and the leak's two numbers are read by
+      //   core_residents/night_trade.h since the leak's body.
+      //   alcohol_* — the drinking's ten numbers (boss, parcel 364), read by
+      //   core_residents/alcoholism.h once the drinking's body lands.
+      constexpr std::array<std::string_view, 10> kDeclaredNotYetRead = {
+          "alcohol_adult_from_years",
+          "alcohol_gain_with_distiller",
+          "alcohol_gain_winter_idle",
+          "alcohol_gain_low_satisfaction",
+          "alcohol_low_satisfaction_below",
+          "alcohol_loss_employed",
+          "alcohol_employed_days_min",
+          "alcohol_loss_married",
+          "alcohol_women_factor",
+          "alcohol_epoch1_cap"};
+      known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

@@ -50,9 +50,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-15: the night trade byte landed in padding beside social_status —
 // 180 still, 39 fields.
 // The same day the pupil's school, a unit id, took it to 184.
+// 2026-09-15: days_worked_this_month, a byte, landed in padding — 184 still,
+// 41 fields.
 static_assert(sizeof(ResidentRow) == 184,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ResidentRow>() == 40,
+static_assert(AggregateArity<ResidentRow>() == 41,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -349,6 +351,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
 
   out.WriteU8(static_cast<std::uint8_t>(row.social_status));
   out.WriteU8(static_cast<std::uint8_t>(row.night_trade));
+  out.WriteU8(row.days_worked_this_month);
   out.WriteFloat(row.alcoholism);
   out.WriteFloat(row.crime_inclination);
   out.WriteU16(row.offense_count);
@@ -415,6 +418,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.social_status =
       static_cast<SocialStatus>(source.ReadEnumValue(0, kMaxSocialStatus, "social status"));
   row.night_trade = static_cast<NightTrade>(source.ReadEnumValue(0, kMaxNightTrade, "night trade"));
+  row.days_worked_this_month = in.ReadU8();
   row.alcoholism = in.ReadFloat();
   row.crime_inclination = in.ReadFloat();
   row.offense_count = in.ReadU16();
