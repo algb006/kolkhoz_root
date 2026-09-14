@@ -484,6 +484,10 @@ class StandardSimulation final : public ISimulation {
     return construction_->WearDeadline(engine_->CompletedState(), unit);
   }
 
+  std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
+    return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
+  }
+
   StinkStrength StinkFullAt(Vec2 point) const override {
     return construction_->StinkFullAt(engine_->CompletedState(), point);
   }

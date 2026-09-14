@@ -70,6 +70,7 @@
 #include "core_common/deadline.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/material_shortfall.h"
 #include "core_common/order_state.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
@@ -286,6 +287,12 @@ class ISimulation {
   /// rate; the bare engine knows no subsystems and answers kNoData.
   /// @note Called between steps on the sim thread.
   virtual Deadline WearDeadline(UnitId unit) const = 0;
+
+  /// @brief What the village lacks to start the works on `unit`, line by line
+  /// (construction design §6). Fans out to core_construction; the bare engine
+  /// knows no subsystems and answers nothing short.
+  /// @note Called between steps on the sim thread.
+  virtual std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const = 0;
 
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.

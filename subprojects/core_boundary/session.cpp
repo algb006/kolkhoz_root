@@ -266,6 +266,10 @@ class Session final : public ISession {
 
   Deadline WearDeadline(UnitId unit) const override { return simulation_->WearDeadline(unit); }
 
+  std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
+    return simulation_->MaterialsShortFor(unit);
+  }
+
   StinkStrength StinkFullAt(Vec2 point) const override { return simulation_->StinkFullAt(point); }
 
   StinkStrength StinkNowAt(Vec2 point) const override { return simulation_->StinkNowAt(point); }

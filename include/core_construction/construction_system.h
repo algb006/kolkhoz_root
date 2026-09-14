@@ -118,6 +118,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/deadline.h"
+#include "core_common/material_shortfall.h"
 #include "core_common/stink.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
@@ -194,6 +195,23 @@ class IConstructionSystem {
   ///         tables carry no term to compute with.
   /// @note Called between steps on the sim thread. A pure read.
   virtual Deadline WearDeadline(const WorldState& completed, UnitId unit) const = 0;
+
+  /// @brief What the village lacks, line by line, to START the works on
+  /// `unit` (construction design §6, "старт проверяет материалы — и называет,
+  /// чего не хватает"; the human's word of 2026-09-14).
+  ///
+  /// The works asked about are the ones kStartBuild or kUpgradeUnit would
+  /// open: a marked site's own target level; a standing unit's next level.
+  /// Held counts the stores, the heaps (every built unit) and what already
+  /// lies on the site itself. A line appears only where held < needed.
+  /// @return Empty when nothing is short — and also for a unit that is not
+  ///         there, a building already started (its materials are reserved),
+  ///         a unit at the top of its ladder, and a repair (spare parts are a
+  ///         repair's own rule). The order refused kMaterialsShort answers the
+  ///         same question with the same list.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual std::vector<MaterialShortfall> MaterialsShortFor(const WorldState& completed,
+                                                           UnitId unit) const = 0;
 
   /// @brief How badly it stinks at this point AT WORST — the FULL zone of
   /// every source that reaches it (water design §4).

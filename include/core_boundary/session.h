@@ -119,6 +119,7 @@
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/material_shortfall.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/stink.h"
@@ -639,6 +640,18 @@ class ISession {
   /// A unit that does not exist is kNotApplicable.
   /// @note Between steps; the answer describes State().
   virtual Deadline WearDeadline(UnitId unit) const = 0;
+
+  /// @brief What the village lacks to START the works on `unit`, line by line:
+  /// the resource, needed, held (construction design §6, "старт проверяет
+  /// материалы — и называет, чего не хватает"; the human's word of
+  /// 2026-09-14). The answer the layer shows beside a start refused with
+  /// kMaterialsShort, and one it may ask BEFORE ordering, to grey the button.
+  ///
+  /// Held counts the stores, the heaps and what lies on the site. Empty when
+  /// nothing is short, and for a unit that is not there, a building already
+  /// started (its materials are reserved) or one at the top of its ladder.
+  /// @note Between steps; the answer describes State().
+  virtual std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const = 0;
 
   /// @brief How badly it stinks at a point of the map, in the four bands the
   /// design speaks in (water design §4). Two questions, two doors:

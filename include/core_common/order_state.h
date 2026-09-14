@@ -134,10 +134,20 @@ enum class OrderKind : std::uint8_t {
 
   /// Stop production at `unit` — at once if no cycle is running, otherwise
   /// when the running cycle ends (unit rules §5). Consumer: core_production.
+  ///
+  /// AND A STARTED BUILDING OR A DEMOLITION (construction design §6; the
+  /// human's word of 2026-09-14, "стройку и снос можно ставить на паузу"): a
+  /// site of a new unit, an upgrade or a module in kDelivering or kBuilding,
+  /// or a unit in kDemolishing. On pause the crew is released at the day's end,
+  /// the phase and the share done stay, nothing is carried to the site or away
+  /// from the demolition, and the materials already reserved stay the site's —
+  /// no saw and no other building takes them. A marked plot is not work and is
+  /// not paused (refused kRuleForbids).
   kPauseUnit,
 
   /// Resume a paused `unit`; work restarts the next day. Consumer:
-  /// core_production.
+  /// core_production. A resumed building is NOT re-checked against its
+  /// recipe (construction design §6): what it reserved is still its own.
   kResumeUnit,
 
   /// Set the three-year rotation of `field` to rotation_year0..2 (farming
@@ -537,6 +547,16 @@ enum class OrderRefusal : std::uint8_t {
   /// Named apart from kRuleForbids because the remedy is the next year's
   /// grant or a cheaper lot, not a different order (boss, parcel 211).
   kLimitShort,
+
+  /// kStartBuild, kUpgradeUnit: some line of the level's recipe is not in the
+  /// village IN FULL — the stores, the heaps and what already lies on the site
+  /// together (construction design §6, "старт проверяет материалы — и
+  /// называет, чего не хватает"; the human's word of 2026-09-14). The works do
+  /// not start. WHAT is short, line by line, is answered by the construction
+  /// door MaterialsShortFor (the session's too), not carried on the row: the
+  /// order row is a fixed-width record and a recipe is a list. Seam key
+  /// `materials_short`.
+  kMaterialsShort,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

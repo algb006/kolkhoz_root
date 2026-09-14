@@ -88,6 +88,13 @@ class ConstructionSystem final : public IConstructionSystem {
     return core::WearDeadline(config_, completed, unit);
   }
 
+  /// STUB until the recipe check of construction design §6 lands: the
+  /// contract's answer shape, nothing short.
+  std::vector<MaterialShortfall> MaterialsShortFor(const WorldState& /*completed*/,
+                                                   UnitId /*unit*/) const override {
+    return {};
+  }
+
   StinkStrength StinkFullAt(const WorldState& completed, Vec2 point) const override {
     return core::StinkFullAt(config_, completed, point);
   }
