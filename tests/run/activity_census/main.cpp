@@ -71,8 +71,14 @@ namespace {
 /// (building_chairman.h); in six years nobody walked off.
 constexpr std::uint32_t kYears = 10;
 
-/// The census's world. An argument overrides it, for looking for a seed on
-/// which a state is reached.
+/// THE CENSUS'S WORLDS: NINE SEEDS, 1929-1937, SINCE 2026-09-14 (boss, parcel
+/// 314). A state counts as dead only if it happens on NONE of them. The history
+/// below is why: with one seed, the seed had to move every time the world did.
+/// An argument runs one seed alone, for looking.
+constexpr std::uint64_t kFirstSeed = 1929;
+constexpr std::uint64_t kSeedCount = 9;
+
+/// The history of the single seed, kept for the reason above.
 ///
 /// 1931 SINCE 2026-09-14, and 1930 before it, by boss's rule (parcel 306):
 /// ten years on 1930 still showed no walk-off, so the census takes the first
@@ -85,8 +91,8 @@ constexpr std::uint32_t kYears = 10;
 /// working hour and took one horse for the brigade (parcel 312): on 1931 the
 /// walk-offs went, and of the nine seeds truancy came on 1932 (14 man-hours),
 /// 1933 (3799) and 1937 (3298). A census whose seed moves with every change of
-/// the world is a finding in itself, and it is put to boss.
-constexpr std::uint64_t kSeed = 1932;
+/// the world is a finding in itself, and it is put to boss — who answered with
+/// the nine seeds.
 
 /// The names, in enum order, for the roll-call to print. Kept beside the
 /// enum rather than read from the table on purpose: the roster the check
@@ -177,11 +183,52 @@ core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
   return rules;
 }
 
+int CensusOfSeed(std::uint64_t seed, bool last, std::array<std::uint64_t, kNames.size()>& seen);
+
 }  // namespace
 
 int main(int argc, char** argv) {
   int failures = 0;
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : kSeed;
+  const std::uint64_t first_seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : kFirstSeed;
+  const std::uint64_t seed_count = argc > 1 ? 1U : kSeedCount;
+  std::array<std::uint64_t, kNames.size()> seen{};
+  for (std::uint64_t seed = first_seed; seed < first_seed + seed_count; ++seed) {
+    const bool last = seed + 1 == first_seed + seed_count;
+    failures += CensusOfSeed(seed, last, seen);
+  }
+
+  std::cout << "activity_census: " << kYears << " years on " << seed_count << " seeds from "
+            << first_seed << "\n";
+  for (std::size_t index = 0; index < kNames.size(); ++index) {
+    const bool dead = seen[index] == 0;
+    const char* mark = "        ";
+    if (dead) {
+      mark = Waived(kNames[index]) ? "молчит  " : "МЁРТВОЕ ";
+    }
+    std::cout << "activity_census:   " << mark << kNames[index] << ' ' << seen[index]
+              << " человеко-часов\n";
+    if (dead && !Waived(kNames[index])) {
+      failures += run::Expect(false, "an activity nothing waived never happened on any seed");
+    }
+    if (!dead && Waived(kNames[index])) {
+      // A waived state that DID fire is the other half of the same check:
+      // either it gained a source and the waiver is stale, or it is firing
+      // on a guess. Both are worth stopping for.
+      failures += run::Expect(false, "a waived activity happened after all — the waiver is stale");
+    }
+  }
+  if (failures == 0) {
+    std::cout << "activity_census: all checks passed\n";
+  }
+  return failures;
+}
+
+namespace {
+
+/// One seed's census, added to `seen`; on the `last` seed the save probe too.
+/// @return The failures of the save probe.
+int CensusOfSeed(std::uint64_t seed, bool last, std::array<std::uint64_t, kNames.size()>& seen) {
+  int failures = 0;
   const run::Simulation world = run::Start(seed);
   if (!world) {
     return 1;
@@ -198,10 +245,11 @@ int main(int argc, char** argv) {
   // chairman (building_chairman.h): without it the village leaves in its
   // first winters and half the roll-call has nobody to answer it.
   run::BuildingChairman builder(*world.tables);
-  run::BuildingChairman::Declare("activity_census");
+  if (last) {
+    run::BuildingChairman::Declare("activity_census");  // once, not nine times
+  }
   run::OrdersPolicy orders;
 
-  std::array<std::uint64_t, kNames.size()> seen{};
   for (std::uint32_t day = 0; day < kYears * core::kDaysPerYear; ++day) {
     builder.RunDay(*world.simulation);
     orders.RunDay(*world.simulation);
@@ -215,27 +263,11 @@ int main(int argc, char** argv) {
     }
   }
 
-  std::cout << "activity_census: " << kYears << " years, seed " << seed << "\n";
-  for (std::size_t index = 0; index < kNames.size(); ++index) {
-    const bool dead = seen[index] == 0;
-    const char* mark = "        ";
-    if (dead) {
-      mark = Waived(kNames[index]) ? "молчит  " : "МЁРТВОЕ ";
-    }
-    std::cout << "activity_census:   " << mark << kNames[index] << ' ' << seen[index]
-              << " человеко-часов\n";
-    if (dead && !Waived(kNames[index])) {
-      failures += run::Expect(false, "an activity nothing waived never happened");
-    }
-    if (!dead && Waived(kNames[index])) {
-      // A waived state that DID fire is the other half of the same check:
-      // either it gained a source and the waiver is stale, or it is firing
-      // on a guess. Both are worth stopping for.
-      failures += run::Expect(false, "a waived activity happened after all — the waiver is stale");
-    }
+  if (!last) {
+    return failures;
   }
 
-  // -- the save probe -------------------------------------------------------
+  // -- the save probe, on the last seed's world -----------------------------
   const std::filesystem::path file =
       std::filesystem::temp_directory_path() / "activity_census.save";
   std::string error;
@@ -266,8 +298,7 @@ int main(int argc, char** argv) {
                           "and every one of them is doing the same thing afterwards: a derived "
                           "value survives a save only if everything under it does");
   std::filesystem::remove(file);
-
-  std::cout << (failures == 0 ? "activity_census: all checks passed\n"
-                              : "activity_census: FAILED\n");
   return failures;
 }
+
+}  // namespace

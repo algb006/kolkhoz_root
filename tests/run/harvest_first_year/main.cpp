@@ -430,21 +430,37 @@ int main() {
   // at its kind's yield (meadow_kinds.csv). The "200 ha at 1.5 t/ha, 300 t"
   // above is older than the floodplain meadows — the shipped layout is seven
   // upland and three floodplain meadows of 20 ha, 360 t.
+  //
+  // AND THE SOWN GRASS, which is hay too (boss, parcel 314, asked where the
+  // thirty-year run's 402 t a year against 360 came from): clover and timothy
+  // in a field's rotation are cut every summer (farming design, "Многолетние
+  // травы: укосами каждое лето") and their crop's resource is hay (crops.csv).
+  // The start layout sows timothy on 10.5 ha in its first year; the ceiling
+  // counts a field whose first-year crop gives hay at that crop's yield.
   double hay_ceiling_tonnes = 0.0;
   const core::ITable* const layout = world.tables->FindTable("start_layout");
   const core::ITable* const meadow_kinds = world.tables->FindTable("meadow_kinds");
-  if (layout != nullptr && meadow_kinds != nullptr) {
+  const core::ITable* const crops = world.tables->FindTable("crops");
+  if (layout != nullptr && meadow_kinds != nullptr && crops != nullptr) {
     const std::uint32_t kind_col = layout->FindColumn("kind");
     const std::uint32_t area_col = layout->FindColumn("area_ha");
     const std::uint32_t meadow_col = layout->FindColumn("meadow_kind");
+    const std::uint32_t year0_col = layout->FindColumn("rotation_year0");
     const std::uint32_t yield_col = meadow_kinds->FindColumn("yield_kg_per_ha");
+    const std::uint32_t crop_resource_col = crops->FindColumn("resource");
+    const std::uint32_t crop_yield_col = crops->FindColumn("yield_kg_per_ha");
     for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
-      if (layout->CellText(row, kind_col) != "meadow") {
-        continue;
-      }
       const std::optional<float> area = layout->CellReal(row, area_col);
-      const std::optional<float> yield = meadow_kinds->CellReal(
-          meadow_kinds->FindRowByKey(layout->CellText(row, meadow_col)), yield_col);
+      std::optional<float> yield;
+      if (layout->CellText(row, kind_col) == "meadow") {
+        yield = meadow_kinds->CellReal(
+            meadow_kinds->FindRowByKey(layout->CellText(row, meadow_col)), yield_col);
+      } else if (layout->CellText(row, kind_col) == "field") {
+        const std::uint32_t crop = crops->FindRowByKey(layout->CellText(row, year0_col));
+        if (crop != core::kNoTableRow && crops->CellText(crop, crop_resource_col) == "hay") {
+          yield = crops->CellReal(crop, crop_yield_col);
+        }
+      }
       if (area.has_value() && yield.has_value()) {
         hay_ceiling_tonnes += static_cast<double>(*area) * static_cast<double>(*yield) / 1000.0;
       }
