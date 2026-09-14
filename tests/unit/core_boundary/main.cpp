@@ -653,13 +653,14 @@ int TestPostShifts() {
   failures += Expect(session->WhereaboutsOf(keeper).field.value == field_id.value &&
                          session->WhereaboutsOf(librarian).field.value == field_id.value,
                      "shifts: and both are on the field the accountant sent them to");
-  at(1, 20);  // Tuesday evening
+  at(1, 18);  // Tuesday, the hour after sunset
   failures += Expect(count(hut) == 1 && count(bath) == 0 && count(school) == 0,
-                     "shifts: a weekday evening — the librarian at the reading hut, nobody else");
+                     "shifts: a weekday dusk — the librarian at the reading hut, nobody else");
   failures += Expect(session->WhereaboutsOf(librarian).unit.value == hut.value,
                      "shifts: and he stands there");
-  at(1, 23);  // past bedtime
-  failures += Expect(count(hut) == 0, "shifts: past bedtime the reading hut is empty");
+  at(1, 20);  // two hours past sunset: dark, and no electricity (boss, parcel 251)
+  failures += Expect(count(hut) == 0,
+                     "shifts: an hour and a half past sunset the kerosene evening is over");
   at(5, 20);  // Saturday evening
   failures += Expect(count(bath) == 1, "shifts: Saturday evening — the bath is heated");
   at(5, 12);  // Saturday noon

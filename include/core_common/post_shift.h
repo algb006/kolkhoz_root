@@ -17,10 +17,14 @@
 ///     keeper. On weekdays he is on the accountant's list.
 ///
 /// THE HOURS, named because the design gives words and the core needs
-/// numbers (boss asked for them at the delivery): the working day ends at
-/// SUNSET — the labor model's working window is the daylight — and bedtime is
-/// kPostShiftBedtimeHour. "До темноты" and "до сна" are therefore one hour in
-/// Epoch I, the lamp being what makes them two (STUB until electricity).
+/// numbers: the working day ends at SUNSET — the labor model's working window
+/// is the daylight — and bedtime is kPostShiftBedtimeHour. The reading hut's
+/// evening is shorter: "до темноты" is sunset plus kEveningDuskHours of dusk
+/// and a kerosene lamp, and with electricity it lasts until bedtime (boss,
+/// parcel 251, a number assigned and not measured). "The length of the
+/// evening is a live signal" (social units §1), so the two must differ; the
+/// core has no electricity yet, and the evening is the dusk one always
+/// (STUB). The bath day's Saturday evening runs until bedtime.
 
 #ifndef CORE_COMMON_POST_SHIFT_H_
 #define CORE_COMMON_POST_SHIFT_H_
@@ -42,6 +46,10 @@ enum class PostShift : std::uint8_t {
 
 /// @brief The hour the village goes to bed: evening shifts end at it.
 inline constexpr std::uint32_t kPostShiftBedtimeHour = 22;
+
+/// @brief Hours an evening shift lasts past sunset without electricity: dusk
+///        and a kerosene lamp. STUB: always, until the core has electricity.
+inline constexpr float kEveningDuskHours = 1.5F;
 
 /// @brief The shift a professions.csv cell names; an empty cell is kWorkday.
 /// @return false for a word that is none of workday, evening, bath_day.
@@ -78,7 +86,7 @@ constexpr bool InPostShift(PostShift shift,
     case PostShift::kWorkday:
       return HourOverlaps(hour, window.sunrise, window.sunset);
     case PostShift::kEvening:
-      return HourOverlaps(hour, window.sunset, bedtime);
+      return HourOverlaps(hour, window.sunset, window.sunset + kEveningDuskHours);
     case PostShift::kBathDay:
       return (weekday == Weekday::kSaturday && HourOverlaps(hour, window.sunset, bedtime)) ||
              (weekday == Weekday::kSunday && HourOverlaps(hour, window.sunrise, bedtime));
