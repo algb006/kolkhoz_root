@@ -103,7 +103,7 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
         working += resident.work.unit.value == unit.value ? 1U : 0U;
         break;
       default:
-        break;  // a field's or a stand's work, or none  // a field's or a stand's work, or none
+        break;  // a field's or a stand's work, or none
     }
   }
   signals.residents_working = Saturate16(working);
