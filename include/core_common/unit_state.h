@@ -141,6 +141,24 @@ struct ConstructionState {
   /// couple of weeks for a brigade" from becoming three days for the whole
   /// village (construction design §8).
   std::uint8_t max_crew = 0;
+
+  /// THE WORKS' OWN SHARE OF A STANDING UNIT'S STOCK, dense by ResourceId:
+  /// grams of `UnitRow::stock` held for the level being raised (or the
+  /// spare parts of a repair) and for nothing else. A level-0 site needs no
+  /// such line — a site stores nothing for anybody, and every taker skips
+  /// it whole. A STANDING unit keeps working while its next level goes up
+  /// (unit rules §11), and its stock is also a store: without this line the
+  /// recipe the start checked and carried in (construction design §6) sat
+  /// where the production sub-step's takers — the saw's logs, the plan's
+  /// deliveries, a herd's feed — could draw it out a day later, and the
+  /// check guaranteed nothing (boss, parcel 294).
+  ///
+  /// Written only by the construction sub-step: raised as the recipe is
+  /// carried in, never above the recipe line nor above the stock; emptied
+  /// with the rest of this block when the works end. Every taker of a
+  /// unit's stock for any other purpose takes only `stock - reserved`, never
+  /// below zero. Empty vector = nothing held back.
+  ResourceAmounts reserved;
 };
 
 /// @brief One unit. Plain data; behavior comes from the type's table row.

@@ -251,6 +251,11 @@ core::WorldState MakeWorld() {
   barn.type = core::UnitTypeId{0};
   barn.position = core::Vec2{.x = 10.0F, .y = 20.0F};
   barn.stock = Amounts({12'000'000, 3'000'000, 0, 0, 165'000'000, 0});
+  // Raising its next level: part of that stock is the works' own, and a
+  // load that forgot it would hand the recipe back to the saw.
+  barn.construction.phase = core::ConstructionPhase::kDelivering;
+  barn.construction.target_level = 2;
+  barn.construction.reserved = Amounts({0, 2'500'000, 0, 0, 0, 0});
   core::AppendRow(world.units, barn);
   core::UnitRow house;
   house.type = core::UnitTypeId{1};
@@ -691,6 +696,11 @@ int main() {
 
   // The condition bytes came back as well, each one separately: a check
   // that read them together would pass on a codec that swapped them.
+  const core::UnitRow& barn_back = loaded.units.rows[0];
+  failures += Expect(barn_back.construction.reserved.size() >= 2 &&
+                         barn_back.construction.reserved[1] == 2'500'000 &&
+                         barn_back.construction.reserved[0] == 0,
+                     "an upgrade resumes with its recipe still held back from the store");
   const core::UnitRow& house_back = loaded.units.rows[1];
   failures += Expect(house_back.paused == 1, "a stopped unit resumes stopped");
   failures += Expect(house_back.dead == 1, "and a dead one resumes dead, not merely worn");

@@ -107,8 +107,16 @@ static_assert(AggregateArity<FieldRow>() == 30,
 // 2026-09-13: the module's parent and the production seam — three 4-byte
 // fields — took it only to 64 + amounts: four of the twelve bytes landed in
 // the tail padding. The field count below moved by three regardless.
-static_assert(sizeof(UnitRow) == 64 + kAmountsSize,
+// 2026-09-14: the works' reserved amounts — a second dense vector, inside the
+// site block — took it to 64 + two amounts (VERSION_SAVE 37). The site block
+// had no tripwire of its own, so a byte landing in its padding would have
+// moved neither assert on the row: it has its own pair now.
+static_assert(sizeof(UnitRow) == 64 + (2 * kAmountsSize),
               "UnitRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
+              "ConstructionState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ConstructionState>() == 6,
+              "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<UnitRow>() == 13,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
@@ -612,6 +620,10 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteFloat(row.construction.labor_days_total);
   out.WriteFloat(row.construction.labor_days_remaining);
   out.WriteU8(row.construction.max_crew);
+  // What the works hold back of a standing unit's stock (2026-09-14,
+  // VERSION_SAVE 37): the upgrade's carried-in recipe, which the stock
+  // alone cannot tell from the store's own goods.
+  sink.WriteAmounts(DefKind::kResource, row.construction.reserved);
 
   // Wear (task A5): the building's own age, which nothing can rederive.
   out.WriteFloat(row.wear);
@@ -647,6 +659,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.labor_days_total = in.ReadFloat();
   row.construction.labor_days_remaining = in.ReadFloat();
   row.construction.max_crew = in.ReadU8();
+  row.construction.reserved = source.ReadAmounts(DefKind::kResource);
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
   row.dead = in.ReadU8();
