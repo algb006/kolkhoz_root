@@ -44,6 +44,7 @@
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "district_limit.h"
+#include "extraction_digging.h"
 #include "field_haul.h"
 #include "field_removal.h"
 #include "field_work.h"
@@ -179,6 +180,9 @@ class ProductionSystem final : public IProductionSystem {
     // A felling the crew finished this hour is lying on the ground this hour
     // (timber_felling.h) — the same reasoning as the field phases below.
     FellFinishedStands(config_, current);
+    // And a digging finished this hour lies on its site this hour
+    // (extraction_digging.h).
+    DigFinishedSites(current);
     if (config_.crops.empty()) {
       return;  // a table-less world idles (STUB)
     }
@@ -204,6 +208,7 @@ class ProductionSystem final : public IProductionSystem {
     if (HourFromTick(current.calendar.tick) + 1U >= kTicksPerDay) {
       SettleHauling(config_, current);
       SettleStandHauling(config_, current);
+      SettleSiteHauling(config_, current);
       // The sawmill after the carting, so tonight's logs off the stands are
       // in tomorrow's demand (unit_production.h).
       SettleUnitProduction(config_, current);
@@ -676,6 +681,9 @@ class ProductionSystem final : public IProductionSystem {
           break;
         case OrderKind::kMarkFelling:
           Settle(order, MarkFelling(config_, current, order));
+          break;
+        case OrderKind::kMarkExtraction:
+          Settle(order, MarkExtraction(config_, current, order));
           break;
         case OrderKind::kOrderLimitLot:
           Settle(order, OrderLimitLot(config_, current, order));
@@ -1313,6 +1321,7 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
                       "professions",
                       "world_params",
                       "timber_stands",
+                      "extraction_sites",
                       "limit_catalog",
                       "limit_lot_goods"},
                      nullptr)) {

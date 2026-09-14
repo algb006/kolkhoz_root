@@ -496,7 +496,8 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   if (const ITable* professions = tables.FindTable("professions")) {
     config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey(kGroomPostKey));
   }
-  return ParseTimberCatalog(tables, config.timber, error);
+  return ParseTimberCatalog(tables, config.timber, error) &&
+         ParseExtractionCatalog(tables, config.extraction, error);
 }
 
 }  // namespace core

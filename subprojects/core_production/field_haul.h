@@ -62,6 +62,18 @@ HaulRate StandHaulRate(const ProductionConfig& config,
 /// @pre The day's last tick, sequential slot, after labor has run.
 void SettleStandHauling(const ProductionConfig& config, WorldState& current);
 
+/// @brief What one carrier is worth on an extraction site's shoulder today —
+/// measured to the heap where that resource already lies, else to the shared
+/// store (the stand's rule, for the stand's reason).
+HaulRate SiteHaulRate(const ProductionConfig& config,
+                      const WorldState& world,
+                      const ExtractionSiteRow& site);
+
+/// @brief The same settlement for what lies dug on the extraction sites:
+/// "добытое — груз на участке, как урожай на поле" (boss, parcel 270).
+/// @pre The day's last tick, sequential slot, after labor has run.
+void SettleSiteHauling(const ProductionConfig& config, WorldState& current);
+
 /// @brief A day in the life of everything lying in a unit's store.
 /// @pre Called AFTER the village has eaten: the meal is the needs slot,
 ///      phase 2, and this is phase 3 of the same tick. Eaten food cannot

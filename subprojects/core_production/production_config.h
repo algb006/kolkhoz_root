@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
@@ -706,6 +707,10 @@ struct ProductionConfig {
 
   /// Timber design §8a: the stands and the felling numbers (2026-09-13).
   TimberCatalog timber;
+
+  /// Construction design §3: the plots clay, stone and sand are dug on and
+  /// the digging numbers (boss, parcel 270).
+  ExtractionCatalog extraction;
 
   /// District design §1, §4: the limit catalogue and the year's points
   /// knobs (2026-09-13).

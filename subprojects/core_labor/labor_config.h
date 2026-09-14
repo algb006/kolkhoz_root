@@ -30,6 +30,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/extraction_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -359,6 +360,9 @@ struct LaborConfig {
   /// Timber design §8a: how many tools a feller needs, and the tool's mass,
   /// to cap a felling crew by the tools in the stores (2026-09-13).
   TimberCatalog timber;
+
+  /// Construction design §3: the digging crew's cap by tools (boss, parcel 270).
+  ExtractionCatalog extraction;
 };
 
 /// @brief Fills `config` from the table set.

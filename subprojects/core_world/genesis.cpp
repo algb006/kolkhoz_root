@@ -1259,6 +1259,7 @@ WorldState CreateStartWorld(const ITableSet& tables,
     }
   }
   MakeTimberStands(tables, world, error);
+  MakeExtractionSites(tables, world, error);
   return world;
 }
 

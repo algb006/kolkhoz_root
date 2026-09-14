@@ -44,6 +44,10 @@ struct AssignmentJob {
   /// into WorkAssignment.
   TimberStandId stand;
 
+  /// Valid for kExtraction, and for kHauling of a load lying on an extraction
+  /// site. Copied into WorkAssignment.
+  ExtractionSiteId extraction_site;
+
   /// At most this many workers on this job at once; 0 = no cap beyond the
   /// demand ceiling below. Construction sites carry one — the build
   /// class's brigade (unit_levels.csv max_crew): without it a 250-day site

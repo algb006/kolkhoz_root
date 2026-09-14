@@ -693,6 +693,14 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_time.begin(), from_time.end());
       known.insert(known.end(), from_genesis.begin(), from_genesis.end());
       known.insert(known.end(), from_life.begin(), from_life.end());
+      // DECLARED FOR THE CORE, READ BY NOBODY YET — each with the door that
+      // will read it. Named here so the export that carries the row does not
+      // stop the assembly, and so the unread knob is a line somebody sees
+      // rather than an absence (boss, parcel 277).
+      //   store_leak_complaint_kg — the "raw material leak" door for the quest
+      //   «Кто гонит», queued behind digging (STUB).
+      constexpr std::array<std::string_view, 1> kDeclaredNotYetRead = {"store_leak_complaint_kg"};
+      known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

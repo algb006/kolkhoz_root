@@ -205,6 +205,46 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+HaulRate SiteHaulRate(const ProductionConfig& config,
+                      const WorldState& world,
+                      const ExtractionSiteRow& site) {
+  // The clay to the clay pile, the stone to the stone pile: where the resource
+  // already lies, the door's own rule for a heap under the open sky, as for
+  // the logs above. No heap holding it: the shared store.
+  std::uint32_t destination_row = kNoRow;
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (StoresGoods(unit, config) && StockOf(unit.stock, site.resource) > 0) {
+      destination_row = row;
+      break;
+    }
+  }
+  if (destination_row == kNoRow) {
+    destination_row = FindStorageRow(world, config);
+  }
+  const Vec2 destination =
+      destination_row == kNoRow ? site.position : world.units.rows[destination_row].position;
+  return RateToward(config, world, site.position, destination);
+}
+
+void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
+  for (ExtractionSiteRow& site : current.extraction_sites.rows) {
+    if (site.load_grams <= 0) {
+      site.haul_days_remaining = 0.0F;
+      site.haul_days_written = 0.0F;
+      continue;
+    }
+    const HaulRate rate = SiteHaulRate(config, current, site);
+    SettleLoad(config,
+               current,
+               rate,
+               site.resource,
+               site.load_grams,
+               site.haul_days_remaining,
+               site.haul_days_written);
+  }
+}
+
 /// @brief Turns the hauling labor delivered today into grain that actually
 /// moved, and re-sizes tomorrow's demand for what is still lying out.
 ///

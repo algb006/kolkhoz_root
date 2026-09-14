@@ -11,6 +11,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/extraction_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/quantities.h"
@@ -310,6 +311,27 @@ void MakeTimberStands(const ITableSet& tables, WorldState& world, std::string* e
     stand.position = def.position;
     stand.stock_m3 = StartStockM3(catalog, def);
     AppendRow(world.stands, stand);
+  }
+}
+
+void MakeExtractionSites(const ITableSet& tables, WorldState& world, std::string* error) {
+  ExtractionCatalog catalog;
+  std::string trouble;
+  if (!ParseExtractionCatalog(tables, catalog, trouble)) {
+    LogError("genesis: " + trouble);
+    if (error != nullptr) {
+      *error = trouble;
+    }
+    return;
+  }
+  for (std::uint32_t row = 0; row < catalog.sites.size(); ++row) {
+    const ExtractionSiteDef& def = catalog.sites[row];
+    ExtractionSiteRow site;
+    site.table_row = row;
+    site.resource = def.resource;
+    site.position = def.position;
+    site.stock_grams = StartStockGrams(catalog, def);
+    AppendRow(world.extraction_sites, site);
   }
 }
 

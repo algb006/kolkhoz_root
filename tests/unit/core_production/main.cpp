@@ -28,6 +28,7 @@
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
 #include "district_limit.h"
+#include "extraction_digging.h"
 #include "field_haul.h"
 #include "field_work.h"
 #include "herd_system.h"
@@ -3682,6 +3683,97 @@ int CheckFelling() {
   return failures;
 }
 
+/// Digging clay, stone and sand (construction design §3; boss, parcel 270):
+/// the mark's refusals, the seam by the material's labour per tonne, the dug
+/// mass laid on the site, the exhausted site told once and never marked
+/// again, the crew capped by tools, and the shipped catalogue's six plots.
+int CheckExtraction() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::ExtractionCatalog& extraction = config.extraction;
+  extraction.resources = {core::ResourceId{5}, core::ResourceId{6}, core::ResourceId{7}};
+  extraction.days_per_t = {0.05F, 0.25F, 0.03F};
+
+  core::WorldState world;
+  core::ExtractionSiteRow quarry;
+  quarry.resource = core::ResourceId{6};  // stone: 0.25 man-days a tonne
+  quarry.stock_grams = 30'000'000;        // 30 t
+  const core::ExtractionSiteId quarry_id = core::AppendRow(world.extraction_sites, quarry);
+  core::ExtractionSiteRow foreign;
+  foreign.resource = core::ResourceId{9};  // a resource nobody digs
+  foreign.stock_grams = 30'000'000;
+  const core::ExtractionSiteId foreign_id = core::AppendRow(world.extraction_sites, foreign);
+
+  core::OrderRow order;
+  order.kind = core::OrderKind::kMarkExtraction;
+  order.extraction_site = core::ExtractionSiteId{999};
+  order.amount = 10'000'000;
+  failures +=
+      Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kNoSuchSubject,
+             "digging: a site that is not there is no such subject");
+  order.extraction_site = foreign_id;
+  failures += Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kRuleForbids,
+                     "digging: a site of a resource the build does not dig is refused");
+  order.extraction_site = quarry_id;
+  order.amount = 30'000'001;
+  failures += Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kRuleForbids,
+                     "digging: more than the site holds is refused");
+  order.amount = 0;
+  failures += Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kRuleForbids,
+                     "digging: a mass of nothing is refused");
+  order.amount = 20'000'000;
+  failures += Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kNone,
+                     "digging: a mass the site holds is marked");
+  failures += Expect(world.extraction_sites.rows[0].marked_grams == 20'000'000 &&
+                         world.extraction_sites.rows[0].work_days_remaining == 5.0F,
+                     "digging: 20 t of stone opens a seam of 20 x 0.25 = 5 man-days");
+  failures +=
+      Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kConflictsWithActive,
+             "digging: a second mark on a site still marked is a conflict");
+
+  core::DigFinishedSites(world);
+  failures += Expect(world.extraction_sites.rows[0].load_grams == 0 &&
+                         world.extraction_sites.rows[0].stock_grams == 30'000'000,
+                     "digging: nothing is laid down while the crew still has work");
+  world.extraction_sites.rows[0].work_days_remaining = 0.0F;
+  core::DigFinishedSites(world);
+  failures += Expect(world.extraction_sites.rows[0].load_grams == 20'000'000 &&
+                         world.extraction_sites.rows[0].stock_grams == 10'000'000 &&
+                         world.extraction_sites.rows[0].marked_grams == 0,
+                     "digging: the finished mark leaves the stock and lies as a load");
+
+  // The last ten tonnes: the site runs out, is told of once, and refuses.
+  order.amount = 10'000'000;
+  failures += Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kNone,
+                     "digging: the rest of the stock may be marked");
+  world.extraction_sites.rows[0].work_days_remaining = 0.0F;
+  world.step_events.clear();
+  core::DigFinishedSites(world);
+  core::DigFinishedSites(world);
+  std::uint32_t told = 0;
+  bool names_the_site = false;
+  for (const core::SimEvent& event : world.step_events) {
+    if (event.kind == core::EventKind::kExtractionSiteExhausted) {
+      ++told;
+      names_the_site =
+          event.resource.value == 6 && event.amount == static_cast<std::int64_t>(quarry_id.value);
+    }
+  }
+  failures += Expect(told == 1 && names_the_site && world.extraction_sites.rows[0].exhausted == 1,
+                     "digging: an exhausted site is told of once, with its resource and id");
+  order.amount = 1;
+  failures += Expect(core::MarkExtraction(config, world, order) == core::OrderRefusal::kRuleForbids,
+                     "digging: an exhausted site is never marked again");
+
+  extraction.tool_resource = core::ResourceId{3};
+  extraction.tool_grams = 3000;
+  extraction.tools_per_worker = 1.0F;
+  failures += Expect(core::DiggingCrewCap(extraction, 4 * 3000) == 4 &&
+                         core::DiggingCrewCap(extraction, 2999) == 0,
+                     "digging: the crew is capped by whole tools in the stores");
+  return failures;
+}
+
 /// The sawmill's day (timber design §8б): what was worked becomes boards out
 /// of the logs in the stores, tomorrow's demand is what the logs could still
 /// give up to the room the boards need, and a sawmill that cannot saw — paused
@@ -4112,6 +4204,7 @@ int main() {
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
+  failures += CheckExtraction();
   failures += CheckSawing();
   failures += CheckDistrictLimit();
   failures += CheckStubTablesMustBeDeclared();

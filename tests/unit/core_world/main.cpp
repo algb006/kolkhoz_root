@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_catalog/extraction_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/herd_state.h"
 #include "core_common/state_table_ops.h"
@@ -171,6 +172,35 @@ int main() {
   failures += Expect(same_seed.rng.state == world.rng.state, "same seed — same world RNG");
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
+
+  // THE DIGGING PLOTS OF THE SHIPPED MAP (construction design §3; boss,
+  // parcels 270 and 273): genesis makes one site a row, two each of clay,
+  // stone and sand, each with its area × its material's density.
+  {
+    const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+    core::ExtractionCatalog catalog;
+    std::string catalog_error;
+    const bool read =
+        shipped != nullptr && core::ParseExtractionCatalog(*shipped, catalog, catalog_error);
+    const core::WorldState start =
+        shipped == nullptr
+            ? core::WorldState{}
+            : core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+    std::array<std::uint32_t, core::kExtractedMaterialCount> by_material{};
+    bool stocked = read && start.extraction_sites.rows.size() == catalog.sites.size();
+    for (std::size_t row = 0; stocked && row < start.extraction_sites.rows.size(); ++row) {
+      const core::ExtractionSiteRow& site = start.extraction_sites.rows[row];
+      const core::ExtractionSiteDef& def = catalog.sites[site.table_row];
+      ++by_material[static_cast<std::size_t>(def.material)];
+      stocked = site.resource.value == def.resource.value &&
+                site.stock_grams == core::StartStockGrams(catalog, def) && site.stock_grams > 0 &&
+                site.position.x == def.position.x && site.position.y == def.position.y;
+    }
+    failures += Expect(stocked && start.extraction_sites.rows.size() == 6 && by_material[0] == 2 &&
+                           by_material[1] == 2 && by_material[2] == 2,
+                       "genesis lays the shipped map's six digging plots, two of each material, "
+                       "each stocked at its area times its density");
+  }
 
   // THE START LAYOUT IS PARSED BEFORE THE WORLD IS BUILT, and the refusal
   // names the row and the column.

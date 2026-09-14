@@ -1982,6 +1982,61 @@ int TestFallowBeforeWinterRyeHasTheRyesWindow() {
   return failures;
 }
 
+/// DIGGING (construction design §3; boss, parcel 270): a marked site draws
+/// diggers, no more than there are tools in the stores, and a load lying dug
+/// draws carters — the site is named on the assignment either way.
+int TestDiggersGoToAMarkedSite() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_digging";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,kg_per_unit\ntool,3\nclay,1000\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "digging: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(4);
+  // Two tools in the house's stock: two diggers at most.
+  day.world.units.rows[0].stock.assign(1, 2 * 3000);
+  core::ExtractionSiteRow pit;
+  pit.resource = core::ResourceId{1};
+  pit.position = core::Vec2{.x = 30.0F, .y = 0.0F};
+  pit.stock_grams = 100'000'000;
+  pit.marked_grams = 40'000'000;
+  // FORTY MAN-DAYS, far more than four men do in a day. The first draft left
+  // two, and the demand ceiling alone then sent two diggers: the assertion
+  // passed with the tool cap damaged away, and a check that passes both ways
+  // tells nothing about the tools.
+  pit.work_days_remaining = 40.0F;
+  const core::ExtractionSiteId pit_id = core::AppendRow(day.world.extraction_sites, pit);
+  // Day 2 is a Wednesday.
+  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+    day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  std::uint32_t digging = 0;
+  bool named = true;
+  for (const core::ResidentRow& resident : day.world.residents.rows) {
+    if (resident.work.kind == core::WorkKind::kExtraction) {
+      ++digging;
+      named = named && resident.work.extraction_site.value == pit_id.value;
+    }
+  }
+  failures += Expect(digging == 2 && named,
+                     "digging: two tools in the stores send two diggers to the marked pit");
+  failures += Expect(day.world.extraction_sites.rows[0].work_days_remaining < 40.0F,
+                     "digging: and the digging seam goes down as they work");
+  return failures;
+}
+
 int TestLandThatCannotCarryTheWork() {
   int failures = 0;
   DayWorld day(4);
@@ -2096,6 +2151,7 @@ int main() {
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
+  failures += TestDiggersGoToAMarkedSite();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();

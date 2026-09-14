@@ -15,6 +15,7 @@ kolkhoz_add_module(core_production
     production_alarms.cpp
     stock_lights.cpp
     timber_felling.cpp
+    extraction_digging.cpp
     unit_production.cpp
     district_limit.cpp
     field_removal.cpp)

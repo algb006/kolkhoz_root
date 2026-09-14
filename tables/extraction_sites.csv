@@ -1,0 +1,13 @@
+# generated from db/design.db — do not edit by hand
+# where stone, clay and sand are dug (design/infrastructure/construction.md §3), baked by tools/map.py sites from the clay_pit, stone_quarry and sand_pit contours of db/map.db; tools/map.py check fails while the bake is stale
+# stock, t = area_ha x extraction_stock_t_per_ha_<resource> in world_params.csv; finite, never regrows, and an exhausted site may not be marked again
+# marked like a field: free and instant; dug by any adult with one `tool` per worker in stock (extraction_tools_per_worker, not consumed), extraction_days_per_t_<resource> person-days per tonne, all year round; what is dug is cargo on the site like a harvest
+# where it goes: resource_stores.csv (clay -> clay_pile, stone -> stone_pile, sand -> build_yard)
+# x_m, y_m: the loading point — the site's ground nearest a road, metres from the south-west corner; walk and haul are measured to it
+site,resource,x_m,y_m,area_ha
+clay_pit_bank_north,clay,8511.2,10258.9,0.5
+clay_pit_village,clay,7281.2,8503.9,0.5
+sand_pit_bank_bridge,sand,8263.8,10266.1,0.5
+sand_pit_mouth,sand,9023.9,10368.8,0.5
+stone_quarry_manor,stone,9471.2,9443.9,0.5
+stone_quarry_slope_north,stone,8591.1,10346.2,0.5

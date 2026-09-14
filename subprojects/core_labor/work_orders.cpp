@@ -350,6 +350,7 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     work.herd = order.herd;
     work.unit = order.unit;
     work.stand = order.stand;
+    work.extraction_site = order.extraction_site;
   }
 }
 

@@ -134,6 +134,15 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
 ///       with no timber table simply has no stands.
 void MakeTimberStands(const ITableSet& tables, WorldState& world, std::string* error);
 
+/// @brief Makes one extraction site per row of tables/extraction_sites.csv —
+///        clay, stone or sand — with its stock at area × the material's
+///        density (construction design §3; boss, parcel 270).
+/// @param error Receives the catalogue's sentence when a present table cannot
+///        be read, and is left alone otherwise; the sites are then not made.
+/// @note Called at setup on the sim thread, after the stands. A world with no
+///       extraction table simply has no sites.
+void MakeExtractionSites(const ITableSet& tables, WorldState& world, std::string* error);
+
 }  // namespace core
 
 #endif  // CORE_WORLD_START_LAYOUT_H_

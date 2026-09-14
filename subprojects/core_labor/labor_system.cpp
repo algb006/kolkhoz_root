@@ -324,6 +324,7 @@ class LaborSystem final : public ILaborSystem {
           work.herd = job.herd;
           work.unit = job.unit;
           work.stand = job.stand;
+          work.extraction_site = job.extraction_site;
         }
       }
     }
@@ -538,6 +539,35 @@ class LaborSystem final : public ILaborSystem {
           job.stand = current.stands.row_ids[row];
           job.position = stand.position;
           job.work_days_remaining = stand.haul_days_remaining;
+          job.harnessed = DraughtHorses(current) > 0;
+          job.window = HaulWindow(current);
+          jobs.push_back(job);
+        }
+      }
+    }
+    // The extraction sites (construction design §3; boss, parcel 270): the
+    // stands' two jobs on the site's row — digging, windowless and capped by
+    // the tools in the stores, and the carting of what lies dug.
+    if (!day_off) {
+      const std::uint32_t crew_cap =
+          DiggingCrewCap(config_.extraction, TotalHeld(current, config_.extraction.tool_resource));
+      for (std::uint32_t row = 0; row < current.extraction_sites.rows.size(); ++row) {
+        const ExtractionSiteRow& site = current.extraction_sites.rows[row];
+        if (site.marked_grams > 0 && site.work_days_remaining > 0.0F && crew_cap > 0) {
+          AssignmentJob job;
+          job.kind = WorkKind::kExtraction;
+          job.extraction_site = current.extraction_sites.row_ids[row];
+          job.position = site.position;
+          job.work_days_remaining = site.work_days_remaining;
+          job.max_crew = static_cast<std::uint8_t>(crew_cap);
+          jobs.push_back(job);
+        }
+        if (site.load_grams > 0 && site.haul_days_remaining > 0.0F) {
+          AssignmentJob job;
+          job.kind = WorkKind::kHauling;
+          job.extraction_site = current.extraction_sites.row_ids[row];
+          job.position = site.position;
+          job.work_days_remaining = site.haul_days_remaining;
           job.harnessed = DraughtHorses(current) > 0;
           job.window = HaulWindow(current);
           jobs.push_back(job);

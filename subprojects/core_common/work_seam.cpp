@@ -55,6 +55,23 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     }
     return nullptr;
   }
+  // AN EXTRACTION SITE, by the stand's two rules on the site's row: digging
+  // drains the digging seam while a mark stands, carting drains the carting
+  // seam while a load lies there (2026-09-14).
+  if (work.extraction_site.value != kInvalidEntityIdValue) {
+    const std::uint32_t site_row = FindRow(world.extraction_sites, work.extraction_site);
+    if (site_row == kNoRow) {
+      return nullptr;
+    }
+    const ExtractionSiteRow& site = world.extraction_sites.rows[site_row];
+    if (work.kind == WorkKind::kExtraction) {
+      return site.marked_grams > 0 ? &site.work_days_remaining : nullptr;
+    }
+    if (work.kind == WorkKind::kHauling) {
+      return site.load_grams > 0 ? &site.haul_days_remaining : nullptr;
+    }
+    return nullptr;
+  }
   const std::uint32_t row = FindRow(world.fields, work.field);
   if (row == kNoRow) {
     return nullptr;
@@ -100,6 +117,14 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
       return false;
     }
     place = world.stands.rows[stand_row].position;
+    return true;
+  }
+  if (work.extraction_site.value != kInvalidEntityIdValue) {
+    const std::uint32_t site_row = FindRow(world.extraction_sites, work.extraction_site);
+    if (site_row == kNoRow) {
+      return false;
+    }
+    place = world.extraction_sites.rows[site_row].position;
     return true;
   }
   const std::uint32_t row = FindRow(world.fields, work.field);
