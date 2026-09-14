@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -3989,8 +3990,124 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   return failures;
 }
 
+/// kRemoveField (2026-09-14): the start quest's first gesture, and the one
+/// construction design §12 teaches every removal by. Free and at once; refused
+/// only where bread stands; the reserve's mark rides out on the event.
+int CheckTheChairmanRemovesAField() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load for the field removal") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto system = core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "and they build a production system") != 0) {
+    return 1;
+  }
+
+  // Two fields — the one the order names first, a bystander second — and one
+  // order naming `target` (the first field's id unless told otherwise).
+  const auto remove = [&](const core::FieldRow& named, std::optional<core::FieldId> target) {
+    core::WorldState previous;
+    previous.calendar.tick = 10U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(previous.calendar);
+    const core::FieldId id = core::AppendRow(previous.fields, named);
+    core::FieldRow bystander;
+    bystander.area_ga = 7.0F;
+    core::AppendRow(previous.fields, bystander);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kRemoveField;
+    order.field = target.value_or(id);
+    core::AppendRow(previous.orders, order);
+    core::WorldState current = previous;
+    current.calendar.tick += 1;
+    core::RefreshCalendarCaches(current.calendar);
+    current.step_events.clear();
+    system->RunProductionDecisions(previous, current);
+    return current;
+  };
+  const auto removed_events = [](const core::WorldState& world) {
+    std::vector<const core::SimEvent*> found;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kFieldRemoved) {
+        found.push_back(&event);
+      }
+    }
+    return found;
+  };
+
+  // -- the reserve goes, free and at once, and says it was the reserve ------
+  {
+    core::FieldRow reserve;
+    reserve.area_ga = 3.0F;
+    reserve.overgrown = 1;
+    reserve.start_reserve = 1;
+    const core::WorldState after = remove(reserve, std::nullopt);
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
+                       "remove: the chairman may let the reserve field go");
+    failures += Expect(after.fields.rows.size() == 1 && after.fields.rows[0].area_ga == 7.0F,
+                       "remove: the named field is gone and the bystander stays");
+    const auto events = removed_events(after);
+    failures +=
+        Expect(events.size() == 1 && events[0]->field.value != core::kInvalidEntityIdValue &&
+                   events[0]->amount == 1,
+               "remove: one kFieldRemoved names the field and carries the reserve's mark");
+  }
+  // -- an ordinary field growing its crop goes too, and says it was not -----
+  {
+    core::FieldRow growing;
+    growing.area_ga = 10.0F;
+    growing.phase = core::FieldPhase::kGrowing;
+    const core::WorldState after = remove(growing, std::nullopt);
+    failures += Expect(
+        after.orders.rows[0].status == core::OrderStatus::kDone && after.fields.rows.size() == 1,
+        "remove: a growing field goes with what was put into it");
+    const auto events = removed_events(after);
+    failures += Expect(events.size() == 1 && events[0]->amount == 0,
+                       "remove: and its event says it was not the start's reserve");
+  }
+  // -- where bread stands, nothing moves -------------------------------------
+  {
+    core::FieldRow harvest;
+    harvest.area_ga = 10.0F;
+    harvest.phase = core::FieldPhase::kHarvest;
+    const core::WorldState after = remove(harvest, std::nullopt);
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNotEmpty &&
+                           after.fields.rows.size() == 2 && removed_events(after).empty(),
+                       "remove: a field being reaped is refused kNotEmpty and stays");
+  }
+  {
+    core::FieldRow reaped;
+    reaped.area_ga = 10.0F;
+    reaped.reaped_grams = 5'000'000;
+    const core::WorldState after = remove(reaped, std::nullopt);
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNotEmpty &&
+                           after.fields.rows.size() == 2 && removed_events(after).empty(),
+                       "remove: grain reaped and not yet carted holds the field too");
+  }
+  // -- a meadow, and a field that is not there -------------------------------
+  {
+    core::FieldRow meadow;
+    meadow.area_ga = 20.0F;
+    meadow.kind = core::LandKind::kMeadow;
+    const core::WorldState after = remove(meadow, std::nullopt);
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kWrongLand &&
+                           after.fields.rows.size() == 2,
+                       "remove: a meadow is not a contour anybody drew, kWrongLand");
+  }
+  {
+    const core::WorldState after = remove(core::FieldRow{}, core::FieldId{9999});
+    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kNoSuchSubject &&
+                           after.fields.rows.size() == 2,
+                       "remove: a field that is not there, kNoSuchSubject");
+  }
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckTheChairmanRemovesAField();
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();

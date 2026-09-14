@@ -595,6 +595,11 @@ void PlaceStartLayout(WorldState& world,
       // some rule forbids the plough.
       world.fields.rows[FindRow(world.fields, field)].overgrown = 1;
     }
+    if (row.kind == LayoutKind::kReserveField) {
+      // THE START QUEST'S FIELD (land_state.h, start_reserve): arable in
+      // every respect, and marked only so its removal can say which it was.
+      world.fields.rows[FindRow(world.fields, field)].start_reserve = 1;
+    }
   }
 }
 

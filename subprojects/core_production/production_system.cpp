@@ -45,6 +45,7 @@
 #include "core_tables/tables.h"
 #include "district_limit.h"
 #include "field_haul.h"
+#include "field_removal.h"
 #include "field_work.h"
 #include "herd_system.h"
 #include "production_alarms.h"
@@ -678,6 +679,9 @@ class ProductionSystem final : public IProductionSystem {
           break;
         case OrderKind::kOrderLimitLot:
           Settle(order, OrderLimitLot(config_, current, order));
+          break;
+        case OrderKind::kRemoveField:
+          Settle(order, RemoveField(current, order));
           break;
         default:
           break;  // not ours: another consumer's, or the events slot's refusal

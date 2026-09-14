@@ -215,6 +215,9 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   no_target.kind = core::OrderKind::kSetRotation;
   failures +=
       Expect(session->IssueOrder(no_target).value == 0, "kSetRotation without a field is refused");
+  no_target.kind = core::OrderKind::kRemoveField;
+  failures +=
+      Expect(session->IssueOrder(no_target).value == 0, "kRemoveField without a field is refused");
   core::OrderRow work;
   work.kind = core::OrderKind::kAssignWork;
   work.resident = core::ResidentId{7};

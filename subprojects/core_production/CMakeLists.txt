@@ -16,7 +16,8 @@ kolkhoz_add_module(core_production
     stock_lights.cpp
     timber_felling.cpp
     unit_production.cpp
-    district_limit.cpp)
+    district_limit.cpp
+    field_removal.cpp)
 
 target_link_libraries(core_production
     PUBLIC core_common core_sim

@@ -503,6 +503,24 @@ int main() {
       const core::ITable* const types = shipped->FindTable("unit_types");
       const core::WorldState morning =
           core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 4242, nullptr);
+      // THE START QUEST'S FIELD (2026-09-14): exactly one field carries the
+      // reserve's mark, and its area is the layout's reserve_field row.
+      float layout_reserve_area = -1.0F;
+      for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
+        if (layout->CellText(row, layout->FindColumn("kind")) == "reserve_field") {
+          layout_reserve_area =
+              std::stof(std::string(layout->CellText(row, layout->FindColumn("area_ha"))));
+        }
+      }
+      std::uint32_t reserves = 0;
+      float reserve_area = 0.0F;
+      for (const core::FieldRow& field : morning.fields.rows) {
+        reserves += field.start_reserve;
+        reserve_area += field.start_reserve != 0 ? field.area_ga : 0.0F;
+      }
+      failures += Expect(reserves == 1 && reserve_area == layout_reserve_area,
+                         "genesis marks exactly one field, the layout's reserve, as the start's "
+                         "reserve");
       const std::uint32_t wear_col = layout->FindColumn("start_wear_pct");
       failures += Expect(wear_col != core::kNoTableColumn,
                          "the shipped layout carries the first morning's wear");
