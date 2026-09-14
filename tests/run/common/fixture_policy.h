@@ -240,6 +240,18 @@ class FixturePolicy {
     if (type.value == granary_.value && granary_yard_.value != core::kInvalidDefIdValue) {
       return MarkOnYard(world, order);
     }
+    // THE NEAREST FREE PLACE BY THE CORE'S OWN RULE (plot.h, FreePlot), as for
+    // the yards. The rings below stepped 60 m for a 60 m cattle-yard plot, so
+    // neighbours on one ring were refused by construction: once the granaries
+    // moved onto their yard (0ab4c98) 38 and 41 cattle-yard marks of thirty
+    // years were refused on seeds 1930 and 1934 (boss, parcel 226).
+    const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
+    if (type.value < radii.size() && radii[type.value] > 0.0F) {
+      order.position =
+          core::FreePlot(world.units, definitions_.Plots(), Centre(world), radii[type.value]);
+      ++ordered_;
+      return true;
+    }
     // RINGS AROUND THE CENTRE, NOT A LINE AWAY FROM IT. Until 2026-09-13 every
     // order went kStepAside further east than the last, so by the thirtieth
     // the site stood kilometres out — past the accountant's road limit, where
