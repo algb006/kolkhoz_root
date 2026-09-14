@@ -7,6 +7,9 @@
 # years they take from their starting wear to collapse, and the band that wear
 # is drawn in. Boss's figures of 2026-09-03; the amortization terms themselves
 # live with the build classes in unit_levels.csv
+# insulation (unit rules section 16, Epoch I): straw in tonnes and game man-days
+# by kind — housing, a unit for livestock, any other heated unit — and the level
+# whose finished upgrade takes the insulation off. Boss's figures, parcel 364
 key,value
 demolition_labor_share,0.25
 repair_labor_share,0.30
@@ -14,3 +17,10 @@ repair_spare_parts_per_labor_day,0.30
 old_house_collapse_years,12
 old_house_wear_min,25
 old_house_wear_max,75
+insulation_housing_straw_t,2
+insulation_housing_labor_days,2
+insulation_livestock_straw_t,6
+insulation_livestock_labor_days,5
+insulation_heated_straw_t,3
+insulation_heated_labor_days,3
+insulation_reset_level,3

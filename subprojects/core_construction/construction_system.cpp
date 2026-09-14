@@ -32,6 +32,8 @@
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
+#include "insulation.h"
+#include "site_supply.h"
 #include "unit_decay.h"
 
 namespace core {
@@ -410,6 +412,9 @@ class ConstructionSystem final : public IConstructionSystem {
         case OrderKind::kRepairUnit:
           Settle(order, StartRepair(current, order.unit));
           break;
+        case OrderKind::kInsulateUnit:
+          Settle(order, StartInsulation(config_, current, order.unit));
+          break;
         default:
           break;  // not ours; another consumer's, or the events slot's refusal
       }
@@ -669,18 +674,24 @@ class ConstructionSystem final : public IConstructionSystem {
   /// contradicted itself across two paragraphs.
   void DeliverMaterials(WorldState& current) {
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-      if (current.units.rows[row].construction.phase != ConstructionPhase::kDelivering) {
+      const ConstructionPhase phase = current.units.rows[row].construction.phase;
+      if (phase != ConstructionPhase::kDelivering && phase != ConstructionPhase::kInsulating) {
         continue;
       }
       // A module is not built while its parent does not stand sound (unit
       // rules §11): nothing is carried to it either, so no material is locked
       // in a site that cannot move. And nothing is carried to a PAUSED
-      // building (construction design §6).
+      // building (construction design §6) — an insulation job included, which
+      // is an upgrade by unit rules §16 (boss, parcel 376).
       if (!ModuleParentSound(current, current.units.rows[row]) ||
           current.units.rows[row].paused != 0) {
         continue;
       }
-      DeliverSite(current, row);
+      if (phase == ConstructionPhase::kInsulating) {
+        DeliverInsulation(config_, current, row);
+      } else {
+        DeliverSite(current, row);
+      }
     }
   }
 
@@ -744,6 +755,8 @@ class ConstructionSystem final : public IConstructionSystem {
         CompleteRepair(current, current.units.row_ids[row], site);
       } else if (site.construction.phase == ConstructionPhase::kDemolishing) {
         gone.push_back(current.units.row_ids[row]);
+      } else if (InsulationDone(config_, current, row)) {
+        CompleteInsulation(config_, current, row);
       }
     }
     for (const UnitId unit : gone) {
@@ -760,6 +773,11 @@ class ConstructionSystem final : public IConstructionSystem {
       }
     }
     site.level = site.construction.target_level;
+    // "The third level rebuilds the walls and the roof": the straw comes off
+    // with them, and only there (unit rules §16).
+    if (static_cast<float>(site.level) == config_.insulation_reset_level) {
+      site.insulated = 0;
+    }
     // "Any level upgrade repairs the unit entirely" (unit rules §11): the
     // amortization term starts again, and that is why repairing before an
     // upgrade is pointless rather than merely wasteful.
@@ -927,31 +945,6 @@ class ConstructionSystem final : public IConstructionSystem {
     return placed;
   }
 
-  /// Takes up to `wanted` grams of `resource` from the standing units, in
-  /// row order. Sites and unbuilt rows never give: a level-0 unit stores
-  /// nothing for anybody (71-construction.md §2).
-  static Grams TakeFromStores(WorldState& current,
-                              std::uint32_t site_row,
-                              ResourceId resource,
-                              Grams wanted) {
-    Grams taken = 0;
-    for (std::uint32_t row = 0; row < current.units.rows.size() && taken < wanted; ++row) {
-      if (row == site_row || current.units.rows[row].level == 0) {
-        continue;
-      }
-      // Not another upgrade's recipe: it was checked and carried in for that
-      // works, and a second start must not undo the first one's check.
-      const Grams have = UnreservedOf(current.units.rows[row], resource);
-      if (have <= 0) {
-        continue;
-      }
-      const Grams give = have < wanted - taken ? have : wanted - taken;
-      AddTo(current.units.rows[row].stock, resource, -give);
-      taken += give;
-    }
-    return taken;
-  }
-
   /// @brief Holds back for a STANDING unit's works what its stock covers of
   /// each line: reserved = min(stock, line), recomputed after every delivery
   /// (ConstructionState::reserved; boss, parcel 294). A level-0 site is left
@@ -971,19 +964,6 @@ class ConstructionSystem final : public IConstructionSystem {
 
   static Grams AmountAt(const ResourceAmounts& amounts, ResourceId resource) {
     return resource.value < amounts.size() ? amounts[resource.value] : 0;
-  }
-
-  static void AddTo(ResourceAmounts& amounts, ResourceId resource, Grams delta) {
-    if (delta == 0 || resource.value == kInvalidDefIdValue) {
-      return;
-    }
-    if (resource.value >= amounts.size()) {
-      amounts.resize(static_cast<std::size_t>(resource.value) + 1, 0);
-    }
-    amounts[resource.value] += delta;
-    if (amounts[resource.value] < 0) {
-      amounts[resource.value] = 0;
-    }
   }
 
   const BuildLevel* LevelOf(UnitTypeId type, std::uint8_t level) const {

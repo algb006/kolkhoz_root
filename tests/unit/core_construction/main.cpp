@@ -890,6 +890,187 @@ int TestRepair(const core::ITableSet& tables) {
   return failures;
 }
 
+/// The straw insulation's own roster (unit rules §16): a heated house with a
+/// three-rung ladder, a byre with room for animals and no stove, a heated
+/// school, and the two that may not be insulated — a cold shed and a cold hut
+/// of the housing class. No construction.csv row: boss's defaults price it.
+class InsulationTables final : public core::ITableSet {
+ public:
+  const core::ITable* FindTable(std::string_view name) const override {
+    if (name == "unit_types") {
+      return &types_;
+    }
+    if (name == "unit_levels") {
+      return &levels_;
+    }
+    if (name == "unit_level_cost") {
+      return &costs_;
+    }
+    if (name == "resources") {
+      return &resources_;
+    }
+    return nullptr;
+  }
+
+  std::uint32_t TableCount() const override { return 4; }
+
+  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
+
+ private:
+  test::FakeTable types_{
+      {"key", "class", "era", "player_built", "gate", "has_plot", "has_wear", "has_heating"},
+      {{"store", "storage", "1", "0", "start", "0", "1", "0"},
+       {"house", "housing", "1", "1", "era", "0", "1", "1"},
+       {"byre", "livestock", "1", "1", "era", "0", "1", "0"},
+       {"school", "social", "1", "1", "era", "0", "1", "1"},
+       {"shed", "storage", "1", "1", "era", "0", "1", "0"},
+       {"hut", "housing", "1", "1", "era", "0", "1", "0"}}};
+
+  test::FakeTable levels_{
+      {"unit", "level", "era", "labor_days", "build_class", "max_crew", "livestock_capacity_head"},
+      {{"store", "1", "1", "70", "wood_small", "5", ""},
+       {"house", "1", "1", "70", "wood_small", "4", ""},
+       {"house", "2", "1", "70", "wood_small", "4", ""},
+       {"house", "3", "1", "70", "wood_small", "4", ""},
+       {"byre", "1", "1", "70", "wood_small", "6", "20"},
+       {"school", "1", "1", "70", "wood_small", "5", ""},
+       {"shed", "1", "1", "70", "wood_small", "5", ""},
+       {"hut", "1", "1", "70", "wood_small", "5", ""}}};
+
+  test::FakeTable costs_{{"unit", "level", "resource", "amount"},
+                         {{"house", "2", "log", "1"}, {"house", "3", "log", "1"}}};
+
+  test::FakeTable resources_{{"key", "measure", "kg_per_unit"},
+                             {{"log", "pcs", "200"}, {"straw", "t", "1000"}}};
+};
+
+/// kInsulateUnit (unit rules §16; boss, parcels 364 and 376): who may be
+/// insulated and at what price, the straw on site and held back, the labour
+/// opened with it, the warm flag at the end, the refusals, a paused job that
+/// is carried nothing, and the third level taking the straw off.
+int TestInsulation() {
+  int failures = 0;
+  const InsulationTables tables;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused the insulation's tables");
+  }
+  constexpr std::uint16_t kHouse = 1;
+  constexpr std::uint16_t kByre = 2;
+  constexpr std::uint16_t kSchool = 3;
+  constexpr std::uint16_t kShed = 4;
+  constexpr std::uint16_t kHut = 5;
+  constexpr core::ResourceId kStraw{1};
+  constexpr core::Grams kTonne = core::kGramsPerTonne;
+
+  core::WorldState world;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.stock.assign(2, 0);
+  store.stock[kStraw.value] = 10 * kTonne;
+  const core::UnitId store_id = core::AppendRow(world.units, store);
+  const auto place = [&world](std::uint16_t type) {
+    core::UnitRow unit;
+    unit.type = core::UnitTypeId{type};
+    return core::AppendRow(world.units, unit);
+  };
+  const core::UnitId house = place(kHouse);
+  const core::UnitId byre = place(kByre);
+  const core::UnitId school = place(kSchool);
+  const core::UnitId shed = place(kShed);
+  const core::UnitId hut = place(kHut);
+  const auto unit_of = [&world](core::UnitId id) -> core::UnitRow& {
+    return world.units.rows[core::FindRow(world.units, id)];
+  };
+  const auto straw_at = [&](core::UnitId id) { return core::AmountOf(unit_of(id).stock, kStraw); };
+
+  // The house (2 t, 2 man-days) and the byre (6 t, 5) in one step; the school
+  // (3 t) finds 2 t left and is refused; the shed and the hut may not be.
+  const core::OrderId house_order = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, house));
+  const core::OrderId byre_order = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre));
+  const core::OrderId school_order =
+      Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, school));
+  const core::OrderId shed_order = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, shed));
+  const core::OrderId hut_order = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, hut));
+  Run(*system, world, 1);
+  const core::ConstructionState& house_site = unit_of(house).construction;
+  failures += Expect(RefusalOf(world, house_order) == core::OrderRefusal::kNone &&
+                         house_site.phase == core::ConstructionPhase::kInsulating &&
+                         house_site.target_level == 1 && house_site.max_crew == 4,
+                     "insulation: a heated house opens a site on itself, the level unmoved");
+  failures += Expect(
+      straw_at(house) == 2 * kTonne && core::AmountOf(house_site.reserved, kStraw) == 2 * kTonne &&
+          house_site.labor_days_total == 2.0F && house_site.labor_days_remaining == 2.0F,
+      "insulation: housing takes 2 t, held back, and its 2 man-days open with it");
+  failures += Expect(RefusalOf(world, byre_order) == core::OrderRefusal::kNone &&
+                         straw_at(byre) == 6 * kTonne &&
+                         unit_of(byre).construction.labor_days_remaining == 5.0F,
+                     "insulation: a byre with room for animals, cold or not, takes 6 t and 5");
+  failures += Expect(straw_at(store_id) == 2 * kTonne &&
+                         RefusalOf(world, school_order) == core::OrderRefusal::kMaterialsShort &&
+                         unit_of(school).construction.phase == core::ConstructionPhase::kNone,
+                     "insulation: the school's 3 t are not in the village, and it is refused");
+  failures += Expect(RefusalOf(world, shed_order) == core::OrderRefusal::kRuleForbids &&
+                         RefusalOf(world, hut_order) == core::OrderRefusal::kRuleForbids,
+                     "insulation: neither heated nor for animals — a housing class included — "
+                     "is refused");
+
+  // The labour is somebody else's; drained, the house is warm.
+  world.step_events.clear();
+  unit_of(house).construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 1);
+  std::uint32_t insulated_events = 0;
+  for (const core::SimEvent& event : world.step_events) {
+    insulated_events +=
+        event.kind == core::EventKind::kUnitInsulated && event.unit == house ? 1U : 0U;
+  }
+  failures += Expect(unit_of(house).insulated == 1 &&
+                         unit_of(house).construction.phase == core::ConstructionPhase::kNone &&
+                         straw_at(house) == 0 && insulated_events == 1,
+                     "insulation: at zero the straw is spent, the house warm, and it is said");
+  failures += Expect(unit_of(byre).insulated == 0 &&
+                         unit_of(byre).construction.phase == core::ConstructionPhase::kInsulating,
+                     "insulation: the byre with its labour still ahead is not finished");
+  const core::OrderId again = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, house));
+  Run(*system, world, 1);
+  failures += Expect(RefusalOf(world, again) == core::OrderRefusal::kRuleForbids,
+                     "insulation: a warm house is not insulated twice");
+
+  // A paused job is carried nothing and does not finish; resumed, the stores
+  // give again and the labour opens. The byre's straw is taken off by hand to
+  // make its delivery half run.
+  unit_of(byre).stock[kStraw.value] = 0;
+  unit_of(byre).construction.labor_days_remaining = 0.0F;
+  unit_of(byre).paused = 1;
+  unit_of(store_id).stock[kStraw.value] = 10 * kTonne;
+  Run(*system, world, 0);
+  failures += Expect(straw_at(byre) == 0 && unit_of(byre).insulated == 0 &&
+                         unit_of(byre).construction.phase == core::ConstructionPhase::kInsulating,
+                     "insulation: a paused job is carried no straw and is not finished");
+  unit_of(byre).paused = 0;
+  Run(*system, world, 0);
+  failures += Expect(
+      straw_at(byre) == 6 * kTonne && unit_of(byre).construction.labor_days_remaining == 5.0F,
+      "insulation: resumed, the straw comes and the man-days open");
+
+  // The second level keeps the straw; the third takes it off.
+  unit_of(house).stock.assign(2, 0);
+  unit_of(house).stock[0] = 2 * 200 * core::kGramsPerKilogram;
+  for (std::uint8_t level = 2; level <= 3; ++level) {
+    core::UnitRow& upgraded = unit_of(house);
+    upgraded.construction.phase = core::ConstructionPhase::kBuilding;
+    upgraded.construction.target_level = level;
+    upgraded.construction.labor_days_remaining = 0.0F;
+    Run(*system, world, 1);
+    failures +=
+        Expect(unit_of(house).level == level && unit_of(house).insulated == (level == 3 ? 0 : 1),
+               level == 3 ? "insulation: the upgrade to the third level takes it off"
+                          : "insulation: an upgrade to the second level keeps it");
+  }
+  return failures;
+}
+
 /// "Any level upgrade repairs the unit entirely" (unit rules §11).
 int TestUpgradeHeals(const core::ITableSet& tables) {
   int failures = 0;
@@ -1906,6 +2087,7 @@ int main() {
   failures += TestWearCeilingAndCollapse(tables);
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);
+  failures += TestInsulation();
   failures += TestTheTwoReadingsOfUnitTypesAgree();
   failures += TestALadderWithAHoleIsRefused();
   failures += TestAWearTermMayBeUnnamedButNotZero();

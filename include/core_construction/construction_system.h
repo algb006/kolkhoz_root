@@ -73,7 +73,13 @@
 ///     §11), and a building takes nothing but spare parts (§2). A finished
 ///     UPGRADE sets wear to 0 as well — "an upgrade repairs on its way"
 ///     (unit rules §11) — which is why the two never race: a unit is one
-///     site at a time.
+///     site at a time;
+///   * INSULATION, the sixth order (unit rules §16; core_construction/
+///     insulation.h): kInsulateUnit opens kInsulating on a heated unit or one
+///     with room for animals — the kind's straw frozen in `reserved` and
+///     brought from the stores, then the kind's man-days — and at the end
+///     sets UnitRow::insulated with kUnitInsulated; a finished upgrade to
+///     the third level takes it off.
 ///
 /// WHAT IT DOES NOT DO, and who will:
 ///   * seasons of building (winter stops masonry, not carpentry —

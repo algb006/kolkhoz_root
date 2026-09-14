@@ -44,6 +44,9 @@ constexpr float kMaxKgPerUnit = 100'000.0F;
 /// the design names is a 2500 t elevator.
 constexpr float kMaxStorageTonnes = 1e6F;
 
+/// Past this a level's head count is a typo, not a farm.
+constexpr float kMaxLivestockHead = 1e5F;
+
 /// An amortization term longer than this is a table error rather than a
 /// plan: nothing in the design outlives a campaign by four orders.
 constexpr float kMaxWearYears = 10'000.0F;
@@ -171,8 +174,12 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t stink_col = unit_types.FindColumn("stink");
   const std::uint32_t stink_when_col = unit_types.FindColumn("stink_when");
 
+  const std::uint32_t heating_col = unit_types.FindColumn("has_heating");
+
   config.wear_column_present = has_wear_col != kNoTableColumn;
   config.types.assign(unit_types.RowCount(), BuildType{});
+  // Absent column = no type is heated (construction_config.h).
+  config.type_has_heating.assign(unit_types.RowCount(), 0);
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
     BuildType& type = config.types[row];
     bool known = true;
@@ -207,6 +214,12 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     type.capacity_by_plot = static_cast<std::uint8_t>(number);
+    if (!CellOrDefault(
+            unit_types, row, heating_col, Range{.low = 0.0F, .high = 1.0F}, 0.0F, number, error)) {
+      Fail(error, "unit_types", "has_heating is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    config.type_has_heating[row] = static_cast<std::uint8_t>(number);
     // Absent COLUMN = 0 for every type, and that means NOTHING WEARS. The
     // honest reading of "no data" (task A5, manual/73-wear-and-repair.md
     // §2): deriving it from the capacity flag or the recipe would be a
@@ -404,6 +417,7 @@ bool ReadLevels(const ITable& levels,
   const std::uint32_t idle_col = levels.FindColumn("wear_years_idle");
   const std::uint32_t in_use_col = levels.FindColumn("wear_years_in_use");
   const std::uint32_t pace_col = levels.FindColumn("wear_factor");
+  const std::uint32_t heads_col = levels.FindColumn("livestock_capacity_head");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
     Fail(error, "unit_levels", "no 'unit' or 'level' column");
     return false;
@@ -558,6 +572,19 @@ bool ReadLevels(const ITable& levels,
     }
     if (!(step.wear_factor > 0.0F)) {
       step.wear_factor = 1.0F;
+    }
+    // Room for animals, for the insulation's "who" only (unit rules §16).
+    if (!CellOrDefault(levels,
+                       row,
+                       heads_col,
+                       Range{.low = 0.0F, .high = kMaxLivestockHead},
+                       0.0F,
+                       step.livestock_capacity_head,
+                       error)) {
+      Fail(error,
+           "unit_levels",
+           "livestock_capacity_head is out of range in row " + std::to_string(row));
+      return false;
     }
     step.is_marking = static_cast<std::uint8_t>(
         class_col != kNoTableColumn && levels.CellText(row, class_col) == kMarkingClass ? 1 : 0);
@@ -720,6 +747,15 @@ bool ParseConstructionConfig(const ITableSet& tables,
         {"repair_labor_share", 1.0F, &config.repair_labor_share},
         {"repair_spare_parts_per_labor_day", 1e3F, &config.repair_spare_parts_per_labor_day},
         {"old_house_collapse_years", 1e4F, &config.old_house_collapse_years},
+        // Straw insulation (unit rules §16; boss, parcel 364): tonnes and man-days
+        // by kind, and the level whose upgrade takes it off.
+        {"insulation_housing_straw_t", 1e3F, &config.insulation_housing_straw_t},
+        {"insulation_housing_labor_days", 1e3F, &config.insulation_housing_labor_days},
+        {"insulation_livestock_straw_t", 1e3F, &config.insulation_livestock_straw_t},
+        {"insulation_livestock_labor_days", 1e3F, &config.insulation_livestock_labor_days},
+        {"insulation_heated_straw_t", 1e3F, &config.insulation_heated_straw_t},
+        {"insulation_heated_labor_days", 1e3F, &config.insulation_heated_labor_days},
+        {"insulation_reset_level", 255.0F, &config.insulation_reset_level},
     };
     for (const Knob& knob : knob_list) {
       const std::uint32_t row = knobs->FindRowByKey(knob.key);
@@ -802,6 +838,12 @@ bool ParseConstructionConfig(const ITableSet& tables,
     config.spare_part_grams = grams_per_unit[spare_row];
   }
   config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
+  // What an insulation job is delivered and spends (unit rules §16).
+  config.straw_resource = ResourceId{};
+  const std::uint32_t straw_row = resources->FindRowByKey("straw");
+  if (straw_row != kNoTableRow) {
+    config.straw_resource = DefIdFromRow<ResourceIdTag>(straw_row);
+  }
 
   // The walking pace, from the same table every other consumer reads it
   // from (transport.csv) and never copied into a table of this module's
