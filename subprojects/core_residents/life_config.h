@@ -37,6 +37,7 @@
 #include "core_common/world_state.h"
 #include "membership.h"
 #include "night_trade.h"
+#include "schooling.h"
 
 namespace core {
 
@@ -151,6 +152,9 @@ struct LifeConfig {
 
   /// The night trades (night_trade.h; boss, parcel 346).
   NightTradeConfig night_trade;
+
+  /// The school's pupils (schooling.h; boss, parcel 354).
+  SchoolingConfig schooling;
 
   float life_speedup = 4.0F;
 

@@ -16,6 +16,7 @@ kolkhoz_add_module(core_residents
     specialist_arrival.cpp
     membership.cpp
     night_trade.cpp
+    schooling.cpp
     vitals.cpp)
 
 target_link_libraries(core_residents

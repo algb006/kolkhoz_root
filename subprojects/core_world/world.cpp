@@ -706,18 +706,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // rather than an absence (boss, parcel 277).
       //   store_leak_complaint_kg — the "raw material leak" door for the quest
       //   «Кто гонит», queued behind digging (STUB).
-      //   school_* — the enrolment of pupils (boss, parcel 354), read by
-      //   core_residents/schooling.h once its body lands.
-      constexpr std::array<std::string_view, 9> kDeclaredNotYetRead = {
-          "store_leak_complaint_kg",
-          "school_enroll_age_from_years",
-          "school_enroll_age_to_years",
-          "school_walk_radius_primary_m",
-          "school_pupil_capacity_level_1",
-          "school_pupil_capacity_level_2",
-          "school_pupil_capacity_level_3",
-          "school_year_start_month",
-          "school_year_end_month"};
+      constexpr std::array<std::string_view, 1> kDeclaredNotYetRead = {"store_leak_complaint_kg"};
       known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {

@@ -377,7 +377,8 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     }
   }
   if (!ParseMembershipConfig(tables, config.membership, error) ||
-      !ParseNightTradeConfig(tables, config.night_trade, error)) {
+      !ParseNightTradeConfig(tables, config.night_trade, error) ||
+      !ParseSchoolingConfig(tables, config.schooling, error)) {
     return false;
   }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
@@ -408,6 +409,8 @@ std::span<const std::string_view> LifeWorldParamKeys() {
     keys.insert(keys.end(), membership.begin(), membership.end());
     const std::span<const std::string_view> night = NightTradeWorldParamKeys();
     keys.insert(keys.end(), night.begin(), night.end());
+    const std::span<const std::string_view> school = SchoolingWorldParamKeys();
+    keys.insert(keys.end(), school.begin(), school.end());
     return keys;
   }();
   return kAll;

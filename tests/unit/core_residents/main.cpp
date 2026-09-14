@@ -37,6 +37,7 @@
 #include "life_config.h"
 #include "membership.h"
 #include "night_trade.h"
+#include "schooling.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
 
@@ -1461,6 +1462,123 @@ int CheckNightTrades() {
   return failures;
 }
 
+/// The school's pupils (education design §10; boss, parcel 354): the intake in
+/// September by age, radius and capacity with the elder first, the stage in
+/// June only with a teacher, and a gone school letting its pupils go.
+int CheckSchooling() {
+  int failures = 0;
+  constexpr float kSpeedup = 4.0F;
+  core::SchoolingConfig config;
+  config.school_type = core::UnitTypeId{7};
+  config.teacher_post = core::ProfessionId{0};
+  config.pupil_capacity = {2, 60, 80};  // two places, so the elder-first rule shows
+  constexpr core::SimDay kSeptemberFirst = 8U * core::kDaysPerMonth;
+  constexpr core::SimDay kJuneFirst = core::kDaysPerYear + (5U * core::kDaysPerMonth);
+
+  core::WorldState world;
+  world.calendar.tick = kSeptemberFirst * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow school;
+  school.type = config.school_type;
+  school.level = 1;
+  school.position = core::Vec2{.x = 1000.0F, .y = 0.0F};
+  const core::UnitId school_id = AppendRow(world.units, school);
+  const core::FamilyId near_yard = AppendRow(world.families, core::FamilyRow{});
+  AddHouse(world, near_yard, core::Vec2{.x = 2000.0F, .y = 0.0F});  // 1000 m away
+  const core::FamilyId far_yard = AppendRow(world.families, core::FamilyRow{});
+  AddHouse(world, far_yard, core::Vec2{.x = 3000.0F, .y = 0.0F});  // 2000 m away
+  // Ages are counted on the day of the intake.
+  const auto child = [&world](core::FamilyId family, float age) {
+    const core::ResidentId id = AddAdult(world, family, core::Sex::kFemale, 0.0F);
+    world.residents.rows[FindRow(world.residents, id)].birth_day =
+        static_cast<std::int32_t>(world.calendar.day) - static_cast<std::int32_t>(age * 12.0F);
+    return id;
+  };
+  // At x4 the school year (September to June) is three biological years: the
+  // eldest is past 11 by June, the middle child — 7.5 now — is 10.5 then.
+  const core::ResidentId eldest = child(near_yard, 10.5F);
+  const core::ResidentId middle = child(near_yard, 7.5F);
+  const core::ResidentId youngest = child(near_yard, 7.0F);  // no place left for her
+  const core::ResidentId toddler = child(near_yard, 6.0F);   // too young
+  const core::ResidentId too_old = child(near_yard, 11.5F);  // missed the school
+  const core::ResidentId far_child = child(far_yard, 9.0F);  // beyond 1500 m
+  const auto school_of = [&world](core::ResidentId id) {
+    return world.residents.rows[FindRow(world.residents, id)].school;
+  };
+  const auto count = [&world](core::EventKind kind) {
+    std::uint32_t seen = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      seen += event.kind == kind ? 1U : 0U;
+    }
+    return seen;
+  };
+
+  core::RunSchoolDay(config, kSpeedup, world);
+  failures += Expect(school_of(eldest).value == school_id.value &&
+                         school_of(middle).value == school_id.value &&
+                         count(core::EventKind::kPupilEnrolled) == 2,
+                     "school: on 1 September the two elder children in reach take the two places");
+  failures += Expect(school_of(youngest).value == 0 && school_of(toddler).value == 0 &&
+                         school_of(too_old).value == 0 && school_of(far_child).value == 0,
+                     "school: the younger waits for a place, under 6.5 and over 11 are not taken, "
+                     "nor a child beyond 1500 m");
+
+  // June with no teacher: the year is lost; the one now past 11 leaves without
+  // the stage, the other stays enrolled.
+  world.step_events.clear();
+  world.calendar.tick = kJuneFirst * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::RunSchoolDay(config, kSpeedup, world);
+  const auto stage_of = [&world](core::ResidentId id) {
+    return world.residents.rows[FindRow(world.residents, id)].education_stage;
+  };
+  failures +=
+      Expect(school_of(eldest).value == 0 && stage_of(eldest) == core::EducationStage::kNone &&
+                 school_of(middle).value == school_id.value &&
+                 count(core::EventKind::kPupilLeftSchool) == 1,
+             "school: a June without a teacher counts nothing — the eldest ages out "
+             "without the stage, the younger pupil stays");
+
+  // The next June with a teacher at his post: the stage is counted.
+  const core::FamilyId teacher_yard = AppendRow(world.families, core::FamilyRow{});
+  const core::ResidentId teacher = AddAdult(world, teacher_yard, core::Sex::kMale, 25.0F);
+  world.residents.rows[FindRow(world.residents, teacher)].post =
+      core::PostAssignment{.profession = config.teacher_post, .unit = school_id};
+  world.step_events.clear();
+  world.calendar.tick = (kJuneFirst + core::kDaysPerYear) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::CloseSchoolYear(config, kSpeedup, world);
+  failures += Expect(
+      school_of(middle).value == 0 && stage_of(middle) == core::EducationStage::kPrimary &&
+          count(core::EventKind::kPupilLeftSchool) == 1 &&
+          world.step_events[0].amount == static_cast<std::int64_t>(core::EducationStage::kPrimary),
+      "school: with a teacher at his post the June counts the primary stage");
+
+  // A school that is gone lets its pupil go the same day.
+  world.residents.rows[FindRow(world.residents, youngest)].school = school_id;
+  RemoveRow(world.units, school_id);
+  world.step_events.clear();
+  core::ReleasePupilsOfGoneSchools(world);
+  failures += Expect(
+      school_of(youngest).value == 0 && count(core::EventKind::kPupilLeftSchool) == 1 &&
+          world.step_events[0].amount == static_cast<std::int64_t>(core::EducationStage::kNone),
+      "school: a demolished school lets its pupils go without the stage");
+
+  const auto parse = [](const char* key, const char* value) {
+    const test::FakeTable world_params({"key", "value", "reader"}, {{key, value, "core"}});
+    const test::FakeTableSet set({{"world_params", &world_params}});
+    core::SchoolingConfig read;
+    std::string trouble;
+    return core::ParseSchoolingConfig(set, read, trouble);
+  };
+  failures += Expect(parse("school_year_end_month", "5") && !parse("school_year_end_month", "9") &&
+                         !parse("school_enroll_age_to_years", "6") &&
+                         !parse("school_pupil_capacity_level_1", "40.5"),
+                     "knobs: the same month for start and end, an age band upside down and half a "
+                     "pupil are refused");
+  return failures;
+}
+
 /// Old age takes the old — asserted where it cannot be luck.
 ///
 /// THE ASSERTION THAT STOOD IN THE VILLAGE TEST WAS A COIN. It said a
@@ -1628,6 +1746,7 @@ int main() {
   failures += CheckRooflessLadder();
   failures += CheckMembership();
   failures += CheckNightTrades();
+  failures += CheckSchooling();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
   }
