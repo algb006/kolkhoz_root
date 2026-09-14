@@ -17,6 +17,7 @@
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -408,6 +409,18 @@ void RunNightOutings(const NightTradeConfig& config, WorldState& current) {
   if (hour == config.hour_back && IsMoonlitNight(config, night_began)) {
     ComeBack(config, current);
   }
+}
+
+bool ApplyStartNightTrades(const ITableSet& tables,
+                           float life_speedup,
+                           WorldState& world,
+                           std::string& error) {
+  NightTradeConfig config;
+  if (!ParseNightTradeConfig(tables, config, error)) {
+    return false;
+  }
+  AssignNightTrades(config, life_speedup, world);
+  return true;
 }
 
 }  // namespace core

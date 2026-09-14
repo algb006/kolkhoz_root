@@ -1356,6 +1356,27 @@ int CheckNightTrades() {
   }
   failures += Expect(none_kept, "trades: in a village of members nobody is handed a trade");
 
+  // The start's trades (boss, parcel 352): the same rule, handed out in
+  // genesis, and nothing said.
+  core::WorldState start;
+  start.world_seed = 11;
+  start.rng = core::SeedRngState(11, 0);
+  const core::FamilyId start_yard_a = AppendRow(start.families, core::FamilyRow{});
+  const core::FamilyId start_yard_b = AppendRow(start.families, core::FamilyRow{});
+  for (int index = 0; index < 3; ++index) {
+    AddAdult(start, start_yard_a, core::Sex::kMale, 30.0F);
+    AddAdult(start, start_yard_b, core::Sex::kMale, 30.0F);
+  }
+  const test::FakeTableSet no_tables;
+  std::string start_error;
+  const bool applied = core::ApplyStartNightTrades(no_tables, kSpeedup, start, start_error);
+  std::uint32_t start_kept = 0;
+  for (const core::ResidentRow& person : start.residents.rows) {
+    start_kept += person.night_trade != core::NightTrade::kNone ? 1U : 0U;
+  }
+  failures += Expect(applied && start_kept == 5 && start.step_events.empty(),
+                     "start: genesis hands out the five trades and raises nothing");
+
   const auto at = [&world](core::SimDay day, std::uint32_t hour) {
     world.calendar.tick = (day * core::kTicksPerDay) + hour;
     core::RefreshCalendarCaches(world.calendar);

@@ -1260,6 +1260,15 @@ WorldState CreateStartWorld(const ITableSet& tables,
       *error = membership_trouble;
     }
   }
+  // And the start's night trades, among the men the membership left outside
+  // (boss, parcel 352): the first year has its distiller too.
+  std::string night_trouble;
+  if (!ApplyStartNightTrades(tables, life_speedup, world, night_trouble)) {
+    LogError("genesis: " + night_trouble);
+    if (error != nullptr) {
+      *error = night_trouble;
+    }
+  }
   BuildStartEconomy(world, tables, stubs, capacities, error);
   // THE DISTRICT ASKS IN THE VERY FIRST SPRING, and it can only do that if
   // the world starts with a year behind it. The norm is computed off the

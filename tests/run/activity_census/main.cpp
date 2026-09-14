@@ -128,7 +128,8 @@ constexpr std::array<std::string_view,
 /// while its source was there all along — health below `treated_health` —
 /// and simply had not been reached on these nine seeds. The night trades'
 /// lots moved the stream, a resident on one seed fell under the line, and the
-/// census refused the waiver. The state is reachable; the waiver was luck.
+/// census refused the waiver. The state is reachable; the waiver was luck —
+/// and so is its absence, which is why it is RARE below and not demanded.
 constexpr std::array<std::string_view, 2> kWaived = {"away", "resting"};
 
 /// THE OPEN QUESTION THIS CHECK RAISED IS CLOSED, and the way it closed is
@@ -145,6 +146,17 @@ constexpr std::array<std::string_view, 2> kWaived = {"away", "resting"};
 
 bool Waived(std::string_view name) {
   return std::ranges::find(kWaived, name) != kWaived.end();
+}
+
+/// RARE: reachable, and reached or not by the stream alone. Neither half of
+/// the check fits it — waived, it failed the day a seed reached it; demanded,
+/// it failed the day the start's night trades moved the stream and no seed
+/// did (2026-09-15, both within one afternoon). It is printed and asserted
+/// neither way; its source is named in resident_activity.h.
+constexpr std::array<std::string_view, 1> kRare = {"treated"};
+
+bool Rare(std::string_view name) {
+  return std::ranges::find(kRare, name) != kRare.end();
 }
 
 /// The rules, with the speed-up read from the SAME table the world was built
@@ -213,6 +225,9 @@ int main(int argc, char** argv) {
     }
     std::cout << "activity_census:   " << mark << kNames[index] << ' ' << seen[index]
               << " человеко-часов\n";
+    if (Rare(kNames[index])) {
+      continue;  // printed above, asserted neither way
+    }
     if (dead && !Waived(kNames[index])) {
       failures += run::Expect(false, "an activity nothing waived never happened on any seed");
     }

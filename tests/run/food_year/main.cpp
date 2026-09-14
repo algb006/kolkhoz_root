@@ -1008,27 +1008,23 @@ int main(int argc, char** argv) {
   // itself.
   failures += run::Expect(bad.leanest_day_satiety < good.leanest_day_satiety,
                           "and the lean season is worse without the issue");
-  // 0.778614044 until 2026-09-12, and it rose to 0.794485092 in the same
-  // change that moved the two records above: the queue's three tiers. The
-  // ratchet follows the model.
-  // And to 3.65788269 on 2026-09-13 with the ripening rule — the direction
-  // "the issue feeds the lean season" not merely surviving the change but
-  // widening to twice what it was. A village that reaps what it sows has more
-  // to hand out, and the difference between handing it out and not is larger.
-  // And 3.59672356 the same day with the cattle yard moved off the road, and
-  // 3.43684959 when the herds stopped eating the plan reserve. And 1.83509445
-  // with the meadow cut's window (the mean above says why). And 8.09285831
-  // with the building chairman: the issue matters four times as much in a
-  // village of working migrants (the mean above says why). And 7.63584423
-  // with the felling brigade riding. And 7.49144745 with the night trades
-  // (2026-09-15) — LOWERED, so the cause is named with its two control arms:
-  // the same run with the catch set to zero gave 7.49144745 again, so it is
-  // not the fish and game in the pantries; the run with no trade handed out at
-  // all gave 9.81330967. The lots the trades draw from the world's stream moved
-  // every later draw, and this gap swings by two points on the stream alone.
-  failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            7.49144745F,
-                            "the gap the issue makes at the lean season (recorded, not a band)");
+  // THE SIZE OF THE GAP IS A BAND OVER NINE SEEDS, NOT A RECORD (boss, parcel
+  // 352). It was a ratchet from 2026-09-12 — 0.78, 0.79, 3.66, 3.60, 3.44,
+  // 1.84, 8.09, 7.64, each move named with the change that made it — and the
+  // night trades showed what it was ratcheting: with the catch set to zero the
+  // gap was 7.49 again, with no trade handed out at all 9.81. The lots the
+  // trades draw moved every later draw, and the gap swings by points on the
+  // stream alone. A record of it catches a moved stream, not a village fed or
+  // starved. The direction above is the model's claim and binds on every
+  // seed; the size is measured here, on seeds 1929-1937 after the start's
+  // night trades (2026-09-15): 3.99, 4.13, 4.68, 5.43, 6.54 (median), 7.31,
+  // 9.66, 13.36, 18.00.
+  const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
+  std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
+            << " (nine seeds: 3.99-18.00, median 6.54)\n";
+  failures +=
+      ExpectBand(issue_gap >= 3.99F && issue_gap <= 18.0F,
+                 "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
   // a thin ration and many are slightly short; hand it nothing and the

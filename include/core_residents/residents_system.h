@@ -159,6 +159,20 @@ bool ApplyStartMembership(const ITableSet& tables,
                           WorldState& world,
                           std::string& error);
 
+/// @brief The start's night trades, handed out to a world genesis has just
+/// peopled and given its members (boss, parcel 352: the first year is not a
+/// village without a distiller) — the same rule as the year's turn
+/// (core_residents/night_trade.h, AssignNightTrades), and silent, as nobody
+/// takes a trade up on the first day: he kept it before.
+/// @pre ApplyStartMembership has run: the trades go to men outside the
+///      organizations.
+/// @return false with `error` set when the night trade knobs cannot be read;
+///         the world is left untouched then.
+bool ApplyStartNightTrades(const ITableSet& tables,
+                           float life_speedup,
+                           WorldState& world,
+                           std::string& error);
+
 /// A NOTE ON WHERE THIS STANDS, because putting it anywhere else cost a
 /// finding. Declared first between CreateResidentsSystem's doc block and
 /// CreateResidentsSystem itself, it took that whole block for itself and
