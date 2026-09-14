@@ -8,10 +8,9 @@
 // steered as in timber_years until the first day sawyers stand at the saw and
 // a crew stands on a site, and each such world handed to a real session.
 //
-// THE BATH IS NOT HERE, and on purpose: the bath attendant's post has no work
-// the core models yet, so the labor sub-step leaves him idle (STUB,
-// labor_system.h) and the seam answers 0 for him, as it answers "at home" for
-// his whereabouts. The unit test holds that line.
+// THE BATH IS NOT HERE: the runs' chairman builds no bath. A post holder with
+// no day's work counts at his post in his shift (boss, parcel 238), and the
+// unit test holds that line.
 //
 // Usage: unit_signals [seed] (default 1929).
 

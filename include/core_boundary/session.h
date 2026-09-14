@@ -164,9 +164,10 @@ struct UnitSignals {
   /// Residents whose work today is at this unit: the barn crew, through the
   /// herd that stands here; the sawyers of a sawmill (kUnitWork) and the crew
   /// of a site (kConstruction), which name the unit itself. A module's workers
-  /// count at the module, not at its parent. A post holder whose post's work
-  /// the core does not model yet is idle (STUB, labor_system.h) and is not
-  /// counted — he is at home by WhereaboutsOf too. A field is not a unit: its
+  /// count at the module, not at its parent. And the holder of a post at this
+  /// unit with no day's work of his own, inside the daylight shift — the bath
+  /// attendant, the librarian (boss, parcel 238); WhereaboutsOf puts him at
+  /// the unit over the same hours. A field is not a unit: its
   /// crew is FieldSignals::residents_working.
   std::uint16_t residents_working = 0;
 

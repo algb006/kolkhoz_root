@@ -89,9 +89,23 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   // sawmill's unit_work in 0.20.0, and the seam went on answering "nobody works
   // here" at every sawmill — host found it by fixture (seq 218). A module's
   // sawyers count at the module they work, not at the yard that holds it.
+  //
+  // AND THE HOLDER OF A POST HERE, IN HIS SHIFT, with no day's work of his own:
+  // the bath attendant, the librarian, the teacher (boss, parcel 238: "the
+  // holder of a post counts in his shift"). The core models no work for those
+  // posts yet and leaves the holder unassigned; he still stands at his unit
+  // through the working daylight, and WhereaboutsOf says the same.
+  const bool in_shift =
+      InsideDaylight(HourFromTick(world.calendar.tick), SolarWindow(world.weather.daylight_hours));
   std::uint32_t working = 0;
   for (const ResidentRow& resident : world.residents.rows) {
     switch (resident.work.kind) {
+      case WorkKind::kNone:
+        working += in_shift && resident.post.unit.value == unit.value &&
+                           resident.post.profession.value != kInvalidDefIdValue
+                       ? 1U
+                       : 0U;
+        break;
       case WorkKind::kHerdCare: {
         const std::uint32_t herd_row = FindRow(world.herds, resident.work.herd);
         working +=
@@ -169,8 +183,19 @@ ResidentWhereabouts DeriveWhereabouts(const WorldState& world, ResidentId reside
   }
 
   const DayWindow window = SolarWindow(world.weather.daylight_hours);
-  const bool at_work = person.work.kind != WorkKind::kNone &&
-                       InsideDaylight(HourFromTick(world.calendar.tick), window);
+  const bool in_shift = InsideDaylight(HourFromTick(world.calendar.tick), window);
+  // A POST HOLDER WITH NO DAY'S WORK stands at his post through the shift
+  // (boss, parcel 238), as DeriveUnitSignals counts him there.
+  const bool at_post = person.work.kind == WorkKind::kNone && in_shift &&
+                       person.post.profession.value != kInvalidDefIdValue &&
+                       FindRow(world.units, person.post.unit) != kNoRow;
+  if (at_post) {
+    where.place = Whereabouts::kAtWork;
+    where.unit = person.post.unit;
+    where.to = UnitPosition(world, where.unit);
+    return where;
+  }
+  const bool at_work = person.work.kind != WorkKind::kNone && in_shift;
   if (!at_work) {
     where.place = Whereabouts::kAtHome;
     where.unit = house;

@@ -649,9 +649,9 @@ int TestSignals(const core::ITableSet& tables) {
 
   // THE WORK AT A UNIT BY NAME (2026-09-14; host, seq 218): two sawyers at a
   // sawmill, one mason at a site, and a bath attendant holding a post whose
-  // work the core does not model yet — idle, so neither working nor away.
-  // None of them belongs to the household above, so its counts stay as they
-  // were.
+  // work the core does not model yet — no day's work, and at his post through
+  // the shift all the same (boss, parcel 238). None of them belongs to the household above, so its
+  // counts stay as they were.
   core::UnitRow sawmill;
   sawmill.position = core::Vec2{.x = 700.0F, .y = 100.0F};
   const core::UnitId sawmill_id = core::AppendRow(world.units, sawmill);
@@ -675,7 +675,12 @@ int TestSignals(const core::ITableSet& tables) {
   attendant.birth_day = sawyer.birth_day;
   attendant.post.profession = core::ProfessionId{0};
   attendant.post.unit = bath_id;
-  core::AppendRow(world.residents, attendant);
+  const core::ResidentId attendant_id = core::AppendRow(world.residents, attendant);
+  // And a man with no post and no work, so the count is about the post and
+  // not about being idle.
+  core::ResidentRow loafer;
+  loafer.birth_day = sawyer.birth_day;
+  core::AppendRow(world.residents, loafer);
 
   ScriptedSimulation* script = nullptr;
   std::unique_ptr<core::ISession> session = ScriptedSession(tables, world, &script);
@@ -713,9 +718,13 @@ int TestSignals(const core::ITableSet& tables) {
                      "the two sawyers are counted at the sawmill they name");
   failures +=
       Expect(session->SignalsOfUnit(site_id).residents_working == 1, "and the mason at his site");
-  failures += Expect(session->SignalsOfUnit(bath_id).residents_working == 0,
-                     "while a post whose work is not modelled leaves its holder idle, not "
-                     "working");
+  failures += Expect(session->SignalsOfUnit(bath_id).residents_working == 1,
+                     "and the bath attendant at his post in his shift, with no day's work of "
+                     "his own");
+  const core::ResidentWhereabouts at_bath = session->WhereaboutsOf(attendant_id);
+  failures += Expect(at_bath.place == core::Whereabouts::kAtWork &&
+                         at_bath.unit.value == bath_id.value && at_bath.to.x == 900.0F,
+                     "and his whereabouts put him at the bath, where the count does");
 
   const core::FieldSignals field_signals = session->SignalsOfField(field_id);
   failures +=
@@ -806,6 +815,9 @@ int TestSignals(const core::ITableSet& tables) {
   session->ReplaceWorld(night);
   failures += Expect(session->WhereaboutsOf(ploughman_id).place == core::Whereabouts::kAtHome,
                      "outside the daylight window the ploughman is home");
+  failures += Expect(session->SignalsOfUnit(bath_id).residents_working == 0 &&
+                         session->WhereaboutsOf(attendant_id).place == core::Whereabouts::kAtHome,
+                     "and the bath attendant's shift is over too: not counted, and home");
   return failures;
 }
 
