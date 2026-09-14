@@ -116,6 +116,14 @@ struct LifeConfig {
   /// the base heights in metres are the seam's business, not demography's.
   BodyKnobs body;
 
+  /// Pupils one teacher takes (world_params.csv teacher_pupils_per_teacher;
+  /// education design, "Эпоха I числами"): the norm by which the district
+  /// finds a school short of teachers and sends one (boss, parcel 237).
+  /// STUB, read and unused: the specialist's arrival that asks it is the next
+  /// move, and the key had to be the core's before the export reached the
+  /// tree, or every table load refused it.
+  float teacher_pupils_per_teacher = 30.0F;
+
   /// unit_types.csv "wooden_house" row: what the wedding STUB builds
   /// (invalid in a table-less world — the unit is appended with an invalid
   /// type then).

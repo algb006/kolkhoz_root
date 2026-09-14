@@ -278,7 +278,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 13> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 14> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -297,7 +297,9 @@ constexpr std::array<std::string_view, 13> kLifeWorldParamKeys = {
     "age_preschool_from_years",
     "age_school_junior_from_years",
     "age_school_senior_from_years",
-    "age_adult_from_years"};
+    "age_adult_from_years",
+    // The district's teacher norm (2026-09-14), for the specialist's arrival.
+    "teacher_pupils_per_teacher"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
@@ -339,7 +341,10 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 20.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[12],
                  .value = &config.body.age_adult_from_years,
-                 .range = Range{.low = 0.0F, .high = 30.0F}}};
+                 .range = Range{.low = 0.0F, .high = 30.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[13],
+                 .value = &config.teacher_pupils_per_teacher,
+                 .range = Range{.low = 1.0F, .high = 200.0F}}};
   return ReadKnobs(world, "world_params", rows, error);
 }
 

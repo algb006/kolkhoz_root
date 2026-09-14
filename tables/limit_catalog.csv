@@ -46,3 +46,5 @@ paint_lot,,2,goods
 concrete_lot,,3,goods
 coal_lot,20,1,goods
 textile_lot,25,2,goods
+mts_column_spring,120,1,service
+mts_column_autumn,150,1,service
