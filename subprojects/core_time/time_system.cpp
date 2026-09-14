@@ -20,6 +20,7 @@
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/random.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
@@ -559,6 +560,19 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     current.weather.cover_since_leaf_fall =
         (!new_leaf_fall && previous.weather.cover_since_leaf_fall) ||
         current.weather.snow_cover_days > 0;
+    // THE HEAT IS SAID ONCE A DAY, at its first tick, whatever the day is
+    // called (boss, parcel 364): the afternoon — the mean plus the day's
+    // swing — against +25. A rainy hot day is still a hot day.
+    if (first_tick_of_a_day) {
+      const SeasonWeather& season =
+          SeasonOfDayOfYear(seasons_, current.calendar.day % kDaysPerYear);
+      const float afternoon =
+          current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius;
+      if (afternoon >= season.hot_afternoon_celsius) {
+        SimEvent& hot = EmitEvent(current, EventKind::kHotAfternoon, EventSeverity::kRoutine);
+        hot.amount = static_cast<std::int64_t>(std::lround(afternoon * 10.0F));
+      }
+    }
   }
 
  private:

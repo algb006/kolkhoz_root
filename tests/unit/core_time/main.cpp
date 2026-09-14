@@ -116,6 +116,57 @@ int main() {
                    core::CreateTimeSystem(*hot_tables, core::StubTables::kAllowed) == nullptr,
                "a season that swings past +30 is refused");
   }
+  {
+    // THE DAY'S HEAT (boss, parcel 364): a warm summer, and over a year the
+    // event stands on exactly the days whose afternoon — mean plus swing — is
+    // at or above +25, once each, at the day's first tick.
+    const std::filesystem::path warm = root / "warm";
+    std::filesystem::create_directories(warm);
+    std::ofstream(warm / "weather.csv")
+        << "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+           "winter,-10,2,3,35\nspring,8,5,5,35\nsummer,21,3,6,25\nautumn,6,7,5,45\n";
+    std::string warm_error;
+    const auto warm_tables = core::LoadTableSet(warm.string(), &warm_error);
+    const auto warm_system = warm_tables == nullptr
+                                 ? nullptr
+                                 : core::CreateTimeSystem(*warm_tables, core::StubTables::kAllowed);
+    if (warm_system == nullptr) {
+      failures += Expect(false, "the warm weather table builds a time system");
+    } else {
+      core::ISequentialPhase& warm_phase = warm_system->TimeAndWeatherPhase();
+      core::WorldState previous;
+      previous.world_seed = 7;
+      core::WorldState current;
+      std::uint32_t hot_days = 0;
+      std::uint32_t events = 0;
+      bool matches = true;
+      for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
+        current = previous;
+        current.step_events.clear();
+        warm_phase.RunSequential(previous, current);
+        std::uint32_t said = 0;
+        for (const core::SimEvent& event : current.step_events) {
+          said += event.kind == core::EventKind::kHotAfternoon ? 1U : 0U;
+        }
+        events += said;
+        const bool first_tick =
+            core::HourFromTick(current.calendar.tick) == 0 || current.calendar.tick == 0;
+        const bool hot =
+            current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius >=
+            25.0F;
+        if (first_tick) {
+          hot_days += hot ? 1U : 0U;
+          matches = matches && said == (hot ? 1U : 0U);
+        } else {
+          matches = matches && said == 0;
+        }
+        std::swap(previous, current);
+      }
+      failures += Expect(hot_days > 0 && events == hot_days && matches,
+                         "heat: the event stands on every day whose afternoon reaches +25, once, "
+                         "and on no other");
+    }
+  }
   core::ISequentialPhase& phase = time_system->TimeAndWeatherPhase();
 
   // Solar curve anchors (time design §3): June ~17.5, December ~7.0 game
