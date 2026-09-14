@@ -846,8 +846,16 @@ int main(int argc, char** argv) {
   // moved the mean satiety of years 1-3 from 58.1 to 58.7 and the potato of
   // those years by -8 t against a spread of 31 t: no loss the village carries,
   // a trajectory this seed follows. The four records below moved together.
+  //
+  // AND 66.8810043 THE SAME DAY, with the meadow cut given its June-July
+  // window and a tier of its own (assignment.cpp; boss, parcel 262). The cut
+  // had no window and the fallow took its hay; on this one seed the three
+  // years lost a tenth of a point. thirty_years' nine seeds with orders,
+  // against 312f5fe: satiety of years 1-3 58.7 -> 58.7, the leanest day
+  // 27.6 -> 28.1, potatoes +4 t (sd 31 t), rye unchanged, the same granaries,
+  // population at year 30 +29.7 (2se 102.6). The four records moved together.
   failures += ExpectNoLower(
-      good.mean_satiety, 66.9979935F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 66.8810043F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -906,9 +914,11 @@ int main(int argc, char** argv) {
   // the half that matters more to us of the two.
   // And 21.0634956 the same day with the cattle yard moved off the road (see
   // the mean above: the same export, measured apart). And 20.9036217 when the
-  // herds stopped eating the plan reserve (the mean above says why).
+  // herds stopped eating the plan reserve (the mean above says why). And
+  // 19.379631 with the meadow cut's window (the mean above: this seed only;
+  // the nine seeds' leanest day of years 1-3 rose by half a point).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 19.7282429F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 19.379631F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -929,9 +939,10 @@ int main(int argc, char** argv) {
   // And down again on 2026-09-13 with the ripening rule: 0.842519701. A
   // smaller sowing reaped whole feeds more mouths at the lean end than a
   // bigger one reaped late, which is the same trade the two records above
-  // carry.
+  // carry. And 0.86178863 with the meadow cut's window, 106 of 123 (the mean
+  // above says why).
   failures += ExpectNoHigher(
-      hungry_share, 0.847457647F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.86178863F, "the share of the village hungry at once (recorded, not a band)");
   failures += ExpectBand(good.hungry * 6U <= good.people,
                          "the year ends with hardly anyone under the threshold");
 
@@ -973,9 +984,10 @@ int main(int argc, char** argv) {
   // widening to twice what it was. A village that reaps what it sows has more
   // to hand out, and the difference between handing it out and not is larger.
   // And 3.59672356 the same day with the cattle yard moved off the road, and
-  // 3.43684959 when the herds stopped eating the plan reserve.
+  // 3.43684959 when the herds stopped eating the plan reserve. And 1.83509445
+  // with the meadow cut's window (the mean above says why).
   failures += ExpectNoLower(good.leanest_day_satiety - bad.leanest_day_satiety,
-                            1.9328289F,
+                            1.83509445F,
                             "the gap the issue makes at the lean season (recorded, not a band)");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

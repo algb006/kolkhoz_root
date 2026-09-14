@@ -204,6 +204,13 @@ struct LaborConfig {
   /// Calendar windows per crop row, for job urgency.
   std::vector<CropWindows> crops;
 
+  /// The last month of the meadow cut, 0-based (farming.csv
+  /// meadow_cut_month_end, 1-based in the file). A meadow has no crop, so
+  /// its cut took no window and ranked with work that has none — below the
+  /// fallow's ploughing for rye, which cost the first year's hay (boss,
+  /// parcels 258 and 260; farming design, "Июнь–июль: рост и сенокос").
+  std::uint8_t meadow_cut_to_month = 6;
+
   /// livestock.csv "horse" row: the kind whose adults are the draught pool
   /// and whose private standing locks its host to horse work (start canon).
   LivestockKindId horse_kind;

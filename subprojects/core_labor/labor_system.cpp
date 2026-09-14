@@ -653,12 +653,23 @@ class LaborSystem final : public ILaborSystem {
   /// had none. Its ploughing is the preparation for the rye sown that same
   /// autumn (farming design §7; start canon §8, "winter rye goes in the
   /// autumn of the same year"), but with no window it ranked below every job
-  /// that had one — and from the thaw to the snow the windowed harness work
-  /// (the ploughs, then the meadow cut) took every horse. Measured on
+  /// that had one — and from the thaw to the snow the harness work (the
+  /// windowed ploughs, then the meadow cut) took every horse. Measured on
   /// labor_year, seed 1930: the start's 3.5 ha fallow opened for ploughing on
   /// day 16 and stood unworked to the year's end with sixty people idle a
   /// day; the rye was never sown and the ploughing band read 84.29.
   Deadline FieldWindow(const CalendarState& calendar, const FieldRow& field, WorkKind kind) const {
+    // THE MEADOW CUT HAS A WINDOW OF ITS OWN, June to July (farming design,
+    // the months' row: "рост и сенокос"). A meadow has no crop, and until
+    // 2026-09-14 the cut fell through to "no window" below: from 0.23.0 it
+    // ranked under the fallow's ploughing for rye, which took its hands and
+    // horses — on seed 9 of the host's party with no orders the first year's
+    // hay fell from 140 t to 110 t and 17 cows of 33 starved in the second
+    // winter (boss, parcels 258 and 260). Where the cut stands among the
+    // other work is the queue's tier, not this window (assignment.cpp).
+    if (field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow) {
+      return WindowOf(calendar, config_.meadow_cut_to_month);
+    }
     CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
     if (PreparesWinterCrop(field, kind)) {
       crop = JobCrop(field);

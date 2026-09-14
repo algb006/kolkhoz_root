@@ -1853,6 +1853,86 @@ int TestWinterPreparationYieldsToWindowedWork() {
     const auto plan = core::PlanDayAssignments(jobs, candidates, params);
     failures += Expect(plan[0] == 1, "and goes ahead of ploughing with no window at all");
   }
+  // THE MEADOW CUT'S TIER (boss, parcel 262): open, overdue, the cut in its
+  // window, the fallow for rye, the rest with the grass left uncut.
+  const auto cut = [&origin](core::Deadline window) {
+    core::AssignmentJob job = FieldJob(core::WorkKind::kHarvest, 3, origin, 3.0F, 0);
+    job.window = window;
+    job.harnessed = true;
+    return job;
+  };
+  {
+    const std::vector<core::AssignmentJob> jobs = {prepare(), cut(core::DeadlineInDays(7))};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1,
+                       "cut tier: the meadow cut in its window goes ahead of the fallow for rye");
+  }
+  {
+    core::AssignmentJob late_sowing = FieldJob(core::WorkKind::kSowing, 2, origin, 3.0F, 0);
+    late_sowing.window = core::DeadlineOverdue(3);
+    const std::vector<core::AssignmentJob> jobs = {cut(core::DeadlineInDays(0)), late_sowing};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1,
+                       "cut tier: and yields to the spring sowing run overdue into June, even on "
+                       "the cut's last day");
+  }
+  {
+    const std::vector<core::AssignmentJob> jobs = {cut(core::DeadlineOverdue(1)), prepare()};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1,
+                       "cut tier: the grass left uncut after its window yields to the fallow");
+  }
+  return failures;
+}
+
+/// THE MEADOW CUT'S WINDOW comes from farming.csv meadow_cut_month_end. The
+/// table here says August — not the shipped July — so that a parser that
+/// kept the default could not pass: in August the cut is still in its window
+/// and goes ahead of the fallow; in October it is overdue and yields to it.
+int TestMeadowCutHasTheTablesWindow() {
+  int failures = 0;
+  const std::filesystem::path root = std::filesystem::temp_directory_path() / "unit_core_labor_cut";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "rye_winter,12,7,1\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::ofstream(root / "farming.csv") << "key,value\nmeadow_cut_month_end,8\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "cut window: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto worked_on = [&labor](std::uint32_t game_day) {
+    DayWorld day(1);
+    const core::HerdId team = day.AddUnitHerd(1, 5.0F);
+    day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+    const core::FieldId meadow =
+        day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+    const core::FieldId fallow =
+        day.AddField(core::FieldPhase::kPlowing, 5.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+    day.world.fields.rows[core::FindRow(day.world.fields, meadow)].kind = core::LandKind::kMeadow;
+    core::FieldRow& ground = day.world.fields.rows[core::FindRow(day.world.fields, fallow)];
+    ground.rotation_assigned = 1;
+    ground.rotation_year1 = core::CropId{0};
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(game_day) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    const core::WorkAssignment& work = day.world.residents.rows[0].work;
+    return work.field.value == meadow.value ? 1 : (work.field.value == fallow.value ? 2 : 0);
+  };
+  // Day 16 is a Wednesday in May; fourteen days on is a Wednesday in August,
+  // twenty-one a Wednesday in October (four days a month).
+  failures += Expect(worked_on(30) == 1,
+                     "cut window: in August, inside the table's window, the horse mows");
+  failures += Expect(worked_on(37) == 2,
+                     "cut window: in October the uncut grass yields to the fallow for rye");
   return failures;
 }
 
@@ -2004,6 +2084,7 @@ int main() {
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestWinterPreparationYieldsToWindowedWork();
+  failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();
   failures += TestWinterTierHasOneOrder();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();

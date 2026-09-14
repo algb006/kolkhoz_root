@@ -458,6 +458,16 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       return false;
     }
   }
+  if (const ITable* farming = tables.FindTable("farming")) {
+    float cut_to = static_cast<float>(config.meadow_cut_to_month) + 1.0F;
+    const std::array<ScalarKnob, 1> knobs = {{
+        {.key = "meadow_cut_month_end", .value = &cut_to, .range = {.low = 1.0F, .high = 12.0F}},
+    }};
+    if (!ReadKnobs(*farming, "farming", knobs, error)) {
+      return false;
+    }
+    config.meadow_cut_to_month = static_cast<std::uint8_t>(cut_to - 1.0F);
+  }
   if (const ITable* professions = tables.FindTable("professions")) {
     if (!ParseProfessions(*professions, config, error)) {
       return false;

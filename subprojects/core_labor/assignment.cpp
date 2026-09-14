@@ -120,8 +120,9 @@ float TravelHours(const Vec2& home, const Vec2& place, float hours_per_km) {
   return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
 }
 
-/// Deterministic job order: TIER first (window open, then overdue, then no
-/// window), and only inside a tier the days left, the kind and the target id.
+/// Deterministic job order: TIER first (window open, then overdue, then the
+/// meadow cut in its window, then the winter preparation, then the rest), and
+/// only inside a tier the days left, the kind and the target id.
 /// Input position is the last resort only for degenerate duplicate targets.
 std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
   std::vector<std::uint32_t> order;
@@ -144,9 +145,26 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
   // a fallow for this autumn's winter crop has a window, and still yields to
   // every job that has one of its own — bread in the field before a sowing to
   // come — while going ahead of work with no window at all.
+  //
+  // AND THE MEADOW CUT IN ITS WINDOW ABOVE THAT ONE, and below the overdue
+  // (boss, parcels 258-262; farming design, the row before "Окно в один
+  // месяц"): open, overdue, the cut in June-July, the fallow for rye, then
+  // the rest — the grass left uncut after July among it. Each place was
+  // measured on nine seeds with no orders. The cut with no window ranked
+  // below the fallow, and the first year's hay went to the rye (seed 9 of the
+  // host's party: 140 t -> 110 t, 17 cows of 33 starved in the second winter).
+  // As open work it took the spring sowing that always runs into June: 11 ha
+  // sown of 66. Left overdue after July it outranked the fallow again and the
+  // rye was lost for two years.
   const auto tier = [](const AssignmentJob& job) {
     if (job.prepares_winter_crop) {
-      return 2;
+      return 3;
+    }
+    // The meadow cut is the one harvest that rides out (labor_system.cpp,
+    // CollectJobs sets `harnessed` for a meadow and nothing else).
+    const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
+    if (meadow_cut) {
+      return job.window.kind == DeadlineKind::kDays ? 2 : 4;
     }
     switch (job.window.kind) {
       case DeadlineKind::kDays:
@@ -154,7 +172,7 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
       case DeadlineKind::kOverdue:
         return 1;
       default:
-        return 3;
+        return 4;
     }
   };
   std::ranges::sort(order, [&jobs, &tier](std::uint32_t left, std::uint32_t right) {
@@ -168,12 +186,11 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     // argument the sort hands it first, which is not an ordering at all.
     //
     // AND THE TIER ABOVE WAS EDITED, as this comment once warned it would be:
-    // since 2026-09-14 the winter-preparation tier (2) can hold an open window
-    // and an overdue one together. Compared by days for one pair and by work
-    // kind for another, three such jobs made a cycle — no ordering, and
-    // undefined behaviour in the sort (UB-001 of the 0.23.0 cycle). So inside
-    // a tier the window's kind goes first, open before overdue before none,
-    // and only then its days.
+    // since 2026-09-14 the winter-preparation tier (3 since the meadow cut's tier) can hold an open
+    // window and an overdue one together. Compared by days for one pair and by work kind for
+    // another, three such jobs made a cycle — no ordering, and undefined behaviour in the sort
+    // (UB-001 of the 0.23.0 cycle). So inside a tier the window's kind goes first, open before
+    // overdue before none, and only then its days.
     const auto window_rank = [](const AssignmentJob& job) {
       switch (job.window.kind) {
         case DeadlineKind::kDays:
