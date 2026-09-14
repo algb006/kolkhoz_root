@@ -194,6 +194,26 @@ enum class EventKind : std::uint8_t {
   /// kNotable; once a month per unit and post while the condition holds.
   kSpecialistNoHousing,
 
+  // -- houses for families (2026-09-14; life-cycle §12, housing §20) ---------
+
+  /// resident (the bride), family (her family) — a couple ready to marry found
+  /// no free house and waits for one; amount = the groom's ResidentId value.
+  /// Once per couple, on the day it starts waiting. kNotable. The host raises
+  /// the start quest's `families_exceed_houses` off the first.
+  kWeddingAwaitsHouse,
+
+  /// family — its house is gone, no free house stands, the barrack rung is
+  /// skipped (STUB), and in the warm season it pitches a tent on its old plot
+  /// (housing design §20, the third rung). Once, when it moves into the tent.
+  /// kNotable.
+  kFamilyInTent,
+
+  /// family — a family without a roof met the cold with nowhere to go and
+  /// left the kolkhoz for good (§20, the fourth rung); amount = the members
+  /// who left. Each of them is also a kResidentLeft. kInterrupting: the
+  /// design calls the rung "heavy and irreversible".
+  kFamilyLeftForNoHouse,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.

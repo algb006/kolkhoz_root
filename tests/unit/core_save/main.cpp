@@ -184,6 +184,8 @@ core::WorldState MakeWorld() {
   rich.satiety_year_mean = 88.5F;
   rich.food_variety_mask = 0b1011;
   rich.first_meal_eaten = 1;  // `bare` below keeps 0: the pair a constant fails on
+  rich.lost_house_position = core::Vec2{.x = 812.5F, .y = 9044.25F};  // save format 35
+  rich.in_tent = 1;
   rich.household_hours = 4.25F;
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
@@ -352,6 +354,13 @@ core::WorldState MakeWorld() {
   teacher.unit = core::UnitId{3};
   teacher.arrive_day = 97;
   core::AppendRow(world.specialist_arrivals, teacher);
+
+  // A couple waiting for a free house (save format 35).
+  core::WeddingWaitRow couple;
+  couple.bride = core::ResidentId{7};
+  couple.groom = core::ResidentId{9};
+  couple.since_day = 211;
+  core::AppendRow(world.wedding_waits, couple);
 
   // An appointment still waiting (task A7): kAccepted is exactly the status
   // that has to survive a save — the order is visible, cancellable, and
@@ -524,6 +533,15 @@ int main() {
   failures += Expect(loaded.families.rows[0].first_meal_eaten == 1 &&
                          loaded.families.rows[1].first_meal_eaten == 0,
                      "a family that has eaten comes back one, and a new one comes back new");
+  failures += Expect(loaded.families.rows[0].in_tent == 1 && loaded.families.rows[1].in_tent == 0 &&
+                         loaded.families.rows[0].lost_house_position.x == 812.5F &&
+                         loaded.families.rows[0].lost_house_position.y == 9044.25F,
+                     "a family in a tent comes back in its tent, on its old plot");
+  failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
+                         loaded.wedding_waits.rows[0].bride.value == 7 &&
+                         loaded.wedding_waits.rows[0].groom.value == 9 &&
+                         loaded.wedding_waits.rows[0].since_day == 211,
+                     "a couple waiting for a house comes back waiting, since its day");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
   // PlanState carried no tripwire at all until 2026-09-12 — the only

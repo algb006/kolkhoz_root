@@ -26,6 +26,7 @@
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
+#include "core_common/wedding_state.h"
 #include "save_dictionary.h"
 
 namespace core {
@@ -56,6 +57,9 @@ LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source);
 
 void WriteSpecialistArrivalRow(SaveSink& sink, const SpecialistArrivalRow& row);
 SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source);
+
+void WriteWeddingWaitRow(SaveSink& sink, const WeddingWaitRow& row);
+WeddingWaitRow ReadWeddingWaitRow(LoadSource& source);
 
 }  // namespace core
 

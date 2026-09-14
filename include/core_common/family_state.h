@@ -42,6 +42,7 @@
 
 #include <cstdint>
 
+#include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
@@ -105,6 +106,19 @@ struct FamilyRow {
   /// (host's measurement, 19 families in 48 days), which a reader takes for
   /// hunger. Set by the needs phase at the meal and never cleared.
   std::uint8_t first_meal_eaten = 0;
+
+  // -- a family without a roof (housing design §20) -------------------------
+  /// Where the family's house stood when it was lost — written by the unit
+  /// that falls (core_construction Collapse, beside clearing `house`). It is
+  /// the plot a tent is pitched on and the address the accountant counts the
+  /// road from while the family lives in it.
+  Vec2 lost_house_position;
+
+  /// 1 while the family lives in a tent on its old plot: no free house, no
+  /// barrack (STUB, the rung is skipped), a warm season. Cleared when a free
+  /// house takes it in; when the cold comes with the family still in a tent,
+  /// it leaves the kolkhoz (§20, the fourth rung).
+  std::uint8_t in_tent = 0;
 
   // -- private plot (household design §1, life-cycle §10) ------------------
   /// Game hours per day the household has for its plot: the working

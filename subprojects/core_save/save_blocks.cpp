@@ -93,7 +93,8 @@ static_assert(AggregateArity<PlanState>() == 8,
 static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec and VERSION_SAVE");
 // Twenty-two on 2026-09-14: the district's specialists on the road (a row
 // table in save_rows.cpp).
-static_assert(AggregateArity<WorldState>() == 22,
+// Twenty-three the same day: the couples waiting for a free house.
+static_assert(AggregateArity<WorldState>() == 23,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

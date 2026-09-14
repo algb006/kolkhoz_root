@@ -45,6 +45,7 @@
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
+#include "core_common/wedding_state.h"
 
 namespace core {
 
@@ -637,6 +638,10 @@ struct WorldState {
   /// arrived yet (education design, "Эпоха I числами"); SAVED.
   /// specialist_state.h.
   SpecialistArrivalTable specialist_arrivals;
+
+  /// The couples ready to marry who wait for a free house (life-cycle design
+  /// §12); SAVED. wedding_state.h.
+  WeddingWaitTable wedding_waits;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

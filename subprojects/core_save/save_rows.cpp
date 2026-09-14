@@ -50,11 +50,13 @@ static_assert(sizeof(ResidentRow) == 176,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ResidentRow>() == 38,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
-              "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
-// size stayed 56 + amounts and the field count went to 16.
-static_assert(AggregateArity<FamilyRow>() == 16,
+// size stayed 56 + amounts and the field count went to 16. The same day the
+// lost house's position and the tent byte took it to 72 + amounts (measured)
+// and 18 fields.
+static_assert(sizeof(FamilyRow) == 72 + kAmountsSize,
+              "FamilyRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FamilyRow>() == 18,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -130,6 +132,10 @@ static_assert(sizeof(SpecialistArrivalRow) == 12,
               "SpecialistArrivalRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<SpecialistArrivalRow>() == 3,
               "SpecialistArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(WeddingWaitRow) == 12,
+              "WeddingWaitRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WeddingWaitRow>() == 3,
+              "WeddingWaitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(TimberStandRow) == 48,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TimberStandRow>() == 9,
@@ -393,6 +399,10 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   // Whether the family has eaten yet (2026-09-14): without it a campaign loaded
   // between a wedding and its first meal would judge the new family's variety.
   out.WriteU8(row.first_meal_eaten);
+  // A family without a roof (2026-09-14, save format 35): where its house
+  // stood, and whether it lives in a tent there.
+  WriteVec2(out, row.lost_house_position);
+  out.WriteU8(row.in_tent);
 
   out.WriteFloat(row.household_hours);
   out.WriteFloat(row.plot_ratio_sum);
@@ -419,6 +429,8 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.food_variety_mask = in.ReadU16();
   row.first_meal_eaten =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's first meal eaten"));
+  row.lost_house_position = ReadVec2(in);
+  row.in_tent = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family in a tent"));
 
   row.household_hours = in.ReadFloat();
   row.plot_ratio_sum = in.ReadFloat();
@@ -844,6 +856,26 @@ void WriteSpecialistArrivalRow(SaveSink& sink, const SpecialistArrivalRow& row) 
   sink.WriteDefId(DefKind::kProfession, row.profession.value);
   WriteEntityId(out, row.unit);
   out.WriteU32(row.arrive_day);
+}
+
+// ---------------------------------------------------------------------------
+// WeddingWaitRow — wedding_state.h (2026-09-14)
+// ---------------------------------------------------------------------------
+
+void WriteWeddingWaitRow(SaveSink& sink, const WeddingWaitRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteEntityId(out, row.bride);
+  WriteEntityId(out, row.groom);
+  out.WriteU32(row.since_day);
+}
+
+WeddingWaitRow ReadWeddingWaitRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  WeddingWaitRow row;
+  row.bride = ReadEntityId<ResidentId>(in);
+  row.groom = ReadEntityId<ResidentId>(in);
+  row.since_day = in.ReadU32();
+  return row;
 }
 
 SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source) {

@@ -103,6 +103,12 @@ struct SpecialistArrivalIdTag {};
 /// (core_common/specialist_state.h).
 using SpecialistArrivalId = EntityId<SpecialistArrivalIdTag>;
 
+struct WeddingWaitIdTag {};
+
+/// @brief One couple ready to marry and waiting for a free house
+/// (core_common/wedding_state.h).
+using WeddingWaitId = EntityId<WeddingWaitIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------

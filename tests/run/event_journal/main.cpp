@@ -107,6 +107,12 @@ const char* KindName(core::EventKind kind) {
       return "specialist_arrived";
     case core::EventKind::kSpecialistNoHousing:
       return "specialist_no_housing";
+    case core::EventKind::kWeddingAwaitsHouse:
+      return "wedding_awaits_house";
+    case core::EventKind::kFamilyInTent:
+      return "family_in_tent";
+    case core::EventKind::kFamilyLeftForNoHouse:
+      return "family_left_for_no_house";
     case core::EventKind::kHorsesStabled:
       return "horses_stabled";
     case core::EventKind::kEventKindCount:

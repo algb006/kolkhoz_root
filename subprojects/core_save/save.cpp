@@ -62,6 +62,7 @@ constexpr const char* kSectionOrders = "orders";
 constexpr const char* kSectionStands = "stands";
 constexpr const char* kSectionLimitDeliveries = "limit_deliveries";
 constexpr const char* kSectionSpecialistArrivals = "specialist_arrivals";
+constexpr const char* kSectionWeddingWaits = "wedding_waits";
 constexpr const char* kSectionLedger = "ledger";
 constexpr const char* kSectionStaged = "staged";
 
@@ -335,6 +336,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.specialist_arrivals, WriteSpecialistArrivalRow);
   CloseSection(out, length_offset);
 
+  // The couples waiting for a free house (life-cycle §12, save format 35).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.wedding_waits, WriteWeddingWaitRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -459,7 +465,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(
           kSectionLimitDeliveries, &loaded.limit_deliveries, ReadLimitDeliveryRow) ||
       !read_table_section(
-          kSectionSpecialistArrivals, &loaded.specialist_arrivals, ReadSpecialistArrivalRow)) {
+          kSectionSpecialistArrivals, &loaded.specialist_arrivals, ReadSpecialistArrivalRow) ||
+      !read_table_section(kSectionWeddingWaits, &loaded.wedding_waits, ReadWeddingWaitRow)) {
     return false;
   }
 
