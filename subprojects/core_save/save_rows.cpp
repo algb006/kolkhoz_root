@@ -49,9 +49,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-14: 176 -> 180, the assignment's extraction site.
 // 2026-09-15: the night trade byte landed in padding beside social_status —
 // 180 still, 39 fields.
-static_assert(sizeof(ResidentRow) == 180,
+// The same day the pupil's school, a unit id, took it to 184.
+static_assert(sizeof(ResidentRow) == 184,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ResidentRow>() == 39,
+static_assert(AggregateArity<ResidentRow>() == 40,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -329,6 +330,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.education_stage));
   out.WriteFloat(row.education_grade);
   out.WriteFloat(row.current_grade);
+  WriteEntityId(out, row.school);
   out.WriteFloat(row.self_education);
 
   out.WriteFloat(row.skill_agriculture_schooled);
@@ -393,6 +395,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
       static_cast<EducationStage>(source.ReadEnumValue(0, kMaxEducationStage, "education stage"));
   row.education_grade = in.ReadFloat();
   row.current_grade = in.ReadFloat();
+  row.school = ReadEntityId<UnitId>(in);
   row.self_education = in.ReadFloat();
 
   row.skill_agriculture_schooled = in.ReadFloat();

@@ -177,6 +177,10 @@ struct ResidentRow {
 
   float current_grade = 0.0F;  ///< While studying, 1.0-5.0; 0 = not studying.
 
+  /// The school he is enrolled in (core_residents/schooling.h); invalid when
+  /// he is not a pupil. The host's `enrolled_in`.
+  UnitId school;
+
   Metric self_education = 0.0F;  ///< What was gained beyond the diploma, 0-100.
 
   // -- professionalism: three skills, schooled and earned (education §11) --

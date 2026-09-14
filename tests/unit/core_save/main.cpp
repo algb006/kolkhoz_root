@@ -161,6 +161,7 @@ core::WorldState MakeWorld() {
   first.education_stage = core::EducationStage::kVocational;
   first.social_status = core::SocialStatus::kKomsomol;
   first.night_trade = core::NightTrade::kHunter;  // the top of the enum, save format 39
+  first.school = core::UnitId{6};                 // a pupil, save format 41
   first.offense_count = 2;
   first.traits = 0xBEEF;
   // A post he HOLDS (task A7): the second half of the row that only the
@@ -729,6 +730,8 @@ int main() {
   failures += Expect(!loaded.residents.rows.empty() &&
                          loaded.residents.rows[0].night_trade == core::NightTrade::kHunter,
                      "a resident came back with his night trade");
+  failures += Expect(!loaded.residents.rows.empty() && loaded.residents.rows[0].school.value == 6,
+                     "a pupil came back enrolled in his school");
   failures += Expect(loaded.ledger.current.limit_points_granted == 350 &&
                          loaded.ledger.current.limit_points_spent == 135 &&
                          loaded.ledger.current.limit_points_burned == 7,

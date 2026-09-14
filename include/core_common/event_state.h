@@ -260,6 +260,18 @@ enum class EventKind : std::uint8_t {
   /// `night_trade_outing`.
   kNightTradeOuting,
 
+  // -- school (2026-09-15; education design §10) -----------------------------
+
+  /// resident, unit — a child was enrolled in the school `unit` on the first
+  /// day of the school year. kRoutine. Seam key `pupil_enrolled`.
+  kPupilEnrolled,
+
+  /// resident, unit — a pupil left the school `unit`; amount = the
+  /// EducationStage he left with — kPrimary when the year was counted, kNone
+  /// when he aged out without it or the school is gone. kRoutine. Seam key
+  /// `pupil_left_school`.
+  kPupilLeftSchool,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
