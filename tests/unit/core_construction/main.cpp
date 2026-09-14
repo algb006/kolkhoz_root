@@ -749,6 +749,7 @@ int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
   old_house.level = 1;
   old_house.wear = 99.99F;
   old_house.household = household;
+  old_house.position = core::Vec2{.x = 3100.0F, .y = 4200.0F};
   const core::UnitId doomed = core::AppendRow(world.units, old_house);
   world.families.rows[core::FindRow(world.families, household)].house = doomed;
 
@@ -767,6 +768,9 @@ int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
   const std::uint32_t family_row = core::FindRow(world.families, household);
   failures += Expect(world.families.rows[family_row].house.value == 0,
                      "the family it sheltered is left pointing at no house, not at a dead id");
+  failures += Expect(world.families.rows[family_row].lost_house_position.x == 3100.0F &&
+                         world.families.rows[family_row].lost_house_position.y == 4200.0F,
+                     "and knows where its house stood: the plot a tent goes up on");
 
   // Another day must not fall over the hole it left.
   Run(*system, world, 0);

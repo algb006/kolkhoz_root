@@ -299,20 +299,24 @@ class ConstructionSystem final : public IConstructionSystem {
 
   /// An old house at the top of the scale falls (start design §4, housing
   /// design §10) — the ONE unit in the game that vanishes from wear. The
-  /// household it sheltered is left without a house on purpose: rehousing is
-  /// the demography sub-step's job the next day, by the same path a newly
-  /// wed couple takes. Clearing the family's `house` is the one field of
-  /// another module's row this subsystem writes, and the contract says so.
+  /// household it sheltered is left without a house on purpose: the roof is
+  /// the demography sub-step's job the next day (housing design §20: a free
+  /// house, or a tent on the old plot in the warm season, or leaving).
+  /// Clearing the family's `house` and writing where it stood are the two
+  /// fields of another module's row this subsystem writes, and the contract
+  /// says so (family_state.h, lost_house_position).
   void Collapse(WorldState& current, UnitId unit) {
     const std::uint32_t row = FindRow(current.units, unit);
     if (row == kNoRow) {
       return;
     }
     const FamilyId household = current.units.rows[row].household;
+    const Vec2 stood_at = current.units.rows[row].position;
     MoveStockOut(current, row);
     const std::uint32_t family_row = FindRow(current.families, household);
     if (family_row != kNoRow) {
       current.families.rows[family_row].house = UnitId{};
+      current.families.rows[family_row].lost_house_position = stood_at;
     }
     Emit(current, EventKind::kUnitCollapsed, EventSeverity::kNotable, unit);
     RemoveRow(current.units, unit);

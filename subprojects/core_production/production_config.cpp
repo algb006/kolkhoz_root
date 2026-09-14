@@ -568,6 +568,54 @@ bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::s
   return true;
 }
 
+/// WHICH STORE KEEPS WHICH RESOURCE (resource_stores.csv, exported from the
+/// design base's resource_storage_link; boss, parcel 268). A row names a
+/// resource and the unit that keeps it, and the kind of store inside that unit
+/// — firewood lies in the firewood yard of the utility yard — so both the
+/// `unit` and the `storage` key make the type a home of the resource when a
+/// unit type of that key exists. Until 2026-09-14 the core had no such table
+/// and an outline store took only what already lay in it: the house sites
+/// emptied the log pile, and 24 t of felled logs lay in the grove for good.
+bool ParseResourceStores(const ITable& table,
+                         const ITable& resources,
+                         const ITable& unit_types,
+                         std::vector<UnitTypeDef>& types,
+                         std::string& error) {
+  const std::uint32_t resource_col = table.FindColumn("resource");
+  const std::uint32_t unit_col = table.FindColumn("unit");
+  const std::uint32_t storage_col = table.FindColumn("storage");
+  if (resource_col == kNoTableColumn || unit_col == kNoTableColumn ||
+      storage_col == kNoTableColumn) {
+    error = "resource_stores: the table needs resource, unit and storage columns";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    const std::uint32_t resource_row = resources.FindRowByKey(table.CellText(row, resource_col));
+    const std::uint32_t unit_row = unit_types.FindRowByKey(table.CellText(row, unit_col));
+    if (resource_row == kNoTableRow || unit_row == kNoTableRow) {
+      error = "resource_stores: row " + std::to_string(row) + " names a resource or a unit " +
+              "the tables do not have";
+      return false;
+    }
+    const ResourceId resource = DefIdFromRow<ResourceIdTag>(resource_row);
+    for (const std::uint32_t type_row :
+         {unit_row, unit_types.FindRowByKey(table.CellText(row, storage_col))}) {
+      if (type_row >= types.size()) {
+        continue;  // a storage that is no unit type of its own
+      }
+      std::vector<ResourceId>& home = types[type_row].home_of;
+      bool known = false;
+      for (const ResourceId held : home) {
+        known = known || held.value == resource.value;
+      }
+      if (!known) {
+        home.push_back(resource);
+      }
+    }
+  }
+  return true;
+}
+
 /// @brief Refuses a table set whose capacities cannot be read off the ladder.
 ///
 /// Two shapes, and both used to end in a SILENT ZERO once the type's own
@@ -874,6 +922,16 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     if (!read) {
       return false;
     }
+  }
+  if (const ITable* stores = tables.FindTable("resource_stores")) {
+    if (resources == nullptr || unit_types == nullptr ||
+        !ParseResourceStores(*stores, *resources, *unit_types, config.unit_types, error)) {
+      if (error.empty()) {
+        error = "resource_stores: the table needs resources.csv and unit_types.csv beside it";
+      }
+      return false;
+    }
+    config.resource_stores_read = 1;
   }
   if (resources != nullptr && !ParseFeedValues(*resources, config.feed_values, error)) {
     return false;

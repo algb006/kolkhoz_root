@@ -456,16 +456,21 @@ int main() {
                          many_state.rng.stream == state.rng.stream &&
                          many_state.world_seed == state.world_seed,
                      "one worker and three workers agree after 10 000 steps");
-  failures +=
-      Expect(many_state.residents.rows.size() == state.residents.rows.size() &&
-                 many_state.residents.next_id_value == state.residents.next_id_value &&
-                 many_state.families.rows.size() == state.families.rows.size() &&
-                 many_state.families.rows[0].satisfaction == state.families.rows[0].satisfaction,
-             "the population and its metrics agree across worker counts");
+  failures += Expect(many_state.residents.rows.size() == state.residents.rows.size() &&
+                         many_state.residents.next_id_value == state.residents.next_id_value &&
+                         many_state.families.rows.size() == state.families.rows.size() &&
+                         (state.families.rows.empty() || many_state.families.rows[0].satisfaction ==
+                                                             state.families.rows[0].satisfaction),
+                     "the population and its metrics agree across worker counts");
+  // NOBODY BUILDS IN THIS WORLD, and since 2026-09-14 no house comes from
+  // nothing: the start's old houses fall in the fifth and sixth years and the
+  // roofless leave in the cold (housing design §20; boss, parcel 257). The
+  // comparison above may therefore meet an empty village; the one that
+  // cannot be vacuous is the determinism run (tests/run/determinism).
 
   // The start's old houses begin PART WORN, and the band is the table's —
   // not a constant in genesis (task A5). Checked by moving the band: if the
-  // knobs were dead, every house would come out in 45..60 regardless.
+  // knobs were dead, every house would come out in 25..75 regardless.
   {
     const fs::path banded = fs::temp_directory_path() / "unit_core_world_wear_band";
     fs::remove_all(banded);

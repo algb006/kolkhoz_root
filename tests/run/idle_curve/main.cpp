@@ -37,11 +37,9 @@
 #include <string_view>
 #include <vector>
 
-#include "../common/fixture_policy.h"
+#include "../common/building_chairman.h"
 #include "../common/orders_policy.h"
-#include "../common/repair_policy.h"
 #include "../common/run_harness.h"
-#include "../common/yard_policy.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
@@ -360,10 +358,11 @@ int main(int argc, char** argv) {
               << (far_site || gap_site ? " — и это правильно: до неё не дойти\n" : "\n");
     return far_site || gap_site ? failures : failures + 1;
   }
-  run::YardPolicy yard(*world.tables);
-  run::FixturePolicy fixture(*world.tables);
+  // The building chairman whole (building_chairman.h): the core raises no
+  // house from nothing, and a village without one leaves in its first winters.
+  run::BuildingChairman builder(*world.tables);
+  run::YardPolicy& yard = builder.yard;
   run::OrdersPolicy orders;
-  run::RepairPolicy repairs(*world.tables);
 
   if (herd_alarm) {
     const core::ITable* const kinds = world.tables->FindTable("livestock");
@@ -586,9 +585,8 @@ int main(int argc, char** argv) {
           yard.RunDay(*world.simulation);
         }
         if (!yard_only) {
-          fixture.RunDay(*world.simulation);
+          builder.RunDayBeyondTheYard(*world.simulation);
           orders.RunDay(*world.simulation);
-          repairs.RunDay(*world.simulation);
         }
       }
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {

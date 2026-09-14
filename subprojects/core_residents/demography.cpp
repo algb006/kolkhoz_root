@@ -449,19 +449,168 @@ void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
   }
 }
 
+/// @brief Whether the month is warm enough for a tent (housing design §20,
+/// "только в тёплое время"): May to September. The months are the core's
+/// reading of the design's words, named here (STUB until a temperature rule
+/// is written for it).
+bool TentWeather(Month month) {
+  return month >= Month::kMay && month <= Month::kSeptember;
+}
+
+/// @brief Families whose house is gone go down housing design §20's ladder,
+/// the same for every way a roof is lost: a free house; the barrack (STUB —
+/// the core keeps one family to a unit, so the rung is skipped); a tent on
+/// the old plot in the warm months; and when the cold comes with nowhere to
+/// go, the family leaves the kolkhoz for good. Runs first in the day, so a
+/// house freed yesterday goes to a family out in the open before any couple.
+///
+/// Until 2026-09-14 a house was raised from nothing instead (boss, parcel
+/// 257).
+void RunRoofless(const LifeConfig& config, WorldState& current) {
+  std::vector<FamilyId> leaving;
+  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+    FamilyRow& family = current.families.rows[row];
+    if (family.house.value != kInvalidEntityIdValue &&
+        FindRow(current.units, family.house) != kNoRow) {
+      continue;
+    }
+    const FamilyId id = current.families.row_ids[row];
+    const UnitId house = FreeHouse(config, current);
+    if (house.value != kInvalidEntityIdValue) {
+      const std::uint32_t house_row = FindRow(current.units, house);
+      current.units.rows[house_row].household = id;
+      family.house = house;
+      family.lost_house_position = current.units.rows[house_row].position;
+      family.in_tent = 0;
+      continue;
+    }
+    family.house = UnitId{};
+    if (TentWeather(current.calendar.date.month)) {
+      if (family.in_tent == 0) {
+        family.in_tent = 1;
+        SimEvent& tent = EmitEvent(current, EventKind::kFamilyInTent, EventSeverity::kNotable);
+        tent.family = id;
+      }
+      continue;
+    }
+    leaving.push_back(id);
+  }
+  for (const FamilyId family : leaving) {
+    std::vector<ResidentId> members;
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      if (current.residents.rows[row].family.value == family.value) {
+        members.push_back(current.residents.row_ids[row]);
+      }
+    }
+    SimEvent& gone =
+        EmitEvent(current, EventKind::kFamilyLeftForNoHouse, EventSeverity::kInterrupting);
+    gone.family = family;
+    gone.amount = static_cast<std::int64_t>(members.size());
+    for (const ResidentId member : members) {
+      SimEvent& left = EmitEvent(current, EventKind::kResidentLeft, EventSeverity::kNotable);
+      left.resident = member;
+      left.family = family;
+      RemoveResident(current, member);
+    }
+    current.ledger.current.departures += static_cast<std::uint32_t>(members.size());
+    // A family with nobody in it was dropped by the last RemoveResident; one
+    // that had nobody to begin with goes here.
+    DropFamilyIfEmpty(current, family);
+  }
+}
+
+/// @brief Whether `resident` is half of a couple waiting for a house.
+bool WaitsForHouse(const WorldState& current, ResidentId resident) {
+  for (const WeddingWaitRow& couple : current.wedding_waits.rows) {
+    if (couple.bride.value == resident.value || couple.groom.value == resident.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// @brief The wedding itself, into the free house `house`: a new household,
+/// the dowries, the two moved in, their old yards dropped if emptied.
+void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId house) {
+  const std::uint32_t bride_row = FindRow(current.residents, bride_id);
+  const std::uint32_t groom_row = FindRow(current.residents, groom_id);
+  const std::uint32_t house_row = FindRow(current.units, house);
+  if (bride_row == kNoRow || groom_row == kNoRow || house_row == kNoRow) {
+    return;
+  }
+  FamilyRow household;
+  household.house = house;
+  household.lost_house_position = current.units.rows[house_row].position;
+  const FamilyId home = AppendRow(current.families, household);
+  current.units.rows[house_row].household = home;
+  const FamilyId bride_was = current.residents.rows[bride_row].family;
+  const FamilyId groom_was = current.residents.rows[groom_row].family;
+  PassDowry(current, bride_was, home);
+  PassDowry(current, groom_was, home);
+  current.residents.rows[bride_row].spouse = groom_id;
+  current.residents.rows[bride_row].family = home;
+  current.residents.rows[groom_row].spouse = bride_id;
+  current.residents.rows[groom_row].family = home;
+  // The bride and the household that did not exist a line ago, which is
+  // what the kind's contract asks for (event_state.h).
+  SimEvent& wedding = EmitEvent(current, EventKind::kWedding, EventSeverity::kNotable);
+  wedding.resident = bride_id;
+  wedding.family = home;
+  current.ledger.current.weddings += 1;
+  // Both parents' yards may now stand empty — a household of one that
+  // married out leaves nothing behind but its books.
+  DropFamilyIfEmpty(current, bride_was);
+  DropFamilyIfEmpty(current, groom_was);
+}
+
+/// @brief The couples waiting for a house, oldest first (life-cycle §12;
+/// wedding_state.h): a couple one of whose two is gone falls apart; the
+/// first couple still whole marries into the first free house, and so on
+/// while free houses last.
+///
+/// THE CHAIRMAN'S DECISION IS A STUB (§13: the application, the approval, a
+/// date on a non-working day, the house reserved): the couple marries on the
+/// day a free house stands (boss, parcel 257).
+void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
+  std::vector<WeddingWaitId> done;
+  for (std::uint32_t row = 0; row < current.wedding_waits.rows.size(); ++row) {
+    const WeddingWaitRow couple = current.wedding_waits.rows[row];
+    const WeddingWaitId id = current.wedding_waits.row_ids[row];
+    const std::uint32_t bride_row = FindRow(current.residents, couple.bride);
+    const std::uint32_t groom_row = FindRow(current.residents, couple.groom);
+    if (bride_row == kNoRow || groom_row == kNoRow ||
+        current.residents.rows[bride_row].spouse.value != kInvalidEntityIdValue ||
+        current.residents.rows[groom_row].spouse.value != kInvalidEntityIdValue) {
+      done.push_back(id);  // one of the two died or left: the couple falls apart
+      continue;
+    }
+    const UnitId house = FreeHouse(config, current);
+    if (house.value == kInvalidEntityIdValue) {
+      break;  // no free house for the oldest, so none for anyone behind it
+    }
+    Wed(current, couple.bride, couple.groom, house);
+    done.push_back(id);
+  }
+  for (const WeddingWaitId id : done) {
+    RemoveRow(current.wedding_waits, id);
+  }
+}
+
 void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
   // Brides draw the daily chance in row order; the groom is the first
-  // eligible bachelor who is not close kin. The design's housing gate
-  // ("no free house — no wedding", life-cycle §12) never blocks: a free
-  // house is taken when there is one, and SettleHouse raises a STUB one
-  // when there is none — but the house and the family-house link are real
-  // from here on.
+  // eligible bachelor who is not close kin. THE HOUSING GATE HOLDS
+  // (life-cycle §12, "a wedding takes place only when a free house is ready
+  // for the couple"): with a free house the couple marries at once, unless
+  // older couples are waiting for one — the queue goes first; without, it
+  // joins the queue and looks for nobody else. Until 2026-09-14 a house was
+  // raised from nothing here instead (boss, parcel 257).
   const float daily_chance = config.marriage_chance_percent_per_day / 100.0F;
   for (std::uint32_t bride_row = 0; bride_row < current.residents.rows.size(); ++bride_row) {
     if (current.residents.rows[bride_row].sex != Sex::kFemale ||
         current.residents.rows[bride_row].spouse.value != kInvalidEntityIdValue ||
         BiologicalAgeYears(config.life_speedup, current.residents.rows[bride_row].birth_day, day) <
-            config.marriage_age_years) {
+            config.marriage_age_years ||
+        WaitsForHouse(current, current.residents.row_ids[bride_row])) {
       continue;
     }
     if (NextRandomUnitFloat(current.rng) >= daily_chance) {
@@ -470,42 +619,31 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
     const ResidentId bride_id = current.residents.row_ids[bride_row];
     for (std::uint32_t groom_row = 0; groom_row < current.residents.rows.size(); ++groom_row) {
       const ResidentRow& groom = current.residents.rows[groom_row];
-      const bool eligible = groom.sex == Sex::kMale &&
-                            groom.spouse.value == kInvalidEntityIdValue &&
-                            BiologicalAgeYears(config.life_speedup, groom.birth_day, day) >=
-                                config.marriage_age_years &&
-                            !AreCloseKin(current.residents.rows[bride_row],
-                                         bride_id,
-                                         groom,
-                                         current.residents.row_ids[groom_row]);
+      const ResidentId groom_id = current.residents.row_ids[groom_row];
+      const bool eligible =
+          groom.sex == Sex::kMale && groom.spouse.value == kInvalidEntityIdValue &&
+          BiologicalAgeYears(config.life_speedup, groom.birth_day, day) >=
+              config.marriage_age_years &&
+          !WaitsForHouse(current, groom_id) &&
+          !AreCloseKin(current.residents.rows[bride_row], bride_id, groom, groom_id);
       if (!eligible) {
         continue;
       }
-      FamilyRow household;
-      household.house =
-          SettleHouse(config, current, groom.family, current.residents.rows[bride_row].family);
-      const FamilyId home = AppendRow(current.families, household);
-      const std::uint32_t house_row = FindRow(current.units, household.house);
-      current.units.rows[house_row].household = home;
-      const ResidentId groom_id = current.residents.row_ids[groom_row];
-      PassDowry(current, current.residents.rows[bride_row].family, home);
-      PassDowry(current, groom.family, home);
-      const FamilyId bride_was = current.residents.rows[bride_row].family;
-      const FamilyId groom_was = groom.family;
-      current.residents.rows[bride_row].spouse = groom_id;
-      current.residents.rows[bride_row].family = home;
-      current.residents.rows[groom_row].spouse = bride_id;
-      current.residents.rows[groom_row].family = home;
-      // The bride and the household that did not exist a line ago, which is
-      // what the kind's contract asks for (event_state.h).
-      SimEvent& wedding = EmitEvent(current, EventKind::kWedding, EventSeverity::kNotable);
-      wedding.resident = bride_id;
-      wedding.family = home;
-      current.ledger.current.weddings += 1;
-      // Both parents' yards may now stand empty — a household of one that
-      // married out leaves nothing behind but its books.
-      DropFamilyIfEmpty(current, bride_was);
-      DropFamilyIfEmpty(current, groom_was);
+      const UnitId house =
+          current.wedding_waits.rows.empty() ? FreeHouse(config, current) : UnitId{};
+      if (house.value != kInvalidEntityIdValue) {
+        Wed(current, bride_id, groom_id, house);
+        break;
+      }
+      WeddingWaitRow couple;
+      couple.bride = bride_id;
+      couple.groom = groom_id;
+      couple.since_day = static_cast<std::uint32_t>(day);
+      AppendRow(current.wedding_waits, couple);
+      SimEvent& waits = EmitEvent(current, EventKind::kWeddingAwaitsHouse, EventSeverity::kNotable);
+      waits.resident = bride_id;
+      waits.family = current.residents.rows[bride_row].family;
+      waits.amount = groom_id.value;
       break;
     }
   }
@@ -519,11 +657,16 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
                         static_cast<std::int32_t>(static_cast<float>(day - 1) * rate_per_day);
   for (std::int32_t arrival = 0; arrival < arrivals; ++arrival) {
     ResidentRow migrant;
-    // A migrant is settled the way a couple is: a free house, or a STUB
-    // one amid the village. Left without a house he would have no place
-    // for his day to start from, and would never work at all.
+    // A MIGRANT COMES ONLY TO A FREE HOUSE (district design §2: "strangers
+    // come to you if you have a free house"). Until 2026-09-14 a house was
+    // raised from nothing for him too; with none free, nobody comes today.
     FamilyRow household;
-    household.house = SettleHouse(config, current, FamilyId{}, FamilyId{});
+    household.house = FreeHouse(config, current);
+    if (household.house.value == kInvalidEntityIdValue) {
+      continue;
+    }
+    household.lost_house_position =
+        current.units.rows[FindRow(current.units, household.house)].position;
     migrant.family = AppendRow(current.families, household);
     const std::uint32_t house_row = FindRow(current.units, household.house);
     current.units.rows[house_row].household = migrant.family;
@@ -553,10 +696,11 @@ void RunDemographyDay(const LifeConfig& config, WorldState& current) {
   const SimDay day = current.calendar.day;
   UpdateEpoch(config, current);
   const EpochDemography& epoch = config.epochs[EpochIndex(current.epoch)];
-  Rehouse(config, current);
+  RunRoofless(config, current);
   RunDeaths(config, current, day);
   RunOutflow(config, current, epoch, day);
   RunBirths(config, current, epoch, day);
+  RunWeddingQueue(config, current);
   RunMarriages(config, current, day);
   RunMigration(config, current, day);
 }

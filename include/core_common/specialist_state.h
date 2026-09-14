@@ -19,9 +19,11 @@
 /// house — nobody is sent, the month passes, and the village is told so
 /// (EventKind::kSpecialistNoHousing).
 ///
-/// A FREE HOUSE IS AN EMPTY ONE THAT STANDS, and nothing else: the wedding
-/// stub that raises a house from nothing (core_residents/housing.cpp) is not
-/// asked, or the condition "no housing" could never be true.
+/// A FREE HOUSE IS AN EMPTY ONE THAT STANDS, and nothing else. Until
+/// 2026-09-14 a wedding stub raised a house from nothing and this door
+/// deliberately did not ask it, or the condition "no housing" could never have
+/// been true; the stub is gone (boss, parcel 257), and weddings, migrants and
+/// the roofless now ask the same question (core_residents/housing.cpp, FreeHouse).
 
 #ifndef CORE_COMMON_SPECIALIST_STATE_H_
 #define CORE_COMMON_SPECIALIST_STATE_H_

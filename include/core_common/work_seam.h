@@ -66,9 +66,11 @@ float* WorkSeamOf(WorldState& world, const WorkAssignment& work);
 ///         with nullptr, and for the same reason.
 bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& place);
 
-/// @brief Where a resident's day starts and ends: his family's house.
-/// @return false for a family without a house. Genesis gives every family
-///         one, so this guards hand-built worlds rather than a normal case.
+/// @brief Where a resident's day starts and ends: his family's house, or —
+///        for a family in a tent — the plot its house stood on.
+/// @return false for a family with neither a house nor a tent: a roofless
+///         family the day's structural work has not yet placed, or a
+///         hand-built world.
 bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home);
 
 }  // namespace core

@@ -1332,6 +1332,7 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
                       "world_params",
                       "timber_stands",
                       "extraction_sites",
+                      "resource_stores",
                       "limit_catalog",
                       "limit_lot_goods"},
                      nullptr)) {

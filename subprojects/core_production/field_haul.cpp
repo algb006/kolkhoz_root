@@ -85,10 +85,12 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
     const Grams free_here = FreeRoomGrams(unit, config);
     if (free_here == std::numeric_limits<Grams>::max()) {
       // AN OUTLINE THE PLAYER DREW, and it is not a destination for
-      // anything: THE DOOR takes a load into one only when that resource
-      // already lies in it, because the core has no routing table and
-      // "where this resource already lies" is the only rule available that
-      // does not invent one (DeliverToStores, second pass).
+      // anything: THE DOOR takes a load into one only when the outline is
+      // that resource's home (IsHomeOf; DeliverToStores, second pass). Until
+      // 2026-09-14 "home" meant "some of it already lies there", for want of
+      // a table — and an emptied log pile stopped being the logs' home, so
+      // 24 t of felled logs lay in the grove with no demand to cart them
+      // (boss, parcels 267-268; resource_stores.csv).
       //
       // The demand has to ask the door's own question, and until 2026-09-07
       // it could not be caught asking a different one: StoresGoods dropped
@@ -99,8 +101,8 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
       // door refused it, and by year six the farm had stopped ploughing to
       // do nothing but carry grain into a closed door. That is the exact
       // failure SettleHauling's own comment says it exists to prevent.
-      if (StockOf(unit.stock, resource) > 0) {
-        return free_here;  // the haystack with the hay in it
+      if (IsHomeOf(unit, config, resource)) {
+        return free_here;  // the haystack, the hay's home, empty or not
       }
       continue;
     }
@@ -166,15 +168,16 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
 HaulRate StandHaulRate(const ProductionConfig& config,
                        const WorldState& world,
                        const TimberStandRow& stand) {
-  // THE LOGS GO WHERE LOGS ALREADY LIE — the log pile of the start, "куча
-  // брёвен, бесплатная площадка" (timber design §2) — because that is the
-  // door's own rule for a heap under the open sky (DeliverToStores, second
-  // pass), and a haul measured to the granary would price a trip the logs
-  // never make. No heap holding logs: the shared store, like any load.
+  // THE LOGS GO TO THEIR HOME — the log pile of the start, "куча брёвен,
+  // бесплатная площадка" (timber design §2), named so by resource_stores.csv
+  // — because that is the door's own rule for a heap under the open sky
+  // (DeliverToStores, second pass), and a haul measured to the granary would
+  // price a trip the logs never make. No log pile: the shared store.
   std::uint32_t destination_row = kNoRow;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (StoresGoods(unit, config) && StockOf(unit.stock, config.timber.log_resource) > 0) {
+    if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
+        IsHomeOf(unit, config, config.timber.log_resource)) {
       destination_row = row;
       break;
     }
@@ -208,13 +211,14 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
 HaulRate SiteHaulRate(const ProductionConfig& config,
                       const WorldState& world,
                       const ExtractionSiteRow& site) {
-  // The clay to the clay pile, the stone to the stone pile: where the resource
-  // already lies, the door's own rule for a heap under the open sky, as for
-  // the logs above. No heap holding it: the shared store.
+  // The clay to the clay pile, the stone to the stone pile: the resource's
+  // home by resource_stores.csv, the door's own rule for a heap under the open
+  // sky, as for the logs above. No such heap: the shared store.
   std::uint32_t destination_row = kNoRow;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (StoresGoods(unit, config) && StockOf(unit.stock, site.resource) > 0) {
+    if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
+        IsHomeOf(unit, config, site.resource)) {
       destination_row = row;
       break;
     }

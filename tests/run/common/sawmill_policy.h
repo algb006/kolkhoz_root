@@ -82,7 +82,8 @@ class SawmillPolicy {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman puts up the UTILITY "
                  "YARD and its SAWMILL once the boards in the stores are fewer than the queue of "
-                 "sites lacks, appoints ONE craftsman, and lets him saw only "
+                 "sites lacks, appoints a craftsman — and more, up to the saw's places, while "
+                 "boards are short — and lets them saw only "
                  "while boards are fewer than the nearest site needs and logs more than the log "
                  "site of the queue needs; otherwise the sawmill is paused (timber design §8б; "
                  "boss, 2026-09-13)\n";
@@ -146,12 +147,16 @@ class SawmillPolicy {
               << yard_attempts_ << " times\n";
   }
 
-  /// @brief Grams of `resource` in built units — what the stores hold.
+  /// @brief Grams of `resource` in built units that anybody may still have —
+  /// what the stores hold, less what an upgrade's works hold back there. The
+  /// stable's twelve tonnes of boards were counted as the village's on seed
+  /// 1929 of unit_signals until they were spent, and the gate that was to keep
+  /// the sawmill's boards let the houses take them (parcel 305).
   static core::Grams Held(const core::WorldState& world, core::ResourceId resource) {
     core::Grams held = 0;
     for (const core::UnitRow& unit : world.units.rows) {
-      if (unit.level > 0 && resource.value < unit.stock.size()) {
-        held += unit.stock[resource.value];
+      if (unit.level > 0) {
+        held += core::UnreservedOf(unit, resource);
       }
     }
     return held;
@@ -205,9 +210,57 @@ class SawmillPolicy {
 
   /// @brief Boss's condition, the one the pause follows.
   bool WantsSawing(const core::WorldState& world) const {
-    const core::Grams board_need = NearestNeed(world, catalog_.board_resource);
+    // THE WHOLE QUEUE'S BOARDS, AND NO LOGS KEPT BACK FROM THE SAW (boss,
+    // parcel 281). The saw used to stop while the nearest site still wanted
+    // logs, so the logs went round in a circle between the site and the saw
+    // and both waited: 21 pauses in thirty years on seed 1929 with three house
+    // sites short of boards. The logs are the felling's to bring
+    // (felling_policy.h), sized to the sites and the saw together.
+    const core::Grams board_need = QueueNeed(world, catalog_.board_resource);
     return board_need > 0 && Held(world, catalog_.board_resource) < board_need &&
-           Held(world, catalog_.log_resource) > NearestNeed(world, catalog_.log_resource);
+           Held(world, catalog_.log_resource) > 0;
+  }
+
+  /// @brief Whether a site of `type` may start its `level` without taking the
+  /// boards the sawmill itself is built of: true once the sawmill stands, for
+  /// the sawmill and its yard themselves, for a step that takes no boards,
+  /// and while the stores would still hold the sawmill's boards after it.
+  ///
+  /// THE SOURCE BEFORE ITS CONSUMERS (parcel 305). Boards come from the
+  /// sawmill and nowhere else — the limit sells none — and the sawmill is
+  /// built of boards. Once a start needed the whole recipe in the village
+  /// (construction design §6), houses, granaries and the stable took the
+  /// start's boards first, and on seed 1929 of unit_signals the sawmill's
+  /// site stood for thirty years 1.2 t short of its 3 t while the village
+  /// dwindled to 21. The rule that had guarded this ("the saw first while
+  /// there are no boards") went out with the materials check and is back
+  /// here, as a gate every building policy asks.
+  bool SparesBoardsFor(const core::WorldState& world,
+                       core::UnitTypeId type,
+                       std::uint8_t level) const {
+    if (!ready_ || type.value == catalog_.sawmill_type.value || type.value == yard_type_.value) {
+      return true;
+    }
+    const std::uint32_t mill = FindOfType(world, catalog_.sawmill_type);
+    if (mill != core::kNoRow && world.units.rows[mill].level > 0) {
+      return true;
+    }
+    const core::Grams need = CostGrams(type, level, catalog_.board_resource);
+    return need <= 0 || Held(world, catalog_.board_resource) - need >=
+                            CostGrams(catalog_.sawmill_type, 1, catalog_.board_resource);
+  }
+
+  /// @brief The logs the queue's missing boards would take at the saw, grams:
+  /// what the felling must bring for the saw on top of the sites' own logs.
+  core::Grams LogsForMissingBoards(const core::WorldState& world) const {
+    const core::Grams short_boards =
+        QueueNeed(world, catalog_.board_resource) - Held(world, catalog_.board_resource);
+    if (short_boards <= 0 || catalog_.board_grams_per_m3 <= 0) {
+      return 0;
+    }
+    const float board_m3 =
+        static_cast<float>(short_boards) / static_cast<float>(catalog_.board_grams_per_m3);
+    return core::LogGramsForBoardM3(catalog_, board_m3);
   }
 
  private:
@@ -298,6 +351,17 @@ class SawmillPolicy {
       }
     }
     return core::kNoRow;
+  }
+
+  std::uint32_t Craftsmen(const core::WorldState& world, core::UnitId yard) const {
+    std::uint32_t held = 0;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      held += resident.post.profession.value == craftsman_post_.value &&
+                      resident.post.unit.value == yard.value
+                  ? 1U
+                  : 0U;
+    }
+    return held;
   }
 
   bool HasCraftsman(const core::WorldState& world, core::UnitId yard) const {
@@ -402,7 +466,14 @@ class SawmillPolicy {
     if (world.units.rows[mill].level == 0) {
       return Start(world, mill, order);
     }
-    if (!HasCraftsman(world, yard_id)) {
+    // AS MANY CRAFTSMEN AS THE SAW HAS PLACES while the boards are short
+    // (2026-09-14). One was the whole policy while granaries were the only
+    // sites; once houses stopped coming from nothing, three house sites on
+    // seed 1929 stood with their logs, clay and straw in and 0-532 kg of the
+    // 2.4 t of boards each, behind a saw one man worked.
+    if (!HasCraftsman(world, yard_id) ||
+        (Craftsmen(world, yard_id) < static_cast<std::uint32_t>(catalog_.sawyers_max) &&
+         WantsSawing(world))) {
       const std::uint32_t candidate = NextCandidate(world);
       if (candidate == core::kNoRow) {
         return false;

@@ -31,6 +31,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "start_gate.h"
 
 namespace run {
 
@@ -51,6 +52,40 @@ class YardPolicy {
   /// @brief Whether the policy has anything left to do. False once the team
   /// is stabled — the milestone it exists for.
   bool Watching() const { return watching_; }
+
+  /// @brief The question asked before every start (start_gate.h).
+  void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
+
+  /// @brief Whether today the yard must go before any house (boss, parcel
+  /// 298, rule 2: a roof for the animals that stand without one). True while
+  /// the team is not stabled and the yard's next step — the first level or
+  /// the stable — waits for its recipe.
+  ///
+  /// WHY THE YARD AND NOT ONLY THE CATTLE YARDS. Foals come only under the
+  /// stable's roof (livestock design §5). On seed 1929 the stable's upgrade
+  /// waited for its recipe behind every house for years, the start's horses
+  /// died of age with no foal to follow, and from year 8 nothing was ploughed
+  /// in the whole run (parcel 304).
+  bool HoldsHousesBack(const core::ISimulation& simulation) const {
+    if (!watching_ || yard_type_.value == core::kInvalidDefIdValue) {
+      return false;
+    }
+    const core::WorldState& world = simulation.CompletedState();
+    if (world.chairman.horses_stabled != 0) {
+      return false;
+    }
+    const std::uint32_t yard_row = FindYard(world);
+    if (yard_row == core::kNoRow) {
+      return false;
+    }
+    const core::UnitRow& yard = world.units.rows[yard_row];
+    const bool waits_to_start =
+        yard.level == 0 && yard.construction.phase == core::ConstructionPhase::kMarked;
+    const bool waits_to_rise = yard.level > 0 && yard.level < kStableLevel &&
+                               yard.construction.phase == core::ConstructionPhase::kNone;
+    return (waits_to_start || waits_to_rise) &&
+           !simulation.MaterialsShortFor(world.units.row_ids[yard_row]).empty();
+  }
 
   /// @brief One day's worth of the chairman's attention. Call once a day,
   /// after the day's steps: it stages at most one order and then waits for
@@ -175,6 +210,9 @@ class YardPolicy {
       if (yard.construction.labor_days_remaining > 0.0F) {
         return false;  // the brigade is on it; a second kStartBuild is noise
       }
+      if (!GateOpen(start_gate_, world, yard.type, 1)) {
+        return false;  // the boards are the sawmill's until it stands
+      }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = id;
       return true;
@@ -184,6 +222,9 @@ class YardPolicy {
     // worries about the groom.
     if (yard.level < kStableLevel) {
       if (yard.construction.phase != core::ConstructionPhase::kNone) {
+        return false;
+      }
+      if (!GateOpen(start_gate_, world, yard.type, static_cast<std::uint8_t>(yard.level + 1U))) {
         return false;
       }
       order.kind = core::OrderKind::kUpgradeUnit;
@@ -253,6 +294,8 @@ class YardPolicy {
   std::uint32_t candidate_ = 0;
 
   bool watching_ = true;
+
+  StartGate start_gate_;
 };
 
 }  // namespace run

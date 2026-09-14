@@ -33,6 +33,7 @@
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -47,6 +48,7 @@ class FellingPolicy {
              catalog_.log_resource.value != core::kInvalidDefIdValue && catalog_.log_grams > 0 &&
              !catalog_.stands.empty();
     granary_logs_ = GranaryLogs(tables);
+    logs_by_type_ = FirstLevelLogs(tables);
   }
 
   /// @brief The fixture difference, in words, for the run to print BEFORE it
@@ -59,7 +61,9 @@ class FellingPolicy {
   }
 
   /// @brief One day of the chairman's attention. Call once a day.
-  void RunDay(core::ISimulation& simulation) {
+  /// @param saw_log_grams The logs the saw needs for the boards the sites still
+  ///        lack (SawmillPolicy::LogsForMissingBoards); 0 in a run with no saw.
+  void RunDay(core::ISimulation& simulation, core::Grams saw_log_grams = 0) {
     if (!ready_) {
       return;
     }
@@ -70,7 +74,7 @@ class FellingPolicy {
     const core::WorldState& world = simulation.CompletedState();
     for (const core::TimberStandRow& stand : world.stands.rows) {
       if (stand.marked_m3 > 0.0F) {
-        return;  // a felling is going: one at a time
+        return;  // the run's chairman fells one stand at a time
       }
     }
     // LOGS IN HAND, and the logs already felled and lying count as in hand: a
@@ -94,12 +98,41 @@ class FellingPolicy {
     for (const core::TimberStandRow& stand : world.stands.rows) {
       logs += stand.load_grams;
     }
-    const core::Grams wanted = static_cast<core::Grams>(granary_logs_) * catalog_.log_grams;
+    // AND THE LOGS THE SITES STILL WAIT FOR (2026-09-14). One granary's worth
+    // was the whole signal while granaries were the only sites; since the
+    // houses came off the stub, three house sites at 35 logs each waited on a
+    // village holding 35, and felling never began because 35 was "enough" by
+    // a granary's measure — nine houses in twelve years on seed 1929.
+    core::Grams owed = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      // Marked and waiting for the recipe too: a start needs the whole recipe
+      // in the village now (construction design §6), so a site waits marked.
+      const bool waits = unit.construction.phase == core::ConstructionPhase::kDelivering ||
+                         unit.construction.phase == core::ConstructionPhase::kMarked;
+      if (unit.level != 0 || !waits || unit.type.value >= logs_by_type_.size()) {
+        continue;
+      }
+      const core::Grams needed =
+          static_cast<core::Grams>(logs_by_type_[unit.type.value]) * catalog_.log_grams;
+      const core::Grams there = catalog_.log_resource.value < unit.stock.size()
+                                    ? unit.stock[catalog_.log_resource.value]
+                                    : 0;
+      owed += needed > there ? needed - there : 0;
+    }
+    const core::Grams wanted =
+        (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) + owed + saw_log_grams;
     if (logs >= wanted) {
       return;
     }
+    // ONE FELLING, SIZED TO THE WHOLE SHORTFALL — the sites' logs and the
+    // saw's together (boss, parcel 281). "Одна активная задача на тип работ"
+    // counts markings, not volume: a good chairman marks a grove for the
+    // year's need at once and keeps the crew the tools and the people allow,
+    // rather than felling sixty-five times by a granary's worth.
+    const auto short_logs =
+        static_cast<std::uint32_t>((wanted - logs + catalog_.log_grams - 1) / catalog_.log_grams);
     core::OrderRow order;
-    if (!NearestMark(world, order)) {
+    if (!NearestMark(world, short_logs > granary_logs_ ? short_logs : granary_logs_, order)) {
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
@@ -150,6 +183,33 @@ class FellingPolicy {
     return kFallback;
   }
 
+  /// The logs the first level of every unit type takes, by unit_types row
+  /// (unit_level_cost.csv); zero for a type that takes none.
+  static std::vector<std::uint32_t> FirstLevelLogs(const core::ITableSet& tables) {
+    std::vector<std::uint32_t> logs;
+    const core::ITable* const costs = tables.FindTable("unit_level_cost");
+    const core::ITable* const types = tables.FindTable("unit_types");
+    if (costs == nullptr || types == nullptr) {
+      return logs;
+    }
+    logs.assign(types->RowCount(), 0U);
+    const std::uint32_t unit_col = costs->FindColumn("unit");
+    const std::uint32_t level_col = costs->FindColumn("level");
+    const std::uint32_t resource_col = costs->FindColumn("resource");
+    const std::uint32_t amount_col = costs->FindColumn("amount");
+    for (std::uint32_t row = 0; row < costs->RowCount(); ++row) {
+      if (costs->CellText(row, level_col) != "1" || costs->CellText(row, resource_col) != "log") {
+        continue;
+      }
+      const std::uint32_t type_row = types->FindRowByKey(costs->CellText(row, unit_col));
+      const std::optional<float> amount = costs->CellReal(row, amount_col);
+      if (type_row < logs.size() && amount.has_value() && *amount > 0.0F) {
+        logs[type_row] = static_cast<std::uint32_t>(*amount);
+      }
+    }
+    return logs;
+  }
+
   /// The village's centre, as the building chairman reckons it.
   static core::Vec2 Centre(const core::WorldState& world) {
     core::Vec2 sum{.x = 0.0F, .y = 0.0F};
@@ -161,7 +221,9 @@ class FellingPolicy {
     return count > 0.0F ? core::Vec2{.x = sum.x / count, .y = sum.y / count} : sum;
   }
 
-  bool NearestMark(const core::WorldState& world, core::OrderRow& order) const {
+  /// @param logs How many logs the mark is for: one granary's, or what the
+  ///        village and its sites are short of when that is more.
+  bool NearestMark(const core::WorldState& world, std::uint32_t logs, core::OrderRow& order) const {
     const core::Vec2 centre = Centre(world);
     std::uint32_t best = core::kNoRow;
     float best_distance = 0.0F;
@@ -178,8 +240,8 @@ class FellingPolicy {
       if (!(share > 0.0F) || !(stand.stock_m3 > 0.0F)) {
         continue;
       }
-      // Enough of the stand for one granary's logs, or what it has left.
-      const float wanted_m3 = static_cast<float>(granary_logs_) * catalog_.log_m3 / share;
+      // Enough of the stand for the logs asked, or what it has left.
+      const float wanted_m3 = static_cast<float>(logs) * catalog_.log_m3 / share;
       const float volume = wanted_m3 < stand.stock_m3 ? wanted_m3 : stand.stock_m3;
       // A MARK THAT YIELDS NOT ONE LOG IS NOT A MARK: an old-forest square
       // holds a few cubic metres of trunks, and marking its crumbs would fell
@@ -210,6 +272,9 @@ class FellingPolicy {
   bool ready_ = false;
 
   std::uint32_t granary_logs_ = 60;
+
+  /// Logs a first level takes, by unit_types row: what a site still waits for.
+  std::vector<std::uint32_t> logs_by_type_;
 
   std::uint32_t cooldown_ = 0;
 

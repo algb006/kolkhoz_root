@@ -12,5 +12,5 @@ demolition_labor_share,0.25
 repair_labor_share,0.30
 repair_spare_parts_per_labor_day,0.30
 old_house_collapse_years,12
-old_house_wear_min,45
-old_house_wear_max,60
+old_house_wear_min,25
+old_house_wear_max,75

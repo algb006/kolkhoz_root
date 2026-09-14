@@ -25,6 +25,8 @@
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/wedding_state.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
@@ -466,6 +468,12 @@ int CheckFoodConfigDefaults(const core::ITableSet& tables) {
   return failures;
 }
 
+}  // namespace
+
+core::UnitId AddHouse(core::WorldState& world, core::FamilyId family, core::Vec2 at);
+
+namespace {
+
 /// Stage 7, task O2b: a yard that empties out is struck off, and what it
 /// leaves goes to the neighbours (defect D4, boss answer Q5).
 int CheckEmptiedYard(core::IResidentsSystem& system) {
@@ -489,6 +497,15 @@ int CheckEmptiedYard(core::IResidentsSystem& system) {
   const core::ResidentId neighbour_husband =
       AddAdult(world, neighbour_yard, core::Sex::kMale, 46.0F);
   Marry(world, neighbour_wife, neighbour_husband);
+  // Every yard under a roof and one free house for the couple (2026-09-14):
+  // a roofless yard leaves in the cold, and with it this check's subject.
+  AddHouse(world, her_yard, core::Vec2{.x = 100.0F, .y = 0.0F});
+  AddHouse(world, his_yard, core::Vec2{.x = 200.0F, .y = 0.0F});
+  AddHouse(world, neighbour_yard, core::Vec2{.x = 300.0F, .y = 0.0F});
+  core::UnitRow free_house;
+  free_house.type = core::UnitTypeId{2};
+  free_house.position = core::Vec2{.x = 400.0F, .y = 0.0F};
+  AppendRow(world.units, free_house);
 
   // What the bride's yard holds: a larder, two goats and a month of trudodni.
   const std::uint32_t her_row = FindRow(world.families, her_yard);
@@ -577,11 +594,9 @@ core::FamilyId RunUntilWedding(core::IResidentsSystem& system, core::WorldState&
   return core::FamilyId{};
 }
 
-/// The wedding's house (life-cycle §12): a free one first, else a STUB one
-/// raised beside the parents — never at the map's origin, which is where an
-/// unplaced unit lands and which on the twelve-kilometre map is twelve
-/// kilometres from the village (the thirty-year run stopped mowing by its
-/// seventh year over exactly that).
+/// The wedding's house (life-cycle §12): a free one, and only a free one.
+/// Until 2026-09-14 a STUB raised one from nothing beside the parents; now a
+/// couple with no free house waits for one (boss, parcel 257).
 int CheckSettleHouse() {
   int failures = 0;
   const HousingTables tables;
@@ -617,32 +632,173 @@ int CheckSettleHouse() {
     }
   }
 
-  // No free house: the STUB raises one, and raises it beside the parents.
+  // No free house: NO HOUSE FROM NOTHING (boss, parcel 257). The couple
+  // waits in the queue, the village hears it once, and the day a free house
+  // stands the couple marries into it.
   {
     core::WorldState world;
     world.world_seed = 12;
     world.rng = core::SeedRngState(12, 0);
-    const core::Vec2 hers{.x = 5000.0F, .y = 6000.0F};
-    const core::Vec2 his{.x = 5200.0F, .y = 6000.0F};
-    AddParentsWithChild(world, core::Sex::kFemale, hers);
-    AddParentsWithChild(world, core::Sex::kMale, his);
+    AddParentsWithChild(world, core::Sex::kFemale, core::Vec2{.x = 5000.0F, .y = 6000.0F});
+    AddParentsWithChild(world, core::Sex::kMale, core::Vec2{.x = 5200.0F, .y = 6000.0F});
     const auto units_before = static_cast<std::uint32_t>(world.units.rows.size());
-    const core::FamilyId home = RunUntilWedding(*system, world);
-    failures += Expect(home.value != core::kInvalidEntityIdValue, "a wedding founded a household");
-    if (home.value != core::kInvalidEntityIdValue) {
-      const core::FamilyRow& family = world.families.rows[FindRow(world.families, home)];
-      failures += Expect(world.units.rows.size() == units_before + 1, "a house was raised for it");
-      const std::uint32_t house_row = FindRow(world.units, family.house);
-      failures += Expect(house_row != core::kNoRow, "and the household is linked to it");
-      if (house_row != core::kNoRow) {
-        const core::UnitRow& house = world.units.rows[house_row];
-        failures += Expect(house.type.value == 2, "of the wooden_house type");
-        failures += Expect(house.household.value == home.value, "with the household in it");
-        const bool beside_parents =
-            (house.position.x == hers.x || house.position.x == his.x) && house.position.y == hers.y;
-        failures += Expect(beside_parents, "standing beside the parents, not at the origin");
+    const std::size_t yards_before = world.families.rows.size();
+    std::uint32_t waits_heard = 0;
+    for (std::uint32_t day = 0; day < 3 * core::kDaysPerYear; ++day) {
+      world.step_events.clear();
+      RunDays(*system, world, 1);
+      for (const core::SimEvent& event : world.step_events) {
+        waits_heard += event.kind == core::EventKind::kWeddingAwaitsHouse ? 1U : 0U;
       }
     }
+    failures += Expect(world.wedding_waits.rows.size() == 1, "no free house: the couple waits");
+    failures += Expect(world.units.rows.size() == units_before, "and no house was raised for it");
+    failures += Expect(world.families.rows.size() == yards_before, "and nobody married");
+    failures += Expect(waits_heard == 1, "the village heard of the waiting couple once");
+
+    core::UnitRow built;
+    built.type = core::UnitTypeId{2};  // the chairman's wooden_house, finished
+    built.position = core::Vec2{.x = 5400.0F, .y = 6000.0F};
+    const core::UnitId built_id = AppendRow(world.units, built);
+    RunDays(*system, world, 1);
+    const core::UnitRow& house = world.units.rows[FindRow(world.units, built_id)];
+    const std::uint32_t home_row = FindRow(world.families, house.household);
+    failures += Expect(world.wedding_waits.rows.empty() && home_row != core::kNoRow,
+                       "the day a house stands, the waiting couple marries into it");
+    if (home_row != core::kNoRow) {
+      std::uint32_t members = 0;
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        members += resident.family.value == house.household.value ? 1U : 0U;
+      }
+      failures +=
+          Expect(members == 2 && world.families.rows[home_row].house.value == built_id.value,
+                 "both of them, into that house");
+    }
+  }
+  return failures;
+}
+
+/// The wedding queue is oldest first, and a couple one of whose two is gone
+/// falls apart rather than holding the queue (life-cycle §12; boss, parcel
+/// 257).
+int CheckWeddingQueueOrder() {
+  int failures = 0;
+  const HousingTables tables;
+  const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
+  core::WorldState world;
+  world.world_seed = 3;
+  world.rng = core::SeedRngState(3, 0);
+  const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+  AddHouse(world, yard, core::Vec2{.x = 5000.0F, .y = 6000.0F});
+  // Three couples in the queue, stated by hand: the oldest has lost its groom.
+  const core::ResidentId gone_bride = AddAdult(world, yard, core::Sex::kFemale, 24.0F);
+  const core::ResidentId old_bride = AddAdult(world, yard, core::Sex::kFemale, 24.0F);
+  const core::ResidentId old_groom = AddAdult(world, yard, core::Sex::kMale, 25.0F);
+  const core::ResidentId new_bride = AddAdult(world, yard, core::Sex::kFemale, 24.0F);
+  const core::ResidentId new_groom = AddAdult(world, yard, core::Sex::kMale, 25.0F);
+  const auto wait = [&world](core::ResidentId bride, core::ResidentId groom, std::uint32_t since) {
+    core::WeddingWaitRow couple;
+    couple.bride = bride;
+    couple.groom = groom;
+    couple.since_day = since;
+    AppendRow(world.wedding_waits, couple);
+  };
+  wait(gone_bride, core::ResidentId{999}, 1);
+  wait(old_bride, old_groom, 2);
+  wait(new_bride, new_groom, 3);
+  core::UnitRow built;
+  built.type = core::UnitTypeId{2};
+  built.position = core::Vec2{.x = 5400.0F, .y = 6000.0F};
+  AppendRow(world.units, built);
+  RunDays(*system, world, 1);
+  const std::uint32_t bride_row = FindRow(world.residents, old_bride);
+  failures += Expect(
+      bride_row != core::kNoRow && world.residents.rows[bride_row].spouse.value == old_groom.value,
+      "queue: the oldest whole couple takes the one free house");
+  failures += Expect(world.wedding_waits.rows.size() == 1 &&
+                         world.wedding_waits.rows[0].bride.value == new_bride.value,
+                     "queue: the broken couple is gone and the younger one still waits");
+  return failures;
+}
+
+/// A family whose house fell goes down housing design §20's ladder: a tent on
+/// its old plot in the warm season — its day starts there — and, when the
+/// cold comes with no free house, it leaves the kolkhoz; a free house takes
+/// it in at any rung.
+int CheckRooflessLadder() {
+  int failures = 0;
+  const HousingTables tables;
+  const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
+  const core::Vec2 plot{.x = 4000.0F, .y = 7000.0F};
+  const auto roofless_world = [&plot](std::uint32_t day) {
+    core::WorldState world;
+    world.world_seed = 8;
+    world.rng = core::SeedRngState(8, 0);
+    core::FamilyRow family;
+    family.lost_house_position = plot;  // what a collapse writes
+    const core::FamilyId yard = AppendRow(world.families, family);
+    const core::ResidentId wife = AddAdult(world, yard, core::Sex::kFemale, 30.0F);
+    const core::ResidentId husband = AddAdult(world, yard, core::Sex::kMale, 31.0F);
+    Marry(world, wife, husband);
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    return world;
+  };
+  const auto count = [](const core::WorldState& world, core::EventKind kind) {
+    std::uint32_t seen = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      seen += event.kind == kind ? 1U : 0U;
+    }
+    return seen;
+  };
+
+  // May (days 16-19): a tent on the old plot, told once, and the day starts there.
+  {
+    core::WorldState world = roofless_world(15);
+    std::uint32_t tents_heard = 0;
+    for (std::uint32_t day = 0; day < 2; ++day) {
+      world.step_events.clear();
+      RunDays(*system, world, 1);
+      tents_heard += count(world, core::EventKind::kFamilyInTent);
+    }
+    const core::FamilyRow& family = world.families.rows[0];
+    core::Vec2 home{};
+    const bool has_home = core::HomePositionOf(world, world.families.row_ids[0], home);
+    failures += Expect(family.in_tent == 1 && tents_heard == 1,
+                       "roofless in May: the family lives in a tent, and the village hears once");
+    failures += Expect(has_home && home.x == plot.x && home.y == plot.y,
+                       "and its day starts on the plot its house stood on");
+    failures += Expect(world.units.rows.empty(), "and no house was raised from nothing");
+  }
+  // October (days 36-39): no tent in the cold, and no house — the family leaves.
+  {
+    core::WorldState world = roofless_world(36);
+    world.step_events.clear();
+    RunDays(*system, world, 1);
+    const std::uint32_t left = count(world, core::EventKind::kResidentLeft);
+    bool whole_family = false;
+    for (const core::SimEvent& event : world.step_events) {
+      whole_family = whole_family ||
+                     (event.kind == core::EventKind::kFamilyLeftForNoHouse && event.amount == 2);
+    }
+    failures += Expect(world.residents.rows.empty() && world.families.rows.empty(),
+                       "roofless in October: the family leaves the kolkhoz");
+    failures += Expect(whole_family && left == 2,
+                       "and the village hears the family left for want of a house, both of them");
+    failures += Expect(world.ledger.current.departures == 2, "counted as two departures");
+  }
+  // A free house takes in a family in a tent, and the tent is struck.
+  {
+    core::WorldState world = roofless_world(15);
+    RunDays(*system, world, 1);
+    core::UnitRow built;
+    built.type = core::UnitTypeId{2};
+    built.position = core::Vec2{.x = 4400.0F, .y = 7000.0F};
+    const core::UnitId built_id = AppendRow(world.units, built);
+    RunDays(*system, world, 1);
+    const core::FamilyRow& family = world.families.rows[0];
+    failures += Expect(family.house.value == built_id.value && family.in_tent == 0,
+                       "a free house takes the family out of its tent");
   }
   return failures;
 }
@@ -713,8 +869,10 @@ int CheckVacatedPostIsAnnounced(core::IResidentsSystem& system) {
 /// different husband.
 int CheckHeightNeverChoosesASpouse() {
   int failures = 0;
-  const test::FakeTableSet nothing;
-  const auto system = core::CreateResidentsSystem(nothing, core::StubTables::kAllowed);
+  // The housing tables and not an empty set: a free house must be KNOWN as a
+  // house for the couple to marry into it.
+  const HousingTables housing;
+  const auto system = core::CreateResidentsSystem(housing, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "the marriage fixture builds a residents system") != 0) {
     return 1;
   }
@@ -738,6 +896,16 @@ int CheckHeightNeverChoosesASpouse() {
     const core::ResidentId short_one = AddAdult(world, second_yard, core::Sex::kMale, 27.0F);
     world.residents.rows[FindRow(world.residents, tall)].height_deviation = first_deviation;
     world.residents.rows[FindRow(world.residents, short_one)].height_deviation = second_deviation;
+    // A ROOF FOR EVERY YARD AND ONE FREE HOUSE FOR THE COUPLE (2026-09-14): a
+    // yard with no house leaves the kolkhoz in the cold, and a couple with no
+    // free house waits instead of marrying (boss, parcel 257).
+    AddHouse(world, her_yard, core::Vec2{.x = 100.0F, .y = 0.0F});
+    AddHouse(world, first_yard, core::Vec2{.x = 200.0F, .y = 0.0F});
+    AddHouse(world, second_yard, core::Vec2{.x = 300.0F, .y = 0.0F});
+    core::UnitRow free_house;
+    free_house.type = core::UnitTypeId{0};
+    free_house.position = core::Vec2{.x = 400.0F, .y = 0.0F};
+    core::AppendRow(world.units, free_house);
     // Long enough that the daily marriage chance is certain to have fired:
     // the guard is about WHOM she marries, not about when.
     // SHORT ENOUGH THAT NO MIGRANT ARRIVES to widen the field of candidates:
@@ -896,11 +1064,16 @@ int main() {
   failures += CheckTheDistrictSendsSpecialists();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckHeightNeverChoosesASpouse();
-  const test::FakeTableSet tables;  // canonical defaults compiled into the config
+  // Defaults compiled into the config, and unit_types so that a house is
+  // known as one (2026-09-14: no house from nothing — a migrant needs a free
+  // house to come, a couple one to marry).
+  const HousingTables tables;
   const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
   failures += Expect(system != nullptr, "factory yields a system");
 
-  // A hand-built village: three fertile couples, one old man, one single.
+  // A hand-built village: three fertile couples, one old man, one single,
+  // every yard under a roof, and free houses enough for two years of
+  // migrants and weddings.
   core::WorldState world;
   world.world_seed = 77;
   world.rng = core::SeedRngState(77, 0);
@@ -911,11 +1084,20 @@ int main() {
     const core::ResidentId husband =
         AddAdult(world, yard, core::Sex::kMale, 24.0F + static_cast<float>(couple) * 4.0F);
     Marry(world, wife, husband);
+    AddHouse(world, yard, core::Vec2{.x = 100.0F * static_cast<float>(couple), .y = 0.0F});
   }
   const core::FamilyId old_yard = AppendRow(world.families, core::FamilyRow{});
   AddAdult(world, old_yard, core::Sex::kMale, 74.0F);
+  AddHouse(world, old_yard, core::Vec2{.x = 400.0F, .y = 0.0F});
   const core::FamilyId single_yard = AppendRow(world.families, core::FamilyRow{});
   AddAdult(world, single_yard, core::Sex::kFemale, 20.0F);
+  AddHouse(world, single_yard, core::Vec2{.x = 500.0F, .y = 0.0F});
+  for (int spare = 0; spare < 40; ++spare) {
+    core::UnitRow free_house;
+    free_house.type = core::UnitTypeId{2};
+    free_house.position = core::Vec2{.x = 100.0F * static_cast<float>(spare), .y = 300.0F};
+    AppendRow(world.units, free_house);
+  }
 
   const std::uint32_t start_population = static_cast<std::uint32_t>(world.residents.rows.size());
   const std::uint32_t start_ids = world.residents.next_id_value;
@@ -1021,6 +1203,8 @@ int main() {
   failures += CheckExchange();
   failures += CheckVitals();
   failures += CheckSettleHouse();
+  failures += CheckWeddingQueueOrder();
+  failures += CheckRooflessLadder();
 
   if (failures == 0) {
     std::cout << "unit_core_residents: all checks passed\n";

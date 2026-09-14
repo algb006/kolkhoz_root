@@ -20,14 +20,9 @@
 #include <memory>
 #include <optional>
 
-#include "../common/felling_policy.h"
-#include "../common/fixture_policy.h"
-#include "../common/limit_policy.h"
-#include "../common/repair_policy.h"
+#include "../common/building_chairman.h"
 #include "../common/run_harness.h"
-#include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
-#include "../common/yard_policy.h"
 #include "core_boundary/session.h"
 #include "core_common/labor_state.h"
 #include "core_common/world_state.h"
@@ -126,14 +121,9 @@ int main(int argc, char** argv) {
   if (!started) {
     return 1;
   }
-  run::YardPolicy yard(*started.tables);
-  run::FixturePolicy fixture(*started.tables);
-  run::FellingPolicy felling(*started.tables);
-  run::RepairPolicy repairs(*started.tables);
-  run::SawmillPolicy sawmill(*started.tables);
-  run::LimitPolicy limit(*started.tables);
+  run::BuildingChairman builder(*started.tables);
   run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
-  run::SawmillPolicy::Declare("unit_signals");
+  run::BuildingChairman::Declare("unit_signals");
 
   int failures = 0;
   bool sawyers_seen = false;
@@ -161,12 +151,7 @@ int main(int argc, char** argv) {
     if (sawyers_seen && builders_seen) {
       break;
     }
-    yard.RunDay(*started.simulation);
-    fixture.RunDay(*started.simulation);
-    felling.RunDay(*started.simulation);
-    sawmill.RunDay(*started.simulation);
-    limit.RunDay(*started.simulation);
-    repairs.RunDay(*started.simulation);
+    builder.RunDay(*started.simulation);
     chairman.RunDay(*started.simulation);
   }
   failures += run::Expect(sawyers_seen, "the run reached a day with sawyers at the saw");

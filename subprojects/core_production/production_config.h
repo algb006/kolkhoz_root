@@ -253,6 +253,12 @@ struct UnitTypeDef {
   /// carries the flag for exactly that reason.
   std::uint8_t capacity_by_plot = 0;
 
+  /// The resources this type is the declared home of (resource_stores.csv:
+  /// the row names the type as its `unit` or as its `storage`). Asked of an
+  /// outline store only — a heap under the open sky takes what the table
+  /// says it keeps, empty or not (IsHomeOf, stock_ops.h).
+  std::vector<ResourceId> home_of;
+
   /// @brief Kilograms this type stores at the level a unit STANDS at.
   /// @param level The unit's own level; 0 is a construction site, which
   ///        stores nothing for anybody (unit_state.h, task A2).
@@ -547,6 +553,12 @@ struct ProductionConfig {
   std::vector<LivestockDef> livestock;  ///< Indexed by LivestockKindId row.
 
   std::vector<UnitTypeDef> unit_types;  ///< Indexed by UnitTypeId row.
+
+  /// 1 when resource_stores.csv was read and UnitTypeDef::home_of is the
+  /// answer; 0 in a table set without it (a hand-built test world), where an
+  /// outline store's home is where the resource already lies (STUB, the rule
+  /// before the table reached the core).
+  std::uint8_t resource_stores_read = 0;
 
   FarmingConfig farming;
 

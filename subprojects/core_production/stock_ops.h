@@ -137,6 +137,25 @@ inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
   return unit.level > 0 && StorageCapacityGrams(unit, config) != 0;
 }
 
+/// @brief Whether an outline store is the home of `resource`: the row of
+/// resource_stores.csv that names its type (boss, parcel 268), empty or not.
+/// A table set without that table keeps the rule the core had before it —
+/// where the resource already lies (STUB for hand-built worlds).
+inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, ResourceId resource) {
+  if (config.resource_stores_read == 0) {
+    return StockOf(unit.stock, resource) > 0;
+  }
+  if (unit.type.value >= config.unit_types.size()) {
+    return false;
+  }
+  for (const ResourceId held : config.unit_types[unit.type.value].home_of) {
+    if (held.value == resource.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:
 /// one shared storage pool. Capacity is no longer ignored — since task A3
 /// the door (DeliverToStores) refuses above the ceiling and the remainder is
@@ -292,12 +311,13 @@ inline Grams DeliverToStores(WorldState& world,
   if (placed >= amount) {
     return placed;
   }
-  // SECOND PASS: an outline the player drew that ALREADY HOLDS this very
-  // resource — the haystack with the hay in it, the log pile with the logs.
-  // Such a place has no ceiling (the player's contour is its size), and the
-  // core has no routing table to say which store takes what, so "where this
-  // resource already lies" is the only rule available that does not invent
-  // one. Without it the ceiling would turn a haystack standing full of hay
+  // SECOND PASS: an outline the player drew that is THIS RESOURCE'S HOME —
+  // the haystack for the hay, the log pile for the logs (IsHomeOf,
+  // resource_stores.csv). Such a place has no ceiling (the player's contour
+  // is its size). Until 2026-09-14 the core had no table to say which store
+  // takes what, and "where this resource already lies" stood in for it — an
+  // emptied pile then stopped being anybody's home (boss, parcel 268).
+  // Without the pass the ceiling would turn a haystack standing full of hay
   // into a hundred tonnes of hay booked as lost while the stack watched:
   // a numbered store is what a DELIVERY needs (A2, stock_ops.h), and until
   // task A4 gives goods a route, this is the narrowest way to keep the
@@ -308,7 +328,7 @@ inline Grams DeliverToStores(WorldState& world,
     if (unit.level == 0 || StorageCapacityGrams(unit, config) >= 0) {
       continue;  // not built, or a numbered store the first pass has seen
     }
-    if (StockOf(unit.stock, resource) <= 0) {
+    if (!IsHomeOf(unit, config, resource)) {
       continue;  // an outline that is not this resource's home
     }
     placed += AddToStock(unit.stock, resource, amount - placed);

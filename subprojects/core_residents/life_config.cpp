@@ -381,7 +381,6 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     // cast it guarded already produced 0xFFFF — the invalid id — on exactly
     // the path it was meant to keep the cast off. It was right by accident
     // on the not-found path and pure ceremony on the other.
-    config.house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("wooden_house"));
     config.school_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("school"));
     config.reading_hut_type =
         DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("culture_house"));

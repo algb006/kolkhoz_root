@@ -134,11 +134,6 @@ struct LifeConfig {
   ProfessionId teacher_post;
   ProfessionId librarian_post;
 
-  /// unit_types.csv "wooden_house" row: what the wedding STUB builds
-  /// (invalid in a table-less world — the unit is appended with an invalid
-  /// type then).
-  UnitTypeId house_type;
-
   /// THE CATALOGUE, read at factory time (core_catalog/definitions.h): the
   /// housing class of every unit type, the plot radii and the map side.
   ///

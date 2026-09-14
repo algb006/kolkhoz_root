@@ -140,7 +140,14 @@ bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home) {
   if (family_row == kNoRow) {
     return false;
   }
-  const std::uint32_t house_row = FindRow(world.units, world.families.rows[family_row].house);
+  const FamilyRow& household = world.families.rows[family_row];
+  // A family in a tent lives on the plot its house stood on (housing design
+  // §20): the accountant counts the road from there, and the day starts there.
+  if (household.in_tent != 0) {
+    home = household.lost_house_position;
+    return true;
+  }
+  const std::uint32_t house_row = FindRow(world.units, household.house);
   if (house_row == kNoRow) {
     return false;
   }

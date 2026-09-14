@@ -219,10 +219,11 @@ CropId CropByKey(const ITable* crops, std::string_view key) {
 /// tables/construction.csv beside the term those houses run on, and genesis
 /// reads them below. They were constants here for one afternoon, and in that
 /// afternoon the table said 45..60 while the code obeyed itself — a knob
-/// nobody reads is worse than no knob at all.
-constexpr float kOldHouseWearMinDefault = 45.0F;
+/// nobody reads is worse than no knob at all. 25..75 since 2026-09-14 (boss,
+/// parcel 268).
+constexpr float kOldHouseWearMinDefault = 25.0F;
 
-constexpr float kOldHouseWearMaxDefault = 60.0F;
+constexpr float kOldHouseWearMaxDefault = 75.0F;
 
 void PutStock(UnitRow& unit, ResourceId resource, float kilograms) {
   if (resource.value == kInvalidDefIdValue) {
@@ -931,11 +932,16 @@ bool BuildStartEconomy(WorldState& world,
   }
 
   // THE OLD HOUSES START PART WORN (start design §4), and not all at the
-  // same number: a spread of fifteen points puts their collapses years
-  // apart instead of dropping twenty-one roofs in one night (boss,
-  // 2026-09-03; task A5). Drawn from the campaign seed like every other
-  // start draw, so the same seed gives the same village — and the band
-  // itself comes from the table, not from this file.
+  // same number: a spread puts their collapses years apart instead of
+  // dropping twenty-one roofs in one night (boss, 2026-09-03; task A5). The
+  // fifteen points of 45..60 were not enough once no house came from nothing:
+  // the roofs fell in the fifth and sixth years together and 69 of 111 people
+  // left the kolkhoz in two winters (thirty_years, seed 1929) — against start
+  // design §4, "дома рушатся по одному". 25..75 since (boss, parcels 266 and
+  // 268): at twelve years to collapse the roofs fall from the third year to
+  // the ninth. Drawn from the campaign seed like every other start draw, so
+  // the same seed gives the same village — and the band itself comes from
+  // the table, not from this file.
   float wear_min = kOldHouseWearMinDefault;
   float wear_max = kOldHouseWearMaxDefault;
   if (const ITable* const knobs = tables.FindTable("construction")) {
@@ -964,7 +970,7 @@ bool BuildStartEconomy(WorldState& world,
   // A band that is not a band — reversed, negative, past the scale — is a
   // table error, and the canonical figures stand instead of a wrong world.
   if (!(wear_min >= 0.0F && wear_max <= kWearScale && wear_min <= wear_max)) {
-    LogWarning("genesis: the old-house wear band is unusable; the canonical 45..60 is used");
+    LogWarning("genesis: the old-house wear band is unusable; the canonical 25..75 is used");
     wear_min = kOldHouseWearMinDefault;
     wear_max = kOldHouseWearMaxDefault;
   }

@@ -34,11 +34,9 @@
 #include <string_view>
 #include <vector>
 
-#include "../common/fixture_policy.h"
+#include "../common/building_chairman.h"
 #include "../common/orders_policy.h"
-#include "../common/repair_policy.h"
 #include "../common/run_harness.h"
-#include "../common/yard_policy.h"
 #include "core_common/calendar.h"
 #include "core_common/resident_activity.h"
 #include "core_common/world_state.h"
@@ -66,7 +64,23 @@ namespace {
 /// fifth year to the sixth: measured on tests/run/idle_curve, 0 man-hours of
 /// truancy through year five and 1198 in year six. The waiver was not
 /// touched — the state is reachable, the window was short.
-constexpr std::uint32_t kYears = 6;
+///
+/// AND TEN SINCE 2026-09-14, the third time, by boss's rule for it (parcel
+/// 306): lengthen the window before touching the waiver. The core stopped
+/// raising houses from nothing and the census now plays the building chairman
+/// (building_chairman.h); in six years nobody walked off.
+constexpr std::uint32_t kYears = 10;
+
+/// The census's world. An argument overrides it, for looking for a seed on
+/// which a state is reached.
+///
+/// 1931 SINCE 2026-09-14, and 1930 before it, by boss's rule (parcel 306):
+/// ten years on 1930 still showed no walk-off, so the census takes the first
+/// of the nine seeds on which one happens. In ten years with the building
+/// chairman truancy came on 1931 (509 man-hours), 1932 (1370) and 1936 (4563),
+/// and on none of the other six. The state is reachable; it is rarer than it
+/// was, and the six seeds without it are a number for the building chain.
+constexpr std::uint64_t kSeed = 1931;
 
 /// The names, in enum order, for the roll-call to print. Kept beside the
 /// enum rather than read from the table on purpose: the roster the check
@@ -159,9 +173,10 @@ core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   int failures = 0;
-  const run::Simulation world = run::Start(1930);
+  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : kSeed;
+  const run::Simulation world = run::Start(seed);
   if (!world) {
     return 1;
   }
@@ -173,17 +188,17 @@ int main() {
   // world in which to ask whether every activity has a source, because half
   // of them stop having one for reasons that are not about the roster.
   // These are the four the thirty-year run uses.
-  run::YardPolicy yard(*world.tables);
-  run::FixturePolicy fixture(*world.tables);
+  // And since the core raises no house from nothing, the rest of the building
+  // chairman (building_chairman.h): without it the village leaves in its
+  // first winters and half the roll-call has nobody to answer it.
+  run::BuildingChairman builder(*world.tables);
+  run::BuildingChairman::Declare("activity_census");
   run::OrdersPolicy orders;
-  run::RepairPolicy repairs(*world.tables);
 
   std::array<std::uint64_t, kNames.size()> seen{};
   for (std::uint32_t day = 0; day < kYears * core::kDaysPerYear; ++day) {
-    yard.RunDay(*world.simulation);
-    fixture.RunDay(*world.simulation);
+    builder.RunDay(*world.simulation);
     orders.RunDay(*world.simulation);
-    repairs.RunDay(*world.simulation);
     for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
       world->AdvanceStep();
       const core::WorldState& state = world.State();
@@ -194,7 +209,7 @@ int main() {
     }
   }
 
-  std::cout << "activity_census: " << kYears << " years, seed 1930\n";
+  std::cout << "activity_census: " << kYears << " years, seed " << seed << "\n";
   for (std::size_t index = 0; index < kNames.size(); ++index) {
     const bool dead = seen[index] == 0;
     const char* mark = "        ";

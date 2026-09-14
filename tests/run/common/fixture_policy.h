@@ -30,6 +30,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_catalog/definitions.h"
 #include "core_common/herd_state.h"
@@ -42,6 +43,7 @@
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "start_gate.h"
 #include "store_parent.h"
 
 namespace run {
@@ -67,8 +69,12 @@ class FixturePolicy {
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
   }
 
+  /// @brief The question asked before every start (start_gate.h).
+  void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
+
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
+    CountWaitStreaks(simulation.CompletedState());
     if (cooldown_ > 0) {
       --cooldown_;
       return;
@@ -94,6 +100,53 @@ class FixturePolicy {
     cooldown_ = kCooldownDays;
   }
 
+  /// @brief Whether today the farm's own building must go before any house
+  /// (boss, parcel 298: the chairman builds what the farm lacks MOST). True
+  /// while a site of a store for the harvest is marked and short of its recipe
+  /// and the harvest has nowhere to go, or a cattle-yard site is and animals
+  /// stand without a roof. A site already started holds nothing back.
+  bool HoldsHousesBack(const core::ISimulation& simulation) const {
+    const core::WorldState& world = simulation.CompletedState();
+    const bool room_short = RoomWasShort(world);
+    const bool roof_short = RoofWasShort(world);
+    if (!room_short && !roof_short) {
+      return false;
+    }
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.level != 0 || unit.construction.phase != core::ConstructionPhase::kMarked) {
+        continue;
+      }
+      const bool store =
+          unit.type.value == granary_.value || unit.type.value == granary_yard_.value;
+      const bool roof = unit.type.value == cattle_.value;
+      if (((store && room_short) || (roof && roof_short)) &&
+          !simulation.MaterialsShortFor(world.units.row_ids[row]).empty()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// @brief Whether a reaped load has lain in a field with no carrying demand
+  /// against it for MORE THAN kRoomWaitDays days running: the doors of the
+  /// stores are shut (the first of RoomWasShort's signals). Reads the streaks
+  /// RunDay counts, so it answers for the last day RunDay saw.
+  ///
+  /// A STREAK AND NOT A DAY (boss, parcel 300). A load waits a day for its
+  /// carrying demand to be written after every reaping, and counting that day
+  /// made the signal burn in 21 to 30 years of 30 on every arm — with all
+  /// fourteen granaries standing too — so "the farm first" became "the
+  /// granary always first" (parcel 299).
+  bool HarvestWaitsForRoom() const {
+    for (const std::uint32_t streak : wait_streak_) {
+      if (streak > kRoomWaitDays) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// @brief The fixture difference, in words, for the run to print BEFORE it
   /// measures anything.
   static void Declare() {
@@ -114,6 +167,14 @@ class FixturePolicy {
 
  private:
   static constexpr std::uint32_t kCooldownDays = 4;
+
+  /// Days a reaped load may lie without carrying demand before it means "no
+  /// room" rather than the carrying lag after a reaping (boss, parcel 300).
+  static constexpr std::uint32_t kRoomWaitDays = 3;
+
+  std::vector<std::uint32_t> wait_streak_;
+
+  StartGate start_gate_;
 
   static constexpr float kStepAside = 60.0F;
 
@@ -167,19 +228,29 @@ class FixturePolicy {
   /// the second signal and a late one: it is only booked when the snow takes
   /// what was still out, by which time the year is lost. Watching only the
   /// late signal is what left the run's chairman a year behind his village.
-  static bool RoomWasShort(const core::WorldState& world) {
-    for (const core::FieldRow& field : world.fields.rows) {
-      // A LOAD BEING CARRIED IS NOT A SHORTAGE. What says "nowhere to put
-      // it" is a load with NO CARRYING DEMAND against it: production sizes
-      // that demand by the room in the stores, so a zero demand under a
-      // standing load means the doors are shut. The first version of this
-      // read any load at all as a shortage, and since carrying takes days
-      // that was nearly always true — the chairman ordered thirty-nine
-      // buildings in thirty years and took the hands to raise them off the
-      // fields.
-      if (field.reaped_grams > 0 && field.haul_days_remaining <= 0.0F) {
-        return true;
-      }
+  /// @brief One day's streaks: a field whose reaped load has no carrying
+  /// demand adds a day, any other field starts again from zero. Indexed by
+  /// field row; a field removed mid-run shifts the rows once, which costs at
+  /// most one streak restarted.
+  void CountWaitStreaks(const core::WorldState& world) {
+    wait_streak_.resize(world.fields.rows.size(), 0);
+    for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
+      const core::FieldRow& field = world.fields.rows[row];
+      const bool waits = field.reaped_grams > 0 && field.haul_days_remaining <= 0.0F;
+      wait_streak_[row] = waits ? wait_streak_[row] + 1 : 0;
+    }
+  }
+
+  bool RoomWasShort(const core::WorldState& world) const {
+    // A LOAD BEING CARRIED IS NOT A SHORTAGE. What says "nowhere to put it" is
+    // a load with NO CARRYING DEMAND against it: production sizes that demand
+    // by the room in the stores, so a zero demand under a standing load means
+    // the doors are shut. The first version of this read any load at all as a
+    // shortage, and since carrying takes days that was nearly always true —
+    // the chairman ordered thirty-nine buildings in thirty years and took the
+    // hands to raise them off the fields.
+    if (HarvestWaitsForRoom()) {
+      return true;
     }
     for (const core::Grams lost : world.ledger.closed.lost_no_room) {
       if (lost > 0) {
@@ -200,6 +271,10 @@ class FixturePolicy {
       }
       if (unit.construction.labor_days_remaining > 0.0F) {
         return false;
+      }
+      if (unit.construction.phase == core::ConstructionPhase::kMarked &&
+          !GateOpen(start_gate_, world, unit.type, unit.construction.target_level)) {
+        return false;  // the boards are the sawmill's until it stands
       }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[row];
