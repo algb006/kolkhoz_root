@@ -42,6 +42,7 @@
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/resident_state.h"
+#include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
 
@@ -631,6 +632,11 @@ struct WorldState {
   /// Lots bought on the limit and still on the district's cart (§4); SAVED.
   /// limit_state.h.
   LimitDeliveryTable limit_deliveries;
+
+  /// The teachers and librarians the district is sending and who have not
+  /// arrived yet (education design, "Эпоха I числами"); SAVED.
+  /// specialist_state.h.
+  SpecialistArrivalTable specialist_arrivals;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

@@ -126,6 +126,10 @@ static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<LimitDeliveryRow>() == 3,
               "LimitDeliveryRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(SpecialistArrivalRow) == 12,
+              "SpecialistArrivalRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<SpecialistArrivalRow>() == 3,
+              "SpecialistArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(TimberStandRow) == 48,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TimberStandRow>() == 9,
@@ -827,6 +831,27 @@ LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source) {
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.arrive_day = in.ReadU32();
   row.goods = source.ReadAmounts(DefKind::kResource);
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// SpecialistArrivalRow — specialist_state.h (2026-09-14)
+// ---------------------------------------------------------------------------
+// The post through the dictionary, so a reordered roster keeps his name.
+
+void WriteSpecialistArrivalRow(SaveSink& sink, const SpecialistArrivalRow& row) {
+  ByteWriter& out = sink.Out();
+  sink.WriteDefId(DefKind::kProfession, row.profession.value);
+  WriteEntityId(out, row.unit);
+  out.WriteU32(row.arrive_day);
+}
+
+SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  SpecialistArrivalRow row;
+  row.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
+  row.unit = ReadEntityId<UnitId>(in);
+  row.arrive_day = in.ReadU32();
   return row;
 }
 

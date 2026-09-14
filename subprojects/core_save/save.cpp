@@ -61,6 +61,7 @@ constexpr const char* kSectionHerds = "herds";
 constexpr const char* kSectionOrders = "orders";
 constexpr const char* kSectionStands = "stands";
 constexpr const char* kSectionLimitDeliveries = "limit_deliveries";
+constexpr const char* kSectionSpecialistArrivals = "specialist_arrivals";
 constexpr const char* kSectionLedger = "ledger";
 constexpr const char* kSectionStaged = "staged";
 
@@ -329,6 +330,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.limit_deliveries, WriteLimitDeliveryRow);
   CloseSection(out, length_offset);
 
+  // The district's specialists on the road (education design, save format 34).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.specialist_arrivals, WriteSpecialistArrivalRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -451,7 +457,9 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionOrders, &loaded.orders, ReadOrderRow) ||
       !read_table_section(kSectionStands, &loaded.stands, ReadTimberStandRow) ||
       !read_table_section(
-          kSectionLimitDeliveries, &loaded.limit_deliveries, ReadLimitDeliveryRow)) {
+          kSectionLimitDeliveries, &loaded.limit_deliveries, ReadLimitDeliveryRow) ||
+      !read_table_section(
+          kSectionSpecialistArrivals, &loaded.specialist_arrivals, ReadSpecialistArrivalRow)) {
     return false;
   }
 

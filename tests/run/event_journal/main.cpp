@@ -103,6 +103,10 @@ const char* KindName(core::EventKind kind) {
       return "plan_trial_due";
     case core::EventKind::kFieldRemoved:
       return "field_removed";
+    case core::EventKind::kSpecialistArrived:
+      return "specialist_arrived";
+    case core::EventKind::kSpecialistNoHousing:
+      return "specialist_no_housing";
     case core::EventKind::kHorsesStabled:
       return "horses_stabled";
     case core::EventKind::kEventKindCount:

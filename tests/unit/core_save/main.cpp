@@ -345,6 +345,14 @@ core::WorldState MakeWorld() {
   cart.goods = Amounts({0, 0, 4'800'000});
   core::AppendRow(world.limit_deliveries, cart);
 
+  // A specialist on the road (save format 34): the post through the
+  // dictionary, the unit he is appointed to, the day he is due.
+  core::SpecialistArrivalRow teacher;
+  teacher.profession = core::ProfessionId{1};
+  teacher.unit = core::UnitId{3};
+  teacher.arrive_day = 97;
+  core::AppendRow(world.specialist_arrivals, teacher);
+
   // An appointment still waiting (task A7): kAccepted is exactly the status
   // that has to survive a save — the order is visible, cancellable, and
   // takes effect at a day's close that may fall after the campaign is
@@ -618,6 +626,11 @@ int main() {
                          loaded.limit_deliveries.rows[0].arrive_day == 131 &&
                          AmountAt(loaded.limit_deliveries.rows[0].goods, 2) == 4'800'000,
                      "a cart on the road came back with its lot, its day and its goods");
+  failures += Expect(loaded.specialist_arrivals.rows.size() == 1 &&
+                         loaded.specialist_arrivals.rows[0].profession.value == 1 &&
+                         loaded.specialist_arrivals.rows[0].unit.value == 3 &&
+                         loaded.specialist_arrivals.rows[0].arrive_day == 97,
+                     "a specialist on the road came back with his post, his unit and his day");
   failures += Expect(loaded.ledger.current.limit_points_granted == 350 &&
                          loaded.ledger.current.limit_points_spent == 135 &&
                          loaded.ledger.current.limit_points_burned == 7,

@@ -23,6 +23,7 @@
 #include "core_common/limit_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
+#include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
 #include "save_dictionary.h"
@@ -52,6 +53,9 @@ TimberStandRow ReadTimberStandRow(LoadSource& source);
 
 void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row);
 LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source);
+
+void WriteSpecialistArrivalRow(SaveSink& sink, const SpecialistArrivalRow& row);
+SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source);
 
 }  // namespace core
 

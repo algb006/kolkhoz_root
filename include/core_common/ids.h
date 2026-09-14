@@ -97,6 +97,12 @@ struct LimitDeliveryIdTag {};
 /// the village (core_common/limit_state.h).
 using LimitDeliveryId = EntityId<LimitDeliveryIdTag>;
 
+struct SpecialistArrivalIdTag {};
+
+/// @brief One specialist the district is sending and who has not arrived yet
+/// (core_common/specialist_state.h).
+using SpecialistArrivalId = EntityId<SpecialistArrivalIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------

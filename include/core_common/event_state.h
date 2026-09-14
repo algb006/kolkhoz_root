@@ -179,6 +179,21 @@ enum class EventKind : std::uint8_t {
   /// rather than off a key it would have to remember from the start layout.
   kFieldRemoved,
 
+  // -- the district's specialists of Epoch I (2026-09-14) --------------------
+
+  /// resident, family, unit — a teacher or librarian the district sent has
+  /// arrived, lives in his house as a household of one, and holds his post at
+  /// `unit` from this step. amount = the ProfessionId value. kNotable. The
+  /// host raises `first_teacher_arrived` off the first with a teacher's post.
+  kSpecialistArrived,
+
+  /// unit — on the first day of a month the district would have sent a
+  /// specialist to `unit` and did not, because no free house stands for him
+  /// (education design: "Нет жилья — не приезжает; месяц проходит. Подсказка —
+  /// у старосты и в уведомлении, не молча"). amount = the ProfessionId value.
+  /// kNotable; once a month per unit and post while the condition holds.
+  kSpecialistNoHousing,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.
