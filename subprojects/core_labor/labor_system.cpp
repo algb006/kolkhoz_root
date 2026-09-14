@@ -106,6 +106,8 @@ class LaborSystem final : public ILaborSystem {
       StartDay(current);
     }
     RunHour(current, hour);
+    // The night posts go on at sunset (posts.h).
+    AnnounceNightShifts(config_, current);
     if (hour + 1U >= kTicksPerDay) {
       CloseDay(current);
       ApplyPostOrders(current);

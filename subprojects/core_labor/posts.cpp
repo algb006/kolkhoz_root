@@ -5,7 +5,11 @@
 
 #include <cstdint>
 
+#include "core_common/calendar.h"
+#include "core_common/day_window.h"
+#include "core_common/emit_event.h"
 #include "core_common/ids.h"
+#include "core_common/post_shift.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "labor_day.h"
@@ -206,6 +210,31 @@ bool HasWaitingPostOrder(const WorldState& world, ResidentId resident, std::uint
     }
   }
   return false;
+}
+
+void AnnounceNightShifts(const LaborConfig& config, WorldState& current) {
+  const DayWindow window = SolarWindow(current.weather.daylight_hours);
+  const auto hour = static_cast<float>(HourFromTick(current.calendar.tick));
+  // The tick whose hour holds sunset, once a night.
+  if (!(window.sunset >= hour && window.sunset < hour + 1.0F)) {
+    return;
+  }
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    const ResidentRow& resident = current.residents.rows[row];
+    const std::uint32_t profession = resident.post.profession.value;
+    if (profession == kInvalidDefIdValue || profession >= config.professions.size() ||
+        config.professions[profession].shift != PostShift::kNight) {
+      continue;
+    }
+    const std::uint32_t unit_row = FindRow(current.units, resident.post.unit);
+    if (unit_row == kNoRow || current.units.rows[unit_row].level == 0) {
+      continue;
+    }
+    SimEvent& event = EmitEvent(current, EventKind::kPostShiftStarted, EventSeverity::kRoutine);
+    event.resident = current.residents.row_ids[row];
+    event.unit = resident.post.unit;
+    event.amount = static_cast<std::int64_t>(profession);
+  }
 }
 
 }  // namespace core

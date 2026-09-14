@@ -151,6 +151,19 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   if (assigned && !nothing_to_work_with && Inside(hour, starts, stops)) {
     set(ResidentActivity::kWorking);
   }
+  // A NIGHT POST IS WORK AT ITS UNIT through the hours of its shift (boss,
+  // parcel 360): the watchman at the yard he keeps, not at home asleep. The
+  // other shifts are not asked here — their holders' hours are the day's.
+  const std::uint32_t profession = resident.post.profession.value;
+  const std::uint32_t post_unit_row = FindRow(world.units, resident.post.unit);
+  const bool on_night_post =
+      profession != kInvalidDefIdValue && profession < rules.post_shift.size() &&
+      rules.post_shift[profession] == PostShift::kNight && post_unit_row != kNoRow &&
+      InPostShift(
+          PostShift::kNight, world.calendar.weekday, HourFromTick(world.calendar.tick), window);
+  if (on_night_post) {
+    set(ResidentActivity::kWorking);
+  }
   if (assigned && (Inside(hour, leaves, starts) || Inside(hour, stops, returns))) {
     set(ResidentActivity::kWalking);
   }
@@ -202,6 +215,11 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
       answer.place.off_map = 0;
       break;
     case ResidentActivity::kWorking:
+      if (on_night_post && !assigned) {
+        answer.place.point = world.units.rows[post_unit_row].position;
+        answer.place.unit = resident.post.unit;
+        break;
+      }
       answer.place.point = target;
       if (resident.work.kind == WorkKind::kConstruction) {
         answer.place.unit = resident.work.unit;

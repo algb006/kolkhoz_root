@@ -198,6 +198,19 @@ core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
   if (row != core::kNoTableRow && column != core::kNoTableColumn) {
     rules.life_speedup = std::strtof(std::string(life->CellText(row, column)).c_str(), nullptr);
   }
+  // The posts' shifts, by profession row, so a night-post holder is counted at
+  // his post through the night (boss, parcel 360).
+  if (const core::ITable* const professions = tables.FindTable("professions")) {
+    const std::uint32_t shift_column = professions->FindColumn("shift");
+    rules.post_shift.assign(professions->RowCount(), core::PostShift::kWorkday);
+    for (std::uint32_t profession = 0; profession < professions->RowCount(); ++profession) {
+      if (shift_column != core::kNoTableColumn &&
+          !core::ParsePostShift(professions->CellText(profession, shift_column),
+                                rules.post_shift[profession])) {
+        rules.post_shift[profession] = core::PostShift::kWorkday;
+      }
+    }
+  }
   return rules;
 }
 

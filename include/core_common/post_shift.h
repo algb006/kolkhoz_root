@@ -73,15 +73,10 @@ constexpr bool ParsePostShift(std::string_view text, PostShift& shift) {
     shift = PostShift::kBathDay;
     return true;
   }
-  // THE NIGHT SHIFT IS READ AND HELD AS A WORKDAY: STUB (boss, parcel 274).
-  // The design base gave `profession.shift` a fourth word — from the end of
-  // the working window to the start of the next, off the day's list — for the
-  // watchman (time design §6: two night posts). The shift itself is a door in
-  // the queue after digging; until then the word is accepted, so the export
-  // that carries it does not stop the assembly, and the post keeps the
-  // workday it had.
+  // The night shift was read as a workday from parcel 274 until its door
+  // (boss, parcel 360): the watchman now has his night.
   if (text == "night") {
-    shift = PostShift::kWorkday;
+    shift = PostShift::kNight;
     return true;
   }
   return false;
@@ -109,15 +104,21 @@ constexpr bool InPostShift(PostShift shift,
       return (weekday == Weekday::kSaturday && HourOverlaps(hour, window.sunset, bedtime)) ||
              (weekday == Weekday::kSunday && HourOverlaps(hour, window.sunrise, bedtime));
     case PostShift::kNight:
-      return false;  // STUB: the night shift's hours land with its body
+      // Sunset to sunrise. The window is this day's on both sides of
+      // midnight: the night's two halves belong to two days whose daylight
+      // differs by minutes, and asking the next day's sunrise would be a
+      // precision the hour cannot show.
+      return HourOverlaps(hour, window.sunset, static_cast<float>(kTicksPerDay)) ||
+             HourOverlaps(hour, 0.0F, window.sunrise);
   }
   return false;
 }
 
 /// @brief Whether the post takes its holder off the accountant's daily list:
-///        only a workday post does.
+///        a workday post does, and so does a night post — "сторож не выходит
+///        на другие работы" (crime design §11).
 constexpr bool PostHoldsTheDay(PostShift shift) {
-  return shift == PostShift::kWorkday;
+  return shift == PostShift::kWorkday || shift == PostShift::kNight;
 }
 
 }  // namespace core

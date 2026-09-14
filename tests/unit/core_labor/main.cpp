@@ -2266,8 +2266,53 @@ int TestLandThatCannotCarryTheWork() {
   return failures;
 }
 
+/// The night posts go on at sunset (boss, parcel 360): once, at the tick whose
+/// hour holds sunset, for a night post at a standing unit only.
+int TestNightShiftStarts() {
+  int failures = 0;
+  core::LaborConfig config;
+  config.professions.resize(2);
+  config.professions[1].shift = core::PostShift::kNight;  // the watchman
+  core::WorldState world;
+  world.weather.daylight_hours = 12.0F;  // sunset 18
+  core::UnitRow yard;
+  yard.level = 1;
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  core::UnitRow site;  // a yard still being built: nobody keeps a plot of pegs
+  site.level = 0;
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+  core::ResidentRow watchman;
+  watchman.post = core::PostAssignment{.profession = core::ProfessionId{1}, .unit = yard_id};
+  const core::ResidentId watchman_id = core::AppendRow(world.residents, watchman);
+  core::ResidentRow day_post;  // a workday post says nothing at sunset
+  day_post.post = core::PostAssignment{.profession = core::ProfessionId{0}, .unit = yard_id};
+  core::AppendRow(world.residents, day_post);
+  core::ResidentRow at_site = watchman;
+  at_site.post.unit = site_id;
+  core::AppendRow(world.residents, at_site);
+
+  std::uint32_t started = 0;
+  bool right_one = true;
+  for (std::uint32_t hour = 0; hour < core::kTicksPerDay; ++hour) {
+    world.calendar.tick = hour;
+    core::RefreshCalendarCaches(world.calendar);
+    world.step_events.clear();
+    core::AnnounceNightShifts(config, world);
+    for (const core::SimEvent& event : world.step_events) {
+      started += event.kind == core::EventKind::kPostShiftStarted ? 1U : 0U;
+      right_one = right_one && hour == 18 && event.resident.value == watchman_id.value &&
+                  event.unit.value == yard_id.value && event.amount == 1;
+    }
+  }
+  failures += Expect(started == 1 && right_one,
+                     "night shift: over a day one start is said — the watchman's, at sunset, at "
+                     "his standing yard");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += TestNightShiftStarts();
   failures += CheckStubTablesMustBeDeclared();
   failures += TestSurplusIdles();
   failures += TestRoadLimit();

@@ -572,6 +572,24 @@ int TestResidentActivity() {
                      "a child in the daytime is at school, not idling");
   failures += Expect(at(2, 10.0F).activity == core::ResidentActivity::kAtHome,
                      "and at night he is at home: school does not run round the clock");
+
+  // THE WATCHMAN (boss, parcel 360): a night post holds him at his unit from
+  // sunset to sunrise; by day he is at home, as his day's sleep is a STUB.
+  core::UnitRow yard;
+  yard.level = 1;
+  yard.position = core::Vec2{.x = 900.0F, .y = 900.0F};
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  rules.post_shift = {core::PostShift::kWorkday, core::PostShift::kNight};
+  world.residents.rows[0].work = core::WorkAssignment{};
+  world.residents.rows[0].post =
+      core::PostAssignment{.profession = core::ProfessionId{1}, .unit = yard_id};
+  const core::ResidentActivityState midnight = at(0, 60.0F);
+  failures +=
+      Expect(midnight.activity == core::ResidentActivity::kWorking &&
+                 midnight.place.unit.value == yard_id.value && midnight.place.point.x == 900.0F,
+             "the watchman at midnight is working at the yard he keeps");
+  failures += Expect(at(12, 60.0F).activity != core::ResidentActivity::kWorking,
+                     "and at noon he is not at his post");
   return failures;
 }
 
@@ -993,14 +1011,26 @@ int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
   {
-    // The night shift's word is accepted and held as a workday (STUB, boss
-    // parcel 274) — and a word the design base never wrote is still refused.
+    // The night shift (boss, parcel 360): read as itself now, sunset to
+    // sunrise, off the day's list — and a word the base never wrote is still
+    // refused.
     core::PostShift night = core::PostShift::kBathDay;
     core::PostShift nonsense = core::PostShift::kBathDay;
-    failures += Expect(core::ParsePostShift("night", night) && night == core::PostShift::kWorkday,
-                       "post shift: `night` reads, and holds the workday until its door lands");
+    failures += Expect(core::ParsePostShift("night", night) && night == core::PostShift::kNight,
+                       "post shift: `night` reads as the night shift");
     failures += Expect(!core::ParsePostShift("midnight", nonsense),
                        "post shift: a word the base never wrote is refused");
+    // A day of 12 hours of light: sunrise 6, sunset 18.
+    const core::DayWindow twelve = core::SolarWindow(12.0F);
+    const auto on = [&twelve](std::uint32_t hour) {
+      return core::InPostShift(core::PostShift::kNight, core::Weekday::kSunday, hour, twelve);
+    };
+    failures += Expect(on(18) && on(23) && on(0) && on(5) && !on(6) && !on(12) && !on(17),
+                       "post shift: the night runs from sunset to sunrise across midnight, "
+                       "Sunday too, and not an hour of the day");
+    failures += Expect(core::PostHoldsTheDay(core::PostShift::kNight) &&
+                           !core::PostHoldsTheDay(core::PostShift::kEvening),
+                       "post shift: the night post takes its holder off the day's list");
   }
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
