@@ -53,3 +53,4 @@ limit_overfulfil_points_per_percent,10,core
 limit_overfulfil_points_max,200,core
 limit_delivery_days,2,core
 limit_delivery_delay_days_max,2,core
+village_end_population,40,host
