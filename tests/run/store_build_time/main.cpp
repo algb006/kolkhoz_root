@@ -36,6 +36,7 @@
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
+#include "../common/store_parent.h"
 #include "../common/yard_policy.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
@@ -196,6 +197,13 @@ int main(int argc, char** argv) {
             << warned_on.year << ", month " << static_cast<std::uint32_t>(warned_on.month) << ")\n";
 
   // -- the chairman orders a granary THAT DAY, and starts it the next -------
+  // The granary is a module of the food yard (unit rules §11), so its yard — a
+  // plot, nothing spent — stands on the site first; its steps count in the
+  // time measured below as part of the chairman's decision.
+  if (!run::StandUpParentYard(*simulation.tables, *simulation.simulation, kBuiltType, kSite)) {
+    std::cout << "FAIL: the granary's parent yard did not stand on the site\n";
+    return 1;
+  }
   core::OrderRow mark;
   mark.kind = core::OrderKind::kBuildUnit;
   mark.unit_type = built_type;

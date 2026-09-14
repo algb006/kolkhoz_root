@@ -28,16 +28,21 @@
 #include <cstdint>
 #include <iostream>
 #include <span>
+#include <string>
 #include <string_view>
 
+#include "core_catalog/definitions.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
+#include "core_common/plot.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "store_parent.h"
 
 namespace run {
 
@@ -57,6 +62,9 @@ class FixturePolicy {
   explicit FixturePolicy(const core::ITableSet& tables) {
     granary_ = TypeByKey(tables, "granary");
     cattle_ = TypeByKey(tables, "cattle_yard");
+    granary_yard_ = ParentTypeOf(tables, "granary");
+    std::string error;
+    core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
   }
 
   /// @brief One day of the chairman's attention. Call once a day.
@@ -66,9 +74,21 @@ class FixturePolicy {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
+    // A MARK THAT LEFT NO ROW WAS REFUSED — crowding, most often. Counted per
+    // type so a run can say whether its buildings wait on materials or on room.
+    if (marked_type_.value != core::kInvalidDefIdValue) {
+      if (Rows(world, marked_type_) <= rows_before_mark_) {
+        ++(marked_type_.value == cattle_.value ? cattle_refused_ : other_refused_);
+      }
+      marked_type_ = core::UnitTypeId{};
+    }
     core::OrderRow order;
     if (!NextOrder(world, order)) {
       return;
+    }
+    if (order.kind == core::OrderKind::kBuildUnit) {
+      marked_type_ = order.unit_type;
+      rows_before_mark_ = Rows(world, order.unit_type);
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
     cooldown_ = kCooldownDays;
@@ -86,7 +106,10 @@ class FixturePolicy {
   void Report(const core::WorldState& world) const {
     std::cout << "thirty_years: the run's chairman ordered " << ordered_ << " fixture buildings; "
               << Built(world, granary_) << " granaries and " << Built(world, cattle_)
-              << " cattle yards stand\n";
+              << " cattle yards stand; the granaries stand as modules of "
+              << Built(world, granary_yard_) << " food yards (" << yards_ordered_
+              << " yard orders); marks refused: cattle yards " << cattle_refused_
+              << ", granaries and yards " << other_refused_ << "\n";
   }
 
  private:
@@ -99,6 +122,14 @@ class FixturePolicy {
     const std::uint32_t row = types == nullptr ? core::kNoTableRow : types->FindRowByKey(key);
     return row == core::kNoTableRow ? core::UnitTypeId{}
                                     : core::UnitTypeId{static_cast<std::uint16_t>(row)};
+  }
+
+  static std::uint32_t Rows(const core::WorldState& world, core::UnitTypeId type) {
+    std::uint32_t rows = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      rows += unit.type.value == type.value ? 1U : 0U;
+    }
+    return rows;
   }
 
   static std::uint32_t Built(const core::WorldState& world, core::UnitTypeId type) {
@@ -159,10 +190,11 @@ class FixturePolicy {
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
-    // A site of either kind already going up: nothing new until it stands.
+    // A site of any of its kinds already going up: nothing new until it stands.
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
-      const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value;
+      const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
+                        unit.type.value == granary_yard_.value;
       if (!ours || unit.level != 0) {
         continue;
       }
@@ -205,6 +237,9 @@ class FixturePolicy {
   bool Mark(const core::WorldState& world, core::UnitTypeId type, core::OrderRow& order) {
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = type;
+    if (type.value == granary_.value && granary_yard_.value != core::kInvalidDefIdValue) {
+      return MarkOnYard(world, order);
+    }
     // RINGS AROUND THE CENTRE, NOT A LINE AWAY FROM IT. Until 2026-09-13 every
     // order went kStepAside further east than the last, so by the thirtieth
     // the site stood kilometres out — past the accountant's road limit, where
@@ -227,6 +262,47 @@ class FixturePolicy {
     order.position = core::Vec2{.x = centre.x + (heading[0] * ring * kStepAside),
                                 .y = centre.y + (heading[1] * ring * kStepAside)};
     ++attempts_;
+    ++ordered_;
+    return true;
+  }
+
+  /// STORE MODULARITY (boss, parcels 198 and 222; unit rules §11): a granary
+  /// is a module of the food yard, so the first granary order puts the yard
+  /// up — a plot, nothing spent — at the nearest free place by the core's own
+  /// rule, and every granary after it stands on that yard. Modules of one
+  /// parent do not refuse each other, so one yard carries them all; they go
+  /// round its centre a ring inside its plot rather than on one point, so a
+  /// reader of the map can still tell them apart.
+  bool MarkOnYard(const core::WorldState& world, core::OrderRow& order) {
+    std::uint32_t yard = core::kNoRow;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      if (world.units.rows[row].type.value == granary_yard_.value) {
+        yard = row;
+        break;
+      }
+    }
+    if (yard == core::kNoRow) {
+      const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
+      const float radius = granary_yard_.value < radii.size() ? radii[granary_yard_.value] : 0.0F;
+      order.unit_type = granary_yard_;
+      order.position = core::FreePlot(world.units, definitions_.Plots(), Centre(world), radius);
+      ++yards_ordered_;
+      return true;
+    }
+    static constexpr float kOnYard = 20.0F;
+    static constexpr std::array<std::array<float, 2>, 8> kRound = {{{1.0F, 0.0F},
+                                                                    {0.0F, 1.0F},
+                                                                    {-1.0F, 0.0F},
+                                                                    {0.0F, -1.0F},
+                                                                    {0.7F, 0.7F},
+                                                                    {-0.7F, 0.7F},
+                                                                    {-0.7F, -0.7F},
+                                                                    {0.7F, -0.7F}}};
+    const core::Vec2 centre = world.units.rows[yard].position;
+    const std::array<float, 2>& heading = kRound[granaries_on_yard_ % kRound.size()];
+    order.position =
+        core::Vec2{.x = centre.x + (heading[0] * kOnYard), .y = centre.y + (heading[1] * kOnYard)};
+    ++granaries_on_yard_;
     ++ordered_;
     return true;
   }
@@ -255,6 +331,24 @@ class FixturePolicy {
   core::UnitTypeId granary_;
 
   core::UnitTypeId cattle_;
+
+  /// The granary's parent by unit_types.csv — the food yard.
+  core::UnitTypeId granary_yard_;
+
+  /// The plot radii and the map, for FreePlot.
+  core::Definitions definitions_;
+
+  std::uint32_t yards_ordered_ = 0;
+
+  core::UnitTypeId marked_type_;
+
+  std::uint32_t rows_before_mark_ = 0;
+
+  std::uint32_t cattle_refused_ = 0;
+
+  std::uint32_t other_refused_ = 0;
+
+  std::uint32_t granaries_on_yard_ = 0;
 
   std::uint32_t cooldown_ = 0;
 

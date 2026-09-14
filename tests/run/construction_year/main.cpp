@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "../common/run_harness.h"
+#include "../common/store_parent.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -115,6 +116,12 @@ int main() {
     return 1;
   }
   const core::UnitTypeId built_type{static_cast<std::uint16_t>(type_row)};
+  // The granary is a module of the food yard (unit rules §11): the yard, a
+  // plot, stands on the site first, before anything below is counted.
+  if (!run::StandUpParentYard(*simulation.tables, *simulation.simulation, kBuiltType, kSite)) {
+    std::cout << "FAIL: the granary's parent yard did not stand on the site\n";
+    return 1;
+  }
   const auto units_before = static_cast<std::uint32_t>(simulation.State().units.rows.size());
   const core::Grams logs_before = HeldEverywhere(simulation.State(), log_row);
   const core::Grams boards_before = HeldEverywhere(simulation.State(), board_row);
