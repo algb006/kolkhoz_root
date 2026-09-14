@@ -258,6 +258,12 @@ bool RequiredValue(const ITable& table,
 /// keys is gathered where every module is known, and no module judges the
 /// core any more.
 ///
+/// THE READERS ARE core, both, layer and host. `layer` and `host` are carried
+/// unread: the graphics layer's knobs and the host scripts' (world_params.csv
+/// `village_end_population`, boss's export 83e98bf). `host` was refused as an
+/// unknown reader until 2026-09-14, which would have failed every table load
+/// the day that row reached this tree.
+///
 /// @param known The keys the core reads, gathered from the readers
 ///        THEMSELVES rather than written out a second time beside them. A
 ///        hand-kept twin of this list would age exactly as the mirror it

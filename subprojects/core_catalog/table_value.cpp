@@ -171,13 +171,13 @@ bool CheckDeclaredReaders(const ITable& table,
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     const std::string_view key = table.CellText(row, key_column);
     const std::string_view reader = table.CellText(row, reader_column);
-    if (reader != "core" && reader != "layer" && reader != "both") {
+    if (reader != "core" && reader != "layer" && reader != "both" && reader != "host") {
       error = std::string(table_name) + ": row '" + std::string(key) + "' declares reader '" +
-              std::string(reader) + "' — it must be core, layer or both";
+              std::string(reader) + "' — it must be core, layer, both or host";
       return false;
     }
-    if (reader == "layer") {
-      continue;  // the graphics layer's knob; the core carries it, unread
+    if (reader == "layer" || reader == "host") {
+      continue;  // the graphics layer's or the host scripts' knob; carried, unread
     }
     if (std::find(known.begin(), known.end(), key) == known.end()) {
       error = std::string(table_name) + ": row '" + std::string(key) +

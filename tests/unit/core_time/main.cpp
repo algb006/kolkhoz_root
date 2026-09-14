@@ -312,7 +312,11 @@ int main() {
                        "a row that declares no reader at all is refused: an empty cell is not a "
                        "quiet 'core'");
     failures += Expect(with_params("key,value,reader\nsnow_melt_c,2,nobody\n") == nullptr,
-                       "and a reader outside core/layer/both is refused rather than guessed");
+                       "and a reader outside core/layer/both/host is refused rather than guessed");
+    // THE HOST'S ROW (2026-09-14; boss's export 83e98bf): a knob the host
+    // scripts read and the core never does, carried like the layer's.
+    failures += Expect(with_params("key,value,reader\nvillage_end_population,40,host\n") != nullptr,
+                       "and a key declared for the host builds too — the core carries it unread");
     failures += Expect(with_params("key,value\nsnow_melt_c,2\n") == nullptr,
                        "a table with no reader column at all is refused: in it a typo and a "
                        "layer knob are the same thing");
