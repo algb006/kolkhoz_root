@@ -117,6 +117,10 @@ const char* KindName(core::EventKind kind) {
       return "extraction_site_exhausted";
     case core::EventKind::kHorsesStabled:
       return "horses_stabled";
+    case core::EventKind::kDistrictVisitAnnounced:
+      return "district_visit_announced";
+    case core::EventKind::kDistrictVisit:
+      return "district_visit";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

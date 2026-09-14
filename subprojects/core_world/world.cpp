@@ -703,7 +703,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // rather than an absence (boss, parcel 277).
       //   store_leak_complaint_kg — the "raw material leak" door for the quest
       //   «Кто гонит», queued behind digging (STUB).
-      constexpr std::array<std::string_view, 1> kDeclaredNotYetRead = {"store_leak_complaint_kg"};
+      //   district_visit_* — the district's regular visits (boss, parcel 324),
+      //   read by core_catalog/district_visit_catalog.h once its body lands.
+      constexpr std::array<std::string_view, 4> kDeclaredNotYetRead = {
+          "store_leak_complaint_kg",
+          "district_visit_karasev_month",
+          "district_visit_polushkina_month",
+          "district_visit_notice_days"};
       known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {

@@ -156,6 +156,10 @@ static_assert(sizeof(ExtractionSiteRow) == 64,
               "ExtractionSiteRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ExtractionSiteRow>() == 10,
               "ExtractionSiteRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(DistrictVisitRow) == 8,
+              "DistrictVisitRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<DistrictVisitRow>() == 4,
+              "DistrictVisitRow gained or lost a field — update the codec and VERSION_SAVE");
 
 /// Highest valid value of each u8 enum a row carries. The reader refuses
 /// anything above (LoadSource::ReadEnumValue) — see its docs for why.
@@ -213,6 +217,17 @@ constexpr std::uint8_t kMaxTimberStandKind =
     static_cast<std::uint8_t>(TimberStandKind::kTimberStandKindCount) - 1;
 static_assert(kMaxTimberStandKind <
               static_cast<std::uint8_t>(TimberStandKind::kTimberStandKindCount));
+constexpr std::uint8_t kMaxDistrictFace =
+    static_cast<std::uint8_t>(DistrictFace::kDistrictFaceCount) - 1;
+static_assert(kMaxDistrictFace < static_cast<std::uint8_t>(DistrictFace::kDistrictFaceCount));
+constexpr std::uint8_t kMaxDistrictVisitKind =
+    static_cast<std::uint8_t>(DistrictVisitKind::kDistrictVisitKindCount) - 1;
+static_assert(kMaxDistrictVisitKind <
+              static_cast<std::uint8_t>(DistrictVisitKind::kDistrictVisitKindCount));
+constexpr std::uint8_t kMaxDistrictVisitCause =
+    static_cast<std::uint8_t>(DistrictVisitCause::kDistrictVisitCauseCount) - 1;
+static_assert(kMaxDistrictVisitCause <
+              static_cast<std::uint8_t>(DistrictVisitCause::kDistrictVisitCauseCount));
 constexpr std::uint8_t kMaxOrderStatus =
     static_cast<std::uint8_t>(OrderStatus::kOrderStatusCount) - 1;
 constexpr std::uint8_t kMaxOrderRefusal =
@@ -950,6 +965,32 @@ SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source) {
   row.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
   row.unit = ReadEntityId<UnitId>(in);
   row.arrive_day = in.ReadU32();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// DistrictVisitRow — district_visit_state.h (2026-09-15)
+// ---------------------------------------------------------------------------
+// The face, kind and cause as their enum values: they are vocabulary of the
+// core, not rows of a table, so there is no dictionary to go through.
+
+void WriteDistrictVisitRow(SaveSink& sink, const DistrictVisitRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU32(row.arrive_day);
+  out.WriteU8(static_cast<std::uint8_t>(row.face));
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  out.WriteU8(static_cast<std::uint8_t>(row.cause));
+}
+
+DistrictVisitRow ReadDistrictVisitRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  DistrictVisitRow row;
+  row.arrive_day = in.ReadU32();
+  row.face = static_cast<DistrictFace>(source.ReadEnumValue(0, kMaxDistrictFace, "district face"));
+  row.kind = static_cast<DistrictVisitKind>(
+      source.ReadEnumValue(0, kMaxDistrictVisitKind, "district visit kind"));
+  row.cause = static_cast<DistrictVisitCause>(
+      source.ReadEnumValue(0, kMaxDistrictVisitCause, "district visit cause"));
   return row;
 }
 

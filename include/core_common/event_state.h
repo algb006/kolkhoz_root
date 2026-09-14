@@ -222,9 +222,24 @@ enum class EventKind : std::uint8_t {
   /// Seam key `extraction_site_exhausted`.
   kExtractionSiteExhausted,
 
+  // -- the district comes (2026-09-15; characters design §2) ----------------
+
+  /// A regular visit is announced `district_visit_notice_days` ahead ("известно
+  /// заранее, за несколько дней"); amount = PackDistrictVisit of the face and
+  /// the kind, found kNone. kNotable. Seam key `district_visit_announced`.
+  /// An extraordinary visit is never announced.
+  kDistrictVisitAnnounced,
+
+  /// A face of the district has arrived, and the visit is computed: amount =
+  /// PackDistrictVisit (district_visit_state.h) — face, kind, found, miss_by,
+  /// gift, the seam's form of host 93 §4.1. Raised at the first tick of the
+  /// arrival day. kInterrupting for an extraordinary visit ("утром у конторы
+  /// стоит машина"), kNotable otherwise. Seam key `district_visit`.
+  kDistrictVisit,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
-  // an inspector's arrival, the decision card. Named so the numbering is
-  // planned, not discovered.
+  // the decision card (an inspector's arrival came as kDistrictVisit on
+  // 2026-09-15). Named so the numbering is planned, not discovered.
 
   /// NOT A KIND, and never a value anybody stores or sends: the count, so a
   /// CONSUMER can static_assert the length of its own mirror.

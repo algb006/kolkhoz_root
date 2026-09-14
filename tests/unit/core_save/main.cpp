@@ -364,6 +364,15 @@ core::WorldState MakeWorld() {
   teacher.arrive_day = 97;
   core::AppendRow(world.specialist_arrivals, teacher);
 
+  // A district visit on its way (save format 38): every field off its
+  // default, so a field the codec forgets comes back as the default and fails.
+  core::DistrictVisitRow visit;
+  visit.arrive_day = 203;
+  visit.face = core::DistrictFace::kPolushkina;
+  visit.kind = core::DistrictVisitKind::kExtraordinary;
+  visit.cause = core::DistrictVisitCause::kJuniorSignal;
+  core::AppendRow(world.district_visits, visit);
+
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
   couple.bride = core::ResidentId{7};
@@ -689,6 +698,12 @@ int main() {
                          loaded.specialist_arrivals.rows[0].unit.value == 3 &&
                          loaded.specialist_arrivals.rows[0].arrive_day == 97,
                      "a specialist on the road came back with his post, his unit and his day");
+  failures += Expect(
+      loaded.district_visits.rows.size() == 1 && loaded.district_visits.rows[0].arrive_day == 203 &&
+          loaded.district_visits.rows[0].face == core::DistrictFace::kPolushkina &&
+          loaded.district_visits.rows[0].kind == core::DistrictVisitKind::kExtraordinary &&
+          loaded.district_visits.rows[0].cause == core::DistrictVisitCause::kJuniorSignal,
+      "a district visit on its way came back with its day, face, kind and cause");
   failures += Expect(loaded.ledger.current.limit_points_granted == 350 &&
                          loaded.ledger.current.limit_points_spent == 135 &&
                          loaded.ledger.current.limit_points_burned == 7,

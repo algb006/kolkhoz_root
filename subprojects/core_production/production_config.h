@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/timber_catalog.h"
@@ -734,6 +735,10 @@ struct ProductionConfig {
   /// District design §1, §4: the limit catalogue and the year's points
   /// knobs (2026-09-13).
   LimitCatalog limit;
+
+  /// Characters design §2, "Эпоха I числами": the regular visits' months and
+  /// notice (boss, parcel 324).
+  DistrictVisitCatalog district_visits;
 };
 
 /// @brief Parses every table core_production reads into `config`.

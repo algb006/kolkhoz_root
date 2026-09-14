@@ -109,6 +109,12 @@ struct SpecialistArrivalIdTag {};
 /// (core_common/specialist_state.h).
 using SpecialistArrivalId = EntityId<SpecialistArrivalIdTag>;
 
+struct DistrictVisitIdTag {};
+
+/// @brief One visit of the district announced or called and not arrived yet
+/// (core_common/district_visit_state.h).
+using DistrictVisitId = EntityId<DistrictVisitIdTag>;
+
 struct WeddingWaitIdTag {};
 
 /// @brief One couple ready to marry and waiting for a free house

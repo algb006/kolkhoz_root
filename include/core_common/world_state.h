@@ -32,6 +32,7 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/district_visit_state.h"
 #include "core_common/event_state.h"
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
@@ -639,6 +640,10 @@ struct WorldState {
   /// arrived yet (education design, "Эпоха I числами"); SAVED.
   /// specialist_state.h.
   SpecialistArrivalTable specialist_arrivals;
+
+  /// The district's visits announced or called and not arrived yet
+  /// (characters design §2); SAVED. district_visit_state.h.
+  DistrictVisitTable district_visits;
 
   /// The couples ready to marry who wait for a free house (life-cycle design
   /// §12); SAVED. wedding_state.h.
