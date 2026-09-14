@@ -271,6 +271,29 @@ enum class AlarmKind : std::uint8_t {
   /// layout has the gap.
   kPlanPositionUncovered,
 
+  // -- timber: core_production ---------------------------------------------------
+
+  /// NOBODY CAN GET TO THE MARKED STAND AND BACK IN A DAY: the ride from the
+  /// NEAREST lived-in house to a stand marked for felling, with work still to
+  /// do, is one the accountant will not send the brigade down — longer than
+  /// labor.csv travel_limit_hours, or leaving less than min_usable_hours of
+  /// the daylight after the ride there and back. Subject: `stand`; `amount` =
+  /// the hours of the ride, one way, in game hours.
+  ///
+  /// THE FELLING BRIGADE RIDES (time design §7, timber design §8a; boss,
+  /// 2026-09-14, parcel 308): it goes out on the carts that will cart the
+  /// logs, so the ride is measured at harness speed for the whole brigade,
+  /// as the meadow cut's is. On foot the reachable groves ran out by years
+  /// 13-26 on all nine seeds — 3188 of 11 362 m3 — and a stand marked beyond
+  /// the road limit stood marked for the rest of the run with not one feller
+  /// and not one word of why (core, parcel 307).
+  ///
+  /// A WARNING AND NOT A REFUSAL AT THE MARK, exactly as kSiteUnreachable and
+  /// for its reasons: the window is shorter in winter, so a stand out of reach
+  /// in December is within it in June, and this goes out by itself when the
+  /// day grows. Ranked 13 in the design's roster (alarms.csv).
+  kFellingUnreachable,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.
@@ -304,6 +327,10 @@ struct Alarm {
   FieldId field;
 
   HerdId herd;
+
+  /// For kinds that are about a timber stand (kFellingUnreachable): which
+  /// one. Invalid otherwise.
+  TimberStandId stand;
 
   /// For kinds that are about a resource: which one. Invalid otherwise.
   ResourceId resource;

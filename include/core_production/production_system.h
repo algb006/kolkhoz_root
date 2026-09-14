@@ -94,7 +94,10 @@ class IProductionSystem {
   /// spent theirs; kSeedShort for every field whose next sowing the stores
   /// cannot seed to the norm; kHerdStarving for every kolkhoz herd with
   /// unfed_days > 0; kHerdWithoutStable, one line for the whole kolkhoz
-  /// horse team, while the yard has not reached its second step.
+  /// horse team, while the yard has not reached its second step;
+  /// kFellingUnreachable for every stand marked for felling, with work left,
+  /// that the brigade's ride from the nearest lived-in house does not reach
+  /// by the accountant's road rule (harness speed; parcel 308).
   /// Each subject at most once. Within a kind the order is the walk's own —
   /// row order for the store, herd and seed kinds, HARVEST ORDER for the
   /// two harvest kinds, because the room is spent in the order the fields
