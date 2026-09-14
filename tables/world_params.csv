@@ -93,5 +93,5 @@ ideology_hungry_satiety_below,50,core
 ideology_status_gain_pioneer,0.5,core
 ideology_status_gain_komsomol,1,core
 ideology_status_gain_party,1.5,core
-ideology_status_cap,80,core
+ideology_status_cap,60,core
 specialist_komsomol_age_max_years,26,core

@@ -1,0 +1,8 @@
+# generated from db/design.db — do not edit by hand
+# where the night net fishers go (crime.md §9: the lake and the river pools); drawn by lot each moonlit night
+# kind shallows: the remote shallow water with map role net_shallows, its contour's centre; kind river_pool: a waypoint of the river marked pool. Metres from the south-west corner; nothing here is a new map entity
+spot,kind,x_m,y_m
+river_pool_16,river_pool,3850,8350
+river_pool_36,river_pool,8650,10160
+river_pool_6,river_pool,1250,5950
+lake_net_shallows,shallows,10704,8402

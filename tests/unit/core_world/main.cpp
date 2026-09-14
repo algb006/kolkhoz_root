@@ -911,8 +911,10 @@ int main() {
                                                                    "forest_biomes",
                                                                    "forest_forage",
                                                                    "tree_species"};
-    const std::array<std::string_view, 2> also_not_read = {"resident_activities",
-                                                           "resident_activity_details"};
+    // night_fishing_spots: boss's export for the night trade (parcel 346),
+    // read once the night trade's body lands — then it leaves this list.
+    const std::array<std::string_view, 3> also_not_read = {
+        "resident_activities", "resident_activity_details", "night_fishing_spots"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {
