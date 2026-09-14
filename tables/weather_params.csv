@@ -17,5 +17,6 @@ wind_share,0.5,core
 fog_share,0.2,core
 snow_melt_c,2,core
 insect_buzz_min_c,15,layer
+hot_afternoon_c,25,core
 frost_from_month,4,core
 frost_to_month,10,core
