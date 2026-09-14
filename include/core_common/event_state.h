@@ -303,6 +303,12 @@ enum class EventKind : std::uint8_t {
   /// `alcoholism_band_crossed`.
   kAlcoholismBandCrossed,
 
+  // -- insulation (2026-09-15; unit rules §16) ---------------------------------
+
+  /// unit — a kInsulateUnit site finished: the straw is spent and the unit
+  /// is "warm" (UnitRow::insulated). kNotable. Seam key `unit_insulated`.
+  kUnitInsulated,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

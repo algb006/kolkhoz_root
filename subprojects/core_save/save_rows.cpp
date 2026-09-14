@@ -116,13 +116,15 @@ static_assert(AggregateArity<FieldRow>() == 30,
 // site block — took it to 64 + two amounts (VERSION_SAVE 37). The site block
 // had no tripwire of its own, so a byte landing in its padding would have
 // moved neither assert on the row: it has its own pair now.
+// 2026-09-15: the insulated byte landed in padding beside `dead` — the size
+// stayed, the field count went to 14 (VERSION_SAVE 44).
 static_assert(sizeof(UnitRow) == 64 + (2 * kAmountsSize),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
               "ConstructionState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ConstructionState>() == 6,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<UnitRow>() == 13,
+static_assert(AggregateArity<UnitRow>() == 14,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
@@ -670,6 +672,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // which is the documented usual outcome, not the surprise. VERSION_SAVE
   // is 20 for it.
   out.WriteU8(row.dead);
+  out.WriteU8(row.insulated);  // unit rules §16, VERSION_SAVE 44
   out.WriteFloat(row.stink_radius_m);
   // Modules and the production seam (2026-09-13, VERSION_SAVE 30).
   WriteEntityId(out, row.parent);
@@ -696,6 +699,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
   row.dead = in.ReadU8();
+  row.insulated = in.ReadU8();
   row.stink_radius_m = in.ReadFloat();
   row.parent = ReadEntityId<UnitId>(in);
   row.production_days_remaining = in.ReadFloat();

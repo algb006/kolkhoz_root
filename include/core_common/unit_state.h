@@ -93,6 +93,16 @@ enum class ConstructionPhase : std::uint8_t {
   /// kDemolishing so that no stored value changes meaning.
   kRepairing,
 
+  /// Being insulated with straw (unit rules §16; kInsulateUnit). ONE PHASE
+  /// FOR BOTH HALVES: while the straw is short the stores are drawn on and
+  /// labor_days_remaining stays 0 — so the labor sub-step, which drains only
+  /// a positive seam, sends nobody; with the straw all on site the frozen
+  /// man-days open. The straw it needs is frozen in `reserved` at the order.
+  /// target_level equals the current level, and the unit works meanwhile. At
+  /// zero the straw is spent and UnitRow::insulated set. Appended after
+  /// kRepairing so that no stored value changes meaning.
+  kInsulating,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kConstructionPhaseCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a
@@ -253,6 +263,15 @@ struct UnitRow {
   /// take back, and the two would be told apart by nothing once both were
   /// bytes in a row. A dead mill is a fact about the mill.
   std::uint8_t dead = 0;
+
+  /// 0/1: THE UNIT IS "WARM" — insulated (unit rules §16). Set by a finished
+  /// kInsulateUnit; cleared by a finished upgrade TO the third level ("the
+  /// third level rebuilds the walls and the roof", construction.csv
+  /// insulation_reset_level) and by nothing else — an epoch's change keeps
+  /// it, and an upgrade above the third does not reset it. STUB: what it does
+  /// (firewood, the herd's winter, comfort) waits for heating and cold, which
+  /// the core does not have yet; and the "built insulated" package.
+  std::uint8_t insulated = 0;
 
   /// HOW FAR THE STINK OF THIS SOURCE REACHES TODAY, in metres from the unit
   /// (water design §4). 0 for everything that does not smell, and for a

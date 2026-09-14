@@ -122,6 +122,24 @@ struct BuildLevel {
   /// its class already pays for it in the term, and one fact counted
   /// twice looks exactly like two facts.
   float wear_factor = 1.0F;
+
+  /// Head of livestock a unit STANDING at this level holds (unit_levels.csv
+  /// livestock_capacity_head). Read here for one question only — may this
+  /// level be insulated (unit rules §16: a level with room for animals may) —
+  /// and for the reason storage_capacity_grams is: the two subject modules do
+  /// not ask each other. 0 = no room for animals.
+  float livestock_capacity_head = 0.0F;
+};
+
+/// @brief What kind of insulation job a unit is (unit rules §16, "Эпоха I
+/// числами"): the kind prices the straw and the man-days. Derived, never
+/// stored — from the type's class, has_heating and the level's room for
+/// animals.
+enum class InsulationKind : std::uint8_t {
+  kNone = 0,   ///< May not be insulated: not heated and no room for animals.
+  kHousing,    ///< A housing-class type (core_catalog is_housing).
+  kLivestock,  ///< A level with livestock_capacity_head > 0, heated or not.
+  kHeated,     ///< Any other type with has_heating = 1.
 };
 
 /// Everything the subsystem knows about one unit type. NO CAPACITY LIVES
@@ -336,6 +354,33 @@ struct ConstructionConfig {
   /// is how construction.csv briefly said 45..60 while the code obeyed its
   /// own constants.
   float old_house_collapse_years = 12.0F;
+
+  // -- insulation (unit rules §16, construction.csv; boss, parcel 364) --------
+
+  /// Straw, in TONNES as the table carries it, and game man-days of an
+  /// insulation job by kind: housing 2 / 2, a livestock unit 6 / 5, any other
+  /// heated unit 3 / 3. Assigned, not measured.
+  float insulation_housing_straw_t = 2.0F;       ///< `insulation_housing_straw_t`
+  float insulation_housing_labor_days = 2.0F;    ///< `insulation_housing_labor_days`
+  float insulation_livestock_straw_t = 6.0F;     ///< `insulation_livestock_straw_t`
+  float insulation_livestock_labor_days = 5.0F;  ///< `insulation_livestock_labor_days`
+  float insulation_heated_straw_t = 3.0F;        ///< `insulation_heated_straw_t`
+  float insulation_heated_labor_days = 3.0F;     ///< `insulation_heated_labor_days`
+
+  /// The level whose finished upgrade takes the insulation off (unit rules
+  /// §16: "the third level rebuilds the walls and the roof"). Upgrades to
+  /// any other level keep it. `insulation_reset_level`.
+  float insulation_reset_level = 3.0F;
+
+  /// resources.csv "straw": what an insulation job is delivered and spends.
+  /// Invalid = the table set has none, and every insulation order is refused
+  /// rather than silently free.
+  ResourceId straw_resource;
+
+  /// 0/1 per unit type, dense by UnitTypeId: unit_types.csv has_heating.
+  /// Missing column = 0 for every type.
+  std::vector<std::uint8_t> type_has_heating;
+
   /// WAS THERE A has_wear COLUMN AT ALL? Without this the config cannot tell
   /// "this unit has nothing to wear" from "the table said nothing", because
   /// both arrive as has_wear = 0 — and those are two different answers to
@@ -366,6 +411,15 @@ bool ParseConstructionConfig(const ITableSet& tables,
                              StubTables stubs,
                              ConstructionConfig& config,
                              std::string& error);
+
+/// @brief The insulation job a unit of `type` standing at `level` would be,
+///        by unit rules §16's derivation. Eligible is heated OR with room
+///        for animals — nothing else, a housing type included; of the
+///        eligible, housing first, then room for animals, then heated.
+/// @param level 1-based; 0 (not built) and a level past the ladder give kNone.
+InsulationKind InsulationKindOf(const ConstructionConfig& config,
+                                UnitTypeId type,
+                                std::uint8_t level);
 
 }  // namespace core
 

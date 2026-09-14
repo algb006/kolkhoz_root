@@ -119,6 +119,7 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kStartBuild:
     case OrderKind::kRepairUnit:
     case OrderKind::kUpgradeUnit:
+    case OrderKind::kInsulateUnit:
       return has_unit;
     case OrderKind::kAppoint:
       // A post is a profession AT a unit: all three named, or the order says

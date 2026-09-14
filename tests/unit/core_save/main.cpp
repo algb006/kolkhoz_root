@@ -269,6 +269,10 @@ core::WorldState MakeWorld() {
   // guard that ever notices.
   house.paused = 1;
   house.dead = 1;
+  house.insulated = 1;  // warm, save format 44
+  // The top of the phase enum, being insulated (save format 44).
+  house.construction.phase = core::ConstructionPhase::kInsulating;
+  house.construction.target_level = house.level;
   house.wear = 70.0F;
   core::AppendRow(world.units, house);
 
@@ -766,6 +770,9 @@ int main() {
   failures += Expect(house_back.paused == 1, "a stopped unit resumes stopped");
   failures += Expect(house_back.dead == 1, "and a dead one resumes dead, not merely worn");
   failures += Expect(house_back.wear == 70.0F, "and its wear is its own number");
+  failures += Expect(house_back.insulated == 1 &&
+                         house_back.construction.phase == core::ConstructionPhase::kInsulating,
+                     "and a warm house being insulated resumes warm and mid-insulation");
 
   // The site came back mid-build, every field of it.
   const core::UnitRow& site_back = loaded.units.rows[2];

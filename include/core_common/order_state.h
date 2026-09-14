@@ -342,6 +342,24 @@ enum class OrderKind : std::uint8_t {
   /// core_production.
   kMarkExtraction,
 
+  /// Insulate a standing unit with straw (unit rules §16, "Эпоха I числами";
+  /// boss, parcel 364). Names `unit`. Who may be insulated is DERIVED, there
+  /// is no column: a heated type (unit_types.csv has_heating = 1) or a level
+  /// with room for animals (unit_levels.csv livestock_capacity_head > 0).
+  /// The straw and the man-days by kind: housing 2 t / 2, a livestock unit
+  /// 6 t / 5, any other heated unit 3 t / 3 (construction.csv). Opens a site
+  /// on the unit like a repair — kInsulating, the straw brought and then the
+  /// labour — and the unit works meanwhile; at the end the straw is spent,
+  /// UnitRow::insulated is set and kUnitInsulated said. Refused with
+  /// kNoSuchSubject for a unit that is not there; kRuleForbids when it is not
+  /// built, is a site already, may not be insulated, is insulated already or
+  /// the tables carry no straw; kMaterialsShort when the village has not the
+  /// straw in full at the order (kStartBuild's rule). The start's old houses
+  /// may be insulated: straw is exactly the first winter's measure, and the
+  /// "replaced, not improved" of housing §10 is about repair. Decided in the
+  /// step it is read. Seam key `insulate_unit`. Consumer: core_construction.
+  kInsulateUnit,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
