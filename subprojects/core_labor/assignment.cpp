@@ -169,11 +169,24 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     //
     // AND THE TIER ABOVE WAS EDITED, as this comment once warned it would be:
     // since 2026-09-14 the winter-preparation tier (2) can hold an open window
-    // and an overdue one together, and then this line compares days for one
-    // pair and kinds for another — a comparator that can cycle (UB-001 of the
-    // 0.23.0 cycle, open). Harmless today, because every winter crop of the
-    // tables shares its sowing month, so the tier's windows are one kind at a
-    // time; the repair is to order by the window's kind before its days.
+    // and an overdue one together. Compared by days for one pair and by work
+    // kind for another, three such jobs made a cycle — no ordering, and
+    // undefined behaviour in the sort (UB-001 of the 0.23.0 cycle). So inside
+    // a tier the window's kind goes first, open before overdue before none,
+    // and only then its days.
+    const auto window_rank = [](const AssignmentJob& job) {
+      switch (job.window.kind) {
+        case DeadlineKind::kDays:
+          return 0;
+        case DeadlineKind::kOverdue:
+          return 1;
+        default:
+          return 2;
+      }
+    };
+    if (window_rank(a) != window_rank(b)) {
+      return window_rank(a) < window_rank(b);
+    }
     if (a.window.kind == DeadlineKind::kDays && b.window.kind == DeadlineKind::kDays &&
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;

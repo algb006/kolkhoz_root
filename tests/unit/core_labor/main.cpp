@@ -9,6 +9,7 @@
 //     day off. (The economic year's burn moved to core_residents with the
 //     distribution it pays for — stage 6, task O1.)
 
+#include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <filesystem>
@@ -1791,6 +1792,42 @@ int TestEveningPostIsOnTheDaysList() {
 /// crop yields to a harvest with a relaxed window even when its own window is
 /// the tighter one — bread in the field before a sowing to come — and still
 /// goes ahead of work with no window at all.
+/// UB-001 OF THE 0.23.0 CYCLE (boss, parcel 253): three jobs of the
+/// winter-preparation tier whose old comparison made a cycle — harrowing due
+/// in 1 day before sowing due in 3 by days, that sowing before an overdue
+/// ploughing by work kind, and the ploughing before the harrowing by work
+/// kind. With the window's kind ranked first there is one order, and a lone
+/// worker is sent to the same job whatever order the jobs come in.
+int TestWinterTierHasOneOrder() {
+  int failures = 0;
+  const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
+  auto harrow = FieldJob(core::WorkKind::kHarrowing, 1, origin, 3.0F, 1);
+  auto plough = FieldJob(core::WorkKind::kPlowing, 2, origin, 3.0F, 0);
+  plough.window = core::DeadlineOverdue(2);
+  auto sow = FieldJob(core::WorkKind::kSowing, 3, origin, 3.0F, 3);
+  for (core::AssignmentJob* job : {&harrow, &plough, &sow}) {
+    job->prepares_winter_crop = true;
+  }
+  const std::vector<core::AssignmentCandidate> candidates = {Worker(0, origin)};
+  auto params = DayParams();
+  params.draught_horses = 1;
+  std::vector<core::AssignmentJob> jobs = {harrow, plough, sow};
+  std::sort(jobs.begin(), jobs.end(), [](const auto& a, const auto& b) {
+    return a.field.value < b.field.value;
+  });
+  bool same = true;
+  do {
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    same = same && plan[0] < jobs.size() && jobs[plan[0]].field.value == 1;
+  } while (std::next_permutation(jobs.begin(), jobs.end(), [](const auto& a, const auto& b) {
+    return a.field.value < b.field.value;
+  }));
+  failures += Expect(same,
+                     "winter tier: in every input order the open window due soonest is served "
+                     "first — the tier has one order");
+  return failures;
+}
+
 int TestWinterPreparationYieldsToWindowedWork() {
   int failures = 0;
   const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
@@ -1968,6 +2005,7 @@ int main() {
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestEveningPostIsOnTheDaysList();
+  failures += TestWinterTierHasOneOrder();
   failures += TestHolderIsOutOfThePoolAndOnHisOwnWork();
   failures += TestSawyersAreTheYardsCraftsmen();
   failures += TestYardWithoutGroomAlarm();
