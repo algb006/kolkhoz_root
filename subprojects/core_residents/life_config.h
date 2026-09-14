@@ -35,6 +35,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
+#include "membership.h"
 
 namespace core {
 
@@ -143,6 +144,9 @@ struct LifeConfig {
   /// thing the catalogue exists to stop. A copy of a catalogue column in a
   /// subsystem's config is a second home wearing a different name.
   Definitions definitions;
+
+  /// The organizations and ideology (membership.h; boss, parcel 334).
+  MembershipConfig membership;
 
   float life_speedup = 4.0F;
 

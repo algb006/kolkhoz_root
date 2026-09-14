@@ -237,6 +237,15 @@ enum class EventKind : std::uint8_t {
   /// стоит машина"), kNotable otherwise. Seam key `district_visit`.
   kDistrictVisit,
 
+  // -- the organizations (2026-09-15; society design §3, §5) -----------------
+
+  /// resident, family — the resident's SocialStatus moved: joined the
+  /// pioneers, the komsomol or the party, or left one by age; amount = the new
+  /// SocialStatus value (kNone when he left for nothing). Raised on a wave's
+  /// day, on the campaign's first day, and when a specialist arrives a
+  /// komsomol member. kRoutine. Seam key `social_status_changed`.
+  kSocialStatusChanged,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

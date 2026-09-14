@@ -122,6 +122,8 @@ const char* KindName(core::EventKind kind) {
       return "district_visit_announced";
     case core::EventKind::kDistrictVisit:
       return "district_visit";
+    case core::EventKind::kSocialStatusChanged:
+      return "social_status_changed";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

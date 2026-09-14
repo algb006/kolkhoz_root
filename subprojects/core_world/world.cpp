@@ -706,7 +706,37 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // rather than an absence (boss, parcel 277).
       //   store_leak_complaint_kg — the "raw material leak" door for the quest
       //   «Кто гонит», queued behind digging (STUB).
-      constexpr std::array<std::string_view, 1> kDeclaredNotYetRead = {"store_leak_complaint_kg"};
+      //   the organizations and ideology (boss, parcel 334), read by
+      //   core_residents/membership.h once its body lands.
+      constexpr std::array<std::string_view, 28> kDeclaredNotYetRead = {
+          "store_leak_complaint_kg",
+          "membership_autumn_wave_month",
+          "membership_spring_wave_month",
+          "pioneer_age_from_years",
+          "pioneer_age_to_years",
+          "pioneer_autumn_grade_min",
+          "pioneer_spring_grade_min",
+          "komsomol_age_from_years",
+          "komsomol_age_to_years",
+          "komsomol_ideology_min",
+          "komsomol_pioneer_ideology_min",
+          "komsomol_mood_min",
+          "party_age_from_years",
+          "party_ideology_min",
+          "party_mood_min",
+          "party_seniority_age_years",
+          "party_early_ideology_min",
+          "ideology_birth_spread",
+          "ideology_lock_age_years",
+          "ideology_school_year_gain",
+          "ideology_pioneer_year_gain",
+          "ideology_hungry_year_loss",
+          "ideology_hungry_satiety_below",
+          "ideology_status_gain_pioneer",
+          "ideology_status_gain_komsomol",
+          "ideology_status_gain_party",
+          "ideology_status_cap",
+          "specialist_komsomol_age_max_years"};
       known.insert(known.end(), kDeclaredNotYetRead.begin(), kDeclaredNotYetRead.end());
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {

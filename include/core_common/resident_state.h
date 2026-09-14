@@ -73,8 +73,8 @@ enum class EducationStage : std::uint8_t {
 };
 
 /// @brief Public status (metrics design §2, group 3). Advances by own merit,
-/// never by the parents'. STUB in phase 1: stays kNone until organizations
-/// exist (project phase 3).
+/// never by the parents'. Moved by the waves of core_residents/membership.h
+/// (boss, parcel 334); until that body lands it stays kNone.
 enum class SocialStatus : std::uint8_t {
   kNone = 0,  ///< No organization: children under 10 and unaffiliated adults.
   kPioneer,   ///< Ages 10-14.
