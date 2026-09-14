@@ -171,6 +171,14 @@ struct UnitSignals {
   /// crew is FieldSignals::residents_working.
   std::uint16_t residents_working = 0;
 
+  /// Kolkhoz heads of the herds standing at this unit that have no room
+  /// under its roof and are BILLETED at private yards (livestock design §6;
+  /// HerdRow::billeted_count, summed over this unit's herds). The yard holds
+  /// its herds' heads less this number; which houses' sheds the rest stand
+  /// in is the layer's to choose — the farm keeps one number (boss, parcel
+  /// 245). Zero for a unit with no herd, or room for all of it.
+  std::uint16_t heads_billeted = 0;
+
   /// Residents of the household under the infant age (life-cycle design
   /// §1: eighteen biological months) — the diapers on the line.
   std::uint8_t infants = 0;

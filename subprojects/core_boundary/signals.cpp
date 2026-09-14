@@ -122,6 +122,14 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
   }
   signals.residents_working = Saturate16(working);
 
+  // The heads on billet: the herd day's own count, per herd standing here.
+  std::uint32_t billeted = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    billeted +=
+        herd.household_owned == 0 && herd.unit.value == unit.value ? herd.billeted_count : 0U;
+  }
+  signals.heads_billeted = Saturate16(billeted);
+
   // The outdoor temperature stands in for the indoor one until heating
   // exists: a cold house and a warm one are the same house to the core
   // today, and saying so with the real number keeps the presentation's

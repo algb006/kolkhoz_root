@@ -410,6 +410,56 @@ void AddHerd(WorldState& world,
   AppendRow(world.herds, herd);
 }
 
+/// The billet of the first morning (livestock design §6: "сверх вместимости —
+/// во дворы, а не под нож"), by the herd day's own rule: every kolkhoz herd
+/// takes the room its unit's level holds (unit_levels.csv
+/// livestock_capacity_head), in row order, and what does not fit is billeted
+/// at private yards; a kolkhoz herd with no unit of its own — the start's
+/// horses — is billeted whole.
+///
+/// WHY GENESIS SAYS IT AND DOES NOT WAIT FOR THE HERD DAY. The herd day writes
+/// billeted_count every day, and the state it leaves is right — but the
+/// world genesis hands over is read before any step, and there the count was
+/// zero: 39 cows stood in a 24-place cattle yard on the prologue's first frame
+/// (look, by ue's log on 0.21.0; boss, parcel 245).
+void BilletStartHerds(WorldState& world, const ITableSet& tables) {
+  const ITable* const levels = tables.FindTable("unit_levels");
+  const ITable* const types = tables.FindTable("unit_types");
+  std::vector<float> room(world.units.rows.size(), 0.0F);
+  if (levels != nullptr && types != nullptr) {
+    const std::uint32_t unit_col = levels->FindColumn("unit");
+    const std::uint32_t level_col = levels->FindColumn("level");
+    const std::uint32_t heads_col = levels->FindColumn("livestock_capacity_head");
+    for (std::uint32_t unit_row = 0; unit_row < world.units.rows.size(); ++unit_row) {
+      const UnitRow& unit = world.units.rows[unit_row];
+      for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+        const std::uint32_t type_row = types->FindRowByKey(levels->CellText(row, unit_col));
+        if (type_row != unit.type.value ||
+            levels->CellInteger(row, level_col).value_or(-1) != unit.level) {
+          continue;
+        }
+        room[unit_row] = levels->CellReal(row, heads_col).value_or(0.0F);
+      }
+    }
+  }
+  for (HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0) {
+      continue;  // a family's own animals are home
+    }
+    const std::uint32_t heads =
+        static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
+    const std::uint32_t unit_row =
+        herd.unit.value == kInvalidEntityIdValue ? kNoRow : FindRow(world.units, herd.unit);
+    float housed = 0.0F;
+    if (unit_row != kNoRow && unit_row < room.size()) {
+      housed =
+          static_cast<float>(heads) < room[unit_row] ? static_cast<float>(heads) : room[unit_row];
+      room[unit_row] -= housed;
+    }
+    herd.billeted_count = static_cast<std::uint16_t>(heads - static_cast<std::uint32_t>(housed));
+  }
+}
+
 /// The start's animals (start canon §10-§11 and the household canon of
 /// livestock design §2, boss answer 2026-08-30 to registry question 148).
 ///
@@ -445,6 +495,7 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
   for (std::uint32_t yard = 0; yard + 1U < yards; yard += 20U) {
     AddHerd(world, *livestock, rng, "pig", 2, 1, UnitId{}, world.families.row_ids[yard], true);
   }
+  BilletStartHerds(world, tables);
 }
 
 // ---------------------------------------------------------------------------

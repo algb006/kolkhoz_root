@@ -619,6 +619,7 @@ int TestSignals(const core::ITableSet& tables) {
 
   core::HerdRow herd;
   herd.unit = barn_id;
+  herd.billeted_count = 15;  // the herd day's count of heads with no room here
   const core::HerdId herd_id = core::AppendRow(world.herds, herd);
 
   core::FieldRow field;
@@ -703,6 +704,8 @@ int TestSignals(const core::ITableSet& tables) {
   failures +=
       Expect(barn_signals.residents_working == 1, "the barn crew is counted through the herd");
   failures += Expect(barn_signals.residents_living == 0, "nobody lives in the barn");
+  failures += Expect(barn_signals.heads_billeted == 15 && house_signals.heads_billeted == 0,
+                     "the barn says how many of its heads stand on billet, the house none");
   // The pause reaches the layer through the SIGNALS, not through the row:
   // this is the only place the presentation can learn that a yard stands
   // still, so the byte core_production writes has to arrive here (task A8).

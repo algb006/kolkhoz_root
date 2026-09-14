@@ -521,6 +521,37 @@ int main() {
       failures += Expect(reserves == 1 && reserve_area == layout_reserve_area,
                          "genesis marks exactly one field, the layout's reserve, as the start's "
                          "reserve");
+      // THE FIRST MORNING'S BILLET (2026-09-14; look, boss parcel 245): the
+      // cows take the cattle yard's room and the rest stand on billet, and
+      // the horses, with no roof of their own, are billeted whole — before
+      // any step, because the prologue's first frame reads this world.
+      const core::ITable* const levels = shipped->FindTable("unit_levels");
+      float cattle_room = 0.0F;
+      for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+        if (levels->CellText(row, levels->FindColumn("unit")) == "cattle_yard" &&
+            levels->CellText(row, levels->FindColumn("level")) == "1") {
+          cattle_room =
+              levels->CellReal(row, levels->FindColumn("livestock_capacity_head")).value_or(0.0F);
+        }
+      }
+      bool cows_billeted = false;
+      bool horses_billeted = true;
+      for (const core::HerdRow& herd : morning.herds.rows) {
+        if (herd.household_owned != 0) {
+          continue;
+        }
+        const auto heads =
+            static_cast<float>(herd.adult_count + herd.juvenile_count + herd.newborn_count);
+        if (herd.unit.value != core::kInvalidEntityIdValue) {
+          cows_billeted =
+              heads > cattle_room && static_cast<float>(herd.billeted_count) == heads - cattle_room;
+        } else {
+          horses_billeted = horses_billeted && static_cast<float>(herd.billeted_count) == heads;
+        }
+      }
+      failures += Expect(cattle_room > 0.0F && cows_billeted,
+                         "genesis billets the cows the cattle yard has no room for");
+      failures += Expect(horses_billeted, "and the roofless start horses whole");
       const std::uint32_t wear_col = layout->FindColumn("start_wear_pct");
       failures += Expect(wear_col != core::kNoTableColumn,
                          "the shipped layout carries the first morning's wear");
