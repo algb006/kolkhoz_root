@@ -117,3 +117,5 @@ school_pupil_capacity_level_2,60,core
 school_pupil_capacity_level_3,80,core
 school_year_start_month,9,core
 school_year_end_month,6,core
+night_distiller_raw_kg,50,core
+night_watchman_theft_cut,0.6,core
