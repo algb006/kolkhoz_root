@@ -163,11 +163,17 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     if (tier(a) != tier(b)) {
       return tier(a) < tier(b);
     }
-    // BOTH SIDES ASKED, not just the left one. Inside a tier the two kinds
-    // are always the same, so one test would do — until the tier above is
-    // edited, and then a comparator that reads a's kind and b's NUMBER gives
-    // a different answer depending on which argument the sort hands it
-    // first, which is not an ordering at all.
+    // BOTH SIDES ASKED, not just the left one: a comparator that reads a's
+    // kind and b's NUMBER gives a different answer depending on which
+    // argument the sort hands it first, which is not an ordering at all.
+    //
+    // AND THE TIER ABOVE WAS EDITED, as this comment once warned it would be:
+    // since 2026-09-14 the winter-preparation tier (2) can hold an open window
+    // and an overdue one together, and then this line compares days for one
+    // pair and kinds for another — a comparator that can cycle (UB-001 of the
+    // 0.23.0 cycle, open). Harmless today, because every winter crop of the
+    // tables shares its sowing month, so the tier's windows are one kind at a
+    // time; the repair is to order by the window's kind before its days.
     if (a.window.kind == DeadlineKind::kDays && b.window.kind == DeadlineKind::kDays &&
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;
