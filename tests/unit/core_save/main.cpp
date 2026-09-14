@@ -234,6 +234,7 @@ core::WorldState MakeWorld() {
   core::FieldRow overgrown;
   overgrown.kind = core::LandKind::kFloodplainMeadow;
   overgrown.overgrown = 1;
+  overgrown.start_reserve = 1;      // the start quest's field
   overgrown.rotation_assigned = 0;  // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
@@ -542,6 +543,13 @@ int main() {
   failures += Expect(loaded.fields.rows[0].overgrown == 0,
                      "and a worked field does not come back overgrown, which a codec writing a "
                      "constant would also satisfy the other way round");
+  // THE START QUEST'S FIELD (2026-09-14): lose the mark and the reserve is
+  // removed in a loaded campaign without its fact ever being raised.
+  failures += Expect(loaded.fields.rows[2].start_reserve == 1,
+                     "the start's reserve field comes back marked");
+  failures += Expect(loaded.fields.rows[0].start_reserve == 0,
+                     "and an ordinary field comes back unmarked — the pair a codec writing a "
+                     "constant would fail on");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

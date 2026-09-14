@@ -165,6 +165,20 @@ enum class EventKind : std::uint8_t {
   /// the chairman itself would be deciding how the game ends.
   kPlanTrialDue,
 
+  // -- the fields the chairman takes off the map (2026-09-14) ----------------
+
+  /// field — a kRemoveField was carried out and the field row is GONE; the
+  /// id is dead after this step, as with kUnitDemolished. amount = 1 when the
+  /// field was the start's reserve (FieldRow::start_reserve), 0 otherwise.
+  ///
+  /// THE AMOUNT IS THE QUEST'S DOOR. The first sub-item of the start quest
+  /// closes on "the abandoned field let go" (fact start_reserve_field_removed;
+  /// host/manual/95, №6), and after this step nothing in the world can say
+  /// which field that was: the row that carried the mark is the row removed.
+  /// So the event carries it, and the host reads the fact off the event
+  /// rather than off a key it would have to remember from the start layout.
+  kFieldRemoved,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.

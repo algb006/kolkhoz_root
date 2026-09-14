@@ -286,6 +286,31 @@ enum class OrderKind : std::uint8_t {
   /// Consumer: core_production.
   kOrderLimitLot,
 
+  /// TAKE `field` OFF THE MAP (construction design §12, "Поле, сад — ничем:
+  /// мгновенно и бесплатно"; start canon §2, the reserve field). The row goes
+  /// in the step the order is read, nothing is spent, and kFieldRemoved goes
+  /// out with the start reserve's mark. The land under it is simply free: no
+  /// rule in the core keeps a unit off a field, so nothing has to be released.
+  ///
+  /// REFUSED WHERE THE DESIGN SAYS BREAD STANDS, and only there — "игра
+  /// просто не даст удалить поле, на котором стоит хлеб" (production units
+  /// design §5): kNotEmpty while the field is in kHarvest (ripe and not yet
+  /// reaped) or while reaped grain still lies on it waiting for the carts
+  /// (reaped_grams > 0 — "убрано и вывезено" is the state that frees it).
+  /// A field ploughed, sown or growing IS removed, and what was put into it
+  /// is lost ("растёт, но урожая ещё нет — да, с потерей вложенного").
+  ///
+  /// The farming design's lock — "с первой вспашки и до конца круга контур
+  /// заблокирован" (§5) — is read as a lock on REDRAWING a contour (redraw,
+  /// split, merge), which is what that paragraph lists, and not on removal,
+  /// which two other chapters allow with the loss named. This reading is the
+  /// core's and was put to boss with the delivery (2026-09-14).
+  ///
+  /// Refused with kNoSuchSubject for a field that is not there, and kWrongLand
+  /// for a meadow: the design removes "поле, сад", and a meadow is grass that
+  /// grew there, not a contour anybody drew. Consumer: core_production.
+  kRemoveField,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

@@ -124,6 +124,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // The post he holds is on his row; naming it again would let the two
       // disagree.
       return has_resident;
+    case OrderKind::kRemoveField:
+      // kRemoveField names the field alone: whether it still holds bread, and
+      // whether it is arable at all, change with the season — the consumer's
+      // verdict. It shares the rotation's answer below.
     case OrderKind::kSetRotation:
       // The three crops may all be invalid, and that is the chairman TAKING
       // HIS WORD BACK: the field goes back to ground nobody has spoken to

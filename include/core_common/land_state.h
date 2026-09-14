@@ -479,6 +479,17 @@ struct FieldRow {
   /// land. Its two readers are the butterflies the layer paints and the
   /// apiary's nectar flow, which the core does not yet model at all.
   bool in_flower = false;
+
+  /// THE START'S RESERVE FIELD, 0 or 1: the three abandoned hectares that lie
+  /// where the new village will be built, laid out to be taken off (start
+  /// canon §2; start_layout kind `reserve_field`). Set at genesis and never
+  /// again; nothing in the core branches on it except kRemoveField, which
+  /// copies it into kFieldRemoved's amount for the start quest's fact.
+  ///
+  /// A MARK AND NOT A LAND KIND, for the reason the map schema gives: the
+  /// reserve is arable in every respect — it can be raised and sown — and a
+  /// kind of its own would make every farming rule decide what to do with it.
+  std::uint8_t start_reserve = 0;
 };
 
 /// @brief Whether the player has given this field a rotation at all.
