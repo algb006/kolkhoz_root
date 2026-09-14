@@ -95,3 +95,17 @@ ideology_status_gain_komsomol,1,core
 ideology_status_gain_party,1.5,core
 ideology_status_cap,60,core
 specialist_komsomol_age_max_years,26,core
+night_distillers_max,2,core
+night_fisher_age_from_years,18,core
+night_fisher_age_to_years,50,core
+night_hunter_age_from_years,25,core
+night_hunter_age_to_years,60,core
+night_moon_day_in_month,2,core
+night_trade_hour_out,23,core
+night_trade_hour_back,3,core
+night_fishing_min_mean_celsius,18,core
+night_hunt_reach_min_m,800,core
+night_hunt_reach_max_m,2500,core
+night_fishing_catch_kg,3,core
+night_hunt_catch_kg,5,core
+night_hunt_success_chance,0.3,core
