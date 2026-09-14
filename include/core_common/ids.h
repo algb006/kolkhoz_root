@@ -91,6 +91,12 @@ using OrderId = EntityId<OrderIdTag>;
 /// square of old forest within a team's reach (core_common/timber_state.h).
 using TimberStandId = EntityId<TimberStandIdTag>;
 
+struct ExtractionSiteIdTag {};
+
+/// @brief One plot on the map where clay, stone or sand is dug
+/// (core_common/extraction_state.h).
+using ExtractionSiteId = EntityId<ExtractionSiteIdTag>;
+
 struct LimitDeliveryIdTag {};
 
 /// @brief One lot bought on the district's limit and still on the road to

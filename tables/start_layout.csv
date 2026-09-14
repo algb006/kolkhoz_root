@@ -5,7 +5,7 @@
 # kind field/meadow: area_ha is set, unit_type empty; an empty rotation slot is a fallow year
 # is_derelict: land that has rested and waits to be raised, not ploughed fallow
 # meadow_kind: upland or floodplain, and the yield comes from meadow_kinds.csv. Empty on anything that is not a meadow
-# start_wear_pct: how worn the thing is on the first morning; -1 means «as built». The old houses keep their own 45..60 spread in the core -- this column carries the inherited yard, the killed church and the wrecked mill, which the design had only in prose
+# start_wear_pct: how worn the thing is on the first morning; -1 means «as built». The old houses keep their own 25..75 spread in the core (start.md §4) -- this column carries the inherited yard, the killed church and the wrecked mill, which the design had only in prose
 # start_dead: the unit stands and does not work at all until it is restored. This is NOT wear -- wear never stops anything -- so a start placement that has to be dead needs a state of its own. Only the start layout sets it, and nothing in play sets it back
 key,kind,unit_type,x_m,y_m,area_ha,rotation_year0,rotation_year1,rotation_year2,is_derelict,meadow_kind,fill_pct,start_wear_pct,start_dead
 build_yard,unit,build_yard,7560,9200,,,,,0,,-1,40,0

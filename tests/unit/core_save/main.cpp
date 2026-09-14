@@ -172,6 +172,10 @@ core::WorldState MakeWorld() {
   second.sex = core::Sex::kFemale;
   second.birth_day = 12;
   second.mother = first_id;
+  // A digger (save format 36): the NEWEST work kind, the one the bound in the
+  // codec has to admit, and the site she digs at.
+  second.work.kind = core::WorkKind::kExtraction;
+  second.work.extraction_site = core::ExtractionSiteId{4};
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
@@ -362,6 +366,21 @@ core::WorldState MakeWorld() {
   couple.since_day = 211;
   core::AppendRow(world.wedding_waits, couple);
 
+  // A clay pit half dug (save format 36): the resource through the
+  // dictionary, a mark still standing, a load waiting for the carts.
+  core::ExtractionSiteRow pit;
+  pit.table_row = 3;
+  pit.resource = core::ResourceId{2};
+  pit.position = core::Vec2{.x = 7281.5F, .y = 8504.25F};
+  pit.stock_grams = 3'900'000'000;
+  pit.marked_grams = 20'000'000;
+  pit.work_days_remaining = 0.75F;
+  pit.load_grams = 6'000'000;
+  pit.haul_days_remaining = 1.5F;
+  pit.haul_days_written = 2.25F;
+  pit.exhausted = 1;
+  core::AppendRow(world.extraction_sites, pit);
+
   // An appointment still waiting (task A7): kAccepted is exactly the status
   // that has to survive a save — the order is visible, cancellable, and
   // takes effect at a day's close that may fall after the campaign is
@@ -542,6 +561,22 @@ int main() {
                          loaded.wedding_waits.rows[0].groom.value == 9 &&
                          loaded.wedding_waits.rows[0].since_day == 211,
                      "a couple waiting for a house comes back waiting, since its day");
+  failures += Expect(loaded.extraction_sites.rows.size() == 1 &&
+                         loaded.extraction_sites.rows[0].table_row == 3 &&
+                         loaded.extraction_sites.rows[0].resource.value == 2 &&
+                         loaded.extraction_sites.rows[0].position.x == 7281.5F &&
+                         loaded.extraction_sites.rows[0].position.y == 8504.25F &&
+                         loaded.extraction_sites.rows[0].stock_grams == 3'900'000'000 &&
+                         loaded.extraction_sites.rows[0].marked_grams == 20'000'000 &&
+                         loaded.extraction_sites.rows[0].work_days_remaining == 0.75F &&
+                         loaded.extraction_sites.rows[0].load_grams == 6'000'000 &&
+                         loaded.extraction_sites.rows[0].haul_days_remaining == 1.5F &&
+                         loaded.extraction_sites.rows[0].haul_days_written == 2.25F &&
+                         loaded.extraction_sites.rows[0].exhausted == 1,
+                     "a clay pit comes back half dug, its load waiting and its mark standing");
+  failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
+                         loaded.residents.rows[1].work.extraction_site.value == 4,
+                     "a digger comes back at her pit");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
   // PlanState carried no tripwire at all until 2026-09-12 — the only

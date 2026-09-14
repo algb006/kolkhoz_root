@@ -61,21 +61,26 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
     // felling more while it lies there only lengthens the heap.
     case WorkKind::kFelling:
       return 7;
+    // Digging clay, stone and sand stands beside felling and for its reason:
+    // no window, all the year round (construction design §3; boss, parcel
+    // 270), and what is already dug and lying goes first.
+    case WorkKind::kExtraction:
+      return 8;
     // A producing unit's work is done by its post holders before the
     // accountant plans (labor_system.cpp, AssignPostHolders), so it meets the
     // queue only through a standing order; it ranks after felling, whose logs
     // it saws: a sawyer at an empty log pile turns out nothing.
     case WorkKind::kUnitWork:
-      return 8;
+      return 9;
     // Not a kind of work, and neither is the terminator. Handled beside
     // kNone so this switch keeps no default and a genuinely new kind stays
     // a build error here — which is exactly where a new kind must declare
     // where it stands in the queue.
     case WorkKind::kNone:
     case WorkKind::kWorkKindCount:
-      return 9;
+      return 10;
   }
-  return 9;
+  return 10;
 }
 
 /// The stable identity of a job's target, for deterministic tie-breaks.

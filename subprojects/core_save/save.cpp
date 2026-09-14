@@ -63,6 +63,7 @@ constexpr const char* kSectionStands = "stands";
 constexpr const char* kSectionLimitDeliveries = "limit_deliveries";
 constexpr const char* kSectionSpecialistArrivals = "specialist_arrivals";
 constexpr const char* kSectionWeddingWaits = "wedding_waits";
+constexpr const char* kSectionExtractionSites = "extraction_sites";
 constexpr const char* kSectionLedger = "ledger";
 constexpr const char* kSectionStaged = "staged";
 
@@ -341,6 +342,12 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.wedding_waits, WriteWeddingWaitRow);
   CloseSection(out, length_offset);
 
+  // The plots clay, stone and sand are dug on (construction design §3, save
+  // format 36).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.extraction_sites, WriteExtractionSiteRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -466,7 +473,9 @@ bool DecodeWorld(std::span<const std::byte> bytes,
           kSectionLimitDeliveries, &loaded.limit_deliveries, ReadLimitDeliveryRow) ||
       !read_table_section(
           kSectionSpecialistArrivals, &loaded.specialist_arrivals, ReadSpecialistArrivalRow) ||
-      !read_table_section(kSectionWeddingWaits, &loaded.wedding_waits, ReadWeddingWaitRow)) {
+      !read_table_section(kSectionWeddingWaits, &loaded.wedding_waits, ReadWeddingWaitRow) ||
+      !read_table_section(
+          kSectionExtractionSites, &loaded.extraction_sites, ReadExtractionSiteRow)) {
     return false;
   }
 

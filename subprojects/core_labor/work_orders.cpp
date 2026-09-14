@@ -35,6 +35,12 @@ bool TargetExists(const WorldState& world, const OrderRow& order) {
       (order.work == WorkKind::kHauling && order.stand.value != kInvalidEntityIdValue)) {
     return FindRow(world.stands, order.stand) != kNoRow;
   }
+  // An extraction site for digging, and for carting what lies dug on one
+  // (2026-09-14).
+  if (order.work == WorkKind::kExtraction ||
+      (order.work == WorkKind::kHauling && order.extraction_site.value != kInvalidEntityIdValue)) {
+    return FindRow(world.extraction_sites, order.extraction_site) != kNoRow;
+  }
   return FindRow(world.fields, order.field) != kNoRow;
 }
 
@@ -134,6 +140,7 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     case WorkKind::kConstruction:
     case WorkKind::kFelling:
     case WorkKind::kUnitWork:
+    case WorkKind::kExtraction:
     case WorkKind::kNone:
       return OrderRefusal::kNone;  // no field named; nothing to ask about
     case WorkKind::kPlowing:
@@ -151,8 +158,9 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     // lying there to carry (field_work.cpp, DeliverHarvest). "Carry from the
     // meadow" is not empty today; it is empty for ever.
     case WorkKind::kHauling:
-      if (order.stand.value != kInvalidEntityIdValue) {
-        return OrderRefusal::kNone;  // logs on a stand: no field named
+      if (order.stand.value != kInvalidEntityIdValue ||
+          order.extraction_site.value != kInvalidEntityIdValue) {
+        return OrderRefusal::kNone;  // a load on a stand or a site: no field named
       }
       break;
     // Not a kind, and it names no land: handled beside the kinds that name

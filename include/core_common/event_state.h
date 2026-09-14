@@ -214,6 +214,14 @@ enum class EventKind : std::uint8_t {
   /// design calls the rung "heavy and irreversible".
   kFamilyLeftForNoHouse,
 
+  // -- digging on the map (2026-09-14; construction design §3) --------------
+
+  /// resource (clay, stone or sand) — an extraction site's stock has run out
+  /// and it can never be marked again (boss, parcel 270: "восстановления
+  /// нет"); amount = the ExtractionSiteId value. Once per site. kNotable.
+  /// Seam key `extraction_site_exhausted`.
+  kExtractionSiteExhausted,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // an inspector's arrival, the decision card. Named so the numbering is
   // planned, not discovered.

@@ -14,6 +14,7 @@
 #include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
+#include "core_common/post_shift.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/resident_activity.h"
@@ -949,6 +950,16 @@ int CheckTheTopOfTheLadder() {
 
 int main() {
   int failures = 0;
+  {
+    // The night shift's word is accepted and held as a workday (STUB, boss
+    // parcel 274) — and a word the design base never wrote is still refused.
+    core::PostShift night = core::PostShift::kBathDay;
+    core::PostShift nonsense = core::PostShift::kBathDay;
+    failures += Expect(core::ParsePostShift("night", night) && night == core::PostShift::kWorkday,
+                       "post shift: `night` reads, and holds the workday until its door lands");
+    failures += Expect(!core::ParsePostShift("midnight", nonsense),
+                       "post shift: a word the base never wrote is refused");
+  }
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
   failures += TestDefIdFromRow();

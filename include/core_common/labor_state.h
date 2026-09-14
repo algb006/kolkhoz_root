@@ -83,6 +83,14 @@ enum class WorkKind : std::uint8_t {
   /// the unit's places. Target: WorkAssignment::unit, the producing unit.
   kUnitWork,
 
+  /// Digging what the chairman marked on an extraction site — clay, stone or
+  /// sand (construction design §3; boss, parcel 270): any adult, no more at
+  /// once than there are tools in the stores (`extraction_tools_per_worker`
+  /// each, not spent — a STUB of wear, as for felling). All the year round,
+  /// no window. Target: WorkAssignment::extraction_site. Seam key
+  /// `extraction`.
+  kExtraction,
+
   /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
   /// appended BEFORE it.
   kWorkKindCount,
@@ -133,8 +141,9 @@ struct WorkforceCount {
 /// @brief The assignment block of one resident. Plain data.
 /// Exactly one target id is valid, matching the kind: a field for the four
 /// field kinds, a herd for kHerdCare, a unit for kConstruction, a stand for
-/// kFelling, none for kNone. kHauling has TWO possible targets — a field or a
-/// stand, whichever the load lies on — and exactly one of them is valid. Travel time and
+/// kFelling, an extraction site for kExtraction, none for kNone. kHauling has
+/// THREE possible targets — a field, a stand or an extraction site, whichever
+/// the load lies on — and exactly one of them is valid. Travel time and
 /// eligibility are NOT stored — they are pure functions of positions and state (state model law:
 /// derived values are recomputed, never cached in state).
 struct WorkAssignment {
@@ -149,6 +158,10 @@ struct WorkAssignment {
   /// Valid for kFelling, and for kHauling of logs lying on a stand; invalid
   /// otherwise (timber_state.h).
   TimberStandId stand;
+
+  /// Valid for kExtraction, and for kHauling of a load lying on an extraction
+  /// site; invalid otherwise (extraction_state.h).
+  ExtractionSiteId extraction_site;
 
   /// Norm-days of output delivered since the day started, in game man-days
   /// of the assigned kind. Accumulated hourly while working; converted into

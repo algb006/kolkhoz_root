@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "campaign_tables.h"
+#include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
@@ -685,6 +686,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       const std::span<const std::string_view> from_life = LifeWorldParamKeys();
       const std::span<const std::string_view> from_timber = TimberWorldParamKeys();
       known.insert(known.end(), from_timber.begin(), from_timber.end());
+      const std::span<const std::string_view> from_extraction = ExtractionWorldParamKeys();
+      known.insert(known.end(), from_extraction.begin(), from_extraction.end());
       const std::span<const std::string_view> from_limit = LimitWorldParamKeys();
       known.insert(known.end(), from_limit.begin(), from_limit.end());
       known.insert(known.end(), from_time.begin(), from_time.end());

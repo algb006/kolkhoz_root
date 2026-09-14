@@ -66,6 +66,17 @@ constexpr bool ParsePostShift(std::string_view text, PostShift& shift) {
     shift = PostShift::kBathDay;
     return true;
   }
+  // THE NIGHT SHIFT IS READ AND HELD AS A WORKDAY: STUB (boss, parcel 274).
+  // The design base gave `profession.shift` a fourth word — from the end of
+  // the working window to the start of the next, off the day's list — for the
+  // watchman (time design §6: two night posts). The shift itself is a door in
+  // the queue after digging; until then the word is accepted, so the export
+  // that carries it does not stop the assembly, and the post keeps the
+  // workday it had.
+  if (text == "night") {
+    shift = PostShift::kWorkday;
+    return true;
+  }
   return false;
 }
 

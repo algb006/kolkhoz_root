@@ -244,6 +244,10 @@ struct LaborConfig {
       // filled it with zeros — a table set without the row sawed unpaid and
       // untiring (found by the delivery analysis, 2026-09-13).
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
+      // Digging clay, stone and sand: ordinary grade and the HEAVY drain, the
+      // felling's row — ASSUMPTION, the form of the digging is the felling's
+      // (boss, parcel 270), and labor.csv carries no `extraction` row yet.
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
   }};
 
   // -- the day (labor.csv; time design §6-§7) ------------------------------

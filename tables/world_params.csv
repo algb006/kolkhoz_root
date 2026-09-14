@@ -56,3 +56,10 @@ limit_delivery_delay_days_max,2,core
 teacher_pupils_per_teacher,30,core
 village_end_population,40,host
 fire_well_radius_m,150,host
+extraction_stock_t_per_ha_clay,8000,core
+extraction_stock_t_per_ha_stone,3000,core
+extraction_stock_t_per_ha_sand,8000,core
+extraction_days_per_t_clay,0.05,core
+extraction_days_per_t_stone,0.25,core
+extraction_days_per_t_sand,0.03,core
+extraction_tools_per_worker,1,core

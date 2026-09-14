@@ -33,6 +33,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
+#include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
@@ -642,6 +643,11 @@ struct WorldState {
   /// The couples ready to marry who wait for a free house (life-cycle design
   /// §12); SAVED. wedding_state.h.
   WeddingWaitTable wedding_waits;
+
+  /// The plots clay, stone and sand are dug on (construction design §3;
+  /// boss, parcel 270). Made at genesis from tables/extraction_sites.csv;
+  /// SAVED. extraction_state.h.
+  ExtractionSiteTable extraction_sites;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

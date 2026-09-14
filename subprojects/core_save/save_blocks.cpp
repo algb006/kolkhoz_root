@@ -33,7 +33,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-13: work at a producing unit widened work_days_by_kind by a float,
 // and the alignment of the block rounded the four bytes up to eight.
 // 2026-09-13: the limit's three int32 flows took it to 160.
-static_assert(sizeof(YearLedger) == 160 + (13 * kAmountsSize),
+// 2026-09-14: digging (WorkKind::kExtraction) widened work_days_by_kind by a
+// float: 168, measured.
+static_assert(sizeof(YearLedger) == 168 + (13 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 42,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
@@ -94,7 +96,9 @@ static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec 
 // Twenty-two on 2026-09-14: the district's specialists on the road (a row
 // table in save_rows.cpp).
 // Twenty-three the same day: the couples waiting for a free house.
-static_assert(AggregateArity<WorldState>() == 23,
+// Twenty-four the same day: the extraction sites (a row table in
+// save_rows.cpp).
+static_assert(AggregateArity<WorldState>() == 24,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

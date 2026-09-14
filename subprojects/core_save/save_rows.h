@@ -17,6 +17,7 @@
 #ifndef CORE_SAVE_SAVE_ROWS_H_
 #define CORE_SAVE_SAVE_ROWS_H_
 
+#include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
@@ -60,6 +61,9 @@ SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source);
 
 void WriteWeddingWaitRow(SaveSink& sink, const WeddingWaitRow& row);
 WeddingWaitRow ReadWeddingWaitRow(LoadSource& source);
+
+void WriteExtractionSiteRow(SaveSink& sink, const ExtractionSiteRow& row);
+ExtractionSiteRow ReadExtractionSiteRow(LoadSource& source);
 
 }  // namespace core
 

@@ -152,6 +152,8 @@ class OrdersPolicy {
         return "felling";
       case core::WorkKind::kUnitWork:
         return "unit work";
+      case core::WorkKind::kExtraction:
+        return "digging";
       case core::WorkKind::kNone:
       case core::WorkKind::kWorkKindCount:
         break;

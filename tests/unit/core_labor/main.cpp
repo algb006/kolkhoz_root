@@ -2076,6 +2076,19 @@ int main() {
   failures += TestWalkOffPaysAndStops();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestLaborTableParsing();
+  {
+    // EVERY WORK KIND BUT NONE HAS A COMPILED RATE. The rates' brace
+    // initialiser fills a cell a new kind forgot with zeros, and a table set
+    // without the kind's row then works unpaid and untiring — the unit work's
+    // cell was lost exactly that way (2026-09-13).
+    const core::LaborConfig defaults;
+    bool every_kind_paid = true;
+    for (std::uint32_t kind = 1; kind < core::kWorkKindCount; ++kind) {
+      every_kind_paid = every_kind_paid && defaults.rates[kind].trudodni_rate > 0.0F &&
+                        defaults.rates[kind].rest_drain_per_norm_day > 0.0F;
+    }
+    failures += Expect(every_kind_paid, "every work kind carries a compiled rate and a drain");
+  }
   failures += TestBarnLeadsTheDayTheWindowShuts();
   failures += TestTheQueueRanksInTiers();
   failures += TestPostTablesParse();

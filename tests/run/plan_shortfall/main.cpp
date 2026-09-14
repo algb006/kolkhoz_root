@@ -433,7 +433,7 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
   // so a work kind appended without a name left a null here and the run died
   // printing it (kFelling, 2026-09-13 — caught on the first run after).
   static constexpr std::array<const char*, core::kWorkKindCount> kKindNames = {
-      "none", "plough", "harrow", "sow", "reap", "barn", "build", "haul", "fell", "unit"};
+      "none", "plough", "harrow", "sow", "reap", "barn", "build", "haul", "fell", "unit", "dig"};
   static_assert(kKindNames.back() != nullptr, "every work kind needs a name in this run");
   const Carting& why = sample.carting;
   std::cout << "plan_shortfall:     WHY NOBODY CARTED — no room in the stores " << why.days_no_room

@@ -113,6 +113,8 @@ const char* KindName(core::EventKind kind) {
       return "family_in_tent";
     case core::EventKind::kFamilyLeftForNoHouse:
       return "family_left_for_no_house";
+    case core::EventKind::kExtractionSiteExhausted:
+      return "extraction_site_exhausted";
     case core::EventKind::kHorsesStabled:
       return "horses_stabled";
     case core::EventKind::kEventKindCount:

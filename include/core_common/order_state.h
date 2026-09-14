@@ -311,6 +311,23 @@ enum class OrderKind : std::uint8_t {
   /// grew there, not a contour anybody drew. Consumer: core_production.
   kRemoveField,
 
+  /// MARK `amount` grams of `extraction_site` for digging (construction
+  /// design §3; boss, parcel 270): free and at once, like marking a field.
+  /// The crew digs it, the dug mass lies on the site as a load, and the
+  /// ordinary carting brings it to its home (resource_stores.csv). The
+  /// chairman names A MASS, for the reason a felling names a volume: the core
+  /// keeps a site's stock, not its spadefuls.
+  ///
+  /// ONE MARK A SITE: refused with kConflictsWithActive while the site still
+  /// has a mark the crew has not finished. Refused with kNoSuchSubject for a
+  /// site that is not there; kRuleForbids for an amount that is not positive
+  /// (the boundary's shape check refuses it at issue as well) or exceeds the
+  /// site's unmarked stock — AN EXHAUSTED SITE IS NEVER MARKED AGAIN, nothing
+  /// grows back. Settled in the step it is read; taking a mark off has no verb
+  /// (STUB, as for felling). Seam key `mark_extraction`. Consumer:
+  /// core_production.
+  kMarkExtraction,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -616,7 +633,8 @@ struct OrderRow {
   /// kUnsealFund: what is being taken out of it.
   ResourceId resource;
 
-  /// kUnsealFund: how much, in grams. THE FIGURE IS THE CHAIRMAN'S and the
+  /// kUnsealFund: how much, in grams; kMarkExtraction: how much to dig, in
+  /// grams. THE FIGURE IS THE CHAIRMAN'S and the
   /// order carries it rather than meaning "as much as is needed": resources
   /// design §6 calls the unsealing "осознанный выбор, а не незаметная
   /// утечка", and a door that opens by itself to whatever width is wanted is
@@ -632,6 +650,9 @@ struct OrderRow {
 
   /// kOrderLimitLot: the catalogue row to buy.
   LimitLotId lot;
+
+  /// kMarkExtraction: the site to dig on; the mass is `amount`, in grams.
+  ExtractionSiteId extraction_site;
 };
 
 /// @brief The order book type used by WorldState.

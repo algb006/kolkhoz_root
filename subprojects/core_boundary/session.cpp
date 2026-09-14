@@ -48,6 +48,7 @@ bool ShapeIsValid(const OrderRow& order) {
   const bool has_field = order.field.value != kInvalidEntityIdValue;
   const bool has_herd = order.herd.value != kInvalidEntityIdValue;
   const bool has_stand = order.stand.value != kInvalidEntityIdValue;
+  const bool has_site = order.extraction_site.value != kInvalidEntityIdValue;
   switch (order.kind) {
     case OrderKind::kNone:
     // The count is not a kind. It is refused beside kNone and for the same
@@ -101,8 +102,13 @@ bool ShapeIsValid(const OrderRow& order) {
       if (order.work == WorkKind::kFelling) {
         return has_stand;
       }
+      // Digging names the extraction site (2026-09-14), and carting may name
+      // one too: exactly one holder of the load.
+      if (order.work == WorkKind::kExtraction) {
+        return has_site;
+      }
       if (order.work == WorkKind::kHauling) {
-        return has_field != has_stand;
+        return (has_field ? 1 : 0) + (has_stand ? 1 : 0) + (has_site ? 1 : 0) == 1;
       }
       return has_field;
     case OrderKind::kReleaseWork:
@@ -152,6 +158,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // and whether another felling is still going, change with the day —
       // the consumer's verdict (order_state.h).
       return has_stand && order.volume_m3 > 0.0F;
+    case OrderKind::kMarkExtraction:
+      // A site and a mass above nothing, as a felling's stand and volume.
+      // Whether the site still holds that much unmarked stock is the
+      // consumer's verdict (order_state.h).
+      return has_site && order.amount > 0;
     case OrderKind::kOrderLimitLot:
       // A lot named, and nothing else. Whether the catalogue carries it, its
       // epoch is open and the year's points cover it change with the world —

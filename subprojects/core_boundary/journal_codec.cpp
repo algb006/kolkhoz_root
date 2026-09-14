@@ -53,8 +53,9 @@ namespace {
 /// grows — and it was counted by hand again for kUnsealFund, and again for
 /// kMarkFelling (2026-09-13): the stand is a fifth entity id and the volume a
 /// third float; and for kOrderLimitLot the same day: the lot is a seventh
-/// definition id.
-constexpr std::size_t kOrderBytes = 5 + 8 + (5 * 4) + (7 * 2) + (3 * 4) + 8;
+/// definition id; and for kMarkExtraction (2026-09-14): the extraction site is
+/// a sixth entity id, its mass the unsealing's `amount`.
+constexpr std::size_t kOrderBytes = 5 + 8 + (6 * 4) + (7 * 2) + (3 * 4) + 8;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -82,7 +83,7 @@ static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the journal c
 /// It matters more here than in the save codec, because kOrderBytes above is
 /// counted BY HAND: a row that grows without this assert leaves the journal's
 /// writer walking past its own reader, which is how task A7 broke it.
-static_assert(AggregateArity<OrderRow>() == 21,
+static_assert(AggregateArity<OrderRow>() == 22,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -244,6 +245,8 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   out.Float(row.volume_m3);
   // The limit lot (kOrderLimitLot, 2026-09-13), the seventh definition id.
   out.U16(row.lot.value);
+  // The extraction mark (kMarkExtraction, 2026-09-14), the sixth entity id.
+  out.U32(row.extraction_site.value);
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -274,6 +277,7 @@ OrderRow ReadOrder(Reader& in) {
   row.stand = TimberStandId{in.U32()};
   row.volume_m3 = in.Float();
   row.lot = LimitLotId{in.U16()};
+  row.extraction_site = ExtractionSiteId{in.U32()};
   return row;
 }
 

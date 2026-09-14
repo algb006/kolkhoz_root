@@ -170,7 +170,14 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
                                                                       "construction",
                                                                       "hauling",
                                                                       "felling",
-                                                                      "unit_work"};
+                                                                      "unit_work",
+                                                                      "extraction"};
+  // EVERY KEY WRITTEN. The array takes its length from the enum, so a kind
+  // appended without a key leaves an empty one at the end, and an empty key
+  // finds no row and keeps the compiled default without a word — the same
+  // hole the rates' brace initialiser has. The LAST key is the one a new kind
+  // would leave empty.
+  static_assert(!kKeys.back().empty(), "every work kind needs its labor.csv key here");
   const std::uint32_t rate_column = table.FindColumn("trudodni_rate");
   const std::uint32_t drain_column = table.FindColumn("rest_drain_per_norm_day");
   for (std::uint32_t index = 0; index < kKeys.size(); ++index) {

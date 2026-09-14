@@ -46,7 +46,8 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-06: 164 -> 172, and MEASURED rather than reasoned, as ever. Two
 // floats — the height and build deviations of the figure — and this time the
 // size moved with the field count instead of hiding in padding.
-static_assert(sizeof(ResidentRow) == 176,
+// 2026-09-14: 176 -> 180, the assignment's extraction site.
+static_assert(sizeof(ResidentRow) == 180,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ResidentRow>() == 38,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
@@ -117,12 +118,15 @@ static_assert(AggregateArity<HerdRow>() == 18,
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
 // row that carries it with it).
 // 2026-09-13: the limit lot (a definition id) took it from 72 to 80.
+// 2026-09-14: the extraction site landed in the order row's padding — 80
+// still, 22 fields, which is exactly the case the arity check is for — and
+// took the assignment from 28 to 32.
 static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<OrderRow>() == 21,
+static_assert(AggregateArity<OrderRow>() == 22,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(WorkAssignment) == 28,
+static_assert(sizeof(WorkAssignment) == 32,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorkAssignment>() == 7,
+static_assert(AggregateArity<WorkAssignment>() == 8,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
@@ -140,6 +144,10 @@ static_assert(sizeof(TimberStandRow) == 48,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TimberStandRow>() == 9,
               "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(ExtractionSiteRow) == 64,
+              "ExtractionSiteRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ExtractionSiteRow>() == 10,
+              "ExtractionSiteRow gained or lost a field — update the codec and VERSION_SAVE");
 
 /// Highest valid value of each u8 enum a row carries. The reader refuses
 /// anything above (LoadSource::ReadEnumValue) — see its docs for why.
@@ -274,6 +282,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.herd);
   WriteEntityId(out, row.work.unit);
   WriteEntityId(out, row.work.stand);
+  WriteEntityId(out, row.work.extraction_site);
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
 
@@ -336,6 +345,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.herd = ReadEntityId<HerdId>(in);
   row.work.unit = ReadEntityId<UnitId>(in);
   row.work.stand = ReadEntityId<TimberStandId>(in);
+  row.work.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
 
@@ -747,6 +757,9 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
 
   // The limit lot (kOrderLimitLot, 2026-09-13), through the dictionary.
   sink.WriteDefId(DefKind::kLimitLot, row.lot.value);
+
+  // The extraction mark (kMarkExtraction, 2026-09-14); its mass is `amount`.
+  WriteEntityId(out, row.extraction_site);
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -778,6 +791,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.stand = ReadEntityId<TimberStandId>(in);
   row.volume_m3 = in.ReadFloat();
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
+  row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   return row;
 }
 
@@ -821,6 +835,45 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.load_grams = static_cast<Grams>(in.ReadU64());
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// ExtractionSiteRow — extraction_state.h (2026-09-14)
+// ---------------------------------------------------------------------------
+//
+// `table_row` goes out raw, as a stand's does and for the same reason:
+// tables/extraction_sites.csv is a baked export of the map. The resource goes
+// through the dictionary like every other definition id, and the loading
+// point is saved beside the row so the road never depends on the bake.
+
+void WriteExtractionSiteRow(SaveSink& sink, const ExtractionSiteRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU32(row.table_row);
+  sink.WriteDefId(DefKind::kResource, row.resource.value);
+  WriteVec2(out, row.position);
+  out.WriteU64(static_cast<std::uint64_t>(row.stock_grams));
+  out.WriteU64(static_cast<std::uint64_t>(row.marked_grams));
+  out.WriteFloat(row.work_days_remaining);
+  out.WriteU64(static_cast<std::uint64_t>(row.load_grams));
+  out.WriteFloat(row.haul_days_remaining);
+  out.WriteFloat(row.haul_days_written);
+  out.WriteU8(row.exhausted);
+}
+
+ExtractionSiteRow ReadExtractionSiteRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  ExtractionSiteRow row;
+  row.table_row = in.ReadU32();
+  row.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.position = ReadVec2(in);
+  row.stock_grams = static_cast<Grams>(in.ReadU64());
+  row.marked_grams = static_cast<Grams>(in.ReadU64());
+  row.work_days_remaining = in.ReadFloat();
+  row.load_grams = static_cast<Grams>(in.ReadU64());
+  row.haul_days_remaining = in.ReadFloat();
+  row.haul_days_written = in.ReadFloat();
+  row.exhausted = in.ReadU8();
   return row;
 }
 
