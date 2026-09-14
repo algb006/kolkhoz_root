@@ -13,6 +13,7 @@ kolkhoz_add_module(core_residents
     family_exchange.cpp
     family_meal.cpp
     household_plot.cpp
+    specialist_arrival.cpp
     vitals.cpp)
 
 target_link_libraries(core_residents

@@ -46,6 +46,7 @@
 #include "food_config.h"
 #include "household_plot.h"
 #include "life_config.h"
+#include "specialist_arrival.h"
 #include "vitals.h"
 
 namespace core {
@@ -324,6 +325,7 @@ class ResidentsSystem final : public IResidentsSystem {
     // the two things that follow from it and are not it: the family's
     // exchange with the settlement, and the vitals that accumulate.
     RunDemographyDay(config_, current);
+    RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
   }
@@ -362,6 +364,7 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
                       "crops",
                       "labor",
                       "unit_types",
+                      "professions",
                       "world_params"},
                      nullptr)) {
     return nullptr;

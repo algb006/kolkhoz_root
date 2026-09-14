@@ -32,6 +32,8 @@
 #include "family_meal.h"
 #include "food_config.h"
 #include "household_plot.h"
+#include "life_config.h"
+#include "specialist_arrival.h"
 #include "vitals.h"
 
 static_assert(std::is_abstract_v<core::IResidentsSystem>, "IResidentsSystem is a contract");
@@ -769,8 +771,129 @@ int CheckStubTablesMustBeDeclared() {
   return failures;
 }
 
+/// THE DISTRICT'S SPECIALISTS OF EPOCH I (education design, "Эпоха I
+/// числами"; boss, parcels 237, 241, 242). A school standing, 31 children of
+/// the junior band against a norm of 30 — two teachers owed — two free houses,
+/// a reading hut not yet built.
+int CheckTheDistrictSendsSpecialists() {
+  int failures = 0;
+  core::LifeConfig config;
+  config.school_type = core::UnitTypeId{0};
+  config.reading_hut_type = core::UnitTypeId{1};
+  config.teacher_post = core::ProfessionId{0};
+  config.librarian_post = core::ProfessionId{1};
+  config.definitions.units.is_housing = {0, 0, 1};
+  config.teacher_pupils_per_teacher = 30.0F;
+  config.specialist_delivery_days = 2.0F;
+
+  core::WorldState world;
+  world.world_seed = 5;
+  world.rng = core::SeedRngState(5, 0);
+  core::UnitRow school;
+  school.type = core::UnitTypeId{0};
+  school.level = 1;
+  const core::UnitId school_id = AppendRow(world.units, school);
+  core::UnitRow hut;
+  hut.type = core::UnitTypeId{1};
+  hut.level = 0;  // a site, not a reading hut yet (a row's level defaults to 1)
+  const core::UnitId hut_id = AppendRow(world.units, hut);
+  core::UnitRow house;
+  house.type = core::UnitTypeId{2};
+  house.level = 1;
+  AppendRow(world.units, house);
+  AppendRow(world.units, house);
+  const core::FamilyId kids_yard = AppendRow(world.families, core::FamilyRow{});
+  for (int child = 0; child < 31; ++child) {
+    core::ResidentRow pupil;
+    pupil.family = kids_yard;
+    pupil.birth_day = -96;  // eight biological years at speedup 4 on day 0
+    AppendRow(world.residents, pupil);
+  }
+  const auto day = [&world](std::uint32_t number) {
+    world.calendar.tick = number * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.step_events.clear();
+  };
+  const auto count_events = [&world](core::EventKind kind) {
+    std::uint32_t count = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      count += event.kind == kind ? 1U : 0U;
+    }
+    return count;
+  };
+  const auto teachers = [&world, school_id]() {
+    std::uint32_t count = 0;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      count += resident.post.profession.value == 0 && resident.post.unit.value == school_id.value
+                   ? 1U
+                   : 0U;
+    }
+    return count;
+  };
+
+  // -- the first day of a month: one teacher is sent -------------------------
+  day(0);
+  core::RunSpecialistArrivals(config, world);
+  failures +=
+      Expect(world.specialist_arrivals.rows.size() == 1 &&
+                 world.specialist_arrivals.rows[0].profession.value == 0 &&
+                 world.specialist_arrivals.rows[0].unit.value == school_id.value &&
+                 world.specialist_arrivals.rows[0].arrive_day == 2,
+             "specialists: a school short of its norm is sent one teacher, due in two days");
+  failures += Expect(count_events(core::EventKind::kSpecialistNoHousing) == 0,
+                     "specialists: and nobody is refused while a house stands free");
+  // -- not a month's first day: nothing new, nobody arrives early -----------
+  day(1);
+  core::RunSpecialistArrivals(config, world);
+  failures += Expect(world.specialist_arrivals.rows.size() == 1 && teachers() == 0,
+                     "specialists: the day between neither sends nor delivers");
+  // -- the day he is due: he arrives, housed and appointed ------------------
+  day(2);
+  core::RunSpecialistArrivals(config, world);
+  failures += Expect(world.specialist_arrivals.rows.empty() && teachers() == 1 &&
+                         count_events(core::EventKind::kSpecialistArrived) == 1,
+                     "specialists: on his day the teacher arrives, holding his post at the school");
+  const core::ResidentRow& teacher = world.residents.rows.back();
+  const float age = core::BiologicalAgeYears(config.life_speedup, teacher.birth_day, 2);
+  const std::uint32_t home = FindRow(world.units, world.families.rows.back().house);
+  failures +=
+      Expect(teacher.education_stage == core::EducationStage::kVocational && age >= 20.0F &&
+                 age <= 30.0F && home != core::kNoRow &&
+                 world.units.rows[home].household.value == teacher.family.value,
+             "specialists: vocational, twenty to thirty, a household of one in a free house");
+  // -- the next month: the second teacher the norm owes ---------------------
+  day(4);
+  core::RunSpecialistArrivals(config, world);
+  failures += Expect(world.specialist_arrivals.rows.size() == 1,
+                     "specialists: a month later the norm's second teacher is sent");
+  day(6);
+  core::RunSpecialistArrivals(config, world);
+  failures += Expect(teachers() == 2, "specialists: and arrives");
+  // -- a reading hut stands and no house is free: the month passes, said ----
+  world.units.rows[FindRow(world.units, hut_id)].level = 1;
+  day(8);
+  core::RunSpecialistArrivals(config, world);
+  failures += Expect(world.specialist_arrivals.rows.empty() &&
+                         count_events(core::EventKind::kSpecialistNoHousing) == 1 &&
+                         world.step_events.back().unit.value == hut_id.value &&
+                         world.step_events.back().amount == 1,
+                     "specialists: a librarian owed with no free house is not sent, and the "
+                     "village is told which unit and which post");
+  // -- a teacher enough: the norm is met, nobody more ------------------------
+  failures += Expect(teachers() == 2, "specialists: two teachers for thirty-one pupils, no third");
+  // -- Epoch II: the district wants points, nobody is sent (STUB) ------------
+  world.epoch = core::Epoch::kTwo;
+  world.units.rows.back().household = core::FamilyId{};  // a house frees up
+  day(12);
+  core::RunSpecialistArrivals(config, world);
+  failures += Expect(world.specialist_arrivals.rows.empty() && world.step_events.empty(),
+                     "specialists: after Epoch I the district sends nobody for free");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckTheDistrictSendsSpecialists();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckHeightNeverChoosesASpouse();
   const test::FakeTableSet tables;  // canonical defaults compiled into the config

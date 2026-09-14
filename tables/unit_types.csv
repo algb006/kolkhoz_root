@@ -114,7 +114,7 @@ old_house,Старый дом,housing,1,0,0,start,,1,25,,,absorbed,1,,1,none,,1,
 wooden_house,Деревянный дом,housing,1,0,1,era,,1,25,,,absorbed,1,,1,none,,1,
 brick_house,Кирпичный дом,housing,2,0,1,era,,1,30,,,absorbed,1,,1,none,,1,
 barrack,Барак,housing,1,0,1,era,,1,25,,,absorbed,1,,1,none,,0,
-specialist_dorm,Общежитие специалистов,housing,2,0,1,era,,1,30,,,absorbed,1,,1,none,,0,
+specialist_dorm,Общежитие специалистов,housing,1,0,1,era,,1,30,,,absorbed,1,,1,none,,0,
 builder_dorm,Общежитие строителей,housing,2,0,1,era,,1,30,,,absorbed,1,,1,none,,0,build_yard
 visitor_dorm,Общежитие для приезжих,housing,2,0,1,era,,1,30,,,absorbed,1,,1,none,,0,
 fire_post,Пожарный пост,service,2,0,1,era,,1,45,,,absorbed,1,,1,none,,0,

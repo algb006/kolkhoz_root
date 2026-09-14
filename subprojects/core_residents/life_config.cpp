@@ -278,7 +278,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 14> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 15> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -298,8 +298,11 @@ constexpr std::array<std::string_view, 14> kLifeWorldParamKeys = {
     "age_school_junior_from_years",
     "age_school_senior_from_years",
     "age_adult_from_years",
-    // The district's teacher norm (2026-09-14), for the specialist's arrival.
-    "teacher_pupils_per_teacher"};
+    // The district's teacher norm and its cart (2026-09-14), for the
+    // specialist's arrival. The cart's days are the limit's too; both modules
+    // read the one row.
+    "teacher_pupils_per_teacher",
+    "limit_delivery_days"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
@@ -344,7 +347,10 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 30.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[13],
                  .value = &config.teacher_pupils_per_teacher,
-                 .range = Range{.low = 1.0F, .high = 200.0F}}};
+                 .range = Range{.low = 1.0F, .high = 200.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[14],
+                 .value = &config.specialist_delivery_days,
+                 .range = Range{.low = 0.0F, .high = 48.0F}}};
   return ReadKnobs(world, "world_params", rows, error);
 }
 
@@ -376,6 +382,14 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     // the path it was meant to keep the cast off. It was right by accident
     // on the not-found path and pure ceremony on the other.
     config.house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("wooden_house"));
+    config.school_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("school"));
+    config.reading_hut_type =
+        DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("culture_house"));
+  }
+  if (const ITable* professions = tables.FindTable("professions")) {
+    config.teacher_post =
+        DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("primary_teacher"));
+    config.librarian_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("librarian"));
   }
   return true;
 }

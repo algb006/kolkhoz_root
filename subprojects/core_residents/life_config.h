@@ -118,11 +118,21 @@ struct LifeConfig {
 
   /// Pupils one teacher takes (world_params.csv teacher_pupils_per_teacher;
   /// education design, "Эпоха I числами"): the norm by which the district
-  /// finds a school short of teachers and sends one (boss, parcel 237).
-  /// STUB, read and unused: the specialist's arrival that asks it is the next
-  /// move, and the key had to be the core's before the export reached the
-  /// tree, or every table load refused it.
+  /// finds a school short of teachers and sends one (specialist_arrival.h).
   float teacher_pupils_per_teacher = 30.0F;
+
+  /// Days the district's cart takes (world_params.csv limit_delivery_days,
+  /// shared with the limit's carts): a specialist comes as the goods do.
+  float specialist_delivery_days = 2.0F;
+
+  /// The school and the reading hut (unit_types.csv `school`,
+  /// `culture_house`), and the posts the district fills there
+  /// (professions.csv `primary_teacher`, `librarian`). Invalid in a table-less
+  /// world, and then the district sends nobody.
+  UnitTypeId school_type;
+  UnitTypeId reading_hut_type;
+  ProfessionId teacher_post;
+  ProfessionId librarian_post;
 
   /// unit_types.csv "wooden_house" row: what the wedding STUB builds
   /// (invalid in a table-less world — the unit is appended with an invalid
