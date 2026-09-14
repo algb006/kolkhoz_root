@@ -54,6 +54,9 @@ class HousePolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
+  /// @brief How many house sites may stand marked or going up at once.
+  void SetSitesAtOnce(std::uint32_t sites) { sites_at_once_ = sites; }
+
   /// @brief One day of the chairman's attention. Call once a day.
   /// @param farm_first No house starts today: the farm's own shortage — a
   /// store for the harvest or a roof for the herds — has a site waiting for
@@ -118,7 +121,7 @@ class HousePolicy {
     }
     const auto wanted =
         static_cast<std::uint32_t>(world.wedding_waits.rows.size()) + roofless + rotting;
-    if (wanted > free_houses + sites && sites < kSitesAtOnce && cooldown_ == 0) {
+    if (wanted > free_houses + sites && sites < sites_at_once_ && cooldown_ == 0) {
       core::OrderRow mark;
       mark.kind = core::OrderKind::kBuildUnit;
       mark.unit_type = house_;
@@ -180,8 +183,9 @@ class HousePolicy {
  private:
   /// Sites going up at once. A chairman does not put the whole village on
   /// house building; three sites is a brigade each, and the queue still
-  /// shortens while the fields are worked.
-  static constexpr std::uint32_t kSitesAtOnce = 3;
+  /// shortens while the fields are worked. P2 (boss, parcel 314) measures six,
+  /// and only together with the saw's board reserve.
+  std::uint32_t sites_at_once_ = 3;
 
   static constexpr std::uint32_t kCooldownDays = 2;
 

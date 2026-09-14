@@ -87,6 +87,13 @@ bool g_free_materials = false;
 /// the canonical set, so no gate binds on a doctored table set.
 std::string g_tables_dir = "tables";
 
+/// `--saw-reserve` and `--house-sites=<n>`: the chairman's arms P1 and P2 of
+/// boss's parcel 314 — the saw keeps boards in hand for a granary and three
+/// houses, and up to n house sites stand at once. Measurement arms; like
+/// --free-materials they take the run out of the canonical configuration.
+bool g_saw_reserve = false;
+std::uint32_t g_house_sites = 3;
+
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
 
@@ -350,6 +357,13 @@ int main(int argc, char** argv) {
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
     g_free_materials = g_free_materials || argument == "--free-materials";
+    g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
+    if (argument.starts_with("--house-sites=")) {
+      g_house_sites = static_cast<std::uint32_t>(std::strtoul(
+          std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
+          nullptr,
+          10));
+    }
     if (argument.starts_with("--tables=")) {
       g_tables_dir = std::string(argument.substr(std::string_view("--tables=").size()));
     }
@@ -358,8 +372,8 @@ int main(int argc, char** argv) {
   // for thirty years of one seed says nothing about five years of another,
   // and a check that fires there would be measuring the argument rather than
   // the simulation.
-  g_canonical_run =
-      g_seed == kSeed && g_years == kYears && !g_free_materials && g_tables_dir == "tables";
+  g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
+                    g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3;
   run::Simulation world = run::Start(g_seed, 1, g_tables_dir);
   if (!world) {
     return 1;
@@ -480,6 +494,8 @@ int main(int argc, char** argv) {
   // The boards the sawmill is built of go to nobody else until it stands
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
+  sawmill.KeepBoardReserve(g_saw_reserve);
+  houses.SetSitesAtOnce(g_house_sites);
   run::TimberChainTally timber_chain(*world.tables);
   // What the sites stood on in the first fourteen years (boss, parcel 312).
   run::BrakesTally brakes(*world.tables);

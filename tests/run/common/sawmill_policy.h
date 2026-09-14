@@ -62,6 +62,7 @@ class SawmillPolicy {
     const bool parsed = core::ParseTimberCatalog(tables, catalog_, error);
     yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "utility_yard");
     granary_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "granary");
+    house_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "wooden_house");
     craftsman_post_ = RowId<core::ProfessionIdTag>(tables, "professions", "farm_craftsman");
     adult_age_years_ = Knob(tables, "life", "adult_age_years", 16.0F);
     life_speedup_ = Knob(tables, "life", "life_speedup", 4.0F);
@@ -216,9 +217,27 @@ class SawmillPolicy {
     // and both waited: 21 pauses in thirty years on seed 1929 with three house
     // sites short of boards. The logs are the felling's to bring
     // (felling_policy.h), sized to the sites and the saw together.
-    const core::Grams board_need = QueueNeed(world, catalog_.board_resource);
+    const core::Grams board_need = BoardTarget(world);
     return board_need > 0 && Held(world, catalog_.board_resource) < board_need &&
            Held(world, catalog_.log_resource) > 0;
+  }
+
+  /// @brief P1, "the saw with a reserve" (boss, parcel 314): the chairman keeps
+  /// boards in hand for one granary and three houses by the current recipes,
+  /// not only for the sites already marked. Off unless a run asks for it.
+  void KeepBoardReserve(bool keep) { keep_reserve_ = keep; }
+
+  /// @brief The boards the saw works towards: the marked queue's need, or with
+  /// the reserve on, at least one granary's and three houses' boards — read off
+  /// the recipes, so a cheaper house or granary moves the reserve with it.
+  core::Grams BoardTarget(const core::WorldState& world) const {
+    const core::Grams queue = QueueNeed(world, catalog_.board_resource);
+    if (!keep_reserve_) {
+      return queue;
+    }
+    const core::Grams reserve = CostGrams(granary_type_, 1, catalog_.board_resource) +
+                                (3 * CostGrams(house_type_, 1, catalog_.board_resource));
+    return queue > reserve ? queue : reserve;
   }
 
   /// @brief Whether a site of `type` may start its `level` without taking the
@@ -253,8 +272,7 @@ class SawmillPolicy {
   /// @brief The logs the queue's missing boards would take at the saw, grams:
   /// what the felling must bring for the saw on top of the sites' own logs.
   core::Grams LogsForMissingBoards(const core::WorldState& world) const {
-    const core::Grams short_boards =
-        QueueNeed(world, catalog_.board_resource) - Held(world, catalog_.board_resource);
+    const core::Grams short_boards = BoardTarget(world) - Held(world, catalog_.board_resource);
     if (short_boards <= 0 || catalog_.board_grams_per_m3 <= 0) {
       return 0;
     }
@@ -527,6 +545,10 @@ class SawmillPolicy {
   core::Definitions definitions_;
   core::UnitTypeId yard_type_;
   core::UnitTypeId granary_type_;
+
+  core::UnitTypeId house_type_;
+
+  bool keep_reserve_ = false;
   core::ProfessionId craftsman_post_;
   float adult_age_years_ = 16.0F;
   float life_speedup_ = 4.0F;
