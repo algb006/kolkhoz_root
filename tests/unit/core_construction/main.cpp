@@ -752,6 +752,15 @@ int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
   old_house.position = core::Vec2{.x = 3100.0F, .y = 4200.0F};
   const core::UnitId doomed = core::AppendRow(world.units, old_house);
   world.families.rows[core::FindRow(world.families, household)].house = doomed;
+  // Two people live in it, and an empty old house falls beside it.
+  for (int member = 0; member < 2; ++member) {
+    core::ResidentRow resident;
+    resident.family = household;
+    core::AppendRow(world.residents, resident);
+  }
+  core::UnitRow empty_house = old_house;
+  empty_house.household = core::FamilyId{};
+  const core::UnitId empty_doomed = core::AppendRow(world.units, empty_house);
 
   Run(*system, world, 0);
   const std::uint32_t ruin_row = core::FindRow(world.units, ruin);
@@ -765,6 +774,22 @@ int TestWearCeilingAndCollapse(const core::ITableSet& tables) {
               (event.kind == core::EventKind::kUnitCollapsed && event.unit.value == doomed.value);
   }
   failures += Expect(said_so, "and it says so, rather than vanishing quietly");
+  // WHOSE HOUSE IT WAS travels on the event, since the row is gone (boss,
+  // parcel 342): the host raises first_occupied_house_collapse off it.
+  bool occupied_named = false;
+  bool empty_named = false;
+  for (const core::SimEvent& event : world.step_events) {
+    if (event.kind != core::EventKind::kUnitCollapsed) {
+      continue;
+    }
+    occupied_named = occupied_named || (event.unit.value == doomed.value &&
+                                        event.family.value == household.value && event.amount == 2);
+    empty_named = empty_named || (event.unit.value == empty_doomed.value &&
+                                  event.family.value == 0 && event.amount == 0);
+  }
+  failures += Expect(occupied_named && empty_named,
+                     "the fall names the family that lived there and its two people, and an "
+                     "empty house's fall names nobody");
   const std::uint32_t family_row = core::FindRow(world.families, household);
   failures += Expect(world.families.rows[family_row].house.value == 0,
                      "the family it sheltered is left pointing at no house, not at a dead id");

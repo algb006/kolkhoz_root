@@ -114,9 +114,14 @@ enum class EventKind : std::uint8_t {
   // -- wear (task A5) ---------------------------------------------------------
   kUnitRepaired,  ///< unit — a repair finished; wear is back at 0.
 
-  /// unit — one of the start's old houses fell at 100 wear (start design
-  /// §4): the id is dead after this step, and its household stands without
-  /// a house until the demography sub-step rehouses it the next day.
+  /// unit, family — one of the start's old houses fell at 100 wear (start
+  /// design §4): the id is dead after this step, and its household stands
+  /// without a house until the demography sub-step rehouses it the next day.
+  /// family = the household that lived in it, invalid for an empty house;
+  /// amount = the residents of that household at the fall, 0 for an empty
+  /// one (2026-09-15, boss parcel 342). CARRIED ON THE EVENT because the unit
+  /// row is gone by the time anyone reads it, and nothing else in the world
+  /// says which family's house it was.
   kUnitCollapsed,
 
   // -- posts (task A7) --------------------------------------------------------

@@ -318,7 +318,16 @@ class ConstructionSystem final : public IConstructionSystem {
       current.families.rows[family_row].house = UnitId{};
       current.families.rows[family_row].lost_house_position = stood_at;
     }
-    Emit(current, EventKind::kUnitCollapsed, EventSeverity::kNotable, unit);
+    SimEvent& fell = EmitEvent(current, EventKind::kUnitCollapsed, EventSeverity::kNotable);
+    fell.unit = unit;
+    if (family_row != kNoRow) {
+      fell.family = household;
+      std::int64_t lived_in = 0;
+      for (const ResidentRow& resident : current.residents.rows) {
+        lived_in += resident.family.value == household.value ? 1 : 0;
+      }
+      fell.amount = lived_in;
+    }
     RemoveRow(current.units, unit);
   }
 
