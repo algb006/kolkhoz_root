@@ -191,6 +191,60 @@ void Run(core::IConstructionSystem& system, core::WorldState& world, std::uint32
   system.RunConstructionDecisions(previous, world);
 }
 
+/// THE START CHECKS THE RECIPE AND NAMES WHAT IS SHORT (construction design
+/// §6; the human's word of 2026-09-14): a start with one line short is refused
+/// kMaterialsShort and leaves the plot as marked; the door names the line with
+/// needed and held; a start with the recipe on hand carries it onto the site at
+/// once, so the stores no longer hold it for anybody else.
+int TestStartChecksTheRecipe(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (!system) {
+    return Expect(false, "the subsystem refused its tables");
+  }
+  core::WorldState world;
+  const core::UnitId store = PlaceStore(world, 6 * kLogGrams);  // a barn takes ten
+  const core::OrderId marked = Issue(world, BuildOrder(kBarnType, 1000.0F, 1000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, marked) == core::OrderRefusal::kNone,
+                     "recipe: a plot is marked whatever the stores hold — marking is not checked");
+  const core::UnitId site = world.units.row_ids.back();
+
+  const std::vector<core::MaterialShortfall> short_lines = system->MaterialsShortFor(world, site);
+  failures +=
+      Expect(short_lines.size() == 1 && short_lines[0].resource.value == 0 &&
+                 short_lines[0].needed == 10 * kLogGrams && short_lines[0].held == 6 * kLogGrams,
+             "recipe: the door names the short line — logs, ten needed, six held");
+
+  const core::OrderId refused = Issue(world, UnitOrder(core::OrderKind::kStartBuild, site));
+  Run(*system, world, 0);
+  const core::UnitRow& waiting = world.units.rows[core::FindRow(world.units, site)];
+  failures +=
+      Expect(RefusalOf(world, refused) == core::OrderRefusal::kMaterialsShort &&
+                 waiting.construction.phase == core::ConstructionPhase::kMarked &&
+                 world.units.rows[core::FindRow(world.units, store)].stock[0] == 6 * kLogGrams,
+             "recipe: the start is refused kMaterialsShort, the plot stays marked, "
+             "and nothing leaves the store");
+
+  world.units.rows[core::FindRow(world.units, store)].stock[0] = 12 * kLogGrams;
+  failures += Expect(system->MaterialsShortFor(world, site).empty(),
+                     "recipe: with twelve logs in the store nothing is short");
+  const core::OrderId started = Issue(world, UnitOrder(core::OrderKind::kStartBuild, site));
+  Run(*system, world, 5);  // not the delivery hour: the reservation is the start's own
+  const core::UnitRow& building = world.units.rows[core::FindRow(world.units, site)];
+  failures +=
+      Expect(RefusalOf(world, started) == core::OrderRefusal::kNone &&
+                 building.construction.phase == core::ConstructionPhase::kBuilding &&
+                 building.stock[0] == 10 * kLogGrams &&
+                 world.units.rows[core::FindRow(world.units, store)].stock[0] == 2 * kLogGrams,
+             "recipe: the start carries the ten logs onto the site at once — the store "
+             "keeps two for anybody else");
+  failures += Expect(system->MaterialsShortFor(world, site).empty(),
+                     "recipe: a started building answers nothing short");
+  return failures;
+}
+
 int TestMarkAndBuild(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
@@ -1730,6 +1784,7 @@ int main() {
   failures += TestABodyKeepsItsMetre(tables);
   failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
+  failures += TestStartChecksTheRecipe(tables);
   failures += TestRefusals(tables);
   failures += TestDemolition(tables);
   failures += TestTableLessWorld();

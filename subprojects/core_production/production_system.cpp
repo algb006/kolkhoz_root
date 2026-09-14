@@ -1054,7 +1054,17 @@ class ProductionSystem final : public IProductionSystem {
     if (row == kNoRow) {
       return OrderRefusal::kNoSuchSubject;
     }
-    if (current.units.rows[row].level == 0) {
+    // A LEVEL-0 ROW IS PAUSED ONLY WHILE WORK GOES ON AT IT: a started
+    // building (materials on the way or labour going in) or a demolition —
+    // construction design §6, the human's word of 2026-09-14, "стройку и снос
+    // можно ставить на паузу". A marked plot is a plan, not work. Until then
+    // every level-0 row was refused. A standing unit under an upgrade has one
+    // flag for both: pausing it stops its production and its upgrade together.
+    const UnitRow& target = current.units.rows[row];
+    const bool work_at_site = target.construction.phase == ConstructionPhase::kDelivering ||
+                              target.construction.phase == ConstructionPhase::kBuilding ||
+                              target.construction.phase == ConstructionPhase::kDemolishing;
+    if (target.level == 0 && !work_at_site) {
       return OrderRefusal::kRuleForbids;
     }
     if (current.units.rows[row].paused == paused) {

@@ -601,7 +601,11 @@ class LaborSystem final : public ILaborSystem {
         const UnitRow& unit = current.units.rows[row];
         // A module whose parent does not stand sound is not built (unit
         // rules §11): its site keeps its seam and nobody is sent to it.
-        if (unit.construction.labor_days_remaining <= 0.0F || !ModuleParentSound(current, unit)) {
+        // A PAUSED building or demolition asks for nobody (construction design
+        // §6): this morning's crew worked out yesterday, and none is sent
+        // today. The share done stays on the seam for the resume.
+        if (unit.construction.labor_days_remaining <= 0.0F || !ModuleParentSound(current, unit) ||
+            unit.paused != 0) {
           continue;
         }
         AssignmentJob job;

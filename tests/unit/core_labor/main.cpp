@@ -2037,6 +2037,45 @@ int TestDiggersGoToAMarkedSite() {
   return failures;
 }
 
+/// A PAUSED BUILDING ASKS FOR NOBODY (construction design §6; the human's word
+/// of 2026-09-14): the same site draws the accountant's crew unpaused and no
+/// one paused, its seam untouched.
+int TestAPausedSiteDrawsNoCrew() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  const auto labor = core::CreateLaborSystem(nothing, core::StubTables::kAllowed);
+  const auto crew_on = [&labor](std::uint8_t paused) {
+    DayWorld day(3);
+    core::UnitRow site;
+    site.level = 0;
+    site.position = core::Vec2{.x = 40.0F, .y = 0.0F};
+    site.construction.phase = core::ConstructionPhase::kBuilding;
+    site.construction.labor_days_remaining = 10.0F;
+    site.construction.max_crew = 5;
+    site.paused = paused;
+    core::AppendRow(day.world.units, site);
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    std::uint32_t builders = 0;
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      builders += resident.work.kind == core::WorkKind::kConstruction ? 1U : 0U;
+    }
+    return std::pair<std::uint32_t, float>{
+        builders, day.world.units.rows.back().construction.labor_days_remaining};
+  };
+  const auto [working, worked_seam] = crew_on(0);
+  const auto [resting, kept_seam] = crew_on(1);
+  failures += Expect(labor != nullptr && working > 0 && worked_seam < 10.0F,
+                     "pause: an unpaused building draws a crew and its seam goes down");
+  failures += Expect(resting == 0 && kept_seam == 10.0F,
+                     "pause: a paused building draws nobody and keeps its share done");
+  return failures;
+}
+
 int TestLandThatCannotCarryTheWork() {
   int failures = 0;
   DayWorld day(4);
@@ -2152,6 +2191,7 @@ int main() {
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestDiggersGoToAMarkedSite();
+  failures += TestAPausedSiteDrawsNoCrew();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();

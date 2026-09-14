@@ -3372,7 +3372,17 @@ int CheckPauseAndResume() {
   core::UnitRow site;
   site.type = core::UnitTypeId{0};
   site.level = 0;  // pegs and string: there is no production here to stop
+  site.construction.phase = core::ConstructionPhase::kMarked;
   const core::UnitId site_id = core::AppendRow(world.units, site);
+  // A STARTED BUILDING AND A DEMOLITION ARE PAUSED (construction design §6;
+  // the human's word of 2026-09-14): work goes on at both, and a level-0 row
+  // was refused whatever it was until then.
+  core::UnitRow building = site;
+  building.construction.phase = core::ConstructionPhase::kBuilding;
+  const core::UnitId building_id = core::AppendRow(world.units, building);
+  core::UnitRow taking_down = site;
+  taking_down.construction.phase = core::ConstructionPhase::kDemolishing;
+  const core::UnitId taking_down_id = core::AppendRow(world.units, taking_down);
 
   const auto give = [&world](core::OrderKind kind, core::UnitId unit) {
     core::OrderRow row;
@@ -3384,6 +3394,8 @@ int CheckPauseAndResume() {
   const core::OrderId stop = give(core::OrderKind::kPauseUnit, barn_id);
   const core::OrderId on_site = give(core::OrderKind::kPauseUnit, site_id);
   const core::OrderId nowhere = give(core::OrderKind::kPauseUnit, core::UnitId{99});
+  const core::OrderId pause_building = give(core::OrderKind::kPauseUnit, building_id);
+  const core::OrderId pause_demolition = give(core::OrderKind::kPauseUnit, taking_down_id);
 
   const core::WorldState before = world;
   system->RunProductionDecisions(before, world);
@@ -3400,6 +3412,12 @@ int CheckPauseAndResume() {
                      "the unit is stopped in the step the order is read");
   failures += Expect(refusal(on_site) == core::OrderRefusal::kRuleForbids,
                      "a marked site has no production to stop");
+  failures += Expect(status(pause_building) == core::OrderStatus::kDone &&
+                         world.units.rows[core::FindRow(world.units, building_id)].paused != 0,
+                     "a started building is paused");
+  failures += Expect(status(pause_demolition) == core::OrderStatus::kDone &&
+                         world.units.rows[core::FindRow(world.units, taking_down_id)].paused != 0,
+                     "and so is a demolition");
   failures += Expect(refusal(nowhere) == core::OrderRefusal::kNoSuchSubject,
                      "and a unit that does not exist is refused for the unit");
 

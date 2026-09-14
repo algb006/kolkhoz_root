@@ -88,10 +88,25 @@ class ConstructionSystem final : public IConstructionSystem {
     return core::WearDeadline(config_, completed, unit);
   }
 
-  /// STUB until the recipe check of construction design §6 lands: the
-  /// contract's answer shape, nothing short.
-  std::vector<MaterialShortfall> MaterialsShortFor(const WorldState& /*completed*/,
-                                                   UnitId /*unit*/) const override {
+  /// The works a start would open: a marked site's own target level, or a
+  /// standing unit's next rung (construction design §6). Anything already
+  /// under way, a repair among it, has its materials reserved and answers
+  /// nothing short.
+  std::vector<MaterialShortfall> MaterialsShortFor(const WorldState& completed,
+                                                   UnitId unit) const override {
+    const std::uint32_t row = FindRow(completed.units, unit);
+    if (row == kNoRow) {
+      return {};
+    }
+    const UnitRow& site = completed.units.rows[row];
+    if (site.construction.phase == ConstructionPhase::kMarked) {
+      return ShortfallOf(completed, row, site.construction.target_level);
+    }
+    if (site.construction.phase == ConstructionPhase::kNone && site.level > 0 &&
+        site.type.value < config_.types.size() &&
+        static_cast<std::size_t>(site.level) < config_.types[site.type.value].levels.size()) {
+      return ShortfallOf(completed, row, static_cast<std::uint8_t>(site.level + 1U));
+    }
     return {};
   }
 
@@ -457,8 +472,50 @@ class ConstructionSystem final : public IConstructionSystem {
     if (!ModuleParentSound(current, site)) {
       return OrderRefusal::kNoParent;
     }
+    if (!ShortfallOf(current, row, site.construction.target_level).empty()) {
+      return OrderRefusal::kMaterialsShort;
+    }
     OpenWorks(current, unit, site, site.construction.target_level);
+    ReserveRecipe(current, row);
     return OrderRefusal::kNone;
+  }
+
+  /// @brief What the village lacks of the recipe of `level` for the site in
+  /// `row`: held = the site's own stock + every other built unit's stock (the
+  /// stores and the heaps, the reach TakeFromStores draws on). Lines where
+  /// held < needed only (construction design §6).
+  std::vector<MaterialShortfall> ShortfallOf(const WorldState& world,
+                                             std::uint32_t row,
+                                             std::uint8_t level) const {
+    std::vector<MaterialShortfall> short_lines;
+    const BuildLevel* const step = LevelOf(world.units.rows[row].type, level);
+    if (step == nullptr || step->is_marking != 0) {
+      return short_lines;
+    }
+    for (const BuildMaterial& material : step->recipe) {
+      Grams held = AmountAt(world.units.rows[row].stock, material.resource);
+      for (std::uint32_t other = 0; other < world.units.rows.size(); ++other) {
+        if (other != row && world.units.rows[other].level > 0) {
+          held += AmountAt(world.units.rows[other].stock, material.resource);
+        }
+      }
+      if (held < material.grams) {
+        short_lines.push_back(MaterialShortfall{
+            .resource = material.resource, .needed = material.grams, .held = held});
+      }
+    }
+    return short_lines;
+  }
+
+  /// @brief THE MATERIALS BECOME THE SITE'S AT THE START (construction design
+  /// §6; boss's reading, parcel 288): the checked recipe is carried onto the
+  /// site the same tick, so no saw, no other building and no issue takes it —
+  /// a level-0 row stores nothing for anybody, and TakeFromStores never draws
+  /// on a site. Without it the check would guarantee nothing a day later.
+  void ReserveRecipe(WorldState& current, std::uint32_t row) {
+    if (current.units.rows[row].construction.phase == ConstructionPhase::kDelivering) {
+      DeliverSite(current, row);
+    }
   }
 
   /// A step up the ladder. No marking: the plot is already taken, and the
@@ -488,7 +545,11 @@ class ConstructionSystem final : public IConstructionSystem {
     if (type.levels[next - 1].era > static_cast<std::uint8_t>(current.epoch)) {
       return OrderRefusal::kGateClosed;
     }
+    if (!ShortfallOf(current, row, static_cast<std::uint8_t>(next)).empty()) {
+      return OrderRefusal::kMaterialsShort;
+    }
     OpenWorks(current, unit, site, static_cast<std::uint8_t>(next));
+    ReserveRecipe(current, row);
     return OrderRefusal::kNone;
   }
 
@@ -593,23 +654,33 @@ class ConstructionSystem final : public IConstructionSystem {
       }
       // A module is not built while its parent does not stand sound (unit
       // rules §11): nothing is carried to it either, so no material is locked
-      // in a site that cannot move.
-      if (!ModuleParentSound(current, current.units.rows[row])) {
+      // in a site that cannot move. And nothing is carried to a PAUSED
+      // building (construction design §6).
+      if (!ModuleParentSound(current, current.units.rows[row]) ||
+          current.units.rows[row].paused != 0) {
         continue;
       }
+      DeliverSite(current, row);
+    }
+  }
+
+  /// @brief One site's delivery: what its recipe (or a repair's parts) still
+  /// lacks is taken from the stores, and at the full recipe the labour opens.
+  void DeliverSite(WorldState& current, std::uint32_t row) {
+    {
       // A REPAIR asks for spare parts and nothing else (construction design
       // §2), so its "recipe" is one line computed from the frozen norm — the
       // level's own recipe would rebuild the barn instead of mending it.
       if (current.units.rows[row].construction.target_level == current.units.rows[row].level &&
           current.units.rows[row].level > 0) {
         DeliverRepairParts(current, row);
-        continue;
+        return;
       }
       const UnitTypeId type = current.units.rows[row].type;
       const std::uint8_t level = current.units.rows[row].construction.target_level;
       const BuildLevel* const step = LevelOf(type, level);
       if (step == nullptr) {
-        continue;
+        return;
       }
       bool complete = true;
       for (const BuildMaterial& material : step->recipe) {

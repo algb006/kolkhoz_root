@@ -181,15 +181,19 @@ enum class OrderKind : std::uint8_t {
   /// START the works on a marked site (`unit`): construction design §6 —
   /// "the works begin only on the chairman's command", never by themselves
   /// when materials appear. Refused with kRuleForbids unless the unit is
-  /// kMarked. Consumer: core_construction.
+  /// kMarked; kMaterialsShort when a line of the recipe is not in the village
+  /// in full (construction design §6). Started, the recipe is carried onto the
+  /// site the same tick and is the site's from then on. Consumer:
+  /// core_construction.
   kStartBuild,
 
   /// Raise `unit` to its next level (unit rules §11). No marking phase — the
   /// plot is already there — so the site starts delivering at once. The
   /// unit keeps working at its current level meanwhile. Refused with
   /// kRuleForbids at the top of the ladder or while another site is in
-  /// progress on it, kGateClosed when the next level's era has not come.
-  /// Consumer: core_construction.
+  /// progress on it, kGateClosed when the next level's era has not come,
+  /// kMaterialsShort when the next level's recipe is not in the village in
+  /// full (kStartBuild's rule). Consumer: core_construction.
   kUpgradeUnit,
 
   /// Repair a standing unit (task A5; construction design §11, unit rules
