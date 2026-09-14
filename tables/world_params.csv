@@ -109,3 +109,11 @@ night_hunt_reach_max_m,2500,core
 night_fishing_catch_kg,3,core
 night_hunt_catch_kg,5,core
 night_hunt_success_chance,0.3,core
+school_enroll_age_from_years,6.5,core
+school_enroll_age_to_years,11,core
+school_walk_radius_primary_m,1500,core
+school_pupil_capacity_level_1,40,core
+school_pupil_capacity_level_2,60,core
+school_pupil_capacity_level_3,80,core
+school_year_start_month,9,core
+school_year_end_month,6,core
