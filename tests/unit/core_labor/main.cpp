@@ -2037,6 +2037,43 @@ int TestDiggersGoToAMarkedSite() {
   return failures;
 }
 
+/// THE FELLING BRIGADE RIDES (time design §7, timber design §8a; boss, parcel
+/// 308): a stand 3 km out is 7.2 hours on foot, past the 4-hour road limit,
+/// and 3 hours on the carts. The fellers are sent there, AND their working day
+/// is measured by the same ride — asked two ways, they would be sent and then
+/// walk it with no day left.
+int TestFellersRideOut() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  const auto labor = core::CreateLaborSystem(nothing, core::StubTables::kAllowed);
+  DayWorld day(2);
+  core::TimberStandRow stand;
+  stand.position = core::Vec2{.x = 3000.0F, .y = 0.0F};
+  stand.stock_m3 = 100.0F;
+  stand.marked_m3 = 100.0F;
+  stand.work_days_remaining = 5.0F;
+  const core::TimberStandId stand_id = core::AppendRow(day.world.stands, stand);
+  // A Wednesday, to noon: the day's crew is read while it stands, not after
+  // the evening settles it.
+  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+    day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  }
+  std::uint32_t fellers = 0;
+  for (const core::ResidentRow& resident : day.world.residents.rows) {
+    fellers += resident.work.kind == core::WorkKind::kFelling &&
+                       resident.work.stand.value == stand_id.value
+                   ? 1U
+                   : 0U;
+  }
+  failures += Expect(fellers == 2, "felling rides: both adults are sent to a stand 3 km out");
+  failures += Expect(day.world.stands.rows[0].work_days_remaining < 5.0F,
+                     "felling rides: and they fell there, their day measured by the ride");
+  return failures;
+}
+
 /// A PAUSED BUILDING ASKS FOR NOBODY (construction design §6; the human's word
 /// of 2026-09-14): the same site draws the accountant's crew unpaused and no
 /// one paused, its seam untouched.
@@ -2192,6 +2229,7 @@ int main() {
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();
+  failures += TestFellersRideOut();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();

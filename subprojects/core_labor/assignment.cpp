@@ -256,11 +256,11 @@ bool ConsiderCandidate(const AssignmentJob& job,
     return false;  // The start-canon lock: only horse works may take him.
   }
   // One shoulder, two uses (decision 103): the same travel decides whether
-  // he may be sent at all and how much of his day is left to work.
-  const float travel =
-      TravelHours(candidate.home,
-                  job.position,
-                  horse_work ? params.harness_hours_per_km : params.walk_hours_per_km);
+  // he may be sent at all and how much of his day is left to work. Felling
+  // rides without being horse work (RidesOut; parcel 308).
+  const bool rides = horse_work || RidesOut(job.kind);
+  const float travel = TravelHours(
+      candidate.home, job.position, rides ? params.harness_hours_per_km : params.walk_hours_per_km);
   if (travel > params.travel_limit_hours) {
     return false;  // The road limit is a game rule, not accountant quality.
   }

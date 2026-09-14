@@ -58,7 +58,7 @@ float AgeFactor(const EfficiencyFactors& factors, float age_years, float aging_f
 }  // namespace
 
 float HoursPerKm(const LaborConfig& config, WorkKind kind) {
-  const float real_speed = IsHorseWork(kind) ? config.harness_speed_kmh : config.walk_speed_kmh;
+  const float real_speed = RidesOut(kind) ? config.harness_speed_kmh : config.walk_speed_kmh;
   const float game_speed_kmh = real_speed / static_cast<float>(kClockScale);
   if (!(game_speed_kmh > 0.0F)) {
     return 0.0F;  // A malformed speed cannot pass parsing; be harmless anyway.

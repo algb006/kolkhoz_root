@@ -3619,6 +3619,65 @@ int CheckTheReapingGate() {
   return failures;
 }
 
+/// kFellingUnreachable (boss, parcel 308): a stand marked for felling that the
+/// brigade's ride from the nearest lived-in house does not reach — past the
+/// road limit, or with no daylight left after the ride there and back — is
+/// named; a near one, an unmarked one and an empty house are not.
+int CheckFellingUnreachable() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.harness_speed_kmh = 12.0F;  // one game hour a kilometre
+  config.travel_limit_hours = 4.0F;
+  config.min_usable_hours = 1.0F;
+  core::WorldState world;
+  world.weather.daylight_hours = 12.0F;
+  core::UnitRow house;
+  house.level = 1;
+  house.household = core::FamilyId{1};
+  core::AppendRow(world.units, house);
+  core::UnitRow empty_house;  // right beside the far stand, and nobody lives in it
+  empty_house.level = 1;
+  empty_house.position = core::Vec2{.x = 4400.0F, .y = 0.0F};
+  core::AppendRow(world.units, empty_house);
+  const auto stand_at = [&world](float x, float marked) {
+    core::TimberStandRow stand;
+    stand.position = core::Vec2{.x = x, .y = 0.0F};
+    stand.stock_m3 = 100.0F;
+    stand.marked_m3 = marked;
+    stand.work_days_remaining = marked > 0.0F ? 1.0F : 0.0F;
+    return core::AppendRow(world.stands, stand);
+  };
+  const core::TimberStandId near = stand_at(2000.0F, 10.0F);
+  const core::TimberStandId far = stand_at(4500.0F, 10.0F);
+  stand_at(6000.0F, 0.0F);  // far and unmarked: nothing asked of anybody
+  const core::TimberStandId edge = stand_at(3500.0F, 10.0F);
+
+  const auto named = [](const std::vector<core::Alarm>& alarms, core::TimberStandId stand) {
+    std::int64_t hours = -1;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kFellingUnreachable && alarm.stand.value == stand.value) {
+        hours = alarm.amount;
+      }
+    }
+    return hours;
+  };
+  std::vector<core::Alarm> summer;
+  core::CollectTimberAlarms(config, world, summer);
+  failures += Expect(summer.size() == 1 && named(summer, far) == 4,
+                     "felling out of reach: in summer only the stand 4.5 km out is named, with "
+                     "its ride of 4 hours — not the near one, not the unmarked one, and the empty "
+                     "house beside it is nobody's road");
+  failures += Expect(named(summer, near) < 0 && named(summer, edge) < 0,
+                     "felling out of reach: 2 and 3.5 hours of ride fit a summer day");
+  world.weather.daylight_hours = 7.0F;
+  std::vector<core::Alarm> winter;
+  core::CollectTimberAlarms(config, world, winter);
+  failures += Expect(named(winter, edge) == 3 && named(winter, near) < 0,
+                     "felling out of reach: in a 7-hour winter day 3.5 hours there and back "
+                     "leave nothing, and the stand is named; the near one is not");
+  return failures;
+}
+
 /// Felling (timber design §8a, 2026-09-13): the mark, its refusals, the logs
 /// laid down when the crew is done, and the old forest's ceiling.
 int CheckFelling() {
@@ -4304,6 +4363,7 @@ int main() {
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
+  failures += CheckFellingUnreachable();
   failures += CheckExtraction();
   failures += CheckSawing();
   failures += CheckAnUpgradesRecipeIsNobodysElse();

@@ -263,6 +263,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectFieldAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);
     CollectPlanAlarms(config_, completed, alarms);
+    CollectTimberAlarms(config_, completed, alarms);
   }
 
  private:

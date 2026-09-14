@@ -114,6 +114,27 @@ constexpr bool IsHorseWork(WorkKind kind) {
   return kind == WorkKind::kPlowing || kind == WorkKind::kHarrowing;
 }
 
+/// @brief True for kinds whose road to work is measured at HARNESS speed for
+/// the whole brigade, whether or not a horse is free for each worker (time
+/// design §7, "Какая работа едет, а какая идёт"). The horse works ride; so
+/// does felling, which goes out on the carts that will cart the logs (timber
+/// design §8a; boss, parcel 308). It takes no horse out of the day's pool —
+/// "едет не значит лошадь каждому".
+///
+/// ONE ANSWER FOR THE REACH AND FOR THE WORKING DAY. The assignment decides
+/// who may be sent by this road and the labour hour decides how much of the
+/// day is left after it; asked two different ways, a feller would be sent
+/// three kilometres out by the ride and then walk it, with no day left
+/// (time design §7: "Порог и норма считают одно и то же плечо").
+///
+/// The meadow cut rides in the assignment (AssignmentJob::harnessed) and still
+/// walks in the labour hour — a gap older than this function, named here
+/// rather than closed in passing because closing it moves the hay; it is put
+/// to boss with the felling commit.
+constexpr bool RidesOut(WorkKind kind) {
+  return IsHorseWork(kind) || kind == WorkKind::kFelling;
+}
+
 /// @brief How many of the settlement's people can be put to work, and how
 /// many of those are standing about — the two numbers behind the HUD's red
 /// "idle" count (task A8, asked for by `ue` through boss).

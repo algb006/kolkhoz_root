@@ -21,15 +21,18 @@
 #ifndef TESTS_RUN_COMMON_FELLING_POLICY_H_
 #define TESTS_RUN_COMMON_FELLING_POLICY_H_
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core_catalog/timber_catalog.h"
+#include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
@@ -49,6 +52,9 @@ class FellingPolicy {
              !catalog_.stands.empty();
     granary_logs_ = GranaryLogs(tables);
     logs_by_type_ = FirstLevelLogs(tables);
+    ride_hours_per_km_ = static_cast<float>(core::kClockScale) /
+                         Cell(tables, "transport", "horse_trot", "speed_kmh", 12.0F);
+    ride_limit_hours_ = Cell(tables, "labor", "travel_limit_hours", "value", 4.0F);
   }
 
   /// @brief The fixture difference, in words, for the run to print BEFORE it
@@ -223,6 +229,36 @@ class FellingPolicy {
 
   /// @param logs How many logs the mark is for: one granary's, or what the
   ///        village and its sites are short of when that is more.
+  /// Hours of the ride, one way, from the nearest lived-in house, at the
+  /// labour model's harness speed (felling rides; labor_state.h, RidesOut).
+  float RideHours(const core::WorldState& world, core::Vec2 place) const {
+    float best = 1.0e9F;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
+        continue;
+      }
+      const float dx_km = (unit.position.x - place.x) / 1000.0F;
+      const float dy_km = (unit.position.y - place.y) / 1000.0F;
+      best = std::min(best, std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * ride_hours_per_km_);
+    }
+    return best;
+  }
+
+  /// A cell of a key/value table, or `fallback`.
+  static float Cell(const core::ITableSet& tables,
+                    std::string_view table_name,
+                    std::string_view key,
+                    std::string_view column,
+                    float fallback) {
+    const core::ITable* const table = tables.FindTable(table_name);
+    if (table == nullptr) {
+      return fallback;
+    }
+    const std::optional<float> cell =
+        table->CellReal(table->FindRowByKey(key), table->FindColumn(column));
+    return cell.has_value() && *cell > 0.0F ? *cell : fallback;
+  }
+
   bool NearestMark(const core::WorldState& world, std::uint32_t logs, core::OrderRow& order) const {
     const core::Vec2 centre = Centre(world);
     std::uint32_t best = core::kNoRow;
@@ -249,6 +285,12 @@ class FellingPolicy {
       if (volume * share < catalog_.log_m3) {
         continue;
       }
+      // NOT BEYOND THE BRIGADE'S RIDE (boss, parcel 308): a stand past the
+      // road limit from every lived-in house is marked for nobody — on seed
+      // 1929 one such mark stood from year 14 to the end with no feller.
+      if (RideHours(world, stand.position) > ride_limit_hours_) {
+        continue;
+      }
       const float dx = stand.position.x - centre.x;
       const float dy = stand.position.y - centre.y;
       const float distance = std::sqrt((dx * dx) + (dy * dy));
@@ -268,6 +310,10 @@ class FellingPolicy {
   }
 
   core::TimberCatalog catalog_;
+
+  float ride_hours_per_km_ = 1.0F;
+
+  float ride_limit_hours_ = 4.0F;
 
   bool ready_ = false;
 

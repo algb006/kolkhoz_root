@@ -636,6 +636,13 @@ struct ProductionConfig {
 
   float standard_day_hours = 10.0F;
 
+  /// labor.csv `travel_limit_hours` and `min_usable_hours`: the accountant's
+  /// road rule, read here for kFellingUnreachable (timber_felling.h) so that
+  /// the alarm asks the assignment's own question (parcel 308).
+  float travel_limit_hours = 4.0F;
+
+  float min_usable_hours = 1.0F;
+
   // -- shelf life (task A4; transport design §10) --------------------------
   /// Game days a resource keeps, by ResourceId — resources.csv `spoil_days`,
   /// empty for what does not go bad. Read here for the units' stores;

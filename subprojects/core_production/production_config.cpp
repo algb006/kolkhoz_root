@@ -1188,6 +1188,20 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                        Range{.low = 0.1F, .high = 1000.0F},
                        20.0F,
                        config.carry_kg_adult,
+                       error) ||
+        !CellOrDefault(*labor,
+                       labor->FindRowByKey("travel_limit_hours"),
+                       value_col,
+                       Range{.low = 0.1F, .high = 24.0F},
+                       4.0F,
+                       config.travel_limit_hours,
+                       error) ||
+        !CellOrDefault(*labor,
+                       labor->FindRowByKey("min_usable_hours"),
+                       value_col,
+                       Range{.low = 0.0F, .high = 24.0F},
+                       1.0F,
+                       config.min_usable_hours,
                        error)) {
       error = "labor: " + error;
       return false;

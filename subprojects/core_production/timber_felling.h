@@ -13,6 +13,10 @@
 #ifndef CORE_PRODUCTION_TIMBER_FELLING_H_
 #define CORE_PRODUCTION_TIMBER_FELLING_H_
 
+#include <vector>
+
+#include "core_common/alarm_state.h"
+#include "core_common/geometry.h"
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
@@ -41,6 +45,22 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current);
 ///        timber_fallen_vanish_years of them — a trunk lies that long and is
 ///        gone (timber design §8a).
 void GrowOldForest(const ProductionConfig& config, WorldState& current);
+
+/// @brief Hours of the felling brigade's ride, one way, from the nearest
+///        lived-in house to `place`, at harness speed (felling rides:
+///        labor_state.h, RidesOut); negative when nobody lives anywhere.
+float NearestHomeRideHours(const ProductionConfig& config, const WorldState& world, Vec2 place);
+
+/// @brief Appends kFellingUnreachable for every stand marked for felling with
+///        work left whose ride from the nearest lived-in house is past the
+///        accountant's road rule: longer than travel_limit_hours, or leaving
+///        less than min_usable_hours of the daylight after the ride there and
+///        back (the same test as kSiteUnreachable). Each stand at most once,
+///        in row order. A pure read.
+/// @param alarms Appended to; never cleared.
+void CollectTimberAlarms(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms);
 
 }  // namespace core
 

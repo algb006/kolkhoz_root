@@ -3,9 +3,11 @@
 #include "timber_felling.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include "core_catalog/timber_catalog.h"
+#include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
 
@@ -80,6 +82,55 @@ void GrowOldForest(const ProductionConfig& config, WorldState& current) {
     // for next year's. What is marked is never taken back by the ceiling.
     const float ceiling = std::max(OldForestCeilingM3(config.timber, *def), stand.marked_m3);
     stand.stock_m3 = std::min(stand.stock_m3 + YearlyOldTrunksM3(config.timber, *def), ceiling);
+  }
+}
+
+float NearestHomeRideHours(const ProductionConfig& config, const WorldState& world, Vec2 place) {
+  if (!(config.harness_speed_kmh > 0.0F)) {
+    return -1.0F;
+  }
+  // The labour model's own chronometer (labor_day.cpp, HoursPerKm): real
+  // km/h divided by the clock's scale, so one number means one road for the
+  // assignment and for this alarm.
+  const float hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  float best = -1.0F;
+  for (const UnitRow& unit : world.units.rows) {
+    // A LIVED-IN house: the brigade sets out from where people sleep, and an
+    // empty house far out is nobody's road.
+    if (unit.level == 0 || unit.household.value == kInvalidEntityIdValue) {
+      continue;
+    }
+    const float dx_km = (unit.position.x - place.x) / 1000.0F;
+    const float dy_km = (unit.position.y - place.y) / 1000.0F;
+    const float hours = std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
+    best = best < 0.0F || hours < best ? hours : best;
+  }
+  return best;
+}
+
+void CollectTimberAlarms(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms) {
+  for (std::uint32_t row = 0; row < world.stands.rows.size(); ++row) {
+    const TimberStandRow& stand = world.stands.rows[row];
+    if (!(stand.marked_m3 > 0.0F) || !(stand.work_days_remaining > 0.0F)) {
+      continue;  // nothing asked of the brigade here
+    }
+    const float ride = NearestHomeRideHours(config, world, stand.position);
+    if (ride < 0.0F) {
+      continue;  // nobody lives anywhere: every alarm of the village says so already
+    }
+    // THE ACCOUNTANT'S QUESTION, as kSiteUnreachable asks it (construction):
+    // too long a road for him, or too little of the day left after it.
+    const bool too_long = ride > config.travel_limit_hours;
+    const bool no_day_left = world.weather.daylight_hours - (2.0F * ride) < config.min_usable_hours;
+    if (too_long || no_day_left) {
+      Alarm alarm;
+      alarm.kind = AlarmKind::kFellingUnreachable;
+      alarm.stand = world.stands.row_ids[row];
+      alarm.amount = static_cast<std::int64_t>(ride);
+      alarms.push_back(alarm);
+    }
   }
 }
 
