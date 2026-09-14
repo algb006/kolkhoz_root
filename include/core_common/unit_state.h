@@ -302,6 +302,17 @@ struct UnitRow {
 /// @brief The units table type used by WorldState.
 using UnitTable = StateTable<UnitId, UnitRow>;
 
+/// @brief What of `resource` in a unit's stock any taker OTHER than the
+/// unit's own works may have: `stock - construction.reserved`, never below
+/// zero. One accessor on purpose — every module that takes from a unit reads
+/// it, and a second copy of the subtraction is how one of them forgets it.
+/// It does not skip a level-0 site; the caller's own rule does.
+inline Grams UnreservedOf(const UnitRow& unit, ResourceId resource) {
+  const Grams held = AmountOf(unit.stock, resource);
+  const Grams free = held - AmountOf(unit.construction.reserved, resource);
+  return free > 0 ? free : 0;
+}
+
 }  // namespace core
 
 #endif  // CORE_COMMON_UNIT_STATE_H_

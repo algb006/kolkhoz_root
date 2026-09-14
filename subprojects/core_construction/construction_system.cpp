@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -75,7 +76,7 @@ class ConstructionSystem final : public IConstructionSystem {
       if (unit.level == 0) {
         continue;
       }
-      total += AmountAt(unit.stock, resource);
+      total += UnreservedOf(unit, resource);  // another works' recipe is not in hand
     }
     return total;
   }
@@ -481,9 +482,10 @@ class ConstructionSystem final : public IConstructionSystem {
   }
 
   /// @brief What the village lacks of the recipe of `level` for the site in
-  /// `row`: held = the site's own stock + every other built unit's stock (the
-  /// stores and the heaps, the reach TakeFromStores draws on). Lines where
-  /// held < needed only (construction design §6).
+  /// `row`: held = the site's own stock + what every other built unit may
+  /// give (the stores and the heaps, the reach TakeFromStores draws on, less
+  /// what their own works hold back). Lines where held < needed only
+  /// (construction design §6).
   std::vector<MaterialShortfall> ShortfallOf(const WorldState& world,
                                              std::uint32_t row,
                                              std::uint8_t level) const {
@@ -496,7 +498,7 @@ class ConstructionSystem final : public IConstructionSystem {
       Grams held = AmountAt(world.units.rows[row].stock, material.resource);
       for (std::uint32_t other = 0; other < world.units.rows.size(); ++other) {
         if (other != row && world.units.rows[other].level > 0) {
-          held += AmountAt(world.units.rows[other].stock, material.resource);
+          held += UnreservedOf(world.units.rows[other], material.resource);
         }
       }
       if (held < material.grams) {
@@ -577,6 +579,9 @@ class ConstructionSystem final : public IConstructionSystem {
     const float norm = LevelLaborDays(site.type, site.level);
     MoveStockOut(current, row);
     site.level = 0;
+    // An upgrade stopped by the demolition: its recipe went out with the
+    // rest of the stock, and nothing is held back for works that are gone.
+    site.construction.reserved.clear();
     site.construction.phase = ConstructionPhase::kDemolishing;
     site.construction.target_level = 0;
     site.construction.labor_days_total = norm * config_.demolition_labor_share;
@@ -614,6 +619,8 @@ class ConstructionSystem final : public IConstructionSystem {
       const Grams taken = TakeFromStores(current, row, parts, need - have);
       AddTo(current.units.rows[row].stock, parts, taken);
     }
+    const BuildMaterial line{.resource = parts, .grams = need};
+    HoldBack(current.units.rows[row], std::span<const BuildMaterial>(&line, 1));
     if (AmountAt(current.units.rows[row].stock, parts) < need) {
       return;  // still short; kSiteWithoutMaterials speaks for it (task A3)
     }
@@ -694,6 +701,7 @@ class ConstructionSystem final : public IConstructionSystem {
           complete = false;
         }
       }
+      HoldBack(current.units.rows[row], step->recipe);
       if (complete) {
         UnitRow& site = current.units.rows[row];
         site.construction.phase = ConstructionPhase::kBuilding;
@@ -918,7 +926,9 @@ class ConstructionSystem final : public IConstructionSystem {
       if (row == site_row || current.units.rows[row].level == 0) {
         continue;
       }
-      const Grams have = AmountAt(current.units.rows[row].stock, resource);
+      // Not another upgrade's recipe: it was checked and carried in for that
+      // works, and a second start must not undo the first one's check.
+      const Grams have = UnreservedOf(current.units.rows[row], resource);
       if (have <= 0) {
         continue;
       }
@@ -927,6 +937,23 @@ class ConstructionSystem final : public IConstructionSystem {
       taken += give;
     }
     return taken;
+  }
+
+  /// @brief Holds back for a STANDING unit's works what its stock covers of
+  /// each line: reserved = min(stock, line), recomputed after every delivery
+  /// (ConstructionState::reserved; boss, parcel 294). A level-0 site is left
+  /// alone — nobody takes from a site, so it needs no such line.
+  static void HoldBack(UnitRow& unit, std::span<const BuildMaterial> lines) {
+    if (unit.level == 0) {
+      return;
+    }
+    for (const BuildMaterial& line : lines) {
+      const Grams held = AmountAt(unit.stock, line.resource);
+      const Grams keep = held < line.grams ? held : line.grams;
+      AddTo(unit.construction.reserved,
+            line.resource,
+            keep - AmountAt(unit.construction.reserved, line.resource));
+    }
   }
 
   static Grams AmountAt(const ResourceAmounts& amounts, ResourceId resource) {

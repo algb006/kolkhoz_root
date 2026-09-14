@@ -42,7 +42,7 @@ HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdR
                                        ? FindStockYardRow(world, config)
                                        : FindRow(world.units, herd.unit);
     if (unit_row != kNoRow) {
-      place.unit_stock = &world.units.rows[unit_row].stock;
+      place.unit = &world.units.rows[unit_row];
     }
     return place;
   }
@@ -80,8 +80,7 @@ Grams TakeFeed(WorldState& world,
         resource.value < place.feed_allowance->size() ? (*place.feed_allowance)[resource.value] : 0;
     wanted = wanted < allowed ? wanted : allowed;
   }
-  Grams taken =
-      place.unit_stock != nullptr ? TakeFromAmounts(*place.unit_stock, resource, wanted) : 0;
+  Grams taken = place.unit != nullptr ? TakeFromUnit(*place.unit, resource, wanted) : 0;
   // Then the MANGER, and only then the general store. The hay of the whole
   // farm is delivered to one stock yard (stock_ops.h, FindStockYardRow), and
   // a herd standing at some OTHER barn — the team, once the kolkhoz yard is
@@ -90,8 +89,8 @@ Grams TakeFeed(WorldState& world,
   // that stub said out loud.
   if (taken < wanted) {
     const std::uint32_t manger = FindStockYardRow(world, config);
-    if (manger != kNoRow && &world.units.rows[manger].stock != place.unit_stock) {
-      taken += TakeFromAmounts(world.units.rows[manger].stock, resource, wanted - taken);
+    if (manger != kNoRow && &world.units.rows[manger] != place.unit) {
+      taken += TakeFromUnit(world.units.rows[manger], resource, wanted - taken);
     }
   }
   if (taken < wanted) {

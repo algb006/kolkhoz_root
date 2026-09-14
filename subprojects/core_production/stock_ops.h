@@ -212,7 +212,7 @@ inline Grams HeldEverywhere(const WorldState& world, ResourceId resource) {
     if (unit.level == 0) {
       continue;  // a marked site holds nothing
     }
-    total += StockOf(unit.stock, resource);
+    total += UnreservedOf(unit, resource);  // and an upgrade's recipe is nobody's
   }
   return total;
 }
@@ -347,7 +347,9 @@ inline Grams TakeFromStorage(WorldState& world,
       // patch standing over a hole that has been filled.
       continue;
     }
-    const Grams here = StockOf(unit.stock, resource);
+    // Not what the works of a standing unit hold back for its next level
+    // (unit_state.h, ConstructionState::reserved; boss, parcel 294).
+    const Grams here = UnreservedOf(unit, resource);
     const Grams take = here < wanted - taken ? here : wanted - taken;
     AddToStock(unit.stock, resource, -take);
     taken += take;
@@ -355,8 +357,18 @@ inline Grams TakeFromStorage(WorldState& world,
   return taken;
 }
 
+/// @brief Takes up to `wanted` grams out of one unit's stock, leaving what
+/// its works hold back (ConstructionState::reserved); returns what was taken.
+inline Grams TakeFromUnit(UnitRow& unit, ResourceId resource, Grams wanted) {
+  const Grams here = UnreservedOf(unit, resource);
+  const Grams take = here < wanted ? here : wanted;
+  AddToStock(unit.stock, resource, -take);
+  return take;
+}
+
 /// @brief Takes up to `wanted` grams out of one dense vector — a family's
-/// pantry, a unit's own stock — and returns what was actually taken.
+/// pantry — and returns what was actually taken. A unit's stock goes through
+/// TakeFromUnit, which knows what the unit's works hold back.
 inline Grams TakeFromAmounts(ResourceAmounts& stock, ResourceId resource, Grams wanted) {
   const Grams here = StockOf(stock, resource);
   const Grams take = here < wanted ? here : wanted;

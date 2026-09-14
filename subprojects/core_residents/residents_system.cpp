@@ -225,7 +225,7 @@ class ResidentsSystem final : public IResidentsSystem {
     Grams total = 0;
     for (const UnitRow& unit : world.units.rows) {
       if (unit.level != 0) {
-        total += AmountOf(unit.stock, resource);
+        total += UnreservedOf(unit, resource);
       }
     }
     for (const FamilyRow& family : world.families.rows) {

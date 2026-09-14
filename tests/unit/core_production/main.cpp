@@ -3898,6 +3898,75 @@ int CheckSawing() {
   return failures;
 }
 
+/// AN UPGRADE'S RECIPE IS NOBODY ELSE'S (boss, parcel 294): a store raising
+/// its next level keeps working as a store, and the logs its works hold back
+/// (ConstructionState::reserved) are neither taken nor counted as held — not
+/// by a plain take, not by the saw's demand, not by the saw's own taking.
+int CheckAnUpgradesRecipeIsNobodysElse() {
+  int failures = 0;
+  constexpr core::Grams kLog = 200 * core::kGramsPerKilogram;
+  core::ProductionConfig config;
+  config.unit_types.resize(3);
+  SetStorageKg(config.unit_types[0], 10000.0F);
+  core::TimberCatalog& timber = config.timber;
+  timber.log_m3 = 0.25F;
+  timber.log_grams = kLog;
+  timber.board_yield = 0.55F;
+  timber.sawing_days_per_board_m3 = 1.0F;
+  timber.board_grams_per_m3 = 600 * core::kGramsPerKilogram;
+  timber.log_resource = core::ResourceId{0};
+  timber.board_resource = core::ResourceId{1};
+  timber.sawmill_type = core::UnitTypeId{2};
+
+  core::WorldState world;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.level = 1;
+  store.stock.assign(2, 0);
+  store.stock[0] = 10 * kLog;
+  store.construction.phase = core::ConstructionPhase::kBuilding;
+  store.construction.target_level = 2;
+  store.construction.reserved.assign(1, 6 * kLog);
+  core::AppendRow(world.units, store);
+  core::UnitRow yard;
+  yard.type = core::UnitTypeId{1};
+  yard.level = 1;
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  core::UnitRow sawmill;
+  sawmill.type = core::UnitTypeId{2};
+  sawmill.level = 1;
+  sawmill.parent = yard_id;
+  core::AppendRow(world.units, sawmill);
+
+  failures += Expect(core::HeldEverywhere(world, timber.log_resource) == 4 * kLog,
+                     "reserved: of ten logs in a store raising its level, four are held for "
+                     "anybody");
+  core::SettleUnitProduction(config, world);
+  // Four logs of 0.25 m3 at 0.55 are 0.55 m3 of boards, a man-day each.
+  const float demand = world.units.rows[2].production_days_remaining;
+  failures += Expect(demand > 0.549F && demand < 0.551F,
+                     "reserved: the saw asks for the boards of the four free logs, not of ten");
+  // The sawyers worked 1.375 man-days, a demand written before the works
+  // held their logs back: ten logs' worth, and only four are anybody's.
+  world.units.rows[2].production_days_written = 1.375F;
+  world.units.rows[2].production_days_remaining = 0.0F;
+  core::SettleUnitProduction(config, world);
+  failures += Expect(world.units.rows[0].stock[0] == 6 * kLog,
+                     "reserved: the saw's day takes the four free logs and leaves the six");
+
+  world.units.rows[0].stock[0] = 10 * kLog;
+  failures +=
+      Expect(core::TakeFromStorage(world, config, timber.log_resource, 10 * kLog) == 4 * kLog &&
+                 world.units.rows[0].stock[0] == 6 * kLog,
+             "reserved: a take of ten gets four, and the works keep their six");
+  failures += Expect(core::TakeFromUnit(world.units.rows[0], timber.log_resource, kLog) == 0,
+                     "reserved: nor does a take straight from the unit reach them");
+  world.units.rows[0].stock[0] = 5 * kLog;  // the stock has fallen under the line
+  failures += Expect(core::UnreservedOf(world.units.rows[0], timber.log_resource) == 0,
+                     "reserved: a stock under its reserved line gives nothing, not a debt");
+  return failures;
+}
+
 /// The district's limit (district design §1, §4; boss, parcels 208, 211):
 /// what may be bought, the year's grant, buying, the cart, the year's turn.
 int CheckDistrictLimit() {
@@ -4237,6 +4306,7 @@ int main() {
   failures += CheckFelling();
   failures += CheckExtraction();
   failures += CheckSawing();
+  failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();

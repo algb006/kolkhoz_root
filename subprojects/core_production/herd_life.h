@@ -58,8 +58,9 @@ struct HerdPlace {
   /// nicety: hay is delivered to the stock yard by the harvest, and the yard
   /// is not a "storing" unit at all (its table capacity is in HEADS, not
   /// tonnes), so a herd that only knew the shared store would stand beside
-  /// a full manger and starve.
-  ResourceAmounts* unit_stock = nullptr;
+  /// a full manger and starve. The unit and not its stock vector: what the
+  /// unit's own works hold back is not fodder (ConstructionState::reserved).
+  UnitRow* unit = nullptr;
 
   bool at_unit = false;
 

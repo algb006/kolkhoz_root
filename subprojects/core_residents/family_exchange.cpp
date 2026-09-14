@@ -30,9 +30,8 @@ Grams VillageStock(const WorldState& world, ResourceId resource) {
   }
   Grams total = 0;
   for (const UnitRow& unit : world.units.rows) {
-    if (unit.stock.size() > resource.value) {
-      total += unit.stock[resource.value];
-    }
+    // Less what a standing unit's works hold back (boss, parcel 294).
+    total += UnreservedOf(unit, resource);
   }
   return total;
 }
@@ -48,9 +47,9 @@ Grams TakeFromUnits(WorldState& world, ResourceId resource, Grams wanted) {
     if (taken >= wanted || unit.stock.size() <= resource.value) {
       continue;
     }
-    Grams& cell = unit.stock[resource.value];
-    const Grams take = cell < wanted - taken ? cell : wanted - taken;
-    cell -= take;
+    const Grams free = UnreservedOf(unit, resource);
+    const Grams take = free < wanted - taken ? free : wanted - taken;
+    unit.stock[resource.value] -= take;
     taken += take;
   }
   return taken;

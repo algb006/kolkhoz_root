@@ -245,6 +245,85 @@ int TestStartChecksTheRecipe(const core::ITableSet& tables) {
   return failures;
 }
 
+/// AN UPGRADE HOLDS ITS RECIPE BACK FROM ITS OWN STOCK (boss, parcel 294): a
+/// standing unit is also a store, so what its works carried in is written to
+/// `construction.reserved` — and a second upgrade neither counts it as held nor
+/// takes it; the line empties when the works finish or are demolished.
+int TestAnUpgradeHoldsItsRecipe(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (!system) {
+    return Expect(false, "the subsystem refused its tables");
+  }
+  core::WorldState world;
+  // The barns stand BEFORE the store in row order, so a delivery that forgot
+  // the hold-back would reach the first barn's logs before the store's.
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{kBarnType};
+  barn.position = core::Vec2{.x = 1000.0F, .y = 1000.0F};
+  barn.stock.assign(1, 5 * kLogGrams);  // a barn holds logs of its own
+  const core::UnitId first = core::AppendRow(world.units, barn);
+  barn.position = core::Vec2{.x = 2000.0F, .y = 1000.0F};
+  barn.stock.assign(1, 0);
+  const core::UnitId second = core::AppendRow(world.units, barn);
+  core::UnitRow store;
+  store.type = core::UnitTypeId{kStoreType};
+  store.stock.assign(1, 20 * kLogGrams);
+  const core::UnitId store_id = core::AppendRow(world.units, store);
+  const auto row_of = [&world](core::UnitId unit) -> core::UnitRow& {
+    return world.units.rows[core::FindRow(world.units, unit)];
+  };
+
+  // Level 2 takes twenty logs: five of its own and fifteen from the store.
+  const core::OrderId raised = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, first));
+  Run(*system, world, 5);
+  failures += Expect(RefusalOf(world, raised) == core::OrderRefusal::kNone &&
+                         row_of(first).stock[0] == 20 * kLogGrams &&
+                         row_of(store_id).stock[0] == 5 * kLogGrams,
+                     "hold-back: the upgrade starts on its own five logs and the store's fifteen");
+  failures += Expect(row_of(first).construction.reserved.size() == 1 &&
+                         row_of(first).construction.reserved[0] == 20 * kLogGrams,
+                     "hold-back: all twenty are held back for the works");
+
+  // The second barn sees the store's five, not the first barn's twenty.
+  const std::vector<core::MaterialShortfall> short_lines = system->MaterialsShortFor(world, second);
+  failures += Expect(short_lines.size() == 1 && short_lines[0].held == 5 * kLogGrams,
+                     "hold-back: another upgrade counts five logs held, not twenty-five");
+  row_of(first).stock[0] += 3 * kLogGrams;  // three logs stored there since
+  const core::OrderId refused = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, second));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, refused) == core::OrderRefusal::kMaterialsShort &&
+                         row_of(first).stock[0] == 23 * kLogGrams,
+                     "hold-back: the second upgrade is refused and the first keeps its logs");
+  row_of(store_id).stock[0] = 12 * kLogGrams;
+  const core::OrderId taking = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, second));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, taking) == core::OrderRefusal::kMaterialsShort,
+                     "hold-back: twelve in the store and three free in the barn are fifteen, "
+                     "short of twenty");
+  row_of(store_id).stock[0] = 17 * kLogGrams;
+  const core::OrderId started = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, second));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, started) == core::OrderRefusal::kNone &&
+                         row_of(first).stock[0] == 20 * kLogGrams &&
+                         row_of(second).construction.reserved.size() == 1 &&
+                         row_of(second).construction.reserved[0] == 20 * kLogGrams,
+                     "hold-back: with seventeen the second starts, taking the first barn's three "
+                     "free logs and none of its twenty");
+
+  row_of(first).construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 5);
+  failures += Expect(row_of(first).level == 2 && row_of(first).construction.reserved.empty(),
+                     "hold-back: a finished upgrade holds nothing back any more");
+  const core::OrderId demolished = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, second));
+  Run(*system, world, 5);
+  failures += Expect(RefusalOf(world, demolished) == core::OrderRefusal::kNone &&
+                         row_of(second).construction.reserved.empty(),
+                     "hold-back: nor does a demolished one");
+  return failures;
+}
+
 int TestMarkAndBuild(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
@@ -738,6 +817,10 @@ int TestRepair(const core::ITableSet& tables) {
                      "the parts were in the store, so the delivery is already done");
   failures += Expect(world.units.rows[row].stock.size() > 1 && world.units.rows[row].stock[1] > 0,
                      "the spare parts are on site");
+  failures +=
+      Expect(world.units.rows[row].construction.reserved.size() > 1 &&
+                 world.units.rows[row].construction.reserved[1] == world.units.rows[row].stock[1],
+             "and held back from the barn's stock for the repair (boss, parcel 294)");
   failures += Expect(RefusalOf(world, order) == core::OrderRefusal::kNone, "and nothing refused");
 
   // The labour is invested by somebody else's sub-step; here we just finish.
@@ -1785,6 +1868,7 @@ int main() {
   failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
   failures += TestStartChecksTheRecipe(tables);
+  failures += TestAnUpgradeHoldsItsRecipe(tables);
   failures += TestRefusals(tables);
   failures += TestDemolition(tables);
   failures += TestTableLessWorld();
