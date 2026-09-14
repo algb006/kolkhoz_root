@@ -299,19 +299,28 @@ void PrintMembers(const core::WorldState& state, const core::ITableSet& tables) 
   float sixteen_sum = 0.0F;
   std::uint32_t sixteen = 0;
   std::uint32_t adults = 0;
+  std::uint32_t youth = 0;
+  std::uint32_t young_members = 0;
   for (const core::ResidentRow& person : state.residents.rows) {
     ++count[static_cast<std::size_t>(person.social_status)];
     ideology_sum += person.ideology;
     const float age = core::BiologicalAgeYears(life_speedup, person.birth_day, state.calendar.day);
     adults += age >= 18.0F ? 1U : 0U;
+    const bool young = age >= 14.0F && age < 26.0F;
+    youth += young ? 1U : 0U;
+    // Counted inside the band as well: a wave lets a member of 26 go only on
+    // its day, half a game year and two biological years later, so the plain
+    // count of members runs past the young it is measured against.
+    young_members += young && person.social_status == core::SocialStatus::kKomsomol ? 1U : 0U;
     if (age >= 16.0F && age < 17.0F) {
       sixteen_sum += person.ideology;
       ++sixteen;
     }
   }
   const auto residents = static_cast<float>(state.residents.rows.size());
-  std::cout << "  members: pioneers " << count[1] << ", komsomol " << count[2] << ", party "
-            << count[3] << " of " << adults << " adults; ideology "
+  std::cout << "  members: pioneers " << count[1] << ", komsomol " << count[2] << " ("
+            << young_members << " of " << youth << " aged 14-26), party " << count[3] << " of "
+            << adults << " adults; ideology "
             << (residents > 0.0F ? ideology_sum / residents : 0.0F) << ", at 16 "
             << (sixteen > 0 ? sixteen_sum / static_cast<float>(sixteen) : 0.0F) << " (" << sixteen
             << ")\n";
