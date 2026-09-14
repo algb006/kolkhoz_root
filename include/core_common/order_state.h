@@ -251,9 +251,9 @@ enum class OrderKind : std::uint8_t {
   /// its trees: "these trees" on the layer's map is "this many cubic metres"
   /// here.
   ///
-  /// ONE FELLING AT A TIME in the whole village (time design §11, "новую
-  /// порубку назначить нельзя, пока идёт эта"): refused with
-  /// kConflictsWithActive while any stand still has timber marked. Refused
+  /// AS MANY FELLINGS AT ONCE AS THE CHAIRMAN MARKS (the human's word of
+  /// 2026-09-14; time design §11): refused with kConflictsWithActive only
+  /// while THIS stand still has timber marked. Refused
   /// with kNoSuchSubject for a stand that is not there, and kRuleForbids for a
   /// volume that exceeds the stand's unmarked stock. A volume that is not
   /// positive NEVER REACHES THE CONSUMER through the session: the boundary's

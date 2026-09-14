@@ -22,8 +22,9 @@ namespace core {
 /// @brief Reads a kMarkFelling order: marks its volume of the stand and opens
 ///        the felling seam at volume × timber_felling_days_per_m3.
 /// @return kNoSuchSubject for a stand that is not there; kConflictsWithActive
-///         while any stand still has timber marked (one felling at a time,
-///         time design §11); kRuleForbids for a volume that is not positive or
+///         while this stand still has timber marked (fellings on other stands
+///         go on at once, the human's word of 2026-09-14); kRuleForbids for a
+///         volume that is not positive or
 ///         exceeds the stand's unmarked stock. kNone when marked.
 OrderRefusal MarkFelling(const ProductionConfig& config,
                          WorldState& current,

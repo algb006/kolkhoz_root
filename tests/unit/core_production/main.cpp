@@ -3651,7 +3651,20 @@ int CheckFelling() {
                      "felling: the mark opens a seam of volume x days per m3");
   failures +=
       Expect(core::MarkFelling(config, world, order) == core::OrderRefusal::kConflictsWithActive,
-             "felling: a second mark while one is going is a conflict");
+             "felling: a second mark on the stand being felled is a conflict");
+  // AS MANY FELLINGS AT ONCE AS THE CHAIRMAN MARKS (the human, 2026-09-14): a
+  // second grove is marked while the first is being felled.
+  core::TimberStandRow second_grove;
+  second_grove.table_row = 0;
+  second_grove.kind = core::TimberStandKind::kGrove;
+  second_grove.stock_m3 = 50.0F;
+  const core::TimberStandId second_id = core::AppendRow(world.stands, second_grove);
+  core::OrderRow second_order = order;
+  second_order.stand = second_id;
+  second_order.volume_m3 = 20.0F;
+  failures += Expect(core::MarkFelling(config, world, second_order) == core::OrderRefusal::kNone,
+                     "felling: another stand is marked while the first is still being felled");
+  core::RemoveRow(world.stands, second_id);
 
   core::FellFinishedStands(config, world);
   failures +=

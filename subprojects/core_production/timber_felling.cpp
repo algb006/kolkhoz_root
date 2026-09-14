@@ -28,16 +28,15 @@ OrderRefusal MarkFelling(const ProductionConfig& config,
   if (row == kNoRow) {
     return OrderRefusal::kNoSuchSubject;
   }
-  // ONE FELLING AT A TIME IN THE VILLAGE, not one per stand: "новую порубку
-  // назначить нельзя, пока идёт эта" (time design §11). A felling is going
-  // while timber is marked anywhere — the logs already lying and waiting for
-  // a cart do not count, they are carting's business.
-  for (const TimberStandRow& other : current.stands.rows) {
-    if (other.marked_m3 > 0.0F) {
-      return OrderRefusal::kConflictsWithActive;
-    }
-  }
+  // AS MANY FELLINGS AT ONCE AS THE CHAIRMAN MARKS (the human's word of
+  // 2026-09-14, "убрать и здесь"; time design §11, 056f531). Until then a
+  // second felling was refused while timber stood marked anywhere, after
+  // "новую порубку назначить нельзя, пока идёт эта". One mark a stand still
+  // holds: a stand's marked volume is one number.
   TimberStandRow& stand = current.stands.rows[row];
+  if (stand.marked_m3 > 0.0F) {
+    return OrderRefusal::kConflictsWithActive;
+  }
   const float unmarked = stand.stock_m3 - stand.marked_m3;
   if (!(order.volume_m3 > 0.0F) || order.volume_m3 > unmarked) {
     return OrderRefusal::kRuleForbids;
