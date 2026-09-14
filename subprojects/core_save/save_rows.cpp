@@ -52,7 +52,9 @@ static_assert(AggregateArity<ResidentRow>() == 38,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(FamilyRow) == 56 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FamilyRow>() == 15,
+// 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
+// size stayed 56 + amounts and the field count went to 16.
+static_assert(AggregateArity<FamilyRow>() == 16,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -384,6 +386,9 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   sink.WriteAmounts(DefKind::kResource, row.pantry);
   out.WriteFloat(row.satiety_year_mean);
   out.WriteU16(row.food_variety_mask);
+  // Whether the family has eaten yet (2026-09-14): without it a campaign loaded
+  // between a wedding and its first meal would judge the new family's variety.
+  out.WriteU8(row.first_meal_eaten);
 
   out.WriteFloat(row.household_hours);
   out.WriteFloat(row.plot_ratio_sum);
@@ -408,6 +413,8 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.pantry = source.ReadAmounts(DefKind::kResource);
   row.satiety_year_mean = in.ReadFloat();
   row.food_variety_mask = in.ReadU16();
+  row.first_meal_eaten =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's first meal eaten"));
 
   row.household_hours = in.ReadFloat();
   row.plot_ratio_sum = in.ReadFloat();

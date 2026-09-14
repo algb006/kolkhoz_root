@@ -328,6 +328,8 @@ int CheckMeal() {
                        "a fed day drifts satiety toward 100 by one day's drift");
     failures += Expect(world.families.rows[0].food_variety_mask == 0b1,
                        "the variety mask records the one category that was on the table");
+    failures += Expect(world.families.rows[0].first_meal_eaten == 1,
+                       "and the meal marks the family as one that has eaten");
     failures += Expect(world.residents.rows[0].health > 70.0F,
                        "and a satiety above the recovery threshold mends health");
   }
@@ -376,6 +378,14 @@ int CheckSatietyComponent() {
   int failures = 0;
   const core::FoodConfig config = MakeExchangeConfig();
   core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 80.0F);
+  // BEFORE ITS FIRST MEAL (boss, parcel 231): an empty mask is a family that
+  // has not eaten, and the component is the members' mean, not the 25 the
+  // empty mask's ceiling would give (host measured 25.0 on 19 new families).
+  failures += Expect(core::SatietyComponent(config, world, 0) == 80.0F,
+                     "a family that has not sat down to a meal yet is judged by its members alone");
+  world.families.rows[0].first_meal_eaten = 1;
+  failures += Expect(core::SatietyComponent(config, world, 0) == 25.0F,
+                     "while the same empty table after a meal is the plainest there is");
   world.families.rows[0].food_variety_mask = 0b1;  // bread alone
   failures += Expect(core::SatietyComponent(config, world, 0) == 50.0F,
                      "one category in Epoch I caps the component at 50, as the design says");

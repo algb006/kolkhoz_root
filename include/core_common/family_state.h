@@ -97,6 +97,15 @@ struct FamilyRow {
   /// count sets the variety ceiling of the satiety component.
   std::uint16_t food_variety_mask = 0;
 
+  /// 1 once the family has sat down to its first meal, 0 before. Until then
+  /// the variety ceiling of the satiety component is not applied: a household
+  /// founded today has eaten nothing yet — neither plainly nor variously — and
+  /// the ceiling measures what has not happened (boss, parcel 231). Without
+  /// this a new family's component read exactly 25.0 until its first meal
+  /// (host's measurement, 19 families in 48 days), which a reader takes for
+  /// hunger. Set by the needs phase at the meal and never cleared.
+  std::uint8_t first_meal_eaten = 0;
+
   // -- private plot (household design §1, life-cycle §10) ------------------
   /// Game hours per day the household has for its plot: the working
   /// members' remainder of the day plus the additive factors of household

@@ -204,6 +204,7 @@ void RunFamilyMeal(const FoodConfig& config,
   }
   const float need_kcal = FamilyNeedKcal(config, life_speedup, previous, current, id, day);
   const float eaten_kcal = EatFromPantry(config, family, need_kcal);
+  family.first_meal_eaten = 1;  // the variety ceiling applies from now on
   // A household that owes nobody anything — nobody in it old enough to eat
   // from the pantry — is fed by definition rather than starving on zero.
   const float target = need_kcal > 0.0F ? kMetricMax * (eaten_kcal / need_kcal) : kMetricMax;
@@ -242,6 +243,11 @@ Metric SatietyComponent(const FoodConfig& config,
     return family.component_satiety;  // an empty row keeps its last value
   }
   const float mean = total / static_cast<float>(counted);
+  if (family.first_meal_eaten == 0) {
+    // NO MEAL, NO VARIETY TO JUDGE (boss, parcel 231): a family founded today
+    // has an empty mask because it has not eaten, not because it ate plainly.
+    return ClampMetric(mean);
+  }
   std::uint32_t categories = 0;
   for (std::uint32_t bit = 0; bit < static_cast<std::uint32_t>(FoodCategory::kCount); ++bit) {
     if ((family.food_variety_mask & (1U << bit)) != 0U) {

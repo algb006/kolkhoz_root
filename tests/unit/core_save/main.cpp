@@ -183,6 +183,7 @@ core::WorldState MakeWorld() {
   rich.pantry = Amounts({400'000, 0, 900'000, 60'000, 0, 0});
   rich.satiety_year_mean = 88.5F;
   rich.food_variety_mask = 0b1011;
+  rich.first_meal_eaten = 1;  // `bare` below keeps 0: the pair a constant fails on
   rich.household_hours = 4.25F;
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
@@ -512,6 +513,9 @@ int main() {
   failures += Expect(loaded.families.rows[0].pantry == world.families.rows[0].pantry &&
                          loaded.families.rows[1].pantry.empty(),
                      "pantries came back with their exact lengths, the empty one still empty");
+  failures += Expect(loaded.families.rows[0].first_meal_eaten == 1 &&
+                         loaded.families.rows[1].first_meal_eaten == 0,
+                     "a family that has eaten comes back one, and a new one comes back new");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
