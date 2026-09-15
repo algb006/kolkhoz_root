@@ -15,11 +15,15 @@
 #ifndef TESTS_RUN_COMMON_HOUSE_POLICY_H_
 #define TESTS_RUN_COMMON_HOUSE_POLICY_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core_catalog/definitions.h"
@@ -49,6 +53,12 @@ class HousePolicy {
                                       : core::UnitTypeId{static_cast<std::uint16_t>(row)};
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
+    if (const core::ITable* resources = tables.FindTable("resources")) {
+      const std::uint32_t key_col = resources->FindColumn("key");
+      for (std::uint32_t index = 0; index < resources->RowCount(); ++index) {
+        resource_keys_.emplace_back(resources->CellText(index, key_col));
+      }
+    }
   }
 
   /// @brief The question asked before every start (start_gate.h).
@@ -88,18 +98,43 @@ class HousePolicy {
         continue;
       }
       const bool marked = unit.construction.phase == core::ConstructionPhase::kMarked;
-      const bool short_of_recipe =
-          marked && !simulation.MaterialsShortFor(world.units.row_ids[row]).empty();
+      const std::vector<core::MaterialShortfall> shortfall =
+          marked ? simulation.MaterialsShortFor(world.units.row_ids[row])
+                 : std::vector<core::MaterialShortfall>{};
+      const bool short_of_recipe = !shortfall.empty();
+      // What the recipe lacks, line by line (debt (a)): a site-day short of
+      // two lines counts under both.
+      for (const core::MaterialShortfall& line : shortfall) {
+        ++short_by_resource_[line.resource.value];
+      }
       ++sites;
       // Pegs and string: marked, and started the day its recipe is covered —
       // the chairman asks the construction door first (construction design
       // §6) rather than sending a start the core would refuse.
-      if (marked && !short_of_recipe && !an_older_site_waits && !farm_first &&
-          GateOpen(start_gate_, world, unit.type, unit.construction.target_level)) {
+      const bool gate_open =
+          GateOpen(start_gate_, world, unit.type, unit.construction.target_level);
+      if (marked && !short_of_recipe && !an_older_site_waits && !farm_first && gate_open) {
         core::OrderRow start;
         start.kind = core::OrderKind::kStartBuild;
         start.unit = world.units.row_ids[row];
         orders.push_back(start);
+      }
+      // THE QUEUE BY CAUSE (debt (a), boss parcel 320): each site-day of a
+      // marked house counted under the FIRST rule that held it, in the order
+      // the start asks them.
+      QueueTally& tally = TallyOf(world);
+      if (!marked) {
+        ++tally.going_up;
+      } else if (short_of_recipe) {
+        ++tally.short_of_recipe;
+      } else if (farm_first) {
+        ++tally.farm_first;
+      } else if (an_older_site_waits) {
+        ++tally.older_site_waits;
+      } else if (!gate_open) {
+        ++tally.saw_gate;
+      } else {
+        ++tally.started;
       }
       an_older_site_waits = an_older_site_waits || short_of_recipe;
     }
@@ -121,6 +156,17 @@ class HousePolicy {
     }
     const auto wanted =
         static_cast<std::uint32_t>(world.wedding_waits.rows.size()) + roofless + rotting;
+    // The houses wanted and not even marked, by why: the three-site cap, the
+    // two-day pause between marks, or nothing (marked today).
+    if (wanted > free_houses + sites) {
+      QueueTally& tally = TallyOf(world);
+      const std::uint32_t unmarked = wanted - free_houses - sites;
+      if (sites >= sites_at_once_) {
+        tally.cap_held += unmarked;
+      } else if (cooldown_ > 0) {
+        tally.cooldown_held += unmarked;
+      }
+    }
     if (wanted > free_houses + sites && sites < sites_at_once_ && cooldown_ == 0) {
       core::OrderRow mark;
       mark.kind = core::OrderKind::kBuildUnit;
@@ -178,6 +224,41 @@ class HousePolicy {
               << built << " stand; " << world.wedding_waits.rows.size()
               << " couples wait for a house and " << roofless << " families have no roof ("
               << in_tents << " in tents) at the end\n";
+    ReportQueue(run_name);
+  }
+
+  /// @brief The queue by cause in four windows of years (debt (a)): site-days
+  /// of marked houses by the rule that held them, and house-days wanted but
+  /// not marked.
+  void ReportQueue(std::string_view run_name) const {
+    constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 4> kWindows = {
+        {{1, 5}, {6, 10}, {11, 15}, {16, 30}}};
+    for (const auto& [first, last] : kWindows) {
+      QueueTally sum;
+      for (std::uint32_t year = first; year <= last && year <= years_.size(); ++year) {
+        const QueueTally& one = years_[year - 1];
+        sum.going_up += one.going_up;
+        sum.short_of_recipe += one.short_of_recipe;
+        sum.farm_first += one.farm_first;
+        sum.older_site_waits += one.older_site_waits;
+        sum.saw_gate += one.saw_gate;
+        sum.started += one.started;
+        sum.cap_held += one.cap_held;
+        sum.cooldown_held += one.cooldown_held;
+      }
+      std::cout << run_name << ":   house queue years " << first << "-" << last
+                << " — site-days: going up " << sum.going_up << ", short of recipe "
+                << sum.short_of_recipe << ", farm first " << sum.farm_first << ", older site waits "
+                << sum.older_site_waits << ", saw gate " << sum.saw_gate << ", started "
+                << sum.started << "; house-days unmarked: cap " << sum.cap_held << ", cooldown "
+                << sum.cooldown_held << '\n';
+    }
+    std::cout << run_name << ":   house site-days short, by line —";
+    for (const auto& [resource, days] : short_by_resource_) {
+      std::cout << ' ' << (resource < resource_keys_.size() ? resource_keys_[resource] : "?") << ' '
+                << days;
+    }
+    std::cout << '\n';
   }
 
  private:
@@ -221,6 +302,33 @@ class HousePolicy {
   }
 
  private:
+  /// One year's queue by cause (ReportQueue).
+  struct QueueTally {
+    std::uint64_t going_up = 0;
+    std::uint64_t short_of_recipe = 0;
+    std::uint64_t farm_first = 0;
+    std::uint64_t older_site_waits = 0;
+    std::uint64_t saw_gate = 0;
+    std::uint64_t started = 0;
+    std::uint64_t cap_held = 0;
+    std::uint64_t cooldown_held = 0;
+  };
+
+  QueueTally& TallyOf(const core::WorldState& world) {
+    const std::size_t year = world.calendar.day / core::kDaysPerYear;
+    if (years_.size() <= year) {
+      years_.resize(year + 1);
+    }
+    return years_[year];
+  }
+
+  std::vector<QueueTally> years_;
+
+  /// Site-days short, by ResourceId value; ordered so the report is stable.
+  std::map<std::uint16_t, std::uint64_t> short_by_resource_;
+
+  std::vector<std::string> resource_keys_;
+
   core::UnitTypeId house_;
 
   core::Definitions definitions_;
