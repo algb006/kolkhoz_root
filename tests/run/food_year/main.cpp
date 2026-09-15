@@ -915,8 +915,17 @@ int main(int argc, char** argv) {
   // (assignment.cpp; 2026-09-15): the autumn plough took the last horse and
   // the carts behind it were not offered at all. Leanest day 20.7970276 ->
   // 22.1130543, hungry share 0.854166687 -> 0.817307711.
+  //
+  // AND UP TO 97.309639 when the issue went DAILY (boss, parcels 428-434;
+  // labor-payment §3: "Семья может прийти за ресурсами в любой момент"): milk
+  // keeps two days, and an issue every four let the stores rot most of it.
+  // The arm "every four days" on the same code gives the old records to the
+  // digit, so the whole shift is the rhythm's. Leanest day 22.1130543 ->
+  // 32.5325203, hungry share 0.817307711 -> 0.63809526. The plan reserve
+  // holding its rot until the delivery (family_exchange.cpp) rides in the
+  // same change and moves none of the three.
   failures += ExpectNoLower(
-      good.mean_satiety, 79.4115295F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 97.309639F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -988,9 +997,10 @@ int main(int argc, char** argv) {
   // AND DOWN TO 17.6482697 THE SAME DAY with the stores' homes — a debt, not
   // a norm (the mean above says why). And up to 20.4674702 with the clamp,
   // and to 20.7970276 with the seed fund's reaped fields (the mean above), and
-  // to 22.1130543 with the carts that no longer wait for a horse.
+  // to 22.1130543 with the carts that no longer wait for a horse, and to
+  // 32.5325203 with the daily issue (the mean above).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 22.1130543F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 32.5325203F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -1016,9 +1026,9 @@ int main(int argc, char** argv) {
   // 0.867346942 with the felling brigade riding, 85 of 98. And 0.886792481,
   // 94 of 106, with the stores' homes (the mean above says why). And
   // 0.854166687, 82 of 96, with the clamp. And 0.817307711 with the carts that
-  // no longer wait for a horse.
+  // no longer wait for a horse. And 0.63809526 with the daily issue.
   failures += ExpectNoHigher(
-      hungry_share, 0.817307711F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.63809526F, "the share of the village hungry at once (recorded, not a band)");
   // A KNOWN GAP of the building chain (boss, parcel 306): 24 of 99 under the
   // line at the end against a sixth, where the stub's 119 had 14.
   // RESTORED ON 2026-09-15 with the clamp: the gap closed on all nine seeds
@@ -1088,11 +1098,14 @@ int main(int argc, char** argv) {
   //
   // AND WITH THE CARTS THAT NO LONGER WAIT FOR A HORSE (assignment.cpp): 6.77,
   // 7.24, 7.25, 9.60, 10.67 (median), 12.20, 18.89, 23.08, 25.68.
+  //
+  // AND WITH THE DAILY ISSUE (boss, parcel 428): 8.59, 12.16, 12.57, 14.49,
+  // 29.03 (median), 29.04, 29.34, 34.22, 36.73 — the milk reaches the table.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 6.76-25.69, median 10.67)\n";
+            << " (nine seeds: 8.58-36.74, median 29.03)\n";
   failures +=
-      ExpectBand(issue_gap >= 6.76F && issue_gap <= 25.69F,
+      ExpectBand(issue_gap >= 8.58F && issue_gap <= 36.74F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

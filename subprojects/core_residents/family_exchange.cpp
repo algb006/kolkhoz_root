@@ -9,6 +9,7 @@
 
 #include "family_exchange.h"
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -154,6 +155,28 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   const ResourceAmounts& fodder = world.ledger.closed.feed;
   for (std::uint32_t index = 0; index < fodder.size() && index < reserve.size(); ++index) {
     reserve[index] += fodder[index];
+  }
+  // THE PLAN RESERVE HOLDS WHAT WILL ROT BEFORE THE DELIVERY TOO (boss, parcel
+  // 434). The issue takes everything above the reserve, the stores then rot
+  // as a whole, and the rot took its grams out of the reserve itself: on
+  // seed 1934 the oats came to the district 2.3 kg short of 1383 kg, and a
+  // plan met only in full was failed. A store loses held/days a day
+  // (spoilage.h), so to deliver `plan` in n days it must hold plan * (d/(d-1))^n
+  // today; the delivery is at the year's turn.
+  const std::uint32_t days_left = kDaysPerYear - (world.calendar.day % kDaysPerYear);
+  const ResourceAmounts& reaped = world.ledger.current.harvest;
+  for (std::uint32_t index = 0; index < world.plan.due.size() && index < reserve.size(); ++index) {
+    const Grams gathered = index < reaped.size() ? reaped[index] : 0;
+    const Grams plan = world.plan.due[index] < gathered ? world.plan.due[index] : gathered;
+    const float days =
+        index < config.spoil_days.size() ? config.spoil_days[index] * config.keeping_factor : 0.0F;
+    if (plan <= 0 || !(days > 1.0F)) {
+      continue;
+    }
+    const double kept_share =
+        std::pow(1.0 - (1.0 / static_cast<double>(days)), static_cast<double>(days_left));
+    reserve[index] += GramsFromFloat(
+        static_cast<float>(static_cast<double>(plan) / kept_share - static_cast<double>(plan)));
   }
   return reserve;
 }

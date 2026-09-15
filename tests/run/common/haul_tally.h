@@ -86,6 +86,7 @@ class HaulTally {
             year.snowed_tonnes += static_cast<double>(before) / 1.0e6;
             snow_lines_.push_back(SnowLine{.day = lived,
                                            .reaped_day = load.first_day,
+                                           .sown_day = field.sown_day,
                                            .tonnes = static_cast<double>(before) / 1.0e6,
                                            .demand_days = load.demand_days,
                                            .resource = load.resource.value});
@@ -153,7 +154,8 @@ class HaulTally {
         break;
       }
       std::cout << run_name << ": HAUL snow took " << line.tonnes << " t of resource "
-                << line.resource << " on day " << line.day << ", reaped on day " << line.reaped_day
+                << line.resource << " on day " << line.day << ", sown on day " << line.sown_day
+                << ", reaped on day " << line.reaped_day
                 << ", its carrying demand the evening before " << line.demand_days << " man-days\n";
     }
     for (const OtherLine& line : other_lines_) {
@@ -211,6 +213,7 @@ class HaulTally {
   struct SnowLine {
     core::SimDay day = 0;
     core::SimDay reaped_day = 0;
+    core::SimDay sown_day = 0;
     double tonnes = 0.0;
     float demand_days = 0.0F;
     std::uint16_t resource = 0;

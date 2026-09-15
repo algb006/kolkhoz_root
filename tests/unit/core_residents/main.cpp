@@ -228,6 +228,24 @@ int CheckExchange() {
                        "with the guard off the same stores do cover the basket");
   }
 
+  // THE PLAN RESERVE HOLDS ITS ROT UNTIL THE DELIVERY (boss, parcel 434): 90 kg
+  // of the plan reaped, a grain that loses a 480th a day, 48 days to the
+  // year's turn — the reserve keeps 90 / (479/480)^48 = 99.5 kg, so of the
+  // 100 kg only half a kilogram is free. Without the margin 10 kg were free
+  // and the whole 2 kg basket went out of grain the district was owed.
+  {
+    core::FoodConfig rotting = config;
+    rotting.spoil_days.assign(4, 0.0F);
+    rotting.spoil_days[0] = 480.0F;
+    core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    world.plan.due = {90 * kKilo, 0, 0, 0};
+    world.ledger.current.harvest = {90 * kKilo, 0, 0, 0};
+    core::RunFamilyExchange(rotting, 4.0F, world);
+    failures += Expect(PantryOf(world, 0) > 0 && PantryOf(world, 0) < kKilo,
+                       "the plan reserve holds what will rot before the delivery, and only what "
+                       "lies above that is handed out");
+  }
+
   // The hungry family gets the ration past its (empty) trudodni account.
   {
     core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);

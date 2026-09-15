@@ -968,6 +968,26 @@ int CheckStoreCeilingAndAlarms() {
           !world.ledger.current.lost_no_room.empty() &&
           world.ledger.current.lost_no_room[0] == 5'000 * core::kGramsPerKilogram,
       "settled snow writes the waiting load off as lost, and the field asks for no carriers");
+
+  // TWO THRESHOLDS FOR TWO THINGS (boss, parcel 430; fields and crops §6):
+  // the crop still standing on its root dies on the first snowfall of the
+  // reaping season, with no cover lying yet — frozen tops cannot be dug nor
+  // flattened grain cut — while the reaped load above waited for the cover.
+  world.fields.rows[0].phase = core::FieldPhase::kHarvest;
+  world.fields.rows[0].crop = core::CropId{0};
+  world.fields.rows[0].work_days_remaining = 1.0F;
+  world.weather.precipitation = core::Precipitation::kSnow;
+  world.weather.snow_cover_days = 0;
+  {
+    const core::WorldState yesterday = world;
+    world.calendar.tick += core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    system->RunProductionDecisions(yesterday, world);
+  }
+  failures += Expect(world.fields.rows[0].crop.value == core::kInvalidDefIdValue &&
+                         world.fields.rows[0].phase == core::FieldPhase::kIdle,
+                     "and the first snowfall of the reaping season takes the crop still on its "
+                     "root, with no cover lying yet");
   std::filesystem::remove_all(root);
   return failures;
 }
