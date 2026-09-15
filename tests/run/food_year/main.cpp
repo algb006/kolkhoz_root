@@ -930,8 +930,16 @@ int main(int argc, char** argv) {
   // §7, parcel 438): a planned crop goes out on trudodni only after the
   // delivery, the rye ration to the hungry is not held. Leanest day
   // 32.5325203 -> 58.2252274, hungry share 0.63809526 -> 0.252427191.
+  //
+  // AND DOWN TO 97.6370621 THE SAME DAY, deliberately and with the cause:
+  // before the spring names a plan the district's positions are held BY THE
+  // LIST, not by what last year delivered of them (boss, parcel 440) — a
+  // position failed outright used to open the issue and prepare the next
+  // failure. Leanest day 58.2252274 -> 45.7935219, hungry share 0.252427191 ->
+  // 0.409523815; the canon holds more rye through the winter, and the day is
+  // still above every record before the bread norm.
   failures += ExpectNoLower(
-      good.mean_satiety, 97.659462F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 97.6370621F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -1005,9 +1013,10 @@ int main(int argc, char** argv) {
   // and to 20.7970276 with the seed fund's reaped fields (the mean above), and
   // to 22.1130543 with the carts that no longer wait for a horse, and to
   // 32.5325203 with the daily issue (the mean above), and to 58.2252274 with
-  // the bread norm under the plan first (the mean above).
+  // the bread norm under the plan first (the mean above), and down to
+  // 45.7935219 with the positions held by the list (the mean above).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 58.2252274F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 45.7935219F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -1034,9 +1043,10 @@ int main(int argc, char** argv) {
   // 94 of 106, with the stores' homes (the mean above says why). And
   // 0.854166687, 82 of 96, with the clamp. And 0.817307711 with the carts that
   // no longer wait for a horse. And 0.63809526 with the daily issue, and
-  // 0.252427191 with the bread norm under the plan first.
+  // 0.252427191 with the bread norm under the plan first, and 0.409523815 with
+  // the positions held by the list.
   failures += ExpectNoHigher(
-      hungry_share, 0.252427191F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.409523815F, "the share of the village hungry at once (recorded, not a band)");
   // A KNOWN GAP of the building chain (boss, parcel 306): 24 of 99 under the
   // line at the end against a sixth, where the stub's 119 had 14.
   // RESTORED ON 2026-09-15 with the clamp: the gap closed on all nine seeds
@@ -1113,11 +1123,14 @@ int main(int argc, char** argv) {
   // AND WITH RYE AND WHEAT ON THE NORMS UNDER THE PLAN FIRST (boss, parcels
   // 424, 438): 27.50, 31.88, 34.31, 35.45, 38.25 (median), 38.78, 41.17,
   // 41.58, 42.74.
+  //
+  // AND WITH THE POSITIONS HELD BY THE LIST (boss, parcel 440): 25.82, 27.50,
+  // 31.88, 34.32, 35.46 (median), 38.94, 41.11, 41.68, 42.75.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 27.49-42.75, median 38.25)\n";
+            << " (nine seeds: 25.81-42.76, median 35.46)\n";
   failures +=
-      ExpectBand(issue_gap >= 27.49F && issue_gap <= 42.75F,
+      ExpectBand(issue_gap >= 25.81F && issue_gap <= 42.76F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

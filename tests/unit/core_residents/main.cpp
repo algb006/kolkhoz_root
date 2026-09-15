@@ -268,11 +268,17 @@ int CheckExchange() {
     failures += Expect(PantryOf(opened, 0) == 1 * kKilo,
                        "and what the chairman unsealed of it is handed out, no more");
 
+    // Before the spring names a figure the district's positions are held BY
+    // THE LIST (boss, parcel 440): a position that delivered nothing last
+    // year is held all the same, or a failed plan opens the issue.
+    core::FoodConfig planned = config;
+    planned.plan_position = {1, 0, 0, 0};
     core::WorldState before_spring = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
-    before_spring.plan.delivered = {40 * kKilo, 0, 0, 0};  // last year's position, not yet named
-    core::RunFamilyExchange(config, 4.0F, before_spring);
+    before_spring.plan.delivered = {0, 0, 0, 0};  // the position failed outright last year
+    core::RunFamilyExchange(planned, 4.0F, before_spring);
     failures += Expect(PantryOf(before_spring, 0) == 0,
-                       "before the spring names a plan, last year's positions are held");
+                       "before the spring names a plan, the district's positions are held, a "
+                       "position that delivered nothing included");
 
     core::WorldState hungry = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
     hungry.plan.announced = 1;

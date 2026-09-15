@@ -287,6 +287,12 @@ struct FoodConfig {
   /// Dense by ResourceId, sized to the resource roster.
   std::vector<FoodResourceDef> resources;
 
+  /// 1 for a resource the district's plan names (campaign.csv plan_positions,
+  /// by the crops they grow), dense by ResourceId; empty without a campaign.
+  /// "First the plan" holds these before the spring names this year's figure,
+  /// whatever last year delivered of them (boss, parcel 440).
+  std::vector<std::uint8_t> plan_position;
+
   /// Game days a resource keeps, dense by ResourceId — resources.csv
   /// `spoil_days`, zero for what does not go bad (task A4; transport design
   /// §10). Read here for the FAMILIES' LARDERS; core_production reads the

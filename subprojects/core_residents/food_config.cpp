@@ -12,6 +12,7 @@
 
 #include "food_config.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -409,6 +410,34 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
         *error = message;
       }
       return FoodConfig{};
+    }
+  }
+  // THE DISTRICT'S POSITIONS, as resources: what "first the plan" holds before
+  // the spring names this year's figure (family_exchange.cpp). The list is
+  // core_production's to validate and warn about; here it is only read.
+  const ITable* const campaign = tables.FindTable("campaign");
+  const ITable* const plan_crops = tables.FindTable("crops");
+  if (campaign != nullptr && plan_crops != nullptr && resources != nullptr) {
+    config.plan_position.assign(resources->RowCount(), 0);
+    const std::uint32_t positions_row = campaign->FindRowByKey("plan_positions");
+    const std::uint32_t value_col = campaign->FindColumn("value");
+    const std::uint32_t resource_col = plan_crops->FindColumn("resource");
+    const std::string list(positions_row == kNoTableRow || value_col == kNoTableColumn
+                               ? std::string()
+                               : std::string(campaign->CellText(positions_row, value_col)));
+    std::size_t start = 0;
+    while (start < list.size()) {
+      const std::size_t end = std::min(list.find(' ', start), list.size());
+      const std::string token = list.substr(start, end - start);
+      const std::uint32_t crop = plan_crops->FindRowByKey(token.substr(0, token.find('=')));
+      if (crop != kNoTableRow && resource_col != kNoTableColumn) {
+        const std::uint32_t resource =
+            resources->FindRowByKey(plan_crops->CellText(crop, resource_col));
+        if (resource < config.plan_position.size()) {
+          config.plan_position[resource] = 1;
+        }
+      }
+      start = end + 1;
     }
   }
   // Sleep is labor's number, read where it lives rather than copied into a

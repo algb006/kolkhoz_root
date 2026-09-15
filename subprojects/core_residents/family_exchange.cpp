@@ -185,7 +185,7 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
 
 /// @brief Whether a resource is a position of the plan the settlement still
 /// owes: this year's, once the district has named it, and before that the
-/// positions of last year's delivery.
+/// district's positions.
 ///
 /// FIRST THE PLAN, THEN THE ISSUE (labor-payment §7; boss, parcel 438): the
 /// automatic distribution hands out none of a crop the plan asks for until
@@ -193,11 +193,16 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
 /// only the reserve of this year's reaping. The delivery is at the year's
 /// turn, so a planned crop goes out on trudodni only on what the chairman
 /// unseals; the ration (§5) is not held, hunger ranks above the plan.
-bool PlanHoldsIt(const WorldState& world, std::uint32_t index) {
+///
+/// BEFORE THE SPRING, BY THE LIST AND NOT BY THE TONNES (boss, parcel 440).
+/// The first draft held last year's positions by what was DELIVERED of them,
+/// so a position failed outright was not held, and a failed plan opened the
+/// issue and prepared the next failure.
+bool PlanHoldsIt(const FoodConfig& config, const WorldState& world, std::uint32_t index) {
   if (world.plan.announced != 0) {
     return index < world.plan.due.size() && world.plan.due[index] > 0;
   }
-  return index < world.plan.delivered.size() && world.plan.delivered[index] > 0;
+  return index < config.plan_position.size() && config.plan_position[index] != 0;
 }
 
 /// @brief What the chairman has unsealed of the plan reserve for a resource.
@@ -285,7 +290,7 @@ void RunDistribution(const FoodConfig& config,
     // household would be the very "full barn beside a hungry village" this
     // rule exists to forbid.
     Grams free_stock = FreeStock(current, reserve, resource);
-    if (PlanHoldsIt(current, index)) {
+    if (PlanHoldsIt(config, current, index)) {
       const Grams unsealed = PlanUnsealed(current, index);
       free_stock = free_stock < unsealed ? free_stock : unsealed;
     }
