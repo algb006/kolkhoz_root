@@ -40,6 +40,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "rise_watch.h"
 
 namespace run {
 
@@ -65,6 +66,9 @@ class FellingPolicy {
                  "stand when the village has fewer logs than one granary takes (timber design "
                  "§8a; boss, 2026-09-13)\n";
   }
+
+  /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
+  void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 
   /// @brief One day of the chairman's attention. Call once a day.
   /// @param saw_log_grams The logs the saw needs for the boards the sites still
@@ -124,6 +128,18 @@ class FellingPolicy {
                                     ? unit.stock[catalog_.log_resource.value]
                                     : 0;
       owed += needed > there ? needed - there : 0;
+    }
+    // And the logs of the step the chairman's yard waits to take (rise_watch.h):
+    // the recipe of a level above the first is not in logs_by_type_, so it is
+    // read off the core's own shortfall of that step.
+    const std::uint32_t rising = rise_watch_ ? rise_watch_(world) : core::kNoRow;
+    if (rising < world.units.rows.size()) {
+      for (const core::MaterialShortfall& line :
+           simulation.MaterialsShortFor(world.units.row_ids[rising])) {
+        if (line.resource.value == catalog_.log_resource.value) {
+          owed += line.needed;
+        }
+      }
     }
     const core::Grams wanted =
         (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) + owed + saw_log_grams;
@@ -321,6 +337,8 @@ class FellingPolicy {
 
   /// Logs a first level takes, by unit_types row: what a site still waits for.
   std::vector<std::uint32_t> logs_by_type_;
+
+  RiseWatch rise_watch_;
 
   std::uint32_t cooldown_ = 0;
 

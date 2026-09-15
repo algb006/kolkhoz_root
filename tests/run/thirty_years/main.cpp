@@ -568,6 +568,7 @@ int main(int argc, char** argv) {
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
   run::BuildingChairman::WireSchoolGate(school, sawmill);
+  run::BuildingChairman::WireRiseWatches(yard, felling, limit, digging);
   sawmill.KeepBoardReserve(g_saw_reserve);
   sawmill.SawByAnyone(g_saw_by_anyone);
   houses.SetSitesAtOnce(g_house_sites);

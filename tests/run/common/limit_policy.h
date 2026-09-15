@@ -36,6 +36,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "rise_watch.h"
 
 namespace run {
 
@@ -61,6 +62,9 @@ class LimitPolicy {
                  "year's points cover it and no cart with that material is on the road "
                  "(district design §1; boss, 2026-09-13)\n";
   }
+
+  /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
+  void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
@@ -195,16 +199,24 @@ class LimitPolicy {
   /// chairman bought nothing while the granary behind it waited for glass
   /// (seed 1931 bought one lot in twenty years, 2026-09-14).
   std::uint32_t MissingMaterial(const core::WorldState& world) const {
-    for (const core::UnitRow& unit : world.units.rows) {
-      const bool queued = unit.construction.phase == core::ConstructionPhase::kMarked ||
+    const std::uint32_t rising = rise_watch_ ? rise_watch_(world) : core::kNoRow;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      // And the step the chairman's yard waits to take (rise_watch.h).
+      const bool waits_to_rise = row == rising;
+      const bool queued = waits_to_rise ||
+                          unit.construction.phase == core::ConstructionPhase::kMarked ||
                           unit.construction.phase == core::ConstructionPhase::kDelivering;
-      const bool repair = unit.level > 0 && unit.construction.target_level == unit.level;
+      const bool repair =
+          !waits_to_rise && unit.level > 0 && unit.construction.target_level == unit.level;
       if (!queued || repair) {
         continue;
       }
+      const std::uint8_t target = waits_to_rise ? static_cast<std::uint8_t>(unit.level + 1U)
+                                                : unit.construction.target_level;
       for (const Cost& cost : costs_) {
-        if (cost.type.value != unit.type.value || cost.level != unit.construction.target_level ||
-            cost.resource == log_ || cost.resource == board_) {
+        if (cost.type.value != unit.type.value || cost.level != target || cost.resource == log_ ||
+            cost.resource == board_) {
           continue;
         }
         const core::Grams on_site =
@@ -235,6 +247,8 @@ class LimitPolicy {
 
   core::LimitCatalog catalog_;
   std::vector<Cost> costs_;
+
+  RiseWatch rise_watch_;
   std::uint32_t log_ = core::kNoTableRow;
   std::uint32_t board_ = core::kNoTableRow;
   bool ready_ = false;

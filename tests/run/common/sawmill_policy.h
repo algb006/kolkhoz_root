@@ -53,6 +53,7 @@
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "rise_watch.h"
 
 namespace run {
 
@@ -211,9 +212,6 @@ class SawmillPolicy {
     }
     return need;
   }
-
-  /// @brief Which row waits to rise with its step not yet taken, or kNoRow.
-  using RiseWatch = std::function<std::uint32_t(const core::WorldState&)>;
 
   /// @brief Counts the step a unit waits to take into the queue's need.
   ///

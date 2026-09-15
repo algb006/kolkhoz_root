@@ -54,6 +54,21 @@ class BuildingChairman {
         digging(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
+    WireRiseWatches(yard, felling, limit, digging);
+  }
+
+  /// @brief Tells the felling, the limit and the digging of the step the
+  /// chairman's yard waits to take, as the saw is told (rise_watch.h).
+  static void WireRiseWatches(const YardPolicy& yard_policy,
+                              FellingPolicy& felling_policy,
+                              LimitPolicy& limit_policy,
+                              ExtractionPolicy& digging_policy) {
+    const RiseWatch watch = [&yard_policy](const core::WorldState& world) {
+      return yard_policy.RowWaitingToRise(world);
+    };
+    felling_policy.SetRiseWatch(watch);
+    limit_policy.SetRiseWatch(watch);
+    digging_policy.SetRiseWatch(watch);
   }
 
   /// @brief The school asks the sawmill's question too (parcel 305): the

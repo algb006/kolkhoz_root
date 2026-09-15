@@ -31,6 +31,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "rise_watch.h"
 
 namespace run {
 
@@ -52,6 +53,9 @@ class ExtractionPolicy {
                  "clay pit, stone quarry or sand pit when the building sites wait for more of it "
                  "than the village holds (construction design §3; boss, parcel 270)\n";
   }
+
+  /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
+  void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
@@ -141,12 +145,17 @@ class ExtractionPolicy {
   /// (construction design §6), or still delivering — less what lies on them.
   core::Grams Owed(const core::WorldState& world, core::ResourceId resource) const {
     core::Grams owed = 0;
-    for (const core::UnitRow& unit : world.units.rows) {
-      if (unit.construction.phase != core::ConstructionPhase::kDelivering &&
+    const std::uint32_t rising = rise_watch_ ? rise_watch_(world) : core::kNoRow;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      // And the step the chairman's yard waits to take (rise_watch.h).
+      const bool waits_to_rise = row == rising;
+      if (!waits_to_rise && unit.construction.phase != core::ConstructionPhase::kDelivering &&
           unit.construction.phase != core::ConstructionPhase::kMarked) {
         continue;
       }
-      const auto target = unit.construction.target_level;
+      const auto target = waits_to_rise ? static_cast<std::uint8_t>(unit.level + 1U)
+                                        : unit.construction.target_level;
       for (const CostRow& cost : costs_) {
         if (cost.type != unit.type.value || cost.level != target ||
             cost.resource != resource.value) {
@@ -224,6 +233,8 @@ class ExtractionPolicy {
   std::vector<CostRow> costs_;
 
   bool ready_ = false;
+
+  RiseWatch rise_watch_;
 
   std::array<std::uint32_t, core::kExtractedMaterialCount> marked_{};
 
