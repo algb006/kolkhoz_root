@@ -68,6 +68,16 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current);
 /// @param plan_fully_met As YearLimitPoints.
 void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met);
 
+/// @brief One day of the district MTS's column, at the day's last tick
+///        (limit_state.h, MtsColumnState — the contract is written there): the
+///        column on the road arrives at the field camp or, with no camp by
+///        the window's end, never comes; a working column takes the fields by
+///        the brigade's queue nearest the camp and works its hectares; it
+///        leaves at its limit or at the window's end. Emits
+///        kMtsColumnArrived, kMtsColumnLeft and kMtsColumnNotArrived.
+/// @pre The kOrderLimitLot of a `service` lot has put the column on the road.
+void RunMtsColumn(const ProductionConfig& config, WorldState& current);
+
 /// @brief The first year's grant, on the campaign's first tick — the same
 ///        moment the first winter's manure plan is made, since genesis hands
 ///        over a world and no system has run: the base fund alone, as no plan

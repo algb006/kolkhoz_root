@@ -140,6 +140,12 @@ const char* KindName(core::EventKind kind) {
       return "alcoholism_band_crossed";
     case core::EventKind::kUnitInsulated:
       return "unit_insulated";
+    case core::EventKind::kMtsColumnArrived:
+      return "mts_column_arrived";
+    case core::EventKind::kMtsColumnLeft:
+      return "mts_column_left";
+    case core::EventKind::kMtsColumnNotArrived:
+      return "mts_column_not_arrived";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

@@ -91,6 +91,26 @@ struct LimitCatalog {
   /// Days the district's cart takes, and the most it may be late by.
   std::uint32_t delivery_days = 2;
   std::uint32_t delivery_delay_days_max = 2;
+
+  // -- the district MTS's column (MTS design §1; boss, parcel 449; STUB) -----
+
+  /// The two lots that buy a column, by key: mts_column_spring and
+  /// mts_column_autumn. Invalid when the catalogue carries no such row.
+  LimitLotId mts_spring_lot;
+  LimitLotId mts_autumn_lot;
+
+  /// Hectares a column works in a season (world_params.csv
+  /// mts_column_ha_limit) and in one working day (mts_column_ha_per_work_day).
+  float mts_column_ha_limit = 70.0F;
+  float mts_column_ha_per_work_day = 10.0F;
+
+  /// The field-work windows, 0-based months inclusive: spring March-May,
+  /// autumn August-October (world_params.csv mts_column_spring_from_month ..
+  /// mts_column_autumn_to_month, human 1..12 there).
+  std::uint8_t mts_spring_from_month = 2;
+  std::uint8_t mts_spring_to_month = 4;
+  std::uint8_t mts_autumn_from_month = 7;
+  std::uint8_t mts_autumn_to_month = 9;
 };
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's

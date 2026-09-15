@@ -614,6 +614,10 @@ struct WorldState {
   /// limit_state.h.
   LimitDeliveryTable limit_deliveries;
 
+  /// The district MTS's column of this season (MTS design §1); SAVED.
+  /// limit_state.h.
+  MtsColumnState mts_column;
+
   /// The teachers and librarians the district is sending and who have not
   /// arrived yet (education design, "Эпоха I числами"); SAVED.
   /// specialist_state.h.

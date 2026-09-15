@@ -309,6 +309,21 @@ enum class EventKind : std::uint8_t {
   /// is "warm" (UnitRow::insulated). kNotable. Seam key `unit_insulated`.
   kUnitInsulated,
 
+  // -- the district MTS's column (2026-09-15; MTS design §1) ------------------
+
+  /// unit = the field camp — the column reached the village and camps there
+  /// (limit_state.h, MtsColumnState). kNotable. Seam key `mts_column_arrived`.
+  kMtsColumnArrived,
+
+  /// amount = whole hectares the column worked this season — it left: its
+  /// limit is worked out or the field-work window closed. kNotable. Seam key
+  /// `mts_column_left`.
+  kMtsColumnLeft,
+
+  /// No field camp stood by the end of the window: the column never came and
+  /// the points are not returned. kNotable. Seam key `mts_column_not_arrived`.
+  kMtsColumnNotArrived,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

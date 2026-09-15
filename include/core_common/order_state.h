@@ -580,6 +580,15 @@ enum class OrderRefusal : std::uint8_t {
   /// `materials_short`.
   kMaterialsShort,
 
+  /// kBuildUnit field_camp: the plot lies on arable land — the camp stands
+  /// "не на пашне" (MTS design §1; boss, parcel 449). Seam key `on_arable`.
+  kOnArable,
+
+  /// kBuildUnit field_camp: no field lies within the camp's reach of its
+  /// centre — "близко к полям", 1 km (boss, parcel 449; STUB). Seam key
+  /// `too_far_from_fields`.
+  kTooFarFromFields,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a

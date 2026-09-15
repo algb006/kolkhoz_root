@@ -107,9 +107,14 @@ static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec 
 // save_rows.cpp).
 // Twenty-seven the same day: the distillers' month at the stores (a block
 // here, WriteWorldBlocks).
+// Twenty-eight on 2026-09-15: the district MTS's column (a block here).
 static_assert(sizeof(NightTheftTally) == 16,
               "NightTheftTally changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 27,
+static_assert(sizeof(MtsColumnState) == 16,
+              "MtsColumnState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<MtsColumnState>() == 5,
+              "MtsColumnState gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 28,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -363,6 +368,13 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU64(static_cast<std::uint64_t>(world.night_theft.stolen_this_month));
   out.WriteU32(world.night_theft.month_index);
   out.WriteU8(world.night_theft.complaint_raised);
+
+  // The district MTS's column of this season (MTS design §1, save format 46).
+  out.WriteU8(static_cast<std::uint8_t>(world.mts_column.phase));
+  sink.WriteDefId(DefKind::kLimitLot, world.mts_column.lot.value);
+  out.WriteU32(world.mts_column.arrive_day);
+  out.WriteU32(world.mts_column.camp.value);
+  out.WriteFloat(world.mts_column.worked_ha);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -431,6 +443,15 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->night_theft.stolen_this_month = static_cast<Grams>(in.ReadU64());
   world->night_theft.month_index = in.ReadU32();
   world->night_theft.complaint_raised = in.ReadU8();
+
+  world->mts_column.phase = static_cast<MtsColumnPhase>(
+      source.ReadEnumValue(0,
+                           static_cast<std::uint32_t>(MtsColumnPhase::kMtsColumnPhaseCount) - 1U,
+                           "mts column phase"));
+  world->mts_column.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
+  world->mts_column.arrive_day = in.ReadU32();
+  world->mts_column.camp = UnitId{in.ReadU32()};
+  world->mts_column.worked_ha = in.ReadFloat();
 }
 
 /// A campaign is fifty to seventy years; the ceiling is four orders above

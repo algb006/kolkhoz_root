@@ -372,6 +372,15 @@ struct ConstructionConfig {
   /// any other level keep it. `insulation_reset_level`.
   float insulation_reset_level = 3.0F;
 
+  /// unit_types.csv "field_camp": the unit field_camp.h places. Invalid = the
+  /// table set has none, and no plot is checked as a camp.
+  UnitTypeId field_camp_type;
+
+  /// How near its centre some field must lie for a field camp, in metres —
+  /// "близко к полям" (MTS design §1; boss, parcel 449; STUB).
+  /// world_params.csv `field_camp_field_reach_m`.
+  float field_camp_field_reach_m = 1000.0F;
+
   /// resources.csv "straw": what an insulation job is delivered and spends.
   /// Invalid = the table set has none, and every insulation order is refused
   /// rather than silently free.

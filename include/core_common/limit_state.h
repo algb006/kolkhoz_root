@@ -54,6 +54,65 @@ struct LimitDeliveryRow {
 /// @brief Every cart on its way, in the order the lots were bought.
 using LimitDeliveryTable = StateTable<LimitDeliveryId, LimitDeliveryRow>;
 
+/// @brief Where the district MTS's column stands (MTS design §1; boss,
+/// parcels 448-449). One column a season, bought as a `service` lot.
+enum class MtsColumnPhase : std::uint8_t {
+  /// No column ordered, or the last one's season is over and read.
+  kNone = 0,
+
+  /// Bought and on the district's road; arrives on `arrive_day`.
+  kOnTheRoad,
+
+  /// At the field camp and working the fields, 10 ha a working day (STUB),
+  /// until 70 ha are worked or the season's field-work window closes.
+  kWorking,
+
+  /// Done: the limit worked out or the window closed. Stays until the next
+  /// order, so a reader can see how the season went.
+  kGone,
+
+  /// No field camp stood when the column was due, nor by the window's end:
+  /// the column never came, the points are not returned (MTS §1).
+  kNotArrived,
+
+  kMtsColumnPhaseCount,
+};
+
+/// @brief The district MTS's column of this season — one row, not a table:
+/// "одна колонна на сезон".
+///
+/// CONTRACT (boss, parcel 449; numbers STUB, world_params.csv):
+///   * the order is kOrderLimitLot of a lot of kind `service`
+///     (mts_column_spring / mts_column_autumn): accepted, the points spent,
+///     not cancellable (MTS §1); the district's quota — "a neighbour may take
+///     the column first" — is a STUB: the column is always given;
+///   * it arrives limit_delivery_days after the order, at the field camp
+///     (unit field_camp), if one stands; kMtsColumnArrived {unit: the camp};
+///   * it works 10 ha a working day, spring doing ploughing, harrowing and
+///     sowing of a hectare at once, autumn reaping and carting; the fields are
+///     taken by the brigade's queue (window, deadline), nearest the camp
+///     first, until 70 ha are worked;
+///   * it leaves when the 70 ha are worked or the window closes;
+///     kMtsColumnLeft {amount: whole hectares worked};
+///   * with no camp by the window's end it never comes;
+///     kMtsColumnNotArrived {}.
+///   * windows: spring March-May, autumn August-October.
+struct MtsColumnState {
+  MtsColumnPhase phase = MtsColumnPhase::kNone;
+
+  /// The lot the column was bought as (spring or autumn); invalid in kNone.
+  LimitLotId lot;
+
+  /// The campaign day the column reaches the village.
+  std::uint32_t arrive_day = 0;
+
+  /// The field camp it works from; invalid until it arrives.
+  UnitId camp;
+
+  /// Hectares worked this season, out of the limit.
+  float worked_ha = 0.0F;
+};
+
 }  // namespace core
 
 #endif  // CORE_COMMON_LIMIT_STATE_H_
