@@ -39,3 +39,5 @@ paint_lot,paint,
 concrete_lot,reinforced_concrete,
 coal_lot,coal,5
 textile_lot,factory_textile,
+light_bulb_lot,light_bulb,
+wire_lot,wire,

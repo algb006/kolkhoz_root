@@ -25,7 +25,7 @@ driver,primary,16,,any,0,,workday
 carter,any,16,,any,0,,workday
 mechanic,vocational,16,,any,0,,workday
 farm_craftsman,any,16,,any,0,,workday
-electrician,vocational,16,,any,0,,workday
+electrician,secondary,16,,any,0,2,workday
 construction_technician,vocational,16,,any,0,,workday
 crafts_master,any,16,,any,0,,workday
 seamstress,any,16,,female,0,3,workday

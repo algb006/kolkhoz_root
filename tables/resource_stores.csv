@@ -77,6 +77,7 @@ industrial_equipment,utility_yard,goods_store
 insulation,build_yard,build_yard
 kerosene,utility_yard,goods_store
 leather,crafts_yard,crafts_store
+light_bulb,utility_yard,goods_store
 lime,build_yard,build_yard
 log,log_pile,log_pile
 manure,manure_pile,manure_pile
@@ -137,5 +138,6 @@ watch,utility_yard,goods_store
 wheat,church_store,church_store
 wheat,elevator,elevator
 wheat,food_yard,granary
+wire,utility_yard,goods_store
 woodwork,utility_yard,goods_store
 wool,utility_yard,goods_store

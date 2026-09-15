@@ -48,3 +48,6 @@ coal_lot,20,1,goods
 textile_lot,25,2,goods
 mts_column_spring,120,1,service
 mts_column_autumn,150,1,service
+light_bulb_lot,,1,goods
+wire_lot,,2,goods
+electrician_call,,1,service
