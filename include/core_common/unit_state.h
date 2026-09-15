@@ -264,8 +264,10 @@ struct UnitRow {
   /// bytes in a row. A dead mill is a fact about the mill.
   std::uint8_t dead = 0;
 
-  /// 0/1: THE UNIT IS "WARM" — insulated (unit rules §16). Set by a finished
-  /// kInsulateUnit; cleared by a finished upgrade TO the third level ("the
+  /// 0/1: THE UNIT IS "WARM" — insulated (unit rules §16). Written only by
+  /// the construction sub-step of the decisions slot (phase 3) and by the
+  /// save's load. Set by a finished kInsulateUnit; cleared by a finished
+  /// upgrade TO the third level ("the
   /// third level rebuilds the walls and the roof", construction.csv
   /// insulation_reset_level) and by nothing else — an epoch's change keeps
   /// it, and an upgrade above the third does not reset it. STUB: what it does

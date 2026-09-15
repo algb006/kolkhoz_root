@@ -7,7 +7,9 @@
 /// Runs in the residents' decisions sub-step (phase 3) on the sim thread: the
 /// trades are handed out at the year's turn, the outings laid down in their
 /// hour. It writes ResidentRow::night_trade, the night's outings, the family
-/// pantries and the step's events, so it can only live in a sequential slot.
+/// pantries, the kolkhoz units' stock and the month's theft tally
+/// (WorldState::night_theft), the ledger's `stolen` and the step's events, so
+/// it can only live in a sequential slot.
 ///
 /// WHAT DECIDES, in boss's numbers (assigned, not measured):
 ///   * who — at the year's turn the missing ones are chosen from the adult men

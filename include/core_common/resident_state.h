@@ -2,7 +2,7 @@
 /// @brief ResidentRow — the per-person state: the layout for the whole game.
 /// @threading PARALLEL_READONLY
 /// Rows live in WorldState::residents (a StateTable) under the double-buffer
-/// discipline: parallel phases 2 and 6 are split by FAMILY, and a worker
+/// discipline: parallel phases 2 and 5 are split by FAMILY, and a worker
 /// owning a family owns the resident rows of its members — disjoint sets,
 /// interleaved in the dense table, which is race-free (distinct objects).
 /// Membership is discovered through the `family` field, which is the one

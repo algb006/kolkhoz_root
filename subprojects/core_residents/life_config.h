@@ -11,7 +11,7 @@
 //
 /// @threading PARALLEL_READONLY
 /// Filled ONCE, by CreateResidentsSystem, before the system object exists;
-/// never written again for the life of the campaign. Slot-6 workers hold a
+/// never written again for the life of the campaign. Slot-5 workers hold a
 /// pointer to it (FamilyMetricsPhase) and read it from many threads at
 /// once, which is safe for exactly that reason and for no other.
 ///
