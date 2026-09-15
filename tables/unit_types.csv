@@ -129,3 +129,4 @@ water_intake,Водозаборный узел,infrastructure,2,0,1,event,event_
 water_standpipe,Уличная колонка,infrastructure,2,0,1,event,event_21,0,,0.8,verge,follows,0,,0,none,,0,
 fire_gong,Пожарный гонг,infrastructure,1,0,1,era,,0,,0.6,open,follows,0,,0,none,,0,
 field_camp,Полевой стан,logistics,1,0,1,event,event_22,1,,,,follows,0,,0,none,,0,
+count_lodge,Графская сторожка,production,1,0,0,start,,1,135,,,absorbed,0,,0,none,,0,
