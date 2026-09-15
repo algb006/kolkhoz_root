@@ -602,6 +602,10 @@ struct ProductionConfig {
   /// (livestock design §5, boss answer 2026-08-31).
   UnitTypeId stable_type;
 
+  /// unit_types.csv "field_camp": where the district MTS's column camps
+  /// (mts_column.cpp). Invalid = the tables have none, and no column arrives.
+  UnitTypeId field_camp_type;
+
   LivestockKindId horse_kind;  ///< livestock.csv "horse": the only kind the stable gates.
 
   /// professions.csv "groom" — the post that ends the start's horse

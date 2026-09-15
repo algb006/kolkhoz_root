@@ -129,3 +129,10 @@ alcohol_employed_days_min,3,core
 alcohol_loss_married,1,core
 alcohol_women_factor,0.25,core
 alcohol_epoch1_cap,60,core
+mts_column_ha_limit,70,core
+mts_column_ha_per_work_day,10,core
+mts_column_spring_from_month,3,core
+mts_column_spring_to_month,5,core
+mts_column_autumn_from_month,8,core
+mts_column_autumn_to_month,10,core
+field_camp_field_reach_m,1000,core

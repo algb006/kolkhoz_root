@@ -38,9 +38,8 @@ enum class LimitLotKind : std::uint8_t {
   kChoice,
 
   /// A service the district sends rather than goods it delivers — the MTS
-  /// column of spring and autumn (boss, parcel 235; mts.md §1). STUB: read so
-  /// the catalogue loads, refused as not goods when ordered, until the column
-  /// has its own move in the queue.
+  /// column of spring and autumn (boss, parcels 235, 449; mts.md §1). Only
+  /// the two column lots are bought; another service is refused.
   kService,
 };
 

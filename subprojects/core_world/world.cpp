@@ -696,6 +696,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_timber.begin(), from_timber.end());
       const std::span<const std::string_view> from_extraction = ExtractionWorldParamKeys();
       known.insert(known.end(), from_extraction.begin(), from_extraction.end());
+      const std::span<const std::string_view> from_construction = ConstructionWorldParamKeys();
+      known.insert(known.end(), from_construction.begin(), from_construction.end());
       const std::span<const std::string_view> from_limit = LimitWorldParamKeys();
       known.insert(known.end(), from_limit.begin(), from_limit.end());
       const std::span<const std::string_view> from_visits = DistrictVisitWorldParamKeys();

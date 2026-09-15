@@ -197,6 +197,9 @@ class ProductionSystem final : public IProductionSystem {
     // runs earlier in this very slot, so a field ploughed by noon opens its
     // harrowing at noon instead of losing the afternoon.
     AdvanceFinishedPhases(current);
+    // The MTS column after the phases: a phase the crew opened this hour is
+    // held to the column's share before any crew is sent to it.
+    RunMtsColumn(config_, current);
     if (current.calendar.tick == 1) {
       // The first winter's plan: genesis hands over a heap and a January, and
       // day zero is no year's turn for the daily bookkeeping below. Without
@@ -283,66 +286,8 @@ class ProductionSystem final : public IProductionSystem {
   /// work_days_remaining, and only then moves on. No workers, no progress —
   /// deliberately.
   void AdvanceFinishedPhases(WorldState& current) {
-    const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
-    const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
-    const float temperature = current.weather.air_temperature_celsius;
     for (FieldRow& field : current.fields.rows) {
-      if (KindOfWorkingPhase(field.phase) == FieldPhase::kIdle ||
-          field.work_days_remaining > 0.0F) {
-        continue;
-      }
-      field.work_days_remaining = 0.0F;
-      switch (field.phase) {
-        case FieldPhase::kPlowing:
-          OpenPhase(config_, current, field, FieldPhase::kHarrowing);
-          break;
-        case FieldPhase::kHarrowing:
-          if (field.crop.value == kInvalidDefIdValue) {
-            FinishSowing(config_, current, field);  // bare fallow: nothing to sow
-          } else if (SowingMayOpen(config_, field.crop, month, day_of_year, temperature)) {
-            OpenPhase(config_, current, field, FieldPhase::kSowing);
-          }
-          // THE SOWING MAY NOT START EARLY, AND MAY STILL FINISH LATE — and
-          // that asymmetry is the whole of this repair. Both halves were
-          // measured wrong before they were measured right.
-          //
-          // Boss's decision of 2026-09-13: "пахать можно, как только земля
-          // открыта; сеять — только в свой агрономический срок". The plough
-          // half is done in field_work.h (TrySow). This is the sowing half, and
-          // SowingMayOpen asks the crop's own front edge and its temperature.
-          //
-          // WITHOUT IT the repair sowed oats in January. Moving the window off
-          // the plough and putting nothing in its place left the seed following
-          // the plough straight into frozen ground, below the crop's own
-          // growth temperature: oat_balance went to all zeros — a kilogram of
-          // seed giving back nothing, every year of the run.
-          //
-          // WITH IT ON BOTH EDGES the opposite cliff appeared. A field harrowed
-          // one day after its window shut was then never sown at all: the first
-          // year put in 10.5 hectares instead of 66.5, five fields stood
-          // harrowed to the end of the year, satiety fell by a fifth and the
-          // plan was failed SIX YEARS RUNNING — the village reached «Под суд»
-          // in its third year with the chairman doing nothing wrong. That reads
-          // straight against "никаких безвыходных ситуаций" and "не наказывать
-          // за непредвидимое".
-          //
-          // So the back edge stays open and the old seam is kept where it was
-          // right: the window says when the sowing may START, the crew decides
-          // when it ends. A field that misses its window entirely is a
-          // different question — sowing late for a smaller crop is a YIELD
-          // mechanic, and boss added it on 2026-09-13 (LateSowingFactor,
-          // field_work.h); a field that cannot ripen before snow is not sown
-          // at all (SowingMayOpen).
-          break;
-        case FieldPhase::kSowing:
-          FinishSowing(config_, current, field);
-          break;
-        case FieldPhase::kHarvest:
-          FinishHarvest(config_, current, field);
-          break;
-        default:
-          break;
-      }
+      AdvanceFinishedField(config_, current, field);
     }
   }
 

@@ -68,8 +68,10 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current);
 /// @param plan_fully_met As YearLimitPoints.
 void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met);
 
-/// @brief One day of the district MTS's column, at the day's last tick
-///        (limit_state.h, MtsColumnState — the contract is written there): the
+/// @brief The district MTS's column, every tick after the field phases move
+///        (limit_state.h, MtsColumnState — the contract is written there).
+///        Each tick the field it has begun keeps its crew to the hectares the
+///        column left; at the day's last tick the
 ///        column on the road arrives at the field camp or, with no camp by
 ///        the window's end, never comes; a working column takes the fields by
 ///        the brigade's queue nearest the camp and works its hectares; it

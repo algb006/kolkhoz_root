@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
@@ -16,7 +17,9 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 9> kLimitWorldParamKeys = {
+/// The first kPointKnobCount are whole points and days; the rest are the MTS
+/// column's (ReadMtsColumnKnobs).
+constexpr std::array<std::string_view, 15> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
@@ -25,7 +28,15 @@ constexpr std::array<std::string_view, 9> kLimitWorldParamKeys = {
     "limit_overfulfil_points_per_percent",
     "limit_overfulfil_points_max",
     "limit_delivery_days",
-    "limit_delivery_delay_days_max"};
+    "limit_delivery_delay_days_max",
+    "mts_column_ha_limit",
+    "mts_column_ha_per_work_day",
+    "mts_column_spring_from_month",
+    "mts_column_spring_to_month",
+    "mts_column_autumn_from_month",
+    "mts_column_autumn_to_month"};
+
+constexpr std::size_t kPointKnobCount = 9;
 
 /// Largest price, grant or day count a row may name. A thousand times the
 /// dearest lot of the catalogue: past it the cell is a typo.
@@ -160,6 +171,61 @@ bool WholeKnob(float value, std::int32_t& out) {
   return true;
 }
 
+/// The column's hectares and its two windows. The table's months are human,
+/// 1..12; the catalogue keeps them 0-based as Month counts them.
+bool ReadMtsColumnKnobs(const ITable& world, LimitCatalog& catalog, std::string& error) {
+  constexpr float kMostHectares = 14400.0F;  // the whole map (CLAUDE.md §9)
+  const Range hectares{.low = 0.0F, .high = kMostHectares};
+  const Range months{.low = 1.0F, .high = 12.0F};
+  std::array<float, 4> month_values = {static_cast<float>(catalog.mts_spring_from_month) + 1.0F,
+                                       static_cast<float>(catalog.mts_spring_to_month) + 1.0F,
+                                       static_cast<float>(catalog.mts_autumn_from_month) + 1.0F,
+                                       static_cast<float>(catalog.mts_autumn_to_month) + 1.0F};
+  const std::array<ScalarKnob, 6> knobs = {
+      ScalarKnob{.key = kLimitWorldParamKeys[kPointKnobCount],
+                 .value = &catalog.mts_column_ha_limit,
+                 .range = hectares},
+      ScalarKnob{.key = kLimitWorldParamKeys[kPointKnobCount + 1],
+                 .value = &catalog.mts_column_ha_per_work_day,
+                 .range = hectares},
+      ScalarKnob{.key = kLimitWorldParamKeys[kPointKnobCount + 2],
+                 .value = month_values.data(),
+                 .range = months},
+      ScalarKnob{.key = kLimitWorldParamKeys[kPointKnobCount + 3],
+                 .value = &month_values[1],
+                 .range = months},
+      ScalarKnob{.key = kLimitWorldParamKeys[kPointKnobCount + 4],
+                 .value = &month_values[2],
+                 .range = months},
+      ScalarKnob{.key = kLimitWorldParamKeys[kPointKnobCount + 5],
+                 .value = &month_values[3],
+                 .range = months}};
+  if (!ReadKnobs(world, "world_params", knobs, error)) {
+    return false;
+  }
+  std::array<std::uint8_t, 4> zero_based{};
+  for (std::size_t index = 0; index < month_values.size(); ++index) {
+    std::int32_t whole = 0;
+    if (!WholeKnob(month_values[index], whole)) {
+      error = "world_params: " + std::string(kLimitWorldParamKeys[kPointKnobCount + 2 + index]) +
+              " is not a whole month";
+      return false;
+    }
+    zero_based[index] = static_cast<std::uint8_t>(whole - 1);
+  }
+  // A window that ends before it begins would never open, and a column bought
+  // for it would take its points to a season that does not come.
+  if (zero_based[0] > zero_based[1] || zero_based[2] > zero_based[3]) {
+    error = "world_params: an MTS column's window ends before it begins";
+    return false;
+  }
+  catalog.mts_spring_from_month = zero_based[0];
+  catalog.mts_spring_to_month = zero_based[1];
+  catalog.mts_autumn_from_month = zero_based[2];
+  catalog.mts_autumn_to_month = zero_based[3];
+  return true;
+}
+
 }  // namespace
 
 std::span<const std::string_view> LimitWorldParamKeys() {
@@ -168,7 +234,7 @@ std::span<const std::string_view> LimitWorldParamKeys() {
 
 bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::string& error) {
   if (const ITable* const world = tables.FindTable("world_params")) {
-    std::array<float, kLimitWorldParamKeys.size()> values = {
+    std::array<float, kPointKnobCount> values = {
         static_cast<float>(catalog.base_points[0]),
         static_cast<float>(catalog.base_points[1]),
         static_cast<float>(catalog.base_points[2]),
@@ -178,7 +244,7 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
         static_cast<float>(catalog.overfulfil_points_max),
         static_cast<float>(catalog.delivery_days),
         static_cast<float>(catalog.delivery_delay_days_max)};
-    std::array<ScalarKnob, kLimitWorldParamKeys.size()> knobs{};
+    std::array<ScalarKnob, kPointKnobCount> knobs{};
     for (std::size_t index = 0; index < knobs.size(); ++index) {
       knobs[index] = ScalarKnob{.key = kLimitWorldParamKeys[index],
                                 .value = &values[index],
@@ -187,7 +253,7 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
-    std::array<std::int32_t, kLimitWorldParamKeys.size()> whole{};
+    std::array<std::int32_t, kPointKnobCount> whole{};
     for (std::size_t index = 0; index < values.size(); ++index) {
       if (!WholeKnob(values[index], whole[index])) {
         error =
@@ -203,6 +269,9 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
     catalog.overfulfil_points_max = whole[6];
     catalog.delivery_days = static_cast<std::uint32_t>(whole[7]);
     catalog.delivery_delay_days_max = static_cast<std::uint32_t>(whole[8]);
+    if (!ReadMtsColumnKnobs(*world, catalog, error)) {
+      return false;
+    }
   }
   const ITable* const lots = tables.FindTable("limit_catalog");
   if (lots == nullptr) {
@@ -210,6 +279,24 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
   }
   if (!ReadLots(*lots, catalog, error)) {
     return false;
+  }
+  // The column's two lots by key, as the catalogue names them. A row that is
+  // not a service would buy goods under the column's name: refused.
+  catalog.mts_spring_lot = LimitLotId{};
+  catalog.mts_autumn_lot = LimitLotId{};
+  const std::array<std::pair<std::string_view, LimitLotId*>, 2> column_lots = {
+      std::pair<std::string_view, LimitLotId*>{"mts_column_spring", &catalog.mts_spring_lot},
+      std::pair<std::string_view, LimitLotId*>{"mts_column_autumn", &catalog.mts_autumn_lot}};
+  for (const auto& [key, id] : column_lots) {
+    const std::uint32_t row = lots->FindRowByKey(key);
+    if (row == kNoTableRow) {
+      continue;
+    }
+    if (catalog.lots[row].kind != LimitLotKind::kService) {
+      error = "limit_catalog: " + std::string(key) + " is not a service";
+      return false;
+    }
+    *id = DefIdFromRow<LimitLotIdTag>(row);
   }
   if (const ITable* const goods = tables.FindTable("limit_lot_goods")) {
     return ReadGoods(tables, *goods, *lots, catalog, error);

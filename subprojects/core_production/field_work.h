@@ -91,6 +91,15 @@ void OpenPhase(const ProductionConfig& config,
                FieldRow& field,
                FieldPhase phase);
 
+/// @brief The game man-days a whole phase of this field asks today: area x
+/// the phase's norm, horse work lengthened by the traction ration. What
+/// OpenPhase writes; the MTS column scales it by the hectares it leaves
+/// (mts_column.cpp).
+float PhaseWorkDays(const ProductionConfig& config,
+                    const WorldState& current,
+                    const FieldRow& field,
+                    FieldPhase phase);
+
 /// @brief The manure bonus this field has coming, by the share of its dose
 /// it received (FieldRow::manure_applied is that share in percent).
 float ManureBonus(const ProductionConfig& config, const FieldRow& field);
@@ -239,6 +248,14 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
 ///
 /// The reaped field pays out and leaves the harvest phase.
 void FinishHarvest(const ProductionConfig& config, WorldState& current, FieldRow& field);
+
+/// @brief A field whose working phase is drained moves on: ploughing opens
+///        the harrowing, the harrowing the sowing (in its agronomic term) or a
+///        bare fallow's end, the sowing and the reaping finish. A field still
+///        owed work, or idle, is left alone. Called for every field each tick
+///        (production_system.cpp) and by the MTS column for the field it has
+///        finished (mts_column.cpp).
+void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 }  // namespace core
 

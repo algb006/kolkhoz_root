@@ -480,6 +480,8 @@ core::WorldState MakeWorld() {
   world.mts_column.arrive_day = 110;
   world.mts_column.camp = core::UnitId{9};
   world.mts_column.worked_ha = 32.5F;
+  world.mts_column.field = core::FieldId{4};
+  world.mts_column.field_ha = 7.5F;
   return world;
 }
 
@@ -771,10 +773,12 @@ int main() {
                  loaded.night_theft.stolen_this_month == 73'000 &&
                  loaded.night_theft.month_index == 17 && loaded.night_theft.complaint_raised == 1,
              "the stolen and the distillers' month came back, each its own number");
-  failures += Expect(loaded.mts_column.phase == core::MtsColumnPhase::kWorking &&
-                         loaded.mts_column.lot.value == 1 && loaded.mts_column.arrive_day == 110 &&
-                         loaded.mts_column.camp.value == 9 && loaded.mts_column.worked_ha == 32.5F,
-                     "the MTS column came back: phase, lot, day, camp and hectares");
+  failures +=
+      Expect(loaded.mts_column.phase == core::MtsColumnPhase::kWorking &&
+                 loaded.mts_column.lot.value == 1 && loaded.mts_column.arrive_day == 110 &&
+                 loaded.mts_column.camp.value == 9 && loaded.mts_column.worked_ha == 32.5F &&
+                 loaded.mts_column.field.value == 4 && loaded.mts_column.field_ha == 7.5F,
+             "the MTS column came back: phase, lot, day, camp, hectares and its field");
 
   // The condition bytes came back as well, each one separately: a check
   // that read them together would pass on a codec that swapped them.

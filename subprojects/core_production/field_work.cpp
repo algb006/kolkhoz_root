@@ -355,13 +355,18 @@ void OpenPhase(const ProductionConfig& config,
     // the plan failed twenty-seven years of thirty.
     field.sown_day = current.calendar.day;
   }
+  field.work_days_remaining = PhaseWorkDays(config, current, field, phase);
+}
+
+float PhaseWorkDays(const ProductionConfig& config,
+                    const WorldState& current,
+                    const FieldRow& field,
+                    FieldPhase phase) {
   if (field.kind != LandKind::kArable) {
     // Grass is mown, never ploughed, harrowed or sown: the meadow has one
     // working phase in the year and one norm to size it.
-    field.work_days_remaining = phase == FieldPhase::kHarvest
-                                    ? config.farming.meadow_mow_days_per_ha * field.area_ga
-                                    : 0.0F;
-    return;
+    return phase == FieldPhase::kHarvest ? config.farming.meadow_mow_days_per_ha * field.area_ga
+                                         : 0.0F;
   }
   const CropId crop = field.crop;
   float norm = 0.0F;
@@ -465,7 +470,7 @@ void OpenPhase(const ProductionConfig& config,
                          (1.0F - config.farming.traction_hungry_factor) * current.traction_ration;
     norm = factor > 0.0F ? norm / factor : norm;
   }
-  field.work_days_remaining = norm * field.area_ga;
+  return norm * field.area_ga;
 }
 
 float ManureBonus(const ProductionConfig& config, const FieldRow& field) {
@@ -730,6 +735,67 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
   MoveFieldPhase(current, field, FieldPhase::kGrowing);
   field.work_days_remaining = 0.0F;
   ClearFieldWeather(field);
+}
+
+void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  if (KindOfWorkingPhase(field.phase) == FieldPhase::kIdle || field.work_days_remaining > 0.0F) {
+    return;
+  }
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
+  const float temperature = current.weather.air_temperature_celsius;
+  field.work_days_remaining = 0.0F;
+  switch (field.phase) {
+    case FieldPhase::kPlowing:
+      OpenPhase(config, current, field, FieldPhase::kHarrowing);
+      break;
+    case FieldPhase::kHarrowing:
+      if (field.crop.value == kInvalidDefIdValue) {
+        FinishSowing(config, current, field);  // bare fallow: nothing to sow
+      } else if (SowingMayOpen(config, field.crop, month, day_of_year, temperature)) {
+        OpenPhase(config, current, field, FieldPhase::kSowing);
+      }
+      // THE SOWING MAY NOT START EARLY, AND MAY STILL FINISH LATE — and
+      // that asymmetry is the whole of this repair. Both halves were
+      // measured wrong before they were measured right.
+      //
+      // Boss's decision of 2026-09-13: "пахать можно, как только земля
+      // открыта; сеять — только в свой агрономический срок". The plough
+      // half is done in field_work.h (TrySow). This is the sowing half, and
+      // SowingMayOpen asks the crop's own front edge and its temperature.
+      //
+      // WITHOUT IT the repair sowed oats in January. Moving the window off
+      // the plough and putting nothing in its place left the seed following
+      // the plough straight into frozen ground, below the crop's own
+      // growth temperature: oat_balance went to all zeros — a kilogram of
+      // seed giving back nothing, every year of the run.
+      //
+      // WITH IT ON BOTH EDGES the opposite cliff appeared. A field harrowed
+      // one day after its window shut was then never sown at all: the first
+      // year put in 10.5 hectares instead of 66.5, five fields stood
+      // harrowed to the end of the year, satiety fell by a fifth and the
+      // plan was failed SIX YEARS RUNNING — the village reached «Под суд»
+      // in its third year with the chairman doing nothing wrong. That reads
+      // straight against "никаких безвыходных ситуаций" and "не наказывать
+      // за непредвидимое".
+      //
+      // So the back edge stays open and the old seam is kept where it was
+      // right: the window says when the sowing may START, the crew decides
+      // when it ends. A field that misses its window entirely is a
+      // different question — sowing late for a smaller crop is a YIELD
+      // mechanic, and boss added it on 2026-09-13 (LateSowingFactor,
+      // field_work.h); a field that cannot ripen before snow is not sown
+      // at all (SowingMayOpen).
+      break;
+    case FieldPhase::kSowing:
+      FinishSowing(config, current, field);
+      break;
+    case FieldPhase::kHarvest:
+      FinishHarvest(config, current, field);
+      break;
+    default:
+      break;
+  }
 }
 
 void FinishHarvest(const ProductionConfig& config, WorldState& current, FieldRow& field) {

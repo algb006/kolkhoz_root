@@ -32,6 +32,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
+#include "field_camp.h"
 #include "insulation.h"
 #include "site_supply.h"
 #include "unit_decay.h"
@@ -464,6 +465,14 @@ class ConstructionSystem final : public IConstructionSystem {
     }
     if (PlotOverlaps(current, order.position, radius, UnitId{}, parent)) {
       return OrderRefusal::kTooClose;
+    }
+    // The camp's own ground rule, after the plot: a camp on another's plot is
+    // too close before it is anywhere at all.
+    if (order.unit_type.value == config_.field_camp_type.value) {
+      const OrderRefusal camp = FieldCampPlacementRefusal(config_, current, order.position);
+      if (camp != OrderRefusal::kNone) {
+        return camp;
+      }
     }
 
     UnitRow site;

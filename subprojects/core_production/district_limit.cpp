@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 
+#include "core_common/calendar.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "stock_ops.h"
@@ -21,6 +22,38 @@ bool CarriesAnything(const ResourceAmounts& goods) {
   return std::any_of(goods.begin(), goods.end(), [](Grams grams) { return grams > 0; });
 }
 
+/// The MTS column bought (limit_state.h, MtsColumnState): one at a time, and
+/// only while it can still reach its season's window this year. Refused
+/// before any point is spent — "not cancellable" is about the accepted one.
+OrderRefusal OrderMtsColumn(const ProductionConfig& config,
+                            WorldState& current,
+                            LimitLotId lot,
+                            std::int32_t points) {
+  const MtsColumnPhase phase = current.mts_column.phase;
+  if (phase == MtsColumnPhase::kOnTheRoad || phase == MtsColumnPhase::kWorking) {
+    return OrderRefusal::kRuleForbids;  // one column a season, and this one is out
+  }
+  const bool spring = lot.value == config.limit.mts_spring_lot.value;
+  const std::uint8_t window_end =
+      spring ? config.limit.mts_spring_to_month : config.limit.mts_autumn_to_month;
+  const std::uint32_t arrive_day =
+      static_cast<std::uint32_t>(current.calendar.day) + config.limit.delivery_days;
+  const std::uint32_t arrive_month = (arrive_day % kDaysPerYear) / kDaysPerMonth;
+  if (arrive_month > window_end) {
+    return OrderRefusal::kRuleForbids;  // it would come after its season
+  }
+  if (current.limit.points < points) {
+    return OrderRefusal::kLimitShort;
+  }
+  current.limit.points -= points;
+  current.ledger.current.limit_points_spent += points;
+  current.mts_column = MtsColumnState{};
+  current.mts_column.phase = MtsColumnPhase::kOnTheRoad;
+  current.mts_column.lot = lot;
+  current.mts_column.arrive_day = arrive_day;
+  return OrderRefusal::kNone;
+}
+
 }  // namespace
 
 OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epoch) {
@@ -30,6 +63,13 @@ OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epo
   const LimitLotDef& def = catalog.lots[lot.value];
   if (def.era > static_cast<std::uint8_t>(epoch)) {
     return OrderRefusal::kGateClosed;
+  }
+  // A service is bought here when it is the MTS column of spring or autumn
+  // (boss, parcel 449); any other service has no body yet.
+  if (def.kind == LimitLotKind::kService) {
+    const bool column =
+        lot.value == catalog.mts_spring_lot.value || lot.value == catalog.mts_autumn_lot.value;
+    return column && def.points >= 0 ? OrderRefusal::kNone : OrderRefusal::kRuleForbids;
   }
   // Only goods are bought here (livestock, machines, people and "choice"
   // have their own windows — STUB), and only a lot with a price and at least
@@ -93,6 +133,9 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
     return refusal;
   }
   const LimitLotDef& def = config.limit.lots[order.lot.value];
+  if (def.kind == LimitLotKind::kService) {
+    return OrderMtsColumn(config, current, order.lot, def.points);
+  }
   if (current.limit.points < def.points) {
     return OrderRefusal::kLimitShort;
   }

@@ -120,6 +120,8 @@
 #define CORE_CONSTRUCTION_CONSTRUCTION_SYSTEM_H_
 
 #include <memory>
+#include <span>
+#include <string_view>
 #include <vector>
 
 #include "core_common/alarm_state.h"
@@ -325,6 +327,10 @@ class IConstructionSystem {
 ///        tables, on the documented defaults (core_tables/stub_tables.h).
 ///        There is no default value: a caller that has not thought about
 ///        it cannot be served a different world in silence.
+/// @brief The world_params.csv keys this subsystem reads (the field camp's
+///        reach, field_camp.h), for the assembly's declared-readers check.
+std::span<const std::string_view> ConstructionWorldParamKeys();
+
 std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
                                                               StubTables stubs);
 

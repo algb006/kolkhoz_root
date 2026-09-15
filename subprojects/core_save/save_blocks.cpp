@@ -110,9 +110,9 @@ static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec 
 // Twenty-eight on 2026-09-15: the district MTS's column (a block here).
 static_assert(sizeof(NightTheftTally) == 16,
               "NightTheftTally changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(MtsColumnState) == 16,
+static_assert(sizeof(MtsColumnState) == 24,
               "MtsColumnState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<MtsColumnState>() == 5,
+static_assert(AggregateArity<MtsColumnState>() == 7,
               "MtsColumnState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<WorldState>() == 28,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
@@ -375,6 +375,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU32(world.mts_column.arrive_day);
   out.WriteU32(world.mts_column.camp.value);
   out.WriteFloat(world.mts_column.worked_ha);
+  // The field begun and its hectares (save format 47).
+  out.WriteU32(world.mts_column.field.value);
+  out.WriteFloat(world.mts_column.field_ha);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -452,6 +455,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->mts_column.arrive_day = in.ReadU32();
   world->mts_column.camp = UnitId{in.ReadU32()};
   world->mts_column.worked_ha = in.ReadFloat();
+  world->mts_column.field = FieldId{in.ReadU32()};
+  world->mts_column.field_ha = in.ReadFloat();
 }
 
 /// A campaign is fifty to seventy years; the ceiling is four orders above

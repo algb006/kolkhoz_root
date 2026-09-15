@@ -452,6 +452,52 @@ int TestServiceLotKind() {
   return failures;
 }
 
+/// THE MTS COLUMN IN THE CATALOGUE (boss, parcels 449, 451): its two lots by
+/// key, the hectares and the windows out of world_params.csv with the months
+/// taken from human 1..12 to Month's 0..11; a column row that is not a service
+/// and a window that ends before it begins refuse the catalogue.
+int TestTheMtsColumnKnobs() {
+  int failures = 0;
+  const test::FakeTable resources({"key", "kg_per_unit"}, {{"glass", "1"}});
+  const test::FakeTable goods({"lot", "resource", "amount"}, {});
+  const auto parse =
+      [&](const char* autumn_kind, const char* spring_to, core::LimitCatalog& catalog) {
+        const test::FakeTable lots({"key", "points", "era", "kind"},
+                                   {{"glass", "25", "1", "goods"},
+                                    {"mts_column_spring", "120", "1", "service"},
+                                    {"mts_column_autumn", "150", "1", autumn_kind}});
+        const test::FakeTable world({"key", "value", "reader"},
+                                    {{"mts_column_ha_limit", "60", "core"},
+                                     {"mts_column_ha_per_work_day", "12", "core"},
+                                     {"mts_column_spring_from_month", "3", "core"},
+                                     {"mts_column_spring_to_month", spring_to, "core"},
+                                     {"mts_column_autumn_from_month", "8", "core"},
+                                     {"mts_column_autumn_to_month", "11", "core"}});
+        const test::FakeTableSet set({{"resources", &resources},
+                                      {"limit_catalog", &lots},
+                                      {"limit_lot_goods", &goods},
+                                      {"world_params", &world}});
+        std::string error;
+        return core::ParseLimitCatalog(set, catalog, error);
+      };
+  core::LimitCatalog read;
+  failures += Expect(parse("service", "5", read) && read.mts_spring_lot.value == 1 &&
+                         read.mts_autumn_lot.value == 2,
+                     "mts: the spring and autumn lots are found by their keys");
+  failures += Expect(read.mts_column_ha_limit == 60.0F && read.mts_column_ha_per_work_day == 12.0F,
+                     "mts: the hectares are read from world_params");
+  failures += Expect(read.mts_spring_from_month == 2 && read.mts_spring_to_month == 4 &&
+                         read.mts_autumn_from_month == 7 && read.mts_autumn_to_month == 10,
+                     "mts: the months come in human and are kept 0-based");
+  core::LimitCatalog goods_column;
+  failures += Expect(!parse("goods", "5", goods_column),
+                     "mts: a column row that is not a service refuses the catalogue");
+  core::LimitCatalog reversed;
+  failures += Expect(!parse("service", "2", reversed),
+                     "mts: a spring window ending before it begins refuses the catalogue");
+  return failures;
+}
+
 /// The district's regular visits (boss, parcel 324): the three knobs read, and
 /// a month outside the year, a half month and a notice longer than a month
 /// refuse the catalogue.
@@ -487,6 +533,7 @@ int main() {
   int failures = 0;
   failures += TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
+  failures += TestTheMtsColumnKnobs();
   failures += TestThreeAnswers();
   failures += TestRequiredCell();
   failures += TestNotANumber();

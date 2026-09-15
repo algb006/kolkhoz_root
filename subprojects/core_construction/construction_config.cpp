@@ -19,9 +19,11 @@
 
 #include "construction_config.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -724,7 +726,18 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
   return true;
 }
 
+/// The world_params.csv keys this subsystem reads.
+constexpr std::array<std::string_view, 1> kConstructionWorldParamKeys = {
+    "field_camp_field_reach_m"};
+
+/// Past it the cell is a typo: ten times the map's side (CLAUDE.md §9).
+constexpr float kMostCampReachM = 120000.0F;
+
 }  // namespace
+
+std::span<const std::string_view> ConstructionWorldParamKeys() {
+  return kConstructionWorldParamKeys;
+}
 
 bool ParseConstructionConfig(const ITableSet& tables,
                              StubTables stubs,
@@ -838,6 +851,17 @@ bool ParseConstructionConfig(const ITableSet& tables,
     config.spare_part_grams = grams_per_unit[spare_row];
   }
   config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
+  // The MTS column's camp and how near the fields it stands (field_camp.h).
+  config.field_camp_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("field_camp"));
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    const std::array<ScalarKnob, 1> reach = {
+        ScalarKnob{.key = ConstructionWorldParamKeys()[0],
+                   .value = &config.field_camp_field_reach_m,
+                   .range = Range{.low = 0.0F, .high = kMostCampReachM}}};
+    if (!ReadKnobs(*world, "world_params", reach, error)) {
+      return false;
+    }
+  }
   // What an insulation job is delivered and spends (unit rules §16).
   config.straw_resource = ResourceId{};
   const std::uint32_t straw_row = resources->FindRowByKey("straw");

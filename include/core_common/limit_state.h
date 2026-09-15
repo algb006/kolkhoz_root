@@ -111,6 +111,15 @@ struct MtsColumnState {
 
   /// Hectares worked this season, out of the limit.
   float worked_ha = 0.0F;
+
+  /// The field the column has begun and not finished; invalid when none.
+  /// Kept past kGone: the crew still owes only the hectares the column left.
+  FieldId field;
+
+  /// Hectares of `field` the column has worked, 0..area. The field's current
+  /// phase owes its crew the rest only (mts_column.cpp): a phase chain is
+  /// field-wide, and "a hectare at once" is carried by this share.
+  float field_ha = 0.0F;
 };
 
 }  // namespace core

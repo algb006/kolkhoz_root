@@ -4422,6 +4422,210 @@ int CheckDistrictLimit() {
 /// lets its crop go (oat_balance, 2026-09-13: a cabbage harrowed too late to
 /// sow went into the next year's oat slot). Finished ploughing is kept as
 /// autumn ploughing; a fallow being ploughed and a sown field are untouched.
+/// Man-days held to a share come out of a float product: 0.6 × 25 is not 15.
+bool ManDaysNear(float value, float expected) {
+  return value > expected - 1.0e-3F && value < expected + 1.0e-3F;
+}
+
+/// The events of one kind the step has emitted so far.
+std::vector<core::SimEvent> EventsOf(const core::WorldState& world, core::EventKind kind) {
+  std::vector<core::SimEvent> found;
+  for (const core::SimEvent& event : world.step_events) {
+    if (event.kind == kind) {
+      found.push_back(event);
+    }
+  }
+  return found;
+}
+
+/// A column's world: a 1000 t store (type 0), the camp's type (1), a bare
+/// fallow's norms of 1 man-day a hectare to plough, and a crop of 1 t a
+/// hectare reaped at 2 man-days. Spring lot 0, autumn lot 1.
+core::ProductionConfig MakeColumnConfig() {
+  core::ProductionConfig config;
+  config.unit_types.resize(2);
+  SetStorageKg(config.unit_types[0], 1.0e6F);
+  config.field_camp_type = core::UnitTypeId{1};
+  config.farming.traction_hungry_factor = 0.0F;
+  config.farming.plow_days_per_ha = 1.0F;
+  config.farming.harrow_days_per_ha = 0.5F;
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{0};
+  config.crops[0].yield_kg_per_ha = 1000.0F;
+  config.crops[0].harvest_days_per_ha = 2.0F;
+  config.limit.lots = {{.points = 120, .era = 1, .kind = core::LimitLotKind::kService, .goods = {}},
+                       {.points = 150, .era = 1, .kind = core::LimitLotKind::kService, .goods = {}},
+                       {.points = 10, .era = 1, .kind = core::LimitLotKind::kService, .goods = {}}};
+  config.limit.mts_spring_lot = core::LimitLotId{0};
+  config.limit.mts_autumn_lot = core::LimitLotId{1};
+  config.limit.mts_column_ha_limit = 30.0F;
+  return config;
+}
+
+core::WorldState MakeColumnWorld(core::SimDay day) {
+  core::WorldState world;
+  world.epoch = core::Epoch::kOne;
+  world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  world.limit.points = 500;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.level = 1;
+  store.stock.assign(1, 0);
+  core::AppendRow(world.units, store);
+  return world;
+}
+
+/// The column's day at its last tick, as production calls it.
+void EndColumnDay(const core::ProductionConfig& config, core::WorldState& world, core::SimDay day) {
+  world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + 23U;
+  core::RefreshCalendarCaches(world.calendar);
+  core::RunMtsColumn(config, world);
+}
+
+core::FieldRow ColumnField(float x, float area, core::FieldPhase phase, float work) {
+  core::FieldRow field;
+  field.center = core::Vec2{.x = x, .y = 0.0F};
+  field.area_ga = area;
+  field.kind = core::LandKind::kArable;
+  field.phase = phase;
+  field.work_days_remaining = work;
+  return field;
+}
+
+/// THE DISTRICT MTS'S COLUMN (MTS design §1; boss, parcels 449-451): bought
+/// as a service lot one at a time and not after its season; on the road until
+/// a camp stands in its window; 10 ha a working day on the fields nearest the
+/// camp, the crew owing only the hectares the column left; a field it finishes
+/// goes on at once; it leaves at its limit with the hectares in the event.
+int CheckTheMtsColumn() {
+  int failures = 0;
+  const core::ProductionConfig config = MakeColumnConfig();
+  const auto order = [](core::LimitLotId lot) {
+    core::OrderRow row;
+    row.kind = core::OrderKind::kOrderLimitLot;
+    row.lot = lot;
+    return row;
+  };
+  failures += Expect(core::LotOrderable(config.limit, core::LimitLotId{0}, core::Epoch::kOne) ==
+                             core::OrderRefusal::kNone &&
+                         core::LotOrderable(config.limit, core::LimitLotId{2}, core::Epoch::kOne) ==
+                             core::OrderRefusal::kRuleForbids,
+                     "mts: the column's service is bought, another service is not");
+
+  // Spring, bought in February (day 4), due on day 6.
+  core::WorldState world = MakeColumnWorld(4);
+  failures += Expect(
+      core::OrderLimitLot(config, world, order(core::LimitLotId{0})) == core::OrderRefusal::kNone &&
+          world.limit.points == 380 && world.mts_column.phase == core::MtsColumnPhase::kOnTheRoad &&
+          world.mts_column.arrive_day == 6,
+      "mts: the spring column is bought for its points and put on the road");
+  failures += Expect(core::OrderLimitLot(config, world, order(core::LimitLotId{1})) ==
+                             core::OrderRefusal::kRuleForbids &&
+                         world.limit.points == 380,
+                     "mts: a second column while one is out is refused and costs nothing");
+  EndColumnDay(config, world, 6);
+  EndColumnDay(config, world, 8);
+  failures += Expect(world.mts_column.phase == core::MtsColumnPhase::kOnTheRoad,
+                     "mts: before its window and with no camp in it, the column is still out");
+
+  core::UnitRow camp;
+  camp.type = core::UnitTypeId{1};
+  camp.level = 1;
+  const core::UnitId camp_id = core::AppendRow(world.units, camp);
+  const core::FieldId near =
+      core::AppendRow(world.fields, ColumnField(100.0F, 25.0F, core::FieldPhase::kPlowing, 25.0F));
+  const core::FieldId far =
+      core::AppendRow(world.fields, ColumnField(2000.0F, 30.0F, core::FieldPhase::kPlowing, 30.0F));
+  core::FieldRow meadow = ColumnField(50.0F, 40.0F, core::FieldPhase::kHarvest, 80.0F);
+  meadow.kind = core::LandKind::kMeadow;
+  const core::FieldId meadow_id = core::AppendRow(world.fields, meadow);
+  EndColumnDay(config, world, 8);
+  const std::vector<core::SimEvent> arrived = EventsOf(world, core::EventKind::kMtsColumnArrived);
+  failures += Expect(world.mts_column.phase == core::MtsColumnPhase::kWorking &&
+                         arrived.size() == 1 && arrived[0].unit == camp_id,
+                     "mts: in its window with a camp standing, the column arrives at the camp");
+
+  const auto field = [&world](core::FieldId id) -> core::FieldRow& {
+    return world.fields.rows[core::FindRow(world.fields, id)];
+  };
+  int working_days = 0;
+  for (core::SimDay day = 9; day < 20 && working_days < 3; ++day) {
+    const bool rest = core::IsRestDay(day, world.calendar.day_zero_weekday, world.epoch);
+    EndColumnDay(config, world, day);
+    if (rest) {
+      continue;
+    }
+    ++working_days;
+    if (working_days == 1) {
+      failures += Expect(ManDaysNear(field(near).work_days_remaining, 15.0F) &&
+                             world.mts_column.field == near && world.mts_column.worked_ha == 10.0F,
+                         "mts: the first day works 10 ha of the nearest field, the crew owes 15");
+      // A crew's phase opened afresh at full demand is held to the share left
+      // at the very next tick, whatever the hour.
+      field(near).work_days_remaining = 25.0F;
+      world.calendar.tick = (static_cast<core::Tick>(day + 1U) * core::kTicksPerDay) + 5U;
+      core::RefreshCalendarCaches(world.calendar);
+      core::RunMtsColumn(config, world);
+      failures += Expect(ManDaysNear(field(near).work_days_remaining, 15.0F),
+                         "mts: at any tick the crew is held to the hectares the column left");
+    }
+  }
+  failures += Expect(working_days == 3, "mts: three working days lie inside the spring window");
+  failures += Expect(
+      field(near).phase == core::FieldPhase::kGrowing && field(near).work_days_remaining == 0.0F,
+      "mts: the field it finished went through harrowing to the end of its sowing");
+  failures +=
+      Expect(ManDaysNear(field(far).work_days_remaining, 25.0F) &&
+                 field(meadow_id).area_ga == 40.0F && field(meadow_id).work_days_remaining == 80.0F,
+             "mts: the rest went to the next arable field, and the meadow is not its");
+  const std::vector<core::SimEvent> left = EventsOf(world, core::EventKind::kMtsColumnLeft);
+  failures += Expect(world.mts_column.phase == core::MtsColumnPhase::kGone && left.size() == 1 &&
+                         left[0].amount == 30,
+                     "mts: at its 30 ha it leaves, and says how many");
+  failures += Expect(world.mts_column.field == far,
+                     "mts: gone, it keeps the field it left half done for the crew's share");
+
+  // Bought too late: due in June for a window that ended in May.
+  core::WorldState late = MakeColumnWorld(19);
+  failures += Expect(core::OrderLimitLot(config, late, order(core::LimitLotId{0})) ==
+                             core::OrderRefusal::kRuleForbids &&
+                         late.limit.points == 500,
+                     "mts: a column that would come after its season is refused");
+
+  // Autumn with no camp: out until the window's end, then it never comes.
+  core::WorldState campless = MakeColumnWorld(26);
+  core::OrderLimitLot(config, campless, order(core::LimitLotId{1}));
+  EndColumnDay(config, campless, 39);
+  failures += Expect(campless.mts_column.phase == core::MtsColumnPhase::kOnTheRoad,
+                     "mts: in October with no camp the column still waits");
+  EndColumnDay(config, campless, 40);
+  failures += Expect(campless.mts_column.phase == core::MtsColumnPhase::kNotArrived &&
+                         EventsOf(campless, core::EventKind::kMtsColumnNotArrived).size() == 1 &&
+                         campless.limit.points == 350,
+                     "mts: past its window it never comes, and the points are not returned");
+
+  // Autumn at work: a 10 ha field reaped and carried in one day.
+  core::WorldState autumn = MakeColumnWorld(28);
+  core::OrderLimitLot(config, autumn, order(core::LimitLotId{1}));
+  core::AppendRow(autumn.units, camp);
+  core::FieldRow rye = ColumnField(300.0F, 10.0F, core::FieldPhase::kHarvest, 20.0F);
+  rye.crop = core::CropId{0};
+  core::AppendRow(autumn.fields, rye);
+  EndColumnDay(config, autumn, 30);
+  core::SimDay day = 31;
+  while (core::IsRestDay(day, autumn.calendar.day_zero_weekday, autumn.epoch)) {
+    ++day;
+  }
+  EndColumnDay(config, autumn, day);
+  const core::FieldRow& reaped = autumn.fields.rows[0];
+  failures += Expect(reaped.phase != core::FieldPhase::kHarvest && reaped.reaped_grams == 0 &&
+                         autumn.units.rows[0].stock[0] == 10000 * core::kGramsPerKilogram &&
+                         autumn.mts_column.worked_ha == 10.0F,
+                     "mts: in autumn the column reaps its field and carries the 10 t home");
+  return failures;
+}
+
 int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
   int failures = 0;
   core::WorldState world;
@@ -4663,6 +4867,7 @@ int main() {
   failures += CheckSawing();
   failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
+  failures += CheckTheMtsColumn();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();

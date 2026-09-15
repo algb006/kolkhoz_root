@@ -95,7 +95,9 @@ class BuildTables final : public core::ITableSet {
                           // nothing else may stand inside (task of
                           // 2026-09-05). has_plot is 0 and that is now three
                           // different facts, not one.
-                          {"well", "1", "1", "era", "0", "", "0", "", "1.2"}}};
+                          {"well", "1", "1", "era", "0", "", "0", "", "1.2"},
+                          // The MTS column's camp (boss, parcel 449).
+                          {"field_camp", "1", "1", "era", "1", "10", "0", "", ""}}};
 
   // wear_factor is the STEP's pace over its class's term, and it stands on
   // three rows on purpose: the store carries it where the type has none
@@ -122,7 +124,8 @@ class BuildTables final : public core::ITableSet {
                            {"club", "1", "2", "70", "wood_small", "5", "10", "5", ""},
                            {"orchard", "1", "1", "0", "plot", "", "", "", ""},
                            {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"},
-                           {"well", "1", "1", "14", "earthwork", "2", "", "", ""}}};
+                           {"well", "1", "1", "14", "earthwork", "2", "", "", ""},
+                           {"field_camp", "1", "1", "14", "earthwork", "2", "", "", ""}}};
 
   test::FakeTable costs_{{"unit", "level", "resource", "amount"},
                          {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
@@ -144,6 +147,8 @@ constexpr std::uint16_t kOrchardType = 3;
 constexpr std::uint16_t kOldHouseType = 4;
 
 constexpr std::uint16_t kWellType = 5;
+
+constexpr std::uint16_t kFieldCampType = 6;
 
 /// Grams of one spare part, as the fixture states it: 5 kg a piece.
 constexpr core::Grams kPartGrams = 5 * core::kGramsPerKilogram;
@@ -622,7 +627,8 @@ class NoWearColumnTables final : public core::ITableSet {
                           // type in it; a level row naming a type this
                           // roster lacks refuses the whole config, and the
                           // refusal would be right.
-                          {"well", "1", "1", "era", "0", ""}}};
+                          {"well", "1", "1", "era", "0", ""},
+                          {"field_camp", "1", "1", "era", "1", "10"}}};
 };
 
 /// THE DEADLINE MUST AGREE WITH THE WORLD, and that is the only test of a
@@ -2068,6 +2074,45 @@ int TestAModuleStandsOnItsParent() {
   return failures;
 }
 
+/// THE FIELD CAMP'S GROUND (MTS design §1; boss, parcel 449): not on the
+/// arable — a disc of the field's hectares about its centre — and within a
+/// kilometre of some field. The rule is the camp's alone: a barn is marked
+/// where a camp would be refused.
+int TestTheFieldCampStandsBesideTheFields(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
+  core::WorldState world;
+  const core::OrderId no_fields = Issue(world, BuildOrder(kFieldCampType, 5500.0F, 5000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, no_fields) == core::OrderRefusal::kTooFarFromFields,
+                     "field camp: with no field at all it is too far from the fields");
+
+  // 16 ha about (5000, 5000): a disc of 225.7 m.
+  core::FieldRow field;
+  field.center = core::Vec2{.x = 5000.0F, .y = 5000.0F};
+  field.area_ga = 16.0F;
+  field.kind = core::LandKind::kArable;
+  core::AppendRow(world.fields, field);
+  const core::OrderId on_arable = Issue(world, BuildOrder(kFieldCampType, 5200.0F, 5000.0F));
+  const core::OrderId far_off = Issue(world, BuildOrder(kFieldCampType, 6100.0F, 5000.0F));
+  const core::OrderId barn_far = Issue(world, BuildOrder(kBarnType, 6100.0F, 5600.0F));
+  const core::OrderId beside = Issue(world, BuildOrder(kFieldCampType, 5240.0F, 5000.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, on_arable) == core::OrderRefusal::kOnArable,
+                     "field camp: 200 m from the centre of 16 ha is on the arable");
+  failures += Expect(RefusalOf(world, far_off) == core::OrderRefusal::kTooFarFromFields,
+                     "field camp: 1100 m from the only field is too far");
+  failures += Expect(RefusalOf(world, barn_far) == core::OrderRefusal::kNone,
+                     "field camp: a barn is not held to the camp's ground");
+  failures += Expect(RefusalOf(world, beside) == core::OrderRefusal::kNone,
+                     "field camp: 240 m from the centre, past the disc and near it, is marked");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
@@ -2080,6 +2125,7 @@ int main() {
   failures += TestStartChecksTheRecipe(tables);
   failures += TestAnUpgradeHoldsItsRecipe(tables);
   failures += TestRefusals(tables);
+  failures += TestTheFieldCampStandsBesideTheFields(tables);
   failures += TestDemolition(tables);
   failures += TestTableLessWorld();
   failures += TestWearGrows(tables);
