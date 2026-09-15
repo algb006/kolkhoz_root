@@ -245,6 +245,7 @@ core::WorldState MakeWorld() {
   overgrown.kind = core::LandKind::kFloodplainMeadow;
   overgrown.overgrown = 1;
   overgrown.start_reserve = 1;      // the start quest's field
+  overgrown.reaped_day = 39;        // reaped in the first October
   overgrown.rotation_assigned = 0;  // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
@@ -653,6 +654,12 @@ int main() {
   failures += Expect(loaded.fields.rows[0].start_reserve == 0,
                      "and an ordinary field comes back unmarked — the pair a codec writing a "
                      "constant would fail on");
+  // THE DAY OF THE LAST REAPING (2026-09-15): lose it and the seed fund of a
+  // loaded campaign holds this year's seed for a crop already in the stores.
+  failures += Expect(loaded.fields.rows[2].reaped_day == 39 &&
+                         loaded.fields.rows[0].reaped_day == core::kNeverReapedDay,
+                     "the day a field was last reaped comes back, and a field never reaped "
+                     "comes back never reaped");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

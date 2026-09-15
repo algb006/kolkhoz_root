@@ -1806,9 +1806,32 @@ int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
   const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
   const core::ResidentId old_man = AddAdult(world, yard, core::Sex::kMale, 74.0F);
   AddHouse(world, yard, core::Vec2{.x = 400.0F, .y = 0.0F});
-  RunDays(system, world, 30 * core::kDaysPerYear);
+  // A pantry nobody will inherit: the village has no other household. What
+  // lies in it is gone with a line in the book (2026-09-15) — it used to
+  // vanish unbooked, and oat_balance's books stopped closing on it.
+  static constexpr std::uint32_t kKept = 3;
+  static constexpr core::Grams kKeptGrams = 7'000;
+  world.families.rows[0].pantry.assign(kKept + 1U, 0);
+  world.families.rows[0].pantry[kKept] = kKeptGrams;
+  core::Grams held_the_day_before = 0;
+  for (std::uint32_t day = 0; day < 30 * core::kDaysPerYear; ++day) {
+    if (FindRow(world.residents, old_man) == core::kNoRow) {
+      break;
+    }
+    const std::uint32_t yard_row = FindRow(world.families, yard);
+    held_the_day_before = yard_row == core::kNoRow
+                              ? 0
+                              : core::AmountOf(world.families.rows[yard_row].pantry,
+                                               core::ResourceId{static_cast<std::uint16_t>(kKept)});
+    RunDays(system, world, 1);
+  }
   failures += Expect(FindRow(world.residents, old_man) == core::kNoRow,
                      "old age takes a 74-year-old within thirty game years");
+  failures += Expect(held_the_day_before > 0 && FindRow(world.families, yard) == core::kNoRow &&
+                         core::AmountOf(world.ledger.current.lost_no_room,
+                                        core::ResourceId{static_cast<std::uint16_t>(kKept)}) ==
+                             held_the_day_before,
+                     "and the pantry of a household nobody inherits is booked as gone");
   return failures;
 }
 

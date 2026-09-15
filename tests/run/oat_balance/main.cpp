@@ -83,7 +83,11 @@ core::Grams SeedDemand(const core::WorldState& world,
     // the point of a second tally.
     const bool already_sown =
         field.phase == core::FieldPhase::kGrowing || field.phase == core::FieldPhase::kHarvest;
-    if (already_sown || field.rotation_year0.value != crop.value) {
+    // And since 2026-09-15 a field reaped this calendar year owes it no seed.
+    const bool reaped_this_year =
+        field.reaped_day != core::kNeverReapedDay &&
+        field.reaped_day / core::kDaysPerYear == world.calendar.day / core::kDaysPerYear;
+    if (already_sown || reaped_this_year || field.rotation_year0.value != crop.value) {
       continue;
     }
     demand += core::GramsFromKilograms(sowing_norm_kg_per_ha * field.area_ga);

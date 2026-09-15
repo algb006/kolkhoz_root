@@ -958,6 +958,25 @@ int CheckTheTopOfTheLadder() {
   failures += Expect(core::HeldAboveFodder(world, norms, 3, false)[2] == 300'000,
                      "ladder: the seed rung can be switched off, the plan rung cannot");
 
+  // A FIELD REAPED THIS YEAR OWES THIS YEAR NO SEED (boss, parcel 421): idle
+  // again and still naming its crop until the turn, it held seed for a crop
+  // already in the stores. Reaped LAST year, it is waiting for this year's
+  // sowing, and holds it.
+  {
+    core::WorldState autumn = world;
+    autumn.unsealed = {};
+    autumn.calendar.day = core::kDaysPerYear + 40;  // October of year 2
+    core::FieldRow reaped = waiting;
+    reaped.phase = core::FieldPhase::kIdle;
+    reaped.reaped_day = core::kDaysPerYear + 38;
+    autumn.fields.rows[0] = reaped;
+    failures += Expect(core::HeldAboveFodder(autumn, norms, 3, true)[2] == 300'000,
+                       "ladder: a field reaped this year holds no seed for the crop it gave");
+    autumn.fields.rows[0].reaped_day = 38;  // reaped in the October of year 1
+    failures += Expect(core::HeldAboveFodder(autumn, norms, 3, true)[2] == 200'000 + 300'000,
+                       "ladder: a field reaped last year holds this year's seed again");
+  }
+
   world.unsealed.by_fund[0] = {0, 0, 450'000};
   failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 50'000,
                      "ladder: an unsealing comes off the one total");

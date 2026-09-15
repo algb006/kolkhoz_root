@@ -23,7 +23,15 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
       // quantity of grain).
       const bool already_sown =
           field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
-      if (already_sown || field.rotation_year0.value >= seed_norms_by_crop.size()) {
+      // AND NOT ONCE THE REAPING HAS TAKEN IT (2026-09-15, boss parcel 421): a
+      // reaped field is idle again and still names this year's crop until the
+      // year's turn, so the fund held seed for a sowing already sown and
+      // reaped — 52.5 t of potatoes from the October digging to New Year.
+      const bool reaped_this_year =
+          field.reaped_day != kNeverReapedDay &&
+          field.reaped_day / kDaysPerYear == world.calendar.day / kDaysPerYear;
+      if (already_sown || reaped_this_year ||
+          field.rotation_year0.value >= seed_norms_by_crop.size()) {
         continue;
       }
       const SeedNorm& seed = seed_norms_by_crop[field.rotation_year0.value];

@@ -160,6 +160,9 @@ inline constexpr SimDay kNeverMownDay = static_cast<SimDay>(-1);
 /// "never mown" on arable land, where mowing is not a thing that happens.
 inline constexpr SimDay kNeverSownDay = static_cast<SimDay>(-1);
 
+/// @brief No crop of this field has been reaped yet (FieldRow::reaped_day).
+inline constexpr SimDay kNeverReapedDay = static_cast<SimDay>(-1);
+
 /// @brief One field. Plain data.
 struct FieldRow {
   /// Center of the contour. The shape itself is presentation/routing data
@@ -490,6 +493,20 @@ struct FieldRow {
   /// reserve is arable in every respect — it can be raised and sown — and a
   /// kind of its own would make every farming rule decide what to do with it.
   std::uint8_t start_reserve = 0;
+
+  /// THE DAY THIS FIELD'S CROP WAS LAST REAPED — whole, so the field went back
+  /// to kIdle — or kNeverReapedDay (2026-09-15, boss parcel 421).
+  ///
+  /// The seed fund reads it. A reaped field is idle again, and until the
+  /// year's turn it still names the crop it has just given in
+  /// rotation_year0, so a fund that holds seed for "every field not yet sown"
+  /// held this year's seed for a crop already sown and already reaped: from
+  /// the October potato digging to New Year, 52.5 t for 21 ha, and the issue
+  /// had no potato to hand out. The fund is the next sowing's reserve (fields
+  /// and crops §7), and a field reaped this calendar year owes this year no
+  /// seed. History the simulation cannot rederive: an idle field carries no
+  /// other trace of the harvest it gave.
+  SimDay reaped_day = kNeverReapedDay;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

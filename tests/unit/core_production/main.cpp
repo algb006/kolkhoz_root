@@ -874,6 +874,8 @@ int CheckStoreCeilingAndAlarms() {
                      "and the field asks for those hands, in its own seam");
   failures += Expect(world.fields.rows[0].reaped_resource.value == 0,
                      "the waiting load names what it is, so a cart knows");
+  failures += Expect(world.fields.rows[0].reaped_day == world.calendar.day,
+                     "and the field remembers the day it gave its crop, for the seed fund");
   failures += Expect(
       (world.ledger.current.harvest.empty() ? core::Grams{0} : world.ledger.current.harvest[0]) ==
           10'000 * core::kGramsPerKilogram,

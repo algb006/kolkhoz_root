@@ -160,8 +160,25 @@ void DropFamilyIfEmpty(WorldState& current, FamilyId family) {
     for (const HerdId id : merged) {
       RemoveRow(current.herds, id);
     }
-  } else if (outstanding > 0) {
-    current.ledger.current.trudodni_burned += outstanding;
+  } else {
+    if (outstanding > 0) {
+      current.ledger.current.trudodni_burned += outstanding;
+    }
+    // AND THE PANTRY OF A HOUSEHOLD NOBODY INHERITS IS GONE WITH A LINE IN THE
+    // BOOK (2026-09-15). Until then it vanished unbooked, and nobody saw it
+    // while the seed fund held every oat: the day the fund stopped holding a
+    // reaped field's seed, oats reached the pantries, the last family of
+    // oat_balance's village died out with 0.418 t of them, and its balance
+    // stopped closing. Booked as lost_no_room, the book's "gone" — the same
+    // column the stock of a store that fell down goes to.
+    const ResourceAmounts& left = current.families.rows[leaving].pantry;
+    for (std::uint32_t index = 0; index < left.size(); ++index) {
+      if (left[index] > 0) {
+        AddLedgerAmount(current.ledger.current.lost_no_room,
+                        ResourceId{static_cast<std::uint16_t>(index)},
+                        left[index]);
+      }
+    }
   }
   RemoveRow(current.families, family);
   // The emptied family's house stands free again (families design §2).

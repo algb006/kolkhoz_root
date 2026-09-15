@@ -103,8 +103,10 @@ static_assert(AggregateArity<FamilyRow>() == 18,
 // split this way and the reason neither is allowed to stand alone.
 // 2026-09-14: `start_reserve` followed `in_flower` into the row's tail padding;
 // the size stayed 88 and the field count went to 30.
-static_assert(sizeof(FieldRow) == 88, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 30,
+// 2026-09-15: `reaped_day`, four bytes after the tail byte, opened a slot of
+// its own: 88 -> 96, measured, and the field count went to 31.
+static_assert(sizeof(FieldRow) == 96, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 31,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -577,6 +579,11 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // nothing but its removal, so a save without it would let the start quest's
   // field go unnoticed: removed, and the fact never raised.
   out.WriteU8(row.start_reserve);
+  // The day the crop was last reaped whole (2026-09-15). The seed fund reads
+  // it, and an idle field has no other trace of the harvest it gave: a world
+  // loaded without it would reserve this year's seed for a crop already in
+  // the stores.
+  out.WriteU32(row.reaped_day);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -633,6 +640,7 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.autumn_plowed = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "autumn ploughed"));
   row.in_flower = source.ReadEnumValue(0, 1, "meadow in flower") != 0;
   row.start_reserve = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "start reserve field"));
+  row.reaped_day = in.ReadU32();
   return row;
 }
 

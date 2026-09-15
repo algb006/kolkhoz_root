@@ -258,6 +258,9 @@ void Harvest(const ProductionConfig& config,
     field.last_crop = field.crop;
   }
   field.crop = CropId{};
+  // The day the field gave its crop and went idle: the seed fund owes this
+  // calendar year nothing more for it (land_state.h, reaped_day).
+  field.reaped_day = current.calendar.day;
   MoveFieldPhase(current, field, FieldPhase::kIdle);
 }
 

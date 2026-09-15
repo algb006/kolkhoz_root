@@ -902,8 +902,15 @@ int main(int argc, char** argv) {
   // together: leanest day 17.6482697 -> 20.4674702, hungry share 0.886792481
   // -> 0.854166687. The leanest day is still under the 22.2465935 it stood at
   // before the stores' homes, and what is left is carrying off the fields.
+  //
+  // AND DOWN TO 78.5717392 THE SAME DAY, deliberately and with the cause, when
+  // the seed fund stopped holding this year's seed for a field already reaped
+  // (boss, parcel 421; fund_ladder.cpp): the leanest day rose in the same
+  // change, 20.4674702 -> 20.7970276, and the hungry share held. What the fund
+  // freed in the autumn is handed out in the autumn, and the year's mean gave
+  // four hundredths of a point for a third of a point at its lean end.
   failures += ExpectNoLower(
-      good.mean_satiety, 78.6153107F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 78.5717392F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -973,9 +980,10 @@ int main(int argc, char** argv) {
   // insulation in October and November; begun in August, its crews came off
   // the reaping and the day fell to 22.29 — so the window moved, not this).
   // AND DOWN TO 17.6482697 THE SAME DAY with the stores' homes — a debt, not
-  // a norm (the mean above says why). And up to 20.4674702 with the clamp.
+  // a norm (the mean above says why). And up to 20.4674702 with the clamp,
+  // and to 20.7970276 with the seed fund's reaped fields (the mean above).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 20.4674702F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 20.7970276F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -1065,11 +1073,15 @@ int main(int argc, char** argv) {
   // AND AGAIN WITH THE CLAMP (boss, parcel 419), the same nine seeds: 4.64,
   // 5.18, 5.60, 7.49, 8.81 (median), 9.72, 17.94, 22.32, 22.40. The debt paid:
   // with the potatoes kept, the issue has something to hand out again.
+  //
+  // AND AGAIN WITH THE SEED FUND'S REAPED FIELDS (boss, parcel 421): 5.93,
+  // 6.77, 7.49, 10.03, 10.57 (median), 11.01, 18.35, 22.95, 25.17. The fund
+  // freed potatoes the issue could hand out, so the issue weighs more.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 4.63-22.40, median 8.81)\n";
+            << " (nine seeds: 5.92-25.18, median 10.57)\n";
   failures +=
-      ExpectBand(issue_gap >= 4.63F && issue_gap <= 22.40F,
+      ExpectBand(issue_gap >= 5.92F && issue_gap <= 25.18F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
