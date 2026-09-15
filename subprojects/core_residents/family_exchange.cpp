@@ -10,6 +10,7 @@
 #include "family_exchange.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -18,6 +19,7 @@
 #include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
+#include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
 
@@ -181,6 +183,33 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   return reserve;
 }
 
+/// @brief Whether a resource is a position of the plan the settlement still
+/// owes: this year's, once the district has named it, and before that the
+/// positions of last year's delivery.
+///
+/// FIRST THE PLAN, THEN THE ISSUE (labor-payment §7; boss, parcel 438): the
+/// automatic distribution hands out none of a crop the plan asks for until
+/// the plan is delivered — the whole of it, carried over included, and not
+/// only the reserve of this year's reaping. The delivery is at the year's
+/// turn, so a planned crop goes out on trudodni only on what the chairman
+/// unseals; the ration (§5) is not held, hunger ranks above the plan.
+bool PlanHoldsIt(const WorldState& world, std::uint32_t index) {
+  if (world.plan.announced != 0) {
+    return index < world.plan.due.size() && world.plan.due[index] > 0;
+  }
+  return index < world.plan.delivered.size() && world.plan.delivered[index] > 0;
+}
+
+/// @brief What the chairman has unsealed of the plan reserve for a resource.
+Grams PlanUnsealed(const WorldState& world, std::uint32_t index) {
+  const auto fund = static_cast<std::size_t>(FundKind::kPlanReserve);
+  if (fund >= world.unsealed.by_fund.size()) {
+    return 0;
+  }
+  const ResourceAmounts& opened = world.unsealed.by_fund[fund];
+  return index < opened.size() ? opened[index] : 0;
+}
+
 /// @brief What is free to hand out: what lies in the stores minus the funds.
 Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
@@ -255,8 +284,13 @@ void RunDistribution(const FoodConfig& config,
     // sees the full free stock, because holding milk back from a starving
     // household would be the very "full barn beside a hungry village" this
     // rule exists to forbid.
-    const float pool = static_cast<float>(FreeStock(current, reserve, resource)) *
-                       config.resources[index].issue_share_of_stock;
+    Grams free_stock = FreeStock(current, reserve, resource);
+    if (PlanHoldsIt(current, index)) {
+      const Grams unsealed = PlanUnsealed(current, index);
+      free_stock = free_stock < unsealed ? free_stock : unsealed;
+    }
+    const float pool =
+        static_cast<float>(free_stock) * config.resources[index].issue_share_of_stock;
     const float share = pool / static_cast<float>(wanted[index]);
     coverage[index] = share < 1.0F ? share : 1.0F;
     const float kcal = config.resources[index].kcal_per_gram;

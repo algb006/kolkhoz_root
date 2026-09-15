@@ -161,8 +161,12 @@ class SowingPolicy {
       return;
     }
     const std::uint32_t resource_col = crops->FindColumn("resource");
+    const std::uint32_t winter_col = crops->FindColumn("is_winter");
     crop_of_resource_.assign(resources->RowCount(), core::CropId{});
+    winter_crop_.assign(crops->RowCount(), 0);
     for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+      const std::optional<float> winter = crops->CellReal(row, winter_col);
+      winter_crop_[row] = winter.has_value() && *winter > 0.0F ? 1U : 0U;
       const std::uint32_t resource = resources->FindRowByKey(crops->CellText(row, resource_col));
       if (resource < crop_of_resource_.size() &&
           crop_of_resource_[resource].value == core::kInvalidDefIdValue) {
@@ -388,6 +392,17 @@ class SowingPolicy {
       if (sown_this_season) {
         continue;
       }
+      // A WINTER CROP IS SOWN IN THE AUTUMN AND RIPENS NEXT SUMMER, so the
+      // spring crop's "too late to ripen this year" never applies to it.
+      // Until 2026-09-15 it was released all the same, every summer before its
+      // autumn sowing, and given back unmoved at the turn: on seed 1932 the
+      // obvious chairman's winter rye stood unsown for years, and with bread
+      // on the issue norms the rye plan failed year after year (boss, parcel
+      // 436).
+      const std::uint16_t crop = field.rotation_year0.value;
+      if (crop < winter_crop_.size() && winter_crop_[crop] != 0) {
+        continue;
+      }
       doomed.push_back(row);
     }
     if (doomed.empty()) {
@@ -519,6 +534,10 @@ class SowingPolicy {
   std::vector<core::FieldId> rested_last_year_;
 
   std::int32_t ripen_days_;
+
+  /// 1 for a crop sown in the autumn before its year (crops.csv is_winter),
+  /// dense by CropId; empty without tables.
+  std::vector<std::uint8_t> winter_crop_;
 
   std::uint32_t growing_season_last_day_;
 

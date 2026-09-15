@@ -246,6 +246,42 @@ int CheckExchange() {
                        "lies above that is handed out");
   }
 
+  // FIRST THE PLAN, THEN THE ISSUE (labor-payment §7; boss, parcel 438): a
+  // crop of this year's plan is not handed out on trudodni before the
+  // delivery — not only the reserve of this year's reaping, all of it —
+  // except what the chairman has unsealed; the ration is not held.
+  {
+    core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    world.plan.announced = 1;
+    world.plan.due = {50 * kKilo, 0, 0, 0};  // the grain is planned, none of it reaped yet
+    core::RunFamilyExchange(config, 4.0F, world);
+    failures += Expect(PantryOf(world, 0) == 0 && PantryOf(world, 1) == 4 * kKilo,
+                       "a planned crop is not handed out on trudodni before the delivery, and a "
+                       "crop the plan does not ask for is");
+
+    core::WorldState opened = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    opened.plan.announced = 1;
+    opened.plan.due = {50 * kKilo, 0, 0, 0};
+    opened.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {
+        1 * kKilo, 0, 0, 0};
+    core::RunFamilyExchange(config, 4.0F, opened);
+    failures += Expect(PantryOf(opened, 0) == 1 * kKilo,
+                       "and what the chairman unsealed of it is handed out, no more");
+
+    core::WorldState before_spring = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    before_spring.plan.delivered = {40 * kKilo, 0, 0, 0};  // last year's position, not yet named
+    core::RunFamilyExchange(config, 4.0F, before_spring);
+    failures += Expect(PantryOf(before_spring, 0) == 0,
+                       "before the spring names a plan, last year's positions are held");
+
+    core::WorldState hungry = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+    hungry.plan.announced = 1;
+    hungry.plan.due = {50 * kKilo, 0, 0, 0};
+    core::RunFamilyExchange(config, 4.0F, hungry);
+    failures += Expect(PantryOf(hungry, 0) > 0,
+                       "and the ration to a hungry family is not held by the plan");
+  }
+
   // The hungry family gets the ration past its (empty) trudodni account.
   {
     core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
