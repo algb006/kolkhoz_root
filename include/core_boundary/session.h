@@ -145,6 +145,11 @@ struct StateStamp {
   /// monotone. Two stamps with equal serials name the same state; a tick
   /// alone would not, because ReplaceWorld may land on any tick.
   std::uint64_t serial = 0;
+
+  /// The state holiday of the completed state's day, or Holiday::kNone
+  /// (core_common/calendar.h, HolidayOn; host door request no. 2). A holiday
+  /// is a day of rest nobody may declare a working day (time design §9).
+  Holiday holiday = Holiday::kNone;
 };
 
 /// @brief The living signals of one unit — the facts the presentation draws

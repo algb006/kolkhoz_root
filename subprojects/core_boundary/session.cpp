@@ -234,7 +234,11 @@ class Session final : public ISession {
   // -- read -----------------------------------------------------------------
 
   StateStamp Stamp() const override {
-    return StateStamp{.tick = State().calendar.tick, .serial = serial_};
+    const WorldState& state = State();
+    return StateStamp{
+        .tick = state.calendar.tick,
+        .serial = serial_,
+        .holiday = HolidayOn(state.calendar.day, state.calendar.day_zero_weekday, state.epoch)};
   }
 
   const WorldState& State() const override { return simulation_->CompletedState(); }

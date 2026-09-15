@@ -1064,6 +1064,30 @@ int main() {
                            !core::IsDayOff(core::Weekday::kFriday, core::Epoch::kThree),
                        "day off: a weekday is a working day even in Epoch III");
   }
+  {
+    // THE HOLIDAYS (host door request no. 2; boss's numbers, registry "Числа
+    // дверей Эпохи I"). Day 0 a Monday: 1 May is day 16, 7 November day 41 —
+    // a Sunday in year 1 (41 % 7 == 6), so it moves to the Monday, day 42.
+    const core::Weekday monday = core::Weekday::kMonday;
+    const core::Epoch one = core::Epoch::kOne;
+    failures += Expect(core::HolidayOn(16, monday, one) == core::Holiday::kMayDay &&
+                           core::HolidayOn(17, monday, one) == core::Holiday::kNone,
+                       "holiday: May Day is the first day of May and only that day");
+    failures += Expect(core::HolidayOn(41, monday, one) == core::Holiday::kNone &&
+                           core::HolidayOn(42, monday, one) == core::Holiday::kRevolutionDay,
+                       "holiday: 7 November on a Sunday moves to the next working day");
+    // Year 2: day 89 is a Monday already (89 % 7 == 5, a Saturday — Epoch I
+    // works Saturdays), so it stays where it falls.
+    failures += Expect(
+        core::HolidayOn(core::kDaysPerYear + 41, monday, one) == core::Holiday::kRevolutionDay,
+        "holiday: 7 November on a working day stays on the second day of November");
+    failures += Expect(core::HolidayOn(core::kDaysPerYear, monday, one) == core::Holiday::kNone &&
+                           core::HolidayOn(core::kDaysPerYear, monday, core::Epoch::kTwo) ==
+                               core::Holiday::kNewYear,
+                       "holiday: New Year is a holiday from Epoch II and not in Epoch I");
+    failures += Expect(core::IsRestDay(16, monday, one) && !core::IsRestDay(17, monday, one),
+                       "holiday: a holiday is a day of rest, the day after it is not");
+  }
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
   failures += TestDefIdFromRow();

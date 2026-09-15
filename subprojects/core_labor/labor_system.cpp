@@ -347,7 +347,10 @@ class LaborSystem final : public ILaborSystem {
     // list was not empty, the return did not happen, and the chairman's man
     // worked every Sunday of his life. One rule must not depend on whether
     // an unrelated one had anything to say.
-    ApplyStandingWork(current, current, IsDayOff(current.calendar.weekday, current.epoch));
+    ApplyStandingWork(
+        current,
+        current,
+        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch));
   }
 
   /// The holder's morning (manual/74-posts.md §4): he is out of the
@@ -372,7 +375,8 @@ class LaborSystem final : public ILaborSystem {
   /// herd eats today, a log pile waits. No work on a day off, like every
   /// other windowless work; barn care is the one exception, as it always was.
   void AssignPostHolders(WorldState& current) const {
-    const bool day_off = IsDayOff(current.calendar.weekday, current.epoch);
+    const bool day_off =
+        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
     std::vector<std::uint32_t> places_taken(current.units.rows.size(), 0);
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.post.profession.value == kInvalidDefIdValue) {
@@ -444,7 +448,8 @@ class LaborSystem final : public ILaborSystem {
   /// left. On a day off only the barn is served — animals eat on Sundays
   /// too (manual/65-labor-model.md §5).
   std::vector<AssignmentJob> CollectJobs(const WorldState& current) const {
-    const bool day_off = IsDayOff(current.calendar.weekday, current.epoch);
+    const bool day_off =
+        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
     std::vector<AssignmentJob> jobs;
     if (!day_off) {
       for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
@@ -930,7 +935,8 @@ class LaborSystem final : public ILaborSystem {
         PayDay(current, resident);
       }
     }
-    const bool day_off = IsDayOff(current.calendar.weekday, current.epoch);
+    const bool day_off =
+        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
       // already charged hour by hour and nothing back; a day at home on a

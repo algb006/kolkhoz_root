@@ -160,6 +160,24 @@ constexpr bool IsDayOff(Weekday weekday, Epoch epoch) {
   return weekday == Weekday::kSaturday && epoch == Epoch::kThree;
 }
 
+/// @brief A state holiday — a day off nobody can declare a working day
+/// (time design §9, leisure design §9).
+enum class Holiday : std::uint8_t {
+  kNone = 0,
+
+  /// May Day: the first day of May.
+  kMayDay,
+
+  /// The autumn state holiday, 7 November: the second day of November, or the
+  /// next working day when that one is a day off.
+  kRevolutionDay,
+
+  /// New Year: the first day of January, from Epoch II.
+  kNewYear,
+
+  kHolidayCount,
+};
+
 /// @brief Season. December–February is winter, and so on by threes.
 ///
 /// @enum_length kSeasonsPerYear — NO kCount terminator here, and that is a
@@ -240,6 +258,36 @@ constexpr Date DateFromDay(SimDay day) {
 /// plain modulo-7 from the campaign's day-zero weekday.
 constexpr Weekday WeekdayFromDay(SimDay day, Weekday day_zero_weekday) {
   return static_cast<Weekday>((static_cast<std::uint32_t>(day_zero_weekday) + day) % kDaysPerWeek);
+}
+
+/// @brief Which holiday falls on `day`, or Holiday::kNone.
+///
+/// THE NUMBERS ARE boss's STUB (registry "Числа дверей Эпохи I", 2026-09-15;
+/// host door request no. 2): May Day on the first day of May; 7 November on
+/// the second day of November, moved to the following working day when it
+/// falls on a day off; New Year on the first day of January from Epoch II.
+/// A holiday is a day off (time design §4) that nobody may declare a working
+/// day (§9); IsDayOff answers for the week alone, IsRestDay for both.
+constexpr Holiday HolidayOn(SimDay day, Weekday day_zero_weekday, Epoch epoch) {
+  const std::uint32_t day_of_year = day % kDaysPerYear;
+  if (day_of_year == static_cast<std::uint32_t>(Month::kMay) * kDaysPerMonth) {
+    return Holiday::kMayDay;
+  }
+  if (day_of_year == 0 && epoch != Epoch::kOne) {
+    return Holiday::kNewYear;
+  }
+  SimDay revolution =
+      (day - day_of_year) + (static_cast<std::uint32_t>(Month::kNovember) * kDaysPerMonth) + 1U;
+  while (IsDayOff(WeekdayFromDay(revolution, day_zero_weekday), epoch)) {
+    ++revolution;
+  }
+  return day == revolution ? Holiday::kRevolutionDay : Holiday::kNone;
+}
+
+/// @brief Is `day` a day of rest — the week's day off or a holiday?
+constexpr bool IsRestDay(SimDay day, Weekday day_zero_weekday, Epoch epoch) {
+  return IsDayOff(WeekdayFromDay(day, day_zero_weekday), epoch) ||
+         HolidayOn(day, day_zero_weekday, epoch) != Holiday::kNone;
 }
 
 /// @brief Is `month` inside the inclusive band [from, to]? 0-based months.

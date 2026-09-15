@@ -433,6 +433,15 @@ int TestBarnRunsOnTheDayOff() {
       Expect(day.world.fields.rows[0].work_days_remaining == 5.0F, "nobody reaps on a Sunday");
   const core::HerdRow& cows = day.world.herds.rows[core::FindRow(day.world.herds, herd)];
   failures += Expect(cows.care_days_remaining < 0.01F, "the barn was served all the same");
+
+  // A HOLIDAY IS A DAY OF REST TOO (time design §4; host door request no. 2):
+  // day 16 is May Day, a Wednesday from a Monday — nobody reaps.
+  DayWorld holiday(3);
+  holiday.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+  holiday.RunDay(*labor, 16);
+  failures += Expect(holiday.world.calendar.weekday != core::Weekday::kSunday &&
+                         holiday.world.fields.rows[0].work_days_remaining == 5.0F,
+                     "nobody reaps on May Day, a weekday");
   return failures;
 }
 
@@ -1977,10 +1986,11 @@ int TestFallowBeforeWinterRyeHasTheRyesWindow() {
   }
   day.world.fields.rows[core::FindRow(day.world.fields, before_oats)].rotation_year1 = oat;
   day.world.fields.rows[core::FindRow(day.world.fields, before_rye)].rotation_year1 = rye;
-  // Day 16 is May of the first year (four days a month) and a Wednesday.
-  constexpr std::uint32_t kMayDay = 16;
+  // Day 17 is May of the first year (four days a month) and a Thursday. Day 16
+  // was the first draft's, and since 2026-09-15 it is May Day: nobody ploughs.
+  constexpr std::uint32_t kMayWorkingDay = 17;
   for (std::uint32_t hour = 0; hour <= 12; ++hour) {
-    day.world.calendar.tick = (static_cast<core::Tick>(kMayDay) * core::kTicksPerDay) + hour;
+    day.world.calendar.tick = (static_cast<core::Tick>(kMayWorkingDay) * core::kTicksPerDay) + hour;
     core::RefreshCalendarCaches(day.world.calendar);
     const core::WorldState previous = day.world;
     labor->RunAssignmentDecisions(previous, day.world);

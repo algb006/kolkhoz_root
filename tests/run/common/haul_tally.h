@@ -57,8 +57,7 @@ class HaulTally {
     // read the day off from it: every Sunday's idle hands were booked to the
     // Monday, and the Sundays showed up as "idle hands not sent".
     const core::SimDay lived = world.calendar.day > 0 ? world.calendar.day - 1 : 0;
-    const bool day_off =
-        core::IsDayOff(core::WeekdayFromDay(lived, world.calendar.day_zero_weekday), world.epoch);
+    const bool day_off = core::IsRestDay(lived, world.calendar.day_zero_weekday, world.epoch);
     core::Grams snowed_today = 0;
     for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
       const core::FieldRow& field = world.fields.rows[row];

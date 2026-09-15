@@ -187,6 +187,38 @@ std::unique_ptr<core::ISession> ScriptedSession(const core::ITableSet& tables,
 // The shape check, and orders reaching the real engine
 // ---------------------------------------------------------------------------
 
+/// THE STAMP NAMES THE HOLIDAY (host door request no. 2): the day of the
+/// completed state, May Day on the first day of May — day 16 from a Monday.
+int TestTheStampNamesTheHoliday(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    return Expect(false, "holiday: the session was built");
+  }
+  failures += Expect(session->Stamp().holiday == core::Holiday::kNone,
+                     "holiday: the campaign's first day is no holiday in Epoch I");
+  const core::SimDay may_day = static_cast<core::SimDay>(core::Month::kMay) * core::kDaysPerMonth;
+  while (session->State().calendar.day < may_day) {
+    session->AdvanceStep();
+  }
+  failures += Expect(session->Stamp().holiday == core::Holiday::kMayDay,
+                     "holiday: the stamp names May Day on the first day of May");
+  while (session->State().calendar.day == may_day) {
+    session->AdvanceStep();
+  }
+  failures += Expect(session->Stamp().holiday == core::Holiday::kNone,
+                     "holiday: and the day after it is an ordinary day");
+  return failures;
+}
+
 int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
@@ -1306,6 +1338,7 @@ int main() {
   const test::FakeTableSet tables;
 
   failures += Expect(core::kJournalMagic.size() == 8, "the journal magic is eight bytes");
+  failures += TestTheStampNamesTheHoliday(tables);
   failures += TestOrdersThroughTheEngine(tables);
   failures += TestEventsAndFastForward(tables);
   failures += TestEventReaders(tables);
