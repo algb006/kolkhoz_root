@@ -347,7 +347,13 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // cut at all — while the rule below says a scythe is still work.
     const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
     const bool horse_work = IsHorseWork(job.kind) || (job.harnessed && !meadow_cut);
-    if (horse_work && horses_left == 0) {
+    // ONLY THE PLOUGH AND THE HARROW STOP FOR WANT OF A HORSE, as the rule
+    // below says. Until 2026-09-15 this skipped every harnessed job once the
+    // pool was empty, so the autumn ploughing took the last horse and the
+    // carts behind it were not offered at all: on seed 1936 the vegetables
+    // lay a day with 45 hands idle, and a December potato load went to the
+    // snow. A cart with no horse is a back.
+    if (IsHorseWork(job.kind) && horses_left == 0) {
       continue;
     }
     if (meadow_cut && horses_left > 0) {

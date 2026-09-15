@@ -30,6 +30,7 @@
 #include "../common/extraction_policy.h"
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
+#include "../common/haul_tally.h"
 #include "../common/house_policy.h"
 #include "../common/insulation_policy.h"
 #include "../common/limit_policy.h"
@@ -573,6 +574,7 @@ int main(int argc, char** argv) {
   run::TimberChainTally timber_chain(*world.tables);
   // What the sites stood on in the first fourteen years (boss, parcel 312).
   run::BrakesTally brakes(*world.tables);
+  run::HaulTally hauls;
   run::DepartureTally departures;
 
   std::uint64_t growing_field_days = 0;
@@ -599,8 +601,10 @@ int main(int argc, char** argv) {
         departures.CountStep(world.State());
         if (tick == core::kTicksPerDay / 2) {
           brakes.CountDay(*world.simulation);  // the working day's middle
+          hauls.CountNoon(*world.simulation);
         }
       }
+      hauls.CountDay(world.State());  // the day's end, before any order
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
       felling.RunDay(*world.simulation, sawmill.LogsForMissingBoards(world.State()));
@@ -652,6 +656,7 @@ int main(int argc, char** argv) {
     // only year that matters — the last and largest.
     departures.CloseYear();
     brakes.CloseYear();
+    hauls.CloseYear();
     harvest_waited_days += harvest_waited_days_this_year;
     harvest_waited_worst = std::max(harvest_waited_worst, harvest_waited_days_this_year);
     const double day_seconds = year_seconds / static_cast<double>(core::kDaysPerYear);
@@ -927,6 +932,7 @@ int main(int argc, char** argv) {
   timber_chain.Report("thirty_years", g_years);
   departures.Report("thirty_years");
   brakes.Report("thirty_years", 14);
+  hauls.Report("thirty_years", 14);
   std::cout << "thirty_years: a reaped harvest waited in the field for room (over 3 days "
                "running) on "
             << harvest_waited_days << " days over " << g_years << " years, worst year "

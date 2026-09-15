@@ -2156,6 +2156,25 @@ int TestMeadowCutRidesAndTakesOneHorse() {
     scything += job == 0 ? 1U : 0U;
   }
   failures += Expect(scything >= 1, "cut horse: with no horse at all the grass is still cut");
+
+  // A CART WITH NO HORSE LEFT IS A BACK, AND STILL WORK (2026-09-15). The
+  // plough in the autumn took the last horse ahead of the carts, and a
+  // harnessed load was then skipped whole: on seed 1936 the vegetables lay a
+  // day with 45 hands idle, and a December potato load went to the snow.
+  core::AssignmentJob plough_first = FieldJob(core::WorkKind::kPlowing, 1, origin, 5.0F, 0);
+  plough_first.window = core::DeadlineInDays(1);
+  core::AssignmentJob cart = FieldJob(core::WorkKind::kHauling, 2, origin, 3.0F, 0);
+  cart.harnessed = true;
+  cart.window = core::DeadlineInDays(3);
+  params.draught_horses = 1;
+  const auto carts = core::PlanDayAssignments({plough_first, cart}, candidates, params);
+  std::uint32_t carrying = 0;
+  for (const std::uint32_t job : carts) {
+    carrying += job == 1 ? 1U : 0U;
+  }
+  failures += Expect(carrying >= 1,
+                     "cart horse: when the plough has taken the last horse the load is still "
+                     "carried, on backs");
   return failures;
 }
 

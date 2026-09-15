@@ -909,8 +909,14 @@ int main(int argc, char** argv) {
   // change, 20.4674702 -> 20.7970276, and the hungry share held. What the fund
   // freed in the autumn is handed out in the autumn, and the year's mean gave
   // four hundredths of a point for a third of a point at its lean end.
+  //
+  // AND UP TO 79.4115295, the three records together, when a harnessed job
+  // stopped being skipped whole once the day's horses were taken
+  // (assignment.cpp; 2026-09-15): the autumn plough took the last horse and
+  // the carts behind it were not offered at all. Leanest day 20.7970276 ->
+  // 22.1130543, hungry share 0.854166687 -> 0.817307711.
   failures += ExpectNoLower(
-      good.mean_satiety, 78.5717392F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 79.4115295F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -981,9 +987,10 @@ int main(int argc, char** argv) {
   // the reaping and the day fell to 22.29 — so the window moved, not this).
   // AND DOWN TO 17.6482697 THE SAME DAY with the stores' homes — a debt, not
   // a norm (the mean above says why). And up to 20.4674702 with the clamp,
-  // and to 20.7970276 with the seed fund's reaped fields (the mean above).
+  // and to 20.7970276 with the seed fund's reaped fields (the mean above), and
+  // to 22.1130543 with the carts that no longer wait for a horse.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 20.7970276F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 22.1130543F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -1008,9 +1015,10 @@ int main(int argc, char** argv) {
   // above says why). And 0.838383853 with the building chairman, 83 of 99, and
   // 0.867346942 with the felling brigade riding, 85 of 98. And 0.886792481,
   // 94 of 106, with the stores' homes (the mean above says why). And
-  // 0.854166687, 82 of 96, with the clamp.
+  // 0.854166687, 82 of 96, with the clamp. And 0.817307711 with the carts that
+  // no longer wait for a horse.
   failures += ExpectNoHigher(
-      hungry_share, 0.854166687F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.817307711F, "the share of the village hungry at once (recorded, not a band)");
   // A KNOWN GAP of the building chain (boss, parcel 306): 24 of 99 under the
   // line at the end against a sixth, where the stub's 119 had 14.
   // RESTORED ON 2026-09-15 with the clamp: the gap closed on all nine seeds
@@ -1077,11 +1085,14 @@ int main(int argc, char** argv) {
   // AND AGAIN WITH THE SEED FUND'S REAPED FIELDS (boss, parcel 421): 5.93,
   // 6.77, 7.49, 10.03, 10.57 (median), 11.01, 18.35, 22.95, 25.17. The fund
   // freed potatoes the issue could hand out, so the issue weighs more.
+  //
+  // AND WITH THE CARTS THAT NO LONGER WAIT FOR A HORSE (assignment.cpp): 6.77,
+  // 7.24, 7.25, 9.60, 10.67 (median), 12.20, 18.89, 23.08, 25.68.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 5.92-25.18, median 10.57)\n";
+            << " (nine seeds: 6.76-25.69, median 10.67)\n";
   failures +=
-      ExpectBand(issue_gap >= 5.92F && issue_gap <= 25.18F,
+      ExpectBand(issue_gap >= 6.76F && issue_gap <= 25.69F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
