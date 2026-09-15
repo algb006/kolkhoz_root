@@ -3,6 +3,7 @@
 # a store takes a resource because this row says so, not because some of it already lies there: an empty log pile is still the logs' home
 # storage names the kind of store inside the unit, e.g. firewood_yard inside utility_yard
 resource,unit,storage
+barley,church_store,church_store
 barley,elevator,elevator
 barley,food_yard,granary
 bicycle,selpo,selpo
@@ -56,6 +57,7 @@ fashion_shoes_winter,utility_yard,goods_store
 firewood,utility_yard,firewood_yard
 fish,food_yard,icehouse
 flax,utility_yard,goods_store
+flour,church_store,church_store
 flour,food_yard,granary
 forest_forage,food_yard,food_store
 fruit,food_yard,food_store
@@ -64,6 +66,7 @@ furniture_set,selpo,selpo
 furniture_set,utility_yard,goods_store
 glass,build_yard,build_yard
 gravel,build_yard,build_yard
+groats,church_store,church_store
 groats,food_yard,granary
 grocery,food_yard,food_store
 hay,hay_stack,stack
@@ -84,12 +87,14 @@ mineral_fertilizer,utility_yard,goods_store
 mink_pelt,utility_yard,goods_store
 motor_fuel,mts,mts_fuel
 motor_fuel,utility_yard,fuel_point
+oat,church_store,church_store
 oat,elevator,elevator
 oat,food_yard,granary
 offal,food_yard,icehouse
 paint,crafts_yard,crafts_store
 pea,elevator,elevator
 pea,food_yard,granary
+potato,church_store,church_store
 potato,food_yard,food_store
 radio,selpo,selpo
 radio,utility_yard,goods_store
@@ -98,6 +103,7 @@ refrigerator,selpo,selpo
 refrigerator,utility_yard,goods_store
 reinforced_concrete,build_yard,build_yard
 roofing,build_yard,build_yard
+rye,church_store,church_store
 rye,elevator,elevator
 rye,food_yard,granary
 sand,build_yard,build_yard
@@ -122,11 +128,13 @@ straw,hay_stack,stack
 television,selpo,selpo
 television,utility_yard,goods_store
 tool,utility_yard,goods_store
+vegetables,church_store,church_store
 vegetables,food_yard,food_store
 washing_machine,selpo,selpo
 washing_machine,utility_yard,goods_store
 watch,selpo,selpo
 watch,utility_yard,goods_store
+wheat,church_store,church_store
 wheat,elevator,elevator
 wheat,food_yard,granary
 woodwork,utility_yard,goods_store
