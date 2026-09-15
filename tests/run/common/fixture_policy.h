@@ -65,8 +65,11 @@ class FixturePolicy {
     granary_ = TypeByKey(tables, "granary");
     cattle_ = TypeByKey(tables, "cattle_yard");
     granary_yard_ = ParentTypeOf(tables, "granary");
+    food_store_ = TypeByKey(tables, "food_store");
+    church_ = TypeByKey(tables, "church_store");
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
+    ReadRoofedFood(tables);
   }
 
   /// @brief The question asked before every start (start_gate.h).
@@ -158,8 +161,9 @@ class FixturePolicy {
   /// @brief What the fixture actually did, for the run to print at the end.
   void Report(const core::WorldState& world) const {
     std::cout << "thirty_years: the run's chairman ordered " << ordered_ << " fixture buildings; "
-              << Built(world, granary_) << " granaries and " << Built(world, cattle_)
-              << " cattle yards stand; the granaries stand as modules of "
+              << Built(world, granary_) << " granaries, " << Built(world, food_store_)
+              << " food stores and " << Built(world, cattle_)
+              << " cattle yards stand; the stores stand as modules of "
               << Built(world, granary_yard_) << " food yards (" << yards_ordered_
               << " yard orders); marks refused: cattle yards " << cattle_refused_
               << ", granaries and yards " << other_refused_ << "\n";
@@ -249,15 +253,30 @@ class FixturePolicy {
     // shortage, and since carrying takes days that was nearly always true —
     // the chairman ordered thirty-nine buildings in thirty years and took the
     // hands to raise them off the fields.
-    if (HarvestWaitsForRoom()) {
-      return true;
+    //
+    // AND ONLY FOR WHAT A GRANARY TAKES (2026-09-15). Since stores take only
+    // their homes, potatoes and vegetables lost for want of a roof lit this
+    // signal every year; the chairman answered with granaries that do not
+    // take them — eight on seed 1933 — and "the farm first" held every house
+    // back while families left for want of one. The roof for those two is
+    // the food store's rule below (RoofedHarvestGrams), not this one.
+    for (std::size_t row = 0; row < world.fields.rows.size() && row < wait_streak_.size(); ++row) {
+      if (wait_streak_[row] > kRoomWaitDays && !Roofed(world.fields.rows[row].reaped_resource)) {
+        return true;
+      }
     }
-    for (const core::Grams lost : world.ledger.closed.lost_no_room) {
-      if (lost > 0) {
+    for (std::size_t index = 0; index < world.ledger.closed.lost_no_room.size(); ++index) {
+      if (world.ledger.closed.lost_no_room[index] > 0 &&
+          !Roofed(core::ResourceId{static_cast<std::uint16_t>(index)})) {
         return true;
       }
     }
     return false;
+  }
+
+  /// Whether the food store (not the granary) keeps this resource.
+  bool Roofed(core::ResourceId resource) const {
+    return resource.value < roofed_resource_.size() && roofed_resource_[resource.value] != 0;
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
@@ -265,7 +284,8 @@ class FixturePolicy {
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
-                        unit.type.value == granary_yard_.value;
+                        unit.type.value == granary_yard_.value ||
+                        unit.type.value == food_store_.value;
       if (!ours || unit.level != 0) {
         continue;
       }
@@ -284,6 +304,26 @@ class FixturePolicy {
         Wants(world, granary_, Built(world, granary_) == 0 || RoomWasShort(world));
     const bool wants_cattle =
         Wants(world, cattle_, Built(world, cattle_) == 0 || RoofWasShort(world));
+    // A ROOF FOR THIS YEAR'S POTATOES AND VEGETABLES (boss, parcels 401 and
+    // 408). Since the stores take only their homes, these two go into the
+    // church and a food store and nowhere else, and what finds no roof is lost
+    // to the snow. The chairman sees this year's crops in the fields' chains,
+    // so he puts up food stores until their room and the church's hold this
+    // year's harvest — THE CEILING, and no more than it — taking turns with
+    // the granary and the cattle yard when those are wanted too.
+    // NOT BEFORE THE STABLE, as the school (school_policy.h): the food store's
+    // logs and boards go to the chairman's yard first. Measured on three seeds
+    // once the two real knots of seed 1929 were cut (the demolished build yard
+    // and the saw deaf to the stable): year 30 stood at 183, 366 and 304 with
+    // the stable first and 180, 261 and 234 without it (2026-09-15).
+    const bool wants_food_store =
+        world.chairman.horses_stabled != 0 && food_store_.value != core::kInvalidDefIdValue &&
+        RoofedHarvestGrams(world) > RoofedRoomGrams(world) && Rows(world, food_store_) < kMaxOfEach;
+    if (wants_food_store && !(last_ordered_food_store_ && (wants_granary || wants_cattle))) {
+      last_ordered_food_store_ = true;
+      return Mark(world, food_store_, order);
+    }
+    last_ordered_food_store_ = false;
     // ALTERNATE when both are wanted. Grain used to come first always, and
     // "always" turned out to mean "only": since a loaded field is a standing
     // signal, the granary branch won every single time and the herds never
@@ -312,7 +352,8 @@ class FixturePolicy {
   bool Mark(const core::WorldState& world, core::UnitTypeId type, core::OrderRow& order) {
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = type;
-    if (type.value == granary_.value && granary_yard_.value != core::kInvalidDefIdValue) {
+    if ((type.value == granary_.value || type.value == food_store_.value) &&
+        granary_yard_.value != core::kInvalidDefIdValue) {
       return MarkOnYard(world, order);
     }
     // THE NEAREST FREE PLACE BY THE CORE'S OWN RULE (plot.h, FreePlot), as for
@@ -421,6 +462,96 @@ class FixturePolicy {
 
   /// The granary's parent by unit_types.csv — the food yard.
   core::UnitTypeId granary_yard_;
+
+  /// The food store and the church — the roofs of potatoes and vegetables.
+  core::UnitTypeId food_store_;
+
+  core::UnitTypeId church_;
+
+  /// kg per hectare by crop row, for the crops whose produce the food store
+  /// keeps (resource_stores.csv storage `food_store`); 0 for every other crop.
+  std::vector<float> roofed_yield_kg_per_ha_;
+
+  /// 1 per ResourceId the food store keeps.
+  std::vector<std::uint8_t> roofed_resource_;
+
+  /// Level-1 capacity, grams, of the food store and the church.
+  core::Grams food_store_grams_ = 0;
+
+  core::Grams church_grams_ = 0;
+
+  bool last_ordered_food_store_ = false;
+
+  void ReadRoofedFood(const core::ITableSet& tables) {
+    const core::ITable* const stores = tables.FindTable("resource_stores");
+    const core::ITable* const crops = tables.FindTable("crops");
+    const core::ITable* const levels = tables.FindTable("unit_levels");
+    if (stores == nullptr || crops == nullptr || levels == nullptr) {
+      return;
+    }
+    roofed_yield_kg_per_ha_.assign(crops->RowCount(), 0.0F);
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      roofed_resource_.assign(resources->RowCount(), 0);
+      for (std::uint32_t row = 0; row < stores->RowCount(); ++row) {
+        const std::uint32_t resource =
+            resources->FindRowByKey(stores->CellText(row, stores->FindColumn("resource")));
+        if (resource < roofed_resource_.size() &&
+            stores->CellText(row, stores->FindColumn("storage")) == "food_store") {
+          roofed_resource_[resource] = 1;
+        }
+      }
+    }
+    for (std::uint32_t crop = 0; crop < crops->RowCount(); ++crop) {
+      const std::string_view produce = crops->CellText(crop, crops->FindColumn("resource"));
+      bool roofed = false;
+      for (std::uint32_t row = 0; row < stores->RowCount(); ++row) {
+        roofed = roofed || (stores->CellText(row, stores->FindColumn("resource")) == produce &&
+                            stores->CellText(row, stores->FindColumn("storage")) == "food_store");
+      }
+      if (roofed) {
+        roofed_yield_kg_per_ha_[crop] = std::strtof(
+            std::string(crops->CellText(crop, crops->FindColumn("yield_kg_per_ha"))).c_str(),
+            nullptr);
+      }
+    }
+    for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+      const std::string_view unit = levels->CellText(row, levels->FindColumn("unit"));
+      if (levels->CellText(row, levels->FindColumn("level")) != "1") {
+        continue;
+      }
+      const core::Grams grams = core::GramsFromKilograms(
+          1000.0F *
+          std::strtof(
+              std::string(levels->CellText(row, levels->FindColumn("storage_capacity_t"))).c_str(),
+              nullptr));
+      food_store_grams_ = unit == "food_store" ? grams : food_store_grams_;
+      church_grams_ = unit == "church_store" ? grams : church_grams_;
+    }
+  }
+
+  /// This year's potatoes and vegetables by the fields' chains at a normal
+  /// yield: what needs a roof this autumn.
+  core::Grams RoofedHarvestGrams(const core::WorldState& world) const {
+    double kilograms = 0.0;
+    for (const core::FieldRow& field : world.fields.rows) {
+      const std::uint16_t crop = field.rotation_year0.value;
+      if (field.kind == core::LandKind::kArable && crop < roofed_yield_kg_per_ha_.size()) {
+        kilograms +=
+            static_cast<double>(roofed_yield_kg_per_ha_[crop]) * static_cast<double>(field.area_ga);
+      }
+    }
+    return core::GramsFromKilograms(static_cast<float>(kilograms));
+  }
+
+  /// The room of the church and of every food store, standing or going up.
+  core::Grams RoofedRoomGrams(const core::WorldState& world) const {
+    core::Grams room = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      room += unit.type.value == food_store_.value ? food_store_grams_ : 0;
+      room += unit.type.value == church_.value && unit.level > 0 ? church_grams_ : 0;
+    }
+    return room;
+  }
 
   /// The plot radii and the map, for FreePlot.
   core::Definitions definitions_;

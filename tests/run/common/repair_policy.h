@@ -38,6 +38,7 @@
 #ifndef TESTS_RUN_COMMON_REPAIR_POLICY_H_
 #define TESTS_RUN_COMMON_REPAIR_POLICY_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <span>
@@ -326,6 +327,15 @@ class RepairPolicy {
       }
       if (!(unit.wear > 0.0F)) {
         continue;  // a heap or a stack: nothing was built, nothing to take down
+      }
+      // NOTHING STORED, CHECKED AND NOT ASSUMED. The rule moves the goods out
+      // rather than refusing, so this walk once took down the build yard with
+      // its boards in it — after the stores' homes change the yard was the
+      // boards' only home, the sawmill had no room to saw into, and seed 1929
+      // lost its stable and every house after it (2026-09-15).
+      if (std::any_of(
+              unit.stock.begin(), unit.stock.end(), [](core::Grams held) { return held > 0; })) {
+        continue;
       }
       order = core::OrderRow{};
       order.kind = core::OrderKind::kDemolishUnit;

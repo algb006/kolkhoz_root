@@ -196,6 +196,38 @@ int CheckFeeding() {
   return failures;
 }
 
+/// THE KOLKHOZ HERD'S PRODUCE GOES THROUGH THE DOOR (boss, parcel 408). Until
+/// 2026-09-15 it went into the first numbered store whatever it was: milk
+/// into a store that is no home of milk. Now it goes only where it is at
+/// home, and what has no home is booked lost the same day.
+int CheckTheHerdsMilkGoesToItsHome() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.resource_stores_read = 1;
+  config.unit_types[0].home_of = {core::ResourceId{0}};  // the store keeps hay alone
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.units.rows[0].level = 1;
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    const core::ResourceAmounts& lost = world.ledger.current.lost_no_room;
+    failures += Expect(StoreOf(world, 1) == 0 && lost.size() > 1 && lost[1] == 20 * kKilo,
+                       "milk with no home among the stores goes in nowhere and is booked lost");
+  }
+  config.unit_types[0].home_of = {core::ResourceId{0}, core::ResourceId{1}};
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.units.rows[0].level = 1;
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    const core::ResourceAmounts& lost = world.ledger.current.lost_no_room;
+    failures += Expect(StoreOf(world, 1) == 20 * kKilo && (lost.size() < 2 || lost[1] == 0),
+                       "and milk at home goes in whole, with nothing lost");
+  }
+  return failures;
+}
+
 /// THE HERDS STAY BELOW THE PLAN RESERVE (resources design §6; boss,
 /// 2026-09-13): grain this year's reaping has set aside for the district is
 /// not fodder, and a herd that finds only that grain goes hungry.
@@ -907,6 +939,33 @@ int CheckStoreCeilingAndAlarms() {
                      "a day of hauling fills the room that appeared, up to the new ceiling");
   failures += Expect(world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram,
                      "and what still does not fit keeps waiting");
+
+  // THE SETTLED SNOW TAKES WHAT STILL LIES OUT (farming design §6; boss,
+  // parcel 408). A cover on its first day is a dusting the melt rule may yet
+  // take away, so the load waits on; a cover on its second day is settled,
+  // and the load is written off that day rather than lying into next year.
+  world.weather.snow_cover_days = 1;
+  {
+    const core::WorldState yesterday = world;
+    world.calendar.tick += 1U;
+    core::RefreshCalendarCaches(world.calendar);
+    system->RunProductionDecisions(yesterday, world);
+  }
+  failures += Expect(world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram,
+                     "a first day's snow cover takes nothing off the field");
+  world.weather.snow_cover_days = 2;
+  {
+    const core::WorldState yesterday = world;
+    world.calendar.tick += core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    system->RunProductionDecisions(yesterday, world);
+  }
+  failures += Expect(
+      world.fields.rows[0].reaped_grams == 0 &&
+          !(world.fields.rows[0].haul_days_remaining > 0.0F) &&
+          !world.ledger.current.lost_no_room.empty() &&
+          world.ledger.current.lost_no_room[0] == 5'000 * core::kGramsPerKilogram,
+      "settled snow writes the waiting load off as lost, and the field asks for no carriers");
   std::filesystem::remove_all(root);
   return failures;
 }
@@ -2188,6 +2247,53 @@ int CheckTheDoorCountsWhatLanded() {
       core::DeliverToStores(world, config, core::ResourceId{0}, 900 * core::kGramsPerKilogram);
   failures += Expect(over == 500 * core::kGramsPerKilogram,
                      "the ceiling refuses the remainder, and the door says how much it took");
+  return failures;
+}
+
+/// A NUMBERED STORE TAKES ITS HOMES ONLY (boss, parcels 399-405): with
+/// resource_stores.csv read, a granary keeps grain and a food store potatoes,
+/// and neither counts as room for the other's load — the demand and the door
+/// ask the same question. Before, the homes bound outlines alone and 143 t of
+/// potatoes lay in granaries.
+int CheckANumberedStoreTakesItsHomesOnly() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.resource_stores_read = 1;
+  config.unit_types.resize(2);
+  SetStorageKg(config.unit_types[0], 1000.0F);  // the granary: a tonne, rye's home
+  config.unit_types[0].home_of = {core::ResourceId{0}};
+  SetStorageKg(config.unit_types[1], 400.0F);  // the food store: 400 kg, potato's home
+  config.unit_types[1].home_of = {core::ResourceId{1}};
+
+  core::WorldState world;
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{0};
+  granary.level = 1;
+  core::AppendRow(world.units, granary);
+  core::UnitRow food_store;
+  food_store.type = core::UnitTypeId{1};
+  food_store.level = 1;
+  core::AppendRow(world.units, food_store);
+  const core::Grams kKilo = core::kGramsPerKilogram;
+
+  failures += Expect(core::ReceivableRoom(config, world, core::ResourceId{1}) == 400 * kKilo,
+                     "a potato load's room is the food store's alone, not the granary's tonne");
+  const core::Grams potatoes =
+      core::DeliverToStores(world, config, core::ResourceId{1}, 600 * kKilo);
+  failures +=
+      Expect(potatoes == 400 * kKilo &&
+                 core::AmountOf(world.units.rows[0].stock, core::ResourceId{1}) == 0 &&
+                 core::AmountOf(world.units.rows[1].stock, core::ResourceId{1}) == 400 * kKilo,
+             "the door puts potatoes into the food store only, and refuses the rest past "
+             "an empty granary");
+  const core::Grams rye = core::DeliverToStores(world, config, core::ResourceId{0}, 300 * kKilo);
+  failures += Expect(rye == 300 * kKilo && core::AmountOf(world.units.rows[0].stock,
+                                                          core::ResourceId{0}) == 300 * kKilo,
+                     "and rye into the granary");
+  // A resource no store is the home of: nowhere to go, not the first store.
+  failures += Expect(core::ReceivableRoom(config, world, core::ResourceId{2}) == 0 &&
+                         core::DeliverToStores(world, config, core::ResourceId{2}, kKilo) == 0,
+                     "a load with no home among the stores has no room and goes in nowhere");
   return failures;
 }
 
@@ -4553,6 +4659,7 @@ int main() {
              "stubs leave the world unchanged");
 
   failures += CheckFeeding();
+  failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();
   failures += CheckFeedCaps();
   failures += CheckFeedLightCountsTheWinter();
@@ -4582,6 +4689,7 @@ int main() {
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckTheTeamWithoutARoofSaysSo();
   failures += CheckAHeapIsAStore();
+  failures += CheckANumberedStoreTakesItsHomesOnly();
   failures += CheckTheDoorCountsWhatLanded();
   failures += CheckPauseAndResume();
   failures += CheckThePlanIsJudgedAtTheYearsTurn();

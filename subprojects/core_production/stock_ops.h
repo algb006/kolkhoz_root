@@ -156,6 +156,21 @@ inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, Resour
   return false;
 }
 
+/// @brief Whether a NUMBERED store takes `resource` in: the resource's home by
+/// resource_stores.csv. A table set without that table keeps the phase-1 pool
+/// — any numbered store takes anything.
+///
+/// ONE RULE FOR BOTH KINDS OF STORE since 2026-09-15 (boss, parcels 399-405).
+/// The homes applied to outlines alone, so a granary took potatoes, vegetables,
+/// hay, straw, logs and clay from any field or pile, and a potato harvest
+/// counted granary room as its own: 143 t of potatoes and 150 t of hay lay in
+/// granaries while the table said granaries keep grain.
+inline bool NumberedStoreTakes(const UnitRow& unit,
+                               const ProductionConfig& config,
+                               ResourceId resource) {
+  return config.resource_stores_read == 0 || IsHomeOf(unit, config, resource);
+}
+
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:
 /// one shared storage pool. Capacity is no longer ignored — since task A3
 /// the door (DeliverToStores) refuses above the ceiling and the remainder is
@@ -294,7 +309,8 @@ inline Grams DeliverToStores(WorldState& world,
     // it used to guard against a hypothetical row carrying both a tonnage
     // and the by-plot flag, and it now carries the whole weight, because
     // StoresGoods counts outlines.
-    if (!StoresGoods(unit, config) || StorageCapacityGrams(unit, config) < 0) {
+    if (!StoresGoods(unit, config) || StorageCapacityGrams(unit, config) < 0 ||
+        !NumberedStoreTakes(unit, config, resource)) {
       continue;
     }
     const Grams room = FreeRoomGrams(unit, config);

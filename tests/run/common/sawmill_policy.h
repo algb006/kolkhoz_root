@@ -32,6 +32,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -199,8 +200,30 @@ class SawmillPolicy {
           resource.value < unit.stock.size() ? unit.stock[resource.value] : 0;
       need += cost > on_site ? cost - on_site : 0;
     }
+    const std::uint32_t rising = rise_watch_ ? rise_watch_(world) : core::kNoRow;
+    if (rising < world.units.rows.size()) {
+      const core::UnitRow& unit = world.units.rows[rising];
+      const core::Grams cost =
+          CostGrams(unit.type, static_cast<std::uint8_t>(unit.level + 1U), resource);
+      const core::Grams on_site =
+          resource.value < unit.stock.size() ? unit.stock[resource.value] : 0;
+      need += cost > on_site ? cost - on_site : 0;
+    }
     return need;
   }
+
+  /// @brief Which row waits to rise with its step not yet taken, or kNoRow.
+  using RiseWatch = std::function<std::uint32_t(const core::WorldState&)>;
+
+  /// @brief Counts the step a unit waits to take into the queue's need.
+  ///
+  /// A STEP REFUSED IS NOT IN THE QUEUE, AND THE SAW WORKED ONLY FOR THE
+  /// QUEUE. An upgrade is taken only with its whole recipe in the village, so
+  /// the chairman's yard waiting to rise to its stable left no marked site —
+  /// and the saw, working for marked sites only, stood paused. On seed 1929
+  /// the stable waited three years 1 t short of its 12 t of boards with 22 t
+  /// of logs in the pile, while the yard held every house back (2026-09-15).
+  void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 
   /// @brief Whether a built sawmill stands unpaused today.
   bool SawmillOpen(const core::WorldState& world) const {
@@ -614,6 +637,8 @@ class SawmillPolicy {
   core::UnitTypeId house_type_;
 
   bool keep_reserve_ = false;
+
+  RiseWatch rise_watch_;
 
   bool saw_by_anyone_ = false;
   core::ProfessionId craftsman_post_;

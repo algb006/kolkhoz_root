@@ -106,6 +106,11 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
       }
       continue;
     }
+    // A numbered store counts only for what it takes in — the door's own
+    // question (NumberedStoreTakes, DeliverToStores).
+    if (!NumberedStoreTakes(unit, config, resource)) {
+      continue;
+    }
     room += free_here;
   }
   return room;
@@ -159,7 +164,20 @@ void SettleLoad(const ProductionConfig& config,
 HaulRate FieldHaulRate(const ProductionConfig& config,
                        const WorldState& world,
                        const FieldRow& field) {
-  const std::uint32_t store_row = FindStorageRow(world, config);
+  // To a store that takes the load in (NumberedStoreTakes), first in row order
+  // as the door fills them; none such: the shared store, as before.
+  std::uint32_t store_row = kNoRow;
+  for (std::uint32_t row = 0; row < world.units.rows.size() && store_row == kNoRow; ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) > 0 &&
+        field.reaped_resource.value != kInvalidDefIdValue &&
+        NumberedStoreTakes(unit, config, field.reaped_resource)) {
+      store_row = row;
+    }
+  }
+  if (store_row == kNoRow) {
+    store_row = FindStorageRow(world, config);
+  }
   const Vec2 destination =
       store_row == kNoRow ? field.center : world.units.rows[store_row].position;
   return RateToward(config, world, field.center, destination);

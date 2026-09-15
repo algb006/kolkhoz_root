@@ -87,6 +87,24 @@ class YardPolicy {
            !simulation.MaterialsShortFor(world.units.row_ids[yard_row]).empty();
   }
 
+  /// @brief The chairman's yard's row while it stands below its stable with
+  /// the step not yet taken — the step the core refuses until its whole
+  /// recipe is in the village — or kNoRow.
+  std::uint32_t RowWaitingToRise(const core::WorldState& world) const {
+    if (!watching_ || yard_type_.value == core::kInvalidDefIdValue ||
+        world.chairman.horses_stabled != 0) {
+      return core::kNoRow;
+    }
+    const std::uint32_t yard_row = FindYard(world);
+    if (yard_row == core::kNoRow) {
+      return core::kNoRow;
+    }
+    const core::UnitRow& yard = world.units.rows[yard_row];
+    const bool waits_to_rise = yard.level > 0 && yard.level < kStableLevel &&
+                               yard.construction.phase == core::ConstructionPhase::kNone;
+    return waits_to_rise ? yard_row : core::kNoRow;
+  }
+
   /// @brief One day's worth of the chairman's attention. Call once a day,
   /// after the day's steps: it stages at most one order and then waits for
   /// the world to answer.

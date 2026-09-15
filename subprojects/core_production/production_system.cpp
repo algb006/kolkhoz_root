@@ -62,6 +62,10 @@
 namespace core {
 namespace {
 
+/// Days a snow cover has lain before it is settled snow: the melt rule never
+/// lets a dusting reach a second day (world_state.h, snow_cover_days).
+constexpr std::uint16_t kSettledSnowCoverDays = 2;
+
 /// The production slot (phase 4), parallel by field: accumulates the
 /// growth-season weather stress. Reads the calendar and the day's weather
 /// from `current` — both blocks are written by phase 1 alone and frozen for
@@ -428,7 +432,25 @@ class ProductionSystem final : public IProductionSystem {
     const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
     const float temperature = current.weather.air_temperature_celsius;
     const bool snowing = current.weather.precipitation == Precipitation::kSnow;
+    // THE SETTLED SNOW TAKES WHAT LIES ON THE FIELD (farming design §6: "Лёг
+    // снег — всё, что осталось на этом поле… в кучах на краю — пропадает
+    // целиком"). A cover on its second day is settled: the melt rule never lets
+    // a dusting reach it (world_state.h, snow_cover_days).
+    const bool cover_settled = current.weather.snow_cover_days >= kSettledSnowCoverDays;
     for (FieldRow& field : current.fields.rows) {
+      // Until 2026-09-15 a reaped load that no cart had taken lay out through
+      // the winter and into the next year, booked as lost only when a second
+      // harvest came to take its place — and a loaded field stood as the
+      // shortage signal all that time. The snow takes it the winter it lies
+      // out, and the field is empty by spring (boss, parcel 408).
+      if (cover_settled && field.reaped_grams > 0) {
+        AddLedgerAmount(
+            current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
+        field.reaped_grams = 0;
+        field.reaped_resource = ResourceId{};
+        field.haul_days_remaining = 0.0F;
+        field.haul_days_written = 0.0F;
+      }
       // The buffer is no longer emptied here. Until task A4 this was a
       // daily retry that moved whatever the stores had room for, the moment
       // they had it — the instant-delivery stub. The load now leaves when

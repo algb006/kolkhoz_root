@@ -69,11 +69,12 @@ class BuildingChairman {
   /// @brief Hands every policy that starts sites the sawmill's question: the
   /// boards it is built of go to nobody else until it stands (parcel 305).
   /// A free function of the four so thirty_years, which wires its policies
-  /// by hand, asks it the same way.
+  /// by hand, asks it the same way. And the saw is told of the stable the
+  /// yard waits to rise to, which no marked site carries (SetRiseWatch).
   static void WireStartGates(YardPolicy& yard_policy,
                              FixturePolicy& fixture_policy,
                              HousePolicy& house_policy,
-                             const SawmillPolicy& sawmill_policy) {
+                             SawmillPolicy& sawmill_policy) {
     const StartGate gate = [&sawmill_policy](const core::WorldState& world,
                                              core::UnitTypeId type,
                                              std::uint8_t level) {
@@ -82,6 +83,9 @@ class BuildingChairman {
     yard_policy.SetStartGate(gate);
     fixture_policy.SetStartGate(gate);
     house_policy.SetStartGate(gate);
+    sawmill_policy.SetRiseWatch([&yard_policy](const core::WorldState& world) {
+      return yard_policy.RowWaitingToRise(world);
+    });
   }
 
   // The start gates hold a reference to `sawmill`: a copy would ask the

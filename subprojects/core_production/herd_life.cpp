@@ -137,10 +137,13 @@ void DeliverProduce(WorldState& world,
     return;
   }
   AddLedgerAmount(world.ledger.current.herd_produce, resource, amount);
-  const std::uint32_t store = FindStorageRow(world, config);
-  if (store != kNoRow) {
-    AddToStock(world.units.rows[store].stock, resource, amount);
-  }
+  // THROUGH THE DOOR, into its home and within the ceiling (boss, parcel
+  // 408). Until 2026-09-15 the kolkhoz herd's produce went into the first
+  // numbered store whatever it was and however full: milk and meat into the
+  // church. What has no home or no room is lost the same day, and said so —
+  // milk with no ice house sours.
+  const Grams placed = DeliverToStores(world, config, resource, amount);
+  AddLedgerAmount(world.ledger.current.lost_no_room, resource, amount - placed);
 }
 
 /// Pays out a slaughter: meat, and whatever else the carcass gives.
