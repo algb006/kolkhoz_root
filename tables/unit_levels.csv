@@ -148,7 +148,8 @@ brick_house,2,2,150,brick_small_ext,8,,,80,55,1
 brick_house,3,3,150,brick_small_ext,8,,,80,55,1
 brick_house,4,3,150,brick_small_ext,8,,,80,55,1
 barrack,1,1,120,wood_small,8,,,50,30,1.1
-specialist_dorm,1,2,300,brick_small,10,,,80,55,1
+specialist_dorm,1,1,120,wood_small,8,,,50,30,1
+specialist_dorm,2,2,300,brick_small,10,,,80,55,1
 builder_dorm,1,2,300,brick_small,10,,,80,55,1
 visitor_dorm,1,2,300,brick_small,10,,,80,55,1
 fire_post,1,2,120,wood_small,8,,,50,30,1.1
