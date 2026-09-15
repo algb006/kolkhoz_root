@@ -1032,6 +1032,19 @@ int main() {
                            !core::PostHoldsTheDay(core::PostShift::kEvening),
                        "post shift: the night post takes its holder off the day's list");
   }
+  {
+    // The day off (time design §12), public in calendar.h since 2026-09-15.
+    failures += Expect(core::IsDayOff(core::Weekday::kSunday, core::Epoch::kOne) &&
+                           core::IsDayOff(core::Weekday::kSunday, core::Epoch::kThree),
+                       "day off: Sunday is off in every epoch");
+    failures += Expect(!core::IsDayOff(core::Weekday::kSaturday, core::Epoch::kOne) &&
+                           !core::IsDayOff(core::Weekday::kSaturday, core::Epoch::kTwo) &&
+                           core::IsDayOff(core::Weekday::kSaturday, core::Epoch::kThree),
+                       "day off: Saturday joins it in Epoch III and not before");
+    failures += Expect(!core::IsDayOff(core::Weekday::kMonday, core::Epoch::kThree) &&
+                           !core::IsDayOff(core::Weekday::kFriday, core::Epoch::kThree),
+                       "day off: a weekday is a working day even in Epoch III");
+  }
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
   failures += TestDefIdFromRow();

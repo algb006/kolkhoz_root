@@ -25,7 +25,7 @@
 #include "core_common/geometry.h"
 #include "core_common/labor_state.h"
 #include "core_common/resident_state.h"
-#include "core_common/world_state.h"  // Epoch: the day off widens in Epoch III.
+#include "core_common/world_state.h"
 #include "labor_config.h"
 
 namespace core {
@@ -89,15 +89,7 @@ float RestDrain(const LaborConfig& config,
                 WorkKind kind,
                 float norm_days);
 
-/// @brief Is this a day off? Sunday in Epochs I-II, Saturday joins it in
-/// Epoch III (time design §12). Field work stops; the barn does not
-/// (manual/65-labor-model.md §5).
-constexpr bool IsDayOff(Weekday weekday, Epoch epoch) {
-  if (weekday == Weekday::kSunday) {
-    return true;
-  }
-  return weekday == Weekday::kSaturday && epoch == Epoch::kThree;
-}
+// IsDayOff moved to core_common/calendar.h on 2026-09-15 (host's request).
 
 }  // namespace core
 
