@@ -30,7 +30,6 @@ fertilizer_lot,mineral_fertilizer,
 motor_fuel_lot,motor_fuel,2000
 grocery_lot,grocery,500
 glass_container_lot,glass,24
-glass_container_lot,container,20
 lime_gravel_lot,lime,2
 lime_gravel_lot,gravel,10
 tool_lot,tool,20
