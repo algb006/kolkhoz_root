@@ -28,7 +28,8 @@
 ///   * what it brings — the net fishers 3 kg of fish between them into their
 ///     yards' pantries; the hunter 5 kg of meat with a chance of 0.3; the
 ///     distiller carries 50 kg of raw material off the kolkhoz stores, less
-///     60 % from a unit whose watchman is at his post, and it leaves the world
+///     60 % from a unit whose watchman is at his post — or whose parent's, as a
+///     granary is kept by the food yard's — and it leaves the world
 ///     (boss, parcel 364; StealRawMaterial).
 ///
 /// STUB, each with its place: the truancy and the lost rest of the night out
@@ -129,7 +130,8 @@ void RunNightOutings(const NightTradeConfig& config, WorldState& current);
 /// @brief A distiller's night at the stores: up to `distiller_raw_kg` of the
 ///        raw material, unreserved, unit by unit in row order and resource by
 ///        resource in the config's order; from a unit kept by a watchman at
-///        his post a share `watchman_theft_cut` smaller. What is taken leaves
+///        his post — at the unit or at its parent — a share
+///        `watchman_theft_cut` smaller. What is taken leaves
 ///        the world and is booked as `stolen`; the month's tally grows, and at
 ///        `store_leak_complaint_kg` the complaint is raised, once a campaign
 ///        (the constable's post is a STUB: Epoch I has none).

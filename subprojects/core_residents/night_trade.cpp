@@ -396,13 +396,22 @@ Grams StealRawMaterial(const NightTradeConfig& config, WorldState& current) {
         continue;
       }
       // A watchman at his post at this unit tonight cuts what he takes here
-      // (crime design §11); the attempt is spent all the same.
+      // (crime design §11); the attempt is spent all the same. AND A MODULE IS
+      // KEPT BY ITS PARENT'S WATCHMAN: the staff table posts the watchman at
+      // the food yard, never at the granary on its plot, and the grain lies in
+      // the granary — reading the unit's own posts alone left every granary
+      // unguarded whoever stood at the gate (found by the runs' watchman,
+      // 2026-09-15).
+      const std::uint32_t here = current.units.row_ids[unit_row].value;
+      const std::uint32_t parent = unit.parent.value;
       bool kept = false;
       for (const ResidentRow& person : current.residents.rows) {
         const std::uint32_t profession = person.post.profession.value;
-        kept = kept || (person.post.unit.value == current.units.row_ids[unit_row].value &&
-                        profession < config.post_shift.size() &&
-                        config.post_shift[profession] == PostShift::kNight);
+        const std::uint32_t post_unit = person.post.unit.value;
+        kept = kept ||
+               ((post_unit == here || (parent != kInvalidEntityIdValue && post_unit == parent)) &&
+                profession < config.post_shift.size() &&
+                config.post_shift[profession] == PostShift::kNight);
       }
       const Grams attempt = free < wanted ? free : wanted;
       wanted -= attempt;

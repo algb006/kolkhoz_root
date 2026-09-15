@@ -38,6 +38,7 @@
 #include "../common/sawmill_policy.h"
 #include "../common/school_policy.h"
 #include "../common/timber_chain_tally.h"
+#include "../common/watchman_policy.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/definitions.h"
 #include "core_common/calendar.h"
@@ -547,6 +548,9 @@ int main(int argc, char** argv) {
   // And one school once the children are there (school_policy.h; parcel 358).
   run::SchoolPolicy school(*world.tables);
   run::SchoolPolicy::Declare("thirty_years");
+  // And a watchman where the raw material lies (watchman_policy.h; parcel 362).
+  run::WatchmanPolicy watchman(*world.tables);
+  run::WatchmanPolicy::Declare("thirty_years");
   // The boards the sawmill is built of go to nobody else until it stands
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
@@ -596,6 +600,7 @@ int main(int argc, char** argv) {
           fixture.HoldsHousesBack(*world.simulation) || yard.HoldsHousesBack(*world.simulation);
       houses.RunDay(*world.simulation, farm_first);
       school.RunDay(*world.simulation, farm_first);
+      watchman.RunDay(*world.simulation);
       digging.RunDay(*world.simulation);
       year_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
@@ -900,6 +905,7 @@ int main(int argc, char** argv) {
   fixture.Report(state);
   houses.Report(state, "thirty_years");
   school.Report(state, "thirty_years");
+  watchman.Report(state, "thirty_years");
   digging.Report(state, "thirty_years");
   timber_chain.Report("thirty_years", g_years);
   departures.Report("thirty_years");

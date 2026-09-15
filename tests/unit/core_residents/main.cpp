@@ -1524,6 +1524,39 @@ int CheckRawMaterialLeak() {
   failures +=
       Expect(world.night_theft.stolen_this_month == 150 * kKilo && world.step_events.empty(),
              "leak: a new month counts from zero, and the complaint does not come again");
+
+  // A granary is a module of the food yard, and the watchman is posted at the
+  // yard: he keeps the granary on its plot. A granary under an unwatched yard
+  // gives all it is asked for.
+  core::WorldState yards;
+  core::UnitRow watched_yard;
+  watched_yard.level = 1;
+  const core::UnitId watched_id = AppendRow(yards.units, watched_yard);
+  core::UnitRow open_yard;
+  open_yard.level = 1;
+  const core::UnitId open_yard_id = AppendRow(yards.units, open_yard);
+  core::UnitRow kept_granary;
+  kept_granary.level = 1;
+  kept_granary.parent = watched_id;
+  kept_granary.stock = {30 * kKilo};
+  const core::UnitId kept_granary_id = AppendRow(yards.units, kept_granary);
+  core::UnitRow open_granary;
+  open_granary.level = 1;
+  open_granary.parent = open_yard_id;
+  open_granary.stock = {100 * kKilo};
+  const core::UnitId open_granary_id = AppendRow(yards.units, open_granary);
+  core::ResidentRow yard_watchman;
+  yard_watchman.post =
+      core::PostAssignment{.profession = core::ProfessionId{1}, .unit = watched_id};
+  AppendRow(yards.residents, yard_watchman);
+  const core::Grams yard_night = core::StealRawMaterial(config, yards);
+  // 30 kg attempted at the kept granary, 12 carried; the remaining 20 kg at
+  // the open one, all carried.
+  failures += Expect(
+      yard_night == 32 * kKilo &&
+          yards.units.rows[FindRow(yards.units, kept_granary_id)].stock[0] == 18 * kKilo &&
+          yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] == 80 * kKilo,
+      "leak: the yard's watchman keeps the granary on its plot, and an unwatched yard's does not");
   return failures;
 }
 

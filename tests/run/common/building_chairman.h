@@ -31,6 +31,7 @@
 #include "repair_policy.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
+#include "watchman_policy.h"
 #include "yard_policy.h"
 
 namespace run {
@@ -47,6 +48,7 @@ class BuildingChairman {
         repairs(tables),
         houses(tables),
         school(tables),
+        watchman(tables),
         digging(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
@@ -94,6 +96,7 @@ class BuildingChairman {
     RepairPolicy::Declare();
     HousePolicy::Declare(run_name);
     SchoolPolicy::Declare(run_name);
+    WatchmanPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
   }
 
@@ -117,6 +120,7 @@ class BuildingChairman {
     houses.RunDay(simulation, farm_first);
     // The school after the houses: a family without a roof comes first.
     school.RunDay(simulation, farm_first);
+    watchman.RunDay(simulation);
     digging.RunDay(simulation);
   }
 
@@ -129,6 +133,7 @@ class BuildingChairman {
   RepairPolicy repairs;
   HousePolicy houses;
   SchoolPolicy school;
+  WatchmanPolicy watchman;
   ExtractionPolicy digging;
 };
 
