@@ -170,3 +170,6 @@ water_standpipe,1,2,0,plot,,,,,,1
 field_camp,1,1,0,plot,,,,,,1
 count_lodge,1,1,,brick_small,10,,,80,55,1
 count_lodge,2,2,,brick_small,10,,,80,55,1
+beach,1,1,4,gear,4,,,30,14,1
+beach,2,2,,,,,,,,1
+beach,3,3,,,,,,,,1
