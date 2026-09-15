@@ -38,6 +38,7 @@
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
 #include "../common/school_policy.h"
+#include "../common/sowing_policy.h"
 #include "../common/timber_chain_tally.h"
 #include "../common/watchman_policy.h"
 #include "../common/yard_policy.h"
@@ -555,6 +556,13 @@ int main(int argc, char** argv) {
   // And straw on the houses' walls before winter (insulation_policy.h; parcel 364).
   run::InsulationPolicy insulation(*world.tables);
   run::InsulationPolicy::Declare("thirty_years");
+  // And the layout's mark: a plan crop given a field in every year of the chain
+  // (sowing_policy.h, the plan alarm only — no releases; boss, parcel 397). The
+  // ripening figures are unused in this mode.
+  run::SowingPolicy layout(13, 42, false, world.tables.get());
+  std::cout << "thirty_years: FIXTURE DIFFERS FROM THE START CANON — the run's chairman gives "
+               "every plan crop a field in every year of the rotation when the layout marks "
+               "one missing (farming design §7; boss, parcel 397)\n";
   // The boards the sawmill is built of go to nobody else until it stands
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
@@ -606,6 +614,7 @@ int main(int argc, char** argv) {
       school.RunDay(*world.simulation, farm_first);
       watchman.RunDay(*world.simulation);
       insulation.RunDay(*world.simulation);
+      layout.AnswerPlanAlarmsOnly(*world.simulation);
       digging.RunDay(*world.simulation);
       year_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
@@ -912,6 +921,8 @@ int main(int argc, char** argv) {
   school.Report(state, "thirty_years");
   watchman.Report(state, "thirty_years");
   insulation.Report(state, "thirty_years");
+  std::cout << "thirty_years: layout — " << layout.Answered() << " plan alarms answered, "
+            << layout.Unanswered() << " found no field\n";
   digging.Report(state, "thirty_years");
   timber_chain.Report("thirty_years", g_years);
   departures.Report("thirty_years");

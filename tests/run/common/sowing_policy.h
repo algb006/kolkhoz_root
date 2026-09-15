@@ -114,6 +114,24 @@ class SowingPolicy {
     ReleaseWhatWillNotMakeIt(simulation, world);
   }
 
+  /// @brief THE PLAYER'S ONE LAYOUT RULE, WITHOUT THE RELEASES (boss, parcel
+  /// 397): a run whose chairman builds but steers no land still reads the
+  /// layout's mark — a plan crop with no field in a year of the chain
+  /// (farming design §7) — and gives that crop its field. Call once a day; it
+  /// acts on the first working day of the year, as RunDay does.
+  /// @pre Constructed with tables; without them it does nothing.
+  void AnswerPlanAlarmsOnly(core::ISimulation& simulation) {
+    const core::WorldState& world = simulation.CompletedState();
+    if (world.calendar.day % core::kDaysPerYear == 1 && !crop_of_resource_.empty()) {
+      AnswerThePlanAlarm(simulation, world);
+    }
+  }
+
+  /// @brief How many plan alarms were answered, and how many found no field.
+  std::uint32_t Answered() const { return answered_; }
+
+  std::uint32_t Unanswered() const { return unanswered_; }
+
   /// @brief The line that keeps the prosthetic from reading as a mechanic.
   void Report() const {
     std::cout << "sowing_policy: the obvious chairman released " << released_
