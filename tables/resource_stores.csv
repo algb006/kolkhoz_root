@@ -81,7 +81,11 @@ light_bulb,utility_yard,goods_store
 lime,build_yard,build_yard
 log,log_pile,log_pile
 manure,manure_pile,manure_pile
+meat,church_store,church_store
+meat,food_yard,food_store
 meat,food_yard,icehouse
+milk,church_store,church_store
+milk,food_yard,food_store
 milk,food_yard,icehouse
 milk,food_yard,cold_room
 mineral_fertilizer,utility_yard,goods_store
