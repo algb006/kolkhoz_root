@@ -355,6 +355,13 @@ struct SimEvent {
 
   /// Grams, heads, a phase value, a refusal code — the kind says which.
   std::int64_t amount = 0;
+
+  /// The goods lot of the district's limit an order named (OrderRow::lot):
+  /// set on kOrderDone, kOrderRefused and kOrderCancelled of every order,
+  /// invalid for an order that names none (host door request no. 4). The
+  /// order's row is swept the same step its event is emitted, so the event is
+  /// the only place a reader can still see which lot was ordered.
+  LimitLotId lot;
 };
 
 /// @brief The outbox type used by WorldState: one step's events, in the

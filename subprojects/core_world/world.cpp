@@ -208,6 +208,9 @@ class EventsSlot final : public ISequentialPhase {
       event.field = order.field;
       event.herd = order.herd;
       event.amount = static_cast<std::int64_t>(order.refusal);
+      // The lot the order named (host door request no. 4): the row is gone
+      // at the end of this sweep, so the event is where it has to travel.
+      event.lot = order.lot;
       done.push_back(current.orders.row_ids[row]);
     }
     for (const OrderId id : done) {

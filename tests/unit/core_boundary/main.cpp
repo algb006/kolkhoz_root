@@ -219,6 +219,43 @@ int TestTheStampNamesTheHoliday(const core::ITableSet& tables) {
   return failures;
 }
 
+/// THE LOT RIDES THE ORDER'S EVENT (host door request no. 4): an order for a
+/// goods lot of the limit is answered, its row is swept the same step, and the
+/// answer names the lot. An empty table set has no catalogue, so the order is
+/// refused — the refusal carries the lot all the same.
+int TestTheLotRidesTheOrderEvent(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    return Expect(false, "lot: the session was built");
+  }
+  core::OrderRow order;
+  order.kind = core::OrderKind::kOrderLimitLot;
+  order.lot = core::LimitLotId{3};
+  const core::OrderId issued = session->IssueOrder(order);
+  failures += Expect(issued.value != 0, "lot: an order naming a lot is taken");
+  session->AdvanceStep();
+  const std::span<const core::SimEvent> answered = session->Events();
+  bool named = false;
+  for (const core::SimEvent& event : answered) {
+    named = named || (event.order.value == issued.value &&
+                      (event.kind == core::EventKind::kOrderRefused ||
+                       event.kind == core::EventKind::kOrderDone) &&
+                      event.lot.value == 3);
+  }
+  failures += Expect(named && session->State().orders.rows.empty(),
+                     "lot: the answer names the lot the swept order asked for");
+  return failures;
+}
+
 int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
@@ -1339,6 +1376,7 @@ int main() {
 
   failures += Expect(core::kJournalMagic.size() == 8, "the journal magic is eight bytes");
   failures += TestTheStampNamesTheHoliday(tables);
+  failures += TestTheLotRidesTheOrderEvent(tables);
   failures += TestOrdersThroughTheEngine(tables);
   failures += TestEventsAndFastForward(tables);
   failures += TestEventReaders(tables);
