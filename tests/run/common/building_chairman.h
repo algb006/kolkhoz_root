@@ -30,6 +30,7 @@
 #include "limit_policy.h"
 #include "repair_policy.h"
 #include "sawmill_policy.h"
+#include "school_policy.h"
 #include "yard_policy.h"
 
 namespace run {
@@ -45,8 +46,20 @@ class BuildingChairman {
         limit(tables),
         repairs(tables),
         houses(tables),
+        school(tables),
         digging(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
+    WireSchoolGate(school, sawmill);
+  }
+
+  /// @brief The school asks the sawmill's question too (parcel 305): the
+  /// boards the saw is built of go to nobody else until it stands.
+  static void WireSchoolGate(SchoolPolicy& school_policy, const SawmillPolicy& sawmill_policy) {
+    school_policy.SetStartGate([&sawmill_policy](const core::WorldState& world,
+                                                 core::UnitTypeId type,
+                                                 std::uint8_t level) {
+      return sawmill_policy.SparesBoardsFor(world, type, level);
+    });
   }
 
   /// @brief Hands every policy that starts sites the sawmill's question: the
@@ -80,6 +93,7 @@ class BuildingChairman {
     LimitPolicy::Declare(run_name.c_str());
     RepairPolicy::Declare();
     HousePolicy::Declare(run_name);
+    SchoolPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
   }
 
@@ -99,8 +113,10 @@ class BuildingChairman {
     limit.RunDay(simulation);
     repairs.RunDay(simulation);
     // The farm's own shortage before any house (boss, parcel 298).
-    houses.RunDay(simulation,
-                  fixture.HoldsHousesBack(simulation) || yard.HoldsHousesBack(simulation));
+    const bool farm_first = fixture.HoldsHousesBack(simulation) || yard.HoldsHousesBack(simulation);
+    houses.RunDay(simulation, farm_first);
+    // The school after the houses: a family without a roof comes first.
+    school.RunDay(simulation, farm_first);
     digging.RunDay(simulation);
   }
 
@@ -112,6 +128,7 @@ class BuildingChairman {
   LimitPolicy limit;
   RepairPolicy repairs;
   HousePolicy houses;
+  SchoolPolicy school;
   ExtractionPolicy digging;
 };
 

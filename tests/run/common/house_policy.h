@@ -199,8 +199,10 @@ class HousePolicy {
            definitions_.units.is_housing[unit.type.value] != 0;
   }
 
-  /// The mean position of the houses people live in: the wanted spot, which
-  /// FreePlot moves to the nearest free place.
+ public:
+  /// @brief The mean position of the houses people live in: the wanted spot,
+  /// which FreePlot moves to the nearest free place. Public for the school
+  /// (school_policy.h), which is put up among the same houses.
   static core::Vec2 VillageCentre(const core::WorldState& world) {
     core::Vec2 sum{.x = 0.0F, .y = 0.0F};
     std::uint32_t seen = 0;
@@ -218,6 +220,7 @@ class HousePolicy {
     return core::Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
   }
 
+ private:
   core::UnitTypeId house_;
 
   core::Definitions definitions_;
