@@ -27,6 +27,7 @@
 #include "felling_policy.h"
 #include "fixture_policy.h"
 #include "house_policy.h"
+#include "insulation_policy.h"
 #include "limit_policy.h"
 #include "repair_policy.h"
 #include "sawmill_policy.h"
@@ -49,6 +50,7 @@ class BuildingChairman {
         houses(tables),
         school(tables),
         watchman(tables),
+        insulation(tables),
         digging(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
@@ -97,6 +99,7 @@ class BuildingChairman {
     HousePolicy::Declare(run_name);
     SchoolPolicy::Declare(run_name);
     WatchmanPolicy::Declare(run_name);
+    InsulationPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
   }
 
@@ -121,6 +124,7 @@ class BuildingChairman {
     // The school after the houses: a family without a roof comes first.
     school.RunDay(simulation, farm_first);
     watchman.RunDay(simulation);
+    insulation.RunDay(simulation);
     digging.RunDay(simulation);
   }
 
@@ -134,6 +138,7 @@ class BuildingChairman {
   HousePolicy houses;
   SchoolPolicy school;
   WatchmanPolicy watchman;
+  InsulationPolicy insulation;
   ExtractionPolicy digging;
 };
 

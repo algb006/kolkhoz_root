@@ -944,8 +944,13 @@ int main(int argc, char** argv) {
   // the nine seeds' leanest day of years 1-3 rose by half a point). And up to
   // 23.2599049 with the building chairman, and 22.8028908 with the felling
   // brigade riding (the mean above says why for both).
+  // AND DOWN TO 22.2465935 ON 15 SEPTEMBER with boss's export of the count's
+  // lodge and the reserves — the north groves 11.5 ha smaller — measured apart:
+  // the same code on the tables just before it gave 23.6760788 (the runs'
+  // insulation in October and November; begun in August, its crews came off
+  // the reaping and the day fell to 22.29 — so the window moved, not this).
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 22.8028908F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 22.2465935F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
