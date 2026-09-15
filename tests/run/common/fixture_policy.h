@@ -66,6 +66,7 @@ class FixturePolicy {
     cattle_ = TypeByKey(tables, "cattle_yard");
     granary_yard_ = ParentTypeOf(tables, "granary");
     food_store_ = TypeByKey(tables, "food_store");
+    clamp_ = TypeByKey(tables, "clamp");
     church_ = TypeByKey(tables, "church_store");
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
@@ -78,6 +79,7 @@ class FixturePolicy {
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     CountWaitStreaks(simulation.CompletedState());
+    NoteStoreDays(simulation.CompletedState());
     if (cooldown_ > 0) {
       --cooldown_;
       return;
@@ -155,7 +157,9 @@ class FixturePolicy {
   static void Declare() {
     std::cout << "thirty_years: FIXTURE DIFFERS FROM THE START CANON — the run's chairman "
                  "builds GRANARIES and CATTLE YARDS, because the canon gives neither and a "
-                 "run has nobody to decide on them (boss, 2026-09-03)\n";
+                 "run has nobody to decide on them (boss, 2026-09-03); and a CLAMP by the "
+                 "fields before the first reaping, with FOOD STORES under this year's potatoes "
+                 "and vegetables (boss, parcel 419)\n";
   }
 
   /// @brief What the fixture actually did, for the run to print at the end.
@@ -167,10 +171,39 @@ class FixturePolicy {
               << Built(world, granary_yard_) << " food yards (" << yards_ordered_
               << " yard orders); marks refused: cattle yards " << cattle_refused_
               << ", granaries and yards " << other_refused_ << "\n";
+    std::cout << "thirty_years: " << Built(world, clamp_) << " clamp(s) stand, the first up on day "
+              << (clamp_days_.empty() ? std::string("never") : std::to_string(clamp_days_.front()))
+              << "\n";
+    std::cout << "thirty_years: the horses were stabled "
+              << (stable_seen_ ? "on day " + std::to_string(stable_day_) : std::string("never"))
+              << "; food stores of " << kFoodStoreRoomTonnes << " t stood up on days";
+    for (const core::SimDay day : food_store_days_) {
+      std::cout << ' ' << day << " (year " << day / core::kDaysPerYear + 1 << ')';
+    }
+    std::cout << (food_store_days_.empty() ? " none" : "") << "\n";
   }
 
  private:
   static constexpr std::uint32_t kCooldownDays = 4;
+
+  /// unit_levels.csv, food_store level 1. Printed beside the days, not read:
+  /// the report says what a store holds so a day can be read against a crop.
+  static constexpr int kFoodStoreRoomTonnes = 60;
+
+  void NoteStoreDays(const core::WorldState& world) {
+    if (!stable_seen_ && world.chairman.horses_stabled != 0) {
+      stable_seen_ = true;
+      stable_day_ = world.calendar.day;
+    }
+    const std::uint32_t standing = Built(world, food_store_);
+    while (food_store_days_.size() < standing) {
+      food_store_days_.push_back(world.calendar.day);
+    }
+    const std::uint32_t clamps = Built(world, clamp_);
+    while (clamp_days_.size() < clamps) {
+      clamp_days_.push_back(world.calendar.day);
+    }
+  }
 
   /// Days a reaped load may lie without carrying demand before it means "no
   /// room" rather than the carrying lag after a reaping (boss, parcel 300).
@@ -285,7 +318,7 @@ class FixturePolicy {
       const core::UnitRow& unit = world.units.rows[row];
       const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
                         unit.type.value == granary_yard_.value ||
-                        unit.type.value == food_store_.value;
+                        unit.type.value == food_store_.value || unit.type.value == clamp_.value;
       if (!ours || unit.level != 0) {
         continue;
       }
@@ -311,14 +344,22 @@ class FixturePolicy {
     // so he puts up food stores until their room and the church's hold this
     // year's harvest — THE CEILING, and no more than it — taking turns with
     // the granary and the cattle yard when those are wanted too.
-    // NOT BEFORE THE STABLE, as the school (school_policy.h): the food store's
-    // logs and boards go to the chairman's yard first. Measured on three seeds
-    // once the two real knots of seed 1929 were cut (the demolished build yard
-    // and the saw deaf to the stable): year 30 stood at 183, 366 and 304 with
-    // the stable first and 180, 261 and 234 without it (2026-09-15).
-    const bool wants_food_store =
-        world.chairman.horses_stabled != 0 && food_store_.value != core::kInvalidDefIdValue &&
-        RoofedHarvestGrams(world) > RoofedRoomGrams(world) && Rows(world, food_store_) < kMaxOfEach;
+    //
+    // THE CLAMP FIRST, BEFORE THE FIRST REAPING (boss, parcel 419). Until
+    // 2026-09-15 no home of potatoes and vegetables stood by the first harvest
+    // on any of seeds 1929, 1933 and 1936 — the church was full of the start's
+    // grain and the first food store rose in year 2 or 3 — and the snow took
+    // 493, 734 and 652 t of them in four years. The clamp is an outline by the
+    // fields, so one takes the whole crop; the food store stays the long home,
+    // put up when its materials are there. It no longer waits for the stable:
+    // that gate was measured on thirty years with no clamp at all.
+    if (clamp_.value != core::kInvalidDefIdValue && Rows(world, clamp_) == 0 &&
+        RoofedHarvestGrams(world) > 0) {
+      return MarkClamp(world, order);
+    }
+    const bool wants_food_store = food_store_.value != core::kInvalidDefIdValue &&
+                                  RoofedHarvestGrams(world) > RoofedRoomGrams(world) &&
+                                  Rows(world, food_store_) < kMaxOfEach;
     if (wants_food_store && !(last_ordered_food_store_ && (wants_granary || wants_cattle))) {
       last_ordered_food_store_ = true;
       return Mark(world, food_store_, order);
@@ -435,6 +476,34 @@ class FixturePolicy {
     return true;
   }
 
+  /// The clamp by the fields it serves: the nearest free place to the
+  /// area-weighted middle of this year's potato and vegetable fields.
+  bool MarkClamp(const core::WorldState& world, core::OrderRow& order) {
+    double weight = 0.0;
+    double x = 0.0;
+    double y = 0.0;
+    for (const core::FieldRow& field : world.fields.rows) {
+      const std::uint16_t crop = field.rotation_year0.value;
+      if (field.kind != core::LandKind::kArable || crop >= roofed_yield_kg_per_ha_.size() ||
+          !(roofed_yield_kg_per_ha_[crop] > 0.0F)) {
+        continue;
+      }
+      weight += static_cast<double>(field.area_ga);
+      x += static_cast<double>(field.center.x) * static_cast<double>(field.area_ga);
+      y += static_cast<double>(field.center.y) * static_cast<double>(field.area_ga);
+    }
+    const core::Vec2 near_fields = weight > 0.0 ? core::Vec2{.x = static_cast<float>(x / weight),
+                                                             .y = static_cast<float>(y / weight)}
+                                                : Centre(world);
+    const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
+    const float radius = clamp_.value < radii.size() ? radii[clamp_.value] : 0.0F;
+    order.kind = core::OrderKind::kBuildUnit;
+    order.unit_type = clamp_;
+    order.position = core::FreePlot(world.units, definitions_.Plots(), near_fields, radius);
+    ++ordered_;
+    return true;
+  }
+
   static core::Vec2 Centre(const core::WorldState& world) {
     core::Vec2 sum{.x = 0.0F, .y = 0.0F};
     std::uint32_t seen = 0;
@@ -467,6 +536,9 @@ class FixturePolicy {
   core::UnitTypeId food_store_;
 
   core::UnitTypeId church_;
+
+  /// The clamp: the field store of potatoes and vegetables, an outline.
+  core::UnitTypeId clamp_;
 
   /// kg per hectare by crop row, for the crops whose produce the food store
   /// keeps (resource_stores.csv storage `food_store`); 0 for every other crop.
@@ -575,6 +647,17 @@ class FixturePolicy {
   std::uint32_t ordered_ = 0;
 
   bool last_ordered_cattle_ = false;
+
+  /// The days the food stores stood up, in order, and the day the horses
+  /// were first stabled: when the harvest's room came against when the
+  /// harvest came (boss, parcel 412).
+  std::vector<core::SimDay> food_store_days_;
+
+  std::vector<core::SimDay> clamp_days_;
+
+  core::SimDay stable_day_ = 0;
+
+  bool stable_seen_ = false;
 };
 
 }  // namespace run

@@ -891,8 +891,19 @@ int main(int argc, char** argv) {
   // late. THE LOWER RECORDS ARE A DEBT, NOT A NORM: where the food lies at the
   // lean season and how long it travels to the issue is the first line of
   // boss's task 4 (b).
+  //
+  // AND UP TO 78.6153107 THE SAME DAY, when the debt was measured and the
+  // run's chairman began putting up a CLAMP by the fields before the first
+  // reaping (boss, parcels 418, 419; fixture_policy.h). The food had not lain
+  // in the wrong place: the snow had taken it off the fields for want of any
+  // home — 493, 734 and 652 t of potatoes and vegetables in four years on
+  // seeds 1929, 1933 and 1936, the church full of the start's grain and no
+  // food store standing by the first harvest. The three records moved up
+  // together: leanest day 17.6482697 -> 20.4674702, hungry share 0.886792481
+  // -> 0.854166687. The leanest day is still under the 22.2465935 it stood at
+  // before the stores' homes, and what is left is carrying off the fields.
   failures += ExpectNoLower(
-      good.mean_satiety, 76.5670853F, "the settlement's mean over the year (recorded, not a band)");
+      good.mean_satiety, 78.6153107F, "the settlement's mean over the year (recorded, not a band)");
   // A YEAR's mean sits well below the year's end, and that is the model
   // telling the truth rather than failing: a subsistence village is at its
   // fullest after the harvest and at its thinnest in spring, when the garden
@@ -962,9 +973,9 @@ int main(int argc, char** argv) {
   // insulation in October and November; begun in August, its crews came off
   // the reaping and the day fell to 22.29 — so the window moved, not this).
   // AND DOWN TO 17.6482697 THE SAME DAY with the stores' homes — a debt, not
-  // a norm (the mean above says why).
+  // a norm (the mean above says why). And up to 20.4674702 with the clamp.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 17.6482697F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 20.4674702F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no
@@ -988,15 +999,19 @@ int main(int argc, char** argv) {
   // carry. And 0.86178863 with the meadow cut's window, 106 of 123 (the mean
   // above says why). And 0.838383853 with the building chairman, 83 of 99, and
   // 0.867346942 with the felling brigade riding, 85 of 98. And 0.886792481,
-  // 94 of 106, with the stores' homes (the mean above says why).
+  // 94 of 106, with the stores' homes (the mean above says why). And
+  // 0.854166687, 82 of 96, with the clamp.
   failures += ExpectNoHigher(
-      hungry_share, 0.886792481F, "the share of the village hungry at once (recorded, not a band)");
+      hungry_share, 0.854166687F, "the share of the village hungry at once (recorded, not a band)");
   // A KNOWN GAP of the building chain (boss, parcel 306): 24 of 99 under the
   // line at the end against a sixth, where the stub's 119 had 14.
-  failures += run::KnownGap(
-      good.hungry * 6U <= good.people,
-      "the year ends with hardly anyone under the threshold",
-      std::to_string(good.hungry) + " of " + std::to_string(good.people) + " under the line");
+  // RESTORED ON 2026-09-15 with the clamp: the gap closed on all nine seeds
+  // 1929-1937 (0 to 11 under the line, 11 of 116 the most), where the day
+  // before seed 1934 still had 51 of 126.
+  std::cout << "food_year: at the year's end " << good.hungry << " of " << good.people
+            << " are under the line\n";
+  failures += ExpectBand(good.hungry * 6U <= good.people,
+                         "the year ends with hardly anyone under the threshold");
 
   // And it does go hungry when the kolkhoz hands out nothing.
   //
@@ -1046,11 +1061,15 @@ int main(int argc, char** argv) {
   // fell eightfold at the median: the issue now barely moves the lean day,
   // and that is the debt the leanest day above carries, not a new truth
   // about the issue.
+  //
+  // AND AGAIN WITH THE CLAMP (boss, parcel 419), the same nine seeds: 4.64,
+  // 5.18, 5.60, 7.49, 8.81 (median), 9.72, 17.94, 22.32, 22.40. The debt paid:
+  // with the potatoes kept, the issue has something to hand out again.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 0.53-3.57, median 0.82)\n";
+            << " (nine seeds: 4.63-22.40, median 8.81)\n";
   failures +=
-      ExpectBand(issue_gap >= 0.53F && issue_gap <= 3.57F,
+      ExpectBand(issue_gap >= 4.63F && issue_gap <= 22.40F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

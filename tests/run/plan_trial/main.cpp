@@ -496,19 +496,27 @@ int main(int argc, char** argv) {
   // obvious chairman on 0 of 9.
   std::cout << "plan_trial: over " << kGateSeedCount << " seeds the floor reached the trial on "
             << floor_trials << " and the obvious chairman on " << canon_trials << "\n";
-  failures += run::Expect(floor_trials >= kFloorTrialsAtLeast,
-                          "a village nobody steers is taken to court on at least one seed of "
-                          "nine: the trial is reachable");
-  // A KNOWN GAP since the core stopped raising houses from nothing (boss,
-  // parcel 306). Before: 0 of 9. With the building chairman: 8 of 9, and the
-  // floor 5 of 9. One repair was tried first, as boss asked — the chairman
-  // pausing his building sites while any field had ploughing, sowing or reaping
-  // to do — and it moved nothing: still 8 of 9, the floor 7. The core already
-  // ranks field work above a site. The gap is the building chain's, to close
-  // with levers R1-R4; the canon stays.
-  failures += run::KnownGap(canon_trials <= kCanonTrialsAtMost,
-                            "the obvious chairman is taken to court on at most one seed of nine",
-                            std::to_string(canon_trials) + " of " + std::to_string(kGateSeedCount));
+  // A KNOWN GAP SINCE 2026-09-15 (boss, parcel 421), when the run's chairman
+  // began putting up a clamp before the first reaping and the snow stopped
+  // taking the potatoes. The floor then failed its plan in 0 to 4 years of
+  // 20 on the nine seeds, never more than 2 in a row, and reached the trial on
+  // 0 of 9 (1 of 9, seed 1933, the day before). The poor arms still reach it —
+  // all the land at once, a third to fallow, all three together. The canon
+  // promises the trial for three failed plans in a row (district §9), not for
+  // a chairman who decides nothing about his land while a fed village meets
+  // its plan, and the clamp is a building of the granary's kind, which the
+  // floor gets too: taking it from one arm would fit the instrument to the
+  // court.
+  failures += run::KnownGap(floor_trials >= kFloorTrialsAtLeast,
+                            "a village nobody steers is taken to court on at least one seed of "
+                            "nine: the trial is reachable",
+                            std::to_string(floor_trials) + " of " + std::to_string(kGateSeedCount));
+  // RESTORED ON 2026-09-15 (boss, parcel 421): 0 of 9 with the clamp. It was a
+  // known gap since the core stopped raising houses from nothing (parcel
+  // 306): 8 of 9 with the building chairman, and pausing his sites for field
+  // work moved nothing.
+  failures += run::Expect(canon_trials <= kCanonTrialsAtMost,
+                          "the obvious chairman is taken to court on at most one seed of nine");
   std::cout << (failures == 0 ? "plan_trial: all checks passed\n"
                               : "plan_trial: FAILURES " + std::to_string(failures) + "\n");
   return failures == 0 ? 0 : 1;
