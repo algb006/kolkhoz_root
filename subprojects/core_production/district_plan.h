@@ -16,7 +16,10 @@
 #ifndef CORE_PRODUCTION_DISTRICT_PLAN_H_
 #define CORE_PRODUCTION_DISTRICT_PLAN_H_
 
+#include <string>
+
 #include "core_common/world_state.h"
+#include "core_tables/tables.h"
 #include "production_config.h"
 
 namespace core {
@@ -35,7 +38,16 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current);
 
 /// @brief The spring norm: a share of what last year's worked arable gives
 /// at a normal yield, by the district's positions; marks the plan announced.
+/// In the campaign's first year a share of the start stock of each
+/// position's produce instead, and a position with no start stock asks
+/// nothing (ProductionConfig::first_plan_start_stock_share).
 void AnnouncePlan(const ProductionConfig& config, WorldState& current);
+
+/// @brief Reads the first plan's knobs: campaign.csv
+///        `first_plan_start_stock_percent` and the start stock by resource
+///        (start_stock.csv, amount x kg_per_unit, summed over places).
+/// @return false with `error` naming the table for a value out of range.
+bool ParseFirstPlan(const ITableSet& tables, ProductionConfig& config, std::string& error);
 
 /// @brief The arable worked this year (fields with a chain), in hectares.
 float WorkedArableHa(const WorldState& current);

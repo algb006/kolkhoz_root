@@ -3,8 +3,12 @@
 
 #include "district_plan.h"
 
+#include <cmath>
 #include <cstdint>
+#include <string>
 
+#include "core_catalog/table_value.h"
+#include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -138,12 +142,27 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
   // failed the plan in nineteen years of thirty and reached the trial
   // condition in its FOURTH. The instrument had gone from "cannot be
   // failed" straight through the middle to "cannot be met".
+  // THE FIRST YEAR ASKS BY THE START STOCK (boss, parcel 399; district
+  // design §9). Priced off the arable, the first norm asked the derelict 160
+  // hectares for a harvest nobody could reap — winter rye cannot stand in the
+  // first spring — and year 1 failed whatever the play: seeds 1933 and 1936
+  // failed it on every run. The share is a STUB (campaign.csv).
+  const bool first_year = current.calendar.day < kDaysPerYear;
   for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
     const CropDef& crop = config.crops[position.crop.value];
     if (crop.yield_kg_per_ha <= 0.0F || crop.resource.value == kInvalidDefIdValue) {
+      continue;
+    }
+    if (first_year) {
+      const Grams stock = AmountOf(config.start_stock, crop.resource);
+      AddToStock(current.plan.due,
+                 crop.resource,
+                 static_cast<Grams>(
+                     std::llround(static_cast<double>(stock) *
+                                  static_cast<double>(config.first_plan_start_stock_share))));
       continue;
     }
     const float area = current.plan.worked_ha_last_year * position.area_share;
@@ -251,6 +270,51 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   for (ResourceAmounts& opened : current.unsealed.by_fund) {
     opened.assign(opened.size(), 0);
   }
+}
+
+bool ParseFirstPlan(const ITableSet& tables, ProductionConfig& config, std::string& error) {
+  if (const ITable* const campaign = tables.FindTable("campaign")) {
+    float percent = config.first_plan_start_stock_share * 100.0F;
+    if (!CellOrDefault(*campaign,
+                       campaign->FindRowByKey("first_plan_start_stock_percent"),
+                       campaign->FindColumn("value"),
+                       Range{.low = 0.0F, .high = 100.0F},
+                       percent,
+                       percent,
+                       error)) {
+      error = "campaign: first_plan_start_stock_percent: " + error;
+      return false;
+    }
+    config.first_plan_start_stock_share = percent / 100.0F;
+  }
+  const ITable* const stock = tables.FindTable("start_stock");
+  const ITable* const resources = tables.FindTable("resources");
+  if (stock == nullptr || resources == nullptr) {
+    return true;  // no start stock: the first plan asks nothing
+  }
+  const std::uint32_t resource_col = stock->FindColumn("resource");
+  const std::uint32_t amount_col = stock->FindColumn("amount");
+  const std::uint32_t mass_col = stock->FindColumn("kg_per_unit");
+  if (resource_col == kNoTableColumn) {
+    return true;
+  }
+  for (std::uint32_t row = 0; row < stock->RowCount(); ++row) {
+    const std::uint32_t resource_row = resources->FindRowByKey(stock->CellText(row, resource_col));
+    if (resource_row == kNoTableRow) {
+      continue;
+    }
+    float amount = 0.0F;
+    float kilograms_each = 0.0F;
+    if (!CellOrDefault(*stock, row, amount_col, Range::NonNegative(), 0.0F, amount, error) ||
+        !CellOrDefault(*stock, row, mass_col, Range::NonNegative(), 0.0F, kilograms_each, error)) {
+      error = "start_stock: row " + std::to_string(row) + ": " + error;
+      return false;
+    }
+    AddToStock(config.start_stock,
+               DefIdFromRow<ResourceIdTag>(resource_row),
+               GramsFromKilograms(amount * kilograms_each));
+  }
+  return true;
 }
 
 }  // namespace core

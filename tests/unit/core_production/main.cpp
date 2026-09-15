@@ -2787,8 +2787,13 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
 
     core::WorldState previous;
-    // The last day of winter: the step below crosses into spring.
-    previous.calendar.tick = (2U * core::kDaysPerMonth * core::kTicksPerDay) - 1U;
+    // The last day of winter OF THE SECOND YEAR: the step below crosses into
+    // spring. The first year's norm is off the start stock (below), so the
+    // arable's rule is asserted from the second (boss, parcel 399).
+    previous.calendar.tick =
+        (static_cast<core::Tick>(core::kDaysPerYear + (2U * core::kDaysPerMonth)) *
+         core::kTicksPerDay) -
+        1U;
     core::RefreshCalendarCaches(previous.calendar);
     // THE AREA THE NORM IS COMPUTED FROM IS LAST YEAR'S, and it is state now
     // rather than a walk over today's fields: ten worked hectares, written at
@@ -2905,6 +2910,59 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     failures += Expect(fallow_current.plan.announced == 1,
                        "and the district is on record as having spoken, which a tonnage of zero "
                        "cannot say");
+
+    // -- THE FIRST YEAR ASKS BY THE START STOCK (boss, parcel 399) -------------
+    //
+    // The same fixture one year earlier: the start's derelict arable is not
+    // what the first norm is priced off, the start stock is — each position a
+    // share of the stock of its produce, and a position with no start stock
+    // asks nothing. Every figure read back from the tables.
+    core::WorldState first_previous = previous;
+    first_previous.calendar.tick -=
+        static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(first_previous.calendar);
+    core::WorldState first_current = first_previous;
+    first_current.calendar.tick += 1;
+    core::RefreshCalendarCaches(first_current.calendar);
+    system->RunProductionDecisions(first_previous, first_current);
+    const float first_percent = std::stof(std::string(campaign->CellText(
+        campaign->FindRowByKey("first_plan_start_stock_percent"), campaign->FindColumn("value"))));
+    const core::ITable* const stock = tables->FindTable("start_stock");
+    const core::ITable* const resource_table = tables->FindTable("resources");
+    bool first_matches = true;
+    std::uint32_t first_positions = 0;
+    std::string first_token;
+    for (std::size_t index = 0; index <= positions.size(); ++index) {
+      if (index < positions.size() && positions[index] != ' ') {
+        first_token += positions[index];
+        continue;
+      }
+      if (first_token.empty()) {
+        continue;
+      }
+      const std::string key = first_token.substr(0, first_token.find('='));
+      first_token.clear();
+      const std::string resource_key(
+          crops->CellText(crops->FindRowByKey(key), crops->FindColumn("resource")));
+      double stock_kg = 0.0;
+      for (std::uint32_t row = 0; row < stock->RowCount(); ++row) {
+        if (stock->CellText(row, stock->FindColumn("resource")) == resource_key) {
+          stock_kg +=
+              std::stod(std::string(stock->CellText(row, stock->FindColumn("amount")))) *
+              std::stod(std::string(stock->CellText(row, stock->FindColumn("kg_per_unit"))));
+        }
+      }
+      const std::uint32_t resource = resource_table->FindRowByKey(resource_key);
+      const double due = resource < first_current.plan.due.size()
+                             ? static_cast<double>(first_current.plan.due[resource])
+                             : 0.0;
+      const double wanted = stock_kg * 1000.0 * static_cast<double>(first_percent) / 100.0;
+      first_matches = first_matches && due > wanted - 1.0 && due < wanted + 1.0;
+      ++first_positions;
+    }
+    failures += Expect(first_positions > 0 && first_matches && first_current.plan.announced == 1,
+                       "the first year's norm is each position's share of the start stock of its "
+                       "produce, not the derelict arable's");
   }
   return failures;
 }

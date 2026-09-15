@@ -706,6 +706,20 @@ struct ProductionConfig {
   /// what tells that apart from a year the district asked nothing of.
   std::vector<PlanPosition> plan_positions;
 
+  /// THE FIRST PLAN IS OFF THE START STOCK, NOT OFF THE ARABLE (boss, parcel
+  /// 399; district design §9, "Первый план считается от стартового запаса").
+  /// The start's arable is derelict — nobody ploughs 160 ha in the first year
+  /// and no winter rye stands in the first spring — so the first year's norm
+  /// of a position is this share of the start stock of the position's produce,
+  /// and a position with no start stock is not in the first plan. From the
+  /// second year the ground worked in the year before. campaign.csv
+  /// `first_plan_start_stock_percent`; STUB figure, boss's to set.
+  float first_plan_start_stock_share = 0.2F;
+
+  /// Grams of each resource in the start stock (start_stock.csv, summed over
+  /// the places it lies), dense by ResourceId — read for the first plan only.
+  ResourceAmounts start_stock;
+
   /// The share of the plan that counts as met, 0..1 (campaign.csv
   /// plan_met_share). 1.0 — delivered in full on every position — is the
   /// plain reading of "сорванный план" (epochs design §8), and the knob
