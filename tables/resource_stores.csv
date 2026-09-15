@@ -8,6 +8,7 @@ barley,elevator,elevator
 barley,food_yard,granary
 bicycle,selpo,selpo
 bicycle,utility_yard,goods_store
+board,build_yard,build_yard
 board,utility_yard,goods_store
 bottled_gas,utility_yard,goods_store
 brick,build_yard,build_yard
