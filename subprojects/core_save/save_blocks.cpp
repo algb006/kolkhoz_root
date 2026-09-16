@@ -96,6 +96,8 @@ static_assert(AggregateArity<PlanState>() == 8,
 // Twenty-one the same night: the limit's points (here, WriteWorldBlocks) and
 // its carts (a row table in save_rows.cpp).
 static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<LimitState>() == 1,
+              "LimitState gained or lost a field — update the codec and VERSION_SAVE");
 // Twenty-two on 2026-09-14: the district's specialists on the road (a row
 // table in save_rows.cpp).
 // Twenty-three the same day: the couples waiting for a free house.
@@ -108,8 +110,14 @@ static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec 
 // Twenty-seven the same day: the distillers' month at the stores (a block
 // here, WriteWorldBlocks).
 // Twenty-eight on 2026-09-15: the district MTS's column (a block here).
+// THE SIZE ALONE DOES NOT SEE A FIELD THAT FITS IN THE PADDING, and this
+// struct has three bytes of it after `complaint_raised` — exactly the hole
+// `rotation_skips_turn` slipped into in save_rows.cpp, where the size said
+// "nothing changed" about a byte that had. The arity asks the other question.
 static_assert(sizeof(NightTheftTally) == 16,
               "NightTheftTally changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<NightTheftTally>() == 3,
+              "NightTheftTally gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(MtsColumnState) == 24,
               "MtsColumnState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<MtsColumnState>() == 7,

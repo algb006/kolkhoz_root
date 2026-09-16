@@ -13,6 +13,7 @@
 // from tables/: the remap test needs the SAME keys in a DIFFERENT order,
 // which is exactly what a balance edit between two runs looks like.
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -485,6 +486,345 @@ core::WorldState MakeWorld() {
   return world;
 }
 
+// -- THE POINT OUTSIDE THE CODEC --------------------------------------------
+//
+// THE ROUND TRIP ABOVE CANNOT SEE A DAMAGED CODEC, and that is not a flaw of
+// how it is written: Encode(Decode(Encode(w))) and Encode(w) both come out of
+// the SAME writer. A writer that puts a zero on the wire where a field
+// belongs is read back as that zero and written again identically, so the two
+// sides agree and the test is green. Damage D6 of 2026-09-15 proved it — the
+// MTS column's hectares were written as zero and only the one assertion that
+// NAMES the field went red; the two re-encodes agreed with each other all the
+// way down.
+//
+// Boss named the shape on 2026-09-16: "две согласные стороны из трёх — это и
+// есть «зелёное, потому что вопроса не задавали»". So the two checks below
+// ask the codec nothing:
+//
+//   * the WITNESS WORLD's world block is written out here BY HAND, field by
+//     field, from the byte layout documented in core_save/save.h — the values
+//     come from the witness struct, the ORDER, the WIDTHS and the PRESENCE of
+//     every field come from the document. A field written in the wrong width,
+//     in the wrong order, from the wrong member, or not written at all, is a
+//     difference at a named byte;
+//   * the FIXTURE's whole payload carries a RECORDED size and hash, so that a
+//     field written differently in a row — which the hand-written block above
+//     does not reach — cannot pass unnoticed either. The number is recorded,
+//     not derived: changing it is a deliberate act with a VERSION_SAVE bump
+//     beside it.
+
+/// One named piece of the expected stream. The name is what a failure prints.
+struct Chunk {
+  const char* name;
+  std::vector<std::uint8_t> bytes;
+};
+
+/// Little-endian in `width` bytes — the format's one integer rule
+/// (core_save/save.h, "ENCODING RULES"), written out here rather than taken
+/// from the codec's own ByteWriter, which is the whole point of the exercise.
+std::vector<std::uint8_t> Little(std::uint64_t value, std::size_t width) {
+  std::vector<std::uint8_t> bytes(width, 0);
+  for (std::size_t index = 0; index < width; ++index) {
+    bytes[index] = static_cast<std::uint8_t>((value >> (8U * index)) & 0xFFU);
+  }
+  return bytes;
+}
+
+std::vector<std::uint8_t> U8(std::uint8_t value) {
+  return Little(value, 1);
+}
+
+std::vector<std::uint8_t> U16(std::uint16_t value) {
+  return Little(value, 2);
+}
+
+std::vector<std::uint8_t> U32(std::uint32_t value) {
+  return Little(value, 4);
+}
+
+std::vector<std::uint8_t> U64(std::uint64_t value) {
+  return Little(value, 8);
+}
+
+/// A float is its IEEE-754 bit pattern in four bytes, never text.
+std::vector<std::uint8_t> F32(float value) {
+  return Little(std::bit_cast<std::uint32_t>(value), 4);
+}
+
+/// An enum is its underlying integer, and every enum of the world block is a
+/// byte wide.
+template <typename EnumT>
+std::vector<std::uint8_t> Enum8(EnumT value) {
+  return U8(static_cast<std::uint8_t>(value));
+}
+
+/// ResourceAmounts: a u16 count, then that many i64 grams.
+void AppendAmounts(std::vector<Chunk>& chunks,
+                   const char* name,
+                   const core::ResourceAmounts& amounts) {
+  chunks.push_back({name, U16(static_cast<std::uint16_t>(amounts.size()))});
+  for (const core::Grams grams : amounts) {
+    chunks.push_back({name, Little(static_cast<std::uint64_t>(grams), 8)});
+  }
+}
+
+/// A world whose every world-block field carries a value of its own, none of
+/// them the field's default: a witness that leaves a codec nowhere to write
+/// the right bytes from the wrong member. It has no rows at all — the rows
+/// are the recorded payload's business below.
+core::WorldState MakeWitnessWorld() {
+  core::WorldState witness;
+  // The calendar's caches are written out with the rest and re-derived on
+  // load; here they are simply four more fields with four more values.
+  witness.calendar.tick = 79;
+  witness.calendar.day = 3;
+  witness.calendar.date.year = 1930;
+  witness.calendar.date.month = core::Month::kApril;
+  witness.calendar.date.day_in_month = 2;
+  witness.calendar.weekday = core::Weekday::kFriday;
+  witness.calendar.season = core::Season::kSummer;
+  witness.calendar.day_zero_weekday = core::Weekday::kThursday;
+
+  witness.weather.air_temperature_celsius = -17.25F;
+  witness.weather.daylight_hours = 6.5F;
+  witness.weather.precipitation = core::Precipitation::kSnow;
+  witness.weather.temperature_swing_celsius = 3.75F;
+  witness.weather.cloud_cover = 0.25F;
+  witness.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
+  witness.weather.wind = core::WindBand::kStrongWind;
+  witness.weather.snow_cover_days = 9;
+  witness.weather.cover_since_leaf_fall = true;
+
+  witness.epoch = core::Epoch::kTwo;
+  witness.world_seed = 0x0BADC0FFEEULL;
+  witness.rng.state = 0x1234567890ABCDEFULL;
+  witness.rng.stream = 7;
+
+  witness.chairman.raikom_reputation = 61.5F;
+  witness.chairman.authority = 12.25F;
+  witness.chairman.shadow_reputation = 3.5F;
+  witness.chairman.horses_stabled = 1;
+
+  witness.traction_ration = 0.75F;
+  witness.plan.due = Amounts({7'000'000, 250, 3});
+  witness.plan.delivered = Amounts({11});
+  witness.plan.last_verdict = core::PlanVerdict::kFailed;
+  witness.plan.failed_years_in_a_row = 2;
+  witness.plan.met_years_in_a_row = 5;
+  witness.plan.announced = 1;
+  witness.plan.worked_ha_last_year = 70.0F;
+  witness.plan.worked_ha_this_year = 12.5F;
+  // One fund opened and the others not: the array is written whole, and a
+  // codec that wrote one fund three times would still fill the same bytes.
+  witness.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)] = Amounts({0, 1500});
+
+  witness.vitals.life_expectancy_years = 61.75F;
+  witness.vitals.satiety_year_means = {71.5F, 68.25F, 0.5F};
+  witness.vitals.satiety_running_sum = 123.25F;
+  witness.vitals.satiety_running_days = 19;
+
+  witness.limit.points = 380;
+
+  witness.night_theft.stolen_this_month = 4500;
+  witness.night_theft.month_index = 17;
+  witness.night_theft.complaint_raised = 1;
+
+  witness.mts_column.phase = core::MtsColumnPhase::kWorking;
+  witness.mts_column.lot = core::LimitLotId{1};
+  witness.mts_column.arrive_day = 110;
+  witness.mts_column.camp = core::UnitId{9};
+  witness.mts_column.worked_ha = 32.5F;
+  witness.mts_column.field = core::FieldId{4};
+  witness.mts_column.field_ha = 7.5F;
+  return witness;
+}
+
+/// The world block as core_save/save.h says it is laid out: this list is the
+/// document, and it is read by nothing that writes a save.
+std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
+  std::vector<Chunk> chunks;
+  chunks.push_back({"calendar.tick", U64(world.calendar.tick)});
+  chunks.push_back({"calendar.day", U32(world.calendar.day)});
+  chunks.push_back({"calendar.date.year", U16(world.calendar.date.year)});
+  chunks.push_back({"calendar.date.month", Enum8(world.calendar.date.month)});
+  chunks.push_back({"calendar.date.day_in_month", U8(world.calendar.date.day_in_month)});
+  chunks.push_back({"calendar.weekday", Enum8(world.calendar.weekday)});
+  chunks.push_back({"calendar.season", Enum8(world.calendar.season)});
+  chunks.push_back({"calendar.day_zero_weekday", Enum8(world.calendar.day_zero_weekday)});
+
+  chunks.push_back({"weather.air_temperature_celsius", F32(world.weather.air_temperature_celsius)});
+  chunks.push_back({"weather.daylight_hours", F32(world.weather.daylight_hours)});
+  chunks.push_back({"weather.precipitation", Enum8(world.weather.precipitation)});
+  chunks.push_back(
+      {"weather.temperature_swing_celsius", F32(world.weather.temperature_swing_celsius)});
+  chunks.push_back({"weather.cloud_cover", F32(world.weather.cloud_cover)});
+  chunks.push_back({"weather.phenomenon", Enum8(world.weather.phenomenon)});
+  chunks.push_back({"weather.wind", Enum8(world.weather.wind)});
+  chunks.push_back({"weather.snow_cover_days", U16(world.weather.snow_cover_days)});
+  chunks.push_back(
+      {"weather.cover_since_leaf_fall", U8(world.weather.cover_since_leaf_fall ? 1U : 0U)});
+
+  chunks.push_back({"epoch", Enum8(world.epoch)});
+  chunks.push_back({"world_seed", U64(world.world_seed)});
+  chunks.push_back({"rng.state", U64(world.rng.state)});
+  chunks.push_back({"rng.stream", U64(world.rng.stream)});
+
+  chunks.push_back({"chairman.raikom_reputation", F32(world.chairman.raikom_reputation)});
+  chunks.push_back({"chairman.authority", F32(world.chairman.authority)});
+  chunks.push_back({"chairman.shadow_reputation", F32(world.chairman.shadow_reputation)});
+  chunks.push_back({"chairman.horses_stabled", U8(world.chairman.horses_stabled)});
+
+  chunks.push_back({"traction_ration", F32(world.traction_ration)});
+  AppendAmounts(chunks, "plan.due", world.plan.due);
+  AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
+  chunks.push_back({"plan.last_verdict", Enum8(world.plan.last_verdict)});
+  chunks.push_back({"plan.failed_years_in_a_row", U8(world.plan.failed_years_in_a_row)});
+  chunks.push_back({"plan.met_years_in_a_row", U8(world.plan.met_years_in_a_row)});
+  chunks.push_back({"plan.announced", U8(world.plan.announced)});
+  chunks.push_back({"plan.worked_ha_last_year", F32(world.plan.worked_ha_last_year)});
+  chunks.push_back({"plan.worked_ha_this_year", F32(world.plan.worked_ha_this_year)});
+  for (const core::ResourceAmounts& opened : world.unsealed.by_fund) {
+    AppendAmounts(chunks, "unsealed.by_fund", opened);
+  }
+
+  chunks.push_back({"vitals.life_expectancy_years", F32(world.vitals.life_expectancy_years)});
+  for (const float mean : world.vitals.satiety_year_means) {
+    chunks.push_back({"vitals.satiety_year_means", F32(mean)});
+  }
+  chunks.push_back({"vitals.satiety_running_sum", F32(world.vitals.satiety_running_sum)});
+  chunks.push_back({"vitals.satiety_running_days", U32(world.vitals.satiety_running_days)});
+
+  chunks.push_back({"limit.points", U32(static_cast<std::uint32_t>(world.limit.points))});
+
+  chunks.push_back({"night_theft.stolen_this_month",
+                    Little(static_cast<std::uint64_t>(world.night_theft.stolen_this_month), 8)});
+  chunks.push_back({"night_theft.month_index", U32(world.night_theft.month_index)});
+  chunks.push_back({"night_theft.complaint_raised", U8(world.night_theft.complaint_raised)});
+
+  chunks.push_back({"mts_column.phase", Enum8(world.mts_column.phase)});
+  chunks.push_back({"mts_column.lot", U16(world.mts_column.lot.value)});
+  chunks.push_back({"mts_column.arrive_day", U32(world.mts_column.arrive_day)});
+  chunks.push_back({"mts_column.camp", U32(world.mts_column.camp.value)});
+  chunks.push_back({"mts_column.worked_ha", F32(world.mts_column.worked_ha)});
+  chunks.push_back({"mts_column.field", U32(world.mts_column.field.value)});
+  chunks.push_back({"mts_column.field_ha", F32(world.mts_column.field_ha)});
+  return chunks;
+}
+
+/// Reads one u64 of the stream by hand, for positioning only.
+std::uint64_t LittleAt(std::span<const std::byte> bytes, std::size_t offset) {
+  std::uint64_t value = 0;
+  for (std::size_t index = 0; index < 8; ++index) {
+    value |= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(bytes[offset + index]))
+             << (8U * index);
+  }
+  return value;
+}
+
+/// The world block out of a save. The payload's sections are length-prefixed
+/// and in a fixed order (core_save/save.h), and the world block is the second
+/// of them — positioning by two lengths is not decoding: no field is read.
+std::span<const std::byte> WorldSection(std::span<const std::byte> save) {
+  std::size_t offset = core::kSaveHeaderSize;
+  for (int section = 0; section < 2; ++section) {
+    if (save.size() < offset + 8) {
+      return {};
+    }
+    const std::uint64_t length = LittleAt(save, offset);
+    offset += 8;
+    if (save.size() - offset < length) {
+      return {};
+    }
+    if (section == 1) {
+      return save.subspan(offset, static_cast<std::size_t>(length));
+    }
+    offset += static_cast<std::size_t>(length);
+  }
+  return {};
+}
+
+/// FNV-1a 64, the arithmetic the header's own hash uses — here to turn a
+/// payload into ONE number that can be recorded and compared.
+std::uint64_t Fnv1a64(std::span<const std::byte> bytes) {
+  std::uint64_t hash = 0xcbf29ce484222325ULL;
+  for (const std::byte byte : bytes) {
+    hash ^= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(byte));
+    hash *= 0x100000001b3ULL;
+  }
+  return hash;
+}
+
+/// THE FIXTURE'S PAYLOAD, RECORDED on 2026-09-16 at save format 47 — the
+/// world of MakeWorld() encoded against the synthetic table set of this file.
+/// It is a WITNESS, not a second codec: it says "these bytes, this many", and
+/// nothing about what any of them mean.
+///
+/// WHEN IT GOES RED the question is which of the two happened. A deliberate
+/// change of the format or of the fixture: re-record the two numbers the
+/// failure prints, and the format's own change carries a VERSION_SAVE bump
+/// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
+/// has begun writing something else, and that is the whole reason this number
+/// is here.
+constexpr std::size_t kFixturePayloadBytes = 3015;
+constexpr std::uint64_t kFixturePayloadHash = 0x973664bda94b27f3ULL;
+
+int TestTheWorldBlockIsWhatTheFormatSays(const core::ITableSet& tables) {
+  int failures = 0;
+  const core::WorldState witness = MakeWitnessWorld();
+  const std::vector<std::byte> save = core::EncodeWorld(witness, tables);
+  const std::span<const std::byte> block = WorldSection(save);
+  const std::vector<Chunk> expected = ExpectedWorldBlock(witness);
+  std::size_t wanted_size = 0;
+  for (const Chunk& chunk : expected) {
+    wanted_size += chunk.bytes.size();
+  }
+  if (block.size() != wanted_size) {
+    // A note, not a failure of its own: the scan below names the field where
+    // the two partings company, and one damage must redden one assertion.
+    std::cout << "  the world block is " << block.size() << " bytes, the format's own rules give "
+              << "its fields " << wanted_size << '\n';
+  }
+  std::size_t offset = 0;
+  for (const Chunk& chunk : expected) {
+    for (std::size_t index = 0; index < chunk.bytes.size(); ++index) {
+      const std::size_t at = offset + index;
+      if (at >= block.size()) {
+        std::cout << "FAIL: the world block ends inside '" << chunk.name << "', at byte " << at
+                  << '\n';
+        return failures + 1;
+      }
+      if (std::to_integer<std::uint8_t>(block[at]) != chunk.bytes[index]) {
+        std::cout << "FAIL: byte " << at << " of the world block, in '" << chunk.name
+                  << "': the codec wrote "
+                  << static_cast<int>(std::to_integer<std::uint8_t>(block[at]))
+                  << ", the format says " << static_cast<int>(chunk.bytes[index]) << '\n';
+        return failures + 1;
+      }
+    }
+    offset += chunk.bytes.size();
+  }
+  failures += Expect(offset == block.size() && block.size() == wanted_size,
+                     "the world block is field for field what core_save/save.h says it is");
+  return failures;
+}
+
+int TestTheFixturePayloadIsWhatWasRecorded(std::span<const std::byte> save) {
+  int failures = 0;
+  if (save.size() < core::kSaveHeaderSize) {
+    return Expect(false, "the fixture's save has a header");
+  }
+  const std::span<const std::byte> payload = save.subspan(core::kSaveHeaderSize);
+  const std::uint64_t hash = Fnv1a64(payload);
+  if (payload.size() != kFixturePayloadBytes || hash != kFixturePayloadHash) {
+    std::cout << "  the fixture's payload is now " << payload.size() << " bytes hashing to 0x"
+              << std::hex << hash << std::dec << "; recorded were " << kFixturePayloadBytes
+              << " bytes and 0x" << std::hex << kFixturePayloadHash << std::dec << '\n';
+  }
+  failures += Expect(payload.size() == kFixturePayloadBytes && hash == kFixturePayloadHash,
+                     "the fixture encodes to the bytes recorded for this save format");
+  return failures;
+}
+
 core::Grams AmountAt(const core::ResourceAmounts& amounts, std::size_t index) {
   return index < amounts.size() ? amounts[index] : 0;
 }
@@ -523,6 +863,12 @@ int main() {
   // Encoding is deterministic: two saves of one state are the same file.
   failures += Expect(core::EncodeWorld(world, *tables) == bytes,
                      "encoding the same world twice gives the same bytes");
+
+  // And the two checks that do not ask the codec anything (the long note
+  // beside them): the world block against the layout written out by hand, the
+  // fixture's payload against the size and hash recorded for this format.
+  failures += TestTheWorldBlockIsWhatTheFormatSays(*tables);
+  failures += TestTheFixturePayloadIsWhatWasRecorded(bytes);
 
   // A FINITE FLOAT IS NOT YET A USABLE ONE. The reader has refused NaN and
   // infinity since the format was young; 1e30 passes that door untouched
