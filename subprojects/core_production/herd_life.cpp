@@ -114,9 +114,46 @@ std::uint16_t TargetMales(const LivestockDef& kind, std::uint16_t adults) {
   if (kind.sexed == 0 || adults == 0 || !(kind.males_share > 0.0F)) {
     return 0;
   }
+  // AND NO "AT LEAST ONE" SINCE 2026-09-16 (boss, parcel 20). The floor was
+  // right while heads could only be BORN — a herd that could never keep a
+  // sire could never breed again, and nothing outside the herd could mend
+  // that. The district's livestock window is that something: a farm with no
+  // producer orders one, and it is the chairman's move to make.
+  //
+  // THE FLOOR WAS ALSO TAKING THE OTHER HALF OF HIS CHOICE. The order carries
+  // the sex of the head bought, and while this returned one for any herd with
+  // adults, a bought mare became a stallion by the next morning. Measured:
+  // the way out of a dead team needs a stallion AND a mare, and with the
+  // floor in place asking for either changed nothing at all.
   const auto wanted = AsHeads((static_cast<float>(adults) * kind.males_share) + 0.5F);
-  const std::uint16_t at_least_one = wanted == 0 ? 1U : wanted;
-  return at_least_one < adults ? at_least_one : adults;
+  return wanted < adults ? wanted : adults;
+}
+
+/// @brief The sires left after `gone` adults leave a herd of `adults_before`,
+///        in proportion, rounded to the nearest head and never above the
+///        survivors.
+///
+/// WHY PROPORTION AND NOT A RE-DERIVE. The male count is a CARRIED quantity
+/// since 2026-09-16: births add to it, purchases add exactly what was bought,
+/// and nothing recomputes it from the herd's size — because recomputing is
+/// what erased the chairman's choice every morning. A carried count needs the
+/// losses taken out of it honestly, or the two numbers drift apart: taking
+/// every death out of the females leaves the last survivor of a dying herd
+/// always male, and taking none out leaves a herd starved down to two adults
+/// carrying a male count from its fat years — which is the exact bug the
+/// re-derive at the hunger path was written to prevent, and the reason it
+/// cannot simply be deleted.
+std::uint16_t MalesAfterLoss(std::uint16_t males, std::uint16_t adults_before, std::uint16_t gone) {
+  if (males == 0 || gone == 0 || adults_before == 0) {
+    return males;
+  }
+  if (gone >= adults_before) {
+    return 0;
+  }
+  const auto left = static_cast<std::uint16_t>(adults_before - gone);
+  const float share = static_cast<float>(males) / static_cast<float>(adults_before);
+  const auto kept = AsHeads((static_cast<float>(left) * share) + 0.5F);
+  return kept < left ? kept : left;
 }
 
 std::uint16_t TotalHeads(const HerdRow& herd) {
@@ -212,13 +249,24 @@ void RunMaturation(const ProductionConfig& config,
       males_target > herd.adult_male_count ? males_target - herd.adult_male_count : 0);
   const std::uint16_t culled =
       DrawFlow(herd.cull_progress, (static_cast<float>(grown) * 0.5F) - room_for_males);
+  // THE SIRES THE HERD KEEPS OFF WHAT MATURED, added rather than re-derived:
+  // as many as the share leaves room for, and the cull below takes the rest
+  // to meat. Half of what grows up is male by nature, and a herd keeps only
+  // its share of them.
+  const auto kept = static_cast<std::uint16_t>(
+      std::min(static_cast<float>(grown), room_for_males < 0.0F ? 0.0F : room_for_males));
+  herd.adult_male_count = static_cast<std::uint16_t>(herd.adult_male_count + kept);
   const std::uint16_t gone = TakeHeads(herd.adult_count, culled);
-  // The male count is derived AFTER the cull, not before it: taking the
-  // surplus out of adult_count would otherwise leave a target computed on
-  // the larger herd, and adult_male_count could stand above adult_count —
-  // breaking the invariant herd_state.h states and making "females" come
-  // out negative for a step.
-  herd.adult_male_count = TargetMales(kind, herd.adult_count);
+  // THE CULL TAKES MALES THE COUNT NEVER HELD, so nothing comes out of it
+  // here. The draw above is `grown * 0.5 - room_for_males`: the young males
+  // the herd had no room for, which is exactly the ones `kept` did not add.
+  //
+  // Subtracting `gone` from the sires was this block's first draft and the
+  // measurement caught it in one run: with a team of two the share leaves
+  // room for no sire at all, so `kept` was nil while `gone` was one — and the
+  // stallion the chairman had just BOUGHT was culled as surplus. Twelve years
+  // later the run showed three horses and no sire among them.
+  herd.adult_male_count = std::min(herd.adult_male_count, herd.adult_count);
   if (gone > 0) {
     herd.adult_age_game_years_total -=
         static_cast<float>(gone) * kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
@@ -371,9 +419,11 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   herd.adult_age_game_years_total = herd.adult_age_game_years_total < youngest_possible
                                         ? youngest_possible
                                         : herd.adult_age_game_years_total;
-  const std::uint16_t males_gone = TakeHeads(herd.adult_male_count, gone);
-  (void)males_gone;  // the male count is re-derived from the share below
-  herd.adult_male_count = TargetMales(kind, herd.adult_count);
+  // Age takes the sires in proportion with the rest: old age is no respecter
+  // of sex, and this used to take EVERY death out of the males and then throw
+  // the result away for a re-derive.
+  herd.adult_male_count = MalesAfterLoss(
+      herd.adult_male_count, static_cast<std::uint16_t>(herd.adult_count + gone), gone);
 }
 
 /// A herd left hungry long enough starts to lose heads. The ladder is the
@@ -381,7 +431,7 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
 /// threshold. The cold ladder of question 99 is NOT here — every phase-1
 /// herd stands under a roof and unit temperatures do not exist.
 void RunHungerDeaths(const ProductionConfig& config,
-                     const LivestockDef& kind,
+                     const LivestockDef& /*kind*/,
                      HerdRow& herd,
                      HerdId herd_id,
                      WorldState& world,
@@ -426,13 +476,16 @@ void RunHungerDeaths(const ProductionConfig& config,
   } else if (adults_gone > 0) {
     herd.adult_age_game_years_total = 0.0F;
   }
-  // Re-derive the sires, like every other culler here does. Without it a
-  // herd starved down to one or two adults and then rescued keeps a male
-  // count from its fat years: females comes out non-positive, so it gives no
-  // milk and bears nothing, for ever. The carry above is what made that
-  // reachable — the old truncating rule could never take an adult rung down
-  // into the range where it matters.
-  herd.adult_male_count = TargetMales(kind, herd.adult_count);
+  // Hunger takes the sires in proportion too, and THE REASON THIS LINE EXISTS
+  // AT ALL is the one the re-derive here used to give: a herd starved down to
+  // one or two adults and then rescued must not keep a male count from its
+  // fat years, or "females" comes out non-positive and it gives no milk and
+  // bears nothing, for ever. Proportion answers that as well as the re-derive
+  // did — and unlike the re-derive it does not also erase what the chairman
+  // bought.
+  herd.adult_male_count = MalesAfterLoss(herd.adult_male_count,
+                                         static_cast<std::uint16_t>(herd.adult_count + adults_gone),
+                                         adults_gone);
 }
 
 /// The autumn pig slaughter (livestock design §6): everything but the sows
@@ -461,7 +514,10 @@ void RunAutumnSlaughter(const ProductionConfig& config,
     const float mean = herd.adult_age_game_years_total / static_cast<float>(herd.adult_count);
     gone = static_cast<std::uint16_t>(gone + TakeHeads(herd.adult_count, surplus));
     herd.adult_age_game_years_total -= static_cast<float>(surplus) * mean;
-    herd.adult_male_count = TargetMales(kind, herd.adult_count);
+    // The autumn slaughter keeps `males` sires BY NAME — the design says
+    // everything but the sows and the sire goes to meat — so the survivors
+    // are that number, not a proportion of what stood before.
+    herd.adult_male_count = std::min(males, herd.adult_count);
   }
   world.ledger.current.herd_culled += gone;
   Slaughter(config, kind, place, gone, world);

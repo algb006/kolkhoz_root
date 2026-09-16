@@ -1138,11 +1138,28 @@ int main(int argc, char** argv) {
   //
   // AND WITH THE HOLIDAYS (host door request no. 2): 9.22 (seed 1931), 31.17,
   // 32.83, 38.04, 39.05 (median), 39.82, 40.33, 40.41, 42.71.
+  //
+  // AND WITH THE SIRE COUNT CARRIED RATHER THAN RE-DERIVED (2026-09-16, boss
+  // parcel 20): 7.11 (seed 1931 again), 30.66, 33.11, 35.60, 38.27 (median),
+  // 39.30, 39.70, 41.47, 43.08.
+  //
+  // THE BAND BARELY MOVED AND THE MEDIAN FELL BY THREE QUARTERS OF A POINT,
+  // which is the whole of what this measurement has to say. The herds keep
+  // their share of sires now instead of "at least one", so a herd of six
+  // stands at two males and four females where it used to stand at three and
+  // three: more milk, in BOTH arms. The gap is a difference, so more milk
+  // everywhere shows up as slightly less difference — not as a village fed
+  // worse. The shipped arm's leanest day is 30.78 against a recorded 30.13,
+  // unmoved; it is the arm with NOTHING ISSUED that rose, which is the arm
+  // that leans hardest on what the herds give.
+  //
+  // Seed 1931 is the low outlier here as it was before it, at 7.11 against
+  // 9.22 — the same seed, the same shape, three quarters of the fall.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 9.21-42.72, median 39.05)\n";
+            << " (nine seeds: 7.11-43.09, median 38.27)\n";
   failures +=
-      ExpectBand(issue_gap >= 9.21F && issue_gap <= 42.72F,
+      ExpectBand(issue_gap >= 7.11F && issue_gap <= 43.09F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

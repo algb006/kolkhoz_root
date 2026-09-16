@@ -570,10 +570,22 @@ int CheckStableGate() {
       core::RunHerdDay(config, world);
     }
     const core::HerdRow& herd = world.herds.rows[0];
-    return static_cast<std::uint32_t>(herd.newborn_count + herd.juvenile_count);
+    // THE WHOLE HERD AND NOT THE YOUNG RUNGS, since 2026-09-16. This counted
+    // `newborn + juvenile`, which is not "a foal was born" but "a foal is
+    // still young TODAY" — and this fixture's kind grows up in eight days
+    // inside a twenty-day run. The two readings parted the moment the herd
+    // bred faster: the carried sire count left four females where the old
+    // daily re-derive left three, the foal arrived earlier, and by day twenty
+    // it was an ADULT. The check then read zero young and called it no
+    // offspring, with the birth sitting in plain sight in adult_count.
+    //
+    // A measure that fails when the thing it measures happens SOONER is
+    // measuring the calendar, not the gate.
+    return static_cast<std::uint32_t>(herd.newborn_count + herd.juvenile_count + herd.adult_count);
   };
-  failures += Expect(foals_at_level(1) == 0, "a summer yard brings no foals");
-  failures += Expect(foals_at_level(2) > 0, "a stable does");
+  // Six adults go in; the herd is six heads still if nothing was born.
+  failures += Expect(foals_at_level(1) == 6, "a summer yard brings no foals");
+  failures += Expect(foals_at_level(2) > 6, "a stable does");
   return failures;
 }
 

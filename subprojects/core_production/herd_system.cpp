@@ -658,11 +658,19 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const LivestockDef& kind = config.livestock[herd.kind.value];
-    // The sire count is a function of the herd, not a thing it remembers:
-    // re-derived here so that every path into this row — a merge, a rescue
-    // from starvation, a table edit — leaves the same invariant behind, and
-    // "females" can never come out negative.
-    herd.adult_male_count = TargetMales(kind, herd.adult_count);
+    // THE SIRE COUNT IS A THING THE HERD REMEMBERS, and this line used to say
+    // the opposite: it re-derived the count from the herd's size every single
+    // day. That was true while heads could only be born. Since the district
+    // sells stock it is false and expensive — a head bought as a mare became
+    // a stallion by the next morning, and the chairman's choice of sex, which
+    // the design promises him, had no consequence whatever (boss, parcel 20).
+    //
+    // What is left here is the INVARIANT and nothing else: sires never stand
+    // above adults, and a sexless kind has none. Every path that changes the
+    // adults — maturation, the cull, age, hunger, the autumn slaughter —
+    // carries the sires with it at its own site, where what happened is known.
+    herd.adult_male_count =
+        kind.sexed == 0 ? 0U : std::min(herd.adult_male_count, herd.adult_count);
     HerdPlace place = PlaceOf(current, config, herd);
     place.feed_allowance = &feed_allowance;
     RunBilleting(herd, room, current, herd.billeted_count);

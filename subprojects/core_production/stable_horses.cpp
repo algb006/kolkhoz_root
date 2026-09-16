@@ -15,6 +15,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
+#include "herd_life.h"
 
 namespace core {
 
@@ -67,10 +68,27 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
   for (const HerdId id : emptied) {
     RemoveRow(current.herds, id);
   }
-  // The sire count is NOT set here: it is a herd-system invariant, re-derived
-  // for every row by the walk that follows this call. Summing sixteen lone
-  // "herds" of one stallion each would leave a team of sixteen stallions and
-  // no mares.
+  // THE SIRE COUNT IS COMPOSED HERE, and since 2026-09-16 it has to be. This
+  // used to be left to the herd day, which re-derived the count for every row
+  // every morning; that re-derive is gone, because it also erased the sex of
+  // a head the chairman had BOUGHT (boss, parcel 20).
+  //
+  // Summing is still wrong, and for the reason this block always gave: the
+  // start's team arrives as sixteen lone "herds" of one head, each carrying
+  // nought sires because one animal cannot be the herd's share of them. The
+  // sum is nought, and a team of sixteen mares with no stallion never foals —
+  // measured, and it killed the canonical team off inside ten years.
+  //
+  // So the team is COMPOSED, which is what TargetMales is for: a herd being
+  // founded takes its share of sires. That is the whole difference between
+  // this call and the one that was deleted — founding a herd, not correcting
+  // one every day.
+  if (gathered != kNoRow) {
+    HerdRow& team = current.herds.rows[gathered];
+    if (team.kind.value < config.livestock.size()) {
+      team.adult_male_count = TargetMales(config.livestock[team.kind.value], team.adult_count);
+    }
+  }
   current.chairman.horses_stabled = 1;
   if (moved_heads == 0) {
     return;  // nothing actually came in: a loaded save, and no news in it
