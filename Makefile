@@ -40,7 +40,7 @@ help:
 	@echo '  make rebuild        собрать с нуля — при странном поведении первым делом'
 	@echo '  make test           прогнать все тесты через ctest'
 	@echo '  make unit           только обязательные unit-тесты модулей'
-	@echo '  make check-tests    unit-тест на модуль, включения, длины перечислений границы'
+	@echo '  make check-tests    unit-тест на модуль, включения, перечисления границы, пути мануала'
 	@echo '  make version        версии ядра и формата сохранений'
 	@echo '  make bump-patch     поднять версию: сдан модуль'
 	@echo '  make bump-minor     поднять версию: сдан этап плана либо сломана граница с UE'
@@ -111,6 +111,7 @@ check-tests:
 	@python3 scripts/boundary_enums.py
 	@python3 scripts/check_tables_export.py
 	@python3 scripts/event_sites.py
+	@python3 scripts/check_manual_paths.py
 
 # Bumping is the closing step of a delivery cycle, run in the same commit as the
 # work being delivered. VERSION_SAVE is not bumped here — see 57-versioning.md.
