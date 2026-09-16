@@ -91,15 +91,6 @@ std::int32_t DaysToPasture(const ProductionConfig& config, const WorldState& wor
   return DaysToWindow(world, config.farming.pasture_from_month, config.farming.pasture_to_month);
 }
 
-std::int32_t DaysToSowing(const ProductionConfig& config, const WorldState& world) {
-  std::int32_t best = kStockForecastHorizonDays;
-  for (const CropDef& crop : config.crops) {
-    const std::int32_t days = DaysToWindow(world, crop.sow_from_month, crop.sow_to_month);
-    best = days < best ? days : best;
-  }
-  return best;
-}
-
 StockForecast FeedLight(const ProductionConfig& config, const WorldState& world) {
   StockForecast light;
   light.kind = StockKind::kFeed;

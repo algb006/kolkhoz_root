@@ -51,8 +51,15 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
 /// @brief Game days to the start of the pasture season, 0 when it is open.
 std::int32_t DaysToPasture(const ProductionConfig& config, const WorldState& world);
 
-/// @brief Game days to the next sowing window, 0 when one is open.
-std::int32_t DaysToSowing(const ProductionConfig& config, const WorldState& world);
+// DaysToSowing WAS HERE AND IS GONE (2026-09-16). It answered "how many days
+// to the sowing" by the minimum over every crop's window, and the seed light
+// answers the same question by the CAMPAIGN's month — NearestSowingMonth and
+// then DaysToWindow of that month alone. Two homes for one number, and the
+// second had no caller at all: found by coverage, as an entry point no test
+// could reach, which is what an unread function looks like from outside.
+//
+// A second way of computing a number that nothing computes with is not a
+// spare, it is a fork waiting for a reader to take the wrong branch.
 
 /// @brief The seed light: is there enough to sow what the nearest campaign
 /// will put in the ground.
