@@ -269,8 +269,10 @@ class LimitPolicy {
       return false;
     }
     std::uint32_t adults = 0;
+    std::uint32_t sires = 0;
     for (const core::HerdRow& herd : world.herds.rows) {
       adults += herd.kind.value == horse_kind_ ? herd.adult_count : 0U;
+      sires += herd.kind.value == horse_kind_ ? herd.adult_male_count : 0U;
     }
     if (adults >= kTeamFloor) {
       return false;  // a pair stands; the herd takes it from here
@@ -288,13 +290,19 @@ class LimitPolicy {
     }
     order.kind = core::OrderKind::kOrderLimitLot;
     order.lot = core::LimitLotId{static_cast<std::uint16_t>(horse_lot_)};
-    // A MARE IS ASKED FOR AND A STALLION ARRIVES, and the run asks anyway so
-    // that the day the model honours the choice this line is already right.
-    // The herd day rewrites adult_male_count to TargetMales() every day, and
-    // TargetMales never returns nil while there are adults — so the first
-    // bought head is a stallion whatever the order said (core finding,
-    // 2026-09-16, reported to boss).
-    order.male = 0;
+    // THE SIRE FIRST, THEN THE MARE — what a chairman would ask for, and the
+    // design's own reason for the choice existing at all: «иначе хозяйство
+    // могло бы остаться без производителя и без всякого способа это
+    // исправить».
+    //
+    // IT CHANGES NOTHING TODAY and is written this way on purpose. The herd
+    // day rewrites adult_male_count to TargetMales() every day and
+    // TargetMales never returns nil while there are adults, so the first
+    // bought head is a stallion whatever the order says. The day that
+    // insurance is lifted (boss, parcel 17) this line is already right — and
+    // it has to be, because measured with the insurance simply switched off,
+    // a pair of MARES never foals and the team stood at two for twelve years.
+    order.male = sires == 0 ? 1U : 0U;
     return true;
   }
 
