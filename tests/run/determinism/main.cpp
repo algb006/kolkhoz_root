@@ -68,6 +68,10 @@ int main() {
   if (one.simulation == nullptr || many.simulation == nullptr) {
     return 1;
   }
+  // THE WORLD BEFORE EITHER RUN MOVED, kept for one question below: did the
+  // runs the two workers agreed on do anything at all?
+  const std::vector<std::byte> before = core::EncodeWorld(one.State(), *one.tables);
+
   run::AdvanceDays(*one, kDays);
   run::AdvanceDays(*many, kDays);
 
@@ -90,6 +94,18 @@ int main() {
   // this is the number that would give that away.
   failures += Expect(one.State().residents.rows.size() > 50,
                      "and the world it agreed on has a village in it, not nobody");
+  // AND THE QUESTION THAT GUARD DID NOT ASK. "Is there a village" is answered
+  // by GENESIS: the eighty it seats are there before the first step, so the
+  // guard passed on 2026-09-16 while the step had every phase removed and the
+  // two workers agreed on a world that had not moved a day. Two dead runs are
+  // identical runs, which is the oldest way for this test to be green for the
+  // wrong reason (boss, standstill parcel 9).
+  //
+  // The question it asks now is whether the world MOVED, and it is asked with
+  // the codec the save already owns: the bytes before the two years against
+  // the bytes after them.
+  failures += Expect(before != single,
+                     "and the two years moved it: the world is not the one genesis handed over");
   if (failures == 0) {
     std::cout << "determinism: " << kYears << " years, " << one.State().residents.rows.size()
               << " residents, " << single.size() << " bytes identical on 1 and 4 workers\n";

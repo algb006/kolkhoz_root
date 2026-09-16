@@ -109,6 +109,17 @@ int main() {
                             "and lands in the canon's order of magnitude by year 33",
                             std::to_string(final_population) + " against 1150");
   failures += run::Expect(final_population <= 2300, "and not exploding by year 33");
+  // AND THE FLOOR UNDER ALL THREE CEILINGS, which is not a band and cannot be
+  // a matter of balance: the years were lived and the village is not the
+  // genesis standing still. Every hard assertion above is an upper bound, and
+  // the lower ones are KnownGap by design — so on 2026-09-16, with every phase
+  // of the step removed, this run passed in 2.6 seconds against the usual 25:
+  // eighty residents never born, never dead, never married, under every
+  // ceiling (boss, standstill parcel 9).
+  failures += run::Expect(final_state.calendar.date.year + 1 >= kYears,
+                          "the curve lived its thirty-three years");
+  failures += run::Expect(final_population != start_population,
+                          "and the village it drew is not the genesis standing still");
   // The epoch switch is a population-threshold STUB (residents_system.cpp:
   // the designed era events — the readiness index, the ceremonies — are a
   // later phase). It flips at exactly 500, so asserting it at year 14 is a

@@ -115,6 +115,10 @@ struct BadPlay {
 
 /// How the year came out, for one variant.
 struct Verdict {
+  /// Whether the district judged this play's plan even once: the denominator
+  /// under every count in this struct.
+  bool judged = false;
+
   std::uint32_t failed_years = 0;
   std::uint32_t worst_run = 0;
   std::uint32_t worst_run_year = 0;
@@ -367,6 +371,13 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
     // mechanic in a month's time.
     chairman.Report();
   }
+  // DID THE DISTRICT EVER JUDGE THIS PLAY? Every number above is a count of
+  // judgements — failed years, the longest run, the trial — and a world where
+  // the year never turns has none of them. That reads as "nobody was taken to
+  // court", which is exactly what a good play looks like, so the ceiling below
+  // stays green while nothing happens at all. Measured on 2026-09-16 with the
+  // step's phases removed: this run passed in twenty seconds of doing nothing.
+  verdict.judged = started.State().plan.last_verdict != core::PlanVerdict::kNone;
   return verdict;
 }
 
@@ -426,15 +437,18 @@ int main(int argc, char** argv) {
   // THE GATED ARMS, on every gate seed.
   std::uint32_t floor_trials = 0;
   std::uint32_t canon_trials = 0;
+  std::uint32_t judged_arms = 0;
   for (std::uint64_t gate_seed = kFirstGateSeed; gate_seed < kFirstGateSeed + kGateSeedCount;
        ++gate_seed) {
     std::cout << "plan_trial: gate seed " << gate_seed << "\n";
     const Verdict floor_verdict = Play(floor, gate_seed, trial_threshold);
     print_verdict(floor, floor_verdict);
     floor_trials += floor_verdict.reached_trial ? 1U : 0U;
+    judged_arms += floor_verdict.judged ? 1U : 0U;
     const Verdict canon_verdict = Play(canon, gate_seed, trial_threshold);
     print_verdict(canon, canon_verdict);
     canon_trials += canon_verdict.reached_trial ? 1U : 0U;
+    judged_arms += canon_verdict.judged ? 1U : 0U;
   }
 
   // THE PROBES, on one seed: they answer questions about kinds of bad play and
@@ -517,6 +531,11 @@ int main(int argc, char** argv) {
   // work moved nothing.
   failures += run::Expect(canon_trials <= kCanonTrialsAtMost,
                           "the obvious chairman is taken to court on at most one seed of nine");
+  // AND THE DENOMINATOR UNDER THAT CEILING: both arms of every gate seed were
+  // judged at all. Without it "at most one of nine" is satisfied by nine
+  // worlds that never turned a year.
+  failures += run::Expect(judged_arms == 2U * kGateSeedCount,
+                          "and the district judged the plan on both arms of all nine seeds");
   std::cout << (failures == 0 ? "plan_trial: all checks passed\n"
                               : "plan_trial: FAILURES " + std::to_string(failures) + "\n");
   return failures == 0 ? 0 : 1;

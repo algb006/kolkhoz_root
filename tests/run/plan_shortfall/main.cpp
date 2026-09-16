@@ -648,6 +648,14 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   StoreSites sites_running;
   std::uint8_t failed_before = 0;
   std::uint32_t failures = 0;
+  // THE DENOMINATOR OF THE NUMBER BELOW. "The plan was failed in N of thirty
+  // years" is a count of judgements that went badly, and a world where the
+  // year never turns has none of either kind — so the sentence stays true and
+  // the run stays green while nothing at all happens. Measured on 2026-09-16
+  // with every phase of the step removed: this run passed, in 3.2 seconds
+  // instead of twenty (boss, standstill parcel 9).
+  std::uint32_t year_turns = 0;
+  std::uint16_t year_before = started.State().calendar.date.year;
   for (std::uint32_t year = 0; year < kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       run::AdvanceDays(*started, 1);
@@ -659,6 +667,10 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
+      if (world.calendar.date.year != year_before) {
+        ++year_turns;
+        year_before = world.calendar.date.year;
+      }
       if (year == trace_year && potato_row != core::kNoTableRow) {
         TraceCropDay(world, potato);
       }
@@ -769,7 +781,17 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   chairman.Report();
   std::cout << "plan_shortfall: " << label << " — the plan was failed in " << failures << " of "
             << kYears << " years\n";
-  return 0;
+  // And the denominator itself, which is the only thing here that can be
+  // asserted without inventing a threshold: the years turned and the district
+  // did judge. WHAT IS NOT ASSERTED is how many of them were failed — that
+  // number is the run's subject and boss's to read, exactly as the head of
+  // this file says.
+  int gaps = 0;
+  gaps += run::Expect(year_turns + 1 >= kYears,
+                      "plan_shortfall: the walk turned its thirty years, one by one");
+  gaps += run::Expect(started.State().plan.last_verdict != core::PlanVerdict::kNone,
+                      "and the district judged the plan at least once in them");
+  return gaps;
 }
 
 }  // namespace

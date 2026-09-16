@@ -356,6 +356,14 @@ int main(int argc, char** argv) {
     }
     std::cout << "idle_curve: за двести суток НЕ ПОСТРОЕНА"
               << (far_site || gap_site ? " — и это правильно: до неё не дойти\n" : "\n");
+    // AND THE TWO HUNDRED DAYS REALLY PASSED. Everything this arm asserts is
+    // either an answer of day zero — the alarms are read off a world that has
+    // not been stepped yet — or a negation over the days after it ("never
+    // stands crewless in silence"). Both are true of a world that stands
+    // still, and on 2026-09-16, with the step's phases removed, this run
+    // passed (boss, standstill parcel 9).
+    failures += run::Expect(world.State().calendar.day >= 200,
+                            "idle_curve: the two hundred days the site waited were lived");
     return far_site || gap_site ? failures : failures + 1;
   }
   // The building chairman whole (building_chairman.h): the core raises no
@@ -900,6 +908,18 @@ int main(int argc, char** argv) {
               << field.work_days_remaining << " подвоза " << field.haul_days_remaining << " лежит "
               << field.reaped_grams << '\n';
   }
+  // AND THE DAYS REALLY PASSED, in the arm the suite actually runs. The
+  // curve's own assertions are answers of day zero — the alarms are read off
+  // a world that has not been stepped — or negations over the days after it,
+  // and all of them hold for a village standing still: on 2026-09-16, with
+  // the step's phases removed, this run passed.
+  //
+  // IT IS ASSERTED HERE AND NOT WHERE IT WAS FIRST WRITTEN. The first draft
+  // put it at the end of the --watch-build arm, which ctest never runs
+  // without arguments — a guard in a branch nobody takes is not a guard, and
+  // the damage run said so by staying green.
+  failures += run::Expect(last.calendar.day > 0 && last.calendar.tick > 0,
+                          "idle_curve: the days the curve is drawn from were lived");
   std::cout << (failures == 0 ? "idle_curve: all checks passed\n" : "idle_curve: FAILED\n");
   return failures;
 }

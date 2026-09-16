@@ -335,5 +335,35 @@ int main(int argc, char** argv) {
   sawmill.Report("timber_years");
   limit.Report("timber_years");
   sawmill.ReportState("timber_years", started.State());
+
+  // -- THE FLOOR UNDER THE REPORT -------------------------------------------
+  //
+  // THIS RUN HAD NO ASSERTION AT ALL until 2026-09-16, and a run that cannot
+  // go red is not a test: measured that day, with every phase of the step
+  // removed, it stayed GREEN while the village stood still for thirty years
+  // — and the suite counted it among its "34 of 34" (boss, standstill parcel
+  // 9: "в наборе тестов не бывает отчётов").
+  //
+  // THE GATE IS STILL NOT INVENTED HERE, and the head of this file says why:
+  // criteria 2..4 are numbers for boss to judge, and a threshold nobody named
+  // would be this file deciding the balance by itself. So what is asserted is
+  // only what CANNOT be a matter of balance: that the measurement happened,
+  // and that the thing criterion 4 is about — the groves surviving — is not
+  // literally nothing. A recorded floor on the FIGURES was offered and is
+  // deliberately not taken: it would freeze a balance nobody has approved,
+  // and the family of recorded numbers is honest only while each of them has
+  // a reason (67-save-format.md §7в).
+  int failures = 0;
+  failures += run::Expect(years.size() == kYears && used_total > 0.0,
+                          "timber_years measured thirty years and the building used logs in them");
+  failures += run::Expect(felled_total > 0.0 && grove_start > 0.0,
+                          "the village felled something, off a forest that was there to fell");
+  failures += run::Expect(grove_at[2] > 0.0,
+                          "and the groves and belts still stand at year thirty — criterion 4's "
+                          "own subject, floored at 'not nothing' and no higher");
+  if (failures > 0) {
+    std::cout << "timber_years: FAILURES " << failures << "\n";
+    return 1;
+  }
   return 0;
 }
