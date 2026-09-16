@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <string>
@@ -25,6 +26,7 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_log/log.h"
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
 #include "district_limit.h"
@@ -616,6 +618,70 @@ int CheckAgeSpread() {
 /// heat is read on the afternoon (mean + the season's amplitude), and the
 /// summer mean tops out at 24 against a threshold of 25. Built over a real
 /// table set, because the field cycle lives behind the factory.
+/// A BROKEN plan_positions MUST NOT KILL THE TABLES, and it must say what it
+/// dropped. campaign.csv carries the district's positions as `crop=share`
+/// pairs, and every way a hand can spoil that line — a share that is not a
+/// number, a share outside 0..100, a crop the tables do not carry, the same
+/// crop twice — is a warning and a dropped entry, never a refusal: a village
+/// must still load when the district's line is mistyped.
+///
+/// UNTESTED UNTIL 2026-09-16, and coverage found it: production_config.cpp
+/// was the largest block of never-executed lines in the core (114), almost
+/// all of it this parser's complaints (boss, standstill parcels 11, 14). The
+/// log is the witness, because the complaint IS the behaviour — a silent drop
+/// would look the same from outside and mean something else.
+int CheckABrokenPlanPositionsLineIsNamedNotFatal() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_positions";
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\npotato,0.8\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,850,180,-1,1,1,3,8,0\n"
+         "potato,potato,0,0,4,5,5,5,8,8,2,900,200,-1,1,1,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\nweather_state_days,5\n";
+  std::ofstream(root / "weather.csv")
+      << "key,temp_mean_c,temp_spread_c,temp_amplitude_c,precipitation_chance_percent\n"
+         "winter,-10,2,3,35\nspring,5,7,5,35\nsummer,19,5,6,25\nautumn,6,7,5,45\n";
+  // Four spoiled entries and one good one: not a number, out of the band,
+  // a crop the tables do not carry, and rye said twice.
+  std::ofstream(root / "campaign.csv")
+      << "key,value\nplan_positions,rye=6.7 potato=lots rye=200 barley=5 rye=1.5\n";
+
+  const std::filesystem::path log = root / "parse.log";
+  const bool logging = core::InitLogFile(log.string());
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
+  core::ShutdownLogFile();
+  failures += Expect(system != nullptr,
+                     "a mistyped plan_positions line still builds the production tables");
+  if (!logging) {
+    return failures + Expect(false, "the parse log opened");
+  }
+  std::ifstream reading(log);
+  const std::string said((std::istreambuf_iterator<char>(reading)),
+                         std::istreambuf_iterator<char>());
+  failures += Expect(said.find("'lots' is not a number") != std::string::npos,
+                     "and says which share is not a number");
+  failures += Expect(said.find("outside 0..100") != std::string::npos,
+                     "and which share is outside the band a share lives in");
+  failures += Expect(said.find("no crop 'barley'") != std::string::npos,
+                     "and which crop the tables do not carry");
+  failures += Expect(said.find("named twice") != std::string::npos,
+                     "and that the second share of a crop is ignored rather than added");
+  return failures;
+}
+
 int CheckDroughtReadsTheAfternoon() {
   int failures = 0;
   const std::filesystem::path root =
@@ -903,6 +969,30 @@ int CheckStoreCeilingAndAlarms() {
   // uncarried harvest are different troubles with different cures.
   failures += Expect(!store_full, "an empty store does not cry that it is full");
   failures += Expect(waiting, "and the field says how much is lying on it");
+
+  // AND THE POSITIVE TWIN OF THAT NEGATION, which was missing until
+  // 2026-09-16: the line above says an empty store is silent, and nothing
+  // said that a FULL one speaks. Measured by coverage that day — the whole
+  // body of CollectStoreAlarms was never executed by any test or run of the
+  // suite, so the alarm the player sees when a granary fills had no check at
+  // all (boss, standstill parcel 11). The barn holds one tonne at level 1.
+  {
+    core::WorldState full = world;
+    const std::uint32_t row = core::FindRow(full.units, barn_id);
+    full.units.rows[row].stock.assign(1, 1000 * core::kGramsPerKilogram);
+    std::vector<core::Alarm> cries;
+    system->CollectAlarms(full, cries);
+    bool full_alarm = false;
+    core::Grams said_capacity = 0;
+    for (const core::Alarm& alarm : cries) {
+      if (alarm.kind == core::AlarmKind::kStoreFull && alarm.unit.value == barn_id.value) {
+        full_alarm = true;
+        said_capacity = alarm.amount;
+      }
+    }
+    failures += Expect(full_alarm && said_capacity == 1000 * core::kGramsPerKilogram,
+                       "and a store filled to its ceiling says so, with the ceiling in the alarm");
+  }
 
   // ROOM ALONE NO LONGER EMPTIES THE FIELD. Until task A4 a daily retry
   // moved whatever fitted, for nothing, the moment it fitted — and this
@@ -4907,6 +4997,7 @@ int main() {
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
+  failures += CheckABrokenPlanPositionsLineIsNamedNotFatal();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();

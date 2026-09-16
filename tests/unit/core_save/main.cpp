@@ -722,6 +722,31 @@ std::uint64_t LittleAt(std::span<const std::byte> bytes, std::size_t offset) {
   return value;
 }
 
+/// Where section `index` of the payload begins and how long it is: the
+/// sections are length-prefixed and in a fixed order (core_save/save.h), so
+/// walking the lengths reaches any of them without reading a field.
+/// @return the offset of the section's first byte, or 0 when the file is too
+///         short; `length` takes the section's size.
+std::size_t SectionAt(std::span<const std::byte> save, int index, std::uint64_t& length) {
+  std::size_t offset = core::kSaveHeaderSize;
+  for (int section = 0; section <= index; ++section) {
+    if (save.size() < offset + 8) {
+      return 0;
+    }
+    const std::uint64_t here = LittleAt(save, offset);
+    offset += 8;
+    if (save.size() - offset < here) {
+      return 0;
+    }
+    if (section == index) {
+      length = here;
+      return offset;
+    }
+    offset += static_cast<std::size_t>(here);
+  }
+  return 0;
+}
+
 /// The world block out of a save. The payload's sections are length-prefixed
 /// and in a fixed order (core_save/save.h), and the world block is the second
 /// of them — positioning by two lengths is not decoding: no field is read.
@@ -1372,6 +1397,86 @@ int main() {
   failures += refuses(tampered, "a save with bytes glued to the end is refused");
 
   failures += refuses({}, "an empty file is refused");
+
+  // -- THE REFUSALS BEHIND THE CHECKSUM ------------------------------------
+  //
+  // Every tampering above is caught by the payload hash before the reader
+  // looks at a single section, so the codec's own refusals — a section
+  // claiming more bytes than the payload holds, a table holding an id outside
+  // its range, a staged batch claiming a million orders — had never been
+  // executed by any test. Measured by coverage on 2026-09-16: five Refuse
+  // sites in save.cpp, all cold (boss, standstill parcels 11, 14).
+  //
+  // A REAL BROKEN FILE IS NOT A FLIPPED BYTE. A save truncated by a full disk
+  // or written by a build with a different idea of a row carries a hash that
+  // MATCHES its own bytes; that is exactly the file these refusals exist for,
+  // and reaching them means re-hashing after the damage, as the writer would
+  // have done.
+  const auto rehash = [](std::vector<std::byte>& file) {
+    const std::uint64_t hash =
+        Fnv1a64(std::span<const std::byte>(file).subspan(core::kSaveHeaderSize));
+    for (std::size_t index = 0; index < 8; ++index) {
+      file[44 + index] = static_cast<std::byte>((hash >> (8U * index)) & 0xFFU);
+    }
+  };
+  const auto refusal_of = [&](const std::vector<std::byte>& broken) {
+    core::WorldState target;
+    std::string reason;
+    const bool refused = !core::DecodeWorld(broken, *tables, &target, &reason);
+    return refused ? reason : std::string();
+  };
+
+  // A section that claims more than the payload has left.
+  tampered = bytes;
+  {
+    std::uint64_t length = 0;
+    const std::size_t at = SectionAt(tampered, 1, length);  // the world block
+    for (std::size_t index = 0; index < 8; ++index) {
+      const std::uint64_t huge = 1ULL << 40U;
+      tampered[at - 8 + index] = static_cast<std::byte>((huge >> (8U * index)) & 0xFFU);
+    }
+    rehash(tampered);
+    const std::string reason = refusal_of(tampered);
+    failures += Expect(
+        reason.find("claims") != std::string::npos && reason.find("world") != std::string::npos,
+        "a section claiming more bytes than the payload holds is refused by name");
+  }
+
+  // A row id of zero, which the id space never issues.
+  tampered = bytes;
+  {
+    std::uint64_t length = 0;
+    const std::size_t at = SectionAt(tampered, 2, length);  // the residents
+    // next_id_value (u32), row count (u32), then the ids: the first one is
+    // eight bytes in.
+    for (std::size_t index = 0; index < 4; ++index) {
+      tampered[at + 8 + index] = std::byte{0};
+    }
+    rehash(tampered);
+    const std::string reason = refusal_of(tampered);
+    failures += Expect(
+        reason.find("residents") != std::string::npos && reason.find("id 0") != std::string::npos,
+        "a table holding the id nobody issues is refused, and the id is named");
+  }
+
+  // A staged batch that claims more orders than the bytes could hold.
+  tampered = bytes;
+  {
+    std::uint64_t length = 0;
+    const std::size_t at = SectionAt(tampered, 16, length);  // the staged batch
+    if (at != 0) {
+      for (std::size_t index = 0; index < 4; ++index) {
+        const std::uint32_t many = 1U << 24U;
+        tampered[at + index] = static_cast<std::byte>((many >> (8U * index)) & 0xFFU);
+      }
+      rehash(tampered);
+      const std::string reason = refusal_of(tampered);
+      failures += Expect(reason.find("staged") != std::string::npos,
+                         "a staged batch claiming more orders than the file holds is refused");
+    } else {
+      failures += Expect(false, "the staged section is where the format says it is");
+    }
+  }
 
   // -- the file wrappers ---------------------------------------------------
   const std::filesystem::path file = root / "campaign.kls";

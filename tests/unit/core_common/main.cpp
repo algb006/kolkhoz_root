@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 
+#include "core_common/alarm_state.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/deadline.h"
@@ -1026,6 +1027,71 @@ int TestDistrictVisitPacking() {
   return failures;
 }
 
+/// WHICH ID NAMES AN ALARM'S SUBJECT (alarm_state.cpp, AlarmSubjectValue).
+/// The boundary sorts the day's alarms by it (session.cpp), so a kind that
+/// answers with the wrong field sorts by a number that belongs to somebody
+/// else — and the layer, which reads the sorted list, cannot tell.
+///
+/// UNTESTED UNTIL 2026-09-16, and four of its arms had never been executed at
+/// all: the herd's two, the family's and the felling stand's. Found by
+/// coverage that day (boss, standstill parcels 11 and 14). Every kind is
+/// asked here, each with its own id in its own field and nothing else set, so
+/// an arm that reads the wrong field answers zero.
+int CheckAlarmSubjectValue() {
+  int failures = 0;
+  const auto subject = [](core::AlarmKind kind, auto fill) {
+    core::Alarm alarm;
+    alarm.kind = kind;
+    fill(alarm);
+    return core::AlarmSubjectValue(alarm);
+  };
+  const auto unit_id = [](core::Alarm& alarm) { alarm.unit = core::UnitId{11}; };
+  const auto field_id = [](core::Alarm& alarm) { alarm.field = core::FieldId{22}; };
+  const auto herd_id = [](core::Alarm& alarm) { alarm.herd = core::HerdId{33}; };
+  const auto family_id = [](core::Alarm& alarm) { alarm.family = core::FamilyId{44}; };
+  const auto stand_id = [](core::Alarm& alarm) { alarm.stand = core::TimberStandId{55}; };
+
+  failures += Expect(subject(core::AlarmKind::kStoreFull, unit_id) == 11 &&
+                         subject(core::AlarmKind::kSiteWithoutMaterials, unit_id) == 11 &&
+                         subject(core::AlarmKind::kSiteWithoutCrew, unit_id) == 11 &&
+                         subject(core::AlarmKind::kSiteUnreachable, unit_id) == 11 &&
+                         subject(core::AlarmKind::kYardWithoutGroom, unit_id) == 11,
+                     "the alarms of a unit answer with the unit");
+  failures += Expect(subject(core::AlarmKind::kHarvestWillNotFit, field_id) == 22 &&
+                         subject(core::AlarmKind::kHarvestWaitingOnField, field_id) == 22 &&
+                         subject(core::AlarmKind::kSeedShort, field_id) == 22,
+                     "the alarms of a field answer with the field");
+  failures += Expect(subject(core::AlarmKind::kHerdStarving, herd_id) == 33 &&
+                         subject(core::AlarmKind::kHerdWithoutStable, herd_id) == 33,
+                     "the herd's two answer with the herd");
+  failures += Expect(subject(core::AlarmKind::kFamilyGoingHungry, family_id) == 44,
+                     "a hungry family answers with the family");
+  failures += Expect(subject(core::AlarmKind::kFellingUnreachable, stand_id) == 55,
+                     "an unreachable felling answers with the stand");
+  // THE FOUR ARMS ABOVE MUST NOT READ THE UNIT, which is the mistake this
+  // switch is shaped to prevent: a herd alarm carrying a unit id and no herd
+  // answers zero, not the unit's number.
+  failures += Expect(subject(core::AlarmKind::kHerdStarving, unit_id) == 0 &&
+                         subject(core::AlarmKind::kFamilyGoingHungry, unit_id) == 0 &&
+                         subject(core::AlarmKind::kFellingUnreachable, unit_id) == 0,
+                     "and none of them answers with a unit that is not their subject");
+
+  core::Alarm position;
+  position.kind = core::AlarmKind::kPlanPositionUncovered;
+  position.resource = core::ResourceId{4};
+  position.amount = 2;  // the second year of the chain
+  core::Alarm next_year = position;
+  next_year.amount = 3;
+  failures +=
+      Expect(core::AlarmSubjectValue(position) == 14 && core::AlarmSubjectValue(next_year) == 15 &&
+                 core::AlarmSubjectValue(position) < core::AlarmSubjectValue(next_year),
+             "an uncovered plan position sorts by its resource and then by its year");
+
+  core::Alarm nothing;
+  failures += Expect(core::AlarmSubjectValue(nothing) == 0, "kNone names no subject");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
@@ -1090,6 +1156,7 @@ int main() {
   }
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
+  failures += CheckAlarmSubjectValue();
   failures += TestDefIdFromRow();
   failures += TestDeadlineRefusals();
   failures += TestCalendar();
