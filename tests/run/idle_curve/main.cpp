@@ -1114,6 +1114,29 @@ int main(int argc, char** argv) {
     failures += run::Expect(stalled_years <= 1,
                             "and it costs one season, not the campaign: the village loses the "
                             "sowing window the head is bought in, and no more");
+    // THE SIRES BY KIND, and boss asked for this number rather than for the
+    // horse alone (parcel 20): the daily re-derive that used to force a male
+    // on every herd is gone, so «у лошади стало верно» does not mean «у
+    // свиньи не поехало». A nil here for a kind that still has adults is the
+    // same breakage seen from the other end — a herd that can never breed.
+    if (const core::ITable* const roster = world.tables->FindTable("livestock")) {
+      for (std::uint32_t kind_row = 0; kind_row < roster->RowCount(); ++kind_row) {
+        std::uint32_t herd_adults = 0;
+        std::uint32_t herd_sires = 0;
+        for (const core::HerdRow& herd : last.herds.rows) {
+          if (herd.kind.value != kind_row) {
+            continue;
+          }
+          herd_adults += herd.adult_count;
+          herd_sires += herd.adult_male_count;
+        }
+        if (herd_adults == 0) {
+          continue;
+        }
+        std::cout << "idle_curve: двенадцатый год — " << roster->CellText(kind_row, 0) << ": "
+                  << herd_adults << " взрослых, из них самцов " << herd_sires << '\n';
+      }
+    }
   }
   std::cout << (failures == 0 ? "idle_curve: all checks passed\n" : "idle_curve: FAILED\n");
   return failures;

@@ -65,7 +65,31 @@ float ClampMetric(float value) {
 }
 
 /// Crime closes every organization, even the pioneers (society §5): both
-/// metrics at zero.
+/// metrics at zero. «Криминальные метрики на нуле — склонность и
+/// правонарушения, обе. Единственный жёсткий фильтр.»
+///
+/// STUB, AND IT IS THE CONDITION THAT IS STUBBED, NOT THE RULE. The rule is
+/// the design's and stands; what is missing is everything it reads.
+/// `crime_inclination` and `offense_count` have exactly one writer between
+/// them in the whole core — line 323 below, which ZEROES both on joining —
+/// and no writer at all that raises either. Genesis does not set them and no
+/// table carries them. So this returns true for every resident, always, and
+/// the only hard filter the design names cannot refuse anybody.
+///
+/// WHY IT IS MARKED HERE RATHER THAN FIXED. What is absent is not a field and
+/// not a condition but the whole SUBJECT: the seasonal recompute of the
+/// inclination out of its eleven terms, the uncovering of an offence, the
+/// constable, the village's impunity (crime design §2). Neither metric is
+/// lifted by anything until that exists, and «Преступность и правопорядок» is
+/// a named stage of the Epoch I build since 2026-09-16 — it had never stood
+/// in the core's plan at all, and this function looking as though it worked
+/// is why nobody noticed.
+///
+/// AND THE MARK IS THE POINT. A rule that cannot fire is a stub, not a rule,
+/// and the next reader who finds it unmarked will report it as a rule of the
+/// world — which happened once already, the same day, to the district's
+/// refusal of livestock. The mark and the stub come off in one move, together
+/// with the stage that writes these two numbers.
 bool CrimeFree(const ResidentRow& person) {
   return person.crime_inclination <= 0.0F && person.offense_count == 0;
 }
@@ -320,6 +344,12 @@ void ApplyWave(const MembershipConfig& config,
     person.social_status = after;
     if (joined) {
       // "Приняли — значит человек взялся за ум" (society §5).
+      //
+      // THE ONLY WRITER OF EITHER METRIC IN THE CORE, and it only ever lowers
+      // them — see CrimeFree above, which is a STUB for exactly that reason.
+      // A zeroing with nothing to zero is a wiper on a window nobody has
+      // built; it stays because it will be right the day the offences exist,
+      // and it is named here so that it is not mistaken for the missing half.
       person.crime_inclination = 0.0F;
       person.offense_count = 0;
     }
