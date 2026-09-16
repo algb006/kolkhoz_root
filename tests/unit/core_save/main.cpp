@@ -13,6 +13,7 @@
 // from tables/: the remap test needs the SAME keys in a DIFFERENT order,
 // which is exactly what a balance edit between two runs looks like.
 
+#include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -754,19 +755,58 @@ std::uint64_t Fnv1a64(std::span<const std::byte> bytes) {
   return hash;
 }
 
-/// THE FIXTURE'S PAYLOAD, RECORDED on 2026-09-16 at save format 47 — the
-/// world of MakeWorld() encoded against the synthetic table set of this file.
-/// It is a WITNESS, not a second codec: it says "these bytes, this many", and
-/// nothing about what any of them mean.
+/// One section of the payload as it was recorded: its length and its hash.
+struct RecordedSection {
+  const char* name;
+  std::size_t bytes;
+  std::uint64_t hash;
+};
+
+/// THE FIXTURE'S PAYLOAD, SECTION BY SECTION, recorded on 2026-09-16 at save
+/// format 47 — the world of MakeWorld() encoded against the synthetic table
+/// set of this file. It is a WITNESS, not a second codec: it says "this many
+/// bytes, hashing to this", and nothing about what any of them mean.
 ///
-/// WHEN IT GOES RED the question is which of the two happened. A deliberate
-/// change of the format or of the fixture: re-record the two numbers the
-/// failure prints, and the format's own change carries a VERSION_SAVE bump
+/// SECTION BY SECTION AND NOT AS ONE NUMBER, at boss's asking (2026-09-16):
+/// one number says "something changed" and leaves the search everywhere,
+/// while the sections are named in the format itself — one per state table —
+/// so a failure says "in 'fields', which begins at payload byte N". That is
+/// most of the use of a hand-written row layout at none of its cost, and the
+/// cost was the point: a hand-written layout for every row would be a second
+/// home for the contract, which is the disease and not the cure.
+///
+/// WHAT IT CANNOT DO, plainly: a recorded number catches a field that STARTS
+/// being written differently. A field that was wrong from its first day is
+/// wrong in the recording too. For the world block there is a second path
+/// (ExpectedWorldBlock above); for the rows there is not, and boss took that
+/// price knowingly — a row carries names and keys, and a wrong one breaks
+/// loudly, at the first load that cannot find its key.
+///
+/// WHEN IT GOES RED the question is which of two things happened. A
+/// deliberate change of the format or of the fixture: re-record the lines the
+/// failure prints, and a change of the FORMAT carries a VERSION_SAVE bump
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
-/// has begun writing something else, and that is the whole reason this number
-/// is here.
-constexpr std::size_t kFixturePayloadBytes = 3015;
-constexpr std::uint64_t kFixturePayloadHash = 0x973664bda94b27f3ULL;
+/// has begun writing something else, which is the whole reason these numbers
+/// are here. Either way the number moves WITH ITS REASON, in the same commit.
+constexpr std::array<RecordedSection, 17> kRecordedPayload = {{
+    {"dictionaries", 143, 0xe35419cb6704df6aULL},
+    {"world", 283, 0xe157922c3ec2785cULL},
+    {"residents", 354, 0x275232d952b2aa5aULL},
+    {"families", 192, 0x3ecbc6310aefce3aULL},
+    {"fields", 263, 0x224499bb25ff9b5bULL},
+    {"units", 323, 0xcfb11cfce6d72141ULL},
+    {"herds", 66, 0xe3846623b64933cfULL},
+    {"orders", 458, 0xb8800b3d94a381a6ULL},
+    {"stands", 8, 0x89cd31291d2aefa4ULL},
+    {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
+    {"specialist_arrivals", 22, 0x11b22bab116fbc84ULL},
+    {"wedding_waits", 24, 0x3ce63fbbccfcbd4aULL},
+    {"extraction_sites", 63, 0x52bb8a69b99d0d65ULL},
+    {"district_visits", 19, 0x3785c4246ee3283bULL},
+    {"night_outings", 31, 0xa7633d02f71169f5ULL},
+    {"ledger", 578, 0x9d6779492890bea8ULL},
+    {"staged", 8, 0xa8c7f832281a39c5ULL},
+}};
 
 int TestTheWorldBlockIsWhatTheFormatSays(const core::ITableSet& tables) {
   int failures = 0;
@@ -809,20 +849,57 @@ int TestTheWorldBlockIsWhatTheFormatSays(const core::ITableSet& tables) {
 }
 
 int TestTheFixturePayloadIsWhatWasRecorded(std::span<const std::byte> save) {
-  int failures = 0;
   if (save.size() < core::kSaveHeaderSize) {
     return Expect(false, "the fixture's save has a header");
   }
-  const std::span<const std::byte> payload = save.subspan(core::kSaveHeaderSize);
-  const std::uint64_t hash = Fnv1a64(payload);
-  if (payload.size() != kFixturePayloadBytes || hash != kFixturePayloadHash) {
-    std::cout << "  the fixture's payload is now " << payload.size() << " bytes hashing to 0x"
-              << std::hex << hash << std::dec << "; recorded were " << kFixturePayloadBytes
-              << " bytes and 0x" << std::hex << kFixturePayloadHash << std::dec << '\n';
+  // Walked by the length prefixes, in the order the format fixes
+  // (core_save/save.h): the names are the format's own, one per state table,
+  // and the walk reads no field of any of them.
+  std::vector<RecordedSection> found;
+  std::vector<std::size_t> starts;
+  std::size_t offset = core::kSaveHeaderSize;
+  for (const RecordedSection& recorded : kRecordedPayload) {
+    if (save.size() < offset + 8) {
+      std::cout << "  the payload ends before section '" << recorded.name << "'\n";
+      break;
+    }
+    const std::uint64_t length = LittleAt(save, offset);
+    offset += 8;
+    if (save.size() - offset < length) {
+      std::cout << "  section '" << recorded.name << "' runs past the end of the payload\n";
+      break;
+    }
+    const std::span<const std::byte> body = save.subspan(offset, static_cast<std::size_t>(length));
+    starts.push_back(offset - core::kSaveHeaderSize);
+    found.push_back({recorded.name, body.size(), Fnv1a64(body)});
+    offset += static_cast<std::size_t>(length);
   }
-  failures += Expect(payload.size() == kFixturePayloadBytes && hash == kFixturePayloadHash,
-                     "the fixture encodes to the bytes recorded for this save format");
-  return failures;
+  bool same = found.size() == kRecordedPayload.size();
+  for (std::size_t index = 0; same && index < found.size(); ++index) {
+    same = found[index].bytes == kRecordedPayload[index].bytes &&
+           found[index].hash == kRecordedPayload[index].hash;
+  }
+  if (!same) {
+    for (std::size_t index = 0; index < found.size(); ++index) {
+      if (found[index].bytes == kRecordedPayload[index].bytes &&
+          found[index].hash == kRecordedPayload[index].hash) {
+        continue;
+      }
+      std::cout << "  section '" << found[index].name << "' differs: recorded "
+                << kRecordedPayload[index].bytes << " bytes hashing to 0x" << std::hex
+                << kRecordedPayload[index].hash << std::dec << ", now " << found[index].bytes
+                << " bytes hashing to 0x" << std::hex << found[index].hash << std::dec
+                << "; it begins at payload byte " << starts[index] << '\n';
+    }
+    std::cout << "  to re-record, with the reason in the same commit:\n";
+    for (std::size_t index = 0; index < found.size(); ++index) {
+      std::cout << "    {\"" << found[index].name << "\", " << found[index].bytes << ", 0x"
+                << std::hex << found[index].hash << std::dec << "ULL},\n";
+    }
+  }
+  return Expect(same,
+                "the fixture encodes, section by section, to what was recorded for this "
+                "save format");
 }
 
 core::Grams AmountAt(const core::ResourceAmounts& amounts, std::size_t index) {
