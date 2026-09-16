@@ -54,6 +54,71 @@ struct LimitDeliveryRow {
 /// @brief Every cart on its way, in the order the lots were bought.
 using LimitDeliveryTable = StateTable<LimitDeliveryId, LimitDeliveryRow>;
 
+/// @brief What age a head bought on the limit arrives at
+/// (tables/limit_lot_livestock.csv `arrives_stage`; boss, parcel 5 of the
+/// resume thread). The words are the design's, not an agreement of the code:
+/// «Скот приходит взрослым — точнее, в начале взрослого возраста: полный
+/// срок впереди» and «Птица — только цыплятами: взрослую птицу район не
+/// отпускает».
+enum class LivestockArrivalStage : std::uint8_t {
+  /// A grown animal with its whole life ahead: it joins `adult_count`, and
+  /// the herd's age total gains the kind's adult-entry age — NOT nil. A head
+  /// entered at age zero would be a free extra lifetime bought for the same
+  /// seventy points, and the age total is what the death draw reads
+  /// (herd_state.h, adult_age_game_years_total).
+  kAdultStart = 0,
+
+  /// Young stock: it joins `newborn_count` and climbs the cohort ladder like
+  /// anything born in the village. Poultry only, in epoch I.
+  kYoung,
+};
+
+/// @brief One head, or one batch of them, bought from the district and not
+/// yet standing in the village (district design §1, "Скот и птицу поставляют
+/// без обоза"; livestock design, «Скот и птицу можно взять у райкома»).
+///
+/// WHY THIS IS NOT A LimitDeliveryRow, and the reason is the design's own
+/// sentence rather than a convenience: goods ride the district's cart and go
+/// through the store door a little at a time, with what does not fit waiting
+/// at the gate. Stock does not ride anything. «Ни обоза, ни выгрузки: голова
+/// появляется в закрытом помещении через несколько суток после заказа» — so
+/// the row carries no resources at all and lands whole on its day.
+struct LivestockArrivalRow {
+  /// The catalogue row it was bought as (tables/limit_catalog.csv).
+  LimitLotId lot;
+
+  /// Which kind, from tables/limit_lot_livestock.csv `livestock`. FROZEN AT
+  /// THE ORDER, as the cart's goods are: a balance edit while the head is on
+  /// its way does not change what was bought.
+  LivestockKindId kind;
+
+  /// How many head this lot brings (`head_count`). A lot whose count the
+  /// tables leave empty is not ordered at all, so this is never nil in a row
+  /// that exists.
+  std::uint16_t head_count = 0;
+
+  /// The campaign day the head stands in the village: the order's day plus
+  /// limit_delivery_days plus the same 0..limit_delivery_delay_days_max draw
+  /// the carts use. «Через несколько суток после заказа» is that pair, and
+  /// it is deliberately the SAME pair — a second set of knobs for the same
+  /// sentence would be the district's delay with two homes.
+  std::uint32_t arrive_day = 0;
+
+  LivestockArrivalStage stage = LivestockArrivalStage::kAdultStart;
+
+  /// 0/1: whether the head arrives male, and it is THE CHAIRMAN'S CHOICE at
+  /// the order, not a draw (livestock design: «При заказе у райкома пол
+  /// выбирается. Иначе хозяйство могло бы остаться без производителя и без
+  /// всякого способа это исправить — а безвыходных ситуаций мы не делаем»).
+  ///
+  /// Always 0 for a lot whose `sex_choice` is 0 — a batch of chicks or
+  /// piglets arrives mixed, and nobody chooses the sex of ten chicks.
+  std::uint8_t male = 0;
+};
+
+/// @brief Every head on its way, in the order the lots were bought.
+using LivestockArrivalTable = StateTable<LivestockArrivalId, LivestockArrivalRow>;
+
 /// @brief Where the district MTS's column stands (MTS design §1; boss,
 /// parcels 448-449). One column a season, bought as a `service` lot.
 enum class MtsColumnPhase : std::uint8_t {

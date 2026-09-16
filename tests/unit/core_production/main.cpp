@@ -4422,17 +4422,31 @@ int CheckDistrictLimit() {
   core::LimitCatalog& limit = config.limit;
   // Row 0 glass (goods, Epoch I), row 1 a horse (livestock), row 2 a tractor
   // lot of Epoch II, row 3 goods with no price, row 4 goods with no amount.
+  // THE LOTS ARE BUILT FIELD BY FIELD AND NOT BY DESIGNATED INITIALISER since
+  // the livestock window's contract (2026-09-16). LimitLotDef grew four
+  // fields, and a designated initialiser must name EVERY field or refuse to
+  // compile — which is a good tripwire on a struct that decides what the
+  // district sells, and a bad one to answer with eight lines of `{}` padding.
+  const auto lot = [](std::int32_t points,
+                      std::uint8_t era,
+                      core::LimitLotKind kind,
+                      core::ResourceAmounts goods) {
+    core::LimitLotDef def;
+    def.points = points;
+    def.era = era;
+    def.kind = kind;
+    def.goods = goods;
+    return def;
+  };
   limit.lots.resize(5);
-  limit.lots[0] = {
-      .points = 25, .era = 1, .kind = core::LimitLotKind::kGoods, .goods = {24 * kPane}};
+  limit.lots[0] = lot(25, 1, core::LimitLotKind::kGoods, {24 * kPane});
   // THE HORSE CARRIES AN AMOUNT on purpose: with none, the "nothing written"
   // rule refused it too and the kind rule went untested — damage run D10
   // removed the kind check and nothing reddened (2026-09-13).
-  limit.lots[1] = {
-      .points = 70, .era = 1, .kind = core::LimitLotKind::kLivestock, .goods = {kPane}};
-  limit.lots[2] = {.points = 45, .era = 2, .kind = core::LimitLotKind::kGoods, .goods = {kPane}};
-  limit.lots[3] = {.points = -1, .era = 1, .kind = core::LimitLotKind::kGoods, .goods = {kPane}};
-  limit.lots[4] = {.points = 20, .era = 1, .kind = core::LimitLotKind::kGoods, .goods = {0}};
+  limit.lots[1] = lot(70, 1, core::LimitLotKind::kLivestock, {kPane});
+  limit.lots[2] = lot(45, 2, core::LimitLotKind::kGoods, {kPane});
+  limit.lots[3] = lot(-1, 1, core::LimitLotKind::kGoods, {kPane});
+  limit.lots[4] = lot(20, 1, core::LimitLotKind::kGoods, {0});
   const auto orderable = [&limit](std::uint16_t lot) {
     return core::LotOrderable(limit, core::LimitLotId{lot}, core::Epoch::kOne);
   };
@@ -4543,9 +4557,15 @@ core::ProductionConfig MakeColumnConfig() {
   config.crops[0].resource = core::ResourceId{0};
   config.crops[0].yield_kg_per_ha = 1000.0F;
   config.crops[0].harvest_days_per_ha = 2.0F;
-  config.limit.lots = {{.points = 120, .era = 1, .kind = core::LimitLotKind::kService, .goods = {}},
-                       {.points = 150, .era = 1, .kind = core::LimitLotKind::kService, .goods = {}},
-                       {.points = 10, .era = 1, .kind = core::LimitLotKind::kService, .goods = {}}};
+  // Field by field, for the reason given at the other lot table above.
+  const auto service_lot = [](std::int32_t points) {
+    core::LimitLotDef def;
+    def.points = points;
+    def.era = 1;
+    def.kind = core::LimitLotKind::kService;
+    return def;
+  };
+  config.limit.lots = {service_lot(120), service_lot(150), service_lot(10)};
   config.limit.mts_spring_lot = core::LimitLotId{0};
   config.limit.mts_autumn_lot = core::LimitLotId{1};
   config.limit.mts_column_ha_limit = 30.0F;

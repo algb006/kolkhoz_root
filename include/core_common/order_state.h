@@ -293,11 +293,27 @@ enum class OrderKind : std::uint8_t {
   /// limit_delivery_days plus a seeded delay of 0..limit_delivery_delay_days_max
   /// later (limit_state.h). Refused with kNoSuchSubject for a lot the catalogue
   /// does not carry; kGateClosed for a lot of a later epoch; kRuleForbids for
-  /// a lot that is not goods (livestock, machines, people and "choice" have
-  /// their own windows — STUB), for a lot with no price, and for one none of
+  /// a lot that is not goods (machines, people and "choice" have their own
+  /// windows — STUB), for a lot with no price, and for one none of
   /// whose resources has an amount yet; kLimitShort when the points left this
   /// year are fewer than the price. Settled in the step it is read.
   /// Consumer: core_production.
+  ///
+  /// STOCK IS BOUGHT HERE TOO, and by this same kind rather than one of its
+  /// own — boss's word of 2026-09-16: «Пол — поле существующего приказа, а
+  /// не новый род приказа». A livestock lot spends its points the same way
+  /// and then travels differently: no cart, no unloading, the head simply
+  /// stands under a roof on its day (limit_state.h, LivestockArrivalRow).
+  /// It refuses with kRuleForbids while the tables carry no head count for
+  /// it — the piglet and chick batches, whose size nobody has written.
+  ///
+  /// THE SEX IS THE CHAIRMAN'S AND TRAVELS ON THE ROW, in a field this
+  /// contract names and the implementation adds: `male`, 0/1, read only when
+  /// the lot's `sex_choice` says the order names it, and ignored to 0
+  /// otherwise. It is not added in this contract because OrderRow is a WIRE
+  /// SHAPE — the save codec asserts both its size and its arity — so the
+  /// field, its codec and VERSION_SAVE move together or the tripwires fire,
+  /// which is exactly what they are for.
   kOrderLimitLot,
 
   /// TAKE `field` OFF THE MAP (construction design §12, "Поле, сад — ничем:

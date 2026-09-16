@@ -42,6 +42,12 @@ constexpr std::size_t kPointKnobCount = 9;
 /// dearest lot of the catalogue: past it the cell is a typo.
 constexpr float kMostPoints = 100000.0F;
 
+/// Largest head count a lot may name. The district sells a head at a time and
+/// batches of chicks by the crate; a cell past this is a typo, and the ceiling
+/// is here rather than in the balance because it is not a knob — nothing tunes
+/// it, it only refuses nonsense.
+constexpr std::int64_t kMostHeadInALot = 1000;
+
 bool ParseKind(std::string_view text, LimitLotKind& kind) {
   // Index order is the enum's (limit_catalog.h, LimitLotKind).
   static constexpr std::array<std::string_view, 6> kKinds = {
@@ -89,6 +95,78 @@ bool ReadLots(const ITable& table, LimitCatalog& catalog, std::string& error) {
       return false;
     }
     lot.era = static_cast<std::uint8_t>(*era);
+  }
+  return true;
+}
+
+/// What a livestock lot brings (tables/limit_lot_livestock.csv).
+///
+/// THE EMPTY `head_count` IS THE GOODS RULE AGAIN, and it is written out
+/// rather than borrowed silently: a cell left blank is "not written yet", the
+/// lot simply cannot be ordered, and the parse does NOT refuse — a catalogue
+/// that failed to load over one unpriced batch of piglets would take the
+/// whole district down with it. Only a cell that is there and is not a
+/// positive whole number refuses.
+bool ReadLivestockLots(const ITableSet& tables,
+                       const ITable& stock,
+                       const ITable& lots,
+                       LimitCatalog& catalog,
+                       std::string& error) {
+  const ITable* const kinds = tables.FindTable("livestock");
+  const std::uint32_t lot_column = stock.FindColumn("lot");
+  const std::uint32_t kind_column = stock.FindColumn("livestock");
+  const std::uint32_t head_column = stock.FindColumn("head_count");
+  const std::uint32_t stage_column = stock.FindColumn("arrives_stage");
+  const std::uint32_t sex_column = stock.FindColumn("sex_choice");
+  if (kinds == nullptr || lot_column == kNoTableColumn || kind_column == kNoTableColumn ||
+      head_column == kNoTableColumn || stage_column == kNoTableColumn ||
+      sex_column == kNoTableColumn) {
+    error =
+        "limit_lot_livestock: needs livestock.csv and the columns lot, livestock, head_count, "
+        "arrives_stage, sex_choice";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < stock.RowCount(); ++row) {
+    const std::string prefix = "limit_lot_livestock: row " + std::to_string(row) + ": ";
+    const std::uint32_t lot_row = lots.FindRowByKey(stock.CellText(row, lot_column));
+    if (lot_row == kNoTableRow) {
+      error = prefix + "lot '" + std::string(stock.CellText(row, lot_column)) +
+              "' is not in limit_catalog";
+      return false;
+    }
+    const std::uint32_t kind_row = kinds->FindRowByKey(stock.CellText(row, kind_column));
+    if (kind_row == kNoTableRow) {
+      error = prefix + "livestock '" + std::string(stock.CellText(row, kind_column)) +
+              "' is not in livestock";
+      return false;
+    }
+    LimitLotDef& lot = catalog.lots[lot_row];
+    lot.livestock = DefIdFromRow<LivestockKindIdTag>(kind_row);
+    const std::string_view stage = stock.CellText(row, stage_column);
+    if (stage == "adult_start") {
+      lot.arrives_stage = LivestockArrivalStage::kAdultStart;
+    } else if (stage == "young") {
+      lot.arrives_stage = LivestockArrivalStage::kYoung;
+    } else {
+      error = prefix + "arrives_stage '" + std::string(stage) +
+              "' is neither 'adult_start' nor 'young'";
+      return false;
+    }
+    const std::optional<std::int64_t> sex = stock.CellInteger(row, sex_column);
+    if (!sex.has_value() || *sex < 0 || *sex > 1) {
+      error = prefix + "sex_choice is not 0 or 1";
+      return false;
+    }
+    lot.sex_choice = *sex == 1;
+    if (stock.CellText(row, head_column).empty()) {
+      continue;  // not written yet: the lot cannot be ordered, and that is all
+    }
+    const std::optional<std::int64_t> head = stock.CellInteger(row, head_column);
+    if (!head.has_value() || *head < 1 || *head > kMostHeadInALot) {
+      error = prefix + "head_count is not a whole number of head";
+      return false;
+    }
+    lot.head_count = static_cast<std::uint16_t>(*head);
   }
   return true;
 }
@@ -297,6 +375,14 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
       return false;
     }
     *id = DefIdFromRow<LimitLotIdTag>(row);
+  }
+  // THE STOCK BEFORE THE GOODS, so that a lot which is both — none is today,
+  // and none should be — would end up refused by the goods rule rather than
+  // silently half-read.
+  if (const ITable* const stock = tables.FindTable("limit_lot_livestock")) {
+    if (!ReadLivestockLots(tables, *stock, *lots, catalog, error)) {
+      return false;
+    }
   }
   if (const ITable* const goods = tables.FindTable("limit_lot_goods")) {
     return ReadGoods(tables, *goods, *lots, catalog, error);

@@ -109,6 +109,15 @@ struct SpecialistArrivalIdTag {};
 /// (core_common/specialist_state.h).
 using SpecialistArrivalId = EntityId<SpecialistArrivalIdTag>;
 
+struct LivestockArrivalIdTag {};
+
+/// @brief One head of stock bought on the district's limit and not yet
+/// standing in the village (core_common/limit_state.h). It is its OWN id and
+/// not a LimitDeliveryId because the two travel differently: goods ride a
+/// cart that unloads through the store door over several days, and stock
+/// "поставляют без обоза" — it appears under a roof on its day, whole.
+using LivestockArrivalId = EntityId<LivestockArrivalIdTag>;
+
 struct NightOutingIdTag {};
 
 /// @brief One resident's outing on his night trade

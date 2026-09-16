@@ -1,0 +1,11 @@
+# generated from db/design.db — do not edit by hand
+# what one livestock lot brings (district.md §1, livestock.md)
+# an empty head_count is not one: it is a lot whose contents are not written yet. It does NOT refuse the parse — the lot simply cannot be ordered, because a catalogue that fails to load over one unpriced lot takes the whole district down with it
+# arrives_stage is adult_start for cattle and young for poultry — the district delivers a head, not a convoy
+# sex_choice=1 means the order asks which sex; a batch comes mixed
+lot,livestock,head_count,arrives_stage,sex_choice
+horse_head,horse,1,adult_start,1
+cow_head,cow,1,adult_start,1
+sheep_head,sheep,1,adult_start,1
+piglet_lot,pig,,young,0
+chick_lot,chicken,,young,0

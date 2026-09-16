@@ -498,6 +498,74 @@ int TestTheMtsColumnKnobs() {
   return failures;
 }
 
+/// THE LIVESTOCK WINDOW'S DATA (boss, parcel 5 of the resume thread): what a
+/// livestock lot brings, and the one asymmetry in how the cells refuse.
+///
+/// AN EMPTY head_count MUST NOT REFUSE THE PARSE, and that is the check worth
+/// having twice over. The tables ship with two such lots today — the piglet
+/// and chick batches, whose size is balance work nobody has done — so a rule
+/// that refused them would take the WHOLE district catalogue down at every
+/// load: no limit points, no glass, no timber, no MTS column, over an unwritten
+/// crate of chicks. Everything else about the row refuses, because everything
+/// else that is wrong there is a typo and not an absence.
+int TestLivestockLots() {
+  int failures = 0;
+  const test::FakeTable resources({"key", "kg_per_unit"}, {{"glass", "1"}});
+  const test::FakeTable goods({"lot", "resource", "amount"}, {});
+  const test::FakeTable kinds({"key"}, {{"cow"}, {"horse"}, {"chicken"}});
+  const test::FakeTable lots(
+      {"key", "points", "era", "kind"},
+      {{"horse_head", "70", "1", "livestock"}, {"chick_lot", "10", "1", "livestock"}});
+  const auto parse = [&](const char* lot,
+                         const char* kind,
+                         const char* head,
+                         const char* stage,
+                         const char* sex,
+                         core::LimitCatalog& catalog) {
+    const test::FakeTable stock(
+        {"lot", "livestock", "head_count", "arrives_stage", "sex_choice"},
+        {{"horse_head", "horse", "1", "adult_start", "1"}, {lot, kind, head, stage, sex}});
+    const test::FakeTableSet set({{"resources", &resources},
+                                  {"limit_catalog", &lots},
+                                  {"limit_lot_goods", &goods},
+                                  {"livestock", &kinds},
+                                  {"limit_lot_livestock", &stock}});
+    std::string error;
+    return core::ParseLimitCatalog(set, catalog, error);
+  };
+  core::LimitCatalog read;
+  failures += Expect(parse("chick_lot", "chicken", "", "young", "0", read) &&
+                         read.lots[0].livestock.value == 1 && read.lots[0].head_count == 1 &&
+                         read.lots[0].arrives_stage == core::LivestockArrivalStage::kAdultStart &&
+                         read.lots[0].sex_choice,
+                     "a horse lot brings one grown head and the order names its sex");
+  failures += Expect(read.lots[1].livestock.value == 2 &&
+                         read.lots[1].arrives_stage == core::LivestockArrivalStage::kYoung &&
+                         !read.lots[1].sex_choice,
+                     "poultry comes young and mixed");
+  // THE POINT OF THE WHOLE CHECK: the empty cell is read as "not written yet",
+  // the rest of the row IS read, and the count stays nil — which is what makes
+  // the lot unorderable later without taking anything else down with it.
+  failures += Expect(read.lots[1].head_count == 0,
+                     "and an empty head_count leaves the count nil instead of refusing the load");
+  core::LimitCatalog no_lot;
+  failures += Expect(!parse("chick_bundle", "chicken", "6", "young", "0", no_lot),
+                     "a row naming a lot the catalogue has not got refuses");
+  core::LimitCatalog no_kind;
+  failures += Expect(!parse("chick_lot", "duck", "6", "young", "0", no_kind),
+                     "a row naming a livestock kind the tables have not got refuses");
+  core::LimitCatalog bad_stage;
+  failures += Expect(!parse("chick_lot", "chicken", "6", "adult", "0", bad_stage),
+                     "arrives_stage is 'adult_start' or 'young' and nothing else");
+  core::LimitCatalog bad_sex;
+  failures +=
+      Expect(!parse("chick_lot", "chicken", "6", "young", "2", bad_sex), "sex_choice is 0 or 1");
+  core::LimitCatalog bad_head;
+  failures += Expect(!parse("chick_lot", "chicken", "0", "young", "0", bad_head),
+                     "a head_count that is there and is not a head refuses");
+  return failures;
+}
+
 /// The district's regular visits (boss, parcel 324): the three knobs read, and
 /// a month outside the year, a half month and a notice longer than a month
 /// refuse the catalogue.
@@ -534,6 +602,7 @@ int main() {
   failures += TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
   failures += TestTheMtsColumnKnobs();
+  failures += TestLivestockLots();
   failures += TestThreeAnswers();
   failures += TestRequiredCell();
   failures += TestNotANumber();

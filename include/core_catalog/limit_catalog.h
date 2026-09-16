@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "core_common/ids.h"
+#include "core_common/limit_state.h"
 #include "core_common/quantities.h"
 #include "core_tables/tables.h"
 
@@ -53,7 +54,8 @@ enum class FarmStatusTier : std::uint8_t {
   kLeading,
 };
 
-/// @brief One row of limit_catalog.csv with its goods.
+/// @brief One row of limit_catalog.csv with its goods, and — for a livestock
+/// lot — what head it brings (tables/limit_lot_livestock.csv).
 struct LimitLotDef {
   /// Price in points; negative when the row names none (the lot is not
   /// ordered until it has one).
@@ -68,6 +70,32 @@ struct LimitLotDef {
   /// amount the table leaves empty brings nothing yet (boss, parcel 211);
   /// a lot all of whose amounts are empty is not ordered.
   ResourceAmounts goods;
+
+  // -- a livestock lot (tables/limit_lot_livestock.csv) ----------------------
+  // THE DISTRICT SELLS STOCK, AND IT ALWAYS DID. Until 2026-09-16 the core
+  // refused every kLivestock lot with a comment that called it a STUB, I
+  // reported that refusal as a rule of the world, and the design grew a
+  // rejection around it. It was never a rule: `horse_head` is priced at 70
+  // points from epoch I, the base grant is 250-350 a year and LARGEST for
+  // the farm doing worst, and livestock design calls that pair «страховка от
+  // тупика» in so many words — the way out of losing the last draught horse.
+
+  /// Which kind of stock, from the lot's row of limit_lot_livestock.csv.
+  /// Invalid for a lot that is not livestock.
+  LivestockKindId livestock;
+
+  /// How many head one lot brings. ZERO IS "NOT WRITTEN YET", not "none":
+  /// the batches — piglets, chicks — carry an empty cell because their size
+  /// is balance work nobody has done, and a livestock lot with no count is
+  /// refused exactly as a goods lot with no amount is.
+  std::uint16_t head_count = 0;
+
+  /// What age they arrive at: stock grown, poultry young.
+  LivestockArrivalStage arrives_stage = LivestockArrivalStage::kAdultStart;
+
+  /// Whether the order names the sex. True for a single head of a kind that
+  /// has one; false for a batch, which comes mixed.
+  bool sex_choice = false;
 };
 
 /// @brief The whole catalogue and the year's points knobs. Defaults are the
@@ -120,6 +148,13 @@ std::span<const std::string_view> LimitWorldParamKeys();
 /// lot list; a present one that cannot be understood refuses — an unknown
 /// kind, a lot of goods naming a resource or lot the tables do not carry, a
 /// non-numeric or non-positive amount.
+///
+/// AND limit_lot_livestock.csv the same way: a row naming a lot or a
+/// livestock kind the tables do not carry refuses, as does an unreadable
+/// `arrives_stage` — the words are `adult_start` and `young` and nothing
+/// else. An EMPTY `head_count` does not refuse; it is the "not written yet"
+/// of the goods amounts, and the lot simply cannot be ordered. A livestock
+/// lot with no row here at all is in the same case.
 /// @return false with `error` naming the table, row and column.
 bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::string& error);
 

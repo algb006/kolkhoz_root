@@ -24,8 +24,22 @@ namespace core {
 
 /// @brief Whether `lot` may be ordered at all in `epoch`, and if not, why, in
 /// the order book's words (order_state.h, kOrderLimitLot).
+///
+/// GOODS, THE TWO MTS COLUMNS, AND — SINCE THE LIVESTOCK WINDOW — STOCK.
+/// A vehicle, a person and a `choice` lot still refuse with kRuleForbids and
+/// still say STUB, because they have windows of their own that nobody has
+/// built. Stock no longer does, and the difference is worth naming in the
+/// contract rather than in a commit message: the livestock refusal was read
+/// as the district's ROLE for a day and a half («живое у него не покупают»),
+/// on the strength of a report of mine that described this very `if` as a
+/// rule of the world. The catalogue had priced a horse at 70 points from
+/// epoch I the whole time.
+///
 /// @return kNone, kNoSuchSubject, kGateClosed or kRuleForbids; never
 ///         kLimitShort, which is the balance's question and not the lot's.
+///         A livestock lot refuses with kRuleForbids while its head count is
+///         nil — the batches, whose size is unwritten — exactly as a goods
+///         lot with no amount does.
 OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epoch);
 
 /// @brief The raikom reputation's multiplier on the year's grant (district
@@ -61,6 +75,36 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
 ///        puts what it still carries through the store door; an empty cart
 ///        leaves the table.
 void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current);
+
+/// @brief The bought stock at the day's last tick: every arrival whose day
+///        has come stands in the village, and its row leaves the table.
+///
+/// WHERE THE HEAD GOES. It joins the kolkhoz herd of its kind — the herd row
+/// under a roof with room first, then any kolkhoz herd of that kind, and if
+/// the village has none, a new herd row is made. A head with no roof is
+/// BILLETED at the private yards like any other, which is not a failure
+/// state: it is what the start canon does with all sixteen horses from the
+/// first morning (herd_system.cpp, RunBilleting), and it costs yield rather
+/// than the animal.
+///
+/// WHAT IT ADDS TO. kAdultStart goes to `adult_count`, to
+/// `adult_male_count` when `male`, and adds the kind's adult-entry age to
+/// `adult_age_game_years_total`. kYoung goes to `newborn_count` and climbs
+/// the cohort ladder from there.
+///
+/// @pre Runs in the production sub-step of the sequential decisions slot,
+///      after ArriveLimitDeliveries and before the herd day, so a head that
+///      arrives this morning eats tonight.
+/// @note THE ORDER'S REFUSAL FOR "NOWHERE TO PUT IT" IS NOT HERE AND IS NOT
+///       ANYWHERE YET — STUB, and the gap is named rather than filled.
+///       Both design documents say «некуда поставить — нельзя заказать», and
+///       in this core that sentence has no subject: kolkhoz stock has no
+///       ceiling at all, because a head without a roof billets instead of
+///       being refused. A refusal written against an unlimited yard would
+///       never fire once, and an unfireable rule is the next thing somebody
+///       reports as a rule of the world. Waiting on boss (resume thread,
+///       parcel 4).
+void ArriveLivestock(const ProductionConfig& config, WorldState& current);
 
 /// @brief The year's turn, right after the district's verdict: this year's
 ///        unspent points burn into the closing year's ledger, and the new
