@@ -1530,6 +1530,37 @@ int main() {
     }
   }
 
+  // A WHOLE SECTION GONE, which is a bigger question than any field and is
+  // asked here because the answer was not obvious: THE SECTIONS OF THIS
+  // FORMAT ARE POSITIONAL. The file carries a length before each one and no
+  // name at all — the names in the codec are the words of its error messages,
+  // nothing the reader matches against. So a section removed does not leave a
+  // hole the reader trips over; it leaves every later section shifted one
+  // place up, being read as its neighbour.
+  //
+  // The refusal that catches it is therefore not a name but a shape: the next
+  // section's bytes do not decode as this one's rows. That is a real guard and
+  // a weaker one than a name would be, and it is measured rather than assumed
+  // (boss, parcel 28 — «что скажет круговой прогон, если из записи пропадёт
+  // ЦЕЛАЯ СЕКЦИЯ?»).
+  {
+    std::uint64_t cut_length = 0;
+    const std::size_t at = SectionAt(bytes, 9, cut_length);  // the limit's carts
+    if (at != 0) {
+      const auto head = static_cast<std::ptrdiff_t>(at - 8);
+      const auto tail = static_cast<std::ptrdiff_t>(at + static_cast<std::size_t>(cut_length));
+      std::vector<std::byte> cut_save(bytes.begin(), bytes.begin() + head);
+      cut_save.insert(cut_save.end(), bytes.begin() + tail, bytes.end());
+      rehash(cut_save);
+      const std::string cut_reason = refusal_of(cut_save);
+      failures += Expect(!cut_reason.empty(),
+                         "a save with a whole section cut out of it is refused: the sections are "
+                         "positional, so losing one is read as every later one moving up");
+    } else {
+      failures += Expect(false, "the limit deliveries section is where the format says it is");
+    }
+  }
+
   // -- the file wrappers ---------------------------------------------------
   const std::filesystem::path file = root / "campaign.kls";
   failures += Expect(core::SaveWorldToFile(world, *tables, file.string(), &error),
