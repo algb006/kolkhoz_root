@@ -578,6 +578,9 @@ int main(int argc, char** argv) {
   // the queue and not the years.
   std::array<std::uint64_t, 5> idle_by_fifth{};
   std::array<std::uint64_t, 5> day_by_fifth{};
+  /// Years in which work stood and nobody worked at all. A fault where a
+  /// chairman plays, the expected end where nobody does (below).
+  std::uint32_t stalled_years = 0;
   for (std::uint32_t year = 0; year < kYears; ++year) {
     std::uint64_t worked = 0;
     std::uint64_t idled = 0;
@@ -666,10 +669,27 @@ int main(int argc, char** argv) {
     // stalls every arable field in kPlowing for ever — no ploughing, no
     // sowing, no harvest, no oats, no horses. Nothing in the model breaks
     // that circle, and "no way out" is a red line of the design.
+    //
+    // AND WHOSE RED LINE IT IS. "Никаких безвыходных ситуаций" promises the
+    // PLAYER a move; it does not promise that doing nothing is survivable
+    // (boss, standstill parcel 16). The arms that take the chairman away —
+    // --no-chairman, and --yard-only, which leaves only the yard — are not a
+    // village without a way out: they are a village nobody plays, and the
+    // canon has an end for exactly that, «Село кончилось». The core does not
+    // express that end — it is the host's, off world_params.csv
+    // `village_end_population` — so what is asserted here is the state it is
+    // declared from: the village does come to a stop, and that is expected.
+    //
+    // Both arms failed this check three times each until 2026-09-16, and the
+    // suite never saw it because it ran the app with no arguments at all.
+    const bool steered = !no_chairman && !yard_only;
     if (worked == 0 && seam_sum / (samples == 0 ? 1 : samples) > 1.0) {
-      failures += run::Expect(false,
-                              "a year with work standing and nobody working at all: the village "
-                              "has no way out of this, and that is a red line");
+      ++stalled_years;
+      if (steered) {
+        failures += run::Expect(false,
+                                "a year with work standing and nobody working at all: the village "
+                                "has no way out of this, and that is a red line");
+      }
     }
     std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
               << of_age << " | " << worked << " | " << idled << " | "
@@ -920,6 +940,19 @@ int main(int argc, char** argv) {
   // the damage run said so by staying green.
   failures += run::Expect(last.calendar.day > 0 && last.calendar.tick > 0,
                           "idle_curve: the days the curve is drawn from were lived");
+  // THE UNSTEERED ARMS ASSERT THE STOP, not the recovery. A village nobody
+  // steers must come to one — the canon's «Село кончилось» — and a test that
+  // demanded it survive would demand the design be broken (boss, standstill
+  // parcel 16). Named here rather than left as a silent pass, because "the
+  // arm printed numbers and nobody looked" is how these two came to fail for
+  // months without the suite noticing.
+  if (no_chairman || yard_only) {
+    std::cout << "idle_curve: без председателя село встало в " << stalled_years << " годах из "
+              << kYears << '\n';
+    failures += run::Expect(stalled_years > 0,
+                            "a village nobody steers comes to a stop: the state the host declares "
+                            "«Село кончилось» from (world_params.csv village_end_population)");
+  }
   std::cout << (failures == 0 ? "idle_curve: all checks passed\n" : "idle_curve: FAILED\n");
   return failures;
 }

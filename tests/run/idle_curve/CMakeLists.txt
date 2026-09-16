@@ -9,13 +9,13 @@ set_tests_properties(idle_curve PROPERTIES
 # kSiteWithoutMaterials came out as code no test reaches, while the checks for
 # them sat right here, written and unrun (boss, standstill parcels 11, 14).
 #
-# TWO ARMS ARE NOT REGISTERED, and their absence is a finding rather than an
-# oversight: `--no-chairman` and `--yard-only` both fail today on the design's
-# own red line — "a year with work standing and nobody working at all" — three
-# times each. That is a question about the model (a village that loses its last
-# draught horse stalls for ever), and it is boss's to answer; registering them
-# red would only make the suite red without adding a single new fact.
-foreach(arm far gap herd-alarm watch-build sow-idle-land)
+# THE TWO UNSTEERED ARMS WERE AIMED AT THE WRONG ANSWER, and that is why they
+# were red: `--no-chairman` and `--yard-only` demanded that a village nobody
+# steers survive, while the canon says it must end («Село кончилось»). They
+# assert the stop now, and boss's words are in the test beside it (standstill
+# parcel 16): the design promises the PLAYER a move, not that doing nothing is
+# survivable.
+foreach(arm far gap herd-alarm watch-build sow-idle-land no-chairman yard-only)
   add_test(NAME idle_curve_${arm} COMMAND idle_curve --${arm})
   set_tests_properties(idle_curve_${arm} PROPERTIES
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS run)
