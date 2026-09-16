@@ -136,3 +136,5 @@ mts_column_spring_to_month,5,core
 mts_column_autumn_from_month,8,core
 mts_column_autumn_to_month,10,core
 field_camp_field_reach_m,1000,core
+billet_heads_per_yard,2,core
+billet_yield_factor,0.6,core

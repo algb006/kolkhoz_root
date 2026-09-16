@@ -71,6 +71,12 @@ enum class LivestockArrivalStage : std::uint8_t {
   /// Young stock: it joins `newborn_count` and climbs the cohort ladder like
   /// anything born in the village. Poultry only, in epoch I.
   kYoung,
+
+  /// NOT A VALUE, and never written to a save or read from one: the codec
+  /// range-checks 0..kLivestockArrivalStageCount-1 against this. Values are
+  /// appended BEFORE it — a length written out by hand beside an enum drifts,
+  /// and four of them already had (journal_codec.cpp).
+  kLivestockArrivalStageCount,
 };
 
 /// @brief One head, or one batch of them, bought from the district and not

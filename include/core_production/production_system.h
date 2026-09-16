@@ -52,6 +52,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
+#include <string_view>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -160,6 +162,17 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U);
+
+/// @brief The world_params.csv keys this module reads, for the assembly's
+/// declared-readers check (core_world/world.cpp).
+///
+/// THE FIRST ONES IT HAS EVER READ. Until 2026-09-16 production took every
+/// number off its own hand-written tables, and the two halves of billeting
+/// are what brought it here: the yard's places were a MEASURED decision and
+/// belong in the design db, and the yield factor followed them up rather than
+/// pulling them down into farming.csv, which the base does not write and
+/// cannot check.
+std::span<const std::string_view> ProductionWorldParamKeys();
 
 }  // namespace core
 

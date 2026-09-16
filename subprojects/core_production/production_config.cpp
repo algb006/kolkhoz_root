@@ -404,7 +404,14 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
       {"juvenile_feed_factor", &farming.juvenile_feed_factor, 0.0F, 1.0F},
       {"reserve_feed_factor", &farming.reserve_feed_factor, 0.0F, 1.0F},
-      {"billet_yield_factor", &farming.billet_yield_factor, 0.0F, 1.0F},
+      // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
+      // are read by ParseProductionWorldParams below. They used to be split:
+      // the yield factor here, the yard's places there — and the reason the
+      // split was mended THIS way round is that the design db is the source
+      // (root rules §6а), while farming.csv is a hand-written table of this
+      // tree that `tools/db.py csv` never writes. A measured decision cannot
+      // live where the base cannot see it, so the half that had a home in the
+      // base pulled the other half up rather than being pushed down to it.
       {"pasture_from_month", &pasture_from, 1.0F, 12.0F},
       {"pasture_to_month", &pasture_to, 1.0F, 12.0F},
       {"pig_slaughter_month", &pig_month, 1.0F, 12.0F},
@@ -895,7 +902,33 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
   return true;
 }
 
+/// The world_params.csv keys core_production reads. THE FIRST ONES IT READS
+/// AT ALL: until 2026-09-16 this module took every number off its own
+/// hand-written tables, and the two halves of billeting are what brought it
+/// here. The next world constant lands in the same place.
+constexpr std::array<std::string_view, 2> kProductionWorldParamKeys = {"billet_heads_per_yard",
+                                                                       "billet_yield_factor"};
+
+bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std::string& error) {
+  const std::array<ScalarKnob, 2> knobs = {ScalarKnob{.key = kProductionWorldParamKeys[0],
+                                                      .value = &farming.billet_heads_per_yard,
+                                                      .range = Range{.low = 1.0F, .high = 10.0F}},
+                                           ScalarKnob{.key = kProductionWorldParamKeys[1],
+                                                      .value = &farming.billet_yield_factor,
+                                                      .range = Range{.low = 0.0F, .high = 1.0F}}};
+  return ReadKnobs(world, "world_params", knobs, error);
+}
+
+std::span<const std::string_view> ProductionWorldParamKeys() {
+  return kProductionWorldParamKeys;
+}
+
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    if (!ParseProductionWorldParams(*world, config.farming, error)) {
+      return false;
+    }
+  }
   const ITable* resources = tables.FindTable("resources");
   const ITable* livestock = tables.FindTable("livestock");
   const ITable* unit_types = tables.FindTable("unit_types");

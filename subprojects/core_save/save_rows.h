@@ -58,6 +58,9 @@ TimberStandRow ReadTimberStandRow(LoadSource& source);
 void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row);
 LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source);
 
+void WriteLivestockArrivalRow(SaveSink& sink, const LivestockArrivalRow& row);
+LivestockArrivalRow ReadLivestockArrivalRow(LoadSource& source);
+
 void WriteSpecialistArrivalRow(SaveSink& sink, const SpecialistArrivalRow& row);
 SpecialistArrivalRow ReadSpecialistArrivalRow(LoadSource& source);
 

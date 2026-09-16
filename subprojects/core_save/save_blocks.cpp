@@ -122,7 +122,7 @@ static_assert(sizeof(MtsColumnState) == 24,
               "MtsColumnState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<MtsColumnState>() == 7,
               "MtsColumnState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 28,
+static_assert(AggregateArity<WorldState>() == 29,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

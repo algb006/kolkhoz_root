@@ -139,7 +139,10 @@ static_assert(AggregateArity<HerdRow>() == 18,
 // still, 22 fields, which is exactly the case the arity check is for — and
 // took the assignment from 28 to 32.
 static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<OrderRow>() == 22,
+// 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
+// 23 fields. Two padding fields in a row now, which is the answer to whether
+// the arity check was worth its line.
+static_assert(AggregateArity<OrderRow>() == 23,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 32,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
@@ -147,6 +150,15 @@ static_assert(AggregateArity<WorkAssignment>() == 8,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(LivestockArrivalRow) == 16,
+              "LivestockArrivalRow changed — update the codec and VERSION_SAVE");
+// THE ARITY BESIDE THE SIZE, and on this row it is not a formality: the stage
+// and the sex are two bytes in a struct that already has padding to spare, so
+// a third such field would change the wire and leave sizeof exactly where it
+// is. That is the case the size alone cannot see, and the order row proved it
+// twice over on the very day this row was written.
+static_assert(AggregateArity<LivestockArrivalRow>() == 6,
+              "LivestockArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<LimitDeliveryRow>() == 3,
               "LimitDeliveryRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(SpecialistArrivalRow) == 12,
@@ -224,6 +236,9 @@ constexpr std::uint8_t kMaxFieldWeatherState =
 constexpr std::uint8_t kMaxOrderKind = static_cast<std::uint8_t>(OrderKind::kOrderKindCount) - 1;
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
+
+constexpr std::uint8_t kMaxLivestockArrivalStage =
+    static_cast<std::uint8_t>(LivestockArrivalStage::kLivestockArrivalStageCount) - 1;
 // AND THIS ONE HAD NO SELF-CHECK while the block below said every bound has
 // one. Found on 2026-09-12 by an analysis walking the enum bounds after a
 // value was removed from a different enum; the assertion is one line and the
@@ -818,6 +833,11 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
 
   // The extraction mark (kMarkExtraction, 2026-09-14); its mass is `amount`.
   WriteEntityId(out, row.extraction_site);
+
+  // The sex of a head bought on the limit (2026-09-16). A raw byte and not a
+  // dictionary id: it is a fact about the order, not a name of anything in
+  // the tables.
+  out.WriteU8(row.male);
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -850,6 +870,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.volume_m3 = in.ReadFloat();
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
+  row.male = in.ReadU8();
   return row;
 }
 
@@ -954,6 +975,36 @@ LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source) {
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.arrive_day = in.ReadU32();
   row.goods = source.ReadAmounts(DefKind::kResource);
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// LivestockArrivalRow — limit_state.h (2026-09-16)
+// ---------------------------------------------------------------------------
+// The lot AND the kind both go through the dictionary: a reordered catalogue
+// or a reordered livestock.csv must not turn a bought horse into somebody
+// else's cow while it is on its way.
+
+void WriteLivestockArrivalRow(SaveSink& sink, const LivestockArrivalRow& row) {
+  ByteWriter& out = sink.Out();
+  sink.WriteDefId(DefKind::kLimitLot, row.lot.value);
+  sink.WriteDefId(DefKind::kLivestock, row.kind.value);
+  out.WriteU16(row.head_count);
+  out.WriteU32(row.arrive_day);
+  out.WriteU8(static_cast<std::uint8_t>(row.stage));
+  out.WriteU8(row.male);
+}
+
+LivestockArrivalRow ReadLivestockArrivalRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  LivestockArrivalRow row;
+  row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
+  row.kind = LivestockKindId{source.ReadDefId(DefKind::kLivestock)};
+  row.head_count = in.ReadU16();
+  row.arrive_day = in.ReadU32();
+  row.stage = static_cast<LivestockArrivalStage>(
+      source.ReadEnumValue(0, kMaxLivestockArrivalStage, "livestock arrival stage"));
+  row.male = in.ReadU8();
   return row;
 }
 

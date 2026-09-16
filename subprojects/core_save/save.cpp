@@ -61,6 +61,7 @@ constexpr const char* kSectionHerds = "herds";
 constexpr const char* kSectionOrders = "orders";
 constexpr const char* kSectionStands = "stands";
 constexpr const char* kSectionLimitDeliveries = "limit_deliveries";
+constexpr const char* kSectionLivestockArrivals = "livestock_arrivals";
 constexpr const char* kSectionSpecialistArrivals = "specialist_arrivals";
 constexpr const char* kSectionWeddingWaits = "wedding_waits";
 constexpr const char* kSectionExtractionSites = "extraction_sites";
@@ -334,6 +335,12 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.limit_deliveries, WriteLimitDeliveryRow);
   CloseSection(out, length_offset);
 
+  // The stock bought on the limit and not yet standing (district design §1,
+  // save format 48). Beside the carts and not among them: it rides nothing.
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.livestock_arrivals, WriteLivestockArrivalRow);
+  CloseSection(out, length_offset);
+
   // The district's specialists on the road (education design, save format 34).
   length_offset = OpenSection(out);
   WriteTable(sink, world.specialist_arrivals, WriteSpecialistArrivalRow);
@@ -484,6 +491,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionStands, &loaded.stands, ReadTimberStandRow) ||
       !read_table_section(
           kSectionLimitDeliveries, &loaded.limit_deliveries, ReadLimitDeliveryRow) ||
+      !read_table_section(
+          kSectionLivestockArrivals, &loaded.livestock_arrivals, ReadLivestockArrivalRow) ||
       !read_table_section(
           kSectionSpecialistArrivals, &loaded.specialist_arrivals, ReadSpecialistArrivalRow) ||
       !read_table_section(kSectionWeddingWaits, &loaded.wedding_waits, ReadWeddingWaitRow) ||

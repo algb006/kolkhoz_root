@@ -605,6 +605,25 @@ enum class OrderRefusal : std::uint8_t {
   /// `too_far_from_fields`.
   kTooFarFromFields,
 
+  /// kOrderLimitLot on a LIVESTOCK lot: the village has nowhere to put the
+  /// head, counting the roofs AND the private yards (district design §1,
+  /// «если ставить некуда — строка недоступна»; livestock design, «нет крыши
+  /// или нет мест»). Seam key `no_room_for_stock`.
+  ///
+  /// A NAME OF ITS OWN, and not kRuleForbids, because the repair is a
+  /// different one and a real one: build a byre, a stable or a house, or
+  /// wait. kRuleForbids would send the chairman looking for a rule, and the
+  /// rule is not the obstacle — the room is.
+  ///
+  /// THE YARDS COUNT TOWARDS IT, which is what makes this refusal narrow
+  /// enough to be safe. A head with no roof is billeted at the private yards
+  /// and always was (herd_system.cpp, RunBilleting) — that is what the start
+  /// canon does with all sixteen horses — so the village runs out of room
+  /// only when the roofs AND the yards are full together. A ceiling that
+  /// counted roofs alone would refuse the first horse of a farm that had just
+  /// lost its team, which is the deadlock this window exists to open.
+  kNoRoomForStock,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a
@@ -717,6 +736,18 @@ struct OrderRow {
 
   /// kOrderLimitLot: the catalogue row to buy.
   LimitLotId lot;
+
+  /// kOrderLimitLot on a LIVESTOCK lot: 0/1, whether the head is to arrive
+  /// male. The chairman's choice and not a draw — livestock design: «При
+  /// заказе у райкома пол выбирается. Иначе хозяйство могло бы остаться без
+  /// производителя и без всякого способа это исправить — а безвыходных
+  /// ситуаций мы не делаем.»
+  ///
+  /// READ ONLY WHEN THE LOT ASKS FOR IT (LimitLotDef::sex_choice). A batch —
+  /// piglets, chicks — comes mixed, and nobody chooses the sex of ten chicks;
+  /// the field is taken as 0 there rather than refused, because a value the
+  /// order was never meant to carry is not the chairman making a mistake.
+  std::uint8_t male = 0;
 
   /// kMarkExtraction: the site to dig on; the mass is `amount`, in grams.
   ExtractionSiteId extraction_site;

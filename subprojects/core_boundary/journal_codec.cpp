@@ -54,8 +54,11 @@ namespace {
 /// kMarkFelling (2026-09-13): the stand is a fifth entity id and the volume a
 /// third float; and for kOrderLimitLot the same day: the lot is a seventh
 /// definition id; and for kMarkExtraction (2026-09-14): the extraction site is
-/// a sixth entity id, its mass the unsealing's `amount`.
-constexpr std::size_t kOrderBytes = 5 + 8 + (6 * 4) + (7 * 2) + (3 * 4) + 8;
+/// a sixth entity id, its mass the unsealing's `amount`; and for the livestock
+/// window (2026-09-16): the bought head's sex is ONE RAW BYTE that is not an
+/// enum, and it is the last term below for exactly that reason — folding it
+/// into the "five one-byte enums" would have hidden what it is.
+constexpr std::size_t kOrderBytes = 5 + 8 + (6 * 4) + (7 * 2) + (3 * 4) + 8 + 1;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -83,7 +86,11 @@ static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the journal c
 /// It matters more here than in the save codec, because kOrderBytes above is
 /// counted BY HAND: a row that grows without this assert leaves the journal's
 /// writer walking past its own reader, which is how task A7 broke it.
-static_assert(AggregateArity<OrderRow>() == 22,
+/// 2026-09-16: the bought head's sex took the row from 22 fields to 23 AND
+/// LEFT sizeof AT 80 — it fell into the padding. The size assert above stayed
+/// silent, this one fired, and the paragraph above finally has its worked
+/// example rather than a warning about a case that had not happened yet.
+static_assert(AggregateArity<OrderRow>() == 23,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -247,6 +254,12 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   out.U16(row.lot.value);
   // The extraction mark (kMarkExtraction, 2026-09-14), the sixth entity id.
   out.U32(row.extraction_site.value);
+  // The sex of a bought head (kOrderLimitLot on a livestock lot, 2026-09-16),
+  // the one raw byte that is not an enum: counted into kOrderBytes by hand
+  // like all the rest. It landed in the row's PADDING — sizeof(OrderRow) is
+  // still 80 — so the size tripwire said nothing and only the arity one
+  // fired, which is the exact case it was written for.
+  out.U8(row.male);
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -278,6 +291,7 @@ OrderRow ReadOrder(Reader& in) {
   row.volume_m3 = in.Float();
   row.lot = LimitLotId{in.U16()};
   row.extraction_site = ExtractionSiteId{in.U32()};
+  row.male = in.U8();
   return row;
 }
 

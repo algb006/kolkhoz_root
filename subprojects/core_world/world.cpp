@@ -702,6 +702,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_limit.begin(), from_limit.end());
       const std::span<const std::string_view> from_visits = DistrictVisitWorldParamKeys();
       known.insert(known.end(), from_visits.begin(), from_visits.end());
+      const std::span<const std::string_view> from_production = ProductionWorldParamKeys();
+      known.insert(known.end(), from_production.begin(), from_production.end());
       known.insert(known.end(), from_time.begin(), from_time.end());
       known.insert(known.end(), from_genesis.begin(), from_genesis.end());
       known.insert(known.end(), from_life.begin(), from_life.end());

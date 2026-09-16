@@ -518,6 +518,20 @@ struct FarmingConfig {
   /// share of the herd. ASSUMPTION.
   float billet_yield_factor = 0.6F;
 
+  /// HOW MANY HEAD OF KOLKHOZ STOCK ONE YARD CAN BILLET (world_params.csv
+  /// `billet_heads_per_yard`, source `measurement`). Until 2026-09-16 there
+  /// was no ceiling at all, and a village of twenty-one households could
+  /// hold five hundred horses without anything saying otherwise.
+  ///
+  /// THE NUMBER IS MEASURED, NOT CHOSEN. Across the three arms of idle_curve
+  /// the model never billets more than 0.95 head per yard, and in a played
+  /// village billeting ENDS in the second year, as soon as a roof goes up —
+  /// so this is a ceiling on a start condition, not a running cost. One head
+  /// per yard would have left the start's twenty-one head in twenty-one
+  /// places with no room to buy a single horse: the ceiling would have closed
+  /// the very way out of the deadlock it was written beside. Two doubles it.
+  float billet_heads_per_yard = 2.0F;
+
   /// The month the autumn pig slaughter falls in, 0-based. Everything but
   /// the sows and the sire goes to meat then (livestock design §6).
   std::uint8_t pig_slaughter_month = 9;  ///< October.

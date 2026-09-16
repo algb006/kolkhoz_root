@@ -51,6 +51,14 @@ class LimitPolicy {
       log_ = resources->FindRowByKey("log");
       board_ = resources->FindRowByKey("board");
     }
+    // The horse and the lot that brings one, by key: the two the way out of
+    // the deadlock is made of.
+    if (const core::ITable* const kinds = tables.FindTable("livestock")) {
+      horse_kind_ = kinds->FindRowByKey("horse");
+    }
+    if (const core::ITable* const lots = tables.FindTable("limit_catalog")) {
+      horse_lot_ = lots->FindRowByKey("horse_head");
+    }
   }
 
   /// @brief The fixture difference, in words, before anything is measured.
@@ -97,6 +105,10 @@ class LimitPolicy {
 
  private:
   static constexpr std::uint32_t kCooldownDays = 1;
+
+  /// Adult draught head the run buys back up to, and no further: a pair, the
+  /// design's own condition for a foal.
+  static constexpr std::uint32_t kTeamFloor = 2;
 
   struct Cost {
     core::UnitTypeId type;
@@ -231,7 +243,65 @@ class LimitPolicy {
     return core::kNoTableRow;
   }
 
+  /// THE TEAM IS GONE, and this is the run standing in for the player again —
+  /// the same kind of probe as the rotation the control arm hands out, and it
+  /// is declared out loud for the same reason.
+  ///
+  /// A chairman whose draught stock has died has exactly one move in the
+  /// core, and the design names it «страховка от тупика»: buy a head on the
+  /// district's limit. A run has nobody to make that move, so without this a
+  /// measurement of the window would be a measurement of the RUN's blindness
+  /// and not of the village's chances.
+  ///
+  /// IT BUYS BACK A PAIR AND STOPS, and the number two is the design's, not a
+  /// convenience: «жеребята — только под крышей конюшни и только от пары»
+  /// (livestock design §6). ONE head is not a way out — the first draft of
+  /// this policy stopped at one and measured a village that still sowed
+  /// nothing for eleven of twelve years, because a lone horse cannot pull a
+  /// season's ploughing and cannot breed. Two can begin a team; what happens
+  /// after that is the herd's own ladder and not the run's business.
+  ///
+  /// Buying horses whenever they are cheap would be a chairman this run does
+  /// not model, and would hide the very thing under test: whether the way OUT
+  /// works.
+  bool BuyBackTheTeam(const core::WorldState& world, core::OrderRow& order) const {
+    if (horse_kind_ == core::kNoTableRow || horse_lot_ == core::kNoTableRow) {
+      return false;
+    }
+    std::uint32_t adults = 0;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      adults += herd.kind.value == horse_kind_ ? herd.adult_count : 0U;
+    }
+    if (adults >= kTeamFloor) {
+      return false;  // a pair stands; the herd takes it from here
+    }
+    // Counting what is already on its way, so the cooldown does not buy the
+    // same pair three times over while the first two are still coming.
+    for (const core::LivestockArrivalRow& coming : world.livestock_arrivals.rows) {
+      adults += coming.kind.value == horse_kind_ ? coming.head_count : 0U;
+    }
+    if (adults >= kTeamFloor) {
+      return false;
+    }
+    if (catalog_.lots[horse_lot_].points > world.limit.points) {
+      return false;  // the points are not there yet; next year's grant may do it
+    }
+    order.kind = core::OrderKind::kOrderLimitLot;
+    order.lot = core::LimitLotId{static_cast<std::uint16_t>(horse_lot_)};
+    // A MARE IS ASKED FOR AND A STALLION ARRIVES, and the run asks anyway so
+    // that the day the model honours the choice this line is already right.
+    // The herd day rewrites adult_male_count to TargetMales() every day, and
+    // TargetMales never returns nil while there are adults — so the first
+    // bought head is a stallion whatever the order said (core finding,
+    // 2026-09-16, reported to boss).
+    order.male = 0;
+    return true;
+  }
+
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) const {
+    if (BuyBackTheTeam(world, order)) {
+      return true;  // before anything a building site wants: the plough first
+    }
     const std::uint32_t missing = MissingMaterial(world);
     if (missing == core::kNoTableRow) {
       return false;
@@ -251,6 +321,8 @@ class LimitPolicy {
   RiseWatch rise_watch_;
   std::uint32_t log_ = core::kNoTableRow;
   std::uint32_t board_ = core::kNoTableRow;
+  std::uint32_t horse_kind_ = core::kNoTableRow;
+  std::uint32_t horse_lot_ = core::kNoTableRow;
   bool ready_ = false;
   std::uint32_t cooldown_ = 0;
   std::uint32_t bought_ = 0;

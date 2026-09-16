@@ -147,8 +147,23 @@ int main(int argc, char** argv) {
   // asked for: take the stable out of a run that had one and the kind must
   // light and never go out again.
   bool herd_alarm = false;
+  // --no-horses: THE TRAP ITSELF, on a village that IS being played.
+  //
+  // The team is taken away on day zero and the chairman is left in place —
+  // all four policies, the same ones the plain arm runs. That pairing is the
+  // whole point. The unsteered arms measure a village nobody plays and the
+  // canon lets it end; this one measures a village played as hard as the run
+  // knows how, and the design's red line promises it a move.
+  //
+  // WHAT IT PRINTS is the circle, year by year, in the four numbers that
+  // close it: adult horses, hectares sown, hectares harvested, and the
+  // working-age hands that had nothing to pull with. The stall counter below
+  // then answers boss's question in his own words — "без лошадей село встало
+  // в N годах из 12".
+  bool no_horses = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
+    no_horses = no_horses || argument == "--no-horses";
     sow_idle_land = sow_idle_land || argument == "--sow-idle-land";
     no_chairman = no_chairman || argument == "--no-chairman";
     yard_only = yard_only || argument == "--yard-only";
@@ -231,6 +246,49 @@ int main(int argc, char** argv) {
               << " idle fields given a rotation. A PROBE, not a mechanic: the rotation is the "
                  "PLAYER's decision and the core does not make it, so a headless run has to "
                  "stand in for him. Nothing of this ships\n";
+  }
+  // THE TEAM TAKEN AWAY ON DAY ZERO, and taken away WHOLE — newborns and
+  // juveniles with the adults.
+  //
+  // Leaving the young behind would measure a different world: a foal grows
+  // up and the village ploughs again in a year or two, which is recovery
+  // through the herd's own ladder and not the trap. The trap is "no adult
+  // pair, no foal ever" (livestock design §6), and it only bites when the
+  // ladder is empty from the bottom.
+  //
+  // The accumulators go with them. A herd carrying a birth_progress of 0.9
+  // and no animals at all would be a herd one day from a foal out of
+  // nothing.
+  if (no_horses) {
+    core::WorldState bare = world.State();
+    const core::ITable* const kinds = world.tables->FindTable("livestock");
+    const std::uint32_t horse = kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
+    if (horse == core::kNoTableRow) {
+      std::cout << "FAIL: no horse row in tables/livestock.csv\n";
+      return 1;
+    }
+    std::uint32_t taken = 0;
+    for (core::HerdRow& herd : bare.herds.rows) {
+      if (herd.kind.value != horse) {
+        continue;
+      }
+      taken += herd.adult_count;
+      herd.newborn_count = 0;
+      herd.juvenile_count = 0;
+      herd.adult_count = 0;
+      herd.adult_male_count = 0;
+      herd.newborn_progress = 0.0F;
+      herd.juvenile_progress = 0.0F;
+      herd.birth_progress = 0.0F;
+      herd.cull_progress = 0.0F;
+      herd.hunger_progress = 0.0F;
+      herd.adult_age_game_years_total = 0.0F;
+    }
+    world.simulation->ResetWorld(bare);
+    std::cout << "idle_curve: БЕЗ ЛОШАДЕЙ — снято " << taken
+              << " взрослых голов и весь молодняк на нулевых сутках; председатель на месте, все "
+                 "четыре политики работают. Красная линия обещает ХОД ИГРАЮЩЕМУ, и это его "
+                 "деревня\n";
   }
   int failures = 0;
   const core::ActivityRules rules = RulesOfRun(*world.tables);
@@ -682,14 +740,30 @@ int main(int argc, char** argv) {
     //
     // Both arms failed this check three times each until 2026-09-16, and the
     // suite never saw it because it ran the app with no arguments at all.
-    const bool steered = !no_chairman && !yard_only;
-    if (worked == 0 && seam_sum / (samples == 0 ? 1 : samples) > 1.0) {
+    //
+    // AND THE MEASURE ITSELF WAS WRONG, which the trap found the same
+    // evening. "Nobody worked at all while work stood" answered a
+    // neighbouring question: a village whose team is gone keeps hauling,
+    // building, mowing and tending stock to the last day, so the counter
+    // stayed at ZERO through twelve years in which not one hectare was sown
+    // and the settlement fell from 86 souls to 22. The hands were busy. The
+    // arable was dead. An instrument that reports health while three
+    // quarters of the village dies is not a soft instrument, it is a wrong
+    // one.
+    //
+    // Boss's definition, and it is a design decision rather than a
+    // convenience of this run (parcel 5): A FARM HAS STOPPED WHEN A YEAR
+    // PASSES WITH NOT ONE HECTARE SOWN. The name stays, the meaning is the
+    // one that carries the ruin.
+    // COUNTED HERE, JUDGED AT THE END, and the move is not tidiness. A year
+    // with nothing sown is a DEAD END only if nothing is sown after it; a
+    // village that loses a season and ploughs again the next spring has paid
+    // a price, which is what the design asks for — «проблема должна быть
+    // предотвратимой», not free. Asserting per year called the rescue itself
+    // a red line: the --no-horses arm buys its pair, loses the first sowing
+    // window to the delivery, and is sowing again by the second year.
+    if (!(done.ledger.closed.area_sown_ha > 0.0F)) {
       ++stalled_years;
-      if (steered) {
-        failures += run::Expect(false,
-                                "a year with work standing and nobody working at all: the village "
-                                "has no way out of this, and that is a red line");
-      }
     }
     std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
               << of_age << " | " << worked << " | " << idled << " | "
@@ -713,6 +787,43 @@ int main(int argc, char** argv) {
         young += static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count;
       }
       std::cout << " | лошадей " << adults << "/" << sires << " жеребцов, молодняк " << young;
+    }
+    // THE YARD'S LOAD, which is the number the livestock window needs and
+    // the one nobody has ever measured: how many head of the FARM's stock
+    // stand billeted at the private yards, against how many yards there are
+    // to take them.
+    //
+    // The ceiling on buying stock has to come from the yard — a village of
+    // twenty-one households cannot billet five hundred horses, and today it
+    // can, because billeting has no limit whatever. Boss asked for the
+    // figure by measurement rather than by guess, so this prints the load the
+    // model actually produces before any ceiling exists to bend it.
+    {
+      std::uint32_t billeted = 0;
+      for (const core::HerdRow& herd : done.herds.rows) {
+        billeted += herd.household_owned == 0 ? herd.billeted_count : 0U;
+      }
+      const auto yards = static_cast<std::uint32_t>(done.families.rows.size());
+      std::cout << " | постоем " << billeted << " голов на " << yards << " дворов";
+    }
+    // THE LAND, in every arm, because it is the half of the circle the hand
+    // counts cannot show — and printing it only where it was expected to be
+    // interesting would leave nothing to compare it against. A village whose
+    // team is gone keeps
+    // WORKING — hauling, building, herds, the forest — so the working hours
+    // do not fall to nothing and the stall counter alone would report a
+    // village in good health. What stops is the ARABLE: a man does not pull
+    // a plough, so nothing is ploughed, nothing is sown, nothing is reaped,
+    // and the famine arrives a year later by another door.
+    //
+    // So this prints the year's closed book: hectares sown and hectares
+    // reaped. Two curves that fall to zero while the hands stay busy is the
+    // trap's actual signature, and it is not the signature the unsteered
+    // arms have.
+    {
+      const core::YearLedger& book = done.ledger.closed;
+      std::cout << " | посеяно " << book.area_sown_ha << " га, убрано " << book.area_harvested_ha
+                << " га";
     }
     // WHAT RUNS OUT FIRST, and it is printed only under the control arm
     // (2026-09-12, boss's question). The arm's red line says the team can
@@ -946,12 +1057,63 @@ int main(int argc, char** argv) {
   // parcel 16). Named here rather than left as a silent pass, because "the
   // arm printed numbers and nobody looked" is how these two came to fail for
   // months without the suite noticing.
+  // A STEERED VILLAGE WITH ITS TEAM NEVER HAS A YEAR WITH NOTHING SOWN, and
+  // this is the red line in its proper place: at the end, over the whole run,
+  // where "stalled and stayed stalled" can be told from "lost a season".
+  if (!no_chairman && !yard_only && !no_horses) {
+    failures += run::Expect(stalled_years == 0,
+                            "a village with a chairman and a team sows every year: a year with "
+                            "nothing sown is the shape of the dead end");
+  }
   if (no_chairman || yard_only) {
     std::cout << "idle_curve: без председателя село встало в " << stalled_years << " годах из "
               << kYears << '\n';
     failures += run::Expect(stalled_years > 0,
                             "a village nobody steers comes to a stop: the state the host declares "
                             "«Село кончилось» from (world_params.csv village_end_population)");
+  }
+  // --no-horses ASSERTS THE OPPOSITE OF ITS NEIGHBOURS ABOVE, and the
+  // difference between them is the whole design. There the chairman is gone
+  // and the stop is the canon's own end; here he is at his desk with every
+  // policy running, and «никаких безвыходных ситуаций» promises HIM a move.
+  //
+  // THE MOVE IS IN THE DESIGN AND NOT YET IN THE CORE. The district's
+  // catalogue carries `horse_head` at 70 points from epoch I, the base grant
+  // is 250-350 points a year and is LARGEST for the farm doing worst, and
+  // the livestock design names that pair «страховка от тупика» in so many
+  // words. What stands between them is one refusal in
+  // district_limit.cpp — LotOrderable turns away every lot that is not
+  // kGoods, and its own comment says STUB.
+  //
+  // So this check is red until that window opens, and it is meant to be: it
+  // is the acceptance of the work, written before the work. The team must
+  // come back and the plough must go out again.
+  if (no_horses) {
+    const core::ITable* const kinds = world.tables->FindTable("livestock");
+    const std::uint32_t horse = kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
+    std::uint32_t adults = 0;
+    for (const core::HerdRow& herd : last.herds.rows) {
+      adults += horse != core::kNoTableRow && herd.kind.value == horse ? herd.adult_count : 0U;
+    }
+    std::cout << "idle_curve: без лошадей село встало в " << stalled_years << " годах из " << kYears
+              << "; на двенадцатом году взрослых лошадей " << adults << ", посеяно "
+              << last.ledger.closed.area_sown_ha << " га, убрано "
+              << last.ledger.closed.area_harvested_ha << " га\n";
+    failures += run::Expect(adults > 0,
+                            "a played village that lost its team gets one back: the district's "
+                            "horse_head lot is the design's own «страховка от тупика»");
+    failures += run::Expect(last.ledger.closed.area_sown_ha > 0.0F,
+                            "and the plough goes out again: no horse, no ploughing, and the arable "
+                            "is where the circle closes");
+    // AND THE RESCUE COSTS A SEASON, NOT THE CAMPAIGN. The chairman buys his
+    // pair in the first days, the district takes its delivery days, and the
+    // sowing window of that first year is gone — one stalled year, and the
+    // ploughing is back the next spring. A rescue that cost nothing would
+    // mean the trap had no teeth; a rescue that cost every year would mean
+    // the door did not open.
+    failures += run::Expect(stalled_years <= 1,
+                            "and it costs one season, not the campaign: the village loses the "
+                            "sowing window the head is bought in, and no more");
   }
   std::cout << (failures == 0 ? "idle_curve: all checks passed\n" : "idle_curve: FAILED\n");
   return failures;

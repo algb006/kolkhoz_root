@@ -614,6 +614,12 @@ struct WorldState {
   /// limit_state.h.
   LimitDeliveryTable limit_deliveries;
 
+  /// Stock bought on the limit and not yet standing in the village (district
+  /// design §1, "Скот и птицу поставляют без обоза"); SAVED. It is a table of
+  /// its own and not a cart, because stock does not ride one: the head
+  /// appears under a roof on its day, whole. limit_state.h.
+  LivestockArrivalTable livestock_arrivals;
+
   /// The district MTS's column of this season (MTS design §1); SAVED.
   /// limit_state.h.
   MtsColumnState mts_column;

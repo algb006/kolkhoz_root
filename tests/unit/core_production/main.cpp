@@ -4438,15 +4438,22 @@ int CheckDistrictLimit() {
     def.goods = goods;
     return def;
   };
-  limit.lots.resize(5);
+  limit.lots.resize(6);
   limit.lots[0] = lot(25, 1, core::LimitLotKind::kGoods, {24 * kPane});
-  // THE HORSE CARRIES AN AMOUNT on purpose: with none, the "nothing written"
-  // rule refused it too and the kind rule went untested — damage run D10
-  // removed the kind check and nothing reddened (2026-09-13).
+  // A LIVESTOCK LOT WHOSE HEAD COUNT IS NOT WRITTEN — the piglet and chick
+  // batches of the shipped tables. It carries an amount of goods on purpose:
+  // with none, the "nothing written" rule of the GOODS branch would refuse it
+  // too and the livestock branch would go untested (damage run D10,
+  // 2026-09-13, made exactly that mistake in the other direction).
   limit.lots[1] = lot(70, 1, core::LimitLotKind::kLivestock, {kPane});
   limit.lots[2] = lot(45, 2, core::LimitLotKind::kGoods, {kPane});
   limit.lots[3] = lot(-1, 1, core::LimitLotKind::kGoods, {kPane});
   limit.lots[4] = lot(20, 1, core::LimitLotKind::kGoods, {0});
+  // And a horse: priced, of epoch I, one grown head, the sex asked for.
+  limit.lots[5] = lot(70, 1, core::LimitLotKind::kLivestock, {});
+  limit.lots[5].livestock = core::LivestockKindId{0};
+  limit.lots[5].head_count = 1;
+  limit.lots[5].sex_choice = true;
   const auto orderable = [&limit](std::uint16_t lot) {
     return core::LotOrderable(limit, core::LimitLotId{lot}, core::Epoch::kOne);
   };
@@ -4458,8 +4465,16 @@ int CheckDistrictLimit() {
   failures += Expect(orderable(1) == core::OrderRefusal::kRuleForbids &&
                          orderable(3) == core::OrderRefusal::kRuleForbids &&
                          orderable(4) == core::OrderRefusal::kRuleForbids,
-                     "limit: livestock, an unpriced lot and a lot with no written amount are not "
-                     "bought here");
+                     "limit: a livestock lot whose head count is not written, an unpriced lot and "
+                     "a lot with no written amount are not bought here");
+  // AND STOCK IS BOUGHT HERE SINCE 2026-09-16. This line said the opposite
+  // for three days, and the opposite had got as far as a named rejection in
+  // the design — «район живое не покупает» — on the strength of a refusal in
+  // the core that called itself a STUB in its own comment. The catalogue has
+  // priced a horse at 70 points from epoch I all along.
+  failures += Expect(orderable(5) == core::OrderRefusal::kNone,
+                     "limit: a priced livestock lot with a head count IS bought here — it is the "
+                     "design's «страховка от тупика» and the only way out of a dead team");
 
   failures += Expect(core::LimitReputationMultiplier(10.0F) == 0.7F &&
                          core::LimitReputationMultiplier(50.0F) == 1.0F &&
@@ -4513,6 +4528,76 @@ int CheckDistrictLimit() {
   failures +=
       Expect(world.units.rows[0].stock[0] == 4 * kPane && world.limit_deliveries.rows.empty(),
              "limit: the rest comes the next day and the empty cart leaves");
+
+  // -- the livestock window (2026-09-16) -------------------------------------
+  //
+  // THE ROOM FIRST, because a refusal must cost nothing. The world above has
+  // one unit with no livestock capacity and NO FAMILIES at all, so it has
+  // nowhere at all to put a head — the state a refusal has to name.
+  config.livestock.resize(1);
+  config.livestock[0].adult_from_game_months = 24.0F;
+  world.limit.points = 200;
+  core::OrderRow buy;
+  buy.kind = core::OrderKind::kOrderLimitLot;
+  buy.lot = core::LimitLotId{5};
+  buy.male = 1;
+  failures +=
+      Expect(core::OrderLimitLot(config, world, buy) == core::OrderRefusal::kNoRoomForStock &&
+                 world.limit.points == 200 && world.livestock_arrivals.rows.empty(),
+             "stock: with no roof and no yard the head is refused by name, and the refusal costs "
+             "not one point");
+
+  // ONE YARD IS ENOUGH, at two head a yard. The ceiling is the design's
+  // «некуда поставить — нельзя заказать» and the number is measured, not
+  // chosen: the model never billets more than 0.95 head per yard.
+  config.farming.billet_heads_per_yard = 2.0F;
+  core::AppendRow(world.families, core::FamilyRow{});
+  failures += Expect(core::OrderLimitLot(config, world, buy) == core::OrderRefusal::kNone &&
+                         world.limit.points == 130 && world.livestock_arrivals.rows.size() == 1,
+                     "stock: a yard with room buys the head and pays its seventy points");
+  // GUARDED, AND THE GUARD IS NOT DEFENSIVE HABIT. The first damage run on
+  // this block shut the window again, the purchase was refused, and the
+  // indexing below dumped core instead of reddening — a crash that a count of
+  // FAIL lines reads as zero failures. A check that turns into a crash under
+  // damage is a check that cannot be measured.
+  const bool bought = world.livestock_arrivals.rows.size() == 1;
+  const core::LivestockArrivalRow coming =
+      bought ? world.livestock_arrivals.rows[0] : core::LivestockArrivalRow{};
+  failures +=
+      Expect(bought && coming.kind.value == 0 && coming.head_count == 1 && coming.male == 1 &&
+                 coming.stage == core::LivestockArrivalStage::kAdultStart,
+             "stock: the head travels knowing its kind, its number, its age and the sex "
+             "the chairman asked for");
+  failures += Expect(bought && coming.arrive_day >= world.calendar.day + 2 &&
+                         coming.arrive_day <= world.calendar.day + 4,
+                     "stock: and it is due in the district's own days — the same pair of knobs the "
+                     "carts use, not a second pair for the same sentence");
+
+  // AND IT STANDS IN A VILLAGE THAT HAD NO HERD OF THAT KIND AT ALL, which is
+  // precisely the case the window exists for: a farm whose team died to the
+  // last head has no horse row left to add to.
+  world.calendar.day = bought ? coming.arrive_day - 1 : world.calendar.day;
+  core::ArriveLivestock(config, world);
+  failures +=
+      Expect(bought && world.herds.rows.empty() && world.livestock_arrivals.rows.size() == 1,
+             "stock: nothing stands in the village before the head's day");
+  world.calendar.day += 1;
+  core::ArriveLivestock(config, world);
+  const bool stands = world.herds.rows.size() == 1;
+  failures +=
+      Expect(stands && world.herds.rows[0].adult_count == 1 &&
+                 world.herds.rows[0].adult_male_count == 1 && world.livestock_arrivals.rows.empty(),
+             "stock: on its day a herd is founded with the head in it, and the row leaves");
+  // THE AGE IS THE WHOLE OF «в начале взрослого возраста»: a head entered at
+  // nil would be a free extra lifetime bought for the same seventy points,
+  // and the age total is what the death draw reads.
+  failures += Expect(stands && world.herds.rows[0].adult_age_game_years_total > 1.9F &&
+                         world.herds.rows[0].adult_age_game_years_total < 2.1F,
+                     "stock: and it arrives grown — two years on the herd's age total, not nil");
+  // The points put back where the livestock block found them: the year's turn
+  // below counts what BURNS, and a balance this block left behind would be
+  // measured as the district's arithmetic rather than as this block's litter.
+  world.limit.points = 5;
 
   world.chairman.raikom_reputation = 50.0F;
   core::TurnLimitYear(config, world, true);

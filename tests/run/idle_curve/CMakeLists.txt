@@ -15,7 +15,13 @@ set_tests_properties(idle_curve PROPERTIES
 # assert the stop now, and boss's words are in the test beside it (standstill
 # parcel 16): the design promises the PLAYER a move, not that doing nothing is
 # survivable.
-foreach(arm far gap herd-alarm watch-build sow-idle-land no-chairman yard-only)
+#
+# AND `--no-horses` JOINS IN THE COMMIT THAT OPENS THE LIVESTOCK WINDOW, which
+# is the whole of rule §6д (manual/setup/56-static-analysis-and-tests.md): it
+# was written before the work, as its acceptance, and was red on purpose until
+# the district would sell a horse. An arm outside the suite is either that or
+# a forgotten check, and by the file the two are identical.
+foreach(arm far gap herd-alarm watch-build sow-idle-land no-chairman yard-only no-horses)
   add_test(NAME idle_curve_${arm} COMMAND idle_curve --${arm})
   set_tests_properties(idle_curve_${arm} PROPERTIES
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS run)

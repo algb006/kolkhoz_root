@@ -355,6 +355,13 @@ core::WorldState MakeWorld() {
   refused.issued_tick = 69;
   refused.unit = core::UnitId{1};
   refused.lot = core::LimitLotId{1};
+  // AND THE SEX IS 1, NOT 0 (save 48). A byte that is nil in every witness
+  // row is a byte a codec can forget to READ and still round-trip perfectly —
+  // the writer's side changes the recorded hash, the reader's side changes
+  // nothing at all. This is the same blind spot the world block had until
+  // this morning, one field further down, and one non-zero value is the whole
+  // cure.
+  refused.male = 1;
   core::AppendRow(world.orders, refused);
 
   // The district's limit (save format 31): the year's points, a cart on the
@@ -365,6 +372,21 @@ core::WorldState MakeWorld() {
   cart.arrive_day = 131;
   cart.goods = Amounts({0, 0, 4'800'000});
   core::AppendRow(world.limit_deliveries, cart);
+
+  // A head bought and still on its way (save format 48). EVERY FIELD IS
+  // NON-DEFAULT, sex and stage included: a row of zeroes and first
+  // enumerators would round-trip perfectly through a codec that read none of
+  // them, which is the blind spot this whole fixture exists to close.
+  core::LivestockArrivalRow bought;
+  bought.lot = core::LimitLotId{1};
+  // The SECOND kind of the fixture's two, not the first: the herd above uses
+  // row 0, and a row that reused it would pass a codec that wrote a constant.
+  bought.kind = core::LivestockKindId{1};
+  bought.head_count = 3;
+  bought.arrive_day = 133;
+  bought.stage = core::LivestockArrivalStage::kYoung;
+  bought.male = 1;
+  core::AppendRow(world.livestock_arrivals, bought);
 
   // A specialist on the road (save format 34): the post through the
   // dictionary, the unit he is appointed to, the day he is due.
@@ -813,7 +835,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 17> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     {"dictionaries", 143, 0xe35419cb6704df6aULL},
     {"world", 283, 0xe157922c3ec2785cULL},
     {"residents", 354, 0x275232d952b2aa5aULL},
@@ -821,9 +843,19 @@ constexpr std::array<RecordedSection, 17> kRecordedPayload = {{
     {"fields", 263, 0x224499bb25ff9b5bULL},
     {"units", 323, 0xcfb11cfce6d72141ULL},
     {"herds", 66, 0xe3846623b64933cfULL},
-    {"orders", 458, 0xb8800b3d94a381a6ULL},
+    // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
+    // bought head's sex. The witness named the section, the delta and the
+    // offset without being asked, which is what it was rewritten for this
+    // morning.
+    // And the hash again, at the same LENGTH, when kNoRoomForStock became the
+    // last OrderRefusal: the fixture carries the top of each enum on purpose,
+    // so a new enumerator moves the recorded byte without moving the count.
+    {"orders", 464, 0x8b6a2ef2f1030420ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
+    // 2026-09-16, save 48: the stock bought and still on its way. A section of
+    // its own beside the carts, because a head rides nothing.
+    {"livestock_arrivals", 24, 0x216b896caae651cbULL},
     {"specialist_arrivals", 22, 0x11b22bab116fbc84ULL},
     {"wedding_waits", 24, 0x3ce63fbbccfcbd4aULL},
     {"extraction_sites", 63, 0x52bb8a69b99d0d65ULL},
@@ -1135,6 +1167,22 @@ int main() {
   failures += Expect(unseal_back.fund == core::FundKind::kSeed, "and names the fund it opened");
   failures += Expect(unseal_back.resource.value == 2, "and the resource taken out of it");
   failures += Expect(unseal_back.amount == 640'000, "and the figure the chairman named");
+  // The bought head's sex (save 48), asserted on the READER's side: the
+  // recorded payload proves only that the byte was written.
+  failures += Expect(loaded.orders.rows[3].male == 1,
+                     "the sex the chairman chose for a head comes back off the save");
+  // The head on its way, field by field. The byte-for-byte re-encode above
+  // would catch a dropped field too, but it would say only "the file differs";
+  // this says WHICH of the six.
+  {
+    const core::LivestockArrivalRow& head = loaded.livestock_arrivals.rows[0];
+    failures += Expect(head.lot.value == 1 && head.kind.value == 1,
+                       "a bought head comes back knowing its lot and its kind");
+    failures += Expect(head.head_count == 3 && head.arrive_day == 133,
+                       "and how many head there are and the day they stand in the village");
+    failures += Expect(head.stage == core::LivestockArrivalStage::kYoung && head.male == 1,
+                       "and the age it arrives at and the sex that was chosen");
+  }
   failures +=
       Expect(loaded.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][2] == 640'000,
              "and the release against the seed fund is world state that survives");
@@ -1463,7 +1511,11 @@ int main() {
   tampered = bytes;
   {
     std::uint64_t length = 0;
-    const std::size_t at = SectionAt(tampered, 16, length);  // the staged batch
+    // The staged batch, and its INDEX moved from 16 to 17 on 2026-09-16 when
+    // the livestock arrivals took a section of their own. A section index
+    // written by hand is a length written by hand: it is right until the file
+    // grows in the middle, and then it is quietly pointing at the neighbour.
+    const std::size_t at = SectionAt(tampered, 17, length);  // the staged batch
     if (at != 0) {
       for (std::size_t index = 0; index < 4; ++index) {
         const std::uint32_t many = 1U << 24U;

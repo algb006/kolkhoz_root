@@ -22,6 +22,41 @@ bool CarriesAnything(const ResourceAmounts& goods) {
   return std::any_of(goods.begin(), goods.end(), [](Grams grams) { return grams > 0; });
 }
 
+/// Head of KOLKHOZ stock standing in the village, of every kind and age. A
+/// family's own animals are not counted: they are the family's, they live in
+/// the family's yard by right, and the farm's ceiling is not about them.
+std::uint32_t KolkhozHeads(const WorldState& world) {
+  std::uint32_t heads = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0) {
+      continue;
+    }
+    heads +=
+        static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count + herd.adult_count;
+  }
+  return heads;
+}
+
+/// Places the village has for kolkhoz stock: the roofs plus the yards.
+///
+/// THE YARDS ARE PART OF IT AND NOT A FALLBACK. Billeting is the ordinary
+/// state of a farm that has not built its byres yet — the start canon puts
+/// all sixteen horses in private yards on the first morning — so "how many
+/// head can this village hold" has always been roof room PLUS yard room. What
+/// was missing until 2026-09-16 is that the yard half had no limit whatever,
+/// which is how twenty-one households could hold five hundred horses.
+float PlacesForStock(const ProductionConfig& config, const WorldState& world) {
+  float roofs = 0.0F;
+  for (const UnitRow& unit : world.units.rows) {
+    if (unit.type.value >= config.unit_types.size()) {
+      continue;
+    }
+    roofs += config.unit_types[unit.type.value].LivestockCapacityHeadAt(unit.level);
+  }
+  const auto yards = static_cast<float>(world.families.rows.size());
+  return roofs + (yards * config.farming.billet_heads_per_yard);
+}
+
 /// The MTS column bought (limit_state.h, MtsColumnState): one at a time, and
 /// only while it can still reach its season's window this year. Refused
 /// before any point is spent — "not cancellable" is about the accepted one.
@@ -71,7 +106,22 @@ OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epo
         lot.value == catalog.mts_spring_lot.value || lot.value == catalog.mts_autumn_lot.value;
     return column && def.points >= 0 ? OrderRefusal::kNone : OrderRefusal::kRuleForbids;
   }
-  // Only goods are bought here (livestock, machines, people and "choice"
+  // STOCK, since the livestock window (2026-09-16). It needs a price and a
+  // head count; the batches whose size the tables leave empty are refused by
+  // the same "nothing written yet" rule that refuses a goods lot with no
+  // amount.
+  //
+  // THIS BRANCH USED TO SAY STUB AND WAS READ AS A RULE OF THE WORLD — «район
+  // живое не покупает» got as far as a named design rejection before anyone
+  // re-read the catalogue, which has priced a horse at 70 points from epoch I
+  // all along. The design calls this lot «страховка от тупика», and it is the
+  // only way out of losing the last draught horse.
+  if (def.kind == LimitLotKind::kLivestock) {
+    const bool named = def.livestock.value != kInvalidDefIdValue;
+    return named && def.points >= 0 && def.head_count > 0 ? OrderRefusal::kNone
+                                                          : OrderRefusal::kRuleForbids;
+  }
+  // Only goods are bought here besides those (machines, people and "choice"
   // have their own windows — STUB), and only a lot with a price and at least
   // one written amount (boss, parcel 211).
   if (def.kind != LimitLotKind::kGoods || def.points < 0 || !CarriesAnything(def.goods)) {
@@ -136,6 +186,14 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   if (def.kind == LimitLotKind::kService) {
     return OrderMtsColumn(config, current, order.lot, def.points);
   }
+  // THE ROOM BEFORE THE POINTS, for the reason the column checks its season
+  // first: a refusal must not cost anything. «Некуда поставить — нельзя
+  // заказать» (district design §1).
+  if (def.kind == LimitLotKind::kLivestock &&
+      static_cast<float>(KolkhozHeads(current) + def.head_count) >
+          PlacesForStock(config, current)) {
+    return OrderRefusal::kNoRoomForStock;
+  }
   if (current.limit.points < def.points) {
     return OrderRefusal::kLimitShort;
   }
@@ -154,10 +212,31 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   RngState rng = SeedRngState(current.rng.state ^ order.issued_tick, kDeliveryDelayStream);
   const std::uint32_t delay = NextRandomBelow(rng, spread);
 
+  const std::uint32_t arrive_day =
+      static_cast<std::uint32_t>(current.calendar.day) + config.limit.delivery_days + delay;
+
+  // STOCK TRAVELS ON NOTHING, and the same days it would have taken on a
+  // cart: «голова появляется в закрытом помещении через несколько суток
+  // после заказа». The delay knobs are the district's own, one pair for one
+  // sentence — a second pair would be the same fact with two homes.
+  if (def.kind == LimitLotKind::kLivestock) {
+    LivestockArrivalRow bought;
+    bought.lot = order.lot;
+    bought.kind = def.livestock;
+    bought.head_count = def.head_count;
+    bought.arrive_day = arrive_day;
+    bought.stage = def.arrives_stage;
+    // The sex is the chairman's where the lot asks for it and nothing where
+    // it does not: a batch comes mixed, and a `male` set on an order that was
+    // never meant to carry one is dropped rather than refused.
+    bought.male = def.sex_choice ? order.male : std::uint8_t{0};
+    AppendRow(current.livestock_arrivals, bought);
+    return OrderRefusal::kNone;
+  }
+
   LimitDeliveryRow cart;
   cart.lot = order.lot;
-  cart.arrive_day =
-      static_cast<std::uint32_t>(current.calendar.day) + config.limit.delivery_days + delay;
+  cart.arrive_day = arrive_day;
   cart.goods = def.goods;
   AppendRow(current.limit_deliveries, cart);
   return OrderRefusal::kNone;
@@ -189,6 +268,61 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current) 
   }
   for (const LimitDeliveryId cart : emptied) {
     RemoveRow(current.limit_deliveries, cart);
+  }
+}
+
+void ArriveLivestock(const ProductionConfig& config, WorldState& current) {
+  std::vector<LivestockArrivalId> landed;
+  for (std::uint32_t row = 0; row < current.livestock_arrivals.rows.size(); ++row) {
+    const LivestockArrivalRow arrival = current.livestock_arrivals.rows[row];
+    if (arrival.arrive_day > current.calendar.day) {
+      continue;
+    }
+    // THE HERD IT JOINS: a kolkhoz herd of the same kind, the one standing at
+    // a unit first. A head put into a household's own herd would change whose
+    // animal it is, and ownership is not what a purchase decides.
+    std::uint32_t home = kNoRow;
+    for (std::uint32_t index = 0; index < current.herds.rows.size(); ++index) {
+      const HerdRow& herd = current.herds.rows[index];
+      if (herd.household_owned != 0 || herd.kind.value != arrival.kind.value) {
+        continue;
+      }
+      if (home == kNoRow || (herd.unit.value != kInvalidEntityIdValue &&
+                             current.herds.rows[home].unit.value == kInvalidEntityIdValue)) {
+        home = index;
+      }
+    }
+    // NO HERD OF THAT KIND AT ALL — a village whose team died to the last
+    // head has exactly that, and it is the case this whole window exists
+    // for. The row is made, standing nowhere in particular; the billeting
+    // walk of the herd day puts it where there is room.
+    if (home == kNoRow) {
+      HerdRow founded;
+      founded.kind = arrival.kind;
+      AppendRow(current.herds, founded);
+      home = static_cast<std::uint32_t>(current.herds.rows.size()) - 1U;
+    }
+    HerdRow& herd = current.herds.rows[home];
+    if (arrival.stage == LivestockArrivalStage::kYoung) {
+      herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count + arrival.head_count);
+    } else {
+      herd.adult_count = static_cast<std::uint16_t>(herd.adult_count + arrival.head_count);
+      herd.adult_male_count = static_cast<std::uint16_t>(
+          herd.adult_male_count + (arrival.male != 0 ? arrival.head_count : 0));
+      // AND THE AGE, WHICH IS THE WHOLE OF "в начале взрослого возраста".
+      // A head entered at age nil would be a free extra lifetime bought for
+      // the same seventy points, and the age total is what the death draw
+      // reads (herd_state.h, adult_age_game_years_total).
+      const float entry = arrival.kind.value < config.livestock.size()
+                              ? config.livestock[arrival.kind.value].adult_from_game_months /
+                                    static_cast<float>(kMonthsPerYear)
+                              : 0.0F;
+      herd.adult_age_game_years_total += entry * static_cast<float>(arrival.head_count);
+    }
+    landed.push_back(current.livestock_arrivals.row_ids[row]);
+  }
+  for (const LivestockArrivalId head : landed) {
+    RemoveRow(current.livestock_arrivals, head);
   }
 }
 

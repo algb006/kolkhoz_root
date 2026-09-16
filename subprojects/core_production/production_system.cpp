@@ -224,6 +224,11 @@ class ProductionSystem final : public IProductionSystem {
       SettleUnitProduction(config_, current);
       // The district's carts: what came today goes through the same door.
       ArriveLimitDeliveries(config_, current);
+      // And the stock bought on the limit, which comes through no door at
+      // all: it stands under a roof, or at a yard, on its day. Before the
+      // herd day below, so a head that arrives this morning is fed tonight
+      // and billeted by the same walk as every other animal.
+      ArriveLivestock(config_, current);
       // AND ONLY THEN does the day's food go bad. The village has eaten by
       // now — the meal is the needs slot, phase 2, and this is phase 3 of
       // the same tick — and eaten food cannot rot. The other way round and
