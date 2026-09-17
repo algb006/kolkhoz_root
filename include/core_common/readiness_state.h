@@ -91,15 +91,40 @@ struct SocialReadiness {
 /// EACH IS A FACT AND NOT A SCORE, so each is a byte and not a float. A
 /// blocker averaged into an index would be exactly the compensation the
 /// design forbids.
+/// EACH BLOCK CARRIES THE DESIGN LINE IT EXECUTES, added 2026-09-17 after
+/// boss counted three conditions in epochs §6's «Пороги» row against the six
+/// here (parcel 148). All six are the design's; they simply do not all live
+/// in that row. Three are in the «Отдельные пороговые условия» table of the
+/// same §6 — which stands ABOVE the thresholds table and is easy to read
+/// past — and two are in a different document entirely. A condition of the
+/// transition living in two documents is a documentation defect and boss's;
+/// what the core owes is the citation beside the byte, so the next reader
+/// counting them does not have to guess which are invented.
 struct TransitionBlocks {
   /// The village ate at least the era's number of food categories in every
   /// one of the four seasons of the year that closed, winter included.
+  ///
+  /// epochs §6, «Отдельные пороговые условия»: «Разнообразие пищи: колхозное
+  /// среднее не ниже порога во все четыре сезона последнего года, включая
+  /// зиму. Порог — верх нормы своей эпохи: I → II — 4 категории».
   std::uint8_t food_variety = 0;
 
   /// Four of the era's six social objects stand.
+  ///
+  /// epochs §6, both tables — the blockers' «Норматив соцобъектов эпохи. I →
+  /// II — 4 из 6» and the thresholds row's «4 соцобъекта из 6». The only one
+  /// of the six that is named twice.
   std::uint8_t social_objects = 0;
 
   /// The farm pulls its own work: horses of its own, or a repair base.
+  ///
+  /// epochs §6, thresholds row: «Своя тяга или ремонтная база».
+  ///
+  /// AND IT HAS NEVER ONCE BLOCKED: open in all thirty-three years of all
+  /// nine villages, because the canon hands out horses on day nought. A rule
+  /// that cannot fail is the same defect as one that cannot fire, seen from
+  /// the other end — reported to boss 2026-09-17 and left standing, because
+  /// the fault is not in the reading.
   std::uint8_t own_traction = 0;
 
   /// The wintering closed — food and fodder both reached the spring grass —
@@ -108,6 +133,12 @@ struct TransitionBlocks {
   std::uint8_t wintering_two_years = 0;
 
   /// Every unit of the era stands at the level the transition asks of it.
+  ///
+  /// NOT IN epochs §6 AT ALL — units rules §11, «Блок перехода эпохи»:
+  /// «Нельзя перейти в новую эпоху, пока остались юниты предыдущих, не
+  /// доведённые до нужного уровня», and the table under it gives I → II as
+  /// level 2. epochs §6 links to that section from its blockers table rather
+  /// than restating it.
   std::uint8_t units_at_level = 0;
 
   /// The office stands and its wear is at most 1 per cent — "only just
