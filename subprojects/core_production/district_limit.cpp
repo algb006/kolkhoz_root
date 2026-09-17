@@ -365,8 +365,19 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
             HandoverPoints(lot->points, config.limit.handover_share_newborn);
 
   const auto gone = static_cast<std::uint32_t>(adults_gone + juveniles_gone + newborns_gone);
+  // THE BOOK IS NOT TOUCHED, AND THAT IS DELIBERATE. `limit_points_granted`
+  // means "what the district granted for this year" — it is SET at the year's
+  // turn, not accumulated — so adding a sale's proceeds to it would be two
+  // different facts under one name. Worse, the accumulated grant is what the
+  // design weighs electrification against («сумма баллов лимита, полученных с
+  // начала партии»), and a counter that a sale could raise would be a pump:
+  // buy a head at full price, hand it back at a fraction, lose points on every
+  // turn of the handle and drive the total up all the same.
+  //
+  // So the points land where they are spent from and nowhere else. Whether
+  // the year's book should carry a fourth flow for them is a question about
+  // what the player is shown, which is the design's and not this rule's.
   current.limit.points += points;
-  current.ledger.current.limit_points_granted += points;
   SimEvent& handed = EmitEvent(current, EventKind::kStockHandedOver, EventSeverity::kNotable);
   handed.herd = order.herd;
   handed.amount = static_cast<std::int64_t>(gone);
