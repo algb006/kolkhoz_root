@@ -4,7 +4,7 @@
 # spells the commands so nobody has to remember them. See README.txt.
 
 .DEFAULT_GOAL := help
-.PHONY: help configure build release rebuild asan clean distclean test unit \
+.PHONY: help configure build release rebuild asan clean distclean test unit test-some \
         check-tests format format-check tidy docs sync win win-release publish win-clean \
         win-setup hooks deps info version bump-patch bump-minor
 
@@ -40,6 +40,7 @@ help:
 	@echo '  make rebuild        собрать с нуля — при странном поведении первым делом'
 	@echo '  make test           прогнать все тесты через ctest'
 	@echo '  make unit           только обязательные unit-тесты модулей'
+	@echo '  make test-some R=…  часть набора по имени: make test-some R=idle_curve'
 	@echo '  make check-tests    unit-тест на модуль, включения, перечисления границы, пути мануала'
 	@echo '  make version        версии ядра и формата сохранений'
 	@echo '  make bump-patch     поднять версию: сдан модуль'
@@ -104,6 +105,24 @@ test: build check-tests
 # Only the obligatory per-module tests, without the long simulation runs.
 unit: build
 	ctest --test-dir $(BUILD_DIR) --output-on-failure -j $(JOBS) -L unit
+
+# PART OF THE SUITE, BY NAME: `make test-some R=idle_curve`.
+#
+# It lives here and not in anybody's wrapper because it carries the SAME
+# dependency the whole suite carries, and that dependency is the rule. A
+# subset is as much a measurement as the whole, and a measurement run over
+# binaries from before the edit answers yesterday's question — measured twice
+# in one hour on 2026-09-16, once reporting a repaired codec red and once a
+# damaged step green.
+#
+# THE ROLE'S OWN WRAPPER USED TO CALL ctest DIRECTLY and then grew a freshness
+# guard of its own to make up for it. A guard that patches its own bypass is
+# not discipline, it is the mark left where discipline was bypassed: the rule
+# already existed here, expressed the way build systems express rules, and
+# what was needed was to stop going around it.
+test-some: build check-tests
+	@[ -n "$(R)" ] || { echo 'make test-some needs R=<ctest regex>'; exit 2; }
+	ctest --test-dir $(BUILD_DIR) --output-on-failure -j $(JOBS) -R '$(R)'
 
 check-tests:
 	@./scripts/check_module_tests.sh
