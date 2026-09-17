@@ -221,6 +221,12 @@ struct UnitRow {
   /// build class — a full scale in `wear_years_idle` years of standing
   /// empty, in `wear_years_in_use` years while a household lives here or
   /// somebody works here today (task A5, manual/73-wear-and-repair.md §2).
+  ///
+  /// AND SINCE 2026-09-17 IT ALSO JUMPS: a fire adds a third of the scale in
+  /// one morning (construction_system.cpp, RunFires), so "grows once a day by
+  /// the amortization" was no longer the whole of how this number moves. It
+  /// still only ever RISES — the fire's own ceiling is taken so that it can
+  /// never walk the value back, which it did for one commit.
   /// Stays 0 for a type with no building (has_wear = 0: a heap, a stack,
   /// a trench) and for a site at level 0. Reset to 0 by a finished repair
   /// or upgrade. The start's old houses begin part worn — each drawn from

@@ -1457,6 +1457,33 @@ int TestFire(const core::ITableSet& tables) {
     }
     failures += Expect(standing, "fire: days of fires in a row still destroy nothing");
   }
+
+  // -- AND A FIRE NEVER LOWERS WEAR ----------------------------------------
+  // The ceiling that stops a fire destroying a building was applied
+  // unconditionally for one commit, which made the fire the ONLY writer in
+  // the tree that walked wear BACKWARDS: AgeUnits leaves a worn-out unit at
+  // exactly 100, and the next fire wrote 99 over it — a fire that healed the
+  // ruin it was meant to scar. The field's own contract says 100 is a ruin
+  // that still works and never vanishes, and a fire may not take that back.
+  {
+    core::WorldState world = burn(500, 400, false);
+    for (core::UnitRow& unit : world.units.rows) {
+      unit.wear = 100.0F;
+    }
+    bool never_healed = true;
+    for (int day = 0; day < 5; ++day) {
+      world.calendar.tick = static_cast<core::Tick>(600 + day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      const core::WorldState previous = world;
+      system->RunConstructionDecisions(previous, world);
+      for (const core::UnitRow& unit : world.units.rows) {
+        never_healed = never_healed && unit.wear >= 100.0F;
+      }
+    }
+    failures += Expect(never_healed,
+                       "fire: a building already at the top of the scale is not "
+                       "HEALED by burning — wear only ever rises");
+  }
   return failures;
 }
 

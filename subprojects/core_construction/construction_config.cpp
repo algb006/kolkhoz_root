@@ -868,9 +868,15 @@ bool ParseConstructionConfig(const ITableSet& tables,
         ScalarKnob{.key = ConstructionWorldParamKeys()[1],
                    .value = &config.fire_base_chance_per_unit_year,
                    .range = Range{.low = 0.0F, .high = 0.99F}},
+        // THE TWO RANGES ARE ONE RULE, and the second is what makes it hold:
+        // a base of 0.99 times a factor of 100 is 2.06 a DAY, and a draw in
+        // [0,1) never clears it — every building would burn every frost
+        // morning while the table still looked sane, because each knob alone
+        // was in range. Ten is past any stove and short of the product going
+        // over one (0.99 x 10 / 48 = 0.21).
         ScalarKnob{.key = ConstructionWorldParamKeys()[2],
                    .value = &config.fire_frost_factor,
-                   .range = Range{.low = 1.0F, .high = 100.0F}},
+                   .range = Range{.low = 1.0F, .high = 10.0F}},
         ScalarKnob{.key = ConstructionWorldParamKeys()[3],
                    .value = &grace_days,
                    .range = Range{.low = 0.0F, .high = 100000.0F}}};

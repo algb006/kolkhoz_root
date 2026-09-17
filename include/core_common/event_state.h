@@ -348,6 +348,14 @@ enum class EventKind : std::uint8_t {
   /// the wire format, and it only ever grows at this end.
   kStockHandedOver,
 
+  /// ЭЛЕКТРИФИКАЦИЯ (era event 01, electricity design §3): the district is
+  /// putting up the line and the substation, and the village may build its
+  /// own network. Once a campaign, on the three blockers — accumulated limit
+  /// points, a year lived, an office standing. Carries no subject: it is
+  /// about the whole settlement. Interrupting, because the chairman's next
+  /// season is a different one. Seam key `electrification_unlocked`.
+  kElectrificationUnlocked,
+
   /// unit = the building that caught fire (fire design; quest_e1_13 «Огонь и
   /// вода», which opens on the first one). Interrupting: a fire is the sort
   /// of thing a fast-forward must not run past.
@@ -366,14 +374,15 @@ enum class EventKind : std::uint8_t {
   /// caught within the minute. Subject grouping is what the headings are
   /// for; the ORDER is the wire format.
   ///
-  /// ЭЛЕКТРИФИКАЦИЯ (era event 01, electricity design §3): the district is
-  /// putting up the line and the substation, and the village may build its
-  /// own network. Once a campaign, on the three blockers — accumulated limit
-  /// points, a year lived, an office standing. Carries no subject: it is
-  /// about the whole settlement. Interrupting, because the chairman's next
-  /// season is a different one. Seam key `electrification_unlocked`.
-  kElectrificationUnlocked,
-
+  /// AND THE COMMENT HAS TO MOVE WITH THE ENUMERATOR, which is the second
+  /// half of that lesson and cost its own finding. The kind was moved down
+  /// here and this block was left where it stood, so it documented
+  /// kElectrificationUnlocked instead — telling the reader that an event
+  /// about the whole settlement carried a burnt building and a seam key
+  /// `fire_broke`, while kFireBroke had no contract at all. Worse, the
+  /// paragraph above it — «append at the very end» — then stood over the
+  /// WRONG enumerator, so anybody obeying it where it stood would have
+  /// appended between the two and re-made the very mis-decode it warns of.
   kFireBroke,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

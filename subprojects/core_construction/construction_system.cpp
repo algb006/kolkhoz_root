@@ -388,9 +388,16 @@ class ConstructionSystem final : public IConstructionSystem {
       // exactly what this stub's form forbids. So the damage is taken up to
       // one step below the end and no further: the building is hurt, the
       // repair is worth ordering, and nothing is lost.
+      //
+      // AND THE CEILING IS TAKEN ONLY WHERE IT RAISES. Written as a plain
+      // clamp this was the one writer in the tree that LOWERED wear: a unit
+      // AgeUnits had left at exactly 100 came out of a fire at 99, so the
+      // fire healed the ruin it was supposed to scar. «100 — a ruin still
+      // works and never vanishes» is the field's own contract, and a fire
+      // may not walk it back.
       const float scarred = unit.wear + kFireWearScar;
       const float ceiling = kWearScale - 1.0F;
-      unit.wear = scarred < ceiling ? scarred : ceiling;
+      unit.wear = std::max(unit.wear, std::min(scarred, ceiling));
       SimEvent& fire = EmitEvent(current, EventKind::kFireBroke, EventSeverity::kInterrupting);
       fire.unit = current.units.row_ids[row];
     }
