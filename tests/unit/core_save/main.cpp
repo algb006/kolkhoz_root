@@ -1561,6 +1561,91 @@ int main() {
     }
   }
 
+  // TWO SECTIONS OF THE SAME LENGTH, SWAPPED. This is the case nothing in the
+  // format could catch before the sections carried names, and it is the whole
+  // measure of whether the names are real (boss, parcel 30).
+  //
+  // The length walk cannot see it: both sections are 24 bytes, so every later
+  // offset lands exactly where it did. The recorded payload table cannot see
+  // it either — it knows each section's length and hash but not its NAME,
+  // because until now there was no name in the file to know. What is left is
+  // the reader parsing one table's rows out of another table's bytes, and
+  // whether that refuses is luck: two rows of the same width and compatible
+  // fields load silently into the wrong tables.
+  //
+  // The two chosen are the stock bought on the limit and the couples waiting
+  // for a house — 24 bytes each in this fixture, and nothing alike inside.
+  {
+    // EVERY PAIR, not one chosen pair. The first draft of this check picked
+    // the two 24-byte sections and passed — which measured the fixture's luck
+    // and not the format. The question is how many swaps the shape guard
+    // catches and how many go through, and that is a number, not a guess.
+    // ADJACENT SECTIONS SWAPPED WHOLE — length prefix and body together. This
+    // is what a writer and a reader disagreeing about the ORDER look like on
+    // the wire, and it is the mistake a name makes impossible. It does not
+    // need two sections of equal length: moving the prefix with the body
+    // keeps the walk consistent, so every later offset lands where it did.
+    //
+    // The first draft of this check swapped BODIES of equal length and found
+    // exactly one such pair in the fixture, caught. That measured the
+    // fixture's luck. This measures the format.
+    int blind = 0;
+    int caught = 0;
+    for (int left_index = 2; left_index <= 14; ++left_index) {
+      std::uint64_t left_length = 0;
+      std::uint64_t right_length = 0;
+      const std::size_t left = SectionAt(bytes, left_index, left_length);
+      const std::size_t right = SectionAt(bytes, left_index + 1, right_length);
+      if (left == 0 || right == 0) {
+        continue;
+      }
+      const std::size_t left_from = left - 8;
+      const std::size_t right_from = right - 8;
+      const std::size_t right_to = right + static_cast<std::size_t>(right_length);
+      std::vector<std::byte> swapped(bytes.begin(),
+                                     bytes.begin() + static_cast<std::ptrdiff_t>(left_from));
+      swapped.insert(swapped.end(),
+                     bytes.begin() + static_cast<std::ptrdiff_t>(right_from),
+                     bytes.begin() + static_cast<std::ptrdiff_t>(right_to));
+      swapped.insert(swapped.end(),
+                     bytes.begin() + static_cast<std::ptrdiff_t>(left_from),
+                     bytes.begin() + static_cast<std::ptrdiff_t>(right_from));
+      swapped.insert(
+          swapped.end(), bytes.begin() + static_cast<std::ptrdiff_t>(right_to), bytes.end());
+      if (swapped == bytes) {
+        continue;  // identical neighbours: the swap is not a change at all
+      }
+      rehash(swapped);
+      if (refusal_of(swapped).empty()) {
+        ++blind;
+        std::cout << "save: sections " << left_index << " and " << (left_index + 1)
+                  << " change places WITHOUT A WORD\n";
+      } else {
+        ++caught;
+      }
+    }
+    // MEASURED 2026-09-17: thirteen caught, none blind. The format carries no
+    // names — a section is found by walking lengths — so what refuses is not
+    // a name but a SHAPE: the neighbour's bytes do not decode as this
+    // section's rows. Every pair in this world happens to disagree in shape.
+    //
+    // THAT IS LUCK, AND THIS CHECK IS HERE TO SAY WHEN IT RUNS OUT. A section
+    // added whose rows cross-parse with its neighbour's would change places
+    // in silence, and nothing else in the suite would notice: the length walk
+    // lands on the same offsets and the recorded payload table knows each
+    // section's length and hash but not which section it is, because there is
+    // nothing in the file to know it by.
+    //
+    // So the number is the point. While it reads "none blind" the guard the
+    // format has is enough; the day it reads otherwise, the format needs
+    // names and this line is the evidence for the version that adds them.
+    std::cout << "save: sections that change places — caught " << caught << ", blind " << blind
+              << '\n';
+    failures += Expect(blind == 0,
+                       "no two sections change places unnoticed: the format has no names, so this "
+                       "is the shape guard's luck holding — and the line that says when it stops");
+  }
+
   // -- the file wrappers ---------------------------------------------------
   const std::filesystem::path file = root / "campaign.kls";
   failures += Expect(core::SaveWorldToFile(world, *tables, file.string(), &error),
