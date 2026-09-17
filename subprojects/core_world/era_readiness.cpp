@@ -295,8 +295,16 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
       standing > 0 ? Scored(100.0F - (wear_sum / static_cast<float>(standing))) : kUnmeasured;
 
   // -- SATISFACTION, the mean over families AND days of the year -----------
+  // A MEAN AND NOT A SHARE. Satisfaction is already a metric on 0..100, so
+  // the mean of it IS the score — putting it through SharePercent multiplied
+  // a 55 by a hundred and the clamp made it 100, in every village of every
+  // year. Found by printing the components at both ends of the campaign
+  // (boss, parcel 142): a component reading exactly 100 in year 1 AND year 33
+  // is not a village that is content, it is a scale that is not being read.
   out.society.satisfaction =
-      SharePercent(book.satisfaction_sum, static_cast<float>(book.satisfaction_samples));
+      book.satisfaction_samples > 0
+          ? Scored(book.satisfaction_sum / static_cast<float>(book.satisfaction_samples))
+          : kUnmeasured;
   out.satisfaction_stub_points =
       out.society.satisfaction.available != 0 ? kSatisfactionStubPointsEraOne : 0.0F;
 

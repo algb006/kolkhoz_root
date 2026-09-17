@@ -82,7 +82,40 @@ struct Trajectory {
   float social_index = 0.0F;
   std::uint8_t longest_both_above = 0;
   float satisfaction_stub_points = 0.0F;
+  /// The eight component scores as the FIRST year closed and as the
+  /// thirty-third did, in the order of kComponentNames below.
+  ///
+  /// TWO YEARS AND NOT A MEAN, because the pair answers a question no average
+  /// can: a component already near a hundred in year one has a scale that
+  /// cannot tell a ruined farm from a sound one, and a component that has
+  /// barely moved by year thirty-three is not measuring development at all.
+  /// Either way the fault is the scale and not the threshold, and only the
+  /// two columns side by side say which.
+  std::array<float, 8> year1_components = {};
+  std::array<float, 8> year33_components = {};
 };
+
+/// The eight, in the order they are gathered and printed.
+constexpr std::array<const char*, 8> kComponentNames = {"план           (25)",
+                                                        "продовольствие (20)",
+                                                        "механизация    (20)",
+                                                        "фонды          (15)",
+                                                        "довольство     (35)",
+                                                        "доля усилий    (25)",
+                                                        "соцобъекты     (20)",
+                                                        "демография     (10)"};
+
+/// @brief The eight scores of a scored year, in the printed order.
+std::array<float, 8> ComponentsOf(const core::ReadinessState& readiness) {
+  return {readiness.economy.plan.score,
+          readiness.economy.winter_stocks.score,
+          readiness.economy.mechanisation.score,
+          readiness.economy.funds.score,
+          readiness.society.satisfaction.score,
+          readiness.society.kolkhoz_effort.score,
+          readiness.society.social_objects.score,
+          readiness.society.demography.score};
+}
 
 /// The hot day, as `hot_afternoon_c` in weather_params.csv spells it and as
 /// both the weather and hygiene read it: the AFTERNOON, which is the day's
@@ -184,6 +217,12 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     out.economic_index = state.readiness.economic_index;
     out.social_index = state.readiness.social_index;
     out.satisfaction_stub_points = state.readiness.satisfaction_stub_points;
+    if (year == 1) {
+      out.year1_components = ComponentsOf(state.readiness);
+    }
+    if (year == kYears) {
+      out.year33_components = ComponentsOf(state.readiness);
+    }
     if (!print_years) {
       continue;
     }
@@ -459,6 +498,24 @@ int main(int argc, char** argv) {
   }
   std::cout << "population_curve: best run of both indices above threshold over nine villages — "
             << static_cast<int>(best_run) << " years (printed, not judged)\n";
+
+  // THE EIGHT COMPONENTS AT BOTH ENDS OF THE CAMPAIGN (boss, parcel 142).
+  // Means over the nine, year 1 against year 33, so that a scale which cannot
+  // tell a ruined farm from a sound one and a scale which does not move in
+  // thirty-three years are both visible as themselves rather than as a
+  // threshold that needs turning.
+  std::cout << "population_curve: readiness components, mean of nine — year 1 | year 33\n";
+  for (std::size_t index = 0; index < kComponentNames.size(); ++index) {
+    float first = 0.0F;
+    float last = 0.0F;
+    for (const Trajectory& walk : walks) {
+      first += walk.year1_components[index];
+      last += walk.year33_components[index];
+    }
+    const auto count = static_cast<float>(walks.size());
+    std::cout << "  " << kComponentNames[index] << "  " << (first / count) << " | "
+              << (last / count) << '\n';
+  }
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");
