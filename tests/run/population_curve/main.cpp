@@ -65,7 +65,65 @@ struct Trajectory {
   core::Epoch epoch = core::Epoch::kOne;
   bool families_hold = true;
   bool spouses_hold = true;
+  /// The day the first resident of THIS village crossed the filth threshold
+  /// downwards, or 0 if none ever did. Not judged here — see the note over
+  /// the ensemble line in main() for why the number is printed and not
+  /// banded.
+  std::uint32_t first_disease_day = 0;
+  /// Days hot enough for the heat surcharge before that crossing. Zero means
+  /// the surcharge and the dirty-work multiplier have never once met in the
+  /// same day, which is a different statement from "the heat is small".
+  std::uint32_t hot_days_before = 0;
 };
+
+/// The hot day, as `hot_afternoon_c` in weather_params.csv spells it and as
+/// both the weather and hygiene read it: the AFTERNOON, which is the day's
+/// mean plus its swing.
+///
+/// WRITTEN THE WRONG WAY FIRST, and the wrong way is worth keeping in the
+/// record: this counter compared the day's MEAN, which is exactly the defect
+/// it had been added to find in the hygiene rule. It printed zero for nine
+/// villages twice — once truthfully, while the rule shared its mistake, and
+/// once falsely, after the rule was fixed and the crossing day moved two days
+/// without the counter noticing. An instrument that repeats the defect it
+/// looks for agrees with the bug and reports a clean world.
+constexpr float kHotAfternoonCelsius = 25.0F;
+
+/// @brief Advances one whole game day, watching for the village's first
+/// filth crossing on the way past.
+///
+/// TICK BY TICK AND NOT BY `AdvanceDays`, for one reason: the outbox is
+/// cleared every step, so a loop that advances a whole day and reads the
+/// events afterwards sees the last tick and calls the rest silence
+/// (event_journal's header says the same of itself). This IS `AdvanceDays(1)`
+/// — the order of the chairman's day after it is untouched, and the
+/// population bands are the proof.
+void LiveOneDay(core::ISimulation& simulation, Trajectory& out) {
+  bool hot_at_any_tick = false;
+  for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+    simulation.AdvanceStep();
+    if (out.first_disease_day != 0) {
+      continue;
+    }
+    const core::WorldState& state = simulation.CompletedState();
+    const float afternoon =
+        state.weather.air_temperature_celsius + state.weather.temperature_swing_celsius;
+    hot_at_any_tick = hot_at_any_tick || afternoon >= kHotAfternoonCelsius;
+    for (const core::SimEvent& event : state.step_events) {
+      if (event.kind == core::EventKind::kHygieneDisease) {
+        out.first_disease_day = static_cast<std::uint32_t>(state.calendar.day);
+        break;
+      }
+    }
+  }
+  // AN UPPER BOUND AND NOT THE COUNT, deliberately. The rule reads the
+  // temperature on the demography tick; this run does not know which tick
+  // that is, so it asks whether the day was hot at ANY tick. Too high by
+  // construction — which is exactly what makes a ZERO here a proof that the
+  // heat surcharge and the dirty-work multiplier have never once met in the
+  // same day, rather than a hint that the heat is small.
+  out.hot_days_before += hot_at_any_tick ? 1U : 0U;
+}
 
 /// @brief Lives one village for `kYears` years and fills `out`.
 /// @param print_years Prints the year-by-year line; true for the lead seed
@@ -92,7 +150,13 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
 
   for (std::uint32_t year = 1; year <= kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      run::AdvanceDays(*world, 1);
+      // THE DAY IS WALKED TICK BY TICK AND NOT BY AdvanceDays, for one
+      // reason: the outbox is cleared every step, so a loop that advances a
+      // whole day and reads the events afterwards sees the last tick and
+      // calls the rest silence (event_journal's own header says the same).
+      // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
+      // the day is untouched, and the bands below are the proof.
+      LiveOneDay(*simulation, out);
       builder.RunDay(*simulation);
     }
     const core::WorldState& state = simulation->CompletedState();
@@ -186,7 +250,8 @@ int main(int argc, char** argv) {
     }
     std::cout << "population_curve: PROBE seed " << one.seed << " — year 7 = " << one.year7
               << ", year 14 = " << one.year14 << ", year 33 = " << one.year33 << ", male share "
-              << one.male_share << " (printed, not judged)\n";
+              << one.male_share << ", first filth disease day " << one.first_disease_day
+              << " (printed, not judged)\n";
     return 0;
   }
 
@@ -198,7 +263,8 @@ int main(int argc, char** argv) {
     }
     std::cout << "population_curve: seed " << walk.seed << " — year 7 = " << walk.year7
               << ", year 14 = " << walk.year14 << ", year 33 = " << walk.year33 << ", male share "
-              << walk.male_share << '\n';
+              << walk.male_share << ", first filth disease day " << walk.first_disease_day
+              << " (hot days up to it, upper bound, " << walk.hot_days_before << ")\n";
     walks.push_back(walk);
   }
 
@@ -313,6 +379,42 @@ int main(int argc, char** argv) {
   std::cout << "population_curve: nine seeds, MEDIAN year 7 = " << median_year7
             << ", year 14 = " << median_year14 << ", year 33 = " << median_year33 << ", male share "
             << median_male_share << '\n';
+
+  // THE FIRST FILTH DISEASE IS READ OFF THE MINIMUM AND NOT THE MEDIAN, and
+  // the reason is the whole of it: "the first" in a village is the EARLIEST
+  // over everybody, so the ensemble's answer to it is the earliest over the
+  // nine, not the middle one. The bands above are about a typical village;
+  // this number is about the unluckiest, and a median here would answer the
+  // adjacent question convincingly.
+  //
+  // PRINTED AND NOT BANDED, on purpose. The intent is boss's — the first
+  // disease in the SECOND year, "не в первую весну, когда игроку не до бани"
+  // — and the knobs that decide it are his half; a band here would be the
+  // calendar asserted where the acceptance already asserts the rule
+  // (tests/unit/core_residents). The village-crossing day is a balance
+  // reading, and this line is how boss reads it.
+  std::vector<std::uint32_t> first_days;
+  std::uint32_t villages_that_fell_ill = 0;
+  for (const Trajectory& walk : walks) {
+    if (walk.first_disease_day != 0) {
+      first_days.push_back(walk.first_disease_day);
+      ++villages_that_fell_ill;
+    }
+  }
+  // THE SIZE OF THE SET BESIDE THE ANSWER: "none of the nine ever crossed"
+  // and "the earliest crossed on day N" are different facts, and a bare
+  // minimum over an empty sample would print as silence.
+  std::cout << "population_curve: first filth disease — " << villages_that_fell_ill << " of "
+            << kSeeds.size() << " villages crossed the threshold";
+  if (!first_days.empty()) {
+    const std::uint32_t earliest = *std::ranges::min_element(first_days);
+    const std::uint32_t latest = *std::ranges::max_element(first_days);
+    std::cout << ", EARLIEST day " << earliest << " (year "
+              << (earliest + core::kDaysPerYear - 1) / core::kDaysPerYear << "), latest day "
+              << latest;
+  }
+  std::cout << '\n';
+
   if (failures == 0) {
     std::cout << "population_curve: all checks passed\n";
   }

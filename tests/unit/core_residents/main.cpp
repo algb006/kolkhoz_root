@@ -1107,6 +1107,25 @@ int CheckHygiene() {
   failures +=
       Expect(near(day(60.0F, core::WorkKind::kNone, 10.0F, true).residents.rows[0].hygiene, 63.0F),
              "hygiene: a standing bathhouse gives back more than the day takes");
+  // AND THE HOT DAY IS THE AFTERNOON, which is the assertion that tells the
+  // two implementations apart. The three lines above pass word for word
+  // under the old rule — it compared the day's MEAN with a literal 25 — so
+  // none of them was a check of anything: a cool-mean day whose afternoon is
+  // over the line is the ONLY case where the two differ, and in the world it
+  // is not a corner but the ordinary summer day. Measured before the fix:
+  // the surcharge fired not once in sixty days across nine villages.
+  {
+    core::WorldState world;
+    world.weather.air_temperature_celsius = 20.0F;
+    world.weather.temperature_swing_celsius = 6.0F;  // afternoon +26
+    core::ResidentRow person;
+    person.hygiene = 60.0F;
+    core::AppendRow(world.residents, person);
+    core::RunHygiene(config, world);
+    failures += Expect(near(world.residents.rows[0].hygiene, 58.5F),
+                       "hygiene: a day is hot by its AFTERNOON — mean plus swing — and not by "
+                       "its mean, exactly as the weather's own kHotAfternoon decides it");
+  }
   // AND A SITE IS NOT A BATHHOUSE. Level nought is a marked plot; nobody
   // washes in one.
   {

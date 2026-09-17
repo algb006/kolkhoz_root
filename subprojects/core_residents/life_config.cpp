@@ -410,6 +410,20 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       return false;
     }
   }
+  // THE ONE ROW THIS MODULE READS FROM THE WEATHER'S TABLE, and it is read
+  // rather than copied for the reason the table itself gives one comment
+  // above it: +25 is three facts in this project, two of which happen to
+  // share a number. Hygiene's hot day must be the SAME hot day the weather
+  // announces, or the two drift the first time anybody moves one of them.
+  if (const ITable* weather = tables.FindTable("weather_params")) {
+    const std::array<ScalarKnob, 1> knobs = {
+        ScalarKnob{.key = "hot_afternoon_c",
+                   .value = &config.hot_afternoon_celsius,
+                   .range = Range{.low = 0.0F, .high = 50.0F}}};
+    if (!ReadKnobs(*weather, "weather_params", knobs, error)) {
+      return false;
+    }
+  }
   if (!ParseMembershipConfig(tables, config.membership, error) ||
       !ParseNightTradeConfig(tables, config.night_trade, error) ||
       !ParseSchoolingConfig(tables, config.schooling, error) ||

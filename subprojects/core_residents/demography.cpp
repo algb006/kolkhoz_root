@@ -772,7 +772,16 @@ void RunHygiene(const LifeConfig& config, WorldState& current) {
                  unit.dead == 0;
         });
   }
-  const bool hot = current.weather.air_temperature_celsius > 25.0F;
+  // THE AFTERNOON AND NOT THE DAY'S MEAN, which is the same day the weather
+  // calls hot (time_system.cpp: `mean + swing >= hot_afternoon_c`, raising
+  // kHotAfternoon). Until 2026-09-17 this line compared the MEAN against a
+  // literal 25 and the surcharge never fired once in sixty days across nine
+  // villages — measured, not suspected. The swing lives in the state for
+  // exactly this: its own note says production used to keep a copy of the
+  // season amplitudes to compute the afternoon, "one number with two homes".
+  const float afternoon =
+      current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius;
+  const bool hot = afternoon >= config.hot_afternoon_celsius;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     ResidentRow& person = current.residents.rows[row];
     const float before = person.hygiene;

@@ -146,8 +146,30 @@ struct LifeConfig {
   /// работа», and the dirt of a day is the day's, not a constant beside it.
   float hygiene_fall_dirty_work_factor = 2.0F;
 
-  /// What a hot day adds above +25, on top of the rest.
+  /// What a hot day adds, on top of the rest. Its companion is the next
+  /// field, and the two were separated for a day: this one had a threshold
+  /// written into the rule as a literal 25 compared against the day's MEAN
+  /// temperature, and in nine villages of `population_curve` it fired not
+  /// once in sixty days.
   float hygiene_fall_heat_extra = 0.3F;
+
+  /// WHAT MAKES A DAY HOT, and it is the AFTERNOON — the day's mean plus its
+  /// swing — exactly as the weather's own `kHotAfternoon` decides it
+  /// (core_time/time_system.cpp). Read from `hot_afternoon_c` in
+  /// weather_params.csv, the same row, so there is one home for the number
+  /// and not two that agree today.
+  ///
+  /// The name of the knob is the whole lesson: it says `afternoon`, and a
+  /// rule that compares it with the day's mean is asking the adjacent
+  /// question convincingly. The table says so itself, one comment above the
+  /// row — «три факта, два из которых случайно разделили число».
+  ///
+  /// ONE VALUE HERE, PER SEASON THERE, and the day that stops being harmless
+  /// is worth naming now: core_time copies this same row into every season
+  /// of its table, so the two agree today by construction. Give the design
+  /// base a per-season heat and this flat read diverges in silence — that is
+  /// the day hygiene must ask the season, not the row.
+  float hot_afternoon_celsius = 25.0F;
 
   /// What a STANDING bathhouse gives back in a day — to the whole village,
   /// which is the stub: the design has four risers and this core has the
