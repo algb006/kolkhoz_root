@@ -1646,6 +1646,72 @@ int main() {
                        "is the shape guard's luck holding — and the line that says when it stops");
   }
 
+  // A DEFINITION ID PAST THE SAVE'S OWN DICTIONARY. Every definition travels
+  // as an index into the save's own list of keys, so that a reordered table
+  // cannot turn the chairman's rye into somebody's flax.
+  //
+  // AND THE ANSWER IS NOT THE REFUSAL I CAME LOOKING FOR. `LoadSource::
+  // ReadDefId` has one — "the save names livestock row N, its own dictionary
+  // has M" — and coverage listed it as never executed. It is never executed
+  // because A STRONGER GUARD STANDS IN FRONT OF IT: the table reader checks
+  // every id against the live range first and says "table 'herds' holds id
+  // 32766, outside 1..1". The cold edge is SHADOWED, not missing, and that is
+  // a different fact with a different repair — none.
+  //
+  // Which is why this asserts what actually happens rather than what was
+  // predicted. A test written to the prediction would have been green about
+  // the wrong guard.
+  //
+  // The first herd row begins with its kind, and a table section begins with
+  // its row count, so the two bytes after the count are that id.
+  {
+    std::uint64_t herds_length = 0;
+    const std::size_t at = SectionAt(bytes, 6, herds_length);  // the herds
+    if (at != 0 && herds_length > 10) {
+      std::vector<std::byte> wild = bytes;
+      wild[at + 8] = std::byte{0xFE};
+      wild[at + 9] = std::byte{0x7F};  // large, and not the invalid id
+      rehash(wild);
+      const std::string reason = refusal_of(wild);
+      failures += Expect(
+          reason.find("holds id") != std::string::npos && reason.find("herds") != std::string::npos,
+          "a definition id no table row can carry is refused by name and range — "
+          "and it is this guard that answers, not the dictionary's own");
+    } else {
+      failures += Expect(false, "the herds section is where the format says it is");
+    }
+  }
+
+  // A KEY THE TABLES NO LONGER CARRY, which is the other half of the same
+  // contract and the half that happens for real: the save is honest, the
+  // BALANCE moved under it. The refusal names the key and the table, because
+  // "the save is broken" would send somebody looking at the file when the
+  // answer is in the design db.
+  {
+    const std::filesystem::path thinner = root / "thinner";
+    std::filesystem::create_directories(thinner);
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::directory_iterator(root)) {
+      if (entry.is_regular_file()) {
+        std::filesystem::copy_file(entry.path(),
+                                   thinner / entry.path().filename(),
+                                   std::filesystem::copy_options::overwrite_existing);
+      }
+    }
+    WriteTableFile(thinner / "livestock.csv", {"cow"}, "feed_units_per_real_day");
+    const auto fewer = core::LoadTableSet(thinner.string(), nullptr);
+    if (fewer != nullptr) {
+      core::WorldState target;
+      std::string reason;
+      const bool refused = !core::DecodeWorld(bytes, *fewer, &target, &reason);
+      failures += Expect(refused && reason.find("no longer has") != std::string::npos,
+                         "a save naming a key the tables have since lost is refused BY THAT KEY'S "
+                         "NAME — the file is right and the balance moved under it");
+    } else {
+      failures += Expect(false, "the thinned table set loads as tables");
+    }
+  }
+
   // -- the file wrappers ---------------------------------------------------
   const std::filesystem::path file = root / "campaign.kls";
   failures += Expect(core::SaveWorldToFile(world, *tables, file.string(), &error),
