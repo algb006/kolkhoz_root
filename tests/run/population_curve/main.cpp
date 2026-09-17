@@ -136,6 +136,14 @@ struct Trajectory {
   /// place is the blocker that is most often the ONLY one closed, not the one
   /// with the fewest open years.
   std::array<std::uint32_t, 6> sole_holdout = {};
+  /// How many years had exactly 0, 1, 2 … 6 blocks shut. The door needs all
+  /// six, so the SHAPE of the shortfall decides whether any single repair can
+  /// help: a year short by three is a year three repairs away.
+  std::array<std::uint32_t, 7> shut_counts = {};
+  /// How many years each unordered PAIR of blocks was shut together, indexed
+  /// by (i, j) with i < j. The blocker in the most pairs is the real narrow
+  /// place even when it never holds the door alone.
+  std::array<std::uint32_t, 36> pair_years = {};
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -297,6 +305,14 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     out.all_six_years += shut == 0 ? 1U : 0U;
     if (shut == 1) {
       ++out.sole_holdout[last_shut];
+    }
+    ++out.shut_counts[shut];
+    for (std::size_t first = 0; first < open.size(); ++first) {
+      for (std::size_t second = first + 1; second < open.size(); ++second) {
+        if (open[first] == 0 && open[second] == 0) {
+          ++out.pair_years[(first * open.size()) + second];
+        }
+      }
     }
     for (const core::UnitRow& unit : state.units.rows) {
       out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
@@ -703,6 +719,34 @@ int main(int argc, char** argv) {
   for (std::size_t index = 0; index < kBlockNames.size(); ++index) {
     std::cout << "  " << kBlockNames[index] << "  " << (sole[index] / villages) << '\n';
   }
+  // THE SHAPE OF THE SHORTFALL, because "all six" is nought and the sole
+  // holdout is nought too: what decides whether any single repair can help is
+  // how many are shut at once, and which travel together.
+  std::array<float, 7> shut_shape = {};
+  std::array<float, 36> pairs = {};
+  for (const Trajectory& walk : walks) {
+    for (std::size_t index = 0; index < shut_shape.size(); ++index) {
+      shut_shape[index] += static_cast<float>(walk.shut_counts[index]);
+    }
+    for (std::size_t index = 0; index < pairs.size(); ++index) {
+      pairs[index] += static_cast<float>(walk.pair_years[index]);
+    }
+  }
+  std::cout << "population_curve: years by HOW MANY blocks were shut (mean of nine):\n";
+  for (std::size_t index = 0; index < shut_shape.size(); ++index) {
+    std::cout << "  " << index << " shut: " << (shut_shape[index] / villages) << '\n';
+  }
+  std::cout << "population_curve: the pairs shut together most often:\n";
+  for (std::size_t first = 0; first < kBlockNames.size(); ++first) {
+    for (std::size_t second = first + 1; second < kBlockNames.size(); ++second) {
+      const float years = pairs[(first * kBlockNames.size()) + second] / villages;
+      if (years >= 1.0F) {
+        std::cout << "  " << kBlockNames[first] << " + " << kBlockNames[second] << "  " << years
+                  << '\n';
+      }
+    }
+  }
+
   // AND THE OFFICE'S 1.4 IS THE FIXTURE, NOT THE WORLD (boss, blockers round
   // 2). Units rules §11 checks the office's wear "когда вопрос выносят на
   // собрание" — a moment the PLAYER picks, and a living chairman repairs the
