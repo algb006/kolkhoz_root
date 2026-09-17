@@ -68,6 +68,46 @@ class OfficePolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
+  /// @brief A CHAIRMAN ABOUT TO PUT THE QUESTION PUTS HIS OFFICE IN ORDER.
+  ///
+  /// Units rules §11 does not ask for a permanently spotless office; it says
+  /// the wear is checked «когда вопрос выносят на собрание» — at a moment the
+  /// PLAYER chooses. A living chairman repairs the office and then puts the
+  /// question, because the district looks at the office first (§15) and one
+  /// does not invite it to a building with a bucket under the leak.
+  ///
+  /// So the run repairs the office when the farm's OTHER conditions for the
+  /// transition are met — which is when a chairman would be thinking of
+  /// asking. Not "always", which would be a different chairman, and not "when
+  /// it opens the block", which would be the fixture fitted to the
+  /// measurement.
+  ///
+  /// @param others_ready Every transition condition except the office's own.
+  void RunMeetingUpkeep(core::ISimulation& simulation, bool others_ready) {
+    if (!others_ready || office_.value == core::kInvalidDefIdValue) {
+      return;
+    }
+    const core::WorldState& world = simulation.CompletedState();
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != office_.value || unit.level == 0 || unit.dead != 0) {
+        continue;
+      }
+      if (unit.wear <= 0.0F || unit.construction.phase != core::ConstructionPhase::kNone) {
+        return;
+      }
+      core::OrderRow repair;
+      repair.kind = core::OrderKind::kRepairUnit;
+      repair.unit = world.units.row_ids[row];
+      const std::array<core::OrderRow, 1> one = {repair};
+      simulation.StageOrders(std::span<const core::OrderRow>(one.data(), one.size()), {});
+      ++meeting_repairs_;
+      return;
+    }
+  }
+
+  std::uint32_t meeting_repairs() const { return meeting_repairs_; }
+
   /// @brief One day of the chairman's attention. Call once a day, after the
   ///        school.
   /// @param farm_first The farm's own shortage has a site waiting for its
@@ -145,7 +185,10 @@ class OfficePolicy {
                  "and the office being the farm's FIRST ORDERED building is precisely what "
                  "electrification's third blocker stands on (electricity design §3). Do not "
                  "'fix' this by putting an office in the start layout: that would cancel the "
-                 "blocker rather than satisfy it\n";
+                 "blocker rather than satisfy it. AND once every other transition condition is "
+                 "met he REPAIRS the office, because a chairman about to put the question to a "
+                 "meeting puts his office in order first — which is the moment units rules §11 "
+                 "checks its wear at (boss, blockers round 2)\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.
@@ -186,6 +229,8 @@ class OfficePolicy {
   core::UnitTypeId house_;
 
   core::Definitions definitions_;
+
+  std::uint32_t meeting_repairs_ = 0;
 
   std::uint32_t marked_ = 0;
 

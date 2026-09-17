@@ -178,6 +178,15 @@ class BuildingChairman {
     // building, which is a fact about who pays for it and not a claim on the
     // queue: children and roofs come first, as everywhere else here.
     office.RunDay(simulation, farm_first);
+    // AND THE OFFICE IS PUT IN ORDER WHEN THE REST IS READY, because that is
+    // when a chairman would be thinking of putting the question to a meeting
+    // — which is the moment units rules §11 checks its wear at.
+    const core::ReadinessState& readiness = simulation.CompletedState().readiness;
+    office.RunMeetingUpkeep(
+        simulation,
+        readiness.blocks.food_variety != 0 && readiness.blocks.social_objects != 0 &&
+            readiness.blocks.own_traction != 0 && readiness.blocks.wintering_two_years != 0 &&
+            readiness.blocks.units_at_level != 0);
     // And the era's social objects last of the buildings, because they are
     // the least urgent of them and the most easily starved: measured before
     // this line existed, one of the six was ever marked in thirty-three years
