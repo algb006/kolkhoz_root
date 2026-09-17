@@ -202,6 +202,62 @@ int main() {
                        "each stocked at its area times its density");
   }
 
+  // A POST NOBODY CAN EVER REACH IS A QUEST THAT CAN NEVER CLOSE, and one was
+  // exactly that until 2026-09-17.
+  //
+  // `quest_e1_05` «Счетовод» closes on the clerk-accountant being appointed.
+  // The appointment is gated on education (posts.cpp, IsEligible), the post
+  // asked for SECONDARY, and the whole core has three writers of
+  // education_stage between them: genesis and the school both stop at
+  // kPrimary, and kVocational belongs to a specialist the district sends —
+  // and the district sends teachers and librarians, never a clerk. So the
+  // quest was shut, and its own brief said the opposite in as many words:
+  // «счетовод — должность, а не диплом, и учить его в Эпохе I негде».
+  //
+  // The threshold is `primary` now (boss, 2026-09-17), and THIS IS THE GUARD
+  // THAT WOULD HAVE SAID SO. It compares the shipped post against the
+  // education the shipped START actually produces — not against a number
+  // written here, which would be the same mistake one level up.
+  //
+  // IT IS THE OFFICE'S POST AND NOT ALL SEVENTY, deliberately. Thirty-two
+  // posts stand above what a villager can reach, and that is the design
+  // («должность без человека нужного уровня не работает» — education §9):
+  // scarcity, not a defect. What is a defect is a post an EPOCH I QUEST
+  // depends on standing there, and the office's is the one the core can name
+  // on its own.
+  {
+    const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+    const core::ITable* const posts =
+        shipped == nullptr ? nullptr : shipped->FindTable("professions");
+    const std::uint32_t row =
+        posts == nullptr ? core::kNoTableRow : posts->FindRowByKey("clerk_accountant");
+    const std::uint32_t column =
+        posts == nullptr ? core::kNoTableColumn : posts->FindColumn("min_education");
+    // THE WORD, NOT A NUMBER. The ladder's order lives in the enum and the
+    // spelling in labor_config.cpp; repeating either here would put the fact
+    // in a second house. What this test needs is narrower and safe to state:
+    // the start produces `primary` at best, so a threshold the start can
+    // meet is `none` or `primary` and nothing else.
+    const std::string_view word =
+        posts == nullptr || row == core::kNoTableRow || column == core::kNoTableColumn
+            ? std::string_view()
+            : posts->CellText(row, column);
+    const bool read = !word.empty();
+    core::EducationStage best = core::EducationStage::kNone;
+    if (shipped != nullptr) {
+      const core::WorldState start =
+          core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+      for (const core::ResidentRow& person : start.residents.rows) {
+        best = person.education_stage > best ? person.education_stage : best;
+      }
+    }
+    const bool within =
+        best == core::EducationStage::kPrimary && (word == "none" || word == "primary");
+    failures += Expect(read && within,
+                       "the office's clerk can be appointed out of the village the start ships: a "
+                       "post above the education the start produces is a quest that never closes");
+  }
+
   // THE START LAYOUT IS PARSED BEFORE THE WORLD IS BUILT, and the refusal
   // names the row and the column.
   //
