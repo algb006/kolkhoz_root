@@ -387,24 +387,30 @@ int main(int argc, char** argv) {
   // this number is about the unluckiest, and a median here would answer the
   // adjacent question convincingly.
   //
-  // PRINTED AND NOT BANDED, on purpose. The intent is boss's — the first
-  // disease in the SECOND year, "не в первую весну, когда игроку не до бани"
-  // — and the knobs that decide it are his half; a band here would be the
-  // calendar asserted where the acceptance already asserts the rule
-  // (tests/unit/core_residents). The village-crossing day is a balance
-  // reading, and this line is how boss reads it.
+  // THE DAY IS PRINTED AND THE YEAR IS ASSERTED, and the line between them is
+  // the line between a balance reading and an intent. Day 57 is a
+  // calibration: boss moves two knobs and it moves, and a band on it would
+  // be rewritten with every balance edit until nobody read it. "NOT IN THE
+  // FIRST YEAR" is the design — «не в первую весну, когда игроку не до бани»
+  // — and it has something to fall on: the first measurement, before the
+  // knobs moved, put the earliest crossing on day 35, which is the first
+  // September. The acceptance in tests/unit/core_residents asserts the rule
+  // itself and says nothing about any day, deliberately; this is the other
+  // half of that division.
   std::vector<std::uint32_t> first_days;
-  std::uint32_t villages_that_fell_ill = 0;
   for (const Trajectory& walk : walks) {
     if (walk.first_disease_day != 0) {
       first_days.push_back(walk.first_disease_day);
-      ++villages_that_fell_ill;
     }
   }
-  // THE SIZE OF THE SET BESIDE THE ANSWER: "none of the nine ever crossed"
-  // and "the earliest crossed on day N" are different facts, and a bare
-  // minimum over an empty sample would print as silence.
-  std::cout << "population_curve: first filth disease — " << villages_that_fell_ill << " of "
+  // THE SIZE OF THE SET BESIDE THE ANSWER. "None of the nine ever crossed"
+  // and "the earliest crossed on day N" are different facts, and without the
+  // count a minimum over an empty sample prints as silence — and, worse,
+  // passes the year assertion below for having nothing to judge. So the
+  // count is asserted FIRST, and it is a real claim rather than a
+  // formality: no fixture builds a bathhouse, hygiene has no other riser,
+  // so every village must reach the threshold inside thirty-three years.
+  std::cout << "population_curve: first filth disease — " << first_days.size() << " of "
             << kSeeds.size() << " villages crossed the threshold";
   if (!first_days.empty()) {
     const std::uint32_t earliest = *std::ranges::min_element(first_days);
@@ -414,6 +420,12 @@ int main(int argc, char** argv) {
               << latest;
   }
   std::cout << '\n';
+  failures += run::Expect(first_days.size() == kSeeds.size(),
+                          "every one of the nine villages reached the filth threshold at all");
+  failures += run::Expect(
+      !first_days.empty() && *std::ranges::min_element(first_days) > core::kDaysPerYear,
+      "and not one of them did so in the FIRST year — the design wants the bathhouse buildable "
+      "before the filth costs anything (boss, parcel 130)");
 
   if (failures == 0) {
     std::cout << "population_curve: all checks passed\n";
