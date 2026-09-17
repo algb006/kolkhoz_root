@@ -1327,6 +1327,139 @@ int TestCapacityNeedsALadder() {
 /// is what this check first was: the assembly refuses if ANY of the five
 /// refuses, so damaging one guard is masked by the other four. A guard has
 /// to name its own subject.
+/// FIRE (construction_system.cpp, RunFires; fire design; quest_e1_13). The
+/// Epoch I fire is a STUB over the design's promise that people usually put
+/// one out in time: it scars a building and never destroys one.
+int TestFire(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    std::cout << "FAIL: the fire table set builds no system\n";
+    return 1;
+  }
+
+  /// A world of `barns` standing barns and one orchard — the outline with no
+  /// wear — on the given campaign day, with the chance forced to certainty.
+  const auto burn = [&system](std::uint32_t day, std::uint32_t barns, bool orchard) {
+    core::WorldState world;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    // `day` is a CACHE off the tick, and the grace period reads it. Without
+    // this the fixture sat on day nought whatever tick it claimed, so the
+    // grace period refused every fire and the test read that as "the rule
+    // does not fire" — the fixture answering for the rule.
+    core::RefreshCalendarCaches(world.calendar);
+    for (std::uint32_t made = 0; made < barns; ++made) {
+      core::UnitRow barn;
+      barn.type = core::UnitTypeId{kBarnType};
+      barn.level = 1;
+      core::AppendRow(world.units, barn);
+    }
+    if (orchard) {
+      core::UnitRow outline;
+      outline.type = core::UnitTypeId{kOrchardType};
+      outline.level = 1;
+      core::AppendRow(world.units, outline);
+    }
+    const core::WorldState previous = world;
+    system->RunConstructionDecisions(previous, world);
+    return world;
+  };
+  const auto fires = [](const core::WorldState& world) {
+    std::uint32_t count = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      count += event.kind == core::EventKind::kFireBroke ? 1U : 0U;
+    }
+    return count;
+  };
+
+  // -- THE GRACE PERIOD, and it is the one blocker a table can move ---------
+  // «В начале партии их нет» (difficulty design §3). The shipped grace is 48
+  // days; the day before it, nothing burns however many buildings stand.
+  {
+    const core::WorldState early = burn(0, 40, false);
+    failures += Expect(fires(early) == 0, "fire: nothing burns on day nought");
+  }
+
+  // -- A SITE AND AN OUTLINE DO NOT BURN ------------------------------------
+  // The orchard is the table's unit with has_wear = 0 — a heap, a stack, a
+  // trench and, in the shipped tables, the police post. It has no wear for a
+  // fire to take and the design says it does not catch.
+  {
+    const core::WorldState world = burn(500, 0, true);
+    failures += Expect(fires(world) == 0, "fire: an outline with no wear does not burn");
+  }
+
+  // -- WHAT A FIRE DOES, AND WHAT IT NEVER DOES -----------------------------
+  // With enough buildings past the grace period at least one catches, and the
+  // scar is real: wear above nothing, and BELOW the top of the scale. A unit
+  // that reached the top would be collapsed by AgeUnits, which is exactly
+  // what the stub's form forbids — the fire is always put out.
+  //
+  // FOUR HUNDRED BUILDINGS OVER TWENTY DAYS, and the size is the point: the
+  // shipped chance is 0.017 a year, which is 0.00035 a building a day, so
+  // four hundred of them on ONE day expect 0.14 fires. A test written that
+  // way is a coin toss dressed as an assertion — it passes or fails by which
+  // draw the seed happens to give, and it told us so on the first run.
+  {
+    core::WorldState world = burn(500, 400, false);
+    std::uint32_t caught = fires(world);
+    for (int day = 1; day < 20 && caught == 0; ++day) {
+      world.calendar.tick = static_cast<core::Tick>(500 + day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      world.step_events.clear();
+      const core::WorldState previous = world;
+      system->RunConstructionDecisions(previous, world);
+      caught = fires(world);
+    }
+    failures += Expect(caught > 0, "fire: past the grace period, buildings do catch");
+    // THE SCAR IS MEASURED AGAINST THE FIRE'S OWN SIZE, not against nothing.
+    // Written as `wear > 1` this passed with the rule damaged, because
+    // AgeUnits runs first and twenty days of ordinary ageing clear a wear of
+    // one on their own: the assertion was true whether a fire happened or
+    // not, which is decoration. Thirty is a third of the scale — reachable by
+    // a fire in one blow and not by twenty days of standing still.
+    bool scarred = false;
+    bool all_below_the_top = true;
+    for (const core::UnitRow& unit : world.units.rows) {
+      scarred = scarred || unit.wear >= 30.0F;
+      all_below_the_top = all_below_the_top && unit.wear < 100.0F;
+    }
+    failures += Expect(scarred, "and the fire leaves a scar no amount of ageing would");
+    failures += Expect(all_below_the_top,
+                       "and NEVER reaches the top of the scale: a fire that destroyed a "
+                       "building is what this stub's form forbids");
+    // The event names its building, or the layer has nothing to show.
+    bool named = true;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kFireBroke) {
+        named = named && event.unit.value != core::kInvalidEntityIdValue;
+      }
+    }
+    failures += Expect(named, "and every fire names the building it broke in");
+  }
+
+  // -- A BURNT BUILDING IS NOT BURNT TWICE INTO RUIN ------------------------
+  // The scar is clamped, so a building that catches on many days in a row
+  // still stands. Run the same world through a second and a third day.
+  {
+    core::WorldState world = burn(500, 400, false);
+    for (int day = 0; day < 3; ++day) {
+      world.calendar.tick = static_cast<core::Tick>(501 + day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      world.step_events.clear();
+      const core::WorldState previous = world;
+      system->RunConstructionDecisions(previous, world);
+    }
+    bool standing = true;
+    for (const core::UnitRow& unit : world.units.rows) {
+      standing = standing && unit.wear < 100.0F;
+    }
+    failures += Expect(standing, "fire: days of fires in a row still destroy nothing");
+  }
+  return failures;
+}
+
 int CheckStubTablesMustBeDeclared() {
   int failures = 0;
   const test::FakeTableSet nothing;
@@ -2130,6 +2263,7 @@ int main() {
   failures += TestTableLessWorld();
   failures += TestWearGrows(tables);
   failures += TestWearDeadline(tables);
+  failures += TestFire(tables);
   failures += TestWearCeilingAndCollapse(tables);
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);

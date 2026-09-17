@@ -727,8 +727,11 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
 }
 
 /// The world_params.csv keys this subsystem reads.
-constexpr std::array<std::string_view, 1> kConstructionWorldParamKeys = {
-    "field_camp_field_reach_m"};
+constexpr std::array<std::string_view, 4> kConstructionWorldParamKeys = {
+    "field_camp_field_reach_m",
+    "fire_base_chance_per_unit_year",
+    "fire_frost_factor",
+    "fire_grace_days"};
 
 /// Past it the cell is a typo: ten times the map's side (CLAUDE.md §9).
 constexpr float kMostCampReachM = 120000.0F;
@@ -854,13 +857,27 @@ bool ParseConstructionConfig(const ITableSet& tables,
   // The MTS column's camp and how near the fields it stands (field_camp.h).
   config.field_camp_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("field_camp"));
   if (const ITable* const world = tables.FindTable("world_params")) {
-    const std::array<ScalarKnob, 1> reach = {
+    float grace_days = static_cast<float>(config.fire_grace_days);
+    const std::array<ScalarKnob, 4> world_knobs = {
         ScalarKnob{.key = ConstructionWorldParamKeys()[0],
                    .value = &config.field_camp_field_reach_m,
-                   .range = Range{.low = 0.0F, .high = kMostCampReachM}}};
-    if (!ReadKnobs(*world, "world_params", reach, error)) {
+                   .range = Range{.low = 0.0F, .high = kMostCampReachM}},
+        // A CHANCE, SO IT STOPS BELOW ONE. A base of 1.0 would burn every
+        // building every year and the frost factor would make that worse
+        // than certain — the range is the rule, not a sanity bound.
+        ScalarKnob{.key = ConstructionWorldParamKeys()[1],
+                   .value = &config.fire_base_chance_per_unit_year,
+                   .range = Range{.low = 0.0F, .high = 0.99F}},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[2],
+                   .value = &config.fire_frost_factor,
+                   .range = Range{.low = 1.0F, .high = 100.0F}},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[3],
+                   .value = &grace_days,
+                   .range = Range{.low = 0.0F, .high = 100000.0F}}};
+    if (!ReadKnobs(*world, "world_params", world_knobs, error)) {
       return false;
     }
+    config.fire_grace_days = static_cast<std::uint32_t>(grace_days);
   }
   // What an insulation job is delivered and spends (unit rules §16).
   config.straw_resource = ResourceId{};

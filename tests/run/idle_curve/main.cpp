@@ -639,6 +639,13 @@ int main(int argc, char** argv) {
   /// Years in which work stood and nobody worked at all. A fault where a
   /// chairman plays, the expected end where nobody does (below).
   std::uint32_t stalled_years = 0;
+  /// WHICH years, not only how many. A count alone cannot tell the rescue's
+  /// own lost season from an unrelated year ten springs later, and on
+  /// 2026-09-17 it did not: the horseless arm stalled in year 1 — by design,
+  /// the delivery eats the sowing window — and again in year 11, in a village
+  /// that by then had five horses. One number was carrying two events.
+  std::int32_t first_stalled_year = -1;
+  std::int32_t last_stalled_year = -1;
   for (std::uint32_t year = 0; year < kYears; ++year) {
     std::uint64_t worked = 0;
     std::uint64_t idled = 0;
@@ -764,6 +771,10 @@ int main(int argc, char** argv) {
     // window to the delivery, and is sowing again by the second year.
     if (!(done.ledger.closed.area_sown_ha > 0.0F)) {
       ++stalled_years;
+      if (first_stalled_year < 0) {
+        first_stalled_year = static_cast<std::int32_t>(year + 1);
+      }
+      last_stalled_year = static_cast<std::int32_t>(year + 1);
     }
     std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
               << of_age << " | " << worked << " | " << idled << " | "
@@ -1060,6 +1071,19 @@ int main(int argc, char** argv) {
   // A STEERED VILLAGE WITH ITS TEAM NEVER HAS A YEAR WITH NOTHING SOWN, and
   // this is the red line in its proper place: at the end, over the whole run,
   // where "stalled and stayed stalled" can be told from "lost a season".
+  // PRINTED IN EVERY ARM, and not only where it is asserted. The control's
+  // figure was readable only as "the assertion was green", which is a fact
+  // about the test and not a number anybody can compare — and comparing the
+  // arms is the whole question the horseless one asks. Measured 2026-09-17:
+  // the same world with fires stalls the horseless arm twice and the steered
+  // one not at all, so the difference between them is not a constant, and
+  // that could not be seen while one side of it was invisible.
+  std::cout << "idle_curve: вставших лет " << stalled_years << " из " << kYears << " ("
+            << (no_horses     ? "без лошадей"
+                : no_chairman ? "без председателя"
+                : yard_only   ? "только двор"
+                              : "с председателем и табуном")
+            << ")\n";
   if (!no_chairman && !yard_only && !no_horses) {
     failures += run::Expect(stalled_years == 0,
                             "a village with a chairman and a team sows every year: a year with "
@@ -1111,9 +1135,33 @@ int main(int argc, char** argv) {
     // ploughing is back the next spring. A rescue that cost nothing would
     // mean the trap had no teeth; a rescue that cost every year would mean
     // the door did not open.
-    failures += run::Expect(stalled_years <= 1,
-                            "and it costs one season, not the campaign: the village loses the "
-                            "sowing window the head is bought in, and no more");
+    // MEASURED AS THE WINDOW IT NAMES, and not as a tally over the campaign.
+    // Written `stalled_years <= 1` this counted every year that sowed
+    // nothing, wherever it fell — so on 2026-09-17 it went red on a run whose
+    // rescue had cost exactly the one season it is supposed to: the arm
+    // stalled in year 1, as designed, and again in YEAR ELEVEN, ten springs
+    // later, in a village that by then had five horses. Two events in one
+    // number, and the comment above had described the right rule all along.
+    //
+    // THE FINDING THE OLD FORM WAS CARRYING IS NOT LOST WITH IT: the year-11
+    // stall is fire-caused — the same year sows with the fire chance at nil —
+    // and it is written down in claude/fire_predictions.md with its numbers
+    // BEFORE this line was repaired, because a red fixed by editing the
+    // assertion takes its finding with it unless the finding is recorded
+    // first (boss, parcel 114).
+    // EXACTLY THE FIRST YEAR, not "no later than". `<= 1` would pass on a run
+    // that stalled in no year at all, and the paragraph above says why that
+    // is not the claim: «a rescue that cost nothing would mean the trap had
+    // no teeth». The trap costs one season and the season is the first.
+    failures += run::Expect(first_stalled_year == 1,
+                            "and the rescue costs the sowing window the head is bought in: the "
+                            "stall is the FIRST year, and there is one");
+    if (last_stalled_year > first_stalled_year) {
+      std::cout << "idle_curve: и ещё один вставший год — " << last_stalled_year << ", через "
+                << (last_stalled_year - first_stalled_year)
+                << " лет после спасения: это ДРУГОЕ событие, не цена тупика"
+                << " (claude/fire_predictions.md)\n";
+    }
     // THE SIRES BY KIND, and boss asked for this number rather than for the
     // horse alone (parcel 20): the daily re-derive that used to force a male
     // on every herd is gone, so «у лошади стало верно» does not mean «у

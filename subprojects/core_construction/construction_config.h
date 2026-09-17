@@ -397,6 +397,37 @@ struct ConstructionConfig {
   /// A stack is dropped from consideration for good; a missing column is a
   /// hole somebody has to fill.
   bool wear_column_present = false;
+
+  // -- fire (fire design; world_params.csv) ---------------------------------
+
+  /// The chance a standing building catches fire in a game year, before the
+  /// frost factor. 0.017 with the shipped tables: about a score of buildings
+  /// gives roughly one fire in three years, so a fire stays an EVENT, like a
+  /// horse dying, rather than a running danger (boss, parcel 110).
+  ///
+  /// THE SAME FIGURE FOR EVERY TYPE, and that is a stub with a named owner:
+  /// `fire_risk` in the registry is prose and the per-type multiplier is in
+  /// the polish backlog, so a granary and a bathhouse burn alike today.
+  float fire_base_chance_per_unit_year = 0.017F;
+
+  /// How many times likelier in a frost. A MULTIPLIER AND NOT A CURVE on
+  /// purpose: a village fire comes from the stove, so this is about stoking,
+  /// not about a thermometer (fire design §1, «Отопление — главный
+  /// источник»).
+  float fire_frost_factor = 2.0F;
+
+  /// Campaign days before any fire can happen at all — the grace period every
+  /// difficulty level gets (difficulty design §3: «В начале партии их нет»).
+  ///
+  /// ONE NUMBER WHERE THE DESIGN HAS THREE, and the gap has an owner rather
+  /// than a shrug: the length is meant to depend on the difficulty level,
+  /// longer on easy and shorter on hard, and THE CORE HAS NO CONCEPT OF
+  /// DIFFICULTY AT ALL — measured across the whole tree on 2026-09-17, no
+  /// enum, no knob, no row. This knob is the stand-in, and it comes off the
+  /// day difficulty arrives, when it becomes three numbers. The same grace
+  /// period gates the wolves, the droughts and the murrain, so whoever
+  /// brings difficulty brings those too (boss, parcel 110).
+  std::uint32_t fire_grace_days = 48;
 };
 
 /// @brief Reads the five tables into `config` — and, since task A5, the

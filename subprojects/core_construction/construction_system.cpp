@@ -44,6 +44,22 @@ namespace {
 /// above the destination's range, and the figure comes off a table.
 constexpr float kMaxRepairPieces = 1e9F;
 
+/// The random stream a fire is drawn from. Its own id, so a daily roll per
+/// building never shifts the draws of any other system of the world — the
+/// same reason the night pasture's camp has one (night_pasture.cpp).
+constexpr std::uint64_t kFireStream = 0x4649524553ULL;  // "FIRES"
+
+/// What a fire adds to a building's wear, on the 0..100 scale. A third of the
+/// scale: enough that a repair is worth ordering and the loss is felt, far
+/// short of destroying anything.
+///
+/// A CHOSEN NUMBER AND NOT A MEASURED ONE, and it has no knob on purpose:
+/// the design prices a fire by how long it burned before it was put out, and
+/// that is the extinguishing model this stub does not have (polish P32a2).
+/// A knob would offer a dial for a quantity nobody has decided how to derive,
+/// which is worse than a constant that says it is a stub.
+constexpr float kFireWearScar = 33.0F;
+
 /// @brief This module's shorthand: every one of its events is about a unit.
 /// The general helper is core_common/emit_event.h, and it is the one a check
 /// walks to ask which kinds have an emitter (scripts/event_sites.py) — so
@@ -230,6 +246,7 @@ class ConstructionSystem final : public IConstructionSystem {
       // and a house that reaches the top of the scale falls before the
       // deliveries walk the rows it is no longer in (task A5).
       AgeUnits(current);
+      RunFires(current);
       core::MoveStinkZones(config_, current);
       DeliverMaterials(current);
     }
@@ -297,6 +314,85 @@ class ConstructionSystem final : public IConstructionSystem {
     }
     for (const UnitId unit : collapsed) {
       Collapse(current, unit);
+    }
+  }
+
+  /// @brief One day's fires (fire design; quest_e1_13 «Огонь и вода»).
+  ///
+  /// STUB — A FIRE THAT IS ALWAYS PUT OUT. The design's own promise is that
+  /// «у людей всегда есть шанс потушить до разрушения» and that «обычно
+  /// успевают», with the outcome decided by who runs and how fast. None of
+  /// that exists here: the gathering radius and the rate of extinguishing are
+  /// in the polish backlog (P32a2). So this stub sits ABOVE the promise
+  /// rather than against it — the fire scars the building and never destroys
+  /// it — and what is missing is the CHANCE of losing one, not the fighting
+  /// of it. A fire that could not be fought would be the opposite of what the
+  /// design guarantees, which is why the narrow form was refused (boss,
+  /// parcel 110).
+  ///
+  /// WHAT BURNS IS `has_wear`, which is not a new column but the one that
+  /// already separates a building from a heap: a stack, a pile and a trench
+  /// have no wear and no fire. It gives the design's one exception for free —
+  /// the police post is the only heated building that neither wears nor
+  /// burns, and the table already says has_wear = 0 for it. THE HAY STACK IS
+  /// THE STUB'S OWN EDGE: the design has it burning though it is not a
+  /// building, and it has no wear for a fire to take, so it does not burn
+  /// here. Said out loud rather than left to be discovered.
+  ///
+  /// THE SAME CHANCE FOR EVERY TYPE. `fire_risk` in the registry is prose and
+  /// the per-type multiplier is polish, so a granary and a bathhouse burn
+  /// alike today — named here so the next reader does not go looking for the
+  /// reason.
+  ///
+  /// THE DRAW COMES FROM ITS OWN RNG STREAM, like the night pasture's camp.
+  /// A daily roll per building against the world's sequential generator would
+  /// shift every later draw in the world, and every run would diverge from
+  /// the reshuffling rather than from the fires.
+  void RunFires(WorldState& current) {
+    // The grace period of difficulty design §3 — «в начале партии их нет».
+    if (static_cast<std::uint32_t>(current.calendar.day) < config_.fire_grace_days) {
+      return;
+    }
+    const bool frost = current.weather.air_temperature_celsius < 0.0F;
+    const float chance = config_.fire_base_chance_per_unit_year *
+                         (frost ? config_.fire_frost_factor : 1.0F) /
+                         static_cast<float>(kDaysPerYear);
+    if (!(chance > 0.0F)) {
+      return;
+    }
+    // THE DAY IS IN THE SEED, and the acceptance is what found that it had to
+    // be. Seeded from the world's state alone, a DAILY draw repeats itself
+    // exactly whenever nothing else has moved the generator — the same
+    // buildings catch every morning, or none ever do. The night pasture's
+    // camp gets away without it because it is drawn ONCE in a campaign; a
+    // rule that rolls every day may not lean on other systems happening to
+    // advance the stream for it. Same fold as the district's delivery delay,
+    // for the same reason.
+    RngState rng = SeedRngState(current.rng.state ^ current.calendar.day, kFireStream);
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      UnitRow& unit = current.units.rows[row];
+      if (unit.level == 0 || unit.type.value >= config_.types.size()) {
+        continue;  // a site has nothing to burn
+      }
+      if (config_.types[unit.type.value].has_wear == 0) {
+        continue;  // a heap, a stack, a trench — and the police post
+      }
+      if (unit.paused != 0) {
+        continue;  // nobody stokes a stopped building, as nothing wears it
+      }
+      if (NextRandomUnitFloat(rng) >= chance) {
+        continue;
+      }
+      // THE SCAR NEVER REACHES THE TOP OF THE SCALE. AgeUnits collapses a
+      // unit that gets there, and a fire that destroyed a building would be
+      // exactly what this stub's form forbids. So the damage is taken up to
+      // one step below the end and no further: the building is hurt, the
+      // repair is worth ordering, and nothing is lost.
+      const float scarred = unit.wear + kFireWearScar;
+      const float ceiling = kWearScale - 1.0F;
+      unit.wear = scarred < ceiling ? scarred : ceiling;
+      SimEvent& fire = EmitEvent(current, EventKind::kFireBroke, EventSeverity::kInterrupting);
+      fire.unit = current.units.row_ids[row];
     }
   }
 

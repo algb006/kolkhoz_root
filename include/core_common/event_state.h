@@ -348,6 +348,24 @@ enum class EventKind : std::uint8_t {
   /// the wire format, and it only ever grows at this end.
   kStockHandedOver,
 
+  /// unit = the building that caught fire (fire design; quest_e1_13 «Огонь и
+  /// вода», which opens on the first one). Interrupting: a fire is the sort
+  /// of thing a fast-forward must not run past.
+  ///
+  /// IT IS NOT "A BUILDING WAS LOST". In Epoch I the fire is always put out
+  /// — a stub over the design's promise that people usually get there in
+  /// time — so what this announces is a scar and a repair to order, never a
+  /// ruin. The day the extinguishing model arrives, this event keeps its
+  /// meaning and a second one joins it for the building that went.
+  /// Seam key `fire_broke`.
+  ///
+  /// APPENDED AT THE VERY END, after the electrification that came before it.
+  /// It was first written in beside the hand-over, where it belongs by
+  /// subject, and that would have moved every kind after it up one — the
+  /// mistake this enum already made once today and the save's section table
+  /// caught within the minute. Subject grouping is what the headings are
+  /// for; the ORDER is the wire format.
+  ///
   /// ЭЛЕКТРИФИКАЦИЯ (era event 01, electricity design §3): the district is
   /// putting up the line and the substation, and the village may build its
   /// own network. Once a campaign, on the three blockers — accumulated limit
@@ -355,6 +373,8 @@ enum class EventKind : std::uint8_t {
   /// about the whole settlement. Interrupting, because the chairman's next
   /// season is a different one. Seam key `electrification_unlocked`.
   kElectrificationUnlocked,
+
+  kFireBroke,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
