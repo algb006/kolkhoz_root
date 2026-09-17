@@ -318,6 +318,26 @@ struct ChairmanState {
   /// moment it is set. A milestone of the campaign, which is why it sits
   /// with the chairman's numbers and not on any herd (task A7).
   std::uint8_t horses_stabled = 0;
+
+  /// 0/1: the chairman's standing order to spend the summer nights at
+  /// pasture (kGrazeAtNight). Given once and held: «с этого лета уводится
+  /// каждое». It sits with the chairman's numbers for the reason
+  /// `horses_stabled` does — it is a decision of the campaign and not a
+  /// property of any herd, and there is one team.
+  std::uint8_t night_pasture_ordered = 0;
+
+  /// 0/1: the team has been out at least once, so the first night is said
+  /// once and not every evening of every summer.
+  std::uint8_t night_pasture_begun = 0;
+
+  /// Where the children keep the team: a point on a floodplain meadow,
+  /// drawn once from the campaign's own generator when the order is given.
+  ///
+  /// THE CORE PICKS IT AND NOT THE LAYER, and the design says why: geometry
+  /// is the layer's constant and the layer does not choose within it, so a
+  /// point the layer drew would part company with the save on the first
+  /// evening. Zero when no order stands.
+  Vec2 night_pasture_place;
 };
 
 /// @brief Settlement-wide vital statistics (design decision 105).

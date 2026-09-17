@@ -1023,9 +1023,20 @@ int main(int argc, char** argv) {
   // 32.5325203 with the daily issue (the mean above), and to 58.2252274 with
   // the bread norm under the plan first (the mean above), and down to
   // 45.7935219 with the positions held by the list (the mean above), and to
-  // 30.1344814 with the holidays (the mean above).
+  // 30.1344814 with the holidays (the mean above), and to 30.0426960 when the
+  // horses' summer discount stopped being free.
+  //
+  // THE LAST MOVE IS NINE HUNDREDTHS AND IT IS THE RIGHT SIGN. The team's
+  // half-ration in the pasture months had been applied unconditionally since
+  // day zero — no yard, no chairman's order, no children — and it is the
+  // night pasture's whole gain (livestock design, «Ночное»). Behind its three
+  // conditions now, the horses eat more hay in the summers before the yard
+  // stands, and the village's leanest day feels it at one remove: hay and
+  // bread compete for the same hands in the same weeks. A fall this small
+  // from a change this large is itself the measurement — the fodder bill
+  // moved by 116 tonnes and the PEOPLE barely noticed.
   failures += ExpectNoLower(
-      good.leanest_day_satiety, 30.1344814F, "the leanest day of the year (recorded, not a band)");
+      good.leanest_day_satiety, 30.0426960F, "the leanest day of the year (recorded, not a band)");
   // BAND WITHDRAWN, REGRESSION KEPT — and the claim SPLIT, because it was
   // two things in one sentence. "Hunger never takes the WHOLE village" is a
   // direction and stands above, binding on every seed. "Four fifths and no

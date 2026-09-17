@@ -116,7 +116,11 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
       if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
         continue;  // a family herd eats from its family's pantry, not the farm's
       }
-      const float need = FeedNeedUnits(config, config.livestock[herd.kind.value], herd, winter);
+      // The winter need, so the grazing flag decides nothing here — and it is
+      // passed false rather than true all the same, because a forecast never
+      // spends the night pasture's gain (herd_system.h).
+      const float need =
+          FeedNeedUnits(config, config.livestock[herd.kind.value], herd, winter, false);
       if (need > 0.0F) {
         needs.push_back(HerdNeed{.kind = herd.kind, .units_per_day = need});
       }

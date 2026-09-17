@@ -532,6 +532,37 @@ struct FarmingConfig {
   /// the very way out of the deadlock it was written beside. Two doubles it.
   float billet_heads_per_yard = 2.0F;
 
+  /// The school year, 0-based months (world_params.csv, human 1..12 there).
+  /// Production reads them for ONE question: whether the children who keep
+  /// the night pasture are on holiday.
+  ///
+  /// THE YEAR ENDS ON THE FIRST DAY OF ITS LAST MONTH, which is how every
+  /// rung in this project is counted, so a year of 9..6 means school runs to
+  /// the end of MAY and the holidays are June, July and August. Read the
+  /// number and not its header and you get two months instead of three — and
+  /// then the night pasture's window is wrong by a third.
+  std::uint8_t school_year_start_month = 8;  ///< September.
+  std::uint8_t school_year_end_month = 5;    ///< June — the year ends as it opens.
+
+  /// The band of children the night pasture is kept by, and the acceleration
+  /// that turns campaign days into their years (world_params.csv
+  /// `age_school_senior_from_years` and `age_adult_from_years`, both declared
+  /// for `both` readers; life.csv `life_speedup`).
+  ///
+  /// SECOND READERS, NOT SECOND HOMES. core_labor reads the same speedup row
+  /// and core_residents the same bands; production asks the same rows rather
+  /// than keeping numbers of its own, which is the only way the three cannot
+  /// drift.
+  ///
+  /// AND THE BAND IS WHY THE CHECK IS NOT "IS HE ENROLLED": a village with no
+  /// school has no enrolled pupils at all, so an enrolment test would smuggle
+  /// in a school BUILDING as a condition of the night pasture — a condition
+  /// the design does not name, and the kind of false gate this project spent
+  /// two days marking.
+  float senior_school_from_years = 11.0F;
+  float adult_from_years = 16.0F;
+  float life_speedup = 4.0F;
+
   /// The month the autumn pig slaughter falls in, 0-based. Everything but
   /// the sows and the sire goes to meat then (livestock design §6).
   std::uint8_t pig_slaughter_month = 9;  ///< October.

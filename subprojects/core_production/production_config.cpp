@@ -906,17 +906,48 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 2> kProductionWorldParamKeys = {"billet_heads_per_yard",
-                                                                       "billet_yield_factor"};
+constexpr std::array<std::string_view, 6> kProductionWorldParamKeys = {
+    "billet_heads_per_yard",
+    "billet_yield_factor",
+    "school_year_start_month",
+    "school_year_end_month",
+    "age_school_senior_from_years",
+    "age_adult_from_years"};
 
+/// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
+/// second READER, not a second home: the months live in world_params.csv and
+/// both modules ask that one row set. The night pasture is guarded by
+/// children on their holidays, so "is it the holidays" is a question
+/// production has to answer, and answering it from a copy of the months would
+/// be the drift this project keeps finding.
+///
+/// AND THE MONTHS COME IN HUMAN 1..12 while everything downstream counts from
+/// zero, which is the same conversion the pasture and sowing windows get.
 bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std::string& error) {
-  const std::array<ScalarKnob, 2> knobs = {ScalarKnob{.key = kProductionWorldParamKeys[0],
-                                                      .value = &farming.billet_heads_per_yard,
-                                                      .range = Range{.low = 1.0F, .high = 10.0F}},
-                                           ScalarKnob{.key = kProductionWorldParamKeys[1],
-                                                      .value = &farming.billet_yield_factor,
-                                                      .range = Range{.low = 0.0F, .high = 1.0F}}};
-  return ReadKnobs(world, "world_params", knobs, error);
+  float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
+  float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
+  const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
+  const std::array<ScalarKnob, 6> knobs = {
+      ScalarKnob{.key = kProductionWorldParamKeys[0],
+                 .value = &farming.billet_heads_per_yard,
+                 .range = Range{.low = 1.0F, .high = 10.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[1],
+                 .value = &farming.billet_yield_factor,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[2], .value = &school_from, .range = months},
+      ScalarKnob{.key = kProductionWorldParamKeys[3], .value = &school_to, .range = months},
+      ScalarKnob{.key = kProductionWorldParamKeys[4],
+                 .value = &farming.senior_school_from_years,
+                 .range = Range{.low = 1.0F, .high = 100.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[5],
+                 .value = &farming.adult_from_years,
+                 .range = Range{.low = 1.0F, .high = 100.0F}}};
+  if (!ReadKnobs(world, "world_params", knobs, error)) {
+    return false;
+  }
+  farming.school_year_start_month = static_cast<std::uint8_t>(school_from - 1.0F);
+  farming.school_year_end_month = static_cast<std::uint8_t>(school_to - 1.0F);
+  return true;
 }
 
 std::span<const std::string_view> ProductionWorldParamKeys() {
@@ -926,6 +957,18 @@ std::span<const std::string_view> ProductionWorldParamKeys() {
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
   if (const ITable* const world = tables.FindTable("world_params")) {
     if (!ParseProductionWorldParams(*world, config.farming, error)) {
+      return false;
+    }
+  }
+  // The life acceleration, from the same row core_labor reads it from: the
+  // night pasture asks how old a child is, and a copy of the speedup here
+  // would be the drift this project keeps finding.
+  if (const ITable* const life = tables.FindTable("life")) {
+    const std::array<ScalarKnob, 1> knobs = {
+        ScalarKnob{.key = "life_speedup",
+                   .value = &config.farming.life_speedup,
+                   .range = Range{.low = 0.1F, .high = 100.0F}}};
+    if (!ReadKnobs(*life, "life", knobs, error)) {
       return false;
     }
   }

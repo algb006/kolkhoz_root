@@ -52,10 +52,23 @@ bool StableBuilt(const WorldState& world, const ProductionConfig& config);
 /// actually runs on (stock_lights.h). A forecast that recomputed the need
 /// beside this one would drift from it the first time a rung or a factor
 /// moved, and it would drift silently.
+/// @param grazing_tonight Whether this kind is out at grass tonight. The
+///        pasture months are necessary and no longer sufficient: for the
+///        TEAM the summer discount IS the night pasture, and it stands on the
+///        chairman's order, the collective yard and the children
+///        (night_pasture.h). Every other kind grazes unconditionally and
+///        passes true.
+///
+///        A FORECAST PASSES FALSE, and that is a decision rather than a
+///        default: the feed light and the fodder fund must not spend a gain
+///        that depends on an order being kept and children being there. A
+///        reserve that counted on it would be short in exactly the year the
+///        chairman changed his mind.
 float FeedNeedUnits(const ProductionConfig& config,
                     const LivestockDef& kind,
                     const HerdRow& herd,
-                    std::uint8_t month);
+                    std::uint8_t month,
+                    bool grazing_tonight);
 
 }  // namespace core
 

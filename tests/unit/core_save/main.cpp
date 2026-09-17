@@ -627,6 +627,12 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.authority = 12.25F;
   witness.chairman.shadow_reputation = 3.5F;
   witness.chairman.horses_stabled = 1;
+  // NON-DEFAULT, all four: a standing order, a first night already had, and a
+  // camp at a place no default would produce. A witness carrying zeroes here
+  // would round-trip perfectly through a codec that read none of them.
+  witness.chairman.night_pasture_ordered = 1;
+  witness.chairman.night_pasture_begun = 1;
+  witness.chairman.night_pasture_place = core::Vec2{.x = 8140.5F, .y = 10312.25F};
 
   witness.traction_ration = 0.75F;
   witness.plan.due = Amounts({7'000'000, 250, 3});
@@ -696,6 +702,12 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.authority", F32(world.chairman.authority)});
   chunks.push_back({"chairman.shadow_reputation", F32(world.chairman.shadow_reputation)});
   chunks.push_back({"chairman.horses_stabled", U8(world.chairman.horses_stabled)});
+  // The night pasture (save 49): the standing order, whether it has ever
+  // begun, and the camp the children keep.
+  chunks.push_back({"chairman.night_pasture_ordered", U8(world.chairman.night_pasture_ordered)});
+  chunks.push_back({"chairman.night_pasture_begun", U8(world.chairman.night_pasture_begun)});
+  chunks.push_back({"chairman.night_pasture_place.x", F32(world.chairman.night_pasture_place.x)});
+  chunks.push_back({"chairman.night_pasture_place.y", F32(world.chairman.night_pasture_place.y)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   AppendAmounts(chunks, "plan.due", world.plan.due);
@@ -837,7 +849,9 @@ struct RecordedSection {
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
 constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     {"dictionaries", 143, 0xe35419cb6704df6aULL},
-    {"world", 283, 0xe157922c3ec2785cULL},
+    // 2026-09-17, save 49: +10 bytes — the night pasture's standing order,
+    // its first night and the camp's two floats.
+    {"world", 293, 0x8a4b9c3da5b2e4f4ULL},
     {"residents", 354, 0x275232d952b2aa5aULL},
     {"families", 192, 0x3ecbc6310aefce3aULL},
     {"fields", 263, 0x224499bb25ff9b5bULL},
@@ -850,7 +864,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // And the hash again, at the same LENGTH, when kNoRoomForStock became the
     // last OrderRefusal: the fixture carries the top of each enum on purpose,
     // so a new enumerator moves the recorded byte without moving the count.
-    {"orders", 464, 0x8b6a2ef2f1030420ULL},
+    // And again at the same length when kGrazeAtNight became the last
+    // OrderKind: the fixture carries the top of each enum on purpose.
+    {"orders", 464, 0xc29f091670c009b1ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of

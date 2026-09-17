@@ -16,6 +16,7 @@
 #include "extraction_digging.h"
 #include "field_removal.h"
 #include "herd_system.h"
+#include "night_pasture.h"
 #include "timber_felling.h"
 
 namespace core {
@@ -74,7 +75,11 @@ Grams FodderFundGrams(const ProductionConfig& config,
     if (!works) {
       continue;  // a cow has no work ration, so it holds nothing in this fund
     }
-    units += FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month);
+    // FALSE: the fodder fund does not count on the night pasture. It is the
+    // chairman's order and the children that make it happen, and a reserve
+    // sized against a gain that can stop is short in the year it stops
+    // (herd_system.h).
+    units += FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, false);
   }
   const float year_units = units * static_cast<float>(kDaysPerYear) * share;
   return GramsFromKilograms(year_units / value);
@@ -451,6 +456,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kRemoveField:
         Settle(order, RemoveField(current, order));
+        break;
+      case OrderKind::kGrazeAtNight:
+        Settle(order, OrderNightPasture(config, current));
         break;
       default:
         break;  // not ours: another consumer's, or the events slot's refusal

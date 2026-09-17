@@ -29,6 +29,7 @@
 #include "house_policy.h"
 #include "insulation_policy.h"
 #include "limit_policy.h"
+#include "night_pasture_policy.h"
 #include "repair_policy.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
@@ -136,6 +137,7 @@ class BuildingChairman {
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
+    night_pasture.RunDay(simulation);
     repairs.RunDay(simulation);
     // The farm's own shortage before any house (boss, parcel 298).
     const bool farm_first = fixture.HoldsHousesBack(simulation) || yard.HoldsHousesBack(simulation);
@@ -153,6 +155,7 @@ class BuildingChairman {
   FellingPolicy felling;
   SawmillPolicy sawmill;
   LimitPolicy limit;
+  NightPasturePolicy night_pasture;
   RepairPolicy repairs;
   HousePolicy houses;
   SchoolPolicy school;

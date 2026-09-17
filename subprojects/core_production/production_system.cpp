@@ -51,6 +51,7 @@
 #include "field_removal.h"
 #include "field_work.h"
 #include "herd_system.h"
+#include "night_pasture.h"
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
@@ -260,6 +261,10 @@ class ProductionSystem final : public IProductionSystem {
                                            ? worked_today
                                            : current.plan.worked_ha_this_year;
     RunFields(current);
+    // BEFORE THE HERD DAY, because the herd day is what reads it: the feed
+    // need asks whether the team is out tonight, and the first night has to
+    // be said on the day it happens and not the day after.
+    RunNightPasture(config_, current);
     RunHerdDay(config_, current);
   }
 

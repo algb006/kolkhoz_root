@@ -52,8 +52,10 @@ static_assert(sizeof(WeatherState) == 28,
               "WeatherState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<WeatherState>() == 9,
               "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(ChairmanState) == 16, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 4,
+// 2026-09-17, save 49: the night pasture's standing order, its first night and
+// its camp took the block from 16 bytes to 24 and from four fields to seven.
+static_assert(sizeof(ChairmanState) == 24, "ChairmanState changed — update the codec");
+static_assert(AggregateArity<ChairmanState>() == 7,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -345,6 +347,14 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.chairman.authority);
   out.WriteFloat(world.chairman.shadow_reputation);
   out.WriteU8(world.chairman.horses_stabled);
+  // The night pasture (save format 49): the standing order, whether it has
+  // ever begun, and the camp the children keep. The place is written even
+  // when no order stands — a Vec2 of zeroes is shorter to say than a rule
+  // about when to write it.
+  out.WriteU8(world.chairman.night_pasture_ordered);
+  out.WriteU8(world.chairman.night_pasture_begun);
+  out.WriteFloat(world.chairman.night_pasture_place.x);
+  out.WriteFloat(world.chairman.night_pasture_place.y);
 
   out.WriteFloat(world.traction_ration);
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
@@ -429,6 +439,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.authority = in.ReadFloat();
   world->chairman.shadow_reputation = in.ReadFloat();
   world->chairman.horses_stabled = in.ReadU8();
+  world->chairman.night_pasture_ordered = in.ReadU8();
+  world->chairman.night_pasture_begun = in.ReadU8();
+  world->chairman.night_pasture_place.x = in.ReadFloat();
+  world->chairman.night_pasture_place.y = in.ReadFloat();
 
   world->traction_ration = in.ReadFloat();
   world->plan.due = source.ReadAmounts(DefKind::kResource);

@@ -376,6 +376,37 @@ enum class OrderKind : std::uint8_t {
   /// step it is read. Seam key `insulate_unit`. Consumer: core_construction.
   kInsulateUnit,
 
+  /// TAKE THE TEAM TO NIGHT PASTURE (livestock design, «Ночное — единственный
+  /// выпас, и он ночной»; boss, parcel 63). Names no subject: there is one
+  /// team and one floodplain, and the chairman's decision is whether the
+  /// summer nights are spent grazing or in the yard.
+  ///
+  /// IT IS A STANDING ORDER AND NOT ONE NIGHT. «Табун впервые уведён в
+  /// ночное, и с этого лета уводится каждое»: given once, it holds while the
+  /// three conditions hold and stops when one of them fails — which is what
+  /// makes it a decision rather than a nightly chore.
+  ///
+  /// THE THREE CONDITIONS ARE THE DESIGN'S, all of them, and each refuses
+  /// with kRuleForbids because the repair for every one is the calendar or a
+  /// building and never a different order:
+  ///   * SUMMER, and summer here means the school holidays — June, July,
+  ///     August (education design §10). Not the pasture season, which runs
+  ///     five months: the children are what make the night pasture possible,
+  ///     and they are at school for two of those five.
+  ///   * THE TEAM GATHERED IN ONE PLACE, which is the collective yard doing
+  ///     its work (ChairmanState::horses_stabled). «Пока лошади стоят по
+  ///     личным дворам, уводить некого и некому.»
+  ///   * CHILDREN OF THE SENIOR SCHOOL BAND, who guard it. Their number is a
+  ///     requirement and not yet a cost: measured 2026-09-17, a teenager in
+  ///     Epoch I has no second occupation at all — work begins at sixteen and
+  ///     school stops for the holidays — so the night pasture is today the
+  ///     only thing that band can do. The competition the design describes
+  ///     (кружки, тимуровцы, страда) arrives with those, and it will cost
+  ///     what it costs then without this rule changing.
+  ///
+  /// Seam key `graze_at_night`. Consumer: core_production.
+  kGrazeAtNight,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

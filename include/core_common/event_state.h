@@ -149,6 +149,16 @@ enum class EventKind : std::uint8_t {
   /// is free to work again.
   kHorsesStabled,
 
+  /// The team went to night pasture for the first time (livestock design,
+  /// «Ночное»); amount = heads out. Once per campaign and kNotable: it is the
+  /// evening the summer nights stop costing hay, and it is one of the few
+  /// scenes worth staying up for.
+  ///
+  /// THE FIRST NIGHT ONLY. The order is standing and the team goes out every
+  /// night the three conditions hold; saying so nightly would be a journal
+  /// nobody reads. Seam key `night_pasture_began`.
+  kNightPastureBegan,
+
   // -- the district's plan (2026-09-12) --------------------------------------
 
   /// The economic year closed and the district was satisfied; amount = how

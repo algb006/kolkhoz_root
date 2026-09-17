@@ -121,6 +121,13 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kUpgradeUnit:
     case OrderKind::kInsulateUnit:
       return has_unit;
+    case OrderKind::kGrazeAtNight:
+      // IT NAMES NOTHING, and that is its shape. There is one team and one
+      // floodplain, so the order carries no subject at all — a row that named
+      // a herd or a field would be naming something the rule does not read,
+      // and the boundary refuses at the door what the consumer would have to
+      // ignore later.
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kAppoint:
       // A post is a profession AT a unit: all three named, or the order says
       // nothing (manual/74-posts.md §3). Whether the unit carries that post

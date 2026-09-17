@@ -20,6 +20,7 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "herd_life.h"
+#include "night_pasture.h"
 #include "stable_horses.h"
 #include "stock_ops.h"
 
@@ -614,11 +615,13 @@ bool StableBuilt(const WorldState& world, const ProductionConfig& config) {
 float FeedNeedUnits(const ProductionConfig& config,
                     const LivestockDef& kind,
                     const HerdRow& herd,
-                    std::uint8_t month) {
+                    std::uint8_t month,
+                    bool grazing_tonight) {
   const float heads = static_cast<float>(herd.adult_count) +
                       static_cast<float>(herd.juvenile_count) * config.farming.juvenile_feed_factor;
   float need = heads * kind.feed_units_per_game_day;
-  if (MonthInRange(month, config.farming.pasture_from_month, config.farming.pasture_to_month)) {
+  if (MonthInRange(month, config.farming.pasture_from_month, config.farming.pasture_to_month) &&
+      grazing_tonight) {
     need *= 1.0F - kind.pasture_coverage_summer;
   }
   return need > 0.0F ? need : 0.0F;
@@ -649,6 +652,21 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     }
   }
   const bool stable_built = StableBuilt(current, config);
+  // THE SUMMER DISCOUNT IS THE NIGHT PASTURE AND NOTHING ELSE, for the team.
+  // Until 2026-09-17 every kind with a `pasture_coverage_summer` got it for
+  // every pasture month unconditionally — and for the horses that was the
+  // night pasture's whole gain, paid out with no yard, no order and no
+  // children, from day zero, to a team standing in private yards.
+  //
+  // THE OTHER KINDS KEEP THEIRS UNCONDITIONALLY AND RIGHTLY: the ducks'
+  // self-pasture and the flock's summer are ordinary grazing the design gives
+  // them outright («на выпасе они кормятся почти даром»). Same coefficient,
+  // different subject — which is why the flag is asked per kind and not per
+  // season.
+  const bool team_out = TeamOutTonight(config, current);
+  const auto grazing_tonight = [&](LivestockKindId kind_id) {
+    return kind_id.value != config.horse_kind.value || team_out;
+  };
   ResourceAmounts feed_allowance = FeedAllowance(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
@@ -680,13 +698,14 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     // starving on an empty manger — the flag says the store is not their
     // source, not that they eat nothing.
     const bool self_fed = herd.household_owned != 0 && kind.household_self_fed != 0;
-    const bool fed = self_fed || RunFeeding(config,
-                                            herd.kind,
-                                            place,
-                                            FeedNeedUnits(config, kind, herd, month),
-                                            working_share,
-                                            current,
-                                            &work);
+    const bool fed =
+        self_fed || RunFeeding(config,
+                               herd.kind,
+                               place,
+                               FeedNeedUnits(config, kind, herd, month, grazing_tonight(herd.kind)),
+                               working_share,
+                               current,
+                               &work);
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
     if (fed) {
       herd.hunger_progress = 0.0F;  // a fed day clears the debt, not just the count

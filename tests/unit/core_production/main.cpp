@@ -35,6 +35,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "herd_system.h"
+#include "night_pasture.h"
 #include "production_alarms.h"
 #include "production_config.h"
 #include "stock_lights.h"
@@ -586,6 +587,96 @@ int CheckStableGate() {
   // Six adults go in; the herd is six heads still if nothing was born.
   failures += Expect(foals_at_level(1) == 6, "a summer yard brings no foals");
   failures += Expect(foals_at_level(2) > 6, "a stable does");
+  return failures;
+}
+
+/// THE NIGHT PASTURE'S THREE CONDITIONS, and the discount behind them.
+///
+/// The team's summer feed discount had been applied to every pasture month
+/// unconditionally since day zero — no yard, no chairman's order, no children
+/// — and for the horses that discount IS the night pasture and nothing else
+/// (livestock design, «Ночное»). Measured over fifteen years before the gate
+/// went in: the free gain was worth 6.443 t of oats and 115.869 t of hay.
+int CheckNightPasture() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{0};
+  config.farming.pasture_from_month = 4;       // May
+  config.farming.pasture_to_month = 8;         // September
+  config.farming.school_year_start_month = 8;  // September
+  config.farming.school_year_end_month = 5;    // June: school runs to the end of May
+  config.livestock[0].pasture_coverage_summer = 0.5F;
+
+  /// A world in `month` with a team, a teenager, and the yard as asked.
+  const auto make = [&](std::uint8_t month, bool gathered, bool teenager) {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    world.calendar.tick = static_cast<core::Tick>(month) * core::kDaysPerMonth * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.chairman.horses_stabled = gathered ? 1U : 0U;
+    AddHerd(world, 0, 6, 1, true);
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kFloodplainMeadow;
+    meadow.center = core::Vec2{.x = 100.0F, .y = 200.0F};
+    AppendRow(world.fields, meadow);
+    if (teenager) {
+      core::ResidentRow child;
+      // Thirteen biological years at the fixture's speedup: inside the senior
+      // school band and below the working age.
+      const auto lived = static_cast<std::int32_t>(13.0F / config.farming.life_speedup *
+                                                   static_cast<float>(core::kDaysPerYear));
+      child.birth_day = static_cast<std::int32_t>(world.calendar.day) - lived;
+      AppendRow(world.residents, child);
+    }
+    return world;
+  };
+  const auto order = [&](core::WorldState& world) {
+    return core::OrderNightPasture(config, world);
+  };
+
+  core::WorldState winter = make(0, true, true);  // January
+  failures += Expect(order(winter) == core::OrderRefusal::kRuleForbids,
+                     "night pasture: school is in, so there is nobody to keep the team");
+  core::WorldState scattered = make(6, false, true);  // July, horses still at the yards
+  failures +=
+      Expect(order(scattered) == core::OrderRefusal::kRuleForbids,
+             "night pasture: «пока лошади стоят по личным дворам, уводить некого и некому»");
+  core::WorldState childless = make(6, true, false);
+  failures += Expect(order(childless) == core::OrderRefusal::kRuleForbids,
+                     "night pasture: no children of the age, and it is they who keep it");
+
+  core::WorldState ready = make(6, true, true);  // July, gathered, a teenager
+  failures +=
+      Expect(order(ready) == core::OrderRefusal::kNone && ready.chairman.night_pasture_ordered == 1,
+             "night pasture: in the holidays, with the team gathered and children to keep "
+             "it, the order stands");
+  failures += Expect(ready.chairman.night_pasture_place.x == 100.0F &&
+                         ready.chairman.night_pasture_place.y == 200.0F,
+                     "and the camp is on a floodplain meadow, chosen by the core");
+  failures += Expect(core::TeamOutTonight(config, ready), "and the team is out tonight");
+
+  // THE DISCOUNT FOLLOWS THE ORDER AND NOT THE SEASON. June is a pasture
+  // month either way; what decides is whether the team is actually out.
+  core::WorldState idle = make(6, true, true);  // no order given
+  failures += Expect(!core::TeamOutTonight(config, idle),
+                     "without the order the team stays in, though the month is the same");
+  const core::HerdRow& herd = ready.herds.rows[0];
+  const float out = core::FeedNeedUnits(config, config.livestock[0], herd, 6, true);
+  const float in = core::FeedNeedUnits(config, config.livestock[0], herd, 6, false);
+  failures += Expect(out < in && out > 0.0F,
+                     "a night at grass halves the day's fodder, and a night in the yard does not");
+
+  // AND THE FIRST NIGHT IS SAID ONCE.
+  core::RunNightPasture(config, ready);
+  std::uint32_t said = 0;
+  for (const core::SimEvent& event : ready.step_events) {
+    said += event.kind == core::EventKind::kNightPastureBegan ? 1U : 0U;
+  }
+  ready.step_events.clear();
+  core::RunNightPasture(config, ready);
+  for (const core::SimEvent& event : ready.step_events) {
+    said += event.kind == core::EventKind::kNightPastureBegan ? 1U : 0U;
+  }
+  failures += Expect(said == 1, "the first night is news once, and every night after it is not");
   return failures;
 }
 
@@ -5111,6 +5202,7 @@ int main() {
   failures += CheckWorkOnlyFeed();
   failures += CheckMangerReach();
   failures += CheckStableGate();
+  failures += CheckNightPasture();
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();
