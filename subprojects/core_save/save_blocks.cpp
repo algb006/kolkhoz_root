@@ -44,9 +44,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 1 December (save format 52). 168 became 200, measured: twenty-eight bytes
 // of fields in thirty-two of growth, so four went to padding — which is
 // exactly why the arity below stands beside the size and not instead of it.
-static_assert(sizeof(YearLedger) == 200 + (15 * kAmountsSize),
+// 2026-09-17 again, save 53: the worst season's food variety and the count of
+// seasons lived, for the transition's variety block. 200 became 208.
+static_assert(sizeof(YearLedger) == 208 + (15 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 53,
+static_assert(AggregateArity<YearLedger>() == 55,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -141,7 +143,7 @@ static_assert(AggregateArity<EraEventState>() == 1,
 // components are structs of structs, so the arity here counts the MEMBERS of
 // the top level and the codec below walks the rest by hand; the nested
 // tripwires are the two that follow.
-static_assert(AggregateArity<ReadinessState>() == 9,
+static_assert(AggregateArity<ReadinessState>() == 11,
               "ReadinessState gained or lost a member — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ReadinessComponent>() == 2,
               "ReadinessComponent changed — update the codec and VERSION_SAVE");
@@ -262,6 +264,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.able_bodied_days);
   out.WriteFloat(book.plan_percent);
   out.WriteU8(book.plan_percent_known);
+  out.WriteFloat(book.worst_season_variety);
+  out.WriteU8(book.variety_seasons_seen);
   out.WriteFloat(book.food_days_dec1);
   out.WriteFloat(book.feed_days_dec1);
   out.WriteU16(book.winter_days_dec1);
@@ -327,6 +331,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.able_bodied_days = in.ReadFloat();
   book.plan_percent = in.ReadFloat();
   book.plan_percent_known = in.ReadU8();
+  book.worst_season_variety = in.ReadFloat();
+  book.variety_seasons_seen = in.ReadU8();
   book.food_days_dec1 = in.ReadFloat();
   book.feed_days_dec1 = in.ReadFloat();
   book.winter_days_dec1 = in.ReadU16();
@@ -363,6 +369,10 @@ void WriteReadiness(ByteWriter& out, const ReadinessState& readiness) {
   out.WriteFloat(readiness.social_index);
   out.WriteU8(readiness.both_above_run);
   out.WriteU8(readiness.wintering_run);
+  for (const float year : readiness.plan_percent_years) {
+    out.WriteFloat(year);
+  }
+  out.WriteU8(readiness.plan_years_filled);
   out.WriteU8(readiness.blocks.food_variety);
   out.WriteU8(readiness.blocks.social_objects);
   out.WriteU8(readiness.blocks.own_traction);
@@ -387,6 +397,13 @@ void ReadReadiness(LoadSource& source, ReadinessState& readiness) {
   readiness.social_index = in.ReadFloat();
   readiness.both_above_run = in.ReadU8();
   readiness.wintering_run = in.ReadU8();
+  for (float& year : readiness.plan_percent_years) {
+    year = in.ReadFloat();
+  }
+  // The ring's fill, range-checked: a count above three would read past the
+  // array on the very next score, and a corrupt byte must refuse the file
+  // rather than be trusted to be small.
+  readiness.plan_years_filled = source.ReadEnumValue(0, 3, "plan years filled");
   readiness.blocks.food_variety = source.ReadEnumValue(0, 1, "food variety block");
   readiness.blocks.social_objects = source.ReadEnumValue(0, 1, "social objects block");
   readiness.blocks.own_traction = source.ReadEnumValue(0, 1, "own traction block");

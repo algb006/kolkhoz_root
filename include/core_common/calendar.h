@@ -314,6 +314,25 @@ constexpr Season SeasonOfMonth(Month month) {
                              kSeasonsPerYear);
 }
 
+/// @brief True on the first day of a season — computed from the day number
+/// rather than from a buffer comparison, because a rule that runs at hour 23
+/// finds both buffers already inside the new season.
+///
+/// Day nought counts as a first day: a campaign begins at the top of a
+/// season, and a rule that clears something seasonally must clear it once
+/// before the first season is lived rather than once it is over.
+///
+/// MOVED HERE FROM core_residents/family_meal.cpp on 2026-09-17, where it was
+/// private to one .cpp and a second reader would have had to copy it — one
+/// piece of arithmetic with two homes, in the shape where a drift of one day
+/// stays invisible for a whole season.
+constexpr bool IsFirstDayOfSeason(SimDay day) {
+  if (day == 0) {
+    return true;
+  }
+  return SeasonOfMonth(DateFromDay(day).month) != SeasonOfMonth(DateFromDay(day - 1).month);
+}
+
 /// @brief Recomputes every cached field of `calendar` from its tick and its
 /// stored day-zero weekday. The time phase calls this once per step after
 /// advancing the tick; tests and world setup call it after setting the tick

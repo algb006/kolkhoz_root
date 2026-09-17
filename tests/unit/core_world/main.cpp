@@ -22,6 +22,7 @@
 #include "core_construction/construction_system.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
+#include "core_world/era_readiness.h"
 #include "core_world/world.h"
 
 namespace {
@@ -142,9 +143,111 @@ bool SpoilColumn(const std::filesystem::path& path,
 
 }  // namespace
 
+/// The era-readiness score, checked on its STRUCTURE and not on its numbers
+/// (boss, parcels 130 and 132): the weights and thresholds are balance and
+/// will be tuned by runs, while what may never change is the shape — a
+/// component the era does not have is NULL rather than nought, the index
+/// divides by the weights it actually has, a component is capped at 100
+/// before it is weighed, and a divisor of nought is an unanswered question
+/// rather than a score of nought.
+int CheckReadinessShape() {
+  int failures = 0;
+  const core::ReadinessCatalog empty;
+
+  // A WORLD THAT LIVED NOTHING SCORES NOTHING, and says so by its bytes
+  // rather than by zeroes. This is the case every one of these components
+  // has to survive, because it is the case a young campaign IS: no plan
+  // spoken of, no December, nobody able-bodied, no building standing.
+  core::WorldState blank;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, blank);
+  failures += Expect(blank.readiness.economy.plan.available == 0,
+                     "readiness: a year the district never spoke of has no plan per cent — "
+                     "not nought per cent");
+  failures += Expect(blank.readiness.economy.winter_stocks.available == 0,
+                     "readiness: a year with no December has no wintering to judge");
+  failures += Expect(blank.readiness.economy.mechanisation.available == 0,
+                     "readiness: no assignment days is a divisor of nought, not a score of it");
+  failures += Expect(blank.readiness.economy.funds.available == 0,
+                     "readiness: no building standing means the funds cannot be asked");
+  failures += Expect(blank.readiness.society.satisfaction.available == 0,
+                     "readiness: and no family means no satisfaction to average");
+  failures += Expect(blank.readiness.economic_index == 0.0F && blank.readiness.social_index == 0.0F,
+                     "readiness: with nothing available at all there is nothing to divide by");
+  failures += Expect(blank.readiness.both_above_run == 0 && blank.readiness.wintering_run == 0,
+                     "readiness: and no run is begun by a year that scored nothing");
+
+  // ONE COMPONENT AVAILABLE AND THE INDEX IS THAT COMPONENT, which is the
+  // whole of "divided by what the era can have": it is NOT the component
+  // divided by a hundred, and the difference is the weight of every absent
+  // cell.
+  core::WorldState one;
+  one.ledger.closed.plan_percent = 60.0F;
+  one.ledger.closed.plan_percent_known = 1;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, one);
+  failures += Expect(one.readiness.economy.plan.available == 1 &&
+                         one.readiness.economy.plan.score > 59.9F &&
+                         one.readiness.economy.plan.score < 60.1F,
+                     "readiness: the plan of a single known year is that year");
+  failures += Expect(one.readiness.economic_index > 59.9F && one.readiness.economic_index < 60.1F,
+                     "readiness: an index over ONE available component is that component — "
+                     "the absent cells take their weight out of the divisor, they do not "
+                     "score nought in it");
+
+  // THE CEILING. Overshooting one component may not buy another, so a
+  // delivery of two hundred per cent weighs as a hundred.
+  core::WorldState over;
+  over.ledger.closed.total_assignment_days = 10.0F;
+  over.ledger.closed.horse_backed_assignment_days = 30.0F;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, over);
+  failures += Expect(over.readiness.economy.mechanisation.score <= 100.0F,
+                     "readiness: a component is capped at 100 before it is weighed");
+
+  // THE RUNS ARE RUNS: they count consecutive years and a year that misses
+  // puts them back to nought. Scored twice over a world whose wintering
+  // closed, then once over one whose did not.
+  core::WorldState run;
+  run.ledger.closed.winter_cover_taken = 1;
+  run.ledger.closed.winter_days_dec1 = 100;
+  run.ledger.closed.food_days_dec1 = 120.0F;
+  run.ledger.closed.feed_days_dec1 = 110.0F;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, run);
+  core::ScoreReadiness(empty, 4.0F, 4.0F, run);
+  failures += Expect(run.readiness.wintering_run == 2 && run.readiness.blocks.wintering_two_years,
+                     "readiness: two closed winterings in a row open the wintering block");
+  // AND ONE SHORT SIDE BREAKS IT, both halves having to reach the grass: a
+  // barn full of hay does not feed the village.
+  run.ledger.closed.food_days_dec1 = 90.0F;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, run);
+  failures += Expect(run.readiness.wintering_run == 0 && !run.readiness.blocks.wintering_two_years,
+                     "readiness: and a year short of food on either side puts the run back to "
+                     "nought, however full the other side");
+
+  // THE VARIETY BLOCK NEEDS ALL FOUR SEASONS LIVED. A year short of a season
+  // has not failed it, it has not been asked — and the block must not open on
+  // an unasked question.
+  core::WorldState seasons;
+  seasons.ledger.closed.worst_season_variety = 6.0F;
+  seasons.ledger.closed.variety_seasons_seen = 3;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, seasons);
+  failures += Expect(!seasons.readiness.blocks.food_variety,
+                     "readiness: three rich seasons are not four, and the variety block does "
+                     "not open on a year that was never asked the fourth");
+  seasons.ledger.closed.variety_seasons_seen = 4;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, seasons);
+  failures += Expect(seasons.readiness.blocks.food_variety,
+                     "readiness: four seasons all above the threshold open it");
+  seasons.ledger.closed.worst_season_variety = 2.0F;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, seasons);
+  failures += Expect(!seasons.readiness.blocks.food_variety,
+                     "readiness: and the WORST season decides — a rich summer does not answer "
+                     "for a bare winter");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
+  failures += CheckReadinessShape();
 
   // The wiring config must default to the deterministic verification setup:
   // no tables, seed 0, one worker (world.h).

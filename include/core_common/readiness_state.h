@@ -28,6 +28,7 @@
 #ifndef CORE_COMMON_READINESS_STATE_H_
 #define CORE_COMMON_READINESS_STATE_H_
 
+#include <array>
 #include <cstdint>
 
 namespace core {
@@ -122,6 +123,25 @@ struct ReadinessState {
 
   /// Consecutive years, ending with `year`, whose wintering closed.
   std::uint8_t wintering_run = 0;
+
+  /// The last three years' delivery percentages, newest LAST, and how many
+  /// of the three are filled — the plan component is their mean, and the
+  /// design says so: «средний процент сдачи за последние три года (за первые
+  /// годы — за прожитые)».
+  ///
+  /// A RING AND NOT A RUNNING MEAN, because "the last three" is not what a
+  /// running mean answers: an exponential average never forgets the first
+  /// year and never weights the third like the first. And the COUNT beside
+  /// it, because a young campaign has fewer than three and a mean over the
+  /// unfilled slots would read every new settlement as having failed two
+  /// plans it was never given.
+  ///
+  /// Years the district never spoke of do not enter at all — they are not a
+  /// nought, they are not a year of this average (ledger_state.h,
+  /// `plan_percent_known`).
+  std::array<float, 3> plan_percent_years = {};
+
+  std::uint8_t plan_years_filled = 0;
 
   TransitionBlocks blocks;
 

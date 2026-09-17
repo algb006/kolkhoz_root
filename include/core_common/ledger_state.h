@@ -316,9 +316,17 @@ struct YearLedger {
   std::uint32_t satisfaction_samples = 0;
 
   /// Person-days of able-bodied life in the village over the year: one for
-  /// every working-age resident on every day, whether or not the kolkhoz
-  /// asked anything of them. The denominator of «доля усилий, отданных
-  /// колхозу», whose numerator is `total_assignment_days` above.
+  /// every working-age resident on every WORKING day, whether or not the
+  /// kolkhoz asked anything of them. The denominator of «доля усилий,
+  /// отданных колхозу», whose numerator is `total_assignment_days` above.
+  ///
+  /// WORKING DAYS AND NOT EVERY DAY, or the component could never reach its
+  /// own ceiling: a year is 48 days of which about 41 are worked, no
+  /// assignment is ever given on a holiday, and a denominator of every day
+  /// would cap the share near 85 per cent in every campaign ever played — a
+  /// silent 15 per cent off the weight, with nothing to show why. A rule
+  /// that cannot fire and a component that cannot fill are the same defect
+  /// one storey apart.
   ///
   /// AND IT IS NOT THE DENOMINATOR THE DESIGN NAMES, which is said here
   /// rather than glossed over. Epochs §6 asks for kolkhoz man-days over
@@ -332,9 +340,11 @@ struct YearLedger {
   /// What is measured instead is the same question from the other side:
   /// how much of the workforce's year the kolkhoz actually took. The
   /// design's own gloss for the component is «обратный дрейф в ЛПХ», and a
-  /// day an able-bodied villager spent on no kolkhoz assignment is that
-  /// drift, whatever he did with it. Boss's to confirm or correct — reported
-  /// with the measurement rather than substituted quietly.
+  /// WORKING day an able-bodied villager spent on no kolkhoz assignment is
+  /// that drift, whatever he did with it — while a holiday is a day off
+  /// nobody may declare a working day, so it is not a yard's choice at all.
+  /// Confirmed by boss (parcel 134), who is amending epochs §6 to say this
+  /// rather than "kolkhoz over kolkhoz plus household".
   ///
   /// Written by the sequential day of core_residents.
   float able_bodied_days = 0.0F;
@@ -373,6 +383,22 @@ struct YearLedger {
   /// The byte says the snapshot was taken at all: a campaign that ends before
   /// its first December has no wintering to judge, which is not the same as
   /// a wintering that failed.
+  /// The village's mean count of food categories eaten in the WORST of the
+  /// year's four seasons, and how many of the four were lived through.
+  ///
+  /// THE WORST AND NOT THE MEAN, because the block it feeds is «во все четыре
+  /// сезона, включая зиму»: a summer of six categories does not answer for a
+  /// winter of two, and a year's average would let it. Sampled on the first
+  /// day of each season, when the season just ended still holds its mask —
+  /// the masks are cleared at the evening meal of a season's first day, so
+  /// the day's turn is the one moment the finished season can be read.
+  ///
+  /// The count beside it is the usual second question: a campaign that has
+  /// not lived four seasons has not failed the block, it has not been asked.
+  float worst_season_variety = 0.0F;
+
+  std::uint8_t variety_seasons_seen = 0;
+
   float food_days_dec1 = 0.0F;
 
   float feed_days_dec1 = 0.0F;

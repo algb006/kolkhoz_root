@@ -35,6 +35,7 @@
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "core_time/time_system.h"
+#include "core_world/era_readiness.h"
 
 namespace core {
 
@@ -161,8 +162,14 @@ std::vector<float> FoodValuePerResource(const ITableSet& tables) {
 /// was eaten equals what is left".
 class EventsSlot final : public ISequentialPhase {
  public:
-  explicit EventsSlot(std::vector<float> kcal_per_gram)
-      : kcal_per_gram_(std::move(kcal_per_gram)) {}
+  EventsSlot(std::vector<float> kcal_per_gram,
+             ReadinessCatalog readiness,
+             float food_variety_categories,
+             float life_speedup)
+      : kcal_per_gram_(std::move(kcal_per_gram)),
+        readiness_(std::move(readiness)),
+        food_variety_categories_(food_variety_categories),
+        life_speedup_(life_speedup) {}
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
@@ -371,6 +378,17 @@ class EventsSlot final : public ISequentialPhase {
   /// under a running campaign.
   std::vector<float> kcal_per_gram_;
 
+  /// The unit types the readiness score needs, read once at wiring for the
+  /// same reason as the densities above: a table cannot change under a
+  /// running campaign.
+  ReadinessCatalog readiness_;
+
+  /// The era's food-variety threshold and the biology factor, both belonging
+  /// to rules elsewhere and passed in rather than restated here.
+  float food_variety_categories_ = 0.0F;
+
+  float life_speedup_ = 1.0F;
+
   /// @brief Closes the year's book and opens the next.
   ///
   /// It closes on the FIRST tick of the new calendar year, after its phases
@@ -394,6 +412,11 @@ class EventsSlot final : public ISequentialPhase {
     // was still the closing year's book (core_production/district_limit.h).
     current.ledger.current.limit_points_granted = current.limit.points;
     AppendChronicleYear(current);
+    // THE READINESS IS SCORED AFTER THE BOOKS HAVE ROTATED, so `closed` is
+    // the year being judged. Scored anywhere earlier it would weigh the year
+    // that has not happened yet — and the run it folds into would be a run of
+    // empty books (era_readiness.h).
+    ScoreReadiness(readiness_, food_variety_categories_, life_speedup_, current);
     // The books rotated, and the year that closed rides in `amount` as the
     // kind's contract says. Interrupting on purpose: a fast-forward that
     // runs past a year's end has run past the one moment the player is
@@ -422,7 +445,10 @@ class StandardSimulation final : public ISimulation {
         labor_(std::move(labor)),
         construction_(std::move(construction)),
         decisions_slot_(*labor_, *residents_, *production_, *construction_),
-        events_slot_(FoodValuePerResource(*config.tables)) {
+        events_slot_(FoodValuePerResource(*config.tables),
+                     ReadReadinessCatalog(*config.tables, Epoch::kOne),
+                     ReadFoodVarietyThreshold(*config.tables, Epoch::kOne),
+                     ReadLifeSpeedup(*config.tables)) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),

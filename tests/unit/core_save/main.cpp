@@ -534,6 +534,8 @@ core::WorldState MakeWorld() {
   world.readiness.social_index = 41.25F;
   world.readiness.both_above_run = 2;
   world.readiness.wintering_run = 1;
+  world.readiness.plan_percent_years = {41.0F, 58.5F, 77.25F};
+  world.readiness.plan_years_filled = 3;
   world.readiness.blocks.food_variety = 1;
   world.readiness.blocks.social_objects = 0;
   world.readiness.blocks.own_traction = 1;
@@ -806,6 +808,10 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"readiness.social_index", F32(world.readiness.social_index)});
   chunks.push_back({"readiness.both_above_run", U8(world.readiness.both_above_run)});
   chunks.push_back({"readiness.wintering_run", U8(world.readiness.wintering_run)});
+  for (const float year : world.readiness.plan_percent_years) {
+    chunks.push_back({"readiness.plan_percent_years", F32(year)});
+  }
+  chunks.push_back({"readiness.plan_years_filled", U8(world.readiness.plan_years_filled)});
   chunks.push_back({"readiness.blocks.food_variety", U8(world.readiness.blocks.food_variety)});
   chunks.push_back({"readiness.blocks.social_objects", U8(world.readiness.blocks.social_objects)});
   chunks.push_back({"readiness.blocks.own_traction", U8(world.readiness.blocks.own_traction)});
@@ -934,7 +940,10 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // the six blocker bytes (readiness_state.h). The runs are why this is
     // record and not derivation: "three years running" is what a campaign
     // accumulated, and nothing in a loaded world could stand it up again.
-    {"world", 360, 0xa2a2d15f57e92983ULL},
+    // 2026-09-17 again, save 53: the plan's three-year ring and its fill, so
+    // the plan component can be «средний процент за последние три года»
+    // rather than the last one. +13 bytes.
+    {"world", 373, 0xdfa843f5c6502afcULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -974,7 +983,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // (ledger_state.h): satisfaction's sum and count, able-bodied
     // person-days, the plan's per cent with the byte that says it exists,
     // and the four numbers of the wintering as it stood on 1 December.
-    {"ledger", 634, 0xf6e369ea2e3140a8ULL},
+    // 2026-09-17 again, save 53: the worst season's food variety and the
+    // count of seasons lived, over the two books. +10 bytes.
+    {"ledger", 644, 0xbe1b4e335f6e05bcULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

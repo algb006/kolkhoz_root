@@ -36,15 +36,11 @@ bool WorkedHeavy(const ConsumptionConfig& eat, const ResidentRow& resident) {
   return (eat.heavy_kinds_mask & (1U << kind)) != 0U;
 }
 
-/// @brief True on the first day of a season — computed from the day number
-/// rather than from a buffer comparison, because the meal happens at hour 23
-/// and by then both buffers are already inside the new season.
-bool IsFirstDayOfSeason(SimDay day) {
-  if (day == 0) {
-    return true;
-  }
-  return SeasonOfMonth(DateFromDay(day).month) != SeasonOfMonth(DateFromDay(day - 1).month);
-}
+// IsFirstDayOfSeason MOVED TO core_common/calendar.h on 2026-09-17, when the
+// year's book needed the same day for the variety block. It was private to
+// this file and pure calendar arithmetic, so the second reader would have had
+// to copy it — one number with two homes, in the shape where a drift of one
+// day is invisible for a season.
 
 /// @brief What the household owes its people today, in kilocalories.
 ///
