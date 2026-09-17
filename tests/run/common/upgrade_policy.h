@@ -129,15 +129,20 @@ class UpgradePolicy {
       if (!GateOpen(start_gate_, world, unit.type, next)) {
         continue;
       }
-      // THE RECIPE BEFORE THE ORDER, as every sibling policy does. Left out of
-      // the first version, and the instrument said so plainly: 428 upgrades
-      // ORDERED per village against 1 ever finished. An order refused every
-      // day for thirty-three years looks exactly like a policy that never
-      // ran, until the count of orders is printed beside the count of
-      // buildings.
-      if (!simulation.MaterialsShortFor(world.units.row_ids[row]).empty()) {
-        continue;
-      }
+      // THE RECIPE IS NOT ASKED HERE, AND THAT IS A GAP RATHER THAN A CHOICE.
+      //
+      // The first version called `MaterialsShortFor`, as the sibling policies
+      // do, and the order count did not move by one thousandth — 428.778
+      // before and after. It cannot: that door answers "what the village
+      // lacks to START THE WORKS on this unit", and a standing unit with no
+      // works open lacks nothing, so the call is a check that can never
+      // refuse. It was removed rather than kept, because a guard that cannot
+      // fail is the shape this tree spends its days finding.
+      //
+      // What the core actually refuses on is `ShortfallOf(row, level + 1)` —
+      // the NEXT level's recipe — and no seam reaches it from a fixture. So
+      // this policy orders and lets the core say no, and the orders counter
+      // in the run is what makes the refusals visible at all.
       core::OrderRow order;
       order.kind = core::OrderKind::kUpgradeUnit;
       order.unit = world.units.row_ids[row];

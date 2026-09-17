@@ -49,6 +49,20 @@ struct ReadinessCatalog {
 
   /// The repair base, the other half of "its own traction or a repair base".
   UnitTypeId repair_base;
+
+  /// How many levels each type has, dense by type row — the LADDER.
+  ///
+  /// THE TRANSITION ASKS ITS LEVEL ONLY OF TYPES THAT HAVE ONE (boss, design
+  /// commit 9177c6f7). Of 111 types in unit_levels.csv, 34 carry a second
+  /// level and 77 carry one, and units rules §11 says what that means in
+  /// words: «у остальных пока только первая, и это значит „ещё не
+  /// расписано"». Requiring a level the design has not written is locking the
+  /// era with its own unfinishedness rather than with the state of the farm.
+  ///
+  /// Read by the REGISTER and not by a list of names, so that the day a
+  /// ladder is written the requirement grows by itself — which is right:
+  /// more ladders means more that must be put in order.
+  std::vector<std::uint32_t> ladder;
 };
 
 /// @brief The era's food-variety threshold — the top of its own era's norm,

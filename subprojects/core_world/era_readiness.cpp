@@ -220,6 +220,21 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
       catalog.social_objects.push_back(id);
     }
   }
+  // THE LADDERS, counted off the level table rather than assumed. A type with
+  // one level cannot be raised at all, and a blocker that asks it for a second
+  // is a gate above its own quantity's ceiling.
+  if (const ITable* levels = tables.FindTable("unit_levels")) {
+    const std::uint32_t unit_column = levels->FindColumn("unit");
+    if (unit_column != kNoTableColumn) {
+      catalog.ladder.assign(types->RowCount(), 0);
+      for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+        const std::uint32_t type_row = types->FindRowByKey(levels->CellText(row, unit_column));
+        if (type_row != kNoTableRow && type_row < catalog.ladder.size()) {
+          ++catalog.ladder[type_row];
+        }
+      }
+    }
+  }
   catalog.office = DefIdFromRow<UnitTypeIdTag>(types->FindRowByKey("farm_office"));
   catalog.repair_base = DefIdFromRow<UnitTypeIdTag>(types->FindRowByKey("workshops"));
   return catalog;
@@ -416,6 +431,15 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   const bool all_at_level =
       std::ranges::all_of(current.units.rows, [&catalog](const UnitRow& unit) {
         if (unit.level == 0 || unit.dead != 0 || unit.level >= kEraOneUnitLevel) {
+          return true;
+        }
+        // AND ONLY OF A TYPE THAT HAS THE LEVEL TO REACH. Seventy-seven types
+        // of a hundred and eleven carry a single rung, so before this line the
+        // block was shut in every year of every village and no chairman on
+        // earth could open it: the requirement asked for a level the design
+        // has not written yet.
+        if (unit.type.value >= catalog.ladder.size() ||
+            catalog.ladder[unit.type.value] < kEraOneUnitLevel) {
           return true;
         }
         return !std::ranges::any_of(catalog.kolkhoz_types, [&unit](UnitTypeId type) {
