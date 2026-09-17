@@ -148,6 +148,8 @@ struct Trajectory {
   /// readings of the 120-ordered/9.9-finished gap were wrong in one night;
   /// this counts instead of reading.
   std::array<std::uint32_t, 16> upgrade_refusals = {};
+  /// And the same orders by STATUS, so the tally can prove it saw anything.
+  std::array<std::uint32_t, 8> upgrade_seen = {};
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -389,6 +391,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
   out.upgrades_ordered = builder.upgrades.ordered();
   out.upgrade_refusals = builder.upgrades.refusals();
+  out.upgrade_seen = builder.upgrades.seen();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
   out.epoch = final_state.epoch;
@@ -778,6 +781,22 @@ int main(int argc, char** argv) {
       std::cout << "  refusal " << index << ": " << (refusals[index] / villages) << '\n';
     }
   }
+  // AND THE TALLY'S OWN PROOF THAT IT SEES ANYTHING: the events slot sweeps
+  // settled rows, and this reads a day later, so a count of nought refusals
+  // means nothing until the accepted ones are counted beside it.
+  std::array<float, 8> seen = {};
+  for (const Trajectory& walk : walks) {
+    for (std::size_t index = 0; index < seen.size(); ++index) {
+      seen[index] += static_cast<float>(walk.upgrade_seen[index]);
+    }
+  }
+  std::cout << "  seen in the book at all, by OrderStatus:";
+  for (std::size_t index = 0; index < seen.size(); ++index) {
+    if (seen[index] > 0.0F) {
+      std::cout << ' ' << index << '=' << (seen[index] / villages);
+    }
+  }
+  std::cout << '\n';
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");

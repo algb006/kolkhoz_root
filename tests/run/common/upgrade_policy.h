@@ -182,18 +182,29 @@ class UpgradePolicy {
   /// and cannot be argued with.
   void CollectVerdicts(const core::ISimulation& simulation) {
     for (const core::OrderRow& order : simulation.CompletedState().orders.rows) {
-      if (order.kind != core::OrderKind::kUpgradeUnit ||
-          order.status != core::OrderStatus::kRefused) {
+      if (order.kind != core::OrderKind::kUpgradeUnit) {
         continue;
       }
-      const auto index = static_cast<std::size_t>(order.refusal);
-      if (index < refusals_.size()) {
-        ++refusals_[index];
+      // EVERY STATUS, NOT ONLY THE REFUSALS — because the events slot SWEEPS
+      // settled rows, and this runs a day later. A tally that counted only
+      // refusals and found none could not tell "none were refused" from "the
+      // book was already swept", which is the same blindness it was added to
+      // cure. Seeing the accepted ones proves the tally can see anything at
+      // all.
+      ++seen_[static_cast<std::size_t>(order.status)];
+      if (order.status == core::OrderStatus::kRefused) {
+        const auto index = static_cast<std::size_t>(order.refusal);
+        if (index < refusals_.size()) {
+          ++refusals_[index];
+        }
       }
     }
   }
 
   const std::array<std::uint32_t, 16>& refusals() const { return refusals_; }
+
+  /// Orders of this kind seen in the book at all, by OrderStatus.
+  const std::array<std::uint32_t, 8>& seen() const { return seen_; }
 
  private:
   /// The level every Era I unit must reach for the I -> II transition (units
@@ -220,6 +231,10 @@ class UpgradePolicy {
 
   /// Refused orders of this policy's kind, by OrderRefusal value.
   std::array<std::uint32_t, 16> refusals_ = {};
+
+  /// Orders of this kind seen at all, by OrderStatus — the tally's own proof
+  /// that it is not looking at an empty book.
+  std::array<std::uint32_t, 8> seen_ = {};
 };
 
 }  // namespace run
