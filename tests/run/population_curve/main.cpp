@@ -123,6 +123,11 @@ struct Trajectory {
   /// one stubborn type or the whole farm.
   std::uint32_t units_standing = 0;
   std::uint32_t units_at_level = 0;
+  /// WAS IT EVER ASKED FOR, applied to the fixture's own policy. The first
+  /// upgrade policy ordered nothing at all and the world looked exactly as it
+  /// had; without this count the next reader would weigh the design instead
+  /// of the veto.
+  std::uint32_t upgrades_ordered = 0;
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -323,9 +328,20 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     if (unit.level == 0 || unit.dead != 0) {
       continue;  // a marked plot is not a unit that failed to be upgraded
     }
+    // THE KOLKHOZ'S OWN, which is what the blocker now counts: a family's
+    // house at level one in good repair is a hundred-per-cent house (housing
+    // §6), and the era does not ask for its level.
+    bool kolkhoz = false;
+    for (const core::UnitTypeId type : catalog.kolkhoz_types) {
+      kolkhoz = kolkhoz || type.value == unit.type.value;
+    }
+    if (!kolkhoz) {
+      continue;
+    }
     ++out.units_standing;
     out.units_at_level += unit.level >= 2 ? 1U : 0U;
   }
+  out.upgrades_ordered = builder.upgrades.ordered();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
   out.epoch = final_state.epoch;
@@ -643,8 +659,13 @@ int main(int argc, char** argv) {
     standing += static_cast<float>(walk.units_standing);
     at_level += static_cast<float>(walk.units_at_level);
   }
+  float ordered = 0.0F;
+  for (const Trajectory& walk : walks) {
+    ordered += static_cast<float>(walk.upgrades_ordered);
+  }
   std::cout << "population_curve: units at year " << kYears << " — " << (at_level / villages)
-            << " of " << (standing / villages) << " standing have reached level 2\n";
+            << " of " << (standing / villages) << " kolkhoz buildings have reached level 2, after "
+            << (ordered / villages) << " upgrades ORDERED\n";
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");

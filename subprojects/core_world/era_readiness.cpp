@@ -402,9 +402,26 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   // EVERY UNIT OF THE ERA AT ITS LEVEL. Sites do not count — a marked plot is
   // not a unit that has failed to be upgraded, it is a unit that does not
   // exist yet.
-  const bool all_at_level = std::ranges::all_of(current.units.rows, [](const UnitRow& unit) {
-    return unit.level == 0 || unit.dead != 0 || unit.level >= kEraOneUnitLevel;
-  });
+  // THE KOLKHOZ'S BUILDINGS, NOT THE FAMILIES' HOUSES (boss, blockers round 2,
+  // design commit ac48054e). Two lines of the design decide it and neither is
+  // about the volume of work: the funds component already says «жилые дома
+  // семей не входят», and housing §6 says «уровень дома на комфорт не влияет —
+  // изба первого уровня в порядке тоже 100 %». A house at level one in good
+  // repair IS a hundred-per-cent house, so requiring its level for the era
+  // would require what the game itself calls unimportant.
+  //
+  // The tonal argument — the district will not let a farm through looking
+  // derelict — is carried by WEAR, which repair mends. A level is an
+  // enlargement, not a mending.
+  const bool all_at_level =
+      std::ranges::all_of(current.units.rows, [&catalog](const UnitRow& unit) {
+        if (unit.level == 0 || unit.dead != 0 || unit.level >= kEraOneUnitLevel) {
+          return true;
+        }
+        return !std::ranges::any_of(catalog.kolkhoz_types, [&unit](UnitTypeId type) {
+          return type.value == unit.type.value;
+        });
+      });
   out.blocks.units_at_level = all_at_level ? 1U : 0U;
   // THE OFFICE, STANDING AND JUST REPAIRED. One per cent and not nought,
   // because nought is unreachable: wear runs continuously, so a threshold of

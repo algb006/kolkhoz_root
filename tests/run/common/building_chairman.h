@@ -35,6 +35,7 @@
 #include "sawmill_policy.h"
 #include "school_policy.h"
 #include "social_objects_policy.h"
+#include "upgrade_policy.h"
 #include "watchman_policy.h"
 #include "yard_policy.h"
 
@@ -54,6 +55,7 @@ class BuildingChairman {
         school(tables),
         office(tables),
         social(tables),
+        upgrades(tables),
         watchman(tables),
         insulation(tables),
         digging(tables) {
@@ -63,6 +65,7 @@ class BuildingChairman {
     // The social objects ask the saw's question too: none of them is worth
     // the boards the sawmill itself is built of.
     WireSawGate(social, sawmill);
+    WireSawGate(upgrades, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
   }
 
@@ -144,6 +147,7 @@ class BuildingChairman {
     SchoolPolicy::Declare(run_name);
     OfficePolicy::Declare(run_name);
     SocialObjectsPolicy::Declare(run_name);
+    UpgradePolicy::Declare(run_name);
     WatchmanPolicy::Declare(run_name);
     InsulationPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
@@ -179,6 +183,9 @@ class BuildingChairman {
     // this line existed, one of the six was ever marked in thirty-three years
     // (social_objects_policy.h).
     social.RunDay(simulation, farm_first);
+    // The upgrades last of the buildings: «наведение порядка, а не
+    // перестройка» waits behind everything that houses or feeds anybody.
+    upgrades.RunDay(simulation, farm_first);
     watchman.RunDay(simulation);
     insulation.RunDay(simulation);
     digging.RunDay(simulation);
@@ -196,6 +203,7 @@ class BuildingChairman {
   SchoolPolicy school;
   OfficePolicy office;
   SocialObjectsPolicy social;
+  UpgradePolicy upgrades;
   WatchmanPolicy watchman;
   InsulationPolicy insulation;
   ExtractionPolicy digging;
