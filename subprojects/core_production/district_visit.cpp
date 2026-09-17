@@ -97,8 +97,22 @@ void CallPlanFailedVisit(WorldState& current) {
 }
 
 DistrictVisitOutcome InspectVisit(const WorldState& /*current*/, const DistrictVisitRow& visit) {
-  // STUB: the core keeps no books for a discrepancy to be in, and the faces
-  // have no personal reputations to answer a gift with (boss, parcel 324).
+  // STUB, AND IT IS THE WHOLE SUBJECT THAT IS MISSING, not a computation that
+  // was skipped. The core keeps no books for a discrepancy to be in, and the
+  // faces have no personal reputations to answer a gift with.
+  //
+  // THIS IS THE DESIGN'S OWN DECISION AND NOT A GAP IN THE DELIVERY
+  // (characters design §2, "Эпоха I числами", boss 2026-09-14, re-read and
+  // unchanged on 2026-09-17): «Находка: STUB „ничего не найдено", пока нет
+  // модели книг и учёта» and «Приём и подарок: не в сборке Эпохи I — приказа
+  // нет, личные репутации лиц — STUB. Дверь — после».
+  //
+  // Three seam fields stand nil because of it — `found`, the reception and
+  // gift kinds, and `gift` — and one written rule downstream cannot fire at
+  // all (the junior's signal, in ArriveDistrictVisits below). ALL OF THEM
+  // COME ALIVE WITH THE BOOKS AND NONE BEFORE, so they are one debt with one
+  // door, not four.
+  //
   // The outcome is the visit as it came, found nothing.
   return DistrictVisitOutcome{.face = visit.face, .kind = visit.kind};
 }
@@ -129,6 +143,25 @@ void ArriveDistrictVisits(WorldState& current) {
                   extraordinary ? EventSeverity::kInterrupting : EventSeverity::kNotable);
     event.amount = PackDistrictVisit(outcome);
     // "Младший заметил, доложил, приехал старший" (characters design §2).
+    //
+    // STUB, AND IT IS THE GATE THAT IS STUBBED, NOT THE RULE. The rule is the
+    // design's and stands, written and working; what it reads is nil. `found`
+    // comes from InspectVisit, which computes kNone and nothing else, so THIS
+    // BRANCH IS NEVER TAKEN — no extraordinary visit on a junior's signal
+    // happens in a campaign, not once, and neither does kJuniorMiss, which is
+    // computed from the same finding.
+    //
+    // WHAT IS MISSING IS THE BOOKS. Not a field and not a condition: the core
+    // keeps no accounts for a discrepancy to be found in, and the design says
+    // so in as many words — «Находка: STUB „ничего не найдено", пока нет
+    // модели книг и учёта» (characters design §2, "Эпоха I числами", boss's
+    // decision of 2026-09-14, unchanged). The mark comes off WITH THE MODEL
+    // OF THE BOOKS, in one move, and not a day earlier.
+    //
+    // Marked rather than mended because a rule that cannot fire is a stub,
+    // and the next reader who finds it unmarked reports it as a live rule —
+    // which happened three times in two days, once costing a named rejection
+    // in the design of the only way out of a dead end.
     if (visit.kind == DistrictVisitKind::kRegular && outcome.found != DistrictVisitFinding::kNone) {
       CallExtraordinary(current, SeniorOfChannel(visit.face), DistrictVisitCause::kJuniorSignal);
     }
