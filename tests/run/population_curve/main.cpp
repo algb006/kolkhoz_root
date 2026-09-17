@@ -144,6 +144,10 @@ struct Trajectory {
   /// by (i, j) with i < j. The blocker in the most pairs is the real narrow
   /// place even when it never holds the door alone.
   std::array<std::uint32_t, 36> pair_years = {};
+  /// Why the upgrades that did not come out were refused, by kind. Three
+  /// readings of the 120-ordered/9.9-finished gap were wrong in one night;
+  /// this counts instead of reading.
+  std::array<std::uint32_t, 16> upgrade_refusals = {};
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -384,6 +388,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     out.units_at_level += unit.level >= 2 ? 1U : 0U;
   }
   out.upgrades_ordered = builder.upgrades.ordered();
+  out.upgrade_refusals = builder.upgrades.refusals();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
   out.epoch = final_state.epoch;
@@ -761,7 +766,18 @@ int main(int argc, char** argv) {
   }
   std::cout << "population_curve: units at year " << kYears << " — " << (at_level / villages)
             << " of " << (standing / villages) << " kolkhoz buildings have reached level 2, after "
-            << (ordered / villages) << " upgrades ORDERED\n";
+            << (ordered / villages) << " upgrades ORDERED. Refused, by kind (OrderRefusal):\n";
+  std::array<float, 16> refusals = {};
+  for (const Trajectory& walk : walks) {
+    for (std::size_t index = 0; index < refusals.size(); ++index) {
+      refusals[index] += static_cast<float>(walk.upgrade_refusals[index]);
+    }
+  }
+  for (std::size_t index = 0; index < refusals.size(); ++index) {
+    if (refusals[index] > 0.0F) {
+      std::cout << "  refusal " << index << ": " << (refusals[index] / villages) << '\n';
+    }
+  }
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");

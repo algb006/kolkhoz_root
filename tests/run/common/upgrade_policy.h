@@ -172,6 +172,29 @@ class UpgradePolicy {
 
   std::uint32_t ordered() const { return ordered_; }
 
+  /// @brief Counts yesterday's verdicts on this policy's own orders, by
+  /// refusal kind. Call once a day, BEFORE RunDay, while the order book still
+  /// carries the settled rows.
+  ///
+  /// WHY A TALLY AND NOT A GUESS. 120 upgrades ordered a village and 9.9
+  /// finished, and three readings of that gap in one night were wrong — the
+  /// veto, the materials, the missing door. A count by KIND answers it once
+  /// and cannot be argued with.
+  void CollectVerdicts(const core::ISimulation& simulation) {
+    for (const core::OrderRow& order : simulation.CompletedState().orders.rows) {
+      if (order.kind != core::OrderKind::kUpgradeUnit ||
+          order.status != core::OrderStatus::kRefused) {
+        continue;
+      }
+      const auto index = static_cast<std::size_t>(order.refusal);
+      if (index < refusals_.size()) {
+        ++refusals_[index];
+      }
+    }
+  }
+
+  const std::array<std::uint32_t, 16>& refusals() const { return refusals_; }
+
  private:
   /// The level every Era I unit must reach for the I -> II transition (units
   /// rules §11). Not a stub: the design's own table.
@@ -194,6 +217,9 @@ class UpgradePolicy {
   StartGate start_gate_;
 
   std::uint32_t ordered_ = 0;
+
+  /// Refused orders of this policy's kind, by OrderRefusal value.
+  std::array<std::uint32_t, 16> refusals_ = {};
 };
 
 }  // namespace run
