@@ -93,7 +93,20 @@ struct Trajectory {
   /// two columns side by side say which.
   std::array<float, 8> year1_components = {};
   std::array<float, 8> year33_components = {};
+  /// How many of the thirty-three closed years each of the six transition
+  /// blocks stood open in. A block decides the transition as hard as either
+  /// index does, and until this line existed only the indices were visible —
+  /// so a settlement could be read as "sixteen years above the thresholds"
+  /// while a block nobody printed kept the door shut the whole time.
+  std::array<std::uint32_t, 6> block_years = {};
 };
+
+constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
+                                                    "4 соцобъекта из 6",
+                                                    "своя тяга/база   ",
+                                                    "зимовка 2 года   ",
+                                                    "юниты на уровне  ",
+                                                    "правление ≤1%    "};
 
 /// The eight, in the order they are gathered and printed.
 constexpr std::array<const char*, 8> kComponentNames = {"план           (25)",
@@ -223,6 +236,13 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     if (year == kYears) {
       out.year33_components = ComponentsOf(state.readiness);
     }
+    const core::TransitionBlocks& blocks = state.readiness.blocks;
+    out.block_years[0] += blocks.food_variety;
+    out.block_years[1] += blocks.social_objects;
+    out.block_years[2] += blocks.own_traction;
+    out.block_years[3] += blocks.wintering_two_years;
+    out.block_years[4] += blocks.units_at_level;
+    out.block_years[5] += blocks.office_repaired;
     if (!print_years) {
       continue;
     }
@@ -515,6 +535,23 @@ int main(int argc, char** argv) {
     const auto count = static_cast<float>(walks.size());
     std::cout << "  " << kComponentNames[index] << "  " << (first / count) << " | "
               << (last / count) << '\n';
+  }
+
+  // THE SIX BLOCKS, which decide the transition as hard as either index and
+  // were invisible until now. Printed as the mean number of years out of
+  // thirty-three that each stood open: a block open NOUGHT years is a door
+  // that never unlocks however high the indices climb, and one open all
+  // thirty-three is a block that blocks nothing. Either is worth knowing, and
+  // neither could be read off the two indices that were printed beside them.
+  std::cout << "population_curve: transition blocks, mean years OPEN of " << kYears
+            << " (0 = the door never unlocks; " << kYears << " = it never blocks)\n";
+  for (std::size_t index = 0; index < kBlockNames.size(); ++index) {
+    float open_years = 0.0F;
+    for (const Trajectory& walk : walks) {
+      open_years += static_cast<float>(walk.block_years[index]);
+    }
+    std::cout << "  " << kBlockNames[index] << "  "
+              << (open_years / static_cast<float>(walks.size())) << '\n';
   }
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
