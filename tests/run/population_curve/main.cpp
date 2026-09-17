@@ -74,6 +74,14 @@ struct Trajectory {
   /// the surcharge and the dirty-work multiplier have never once met in the
   /// same day, which is a different statement from "the heat is small".
   std::uint32_t hot_days_before = 0;
+  /// Readiness at the last turn this village lived, and the longest run of
+  /// years its two indices BOTH stood above their thresholds. The run is the
+  /// number the transition is opened on; the two indices are what boss reads
+  /// to see how far off it is.
+  float economic_index = 0.0F;
+  float social_index = 0.0F;
+  std::uint8_t longest_both_above = 0;
+  float satisfaction_stub_points = 0.0F;
 };
 
 /// The hot day, as `hot_afternoon_c` in weather_params.csv spells it and as
@@ -167,6 +175,15 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     if (year == 14) {
       out.year14 = population;
     }
+    // THE RUN IS TAKEN AS IT PASSES, not read off the final state. It is
+    // reset to nought by the first year that falls short, so a village that
+    // held three years in a row at year 20 and slipped at 21 would read as
+    // nought at 33 — and "never reached it" and "reached it and lost it" are
+    // the two answers boss is asking to tell apart.
+    out.longest_both_above = std::max(out.longest_both_above, state.readiness.both_above_run);
+    out.economic_index = state.readiness.economic_index;
+    out.social_index = state.readiness.social_index;
+    out.satisfaction_stub_points = state.readiness.satisfaction_stub_points;
     if (!print_years) {
       continue;
     }
@@ -420,6 +437,29 @@ int main(int argc, char** argv) {
               << latest;
   }
   std::cout << '\n';
+
+  // READINESS FOR EPOCH II, printed and not banded — the same division as the
+  // filth day above: the thresholds are balance and STUB, the shape is
+  // asserted in tests/unit/core_world. What this line answers is boss's
+  // question of parcel 138: do both indices hold above their thresholds for
+  // three years running in ANY of the nine, or is the transition out of reach
+  // today?
+  //
+  // THE STUB PRICE IS PRINTED AS A NUMBER AND ALWAYS (boss, parcel 132), not
+  // only when it is large: a mark that shows up at a threshold teaches its
+  // reader that its absence means "all honest".
+  std::uint8_t best_run = 0;
+  for (const Trajectory& walk : walks) {
+    std::cout << "population_curve: seed " << walk.seed << " readiness at year " << kYears
+              << " — economy " << walk.economic_index << ", society " << walk.social_index
+              << ", longest run of BOTH above threshold "
+              << static_cast<int>(walk.longest_both_above) << " years (of 3 needed); "
+              << walk.satisfaction_stub_points << " of satisfaction's 100 points are a STUB\n";
+    best_run = std::max(best_run, walk.longest_both_above);
+  }
+  std::cout << "population_curve: best run of both indices above threshold over nine villages — "
+            << static_cast<int>(best_run) << " years (printed, not judged)\n";
+
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");
   failures += run::Expect(

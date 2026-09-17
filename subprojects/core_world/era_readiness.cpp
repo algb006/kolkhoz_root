@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "core_common/calendar.h"
-#include "core_common/state_table_ops.h"
+#include "core_log/log.h"
 
 namespace core {
 
@@ -57,6 +57,11 @@ constexpr std::uint8_t kEraOneUnitLevel = 2;        ///< units rules §11, not a
 /// read as an answer.
 constexpr float kSatisfactionStubPointsEraOne = 45.0F;
 
+/// The answer when the era's upper variety norm cannot be read at all — a
+/// threshold no table can reach, so an unknown gate stays SHUT. Nought would
+/// have opened it for everybody, which is the dangerous direction.
+constexpr float kVarietyThresholdUnknown = 1.0e9F;
+
 /// @brief A score clamped into the 0..100 a component is weighed on. The
 /// ceiling is the design's own: overshooting one component may not buy
 /// another.
@@ -100,25 +105,36 @@ ReadinessComponent SharePercent(float part, float whole) {
 }  // namespace
 
 float ReadFoodVarietyThreshold(const ITableSet& tables, Epoch era) {
-  // THE TABLE AND NOT THE PROSE, and the two disagree today. Epochs §6 says
-  // the block's threshold is «верх нормы своей эпохи: I → II — 4 категории»,
-  // while food.csv carries `categories_norm_epoch_1 = 3`. Taking the table
-  // keeps one home for the number and lets boss move it in the design base;
-  // reported to him rather than resolved here, because which of the two is
-  // right is a design question and not a reading error.
+  // THE NORM IS A RANGE AND THE TABLE HELD ONE END OF IT (boss, parcel 138).
+  // Metrics §8 gives Era I «3–4 категории», II «5–6», III «7 и больше»;
+  // food.csv carried only the LOWER end — below which the table is poor —
+  // while the transition block asks for the UPPER: «верх нормы своей эпохи,
+  // I → II — 4». Reading `categories_norm_epoch_N` here was the right number
+  // for the wrong question, and there was nowhere else to take one from.
+  //
+  // Era III has no upper end BY DESIGN («7 и больше»), which is a named edge
+  // and not a missing row.
   const ITable* food = tables.FindTable("food");
   if (food == nullptr) {
-    return 0.0F;
+    return kVarietyThresholdUnknown;
   }
   const std::string key =
-      "categories_norm_epoch_" + std::to_string(static_cast<std::uint8_t>(era) + 1);
+      "categories_top_epoch_" + std::to_string(static_cast<std::uint8_t>(era) + 1);
   const std::uint32_t row = food->FindRowByKey(key);
   const std::uint32_t column = food->FindColumn("value");
   if (row == kNoTableRow || column == kNoTableColumn) {
-    return 0.0F;
+    // A MISSING THRESHOLD MAY NOT OPEN A GATE. Returning nought would make
+    // the block trivially met — every table is above nothing — so the refusal
+    // is loud and the block stays shut until the key exists. The near miss is
+    // the reason for the noise: the lower end is one row away and reads
+    // plausibly.
+    LogWarning("food: no `" + key +
+               "` — the era's variety norm has an upper end and the table holds only the lower; "
+               "the transition's variety block stays shut until it does");
+    return kVarietyThresholdUnknown;
   }
   const std::optional<double> value = food->CellReal(row, column);
-  return value.has_value() ? static_cast<float>(*value) : 0.0F;
+  return value.has_value() ? static_cast<float>(*value) : kVarietyThresholdUnknown;
 }
 
 float ReadLifeSpeedup(const ITableSet& tables) {
