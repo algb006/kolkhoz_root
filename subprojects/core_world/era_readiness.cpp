@@ -133,8 +133,13 @@ float ReadFoodVarietyThreshold(const ITableSet& tables, Epoch era) {
   if (food == nullptr) {
     return kVarietyThresholdUnknown;
   }
-  const std::string key =
-      "categories_top_epoch_" + std::to_string(static_cast<std::uint8_t>(era) + 1);
+  // THE ENUM ALREADY COUNTS FROM ONE (calendar.h: `kOne = 1`, and its own
+  // comment says so), so there is nothing to add. Adding one asked for
+  // `categories_top_epoch_2` in an Era I world for a day — and the warning
+  // printed that very name nine times while I read it as "villages that
+  // reached Epoch II". A 0-based enum is the ordinary case and the hand
+  // writes `+ 1` on its own.
+  const std::string key = "categories_top_epoch_" + std::to_string(static_cast<int>(era));
   const std::uint32_t row = food->FindRowByKey(key);
   const std::uint32_t column = food->FindColumn("value");
   if (row == kNoTableRow || column == kNoTableColumn) {
@@ -179,7 +184,11 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
   const std::uint32_t era_column = types->FindColumn("era");
   const std::uint32_t parent_column = types->FindColumn("parent");
   const std::uint32_t one_family_column = types->FindColumn("one_family");
-  const auto wanted_era = static_cast<std::int64_t>(static_cast<std::uint8_t>(era) + 1);
+  // Same off-by-one as the threshold above, and the same cure: Epoch counts
+  // from one, and unit_types.csv's `era` column is the human number. With the
+  // `+ 1` this list was Era II's social objects in an Era I world, so "0 of 6
+  // ever marked" was counted over the wrong six entirely.
+  const auto wanted_era = static_cast<std::int64_t>(static_cast<std::uint8_t>(era));
   for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
     const UnitTypeId id = DefIdFromRow<UnitTypeIdTag>(row);
     // A FAMILY'S OWN HOUSE IS NOT THE FARM'S BUILDING, and the design says so

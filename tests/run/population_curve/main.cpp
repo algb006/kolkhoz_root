@@ -116,6 +116,7 @@ struct Trajectory {
   /// measured world produces winter variety at all before he calls the
   /// threshold high.
   float worst_season_variety = 0.0F;
+  std::uint8_t variety_seasons_seen = 0;
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -264,6 +265,10 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
     }
     out.worst_season_variety = state.ledger.closed.worst_season_variety;
+    // THE COUNT BESIDE THE NUMBER, because the block tests both and yesterday
+    // I blamed the count from an armchair. Which of the two shuts the gate is
+    // a measurement, not a derivation.
+    out.variety_seasons_seen = state.ledger.closed.variety_seasons_seen;
     if (!print_years) {
       continue;
     }
@@ -602,7 +607,9 @@ int main(int argc, char** argv) {
   float built = 0.0F;
   float level = 0.0F;
   float variety = 0.0F;
+  float seasons = 0.0F;
   for (const Trajectory& walk : walks) {
+    seasons += static_cast<float>(walk.variety_seasons_seen);
     sites += static_cast<float>(walk.social_sites_ever);
     built += static_cast<float>(walk.social_built_ever);
     level += static_cast<float>(walk.highest_unit_level);
@@ -612,7 +619,8 @@ int main(int argc, char** argv) {
   std::cout << "population_curve: was it ever asked for — social types MARKED "
             << (sites / villages) << " of 6, FINISHED " << (built / villages)
             << "; highest unit level reached " << (level / villages) << "; worst season's variety "
-            << (variety / villages) << " categories\n";
+            << (variety / villages) << " categories over " << (seasons / villages)
+            << " seasons seen\n";
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");
