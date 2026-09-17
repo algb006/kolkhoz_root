@@ -117,6 +117,12 @@ struct Trajectory {
   /// threshold high.
   float worst_season_variety = 0.0F;
   std::uint8_t variety_seasons_seen = 0;
+  /// The denominator beside the answer: how many units the village stands at
+  /// the end, and how many of them have reached the level the transition
+  /// asks. "Nought years open" says nothing about whether the shortfall is
+  /// one stubborn type or the whole farm.
+  std::uint32_t units_standing = 0;
+  std::uint32_t units_at_level = 0;
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -312,6 +318,13 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     }
     out.social_sites_ever += site ? 1U : 0U;
     out.social_built_ever += built ? 1U : 0U;
+  }
+  for (const core::UnitRow& unit : final_state.units.rows) {
+    if (unit.level == 0 || unit.dead != 0) {
+      continue;  // a marked plot is not a unit that failed to be upgraded
+    }
+    ++out.units_standing;
+    out.units_at_level += unit.level >= 2 ? 1U : 0U;
   }
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
@@ -621,6 +634,17 @@ int main(int argc, char** argv) {
             << "; highest unit level reached " << (level / villages) << "; worst season's variety "
             << (variety / villages) << " categories over " << (seasons / villages)
             << " seasons seen\n";
+  // THE DENOMINATOR BESIDE THE ANSWER. "Nought years open" says nothing about
+  // whether the shortfall is one stubborn type or the whole farm, and the two
+  // have different repairs.
+  float standing = 0.0F;
+  float at_level = 0.0F;
+  for (const Trajectory& walk : walks) {
+    standing += static_cast<float>(walk.units_standing);
+    at_level += static_cast<float>(walk.units_at_level);
+  }
+  std::cout << "population_curve: units at year " << kYears << " — " << (at_level / villages)
+            << " of " << (standing / villages) << " standing have reached level 2\n";
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");
