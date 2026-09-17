@@ -128,6 +128,14 @@ struct Trajectory {
   /// had; without this count the next reader would weigh the design instead
   /// of the veto.
   std::uint32_t upgrades_ordered = 0;
+  /// Years in which ALL SIX blocks stood open at once — the only one of these
+  /// numbers the transition actually turns on. Six blockers open 33, 32, 30,
+  /// 7, 1 and 0 years say nothing about whether any YEAR had all six.
+  std::uint32_t all_six_years = 0;
+  /// Years in which exactly one block was shut, by which one: the true narrow
+  /// place is the blocker that is most often the ONLY one closed, not the one
+  /// with the fewest open years.
+  std::array<std::uint32_t, 6> sole_holdout = {};
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -272,6 +280,24 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     out.block_years[3] += blocks.wintering_two_years;
     out.block_years[4] += blocks.units_at_level;
     out.block_years[5] += blocks.office_repaired;
+    const std::array<std::uint8_t, 6> open = {blocks.food_variety,
+                                              blocks.social_objects,
+                                              blocks.own_traction,
+                                              blocks.wintering_two_years,
+                                              blocks.units_at_level,
+                                              blocks.office_repaired};
+    std::uint32_t shut = 0;
+    std::size_t last_shut = 0;
+    for (std::size_t index = 0; index < open.size(); ++index) {
+      if (open[index] == 0) {
+        ++shut;
+        last_shut = index;
+      }
+    }
+    out.all_six_years += shut == 0 ? 1U : 0U;
+    if (shut == 1) {
+      ++out.sole_holdout[last_shut];
+    }
     for (const core::UnitRow& unit : state.units.rows) {
       out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
     }
@@ -659,6 +685,32 @@ int main(int argc, char** argv) {
     standing += static_cast<float>(walk.units_standing);
     at_level += static_cast<float>(walk.units_at_level);
   }
+  // THE ONLY NUMBER THE DOOR TURNS ON. Six blockers open 33, 33, 32, 8, 1 and
+  // 0 years apart say nothing about whether any single YEAR had all six: the
+  // office's one good year need not be a year the social objects stood. And
+  // the true narrow place is the blocker most often the SOLE one shut, which
+  // is not the one with the fewest open years.
+  float all_six = 0.0F;
+  std::array<float, 6> sole = {};
+  for (const Trajectory& walk : walks) {
+    all_six += static_cast<float>(walk.all_six_years);
+    for (std::size_t index = 0; index < sole.size(); ++index) {
+      sole[index] += static_cast<float>(walk.sole_holdout[index]);
+    }
+  }
+  std::cout << "population_curve: ALL SIX blocks open together — " << (all_six / villages)
+            << " years of " << kYears << "; years with exactly one shut, by which:\n";
+  for (std::size_t index = 0; index < kBlockNames.size(); ++index) {
+    std::cout << "  " << kBlockNames[index] << "  " << (sole[index] / villages) << '\n';
+  }
+  // AND THE OFFICE'S 1.4 IS THE FIXTURE, NOT THE WORLD (boss, blockers round
+  // 2). Units rules §11 checks the office's wear "когда вопрос выносят на
+  // собрание" — a moment the PLAYER picks, and a living chairman repairs the
+  // office before putting the question. This run never puts the question and
+  // repairs by its general rule, so the number measures the fixture's habit.
+  std::cout << "population_curve: the office block measures the FIXTURE — the run never puts the "
+               "question to a meeting, and a living chairman repairs before he does\n";
+
   float ordered = 0.0F;
   for (const Trajectory& walk : walks) {
     ordered += static_cast<float>(walk.upgrades_ordered);
