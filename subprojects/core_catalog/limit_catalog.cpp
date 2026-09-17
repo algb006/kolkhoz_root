@@ -19,7 +19,7 @@ namespace {
 /// The world_params.csv keys, in the order of the knob list in the parse.
 /// The first kPointKnobCount are whole points and days; the rest are the MTS
 /// column's (ReadMtsColumnKnobs).
-constexpr std::array<std::string_view, 19> kLimitWorldParamKeys = {
+constexpr std::array<std::string_view, 20> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
@@ -44,7 +44,8 @@ constexpr std::array<std::string_view, 19> kLimitWorldParamKeys = {
     "livestock_handover_newborn",
     "livestock_handover_young",
     "livestock_handover_adult",
-    "livestock_handover_old"};
+    "livestock_handover_old",
+    "electrification_points_min"};
 
 constexpr std::size_t kPointKnobCount = 9;
 
@@ -342,6 +343,29 @@ bool ReadHandoverKnobs(const ITable& world, LimitCatalog& catalog, std::string& 
   return ReadKnobs(world, "world_params", knobs, error);
 }
 
+/// The accumulated grant electrification waits for. Whole points, so a table
+/// that names a fraction is refused rather than truncated: the comparison is
+/// against a running integer total, and half a point could never be reached.
+bool ReadElectrificationKnob(const ITable& world, LimitCatalog& catalog, std::string& error) {
+  constexpr float kMostGrantedPoints = 1.0e6F;
+  float wanted = static_cast<float>(catalog.electrification_points_min);
+  const std::array<ScalarKnob, 1> knobs = {
+      ScalarKnob{.key = kLimitWorldParamKeys[kHandoverKnobFirst + 4],
+                 .value = &wanted,
+                 .range = Range{.low = 0.0F, .high = kMostGrantedPoints}}};
+  if (!ReadKnobs(world, "world_params", knobs, error)) {
+    return false;
+  }
+  std::int32_t whole = 0;
+  if (!WholeKnob(wanted, whole)) {
+    error = "world_params: " + std::string(kLimitWorldParamKeys[kHandoverKnobFirst + 4]) +
+            " is not a whole number of points";
+    return false;
+  }
+  catalog.electrification_points_min = whole;
+  return true;
+}
+
 }  // namespace
 
 std::span<const std::string_view> LimitWorldParamKeys() {
@@ -389,6 +413,9 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
       return false;
     }
     if (!ReadHandoverKnobs(*world, catalog, error)) {
+      return false;
+    }
+    if (!ReadElectrificationKnob(*world, catalog, error)) {
       return false;
     }
   }

@@ -367,6 +367,11 @@ core::WorldState MakeWorld() {
   // The district's limit (save format 31): the year's points, a cart on the
   // road carrying a lot's frozen goods, and the year's three flows.
   world.limit.points = 215;
+  // Every point ever granted (save format 50). NOT a multiple of the year's
+  // points and not equal to it: the two sit side by side in the record, and a
+  // codec that read one where it meant the other would pass against any
+  // fixture where they matched.
+  world.limit.points_granted_total = 1265;
   core::LimitDeliveryRow cart;
   cart.lot = core::LimitLotId{0};
   cart.arrive_day = 131;
@@ -506,6 +511,11 @@ core::WorldState MakeWorld() {
   world.mts_column.worked_ha = 32.5F;
   world.mts_column.field = core::FieldId{4};
   world.mts_column.field_ha = 7.5F;
+  // The era events that have come (save format 50). Set, and the witness
+  // below left at nought: a codec that skipped the read would hand back the
+  // witness's own value and the round trip would pass on a field it never
+  // carried.
+  world.era_events.electrification_unlocked = 1;
   return world;
 }
 
@@ -653,6 +663,7 @@ core::WorldState MakeWitnessWorld() {
   witness.vitals.satiety_running_days = 19;
 
   witness.limit.points = 380;
+  witness.limit.points_granted_total = 977;
 
   witness.night_theft.stolen_this_month = 4500;
   witness.night_theft.month_index = 17;
@@ -730,6 +741,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"vitals.satiety_running_days", U32(world.vitals.satiety_running_days)});
 
   chunks.push_back({"limit.points", U32(static_cast<std::uint32_t>(world.limit.points))});
+  chunks.push_back({"limit.points_granted_total",
+                    U32(static_cast<std::uint32_t>(world.limit.points_granted_total))});
 
   chunks.push_back({"night_theft.stolen_this_month",
                     Little(static_cast<std::uint64_t>(world.night_theft.stolen_this_month), 8)});
@@ -743,6 +756,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"mts_column.worked_ha", F32(world.mts_column.worked_ha)});
   chunks.push_back({"mts_column.field", U32(world.mts_column.field.value)});
   chunks.push_back({"mts_column.field_ha", F32(world.mts_column.field_ha)});
+  chunks.push_back(
+      {"era_events.electrification_unlocked", U8(world.era_events.electrification_unlocked)});
   return chunks;
 }
 
@@ -851,7 +866,12 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     {"dictionaries", 143, 0xe35419cb6704df6aULL},
     // 2026-09-17, save 49: +10 bytes — the night pasture's standing order,
     // its first night and the camp's two floats.
-    {"world", 293, 0x8a4b9c3da5b2e4f4ULL},
+    // 2026-09-17, save 50: +5 — four bytes for every limit point ever
+    // granted, beside the points left this year, and one for the era events
+    // that have come. The running total is stored and not summed: the books
+    // keep one closed year and a chronicle year carries no points at all, so
+    // it has nowhere else to live.
+    {"world", 298, 0x15f6bd2d72aa14c4ULL},
     {"residents", 354, 0x275232d952b2aa5aULL},
     {"families", 192, 0x3ecbc6310aefce3aULL},
     {"fields", 263, 0x224499bb25ff9b5bULL},

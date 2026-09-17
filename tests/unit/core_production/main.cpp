@@ -601,6 +601,81 @@ int CheckStableGate() {
 /// The verb that makes bought stock reversible: until it existed the village
 /// could buy a head on the limit and had no way at all to be rid of one,
 /// which is the dead end the design's «никаких безвыходных ситуаций» forbids.
+/// ELECTRIFICATION (district_limit.h, RunEraEvents): the first era event the
+/// core raises, and the root four others hang on.
+int CheckElectrification() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.limit.electrification_points_min = 900;
+  config.farm_office_type = core::UnitTypeId{0};
+
+  /// A world with the three blockers set as asked.
+  const auto make = [&](std::int32_t granted, std::uint32_t day, bool office) {
+    core::WorldState world;
+    world.limit.points_granted_total = granted;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    if (office) {
+      core::UnitRow built;
+      built.type = core::UnitTypeId{0};
+      built.level = 1;
+      AppendRow(world.units, built);
+    }
+    return world;
+  };
+  const auto fired = [](const core::WorldState& world) {
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kElectrificationUnlocked) {
+        return true;
+      }
+    }
+    return false;
+  };
+  constexpr std::uint32_t kAYear = core::kDaysPerYear;
+
+  // -- each blocker alone holds it back, and each is asked by name ----------
+  {
+    core::WorldState world = make(899, kAYear, true);
+    core::RunEraEvents(config, world);
+    failures += Expect(!fired(world) && world.era_events.electrification_unlocked == 0,
+                       "electrification: a point short of the threshold and it does not come");
+  }
+  {
+    core::WorldState world = make(5000, kAYear - 1, true);
+    core::RunEraEvents(config, world);
+    failures += Expect(!fired(world) && world.era_events.electrification_unlocked == 0,
+                       "electrification: a day short of the year and it does not come, however "
+                       "rich the farm");
+  }
+  {
+    core::WorldState world = make(5000, kAYear, false);
+    core::RunEraEvents(config, world);
+    failures += Expect(!fired(world) && world.era_events.electrification_unlocked == 0,
+                       "electrification: with no office standing there is no address to write to");
+  }
+  // A SITE IS NOT AN OFFICE. Level nought is a marked plot, not a building,
+  // and the district writes to buildings.
+  {
+    core::WorldState world = make(5000, kAYear, true);
+    world.units.rows[0].level = 0;
+    core::RunEraEvents(config, world);
+    failures += Expect(!fired(world), "electrification: a marked site is not a standing office");
+  }
+
+  // -- all three, and it comes once ----------------------------------------
+  {
+    core::WorldState world = make(900, kAYear, true);
+    core::RunEraEvents(config, world);
+    failures += Expect(fired(world) && world.era_events.electrification_unlocked == 1,
+                       "electrification: the threshold exactly, a year lived and an office — it "
+                       "comes");
+    world.step_events.clear();
+    core::RunEraEvents(config, world);
+    failures += Expect(!fired(world), "and it is said ONCE: the next day raises nothing");
+  }
+  return failures;
+}
+
 int CheckHandingStockBack() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -4840,10 +4915,33 @@ int CheckDistrictLimit() {
   world.limit.points = 5;
 
   world.chairman.raikom_reputation = 50.0F;
+  const std::int32_t granted_before = world.limit.points_granted_total;
   core::TurnLimitYear(config, world, true);
   failures += Expect(world.ledger.current.limit_points_burned == 5 && world.limit.points == 500,
                      "limit: at the year's turn the unspent points burn and a plan in full earns "
                      "base plus 150");
+  // THE RUNNING TOTAL RISES BY THE GRANT AND BY NOTHING ELSE. It is what the
+  // design weighs electrification against — «сумма баллов лимита, полученных
+  // с начала партии» — so a year that burns five points and is granted five
+  // hundred must add five hundred, not four hundred and ninety-five.
+  failures += Expect(world.limit.points_granted_total - granted_before == 500,
+                     "limit: and every point granted goes on the running total, the burn not "
+                     "subtracted from it");
+  // AND A SALE DOES NOT TOUCH IT. Handing stock back pays into this year's
+  // points; if it reached the running total it would be a pump — buy a head
+  // at full price, hand it back at a fraction, lose points on every turn of
+  // the handle and drive the total up all the same.
+  const std::int32_t total_before_sale = world.limit.points_granted_total;
+  const std::int32_t points_before_sale = world.limit.points;
+  core::OrderRow sale;
+  sale.kind = core::OrderKind::kHandStock;
+  sale.herd = world.herds.row_ids[0];
+  sale.amount = 1;
+  failures += Expect(core::OrderHandStock(config, world, sale) == core::OrderRefusal::kNone &&
+                         world.limit.points > points_before_sale,
+                     "limit: handing a head back pays into this year's points");
+  failures += Expect(world.limit.points_granted_total == total_before_sale,
+                     "limit: and NOT into the running total — a total a sale can raise is a pump");
   return failures;
 }
 
@@ -5341,6 +5439,7 @@ int main() {
   failures += CheckStableGate();
   failures += CheckNightPasture();
   failures += CheckHandingStockBack();
+  failures += CheckElectrification();
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();

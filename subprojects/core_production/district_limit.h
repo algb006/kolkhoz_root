@@ -127,6 +127,30 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
                             WorldState& current,
                             const OrderRow& order);
 
+/// @brief Electrification (era event 01), once a campaign: the three blockers
+///        of electricity design §3, checked once a day.
+///
+/// THE THREE, AND EACH WITH ITS OWN REASON WRITTEN DOWN:
+///   * ACCUMULATED LIMIT POINTS at or above `electrification_points_min` —
+///     the measure of how far the farm has come, and the only one of the
+///     three that the chairman earns rather than waits for;
+///   * A YEAR LIVED since the start. «Раньше не придёт ни при каких успехах»,
+///     and the design calls it «не задержка, а защита от собственной
+///     жадности»: an event in the first spring would tempt the village into
+///     spending points it needs for bread;
+///   * AN OFFICE STANDING. Electrification is the first building the farm
+///     ORDERS rather than raises, and an order needs an address, papers and
+///     somebody for the district to talk to — not the corner of a church
+///     annexe.
+///
+/// The district puts up the line and the substation itself, in a cut-scene,
+/// so nothing is built here: the core raises `kElectrificationUnlocked` and
+/// the layer and the script take it from there. Raised ONCE — the flag lives
+/// in WorldState::era_events and is saved.
+///
+/// @pre Runs in the production sub-step of the sequential decisions slot.
+void RunEraEvents(const ProductionConfig& config, WorldState& current);
+
 /// @brief The year's turn, right after the district's verdict: this year's
 ///        unspent points burn into the closing year's ledger, and the new
 ///        year's grant is made from that verdict.

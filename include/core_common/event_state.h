@@ -348,6 +348,14 @@ enum class EventKind : std::uint8_t {
   /// the wire format, and it only ever grows at this end.
   kStockHandedOver,
 
+  /// ЭЛЕКТРИФИКАЦИЯ (era event 01, electricity design §3): the district is
+  /// putting up the line and the substation, and the village may build its
+  /// own network. Once a campaign, on the three blockers — accumulated limit
+  /// points, a year lived, an office standing. Carries no subject: it is
+  /// about the whole settlement. Interrupting, because the chairman's next
+  /// season is a different one. Seam key `electrification_unlocked`.
+  kElectrificationUnlocked,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

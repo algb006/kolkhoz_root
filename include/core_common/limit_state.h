@@ -28,6 +28,48 @@ struct LimitState {
   /// Whole points left this year. Never negative: an order that costs more
   /// is refused (kLimitShort), not taken on credit.
   std::int32_t points = 0;
+
+  /// EVERY POINT THE DISTRICT HAS EVER GRANTED, from day one, and nothing
+  /// else. It only ever grows: spending does not lower it, the year's end
+  /// does not burn it, and no sale may raise it.
+  ///
+  /// It is the design's measure of how far the farm has come — «сумма баллов
+  /// лимита, полученных С НАЧАЛА ПАРТИИ, накопительно, не остаток» (epochs
+  /// design §12) — and the first thing weighed against it is electrification.
+  ///
+  /// IT IS STATE AND NOT A SUM OF THE BOOKS, because the books do not keep
+  /// it: `ledger.closed` is one year and ChronicleYear carries the year, the
+  /// residents and the fertility and no points at all. A quantity nothing
+  /// stores cannot be derived, however it is dressed.
+  ///
+  /// WHY "AND NO SALE MAY RAISE IT" IS IN THE CONTRACT. Handing stock back to
+  /// the district pays points, and the counter that pays them used to be the
+  /// year's grant — which made a pump: buy a head at full price, hand it back
+  /// at a fraction, lose points every turn of the handle and drive the total
+  /// up regardless. A quantity that may only ACCUMULATE must not be reachable
+  /// by a reversible operation, or it stops measuring what it is named for.
+  std::int32_t points_granted_total = 0;
+};
+
+/// @brief The era events that have already come (epochs design §14).
+///
+/// ONE FLAG FOR NOW AND ROOM FOR THE REST. The design's table has twenty-odd
+/// of them and most depend on this one — telephones, radio, machinery and the
+/// artesian well all read «Электрификация» as their condition, and two more
+/// read machinery. They append here as they are built.
+///
+/// NOT A BITMASK OVER A TABLE, deliberately, and the reason is that the core
+/// does not read an era-event table at all: it would be a structure invented
+/// for a registry this side has never seen. One named flag per event built is
+/// honest about how many there are; the day that becomes unwieldy is the day
+/// to ask the design for the registry, not before.
+struct EraEventState {
+  /// Электрификация (era event 01) has come: the district has put up the line
+  /// and the substation, and the village may build its own network. Raised
+  /// ONCE, by the three blockers of electricity design §3 — the accumulated
+  /// limit points, a year lived, and an office to be addressed at. The seam
+  /// hears it as the event `electrification_unlocked`.
+  std::uint8_t electrification_unlocked = 0;
 };
 
 /// @brief One lot bought from the catalogue and not yet in the stores: the

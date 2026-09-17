@@ -154,6 +154,20 @@ struct LimitCatalog {
   /// polishing will move them; what polishing may not do is put any of them
   /// at or above one.
   /// (world_params.csv livestock_handover_newborn .. _old.)
+  /// Points the district must have granted IN ALL before electrification
+  /// comes (world_params.csv electrification_points_min; electricity design
+  /// §3, the first of its three blockers).
+  ///
+  /// IT IS THE RUNNING TOTAL AND NOT THE YEAR'S REMAINDER, which is the whole
+  /// reason LimitState carries one: the design's measure is «сумма баллов
+  /// лимита, полученных с начала партии, накопительно, не остаток». Measured
+  /// on four seeds 2026-09-17, the total stands at 350 after the first year,
+  /// 700 after the second and 1200 after the third on every one of them; 900
+  /// is crossed by the third year's grant with room either side, and stops
+  /// short of the fourth year, where the seeds begin to disagree (boss,
+  /// parcel 98).
+  std::int32_t electrification_points_min = 900;
+
   float handover_share_newborn = 0.15F;
   float handover_share_young = 0.35F;
   float handover_share_adult = 0.55F;

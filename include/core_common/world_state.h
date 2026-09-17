@@ -644,6 +644,10 @@ struct WorldState {
   /// limit_state.h.
   MtsColumnState mts_column;
 
+  /// The era events that have already come (epochs design §14); SAVED.
+  /// limit_state.h.
+  EraEventState era_events;
+
   /// The teachers and librarians the district is sending and who have not
   /// arrived yet (education design, "Эпоха I числами"); SAVED.
   /// specialist_state.h.

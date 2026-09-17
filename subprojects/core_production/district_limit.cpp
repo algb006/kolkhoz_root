@@ -439,11 +439,15 @@ void ArriveLivestock(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met) {
-  // The closing year's book is still `current` here: the ledger turns in the
-  // events slot, later in this same tick (core_world/world.cpp, RotateLedger),
-  // which is also where the new year's grant is booked.
-  current.ledger.current.limit_points_burned += current.limit.points;
+namespace {
+
+/// Hands the year its points and remembers them for good.
+///
+/// THE ONE PLACE A GRANT HAPPENS. There are two callers — the first year and
+/// every turn after it — and the running total has to rise at both or it
+/// measures neither. Written as a function rather than two lines twice
+/// because the second copy is the one that gets forgotten.
+void GrantYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met) {
   // STUB: the farm's status tier is kLagging until the economic readiness
   // index exists, and the overfulfilment term is zero until the core can
   // deliver above the plan (boss, parcel 211).
@@ -452,11 +456,53 @@ void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool pla
                                          plan_fully_met,
                                          0.0F,
                                          current.chairman.raikom_reputation);
+  current.limit.points_granted_total += current.limit.points;
+}
+
+}  // namespace
+
+void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met) {
+  // The closing year's book is still `current` here: the ledger turns in the
+  // events slot, later in this same tick (core_world/world.cpp, RotateLedger),
+  // which is also where the new year's grant is booked.
+  current.ledger.current.limit_points_burned += current.limit.points;
+  GrantYear(config, current, plan_fully_met);
+}
+
+void RunEraEvents(const ProductionConfig& config, WorldState& current) {
+  if (current.era_events.electrification_unlocked != 0) {
+    return;  // once a campaign
+  }
+  if (current.limit.points_granted_total < config.limit.electrification_points_min) {
+    return;
+  }
+  // A YEAR LIVED, counted in campaign days rather than in the calendar's year
+  // number: a campaign that began in month nine would otherwise cross into
+  // "year 1" after four months, and «раньше не придёт ни при каких успехах»
+  // is about a year of the farm and not about the page of a calendar.
+  if (current.calendar.day < kDaysPerYear) {
+    return;
+  }
+  if (config.farm_office_type.value == kInvalidDefIdValue) {
+    return;  // the table names no office: nothing to stand
+  }
+  const bool office = std::any_of(
+      current.units.rows.begin(), current.units.rows.end(), [&config](const UnitRow& unit) {
+        return unit.type.value == config.farm_office_type.value && unit.level >= 1;
+      });
+  if (!office) {
+    return;
+  }
+  current.era_events.electrification_unlocked = 1;
+  // Interrupting, and it is the one severity that fits: the district is about
+  // to raise a line through the village and the chairman's next season is a
+  // different one. Nothing in the core is unlocked by it — the units it opens
+  // are gated in the tables — so the news IS the whole of the core's part.
+  EmitEvent(current, EventKind::kElectrificationUnlocked, EventSeverity::kInterrupting);
 }
 
 void GrantFirstLimitYear(const ProductionConfig& config, WorldState& current) {
-  current.limit.points = YearLimitPoints(
-      config.limit, FarmStatusTier::kLagging, false, 0.0F, current.chairman.raikom_reputation);
+  GrantYear(config, current, false);
   current.ledger.current.limit_points_granted = current.limit.points;
 }
 

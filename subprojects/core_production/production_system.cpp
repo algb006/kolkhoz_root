@@ -265,6 +265,10 @@ class ProductionSystem final : public IProductionSystem {
     // need asks whether the team is out tonight, and the first night has to
     // be said on the day it happens and not the day after.
     RunNightPasture(config_, current);
+    // The era events, last of the day's district business: the accumulated
+    // grant they weigh is booked at the year's turn, and an office raised
+    // this morning is standing by now.
+    RunEraEvents(config_, current);
     RunHerdDay(config_, current);
   }
 

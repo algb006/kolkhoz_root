@@ -651,6 +651,11 @@ struct ProductionConfig {
   /// (mts_column.cpp). Invalid = the tables have none, and no column arrives.
   UnitTypeId field_camp_type;
 
+  /// The farm office (`farm_office`). Read by one rule only: electrification
+  /// will not come to a farm that has no address for the district to write to
+  /// (district_limit.h, RunEraEvents).
+  UnitTypeId farm_office_type;
+
   LivestockKindId horse_kind;  ///< livestock.csv "horse": the only kind the stable gates.
 
   /// professions.csv "groom" — the post that ends the start's horse

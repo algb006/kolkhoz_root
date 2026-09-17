@@ -1218,6 +1218,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // run's own chairman (tests/run/common/yard_policy.h).
   config.stable_type = UnitTypeByKey(unit_types, "horse_yard");
   config.field_camp_type = UnitTypeByKey(unit_types, "field_camp");
+  config.farm_office_type = UnitTypeByKey(unit_types, "farm_office");
   // The season amplitudes used to be copied in here so that the drought
   // branch could work out the afternoon. THEY ARE GONE: the day's swing is
   // now a field of WeatherState, written once by the time phase and read by

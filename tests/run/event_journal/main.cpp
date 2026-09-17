@@ -122,6 +122,8 @@ const char* KindName(core::EventKind kind) {
       return "night_pasture_began";
     case core::EventKind::kStockHandedOver:
       return "stock_handed_over";
+    case core::EventKind::kElectrificationUnlocked:
+      return "electrification_unlocked";
     case core::EventKind::kDistrictVisitAnnounced:
       return "district_visit_announced";
     case core::EventKind::kDistrictVisit:

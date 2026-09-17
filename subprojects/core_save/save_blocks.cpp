@@ -97,8 +97,12 @@ static_assert(AggregateArity<PlanState>() == 8,
 // 2026-09-13: nineteen — the timber stands, a row table in save_rows.cpp.
 // Twenty-one the same night: the limit's points (here, WriteWorldBlocks) and
 // its carts (a row table in save_rows.cpp).
-static_assert(sizeof(LimitState) == 4, "LimitState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LimitState>() == 1,
+// 2026-09-17, save 50: the running total of every point ever granted. BOTH
+// tripwires fired — the size and the arity — which is the pair working as
+// designed: the size alone would have missed a field that landed in padding,
+// and the arity alone would have missed a widened one.
+static_assert(sizeof(LimitState) == 8, "LimitState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<LimitState>() == 2,
               "LimitState gained or lost a field — update the codec and VERSION_SAVE");
 // Twenty-two on 2026-09-14: the district's specialists on the road (a row
 // table in save_rows.cpp).
@@ -124,7 +128,10 @@ static_assert(sizeof(MtsColumnState) == 24,
               "MtsColumnState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<MtsColumnState>() == 7,
               "MtsColumnState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 29,
+// 2026-09-17, save 50: the era events that have come (EraEventState).
+static_assert(AggregateArity<EraEventState>() == 1,
+              "EraEventState gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 30,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -379,8 +386,14 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.vitals.satiety_running_sum);
   out.WriteU32(world.vitals.satiety_running_days);
 
-  // The limit's points left this year (district design §1, save format 31).
+  // The limit's points left this year (district design §1, save format 31),
+  // and beside it every point ever granted (save format 50): the design's
+  // measure of how far the farm has come, and the first thing weighed against
+  // it is electrification. It is stored rather than summed because nothing in
+  // the books keeps it — `closed` is one year and a chronicle year carries no
+  // points at all.
   out.WriteU32(static_cast<std::uint32_t>(world.limit.points));
+  out.WriteU32(static_cast<std::uint32_t>(world.limit.points_granted_total));
 
   // The distillers' month at the stores (crime design §7, save format 42).
   out.WriteU64(static_cast<std::uint64_t>(world.night_theft.stolen_this_month));
@@ -396,6 +409,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // The field begun and its hectares (save format 47).
   out.WriteU32(world.mts_column.field.value);
   out.WriteFloat(world.mts_column.field_ha);
+
+  // The era events that have come (epochs design §14, save format 50).
+  out.WriteU8(world.era_events.electrification_unlocked);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -464,6 +480,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->vitals.satiety_running_days = in.ReadU32();
 
   world->limit.points = static_cast<std::int32_t>(in.ReadU32());
+  world->limit.points_granted_total = static_cast<std::int32_t>(in.ReadU32());
 
   world->night_theft.stolen_this_month = static_cast<Grams>(in.ReadU64());
   world->night_theft.month_index = in.ReadU32();
@@ -479,6 +496,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->mts_column.worked_ha = in.ReadFloat();
   world->mts_column.field = FieldId{in.ReadU32()};
   world->mts_column.field_ha = in.ReadFloat();
+
+  // Range-checked like the other 0/1 bytes of the record: a byte that is
+  // neither refuses the file rather than being read as "true, probably".
+  world->era_events.electrification_unlocked =
+      source.ReadEnumValue(0, 1, "electrification unlocked");
 }
 
 /// A campaign is fifty to seventy years; the ceiling is four orders above
