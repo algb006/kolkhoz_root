@@ -711,9 +711,16 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees
       // rather than an absence (boss, parcel 277).
-      //   None today: the leak's numbers are read by
-      //   core_residents/night_trade.h and the drinking's alcohol_* by
-      //   core_residents/alcoholism.h since their bodies.
+      //   `road_access_m` (2026-09-17) — metres from a road's line to the
+      //   edge of a plot that count as "a road is laid to it" (unit rules
+      //   §12). ITS DOOR IS THE ROAD ACCESS CHECK, and that check waits on
+      //   something larger than itself: a road is a UNIT with a ROUTE, and
+      //   the core has no channel for placing a linear unit at all — an
+      //   order carries one position, a unit row holds one position, and a
+      //   plot is a disc. Named here rather than read into a config that
+      //   nothing consults, because a knob with a reader that ignores it
+      //   is worse than a knob with none: it looks answered.
+      known.emplace_back("road_access_m");
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

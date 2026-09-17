@@ -913,6 +913,18 @@ int main() {
                                                                    "tree_species"};
     const std::array<std::string_view, 2> also_not_read = {"resident_activities",
                                                            "resident_activity_details"};
+    // AND ONE THAT IS NOT "NEVER READ" BUT "NOT READ YET", which is a
+    // different thing and is kept apart on purpose: a table on the list above
+    // is one the core has no business with, and a table here is one whose
+    // reader is named and not built. Collapsing the two would make the day
+    // the reader arrives invisible.
+    //
+    // `roads` (2026-09-17): 2658 points, thirteen roads and two paths, the
+    // drawn line rather than the database's waypoints. Its reader is the road
+    // access check of unit rules §12, and that check waits on a channel for
+    // placing a LINEAR unit, which the core does not have — an order carries
+    // one position, a unit row holds one position, and a plot is a disc.
+    const std::array<std::string_view, 1> not_read_yet = {"roads"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {
@@ -921,7 +933,8 @@ int main() {
       const std::string name = file.path().stem().string();
       const bool ignored =
           std::ranges::find(not_read_by_the_core, name) != not_read_by_the_core.end() ||
-          std::ranges::find(also_not_read, name) != also_not_read.end();
+          std::ranges::find(also_not_read, name) != also_not_read.end() ||
+          std::ranges::find(not_read_yet, name) != not_read_yet.end();
       fs::remove_all(doctored);
       fs::copy(fs::path(KOLKHOZ_TABLES_DIR), doctored, fs::copy_options::recursive);
       fs::remove(doctored / file.path().filename());
