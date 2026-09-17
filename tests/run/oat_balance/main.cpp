@@ -128,6 +128,17 @@ int main(int argc, char** argv) {
   }
   const core::ResourceId oat{static_cast<std::uint16_t>(oat_row)};
 
+  // AND HAY BESIDE IT, because the oats alone name half the fodder bill.
+  // Oats are the WORK ration and hay the maintenance one (resources design
+  // §6), and the design measures the night pasture's gain in both: «прибавка
+  // меряется сеном и овсом, которых не съели». A run that prints one of the
+  // two prices the summer pasture at half its size — measured 2026-09-17,
+  // when the horses' unconditional summer discount was found: switching it
+  // off moved the oats by 6.4 t and nobody could say what it did to the hay.
+  const std::uint32_t hay_row = resources->FindRowByKey("hay");
+  const core::ResourceId hay{static_cast<std::uint16_t>(
+      hay_row == core::kNoTableRow ? core::kInvalidDefIdValue : hay_row)};
+
   const core::ITable* crops = world.tables->FindTable("crops");
   const std::uint32_t oat_crop_row =
       crops == nullptr ? core::kNoTableRow : crops->FindRowByKey("oat");
@@ -190,6 +201,8 @@ int main(int argc, char** argv) {
 
     const core::Grams harvest = core::AmountOf(book.harvest, oat);
     const core::Grams fed = core::AmountOf(book.feed, oat);
+    const core::Grams hay_fed =
+        hay.value == core::kInvalidDefIdValue ? 0 : core::AmountOf(book.feed, hay);
     const core::Grams eaten = core::AmountOf(book.eaten, oat);
     const core::Grams spoiled = core::AmountOf(book.spoiled, oat);
     const core::Grams sown = core::AmountOf(book.seed, oat);
@@ -245,7 +258,7 @@ int main(int argc, char** argv) {
               << Tonnes(shipped) << std::setw(9) << Tonnes(lost_no_room) << std::setw(9)
               << Tonnes(closing) << std::setw(11) << Tonnes(residual) << std::setw(8) << cycle
               << std::setw(9) << Tonnes(demand_peak) << std::setw(9) << Tonnes(held_peak)
-              << std::setw(6) << demanding_days;
+              << std::setw(6) << demanding_days << "   сена " << Tonnes(hay_fed);
     if (demanding_days > 0) {
       std::cout << "  (days " << first_demand_day << "-" << last_demand_day << ")";
     }
