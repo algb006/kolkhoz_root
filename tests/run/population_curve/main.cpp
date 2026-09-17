@@ -36,6 +36,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
+#include "core_world/era_readiness.h"
 #include "core_world/world.h"
 
 namespace {
@@ -99,6 +100,22 @@ struct Trajectory {
   /// so a settlement could be read as "sixteen years above the thresholds"
   /// while a block nobody printed kept the door shut the whole time.
   std::array<std::uint32_t, 6> block_years = {};
+  /// WAS IT EVER ASKED FOR. A nought in a block is two different worlds —
+  /// "the fixture never ordered it" and "it was ordered and never came" —
+  /// and the two have opposite repairs: the first is a hole in the run, the
+  /// second a hole in the world. Counting SITES as well as buildings is what
+  /// tells them apart, because a marked plot is an order nobody filled.
+  std::uint32_t social_sites_ever = 0;
+  std::uint32_t social_built_ever = 0;
+  /// The highest level any unit of the village ever reached. One means no
+  /// upgrade was ever finished; if no upgrade is ever ORDERED either, the
+  /// level block is measuring a verb the fixture does not use.
+  std::uint8_t highest_unit_level = 0;
+  /// The village's mean categories in the WORST season of the last year —
+  /// the number the variety block is compared against. Boss asks whether the
+  /// measured world produces winter variety at all before he calls the
+  /// threshold high.
+  float worst_season_variety = 0.0F;
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -243,6 +260,10 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     out.block_years[3] += blocks.wintering_two_years;
     out.block_years[4] += blocks.units_at_level;
     out.block_years[5] += blocks.office_repaired;
+    for (const core::UnitRow& unit : state.units.rows) {
+      out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
+    }
+    out.worst_season_variety = state.ledger.closed.worst_season_variety;
     if (!print_years) {
       continue;
     }
@@ -270,6 +291,23 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
 
   const core::WorldState& final_state = simulation->CompletedState();
+  // ORDERED OR NOT ORDERED, asked of the same catalogue the score uses so the
+  // two cannot disagree about which six types the list is.
+  const core::ReadinessCatalog catalog =
+      core::ReadReadinessCatalog(*world.tables, core::Epoch::kOne);
+  for (const core::UnitTypeId type : catalog.social_objects) {
+    bool site = false;
+    bool built = false;
+    for (const core::UnitRow& unit : final_state.units.rows) {
+      if (unit.type.value != type.value || unit.dead != 0) {
+        continue;
+      }
+      site = true;  // a row at all is an order somebody placed
+      built = built || unit.level >= 1;
+    }
+    out.social_sites_ever += site ? 1U : 0U;
+    out.social_built_ever += built ? 1U : 0U;
+  }
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
   out.epoch = final_state.epoch;
@@ -553,6 +591,28 @@ int main(int argc, char** argv) {
     std::cout << "  " << kBlockNames[index] << "  "
               << (open_years / static_cast<float>(walks.size())) << '\n';
   }
+
+  // WAS IT EVER ASKED FOR. Three numbers that turn a nought in a block from a
+  // verdict into a question with an answer: how many of the six social types
+  // were ever MARKED against how many were ever finished, the highest level
+  // any unit reached, and the village's worst season of the last year against
+  // the variety threshold. "Nobody ordered it" is a hole in the fixture;
+  // "ordered and never came" is a hole in the world.
+  float sites = 0.0F;
+  float built = 0.0F;
+  float level = 0.0F;
+  float variety = 0.0F;
+  for (const Trajectory& walk : walks) {
+    sites += static_cast<float>(walk.social_sites_ever);
+    built += static_cast<float>(walk.social_built_ever);
+    level += static_cast<float>(walk.highest_unit_level);
+    variety += walk.worst_season_variety;
+  }
+  const auto villages = static_cast<float>(walks.size());
+  std::cout << "population_curve: was it ever asked for — social types MARKED "
+            << (sites / villages) << " of 6, FINISHED " << (built / villages)
+            << "; highest unit level reached " << (level / villages) << "; worst season's variety "
+            << (variety / villages) << " categories\n";
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");
