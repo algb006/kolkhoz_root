@@ -249,6 +249,19 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.season == Season::kSpring && previous.calendar.season != Season::kSpring) {
       AnnouncePlan(config_, current);
     }
+    // THE WINTERING AS IT STANDS ON ITS DATE (epochs design §6): the fodder
+    // the farm holds and the days to the first spring grass, booked raw so
+    // the reader divides once over numbers it can check. Taken off the same
+    // forecast the office's feed light is drawn from — the index and the
+    // light the player watched all autumn must not be able to disagree — and
+    // core_residents books the food half of the same day beside it.
+    if (current.calendar.day % kDaysPerYear ==
+        static_cast<std::uint32_t>(Month::kDecember) * kDaysPerMonth) {
+      const StockForecast fodder = FeedLight(config_, current);
+      current.ledger.current.feed_days_dec1 = static_cast<float>(fodder.days_of_stock);
+      current.ledger.current.winter_days_dec1 =
+          static_cast<std::uint16_t>(fodder.days_to_date < 0 ? 0 : fodder.days_to_date);
+    }
     // The district's people: announced first, so a notice of zero days
     // announces a visit before it arrives on the same tick (district_visit.h).
     AnnounceRegularVisits(config_, current);

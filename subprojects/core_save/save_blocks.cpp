@@ -38,9 +38,15 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 2026-09-15: the night trades' catch, a fourteenth amounts vector (save
 // format 40).
 // 2026-09-15 again: what the distillers stole, a fifteenth (save format 42).
-static_assert(sizeof(YearLedger) == 168 + (15 * kAmountsSize),
+// 2026-09-17: the era-readiness index's nine yearly inputs — satisfaction's
+// sum and count, able-bodied person-days, the plan's per cent and the byte
+// that says it exists, and the four numbers of the wintering as it stood on
+// 1 December (save format 52). 168 became 200, measured: twenty-eight bytes
+// of fields in thirty-two of growth, so four went to padding — which is
+// exactly why the arity below stands beside the size and not instead of it.
+static_assert(sizeof(YearLedger) == 200 + (15 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 44,
+static_assert(AggregateArity<YearLedger>() == 53,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -131,7 +137,17 @@ static_assert(AggregateArity<MtsColumnState>() == 7,
 // 2026-09-17, save 50: the era events that have come (EraEventState).
 static_assert(AggregateArity<EraEventState>() == 1,
               "EraEventState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 30,
+// 2026-09-17, save 52: readiness for the transition (ReadinessState). Its
+// components are structs of structs, so the arity here counts the MEMBERS of
+// the top level and the codec below walks the rest by hand; the nested
+// tripwires are the two that follow.
+static_assert(AggregateArity<ReadinessState>() == 9,
+              "ReadinessState gained or lost a member — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ReadinessComponent>() == 2,
+              "ReadinessComponent changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<TransitionBlocks>() == 6,
+              "TransitionBlocks gained or lost a block — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 31,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -241,6 +257,15 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI32(book.limit_points_granted);
   out.WriteI32(book.limit_points_spent);
   out.WriteI32(book.limit_points_burned);
+  out.WriteFloat(book.satisfaction_sum);
+  out.WriteU32(book.satisfaction_samples);
+  out.WriteFloat(book.able_bodied_days);
+  out.WriteFloat(book.plan_percent);
+  out.WriteU8(book.plan_percent_known);
+  out.WriteFloat(book.food_days_dec1);
+  out.WriteFloat(book.feed_days_dec1);
+  out.WriteU16(book.winter_days_dec1);
+  out.WriteU8(book.winter_cover_taken);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -297,7 +322,78 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.limit_points_granted = in.ReadI32();
   book.limit_points_spent = in.ReadI32();
   book.limit_points_burned = in.ReadI32();
+  book.satisfaction_sum = in.ReadFloat();
+  book.satisfaction_samples = in.ReadU32();
+  book.able_bodied_days = in.ReadFloat();
+  book.plan_percent = in.ReadFloat();
+  book.plan_percent_known = in.ReadU8();
+  book.food_days_dec1 = in.ReadFloat();
+  book.feed_days_dec1 = in.ReadFloat();
+  book.winter_days_dec1 = in.ReadU16();
+  book.winter_cover_taken = in.ReadU8();
   return book;
+}
+
+/// One scored component: the number and the byte that says the era has it.
+/// The byte is range-checked like every other 0/1 of the record — a byte that
+/// is neither refuses the file rather than being read as "available,
+/// probably", which for this field would turn a component the era does not
+/// have into a nought weighed at its full weight.
+void WriteComponent(ByteWriter& out, const ReadinessComponent& component) {
+  out.WriteFloat(component.score);
+  out.WriteU8(component.available);
+}
+
+void ReadComponent(LoadSource& source, ReadinessComponent& component) {
+  component.score = source.In().ReadFloat();
+  component.available = source.ReadEnumValue(0, 1, "readiness component available");
+}
+
+void WriteReadiness(ByteWriter& out, const ReadinessState& readiness) {
+  out.WriteU16(readiness.year);
+  WriteComponent(out, readiness.economy.plan);
+  WriteComponent(out, readiness.economy.winter_stocks);
+  WriteComponent(out, readiness.economy.mechanisation);
+  WriteComponent(out, readiness.economy.funds);
+  WriteComponent(out, readiness.society.satisfaction);
+  WriteComponent(out, readiness.society.kolkhoz_effort);
+  WriteComponent(out, readiness.society.social_objects);
+  WriteComponent(out, readiness.society.demography);
+  out.WriteFloat(readiness.economic_index);
+  out.WriteFloat(readiness.social_index);
+  out.WriteU8(readiness.both_above_run);
+  out.WriteU8(readiness.wintering_run);
+  out.WriteU8(readiness.blocks.food_variety);
+  out.WriteU8(readiness.blocks.social_objects);
+  out.WriteU8(readiness.blocks.own_traction);
+  out.WriteU8(readiness.blocks.wintering_two_years);
+  out.WriteU8(readiness.blocks.units_at_level);
+  out.WriteU8(readiness.blocks.office_repaired);
+  out.WriteFloat(readiness.satisfaction_stub_points);
+}
+
+void ReadReadiness(LoadSource& source, ReadinessState& readiness) {
+  ByteReader& in = source.In();
+  readiness.year = in.ReadU16();
+  ReadComponent(source, readiness.economy.plan);
+  ReadComponent(source, readiness.economy.winter_stocks);
+  ReadComponent(source, readiness.economy.mechanisation);
+  ReadComponent(source, readiness.economy.funds);
+  ReadComponent(source, readiness.society.satisfaction);
+  ReadComponent(source, readiness.society.kolkhoz_effort);
+  ReadComponent(source, readiness.society.social_objects);
+  ReadComponent(source, readiness.society.demography);
+  readiness.economic_index = in.ReadFloat();
+  readiness.social_index = in.ReadFloat();
+  readiness.both_above_run = in.ReadU8();
+  readiness.wintering_run = in.ReadU8();
+  readiness.blocks.food_variety = source.ReadEnumValue(0, 1, "food variety block");
+  readiness.blocks.social_objects = source.ReadEnumValue(0, 1, "social objects block");
+  readiness.blocks.own_traction = source.ReadEnumValue(0, 1, "own traction block");
+  readiness.blocks.wintering_two_years = source.ReadEnumValue(0, 1, "wintering block");
+  readiness.blocks.units_at_level = source.ReadEnumValue(0, 1, "units at level block");
+  readiness.blocks.office_repaired = source.ReadEnumValue(0, 1, "office repaired block");
+  readiness.satisfaction_stub_points = in.ReadFloat();
 }
 
 }  // namespace
@@ -412,6 +508,12 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
 
   // The era events that have come (epochs design §14, save format 50).
   out.WriteU8(world.era_events.electrification_unlocked);
+
+  // Readiness for the transition (epochs design §6, save format 52). The
+  // indices could be recomputed from a closed year; the RUNS could not —
+  // "three years running" is what the campaign accumulated, and that is the
+  // whole reason this is state rather than a light stood up again on load.
+  WriteReadiness(out, world.readiness);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -501,6 +603,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   // neither refuses the file rather than being read as "true, probably".
   world->era_events.electrification_unlocked =
       source.ReadEnumValue(0, 1, "electrification unlocked");
+
+  ReadReadiness(source, world->readiness);
 }
 
 /// A campaign is fifty to seventy years; the ceiling is four orders above

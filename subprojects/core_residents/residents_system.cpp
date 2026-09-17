@@ -48,6 +48,7 @@
 #include "life_config.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
+#include "year_metrics.h"
 
 namespace core {
 namespace {
@@ -331,6 +332,11 @@ class ResidentsSystem final : public IResidentsSystem {
     RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
+    // The year's book, after the exchange has moved the food and before the
+    // turn below can close it: the satisfaction sampled is yesterday's
+    // metrics phase over today's households, one reading each, and the
+    // wintering is sampled on its own date (year_metrics.h).
+    AccumulateYearMetrics(food_, config_, current);
     // After the vitals: at the year's turn they have just folded the closing
     // year's satiety, which is what a hungry year is judged by.
     if (current.calendar.day % kDaysPerYear == 0) {

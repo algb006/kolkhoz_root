@@ -18,7 +18,8 @@ kolkhoz_add_module(core_residents
     alcoholism.cpp
     night_trade.cpp
     schooling.cpp
-    vitals.cpp)
+    vitals.cpp
+    year_metrics.cpp)
 
 target_link_libraries(core_residents
     PUBLIC core_common core_sim

@@ -214,6 +214,40 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   for (const Grams due : current.plan.due) {
     asked = asked || due > 0;
   }
+  // THE YEAR'S PER CENT, FOR THE READINESS INDEX, and it is booked here
+  // because this is where the year's delivery is judged — a second walk of
+  // the same two vectors somewhere else would be the same number with two
+  // homes. The mean over the POSITIONS the district asked for, each capped
+  // at 100 so a doubled oat cannot buy a missing wheat, which is the same
+  // law the index applies to its own components one storey up.
+  //
+  // KEYED OFF `announced` AND NOT OFF THE TONNAGE, unlike the verdict below.
+  // A settlement that worked no land last year IS one the district spoke to
+  // and asked nothing of, and its per cent does not exist — which is a
+  // different fact from nought per cent, and the byte is what tells them
+  // apart (world_state.h, PlanState::announced).
+  if (current.plan.announced != 0) {
+    float sum = 0.0F;
+    std::uint32_t positions = 0;
+    for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+      const Grams due = current.plan.due[index];
+      if (due == 0) {
+        continue;  // a position asked nothing: it is not a position of this plan
+      }
+      const Grams delivered =
+          index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+      const float share = static_cast<float>(delivered) / static_cast<float>(due);
+      sum += share > 1.0F ? 100.0F : share * 100.0F;
+      ++positions;
+    }
+    // A PLAN OF NO POSITIONS HAS NO PER CENT. The district spoke and asked
+    // for nothing; a mean over an empty set would be nought — the score of a
+    // settlement that shipped none of what it owed — or a hundred, its
+    // opposite, and both would be an answer where there is no question.
+    current.ledger.current.plan_percent_known = positions > 0 ? 1U : 0U;
+    current.ledger.current.plan_percent =
+        positions > 0 ? sum / static_cast<float>(positions) : 0.0F;
+  }
   if (asked) {
     const bool met = PlanWasMet(config, current);
     current.plan.last_verdict = met ? PlanVerdict::kMet : PlanVerdict::kFailed;

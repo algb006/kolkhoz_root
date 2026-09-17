@@ -44,6 +44,7 @@
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
+#include "core_common/readiness_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
@@ -472,13 +473,19 @@ struct PlanState {
   /// state in a tonnage of zero — so `kNoPlanYet`, the reserve door and the
   /// verdict all read one vector and cannot tell them apart.
   ///
-  /// WRITTEN AND READ BY NOBODY YET, and that is said rather than implied:
-  /// the three readers above still key off the tonnage, and moving them is a
-  /// change to what a chairman is told, which is boss's to schedule. What the
-  /// byte buys today is that the fact EXISTS and survives a save; what it
-  /// does not buy is a different answer at the door. Set at the spring
-  /// announcement even when the figure is zero, cleared at the year's turn
-  /// beside the figure it describes.
+  /// WRITTEN AND READ, and this paragraph said the opposite until 2026-09-17
+  /// — the note outlived its own subject, which is the more dangerous half of
+  /// a stale comment: a reader deciding whether a field can be trusted asks
+  /// the note, not the tree. Set at the spring announcement even when the
+  /// figure is zero (district_plan.cpp, AnnouncePlan), cleared beside the
+  /// figure it describes both there and at the year's turn. Read by
+  /// `PlanHoldsIt` (core_residents/family_exchange.cpp), which holds last
+  /// year's positions by the LIST rather than by the tonnes.
+  ///
+  /// What it still does not do is answer at the other three doors: kNoPlanYet,
+  /// the reserve door and the verdict key off the tonnage to this day, and
+  /// moving them changes what a chairman is told, which is boss's to
+  /// schedule.
   std::uint8_t announced = 0;
 
   /// THE WORKED ARABLE OF THE YEAR THAT CLOSED, in hectares — the area the
@@ -673,6 +680,17 @@ struct WorldState {
   /// boss, parcel 270). Made at genesis from tables/extraction_sites.csv;
   /// SAVED. extraction_state.h.
   ExtractionSiteTable extraction_sites;
+
+  /// Readiness for the era transition as of the last turn of the year
+  /// (epochs design §6); SAVED. readiness_state.h.
+  ///
+  /// STATE AND NOT A DERIVATION, unlike the office's lights next door, and
+  /// the difference is the history: "both indices above their thresholds for
+  /// three years running" and "the wintering closed two years in a row"
+  /// cannot be recomputed from a world that only holds today. A light is a
+  /// forecast the session stands again on every load; a run of years is a
+  /// fact the campaign accumulated and a save must carry.
+  ReadinessState readiness;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

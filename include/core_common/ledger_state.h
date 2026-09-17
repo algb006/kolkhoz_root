@@ -289,6 +289,97 @@ struct YearLedger {
   std::int32_t limit_points_spent = 0;
   /// Points left unspent when this year closed and burnt with it.
   std::int32_t limit_points_burned = 0;
+
+  // -- what the era-readiness index needs and nothing else kept ------------
+  //
+  // FOUR QUANTITIES THE INDEX ASKS OF THE YEAR AND THE YEAR DID NOT KEEP
+  // (epochs design §6; boss, parcels 128-132). Each is booked by the module
+  // that owns the rule behind it, never by the counter that reads them all:
+  // a rule lives with its configuration, and a ledger column filled from
+  // somewhere else is the first half of two homes for one number.
+  //
+  // Appended at the END, because the order of this struct is the wire format
+  // of a save.
+
+  /// Sum of every family's satisfaction over every day of the year, and the
+  /// number of those readings — the mean over families AND days, which is
+  /// what «среднее довольство семей села за год» asks for.
+  ///
+  /// TWO COLUMNS AND NOT ONE RUNNING MEAN, because the divisor moves: the
+  /// village gains and loses families all year, and a mean kept in one float
+  /// would weight a January of twenty-one households against a December of
+  /// forty as though the two were the same measurement.
+  ///
+  /// Written by the metrics phase of core_residents.
+  float satisfaction_sum = 0.0F;
+
+  std::uint32_t satisfaction_samples = 0;
+
+  /// Person-days of able-bodied life in the village over the year: one for
+  /// every working-age resident on every day, whether or not the kolkhoz
+  /// asked anything of them. The denominator of «доля усилий, отданных
+  /// колхозу», whose numerator is `total_assignment_days` above.
+  ///
+  /// AND IT IS NOT THE DENOMINATOR THE DESIGN NAMES, which is said here
+  /// rather than glossed over. Epochs §6 asks for kolkhoz man-days over
+  /// kolkhoz PLUS HOUSEHOLD man-days, and this core does not model the
+  /// private plot as labour at all: `FamilyRow::household_hours` is the
+  /// window a household has left at home once sleep and the road are taken
+  /// off, a property of the FAMILY'S DAY and not a count of anybody's work.
+  /// Dividing it by twenty-four would have produced a plausible number
+  /// measuring nothing — the adjacent quantity, answered convincingly.
+  ///
+  /// What is measured instead is the same question from the other side:
+  /// how much of the workforce's year the kolkhoz actually took. The
+  /// design's own gloss for the component is «обратный дрейф в ЛПХ», and a
+  /// day an able-bodied villager spent on no kolkhoz assignment is that
+  /// drift, whatever he did with it. Boss's to confirm or correct — reported
+  /// with the measurement rather than substituted quietly.
+  ///
+  /// Written by the sequential day of core_residents.
+  float able_bodied_days = 0.0F;
+
+  /// The year's delivery against the plan, 0..100, as the mean over the
+  /// POSITIONS the district asked for — sold ÷ owed, each position capped at
+  /// 100 so a doubled oat does not buy a missing wheat.
+  ///
+  /// AND THE BYTE BESIDE IT, because a year of nought per cent and a year
+  /// the district never spoke of are different facts that a float cannot
+  /// tell apart. `plan.announced` is what says which, and it is a better
+  /// door than the tonnage the verdict still keys off: a district that
+  /// worked no land last year IS spoken to and asked nothing, which is not
+  /// a world with no district in its tables.
+  ///
+  /// Written by the district plan of core_production, at the judgement.
+  float plan_percent = 0.0F;
+
+  std::uint8_t plan_percent_known = 0;
+
+  /// The wintering, as it stood on the FIRST OF DECEMBER: how many days of
+  /// food the stores and pantries hold, how many days of fodder the farm
+  /// holds, and how many days there are to the first spring grass. A date
+  /// and not a mean, because a winter stock is judged at the moment it stops
+  /// growing.
+  ///
+  /// THREE DAY-COUNTS AND NOT TWO SHARES, deliberately. A share is the one
+  /// shape in which drift is invisible — the quotient still looks like a
+  /// quotient — and here the two numerators belong to different modules
+  /// while the denominator belongs to a third rule. Each owner books the
+  /// count it owns; the division happens once, at the reader, over three
+  /// numbers that can each be checked against the world.
+  ///
+  /// Taken off the same two forecasts the office's lights are drawn from, so
+  /// the index and the light the player watched all autumn cannot disagree.
+  /// The byte says the snapshot was taken at all: a campaign that ends before
+  /// its first December has no wintering to judge, which is not the same as
+  /// a wintering that failed.
+  float food_days_dec1 = 0.0F;
+
+  float feed_days_dec1 = 0.0F;
+
+  std::uint16_t winter_days_dec1 = 0;
+
+  std::uint8_t winter_cover_taken = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last

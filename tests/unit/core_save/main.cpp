@@ -516,6 +516,31 @@ core::WorldState MakeWorld() {
   // witness's own value and the round trip would pass on a field it never
   // carried.
   world.era_events.electrification_unlocked = 1;
+  // Readiness for the transition (save format 52). Every field given a value
+  // NO DEFAULT SHARES, for the same reason as the byte above: a codec that
+  // skipped one of them would hand the witness's own number back and the
+  // round trip would pass on a field it never carried. The two runs and the
+  // six blocker bytes matter most — a run is what a save exists to carry.
+  world.readiness.year = 7;
+  world.readiness.economy.plan = {.score = 61.5F, .available = 1};
+  world.readiness.economy.winter_stocks = {.score = 48.25F, .available = 1};
+  world.readiness.economy.mechanisation = {.score = 12.0F, .available = 1};
+  world.readiness.economy.funds = {.score = 73.5F, .available = 1};
+  world.readiness.society.satisfaction = {.score = 54.75F, .available = 1};
+  world.readiness.society.kolkhoz_effort = {.score = 39.0F, .available = 1};
+  world.readiness.society.social_objects = {.score = 33.5F, .available = 1};
+  world.readiness.society.demography = {.score = 21.25F, .available = 1};
+  world.readiness.economic_index = 47.5F;
+  world.readiness.social_index = 41.25F;
+  world.readiness.both_above_run = 2;
+  world.readiness.wintering_run = 1;
+  world.readiness.blocks.food_variety = 1;
+  world.readiness.blocks.social_objects = 0;
+  world.readiness.blocks.own_traction = 1;
+  world.readiness.blocks.wintering_two_years = 0;
+  world.readiness.blocks.units_at_level = 1;
+  world.readiness.blocks.office_repaired = 0;
+  world.readiness.satisfaction_stub_points = 45.0F;
   return world;
 }
 
@@ -758,6 +783,39 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"mts_column.field_ha", F32(world.mts_column.field_ha)});
   chunks.push_back(
       {"era_events.electrification_unlocked", U8(world.era_events.electrification_unlocked)});
+
+  // Readiness (save format 52). Written out component by component rather
+  // than by a loop over the struct, which is the whole point of this list: a
+  // loop here would share the codec's own idea of the order, and a side built
+  // out of the thing it measures can only ever find disagreements with
+  // itself.
+  const auto component = [&chunks](const char* name, const core::ReadinessComponent& value) {
+    chunks.push_back({name, F32(value.score)});
+    chunks.push_back({name, U8(value.available)});
+  };
+  chunks.push_back({"readiness.year", U16(world.readiness.year)});
+  component("readiness.economy.plan", world.readiness.economy.plan);
+  component("readiness.economy.winter_stocks", world.readiness.economy.winter_stocks);
+  component("readiness.economy.mechanisation", world.readiness.economy.mechanisation);
+  component("readiness.economy.funds", world.readiness.economy.funds);
+  component("readiness.society.satisfaction", world.readiness.society.satisfaction);
+  component("readiness.society.kolkhoz_effort", world.readiness.society.kolkhoz_effort);
+  component("readiness.society.social_objects", world.readiness.society.social_objects);
+  component("readiness.society.demography", world.readiness.society.demography);
+  chunks.push_back({"readiness.economic_index", F32(world.readiness.economic_index)});
+  chunks.push_back({"readiness.social_index", F32(world.readiness.social_index)});
+  chunks.push_back({"readiness.both_above_run", U8(world.readiness.both_above_run)});
+  chunks.push_back({"readiness.wintering_run", U8(world.readiness.wintering_run)});
+  chunks.push_back({"readiness.blocks.food_variety", U8(world.readiness.blocks.food_variety)});
+  chunks.push_back({"readiness.blocks.social_objects", U8(world.readiness.blocks.social_objects)});
+  chunks.push_back({"readiness.blocks.own_traction", U8(world.readiness.blocks.own_traction)});
+  chunks.push_back(
+      {"readiness.blocks.wintering_two_years", U8(world.readiness.blocks.wintering_two_years)});
+  chunks.push_back({"readiness.blocks.units_at_level", U8(world.readiness.blocks.units_at_level)});
+  chunks.push_back(
+      {"readiness.blocks.office_repaired", U8(world.readiness.blocks.office_repaired)});
+  chunks.push_back(
+      {"readiness.satisfaction_stub_points", F32(world.readiness.satisfaction_stub_points)});
   return chunks;
 }
 
@@ -871,7 +929,12 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // that have come. The running total is stored and not summed: the books
     // keep one closed year and a chronicle year carries no points at all, so
     // it has nowhere else to live.
-    {"world", 298, 0x15f6bd2d72aa14c4ULL},
+    // 2026-09-17, save 52: +62 bytes — readiness for the era transition, the
+    // year, its eight scored components, the two indices, the two RUNS and
+    // the six blocker bytes (readiness_state.h). The runs are why this is
+    // record and not derivation: "three years running" is what a campaign
+    // accumulated, and nothing in a loaded world could stand it up again.
+    {"world", 360, 0xa2a2d15f57e92983ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -906,7 +969,12 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     {"extraction_sites", 63, 0x52bb8a69b99d0d65ULL},
     {"district_visits", 19, 0x3785c4246ee3283bULL},
     {"night_outings", 31, 0xa7633d02f71169f5ULL},
-    {"ledger", 578, 0x9d6779492890bea8ULL},
+    // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
+    // inputs the readiness index asks of a year and the year did not keep
+    // (ledger_state.h): satisfaction's sum and count, able-bodied
+    // person-days, the plan's per cent with the byte that says it exists,
+    // and the four numbers of the wintering as it stood on 1 December.
+    {"ledger", 634, 0xf6e369ea2e3140a8ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
