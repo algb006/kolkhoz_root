@@ -373,6 +373,51 @@ void RunBirths(const ProductionConfig& config,
   }
 }
 
+float MeanAdultAgeYears(const HerdRow& herd) {
+  return herd.adult_count == 0
+             ? 0.0F
+             : herd.adult_age_game_years_total / static_cast<float>(herd.adult_count);
+}
+
+/// The assumed spread is the herd's, so it closes as the herd shrinks: a
+/// single head has an age, not a distribution, and reading a spread into it
+/// killed five-year-old horses at a fifth a year because part of the imagined
+/// spread lay past their lifespan.
+float AdultAgeHalfWidth(const LivestockDef& kind, std::uint16_t adults) {
+  if (adults == 0 || !(kind.life_game_years_max > 0.0F)) {
+    return 0.0F;
+  }
+  const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
+  const float crowd = 1.0F - (1.0F / static_cast<float>(adults));
+  return (kind.life_game_years_max - adult_from_years) * 0.5F * crowd;
+}
+
+std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uint16_t wanted) {
+  if (wanted == 0 || herd.adult_count == 0) {
+    return 0;
+  }
+  const std::uint16_t before = herd.adult_count;
+  const float mean_age = MeanAdultAgeYears(herd);
+  const float half_width = AdultAgeHalfWidth(kind, before);
+  const std::uint16_t gone = TakeHeads(herd.adult_count, wanted);
+  if (gone == 0) {
+    return 0;
+  }
+  // THE OLD ONES GO, not the average ones.
+  herd.adult_age_game_years_total -= static_cast<float>(gone) * (mean_age + half_width);
+  const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
+  const float youngest_possible = static_cast<float>(herd.adult_count) * adult_from_years;
+  herd.adult_age_game_years_total = herd.adult_age_game_years_total < youngest_possible
+                                        ? youngest_possible
+                                        : herd.adult_age_game_years_total;
+  // The sires go in proportion with the rest. Whoever needs a sire KEPT says
+  // so before calling — the district's hand-over refuses its last one by
+  // name (OrderRefusal::kLastSire) rather than by arithmetic here, because a
+  // proportion cannot tell "spare" from "only".
+  herd.adult_male_count = MalesAfterLoss(herd.adult_male_count, before, gone);
+  return gone;
+}
+
 /// Age takes the herd from the top of its lifespan band: the hazard is zero
 /// at the lower end and certain at the upper one, averaged over the ages the
 /// herd holds (AverageAgeHazard). The draw is the world's sequential RNG, so
@@ -386,14 +431,8 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   if (!(kind.life_game_years_max > 0.0F)) {
     return;  // a kind whose lifespan the table does not name does not age out
   }
-  const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
-  const float mean_age = herd.adult_age_game_years_total / adults;
-  // The assumed spread is the herd's, so it closes as the herd shrinks: a
-  // single head has an age, not a distribution, and reading a spread into it
-  // killed five-year-old horses at a fifth a year because part of the
-  // imagined spread lay past their lifespan.
-  const float crowd = 1.0F - (1.0F / adults);
-  const float half_width = (kind.life_game_years_max - adult_from_years) * 0.5F * crowd;
+  const float mean_age = MeanAdultAgeYears(herd);
+  const float half_width = AdultAgeHalfWidth(kind, herd.adult_count);
   const float hazard_per_year =
       AverageAgeHazard(mean_age, half_width, kind.life_game_years_min, kind.life_game_years_max);
   const float expected = adults * hazard_per_year / static_cast<float>(kDaysPerYear);
@@ -401,7 +440,12 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   if (NextRandomUnitFloat(world.rng) < expected - static_cast<float>(dead)) {
     dead = static_cast<std::uint16_t>(dead + 1);
   }
-  const std::uint16_t gone = TakeHeads(herd.adult_count, dead);
+  // THE OLD ONES GO, the sires go in proportion, and the summed age follows
+  // them — all three in TakeOldestAdults, which the district's hand-over
+  // calls for the same reason. Old age is no respecter of sex, and this used
+  // to take EVERY death out of the males and then throw the result away for
+  // a re-derive.
+  const std::uint16_t gone = TakeOldestAdults(kind, herd, dead);
   if (gone == 0) {
     return;
   }
@@ -411,19 +455,6 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   SimEvent& event = EmitEvent(world, EventKind::kHerdDied);
   event.herd = herd_id;
   event.amount = static_cast<std::int64_t>(gone);
-  // THE OLD ONES GO, not the average ones. Removing at the mean left the
-  // mean exactly where it was, so a herd could never grow younger by burying
-  // its elders — which is the one way a real herd does it.
-  herd.adult_age_game_years_total -= static_cast<float>(gone) * (mean_age + half_width);
-  const float youngest_possible = static_cast<float>(herd.adult_count) * adult_from_years;
-  herd.adult_age_game_years_total = herd.adult_age_game_years_total < youngest_possible
-                                        ? youngest_possible
-                                        : herd.adult_age_game_years_total;
-  // Age takes the sires in proportion with the rest: old age is no respecter
-  // of sex, and this used to take EVERY death out of the males and then throw
-  // the result away for a re-derive.
-  herd.adult_male_count = MalesAfterLoss(
-      herd.adult_male_count, static_cast<std::uint16_t>(herd.adult_count + gone), gone);
 }
 
 /// A herd left hungry long enough starts to lose heads. The ladder is the

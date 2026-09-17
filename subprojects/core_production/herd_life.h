@@ -159,6 +159,26 @@ void RunBirths(const ProductionConfig& config,
                WorldState& world,
                YearLedger& book);
 
+/// @brief The mean age of the herd's adults, in game years; 0 with no adults.
+float MeanAdultAgeYears(const HerdRow& herd);
+
+/// @brief Takes `wanted` adults off the herd FROM THE OLD END, carrying the
+/// sires and the summed age with them.
+/// @param kind   The species: its adult age and lifespan set how far above
+///               the mean the oldest head is assumed to be.
+/// @param herd   Written: `adult_count`, `adult_male_count` and
+///               `adult_age_game_years_total`.
+/// @param wanted How many heads to take; more than the herd holds takes all.
+/// @return How many actually went.
+///
+/// ONE HOME FOR "THE OLD ONES GO". Age deaths and the hand-over to the
+/// district both take from the same end for the same reason — removing at
+/// the mean leaves the mean exactly where it was, so a herd could never grow
+/// younger by losing its elders — and writing that arithmetic twice would be
+/// one rule with two houses, which is the defect this tree has spent a week
+/// finding in other costumes.
+std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uint16_t wanted);
+
 /// @brief One day's deaths of old age, spread over the lifespan band.
 void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, WorldState& world);
 

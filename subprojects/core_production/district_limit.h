@@ -95,16 +95,37 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current);
 /// @pre Runs in the production sub-step of the sequential decisions slot,
 ///      after ArriveLimitDeliveries and before the herd day, so a head that
 ///      arrives this morning eats tonight.
-/// @note THE ORDER'S REFUSAL FOR "NOWHERE TO PUT IT" IS NOT HERE AND IS NOT
-///       ANYWHERE YET — STUB, and the gap is named rather than filled.
-///       Both design documents say «некуда поставить — нельзя заказать», and
-///       in this core that sentence has no subject: kolkhoz stock has no
-///       ceiling at all, because a head without a roof billets instead of
-///       being refused. A refusal written against an unlimited yard would
-///       never fire once, and an unfireable rule is the next thing somebody
-///       reports as a rule of the world. Waiting on boss (resume thread,
-///       parcel 4).
+/// @note THE REFUSAL FOR "NOWHERE TO PUT IT" IS BUILT AND LIVES IN
+///       OrderLimitLot, not here: kNoRoomForStock, counting the roofs AND the
+///       private yards. This note used to say it was a STUB and that the
+///       sentence «некуда поставить — нельзя заказать» had no subject in this
+///       core; that was true until 2026-09-16 and stopped being true with the
+///       room check, and a stub marker outliving its stub is the one that
+///       lies longest and most quietly.
 void ArriveLivestock(const ProductionConfig& config, WorldState& current);
+
+/// @brief Reads a kHandStock: hands `order.amount` head of `order.herd` back
+///        to the district and credits the limit points they fetch.
+/// @return The refusal, or kNone when handed over.
+///
+/// THE WAY OUT OF A HERD THERE IS NOTHING ELSE TO DO WITH (livestock design,
+/// «Лишних лошадей сдают райкому»). The head leaves AT ONCE — no cart, no
+/// waiting — which is deliberately not the mirror of the purchase, where the
+/// head takes days to come.
+///
+/// WHAT IT PAYS. The share of the buying price for the band the head is in
+/// (LimitCatalog::handover_share_*), rounded down, on the price of the lot
+/// that SELLS that species. A kind the catalogue does not sell by the head,
+/// or sells only as a batch, has no per-head price and is refused.
+///
+/// WHICH HEADS GO. The oldest first — adults before juveniles before
+/// newborns, and within the adults from the old end (TakeOldestAdults).
+/// The order names no head, and could not: a head is not an entity here.
+///
+/// @pre Runs in the production sub-step of the sequential decisions slot.
+OrderRefusal OrderHandStock(const ProductionConfig& config,
+                            WorldState& current,
+                            const OrderRow& order);
 
 /// @brief The year's turn, right after the district's verdict: this year's
 ///        unspent points burn into the closing year's ledger, and the new

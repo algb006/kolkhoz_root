@@ -866,7 +866,12 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // so a new enumerator moves the recorded byte without moving the count.
     // And again at the same length when kGrazeAtNight became the last
     // OrderKind: the fixture carries the top of each enum on purpose.
-    {"orders", 464, 0xc29f091670c009b1ULL},
+    // And a fourth time, 2026-09-17, when handing stock back to the district
+    // appended BOTH tops at once — kHandStock and kLastSire. Same 464 bytes,
+    // two bytes of the six orders changed. VERSION_SAVE does not move for it:
+    // an appended enumerator widens a range that old saves were already
+    // inside, and nothing in the record grew or shrank.
+    {"orders", 464, 0x471b559e1bff628bULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of

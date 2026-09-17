@@ -407,6 +407,36 @@ enum class OrderKind : std::uint8_t {
   /// Seam key `graze_at_night`. Consumer: core_production.
   kGrazeAtNight,
 
+  /// HANDS HEAD BACK TO THE DISTRICT FOR LIMIT POINTS — the way out of a herd
+  /// there is nothing else to do with (livestock design, «Лишних лошадей
+  /// сдают райкому»). `herd` names the herd, `amount` how many head.
+  ///
+  /// IT EXISTS BECAUSE THE PURCHASE DID AND THE WAY BACK DID NOT. The
+  /// district sells a head on the limit and, until this order, the village
+  /// had no verb to be rid of one: from Epoch II machinery displaces the
+  /// team, and a horse nobody drives still eats oats, hay, a stall and a
+  /// groom's days. «Сдача — способ выйти из тягла не убийством, а сделкой.»
+  ///
+  /// THE OLDEST GO FIRST, and the order does not name which head. A head is
+  /// not an entity in this model — a herd is counts and one summed age — so
+  /// naming one would need a field, a byte in two codecs and a save format,
+  /// bought for an interface rather than for a mechanic. Two arguments of
+  /// the design point the same way: an old animal «дороже в содержании и
+  /// дешевле при сдаче — держать её до последнего дня не обязательно», and
+  /// micromanagement is meant to FALL from epoch to epoch, not to start in
+  /// the first with the chairman picking horses by name.
+  ///
+  /// THE HEAD LEAVES AT ONCE: no cart, no waiting, unlike the purchase whose
+  /// head takes days to come. The asymmetry is the design's and deliberate.
+  ///
+  /// Refusals of its own: kLastSire (the herd's last breeding male stays),
+  /// kNoSuchSubject (no such herd), kNotEligible (a yard's own animal is not
+  /// the chairman's to sell, and a kind the district takes only by the batch
+  /// has no per-head price).
+  ///
+  /// Seam key `hand_stock`. Consumer: core_production.
+  kHandStock,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -654,6 +684,23 @@ enum class OrderRefusal : std::uint8_t {
   /// counted roofs alone would refuse the first horse of a farm that had just
   /// lost its team, which is the deadlock this window exists to open.
   kNoRoomForStock,
+
+  /// kHandStock: the herd's last breeding male, and handing him over would
+  /// leave the village with a herd that cannot breed and no way back but
+  /// buying one. Seam key `last_sire`.
+  ///
+  /// THE MIRROR OF A GUARD THE PURCHASE ALREADY HAS. The district asks which
+  /// sex when it sells a head, and the design says why in as many words:
+  /// «иначе хозяйство могло бы остаться без производителя и без всякого
+  /// способа это исправить — а безвыходных ситуаций мы не делаем»
+  /// (livestock design). A door out of one dead end that opens the way into
+  /// another is not an exit, so the way back carries the same guard as the
+  /// way in.
+  ///
+  /// It refuses only the LAST one: a herd with two sires may hand one over,
+  /// and a kind the table gives no males at all (`males_share == 0`, the
+  /// goat) never meets this refusal, because it has no sire to be the last.
+  kLastSire,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

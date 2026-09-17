@@ -138,6 +138,26 @@ struct LimitCatalog {
   std::uint8_t mts_spring_to_month = 4;
   std::uint8_t mts_autumn_from_month = 7;
   std::uint8_t mts_autumn_to_month = 9;
+
+  // -- handing a head back (livestock design, «Лишних лошадей сдают райкому»)
+
+  /// WHAT THE DISTRICT PAYS FOR A HEAD, as a SHARE of what the same lot costs
+  /// to buy — never a price of its own. The design's rule is «сдают дешевле,
+  /// чем берут — иначе это была бы не сдача излишка, а способ печатать баллы
+  /// на обороте», and a share kept under 1.0 makes that arithmetic rather
+  /// than a guard somebody has to remember to write.
+  ///
+  /// The four bands are the ages `livestock.csv` already draws — newborn,
+  /// young, adult, and an adult past `life_game_years_min` — so no second
+  /// ladder of ages is introduced here. The numbers are ASSIGNED, not
+  /// measured (boss, parcel 91: `source = default` in the design db), and
+  /// polishing will move them; what polishing may not do is put any of them
+  /// at or above one.
+  /// (world_params.csv livestock_handover_newborn .. _old.)
+  float handover_share_newborn = 0.15F;
+  float handover_share_young = 0.35F;
+  float handover_share_adult = 0.55F;
+  float handover_share_old = 0.25F;
 };
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's

@@ -460,6 +460,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
       case OrderKind::kGrazeAtNight:
         Settle(order, OrderNightPasture(config, current));
         break;
+      case OrderKind::kHandStock:
+        Settle(order, OrderHandStock(config, current, order));
+        break;
       default:
         break;  // not ours: another consumer's, or the events slot's refusal
     }

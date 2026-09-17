@@ -334,6 +334,20 @@ enum class EventKind : std::uint8_t {
   /// the points are not returned. kNotable. Seam key `mts_column_not_arrived`.
   kMtsColumnNotArrived,
 
+  /// herd; amount = head handed back to the district for limit points
+  /// (kHandStock). Notable: the farm got smaller and the year's points got
+  /// bigger, and both are things the chairman decided rather than suffered.
+  /// Seam key `stock_handed_over`.
+  ///
+  /// AT THE END, AND THAT IS NOT TIDINESS. This kind was first written in
+  /// beside the night pasture, where it belongs by subject — and every kind
+  /// after it moved up one. The save's recorded section table caught it in
+  /// the same minute: an event stored under the old numbering decodes as its
+  /// neighbour, which is a silent wrong answer and not a refusal. Grouping by
+  /// subject is what the blank lines and headings above are for; the ORDER is
+  /// the wire format, and it only ever grows at this end.
+  kStockHandedOver,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

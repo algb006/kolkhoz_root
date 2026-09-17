@@ -597,6 +597,143 @@ int CheckStableGate() {
 /// — and for the horses that discount IS the night pasture and nothing else
 /// (livestock design, «Ночное»). Measured over fifteen years before the gate
 /// went in: the free gain was worth 6.443 t of oats and 115.869 t of hay.
+/// HANDING A HEAD BACK TO THE DISTRICT (district_limit.h, OrderHandStock).
+/// The verb that makes bought stock reversible: until it existed the village
+/// could buy a head on the limit and had no way at all to be rid of one,
+/// which is the dead end the design's «никаких безвыходных ситуаций» forbids.
+int CheckHandingStockBack() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].life_game_years_min = 8.0F;  // an adult is "old" past eight
+  config.livestock[0].life_game_years_max = 10.0F;
+  core::LimitCatalog& limit = config.limit;
+  limit.lots.resize(2);
+  // Row 0: the district sells one head of kind 0 for 100 points. Row 1: kind
+  // 1 only as a batch, which is what the shipped piglet and chick lots are.
+  limit.lots[0].points = 100;
+  limit.lots[0].kind = core::LimitLotKind::kLivestock;
+  limit.lots[0].livestock = core::LivestockKindId{0};
+  limit.lots[0].head_count = 1;
+  limit.lots[1].points = 40;
+  limit.lots[1].kind = core::LimitLotKind::kLivestock;
+  limit.lots[1].livestock = core::LivestockKindId{1};
+  limit.lots[1].head_count = 8;
+  limit.handover_share_newborn = 0.15F;
+  limit.handover_share_young = 0.35F;
+  limit.handover_share_adult = 0.55F;
+  limit.handover_share_old = 0.25F;
+
+  const auto hand = [&config](core::WorldState& world, core::HerdId herd, std::int64_t heads) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kHandStock;
+    order.herd = herd;
+    order.amount = heads;
+    return core::OrderHandStock(config, world, order);
+  };
+
+  // -- the three refusals, each by its own name ------------------------------
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId absent{4242};
+    failures += Expect(hand(world, absent, 1) == core::OrderRefusal::kNoSuchSubject,
+                       "hand stock: a herd that is not there is no subject");
+
+    core::HerdRow yard;
+    yard.kind = core::LivestockKindId{0};
+    yard.adult_count = 4;
+    yard.household_owned = 1;
+    const core::HerdId theirs = AppendRow(world.herds, yard);
+    failures += Expect(hand(world, theirs, 1) == core::OrderRefusal::kNotEligible,
+                       "hand stock: a family's own animal is not the chairman's to sell");
+
+    const core::HerdId batch = AddHerd(world, 1, 6, 2, true);
+    failures += Expect(hand(world, batch, 1) == core::OrderRefusal::kNotEligible,
+                       "hand stock: a kind the district takes only by the batch has no per-head "
+                       "price");
+  }
+
+  // -- the last sire stays ---------------------------------------------------
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId herd = AddHerd(world, 0, 3, 1, true);
+    failures += Expect(hand(world, herd, 3) == core::OrderRefusal::kLastSire,
+                       "hand stock: the herd's last sire is not handed over");
+    failures += Expect(world.herds.rows[0].adult_count == 3 && world.limit.points == 0,
+                       "and a refusal costs the village nothing");
+    // Two sires, and the same order goes through: the guard refuses only the
+    // LAST one, which is what makes it narrow enough to be an exit and not a
+    // second cage.
+    world.herds.rows[0].adult_male_count = 2;
+    failures += Expect(hand(world, herd, 3) == core::OrderRefusal::kNone,
+                       "hand stock: a herd with a spare sire may hand its adults over");
+  }
+
+  // -- the oldest go first, and the price follows the band -------------------
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId herd = AddHerd(world, 0, 2, 0, true);
+    world.herds.rows[0].juvenile_count = 3;
+    world.herds.rows[0].newborn_count = 4;
+    // Young adults: a mean age under life_game_years_min, so the adult band.
+    world.herds.rows[0].adult_age_game_years_total = 2.0F * 3.0F;
+    failures +=
+        Expect(hand(world, herd, 1) == core::OrderRefusal::kNone, "hand stock: one head goes");
+    failures +=
+        Expect(world.herds.rows[0].adult_count == 1 && world.herds.rows[0].juvenile_count == 3 &&
+                   world.herds.rows[0].newborn_count == 4,
+               "and it is an ADULT: the oldest cohort empties first");
+    failures += Expect(world.limit.points == 55,
+                       "and it fetched the adult share of the buying price, 55 of 100");
+
+    // Four more: the last adult, then all three juveniles. 55 + 3*35 = 160.
+    failures += Expect(hand(world, herd, 4) == core::OrderRefusal::kNone,
+                       "hand stock: more heads than one cohort holds walk down the ladder");
+    failures +=
+        Expect(world.herds.rows[0].adult_count == 0 && world.herds.rows[0].juvenile_count == 0 &&
+                   world.herds.rows[0].newborn_count == 4,
+               "and they come off adults first, then juveniles, and the newborns stay");
+    failures += Expect(world.limit.points == 55 + 55 + (3 * 35),
+                       "and each cohort was paid at its own band");
+
+    // Asking for more than the herd holds takes what there is and no more.
+    //
+    // THE LAST BAND IS CHECKED BY ITS DELTA AND NOT BY THE RUNNING TOTAL,
+    // and a damage run is why. Written against the total, this assertion was
+    // GREEN under an implementation that took the newborns FIRST: once the
+    // whole herd has gone, the sum over every head is the same whatever
+    // order they went in, so the total cannot see an order at all. It was an
+    // assertion true under both implementations, which is decoration and not
+    // a check (predicted five reddened, got four; the fourth was this one).
+    const std::int32_t before_last = world.limit.points;
+    failures += Expect(hand(world, herd, 99) == core::OrderRefusal::kNone &&
+                           world.herds.rows[0].newborn_count == 0,
+                       "hand stock: asking for more than the herd holds empties it");
+    failures += Expect(world.limit.points - before_last == 4 * 15,
+                       "and what was left — four newborns — fetched the newborn band and no "
+                       "other");
+  }
+
+  // -- an old herd is paid the old band, which is BELOW the adult one --------
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId herd = AddHerd(world, 0, 2, 0, true);
+    world.herds.rows[0].adult_age_game_years_total = 9.0F * 2.0F;  // past eight
+    failures +=
+        Expect(hand(world, herd, 1) == core::OrderRefusal::kNone && world.limit.points == 25,
+               "hand stock: a herd past its lifespan floor fetches the old band, 25");
+  }
+
+  // -- THE RULE THE WHOLE SCALE EXISTS FOR ----------------------------------
+  // Every band pays LESS than the district charges. Without it the order is
+  // not an exit from a dead end but a mint: buy at 100, hand back at 100 or
+  // more, repeat. The parse refuses a share at or above one, and this is the
+  // same claim asked of the numbers rather than of the table.
+  failures += Expect(limit.handover_share_newborn < 1.0F && limit.handover_share_young < 1.0F &&
+                         limit.handover_share_adult < 1.0F && limit.handover_share_old < 1.0F,
+                     "hand stock: every band pays less than the district charges");
+  return failures;
+}
+
 int CheckNightPasture() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -5203,6 +5340,7 @@ int main() {
   failures += CheckMangerReach();
   failures += CheckStableGate();
   failures += CheckNightPasture();
+  failures += CheckHandingStockBack();
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();
   failures += CheckAgeSpread();
   failures += CheckDroughtReadsTheAfternoon();

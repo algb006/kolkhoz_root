@@ -19,7 +19,7 @@ namespace {
 /// The world_params.csv keys, in the order of the knob list in the parse.
 /// The first kPointKnobCount are whole points and days; the rest are the MTS
 /// column's (ReadMtsColumnKnobs).
-constexpr std::array<std::string_view, 15> kLimitWorldParamKeys = {
+constexpr std::array<std::string_view, 19> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
@@ -34,9 +34,22 @@ constexpr std::array<std::string_view, 15> kLimitWorldParamKeys = {
     "mts_column_spring_from_month",
     "mts_column_spring_to_month",
     "mts_column_autumn_from_month",
-    "mts_column_autumn_to_month"};
+    "mts_column_autumn_to_month",
+    // WHAT THE DISTRICT PAYS FOR A HEAD HANDED BACK, as a share of what the
+    // same lot COSTS to buy. A share and not a price of its own so that the
+    // two numbers cannot drift apart: the design's rule is «сдают дешевле,
+    // чем берут — иначе это была бы не сдача излишка, а способ печатать
+    // баллы на обороте», and a share below one is that rule made
+    // unbreakable by arithmetic rather than watched by a guard.
+    "livestock_handover_newborn",
+    "livestock_handover_young",
+    "livestock_handover_adult",
+    "livestock_handover_old"};
 
 constexpr std::size_t kPointKnobCount = 9;
+
+/// Where the four handover shares begin in the list above.
+constexpr std::size_t kHandoverKnobFirst = 15;
 
 /// Largest price, grant or day count a row may name. A thousand times the
 /// dearest lot of the catalogue: past it the cell is a typo.
@@ -304,6 +317,31 @@ bool ReadMtsColumnKnobs(const ITable& world, LimitCatalog& catalog, std::string&
   return true;
 }
 
+/// The four shares of the buying price the district pays for a head handed
+/// back. THE RANGE IS THE RULE: the high end stops BELOW one, so a table
+/// that tried to pay as much as it charges is refused at the parse and not
+/// caught later by somebody noticing that points were being minted on the
+/// turnaround (livestock design, «сдают дешевле, чем берут»). The low end is
+/// zero, because a district that pays nothing for a kind is a balance
+/// decision and not a broken table.
+bool ReadHandoverKnobs(const ITable& world, LimitCatalog& catalog, std::string& error) {
+  const Range share{.low = 0.0F, .high = 0.99F};
+  const std::array<ScalarKnob, 4> knobs = {
+      ScalarKnob{.key = kLimitWorldParamKeys[kHandoverKnobFirst],
+                 .value = &catalog.handover_share_newborn,
+                 .range = share},
+      ScalarKnob{.key = kLimitWorldParamKeys[kHandoverKnobFirst + 1],
+                 .value = &catalog.handover_share_young,
+                 .range = share},
+      ScalarKnob{.key = kLimitWorldParamKeys[kHandoverKnobFirst + 2],
+                 .value = &catalog.handover_share_adult,
+                 .range = share},
+      ScalarKnob{.key = kLimitWorldParamKeys[kHandoverKnobFirst + 3],
+                 .value = &catalog.handover_share_old,
+                 .range = share}};
+  return ReadKnobs(world, "world_params", knobs, error);
+}
+
 }  // namespace
 
 std::span<const std::string_view> LimitWorldParamKeys() {
@@ -348,6 +386,9 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
     catalog.delivery_days = static_cast<std::uint32_t>(whole[7]);
     catalog.delivery_delay_days_max = static_cast<std::uint32_t>(whole[8]);
     if (!ReadMtsColumnKnobs(*world, catalog, error)) {
+      return false;
+    }
+    if (!ReadHandoverKnobs(*world, catalog, error)) {
       return false;
     }
   }

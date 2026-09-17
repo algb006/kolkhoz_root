@@ -5,10 +5,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "herd_life.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -269,6 +272,105 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current) 
   for (const LimitDeliveryId cart : emptied) {
     RemoveRow(current.limit_deliveries, cart);
   }
+}
+
+namespace {
+
+/// The lot the district SELLS this species by, single head only. The price of
+/// a hand-over is a share of it, so a kind the catalogue offers only as a
+/// batch — piglets, chicks — has no per-head price to take a share of, and
+/// the hand-over refuses rather than inventing one.
+const LimitLotDef* SingleHeadLot(const LimitCatalog& limit, LivestockKindId kind) {
+  for (const LimitLotDef& lot : limit.lots) {
+    if (lot.kind == LimitLotKind::kLivestock && lot.livestock.value == kind.value &&
+        lot.head_count == 1 && lot.points > 0) {
+      return &lot;
+    }
+  }
+  return nullptr;
+}
+
+/// What the district pays for ONE head of the given age band, in points.
+///
+/// THE BANDS ARE THE ONES `livestock.csv` ALREADY DRAWS and no others: a
+/// newborn, a juvenile, an adult, and an adult past `life_game_years_min`.
+/// A second ladder of ages here would be the same fact with two homes, and
+/// the herd carries no per-head age to hang a finer one on anyway.
+std::int32_t HandoverPoints(std::int32_t buy_points, float share) {
+  const auto paid = static_cast<std::int32_t>(std::floor(static_cast<float>(buy_points) * share));
+  return paid < 0 ? 0 : paid;
+}
+
+/// Takes up to `wanted` off a cohort counter and says how many went.
+std::uint16_t TakeFromCohort(std::uint16_t& count, std::uint16_t wanted) {
+  const std::uint16_t gone = std::min(count, wanted);
+  count = static_cast<std::uint16_t>(count - gone);
+  return gone;
+}
+
+}  // namespace
+
+OrderRefusal OrderHandStock(const ProductionConfig& config,
+                            WorldState& current,
+                            const OrderRow& order) {
+  const std::uint32_t row = FindRow(current.herds, order.herd);
+  if (row == kNoRow) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  HerdRow& herd = current.herds.rows[row];
+  // A FAMILY'S OWN ANIMAL IS NOT THE CHAIRMAN'S TO SELL. The yards' stock is
+  // the families', it lives there by right, and the farm's ceiling does not
+  // count it either (KolkhozHeads above) — the two rules read the same flag
+  // for the same reason.
+  if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+    return OrderRefusal::kNotEligible;
+  }
+  const LivestockDef& kind = config.livestock[herd.kind.value];
+  const LimitLotDef* const lot = SingleHeadLot(config.limit, herd.kind);
+  if (lot == nullptr) {
+    return OrderRefusal::kNotEligible;  // the district takes this kind only by the batch
+  }
+  const auto wanted = static_cast<std::uint16_t>(
+      std::min<std::int64_t>(order.amount, std::numeric_limits<std::uint16_t>::max()));
+  if (wanted == 0 || TotalHeads(herd) == 0) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  // THE LAST SIRE STAYS. The purchase asks which sex precisely so the farm
+  // cannot be left without a producer and no way to fix it; a way out of one
+  // dead end that opens the way into another is not a way out at all.
+  // Counted against the heads that would go, not against the herd: handing
+  // over every adult of a herd with one sire is the case this catches.
+  if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count > 0 &&
+      wanted >= herd.adult_count && herd.adult_male_count <= 1) {
+    return OrderRefusal::kLastSire;
+  }
+  // THE OLDEST FIRST, cohort by cohort: adults from the old end, then the
+  // juveniles, then the newborns. An old head is dearer to keep and cheaper
+  // to hand over, so a chairman shedding stock sheds these — and the order
+  // names no head because a head is not an entity in this model.
+  std::int32_t points = 0;
+  const bool old_herd = MeanAdultAgeYears(herd) >= kind.life_game_years_min;
+  const std::uint16_t adults_gone = TakeOldestAdults(kind, herd, wanted);
+  points += static_cast<std::int32_t>(adults_gone) *
+            HandoverPoints(
+                lot->points,
+                old_herd ? config.limit.handover_share_old : config.limit.handover_share_adult);
+  auto left = static_cast<std::uint16_t>(wanted - adults_gone);
+  const std::uint16_t juveniles_gone = TakeFromCohort(herd.juvenile_count, left);
+  points += static_cast<std::int32_t>(juveniles_gone) *
+            HandoverPoints(lot->points, config.limit.handover_share_young);
+  left = static_cast<std::uint16_t>(left - juveniles_gone);
+  const std::uint16_t newborns_gone = TakeFromCohort(herd.newborn_count, left);
+  points += static_cast<std::int32_t>(newborns_gone) *
+            HandoverPoints(lot->points, config.limit.handover_share_newborn);
+
+  const auto gone = static_cast<std::uint32_t>(adults_gone + juveniles_gone + newborns_gone);
+  current.limit.points += points;
+  current.ledger.current.limit_points_granted += points;
+  SimEvent& handed = EmitEvent(current, EventKind::kStockHandedOver, EventSeverity::kNotable);
+  handed.herd = order.herd;
+  handed.amount = static_cast<std::int64_t>(gone);
+  return OrderRefusal::kNone;
 }
 
 void ArriveLivestock(const ProductionConfig& config, WorldState& current) {

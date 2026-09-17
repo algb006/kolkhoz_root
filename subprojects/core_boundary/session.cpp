@@ -176,6 +176,13 @@ bool ShapeIsValid(const OrderRow& order) {
       // epoch is open and the year's points cover it change with the world —
       // the consumer's verdict (order_state.h).
       return order.lot.value != kInvalidDefIdValue;
+    case OrderKind::kHandStock:
+      // A herd and a head count above nothing. Which heads go, what they
+      // fetch and whether the last sire is among them all change with the
+      // day, so they are the consumer's verdict (order_state.h). The COUNT
+      // is the boundary's business because a hand-over of nought heads is a
+      // malformed row and not a decision anybody made.
+      return has_herd && order.amount > 0;
   }
   return false;
 }
