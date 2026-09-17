@@ -66,18 +66,33 @@ constexpr float kVarietyThresholdUnknown = 1.0e9F;
 /// ceiling is the design's own: overshooting one component may not buy
 /// another.
 ReadinessComponent Scored(float value) {
-  return ReadinessComponent{.score = std::clamp(value, 0.0F, 100.0F), .available = 1};
+  return ReadinessComponent{
+      .score = std::clamp(value, 0.0F, 100.0F), .available = 1, .measured = 1};
 }
 
-/// @brief The statement that this era does not have the component, or that
-/// nothing could be measured for it. NOT a score of nought — the difference
-/// is the whole reason the byte exists.
-constexpr ReadinessComponent kAbsent = {.score = 0.0F, .available = 0};
+/// @brief The era HAS this component and the closed year could not be scored
+/// on it. It stays in the divisor and scores nought — the settlement has
+/// nothing to show, which is what readiness asks about.
+constexpr ReadinessComponent kUnmeasured = {.score = 0.0F, .available = 1, .measured = 0};
 
-/// @brief Weighted mean over the components the era HAS, normalised to 100.
-/// An era with no available components at all scores nought and says so by
-/// its own emptiness — there is nothing to divide by, and inventing a
-/// divisor would be inventing a number.
+/// @brief THE ERA DOES NOT HAVE IT — finance and the chairman's standing in
+/// Era I. This one and only this one leaves the divisor, because a nought
+/// here would lie by the component's full weight about a thing the era cannot
+/// possess. Unused in Era I's own code path: the two absentees are absent by
+/// never being listed in Index() below, which is the same statement made
+/// where the reader can see it.
+[[maybe_unused]] constexpr ReadinessComponent kNotInThisEra = {
+    .score = 0.0F, .available = 0, .measured = 0};
+
+/// @brief Weighted mean over the components the ERA HAS, normalised to 100.
+///
+/// THE DIVISOR IS `available` AND NOT `measured`, which is the whole repair
+/// of 2026-09-17. A year that could not be scored on a component still pays
+/// its weight — it simply pays nought — because readiness asks what the
+/// settlement can SHOW, and a year with nothing to show is not a year with
+/// less to be judged by. Dropping the unmeasured from the divisor made the
+/// emptiest year score best, and eight villages of nine passed a three-year
+/// gate for thirty-three years running.
 float Index(std::initializer_list<std::pair<ReadinessComponent, float>> weighted) {
   float sum = 0.0F;
   float weights = 0.0F;
@@ -99,7 +114,7 @@ float Index(std::initializer_list<std::pair<ReadinessComponent, float>> weighted
 /// not be asked — and a nought there would be the score of a settlement that
 /// did everything wrong.
 ReadinessComponent SharePercent(float part, float whole) {
-  return whole > 0.0F ? Scored(part / whole * 100.0F) : kAbsent;
+  return whole > 0.0F ? Scored(part / whole * 100.0F) : kUnmeasured;
 }
 
 }  // namespace
@@ -230,7 +245,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
     }
     out.economy.plan = Scored(sum / static_cast<float>(out.plan_years_filled));
   } else {
-    out.economy.plan = kAbsent;
+    out.economy.plan = kUnmeasured;
   }
 
   // -- THE WINTERING, off the three counts booked on 1 December ------------
@@ -250,7 +265,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
     // block is «кормовой И продовольственный баланс сошёлся».
     wintering_closed = book.food_days_dec1 >= needed && book.feed_days_dec1 >= needed;
   } else {
-    out.economy.winter_stocks = kAbsent;
+    out.economy.winter_stocks = kUnmeasured;
   }
   out.wintering_run =
       wintering_closed ? static_cast<std::uint8_t>(out.wintering_run < 255 ? out.wintering_run + 1U
@@ -277,7 +292,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
     ++standing;
   }
   out.economy.funds =
-      standing > 0 ? Scored(100.0F - wear_sum / static_cast<float>(standing)) : kAbsent;
+      standing > 0 ? Scored(100.0F - (wear_sum / static_cast<float>(standing))) : kUnmeasured;
 
   // -- SATISFACTION, the mean over families AND days of the year -----------
   out.society.satisfaction =
@@ -321,7 +336,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
     out.society.demography =
         Scored((std::min(births_score, 100.0F) + std::min(age_score, 100.0F)) * 0.5F);
   } else {
-    out.society.demography = kAbsent;
+    out.society.demography = kUnmeasured;
   }
 
   // -- THE TWO INDICES AND THE RUN -----------------------------------------

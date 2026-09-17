@@ -145,7 +145,10 @@ static_assert(AggregateArity<EraEventState>() == 1,
 // tripwires are the two that follow.
 static_assert(AggregateArity<ReadinessState>() == 11,
               "ReadinessState gained or lost a member — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ReadinessComponent>() == 2,
+// 2026-09-17, save 54: `measured` split off `available` — the era not having
+// a component and this year not being able to score it are two facts, and one
+// byte for both made the emptiest year score best.
+static_assert(AggregateArity<ReadinessComponent>() == 3,
               "ReadinessComponent changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TransitionBlocks>() == 6,
               "TransitionBlocks gained or lost a block — update the codec and VERSION_SAVE");
@@ -348,11 +351,13 @@ YearLedger ReadYearLedger(LoadSource& source) {
 void WriteComponent(ByteWriter& out, const ReadinessComponent& component) {
   out.WriteFloat(component.score);
   out.WriteU8(component.available);
+  out.WriteU8(component.measured);
 }
 
 void ReadComponent(LoadSource& source, ReadinessComponent& component) {
   component.score = source.In().ReadFloat();
   component.available = source.ReadEnumValue(0, 1, "readiness component available");
+  component.measured = source.ReadEnumValue(0, 1, "readiness component measured");
 }
 
 void WriteReadiness(ByteWriter& out, const ReadinessState& readiness) {

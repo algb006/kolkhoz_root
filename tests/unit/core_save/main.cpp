@@ -522,14 +522,17 @@ core::WorldState MakeWorld() {
   // round trip would pass on a field it never carried. The two runs and the
   // six blocker bytes matter most — a run is what a save exists to carry.
   world.readiness.year = 7;
-  world.readiness.economy.plan = {.score = 61.5F, .available = 1};
-  world.readiness.economy.winter_stocks = {.score = 48.25F, .available = 1};
-  world.readiness.economy.mechanisation = {.score = 12.0F, .available = 1};
-  world.readiness.economy.funds = {.score = 73.5F, .available = 1};
-  world.readiness.society.satisfaction = {.score = 54.75F, .available = 1};
-  world.readiness.society.kolkhoz_effort = {.score = 39.0F, .available = 1};
-  world.readiness.society.social_objects = {.score = 33.5F, .available = 1};
-  world.readiness.society.demography = {.score = 21.25F, .available = 1};
+  world.readiness.economy.plan = {.score = 61.5F, .available = 1, .measured = 1};
+  // ONE COMPONENT CARRIES THE OTHER COMBINATION, so the codec cannot pass by
+  // writing `measured` from `available`: available and UNmeasured is the
+  // state that was invisible until 2026-09-17.
+  world.readiness.economy.winter_stocks = {.score = 0.0F, .available = 1, .measured = 0};
+  world.readiness.economy.mechanisation = {.score = 12.0F, .available = 1, .measured = 1};
+  world.readiness.economy.funds = {.score = 73.5F, .available = 1, .measured = 1};
+  world.readiness.society.satisfaction = {.score = 54.75F, .available = 1, .measured = 1};
+  world.readiness.society.kolkhoz_effort = {.score = 39.0F, .available = 1, .measured = 1};
+  world.readiness.society.social_objects = {.score = 33.5F, .available = 1, .measured = 1};
+  world.readiness.society.demography = {.score = 21.25F, .available = 0, .measured = 0};
   world.readiness.economic_index = 47.5F;
   world.readiness.social_index = 41.25F;
   world.readiness.both_above_run = 2;
@@ -794,6 +797,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   const auto component = [&chunks](const char* name, const core::ReadinessComponent& value) {
     chunks.push_back({name, F32(value.score)});
     chunks.push_back({name, U8(value.available)});
+    chunks.push_back({name, U8(value.measured)});
   };
   chunks.push_back({"readiness.year", U16(world.readiness.year)});
   component("readiness.economy.plan", world.readiness.economy.plan);
@@ -943,7 +947,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // 2026-09-17 again, save 53: the plan's three-year ring and its fill, so
     // the plan component can be «средний процент за последние три года»
     // rather than the last one. +13 bytes.
-    {"world", 373, 0xdfa843f5c6502afcULL},
+    // 2026-09-17, save 54: `measured` split off `available`, one byte per
+    // component. +8 bytes.
+    {"world", 381, 0xc6e3d1353fe08fe4ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

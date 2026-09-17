@@ -41,11 +41,28 @@ namespace core {
 /// nought that means "measured and bad", and the design demands the player
 /// be told which — «финансы в этой эпохе не измеряются», а не молча выпал.
 struct ReadinessComponent {
-  /// The score, 0..100. Meaningless when `available` is 0.
+  /// The score, 0..100. Nought when `measured` is 0 — and that nought is the
+  /// honest answer rather than a missing value, see below.
   float score = 0.0F;
 
-  /// 1 when this era has the component and it could be computed at all.
+  /// 1 when THIS ERA HAS the component at all. Only this leaves the divisor.
   std::uint8_t available = 0;
+
+  /// 1 when the closed year could actually be scored on it.
+  ///
+  /// TWO BYTES AND NOT ONE, and the day one byte was enough is the day it was
+  /// measured: with a single `available` carrying both meanings, eight
+  /// villages of nine held both indices above their thresholds for all
+  /// thirty-three years where three are needed. The index divided by less and
+  /// less the emptier the year was, so THE EMPTIEST YEAR SCORED BEST.
+  ///
+  /// The difference is one word, and it was in boss's rule from the start:
+  /// a component the ERA does not have is NULL, and a component this YEAR
+  /// could not measure is not. A settlement whose plan the district has not
+  /// judged is not a settlement the plan does not apply to — it is one with
+  /// nothing to show, and the index is READINESS: «мы не знаем» may not score
+  /// better than «мы знаем, и хорошо».
+  std::uint8_t measured = 0;
 };
 
 /// @brief The four components of the economic index in Era I. Finance (20)

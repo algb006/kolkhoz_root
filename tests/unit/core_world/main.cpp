@@ -160,19 +160,28 @@ int CheckReadinessShape() {
   // spoken of, no December, nobody able-bodied, no building standing.
   core::WorldState blank;
   core::ScoreReadiness(empty, 4.0F, 4.0F, blank);
-  failures += Expect(blank.readiness.economy.plan.available == 0,
-                     "readiness: a year the district never spoke of has no plan per cent — "
-                     "not nought per cent");
-  failures += Expect(blank.readiness.economy.winter_stocks.available == 0,
-                     "readiness: a year with no December has no wintering to judge");
-  failures += Expect(blank.readiness.economy.mechanisation.available == 0,
+  failures += Expect(blank.readiness.economy.plan.measured == 0,
+                     "readiness: a year the district never spoke of was not MEASURED on its "
+                     "plan — which is not the same as nought per cent");
+  failures += Expect(blank.readiness.economy.winter_stocks.measured == 0,
+                     "readiness: a year with no December was not measured on its wintering");
+  failures += Expect(blank.readiness.economy.mechanisation.measured == 0,
                      "readiness: no assignment days is a divisor of nought, not a score of it");
-  failures += Expect(blank.readiness.economy.funds.available == 0,
-                     "readiness: no building standing means the funds cannot be asked");
-  failures += Expect(blank.readiness.society.satisfaction.available == 0,
+  failures += Expect(blank.readiness.economy.funds.measured == 0,
+                     "readiness: no building standing means the funds could not be asked");
+  failures += Expect(blank.readiness.society.satisfaction.measured == 0,
                      "readiness: and no family means no satisfaction to average");
+  // AND EVERY ONE OF THEM STAYS IN THE DIVISOR, which is the repair of
+  // 2026-09-17 and the assertion that tells the two versions apart: with the
+  // unmeasured dropped, this world scored nought only for want of anything to
+  // divide, and a world with ONE good component scored that component. Now an
+  // unmeasured component costs its weight.
+  failures += Expect(blank.readiness.economy.plan.available == 1,
+                     "readiness: Era I HAS a plan component even in a year it could not be "
+                     "scored on — the era not having it and the year not showing it are two "
+                     "different facts");
   failures += Expect(blank.readiness.economic_index == 0.0F && blank.readiness.social_index == 0.0F,
-                     "readiness: with nothing available at all there is nothing to divide by");
+                     "readiness: a year that could show nothing scores nothing");
   failures += Expect(blank.readiness.both_above_run == 0 && blank.readiness.wintering_run == 0,
                      "readiness: and no run is begun by a year that scored nothing");
 
@@ -184,14 +193,20 @@ int CheckReadinessShape() {
   one.ledger.closed.plan_percent = 60.0F;
   one.ledger.closed.plan_percent_known = 1;
   core::ScoreReadiness(empty, 4.0F, 4.0F, one);
-  failures += Expect(one.readiness.economy.plan.available == 1 &&
-                         one.readiness.economy.plan.score > 59.9F &&
-                         one.readiness.economy.plan.score < 60.1F,
-                     "readiness: the plan of a single known year is that year");
-  failures += Expect(one.readiness.economic_index > 59.9F && one.readiness.economic_index < 60.1F,
-                     "readiness: an index over ONE available component is that component — "
-                     "the absent cells take their weight out of the divisor, they do not "
-                     "score nought in it");
+  failures +=
+      Expect(one.readiness.economy.plan.measured == 1 && one.readiness.economy.plan.score > 59.9F &&
+                 one.readiness.economy.plan.score < 60.1F,
+             "readiness: the plan of a single known year is that year");
+  // THE PLAN IS 25 OF THE ERA'S 80, so one perfect-ish plan and three
+  // unmeasured components is 60 x 25 / 80 — not 60. This is the assertion the
+  // whole repair turns on: before it, an index over one measurable component
+  // WAS that component, and a village with nothing to show scored like a
+  // village that had shown everything.
+  const float expected = 60.0F * 25.0F / 80.0F;
+  failures += Expect(one.readiness.economic_index > expected - 0.2F &&
+                         one.readiness.economic_index < expected + 0.2F,
+                     "readiness: an unmeasured component keeps its weight in the divisor and "
+                     "scores nought there — only a component the ERA lacks leaves it");
 
   // THE CEILING. Overshooting one component may not buy another, so a
   // delivery of two hundred per cent weighs as a hundred.
