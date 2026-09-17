@@ -34,6 +34,7 @@
 #include "../common/house_policy.h"
 #include "../common/insulation_policy.h"
 #include "../common/limit_policy.h"
+#include "../common/office_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
@@ -551,6 +552,8 @@ int main(int argc, char** argv) {
   // And one school once the children are there (school_policy.h; parcel 358).
   run::SchoolPolicy school(*world.tables);
   run::SchoolPolicy::Declare("thirty_years");
+  run::OfficePolicy office(*world.tables);
+  run::OfficePolicy::Declare("thirty_years");
   // And a watchman where the raw material lies (watchman_policy.h; parcel 362).
   run::WatchmanPolicy watchman(*world.tables);
   run::WatchmanPolicy::Declare("thirty_years");
@@ -568,6 +571,7 @@ int main(int argc, char** argv) {
   // (building_chairman.h; parcel 305).
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
   run::BuildingChairman::WireSchoolGate(school, sawmill);
+  run::BuildingChairman::WireSawGate(office, sawmill);
   run::BuildingChairman::WireRiseWatches(yard, felling, limit, digging);
   sawmill.KeepBoardReserve(g_saw_reserve);
   sawmill.SawByAnyone(g_saw_by_anyone);
@@ -617,6 +621,7 @@ int main(int argc, char** argv) {
           fixture.HoldsHousesBack(*world.simulation) || yard.HoldsHousesBack(*world.simulation);
       houses.RunDay(*world.simulation, farm_first);
       school.RunDay(*world.simulation, farm_first);
+      office.RunDay(*world.simulation, farm_first);
       watchman.RunDay(*world.simulation);
       insulation.RunDay(*world.simulation);
       layout.AnswerPlanAlarmsOnly(*world.simulation);
@@ -925,6 +930,7 @@ int main(int argc, char** argv) {
   fixture.Report(state);
   houses.Report(state, "thirty_years");
   school.Report(state, "thirty_years");
+  office.Report(state, "thirty_years");
   watchman.Report(state, "thirty_years");
   insulation.Report(state, "thirty_years");
   std::cout << "thirty_years: layout — " << layout.Answered() << " plan alarms answered, "

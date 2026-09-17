@@ -30,6 +30,7 @@
 #include "insulation_policy.h"
 #include "limit_policy.h"
 #include "night_pasture_policy.h"
+#include "office_policy.h"
 #include "repair_policy.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
@@ -50,11 +51,13 @@ class BuildingChairman {
         repairs(tables),
         houses(tables),
         school(tables),
+        office(tables),
         watchman(tables),
         insulation(tables),
         digging(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
+    WireSawGate(office, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
   }
 
@@ -76,6 +79,17 @@ class BuildingChairman {
   /// boards the saw is built of go to nobody else until it stands.
   static void WireSchoolGate(SchoolPolicy& school_policy, const SawmillPolicy& sawmill_policy) {
     school_policy.SetStartGate([&sawmill_policy](const core::WorldState& world,
+                                                 core::UnitTypeId type,
+                                                 std::uint8_t level) {
+      return sawmill_policy.SparesBoardsFor(world, type, level);
+    });
+  }
+
+  /// @brief The office asks the sawmill's question too, for the same reason
+  /// the school does: the boards the saw is built of go to nobody else until
+  /// it stands (parcel 305).
+  static void WireSawGate(OfficePolicy& office_policy, const SawmillPolicy& sawmill_policy) {
+    office_policy.SetStartGate([&sawmill_policy](const core::WorldState& world,
                                                  core::UnitTypeId type,
                                                  std::uint8_t level) {
       return sawmill_policy.SparesBoardsFor(world, type, level);
@@ -118,6 +132,7 @@ class BuildingChairman {
     RepairPolicy::Declare();
     HousePolicy::Declare(run_name);
     SchoolPolicy::Declare(run_name);
+    OfficePolicy::Declare(run_name);
     WatchmanPolicy::Declare(run_name);
     InsulationPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
@@ -144,6 +159,10 @@ class BuildingChairman {
     houses.RunDay(simulation, farm_first);
     // The school after the houses: a family without a roof comes first.
     school.RunDay(simulation, farm_first);
+    // And the office after the school. It is the farm's FIRST ORDERED
+    // building, which is a fact about who pays for it and not a claim on the
+    // queue: children and roofs come first, as everywhere else here.
+    office.RunDay(simulation, farm_first);
     watchman.RunDay(simulation);
     insulation.RunDay(simulation);
     digging.RunDay(simulation);
@@ -159,6 +178,7 @@ class BuildingChairman {
   RepairPolicy repairs;
   HousePolicy houses;
   SchoolPolicy school;
+  OfficePolicy office;
   WatchmanPolicy watchman;
   InsulationPolicy insulation;
   ExtractionPolicy digging;
