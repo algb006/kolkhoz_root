@@ -34,6 +34,7 @@
 #include "repair_policy.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
+#include "social_objects_policy.h"
 #include "watchman_policy.h"
 #include "yard_policy.h"
 
@@ -52,12 +53,16 @@ class BuildingChairman {
         houses(tables),
         school(tables),
         office(tables),
+        social(tables),
         watchman(tables),
         insulation(tables),
         digging(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
+    // The social objects ask the saw's question too: none of them is worth
+    // the boards the sawmill itself is built of.
+    WireSawGate(social, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
   }
 
@@ -88,10 +93,15 @@ class BuildingChairman {
   /// @brief The office asks the sawmill's question too, for the same reason
   /// the school does: the boards the saw is built of go to nobody else until
   /// it stands (parcel 305).
-  static void WireSawGate(OfficePolicy& office_policy, const SawmillPolicy& sawmill_policy) {
-    office_policy.SetStartGate([&sawmill_policy](const core::WorldState& world,
-                                                 core::UnitTypeId type,
-                                                 std::uint8_t level) {
+  /// A template over the policy and not two copies of the lambda: the office
+  /// and the social objects ask the saw exactly the same question, and a
+  /// second copy of one question is the second home this tree keeps paying
+  /// for.
+  template <typename Policy>
+  static void WireSawGate(Policy& policy, const SawmillPolicy& sawmill_policy) {
+    policy.SetStartGate([&sawmill_policy](const core::WorldState& world,
+                                          core::UnitTypeId type,
+                                          std::uint8_t level) {
       return sawmill_policy.SparesBoardsFor(world, type, level);
     });
   }
@@ -133,6 +143,7 @@ class BuildingChairman {
     HousePolicy::Declare(run_name);
     SchoolPolicy::Declare(run_name);
     OfficePolicy::Declare(run_name);
+    SocialObjectsPolicy::Declare(run_name);
     WatchmanPolicy::Declare(run_name);
     InsulationPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
@@ -163,6 +174,11 @@ class BuildingChairman {
     // building, which is a fact about who pays for it and not a claim on the
     // queue: children and roofs come first, as everywhere else here.
     office.RunDay(simulation, farm_first);
+    // And the era's social objects last of the buildings, because they are
+    // the least urgent of them and the most easily starved: measured before
+    // this line existed, one of the six was ever marked in thirty-three years
+    // (social_objects_policy.h).
+    social.RunDay(simulation, farm_first);
     watchman.RunDay(simulation);
     insulation.RunDay(simulation);
     digging.RunDay(simulation);
@@ -179,6 +195,7 @@ class BuildingChairman {
   HousePolicy houses;
   SchoolPolicy school;
   OfficePolicy office;
+  SocialObjectsPolicy social;
   WatchmanPolicy watchman;
   InsulationPolicy insulation;
   ExtractionPolicy digging;

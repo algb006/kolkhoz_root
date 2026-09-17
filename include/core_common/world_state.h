@@ -67,6 +67,23 @@ constexpr std::uint32_t EpochIndex(Epoch epoch) {
   return static_cast<std::uint32_t>(epoch) - 1;
 }
 
+/// @brief The epoch as the HUMAN number that table keys and columns use —
+/// `categories_top_epoch_1`, the `era` column of unit_types.csv.
+///
+/// It is the enum value unchanged, and it exists anyway, for one reason:
+/// until 2026-09-18 there was a name for the 0-based direction and none for
+/// this one, so a reader who needed the human number wrote `+ 1` — twice in
+/// one file, in a world where the enum ALREADY counts from one. Both readers
+/// then asked every table for the next era, and the bug survived a warning
+/// that printed the wrong key by name nine times a run.
+///
+/// A conversion with no name gets written as arithmetic, and arithmetic on an
+/// enum whose base the reader has not checked is a guess. Now both directions
+/// have a name and neither has a number.
+constexpr std::uint32_t EpochHumanNumber(Epoch epoch) {
+  return static_cast<std::uint32_t>(epoch);
+}
+
 /// @brief Precipitation on the current day.
 enum class Precipitation : std::uint8_t {
   kNone = 0,
