@@ -142,6 +142,32 @@ struct ResidentRow {
 
   Metric cold = 0.0F;  ///< 0 = warm; appears only when freezing (stage 6).
 
+  /// STUB — A CONSTANT WEARING A METRIC'S CLOTHES. Drawn once in genesis
+  /// (50..70) and never written again by anything: measured 2026-09-17 over
+  /// the whole tree, the only two writers are genesis and the save codec.
+  /// Hunger does not move it, and neither does anything else.
+  ///
+  /// AND THREE CONSUMERS ALREADY READ IT, which is why this mark is worth
+  /// more than the two beside it. `rest` and `cold` say they are stubs and
+  /// are read as stubs; `mood` said nothing, so it reads as live:
+  ///   * core_labor/labor_day.cpp — a PivotFactor in the day's output,
+  ///     standing in the same row as health, rest, age and skill. Thirty-
+  ///     three years of a resident's work are scaled by a number drawn on
+  ///     the day the kolkhoz was founded;
+  ///   * core_residents/membership.cpp — the Komsomol gate;
+  ///   * and the Party gate beside it.
+  ///
+  /// It is not a hole in the design: metrics design §2 names the seven
+  /// inputs in as many words — «реакция на всё сразу: сытость, здоровье,
+  /// жильё, отдых, отношение председателя, события в селе, положение дел в
+  /// стране» — and gives no weights. So this is a system not built yet,
+  /// with its inputs already named, and the weights are boss's to set.
+  ///
+  /// WHAT MUST HAPPEN BEFORE THE MARK COMES OFF: the three readers above
+  /// start answering differently the moment this begins to move, and the
+  /// first of them decides a village's output. Whoever fills it in re-reads
+  /// the labour curve with it, rather than discovering afterwards that the
+  /// farm's productivity acquired a new driver.
   Metric mood = 60.0F;
 
   // -- today's work (labor_state.h; stage 5) -------------------------------
