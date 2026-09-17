@@ -31,6 +31,7 @@
 #include "core_common/world_state.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
+#include "demography.h"
 #include "family_exchange.h"
 #include "family_meal.h"
 #include "food_config.h"
@@ -1040,6 +1041,105 @@ int CheckStubTablesMustBeDeclared() {
 /// числами"; boss, parcels 237, 241, 242). A school standing, 31 children of
 /// the junior band against a norm of 30 — two teachers owed — two free houses,
 /// a reading hut not yet built.
+/// PERSONAL CLEANLINESS (health design §3; demography.cpp, RunHygiene).
+///
+/// Written against the RULE and not against the calendar on purpose: the
+/// seven numbers are the design's to move — the first measurement put the
+/// first filth disease in the FIRST year against an intent of the second —
+/// and an acceptance that asserted a day would have to be rewritten with
+/// every balance edit. What may not change is the shape: it falls by itself,
+/// dirty work doubles it, heat adds, a standing bathhouse gives back, and the
+/// event is a CROSSING.
+int CheckHygiene() {
+  int failures = 0;
+  core::LifeConfig config;
+  config.hygiene_fall_per_day = 1.0F;
+  config.hygiene_fall_dirty_work_factor = 2.0F;
+  config.hygiene_fall_heat_extra = 0.5F;
+  config.hygiene_rise_bath_per_day = 4.0F;
+  config.hygiene_disease_threshold = 25.0F;
+  config.bathhouse_type = core::UnitTypeId{0};
+
+  /// One day over a village of one, with the day's conditions as asked.
+  const auto day = [&config](float start, core::WorkKind work, float celsius, bool bathhouse) {
+    core::WorldState world;
+    world.weather.air_temperature_celsius = celsius;
+    core::ResidentRow person;
+    person.hygiene = start;
+    person.work.kind = work;
+    core::AppendRow(world.residents, person);
+    if (bathhouse) {
+      core::UnitRow bath;
+      bath.type = core::UnitTypeId{0};
+      bath.level = 1;
+      core::AppendRow(world.units, bath);
+    }
+    // THE RULE, NOT THE WHOLE DAY. Asked of RunDemographyDay this aborted on
+    // the first run: a lone resident with no family and no roof leaves in the
+    // roofless exodus before his cleanliness is ever read, so the fixture was
+    // measuring the exodus and calling it hygiene.
+    core::RunHygiene(config, world);
+    return world;
+  };
+  const auto caught = [](const core::WorldState& world) {
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kHygieneDisease) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const auto near = [](float value, float expected) {
+    return value > expected - 0.01F && value < expected + 0.01F;
+  };
+
+  // -- the four terms, each alone --------------------------------------------
+  failures +=
+      Expect(near(day(60.0F, core::WorkKind::kNone, 10.0F, false).residents.rows[0].hygiene, 59.0F),
+             "hygiene: plain time takes its day");
+  failures +=
+      Expect(near(day(60.0F, core::WorkKind::kConstruction, 10.0F, false).residents.rows[0].hygiene,
+                  58.0F),
+             "hygiene: dirty work DOUBLES the day's fall — a factor, not an addition");
+  failures +=
+      Expect(near(day(60.0F, core::WorkKind::kNone, 30.0F, false).residents.rows[0].hygiene, 58.5F),
+             "hygiene: a hot day adds on top, and it adds rather than multiplies");
+  failures +=
+      Expect(near(day(60.0F, core::WorkKind::kNone, 10.0F, true).residents.rows[0].hygiene, 63.0F),
+             "hygiene: a standing bathhouse gives back more than the day takes");
+  // AND A SITE IS NOT A BATHHOUSE. Level nought is a marked plot; nobody
+  // washes in one.
+  {
+    core::WorldState world;
+    core::ResidentRow person;
+    person.hygiene = 60.0F;
+    core::AppendRow(world.residents, person);
+    core::UnitRow site;
+    site.type = core::UnitTypeId{0};
+    site.level = 0;
+    core::AppendRow(world.units, site);
+    core::RunHygiene(config, world);
+    failures += Expect(near(world.residents.rows[0].hygiene, 59.0F),
+                       "hygiene: a marked site is not a bathhouse");
+  }
+
+  // -- the event is a CROSSING, not a condition ------------------------------
+  failures += Expect(!caught(day(60.0F, core::WorkKind::kNone, 10.0F, false)),
+                     "hygiene: a clean man catches nothing");
+  failures += Expect(caught(day(25.5F, core::WorkKind::kNone, 10.0F, false)),
+                     "hygiene: crossing the threshold downwards is the news");
+  failures += Expect(!caught(day(20.0F, core::WorkKind::kNone, 10.0F, false)),
+                     "hygiene: and a man ALREADY below it is not news again — the event is a "
+                     "transition, or the journal would carry it every morning of his life");
+  // The floor holds: a metric may not go under nought however long it falls.
+  {
+    core::WorldState world = day(0.2F, core::WorkKind::kConstruction, 30.0F, false);
+    failures += Expect(world.residents.rows[0].hygiene >= 0.0F,
+                       "hygiene: and it stops at the bottom of its scale");
+  }
+  return failures;
+}
+
 int CheckTheDistrictSendsSpecialists() {
   int failures = 0;
   core::LifeConfig config;
@@ -1898,6 +1998,7 @@ int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
 int main() {
   int failures = 0;
   failures += CheckTheDistrictSendsSpecialists();
+  failures += CheckHygiene();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckHeightNeverChoosesASpouse();
   // Defaults compiled into the config, and unit_types so that a house is

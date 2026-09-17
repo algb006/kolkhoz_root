@@ -126,6 +126,8 @@ const char* KindName(core::EventKind kind) {
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:
       return "fire_broke";
+    case core::EventKind::kHygieneDisease:
+      return "hygiene_disease";
     case core::EventKind::kDistrictVisitAnnounced:
       return "district_visit_announced";
     case core::EventKind::kDistrictVisit:

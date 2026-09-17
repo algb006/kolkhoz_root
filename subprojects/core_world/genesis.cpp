@@ -63,7 +63,7 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 /// the list the assembly is handed and the list actually read cannot be two
 /// lists: they are the same array. A second copy written out beside the
 /// reader would be correct on the day it was written and mute ever after.
-constexpr std::array<std::string_view, 13> kGenesisWorldParamKeys = {
+constexpr std::array<std::string_view, 15> kGenesisWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -89,7 +89,53 @@ constexpr std::array<std::string_view, 13> kGenesisWorldParamKeys = {
     "age_preschool_from_years",
     "age_school_junior_from_years",
     "age_school_senior_from_years",
-    "age_adult_from_years"};
+    "age_adult_from_years",
+    // The band the founding generation's cleanliness is drawn from (health
+    // design §3). A SECOND READER OF THE SAME ROWS, not a second home, for
+    // the reason the childhood fractions above are read twice: genesis makes
+    // the people and core_residents moves the metric afterwards, and each
+    // list is the single source for ITS module.
+    "hygiene_start_min",
+    "hygiene_start_max"};
+
+/// The band a founder's hygiene is drawn from. Read here rather than handed
+/// down because genesis already reads its own knobs this way, and the band is
+/// of no use to anybody between the table and the draw.
+std::pair<float, float> ReadHygieneBand(const ITableSet& tables) {
+  std::pair<float, float> band{50.0F, 70.0F};
+  const ITable* const world = tables.FindTable("world_params");
+  if (world == nullptr) {
+    return band;
+  }
+  const std::array<ScalarKnob, 2> rows = {ScalarKnob{.key = kGenesisWorldParamKeys[13],
+                                                     .value = &band.first,
+                                                     .range = Range{.low = 0.0F, .high = 100.0F}},
+                                          ScalarKnob{.key = kGenesisWorldParamKeys[14],
+                                                     .value = &band.second,
+                                                     .range = Range{.low = 0.0F, .high = 100.0F}}};
+  std::string trouble;
+  if (!ReadKnobs(*world, "world_params", rows, trouble)) {
+    LogError("genesis: " + trouble + " — the documented figure is used");
+    return {50.0F, 70.0F};
+  }
+  // A band that runs backwards would make DrawInRange give the low end for
+  // everybody, which is a village that is uniform AND filthy — the one state
+  // the band exists to prevent.
+  if (band.second < band.first) {
+    LogError("genesis: hygiene_start_max is below hygiene_start_min — the documented band is used");
+    return {50.0F, 70.0F};
+  }
+  return band;
+}
+
+/// How many of the keys above the BODY reader takes. IT IS NOT THE LIST'S
+/// SIZE ANY MORE, and that stopped being true the moment one list served two
+/// readers: the hygiene band at the end belongs to ReadHygieneBand, and an
+/// array sized by the whole list left two ScalarKnobs default-constructed
+/// with a null destination. The assert in ReadKnobs caught it on the first
+/// run — «ScalarKnob with no destination, array declared too large» — which
+/// is the guard doing exactly its job.
+constexpr std::size_t kBodyKnobCount = 13;
 
 BodyKnobs ReadBodyKnobs(const ITableSet& tables) {
   BodyKnobs knobs;
@@ -97,7 +143,7 @@ BodyKnobs ReadBodyKnobs(const ITableSet& tables) {
   if (world == nullptr) {
     return knobs;  // documented defaults, as every other absent table gives
   }
-  const std::array<ScalarKnob, kGenesisWorldParamKeys.size()> rows = {
+  const std::array<ScalarKnob, kBodyKnobCount> rows = {
       ScalarKnob{.key = kGenesisWorldParamKeys[0],
                  .value = &knobs.height_male_m,
                  .range = Range{.low = 0.5F, .high = 3.0F}},
@@ -157,7 +203,9 @@ ResidentRow RollPerson(RngState& rng,
                        std::uint64_t person_id,
                        Sex sex,
                        float age_years,
-                       float life_speedup) {
+                       float life_speedup,
+                       float hygiene_min,
+                       float hygiene_max) {
   ResidentRow person;
   person.sex = sex;
   // THE FOUNDING GENERATION HAS NO PARENTS TO TAKE AFTER, so every one of
@@ -172,6 +220,19 @@ ResidentRow RollPerson(RngState& rng,
   person.ideology = DrawInRange(rng, 30.0F, 70.0F);
   person.health = DrawInRange(rng, 60.0F, 90.0F) - (age_years > 55.0F ? 15.0F : 0.0F);
   person.mood = DrawInRange(rng, 50.0F, 70.0F);
+  // A BAND AND NOT ONE FIGURE, and the reason is the day the first filth
+  // disease arrives: with everybody starting on the same number they would
+  // all cross the threshold on the same morning, and «первая болезнь от
+  // грязи» would be eighty of them at once. The band comes from
+  // world_params.csv, so the number has one home.
+  //
+  // FROM THE COUNTER HASH AND NOT FROM `rng`, for the reason the body above
+  // gives and the reason I had to be shown: a draw taken from the sequential
+  // generator moves EVERY later draw in the world, and adding a field to a
+  // person must not rebuild the village. Written against `rng` first, this
+  // reddened food_year on the spot — the precedent was three lines up.
+  person.hygiene = hygiene_min + CounterHashUnitFloat(world_seed, 0, person_id, 0x48594700ULL) *
+                                     (hygiene_max - hygiene_min);
   // Most Epoch-I adults are illiterate; some finished primary school
   // (education design §2; the exact share is an ASSUMPTION until playtests).
   if (age_years >= 16.0F && NextRandomUnitFloat(rng) < 0.3F) {
@@ -1139,6 +1200,7 @@ WorldState CreateStartWorld(const ITableSet& tables,
   // GenesisWorldParamKeys() out of the same array, for the assembly to union
   // with core_time's (core_catalog/table_value.h).
   const BodyKnobs body = ReadBodyKnobs(tables);
+  const std::pair<float, float> hygiene = ReadHygieneBand(tables);
 
   // The pyramid in whole people.
   const auto old_count =
@@ -1156,8 +1218,15 @@ WorldState CreateStartWorld(const ITableSet& tables,
     const FamilyId yard = AppendRow(world.families, RollFamily(rng));
     ++old_households;
     const float age = DrawInRange(rng, 62.0F, 74.0F);
-    ResidentRow first = RollPerson(
-        rng, body, world_seed, world.residents.next_id_value, Sex::kMale, age, life_speedup);
+    ResidentRow first = RollPerson(rng,
+                                   body,
+                                   world_seed,
+                                   world.residents.next_id_value,
+                                   Sex::kMale,
+                                   age,
+                                   life_speedup,
+                                   hygiene.first,
+                                   hygiene.second);
     first.family = yard;
     const ResidentId first_id = AppendRow(world.residents, first);
     if (placed + 1 < old_count) {
@@ -1167,7 +1236,9 @@ WorldState CreateStartWorld(const ITableSet& tables,
                                       world.residents.next_id_value,
                                       Sex::kFemale,
                                       age - 2.0F,
-                                      life_speedup);
+                                      life_speedup,
+                                      hygiene.first,
+                                      hygiene.second);
       second.family = yard;
       second.spouse = first_id;
       const ResidentId second_id = AppendRow(world.residents, second);
@@ -1186,8 +1257,15 @@ WorldState CreateStartWorld(const ITableSet& tables,
     // Spread over the whole working band, as the reference pyramid does —
     // an all-fertile start would overheat the early growth.
     const float age = DrawInRange(rng, 20.0F, 58.0F);
-    ResidentRow husband = RollPerson(
-        rng, body, world_seed, world.residents.next_id_value, Sex::kMale, age, life_speedup);
+    ResidentRow husband = RollPerson(rng,
+                                     body,
+                                     world_seed,
+                                     world.residents.next_id_value,
+                                     Sex::kMale,
+                                     age,
+                                     life_speedup,
+                                     hygiene.first,
+                                     hygiene.second);
     husband.family = yard;
     const ResidentId husband_id = AppendRow(world.residents, husband);
     ResidentRow wife = RollPerson(rng,
@@ -1196,7 +1274,9 @@ WorldState CreateStartWorld(const ITableSet& tables,
                                   world.residents.next_id_value,
                                   Sex::kFemale,
                                   age - 2.0F,
-                                  life_speedup);
+                                  life_speedup,
+                                  hygiene.first,
+                                  hygiene.second);
     wife.family = yard;
     wife.spouse = husband_id;
     const ResidentId wife_id = AppendRow(world.residents, wife);
@@ -1226,8 +1306,15 @@ WorldState CreateStartWorld(const ITableSet& tables,
       age = DrawInRange(rng, 7.0F, 15.5F);
     }
     const Sex sex = NextRandomUnitFloat(rng) < 0.5F ? Sex::kFemale : Sex::kMale;
-    ResidentRow child =
-        RollPerson(rng, body, world_seed, world.residents.next_id_value, sex, age, life_speedup);
+    ResidentRow child = RollPerson(rng,
+                                   body,
+                                   world_seed,
+                                   world.residents.next_id_value,
+                                   sex,
+                                   age,
+                                   life_speedup,
+                                   hygiene.first,
+                                   hygiene.second);
     child.family = world.residents.rows[mother_row].family;
     child.mother = mother_id;
     child.father = family_fathers[host % family_fathers.size()];

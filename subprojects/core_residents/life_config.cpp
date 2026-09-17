@@ -279,7 +279,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 15> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 22> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -303,7 +303,16 @@ constexpr std::array<std::string_view, 15> kLifeWorldParamKeys = {
     // specialist's arrival. The cart's days are the limit's too; both modules
     // read the one row.
     "teacher_pupils_per_teacher",
-    "limit_delivery_days"};
+    "limit_delivery_days",
+    // Personal cleanliness (health design §3, 2026-09-17). The band it starts
+    // in, what takes it away and the one thing that gives it back.
+    "hygiene_start_min",
+    "hygiene_start_max",
+    "hygiene_fall_per_day",
+    "hygiene_fall_dirty_work_factor",
+    "hygiene_fall_heat_extra",
+    "hygiene_rise_bath_per_day",
+    "hygiene_disease_threshold"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
@@ -351,7 +360,32 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 1.0F, .high = 200.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[14],
                  .value = &config.specialist_delivery_days,
-                 .range = Range{.low = 0.0F, .high = 48.0F}}};
+                 .range = Range{.low = 0.0F, .high = 48.0F}},
+      // THE METRIC'S OWN SCALE IS THE RANGE, and that is the rule rather than
+      // a sanity bound: hygiene is 0..100 like every other metric here, so a
+      // start band or a threshold outside it would name a state a resident
+      // can never be in.
+      ScalarKnob{.key = kLifeWorldParamKeys[15],
+                 .value = &config.hygiene_start_min,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[16],
+                 .value = &config.hygiene_start_max,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[17],
+                 .value = &config.hygiene_fall_per_day,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[18],
+                 .value = &config.hygiene_fall_dirty_work_factor,
+                 .range = Range{.low = 1.0F, .high = 10.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[19],
+                 .value = &config.hygiene_fall_heat_extra,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[20],
+                 .value = &config.hygiene_rise_bath_per_day,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[21],
+                 .value = &config.hygiene_disease_threshold,
+                 .range = Range{.low = 0.0F, .high = 100.0F}}};
   return ReadKnobs(world, "world_params", rows, error);
 }
 
@@ -389,6 +423,8 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     // the path it was meant to keep the cast off. It was right by accident
     // on the not-found path and pure ceremony on the other.
     config.school_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("school"));
+    // The one riser hygiene has here (health design §3).
+    config.bathhouse_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("bathhouse"));
     config.reading_hut_type =
         DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("culture_house"));
   }

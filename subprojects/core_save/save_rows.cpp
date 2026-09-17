@@ -52,9 +52,13 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // The same day the pupil's school, a unit id, took it to 184.
 // 2026-09-15: days_worked_this_month, a byte, landed in padding — 184 still,
 // 41 fields.
-static_assert(sizeof(ResidentRow) == 184,
+// 2026-09-17, save 51: hygiene, a float beside the other metrics. It did NOT
+// land in padding — 188 now — so both tripwires fired, which is the pair
+// doing what it is for: the size alone misses a field that slips into a hole,
+// the arity alone misses one that widens an existing member.
+static_assert(sizeof(ResidentRow) == 188,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ResidentRow>() == 41,
+static_assert(AggregateArity<ResidentRow>() == 42,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -329,6 +333,8 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.health);
   out.WriteFloat(row.rest);
   out.WriteFloat(row.cold);
+  // Personal cleanliness (health design §3, save format 51).
+  out.WriteFloat(row.hygiene);
   out.WriteFloat(row.mood);
 
   out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
@@ -395,6 +401,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.health = in.ReadFloat();
   row.rest = in.ReadFloat();
   row.cold = in.ReadFloat();
+  row.hygiene = in.ReadFloat();
   row.mood = in.ReadFloat();
 
   row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));

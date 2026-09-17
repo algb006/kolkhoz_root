@@ -725,13 +725,85 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     current.ledger.current.arrivals += 1;
   }
 }
+
+/// Whether today's work is the sort that takes the cleanliness off a man.
+/// «Ферма, стройка, поле» of health design §3; the tannery it also names has
+/// no unit in this core.
+bool DirtyWorkToday(WorkKind kind) {
+  switch (kind) {
+    case WorkKind::kHerdCare:
+    case WorkKind::kConstruction:
+    case WorkKind::kPlowing:
+    case WorkKind::kHarrowing:
+    case WorkKind::kSowing:
+    case WorkKind::kHarvest:
+    case WorkKind::kFelling:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
+
+/// One day of personal cleanliness (health design §3). Declared in
+/// demography.h — see there for why it stands beside the day rather than
+/// inside it.
+///
+/// IT FALLS BY ITSELF AND RISES FROM ONE THING, which is the stub and is
+/// named in the config beside every knob: the design gives four risers — the
+/// bathhouse, a yard's own, clean water nearby, soap and a change of linen —
+/// and this core has the machinery for none of the other three. So a STANDING
+/// bathhouse gives its day to everybody, «кто именно и как часто ходит» being
+/// the part that is missing.
+///
+/// THE EVENT IS A TRANSITION AND NOT A STATE, as event_state.h requires of
+/// every event: it is raised on the day a resident CROSSES the threshold
+/// downwards, so there is no second field saying "ill" and no flood of the
+/// same news every morning. `first_hygiene_disease` is not this core's word —
+/// the seam hears every crossing and the host takes the first, the way it
+/// takes `first_store_issue` from `distribution_issued`.
+void RunHygiene(const LifeConfig& config, WorldState& current) {
+  bool bathhouse = false;
+  if (config.bathhouse_type.value != kInvalidDefIdValue) {
+    bathhouse = std::any_of(
+        current.units.rows.begin(), current.units.rows.end(), [&config](const UnitRow& unit) {
+          return unit.type.value == config.bathhouse_type.value && unit.level >= 1 &&
+                 unit.dead == 0;
+        });
+  }
+  const bool hot = current.weather.air_temperature_celsius > 25.0F;
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    ResidentRow& person = current.residents.rows[row];
+    const float before = person.hygiene;
+    float fall = config.hygiene_fall_per_day;
+    if (DirtyWorkToday(person.work.kind)) {
+      fall *= config.hygiene_fall_dirty_work_factor;
+    }
+    if (hot) {
+      fall += config.hygiene_fall_heat_extra;
+    }
+    const float rise = bathhouse ? config.hygiene_rise_bath_per_day : 0.0F;
+    person.hygiene = std::clamp(person.hygiene - fall + rise, kMetricMin, kMetricMax);
+    // The crossing, and only downwards: a man who was above the line
+    // yesterday and is below it today has caught what the filth gives.
+    if (before >= config.hygiene_disease_threshold &&
+        person.hygiene < config.hygiene_disease_threshold) {
+      SimEvent& caught = EmitEvent(current, EventKind::kHygieneDisease, EventSeverity::kNotable);
+      caught.resident = current.residents.row_ids[row];
+      caught.family = person.family;
+    }
+  }
+}
 
 void RunDemographyDay(const LifeConfig& config, WorldState& current) {
   const SimDay day = current.calendar.day;
   UpdateEpoch(config, current);
   const EpochDemography& epoch = config.epochs[EpochIndex(current.epoch)];
   RunRoofless(config, current);
+  // Cleanliness before the deaths and the births, so that a man who caught
+  // lice this morning is still in the table to be told about.
+  RunHygiene(config, current);
   RunDeaths(config, current, day);
   RunOutflow(config, current, epoch, day);
   RunBirths(config, current, epoch, day);

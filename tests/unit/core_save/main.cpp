@@ -872,7 +872,11 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // keep one closed year and a chronicle year carries no points at all, so
     // it has nowhere else to live.
     {"world", 298, 0x15f6bd2d72aa14c4ULL},
-    {"residents", 354, 0x275232d952b2aa5aULL},
+    // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
+    // personal cleanliness that the filth disease is read off (health design
+    // §3). Both ResidentRow tripwires fired on it, the size and the arity:
+    // the float did NOT land in padding, so 184 became 188.
+    {"residents", 362, 0xbe016209773f94e2ULL},
     {"families", 192, 0x3ecbc6310aefce3aULL},
     {"fields", 263, 0x224499bb25ff9b5bULL},
     {"units", 323, 0xcfb11cfce6d72141ULL},

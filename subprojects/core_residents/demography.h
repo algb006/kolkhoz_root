@@ -41,6 +41,25 @@ namespace core {
 ///        removed, so no reference into its tables survives this call.
 void RunDemographyDay(const LifeConfig& config, WorldState& current);
 
+/// @brief One day of personal cleanliness (health design §3): it falls with
+///        time, twice as fast on dirty work, faster still above +25, and a
+///        STANDING bathhouse gives back. Crossing
+///        `hygiene_disease_threshold` downwards raises kHygieneDisease.
+///
+/// DECLARED BESIDE THE DAY RATHER THAN HIDDEN INSIDE IT, the way the herd's
+/// rules are (herd_life.h), because the rule and the day are two different
+/// subjects for a reader and for an acceptance. Asked of the whole day, this
+/// rule could only be measured on a village that also survives the roofless
+/// exodus and the age deaths — and the first acceptance written that way
+/// aborted, because a lone resident with no family and no roof leaves before
+/// the cleanliness is ever read.
+///
+/// @param config The life configuration; not written.
+/// @param current Residents are written and events appended; no row is added
+///        or removed, so this one does not invalidate what the day's other
+///        rules do.
+void RunHygiene(const LifeConfig& config, WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_RESIDENTS_DEMOGRAPHY_H_

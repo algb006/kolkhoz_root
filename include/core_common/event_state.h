@@ -385,6 +385,24 @@ enum class EventKind : std::uint8_t {
   /// appended between the two and re-made the very mis-decode it warns of.
   kFireBroke,
 
+  /// resident, family: his cleanliness crossed `hygiene_disease_threshold`
+  /// downwards, so he has lice or scabies (health design §3; quest_e1_14
+  /// «Своя баня» opens on the first of them). Notable, not interrupting: it
+  /// is unpleasant and catching, and it kills nobody.
+  ///
+  /// THE EVENT IS THE CAUSE BITING, NOT A DISEASE. The core does not model
+  /// the illness and holds no row of `diseases.csv` — that table is declared
+  /// as one the core has no business with, and this event is how the core
+  /// keeps its own half of the bargain: it says the filth has reached the
+  /// point where it costs something, and the illness stays off-screen, which
+  /// is what the quest's brief asks for. Seam key `hygiene_disease`.
+  ///
+  /// A CROSSING AND NOT A CONDITION, so it cannot repeat every morning for
+  /// the same man. «Первая» is not this core's word either: the host takes
+  /// the first of these for `first_hygiene_disease`, as it takes
+  /// `first_store_issue` from `distribution_issued`.
+  kHygieneDisease,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

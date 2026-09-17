@@ -142,6 +142,30 @@ struct ResidentRow {
 
   Metric cold = 0.0F;  ///< 0 = warm; appears only when freezing (stage 6).
 
+  /// Personal cleanliness, 0..100 (health design §3). Beside health and
+  /// satisfaction rather than inside either, and it feeds both — «вшивое село
+  /// довольным не бывает».
+  ///
+  /// IT FALLS BY ITSELF and rises from ONE thing here, which is a stub over
+  /// the design and not against it. The design gives four risers — the
+  /// bathhouse, a yard's own bathhouse, clean water nearby, and soap with a
+  /// change of linen — and this core has none of the machinery for three of
+  /// them: no model of a resident VISITING a unit, no water supply at all,
+  /// and no soap as a line of its own (it is inside the `consumer_goods`
+  /// bundle). So a standing bathhouse raises the whole village, which is the
+  /// part the design does have — «баня растит» — with «кто именно и как часто
+  /// ходит» left out and named.
+  ///
+  /// The fall is whole: plain time, doubled by dirty work, and more above
+  /// +25. Below `hygiene_disease_threshold` the village gets lice and scabies
+  /// — and THE CORE DOES NOT MODEL THE DISEASE. `diseases.csv` and
+  /// `disease_severity.csv` are declared as tables the core has no business
+  /// with, while `first_hygiene_disease` is declared the core's to raise, and
+  /// the two are reconciled exactly here: the core owns the CAUSE and says
+  /// when it bites; the illness stays off-screen, as the quest's own brief
+  /// asks («болезнь остаётся за кадром, в кадре — причина»).
+  Metric hygiene = 60.0F;
+
   /// STUB — A CONSTANT WEARING A METRIC'S CLOTHES. Drawn once in genesis
   /// (50..70) and never written again by anything: measured 2026-09-17 over
   /// the whole tree, the only two writers are genesis and the save codec.

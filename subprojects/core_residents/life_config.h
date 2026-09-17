@@ -129,11 +129,48 @@ struct LifeConfig {
   /// shared with the limit's carts): a specialist comes as the goods do.
   float specialist_delivery_days = 2.0F;
 
+  // -- personal cleanliness (health design §3; world_params.csv) ------------
+
+  /// The band a resident's hygiene is drawn from at the founding. A BAND and
+  /// not one figure: a village coming out of ruin is not uniform, and a
+  /// single number would make the first filth disease arrive for everybody on
+  /// the same morning.
+  float hygiene_start_min = 50.0F;
+  float hygiene_start_max = 70.0F;
+
+  /// What plain time takes off in a day, before anything else.
+  float hygiene_fall_per_day = 0.4F;
+
+  /// What dirty work multiplies that by — the farm, the building site, the
+  /// field. A factor and not an addition: the design's own line is «грязная
+  /// работа», and the dirt of a day is the day's, not a constant beside it.
+  float hygiene_fall_dirty_work_factor = 2.0F;
+
+  /// What a hot day adds above +25, on top of the rest.
+  float hygiene_fall_heat_extra = 0.3F;
+
+  /// What a STANDING bathhouse gives back in a day — to the whole village,
+  /// which is the stub: the design has four risers and this core has the
+  /// machinery for none of the other three (no model of a resident visiting a
+  /// unit, no water supply, no soap outside the `consumer_goods` bundle).
+  float hygiene_rise_bath_per_day = 1.2F;
+
+  /// Below it a resident has lice or scabies, and the seam hears about it.
+  /// THE CORE DOES NOT MODEL THE DISEASE ITSELF: `diseases.csv` is declared a
+  /// table the core has no business with, while `first_hygiene_disease` is
+  /// declared the core's to raise, and the two reconcile here — the core owns
+  /// the CAUSE and says when it bites, the illness stays off-screen as the
+  /// quest's brief asks (boss, parcel 126).
+  float hygiene_disease_threshold = 25.0F;
+
   /// The school and the reading hut (unit_types.csv `school`,
   /// `culture_house`), and the posts the district fills there
   /// (professions.csv `primary_teacher`, `librarian`). Invalid in a table-less
   /// world, and then the district sends nobody.
   UnitTypeId school_type;
+
+  /// The bathhouse, and the only riser of hygiene this core has.
+  UnitTypeId bathhouse_type;
   UnitTypeId reading_hut_type;
   ProfessionId teacher_post;
   ProfessionId librarian_post;

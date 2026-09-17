@@ -148,3 +148,10 @@ fire_base_chance_per_unit_year,0.017,core
 fire_frost_factor,2,core
 fire_grace_days,48,core
 wear_output_loss_at_full,0.5,core
+hygiene_start_min,50,core
+hygiene_start_max,70,core
+hygiene_fall_per_day,0.4,core
+hygiene_fall_dirty_work_factor,2,core
+hygiene_fall_heat_extra,0.3,core
+hygiene_rise_bath_per_day,1.2,core
+hygiene_disease_threshold,25,core
