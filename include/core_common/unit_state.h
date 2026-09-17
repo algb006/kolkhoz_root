@@ -39,8 +39,20 @@
 /// vanishes from wear except the start's old houses, which the canon lets
 /// collapse (start design §4). Repair is a SITE on the unit, like an
 /// upgrade: kDelivering, then kRepairing, and the number returns to zero.
-/// An upgrade repairs on its way (unit rules §11). What wear DOES to output
-/// and comfort is not the core's yet: this stage makes it grow and be seen.
+/// An upgrade repairs on its way (unit rules §11).
+///
+/// WHAT WEAR DOES, AND WHAT IT STILL DOES NOT (2026-09-17). Output: it now
+/// falls, linearly from the first per cent, to `wear_output_loss_at_full` of
+/// itself at the top of the scale — unit rules §15, applied where the core
+/// turns work into goods, which today is the sawmill and nothing else
+/// (core_production/unit_production.h). Measured with it: a worn saw makes
+/// the building chain wait 13-16% longer over thirty years.
+///
+/// STILL NOT THE CORE'S, and both are absent rather than neglected: a
+/// dwelling's COMFORT, which this core has no notion of at all, and
+/// MACHINERY's speed and breakdowns past half the scale, which needs
+/// machinery. The same table of the design carries all three rows; this line
+/// used to cover them together and now covers only what is left.
 ///
 /// What is deliberately NOT here yet: staff assignments, upgrade modules.
 /// Fields for them are added when their systems arrive — appending is the

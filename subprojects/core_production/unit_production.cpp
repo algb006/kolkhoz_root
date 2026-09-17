@@ -20,6 +20,28 @@ bool CanSaw(const WorldState& world, const UnitRow& unit) {
   return unit.level > 0 && unit.dead == 0 && unit.paused == 0 && ModuleParentSound(world, unit);
 }
 
+/// What a unit at `wear` still turns out, as a share of what a new one would:
+/// 1 at nought, 1 − `wear_output_loss_at_full` at the top of the scale, and
+/// straight between them (unit rules §15).
+///
+/// ON THE OUTPUT AND NOT ON THE DEMAND, and that is a decision rather than a
+/// convenience. A worn saw saws SLOWER: the same man-days give fewer boards.
+/// How many days the stores could feed it is a question about the logs lying
+/// there and the room the boards would go into — it knows nothing about the
+/// state of the saw, and putting the multiplier there too would charge the
+/// wear twice.
+///
+/// UNTIL 2026-09-17 WEAR DID NOTHING TO OUTPUT AT ALL, which the contract of
+/// unit_state.h declared rather than hid. Measured that day: a hundred and
+/// seventy buildings at a mean wear of 23.3% turned out exactly what new ones
+/// did, so every fire, every year of ageing and every neglected repair cost
+/// the village a repair bill and nothing else.
+float WearOutputFactor(const ProductionConfig& config, const UnitRow& unit) {
+  const float worn = std::clamp(unit.wear / kWearScale, 0.0F, 1.0F);
+  const float kept = 1.0F - (worn * config.farming.wear_output_loss_at_full);
+  return kept > 0.0F ? kept : 0.0F;
+}
+
 /// Boards the drained man-days made, taking their logs out of the stores and
 /// putting the boards through the door. What the door refuses goes back as
 /// logs: a board that fits nowhere was never sawn.
@@ -78,7 +100,9 @@ void SettleUnitProduction(const ProductionConfig& config, WorldState& current) {
     // a reference into a row the door has just written.
     const float written = current.units.rows[row].production_days_written;
     const float remaining = current.units.rows[row].production_days_remaining;
-    SawWhatWasWorked(timber, config, current, written > remaining ? written - remaining : 0.0F);
+    const float worked = written > remaining ? written - remaining : 0.0F;
+    SawWhatWasWorked(
+        timber, config, current, worked * WearOutputFactor(config, current.units.rows[row]));
     const float demand =
         CanSaw(current, current.units.rows[row]) ? SawingDemandDays(timber, config, current) : 0.0F;
     current.units.rows[row].production_days_remaining = demand;

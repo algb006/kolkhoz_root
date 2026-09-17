@@ -561,6 +561,21 @@ struct FarmingConfig {
   /// two days marking.
   float senior_school_from_years = 11.0F;
   float adult_from_years = 16.0F;
+
+  /// How much of a producing unit's output is lost at FULL wear, 0..1 — the
+  /// loss grows linearly from the first per cent (unit rules §15, «производ-
+  /// ственный юнит — падает производительность»; world_params.csv
+  /// wear_output_loss_at_full).
+  ///
+  /// NO DEAD ZONE, AND THE DESIGN SAYS SO BY OMISSION. «До половины шкалы
+  /// только вид» is the row about MACHINERY, which the same table lists
+  /// separately and which this core does not have at all; a building's line
+  /// carries no threshold, so neither does this.
+  ///
+  /// HALF AND NOT ALL. A worn shed is a bad shed, not a stopped one — «a ruin
+  /// still works», and the only thing in the game that falls down from wear
+  /// is the start's old house.
+  float wear_output_loss_at_full = 0.5F;
   float life_speedup = 4.0F;
 
   /// The month the autumn pig slaughter falls in, 0-based. Everything but

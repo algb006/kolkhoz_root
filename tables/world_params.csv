@@ -147,3 +147,4 @@ electrification_points_min,900,core
 fire_base_chance_per_unit_year,0.017,core
 fire_frost_factor,2,core
 fire_grace_days,48,core
+wear_output_loss_at_full,0.5,core

@@ -4557,6 +4557,61 @@ int CheckSawing() {
   failures += Expect(near(world.units.rows[2].production_days_remaining, 0.825F),
                      "sawing: tomorrow's demand is what the six logs left can give");
 
+  // -- WEAR TAKES ITS SHARE OF WHAT THE SAME WORK TURNS OUT ------------------
+  // Unit rules §15: a production unit's output falls with its wear. Until
+  // 2026-09-17 it did not, anywhere — the contract of unit_state.h declared
+  // that rather than hid it — so a hundred and seventy buildings at a mean
+  // wear of 23% turned out what new ones did.
+  //
+  // THE SAME MAN-DAYS, TWICE, AT DIFFERENT WEAR. Anything else would compare
+  // two different amounts of work and call the difference wear.
+  {
+    core::ProductionConfig worn_config = config;
+    worn_config.farming.wear_output_loss_at_full = 0.5F;
+    const auto saw_at = [&](float wear) {
+      core::WorldState fresh = world;
+      fresh.units.rows[0].stock[0] = 10 * kLog;
+      fresh.units.rows[0].stock[1] = 0;
+      fresh.units.rows[2].wear = wear;
+      fresh.units.rows[2].production_days_written = 1.0F;
+      fresh.units.rows[2].production_days_remaining = 0.0F;
+      core::SettleUnitProduction(worn_config, fresh);
+      return fresh.units.rows[0].stock[1];
+    };
+    const core::Grams sound = saw_at(0.0F);
+    const core::Grams half_worn = saw_at(50.0F);
+    const core::Grams ruined = saw_at(100.0F);
+    failures += Expect(sound > 0, "wear: a sound saw turns the man-days into boards");
+    // Linear from the first per cent: half the scale is half the loss, so a
+    // quarter off. The bands are wide enough to survive rounding in grams and
+    // narrow enough to fail on a multiplier applied with the wrong sign or to
+    // the wrong quantity.
+    failures += Expect(half_worn * 4 > sound * 3 - 1000 && half_worn * 4 < sound * 3 + 1000,
+                       "wear: at half the scale a quarter of the output is gone — linear, with no "
+                       "dead zone");
+    failures += Expect(ruined * 2 > sound - 1000 && ruined * 2 < sound + 1000,
+                       "wear: and at the top of the scale HALF — a ruin still works, which is why "
+                       "the share is a half and not all of it");
+    // THE DEMAND IS NOT TOUCHED, and that is the decision the rule rests on:
+    // how many days the stores could feed is about the logs and the room, not
+    // about the state of the saw. Charging the wear there too would charge it
+    // twice.
+    core::WorldState sound_world = world;
+    sound_world.units.rows[0].stock[0] = 10 * kLog;
+    sound_world.units.rows[0].stock[1] = 0;
+    sound_world.units.rows[2].wear = 0.0F;
+    core::SettleUnitProduction(worn_config, sound_world);
+    core::WorldState worn_world = world;
+    worn_world.units.rows[0].stock[0] = 10 * kLog;
+    worn_world.units.rows[0].stock[1] = 0;
+    worn_world.units.rows[2].wear = 100.0F;
+    core::SettleUnitProduction(worn_config, worn_world);
+    failures += Expect(near(sound_world.units.rows[2].production_days_remaining,
+                            worn_world.units.rows[2].production_days_remaining),
+                       "wear: and the DEMAND is untouched — a worn saw is not asked for fewer "
+                       "hands, it gives less for the same ones");
+  }
+
   world.units.rows[2].paused = 1;
   core::SettleUnitProduction(config, world);
   failures += Expect(world.units.rows[2].production_days_remaining == 0.0F,

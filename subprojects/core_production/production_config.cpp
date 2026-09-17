@@ -906,13 +906,14 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 6> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 7> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
     "school_year_end_month",
     "age_school_senior_from_years",
-    "age_adult_from_years"};
+    "age_adult_from_years",
+    "wear_output_loss_at_full"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -927,7 +928,7 @@ bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std
   float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
-  const std::array<ScalarKnob, 6> knobs = {
+  const std::array<ScalarKnob, 7> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
                  .value = &farming.billet_heads_per_yard,
                  .range = Range{.low = 1.0F, .high = 10.0F}},
@@ -941,7 +942,15 @@ bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std
                  .range = Range{.low = 1.0F, .high = 100.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[5],
                  .value = &farming.adult_from_years,
-                 .range = Range{.low = 1.0F, .high = 100.0F}}};
+                 .range = Range{.low = 1.0F, .high = 100.0F}},
+      // BELOW ONE, AND THAT IS THE RULE RATHER THAN A SANITY BOUND: a share
+      // of 1.0 would stop a ruined building dead, and the design says the
+      // opposite in as many words — «a ruin still works», and only the
+      // start's old houses fall. A worn shed is a bad shed, not a stopped
+      // one.
+      ScalarKnob{.key = kProductionWorldParamKeys[6],
+                 .value = &farming.wear_output_loss_at_full,
+                 .range = Range{.low = 0.0F, .high = 0.99F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
