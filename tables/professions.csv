@@ -8,7 +8,7 @@ labourer,any,16,,any,0,,workday
 team_leader,primary,16,,any,0,,workday
 stockman,any,16,,any,0,,workday
 milkmaid,any,16,,female,0,,workday
-poultry_maid,any,16,,female,0,,workday
+poultry_keeper,any,16,,female,0,,workday
 herder,any,16,,any,0,,workday
 groom,any,16,,any,0,,workday
 fur_breeder,any,16,,any,0,,workday
