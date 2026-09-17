@@ -159,6 +159,16 @@ void RunBirths(const ProductionConfig& config,
                WorldState& world,
                YearLedger& book);
 
+/// @brief The sires left after `gone` adults leave a herd of `adults_before`,
+///        in proportion, rounded to the nearest head and never above the
+///        survivors.
+///
+/// EXPORTED SO A CALLER CAN ASK IT BEFORE IT ACTS. The district's hand-over
+/// has to know whether a take would round the herd's last sire away — the
+/// proportion can do that with adults still standing — and asking the same
+/// function the take will use is the only way the two cannot disagree.
+std::uint16_t MalesAfterLoss(std::uint16_t males, std::uint16_t adults_before, std::uint16_t gone);
+
 /// @brief The mean age of the herd's adults, in game years; 0 with no adults.
 float MeanAdultAgeYears(const HerdRow& herd);
 

@@ -727,20 +727,60 @@ int CheckHandingStockBack() {
                        "price");
   }
 
-  // -- the last sire stays ---------------------------------------------------
+  // -- a herd is not left with adults and no sire ---------------------------
+  //
+  // THE CASE THAT MATTERS IS THE ONE THE FIRST CUT MISSED, and it is first
+  // here for that reason. The sires go in PROPORTION when adults leave, so a
+  // partial take can round the only sire away while animals are still
+  // standing: three adults with one sire, asked for two, kept one adult and
+  // no sire and raised no refusal. The first guard tested how many heads were
+  // ASKED FOR; the rounding happens on what is LEFT.
   {
     core::WorldState world = MakeHerdWorld(1000.0F);
     const core::HerdId herd = AddHerd(world, 0, 3, 1, true);
-    failures += Expect(hand(world, herd, 3) == core::OrderRefusal::kLastSire,
-                       "hand stock: the herd's last sire is not handed over");
-    failures += Expect(world.herds.rows[0].adult_count == 3 && world.limit.points == 0,
+    failures += Expect(hand(world, herd, 2) == core::OrderRefusal::kLastSire,
+                       "hand stock: a partial take that would round the last sire away is "
+                       "refused");
+    failures += Expect(world.herds.rows[0].adult_count == 3 &&
+                           world.herds.rows[0].adult_male_count == 1 && world.limit.points == 0,
                        "and a refusal costs the village nothing");
-    // Two sires, and the same order goes through: the guard refuses only the
-    // LAST one, which is what makes it narrow enough to be an exit and not a
-    // second cage.
-    world.herds.rows[0].adult_male_count = 2;
-    failures += Expect(hand(world, herd, 3) == core::OrderRefusal::kNone,
-                       "hand stock: a herd with a spare sire may hand its adults over");
+  }
+  // A take that leaves a sire standing goes through: the refusal is narrow
+  // enough to be an exit and not a second cage.
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId herd = AddHerd(world, 0, 3, 2, true);
+    failures += Expect(hand(world, herd, 2) == core::OrderRefusal::kNone,
+                       "hand stock: a take that leaves a sire behind is allowed");
+    failures +=
+        Expect(world.herds.rows[0].adult_count == 1 && world.herds.rows[0].adult_male_count == 1,
+               "and the herd it leaves can still breed");
+  }
+  // EMPTYING THE HERD OF ADULTS IS ALLOWED, and that is a decision and not a
+  // trap: a farm with no herd of a kind has made a visible choice and the
+  // district sells that kind by the head. The invisible one — mares and no
+  // stallion — is what the refusal above is for.
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId herd = AddHerd(world, 0, 3, 1, true);
+    failures += Expect(
+        hand(world, herd, 3) == core::OrderRefusal::kNone && world.herds.rows[0].adult_count == 0,
+        "hand stock: handing over every adult is a decision, not a dead end");
+  }
+  // A NEGATIVE AMOUNT IS REFUSED, AND FED STRAIGHT TO THE RULE. The boundary
+  // rejects one, but the boundary is not the only door: a row replayed out of
+  // a save never passes it, and the save codec reads this field unchecked.
+  // Before the guard, -1 clamped to 65535 and emptied the herd with the
+  // points paid.
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId herd = AddHerd(world, 0, 4, 2, true);
+    world.herds.rows[0].newborn_count = 3;
+    failures += Expect(hand(world, herd, -1) == core::OrderRefusal::kNoSuchSubject,
+                       "hand stock: a negative head count is refused, not wrapped");
+    failures += Expect(world.herds.rows[0].adult_count == 4 &&
+                           world.herds.rows[0].newborn_count == 3 && world.limit.points == 0,
+                       "and the herd it names is untouched and nothing is paid");
   }
 
   // -- the oldest go first, and the price follows the band -------------------

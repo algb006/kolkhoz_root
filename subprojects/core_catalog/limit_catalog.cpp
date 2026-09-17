@@ -51,6 +51,14 @@ constexpr std::size_t kPointKnobCount = 9;
 
 /// Where the four handover shares begin in the list above.
 constexpr std::size_t kHandoverKnobFirst = 15;
+// A HAND-WRITTEN INDEX INTO A LIST THAT GROWS, so it is nailed to the name it
+// means rather than to a count somebody has to remember to re-derive. Free,
+// and it is the same shape this tree names beside its enums: a length written
+// out by hand drifts, and four of them already had.
+static_assert(kLimitWorldParamKeys[kHandoverKnobFirst] == "livestock_handover_newborn",
+              "kHandoverKnobFirst no longer points at the first handover share");
+static_assert(kLimitWorldParamKeys[kHandoverKnobFirst + 4] == "electrification_points_min",
+              "the electrification knob moved out from under its index");
 
 /// Largest price, grant or day count a row may name. A thousand times the
 /// dearest lot of the catalogue: past it the cell is a typo.

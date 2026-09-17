@@ -330,18 +330,45 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   if (lot == nullptr) {
     return OrderRefusal::kNotEligible;  // the district takes this kind only by the batch
   }
-  const auto wanted = static_cast<std::uint16_t>(
-      std::min<std::int64_t>(order.amount, std::numeric_limits<std::uint16_t>::max()));
-  if (wanted == 0 || TotalHeads(herd) == 0) {
+  // THE SIGN IS TESTED BEFORE THE DEMOTION, and that order is the whole
+  // point: `amount` is a signed 64-bit field, and `static_cast<uint16_t>(-1)`
+  // is 65535, so a clamp that only had an upper bound turned "hand back minus
+  // one head" into "hand back the whole herd" — silently, past every guard
+  // below, with the points paid. The boundary does refuse a non-positive
+  // amount, but the boundary is not the only door: a row replayed out of a
+  // save never passes ShapeIsValid, and the save codec reads this field with
+  // no range check at all. UnsealFund in this same subproject carries the
+  // identical guard for the identical reason.
+  if (order.amount <= 0) {
     return OrderRefusal::kNoSuchSubject;
   }
-  // THE LAST SIRE STAYS. The purchase asks which sex precisely so the farm
-  // cannot be left without a producer and no way to fix it; a way out of one
-  // dead end that opens the way into another is not a way out at all.
-  // Counted against the heads that would go, not against the herd: handing
-  // over every adult of a herd with one sire is the case this catches.
-  if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count > 0 &&
-      wanted >= herd.adult_count && herd.adult_male_count <= 1) {
+  const auto wanted = static_cast<std::uint16_t>(
+      std::min<std::int64_t>(order.amount, std::numeric_limits<std::uint16_t>::max()));
+  if (TotalHeads(herd) == 0) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  // A HERD IS NOT LEFT WITH ADULTS AND NO SIRE. The purchase asks which sex
+  // precisely so the farm cannot be left without a producer and no way to fix
+  // it; a way out of one dead end that opens the way into another is not a
+  // way out at all.
+  //
+  // ASKED OF WHAT WOULD BE LEFT, not of how many were asked for, and that is
+  // a repair. The first cut refused only when `wanted >= adult_count`, on the
+  // reasoning that the whole adult cohort going is the case to catch. It is
+  // not: the sires go in PROPORTION (MalesAfterLoss), so a herd of three
+  // adults with one sire, asked for two, keeps one adult and rounds its only
+  // sire away — one animal left, unable to breed, and no refusal raised. That
+  // is exactly the trap the word exists for, and it lay in the gap between
+  // the guard and the arithmetic it was guarding.
+  //
+  // EMPTYING THE HERD OF ADULTS IS ALLOWED. A farm with no herd of a kind has
+  // made a visible decision and the district sells that kind by the head; a
+  // farm left with mares and no stallion has made an invisible one. The trap
+  // is the second, and it is the second this refuses.
+  const std::uint16_t adults_going = std::min<std::uint16_t>(wanted, herd.adult_count);
+  const std::uint16_t adults_left = static_cast<std::uint16_t>(herd.adult_count - adults_going);
+  if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count > 0 && adults_left > 0 &&
+      MalesAfterLoss(herd.adult_male_count, herd.adult_count, adults_going) == 0) {
     return OrderRefusal::kLastSire;
   }
   // THE OLDEST FIRST, cohort by cohort: adults from the old end, then the

@@ -410,10 +410,15 @@ std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uin
   herd.adult_age_game_years_total = herd.adult_age_game_years_total < youngest_possible
                                         ? youngest_possible
                                         : herd.adult_age_game_years_total;
-  // The sires go in proportion with the rest. Whoever needs a sire KEPT says
-  // so before calling — the district's hand-over refuses its last one by
-  // name (OrderRefusal::kLastSire) rather than by arithmetic here, because a
-  // proportion cannot tell "spare" from "only".
+  // The sires go in proportion with the rest, and A PROPORTION CAN ROUND THE
+  // LAST ONE AWAY: three adults with one sire losing two keep one adult and
+  // no sire. Whoever needs a sire KEPT must therefore ask MalesAfterLoss
+  // BEFORE calling and refuse on its answer — which is what the district's
+  // hand-over does (OrderRefusal::kLastSire). This comment used to say the
+  // refusal was raised "by name rather than by arithmetic here", which read
+  // as a guarantee this function gives and does not: the refusal it named was
+  // testing how many heads were ASKED FOR, and the rounding happens on what
+  // is LEFT.
   herd.adult_male_count = MalesAfterLoss(herd.adult_male_count, before, gone);
   return gone;
 }
