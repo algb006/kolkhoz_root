@@ -291,7 +291,13 @@ OrderRow ReadOrder(Reader& in) {
   row.volume_m3 = in.Float();
   row.lot = LimitLotId{in.U16()};
   row.extraction_site = ExtractionSiteId{in.U32()};
-  row.male = in.U8();
+  // RANGE-CHECKED LIKE ITS SIBLINGS, and it was the one 0/1 byte here that
+  // was not. `kind`, `status`, `refusal` and `fund` all come through
+  // EnumValue; `male` came through a bare U8, so a journal carrying 7 in that
+  // byte replayed as a valid order instead of a refused read. Harmless while
+  // the field is only ever tested `!= 0` — and that is exactly the kind of
+  // "harmless today" the codec's tripwires exist to stop being told.
+  row.male = in.EnumValue(1);
   return row;
 }
 

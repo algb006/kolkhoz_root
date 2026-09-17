@@ -209,7 +209,14 @@ void WorkColumnDay(const ProductionConfig& config, WorldState& current) {
 
 void LeaveColumn(WorldState& current) {
   current.mts_column.phase = MtsColumnPhase::kGone;
-  SimEvent& left = EmitEvent(current, EventKind::kMtsColumnLeft);
+  // kNotable, AS THE CONTRACT SAYS IT IS. All three of the column's events
+  // are documented kNotable in event_state.h and all three were emitted at
+  // the default kRoutine — the argument was simply left off, and the default
+  // is the quietest severity there is. A severity is not decoration: it is
+  // what decides whether the player is told at all, so an event announcing
+  // that the district's tractors came, left or never came must not arrive in
+  // the world as routine.
+  SimEvent& left = EmitEvent(current, EventKind::kMtsColumnLeft, EventSeverity::kNotable);
   left.unit = current.mts_column.camp;
   left.amount = std::llround(current.mts_column.worked_ha);
 }
@@ -232,7 +239,7 @@ void RunMtsColumn(const ProductionConfig& config, WorldState& current) {
     if (month > to) {
       // The window closed with the column still out: no camp stood for it.
       column.phase = MtsColumnPhase::kNotArrived;
-      EmitEvent(current, EventKind::kMtsColumnNotArrived);
+      EmitEvent(current, EventKind::kMtsColumnNotArrived, EventSeverity::kNotable);
       return;
     }
     if (current.calendar.day < column.arrive_day || !MonthInWindow(month, from, to)) {
@@ -244,7 +251,7 @@ void RunMtsColumn(const ProductionConfig& config, WorldState& current) {
     }
     column.phase = MtsColumnPhase::kWorking;
     column.camp = camp;
-    SimEvent& arrived = EmitEvent(current, EventKind::kMtsColumnArrived);
+    SimEvent& arrived = EmitEvent(current, EventKind::kMtsColumnArrived, EventSeverity::kNotable);
     arrived.unit = camp;
     return;
   }

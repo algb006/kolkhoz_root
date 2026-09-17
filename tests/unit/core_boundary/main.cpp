@@ -1074,6 +1074,21 @@ int TestJournalCodec() {
   failures += Expect(!core::DecodeJournal(broken, &untouched, &error),
                      "an enum value this build does not know is refused");
 
+  broken = bytes;
+  // The first entry's `male` byte: the LAST byte of the order, so past the
+  // 16-byte header, the entry's tick (8), sequence (4) and verb (1), and all
+  // but one of the order's 72.
+  //
+  // WRITTEN BECAUSE IT WAS THE ONE 0/1 BYTE HERE READ WITHOUT A RANGE CHECK
+  // (2026-09-17). Its four siblings — kind, status, refusal, fund — all come
+  // through EnumValue and all had this test; `male` came through a bare U8,
+  // so a journal carrying 7 in that byte replayed as a valid order. The
+  // asymmetry was harmless only for as long as nothing but `!= 0` read the
+  // field, which is a property of today's callers and not of the format.
+  broken[16 + 13 + 71] = static_cast<std::byte>(7);
+  failures += Expect(!core::DecodeJournal(broken, &untouched, &error),
+                     "a sex byte that is neither 0 nor 1 is refused");
+
   const std::vector<std::byte> empty_journal = core::EncodeJournal({});
   decoded.push_back(issued);
   failures += Expect(core::DecodeJournal(empty_journal, &decoded, &error) && decoded.empty(),
