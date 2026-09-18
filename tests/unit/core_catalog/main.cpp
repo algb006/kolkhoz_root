@@ -453,9 +453,8 @@ int TestServiceLotKind() {
 }
 
 /// THE OVERFULFILMENT SCALE (district §1; boss seq 70, 2026-09-18): the six
-/// knobs are read out of world_params.csv, the two keys of the percent scale
-/// they replaced still stand in the table without stopping the read, and the
-/// scale prices tonnes tier by tier with no cap.
+/// knobs are read out of world_params.csv, and the scale prices tonnes tier
+/// by tier with no cap.
 int TestTheOverfulfilScale() {
   int failures = 0;
   const test::FakeTable world({"key", "value", "reader"},
@@ -464,14 +463,11 @@ int TestTheOverfulfilScale() {
                                {"limit_overfulfil_tier1_points_per_t", "30", "core"},
                                {"limit_overfulfil_tier2_points_per_t", "12", "core"},
                                {"limit_overfulfil_tier3_points_per_t", "2", "core"},
-                               {"limit_overfulfil_grain_kcal_per_gram", "3.5", "core"},
-                               {"limit_overfulfil_points_per_percent", "10", "core"},
-                               {"limit_overfulfil_points_max", "200", "core"}});
+                               {"limit_overfulfil_grain_kcal_per_gram", "3.5", "core"}});
   const test::FakeTableSet set({{"world_params", &world}});
   core::LimitCatalog read;
   std::string error;
-  failures += Expect(core::ParseLimitCatalog(set, read, error),
-                     "overfulfilment: the scale reads beside the two retired keys");
+  failures += Expect(core::ParseLimitCatalog(set, read, error), "overfulfilment: the scale reads");
   failures += Expect(
       read.overfulfil_tier1_t == 4.0F && read.overfulfil_tier2_t == 10.0F &&
           read.overfulfil_points_per_t[0] == 30.0F && read.overfulfil_points_per_t[1] == 12.0F &&

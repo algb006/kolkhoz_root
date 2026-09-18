@@ -184,9 +184,8 @@ struct LimitCatalog {
   float handover_share_old = 0.25F;
 };
 
-/// @brief The world_params.csv keys this catalogue answers for, for the
-/// assembly's declared-readers check (core_world/world.cpp): those it reads,
-/// and the two of the percent scale retired on 2026-09-18, known and unread.
+/// @brief The world_params.csv keys this catalogue reads, for the assembly's
+/// declared-readers check (core_world/world.cpp).
 std::span<const std::string_view> LimitWorldParamKeys();
 
 /// @brief The limit points a year's overfulfilment earns (district §1): the

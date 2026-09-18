@@ -59,19 +59,6 @@ constexpr std::array<std::string_view, 24> kLimitWorldParamKeys = {
     "limit_overfulfil_tier3_points_per_t",
     "limit_overfulfil_grain_kcal_per_gram"};
 
-/// Every key the limit answers for: those read, and the two the percent
-/// scale used, RETIRED 2026-09-18 — known and not read until the base drops
-/// the rows, so the export that still carries them does not stop assembly.
-constexpr std::array<std::string_view, kLimitWorldParamKeys.size() + 2> kLimitKnownKeys = [] {
-  std::array<std::string_view, kLimitWorldParamKeys.size() + 2> keys{};
-  for (std::size_t index = 0; index < kLimitWorldParamKeys.size(); ++index) {
-    keys[index] = kLimitWorldParamKeys[index];
-  }
-  keys[kLimitWorldParamKeys.size()] = "limit_overfulfil_points_per_percent";
-  keys[kLimitWorldParamKeys.size() + 1] = "limit_overfulfil_points_max";
-  return keys;
-}();
-
 constexpr std::size_t kPointKnobCount = 7;
 
 /// Where the four handover shares begin in the list above.
@@ -440,7 +427,7 @@ bool ReadOverfulfilKnobs(const ITable& world, LimitCatalog& catalog, std::string
 }  // namespace
 
 std::span<const std::string_view> LimitWorldParamKeys() {
-  return kLimitKnownKeys;
+  return kLimitWorldParamKeys;
 }
 
 float OverfulfilPoints(const LimitCatalog& catalog, float grain_tonnes) {
