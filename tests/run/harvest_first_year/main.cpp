@@ -251,6 +251,41 @@ int main() {
   }
 
   const core::WorldState& start = simulation->CompletedState();
+  // THE SOWN GRASS'S CEILING AT ITS OWN SOIL, read now, before the year moves
+  // the fields: a hay field's area x its crop's yield x fertility / neutral —
+  // the harvest's own factor. Counted off the layout without the soil, the
+  // ceiling stood 6.3 t short on the timothy field (start fertility 65, factor
+  // 1.3), and a full cut, once the village stopped losing a day at every phase
+  // it opened, went over it by 6.2 t (2026-09-19): the instrument's gap, not
+  // the world's.
+  double sown_hay_ceiling_tonnes = 0.0;
+  {
+    const core::ITable* const crop_table = world.tables->FindTable("crops");
+    const core::ITable* const farming = world.tables->FindTable("farming");
+    const std::uint32_t neutral_row =
+        farming == nullptr ? core::kNoTableRow : farming->FindRowByKey("fertility_neutral");
+    const std::optional<float> neutral =
+        neutral_row == core::kNoTableRow
+            ? std::nullopt
+            : farming->CellReal(neutral_row, farming->FindColumn("value"));
+    if (crop_table != nullptr && neutral.has_value() && *neutral > 0.0F) {
+      const std::uint32_t resource_col = crop_table->FindColumn("resource");
+      const std::uint32_t yield_col = crop_table->FindColumn("yield_kg_per_ha");
+      for (const core::FieldRow& field : start.fields.rows) {
+        const std::uint32_t crop = field.rotation_year0.value;
+        if (field.kind != core::LandKind::kArable || crop >= crop_table->RowCount() ||
+            crop_table->CellText(crop, resource_col) != "hay") {
+          continue;
+        }
+        const std::optional<float> yield = crop_table->CellReal(crop, yield_col);
+        if (yield.has_value()) {
+          sown_hay_ceiling_tonnes += static_cast<double>(field.area_ga) *
+                                     static_cast<double>(*yield) *
+                                     static_cast<double>(field.fertility / *neutral) / 1000.0;
+        }
+      }
+    }
+  }
   // Seven sown fields, a fallow one, two derelict, ten meadows — the start
   // canon's suggested three-year rotation on 70 raised hectares of the 160
   // (start canon §8), and grass that is not scarce; the hands and the
@@ -439,30 +474,22 @@ int main() {
   // in a field's rotation are cut every summer (farming design, "Многолетние
   // травы: укосами каждое лето") and their crop's resource is hay (crops.csv).
   // The start layout sows timothy on 10.5 ha in its first year; the ceiling
-  // counts a field whose first-year crop gives hay at that crop's yield.
-  double hay_ceiling_tonnes = 0.0;
+  // counts a field whose first-year crop gives hay at that crop's yield AND
+  // its start soil (sown_hay_ceiling_tonnes, read before the year).
+  double hay_ceiling_tonnes = sown_hay_ceiling_tonnes;
   const core::ITable* const layout = world.tables->FindTable("start_layout");
   const core::ITable* const meadow_kinds = world.tables->FindTable("meadow_kinds");
-  const core::ITable* const crops = world.tables->FindTable("crops");
-  if (layout != nullptr && meadow_kinds != nullptr && crops != nullptr) {
+  if (layout != nullptr && meadow_kinds != nullptr) {
     const std::uint32_t kind_col = layout->FindColumn("kind");
     const std::uint32_t area_col = layout->FindColumn("area_ha");
     const std::uint32_t meadow_col = layout->FindColumn("meadow_kind");
-    const std::uint32_t year0_col = layout->FindColumn("rotation_year0");
     const std::uint32_t yield_col = meadow_kinds->FindColumn("yield_kg_per_ha");
-    const std::uint32_t crop_resource_col = crops->FindColumn("resource");
-    const std::uint32_t crop_yield_col = crops->FindColumn("yield_kg_per_ha");
     for (std::uint32_t row = 0; row < layout->RowCount(); ++row) {
       const std::optional<float> area = layout->CellReal(row, area_col);
       std::optional<float> yield;
       if (layout->CellText(row, kind_col) == "meadow") {
         yield = meadow_kinds->CellReal(
             meadow_kinds->FindRowByKey(layout->CellText(row, meadow_col)), yield_col);
-      } else if (layout->CellText(row, kind_col) == "field") {
-        const std::uint32_t crop = crops->FindRowByKey(layout->CellText(row, year0_col));
-        if (crop != core::kNoTableRow && crops->CellText(crop, crop_resource_col) == "hay") {
-          yield = crops->CellReal(crop, crop_yield_col);
-        }
       }
       if (area.has_value() && yield.has_value()) {
         hay_ceiling_tonnes += static_cast<double>(*area) * static_cast<double>(*yield) / 1000.0;

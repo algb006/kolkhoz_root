@@ -844,9 +844,26 @@ int main(int argc, char** argv) {
               << " against a trial at " << trial_threshold
               << " — PRINTED, NOT ASSERTED: this run is the floor (no land decision in thirty "
                  "years), and what a chairman may suffer is gated in plan_trial\n";
-    failures += run::Expect(plan_failed_years > 0,
-                            "and it IS failable — a plan met in all thirty years is a plan the "
-                            "weather cannot touch, which is the defect this one replaced");
+    // "AND IT IS FAILABLE" STOOD HERE UNTIL 2026-09-19, and went red the day
+    // the village stopped losing a day at every phase it opened (labor's
+    // top-up at hour 1): the floor then met the plan in all thirty years.
+    // That is not a plan the weather cannot touch by a defect of the plan —
+    // the world has no bad year yet (drought, register 226), and the harvest
+    // stands several times over the figure (boss seq 97). So the claim is
+    // split in time:
+    //   * NOW: the floor meets the plan in ALL thirty years. boss asked for "at
+    //     least 28" and for its reason — "it reddens if a lost day comes back"
+    //     — and the two did not agree, measured: with the top-up switched off
+    //     this run fails the plan in exactly ONE year of thirty (year 1), and
+    //     "at least 28" passes it. A guard that cannot redden on the defect it
+    //     stands for is not a guard; thirty of thirty does, on a deterministic
+    //     seed. Kept for boss's word on it (core -> boss, 2026-09-19);
+    //   * AT 226: once drought has its form, this run must fail the plan in at
+    //     least one year of thirty, or 226 is not done — its acceptance,
+    //     written there by boss, and to be written back here as an assertion.
+    failures += run::Expect(plan_failed_years == 0,
+                            "the floor meets the district's plan in all thirty years — until "
+                            "drought (register 226) makes it failable again");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";

@@ -21,6 +21,7 @@
 
 #include "core_labor/labor_system.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -114,6 +115,9 @@ class LaborSystem final : public ILaborSystem {
     const std::uint32_t hour = HourFromTick(current.calendar.tick);
     if (hour == 0) {
       StartDay(current);
+    }
+    if (hour == 1) {
+      TopUpDay(current);
     }
     RunHour(current, hour);
     // The night posts go on at sunset (posts.h).
@@ -366,6 +370,59 @@ class LaborSystem final : public ILaborSystem {
         current,
         current,
         IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch));
+  }
+
+  /// THE WORK THAT OPENED AFTER THE MORNING (boss seq 93/95, option а). The
+  /// decisions slot runs labor before production (core_world/world.cpp), so
+  /// at hour 0 the accountant places the day and only THEN does production's
+  /// daily block open a field's next phase — and until 2026-09-18 that field
+  /// waited for the next morning. Traced on seed 1930: the potato opened its
+  /// reaping on day 36 with 69 people idle all day, and the snow took the
+  /// field on day 42. Every phase the daily block opens paid that day.
+  ///
+  /// At hour 1 — before sunrise, so no working hour is lost — the idle are
+  /// placed on the jobs nobody stands on yet. Only those: a job already
+  /// crewed in the morning had its crew sized to its demand, and topping it
+  /// up would put surplus hands on it. The morning is not moved, because
+  /// production reads the morning's placement in that same hour-0 block (the
+  /// team's working share, herd_system.cpp).
+  void TopUpDay(WorldState& current) const {
+    std::vector<AssignmentJob> jobs = CollectJobs(current);
+    const auto crewed = [&current](const AssignmentJob& job) {
+      return std::ranges::any_of(current.residents.rows, [&job](const ResidentRow& person) {
+        const WorkAssignment& work = person.work;
+        return work.kind == job.kind && work.field.value == job.field.value &&
+               work.herd.value == job.herd.value && work.unit.value == job.unit.value &&
+               work.stand.value == job.stand.value &&
+               work.extraction_site.value == job.extraction_site.value;
+      });
+    };
+    std::erase_if(jobs, crewed);
+    if (jobs.empty()) {
+      return;
+    }
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
+    std::erase_if(candidates, [&current](const AssignmentCandidate& candidate) {
+      return current.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone;
+    });
+    if (candidates.empty()) {
+      return;
+    }
+    const std::vector<std::uint32_t> plan =
+        PlanDayAssignments(jobs, candidates, DayParams(current));
+    for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+      if (plan[index] == kNoJobAssigned) {
+        continue;
+      }
+      const AssignmentJob& job = jobs[plan[index]];
+      WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
+      work.kind = job.kind;
+      work.field = job.field;
+      work.herd = job.herd;
+      work.unit = job.unit;
+      work.stand = job.stand;
+      work.extraction_site = job.extraction_site;
+    }
   }
 
   /// The holder's morning (manual/74-posts.md §4): he is out of the

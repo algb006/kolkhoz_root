@@ -2072,6 +2072,63 @@ int TestTheFieldsEdgeIsTheSnow() {
   return failures;
 }
 
+/// THE WORK THAT OPENED AFTER THE MORNING (boss seq 93/95): production opens a
+/// field's phase in its hour-0 block, after the accountant has placed the
+/// day. At hour 1 the idle go to that field — and only to jobs nobody stands
+/// on: a job crewed in the morning gets no surplus hands.
+int TestTheWorkOpenedAfterTheMorningIsCrewed() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_top_up";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "oat,5,9,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "top-up: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(3);
+  // Day 30 is a Wednesday in August (four days a month, day 0 a Monday).
+  constexpr std::uint32_t kWorkingDay = 30;
+  const core::FieldId crewed =
+      day.AddField(core::FieldPhase::kHarvest, 0.5F, core::Vec2{.x = 0.0F, .y = 20.0F});
+  const core::FieldId late =
+      day.AddField(core::FieldPhase::kIdle, 0.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+  const auto run_hour = [&labor, &day](std::uint32_t hour) {
+    day.world.calendar.tick = (static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+  };
+  const auto crew_of = [&day](core::FieldId field) {
+    std::uint32_t crew = 0;
+    for (const core::ResidentRow& person : day.world.residents.rows) {
+      crew += person.work.field.value == field.value ? 1U : 0U;
+    }
+    return crew;
+  };
+  run_hour(0);
+  const std::uint32_t morning_crew = crew_of(crewed);
+  // Production's hour-0 block opens the late field's reaping after the
+  // placement: here, by hand, between the two hours.
+  core::FieldRow& opened = day.world.fields.rows[core::FindRow(day.world.fields, late)];
+  opened.phase = core::FieldPhase::kHarvest;
+  opened.work_days_remaining = 5.0F;
+  run_hour(1);
+  failures +=
+      Expect(morning_crew >= 1 && crew_of(late) >= 1,
+             "top-up: the field opened after the morning is crewed at hour 1, not tomorrow");
+  failures += Expect(crew_of(crewed) == morning_crew,
+                     "top-up: the job crewed in the morning gets no surplus hands at hour 1");
+  return failures;
+}
+
 int TestFallowBeforeWinterRyeHasTheRyesWindow() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2504,6 +2561,7 @@ int main() {
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestTheFieldsEdgeIsTheSnow();
+  failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();
