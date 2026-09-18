@@ -303,6 +303,20 @@ enum class AlarmKind : std::uint8_t {
   /// position. Subject: `resource`; `amount` = the grams held in the funds.
   kReserveFullNothingToEat,
 
+  /// THE SOWING WILL NOT FIT (farming design, «Поздний сев»; alarms.csv
+  /// `sowing_will_not_fit`, «Сев не успеть»): a spring field has entered the
+  /// plough, and the team cannot finish its ploughing and harrowing by the
+  /// last day its crop can be sown and still ripen before the snow. Past that
+  /// day the field is left unsown and its seed stays in the fund — so this is
+  /// said while the plough can still be stopped: people and horses on the
+  /// sowing, or the field under fallow. The echo of kHarvestWillNotFit, one
+  /// about TIME, the other about PLACE: the days are spent field by field in
+  /// the order the fields must be sown, and the field that finds them gone is
+  /// named. Capacity: adult horses, one norm-day each a day (measured, tests/
+  /// run/sowing_window). Subject: `field`; `resource` = its crop's produce;
+  /// `amount` = the SQUARE METRES that will not be sown, not grams.
+  kSowingWillNotFit,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

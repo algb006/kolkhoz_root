@@ -94,7 +94,10 @@ class IProductionSystem {
   /// that will still arrive from it, straw included — exceeds what is LEFT
   /// of the free room after the fields that will be HARVESTED EARLIER have
   /// spent theirs; kSeedShort for every field whose next sowing the stores
-  /// cannot seed to the norm; kHerdStarving for every kolkhoz herd with
+  /// cannot seed to the norm; kSowingWillNotFit for every spring field in
+  /// the plough whose harnessed work the horses cannot finish by the last
+  /// day its crop can be sown and still ripen before the snow, the days
+  /// spent in the order the fields must be sown; kHerdStarving for every kolkhoz herd with
   /// unfed_days > 0; kHerdWithoutStable, one line for the whole kolkhoz
   /// horse team, while the yard has not reached its second step;
   /// kFellingUnreachable for every stand marked for felling, with work left,

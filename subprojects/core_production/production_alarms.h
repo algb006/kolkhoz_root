@@ -50,6 +50,15 @@ void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms);
 
+/// @brief Appends kSowingWillNotFit for every spring field in the plough whose
+/// harnessed work the team cannot finish by the last day its crop can be sown
+/// and still ripen before the snow (alarm_state.h). The days are spent in the
+/// order the fields must be sown; `amount` is the square metres short.
+/// @param alarms Appended to; never cleared.
+void CollectSowingAlarms(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms);
+
 /// @brief Appends the herd alarms standing in `world`, the stable's among
 /// them: fodder running out, a byre over its head count, horses unfed.
 /// @param alarms Appended to; never cleared.

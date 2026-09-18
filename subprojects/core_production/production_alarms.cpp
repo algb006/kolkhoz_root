@@ -13,6 +13,7 @@
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "field_work.h"
 #include "herd_system.h"
 #include "stock_ops.h"
 
@@ -524,4 +525,107 @@ void CollectPlanAlarms(const ProductionConfig& config,
     }
   }
 }
+
+namespace {
+
+/// Square metres in a hectare: the unit kSowingWillNotFit's amount is in.
+constexpr double kSquareMetresPerHectare = 10000.0;
+
+/// One spring field in the plough, as the sowing alarm wants it.
+struct SowingClaim {
+  std::uint32_t row = 0;
+  std::int32_t last_sowing_day = 0;  ///< day of the year; later, and it will not ripen
+  float team_days = 0.0F;            ///< ploughing and harrowing still owed
+  float area_ga = 0.0F;
+};
+
+/// The adult horses of every herd of the horse kind: the same pool labor caps
+/// its harnessed crews with (labor_system.cpp, DraughtHorses), one horse to
+/// one man.
+std::uint32_t DraughtTeam(const ProductionConfig& config, const WorldState& world) {
+  std::uint32_t horses = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (config.horse_kind.value != kInvalidDefIdValue &&
+        herd.kind.value == config.horse_kind.value) {
+      horses += herd.adult_count;
+    }
+  }
+  return horses;
+}
+
+/// The spring fields that have entered the plough and still owe harnessed
+/// work, with the last day on which each can be sown and still ripen before
+/// the snow — the same test FinishSowing's gate asks (field_work.cpp).
+std::vector<SowingClaim> SpringFieldsInThePlough(const ProductionConfig& config,
+                                                 const WorldState& world,
+                                                 std::uint32_t day_of_year) {
+  std::vector<SowingClaim> claims;
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    float team_days = 0.0F;
+    if (field.phase == FieldPhase::kPlowing) {
+      team_days = field.work_days_remaining + (field.area_ga * config.farming.harrow_days_per_ha);
+    } else if (field.phase == FieldPhase::kHarrowing) {
+      team_days = field.work_days_remaining;
+    }
+    const std::int32_t ripen = RipenDays(config, field.crop);
+    if (field.kind != LandKind::kArable || !(team_days > 0.0F) || ripen == 0) {
+      continue;  // not harnessed work, or a crop the snow does not gate
+    }
+    const std::int32_t last_day = static_cast<std::int32_t>(config.growing_season_last_day) - ripen;
+    // A DAY ALREADY GONE IS NOT A FORECAST: that field is lost, and its loss
+    // is the unsown field the player sees, not this warning.
+    if (last_day < static_cast<std::int32_t>(day_of_year)) {
+      continue;
+    }
+    claims.push_back(SowingClaim{
+        .row = row, .last_sowing_day = last_day, .team_days = team_days, .area_ga = field.area_ga});
+  }
+  return claims;
+}
+
+}  // namespace
+
+void CollectSowingAlarms(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms) {
+  const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
+  std::vector<SowingClaim> claims = SpringFieldsInThePlough(config, world, day_of_year);
+  // THE ROOM IS DAYS, SPENT IN THE ORDER THE FIELDS MUST BE SOWN — the echo of
+  // the harvest alarm's room spent in reaping order, and measured so
+  // (tests/run/sowing_window): summed against the NEAREST deadline, every
+  // other field was asked against a day that was not its own. Ties keep row
+  // order; nothing in the model says otherwise.
+  std::ranges::stable_sort(claims, [](const SowingClaim& left, const SowingClaim& right) {
+    return left.last_sowing_day < right.last_sowing_day;
+  });
+  // THE CAPACITY IS THE TEAM (sowing_window, 2026-09-13): of hands, the
+  // settlement's own rate and the horses, only the horses never missed a year
+  // the others caught and were ever silent. An optimistic bound — a horse's
+  // whole day at one norm-day — so the alarm cannot cry wolf.
+  const auto team = static_cast<double>(DraughtTeam(config, world));
+  double spent = 0.0;
+  for (const SowingClaim& claim : claims) {
+    const double days =
+        static_cast<double>(claim.last_sowing_day) - static_cast<double>(day_of_year) + 1.0;
+    const double available = days - spent > 0.0 ? days - spent : 0.0;
+    // No horses and no harnessed work gets done at all: the whole field is short.
+    const double needed = team > 0.0 ? static_cast<double>(claim.team_days) / team
+                                     : std::numeric_limits<double>::infinity();
+    spent += needed;
+    if (needed <= available) {
+      continue;
+    }
+    const double short_share = team > 0.0 ? (needed - available) / needed : 1.0;
+    Alarm alarm;
+    alarm.kind = AlarmKind::kSowingWillNotFit;
+    alarm.field = world.fields.row_ids[claim.row];
+    const FieldRow& field = world.fields.rows[claim.row];
+    alarm.resource = config.crops[field.crop.value].resource;
+    alarm.amount = static_cast<std::int64_t>(static_cast<double>(claim.area_ga) * short_share *
+                                             kSquareMetresPerHectare);
+    alarms.push_back(alarm);
+  }
+}
+
 }  // namespace core

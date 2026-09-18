@@ -2333,6 +2333,84 @@ int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
 /// alarm points at is different under the two rules, and the difference is
 /// the whole claim. The alarm names ONE field and the player walks to it;
 /// an arbitrary field shown as a definite one is a lie (boss, 2026-09-05).
+/// kSowingWillNotFit (farming design, «Поздний сев»): the team's days are
+/// spent in the order the fields must be sown, a field is named for the
+/// square metres it cannot get, no horses means nothing harnessed gets done,
+/// and a winter crop and a field already at the (hand) sowing are not asked.
+int CheckTheSowingWillNotFit() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.growing_season_last_day = 40;
+  config.farming.harrow_days_per_ha = 0.5F;
+  config.horse_kind = core::LivestockKindId{0};
+  const auto crop = [&config](std::uint16_t resource, std::uint8_t reap_from, bool winter) {
+    core::CropDef def;
+    def.resource = core::ResourceId{resource};
+    def.is_winter = winter;
+    def.sow_to_month = 4;  // last sowing day of the window: 19
+    def.harvest_from_month = reap_from;
+    config.crops.push_back(def);
+  };
+  crop(0, 7, false);  // oat: ripens in 28 − 19 = 9 days, so sown by day 31
+  crop(1, 8, false);  // potato: 13 days, so sown by day 27
+  crop(2, 7, true);   // rye: a winter crop, the snow does not gate it
+  core::WorldState world;
+  world.calendar.tick = 20 * static_cast<core::Tick>(core::kTicksPerDay);
+  core::RefreshCalendarCaches(world.calendar);
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{0};
+  team.adult_count = 2;
+  const core::HerdId team_id = core::AppendRow(world.herds, team);
+  const auto field = [&world](std::uint16_t crop_id, core::FieldPhase phase, float ha, float owed) {
+    core::FieldRow row;
+    row.kind = core::LandKind::kArable;
+    row.area_ga = ha;
+    row.phase = phase;
+    row.crop = core::CropId{crop_id};
+    row.work_days_remaining = owed;
+    return core::AppendRow(world.fields, row);
+  };
+  // Day 20. The oat has 12 days, the potato 8. Row order is NOT sowing order:
+  // the potato, due first, is the third row.
+  const core::FieldId oat_plough = field(0, core::FieldPhase::kPlowing, 10.0F, 14.0F);  // 19 d
+  const core::FieldId oat_harrow = field(0, core::FieldPhase::kHarrowing, 8.0F, 9.0F);  // 9 d
+  const core::FieldId potato = field(1, core::FieldPhase::kPlowing, 4.0F, 6.0F);        // 8 d
+  const core::FieldId rye = field(2, core::FieldPhase::kPlowing, 1.0F, 100.0F);
+  const core::FieldId at_sowing = field(0, core::FieldPhase::kSowing, 5.0F, 50.0F);
+
+  const auto short_of = [&config, &world](core::FieldId id) {
+    std::vector<core::Alarm> alarms;
+    core::CollectSowingAlarms(config, world, alarms);
+    std::int64_t square_metres = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kSowingWillNotFit && alarm.field.value == id.value) {
+        square_metres += alarm.amount;
+      }
+    }
+    return square_metres;
+  };
+  // Two horses. The potato takes 4 days of its 8 and fits; the ploughed oat
+  // then needs 9.5 of the 8 left, short 1.5/9.5 of 10 ha; the harrowed oat
+  // finds nothing left and is short whole.
+  failures += Expect(short_of(potato) == 0,
+                     "sowing: the field due first takes the team's days first, and fits");
+  failures += Expect(short_of(oat_plough) == 15'789,
+                     "sowing: the next field is short by what the days left cannot cover");
+  failures += Expect(short_of(oat_harrow) == 80'000,
+                     "sowing: the last field finds the days gone — the whole of it short");
+  failures += Expect(short_of(rye) == 0 && short_of(at_sowing) == 0,
+                     "sowing: a winter crop and a field at the hand sowing are not asked");
+  world.herds.rows[core::FindRow(world.herds, team_id)].adult_count = 10;
+  failures +=
+      Expect(short_of(potato) == 0 && short_of(oat_plough) == 0 && short_of(oat_harrow) == 0,
+             "sowing: with ten horses it all fits, and nothing is said");
+  world.herds.rows[core::FindRow(world.herds, team_id)].adult_count = 0;
+  failures += Expect(short_of(potato) == 40'000 && short_of(oat_plough) == 100'000 &&
+                         short_of(oat_harrow) == 80'000,
+                     "sowing: with no horses nothing harnessed is done — every field short whole");
+  return failures;
+}
+
 int CheckTheRoomIsSpentInHarvestOrder() {
   int failures = 0;
   const std::filesystem::path root =
@@ -5662,6 +5740,7 @@ int main() {
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
+  failures += CheckTheSowingWillNotFit();
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckTheStrawClaimsRoomToo();

@@ -28,6 +28,7 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kHarvestWillNotFit:
     case AlarmKind::kHarvestWaitingOnField:
     case AlarmKind::kSeedShort:
+    case AlarmKind::kSowingWillNotFit:
       return alarm.field.value;
     case AlarmKind::kHerdStarving:
     case AlarmKind::kHerdWithoutStable:
