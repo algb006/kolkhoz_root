@@ -754,4 +754,42 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+Grams FodderFundGrams(const ProductionConfig& config,
+                      const WorldState& current,
+                      ResourceId resource) {
+  const float value =
+      resource.value < config.feed_values.size() ? config.feed_values[resource.value] : 0.0F;
+  if (!(value > 0.0F)) {
+    return 0;
+  }
+  float share = 0.0F;
+  for (const FeedLinkDef& link : config.feed_links) {
+    if (link.work_only != 0 && link.resource.value == resource.value) {
+      share = link.max_share;
+      break;
+    }
+  }
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  float units = 0.0F;
+  for (const HerdRow& herd : current.herds.rows) {
+    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+      continue;  // the fund is the kolkhoz's; a yard's animals feed themselves
+    }
+    bool works = false;
+    for (const FeedLinkDef& link : config.feed_links) {
+      works = works || (link.kind.value == herd.kind.value && link.work_only != 0);
+    }
+    if (!works) {
+      continue;  // a cow has no work ration, so it holds nothing in this fund
+    }
+    // FALSE: the fodder fund does not count on the night pasture. It is the
+    // chairman's order and the children that make it happen, and a reserve
+    // sized against a gain that can stop is short in the year it stops
+    // (herd_system.h).
+    units += FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, false);
+  }
+  const float year_units = units * static_cast<float>(kDaysPerYear) * share;
+  return GramsFromKilograms(year_units / value);
+}
+
 }  // namespace core

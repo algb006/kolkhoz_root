@@ -70,6 +70,24 @@ float FeedNeedUnits(const ProductionConfig& config,
                     std::uint8_t month,
                     bool grazing_tonight);
 
+/// @brief What the fodder fund holds of one resource, in grams: the working
+/// stock's WORK RATION FOR THE YEAR (resources design §6, third rung).
+///
+/// MEASURED OFF THE HARNESS AND NOT OFF THE HARVEST: counted from the animals
+/// that will pull the plough, in feed units, and a share of the year's need
+/// is what a working animal may take as grain at all. The share is the
+/// resource's own cap — `max_share` of its `work_only` row in feed_links.csv —
+/// and NOT traction_full_ration_share; the two agree on oats (0.5), barley
+/// and compound feed are 0.4. The daily need is the CURRENT month's times the
+/// year — a named simplification, the pasture months discount it.
+///
+/// ONE HOME FOR TWO READERS since 2026-09-18: the fund order (kUnsealFund)
+/// and the accumulation limit's base (district_plan.cpp) — a village that
+/// holds its team's oats is keeping house, not hoarding (boss seq 83).
+Grams FodderFundGrams(const ProductionConfig& config,
+                      const WorldState& current,
+                      ResourceId resource);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_HERD_SYSTEM_H_

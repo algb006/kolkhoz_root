@@ -5099,6 +5099,48 @@ int CheckTheAccumulationLimit() {
   return failures;
 }
 
+/// THE TEAM'S OATS ARE HUSBANDRY, NOT A HOARD (boss seq 83): on the shipped
+/// tables, forty working horses raise the oat limit by exactly the share of
+/// their fodder fund — the term that kept the bare village from being seized
+/// 3.0 t and 7.9 t of oats it was merely feeding a growing team with.
+int CheckTheLimitKeepsTheTeamsOats() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "limit: the shipped tables give a production configuration") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ITable* const livestock = tables->FindTable("livestock");
+  const auto oat = core::ResourceId{static_cast<std::uint16_t>(resources->FindRowByKey("oat"))};
+  const auto limit_of_oats = [&config, oat](const core::WorldState& world) {
+    core::WorldState named = world;
+    core::NameAccumulationLimit(config, named, false);
+    return oat.value < named.plan.accumulation_limit.size()
+               ? named.plan.accumulation_limit[oat.value]
+               : core::Grams{0};
+  };
+  core::WorldState without;
+  without.calendar.tick = 16U * core::kTicksPerDay;  // May, the plan's spring
+  core::RefreshCalendarCaches(without.calendar);
+  without.ledger.closed.eaten.assign(resources->RowCount(), 1'000'000);
+  core::WorldState with = without;
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
+  team.adult_count = 40;
+  core::AppendRow(with.herds, team);
+  const core::Grams fund = core::FodderFundGrams(config, with, oat);
+  const core::Grams raised = limit_of_oats(with) - limit_of_oats(without);
+  const auto expected = static_cast<core::Grams>(std::llround(
+      static_cast<double>(fund) * static_cast<double>(config.limit.accumulation_share)));
+  failures += Expect(fund > 0 && std::llabs(raised - expected) <= 1,
+                     "limit: forty horses raise the oat limit by the share of their fodder fund");
+  return failures;
+}
+
 /// «СДАТЬ СЕЙЧАС» (kDeliverPlan; econ's audit M2, Л1): the chairman ships
 /// what is owed before the turn, and the turn ships only the rest.
 int CheckDeliverPlanNow() {
@@ -5858,6 +5900,7 @@ int main() {
   failures += CheckDistrictLimit();
   failures += CheckDeliverPlanNow();
   failures += CheckTheAccumulationLimit();
+  failures += CheckTheLimitKeepsTheTeamsOats();
   failures += CheckTheMtsColumn();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();

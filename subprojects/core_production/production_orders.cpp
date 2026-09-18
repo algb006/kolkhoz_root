@@ -23,69 +23,6 @@
 namespace core {
 namespace {
 
-/// @brief What the fodder fund holds of one resource, in grams: the
-/// working stock's WORK RATION FOR THE YEAR.
-///
-/// MEASURED OFF THE HARNESS AND NOT OFF THE HARVEST, which is the whole
-/// difference between this rung and the plan reserve above it. The seed
-/// fund is counted from the sowing to come; this one from the animals that
-/// will pull the plough, in feed units, and a share of the year's need is
-/// what a working animal may take as grain at all.
-///
-/// THE SHARE IS THE RESOURCE'S OWN CAP — `max_share` of its `work_only`
-/// row in feed_links.csv — and NOT traction_full_ration_share, which this
-/// comment named until 2026-09-12. The two are different numbers that
-/// happen to agree on oats, 0.5 in both places; barley and compound feed
-/// are 0.4. They answer different questions: the fund is opened in ONE
-/// grain and is capped by what that grain may be, while the ration is one
-/// figure for the whole working stock and is measured against the balance
-/// knob (livestock design §11 — "больше половины нормы им не закроешь").
-/// Move the knob and this ceiling does not move; the comment said it
-/// would.
-///
-/// The daily need is taken at the CURRENT month and multiplied by the
-/// year: the pasture months discount it, so a ceiling read in July would
-/// be smaller than one read in January for the same herd. That is a
-/// simplification and it is named rather than hidden — the alternative is
-/// a twelve-month walk for a number the chairman uses once.
-Grams FodderFundGrams(const ProductionConfig& config,
-                      const WorldState& current,
-                      ResourceId resource) {
-  const float value =
-      resource.value < config.feed_values.size() ? config.feed_values[resource.value] : 0.0F;
-  if (!(value > 0.0F)) {
-    return 0;
-  }
-  float share = 0.0F;
-  for (const FeedLinkDef& link : config.feed_links) {
-    if (link.work_only != 0 && link.resource.value == resource.value) {
-      share = link.max_share;
-      break;
-    }
-  }
-  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
-  float units = 0.0F;
-  for (const HerdRow& herd : current.herds.rows) {
-    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
-      continue;  // the fund is the kolkhoz's; a yard's animals feed themselves
-    }
-    bool works = false;
-    for (const FeedLinkDef& link : config.feed_links) {
-      works = works || (link.kind.value == herd.kind.value && link.work_only != 0);
-    }
-    if (!works) {
-      continue;  // a cow has no work ration, so it holds nothing in this fund
-    }
-    // FALSE: the fodder fund does not count on the night pasture. It is the
-    // chairman's order and the children that make it happen, and a reserve
-    // sized against a gain that can stop is short in the year it stops
-    // (herd_system.h).
-    units += FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, false);
-  }
-  const float year_units = units * static_cast<float>(kDaysPerYear) * share;
-  return GramsFromKilograms(year_units / value);
-}
-
 /// @brief The chairman opens a sealed fund (resources design §6).
 ///
 /// IT SUBTRACTS AND NOTHING ELSE. The funds are notional — the grain is

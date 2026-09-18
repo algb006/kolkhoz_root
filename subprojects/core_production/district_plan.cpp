@@ -14,6 +14,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "district_visit.h"
+#include "herd_system.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -290,8 +291,14 @@ void NameAccumulationLimit(const ProductionConfig& config, WorldState& current, 
         seed += GramsFromKilograms(next.sowing_norm_kg_per_ha * field.area_ga);
       }
     }
-    const Grams base =
-        seed + at(current.plan.due, produce) + at(book.eaten, produce) + at(book.feed, produce);
+    // AND THE TEAM'S YEAR OF OATS (boss seq 83). Without the fodder fund the
+    // bare village, which hoards nothing, was seized 3.0 t of oats in its
+    // second year and 7.9 t in its fourth (oat_balance, seed 1929): last
+    // year's "fed" undercounts a growing team, and a limit that strikes
+    // husbandry is not the design's («бьёт не по хозяйственности»). The
+    // share stays; the base is made honest.
+    const Grams base = seed + at(current.plan.due, produce) + at(book.eaten, produce) +
+                       at(book.feed, produce) + FodderFundGrams(config, current, produce);
     const auto limit = static_cast<Grams>(std::llround(
         static_cast<double>(base) * static_cast<double>(config.limit.accumulation_share)));
     if (limit > 0) {
