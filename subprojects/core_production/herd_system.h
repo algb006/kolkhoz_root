@@ -84,6 +84,13 @@ float FeedNeedUnits(const ProductionConfig& config,
 /// ONE HOME FOR TWO READERS since 2026-09-18: the fund order (kUnsealFund)
 /// and the accumulation limit's base (district_plan.cpp) — a village that
 /// holds its team's oats is keeping house, not hoarding (boss seq 83).
+///
+/// THE MONTH DOES NOT MOVE IT for a working team, and that was measured
+/// rather than assumed (2026-09-18): the fund passes `grazing_tonight`
+/// false, and for the team the summer discount IS the night pasture, so
+/// forty horses hold 73 t of oats in every month of the year. A "read it at
+/// January" parameter was written for the limit on the contrary reading and
+/// taken out again the same hour — it changed nothing.
 Grams FodderFundGrams(const ProductionConfig& config,
                       const WorldState& current,
                       ResourceId resource);
