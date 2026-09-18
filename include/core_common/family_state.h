@@ -143,6 +143,14 @@ struct FamilyRow {
   /// checkbox says (ChairmanState::ration_auto).
   std::uint8_t ration_granted = 0;
 
+  /// Months in a row this yard turned with no supplied distiller within
+  /// reach (NearestSuppliedDistiller), stopping at 255; 0 when one was. From
+  /// `sober_months_min` its men drink less (the human's word, 2026-09-18:
+  /// «Если люди долго не пьют то алкоголизм медленно уменьшается»). It was
+  /// the village's until the same day; the reach made it the yard's
+  /// (register 207). Save 60.
+  std::uint8_t dry_months = 0;
+
   /// Share of the family's effort drifting into the private plot, 0-100.
   /// The central health indicator of the whole economy (life-cycle §10).
   /// STUB: no drift arithmetic exists in the design yet (phase 2).

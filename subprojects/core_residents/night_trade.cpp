@@ -2,6 +2,7 @@
 
 #include "night_trade.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -12,6 +13,7 @@
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
+#include "core_common/day_window.h"
 #include "core_common/emit_event.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -65,6 +67,10 @@ constexpr float kHeaviestCatchKg = 1000.0F;
 /// The adult age of a trade's keeper: the design says "взрослые мужчины".
 constexpr float kAdultYears = 18.0F;
 
+/// The counter-hash salt of the evening sale's hour: its own draw, so the
+/// sale moves no other number in the campaign.
+constexpr std::uint64_t kSaleHourSalt = 0x5A6E;
+
 bool Whole(float value) {
   return std::floor(value) == value;
 }
@@ -82,17 +88,6 @@ void AddCatchToPantry(FamilyRow& family, ResourceId resource, Grams amount) {
 }
 
 /// Where a resident's yard is: his family's house, or where it stood.
-bool YardOf(const WorldState& current, const ResidentRow& person, Vec2& yard) {
-  const std::uint32_t family_row = FindRow(current.families, person.family);
-  if (family_row == kNoRow) {
-    return false;
-  }
-  const FamilyRow& family = current.families.rows[family_row];
-  const std::uint32_t house_row = FindRow(current.units, family.house);
-  yard = house_row != kNoRow ? current.units.rows[house_row].position : family.lost_house_position;
-  return true;
-}
-
 bool OutsideTheOrganizations(const ResidentRow& person) {
   return person.social_status != SocialStatus::kKomsomol &&
          person.social_status != SocialStatus::kParty;
@@ -262,6 +257,46 @@ void ComeBack(const NightTradeConfig& config, WorldState& current) {
 }
 
 }  // namespace
+
+bool YardOf(const WorldState& current, const ResidentRow& person, Vec2& yard) {
+  const std::uint32_t family_row = FindRow(current.families, person.family);
+  if (family_row == kNoRow) {
+    return false;
+  }
+  const FamilyRow& family = current.families.rows[family_row];
+  const std::uint32_t house_row = FindRow(current.units, family.house);
+  yard = house_row != kNoRow ? current.units.rows[house_row].position : family.lost_house_position;
+  return true;
+}
+
+std::uint32_t SupplyMonthTag(SimDay day) {
+  const Date date = DateFromDay(day);
+  return (static_cast<std::uint32_t>(date.year) * kMonthsPerYear) +
+         static_cast<std::uint32_t>(date.month) + 1U;
+}
+
+std::uint32_t NearestSuppliedDistiller(const NightTradeConfig& config,
+                                       const WorldState& current,
+                                       Vec2 yard,
+                                       std::uint32_t tag) {
+  std::uint32_t nearest = kNoRow;
+  float best = config.samogon_reach_m;
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    const ResidentRow& person = current.residents.rows[row];
+    Vec2 his_yard;
+    if (person.night_trade != NightTrade::kDistiller || person.distiller_supplied_month != tag ||
+        tag == 0 || !YardOf(current, person, his_yard)) {
+      continue;
+    }
+    const float distance = std::hypot(his_yard.x - yard.x, his_yard.y - yard.y);
+    // At or within the reach; the nearer wins, and a tie keeps the lower row.
+    if (distance <= best && (nearest == kNoRow || distance < best)) {
+      best = distance;
+      nearest = row;
+    }
+  }
+  return nearest;
+}
 
 std::span<const std::string_view> NightTradeWorldParamKeys() {
   return kNightTradeKnownKeys;
@@ -478,23 +513,42 @@ bool IsMoonlitNight(const NightTradeConfig& config, SimDay day) {
   return day % kDaysPerMonth == config.moon_day_in_month;
 }
 
-void AssignNightTrades(const NightTradeConfig& config, float life_speedup, WorldState& current) {
-  // Distillers, up to the most the village keeps, weighted by drinking.
+namespace {
+
+/// One distiller drawn among the free men, weighted by drinking; false when
+/// there is nobody to draw.
+bool DrawDistiller(float life_speedup, WorldState& current) {
+  const std::vector<std::uint32_t> men =
+      FreeMen(current, life_speedup, kAdultYears, kOldestYears, FamilyId{});
+  std::vector<float> weights;
+  weights.reserve(men.size());
+  for (const std::uint32_t row : men) {
+    weights.push_back(1.0F + current.residents.rows[row].alcoholism);
+  }
+  const std::uint32_t chosen = DrawWeighted(current.rng, men, weights);
+  if (chosen == kNoRow) {
+    return false;
+  }
+  current.residents.rows[chosen].night_trade = NightTrade::kDistiller;
+  return true;
+}
+
+}  // namespace
+
+void AssignNightTrades(const NightTradeConfig& config,
+                       float life_speedup,
+                       WorldState& current,
+                       bool with_distillers) {
+  // Distillers, up to the most the village keeps, weighted by drinking — at
+  // the start only. After it a distiller is replaced FROM THE LEAK, month by
+  // month (TurnNightTheftMonth), and never at the year's turn: «закрыта —
+  // никогда, и на переломе тоже» (register 206).
   for (std::uint32_t kept = CountKeepers(current, NightTrade::kDistiller);
-       kept < config.distillers_max;
+       with_distillers && kept < config.distillers_max;
        ++kept) {
-    const std::vector<std::uint32_t> men =
-        FreeMen(current, life_speedup, kAdultYears, kOldestYears, FamilyId{});
-    std::vector<float> weights;
-    weights.reserve(men.size());
-    for (const std::uint32_t row : men) {
-      weights.push_back(1.0F + current.residents.rows[row].alcoholism);
-    }
-    const std::uint32_t chosen = DrawWeighted(current.rng, men, weights);
-    if (chosen == kNoRow) {
+    if (!DrawDistiller(life_speedup, current)) {
       break;
     }
-    current.residents.rows[chosen].night_trade = NightTrade::kDistiller;
   }
   // The net fishers, a pair from two yards.
   for (std::uint32_t kept = CountKeepers(current, NightTrade::kNetFisher); kept < 2U; ++kept) {
@@ -531,6 +585,37 @@ void AssignNightTrades(const NightTradeConfig& config, float life_speedup, World
 
 void RunNightOutings(const NightTradeConfig& config, WorldState& current) {
   const std::uint32_t hour = HourFromTick(current.calendar.tick);
+  // THE LEAK, SEEN EVERY NIGHT (register 206): a month is dry only if no
+  // night of it found a store of grain or potato open. Asked at the hour out
+  // of every night, moonlit or not — the watch stands or does not every
+  // night, not only on the distillers' one.
+  if (hour == config.hour_out && VillageLeakOpen(config, current)) {
+    current.night_theft.leak_open_this_month = 1;
+  }
+  // THE EVENING SALE (register 206: «Продажа — вечером»): every supplied
+  // distiller hands over at his gate once an evening, in an hour drawn from
+  // sunset to lights-out. The scene's cue; what is paid moves at the month's
+  // turn.
+  const std::uint32_t tag = SupplyMonthTag(current.calendar.day);
+  const std::uint32_t sunset = SunsetHour(current.weather.daylight_hours);
+  const auto lights_out = static_cast<std::uint32_t>(config.lights_out_hour);
+  const std::uint32_t span = lights_out > sunset ? lights_out - sunset : 1U;
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    const ResidentRow& person = current.residents.rows[row];
+    if (person.night_trade != NightTrade::kDistiller || person.distiller_supplied_month != tag) {
+      continue;
+    }
+    const std::uint32_t id = current.residents.row_ids[row].value;
+    const float draw =
+        CounterHashUnitFloat(current.world_seed, current.calendar.day, id, kSaleHourSalt);
+    const std::uint32_t sale_hour =
+        sunset + std::min(static_cast<std::uint32_t>(draw * static_cast<float>(span)), span - 1U);
+    if (hour == sale_hour) {
+      SimEvent& sale = EmitEvent(current, EventKind::kSamogonSale, EventSeverity::kRoutine);
+      sale.resident = current.residents.row_ids[row];
+      sale.family = person.family;
+    }
+  }
   if (hour == config.hour_out && IsMoonlitNight(config, current.calendar.day)) {
     GoOut(config, current);
     return;
@@ -553,8 +638,61 @@ bool ApplyStartNightTrades(const ITableSet& tables,
   if (!ParseNightTradeConfig(tables, config, error)) {
     return false;
   }
-  AssignNightTrades(config, life_speedup, world);
+  AssignNightTrades(config, life_speedup, world, true);
   return true;
+}
+
+bool VillageLeakOpen(const NightTradeConfig& config, const WorldState& current) {
+  for (std::uint32_t unit_row = 0; unit_row < current.units.rows.size(); ++unit_row) {
+    const UnitRow& unit = current.units.rows[unit_row];
+    const bool holds_raw = std::ranges::any_of(
+        config.raw_material, [&unit](ResourceId raw) { return UnreservedOf(unit, raw) > 0; });
+    if (holds_raw && !StoreLeakClosed(config, current, unit_row)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void TurnNightTheftMonth(const NightTradeConfig& config, float life_speedup, WorldState& current) {
+  const SimDay day = current.calendar.day;
+  if (day == 0 || day % kDaysPerMonth != 0) {
+    return;
+  }
+  NightTheftTally& tally = current.night_theft;
+  const std::uint32_t closed_tag = SupplyMonthTag(day - 1U);
+  const bool leak_open = tally.leak_open_this_month != 0;
+  // THE DRY MONTH (register 206): the leak closed on every day of it and no
+  // distiller supplied in it. The fact that closes quest_e1_22 is this.
+  const bool anybody_supplied =
+      std::ranges::any_of(current.residents.rows, [closed_tag](const ResidentRow& person) {
+        return person.night_trade == NightTrade::kDistiller &&
+               person.distiller_supplied_month == closed_tag;
+      });
+  if (!leak_open && !anybody_supplied) {
+    SimEvent& dry =
+        EmitEvent(current, EventKind::kStoreLeakClosedDryMonth, EventSeverity::kNotable);
+    dry.amount = static_cast<std::int64_t>(closed_tag);
+  }
+  // THE REPLACEMENT FROM THE LEAK (register 206): a vacancy is filled
+  // `distiller_replace_months` after it was seen, in a month whose leak was
+  // open; while the leak stays closed, never.
+  const std::uint32_t kept = CountKeepers(current, NightTrade::kDistiller);
+  if (kept >= config.distillers_max) {
+    tally.distiller_short_since = 0;
+  } else if (tally.distiller_short_since == 0) {
+    tally.distiller_short_since = closed_tag;
+  } else if (leak_open && static_cast<float>(closed_tag - tally.distiller_short_since) >=
+                              config.distiller_replace_months) {
+    for (std::uint32_t filled = kept; filled < config.distillers_max; ++filled) {
+      if (!DrawDistiller(life_speedup, current)) {
+        break;
+      }
+    }
+    tally.distiller_short_since =
+        CountKeepers(current, NightTrade::kDistiller) >= config.distillers_max ? 0U : closed_tag;
+  }
+  tally.leak_open_this_month = 0;
 }
 
 void ConsumeNightTradeOrders(WorldState& current) {

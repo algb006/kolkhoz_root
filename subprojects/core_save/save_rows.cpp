@@ -71,7 +71,8 @@ static_assert(sizeof(FamilyRow) == 72 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
-static_assert(AggregateArity<FamilyRow>() == 19,
+// 2026-09-18, save 60: dry_months, the yard's sobriety clock — 20 fields.
+static_assert(AggregateArity<FamilyRow>() == 20,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -495,6 +496,7 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteU16(row.plot_ratio_days);
   // The chairman's ration decision for this yard (kSetRation, save 57).
   out.WriteU8(row.ration_granted);
+  out.WriteU8(row.dry_months);  // save 60
   out.WriteFloat(row.private_plot_share);
 
   out.WriteI32(row.trudodni_account);
@@ -525,6 +527,7 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.plot_ratio_days = in.ReadU16();
   row.ration_granted =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's ration granted"));
+  row.dry_months = in.ReadU8();
   row.private_plot_share = in.ReadFloat();
 
   row.trudodni_account = in.ReadI32();

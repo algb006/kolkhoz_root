@@ -154,6 +154,12 @@ struct YearLedger {
   /// sugar — and out of the world (crime design §7; boss, parcel 364).
   ResourceAmounts stolen;
 
+  /// What drinkers' families paid distillers' families for samogon, in kind
+  /// (crime §6, «Самогон стоит семье»; register 205): a transfer between
+  /// pantries, booked so the price of the drink to a family can be read
+  /// beside its table. Save 60.
+  ResourceAmounts samogon_paid;
+
   ResourceAmounts yard_produce;  ///< Household herds' milk and eggs.
 
   ResourceAmounts plot_harvest;  ///< The gardens and the yards' own hay.

@@ -66,12 +66,28 @@ struct NightTheftTally {
   /// 0/1: kStoreLeakComplaint has been raised — once a campaign.
   std::uint8_t complaint_raised = 0;
 
-  /// Months in a row the village has turned without a distiller, read at
-  /// each month's turn as the supply is; 0 when there was one at the last
-  /// turn, stops at 255. From the second such month every man drinks less
-  /// (the human's word, 2026-09-18: «Если люди долго не пьют то алкоголизм
-  /// медленно уменьшается»; core_residents/alcoholism.h). Save format 55.
-  std::uint8_t dry_months = 0;
+  // `dry_months` stood here from save 55 to save 59: the months the VILLAGE
+  // turned without a distiller. Since 2026-09-18 dryness is a YARD's — «в
+  // 1000 м от двора есть самогонщик с сырьём» (register 207) — and lives in
+  // FamilyRow::dry_months. A village-wide count beside it would be the same
+  // rule with two answers.
+
+  /// 0/1: on some day of the month counted by `month_index` a store holding
+  /// grain or potato stood with its leak OPEN (StoreLeakClosed false). The
+  /// month's turn reads it — «утечка села закрыта» only if it stayed 0 all
+  /// month — and clears it. Save 60.
+  std::uint8_t leak_open_this_month = 0;
+
+  /// The supply-month tag (SupplyMonthTag) from which the village has had
+  /// fewer distillers than it keeps; 0 while it has its number. A vacancy is
+  /// filled `distiller_replace_months` after it if the leak is open that
+  /// month, never while it is closed (register 206). Save 60.
+  std::uint32_t distiller_short_since = 0;
+
+  /// The settlement's alcoholism: the mean of its men of 16 and over, taken
+  /// after each month's turn (crime §6, «Алкоголизм села»; register 207).
+  /// The report prints it; crossing 20 or 40 either way is an event. Save 60.
+  float settlement_alcoholism = 0.0F;
 };
 
 }  // namespace core

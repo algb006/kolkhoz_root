@@ -403,6 +403,28 @@ enum class EventKind : std::uint8_t {
   /// `first_store_issue` from `distribution_issued`.
   kHygieneDisease,
 
+  // -- samogon (2026-09-18; crime design §6-§7, registers 205-207) -----------
+
+  /// The settlement's alcoholism — the mean of its men of 16 and over, taken
+  /// at the month's turn — crossed 20 or 40; amount = the line, SIGNED: +20
+  /// rose above it, −20 fell below. kNotable. Seam key
+  /// `settlement_alcoholism_crossed`.
+  kSettlementAlcoholismCrossed,
+
+  /// resident — a supplied distiller hands over at his gate, in a random
+  /// hour from sunset to lights-out, on an evening of a month in which he
+  /// has raw material (register 206: «Продажа — вечером»). A scene's cue,
+  /// not an account: what is paid moves at the month's turn (the purchase).
+  /// kRoutine. Seam key `samogon_sale`.
+  kSamogonSale,
+
+  /// A whole month passed with the village's leak closed — every store of
+  /// grain or potato under a sober watch on every day — and no distiller
+  /// supplied in it (register 206). The fact `store_leak_closed_dry_month`
+  /// that closes `quest_e1_22` is raised by the core through this; amount =
+  /// the month's supply tag. kNotable. Seam key `store_leak_closed_dry_month`.
+  kStoreLeakClosedDryMonth,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

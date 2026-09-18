@@ -43,21 +43,121 @@ bool IsWinterMonth(Month month) {
   return month == Month::kDecember || month == Month::kJanuary || month == Month::kFebruary;
 }
 
-bool VillageHasDistiller(const WorldState& current) {
-  return std::ranges::any_of(current.residents.rows, [](const ResidentRow& person) {
-    return person.night_trade == NightTrade::kDistiller;
-  });
+/// The settlement's alcoholism: the mean of its men of 16 and over. STUB of
+/// the boundary: one settlement to the map (register 207).
+float SettlementAlcoholism(const AlcoholismConfig& config,
+                           float life_speedup,
+                           const WorldState& current) {
+  float sum = 0.0F;
+  std::uint32_t men = 0;
+  for (const ResidentRow& person : current.residents.rows) {
+    if (person.sex == Sex::kMale &&
+        BiologicalAgeYears(life_speedup, person.birth_day, current.calendar.day) >=
+            config.adult_from_years) {
+      sum += person.alcoholism;
+      ++men;
+    }
+  }
+  return men > 0 ? sum / static_cast<float>(men) : 0.0F;
+}
+
+/// THE PURCHASE IN KIND (crime §6, «Самогон стоит семье»; register 205): the
+/// drinker's family pays out of its own pantry, in the raw material's order,
+/// into the distiller's family's pantry — a transfer, not a leak. Kilograms
+/// by the drinker's band of the metric; an empty pantry buys nothing.
+void BuySamogon(const NightTradeConfig& night,
+                WorldState& current,
+                std::uint32_t buyer_row,
+                std::uint32_t distiller_row,
+                float alcoholism) {
+  // The design's bands read 21–40 and 41–60, so an edge belongs to the lower one.
+  float kg = 0.0F;
+  if (alcoholism > 2.0F * kBandWidth) {
+    kg = night.buy_kg_abuses;
+  } else if (alcoholism > kBandWidth) {
+    kg = night.buy_kg_drinks;
+  }
+  const std::uint32_t payer = FindRow(current.families, current.residents.rows[buyer_row].family);
+  const std::uint32_t seller =
+      FindRow(current.families, current.residents.rows[distiller_row].family);
+  if (!(kg > 0.0F) || payer == kNoRow || seller == kNoRow || payer == seller) {
+    return;
+  }
+  Grams owed = GramsFromKilograms(kg);
+  for (const ResourceId raw : night.raw_material) {
+    if (owed <= 0) {
+      break;
+    }
+    FamilyRow& from = current.families.rows[payer];
+    if (from.pantry.size() <= raw.value || from.pantry[raw.value] <= 0) {
+      continue;
+    }
+    const Grams paid = from.pantry[raw.value] < owed ? from.pantry[raw.value] : owed;
+    from.pantry[raw.value] -= paid;
+    FamilyRow& to = current.families.rows[seller];
+    if (to.pantry.size() <= raw.value) {
+      to.pantry.resize(static_cast<std::size_t>(raw.value) + 1U, 0);
+    }
+    to.pantry[raw.value] += paid;
+    AddLedgerAmount(current.ledger.current.samogon_paid, raw, paid);
+    owed -= paid;
+  }
+}
+
+/// «ЕСТЬ САМОГОН» IS A YARD'S (register 207): a distiller supplied in the
+/// month that closed (`closed_tag`), within reach of the yard. Asked once per
+/// family, and its answer is the +2, the sobriety and the purchase alike —
+/// three rules that can never disagree about one yard and one month. Moves
+/// every family's dry_months by the answer; returns the supplier's resident
+/// row per family row, kNoRow for a dry yard.
+std::vector<std::uint32_t> TurnYardSuppliers(const NightTradeConfig& night,
+                                             WorldState& current,
+                                             std::uint32_t closed_tag) {
+  std::vector<std::uint32_t> supplier(current.families.rows.size(), kNoRow);
+  for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
+    FamilyRow& yard_row = current.families.rows[family];
+    const std::uint32_t house = FindRow(current.units, yard_row.house);
+    const Vec2 yard =
+        house != kNoRow ? current.units.rows[house].position : yard_row.lost_house_position;
+    supplier[family] = NearestSuppliedDistiller(night, current, yard, closed_tag);
+    if (supplier[family] != kNoRow) {
+      yard_row.dry_months = 0;
+    } else if (yard_row.dry_months < UINT8_MAX) {
+      ++yard_row.dry_months;
+    }
+  }
+  return supplier;
+}
+
+/// THE SETTLEMENT'S ALCOHOLISM (crime §6, «Алкоголизм села»; register 207):
+/// the mean of its men after the month's turn, and a crossing of the 20 or
+/// the 40 line either way is news. Kept, so the next turn knows which side it
+/// was on.
+void TurnSettlementAlcoholism(const AlcoholismConfig& config,
+                              float life_speedup,
+                              WorldState& current) {
+  const float was = current.night_theft.settlement_alcoholism;
+  const float now = SettlementAlcoholism(config, life_speedup, current);
+  current.night_theft.settlement_alcoholism = now;
+  for (const float line : {kBandWidth, 2.0F * kBandWidth}) {
+    if ((was < line) != (now < line)) {
+      SimEvent& crossed =
+          EmitEvent(current, EventKind::kSettlementAlcoholismCrossed, EventSeverity::kNotable);
+      // The line, signed: +20 rose above it, −20 fell below.
+      crossed.amount = static_cast<std::int64_t>(now >= line ? line : -line);
+    }
+  }
 }
 
 /// The month's change for one adult man.
 float MonthChange(const AlcoholismConfig& config,
                   const WorldState& current,
                   const ResidentRow& person,
-                  bool distiller,
-                  bool sober_village,
+                  bool samogon_at_yard,
+                  bool sober_yard,
                   bool winter) {
   const bool holds_post = person.post.profession.value != kInvalidDefIdValue;
-  float change = distiller ? config.gain_with_distiller : 0.0F;
+  float change = samogon_at_yard ? config.gain_with_distiller : 0.0F;
   // A post holder is not idle: his post keeps him out of the accountant's day
   // and so off the worked-days count.
   if (winter && !holds_post && person.days_worked_this_month == 0) {
@@ -74,7 +174,7 @@ float MonthChange(const AlcoholismConfig& config,
   if (person.spouse.value != kInvalidEntityIdValue) {
     change -= config.loss_married;
   }
-  if (sober_village) {
+  if (sober_yard) {
     change -= config.loss_sober;
   }
   return change;
@@ -124,7 +224,10 @@ int AlcoholismBand(float alcoholism) {
   return index * static_cast<int>(kBandWidth);
 }
 
-void TurnAlcoholismMonth(const AlcoholismConfig& config, float life_speedup, WorldState& current) {
+void TurnAlcoholismMonth(const AlcoholismConfig& config,
+                         const NightTradeConfig& night,
+                         float life_speedup,
+                         WorldState& current) {
   const SimDay day = current.calendar.day;
   if (day == 0 || day % kDaysPerMonth != 0) {
     return;
@@ -132,17 +235,8 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config, float life_speedup, Wor
   // The month that closed: the one before today's.
   const std::uint32_t month_index = ((day / kDaysPerMonth) + kMonthsPerYear - 1U) % kMonthsPerYear;
   const bool winter = IsWinterMonth(static_cast<Month>(month_index));
-  const bool distiller = VillageHasDistiller(current);
-  // The supply is read at the turn, and so is its absence: a month counts
-  // as dry when the turn that closes it finds no distiller, the same moment
-  // the +2 is decided on, so the two can never disagree about one month.
-  std::uint8_t& dry = current.night_theft.dry_months;
-  if (distiller) {
-    dry = 0;
-  } else if (dry < UINT8_MAX) {
-    ++dry;
-  }
-  const bool sober_village = static_cast<float>(dry) >= config.sober_months_min;
+  const std::vector<std::uint32_t> supplier =
+      TurnYardSuppliers(night, current, SupplyMonthTag(day - 1U));
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     ResidentRow& person = current.residents.rows[row];
     const float age_years = BiologicalAgeYears(life_speedup, person.birth_day, day);
@@ -154,8 +248,19 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config, float life_speedup, Wor
     if (person.sex != Sex::kMale) {
       person.alcoholism = kMetricMin;
     } else if (age_years >= config.adult_from_years) {
-      const float change = MonthChange(config, current, person, distiller, sober_village, winter);
+      const std::uint32_t family = FindRow(current.families, person.family);
+      const std::uint32_t distiller = family != kNoRow ? supplier[family] : kNoRow;
+      const bool sober_yard =
+          family != kNoRow &&
+          static_cast<float>(current.families.rows[family].dry_months) >= config.sober_months_min;
       const float before = person.alcoholism;
+      // THE PURCHASE, by the band of the month that closed — what he drank in
+      // it is what his family pays for (register 205).
+      if (distiller != kNoRow) {
+        BuySamogon(night, current, row, distiller, before);
+      }
+      const float change =
+          MonthChange(config, current, person, distiller != kNoRow, sober_yard, winter);
       person.alcoholism = std::clamp(before + change, kMetricMin, config.epoch1_cap);
       const int band = AlcoholismBand(person.alcoholism);
       if (band != AlcoholismBand(before)) {
@@ -168,6 +273,7 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config, float life_speedup, Wor
     }
     person.days_worked_this_month = 0;
   }
+  TurnSettlementAlcoholism(config, life_speedup, current);
 }
 
 }  // namespace core

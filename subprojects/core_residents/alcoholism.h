@@ -41,6 +41,7 @@
 
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
+#include "night_trade.h"
 
 namespace core {
 
@@ -70,14 +71,29 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
 /// @brief The lower edge of the band `alcoholism` is in: 0, 20, 40, 60 or 80.
 int AlcoholismBand(float alcoholism);
 
-/// @brief The month's turn: the village's months without a distiller
-///        counted, every adult man's alcoholism moved by the rules above for
-///        the month that closed, every woman's held at 0, crossings said,
-///        and every resident's days_worked_this_month cleared.
+/// @brief The month's turn, for the month that closed:
+///        - each yard's dry months counted — a yard is dry when no distiller
+///          SUPPLIED that month stands within reach (NearestSuppliedDistiller;
+///          register 207);
+///        - every adult man's alcoholism moved by the rules above, the +2 by
+///          the samogon at HIS yard and the sobriety by his yard's dryness;
+///          every woman's held at 0; crossings said;
+///        - THE PURCHASE (crime §6, «Самогон стоит семье»; register 205): a
+///          man in the 21–40 band buys `buy_kg_drinks`, in 41–60
+///          `buy_kg_abuses`, out of his family's pantry — grain, then
+///          potato, then sugar — into the pantry of the nearest supplied
+///          distiller's family; an empty pantry buys nothing;
+///        - the settlement's alcoholism taken, its crossings of 20 and 40
+///          said;
+///        - every resident's days_worked_this_month cleared.
+/// @param night The distillers' reach, purchase and raw-material order.
 /// @param life_speedup LifeConfig::life_speedup, for the biological age.
 /// @pre Called on the first day of a month, before anything counts a day of
 ///      the new month.
-void TurnAlcoholismMonth(const AlcoholismConfig& config, float life_speedup, WorldState& current);
+void TurnAlcoholismMonth(const AlcoholismConfig& config,
+                         const NightTradeConfig& night,
+                         float life_speedup,
+                         WorldState& current);
 
 }  // namespace core
 

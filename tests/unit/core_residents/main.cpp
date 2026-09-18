@@ -12,6 +12,7 @@
 //     proportional burn of the bins, the season's variety mask and its
 //     ceiling, the plot hours with their factors and the garden they pay.
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -1642,7 +1643,7 @@ int CheckNightTrades() {
   forest.position = core::Vec2{.x = 2000.0F, .y = 1500.0F};
   AppendRow(world.stands, forest);
 
-  core::AssignNightTrades(config, kSpeedup, world);
+  core::AssignNightTrades(config, kSpeedup, world, true);  // the start
   std::array<std::uint32_t, 4> kept{};
   core::FamilyId first_fisher_yard;
   bool fishers_apart = true;
@@ -1662,7 +1663,7 @@ int CheckNightTrades() {
                          trade_of(komsomol) == core::NightTrade::kNone &&
                          trade_of(woman) == core::NightTrade::kNone,
                      "trades: never a party member, a komsomol member or a woman");
-  core::AssignNightTrades(config, kSpeedup, world);
+  core::AssignNightTrades(config, kSpeedup, world, false);  // a year's turn
   std::uint32_t still = 0;
   for (const core::ResidentRow& person : world.residents.rows) {
     still += person.night_trade != core::NightTrade::kNone ? 1U : 0U;
@@ -1682,7 +1683,7 @@ int CheckNightTrades() {
     members.residents.rows[FindRow(members.residents, id)].social_status =
         index % 2 == 0 ? core::SocialStatus::kParty : core::SocialStatus::kKomsomol;
   }
-  core::AssignNightTrades(config, kSpeedup, members);
+  core::AssignNightTrades(config, kSpeedup, members, true);
   bool none_kept = true;
   for (const core::ResidentRow& person : members.residents.rows) {
     none_kept = none_kept && person.night_trade == core::NightTrade::kNone;
@@ -1936,6 +1937,9 @@ int CheckRawMaterialLeak() {
 int CheckAlcoholism() {
   int failures = 0;
   const core::AlcoholismConfig config;  // boss's numbers
+  // The distillers' reach and purchase at their defaults; no raw material
+  // named, so this test buys nothing (the purchase has its own below).
+  const core::NightTradeConfig night;
   constexpr float kSpeedup = 4.0F;
   // Day 48: the first day of January, so the month that closed is December.
   constexpr core::SimDay kJanuaryFirst = core::kDaysPerYear;
@@ -1974,6 +1978,13 @@ int CheckAlcoholism() {
     return world.residents.rows[FindRow(world.residents, id)];
   };
   row_of(distiller).night_trade = core::NightTrade::kDistiller;
+  // SUPPLIED in December, the month the January turn closes: «есть самогон»
+  // is a supplied distiller within reach, and both yards here stand at the
+  // same spot (neither has a house), so both are in reach.
+  row_of(distiller).distiller_supplied_month = core::SupplyMonthTag(kJanuaryFirst - 1U);
+  const auto dry_months_of = [&world](core::FamilyId yard) {
+    return world.families.rows[FindRow(world.families, yard)].dry_months;
+  };
   row_of(husband).spouse = woman;
   row_of(drinking_husband).spouse = woman;
   row_of(watchman).post =
@@ -1991,14 +2002,14 @@ int CheckAlcoholism() {
   // Not a month's first day: nothing moves, the count is kept.
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst + 1U) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
   failures += Expect(row_of(distiller).alcoholism == 18.0F &&
                          row_of(husband).days_worked_this_month == 3 && world.step_events.empty(),
                      "drinking: a day that is not a month's first changes nothing");
 
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
   // The distiller himself: supply +2, an idle December +1 — 18 to 21, over 20.
   failures += Expect(row_of(distiller).alcoholism == 21.0F && crossings(distiller).size() == 1 &&
                          crossings(distiller)[0] == 20,
@@ -2018,7 +2029,16 @@ int CheckAlcoholism() {
   failures += Expect(
       row_of(drinking_husband).alcoholism == 40.5F && row_of(husband).days_worked_this_month == 0,
       "drinking: the month's worked days start again after the turn");
-  failures += Expect(world.step_events.size() == 2, "drinking: two crossings in January");
+  const auto count_of = [&world](core::EventKind kind) {
+    return std::ranges::count_if(
+        world.step_events, [kind](const core::SimEvent& event) { return event.kind == kind; });
+  };
+  failures += Expect(count_of(core::EventKind::kAlcoholismBandCrossed) == 2,
+                     "drinking: two crossings in January");
+  // Its men after the turn — 21, 0, 60 and 40.5 (the child is no man yet) —
+  // average 30.4: the settlement rose over 20, and says so once.
+  failures += Expect(count_of(core::EventKind::kSettlementAlcoholismCrossed) == 1,
+                     "settlement: the village's drinking rose over 20 in January");
 
   // February's first day, the distiller gone: the drinkers come down.
   world.step_events.clear();
@@ -2028,7 +2048,7 @@ int CheckAlcoholism() {
   world.calendar.tick =
       static_cast<core::Tick>(kJanuaryFirst + core::kDaysPerMonth) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
   failures +=
       Expect(row_of(drinking_husband).alcoholism == 38.5F &&
                  crossings(drinking_husband).size() == 1 && crossings(drinking_husband)[0] == 20,
@@ -2037,7 +2057,7 @@ int CheckAlcoholism() {
                          crossings(watchman)[0] == 40,
                      "drinking: a crossing downward is said with the band he is in now");
   failures += Expect(row_of(husband).alcoholism == 0.0F, "drinking: never below zero");
-  failures += Expect(world.night_theft.dry_months == 1,
+  failures += Expect(dry_months_of(happy_yard) == 1,
                      "sobriety: the first turn without a distiller counts one dry month");
 
   // March's first day, still no distiller: the SECOND dry month, and the
@@ -2048,9 +2068,9 @@ int CheckAlcoholism() {
   world.calendar.tick =
       static_cast<core::Tick>(kJanuaryFirst + (2U * core::kDaysPerMonth)) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
   failures +=
-      Expect(world.night_theft.dry_months == 2, "sobriety: the second turn without one counts two");
+      Expect(dry_months_of(happy_yard) == 2, "sobriety: the second turn without one counts two");
   // -1 work, -1 wife, -1 sober: 38.5 to 35.5.
   failures += Expect(row_of(drinking_husband).alcoholism == 35.5F,
                      "sobriety: from the second dry month a working husband loses three");
@@ -2062,14 +2082,107 @@ int CheckAlcoholism() {
   failures += Expect(row_of(distiller).alcoholism == 22.0F,
                      "sobriety: an idle winter month and a dry village cancel");
 
-  // April: a distiller again, and the clock starts from nought.
+  // April: a distiller again — supplied in March, the month that closes —
+  // and the clock starts from nought.
+  constexpr core::SimDay kAprilFirst = kJanuaryFirst + (3U * core::kDaysPerMonth);
   row_of(watchman).night_trade = core::NightTrade::kDistiller;
-  world.calendar.tick =
-      static_cast<core::Tick>(kJanuaryFirst + (3U * core::kDaysPerMonth)) * core::kTicksPerDay;
+  row_of(watchman).distiller_supplied_month = core::SupplyMonthTag(kAprilFirst - 1U);
+  world.calendar.tick = static_cast<core::Tick>(kAprilFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, kSpeedup, world);
-  failures += Expect(world.night_theft.dry_months == 0,
-                     "sobriety: a distiller at the turn resets the dry months");
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  failures += Expect(dry_months_of(happy_yard) == 0,
+                     "sobriety: a supplied distiller in reach at the turn resets the dry months");
+
+  // A DISTILLER WITHOUT RAW MATERIAL IS NO SUPPLY (register 206): May, the
+  // same man, but nothing carried off in April — the yard counts a dry month.
+  constexpr core::SimDay kMayFirst = kAprilFirst + core::kDaysPerMonth;
+  world.calendar.tick = static_cast<core::Tick>(kMayFirst) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  failures += Expect(dry_months_of(happy_yard) == 1,
+                     "sobriety: a distiller with nothing supplied last month is no samogon");
+  return failures;
+}
+
+/// THE PURCHASE AND THE REACH (crime §6; registers 205, 207): a drinker's
+/// family pays in kind out of its pantry — grain first, then potato — into
+/// the pantry of the nearest supplied distiller's family; a yard beyond
+/// 1000 m has no samogon; the settlement's alcoholism crosses its lines.
+int CheckSamogonPurchase() {
+  int failures = 0;
+  const core::AlcoholismConfig config;
+  // Defaults: reach 1000 m, 3 kg for a drinker and 8 kg for an abuser.
+  core::NightTradeConfig night;
+  night.raw_material = {core::ResourceId{0}, core::ResourceId{1}};  // grain, potato
+  constexpr float kSpeedup = 4.0F;
+  constexpr core::SimDay kJanuaryFirst = core::kDaysPerYear;
+  constexpr std::int32_t kAdultBirth = -192;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+
+  core::WorldState world;
+  const auto yard_at = [&world](float x, core::Grams grain, core::Grams potato) {
+    core::UnitRow house;
+    house.level = 1;
+    house.position = core::Vec2{.x = x, .y = 0.0F};
+    const core::UnitId house_id = AppendRow(world.units, house);
+    core::FamilyRow family;
+    family.house = house_id;
+    family.pantry = {grain, potato};
+    return AppendRow(world.families, family);
+  };
+  const core::FamilyId still_yard = yard_at(0.0F, 0, 0);
+  const core::FamilyId near_yard = yard_at(600.0F, 2 * kKilo, 50 * kKilo);
+  const core::FamilyId far_yard = yard_at(1500.0F, 50 * kKilo, 0);
+  const core::FamilyId mid_yard = yard_at(-800.0F, 0, 10 * kKilo);
+  const auto man = [&world](core::FamilyId family, float alcoholism) {
+    core::ResidentRow person;
+    person.sex = core::Sex::kMale;
+    person.birth_day = kAdultBirth;
+    person.family = family;
+    person.alcoholism = alcoholism;
+    return AppendRow(world.residents, person);
+  };
+  const core::ResidentId distiller = man(still_yard, 0.0F);
+  man(near_yard, 45.0F);   // abuses: 8 kg
+  man(far_yard, 30.0F);    // drinks, but beyond reach
+  man(mid_yard, 30.0F);    // drinks: 3 kg
+  man(still_yard, 30.0F);  // drinks at his own family's still: nothing changes hands
+  const auto pantry = [&world](core::FamilyId family, std::size_t resource) {
+    const core::FamilyRow& row = world.families.rows[FindRow(world.families, family)];
+    return row.pantry.size() > resource ? row.pantry[resource] : 0;
+  };
+  world.residents.rows[FindRow(world.residents, distiller)].night_trade =
+      core::NightTrade::kDistiller;
+  world.residents.rows[FindRow(world.residents, distiller)].distiller_supplied_month =
+      core::SupplyMonthTag(kJanuaryFirst - 1U);
+  world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+
+  failures += Expect(pantry(near_yard, 0) == 0 && pantry(near_yard, 1) == 44 * kKilo,
+                     "purchase: 8 kg — the yard's 2 kg of grain first, then 6 of potato");
+  failures += Expect(pantry(mid_yard, 1) == 7 * kKilo,
+                     "purchase: a man in the 21–40 band pays 3 kg, not the abuser's 8");
+  failures += Expect(pantry(still_yard, 0) == 2 * kKilo && pantry(still_yard, 1) == 9 * kKilo,
+                     "purchase: the distiller's family receives what was paid, a transfer");
+  failures += Expect(pantry(far_yard, 0) == 50 * kKilo,
+                     "reach: a yard 1500 m away has no samogon and buys none");
+  failures += Expect(world.ledger.current.samogon_paid.size() >= 2 &&
+                         world.ledger.current.samogon_paid[0] == 2 * kKilo &&
+                         world.ledger.current.samogon_paid[1] == 9 * kKilo,
+                     "purchase: the book carries only what crossed between families");
+  // December closed, a winter month, and nobody worked or holds a post: +1
+  // idle each. Men: 0 +2 +1 = 3 (his own yard), 45 +2 +1 = 48, 30 with no
+  // samogon +1 = 31, 30 +2 +1 = 33 twice — mean 148 / 5 = 29.6, over 20.
+  failures += Expect(world.night_theft.settlement_alcoholism > 29.55F &&
+                         world.night_theft.settlement_alcoholism < 29.65F,
+                     "settlement: the mean of its men after the turn");
+  std::uint32_t crossed_up = 0;
+  for (const core::SimEvent& event : world.step_events) {
+    crossed_up +=
+        event.kind == core::EventKind::kSettlementAlcoholismCrossed && event.amount == 20 ? 1U : 0U;
+  }
+  failures += Expect(crossed_up == 1, "settlement: rising over 20 is said once, signed +20");
   return failures;
 }
 
@@ -2446,6 +2559,7 @@ int main() {
   failures += CheckRationSwitch();
   failures += CheckIssueNorms();
   failures += CheckLockedRationFood();
+  failures += CheckSamogonPurchase();
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();

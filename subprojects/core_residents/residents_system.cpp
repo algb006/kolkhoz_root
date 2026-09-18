@@ -366,11 +366,13 @@ class ResidentsSystem final : public IResidentsSystem {
                        current);
       // And the trades still missing are handed out, among those whom the
       // year's membership left outside the organizations.
-      AssignNightTrades(config_.night_trade, config_.life_speedup, current);
+      AssignNightTrades(config_.night_trade, config_.life_speedup, current, false);
     }
-    // The month's drinking, over the month the labor day close has just
-    // finished counting (alcoholism.h).
-    TurnAlcoholismMonth(config_.alcoholism, config_.life_speedup, current);
+    // The stores' month first — the dry month and the distillers' replacement
+    // (night_trade.h) — then the month's drinking, over the month the labor
+    // day close has just finished counting (alcoholism.h).
+    TurnNightTheftMonth(config_.night_trade, config_.life_speedup, current);
+    TurnAlcoholismMonth(config_.alcoholism, config_.night_trade, config_.life_speedup, current);
     // The school before the wave: a child enrolled in September is a pupil
     // on the day the autumn wave asks.
     RunSchoolDay(config_.schooling, config_.life_speedup, current);

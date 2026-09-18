@@ -149,11 +149,29 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
 /// @brief Whether `day` is the moonlit night of its month.
 bool IsMoonlitNight(const NightTradeConfig& config, SimDay day);
 
-/// @brief The year's turn: the trades still missing are handed out by the
-///        rules above, by lot from the world's stream. Residents who already
-///        keep one keep it.
+/// @brief The trades still missing are handed out by the rules above, by lot
+///        from the world's stream. Residents who already keep one keep it.
 /// @param life_speedup LifeConfig::life_speedup, for the biological age.
-void AssignNightTrades(const NightTradeConfig& config, float life_speedup, WorldState& current);
+/// @param with_distillers True at the start only. After it a distiller is
+///        replaced from the leak, month by month (TurnNightTheftMonth), and
+///        never at the year's turn (register 206: «и на переломе тоже»).
+void AssignNightTrades(const NightTradeConfig& config,
+                       float life_speedup,
+                       WorldState& current,
+                       bool with_distillers);
+
+/// @brief Is some store holding grain or potato standing with its leak open
+///        (StoreLeakClosed false)?
+bool VillageLeakOpen(const NightTradeConfig& config, const WorldState& current);
+
+/// @brief The month's turn of the stores' leak (register 206), for the month
+///        that closed: kStoreLeakClosedDryMonth when its leak stayed closed
+///        every night and no distiller was supplied in it; a missing
+///        distiller replaced `distiller_replace_months` after the vacancy
+///        was seen, in a month whose leak was open, never while it stays
+///        closed; the month's leak flag cleared.
+/// @pre Called on the first day of a month, before TurnAlcoholismMonth.
+void TurnNightTheftMonth(const NightTradeConfig& config, float life_speedup, WorldState& current);
 
 /// @brief The hour out of a moonlit night: yesterday's outings are dropped;
 ///        every keeper whose night it is goes out — a row, a
@@ -161,6 +179,24 @@ void AssignNightTrades(const NightTradeConfig& config, float life_speedup, World
 ///        at any other hour or on any other night.
 /// @pre Called once per tick of the decisions slot.
 void RunNightOutings(const NightTradeConfig& config, WorldState& current);
+
+/// @brief Where a resident's yard stands: his family's house, or where it
+///        stood if it fell. False when he has no family row.
+bool YardOf(const WorldState& current, const ResidentRow& person, Vec2& yard);
+
+/// @brief The month tag a supplied distiller carries for the calendar month
+///        of `day` (year × 12 + month, plus one; nought means never), the
+///        same tag StealRawMaterial writes.
+std::uint32_t SupplyMonthTag(SimDay day);
+
+/// @brief The row of the NEAREST distiller supplied in the month `tag`
+///        whose yard is within `samogon_reach_m` of `yard` (crime §6,
+///        register 207: «самогонщик достаёт на 1000 м от своего двора»), or
+///        kNoRow. «Есть самогон» is this, asked of a yard.
+std::uint32_t NearestSuppliedDistiller(const NightTradeConfig& config,
+                                       const WorldState& current,
+                                       Vec2 yard,
+                                       std::uint32_t tag);
 
 /// @brief Is the leak of the store at `unit_row` CLOSED (crime design §7,
 ///        register 206)? A watchman at his post — at the unit or at its

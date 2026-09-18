@@ -156,6 +156,12 @@ const char* KindName(core::EventKind kind) {
       return "mts_column_left";
     case core::EventKind::kMtsColumnNotArrived:
       return "mts_column_not_arrived";
+    case core::EventKind::kSettlementAlcoholismCrossed:
+      return "settlement_alcoholism_crossed";
+    case core::EventKind::kSamogonSale:
+      return "samogon_sale";
+    case core::EventKind::kStoreLeakClosedDryMonth:
+      return "store_leak_closed_dry_month";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

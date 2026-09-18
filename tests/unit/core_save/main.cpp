@@ -203,6 +203,7 @@ core::WorldState MakeWorld() {
   rich.lost_house_position = core::Vec2{.x = 812.5F, .y = 9044.25F};  // save format 35
   rich.in_tent = 1;
   rich.ration_granted = 1;  // save 57; `bare` keeps 0
+  rich.dry_months = 4;      // save 60, the yard's sobriety clock
   rich.household_hours = 4.25F;
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
@@ -493,6 +494,8 @@ core::WorldState MakeWorld() {
   // What the district asked (save 58, M12): not empty, or a codec that forgot
   // to read the column would round-trip it perfectly.
   world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
+  // The drink's price in kind (save 60): not empty either.
+  world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -517,9 +520,12 @@ core::WorldState MakeWorld() {
   world.night_theft.stolen_this_month = 73'000;
   world.night_theft.month_index = 17;
   world.night_theft.complaint_raised = 1;
-  // Months without a distiller (save format 55): not 0, so the round trip
-  // can tell the field from a byte nobody wrote.
-  world.night_theft.dry_months = 5;
+  // Save 60: the month's open leak, the distillers' vacancy, the settlement's
+  // alcoholism — none at its default, so the round trip can tell each from a
+  // field nobody wrote. (dry_months left for the yard, save 60.)
+  world.night_theft.leak_open_this_month = 1;
+  world.night_theft.distiller_short_since = 23;
+  world.night_theft.settlement_alcoholism = 31.5F;
   // The district MTS's column (save format 46): every field set apart.
   world.mts_column.phase = core::MtsColumnPhase::kWorking;
   world.mts_column.lot = core::LimitLotId{1};
@@ -724,7 +730,9 @@ core::WorldState MakeWitnessWorld() {
   witness.night_theft.stolen_this_month = 4500;
   witness.night_theft.month_index = 17;
   witness.night_theft.complaint_raised = 1;
-  witness.night_theft.dry_months = 7;
+  witness.night_theft.leak_open_this_month = 1;
+  witness.night_theft.distiller_short_since = 29;
+  witness.night_theft.settlement_alcoholism = 12.25F;
 
   witness.mts_column.phase = core::MtsColumnPhase::kWorking;
   witness.mts_column.lot = core::LimitLotId{1};
@@ -811,7 +819,12 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
                     Little(static_cast<std::uint64_t>(world.night_theft.stolen_this_month), 8)});
   chunks.push_back({"night_theft.month_index", U32(world.night_theft.month_index)});
   chunks.push_back({"night_theft.complaint_raised", U8(world.night_theft.complaint_raised)});
-  chunks.push_back({"night_theft.dry_months", U8(world.night_theft.dry_months)});
+  chunks.push_back(
+      {"night_theft.leak_open_this_month", U8(world.night_theft.leak_open_this_month)});
+  chunks.push_back(
+      {"night_theft.distiller_short_since", U32(world.night_theft.distiller_short_since)});
+  chunks.push_back(
+      {"night_theft.settlement_alcoholism", F32(world.night_theft.settlement_alcoholism)});
 
   chunks.push_back({"mts_column.phase", Enum8(world.mts_column.phase)});
   chunks.push_back({"mts_column.lot", U16(world.mts_column.lot.value)});
@@ -989,7 +1002,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // length (the human's five steps of the sky).
     // 2026-09-18, save 57: +3 — the ration's checkbox (1) and the chairman's
     // issue norms, empty in this fixture (a 2-byte length). Predicted +3.
-    {"world", 388, 0xcc82f418ab7409a9ULL},
+    // Save 60: +8 — the tally lost dry_months (1) and gained the month's open
+    // leak (1), the vacancy (4) and the settlement's alcoholism (4).
+    {"world", 396, 0x333a6ca60c4614c5ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -997,7 +1012,8 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // 2026-09-18, save 59: distiller_supplied_month, 4 bytes by 2 residents.
     {"residents", 370, 0xda375fdf183f1167ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
-    {"families", 194, 0xbcc55423c2869a5ULL},
+    // Save 60: +2 — a yard's dry months, one byte per family of two.
+    {"families", 196, 0xde79d1ae128497abULL},
     {"fields", 263, 0x224499bb25ff9b5bULL},
     {"units", 323, 0xcfb11cfce6d72141ULL},
     {"herds", 66, 0xe3846623b64933cfULL},
@@ -1046,7 +1062,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // 2026-09-18, save 58: plan_due (M12) — the current book's empty column
     // (a 2-byte length) and the closed book's three positions (2 + 3 x 8).
     // +28, counted before the build.
-    {"ledger", 672, 0x22880b30acc9fa67ULL},
+    // Save 60: +20 — samogon_paid, the current book's empty column (2) and
+    // the closed book's two positions (2 + 2 x 8).
+    {"ledger", 692, 0x6aceddb6a5d50eadULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1276,6 +1294,8 @@ int main() {
   failures += Expect(
       loaded.families.rows[0].ration_granted == 1 && loaded.families.rows[1].ration_granted == 0,
       "a yard granted the ration comes back granted, and one not granted, not");
+  failures +=
+      Expect(loaded.families.rows[0].dry_months == 4, "a yard's dry months come back (save 60)");
   failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
                          loaded.wedding_waits.rows[0].bride.value == 7 &&
                          loaded.wedding_waits.rows[0].groom.value == 9 &&
@@ -1468,8 +1488,11 @@ int main() {
                  loaded.night_theft.stolen_this_month == 73'000 &&
                  loaded.night_theft.month_index == 17 && loaded.night_theft.complaint_raised == 1,
              "the stolen and the distillers' month came back, each its own number");
-  failures += Expect(loaded.night_theft.dry_months == 5,
-                     "the months without a distiller came back (save format 55)");
+  failures += Expect(loaded.night_theft.leak_open_this_month == 1 &&
+                         loaded.night_theft.distiller_short_since == 23 &&
+                         loaded.night_theft.settlement_alcoholism == 31.5F,
+                     "the leak's month, the vacancy and the settlement's drinking came back "
+                     "(save 60)");
   failures +=
       Expect(loaded.mts_column.phase == core::MtsColumnPhase::kWorking &&
                  loaded.mts_column.lot.value == 1 && loaded.mts_column.arrive_day == 110 &&

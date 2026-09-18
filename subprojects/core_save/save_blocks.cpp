@@ -48,9 +48,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // seasons lived, for the transition's variety block. 200 became 208.
 // 2026-09-18, save 58: plan_due, what the district asked by position (M12) —
 // a sixteenth amounts column and a fifty-sixth field.
-static_assert(sizeof(YearLedger) == 208 + (16 * kAmountsSize),
+// 2026-09-18, save 60: samogon_paid, the drink's price in kind (register
+// 205) — a seventeenth column and a fifty-seventh field.
+static_assert(sizeof(YearLedger) == 208 + (17 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 56,
+static_assert(AggregateArity<YearLedger>() == 57,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -136,9 +138,12 @@ static_assert(AggregateArity<LimitState>() == 2,
 // "nothing changed" about a byte that had. The arity asks the other question.
 // And it asked it on 2026-09-18, save 55, when `dry_months` went into that
 // very padding: the size stayed 16, the arity went red, alone.
-static_assert(sizeof(NightTheftTally) == 16,
+// Save 60 the same day: dry_months LEFT for the yard (FamilyRow), and the
+// leak's month flag, the distillers' vacancy and the settlement's
+// alcoholism came — six fields; the size is read off the build.
+static_assert(sizeof(NightTheftTally) == 24,
               "NightTheftTally changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<NightTheftTally>() == 4,
+static_assert(AggregateArity<NightTheftTally>() == 6,
               "NightTheftTally gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(MtsColumnState) == 24,
               "MtsColumnState changed — update the codec and VERSION_SAVE");
@@ -244,6 +249,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.nets);
   sink.WriteAmounts(DefKind::kResource, book.night_catch);
   sink.WriteAmounts(DefKind::kResource, book.stolen);
+  sink.WriteAmounts(DefKind::kResource, book.samogon_paid);  // save 60
   sink.WriteAmounts(DefKind::kResource, book.yard_produce);
   sink.WriteAmounts(DefKind::kResource, book.plot_harvest);
   sink.WriteAmounts(DefKind::kResource, book.eaten);
@@ -313,6 +319,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.nets = source.ReadAmounts(DefKind::kResource);
   book.night_catch = source.ReadAmounts(DefKind::kResource);
   book.stolen = source.ReadAmounts(DefKind::kResource);
+  book.samogon_paid = source.ReadAmounts(DefKind::kResource);
   book.yard_produce = source.ReadAmounts(DefKind::kResource);
   book.plot_harvest = source.ReadAmounts(DefKind::kResource);
   book.eaten = source.ReadAmounts(DefKind::kResource);
@@ -546,8 +553,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU64(static_cast<std::uint64_t>(world.night_theft.stolen_this_month));
   out.WriteU32(world.night_theft.month_index);
   out.WriteU8(world.night_theft.complaint_raised);
-  // Months without a distiller (save format 55): the sobriety's clock.
-  out.WriteU8(world.night_theft.dry_months);
+  // Save 60: the month's open leak, the distillers' vacancy, the
+  // settlement's alcoholism (the sobriety's clock moved to the yard).
+  out.WriteU8(world.night_theft.leak_open_this_month);
+  out.WriteU32(world.night_theft.distiller_short_since);
+  out.WriteFloat(world.night_theft.settlement_alcoholism);
 
   // The district MTS's column of this season (MTS design §1, save format 46).
   out.WriteU8(static_cast<std::uint8_t>(world.mts_column.phase));
@@ -648,7 +658,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->night_theft.stolen_this_month = static_cast<Grams>(in.ReadU64());
   world->night_theft.month_index = in.ReadU32();
   world->night_theft.complaint_raised = in.ReadU8();
-  world->night_theft.dry_months = in.ReadU8();
+  world->night_theft.leak_open_this_month =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the month's open leak"));
+  world->night_theft.distiller_short_since = in.ReadU32();
+  world->night_theft.settlement_alcoholism = in.ReadFloat();
 
   world->mts_column.phase = static_cast<MtsColumnPhase>(
       source.ReadEnumValue(0,
