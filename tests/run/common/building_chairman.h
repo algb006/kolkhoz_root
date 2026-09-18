@@ -35,6 +35,7 @@
 #include "sawmill_policy.h"
 #include "school_policy.h"
 #include "social_objects_policy.h"
+#include "transition_policy.h"
 #include "upgrade_policy.h"
 #include "watchman_policy.h"
 #include "yard_policy.h"
@@ -151,6 +152,7 @@ class BuildingChairman {
     WatchmanPolicy::Declare(run_name);
     InsulationPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
+    TransitionPolicy::Declare(run_name);
   }
 
   /// @brief One day of the chairman's attention. Call once a day, after the
@@ -163,6 +165,9 @@ class BuildingChairman {
   /// @brief The day without the yard, for a run that holds the yard back on
   /// its own schedule (idle_curve's delayed yard).
   void RunDayBeyondTheYard(core::ISimulation& simulation) {
+    // The transition first: it asks nothing of the day's work, and a door
+    // that opened last night should not wait behind a day of building.
+    transition.RunDay(simulation);
     fixture.RunDay(simulation);
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));
     sawmill.RunDay(simulation);
@@ -219,6 +224,7 @@ class BuildingChairman {
   WatchmanPolicy watchman;
   InsulationPolicy insulation;
   ExtractionPolicy digging;
+  TransitionPolicy transition;
 };
 
 }  // namespace run

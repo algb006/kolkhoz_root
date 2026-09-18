@@ -9,7 +9,7 @@
 /// and MARKS cancellations before phase 1, in arrival order (buffer-law
 /// rule 2, core_sim/step.h). The consuming half is wired for EVERY kind
 /// since 2026-09-12:
-/// THERE ARE FOUR CONSUMERS NOW, and each settles its own kinds to kDone or
+/// THERE ARE FIVE CONSUMERS NOW, and each settles its own kinds to kDone or
 /// kRefused IN THE STEP THE ROW IS READ — never to kAccepted or kActive,
 /// except where a kind says otherwise:
 ///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
@@ -19,7 +19,9 @@
 ///     kGrazeAtNight and kHandStock;
 ///   * core_labor — kAssignWork, kReleaseWork, kAppoint and kDismiss, the
 ///     last two applied at the day's close rather than at once;
-///   * core_residents — kTakeNightTrader (since 2026-09-18).
+///   * core_residents — kTakeNightTrader (since 2026-09-18);
+///   * core_world — kAdvanceEra (since 2026-09-18), in the events slot, where
+///     the readiness is scored.
 /// This list was three consumers and short by seven kinds on 2026-09-18,
 /// when the fourth consumer was added and the list counted rather than
 /// appended to: every kind below names its consumer, and that is the
@@ -468,6 +470,36 @@ enum class OrderKind : std::uint8_t {
   /// Seam key `take_night_trader`. Consumer: core_residents.
   kTakeNightTrader,
 
+  /// THE CHAIRMAN TAKES THE VILLAGE INTO THE NEXT ERA (epochs §6, «Механика
+  /// самого перехода»; epochs §8, «Переход в Эпоху II в сборке Эпохи I —
+  /// выбор игрока, когда готовность выполнена»). No target fields.
+  ///
+  /// Done when the readiness as of the last year's turn holds: both indices
+  /// above their thresholds for three years running, then the six blocks.
+  /// Refused otherwise, and the refusal names the FIRST that is not met, in
+  /// that order — the indices first, because they are step 1 of the design's
+  /// transition and the blocks step 2, and the blocks in the order of their
+  /// one complete list (epochs §6, «Отдельные пороговые условия»): kIndicesNotHeld,
+  /// kNoOwnTraction, kWinteringNotClosed, kOfficeNotRepaired,
+  /// kFoodVarietyShort, kSocialObjectsShort, kUnitsBelowLevel. In Epoch II
+  /// and later: kNotEligible — the build is Epoch I only (the human, 18
+  /// September 2026: «пока делаем ТОЛЬКО эпоху 1»).
+  ///
+  /// NO GENERAL MEETING, AND NOT AS A STUB. The design's step 2 has the
+  /// meeting that may refuse, and epochs §8 (line 438 on 2026-09-18) says it
+  /// is not in this build: «собрания в сборке нет: оно и его отказ „при
+  /// низком авторитете" относятся к сезону перехода, а он в сборку не
+  /// входит». A decided absence, not an unwritten rule — there is nothing to
+  /// take off until the transition season is built.
+  ///
+  /// IT REPLACES THE POPULATION DOOR. Until 2026-09-18 core_residents moved
+  /// the era itself when the village reached 500 people (UpdateEpoch), and a
+  /// second door to one action is how a rule hung on the first is walked
+  /// round in silence: 500 is the design's growth target, not a gate.
+  ///
+  /// Seam key `advance_era`. Consumer: core_world (the readiness is there).
+  kAdvanceEra,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -732,6 +764,41 @@ enum class OrderRefusal : std::uint8_t {
   /// and a kind the table gives no males at all (`males_share == 0`, the
   /// goat) never meets this refusal, because it has no sire to be the last.
   kLastSire,
+
+  // THE SEVEN REFUSALS OF kAdvanceEra (2026-09-18), one per unmet condition,
+  // so that the presentation names WHAT is missing without a field on the
+  // row: the order carries no subject, and the refusal byte is the only
+  // place the answer can ride. Boss chose seven words over one word and a
+  // number (thread boss-core-epoch1-next, seq 17). The readiness state
+  // (readiness_state.h) holds the figures behind each.
+
+  /// Both indices have not stood above their thresholds for three years
+  /// running. Seam key `indices_not_held`.
+  kIndicesNotHeld,
+
+  /// No horses of the farm's own and no repair base. Seam key
+  /// `no_own_traction`.
+  kNoOwnTraction,
+
+  /// The wintering did not close in each of the last two years. Seam key
+  /// `wintering_not_closed`.
+  kWinteringNotClosed,
+
+  /// The office is not standing at wear 1 per cent or less. Seam key
+  /// `office_not_repaired`.
+  kOfficeNotRepaired,
+
+  /// The village did not eat the era's number of food categories in all four
+  /// seasons of the last year. Seam key `food_variety_short`.
+  kFoodVarietyShort,
+
+  /// Fewer than four of the era's six social objects stand. Seam key
+  /// `social_objects_short`.
+  kSocialObjectsShort,
+
+  /// Some unit stands below the level the era asks of it. Seam key
+  /// `units_below_level`.
+  kUnitsBelowLevel,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

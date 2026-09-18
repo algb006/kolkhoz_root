@@ -303,11 +303,121 @@ int CheckRequiredUnitLevel() {
   return failures;
 }
 
+/// The chairman's order into Epoch II (order_state.h, kAdvanceEra; epochs
+/// §6 and §8). Its refusal names the FIRST unmet condition: the indices,
+/// then the six blocks in the order of §6's list.
+int CheckTransitionOrder() {
+  int failures = 0;
+  core::ReadinessState open;
+  open.both_above_run = 3;
+  open.blocks = {.food_variety = 1,
+                 .social_objects = 1,
+                 .own_traction = 1,
+                 .wintering_two_years = 1,
+                 .units_at_level = 1,
+                 .office_repaired = 1};
+  failures += Expect(core::TransitionRefusal(open, core::Epoch::kOne) == core::OrderRefusal::kNone,
+                     "transition: three years of both indices and six open blocks let it through");
+  failures +=
+      Expect(core::TransitionRefusal(open, core::Epoch::kTwo) == core::OrderRefusal::kNotEligible,
+             "transition: Epoch II has no transition in this build");
+
+  // THE ORDER OF THE ANSWERS. Each step shuts one more condition at the
+  // FRONT of the list, so every later one is shut too and the answer must
+  // still be the first — a refusal that reported the last would pass a test
+  // that shut one at a time.
+  struct Step {
+    void (*shut)(core::ReadinessState&);
+    core::OrderRefusal expected;
+    const char* label;
+  };
+
+  const std::array<Step, 7> steps = {{
+      {[](core::ReadinessState& state) { state.blocks.units_at_level = 0; },
+       core::OrderRefusal::kUnitsBelowLevel,
+       "transition: units below their level refuse it"},
+      {[](core::ReadinessState& state) { state.blocks.social_objects = 0; },
+       core::OrderRefusal::kSocialObjectsShort,
+       "transition: the social objects are named before the units"},
+      {[](core::ReadinessState& state) { state.blocks.food_variety = 0; },
+       core::OrderRefusal::kFoodVarietyShort,
+       "transition: the food variety before the social objects"},
+      {[](core::ReadinessState& state) { state.blocks.office_repaired = 0; },
+       core::OrderRefusal::kOfficeNotRepaired,
+       "transition: the office before the food"},
+      {[](core::ReadinessState& state) { state.blocks.wintering_two_years = 0; },
+       core::OrderRefusal::kWinteringNotClosed,
+       "transition: the wintering before the office"},
+      {[](core::ReadinessState& state) { state.blocks.own_traction = 0; },
+       core::OrderRefusal::kNoOwnTraction,
+       "transition: the traction before the wintering"},
+      {[](core::ReadinessState& state) { state.both_above_run = 2; },
+       core::OrderRefusal::kIndicesNotHeld,
+       "transition: two years of the indices are not three, and they come first"},
+  }};
+  core::ReadinessState shutting = open;
+  for (const Step& step : steps) {
+    step.shut(shutting);
+    failures +=
+        Expect(core::TransitionRefusal(shutting, core::Epoch::kOne) == step.expected, step.label);
+  }
+  failures += Expect(core::TransitionRefusal(core::ReadinessState{}, core::Epoch::kOne) ==
+                         core::OrderRefusal::kIndicesNotHeld,
+                     "transition: a readiness never scored has held nothing");
+
+  // THE CONSUMER. Two orders in one step: the first takes the village, the
+  // second finds it gone and is not eligible. A cancelled one and another
+  // kind are left for their own doors.
+  core::WorldState world;
+  world.readiness = open;
+  const auto order_of = [](core::OrderKind kind, core::OrderStatus status) {
+    core::OrderRow row;
+    row.kind = kind;
+    row.status = status;
+    return row;
+  };
+  const core::OrderId first =
+      AppendRow(world.orders, order_of(core::OrderKind::kAdvanceEra, core::OrderStatus::kPending));
+  const core::OrderId second =
+      AppendRow(world.orders, order_of(core::OrderKind::kAdvanceEra, core::OrderStatus::kPending));
+  const core::OrderId cancelled = AppendRow(
+      world.orders, order_of(core::OrderKind::kAdvanceEra, core::OrderStatus::kCancelled));
+  const core::OrderId other = AppendRow(
+      world.orders, order_of(core::OrderKind::kGrazeAtNight, core::OrderStatus::kPending));
+  core::ConsumeTransitionOrders(world);
+  const auto row = [&world](core::OrderId id) -> const core::OrderRow& {
+    return world.orders.rows[FindRow(world.orders, id)];
+  };
+  failures +=
+      Expect(world.epoch == core::Epoch::kTwo && row(first).status == core::OrderStatus::kDone,
+             "transition order: done, and the village is in Epoch II");
+  failures += Expect(row(second).status == core::OrderStatus::kRefused &&
+                         row(second).refusal == core::OrderRefusal::kNotEligible,
+                     "transition order: a second in the same step finds the era already moved");
+  failures += Expect(row(cancelled).status == core::OrderStatus::kCancelled &&
+                         row(other).status == core::OrderStatus::kPending,
+                     "transition order: a cancelled one and another kind are not touched");
+
+  core::WorldState shut;
+  shut.readiness = open;
+  shut.readiness.blocks.office_repaired = 0;
+  const core::OrderId refused =
+      AppendRow(shut.orders, order_of(core::OrderKind::kAdvanceEra, core::OrderStatus::kPending));
+  core::ConsumeTransitionOrders(shut);
+  const core::OrderRow& refused_row = shut.orders.rows[FindRow(shut.orders, refused)];
+  failures +=
+      Expect(shut.epoch == core::Epoch::kOne && refused_row.status == core::OrderStatus::kRefused &&
+                 refused_row.refusal == core::OrderRefusal::kOfficeNotRepaired,
+             "transition order: refused with the block's name, and the era stays");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
   failures += CheckReadinessShape();
   failures += CheckRequiredUnitLevel();
+  failures += CheckTransitionOrder();
 
   // The wiring config must default to the deterministic verification setup:
   // no tables, seed 0, one worker (world.h).

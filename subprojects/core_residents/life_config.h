@@ -241,10 +241,6 @@ struct LifeConfig {
 
   float migration_per_year = 8.0F;
 
-  std::uint32_t epoch2_population = 500;
-
-  std::uint32_t epoch3_population = 1200;
-
   float marriage_chance_percent_per_day = 25.0F;
 
   float sex_balance_gain = 0.3F;

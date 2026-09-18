@@ -173,6 +173,12 @@ class EventsSlot final : public ISequentialPhase {
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
+    // Before the sweep, so the transition is answered in the step it was
+    // read in and the sweep finds it terminal rather than unconsumed. On the
+    // year's first tick it reads the readiness of the turn BEFORE, because
+    // the rotation below scores the new one: an order and a turn in the same
+    // step meet the older verdict, and the next step the newer.
+    ConsumeTransitionOrders(current);
     SweepOrderBook(current);
     RotateLedger(current);
   }

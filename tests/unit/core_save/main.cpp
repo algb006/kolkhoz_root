@@ -996,7 +996,11 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // A fifth, 2026-09-18: kTakeNightTrader became the last OrderKind — the
     // first way out of a night trade. Same 464 bytes, same reason, same save
     // number.
-    {"orders", 464, 0x6ef6ab9c15aa596aULL},
+    // A sixth, the same day: kAdvanceEra became the last OrderKind and
+    // kUnitsBelowLevel the last OrderRefusal — the chairman's order into
+    // Epoch II and its seven answers. Both tops again, same 464 bytes, same
+    // save number.
+    {"orders", 464, 0x95a82e17545ffccULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of

@@ -41,8 +41,6 @@ namespace {
 /// function that reads fifteen; it moved to core_catalog and left its
 /// documentation behind.
 bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error) {
-  float epoch2 = 0.0F;
-  float epoch3 = 0.0F;
   // EVERY ONE OF THESE NOW CARRIES ITS RANGE, and that is the whole of task
   // A6 in this file. They used to be read by a local RequiredValue with no
   // bounds at all, so `nan`, `inf` and a stray six-digit typo went straight
@@ -108,10 +106,6 @@ bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error)
                     Range{.low = 0.0F, .high = 1000.0F},
                     config.migration_per_year,
                     error) &&
-      RequiredValue(
-          table, "life", "epoch2_population", Range{.low = 1.0F, .high = 1.0e7F}, epoch2, error) &&
-      RequiredValue(
-          table, "life", "epoch3_population", Range{.low = 1.0F, .high = 1.0e7F}, epoch3, error) &&
       RequiredValue(table,
                     "life",
                     "marriage_chance_percent_per_day",
@@ -124,17 +118,11 @@ bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error)
                     Range{.low = 0.0F, .high = 10.0F},
                     config.sex_balance_gain,
                     error);
-  if (!ok) {
-    return false;
-  }
-  // The casts below are now safe BY THE RANGES ABOVE and not by a second
-  // check written beside them: the epoch thresholds are in [1, 1e7], which
-  // is inside uint32 with four orders of magnitude to spare, and NaN never
-  // got this far. One home for the rule — the range — instead of a range
-  // and a guard that have to agree.
-  config.epoch2_population = static_cast<std::uint32_t>(epoch2);
-  config.epoch3_population = static_cast<std::uint32_t>(epoch3);
-  return true;
+  // epoch2_population and epoch3_population were read here until
+  // 2026-09-18, the thresholds of the population door that moved the era.
+  // The door went (order_state.h, kAdvanceEra) and the keys left life.csv
+  // with it; the table was the core's own, never the design base's.
+  return ok;
 }
 
 /// The stage-6 additions to life.csv: life expectancy (decision 105) and

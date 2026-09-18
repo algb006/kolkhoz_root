@@ -110,6 +110,22 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
                     float life_speedup,
                     WorldState& current);
 
+/// @brief Why the village may not go into the next era now, or kNone when it
+/// may: the first unmet condition of the transition, the indices first and
+/// then the six blocks in epochs §6 order (order_state.h, kAdvanceEra).
+/// @param readiness As of the last year's turn; a state never yet scored
+///        (year 0) has held nothing and answers kIndicesNotHeld.
+/// @param era The era the village is in. Anything but Epoch I answers
+///        kNotEligible: this build has no transition past it.
+OrderRefusal TransitionRefusal(const ReadinessState& readiness, Epoch era);
+
+/// @brief Settles every pending kAdvanceEra: kDone and the next era when
+/// TransitionRefusal says kNone, kRefused with its answer otherwise. A
+/// second order in the same step finds the era already moved and answers
+/// kNotEligible.
+/// Side effect: writes `current.epoch`, the one writer of it.
+void ConsumeTransitionOrders(WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_WORLD_ERA_READINESS_H_

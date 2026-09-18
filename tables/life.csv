@@ -16,8 +16,6 @@ mortality_young_percent_per_year,0.3
 mortality_mid_percent_per_year,1.5
 mortality_old_percent_per_year,20
 migration_per_year,8
-epoch2_population,500
-epoch3_population,1200
 # ASSUMPTION until playtests: singles marry within days once eligible, and
 # the newborn sex draw leans toward the under-represented sex this strongly
 marriage_chance_percent_per_day,25

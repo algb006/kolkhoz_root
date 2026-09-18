@@ -51,6 +51,36 @@ constexpr std::array<std::uint64_t, 9> kSeeds = {
 
 constexpr std::uint32_t kYears = 33;
 
+/// The core's answers to the transition order, as slots of a tally: open,
+/// the seven refusals in the order's own order, and not eligible.
+constexpr std::size_t kDoorAnswerSlots = 9;
+
+constexpr std::array<const char*, kDoorAnswerSlots> kDoorAnswerNames = {"open                ",
+                                                                        "indices_not_held    ",
+                                                                        "no_own_traction     ",
+                                                                        "wintering_not_closed",
+                                                                        "office_not_repaired ",
+                                                                        "food_variety_short  ",
+                                                                        "social_objects_short",
+                                                                        "units_below_level   ",
+                                                                        "not_eligible        "};
+
+/// The slot of an answer. The seven refusals are consecutive enumerators
+/// from kIndicesNotHeld (order_state.h), so their slot is their distance
+/// from it plus one; anything else the function never returns reads as
+/// "not eligible", the one answer left.
+std::size_t DoorAnswerSlot(core::OrderRefusal answer) {
+  if (answer == core::OrderRefusal::kNone) {
+    return 0;
+  }
+  const auto first = static_cast<std::size_t>(core::OrderRefusal::kIndicesNotHeld);
+  const auto value = static_cast<std::size_t>(answer);
+  if (value >= first && value < first + kDoorAnswerSlots - 2) {
+    return value - first + 1;
+  }
+  return kDoorAnswerSlots - 1;
+}
+
 /// What one trajectory says. Everything the bands judge is here, so that the
 /// walk below has no opinion about any of it: the walk lives a village, the
 /// judging happens once, over nine of these.
@@ -156,6 +186,29 @@ struct Trajectory {
   std::uint32_t rung2_this_era = 0;
   std::uint32_t rung2_later_era = 0;
   std::uint32_t rung2_none = 0;
+  /// The campaign year the chairman's order took the village into Epoch II,
+  /// or 0 when it never did (transition_policy.h). Printed for EVERY village
+  /// and not as a median (boss, epoch1-next seq 17): a median of "never" and
+  /// three years says nothing about either.
+  std::uint16_t transition_year = 0;
+  /// The same event by the policy's own clock (calendar year + 1), printed
+  /// beside the run's year so the two clocks are compared, not assumed.
+  std::uint16_t transition_calendar_year = 0;
+  /// Years by what the CORE answers the transition order that year — the
+  /// same function the chairman's order is refused by (era_readiness.h,
+  /// TransitionRefusal), asked at the yearly sample. Slot 0 is "open",
+  /// 1..7 the seven refusals in the order's own order, 8 "not eligible"
+  /// (already in Epoch II). A village that never went is explained here
+  /// by the refusal that held it, and a year counted open that did NOT
+  /// produce a transition would be a hole in the run's chairman.
+  std::array<std::uint32_t, kDoorAnswerSlots> door_answers = {};
+  /// The first campaign year whose sample found the door open, or 0. Printed
+  /// beside the transition year: an open door with no transition after it
+  /// is either the last year of the run or a hole in the chairman.
+  std::uint16_t door_first_open_year = 0;
+  /// For a door first open on the LAST sample: 1 when one more step took
+  /// the village into Epoch II, 2 when it did not, 0 when not asked.
+  std::uint8_t went_after_the_end = 0;
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -315,6 +368,17 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       }
     }
     out.all_six_years += shut == 0 ? 1U : 0U;
+    const core::OrderRefusal door = core::TransitionRefusal(state.readiness, state.epoch);
+    ++out.door_answers[DoorAnswerSlot(door)];
+    if (door == core::OrderRefusal::kNone && out.door_first_open_year == 0) {
+      out.door_first_open_year = static_cast<std::uint16_t>(year);
+    }
+    // THE SAME CLOCK AS THE DOOR, the run's own year: the policy's
+    // YearTaken counts off the calendar, and two clocks side by side is how
+    // a one-year lag reads as a hole (or a hole reads as a lag).
+    if (state.epoch != core::Epoch::kOne && out.transition_year == 0) {
+      out.transition_year = static_cast<std::uint16_t>(year);
+    }
     if (shut == 1) {
       ++out.sole_holdout[last_shut];
     }
@@ -408,6 +472,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
   out.upgrades_ordered = builder.upgrades.ordered();
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
+  out.transition_calendar_year = builder.transition.YearTaken();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
   out.epoch = final_state.epoch;
@@ -434,6 +499,17 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
   out.male_share =
       out.year33 == 0 ? 0.0F : static_cast<float>(men) / static_cast<float>(out.year33);
+
+  // THE DOOR THAT OPENED ON THE LAST SAMPLE. The chairman has already staged
+  // the order after the last day, and the run would end before any step
+  // read it — an open door with nobody through it, which reads as a hole
+  // in the chairman. One more STEP, after every measurement above is taken,
+  // lets the core answer it: the whole chain, order to era, seen in a run
+  // rather than only in the unit test.
+  if (out.door_first_open_year != 0 && out.transition_year == 0) {
+    simulation->AdvanceStep();
+    out.went_after_the_end = simulation->CompletedState().epoch != core::Epoch::kOne ? 1 : 2;
+  }
   return true;
 }
 
@@ -741,6 +817,48 @@ int main(int argc, char** argv) {
     for (std::size_t index = 0; index < sole.size(); ++index) {
       sole[index] += static_cast<float>(walk.sole_holdout[index]);
     }
+  }
+  // THE TRANSITION, village by village: the year, or "never", for each of
+  // the nine, and the count beside it — a list of years alone would hide the
+  // villages that are not in it.
+  std::uint32_t transitioned = 0;
+  std::cout << "population_curve: Epoch II by the chairman's order, year per village:";
+  for (const Trajectory& walk : walks) {
+    // The year the door was first seen open rides beside it in brackets,
+    // so a door that opened with nobody going through it cannot hide.
+    const auto opened = [&walk] {
+      if (walk.door_first_open_year == 0) {
+        return std::string();
+      }
+      const char* after = walk.went_after_the_end == 1   ? ", went one step after the end"
+                          : walk.went_after_the_end == 2 ? ", DID NOT GO one step after the end"
+                                                         : "";
+      return " (open at " + std::to_string(walk.door_first_open_year) + after + ")";
+    };
+    if (walk.transition_year == 0) {
+      std::cout << " never" << opened();
+      continue;
+    }
+    ++transitioned;
+    std::cout << ' ' << walk.transition_year << " [calendar " << walk.transition_calendar_year
+              << ']' << opened();
+  }
+  std::cout << " — " << transitioned << " villages of " << walks.size() << '\n';
+  // WHAT HELD THE DOOR, year by year, in the core's own words: the refusal
+  // the order would have met at each yearly sample, mean years of 33 per
+  // village. Every slot printed, noughts included.
+  std::array<float, kDoorAnswerSlots> answers = {};
+  for (const Trajectory& walk : walks) {
+    for (std::size_t slot = 0; slot < answers.size(); ++slot) {
+      answers[slot] += static_cast<float>(walk.door_answers[slot]);
+    }
+  }
+  std::cout << "population_curve: the transition order's answer at the yearly sample, mean years "
+               "of "
+            << kYears << " per village:\n";
+  for (std::size_t slot = 0; slot < answers.size(); ++slot) {
+    std::cout << "  " << kDoorAnswerNames[slot] << "  "
+              << answers[slot] / static_cast<float>(walks.size()) << '\n';
   }
   std::cout << "population_curve: ALL SIX blocks open together — " << (all_six / villages)
             << " years of " << kYears << ", in " << villages_opened << " villages of "

@@ -187,6 +187,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // The man, and nothing else. Whether he keeps a trade changes at every
       // year's turn — the consumer's verdict (order_state.h).
       return has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kAdvanceEra:
+      // Nothing at all: the whole village goes. Whether it is ready is the
+      // year's readiness, the consumer's verdict (order_state.h).
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
   }
   return false;
 }

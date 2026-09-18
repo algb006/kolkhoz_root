@@ -218,20 +218,6 @@ void RemoveResident(WorldState& current, ResidentId id) {
   DropFamilyIfEmpty(current, family);
 }
 
-/// The needs slot (phase 2), parallel by family: the household's daily meal
-/// out of its own pantry, and what it does to its people (stage 6, task O2).
-/// Heating is still absent from phase 1, so cold is not part of this phase —
-/// see the STUB notice the factory logs.
-void UpdateEpoch(const LifeConfig& config, WorldState& current) {
-  const auto population = static_cast<std::uint32_t>(current.residents.rows.size());
-  if (current.epoch == Epoch::kOne && population >= config.epoch2_population) {
-    current.epoch = Epoch::kTwo;
-  }
-  if (current.epoch == Epoch::kTwo && population >= config.epoch3_population) {
-    current.epoch = Epoch::kThree;
-  }
-}
-
 void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
   std::vector<ResidentId> dead;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
@@ -807,7 +793,9 @@ void RunHygiene(const LifeConfig& config, WorldState& current) {
 
 void RunDemographyDay(const LifeConfig& config, WorldState& current) {
   const SimDay day = current.calendar.day;
-  UpdateEpoch(config, current);
+  // The era is NOT moved here any more. Until 2026-09-18 this line moved it
+  // at 500 and 1200 people — a second door beside the chairman's order that
+  // walked round every block of the transition (order_state.h, kAdvanceEra).
   const EpochDemography& epoch = config.epochs[EpochIndex(current.epoch)];
   RunRoofless(config, current);
   // Cleanliness before the deaths and the births, so that a man who caught

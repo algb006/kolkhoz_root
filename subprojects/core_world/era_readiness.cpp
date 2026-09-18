@@ -45,6 +45,9 @@ constexpr float kChildShareTarget = 0.30F;         ///< STUB
 constexpr float kChildUntilYears = 16.0F;
 constexpr std::uint8_t kSocialObjectsRequired = 4;  ///< STUB — «4 из 6»
 constexpr float kOfficeWearAtMostPercent = 1.0F;    ///< units rules §11, not a stub
+/// «Индексы держатся 3 года» — epochs §6, step 1 of the transition. The
+/// design's structure, not balance, like the weights above.
+constexpr std::uint8_t kIndexYearsRequired = 3;
 /// Bounds of a level table row this reader accepts: past them a cell is a
 /// typo, and the table's own check says so. The game has three eras.
 constexpr std::int64_t kHighestRung = 16;
@@ -494,6 +497,51 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
                                   })
           ? 1U
           : 0U;
+}
+
+OrderRefusal TransitionRefusal(const ReadinessState& readiness, Epoch era) {
+  if (era != Epoch::kOne) {
+    return OrderRefusal::kNotEligible;
+  }
+  if (readiness.both_above_run < kIndexYearsRequired) {
+    return OrderRefusal::kIndicesNotHeld;
+  }
+  const TransitionBlocks& blocks = readiness.blocks;
+  if (blocks.own_traction == 0) {
+    return OrderRefusal::kNoOwnTraction;
+  }
+  if (blocks.wintering_two_years == 0) {
+    return OrderRefusal::kWinteringNotClosed;
+  }
+  if (blocks.office_repaired == 0) {
+    return OrderRefusal::kOfficeNotRepaired;
+  }
+  if (blocks.food_variety == 0) {
+    return OrderRefusal::kFoodVarietyShort;
+  }
+  if (blocks.social_objects == 0) {
+    return OrderRefusal::kSocialObjectsShort;
+  }
+  if (blocks.units_at_level == 0) {
+    return OrderRefusal::kUnitsBelowLevel;
+  }
+  return OrderRefusal::kNone;
+}
+
+void ConsumeTransitionOrders(WorldState& current) {
+  for (OrderRow& order : current.orders.rows) {
+    if (order.status != OrderStatus::kPending || order.kind != OrderKind::kAdvanceEra) {
+      continue;
+    }
+    const OrderRefusal refusal = TransitionRefusal(current.readiness, current.epoch);
+    if (refusal != OrderRefusal::kNone) {
+      order.status = OrderStatus::kRefused;
+      order.refusal = refusal;
+      continue;
+    }
+    current.epoch = Epoch::kTwo;
+    order.status = OrderStatus::kDone;
+  }
 }
 
 }  // namespace core
