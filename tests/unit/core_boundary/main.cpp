@@ -324,6 +324,25 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   deliver.amount = -1;
   failures +=
       Expect(session->IssueOrder(deliver).value == 0, "a negative quantity to deliver is refused");
+  // THE AVRAL'S SHAPE (contract, 2026-09-19): a field or a unit, exactly
+  // one, and a step 0..5; the cancelled day off names nothing.
+  core::OrderRow rush;
+  rush.kind = core::OrderKind::kDeclareRush;
+  rush.amount = 1;
+  failures += Expect(session->IssueOrder(rush).value == 0, "an avral on nothing is refused");
+  rush.field = core::FieldId{2};
+  rush.unit = core::UnitId{4};
+  failures += Expect(session->IssueOrder(rush).value == 0,
+                     "an avral on a field and a unit at once "
+                     "is refused");
+  rush.unit = core::UnitId{};
+  rush.amount = core::kMaxRushStep + 1;
+  failures += Expect(session->IssueOrder(rush).value == 0, "an avral past +25 % is refused");
+  core::OrderRow day_off;
+  day_off.kind = core::OrderKind::kCancelDayOff;
+  day_off.field = core::FieldId{2};
+  failures += Expect(session->IssueOrder(day_off).value == 0,
+                     "a cancelled day off that names a field is refused");
 
   work.herd = core::HerdId{3};
   const core::OrderId first = session->IssueOrder(work);

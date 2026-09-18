@@ -568,6 +568,64 @@ enum class OrderKind : std::uint8_t {
   /// `deliver_plan`. Consumer: core_production.
   kDeliverPlan,
 
+  /// THE AVRAL ON A WORK (unit rules §7; register 220; boss seq 103): the
+  /// work on `field` — or at `unit`, exactly one of the two — is pushed by
+  /// `amount` steps of kRushStepPercent each, up to kMaxRushStep (+25 %).
+  /// `amount` 0 lifts it. CONTRACT, 2026-09-19; no consumer yet, so it is
+  /// refused kNoConsumer until the implementation lands.
+  ///
+  /// ON THE WORK AND NOT ON THE DAY (the human's «Да», 18 September 2026):
+  /// it stands until the work it was declared on ends — this field's phase,
+  /// this unit's step — and goes out with it, not at the day's close. It
+  /// can be lifted at any moment. It does NOT cancel a day off: that is
+  /// kCancelDayOff, a separate decision with its own price (boss seq 103,
+  /// option а).
+  ///
+  /// WHAT IT DOES, for every worker on that work while it stands:
+  ///   * the norm-days delivered × (1 + step × kRushStepPercent / 100);
+  ///   * the day's rest drain × (1 + 2 × boost) (leisure §6: +25 % is half
+  ///     as much drain again);
+  ///   * a satisfaction cost of `rush_satisfaction_per_step_day` × step for
+  ///     each day he worked under it, remembered for the season (STUB,
+  ///     boss seq 103 п. 4; metrics §10 «чем выше ступень и чем чаще»).
+  ///     Ideology does not soften it yet: «все злятся одинаково» is a stub,
+  ///     lifted with the ideology metric (metrics §2; boss seq 103 п. 5).
+  /// More delivered means more trudodni by itself (leisure §6): no pay of
+  /// its own. Where the step stands: FieldRow / UnitRow, added with the
+  /// implementation (save 65).
+  ///
+  /// Refusals: kNoSuchSubject (the field or unit is gone), kRuleForbids
+  /// (no work stands there now — a growing field, an idle unit). The
+  /// boundary refuses both subjects or neither, and a step over
+  /// kMaxRushStep, by shape. Keys in labor.csv: `rush_step_percent` 5,
+  /// `rush_satisfaction_per_step_day` STUB. Seam key proposed:
+  /// `declare_rush`. Consumer: core_labor.
+  kDeclareRush,
+
+  /// THE CANCELLED DAY OFF (leisure §6-§7, «Отмена выходных»; question 107;
+  /// boss seq 103, option а): the village's next day off from tomorrow on —
+  /// the weekly one or a holiday — is worked like any other day. CONTRACT,
+  /// 2026-09-19; no consumer yet, refused kNoConsumer until it lands.
+  ///
+  /// THE PRICE: that day's rest as a working day's, AND −4 × its number in
+  /// the series (the first cancelled in a row −4 more, the second −8); the
+  /// first day off actually taken breaks the series (leisure §6, the
+  /// formula of question 107). Key `day_off_cancel_rest_per_series` 4 in
+  /// labor.csv.
+  ///
+  /// ONE DOOR FOR «IS TODAY A DAY OFF» (core_common/day_off.h, IsDayOffIn):
+  /// five callers in three modules read the calendar's IsRestDay today —
+  /// labor's placement and pay, residents' rest recovery, the MTS column.
+  /// A cancelled day that only labor knew of would work the fields and
+  /// recover rest as on a Sunday. The implementation moves every caller to
+  /// the door; the state (the cancelled day and the series count) lives on
+  /// WorldState, save 65.
+  ///
+  /// Refusals: kRuleForbids (the next day off is already cancelled — one
+  /// order, one day). The boundary refuses any subject by shape: it names
+  /// nothing. Seam key proposed: `cancel_day_off`. Consumer: core_labor.
+  kCancelDayOff,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -888,6 +946,12 @@ enum class OrderRefusal : std::uint8_t {
 /// the table that feeds it; food_config.cpp static_asserts that its parse
 /// ceiling for `issue_kg_per_trudoden` passes this bound.
 inline constexpr Grams kMaxIssueNormGrams = 1000 * kGramsPerKilogram;
+
+/// The avral's step and its ceiling (unit rules §7: «Шаг 5 %, максимум
+/// +25 %»). The step's percent is a table knob (labor.csv
+/// `rush_step_percent`); the COUNT of steps is the shape the boundary
+/// checks, so it lives here.
+inline constexpr std::int64_t kMaxRushStep = 5;
 
 /// @brief Which of the sealed funds an order unseals (resources design §6).
 /// The ladder has three rungs and only the top two are sealed: the kolkhoz

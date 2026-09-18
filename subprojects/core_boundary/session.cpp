@@ -210,6 +210,16 @@ bool ShapeIsValid(const OrderRow& order) {
       return order.amount >= 0 &&
              (order.amount == 0 || order.resource.value != kInvalidDefIdValue) && !has_resident &&
              !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kDeclareRush:
+      // A field or a unit, exactly one, and a step 0..kMaxRushStep (0 lifts).
+      // Whether a work stands there now is the consumer's.
+      return (has_field != has_unit) && order.amount >= 0 && order.amount <= kMaxRushStep &&
+             !has_resident && !has_herd && !has_stand && !has_site;
+    case OrderKind::kCancelDayOff:
+      // Nothing: the village's next day off. Whether it is already cancelled
+      // is the consumer's.
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
+             order.amount == 0;
   }
   return false;
 }
