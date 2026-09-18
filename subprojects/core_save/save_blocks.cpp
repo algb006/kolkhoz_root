@@ -76,8 +76,10 @@ static_assert(AggregateArity<WeatherState>() == 12,
 // its camp took the block from 16 bytes to 24 and from four fields to seven.
 // 2026-09-18, save 57: the ration's checkbox, eight fields; it landed in the
 // padding beside the night pasture's two bytes, so the size stays 24.
-static_assert(sizeof(ChairmanState) == 24, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 8,
+// Save 65: the cancelled day off — its series count (a byte, into the padding)
+// and its day (four bytes, which do not fit): 24 -> 32, ten fields.
+static_assert(sizeof(ChairmanState) == 32, "ChairmanState changed — update the codec");
+static_assert(AggregateArity<ChairmanState>() == 10,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -533,6 +535,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.chairman.night_pasture_place.y);
   // The ration's checkbox (save 57): labor-payment §5, kSetRation.
   out.WriteU8(world.chairman.ration_auto);
+  // The cancelled day off (save 65): the series and the day, 0 for none.
+  out.WriteU8(world.chairman.days_off_cancelled_in_a_row);
+  out.WriteU32(world.chairman.cancelled_day_off);
 
   out.WriteFloat(world.traction_ration);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
@@ -653,6 +658,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.night_pasture_place.y = in.ReadFloat();
   world->chairman.ration_auto =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the ration's checkbox"));
+  world->chairman.days_off_cancelled_in_a_row = in.ReadU8();
+  world->chairman.cancelled_day_off = in.ReadU32();
 
   world->traction_ration = in.ReadFloat();
   world->issue_norms = source.ReadAmounts(DefKind::kResource);

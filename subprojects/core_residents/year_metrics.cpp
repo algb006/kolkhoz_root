@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/stock_forecast.h"
@@ -96,7 +97,7 @@ void AccumulateYearMetrics(const FoodConfig& food, const LifeConfig& life, World
   // guaranteed equal; the share would be a ratio of two different villages
   // if this loop borrowed that one, so it uses the threshold that belongs to
   // the module doing the counting and says so.
-  if (!IsRestDay(world.calendar.day, world.calendar.day_zero_weekday, world.epoch)) {
+  if (!IsDayOffIn(world, world.calendar.day)) {
     for (const ResidentRow& person : world.residents.rows) {
       const float age = BiologicalAgeYears(life.life_speedup, person.birth_day, world.calendar.day);
       if (age >= life.body.age_adult_from_years) {

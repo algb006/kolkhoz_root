@@ -397,6 +397,13 @@ struct FieldRow {
   /// number and that was one field short — manual/72-storage-and-alarms.md §5.)
   ResourceId reaped_resource;
 
+  /// THE AVRAL ON THIS FIELD'S WORK (kDeclareRush; unit rules §7; save 65):
+  /// 0 none, 1..kMaxRushStep steps of `rush_step_percent`. It stands on the
+  /// PHASE it was declared in (`rush_phase`) and goes out when the field
+  /// leaves it — the work is done, not the day.
+  std::uint8_t rush_step = 0;
+  FieldPhase rush_phase = FieldPhase::kIdle;
+
   /// THE DAY THIS MEADOW WAS LAST MOWN, or kNeverMownDay if it has not been
   /// within this world's memory. Meaningless on arable land.
   ///

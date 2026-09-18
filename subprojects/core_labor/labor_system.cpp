@@ -33,6 +33,7 @@
 #include "assignment.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/family_state.h"
@@ -56,6 +57,7 @@
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
+#include "rush.h"
 #include "work_orders.h"
 
 namespace core {
@@ -139,6 +141,9 @@ class LaborSystem final : public ILaborSystem {
     // §11), and reading LAST in the tick is what makes that true without a
     // second flag to remember the day by.
     ReadWorkOrders(config_, current);
+    // The avral and the cancelled day off, read LAST for the same reason
+    // (rush.h): declared today, they act from the next hour or the next day.
+    ReadRushOrders(current);
   }
 
   bool CanBeOrdered(const WorldState& state, ResidentId resident) const override {
@@ -315,6 +320,7 @@ class LaborSystem final : public ILaborSystem {
     for (ResidentRow& resident : current.residents.rows) {
       resident.work = WorkAssignment{};
     }
+    StandDownRushes(current);
     // The reaping pace rolls over: yesterday's whole day of hand reaping on
     // the arable is a candidate for the season's best (ledger_state.h).
     // Its daylight goes with it (save 64): the best day's pace is only
@@ -373,10 +379,7 @@ class LaborSystem final : public ILaborSystem {
     // list was not empty, the return did not happen, and the chairman's man
     // worked every Sunday of his life. One rule must not depend on whether
     // an unrelated one had anything to say.
-    ApplyStandingWork(
-        current,
-        current,
-        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch));
+    ApplyStandingWork(current, current, IsDayOffIn(current, current.calendar.day));
   }
 
   /// THE WORK THAT OPENED AFTER THE MORNING (boss seq 93/95, option а). The
@@ -454,8 +457,7 @@ class LaborSystem final : public ILaborSystem {
   /// herd eats today, a log pile waits. No work on a day off, like every
   /// other windowless work; barn care is the one exception, as it always was.
   void AssignPostHolders(WorldState& current) const {
-    const bool day_off =
-        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
+    const bool day_off = IsDayOffIn(current, current.calendar.day);
     std::vector<std::uint32_t> places_taken(current.units.rows.size(), 0);
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.post.profession.value == kInvalidDefIdValue) {
@@ -527,8 +529,7 @@ class LaborSystem final : public ILaborSystem {
   /// left. On a day off only the barn is served — animals eat on Sundays
   /// too (manual/65-labor-model.md §5).
   std::vector<AssignmentJob> CollectJobs(const WorldState& current) const {
-    const bool day_off =
-        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
+    const bool day_off = IsDayOffIn(current, current.calendar.day);
     std::vector<AssignmentJob> jobs;
     if (!day_off) {
       for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
@@ -750,8 +751,7 @@ class LaborSystem final : public ILaborSystem {
     std::uint32_t working_days = 0;
     for (std::uint32_t day = today; day <= config_.growing_season_last_day; ++day) {
       const SimDay sim_day = current.calendar.day - today + day;
-      working_days +=
-          IsRestDay(sim_day, current.calendar.day_zero_weekday, current.epoch) ? 0U : 1U;
+      working_days += IsDayOffIn(current, sim_day) ? 0U : 1U;
     }
     double capacity =
         ReapingPacePerDay(current.ledger.current, current.weather.daylight_hours, hands) *
@@ -1090,14 +1090,20 @@ class LaborSystem final : public ILaborSystem {
                                                   AgingFromYears(config_, current),
                                                   current.calendar.date.year == 0,
                                                   AlcoholSparesWork(resident.work));
-      float delivered = worked * efficiency / config_.standard_day_hours;
+      // THE AVRAL (unit rules §7; rush.h): the work delivers more by the
+      // step, and the rest drains by twice the boost (leisure §6) — the
+      // drain is taken on the work WITHOUT the boost and then raised, since
+      // RestDrain already scales with what was delivered.
+      const float boost = RushBoost(config_, current, resident.work);
+      float delivered = worked * efficiency / config_.standard_day_hours * (1.0F + boost);
       delivered = delivered > *seam ? *seam : delivered;
       if (delivered <= 0.0F) {
         continue;  // the job is done for today; he stands about, unpaid
       }
       *seam -= delivered;
       resident.work.worked_norm_days_today += delivered;
-      const float drain = RestDrain(config_, resident, kind, delivered);
+      const float drain =
+          RestDrain(config_, resident, kind, delivered / (1.0F + boost)) * (1.0F + (2.0F * boost));
       resident.rest = resident.rest > drain ? resident.rest - drain : 0.0F;
       if (resident.rest <= config_.rest_walkoff_threshold) {
         // The critical fatigue limit (unit rules §8): his own decision, and
@@ -1130,8 +1136,7 @@ class LaborSystem final : public ILaborSystem {
         PayDay(current, resident);
       }
     }
-    const bool day_off =
-        IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
+    const bool day_off = IsDayOffIn(current, current.calendar.day);
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
       // already charged hour by hour and nothing back; a day at home on a
@@ -1156,6 +1161,7 @@ class LaborSystem final : public ILaborSystem {
       }
       resident.work = WorkAssignment{};
     }
+    CloseRushDay(current);
   }
 
   /// Turns a day of delivered norm-days into trudodni on the FAMILY account
@@ -1164,6 +1170,9 @@ class LaborSystem final : public ILaborSystem {
   /// working day early — a trudoden is a work norm, not attendance, so what
   /// he did deliver is paid.
   void PayDay(WorldState& current, ResidentRow& resident) const {
+    // What the avral and the worked day off cost him, while his assignment
+    // still says what he did (rush.h).
+    BookRushAtPay(config_, current, resident);
     const auto kind_index = static_cast<std::uint32_t>(resident.work.kind);
     // The ledger books the DELIVERED work whatever becomes of the pay:
     // man-days per kind are what the reconciliation compares against the

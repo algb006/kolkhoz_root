@@ -2310,6 +2310,162 @@ int TestTheReapingPaceIsBookedWithItsDaylight() {
   return failures;
 }
 
+/// THE AVRAL AND THE CANCELLED DAY OFF (unit rules §7, time §9, leisure §6;
+/// boss seq 103, 107, 109): what they deliver, what they cost, and how their
+/// orders are answered.
+int TestTheAvralAndTheCancelledDayOff() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_rush";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "oat,5,9,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "rush: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto oat_field = [](DayWorld& day) {
+    const core::FieldId id =
+        day.AddField(core::FieldPhase::kHarvest, 50.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+    core::FieldRow& field = day.world.fields.rows[core::FindRow(day.world.fields, id)];
+    field.kind = core::LandKind::kArable;
+    field.crop = core::CropId{0};
+    return id;
+  };
+
+  // -- what an avral of five steps does to one day's reaping ---------------
+  struct DayOfWork {
+    float reaped = 0.0F;
+    float rest_lost = 0.0F;
+    float penalty = 0.0F;
+  };
+
+  const auto one_day = [&labor, &oat_field](std::uint8_t step) {
+    DayWorld day(1);
+    const core::FieldId id = oat_field(day);
+    core::FieldRow& field = day.world.fields.rows[core::FindRow(day.world.fields, id)];
+    field.rush_step = step;
+    field.rush_phase = core::FieldPhase::kHarvest;
+    const float rest_before = day.world.residents.rows[0].rest;
+    day.RunDay(*labor, 30);  // a Wednesday
+    const core::FieldRow& after = day.world.fields.rows[core::FindRow(day.world.fields, id)];
+    return DayOfWork{.reaped = 50.0F - after.work_days_remaining,
+                     .rest_lost = rest_before - day.world.residents.rows[0].rest,
+                     .penalty = day.world.families.rows[0].overwork_penalty};
+  };
+  const DayOfWork plain = one_day(0);
+  const DayOfWork rushed = one_day(5);
+  failures += Expect(plain.reaped > 0.0F && rushed.reaped > plain.reaped * 1.249F &&
+                         rushed.reaped < plain.reaped * 1.251F,
+                     "rush: five steps reap a quarter more in the same day");
+  failures += Expect(plain.rest_lost > 0.0F && rushed.rest_lost > plain.rest_lost * 1.499F &&
+                         rushed.rest_lost < plain.rest_lost * 1.501F,
+                     "rush: and drain rest by twice the boost — half as much again");
+  failures += Expect(plain.penalty == 0.0F && rushed.penalty > 0.999F && rushed.penalty < 1.001F,
+                     "rush: a day under five steps costs the family 5 x 0.2 of satisfaction");
+
+  // -- the order: answered, refused, lifted, and gone with its phase --------
+  {
+    DayWorld day(1);
+    const core::FieldId id = oat_field(day);
+    core::FieldRow growing;
+    growing.phase = core::FieldPhase::kGrowing;
+    const core::FieldId still_growing = core::AppendRow(day.world.fields, growing);
+    const auto issue = [&day](core::FieldId field, std::int64_t step) {
+      core::OrderRow order;
+      order.kind = core::OrderKind::kDeclareRush;
+      order.status = core::OrderStatus::kPending;
+      order.field = field;
+      order.amount = step;
+      return core::AppendRow(day.world.orders, order);
+    };
+    const core::OrderId declared = issue(id, 3);
+    const core::OrderId on_growing = issue(still_growing, 3);
+    const core::OrderId on_nothing = issue(core::FieldId{99}, 3);
+    day.RunDay(*labor, 30);
+    const auto order_of = [&day](core::OrderId order) {
+      return day.world.orders.rows[core::FindRow(day.world.orders, order)];
+    };
+    const core::FieldRow& field = day.world.fields.rows[core::FindRow(day.world.fields, id)];
+    failures += Expect(order_of(declared).status == core::OrderStatus::kDone &&
+                           field.rush_step == 3 && field.rush_phase == core::FieldPhase::kHarvest,
+                       "rush: the order stands three steps on the field's reaping");
+    failures += Expect(order_of(on_growing).refusal == core::OrderRefusal::kRuleForbids &&
+                           order_of(on_nothing).refusal == core::OrderRefusal::kNoSuchSubject,
+                       "rush: refused on a field with no work standing, and on no field at all");
+    // The reaping ends: the avral goes out with it the next morning.
+    day.world.fields.rows[core::FindRow(day.world.fields, id)].phase = core::FieldPhase::kIdle;
+    day.RunDay(*labor, 31);
+    failures += Expect(day.world.fields.rows[core::FindRow(day.world.fields, id)].rush_step == 0,
+                       "rush: it goes out when its work is done, not at the day's close");
+  }
+
+  // -- the cancelled day off ---------------------------------------------------
+  {
+    DayWorld day(1);  // day 0 a Monday: Sundays are 6, 13, 20...
+    const core::FieldId id = oat_field(day);
+    core::OrderRow cancel;
+    cancel.kind = core::OrderKind::kCancelDayOff;
+    cancel.status = core::OrderStatus::kPending;
+    const core::OrderId first = core::AppendRow(day.world.orders, cancel);
+    day.RunDay(*labor, 3);
+    failures += Expect(day.world.chairman.cancelled_day_off == 6 &&
+                           day.world.orders.rows[core::FindRow(day.world.orders, first)].status ==
+                               core::OrderStatus::kDone,
+                       "day off: the next Sunday is cancelled");
+    const core::OrderId second = core::AppendRow(day.world.orders, cancel);
+    day.RunDay(*labor, 4);
+    failures += Expect(day.world.orders.rows[core::FindRow(day.world.orders, second)].refusal ==
+                           core::OrderRefusal::kRuleForbids,
+                       "day off: a second cancellation while one stands is refused");
+    const auto rest_lost_on = [&day, &labor](std::uint32_t game_day) {
+      const float before = day.world.residents.rows[0].rest;
+      day.RunDay(*labor, game_day);
+      return before - day.world.residents.rows[0].rest;
+    };
+    const float saturday = rest_lost_on(5);
+    const float left_before =
+        day.world.fields.rows[core::FindRow(day.world.fields, id)].work_days_remaining;
+    const float sunday = rest_lost_on(6);
+    const float reaped_sunday =
+        left_before -
+        day.world.fields.rows[core::FindRow(day.world.fields, id)].work_days_remaining;
+    failures += Expect(reaped_sunday > 0.0F,
+                       "day off: the cancelled Sunday is worked — the field is reaped");
+    failures += Expect(sunday > saturday + 3.99F && sunday < saturday + 4.01F,
+                       "day off: and costs a working day's rest plus 4 x its place in the series");
+    failures += Expect(day.world.chairman.days_off_cancelled_in_a_row == 1 &&
+                           day.world.chairman.cancelled_day_off == 0 &&
+                           day.world.families.rows[0].overwork_penalty > 0.999F &&
+                           day.world.families.rows[0].overwork_penalty < 1.001F,
+                       "day off: the series counts one, the day is spent, the family pays 1.0");
+    for (std::uint32_t game_day = 7; game_day <= 13; ++game_day) {
+      day.RunDay(*labor, game_day);
+    }
+    failures += Expect(day.world.chairman.days_off_cancelled_in_a_row == 0,
+                       "day off: a Sunday actually taken breaks the series");
+  }
+  {
+    // Day 16 is May Day; with day 0 a Friday it falls on a Sunday.
+    DayWorld day(1);
+    day.world.calendar.day_zero_weekday = core::Weekday::kFriday;
+    core::OrderRow cancel;
+    cancel.kind = core::OrderKind::kCancelDayOff;
+    cancel.status = core::OrderStatus::kPending;
+    core::AppendRow(day.world.orders, cancel);
+    day.RunDay(*labor, 14);
+    failures += Expect(day.world.chairman.cancelled_day_off == 23,
+                       "day off: a holiday is never cancelled — the Sunday after it is (time §9)");
+  }
+  return failures;
+}
+
 int TestFallowBeforeWinterRyeHasTheRyesWindow() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2744,6 +2900,7 @@ int main() {
   failures += TestTheFieldsEdgeIsTheSnow();
   failures += TestTheLastDaysGoByTheGrams();
   failures += TestTheReapingPaceIsBookedWithItsDaylight();
+  failures += TestTheAvralAndTheCancelledDayOff();
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();

@@ -67,12 +67,14 @@ static_assert(AggregateArity<ResidentRow>() == 43,
 // size stayed 56 + amounts and the field count went to 16. The same day the
 // lost house's position and the tent byte took it to 72 + amounts (measured)
 // and 18 fields.
-static_assert(sizeof(FamilyRow) == 72 + kAmountsSize,
+// 2026-09-19, save 65: overwork_penalty, a float — 72 -> 80 + amounts,
+// measured by a sizeof probe, not reasoned; 21 fields.
+static_assert(sizeof(FamilyRow) == 80 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
 // 2026-09-18, save 60: dry_months, the yard's sobriety clock — 20 fields.
-static_assert(AggregateArity<FamilyRow>() == 20,
+static_assert(AggregateArity<FamilyRow>() == 21,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -115,8 +117,10 @@ static_assert(AggregateArity<FamilyRow>() == 20,
 // the size stayed 88 and the field count went to 30.
 // 2026-09-15: `reaped_day`, four bytes after the tail byte, opened a slot of
 // its own: 88 -> 96, measured, and the field count went to 31.
+// 2026-09-19, save 65: the avral's step and phase, two bytes into the tail
+// padding — 96 stays 96 (measured), 33 fields: the count caught it alone.
 static_assert(sizeof(FieldRow) == 96, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 31,
+static_assert(AggregateArity<FieldRow>() == 33,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -134,7 +138,9 @@ static_assert(sizeof(UnitRow) == 64 + (2 * kAmountsSize),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
               "ConstructionState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ConstructionState>() == 6,
+// 2026-09-19, save 65: the avral's step, a byte beside the phase — 16 + amounts
+// stays (measured), 7 fields.
+static_assert(AggregateArity<ConstructionState>() == 7,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<UnitRow>() == 14,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
@@ -233,6 +239,8 @@ constexpr std::uint8_t kMaxNightTrade = static_cast<std::uint8_t>(NightTrade::kN
 static_assert(kMaxNightTrade < static_cast<std::uint8_t>(NightTrade::kNightTradeCount));
 
 constexpr std::uint8_t kMaxFieldPhase = static_cast<std::uint8_t>(FieldPhase::kFieldPhaseCount) - 1;
+/// The avral's ceiling as the byte the stream carries (order_state.h).
+constexpr auto kMaxRushStepByte = static_cast<std::uint8_t>(kMaxRushStep);
 constexpr std::uint8_t kMaxLandKind = static_cast<std::uint8_t>(LandKind::kLandKindCount) - 1;
 constexpr std::uint8_t kMaxFieldWeatherState =
     static_cast<std::uint8_t>(FieldWeatherState::kFieldWeatherStateCount) - 1;
@@ -496,7 +504,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteU16(row.plot_ratio_days);
   // The chairman's ration decision for this yard (kSetRation, save 57).
   out.WriteU8(row.ration_granted);
-  out.WriteU8(row.dry_months);  // save 60
+  out.WriteU8(row.dry_months);           // save 60
+  out.WriteFloat(row.overwork_penalty);  // save 65: the season's avrals and worked days off
   out.WriteFloat(row.private_plot_share);
 
   out.WriteI32(row.trudodni_account);
@@ -528,6 +537,7 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.ration_granted =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's ration granted"));
   row.dry_months = in.ReadU8();
+  row.overwork_penalty = in.ReadFloat();
   row.private_plot_share = in.ReadFloat();
 
   row.trudodni_account = in.ReadI32();
@@ -622,6 +632,9 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // loaded without it would reserve this year's seed for a crop already in
   // the stores.
   out.WriteU32(row.reaped_day);
+  // The avral on the field's work and the phase it stands on (save 65).
+  out.WriteU8(row.rush_step);
+  out.WriteU8(static_cast<std::uint8_t>(row.rush_phase));
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -679,6 +692,10 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.in_flower = source.ReadEnumValue(0, 1, "meadow in flower") != 0;
   row.start_reserve = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "start reserve field"));
   row.reaped_day = in.ReadU32();
+  row.rush_step =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "field's avral step"));
+  row.rush_phase =
+      static_cast<FieldPhase>(source.ReadEnumValue(0, kMaxFieldPhase, "field's avral phase"));
   return row;
 }
 
@@ -701,6 +718,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteFloat(row.construction.labor_days_total);
   out.WriteFloat(row.construction.labor_days_remaining);
   out.WriteU8(row.construction.max_crew);
+  out.WriteU8(row.construction.rush_step);  // save 65: the avral on the step
   // What the works hold back of a standing unit's stock (2026-09-14,
   // VERSION_SAVE 37): the upgrade's carried-in recipe, which the stock
   // alone cannot tell from the store's own goods.
@@ -741,6 +759,8 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.labor_days_total = in.ReadFloat();
   row.construction.labor_days_remaining = in.ReadFloat();
   row.construction.max_crew = in.ReadU8();
+  row.construction.rush_step =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "unit's avral step"));
   row.construction.reserved = source.ReadAmounts(DefKind::kResource);
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();

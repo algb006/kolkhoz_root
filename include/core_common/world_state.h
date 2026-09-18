@@ -403,6 +403,17 @@ struct ChairmanState {
   /// the chairman's kSetRation moves it.
   std::uint8_t ration_auto = 1;
 
+  /// THE CANCELLED DAY OFF (kCancelDayOff; time §9, leisure §6-§7; save 65):
+  /// how many cancelled days off stand in a row. The first day off actually
+  /// taken breaks the series; the rest price of the next one is −4 × this.
+  std::uint8_t days_off_cancelled_in_a_row = 0;
+
+  /// The day the chairman cancelled, or 0 when none stands. 0 is free as the
+  /// sentinel because an order cancels from TOMORROW on, and no order is
+  /// read before day 0 — so the day it names is 1 or later.
+  /// Read through IsDayOffIn (core_common/day_off.h) and nowhere else.
+  SimDay cancelled_day_off = 0;
+
   /// Where the children keep the team: a point on a floodplain meadow,
   /// drawn once from the campaign's own generator when the order is given.
   ///

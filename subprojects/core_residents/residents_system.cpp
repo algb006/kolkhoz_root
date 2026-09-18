@@ -113,8 +113,15 @@ class FamilyMetricsPhase final : public IParallelPhase {
       lowest = family.component_needs < lowest ? family.component_needs : lowest;
       lowest = family.component_rest < lowest ? family.component_rest : lowest;
       // The low-component law: a starving family is not consoled by a club.
-      family.satisfaction =
+      const float capped =
           lowest < 20.0F ? (weighted < lowest * 2.0F ? weighted : lowest * 2.0F) : weighted;
+      // THE SEASON'S OVERWORK, taken off the whole (unit rules §7, time §9;
+      // boss seq 103 and 107): avrals and worked days off, summed over the
+      // members by labor at their pay (family_state.h). Off the aggregate
+      // and not a component: the design says «бьёт по довольству» and names
+      // no component it belongs to.
+      const float after_overwork = capped - family.overwork_penalty;
+      family.satisfaction = after_overwork > 0.0F ? after_overwork : 0.0F;
     }
   }
 

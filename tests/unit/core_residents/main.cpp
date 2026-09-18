@@ -2547,6 +2547,14 @@ int main() {
                        "equal components give their value (Epoch I weights sum to 100)");
     failures += Expect(current.families.rows[1].satisfaction <= 20.0F,
                        "a component below 20 caps satisfaction at twice itself");
+    // THE SEASON'S OVERWORK (boss seq 103, 107): taken off the whole, and
+    // never below nought.
+    current.families.rows[0].overwork_penalty = 7.5F;
+    current.families.rows[1].overwork_penalty = 100.0F;
+    metrics.RunItemRange(previous, current, 0, count);
+    failures += Expect(current.families.rows[0].satisfaction == 52.5F &&
+                           current.families.rows[1].satisfaction == 0.0F,
+                       "a yard's overwork is taken off its satisfaction, down to nought");
   }
 
   failures += CheckFoodConfigDefaults(tables);

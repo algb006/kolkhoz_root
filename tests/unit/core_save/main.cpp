@@ -141,6 +141,9 @@ core::WorldState MakeWorld() {
   world.chairman.raikom_reputation = 61.5F;
   world.chairman.horses_stabled = 1;  // the campaign's one-time milestone (task A7)
   world.chairman.ration_auto = 0;     // save 57: off, against the struct's default on
+  // Save 65: a series of two cancelled days off, and the next one standing.
+  world.chairman.days_off_cancelled_in_a_row = 2;
+  world.chairman.cancelled_day_off = 55;
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   // The accumulation limit (save 62): not empty, or a codec that forgot it
@@ -205,8 +208,9 @@ core::WorldState MakeWorld() {
   rich.first_meal_eaten = 1;  // `bare` below keeps 0: the pair a constant fails on
   rich.lost_house_position = core::Vec2{.x = 812.5F, .y = 9044.25F};  // save format 35
   rich.in_tent = 1;
-  rich.ration_granted = 1;  // save 57; `bare` keeps 0
-  rich.dry_months = 4;      // save 60, the yard's sobriety clock
+  rich.ration_granted = 1;        // save 57; `bare` keeps 0
+  rich.dry_months = 4;            // save 60, the yard's sobriety clock
+  rich.overwork_penalty = 3.75F;  // save 65, the season's avrals and worked days off
   rich.household_hours = 4.25F;
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
@@ -258,8 +262,10 @@ core::WorldState MakeWorld() {
   core::FieldRow overgrown;
   overgrown.kind = core::LandKind::kFloodplainMeadow;
   overgrown.overgrown = 1;
-  overgrown.start_reserve = 1;      // the start quest's field
-  overgrown.reaped_day = 39;        // reaped in the first October
+  overgrown.start_reserve = 1;  // the start quest's field
+  overgrown.reaped_day = 39;    // reaped in the first October
+  overgrown.rush_step = 3;      // save 65: an avral of +15 % on its harvest
+  overgrown.rush_phase = core::FieldPhase::kHarvest;
   overgrown.rotation_assigned = 0;  // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
@@ -304,6 +310,7 @@ core::WorldState MakeWorld() {
   site.construction.labor_days_total = 17.5F;
   site.construction.labor_days_remaining = 6.25F;
   site.construction.max_crew = 8;
+  site.construction.rush_step = 5;  // save 65: the avral at its ceiling
   core::AppendRow(world.units, site);
 
   core::HerdRow herd;
@@ -715,6 +722,9 @@ core::WorldState MakeWitnessWorld() {
   // The ration's checkbox OFF (save 57): the struct's default is on, so a
   // codec that forgot to read it would load a 1 and fail here.
   witness.chairman.ration_auto = 0;
+  // The cancelled day off (save 65): both away from their zero defaults.
+  witness.chairman.days_off_cancelled_in_a_row = 2;
+  witness.chairman.cancelled_day_off = 55;
 
   witness.traction_ration = 0.75F;
   // The chairman's issue norms (save 57): NOT empty, since empty is what a
@@ -803,6 +813,10 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.night_pasture_place.y", F32(world.chairman.night_pasture_place.y)});
   // The ration's checkbox (save 57).
   chunks.push_back({"chairman.ration_auto", U8(world.chairman.ration_auto)});
+  // The cancelled day off (save 65): the series, then the day.
+  chunks.push_back(
+      {"chairman.days_off_cancelled_in_a_row", U8(world.chairman.days_off_cancelled_in_a_row)});
+  chunks.push_back({"chairman.cancelled_day_off", U32(world.chairman.cancelled_day_off)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
@@ -1021,7 +1035,8 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // leak (1), the vacancy (4) and the settlement's alcoholism (4).
     // Save 62: +26 — the accumulation limit, three positions (2 + 3 x 8),
     // predicted before the build.
-    {"world", 422, 0x0d939c567a3c71dfULL},
+    // Save 65: +5 — the cancelled day off's series (1) and day (4).
+    {"world", 427, 0xd1922c8d0dfe786aULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1030,9 +1045,13 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     {"residents", 370, 0xda375fdf183f1167ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
-    {"families", 196, 0xde79d1ae128497abULL},
-    {"fields", 263, 0x224499bb25ff9b5bULL},
-    {"units", 323, 0xcfb11cfce6d72141ULL},
+    // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
+    // step and phase, three fields), units +3 (the site's avral step, three
+    // units). The first build ran before a prediction was written — a miss,
+    // named; the second, with the fixture's values, was predicted and held.
+    {"families", 204, 0xdf80f905badb3e6bULL},
+    {"fields", 269, 0x8a59944f0a209f67ULL},
+    {"units", 326, 0x8dbbc6ff86e381f6ULL},
     {"herds", 66, 0xe3846623b64933cfULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
@@ -1300,6 +1319,15 @@ int main() {
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.chairman.ration_auto == 0,
                      "the ration's checkbox the chairman switched off comes back off (save 57)");
+  failures += Expect(
+      loaded.chairman.days_off_cancelled_in_a_row == 2 && loaded.chairman.cancelled_day_off == 55,
+      "the cancelled day off and its series come back (save 65)");
+  failures += Expect(loaded.families.rows[0].overwork_penalty == 3.75F,
+                     "a yard's overwork memory comes back (save 65)");
+  failures += Expect(loaded.fields.rows[2].rush_step == 3 &&
+                         loaded.fields.rows[2].rush_phase == core::FieldPhase::kHarvest &&
+                         loaded.fields.rows[0].rush_step == 0,
+                     "a field's avral and the phase it stands on come back (save 65)");
   failures += Expect(loaded.residents.next_id_value == world.residents.next_id_value &&
                          loaded.residents.rows.size() == 2,
                      "the spent id of a dead resident was not reissued");
@@ -1562,13 +1590,13 @@ int main() {
 
   // The site came back mid-build, every field of it.
   const core::UnitRow& site_back = loaded.units.rows[2];
-  failures += Expect(site_back.level == 0 &&
-                         site_back.construction.phase == core::ConstructionPhase::kBuilding &&
-                         site_back.construction.target_level == 1 &&
-                         site_back.construction.labor_days_total == 17.5F &&
-                         site_back.construction.labor_days_remaining == 6.25F &&
-                         site_back.construction.max_crew == 8,
-                     "a half-built unit resumes half-built, crew ceiling included");
+  failures += Expect(
+      site_back.level == 0 && site_back.construction.phase == core::ConstructionPhase::kBuilding &&
+          site_back.construction.target_level == 1 &&
+          site_back.construction.labor_days_total == 17.5F &&
+          site_back.construction.labor_days_remaining == 6.25F &&
+          site_back.construction.max_crew == 8 && site_back.construction.rush_step == 5,
+      "a half-built unit resumes half-built, crew ceiling and avral included");
 
   // -- the staged batch ----------------------------------------------------
   //

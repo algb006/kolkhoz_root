@@ -1,8 +1,8 @@
 /// @file
 /// @brief The one door for «is this day a day off in THIS world»: the
 /// calendar's rest day or holiday, unless the chairman cancelled it
-/// (OrderKind::kCancelDayOff). CONTRACT, 2026-09-19 (boss seq 103): declared
-/// here, defined with the implementation.
+/// (OrderKind::kCancelDayOff; boss seq 103 and 107). Holidays are never
+/// cancelled (time §9).
 /// @threading PARALLEL_READONLY
 /// A pure read of the world.
 ///

@@ -70,6 +70,15 @@ struct FamilyRow {
 
   Metric component_rest = 55.0F;  ///< Moves since stage 5 (mean member rest).
 
+  /// WHAT THE SEASON'S OVERWORK COSTS THE FAMILY, satisfaction points taken
+  /// off the aggregate (unit rules §7, time §9; boss seq 103 and 107; save
+  /// 65): summed over its members, `rush_satisfaction_per_step_day` × the
+  /// step for each day a member worked under an avral, and
+  /// `day_off_cancel_satisfaction` for each cancelled day off a member
+  /// worked. Written by labor at the day's close; cleared on a season's
+  /// first day — «неделя авралов запоминается», for a season (STUB).
+  float overwork_penalty = 0.0F;
+
   // -- food (metrics design §8; stage 6) -----------------------------------
   /// What the family holds at home, dense by ResourceId, grams. Filled by
   /// distribution, the ration, the garden and household-herd produce; drained

@@ -139,6 +139,12 @@ enum class ConstructionPhase : std::uint8_t {
 struct ConstructionState {
   ConstructionPhase phase = ConstructionPhase::kNone;
 
+  /// THE AVRAL ON THIS STEP (kDeclareRush on a unit; unit rules §7; save
+  /// 65): 0 none, 1..kMaxRushStep steps of `rush_step_percent`. It lives in
+  /// the site block so that it goes out with the step: every end of a step
+  /// resets the block whole (construction_system.cpp, insulation.cpp).
+  std::uint8_t rush_step = 0;
+
   /// The level being built: 1 for a new unit, N + 1 for an upgrade of a
   /// unit standing at N (unit rules §11). 0 while demolishing and when
   /// nothing is in progress. While an upgrade is in progress the unit

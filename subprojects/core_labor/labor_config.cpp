@@ -29,13 +29,13 @@
 namespace core {
 namespace {
 
-/// @brief Reads the thirteen scalar knobs of labor.csv, each with its range.
+/// @brief Reads the seventeen scalar knobs of labor.csv, each with its range.
 /// The block that stood here described PrefixError, which moved to
 /// core_catalog and left its documentation over this function.
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
   auto last_days = static_cast<float>(config.harvest_snow_last_days);
-  const std::array<ScalarKnob, 13> knobs = {{
+  const std::array<ScalarKnob, 17> knobs = {{
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
        .range = {.low = 1.0F, .high = 24.0F}},
@@ -69,6 +69,18 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
       {.key = "harvest_snow_last_days",
        .value = &last_days,
        .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
+      {.key = "rush_step_percent",
+       .value = &config.rush_step_percent,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "rush_satisfaction_per_step_day",
+       .value = &config.rush_satisfaction_per_step_day,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "day_off_cancel_rest_per_series",
+       .value = &config.day_off_cancel_rest_per_series,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "day_off_cancel_satisfaction",
+       .value = &config.day_off_cancel_satisfaction,
+       .range = {.low = 0.0F, .high = 100.0F}},
   }};
   if (!ReadKnobs(table, "labor", knobs, error)) {
     return false;

@@ -9,6 +9,7 @@ kolkhoz_add_module(core_labor
     labor_day.cpp
     labor_system.cpp
     posts.cpp
+    rush.cpp
     work_orders.cpp)
 
 target_link_libraries(core_labor

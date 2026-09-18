@@ -254,6 +254,26 @@ struct LaborConfig {
   /// from is reaped first. 0 switches the rule off.
   std::uint32_t harvest_snow_last_days = 3;
 
+  /// THE AVRAL (kDeclareRush; unit rules §7): the percent one step adds to
+  /// the norm-days delivered (labor.csv `rush_step_percent`, the design's 5).
+  float rush_step_percent = 5.0F;
+
+  /// What a day under an avral costs the worker's family, satisfaction
+  /// points per step (labor.csv `rush_satisfaction_per_step_day`). STUB,
+  /// boss seq 103 п. 4: metrics §10 says «чем выше ступень и чем чаще» and
+  /// gives no number.
+  float rush_satisfaction_per_step_day = 0.2F;
+
+  /// THE CANCELLED DAY OFF (kCancelDayOff; leisure §6, question 107): rest
+  /// taken per number in the series on top of a working day's drain
+  /// (labor.csv `day_off_cancel_rest_per_series`, the design's 4).
+  float day_off_cancel_rest_per_series = 4.0F;
+
+  /// What a worked day off costs the worker's family, satisfaction points
+  /// (labor.csv `day_off_cancel_satisfaction`). STUB, boss seq 109: time §9
+  /// «довольство падает — заметно» with no number.
+  float day_off_cancel_satisfaction = 1.0F;
+
   /// Grams the snow would take from a field's standing crop, asked of
   /// production (IProductionSystem::StandingCropGrams) through the assembly.
   /// Empty in a labor built alone: every field then weighs nought, and the

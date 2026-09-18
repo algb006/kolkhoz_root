@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
 #include "core_common/state_table_ops.h"
@@ -262,7 +263,7 @@ void RunMtsColumn(const ProductionConfig& config, WorldState& current) {
     LeaveColumn(current);
     return;
   }
-  if (!IsRestDay(current.calendar.day, current.calendar.day_zero_weekday, current.epoch)) {
+  if (!IsDayOffIn(current, current.calendar.day)) {
     WorkColumnDay(config, current);
   }
   if (column.worked_ha >= config.limit.mts_column_ha_limit - kHectareDust) {

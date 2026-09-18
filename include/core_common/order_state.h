@@ -571,8 +571,8 @@ enum class OrderKind : std::uint8_t {
   /// THE AVRAL ON A WORK (unit rules §7; register 220; boss seq 103): the
   /// work on `field` — or at `unit`, exactly one of the two — is pushed by
   /// `amount` steps of kRushStepPercent each, up to kMaxRushStep (+25 %).
-  /// `amount` 0 lifts it. CONTRACT, 2026-09-19; no consumer yet, so it is
-  /// refused kNoConsumer until the implementation lands.
+  /// `amount` 0 lifts it. Contract and implementation 2026-09-19 (core_labor
+  /// rush.h).
   ///
   /// ON THE WORK AND NOT ON THE DAY (the human's «Да», 18 September 2026):
   /// it stands until the work it was declared on ends — this field's phase,
@@ -591,8 +591,8 @@ enum class OrderKind : std::uint8_t {
   ///     Ideology does not soften it yet: «все злятся одинаково» is a stub,
   ///     lifted with the ideology metric (metrics §2; boss seq 103 п. 5).
   /// More delivered means more trudodni by itself (leisure §6): no pay of
-  /// its own. Where the step stands: FieldRow / UnitRow, added with the
-  /// implementation (save 65).
+  /// its own. Where the step stands: FieldRow::rush_step with the phase it
+  /// stands on, and a site's ConstructionState::rush_step (save 65).
   ///
   /// Refusals: kNoSuchSubject (the field or unit is gone), kRuleForbids
   /// (no work stands there now — a growing field, an idle unit). The
@@ -602,16 +602,20 @@ enum class OrderKind : std::uint8_t {
   /// `declare_rush`. Consumer: core_labor.
   kDeclareRush,
 
-  /// THE CANCELLED DAY OFF (leisure §6-§7, «Отмена выходных»; question 107;
-  /// boss seq 103, option а): the village's next day off from tomorrow on —
-  /// the weekly one or a holiday — is worked like any other day. CONTRACT,
-  /// 2026-09-19; no consumer yet, refused kNoConsumer until it lands.
+  /// THE CANCELLED DAY OFF (time §9; leisure §6-§7, «Отмена выходных»;
+  /// question 107; boss seq 103, 107, 109): the village's next WEEKLY day
+  /// off from tomorrow on is worked like any other day. NEVER A HOLIDAY —
+  /// time §9: «Праздничный день рабочим объявить нельзя… Игра просто не
+  /// даёт такой возможности»; the search skips it to the Sunday after.
   ///
   /// THE PRICE: that day's rest as a working day's, AND −4 × its number in
   /// the series (the first cancelled in a row −4 more, the second −8); the
   /// first day off actually taken breaks the series (leisure §6, the
-  /// formula of question 107). Key `day_off_cancel_rest_per_series` 4 in
-  /// labor.csv.
+  /// formula of question 107) — key `day_off_cancel_rest_per_series` 4. And
+  /// `day_off_cancel_satisfaction` (STUB) to each worker's family, into the
+  /// same season's memory as the avral's (time §9: «довольство падает —
+  /// заметно»). Not built yet, named as queue lines: declaring it for the
+  /// same day, and a part-day (time §9).
   ///
   /// ONE DOOR FOR «IS TODAY A DAY OFF» (core_common/day_off.h, IsDayOffIn):
   /// five callers in three modules read the calendar's IsRestDay today —
