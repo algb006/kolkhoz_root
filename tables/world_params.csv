@@ -194,3 +194,5 @@ sportiness_start_age_min,16,core
 sportiness_start_age_max,25,core
 sportiness_start_min,10,core
 sportiness_start_max,30,core
+reading_hut_radius_m,1000,core
+reading_hut_alcohol_loss,1,core
