@@ -1946,12 +1946,104 @@ int CheckRawMaterialLeak() {
 /// change by supply, winter idleness, an unhappy yard, work, a post and a
 /// wife; men only; the cap; the crossings both ways; the counter
 /// cleared; a child untouched; nothing on a day that is not a month's first.
+/// THE SPORTS FIELD AND SPORTINESS (register 223; question 225; boss seq
+/// 127): the open days, who goes, what the month takes off and adds.
+int CheckTheSportsField() {
+  int failures = 0;
+  core::SportConfig sport;
+  sport.stadium_type = core::UnitTypeId{7};
+  // -- the day's count ----------------------------------------------------
+  core::WorldState days;
+  days.weather.air_temperature_celsius = 15.0F;
+  core::CountSportDay(sport, days);  // warm and dry: open
+  days.weather.heavy_hours = 3;      // a downpour: rain, closed
+  days.weather.precipitation = core::Precipitation::kRain;
+  core::CountSportDay(sport, days);
+  days.weather.heavy_hours = 0;  // dry again, but the day after the downpour
+  days.weather.precipitation = core::Precipitation::kNone;
+  core::CountSportDay(sport, days);
+  days.weather.air_temperature_celsius = 8.0F;  // dry and cold: closed
+  core::CountSportDay(sport, days);
+  failures += Expect(days.sport_month.open_days == 1 && !core::SportMonthCounted(sport, days),
+                     "field: open only warm, dry and not after a downpour — one day, not counted");
+  days.weather.air_temperature_celsius = 12.0F;
+  core::CountSportDay(sport, days);
+  failures += Expect(core::SportMonthCounted(sport, days), "field: two open days count the month");
+
+  // -- who goes -------------------------------------------------------------
+  core::WorldState world;
+  core::FamilyRow yard;
+  yard.in_tent = 1;
+  yard.lost_house_position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  const core::FamilyId family = core::AppendRow(world.families, yard);
+  core::UnitRow stadium;
+  stadium.type = core::UnitTypeId{7};
+  stadium.position = core::Vec2{.x = 900.0F, .y = 0.0F};  // within 1000 m
+  core::AppendRow(world.units, stadium);
+  core::ResidentRow young;
+  young.family = family;
+  young.alcoholism = 10.0F;
+  failures += Expect(core::GoesToTheField(sport, world, young, 20.0F),
+                     "field: a young sober man near a stadium goes");
+  failures += Expect(!core::GoesToTheField(sport, world, young, 35.0F),
+                     "field: at thirty and over he does not go by himself");
+  young.alcoholism = 25.0F;
+  failures += Expect(!core::GoesToTheField(sport, world, young, 20.0F),
+                     "field: a drinking one does not go by himself");
+  young.alcoholism = 10.0F;
+  world.units.rows[0].position = core::Vec2{.x = 1500.0F, .y = 0.0F};
+  failures += Expect(!core::GoesToTheField(sport, world, young, 20.0F),
+                     "field: nor with the stadium beyond the evening's walk");
+
+  // -- the month's sportiness ---------------------------------------------
+  core::ResidentRow person;
+  person.sportiness = 20.0F;
+  core::TurnSportiness(sport, true, 20.0F, person);
+  failures += Expect(person.sportiness == 23.0F, "sportiness: +3 for a month at the field");
+  person.alcoholism = 45.0F;
+  core::TurnSportiness(sport, true, 20.0F, person);
+  failures += Expect(person.sportiness == 24.5F, "sportiness: half that for a drinker over 40");
+  core::TurnSportiness(sport, false, 45.0F, person);
+  failures += Expect(person.sportiness == 22.5F, "sportiness: −1 without, −1 more past forty");
+
+  // -- the month's turn: the two losses and the cleared count ---------------
+  // One young sober man at the month's turn (day 48, January the first; 20
+  // biological years at a life speed of 4), the month counted.
+  const auto turn = [&sport, &world](bool stadium_near, float sportiness) {
+    core::WorldState month = world;
+    month.units.rows[0].position = core::Vec2{.x = stadium_near ? 900.0F : 5000.0F, .y = 0.0F};
+    month.calendar.tick = core::kDaysPerYear * static_cast<core::Tick>(core::kTicksPerDay);
+    core::RefreshCalendarCaches(month.calendar);
+    month.sport_month.open_days = 2;
+    core::ResidentRow man;
+    man.sex = core::Sex::kMale;
+    man.family = month.families.row_ids[0];
+    man.birth_day = static_cast<std::int32_t>(core::kDaysPerYear) - 240;
+    man.alcoholism = 18.0F;
+    man.sportiness = sportiness;
+    core::AppendRow(month.residents, man);
+    const core::AlcoholismConfig config;
+    const core::NightTradeConfig night;
+    core::TurnAlcoholismMonth(config, night, sport, 4.0F, month);
+    return std::pair{month.residents.rows[0].alcoholism, month.sport_month.open_days};
+  };
+  const auto [plain, cleared] = turn(false, 0.0F);
+  failures += Expect(turn(true, 0.0F).first == plain - 1.0F,
+                     "field month: the man who went to the field drinks one less");
+  failures += Expect(turn(false, 35.0F).first == plain - 1.0F,
+                     "field month: sportiness of thirty takes one more off, field or not");
+  failures += Expect(cleared == 0, "field month: the month's open days are cleared at its turn");
+  return failures;
+}
+
 int CheckAlcoholism() {
   int failures = 0;
   const core::AlcoholismConfig config;  // boss's numbers
   // The distillers' reach and purchase at their defaults; no raw material
   // named, so this test buys nothing (the purchase has its own below).
   const core::NightTradeConfig night;
+  // No stadium type: nobody goes to a field here (the field has its own test).
+  const core::SportConfig sport;
   constexpr float kSpeedup = 4.0F;
   // Day 48: the first day of January, so the month that closed is December.
   constexpr core::SimDay kJanuaryFirst = core::kDaysPerYear;
@@ -2014,14 +2106,14 @@ int CheckAlcoholism() {
   // Not a month's first day: nothing moves, the count is kept.
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst + 1U) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   failures += Expect(row_of(distiller).alcoholism == 18.0F &&
                          row_of(husband).days_worked_this_month == 3 && world.step_events.empty(),
                      "drinking: a day that is not a month's first changes nothing");
 
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   // The distiller himself: supply +2, an idle December +1 — 18 to 21, over 20.
   failures += Expect(row_of(distiller).alcoholism == 21.0F && crossings(distiller).size() == 1 &&
                          crossings(distiller)[0] == 20,
@@ -2060,7 +2152,7 @@ int CheckAlcoholism() {
   world.calendar.tick =
       static_cast<core::Tick>(kJanuaryFirst + core::kDaysPerMonth) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   failures +=
       Expect(row_of(drinking_husband).alcoholism == 38.5F &&
                  crossings(drinking_husband).size() == 1 && crossings(drinking_husband)[0] == 20,
@@ -2080,7 +2172,7 @@ int CheckAlcoholism() {
   world.calendar.tick =
       static_cast<core::Tick>(kJanuaryFirst + (2U * core::kDaysPerMonth)) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   failures +=
       Expect(dry_months_of(happy_yard) == 2, "sobriety: the second turn without one counts two");
   // -1 work, -1 wife, -1 sober: 38.5 to 35.5.
@@ -2101,7 +2193,7 @@ int CheckAlcoholism() {
   row_of(watchman).distiller_supplied_month = core::SupplyMonthTag(kAprilFirst - 1U);
   world.calendar.tick = static_cast<core::Tick>(kAprilFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   failures += Expect(dry_months_of(happy_yard) == 0,
                      "sobriety: a supplied distiller in reach at the turn resets the dry months");
 
@@ -2110,7 +2202,7 @@ int CheckAlcoholism() {
   constexpr core::SimDay kMayFirst = kAprilFirst + core::kDaysPerMonth;
   world.calendar.tick = static_cast<core::Tick>(kMayFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   failures += Expect(dry_months_of(happy_yard) == 1,
                      "sobriety: a distiller with nothing supplied last month is no samogon");
   return failures;
@@ -2126,6 +2218,7 @@ int CheckSamogonPurchase() {
   // Defaults: reach 1000 m, 3 kg for a drinker and 8 kg for an abuser.
   core::NightTradeConfig night;
   night.raw_material = {core::ResourceId{0}, core::ResourceId{1}};  // grain, potato
+  const core::SportConfig sport;
   constexpr float kSpeedup = 4.0F;
   constexpr core::SimDay kJanuaryFirst = core::kDaysPerYear;
   constexpr std::int32_t kAdultBirth = -192;
@@ -2169,7 +2262,7 @@ int CheckSamogonPurchase() {
       core::SupplyMonthTag(kJanuaryFirst - 1U);
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  core::TurnAlcoholismMonth(config, night, kSpeedup, world);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
 
   failures += Expect(pantry(near_yard, 0) == 0 && pantry(near_yard, 1) == 44 * kKilo,
                      "purchase: 8 kg — the yard's 2 kg of grain first, then 6 of potato");
@@ -2589,6 +2682,7 @@ int main() {
   failures += CheckSchooling();
   failures += CheckRawMaterialLeak();
   failures += CheckAlcoholism();
+  failures += CheckTheSportsField();
   failures += CheckTakeNightTrader();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);

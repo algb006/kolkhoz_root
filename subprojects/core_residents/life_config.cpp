@@ -415,7 +415,8 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
   if (!ParseMembershipConfig(tables, config.membership, error) ||
       !ParseNightTradeConfig(tables, config.night_trade, error) ||
       !ParseSchoolingConfig(tables, config.schooling, error) ||
-      !ParseAlcoholismConfig(tables, config.alcoholism, error)) {
+      !ParseAlcoholismConfig(tables, config.alcoholism, error) ||
+      !ParseSportConfig(tables, config.sport, error)) {
     return false;
   }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
@@ -452,6 +453,8 @@ std::span<const std::string_view> LifeWorldParamKeys() {
     keys.insert(keys.end(), school.begin(), school.end());
     const std::span<const std::string_view> drinking = AlcoholismWorldParamKeys();
     keys.insert(keys.end(), drinking.begin(), drinking.end());
+    const std::span<const std::string_view> sport = SportWorldParamKeys();
+    keys.insert(keys.end(), sport.begin(), sport.end());
     return keys;
   }();
   return kAll;

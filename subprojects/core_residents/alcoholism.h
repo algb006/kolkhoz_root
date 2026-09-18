@@ -42,6 +42,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "night_trade.h"
+#include "sport.h"
 
 namespace core {
 
@@ -85,13 +86,20 @@ int AlcoholismBand(float alcoholism);
 ///          distiller's family; an empty pantry buys nothing;
 ///        - the settlement's alcoholism taken, its crossings of 20 and 40
 ///          said;
-///        - every resident's days_worked_this_month cleared.
+///        - every resident's days_worked_this_month cleared;
+///        - THE SPORTS FIELD (sport.h; register 223): in a counted month a
+///          resident of 16 and over who went to the field takes −1 off a
+///          man's drinking, sportiness at `sober_from` or over takes −1 more,
+///          and every such resident's sportiness moves; the field's month is
+///          then cleared.
 /// @param night The distillers' reach, purchase and raw-material order.
+/// @param sport The field's and sportiness's numbers.
 /// @param life_speedup LifeConfig::life_speedup, for the biological age.
 /// @pre Called on the first day of a month, before anything counts a day of
 ///      the new month.
 void TurnAlcoholismMonth(const AlcoholismConfig& config,
                          const NightTradeConfig& night,
+                         const SportConfig& sport,
                          float life_speedup,
                          WorldState& current);
 

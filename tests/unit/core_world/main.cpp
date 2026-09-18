@@ -541,6 +541,17 @@ int main() {
                        "drinking village: men start inside 15..55, women at nought");
     failures += Expect(mean > 25.0F && mean < 35.0F && over_forty >= 1,
                        "drinking village: the village about thirty, somebody over forty");
+    // The young start a little sporty (question 225): 10..30, and some do.
+    std::uint32_t sporty = 0;
+    bool sport_band = true;
+    for (const core::ResidentRow& person : start.residents.rows) {
+      if (person.sportiness > 0.0F) {
+        ++sporty;
+        sport_band = sport_band && person.sportiness >= 10.0F && person.sportiness <= 30.0F;
+      }
+    }
+    failures += Expect(sporty > 0 && sport_band,
+                       "sportiness: the young founders start in 10..30, and some of them do");
   }
 
   // THE DIGGING PLOTS OF THE SHIPPED MAP (construction design §3; boss,

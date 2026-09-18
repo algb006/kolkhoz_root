@@ -349,6 +349,19 @@ struct WeatherState {
   bool cover_since_leaf_fall = false;
 };
 
+/// @brief The sports field's month (leisure §12, «Погода для уличных
+/// занятий»; register 223; save 68). A day is OPEN when its mean is at
+/// `sport_open_temp_c` or over, it has no precipitation, and it is not the day
+/// after a downpour; a month COUNTS when `sport_open_days_min` of its days
+/// were open.
+struct SportMonth {
+  /// Open days in the month running; cleared at the month's turn.
+  std::uint8_t open_days = 0;
+
+  /// 0/1: yesterday had heavy hours — a downpour, and the field is mud today.
+  std::uint8_t downpour_yesterday = 0;
+};
+
 /// @brief The chairman's standing. He is an abstract figure without a body or
 /// personal metrics (design: chairman), but his reputations are world state.
 /// @note NO LONGER A STUB, and the note that said so was already false when
@@ -795,6 +808,11 @@ struct WorldState {
   /// What the distillers took off the stores this month (crime design §7);
   /// SAVED. night_trade_state.h.
   NightTheftTally night_theft;
+
+  /// The sports field's month (leisure §12, «Погода для уличных занятий»;
+  /// register 223; boss seq 127); SAVED (save 68). Counted day by day by
+  /// core_residents (sport.h) and read at the month's turn, then cleared.
+  SportMonth sport_month;
 
   /// The couples ready to marry who wait for a free house (life-cycle design
   /// §12); SAVED. wedding_state.h.

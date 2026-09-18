@@ -177,7 +177,11 @@ static_assert(AggregateArity<ReadinessComponent>() == 3,
 static_assert(AggregateArity<TransitionBlocks>() == 6,
               "TransitionBlocks gained or lost a block — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: the chairman's issue norms (kSetIssueNorm), 32.
-static_assert(AggregateArity<WorldState>() == 32,
+// 2026-09-19, save 68: the sports field's month, 33.
+static_assert(sizeof(SportMonth) == 2, "SportMonth changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<SportMonth>() == 2,
+              "SportMonth gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 33,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -590,6 +594,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.night_theft.leak_open_this_month);
   out.WriteU32(world.night_theft.distiller_short_since);
   out.WriteFloat(world.night_theft.settlement_alcoholism);
+  // The sports field's month (save 68): its open days and yesterday's downpour.
+  out.WriteU8(world.sport_month.open_days);
+  out.WriteU8(world.sport_month.downpour_yesterday);
 
   // The district MTS's column of this season (MTS design §1, save format 46).
   out.WriteU8(static_cast<std::uint8_t>(world.mts_column.phase));
@@ -699,6 +706,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the month's open leak"));
   world->night_theft.distiller_short_since = in.ReadU32();
   world->night_theft.settlement_alcoholism = in.ReadFloat();
+  world->sport_month.open_days = in.ReadU8();
+  world->sport_month.downpour_yesterday =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "downpour yesterday"));
 
   world->mts_column.phase = static_cast<MtsColumnPhase>(
       source.ReadEnumValue(0,

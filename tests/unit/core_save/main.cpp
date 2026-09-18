@@ -555,6 +555,9 @@ core::WorldState MakeWorld() {
   world.night_theft.leak_open_this_month = 1;
   world.night_theft.distiller_short_since = 23;
   world.night_theft.settlement_alcoholism = 31.5F;
+  // The sports field's month (save 68): both away from their zero defaults.
+  world.sport_month.open_days = 3;
+  world.sport_month.downpour_yesterday = 1;
   // The district MTS's column (save format 46): every field set apart.
   world.mts_column.phase = core::MtsColumnPhase::kWorking;
   world.mts_column.lot = core::LimitLotId{1};
@@ -768,6 +771,8 @@ core::WorldState MakeWitnessWorld() {
   witness.night_theft.leak_open_this_month = 1;
   witness.night_theft.distiller_short_since = 29;
   witness.night_theft.settlement_alcoholism = 12.25F;
+  witness.sport_month.open_days = 2;
+  witness.sport_month.downpour_yesterday = 1;
 
   witness.mts_column.phase = core::MtsColumnPhase::kWorking;
   witness.mts_column.lot = core::LimitLotId{1};
@@ -869,6 +874,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       {"night_theft.distiller_short_since", U32(world.night_theft.distiller_short_since)});
   chunks.push_back(
       {"night_theft.settlement_alcoholism", F32(world.night_theft.settlement_alcoholism)});
+  // The sports field's month (save 68).
+  chunks.push_back({"sport_month.open_days", U8(world.sport_month.open_days)});
+  chunks.push_back({"sport_month.downpour_yesterday", U8(world.sport_month.downpour_yesterday)});
 
   chunks.push_back({"mts_column.phase", Enum8(world.mts_column.phase)});
   chunks.push_back({"mts_column.lot", U16(world.mts_column.lot.value)});
@@ -1054,7 +1062,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // Save 66: +34 — the milk cart's share (8) and the deliveries outside any
     // position (2 + 3 x 8). The first build ran unpredicted (a miss, named);
     // 437 with the empty vector and then 461 were predicted and held.
-    {"world", 461, 0x4299d768efe04083ULL},
+    // Save 68: +2 — the sports field's month, two bytes; predicted before
+    // the fields were added, and held.
+    {"world", 463, 0xbe95da902d77065fULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1591,6 +1601,9 @@ int main() {
                          loaded.night_theft.settlement_alcoholism == 31.5F,
                      "the leak's month, the vacancy and the settlement's drinking came back "
                      "(save 60)");
+  failures +=
+      Expect(loaded.sport_month.open_days == 3 && loaded.sport_month.downpour_yesterday == 1,
+             "the sports field's month comes back (save 68)");
   failures +=
       Expect(loaded.mts_column.phase == core::MtsColumnPhase::kWorking &&
                  loaded.mts_column.lot.value == 1 && loaded.mts_column.arrive_day == 110 &&

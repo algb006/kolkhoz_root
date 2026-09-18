@@ -39,6 +39,7 @@
 #include "membership.h"
 #include "night_trade.h"
 #include "schooling.h"
+#include "sport.h"
 
 namespace core {
 
@@ -218,6 +219,9 @@ struct LifeConfig {
 
   /// The drinking (alcoholism.h; boss, parcel 364).
   AlcoholismConfig alcoholism;
+
+  /// The sports field and sportiness (sport.h; register 223).
+  SportConfig sport;
 
   float life_speedup = 4.0F;
 

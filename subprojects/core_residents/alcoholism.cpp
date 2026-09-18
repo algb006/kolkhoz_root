@@ -155,9 +155,15 @@ float MonthChange(const AlcoholismConfig& config,
                   const ResidentRow& person,
                   bool samogon_at_yard,
                   bool sober_yard,
-                  bool winter) {
+                  bool winter,
+                  float field_loss,
+                  float sportiness_loss) {
   const bool holds_post = person.post.profession.value != kInvalidDefIdValue;
   float change = samogon_at_yard ? config.gain_with_distiller : 0.0F;
+  // THE SPORTS FIELD AND SPORTINESS (sport.h; register 223; question 225):
+  // −1 to a man who went to the field in a counted month, and −1 more once
+  // his sportiness has reached `sober_from` — «спорт стал его».
+  change -= field_loss + sportiness_loss;
   // A post holder is not idle: his post keeps him out of the accountant's day
   // and so off the worked-days count.
   if (winter && !holds_post && person.days_worked_this_month == 0) {
@@ -226,6 +232,7 @@ int AlcoholismBand(float alcoholism) {
 
 void TurnAlcoholismMonth(const AlcoholismConfig& config,
                          const NightTradeConfig& night,
+                         const SportConfig& sport,
                          float life_speedup,
                          WorldState& current) {
   const SimDay day = current.calendar.day;
@@ -237,9 +244,20 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
   const bool winter = IsWinterMonth(static_cast<Month>(month_index));
   const std::vector<std::uint32_t> supplier =
       TurnYardSuppliers(night, current, SupplyMonthTag(day - 1U));
+  const bool field_month = SportMonthCounted(sport, current);
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     ResidentRow& person = current.residents.rows[row];
     const float age_years = BiologicalAgeYears(life_speedup, person.birth_day, day);
+    // Read on the month's opening state: whether he went, and what his
+    // sportiness stood at, before either moves (sport.h).
+    const bool adult = age_years >= config.adult_from_years;
+    const bool went = adult && field_month && GoesToTheField(sport, current, person, age_years);
+    const float field_loss = went ? sport.field_alcohol_loss : 0.0F;
+    const float sportiness_loss =
+        adult && person.sportiness >= sport.sober_from ? sport.sportiness_alcohol_loss : 0.0F;
+    if (adult) {
+      TurnSportiness(sport, went, age_years, person);
+    }
     // MEN ONLY: «пьют мужчины», and a woman has no such metric at all (crime
     // design §6; boss, 2026-09-18). Until that day a woman's change was a
     // quarter of a man's — the numbers table contradicted its own section,
@@ -259,8 +277,14 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
       if (distiller != kNoRow) {
         BuySamogon(night, current, row, distiller, before);
       }
-      const float change =
-          MonthChange(config, current, person, distiller != kNoRow, sober_yard, winter);
+      const float change = MonthChange(config,
+                                       current,
+                                       person,
+                                       distiller != kNoRow,
+                                       sober_yard,
+                                       winter,
+                                       field_loss,
+                                       sportiness_loss);
       person.alcoholism = std::clamp(before + change, kMetricMin, config.epoch1_cap);
       const int band = AlcoholismBand(person.alcoholism);
       if (band != AlcoholismBand(before)) {
@@ -273,6 +297,8 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
     }
     person.days_worked_this_month = 0;
   }
+  // The field's month is read; the new month counts from nought.
+  current.sport_month.open_days = 0;
   TurnSettlementAlcoholism(config, life_speedup, current);
 }
 

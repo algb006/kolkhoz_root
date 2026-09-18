@@ -63,7 +63,7 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 /// the list the assembly is handed and the list actually read cannot be two
 /// lists: they are the same array. A second copy written out beside the
 /// reader would be correct on the day it was written and mute ever after.
-constexpr std::array<std::string_view, 23> kGenesisWorldParamKeys = {
+constexpr std::array<std::string_view, 27> kGenesisWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -108,7 +108,19 @@ constexpr std::array<std::string_view, 23> kGenesisWorldParamKeys = {
     "alcohol_start_idle_min",
     "alcohol_start_idle_max",
     "alcohol_start_idle_age",
-    "alcohol_start_sick_health"};
+    "alcohol_start_sick_health",
+    // THE YOUNG START A LITTLE SPORTY (metrics §2 «Спортивность в Эпохе I»;
+    // question 225): the ages and the band of the founders' sportiness.
+    "sportiness_start_age_min",
+    "sportiness_start_age_max",
+    "sportiness_start_min",
+    "sportiness_start_max"};
+
+/// Where the founders' sportiness keys begin in the list above.
+constexpr std::size_t kStartSportinessKeyFirst = 23;
+static_assert(kGenesisWorldParamKeys[kStartSportinessKeyFirst] == "sportiness_start_age_min" &&
+                  kGenesisWorldParamKeys[kStartSportinessKeyFirst + 3] == "sportiness_start_max",
+              "the sportiness keys moved out from under their index");
 
 /// Where the drinking village's keys begin in the list above.
 constexpr std::size_t kStartDrinkingKeyFirst = 15;
@@ -162,6 +174,55 @@ StartDrinking ReadStartDrinking(const ITableSet& tables) {
     return StartDrinking{};
   }
   return start;
+}
+
+/// The founders' sportiness (metrics §2; question 225; STUB, econ's figures
+/// appointed by boss): residents of `age_min`..`age_max` years start in
+/// `min`..`max`, everybody else at nought.
+struct StartSportiness {
+  float age_min = 16.0F;
+  float age_max = 25.0F;
+  float min = 10.0F;
+  float max = 30.0F;
+};
+
+StartSportiness ReadStartSportiness(const ITableSet& tables) {
+  StartSportiness start;
+  const ITable* const world = tables.FindTable("world_params");
+  if (world == nullptr) {
+    return start;
+  }
+  const Range years{.low = 0.0F, .high = 150.0F};
+  const Range points{.low = 0.0F, .high = 100.0F};
+  const std::size_t first = kStartSportinessKeyFirst;
+  const std::array<ScalarKnob, 4> rows = {
+      ScalarKnob{.key = kGenesisWorldParamKeys[first], .value = &start.age_min, .range = years},
+      ScalarKnob{.key = kGenesisWorldParamKeys[first + 1], .value = &start.age_max, .range = years},
+      ScalarKnob{.key = kGenesisWorldParamKeys[first + 2], .value = &start.min, .range = points},
+      ScalarKnob{.key = kGenesisWorldParamKeys[first + 3], .value = &start.max, .range = points}};
+  std::string trouble;
+  if (!ReadKnobs(*world, "world_params", rows, trouble)) {
+    LogError("genesis: " + trouble + " — the documented sportiness is used");
+    return StartSportiness{};
+  }
+  return start;
+}
+
+/// The founders' sportiness, from the counter hash for the hygiene's reason.
+void SeedStartSportiness(const StartSportiness& start,
+                         float life_speedup,
+                         std::uint64_t world_seed,
+                         WorldState& world) {
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    ResidentRow& person = world.residents.rows[row];
+    const float age = BiologicalAgeYears(life_speedup, person.birth_day, world.calendar.day);
+    if (age < start.age_min || age > start.age_max) {
+      continue;
+    }
+    const float draw =
+        CounterHashUnitFloat(world_seed, 0, world.residents.row_ids[row].value, 0x53505400ULL);
+    person.sportiness = start.min + (draw * (start.max - start.min));
+  }
 }
 
 /// THE DIFFICULTY'S PLACE (boss seq 121: three levels, every test on the
@@ -1492,6 +1553,7 @@ WorldState CreateStartWorld(const ITableSet& tables,
   // After the marriages, which the classes read (start §13).
   SeedStartDrinking(
       ReadStartDrinking(tables), body.age_adult_from_years, life_speedup, world_seed, world);
+  SeedStartSportiness(ReadStartSportiness(tables), life_speedup, world_seed, world);
   MakeTimberStands(tables, world, error);
   MakeExtractionSites(tables, world, error);
   return world;

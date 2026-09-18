@@ -379,7 +379,11 @@ class ResidentsSystem final : public IResidentsSystem {
     // (night_trade.h) — then the month's drinking, over the month the labor
     // day close has just finished counting (alcoholism.h).
     TurnNightTheftMonth(config_.night_trade, config_.life_speedup, current);
-    TurnAlcoholismMonth(config_.alcoholism, config_.night_trade, config_.life_speedup, current);
+    TurnAlcoholismMonth(
+        config_.alcoholism, config_.night_trade, config_.sport, config_.life_speedup, current);
+    // And today's weather at the field, counted in the month that opens
+    // (sport.h) — after the turn, which read and cleared the one that closed.
+    CountSportDay(config_.sport, current);
     // The school before the wave: a child enrolled in September is a pupil
     // on the day the autumn wave asks.
     RunSchoolDay(config_.schooling, config_.life_speedup, current);
