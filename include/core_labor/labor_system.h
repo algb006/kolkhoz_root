@@ -56,6 +56,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
@@ -124,7 +125,15 @@ class ILaborSystem {
 ///        tables, on the documented defaults (core_tables/stub_tables.h).
 ///        There is no default value: a caller that has not thought about
 ///        it cannot be served a different world in silence.
-std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables, StubTables stubs);
+/// @param growing_season_last_day The last day of the year a standing crop is
+///        safe from the snow (ITimeSystem::GrowingSeasonLastDay), the same
+///        number production's sowing gate is given: the edge of a late
+///        crop's reaping in the queue. The default, the year's last day,
+///        changes nothing.
+std::unique_ptr<ILaborSystem> CreateLaborSystem(
+    const ITableSet& tables,
+    StubTables stubs,
+    std::uint32_t growing_season_last_day = kDaysPerYear - 1U);
 
 }  // namespace core
 

@@ -32,6 +32,7 @@
 
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/timber_catalog.h"
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/post_shift.h"
@@ -68,6 +69,11 @@ struct CropWindows {
   /// its year, so a fallow ahead of it in the rotation is ploughed for it
   /// this same year (FieldWindow).
   std::uint8_t is_winter = 0;
+
+  /// Days the crop takes to ripen (core_common/crop_calendar.h, the SAME
+  /// arithmetic the sowing gate asks); 0 for a winter crop or a perennial,
+  /// whose reaping keeps its window to the end (FieldWindow).
+  std::int32_t ripen_days = 0;
 };
 
 /// Shape of the worker-efficiency product (manual/65-labor-model.md §5).
@@ -228,6 +234,14 @@ struct LaborConfig {
 
   /// Calendar windows per crop row, for job urgency.
   std::vector<CropWindows> crops;
+
+  /// The last day of the year a standing crop is safe from the snow
+  /// (ITimeSystem::GrowingSeasonLastDay, passed in by the assembly as it is
+  /// to production). THE REAPING'S EDGE: an annual past its reaping window
+  /// is still due by this day, not overdue (boss seq 71, 2026-09-18). The
+  /// sowing's end does not use it yet — see FieldWindow. The default, the
+  /// year's last day, changes nothing.
+  std::uint32_t growing_season_last_day = kDaysPerYear - 1U;
 
   /// The last month of the meadow cut, 0-based (farming.csv
   /// meadow_cut_month_end, 1-based in the file). A meadow has no crop, so

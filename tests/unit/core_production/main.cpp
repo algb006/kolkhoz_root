@@ -2337,6 +2337,55 @@ int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
 /// spent in the order the fields must be sown, a field is named for the
 /// square metres it cannot get, no horses means nothing harnessed gets done,
 /// and a winter crop and a field already at the (hand) sowing are not asked.
+/// THE SNOW TAKES A STANDING FIELD, AND THE BOOK SAYS HOW MUCH (farming
+/// design §6; host, econ-host-lever-pass3 seq 35): the standing crop at the
+/// harvest's own estimate goes to lost_to_snow, the heap lying there to
+/// lost_no_room under ITS resource, the hectares to area_lost_ha, and
+/// kFieldLost carries the resource and the grams — it carried nought.
+int CheckTheSnowBooksWhatItTakes() {
+  int failures = 0;
+  constexpr core::Grams kTonne = core::kGramsPerTonne;
+  core::ProductionConfig config;
+  core::CropDef potato;
+  potato.resource = core::ResourceId{1};
+  potato.yield_kg_per_ha = 1000.0F;
+  config.crops = {potato};
+  core::WorldState world;
+  core::FieldRow standing;
+  standing.kind = core::LandKind::kArable;
+  standing.area_ga = 10.0F;
+  standing.fertility = 50.0F;  // neutral: the yield is the table's
+  standing.phase = core::FieldPhase::kHarvest;
+  standing.crop = core::CropId{0};
+  standing.reaped_grams = 2 * kTonne;  // last year's heap, of another crop
+  standing.reaped_resource = core::ResourceId{0};
+  const core::FieldId id = core::AppendRow(world.fields, standing);
+
+  core::FieldRow& field = world.fields.rows[core::FindRow(world.fields, id)];
+  core::LoseFieldToSnow(config, world, field, config.crops[0]);
+
+  const core::YearLedger& book = world.ledger.current;
+  failures += Expect(book.lost_to_snow.size() > 1 && book.lost_to_snow[1] == 10 * kTonne,
+                     "snow: the standing crop is booked at what the harvest would have given");
+  failures += Expect(book.lost_no_room.size() > 0 && book.lost_no_room[0] == 2 * kTonne &&
+                         book.area_lost_ha == 10.0F,
+                     "snow: the heap under its own resource, and the hectares");
+  std::int64_t said = -1;
+  core::ResourceId said_of;
+  for (const core::SimEvent& event : world.step_events) {
+    if (event.kind == core::EventKind::kFieldLost && event.field.value == id.value) {
+      said = event.amount;
+      said_of = event.resource;
+    }
+  }
+  failures += Expect(said == 10 * kTonne && said_of.value == 1,
+                     "snow: kFieldLost says what and how much, not nought");
+  failures += Expect(field.crop.value == core::kInvalidDefIdValue &&
+                         field.phase == core::FieldPhase::kIdle && field.reaped_grams == 0,
+                     "snow: the field is left idle, its crop and its heap gone");
+  return failures;
+}
+
 int CheckTheSowingWillNotFit() {
   int failures = 0;
   core::ProductionConfig config;
@@ -5780,6 +5829,7 @@ int main() {
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckTheSowingWillNotFit();
+  failures += CheckTheSnowBooksWhatItTakes();
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckTheStrawClaimsRoomToo();

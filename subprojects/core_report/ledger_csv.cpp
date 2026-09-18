@@ -328,6 +328,7 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // first column that says what the missing storage cost, rather than
   // leaving the year's book to balance by silence.
   EmitResourceBlock(out, resources, "lost_no_room", book.lost_no_room);
+  EmitResourceBlock(out, resources, "lost_to_snow", book.lost_to_snow);
   EmitResourceBlock(out, resources, "spoiled", book.spoiled);
   EmitResourceBlock(out, resources, "seed", book.seed);
   EmitResourceBlock(out, resources, "delivered", book.delivered);

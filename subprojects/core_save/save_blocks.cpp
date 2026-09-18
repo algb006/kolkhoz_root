@@ -50,9 +50,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // a sixteenth amounts column and a fifty-sixth field.
 // 2026-09-18, save 60: samogon_paid, the drink's price in kind (register
 // 205) — a seventeenth column and a fifty-seventh field.
-static_assert(sizeof(YearLedger) == 208 + (17 * kAmountsSize),
+// 2026-09-18 again, save 61: lost_to_snow, the standing crop the snow took —
+// an eighteenth column and a fifty-eighth field.
+static_assert(sizeof(YearLedger) == 208 + (18 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 57,
+static_assert(AggregateArity<YearLedger>() == 58,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -256,6 +258,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
 
   sink.WriteAmounts(DefKind::kResource, book.harvest);
   sink.WriteAmounts(DefKind::kResource, book.lost_no_room);
+  sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
@@ -326,6 +329,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
 
   book.harvest = source.ReadAmounts(DefKind::kResource);
   book.lost_no_room = source.ReadAmounts(DefKind::kResource);
+  book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
   book.seed = source.ReadAmounts(DefKind::kResource);
   book.area_sown_ha = in.ReadFloat();

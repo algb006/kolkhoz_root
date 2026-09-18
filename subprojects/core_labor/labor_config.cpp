@@ -23,6 +23,7 @@
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
+#include "core_common/crop_calendar.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -441,22 +442,32 @@ bool ParseCropWindows(const ITable& table, LaborConfig& config, std::string& err
   const std::uint32_t sow_column = table.FindColumn("sow_to_month");
   const std::uint32_t harvest_column = table.FindColumn("harvest_to_month");
   const std::uint32_t winter_column = table.FindColumn("is_winter");
+  const std::uint32_t perennial_column = table.FindColumn("is_perennial");
+  const std::uint32_t reap_from_column = table.FindColumn("harvest_from_month");
   config.crops.assign(table.RowCount(), CropWindows{});
+  const Range month{.low = 1.0F, .high = 12.0F};
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     // Table months are human 1..12; the core's Month enum is 0-based.
     float sow_to = 12.0F;
     float harvest_to = 12.0F;
+    float reap_from = 12.0F;
     float winter = 0.0F;
-    if (!OptionalCell(table, row, sow_column, Range{.low = 1.0F, .high = 12.0F}, sow_to, error) ||
-        !OptionalCell(
-            table, row, harvest_column, Range{.low = 1.0F, .high = 12.0F}, harvest_to, error) ||
-        !OptionalCell(table, row, winter_column, Range::Unit(), winter, error)) {
+    float perennial = 0.0F;
+    if (!OptionalCell(table, row, sow_column, month, sow_to, error) ||
+        !OptionalCell(table, row, harvest_column, month, harvest_to, error) ||
+        !OptionalCell(table, row, reap_from_column, month, reap_from, error) ||
+        !OptionalCell(table, row, winter_column, Range::Unit(), winter, error) ||
+        !OptionalCell(table, row, perennial_column, Range::Unit(), perennial, error)) {
       PrefixError("crops", "window", error);
       return false;
     }
-    config.crops[row].sow_to_month = static_cast<std::uint8_t>(sow_to - 1.0F);
-    config.crops[row].harvest_to_month = static_cast<std::uint8_t>(harvest_to - 1.0F);
-    config.crops[row].is_winter = winter > 0.5F ? 1U : 0U;
+    CropWindows& windows = config.crops[row];
+    windows.sow_to_month = static_cast<std::uint8_t>(sow_to - 1.0F);
+    windows.harvest_to_month = static_cast<std::uint8_t>(harvest_to - 1.0F);
+    windows.is_winter = winter > 0.5F ? 1U : 0U;
+    windows.ripen_days = RipenGapDays(windows.sow_to_month,
+                                      static_cast<std::uint8_t>(reap_from - 1.0F),
+                                      winter > 0.5F || perennial > 0.5F);
   }
   return true;
 }

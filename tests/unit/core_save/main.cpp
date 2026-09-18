@@ -496,6 +496,8 @@ core::WorldState MakeWorld() {
   world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
+  // The standing crop the snow took (save 61): host's 150 t of potato.
+  world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -1064,7 +1066,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // +28, counted before the build.
     // Save 60: +20 — samogon_paid, the current book's empty column (2) and
     // the closed book's two positions (2 + 2 x 8).
-    {"ledger", 692, 0x6aceddb6a5d50eadULL},
+    // Save 61: +20 again — lost_to_snow, the same shape, predicted before the
+    // build and read off it.
+    {"ledger", 712, 0x3cc29da912b2a70eULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1322,6 +1326,13 @@ int main() {
   failures += Expect(
       loaded.ledger.closed.plan_due.size() == 3 && loaded.ledger.closed.plan_due[0] == 12'000'000,
       "what the district asked comes back in the closed book (save 58)");
+  // Filled since save 60 and read by nothing until save 61 was written: a
+  // codec that forgot to READ samogon_paid would have passed this file.
+  failures += Expect(AmountAt(loaded.ledger.closed.samogon_paid, 0) == 3'000 &&
+                         AmountAt(loaded.ledger.closed.samogon_paid, 1) == 5'000,
+                     "the drink's price in kind comes back in the closed book (save 60)");
+  failures += Expect(AmountAt(loaded.ledger.closed.lost_to_snow, 1) == 150'000'000,
+                     "the standing crop the snow took comes back in the closed book (save 61)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.

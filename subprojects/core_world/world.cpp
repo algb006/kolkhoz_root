@@ -696,12 +696,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   auto residents = CreateResidentsSystem(*config.tables, config.stub_tables);
   // The growing season's last day travels from the clock to the fields: it is
   // derived from the seasonal curve, which is core_time's, and production
-  // refuses a sowing that cannot ripen before it.
-  auto production =
-      CreateProductionSystem(*config.tables,
-                             config.stub_tables,
-                             time == nullptr ? kDaysPerYear - 1U : time->GrowingSeasonLastDay());
-  auto labor = CreateLaborSystem(*config.tables, config.stub_tables);
+  // refuses a sowing that cannot ripen before it. The same day goes to labor,
+  // whose queue ranks a late reaping toward it (2026-09-18): one edge, not one
+  // for the fields and another for the queue.
+  const std::uint32_t season_last_day =
+      time == nullptr ? kDaysPerYear - 1U : time->GrowingSeasonLastDay();
+  auto production = CreateProductionSystem(*config.tables, config.stub_tables, season_last_day);
+  auto labor = CreateLaborSystem(*config.tables, config.stub_tables, season_last_day);
   auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).

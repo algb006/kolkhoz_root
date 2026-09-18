@@ -148,6 +148,25 @@ void TrySowWinter(const ProductionConfig& config,
 ///         and means nothing. Callers treat 0 as "ripening does not gate this".
 std::int32_t RipenDays(const ProductionConfig& config, CropId crop);
 
+/// @brief What this field gives of `crop` if it is reaped now: the table's
+/// yield × area × fertility against neutral × the weather's capped stress ×
+/// the late-sowing slope. THE ONE ESTIMATE, used by the harvest and by the
+/// snow that takes the field unreaped — a loss booked by a second formula
+/// would be a loss the harvest could not have given.
+Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop);
+
+/// @brief The snow takes an unreaped annual whole (farming design §6): the
+/// heap lying on the field goes to lost_no_room, the standing crop —
+/// FieldYieldGrams, the harvest's own estimate — to lost_to_snow, the
+/// hectares to area_lost_ha; the field is left idle with its crop cleared,
+/// and kFieldLost says field, resource and grams.
+/// @pre The caller has decided it is snowing in `crop`'s reaping season and
+///      the crop is neither a winter crop nor a perennial.
+void LoseFieldToSnow(const ProductionConfig& config,
+                     WorldState& current,
+                     FieldRow& field,
+                     const CropDef& crop);
+
 /// @brief Whether the crop standing on this field has ripened by `day`.
 ///
 /// True for a stand that carries no sowing day (kNeverSownDay): a crop whose

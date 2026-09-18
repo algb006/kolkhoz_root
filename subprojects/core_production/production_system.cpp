@@ -485,37 +485,7 @@ class ProductionSystem final : public IProductionSystem {
       // seedlings, not a standing harvest.
       const bool reaping_season = month >= crop.harvest_from_month;
       if (snowing && reaping_season && !crop.is_winter && !crop.is_perennial) {
-        // What was already reaped and still waiting for a cart goes with the
-        // standing crop, and it is booked as lost room rather than vanishing
-        // (task A3, STUB with a named term: this bounds free storage, it does
-        // not model spoilage — manual/72-storage-and-alarms.md §2).
-        if (field.reaped_grams > 0) {
-          // What LIES there, not what stands there: after a season without a
-          // cart the buffer can hold the previous crop, and booking it under
-          // this year's resource would put the loss in the wrong column.
-          AddLedgerAmount(
-              current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
-          field.reaped_grams = 0;
-          field.reaped_resource = ResourceId{};
-        }
-        field.last_crop = field.crop;
-        field.repeat_years = 0;
-        field.crop = CropId{};
-        MoveFieldPhase(current, field, FieldPhase::kIdle);
-        field.work_days_remaining = 0.0F;
-        ClearFieldWeather(field);
-        field.manure_applied = 0;
-        current.ledger.current.area_lost_ha += field.area_ga;
-        // AND HERE IT IS SAID. The comment that used to stand on these lines
-        // claimed the loss "is an event already — kFieldLost, emitted where
-        // the events slot folds it". It was not: the kind had no emitter
-        // anywhere in the core, and the sentence describing the emission
-        // outlived the emission it described (boss, 2026-09-05). Snow on an
-        // unreaped field is the only TOTAL loss of a harvest in the game, so
-        // it interrupts a fast-forward: the player is entitled to see the
-        // day it happened, not the year's total.
-        SimEvent& lost = EmitEvent(current, EventKind::kFieldLost, EventSeverity::kInterrupting);
-        lost.field = FieldIdOf(current, field);
+        LoseFieldToSnow(config_, current, field, crop);
         // No LogWarning: phase code does not log (core_log contract,
         // DEADLOCK-001), and a condition worth telling the player is an
         // alarm, not a line in a file nobody opens.

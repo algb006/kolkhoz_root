@@ -11,6 +11,7 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/crop_calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
@@ -127,18 +128,72 @@ float LateSowingFactor(const ProductionConfig& config, const FieldRow& field) {
                                                          : factor;
 }
 
-void Harvest(const ProductionConfig& config,
-             WorldState& current,
-             FieldRow& field,
-             const CropDef& crop) {
+}  // namespace
+
+Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop) {
   const float soil_factor = field.fertility / config.farming.fertility_neutral;
   // The sum of the two, capped exactly where the single number was.
   const float stress_total = field.drought_stress + field.wet_stress;
   const float capped =
       stress_total > config.farming.stress_cap ? config.farming.stress_cap : stress_total;
   const float weather_factor = 1.0F - capped;
-  const auto yield_grams = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor *
-                                              weather_factor * LateSowingFactor(config, field));
+  return GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor *
+                            LateSowingFactor(config, field));
+}
+
+void LoseFieldToSnow(const ProductionConfig& config,
+                     WorldState& current,
+                     FieldRow& field,
+                     const CropDef& crop) {
+  // What was already reaped and still waiting for a cart goes with the
+  // standing crop, and it is booked as lost room rather than vanishing
+  // (task A3, STUB with a named term: this bounds free storage, it does
+  // not model spoilage — manual/72-storage-and-alarms.md §2).
+  if (field.reaped_grams > 0) {
+    // What LIES there, not what stands there: after a season without a
+    // cart the buffer can hold the previous crop, and booking it under
+    // this year's resource would put the loss in the wrong column.
+    AddLedgerAmount(current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
+    field.reaped_grams = 0;
+    field.reaped_resource = ResourceId{};
+  }
+  // THE STANDING CROP, BOOKED. Only the hectares and the heap were written
+  // until 2026-09-18, and host found a seed's 150 t of potato in no column
+  // (econ-host-lever-pass3 seq 35): nothing vanishes without a line. The
+  // harvest's own estimate, taken before the crop is cleared.
+  const Grams crop_lost = FieldYieldGrams(config, field, crop);
+  AddLedgerAmount(current.ledger.current.lost_to_snow, crop.resource, crop_lost);
+  field.last_crop = field.crop;
+  field.repeat_years = 0;
+  field.crop = CropId{};
+  MoveFieldPhase(current, field, FieldPhase::kIdle);
+  field.work_days_remaining = 0.0F;
+  ClearFieldWeather(field);
+  field.manure_applied = 0;
+  current.ledger.current.area_lost_ha += field.area_ga;
+  // AND HERE IT IS SAID. A comment that once stood where this was called
+  // claimed the loss "is an event already — kFieldLost, emitted where the
+  // events slot folds it". It was not: the kind had no emitter anywhere in
+  // the core, and the sentence describing the emission outlived the emission
+  // it described (boss, 2026-09-05). Snow on an unreaped field is the only
+  // TOTAL loss of a harvest in the game, so it interrupts a fast-forward: the
+  // player is entitled to see the day it happened, not the year's total.
+  SimEvent& lost = EmitEvent(current, EventKind::kFieldLost, EventSeverity::kInterrupting);
+  lost.field = FieldIdOf(current, field);
+  // What and how much, as kFieldHarvested says them: the event carried
+  // amount 0 until 2026-09-18, and the journal could not tell a lost strip
+  // from a lost year.
+  lost.resource = crop.resource;
+  lost.amount = static_cast<std::int64_t>(crop_lost);
+}
+
+namespace {
+
+void Harvest(const ProductionConfig& config,
+             WorldState& current,
+             FieldRow& field,
+             const CropDef& crop) {
+  const Grams yield_grams = FieldYieldGrams(config, field, crop);
   // THE REAPED CROP STAYS ON THE FIELD. Until task A4 it went into the
   // stores in the same tick it was cut — the instant-delivery stub — and
   // only the remainder that would not fit stayed out. It all stays out
@@ -494,15 +549,9 @@ std::int32_t RipenDays(const ProductionConfig& config, CropId crop) {
     return 0;
   }
   const CropDef& def = config.crops[crop.value];
-  if (def.is_winter || def.is_perennial) {
-    return 0;  // reaped in another year: the gap runs backwards and says nothing
-  }
-  // From the LAST day the crop may be sown to the FIRST day it may be reaped.
-  const auto last_sowing =
-      static_cast<std::int32_t>(((def.sow_to_month + 1U) * kDaysPerMonth) - 1U);
-  const auto first_reaping = static_cast<std::int32_t>(def.harvest_from_month * kDaysPerMonth);
-  const std::int32_t gap = first_reaping - last_sowing;
-  return gap > 0 ? gap : 0;
+  // Reaped in another year: the gap runs backwards and says nothing. The
+  // arithmetic lives in core_common/crop_calendar.h, where labor reads it too.
+  return RipenGapDays(def.sow_to_month, def.harvest_from_month, def.is_winter || def.is_perennial);
 }
 
 bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDay day) {

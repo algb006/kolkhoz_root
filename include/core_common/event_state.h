@@ -73,7 +73,7 @@ enum class EventKind : std::uint8_t {
   // -- land: the production decisions sub-step ------------------------------
   kFieldPhaseChanged,  ///< field; amount = the new FieldPhase value.
   kFieldHarvested,     ///< field, resource, amount (grams into the stores).
-  kFieldLost,          ///< field — the crop lost to snow (farming design §6).
+  kFieldLost,          ///< field, resource, amount (grams the snow took standing; §6).
 
   // -- herds: the production decisions sub-step -----------------------------
   kHerdBorn,  ///< herd; amount = heads.

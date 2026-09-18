@@ -89,6 +89,16 @@ Deadline WindowOf(const CalendarState& calendar, std::uint8_t month_end) {
   return DeadlineInDays(static_cast<std::int32_t>(window_end - day_of_year - 1U));
 }
 
+/// Days left until `last_day` of the year inclusive, or overdue past it: the
+/// deadline of a job whose edge is a day rather than a month's end.
+Deadline DueByDay(const CalendarState& calendar, std::int32_t last_day) {
+  const auto day_of_year = static_cast<std::int32_t>(calendar.day % kDaysPerYear);
+  if (last_day < day_of_year) {
+    return DeadlineOverdue(day_of_year - last_day);
+  }
+  return DeadlineInDays(last_day - day_of_year);
+}
+
 /// The two places the labour day is measured between live in
 /// core_common/work_seam.h since 2026-09-05: the resident's activity needs
 /// the same answers, and a second copy would drift.
@@ -721,8 +731,29 @@ class LaborSystem final : public ILaborSystem {
       return DeadlineNotApplicable();
     }
     const CropWindows& windows = config_.crops[crop.value];
-    return WindowOf(calendar,
-                    kind == WorkKind::kHarvest ? windows.harvest_to_month : windows.sow_to_month);
+    const bool harvest = kind == WorkKind::kHarvest;
+    const Deadline window =
+        WindowOf(calendar, harvest ? windows.harvest_to_month : windows.sow_to_month);
+    // THE REAPING'S EDGE IS THE SNOW; ITS WINDOW IS THE URGENCY (boss seq 71,
+    // 2026-09-18). A potato sown three days late ripened past its reaping
+    // window, fell to the overdue tier below every job with an open window,
+    // and was taken whole by the snow — 150 t a seed (host, seeds 9 and 42).
+    // While the window is open it ranks the reaping as it always did; past
+    // it, an annual still stands until the snow, and that is a deadline, not
+    // a miss. A crop the snow does not gate (ripen 0: winter crops,
+    // perennials) keeps its window.
+    //
+    // THE SOWING'S END IS NOT DONE THE SAME WAY, and not for want of trying
+    // (boss seq 67). Ranked by the last day a spring field can still ripen
+    // once its window shut, the preparation took the horses of a village
+    // that had few: on the no-horses arm of idle_curve, seeds 1930-1939, five
+    // of ten twelfth years sowed NOTHING against none before, the team ending
+    // at 2 head. The reaping half alone sows as much or more on every seed
+    // but 1934 (21 -> 14 ha). Held for boss with the numbers.
+    if (harvest && windows.ripen_days > 0 && window.kind == DeadlineKind::kOverdue) {
+      return DueByDay(calendar, static_cast<std::int32_t>(config_.growing_season_last_day));
+    }
+    return window;
   }
 
   /// @brief Whether this man could be put to work at all — THE SAME TEST
@@ -1013,7 +1044,9 @@ class LaborSystem final : public ILaborSystem {
 
 }  // namespace
 
-std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables, StubTables stubs) {
+std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables,
+                                                StubTables stubs,
+                                                std::uint32_t growing_season_last_day) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1044,6 +1077,7 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables, StubTab
     LogError(error);
     return nullptr;
   }
+  config.growing_season_last_day = growing_season_last_day;
   return std::make_unique<LaborSystem>(std::move(config));
 }
 

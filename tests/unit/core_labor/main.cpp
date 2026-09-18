@@ -2006,6 +2006,68 @@ int TestMeadowCutHasTheTablesWindow() {
   return failures;
 }
 
+/// THE REAPING'S WINDOW IS THE URGENCY AND THE SNOW IS ITS EDGE (boss seq 71,
+/// 2026-09-18). The snow falls after day 40 here. On day 37 a potato past its
+/// September reaping window still stands until the snow, three days off; a
+/// turnip in its November window has six. By the windows the potato was
+/// overdue and waited, and host's went whole to the snow; now it goes first.
+///
+/// AND THE SOWING'S END STILL KEEPS ITS WINDOW, pinned so that it is a
+/// decision and not an accident (FieldWindow says why: the snow edge at the
+/// sowing starved the team of a horse-poor village). On day 21 the cabbage's
+/// May window is shut and it yields to an oat with ten days of its July
+/// window left, though by the snow it would have two.
+int TestTheFieldsEdgeIsTheSnow() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_snow";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv")
+      << "key,sow_to_month,harvest_from_month,harvest_to_month,is_winter,is_perennial\n"
+         "cabbage,5,10,10,0,0\noat,7,9,9,0,0\npotato,5,8,9,0,0\nturnip,5,8,11,0,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  constexpr std::uint32_t kSnowDay = 40;
+  const auto labor = tables == nullptr
+                         ? nullptr
+                         : core::CreateLaborSystem(*tables, core::StubTables::kAllowed, kSnowDay);
+  if (Expect(labor != nullptr, "snow edge: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto worked_on = [&labor](std::uint32_t game_day,
+                                  core::FieldPhase phase,
+                                  std::uint16_t first_crop,
+                                  std::uint16_t second_crop) {
+    DayWorld day(1);
+    const core::HerdId team = day.AddUnitHerd(1, 5.0F);
+    day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+    const core::FieldId first = day.AddField(phase, 5.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+    const core::FieldId second = day.AddField(phase, 5.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+    day.world.fields.rows[core::FindRow(day.world.fields, first)].crop = core::CropId{first_crop};
+    day.world.fields.rows[core::FindRow(day.world.fields, second)].crop = core::CropId{second_crop};
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(game_day) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    const core::WorkAssignment& work = day.world.residents.rows[0].work;
+    return work.field.value == first.value ? 1 : (work.field.value == second.value ? 2 : 0);
+  };
+  // The field meant to win is the SECOND row, so the queue's last tie-break
+  // (row order) cannot pass for the rule.
+  failures += Expect(worked_on(21, core::FieldPhase::kPlowing, 1, 0) == 1,
+                     "snow edge: the sowing's end keeps its window — the cabbage past it yields "
+                     "to an oat with ten days of its window left (held for boss)");
+  failures += Expect(worked_on(37, core::FieldPhase::kHarvest, 3, 2) == 2,
+                     "snow edge: a potato past its reaping window, three days before the snow, "
+                     "is reaped before a turnip still in its window with six");
+  return failures;
+}
+
 int TestFallowBeforeWinterRyeHasTheRyesWindow() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2437,6 +2499,7 @@ int main() {
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
+  failures += TestTheFieldsEdgeIsTheSnow();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();

@@ -194,6 +194,15 @@ struct YearLedger {
   /// reaped_grams) is not a loss and is not booked until it becomes one.
   ResourceAmounts lost_no_room;
 
+  /// THE STANDING CROP THE SNOW TOOK (farming design §6, the one total loss
+  /// of a harvest): what the field would have given had it been reaped —
+  /// the harvest's own yield, fertility, weather and late sowing in it —
+  /// booked on the day the snow takes it. Save 61. Until then only the
+  /// hectares were written (area_lost_ha) and the reaped heap lying there
+  /// (lost_no_room), and host found 150 t of potato a seed in no column at
+  /// all (econ-host-lever-pass3 seq 35): nothing vanishes without a line.
+  ResourceAmounts lost_to_snow;
+
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 
   float area_sown_ha = 0.0F;
