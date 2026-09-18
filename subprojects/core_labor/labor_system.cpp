@@ -743,15 +743,21 @@ class LaborSystem final : public ILaborSystem {
     // a miss. A crop the snow does not gate (ripen 0: winter crops,
     // perennials) keeps its window.
     //
-    // THE SOWING'S END IS NOT DONE THE SAME WAY, and not for want of trying
-    // (boss seq 67). Ranked by the last day a spring field can still ripen
-    // once its window shut, the preparation took the horses of a village
-    // that had few: on the no-horses arm of idle_curve, seeds 1930-1939, five
-    // of ten twelfth years sowed NOTHING against none before, the team ending
-    // at 2 head. The reaping half alone sows as much or more on every seed
-    // but 1934 (21 -> 14 ha). Held for boss with the numbers.
-    if (harvest && windows.ripen_days > 0 && window.kind == DeadlineKind::kOverdue) {
-      return DueByDay(calendar, static_cast<std::int32_t>(config_.growing_season_last_day));
+    //
+    // THE SOWING'S END, ONLY FOR GROUND ALREADY PLOUGHED (boss seq 76). A
+    // field whose ploughing is done — harrowing or sowing left — is due past
+    // its window by the last day its crop can still ripen: the cabbage of
+    // seed 1934, ploughed by day 17 and harrowed past its window until day
+    // 26 of the 23 it had, is that case. A field NOT YET PLOUGHED keeps its
+    // window: ranked by that last day too, a new ploughing took the horses
+    // of a village that had few — on the no-horses arm of idle_curve, seeds
+    // 1930-1939, five of ten twelfth years sowed nothing against none before
+    // — for a field the player never got to start.
+    const bool ploughed = kind == WorkKind::kHarrowing || kind == WorkKind::kSowing;
+    if (windows.ripen_days > 0 && window.kind == DeadlineKind::kOverdue &&
+        (harvest || (ploughed && !PreparesWinterCrop(field, kind)))) {
+      const auto snow = static_cast<std::int32_t>(config_.growing_season_last_day);
+      return DueByDay(calendar, harvest ? snow : snow - windows.ripen_days);
     }
     return window;
   }

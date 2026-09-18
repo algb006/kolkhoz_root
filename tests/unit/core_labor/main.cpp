@@ -2012,11 +2012,12 @@ int TestMeadowCutHasTheTablesWindow() {
 /// turnip in its November window has six. By the windows the potato was
 /// overdue and waited, and host's went whole to the snow; now it goes first.
 ///
-/// AND THE SOWING'S END STILL KEEPS ITS WINDOW, pinned so that it is a
-/// decision and not an accident (FieldWindow says why: the snow edge at the
-/// sowing starved the team of a horse-poor village). On day 21 the cabbage's
-/// May window is shut and it yields to an oat with ten days of its July
-/// window left, though by the snow it would have two.
+/// AND THE SOWING'S END ONLY FOR GROUND ALREADY PLOUGHED (boss seq 76). On day
+/// 21 the cabbage's May window is shut; it must be ready by day 23 (ripens in
+/// 17). Being PLOUGHED it yields to an oat with ten days of its July window
+/// left — a new ploughing after the window is not started; being HARROWED it
+/// goes first, two days left. The pair is the rule: either half alone would
+/// pass a queue that ignored the phase.
 int TestTheFieldsEdgeIsTheSnow() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2060,8 +2061,11 @@ int TestTheFieldsEdgeIsTheSnow() {
   // The field meant to win is the SECOND row, so the queue's last tie-break
   // (row order) cannot pass for the rule.
   failures += Expect(worked_on(21, core::FieldPhase::kPlowing, 1, 0) == 1,
-                     "snow edge: the sowing's end keeps its window — the cabbage past it yields "
-                     "to an oat with ten days of its window left (held for boss)");
+                     "snow edge: a field not yet ploughed keeps its window — the cabbage past it "
+                     "yields to an oat with ten days of its window left");
+  failures += Expect(worked_on(21, core::FieldPhase::kHarrowing, 1, 0) == 2,
+                     "snow edge: ploughed ground past its window is due by its last ripening day "
+                     "— the cabbage, two days left, is harrowed before the oat with ten");
   failures += Expect(worked_on(37, core::FieldPhase::kHarvest, 3, 2) == 2,
                      "snow edge: a potato past its reaping window, three days before the snow, "
                      "is reaped before a turnip still in its window with six");

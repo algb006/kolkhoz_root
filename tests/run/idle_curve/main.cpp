@@ -646,6 +646,17 @@ int main(int argc, char** argv) {
   /// that by then had five horses. One number was carrying two events.
   std::int32_t first_stalled_year = -1;
   std::int32_t last_stalled_year = -1;
+  /// The first year's sowing, and the canon it is measured against: the
+  /// start's arable with a crop in this year's slot (the rescue's price is a
+  /// SHARE of the season, not a nought — boss seq 78).
+  float first_year_sown_ha = -1.0F;
+  float canon_sown_ha = 0.0F;
+  for (const core::FieldRow& field : world.State().fields.rows) {
+    if (field.kind == core::LandKind::kArable && core::HasRotation(field) &&
+        field.rotation_year0.value != core::kInvalidDefIdValue) {
+      canon_sown_ha += field.area_ga;
+    }
+  }
   for (std::uint32_t year = 0; year < kYears; ++year) {
     std::uint64_t worked = 0;
     std::uint64_t idled = 0;
@@ -769,6 +780,9 @@ int main(int argc, char** argv) {
     // предотвратимой», not free. Asserting per year called the rescue itself
     // a red line: the --no-horses arm buys its pair, loses the first sowing
     // window to the delivery, and is sowing again by the second year.
+    if (year == 0) {
+      first_year_sown_ha = done.ledger.closed.area_sown_ha;
+    }
     if (!(done.ledger.closed.area_sown_ha > 0.0F)) {
       ++stalled_years;
       if (first_stalled_year < 0) {
@@ -1149,13 +1163,23 @@ int main(int argc, char** argv) {
     // BEFORE this line was repaired, because a red fixed by editing the
     // assertion takes its finding with it unless the finding is recorded
     // first (boss, parcel 114).
-    // EXACTLY THE FIRST YEAR, not "no later than". `<= 1` would pass on a run
-    // that stalled in no year at all, and the paragraph above says why that
-    // is not the claim: «a rescue that cost nothing would mean the trap had
-    // no teeth». The trap costs one season and the season is the first.
-    failures += run::Expect(first_stalled_year == 1,
+    // THE FIRST SEASON IS LOST, AS A SHARE AND NOT AS A NOUGHT (boss seq 78,
+    // 2026-09-18). This asserted `first_stalled_year == 1` — nothing sown in
+    // year 1 — and the nought was a property of the old queue, not of the
+    // design: once ploughed ground past its window is harrowed toward the
+    // last day it can still ripen (labor FieldWindow, seq 76), the pair
+    // bought in year 1 harrows the start's autumn ploughing and sows 7.5 ha
+    // of about 70 (seed 1930). «A rescue that cost nothing would mean the
+    // trap had no teeth» still stands: the first year must sow under a
+    // quarter of the canon. The finding is written down before this line
+    // changed (claude/l1_predictions.md §11b).
+    constexpr float kLostSeasonShare = 0.25F;
+    std::cout << "idle_curve: первый год посеял " << first_year_sown_ha << " га из канона "
+              << canon_sown_ha << " га\n";
+    failures += run::Expect(canon_sown_ha > 0.0F && first_year_sown_ha >= 0.0F &&
+                                first_year_sown_ha < kLostSeasonShare * canon_sown_ha,
                             "and the rescue costs the sowing window the head is bought in: the "
-                            "stall is the FIRST year, and there is one");
+                            "first year sows under a quarter of the canon");
     if (last_stalled_year > first_stalled_year) {
       std::cout << "idle_curve: и ещё один вставший год — " << last_stalled_year << ", через "
                 << (last_stalled_year - first_stalled_year)
