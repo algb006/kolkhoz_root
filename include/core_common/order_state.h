@@ -630,6 +630,42 @@ enum class OrderKind : std::uint8_t {
   /// nothing. Seam key proposed: `cancel_day_off`. Consumer: core_labor.
   kCancelDayOff,
 
+  /// «ОСВОБОДИТЬ СКЛАД» (start §5 «Приказ „Освободить склад в церкви“»;
+  /// registers 214 and 233; boss seq 116-117): the church store or a potato
+  /// clamp named by `unit` — `enable` 1 — stops ACCEPTING food from every
+  /// delivery (the harvest's carting, the district's carts, the field
+  /// haul), and what lies in it becomes the load of a new hauling task,
+  /// «перевалка», to the stores that do accept it. `enable` 0 cancels: the
+  /// unit accepts again and the carrying stops. CONTRACT, 2026-09-19; no
+  /// consumer yet — refused kNoConsumer until the implementation lands.
+  ///
+  /// WHY A DOOR: the church is the first row of the start layout and every
+  /// delivery takes the first place a resource may lie, so a granary built
+  /// on day 17 stood empty while 57 t went into the church (host). The
+  /// clamp takes the same door (register 233): a yard that pulled its
+  /// potatoes by itself would take from the chairman the decision «когда».
+  /// Both hold the store leak open while they hold raw material — neither
+  /// has a post — and emptying them is the only way to a dry month.
+  ///
+  /// THE CARRYING: kHauling with the unit as its target, on the carts and
+  /// hands of every other haul, in the windowless tier — below the
+  /// harvest's carting — by default. Where to: the same door every delivery
+  /// uses, the emptied unit excluded. What first: the shortest spoil_days,
+  /// then resources.csv `theft` (eager, then some), then the rest. A
+  /// kPauseUnit on the unit pauses the carrying and leaves the order
+  /// standing (boss seq 117 Б). Where it lives: a byte on UnitRow, with the
+  /// carrying's seam, save 67. Not built: changing a logistics task's
+  /// priority (transport §12) — a queue line, the core has no task
+  /// priorities (seq 117 В); «партии под угрозой» — the core keeps no batch
+  /// ages, the spoil_days order stands in for it.
+  ///
+  /// Refusals: kNoSuchSubject (no such unit), kNotEligible (not the church
+  /// store or a clamp), kRuleForbids (no built store accepting food to carry
+  /// to; or nothing to cancel). The boundary refuses any subject but the
+  /// unit, and `enable` over 1, by shape. Seam key `empty_store` (boss).
+  /// Consumer: core_production.
+  kEmptyStore,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

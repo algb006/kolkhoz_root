@@ -338,6 +338,19 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   rush.unit = core::UnitId{};
   rush.amount = core::kMaxRushStep + 1;
   failures += Expect(session->IssueOrder(rush).value == 0, "an avral past +25 % is refused");
+  // «Освободить склад» (contract, 2026-09-19): the unit and nothing else.
+  core::OrderRow empty;
+  empty.kind = core::OrderKind::kEmptyStore;
+  empty.enable = 1;
+  failures += Expect(session->IssueOrder(empty).value == 0, "emptying no store is refused");
+  empty.unit = core::UnitId{4};
+  empty.field = core::FieldId{2};
+  failures += Expect(session->IssueOrder(empty).value == 0,
+                     "emptying a store that also names a field is refused");
+  empty.field = core::FieldId{};
+  empty.enable = 2;
+  failures +=
+      Expect(session->IssueOrder(empty).value == 0, "a switch that is not a switch is refused");
   core::OrderRow day_off;
   day_off.kind = core::OrderKind::kCancelDayOff;
   day_off.field = core::FieldId{2};

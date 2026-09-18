@@ -215,6 +215,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // Whether a work stands there now is the consumer's.
       return (has_field != has_unit) && order.amount >= 0 && order.amount <= kMaxRushStep &&
              !has_resident && !has_herd && !has_stand && !has_site;
+    case OrderKind::kEmptyStore:
+      // The unit, and a switch that is a switch. Whether it is the church or
+      // a clamp, and whether a store stands to carry to, is the consumer's.
+      return has_unit && !has_resident && !has_field && !has_herd && !has_stand && !has_site &&
+             order.enable <= 1;
     case OrderKind::kCancelDayOff:
       // Nothing: the village's next day off. Whether it is already cancelled
       // is the consumer's.
