@@ -111,9 +111,19 @@ struct LimitCatalog {
   /// For a plan delivered in full, 100 % of every position.
   std::int32_t plan_met_points = 150;
 
-  /// Per percent over the plan, and the most that term gives.
-  std::int32_t overfulfil_points_per_percent = 10;
-  std::int32_t overfulfil_points_max = 200;
+  /// THE OVERFULFILMENT SCALE (district §1, rewritten 2026-09-18): tonnes of
+  /// grain equivalent delivered over a plan met in full, the first
+  /// `overfulfil_tier1_t` at the first price, the next `overfulfil_tier2_t` at
+  /// the second, the rest at the third. No cap: a falling price, not a
+  /// ceiling, is what keeps a rich year from being the only year. STUB
+  /// figures, boss's.
+  float overfulfil_tier1_t = 5.0F;
+  float overfulfil_tier2_t = 20.0F;
+  std::array<float, 3> overfulfil_points_per_t = {20.0F, 10.0F, 4.0F};
+
+  /// The calories of a gram of the grain the tonnes are counted in: a tonne
+  /// of any position is (its food.csv kcal_per_gram / this) tonnes of grain.
+  float overfulfil_grain_kcal_per_gram = 3.3F;
 
   /// Days the district's cart takes, and the most it may be late by.
   std::uint32_t delivery_days = 2;
@@ -174,9 +184,17 @@ struct LimitCatalog {
   float handover_share_old = 0.25F;
 };
 
-/// @brief The world_params.csv keys this catalogue reads, for the assembly's
-/// declared-readers check (core_world/world.cpp).
+/// @brief The world_params.csv keys this catalogue answers for, for the
+/// assembly's declared-readers check (core_world/world.cpp): those it reads,
+/// and the two of the percent scale retired on 2026-09-18, known and unread.
 std::span<const std::string_view> LimitWorldParamKeys();
+
+/// @brief The limit points a year's overfulfilment earns (district §1): the
+/// scale's tiers applied to `grain_tonnes`, tonnes of grain equivalent over
+/// a plan met in full. Not rounded, not multiplied by reputation — that is
+/// the year's total's (YearLimitPoints).
+/// @return 0 for nothing over; never capped.
+float OverfulfilPoints(const LimitCatalog& catalog, float grain_tonnes);
 
 /// @brief Reads the catalogue. Missing tables keep the defaults and an empty
 /// lot list; a present one that cannot be understood refuses — an unknown

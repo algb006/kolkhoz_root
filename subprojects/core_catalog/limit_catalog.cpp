@@ -18,15 +18,14 @@ namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
 /// The first kPointKnobCount are whole points and days; the rest are the MTS
-/// column's (ReadMtsColumnKnobs).
-constexpr std::array<std::string_view, 20> kLimitWorldParamKeys = {
+/// column's (ReadMtsColumnKnobs), the handover shares, the electrification
+/// mark and the overfulfilment scale (ReadOverfulfilKnobs).
+constexpr std::array<std::string_view, 24> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
     "limit_base_points_leading",
     "limit_plan_met_points",
-    "limit_overfulfil_points_per_percent",
-    "limit_overfulfil_points_max",
     "limit_delivery_days",
     "limit_delivery_delay_days_max",
     "mts_column_ha_limit",
@@ -45,12 +44,46 @@ constexpr std::array<std::string_view, 20> kLimitWorldParamKeys = {
     "livestock_handover_young",
     "livestock_handover_adult",
     "livestock_handover_old",
-    "electrification_points_min"};
+    "electrification_points_min",
+    // THE OVERFULFILMENT SCALE (district §1, rewritten 2026-09-18, boss seq
+    // 70): tonnes of grain equivalent over the plan, the first tier at its
+    // price, the second at a lower one, the rest at the lowest, no cap. It
+    // was points per PERCENT to a cap of 200 for one evening, and host's
+    // measure showed why not: the first year's potato plan was 7 t against a
+    // surplus of 88-119 t, the cap came at about 4 t, and the lever died in
+    // the first year it could be pulled.
+    "limit_overfulfil_tier1_t",
+    "limit_overfulfil_tier2_t",
+    "limit_overfulfil_tier1_points_per_t",
+    "limit_overfulfil_tier2_points_per_t",
+    "limit_overfulfil_tier3_points_per_t",
+    "limit_overfulfil_grain_kcal_per_gram"};
 
-constexpr std::size_t kPointKnobCount = 9;
+/// Every key the limit answers for: those read, and the two the percent
+/// scale used, RETIRED 2026-09-18 — known and not read until the base drops
+/// the rows, so the export that still carries them does not stop assembly.
+constexpr std::array<std::string_view, kLimitWorldParamKeys.size() + 2> kLimitKnownKeys = [] {
+  std::array<std::string_view, kLimitWorldParamKeys.size() + 2> keys{};
+  for (std::size_t index = 0; index < kLimitWorldParamKeys.size(); ++index) {
+    keys[index] = kLimitWorldParamKeys[index];
+  }
+  keys[kLimitWorldParamKeys.size()] = "limit_overfulfil_points_per_percent";
+  keys[kLimitWorldParamKeys.size() + 1] = "limit_overfulfil_points_max";
+  return keys;
+}();
+
+constexpr std::size_t kPointKnobCount = 7;
 
 /// Where the four handover shares begin in the list above.
-constexpr std::size_t kHandoverKnobFirst = 15;
+constexpr std::size_t kHandoverKnobFirst = 13;
+
+/// Where the overfulfilment scale begins in the list above.
+constexpr std::size_t kOverfulfilKnobFirst = 18;
+static_assert(kLimitWorldParamKeys[kOverfulfilKnobFirst] == "limit_overfulfil_tier1_t",
+              "kOverfulfilKnobFirst no longer points at the first overfulfilment knob");
+static_assert(kLimitWorldParamKeys[kOverfulfilKnobFirst + 5] ==
+                  "limit_overfulfil_grain_kcal_per_gram",
+              "the grain reference moved out from under its index");
 // A HAND-WRITTEN INDEX INTO A LIST THAT GROWS, so it is nailed to the name it
 // means rather than to a count somebody has to remember to re-derive. Free,
 // and it is the same shape this tree names beside its enums: a length written
@@ -374,10 +407,52 @@ bool ReadElectrificationKnob(const ITable& world, LimitCatalog& catalog, std::st
   return true;
 }
 
+/// The overfulfilment scale. The second tier must end past the first — a
+/// scale whose tiers overlap would pay one tonne twice — and the grain
+/// reference must be a food.
+bool ReadOverfulfilKnobs(const ITable& world, LimitCatalog& catalog, std::string& error) {
+  constexpr float kMostTonnes = 1.0e6F;
+  constexpr float kMostKcalPerGram = 10.0F;
+  const Range tonnes{.low = 0.0F, .high = kMostTonnes};
+  const Range price{.low = 0.0F, .high = kMostPoints};
+  const std::array<ScalarKnob, 6> knobs = {
+      ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst],
+                 .value = &catalog.overfulfil_tier1_t,
+                 .range = tonnes},
+      ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst + 1],
+                 .value = &catalog.overfulfil_tier2_t,
+                 .range = tonnes},
+      ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst + 2],
+                 .value = &catalog.overfulfil_points_per_t[0],
+                 .range = price},
+      ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst + 3],
+                 .value = &catalog.overfulfil_points_per_t[1],
+                 .range = price},
+      ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst + 4],
+                 .value = &catalog.overfulfil_points_per_t[2],
+                 .range = price},
+      ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst + 5],
+                 .value = &catalog.overfulfil_grain_kcal_per_gram,
+                 .range = Range{.low = 0.01F, .high = kMostKcalPerGram}}};
+  return ReadKnobs(world, "world_params", knobs, error);
+}
+
 }  // namespace
 
 std::span<const std::string_view> LimitWorldParamKeys() {
-  return kLimitWorldParamKeys;
+  return kLimitKnownKeys;
+}
+
+float OverfulfilPoints(const LimitCatalog& catalog, float grain_tonnes) {
+  if (!(grain_tonnes > 0.0F)) {
+    return 0.0F;
+  }
+  const float first = std::min(grain_tonnes, catalog.overfulfil_tier1_t);
+  const float second = std::min(grain_tonnes - first, catalog.overfulfil_tier2_t);
+  const float rest = grain_tonnes - first - second;
+  return (first * catalog.overfulfil_points_per_t[0]) +
+         (second * catalog.overfulfil_points_per_t[1]) +
+         (rest * catalog.overfulfil_points_per_t[2]);
 }
 
 bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::string& error) {
@@ -388,8 +463,6 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
         static_cast<float>(catalog.base_points[2]),
         static_cast<float>(catalog.base_points[3]),
         static_cast<float>(catalog.plan_met_points),
-        static_cast<float>(catalog.overfulfil_points_per_percent),
-        static_cast<float>(catalog.overfulfil_points_max),
         static_cast<float>(catalog.delivery_days),
         static_cast<float>(catalog.delivery_delay_days_max)};
     std::array<ScalarKnob, kPointKnobCount> knobs{};
@@ -413,17 +486,16 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
       catalog.base_points[tier] = whole[tier];
     }
     catalog.plan_met_points = whole[4];
-    catalog.overfulfil_points_per_percent = whole[5];
-    catalog.overfulfil_points_max = whole[6];
-    catalog.delivery_days = static_cast<std::uint32_t>(whole[7]);
-    catalog.delivery_delay_days_max = static_cast<std::uint32_t>(whole[8]);
+    catalog.delivery_days = static_cast<std::uint32_t>(whole[5]);
+    catalog.delivery_delay_days_max = static_cast<std::uint32_t>(whole[6]);
     if (!ReadMtsColumnKnobs(*world, catalog, error)) {
       return false;
     }
     if (!ReadHandoverKnobs(*world, catalog, error)) {
       return false;
     }
-    if (!ReadElectrificationKnob(*world, catalog, error)) {
+    if (!ReadElectrificationKnob(*world, catalog, error) ||
+        !ReadOverfulfilKnobs(*world, catalog, error)) {
       return false;
     }
   }

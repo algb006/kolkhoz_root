@@ -50,17 +50,22 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config,
 /// premium. A plan of nothing is not delivered in full.
 bool PlanFullyDelivered(const WorldState& current);
 
-/// @brief The year's overfulfilment, in percent (district §1, «За
-/// перевыполнение»; boss, 2026-09-18): the mean over the positions the
-/// district asked for of (delivered / due − 1) × 100, and 0 unless EVERY
-/// position was delivered in full — «сверху» is above a plan met, so a
-/// surplus of rye does not cover a potato short.
+/// @brief The year's overfulfilment, in TONNES OF GRAIN EQUIVALENT (district
+/// §1, «За перевыполнение»; boss seq 70, 2026-09-18): every position's
+/// delivery over its due, each tonne weighed by its food.csv kcal_per_gram
+/// against the catalog's grain, summed — and 0 unless EVERY position was
+/// delivered in full: «сверху» is above a plan met, so a surplus of rye does
+/// not cover a potato short.
 ///
-/// THE MEAN OF SHARES AND NOT OF TONNES: rye is not potato, the same reason
-/// PlanWasMet asks position by position. Three positions and one of them
-/// sixty percent over read as twenty.
-/// @return 0 or more; unbounded (the points' cap is YearLimitPoints').
-float PlanOverfulfilPercent(const WorldState& current);
+/// TONNES AND NOT PERCENT, and it was percent for one evening. The first
+/// year's potato plan is seven tonnes against a surplus of 88-119 (host's
+/// measure, econ-host-lever-pass3 seq 31-32): priced by the percent, the
+/// scale's cap came at four tonnes and the lever went silent in the first
+/// year it could be pulled. Tonnes are summed across positions only because
+/// they are brought to grain first — the reason PlanWasMet refuses a raw sum.
+/// A resource with no kcal row weighs nothing (it feeds nobody).
+/// @return 0 or more.
+float PlanOverfulfilGrainTonnes(const ProductionConfig& config, const WorldState& current);
 
 /// @brief Whether every position was delivered to the share that counts as
 /// met (`plan_met_share`), position by position and not by the total.

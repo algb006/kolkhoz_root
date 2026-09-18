@@ -5033,15 +5033,18 @@ int CheckDeliverPlanNow() {
                          early.plan.delivered[1] == 0,
                      "a quantity of what the barn does not hold moves nothing and is refused");
 
-  // THE PERCENT OVER (district §1; boss, 2026-09-18): the mean of the
-  // positions' shares over, and nothing while any position is short.
-  failures += Expect(core::PlanOverfulfilPercent(early) == 0.0F,
-                     "overfulfilment: rye 30 % over does not cover a potato not delivered");
-  early.plan.delivered[1] = 2 * kTonne;
-  const float over = core::PlanOverfulfilPercent(early);
+  // THE TONNES OVER, IN GRAIN (district §1; boss seq 70): each position's
+  // surplus weighed by its calories against grain, and nothing while any
+  // position is short.
+  config.food_kcal_per_gram = {3.3F, 0.77F};  // rye, potato
   failures +=
-      Expect(over > 14.99F && over < 15.01F,
-             "overfulfilment: rye 30 % over and potato in full read as 15 %, not by tonnes");
+      Expect(core::PlanOverfulfilGrainTonnes(config, early) == 0.0F,
+             "overfulfilment: three tonnes of rye over do not cover a potato not delivered");
+  early.plan.delivered[1] = 6 * kTonne;
+  const float over = core::PlanOverfulfilGrainTonnes(config, early);
+  // Rye 3 t over, potato 4 t over at 0.77 / 3.3: 3 + 0.933 = 3.933 t of grain.
+  failures += Expect(over > 3.93F && over < 3.94F,
+                     "overfulfilment: a tonne of potato over weighs its calories in grain");
   return failures;
 }
 
@@ -5116,9 +5119,9 @@ int CheckDistrictLimit() {
       core::YearLimitPoints(limit, core::FarmStatusTier::kLagging, false, 0.0F, 50.0F) == 350 &&
           core::YearLimitPoints(limit, core::FarmStatusTier::kLagging, true, 0.0F, 50.0F) == 500 &&
           core::YearLimitPoints(limit, core::FarmStatusTier::kLagging, true, 0.0F, 10.0F) == 350 &&
-          core::YearLimitPoints(limit, core::FarmStatusTier::kLeading, false, 35.0F, 50.0F) == 450,
-      "limit: base by tier, +150 for a plan in full, x0.7 at a poor reputation, and the "
-      "overfulfilment term capped at 200");
+          core::YearLimitPoints(limit, core::FarmStatusTier::kLeading, false, 35.0F, 50.0F) == 590,
+      "limit: base by tier, +150 for a plan in full, x0.7 at a poor reputation, and 35 t of "
+      "grain over on the falling scale, 100 + 200 + 40");
 
   core::WorldState world;
   world.epoch = core::Epoch::kOne;
@@ -5244,15 +5247,16 @@ int CheckDistrictLimit() {
   failures += Expect(world.limit.points_granted_total - granted_before == 500,
                      "limit: and every point granted goes on the running total, the burn not "
                      "subtracted from it");
-  // THE OVERFULFILMENT TERM REACHES THE GRANT: 15.6 % counts fifteen whole
-  // percents, 150 points; forty percents would be 400 and stop at the cap.
+  // THE OVERFULFILMENT TERM REACHES THE GRANT, on the falling scale: 15.6 t
+  // of grain over is 5 at 20 and 10.6 at 10, 206 points; 40 t is 5 at 20, 20
+  // at 10 and 15 at 4, 360 — and no cap stops it.
   const std::int32_t points_saved = world.limit.points;
   core::TurnLimitYear(config, world, true, 15.6F);
-  failures += Expect(world.limit.points == 650,
-                     "limit: fifteen whole percents over the plan add 150 to the year's grant");
+  failures += Expect(world.limit.points == 706,
+                     "limit: 15.6 t of grain over the plan add 206 on the falling scale");
   core::TurnLimitYear(config, world, true, 40.0F);
-  failures += Expect(world.limit.points == 700,
-                     "limit: and the overfulfilment term stops at its cap of 200");
+  failures += Expect(world.limit.points == 860,
+                     "limit: and 40 t add 360, the third tier at its own price, uncapped");
   world.limit.points = points_saved;
   // AND A SALE DOES NOT TOUCH IT. Handing stock back pays into this year's
   // points; if it reached the running total it would be a pump — buy a head

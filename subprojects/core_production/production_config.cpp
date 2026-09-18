@@ -787,6 +787,38 @@ bool ParseFeedValues(const ITable& table, std::vector<float>& values, std::strin
   return true;
 }
 
+/// food.csv's kcal_per_gram by ResourceId: a resource row with no food row,
+/// or an empty cell, is not a food and weighs nothing.
+bool ParseFoodCalories(const ITable& resources,
+                       const ITable& food,
+                       std::vector<float>& kcal,
+                       std::string& error) {
+  constexpr float kMostKcalPerGram = 10.0F;
+  const std::uint32_t key_column = resources.FindColumn("key");
+  const std::uint32_t kcal_column = food.FindColumn("kcal_per_gram");
+  kcal.assign(resources.RowCount(), 0.0F);
+  if (key_column == kNoTableColumn || kcal_column == kNoTableColumn) {
+    return true;
+  }
+  for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
+    const std::uint32_t food_row = food.FindRowByKey(resources.CellText(row, key_column));
+    if (food_row == kNoTableRow) {
+      continue;
+    }
+    if (!CellOrDefault(food,
+                       food_row,
+                       kcal_column,
+                       Range{.low = 0.0F, .high = kMostKcalPerGram},
+                       0.0F,
+                       kcal[row],
+                       error)) {
+      error = "food: kcal_per_gram: " + error;
+      return false;
+    }
+  }
+  return true;
+}
+
 /// The feeding order. ROW ORDER IS THE PRIORITY (design db feed_link.sort):
 /// staple before reserve, own feed before bought concentrate, fodder grain
 /// before bread grain. Nothing is sorted here — sorting would duplicate the
@@ -1033,6 +1065,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     config.resource_stores_read = 1;
   }
   if (resources != nullptr && !ParseFeedValues(*resources, config.feed_values, error)) {
+    return false;
+  }
+  const ITable* const food = tables.FindTable("food");
+  if (resources != nullptr && food != nullptr &&
+      !ParseFoodCalories(*resources, *food, config.food_kcal_per_gram, error)) {
     return false;
   }
   if (const ITable* feed_links = tables.FindTable("feed_links")) {

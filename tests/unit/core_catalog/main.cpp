@@ -452,6 +452,39 @@ int TestServiceLotKind() {
   return failures;
 }
 
+/// THE OVERFULFILMENT SCALE (district §1; boss seq 70, 2026-09-18): the six
+/// knobs are read out of world_params.csv, the two keys of the percent scale
+/// they replaced still stand in the table without stopping the read, and the
+/// scale prices tonnes tier by tier with no cap.
+int TestTheOverfulfilScale() {
+  int failures = 0;
+  const test::FakeTable world({"key", "value", "reader"},
+                              {{"limit_overfulfil_tier1_t", "4", "core"},
+                               {"limit_overfulfil_tier2_t", "10", "core"},
+                               {"limit_overfulfil_tier1_points_per_t", "30", "core"},
+                               {"limit_overfulfil_tier2_points_per_t", "12", "core"},
+                               {"limit_overfulfil_tier3_points_per_t", "2", "core"},
+                               {"limit_overfulfil_grain_kcal_per_gram", "3.5", "core"},
+                               {"limit_overfulfil_points_per_percent", "10", "core"},
+                               {"limit_overfulfil_points_max", "200", "core"}});
+  const test::FakeTableSet set({{"world_params", &world}});
+  core::LimitCatalog read;
+  std::string error;
+  failures += Expect(core::ParseLimitCatalog(set, read, error),
+                     "overfulfilment: the scale reads beside the two retired keys");
+  failures += Expect(
+      read.overfulfil_tier1_t == 4.0F && read.overfulfil_tier2_t == 10.0F &&
+          read.overfulfil_points_per_t[0] == 30.0F && read.overfulfil_points_per_t[1] == 12.0F &&
+          read.overfulfil_points_per_t[2] == 2.0F && read.overfulfil_grain_kcal_per_gram == 3.5F,
+      "overfulfilment: every knob of the scale comes from its own row");
+  // 20 t: 4 at 30, 10 at 12, 6 at 2 — 120 + 120 + 12.
+  failures += Expect(core::OverfulfilPoints(read, 20.0F) == 252.0F &&
+                         core::OverfulfilPoints(read, 0.0F) == 0.0F &&
+                         core::OverfulfilPoints(read, 2.0F) == 60.0F,
+                     "overfulfilment: tonnes are priced tier by tier, and no cap stops them");
+  return failures;
+}
+
 /// THE MTS COLUMN IN THE CATALOGUE (boss, parcels 449, 451): its two lots by
 /// key, the hectares and the windows out of world_params.csv with the months
 /// taken from human 1..12 to Month's 0..11; a column row that is not a service
@@ -602,6 +635,7 @@ int main() {
   failures += TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
   failures += TestTheMtsColumnKnobs();
+  failures += TestTheOverfulfilScale();
   failures += TestLivestockLots();
   failures += TestThreeAnswers();
   failures += TestRequiredCell();

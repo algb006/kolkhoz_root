@@ -98,24 +98,23 @@ bool PlanFullyDelivered(const WorldState& current) {
   return asked;
 }
 
-float PlanOverfulfilPercent(const WorldState& current) {
-  if (!PlanFullyDelivered(current)) {
+float PlanOverfulfilGrainTonnes(const ProductionConfig& config, const WorldState& current) {
+  if (!PlanFullyDelivered(current) || !(config.limit.overfulfil_grain_kcal_per_gram > 0.0F)) {
     return 0.0F;
   }
-  double over_sum = 0.0;
-  std::uint32_t positions = 0;
+  double grain_grams = 0.0;
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const Grams due = current.plan.due[index];
-    if (due <= 0) {
+    if (due <= 0 || index >= config.food_kcal_per_gram.size()) {
       continue;
     }
     // PlanFullyDelivered has just said every such index is delivered.
-    const auto delivered = static_cast<double>(current.plan.delivered[index]);
-    over_sum += (delivered / static_cast<double>(due)) - 1.0;
-    ++positions;
+    const Grams over = current.plan.delivered[index] - due;
+    grain_grams += static_cast<double>(over) *
+                   static_cast<double>(config.food_kcal_per_gram[index] /
+                                       config.limit.overfulfil_grain_kcal_per_gram);
   }
-  constexpr double kPercent = 100.0;
-  return positions > 0 ? static_cast<float>(over_sum / positions * kPercent) : 0.0F;
+  return static_cast<float>(grain_grams / static_cast<double>(kGramsPerTonne));
 }
 
 /// @brief Was every position delivered to the share that counts as met?

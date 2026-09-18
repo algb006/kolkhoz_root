@@ -325,9 +325,9 @@ class ProductionSystem final : public IProductionSystem {
     DeliverPlan(config_, current);
     // Read before JudgePlan hands the next year's plan down over this one.
     const bool plan_fully_met = PlanFullyDelivered(current);
-    const float overfulfil_percent = PlanOverfulfilPercent(current);
+    const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
     JudgePlan(config_, current);
-    TurnLimitYear(config_, current, plan_fully_met, overfulfil_percent);
+    TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
     GrowOldForest(config_, current);
     // THE CLOSING YEAR'S LARGEST WORKED AREA becomes next spring's figure,
     // and the running maximum is what makes it un-gameable: a single tick's

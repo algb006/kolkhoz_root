@@ -155,7 +155,7 @@ float LimitReputationMultiplier(float reputation) {
 std::int32_t YearLimitPoints(const LimitCatalog& catalog,
                              FarmStatusTier tier,
                              bool plan_fully_met,
-                             float overfulfil_percent,
+                             float overfulfil_grain_tonnes,
                              float reputation) {
   const auto tier_index = static_cast<std::size_t>(tier);
   double points = tier_index < catalog.base_points.size()
@@ -164,11 +164,7 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
   if (plan_fully_met) {
     points += static_cast<double>(catalog.plan_met_points);
   }
-  if (overfulfil_percent > 0.0F) {
-    const double over = std::floor(static_cast<double>(overfulfil_percent)) *
-                        static_cast<double>(catalog.overfulfil_points_per_percent);
-    points += std::min(over, static_cast<double>(catalog.overfulfil_points_max));
-  }
+  points += static_cast<double>(OverfulfilPoints(catalog, overfulfil_grain_tonnes));
   points *= static_cast<double>(LimitReputationMultiplier(reputation));
   const double rounded = std::round(points);
   if (!(rounded > 0.0)) {
@@ -477,14 +473,14 @@ namespace {
 void GrantYear(const ProductionConfig& config,
                WorldState& current,
                bool plan_fully_met,
-               float overfulfil_percent) {
+               float overfulfil_grain_tonnes) {
   // STUB: the farm's status tier is kLagging until the economic readiness
   // index exists. The overfulfilment term was nought beside it until
   // 2026-09-18, when kDeliverPlan learned to ship over the debt.
   current.limit.points = YearLimitPoints(config.limit,
                                          FarmStatusTier::kLagging,
                                          plan_fully_met,
-                                         overfulfil_percent,
+                                         overfulfil_grain_tonnes,
                                          current.chairman.raikom_reputation);
   current.limit.points_granted_total += current.limit.points;
 }
@@ -494,12 +490,12 @@ void GrantYear(const ProductionConfig& config,
 void TurnLimitYear(const ProductionConfig& config,
                    WorldState& current,
                    bool plan_fully_met,
-                   float overfulfil_percent) {
+                   float overfulfil_grain_tonnes) {
   // The closing year's book is still `current` here: the ledger turns in the
   // events slot, later in this same tick (core_world/world.cpp, RotateLedger),
   // which is also where the new year's grant is booked.
   current.ledger.current.limit_points_burned += current.limit.points;
-  GrantYear(config, current, plan_fully_met, overfulfil_percent);
+  GrantYear(config, current, plan_fully_met, overfulfil_grain_tonnes);
 }
 
 void RunEraEvents(const ProductionConfig& config, WorldState& current) {

@@ -634,6 +634,13 @@ struct ProductionConfig {
   /// feed_value column (design db resource.feed_value, question 133).
   std::vector<float> feed_values;
 
+  /// Dense by ResourceId: kilocalories per gram, off food.csv's
+  /// kcal_per_gram column (the file core_residents parses for the table);
+  /// 0 = not a food. Read here for one question only — what a tonne over the
+  /// plan weighs in grain (PlanOverfulfilGrainTonnes) — and read off the same
+  /// column, so the two readings cannot tell different calories.
+  std::vector<float> food_kcal_per_gram;
+
   /// Feeding-order rows in file (= priority) order; see FeedLinkDef.
   std::vector<FeedLinkDef> feed_links;
 
