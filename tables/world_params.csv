@@ -168,3 +168,11 @@ limit_overfulfil_grain_kcal_per_gram,3.3,core
 limit_accumulation_share,1.5,core
 limit_seizure_reputation_loss,10,core
 limit_overfulfil_shortfall_factor,3,core
+alcohol_start_married_min,15,core
+alcohol_start_married_max,35,core
+alcohol_start_single_min,25,core
+alcohol_start_single_max,45,core
+alcohol_start_idle_min,35,core
+alcohol_start_idle_max,55,core
+alcohol_start_idle_age,55,core
+alcohol_start_sick_health,50,core
