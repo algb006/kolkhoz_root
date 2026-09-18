@@ -808,10 +808,11 @@ struct ProductionConfig {
   ResourceAmounts start_stock;
 
   /// The share of the plan that counts as met, 0..1 (campaign.csv
-  /// plan_met_share). 1.0 — delivered in full on every position — is the
-  /// plain reading of "сорванный план" (epochs design §8), and the knob
-  /// exists so that softening it later is a balance edit and not a rebuild.
-  float plan_met_share = 1.0F;
+  /// plan_met_share). It was 1.0, the plain reading of "сорванный план"
+  /// (epochs design §8), until seed 5 failed a year six kilograms of rye
+  /// short of 1.116 t; 0.99 since 2026-09-19 (boss seq 89). The +150 for a
+  /// plan delivered IN FULL does not read it and still asks 100 %.
+  float plan_met_share = 0.99F;
 
   /// How many failed years in a row make the "Под суд" condition (epochs
   /// design §8: "три сорванных плана подряд"). campaign.csv.

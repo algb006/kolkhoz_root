@@ -20,7 +20,7 @@ namespace {
 /// The first kPointKnobCount are whole points and days; the rest are the MTS
 /// column's (ReadMtsColumnKnobs), the handover shares, the electrification
 /// mark and the overfulfilment scale (ReadOverfulfilKnobs).
-constexpr std::array<std::string_view, 26> kLimitWorldParamKeys = {
+constexpr std::array<std::string_view, 27> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
@@ -62,7 +62,11 @@ constexpr std::array<std::string_view, 26> kLimitWorldParamKeys = {
     // share of (seed + the plan's figure + last year's eaten and fed) the
     // kolkhoz may hold, and what a seizure costs the raikom's reputation.
     "limit_accumulation_share",
-    "limit_seizure_reputation_loss"};
+    "limit_seizure_reputation_loss",
+    // THE OVERFULFILMENT'S DEDUCTION (boss seq 89, 2026-09-19): tonnes short
+    // on positions not delivered weigh this many times the tonnes over.
+    // Appended rather than set beside the scale so no index above moves.
+    "limit_overfulfil_shortfall_factor"};
 
 constexpr std::size_t kPointKnobCount = 7;
 
@@ -83,6 +87,11 @@ static_assert(kLimitWorldParamKeys[kAccumulationKnobFirst] == "limit_accumulatio
                   kLimitWorldParamKeys[kAccumulationKnobFirst + 1] ==
                       "limit_seizure_reputation_loss",
               "the accumulation knobs moved out from under their index");
+
+/// Where the overfulfilment's shortfall factor stands in the list above.
+constexpr std::size_t kShortfallKnob = 26;
+static_assert(kLimitWorldParamKeys[kShortfallKnob] == "limit_overfulfil_shortfall_factor",
+              "the shortfall factor moved out from under its index");
 // A HAND-WRITTEN INDEX INTO A LIST THAT GROWS, so it is nailed to the name it
 // means rather than to a count somebody has to remember to re-derive. Free,
 // and it is the same shape this tree names beside its enums: a length written
@@ -414,7 +423,8 @@ bool ReadOverfulfilKnobs(const ITable& world, LimitCatalog& catalog, std::string
   constexpr float kMostKcalPerGram = 10.0F;
   const Range tonnes{.low = 0.0F, .high = kMostTonnes};
   const Range price{.low = 0.0F, .high = kMostPoints};
-  const std::array<ScalarKnob, 6> knobs = {
+  constexpr float kMostShortfallFactor = 100.0F;
+  const std::array<ScalarKnob, 7> knobs = {
       ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst],
                  .value = &catalog.overfulfil_tier1_t,
                  .range = tonnes},
@@ -432,7 +442,11 @@ bool ReadOverfulfilKnobs(const ITable& world, LimitCatalog& catalog, std::string
                  .range = price},
       ScalarKnob{.key = kLimitWorldParamKeys[kOverfulfilKnobFirst + 5],
                  .value = &catalog.overfulfil_grain_kcal_per_gram,
-                 .range = Range{.low = 0.01F, .high = kMostKcalPerGram}}};
+                 .range = Range{.low = 0.01F, .high = kMostKcalPerGram}},
+      // Nought is legal: a deduction switched off, surplus over the short.
+      ScalarKnob{.key = kLimitWorldParamKeys[kShortfallKnob],
+                 .value = &catalog.overfulfil_shortfall_factor,
+                 .range = Range{.low = 0.0F, .high = kMostShortfallFactor}}};
   return ReadKnobs(world, "world_params", knobs, error);
 }
 

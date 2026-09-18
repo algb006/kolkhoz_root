@@ -50,12 +50,22 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config,
 /// premium. A plan of nothing is not delivered in full.
 bool PlanFullyDelivered(const WorldState& current);
 
+/// @brief Whether a position counts as DELIVERED: `delivered` stands at
+/// campaign.csv's `plan_met_share` of `due` or above (0.99 since 2026-09-19,
+/// boss seq 89: six kilograms of rye short of 1.116 t must not fail a year).
+/// The one rule the verdict (PlanWasMet) and the overfulfilment's deduction
+/// ask. The +150 for a plan delivered IN FULL (PlanFullyDelivered) is not
+/// this question and stays at 100 %.
+bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivered);
+
 /// @brief The year's overfulfilment, in TONNES OF GRAIN EQUIVALENT (district
 /// §1, «За перевыполнение»; boss seq 70, 2026-09-18): every position's
 /// delivery over its due, each tonne weighed by its food.csv kcal_per_gram
-/// against the catalog's grain, summed — and 0 unless EVERY position was
-/// delivered in full: «сверху» is above a plan met, so a surplus of rye does
-/// not cover a potato short.
+/// against the catalog's grain, summed; less `overfulfil_shortfall_factor`
+/// times the tonnes short on every position NOT delivered (PositionDelivered),
+/// weighed the same way; never below 0. A deduction since 2026-09-19 (boss
+/// seq 88/89); before it a gate — 0 unless every position was delivered in
+/// full — and seed 5 lost 339 points to six kilograms of rye.
 ///
 /// TONNES AND NOT PERCENT, and it was percent for one evening. The first
 /// year's potato plan is seven tonnes against a surplus of 88-119 (host's

@@ -463,7 +463,8 @@ int TestTheOverfulfilScale() {
                                {"limit_overfulfil_tier1_points_per_t", "30", "core"},
                                {"limit_overfulfil_tier2_points_per_t", "12", "core"},
                                {"limit_overfulfil_tier3_points_per_t", "2", "core"},
-                               {"limit_overfulfil_grain_kcal_per_gram", "3.5", "core"}});
+                               {"limit_overfulfil_grain_kcal_per_gram", "3.5", "core"},
+                               {"limit_overfulfil_shortfall_factor", "2.5", "core"}});
   const test::FakeTableSet set({{"world_params", &world}});
   core::LimitCatalog read;
   std::string error;
@@ -471,7 +472,8 @@ int TestTheOverfulfilScale() {
   failures += Expect(
       read.overfulfil_tier1_t == 4.0F && read.overfulfil_tier2_t == 10.0F &&
           read.overfulfil_points_per_t[0] == 30.0F && read.overfulfil_points_per_t[1] == 12.0F &&
-          read.overfulfil_points_per_t[2] == 2.0F && read.overfulfil_grain_kcal_per_gram == 3.5F,
+          read.overfulfil_points_per_t[2] == 2.0F && read.overfulfil_grain_kcal_per_gram == 3.5F &&
+          read.overfulfil_shortfall_factor == 2.5F,
       "overfulfilment: every knob of the scale comes from its own row");
   // 20 t: 4 at 30, 10 at 12, 6 at 2 — 120 + 120 + 12.
   failures += Expect(core::OverfulfilPoints(read, 20.0F) == 252.0F &&

@@ -100,23 +100,48 @@ bool PlanFullyDelivered(const WorldState& current) {
   return asked;
 }
 
+bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivered) {
+  if (due <= 0) {
+    return true;
+  }
+  // THE SHARE IN FLOAT, AS THE KNOB IS. In double, 0.99F widens to
+  // 0.9900000095 and exactly 99 % of a figure came out short (the unit test
+  // caught it, 2026-09-19); a float quotient rounds to the same float the
+  // table's 0.99 was read into.
+  const float share = static_cast<float>(delivered) / static_cast<float>(due);
+  return share >= config.plan_met_share;
+}
+
 float PlanOverfulfilGrainTonnes(const ProductionConfig& config, const WorldState& current) {
-  if (!PlanFullyDelivered(current) || !(config.limit.overfulfil_grain_kcal_per_gram > 0.0F)) {
+  if (!(config.limit.overfulfil_grain_kcal_per_gram > 0.0F)) {
     return 0.0F;
   }
-  double grain_grams = 0.0;
+  // A DEDUCTION AND NOT A GATE (boss seq 88, district §1 `609ef830`). Until
+  // 2026-09-19 nothing counted unless every position was delivered in full,
+  // and host measured what that costs: seed 5 was six kilograms of rye short
+  // of a 1.116 t debt and lost 339 points of surplus with it. Now a position
+  // short of its delivered share takes K tonnes of grain off the surplus for
+  // every tonne it lacks — the plan's verdict is untouched and still failed.
+  double over_grams = 0.0;
+  double short_grams = 0.0;
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const Grams due = current.plan.due[index];
     if (due <= 0 || index >= config.food_kcal_per_gram.size()) {
       continue;
     }
-    // PlanFullyDelivered has just said every such index is delivered.
-    const Grams over = current.plan.delivered[index] - due;
-    grain_grams += static_cast<double>(over) *
-                   static_cast<double>(config.food_kcal_per_gram[index] /
-                                       config.limit.overfulfil_grain_kcal_per_gram);
+    const Grams delivered =
+        index < current.plan.delivered.size() ? current.plan.delivered[index] : Grams{0};
+    const double in_grain = static_cast<double>(config.food_kcal_per_gram[index] /
+                                                config.limit.overfulfil_grain_kcal_per_gram);
+    if (delivered > due) {
+      over_grams += static_cast<double>(delivered - due) * in_grain;
+    } else if (!PositionDelivered(config, due, delivered)) {
+      short_grams += static_cast<double>(due - delivered) * in_grain;
+    }
   }
-  return static_cast<float>(grain_grams / static_cast<double>(kGramsPerTonne));
+  const double net =
+      over_grams - (static_cast<double>(config.limit.overfulfil_shortfall_factor) * short_grams);
+  return net > 0.0 ? static_cast<float>(net / static_cast<double>(kGramsPerTonne)) : 0.0F;
 }
 
 /// @brief Was every position delivered to the share that counts as met?
@@ -138,8 +163,9 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current) {
     }
     const Grams delivered =
         index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
-    const float share = static_cast<float>(delivered) / static_cast<float>(due);
-    if (share < config.plan_met_share) {
+    // ONE RULE FOR "DELIVERED" (boss seq 89): the verdict and the
+    // overfulfilment's deduction ask the same question of a position.
+    if (!PositionDelivered(config, due, delivered)) {
       return false;
     }
   }

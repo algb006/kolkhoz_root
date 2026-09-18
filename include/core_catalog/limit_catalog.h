@@ -125,6 +125,13 @@ struct LimitCatalog {
   /// of any position is (its food.csv kcal_per_gram / this) tonnes of grain.
   float overfulfil_grain_kcal_per_gram = 3.3F;
 
+  /// THE DEDUCTION (boss seq 89, 2026-09-19), STUB figure, boss's: the tonnes
+  /// of grain equivalent SHORT on positions not delivered (below
+  /// plan_met_share) are taken from the tonnes over, this many times each.
+  /// It replaced a gate («nothing unless every position is met»): a surplus
+  /// of rye now covers a potato short, at three times its price.
+  float overfulfil_shortfall_factor = 3.0F;
+
   /// THE ACCUMULATION LIMIT (district §9; register 234; boss seq 81), STUB
   /// figures, boss's: each plannable produce may be held up to this share of
   /// (next year's seed + this year's figure + last year's eaten and fed, off

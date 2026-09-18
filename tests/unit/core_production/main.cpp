@@ -3527,15 +3527,19 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
                        "and the district thinks better of the chairman for it");
   }
 
-  // -- a year short by ONE GRAM ---------------------------------------------
+  // -- a year short by ONE GRAM of the met share ------------------------------
   //
   // By one gram deliberately: a check written against an empty store would
   // pass on an implementation that judged "delivered nothing at all" instead
-  // of "delivered less than was asked".
+  // of "delivered less than was asked". One gram under 99 % since the share
+  // became 0.99 (2026-09-19); exactly 99 % is met, checked below.
   {
-    const core::WorldState after = turn(1'000'000, 999'999, core::PlanState{});
+    const core::WorldState at_share = turn(1'000'000, 990'000, core::PlanState{});
+    failures += Expect(at_share.plan.last_verdict == core::PlanVerdict::kMet,
+                       "exactly the met share of the plan is a met year");
+    const core::WorldState after = turn(1'000'000, 989'999, core::PlanState{});
     failures += Expect(after.plan.last_verdict == core::PlanVerdict::kFailed,
-                       "one gram short of the plan is a failed year, not a rounded one");
+                       "one gram short of the met share is a failed year, not a rounded one");
     failures += Expect(after.plan.failed_years_in_a_row == 1, "and the failed run has begun");
     failures += Expect(after.chairman.raikom_reputation < 50.0F,
                        "and the district thinks worse of the chairman for it");
@@ -5283,12 +5287,31 @@ int CheckDeliverPlanNow() {
                      "a quantity of what the barn does not hold moves nothing and is refused");
 
   // THE TONNES OVER, IN GRAIN (district §1; boss seq 70): each position's
-  // surplus weighed by its calories against grain, and nothing while any
-  // position is short.
+  // surplus weighed by its calories against grain, LESS three times the
+  // grain a position not delivered lacks (boss seq 88/89: a deduction, not
+  // the gate it was until 2026-09-19).
   config.food_kcal_per_gram = {3.3F, 0.77F};  // rye, potato
-  failures +=
-      Expect(core::PlanOverfulfilGrainTonnes(config, early) == 0.0F,
-             "overfulfilment: three tonnes of rye over do not cover a potato not delivered");
+  // Potato 2 t short at 0.77 / 3.3 = 0.467 t of grain, x3 = 1.4: 3 - 1.4 = 1.6.
+  const float deducted = core::PlanOverfulfilGrainTonnes(config, early);
+  failures += Expect(deducted > 1.59F && deducted < 1.61F,
+                     "overfulfilment: a potato not delivered takes three times its grain off "
+                     "the rye's three tonnes over");
+  // 99 % of the potato is DELIVERED (plan_met_share): nothing is deducted.
+  early.plan.delivered[1] = (2 * kTonne) * 99 / 100;
+  const float at_share = core::PlanOverfulfilGrainTonnes(config, early);
+  failures += Expect(at_share > 2.999F && at_share < 3.001F,
+                     "overfulfilment: a position at the met share deducts nothing");
+  // 98 % is short: 40 kg of potato, 9.33 kg of grain, x3 = 28 kg off.
+  early.plan.delivered[1] = (2 * kTonne) * 98 / 100;
+  const float below_share = core::PlanOverfulfilGrainTonnes(config, early);
+  failures += Expect(below_share > 2.971F && below_share < 2.973F,
+                     "overfulfilment: a position below the share deducts its whole lack");
+  // A deduction greater than the surplus leaves nought, never a debt.
+  early.plan.delivered[1] = 0;
+  config.limit.overfulfil_shortfall_factor = 20.0F;
+  failures += Expect(core::PlanOverfulfilGrainTonnes(config, early) == 0.0F,
+                     "overfulfilment: a deduction over the surplus leaves nought, not less");
+  config.limit.overfulfil_shortfall_factor = 3.0F;
   early.plan.delivered[1] = 6 * kTonne;
   const float over = core::PlanOverfulfilGrainTonnes(config, early);
   // Rye 3 t over, potato 4 t over at 0.77 / 3.3: 3 + 0.933 = 3.933 t of grain.
