@@ -539,14 +539,16 @@ int main(int argc, char** argv) {
   // assumed a village that could harrow and mow simultaneously with the same
   // team. It cannot.
   failures += ExpectBand(harrowing, 26.0, 33.0, "harrowing costs its norm on the same land");
-  // Sowing is per crop, and the mix is the start canon's suggested rotation
-  // (start canon §8, in the core since task O2b): potatoes 21 ha x 12 real
-  // man-days, wheat 10 x 3, barley 7.5 x 3, oats 10.5 x 3, grasses 10.5 x 2,
-  // cabbage 7 x 5 — 392 real man-days, 56 game ones. It costs more than the
-  // old genesis mix because the canon sows three times the potatoes, and
-  // potatoes are the crop that takes hands.
-  // ...plus the autumn's 3.5 ha of winter rye at 3 real man-days.
-  failures += ExpectBand(sowing, 55.0, 61.0, "sowing costs the crop mix's norm");
+  // Sowing is per crop, and the mix is the start canon's rotation (start
+  // canon §8, in the core since task O2b), as the human re-laid it on
+  // 2026-09-18 («Вариант Б — да, клин 14 га»): potatoes 14 ha x 12 real
+  // man-days, wheat 10 x 3, barley 7.5 x 3, oats 10.5 + 7 x 3, grasses
+  // 10.5 x 2, cabbage 7 x 5, and the autumn's 3.5 ha of winter rye x 3 —
+  // 339.5 real man-days, 48.5 game ones. Potatoes are the crop that takes
+  // hands, so seven hectares of them moved to oats cost 7 x 9 = 63 real
+  // man-days, 9 game ones: the band was 55..61 around 57.5 and moved with it,
+  // keeping its width.
+  failures += ExpectBand(sowing, 46.0, 52.0, "sowing costs the crop mix's norm");
   // Harvest is the heavy half: grain 8, potato 25, flax 60, hay 8 per hectare.
   // A field lost to snow takes its own harvest with it, so the band is wide
   // downward.
