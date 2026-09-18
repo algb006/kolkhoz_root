@@ -6,7 +6,6 @@
 # the three numbers other than normal are FIRST NUMBERS and nothing has measured them. Do NOT measure them by population: a difference in residents needs eight pairs to see a hundred (5 September 2026). Difficulty reads honestly in the building order and in the year the timber runs out — both cheap and both already measured
 # normal is 1.0 by definition: start_stock is written for it and every balance run counts by it
 key,title,stock_scale,fodder_weeks
-easy,Лёгкий,1.5,3
-normal,Обычный,1,0
-hard,Трудный,0.7,-1
-brutal,Тяжёлый,0.5,-2
+easy,Лёгкая,1.5,3
+normal,Нормальная,1,0
+hard,Сложная,0.7,-1
