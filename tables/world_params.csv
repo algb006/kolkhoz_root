@@ -117,13 +117,13 @@ school_year_start_month,9,core
 school_year_end_month,6,core
 night_distiller_raw_kg,50,core
 alcohol_adult_from_years,16,core
-alcohol_gain_with_distiller,2,core
-alcohol_gain_winter_idle,1,core
+alcohol_gain_with_distiller,0.5,core
+alcohol_gain_winter_idle,0.5,core
 alcohol_gain_low_satisfaction,1,core
 alcohol_low_satisfaction_below,40,core
 alcohol_loss_employed,1,core
 alcohol_employed_days_min,3,core
-alcohol_loss_married,1,core
+alcohol_loss_married,0.5,core
 alcohol_loss_sober,1,core
 alcohol_epoch1_cap,60,core
 alcohol_sober_months_min,2,core
