@@ -40,6 +40,7 @@
 #include "night_pasture.h"
 #include "production_alarms.h"
 #include "production_config.h"
+#include "production_orders.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
@@ -5255,6 +5256,94 @@ int CheckTheLimitKeepsTheTeamsOats() {
 
 /// «СДАТЬ СЕЙЧАС» (kDeliverPlan; econ's audit M2, Л1): the chairman ships
 /// what is owed before the turn, and the turn ships only the rest.
+/// «ОСВОБОДИТЬ СКЛАД» (kEmptyStore; start §5; registers 214 and 233): the
+/// order's refusals, the church that stops accepting, the perevalka that
+/// carries the spoiling first, the pause and the cancel.
+int CheckTheChurchStoreIsEmptied() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  const core::ResourceId rye{0};
+  const core::ResourceId potato{1};
+  core::ProductionConfig config;
+  config.unit_types.resize(2);  // 0 the church store, 1 a granary
+  SetStorageKg(config.unit_types[0], 60'000.0F);
+  SetStorageKg(config.unit_types[1], 4'000.0F);  // 4 t: room runs out
+  config.resource_stores_read = 1;
+  config.unit_types[0].home_of = {rye, potato};
+  config.unit_types[1].home_of = {rye, potato};
+  config.church_store_type = core::UnitTypeId{0};
+  config.food_kcal_per_gram = {3.3F, 0.77F};
+  config.spoil_days = {600.0F, 120.0F};  // the potato spoils first
+  config.theft_rank = {2, 1};
+  config.standard_day_hours = 10.0F;
+  core::WorldState world;
+  core::UnitRow church;
+  church.type = core::UnitTypeId{0};
+  church.stock = {10 * kTonne, 5 * kTonne};
+  const core::UnitId church_id = core::AppendRow(world.units, church);
+  const auto issue = [&world](core::UnitId unit, std::uint8_t enable) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kEmptyStore;
+    order.status = core::OrderStatus::kPending;
+    order.unit = unit;
+    order.enable = enable;
+    const core::OrderId id = core::AppendRow(world.orders, order);
+    return id;
+  };
+  const auto answer = [&world](core::OrderId id) {
+    return world.orders.rows[core::FindRow(world.orders, id)].refusal;
+  };
+  // No store accepting food yet: nowhere to carry to.
+  const core::OrderId early = issue(church_id, 1);
+  core::ConsumeProductionOrders(config, world);
+  failures += Expect(answer(early) == core::OrderRefusal::kRuleForbids,
+                     "empty store: refused while no other store takes food");
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{1};
+  const core::UnitId granary_id = core::AppendRow(world.units, granary);
+  const core::OrderId wrong = issue(granary_id, 1);
+  const core::OrderId ordered = issue(church_id, 1);
+  core::ConsumeProductionOrders(config, world);
+  failures +=
+      Expect(answer(wrong) == core::OrderRefusal::kNotEligible &&
+                 answer(ordered) == core::OrderRefusal::kNone && world.units.rows[0].emptying == 1,
+             "empty store: only the church or a clamp, and the church now empties");
+  // It accepts nothing more: a tonne of rye goes past it to the granary.
+  core::DeliverToStores(world, config, rye, kTonne);
+  failures += Expect(core::AmountOf(world.units.rows[0].stock, rye) == 10 * kTonne &&
+                         core::AmountOf(world.units.rows[1].stock, rye) == kTonne,
+                     "empty store: the church accepts no delivery");
+  // A whole day's carrying done: what has room goes, the potato first.
+  // The granary has 3 t left for both.
+  world.units.rows[0].haul_days_written = 4.0F;
+  world.units.rows[0].haul_days_remaining = 0.0F;
+  core::SettleStoreEmptying(config, world);
+  failures += Expect(core::AmountOf(world.units.rows[1].stock, potato) == 3 * kTonne &&
+                         core::AmountOf(world.units.rows[0].stock, rye) == 10 * kTonne,
+                     "empty store: the spoiling potato is carried before the rye");
+  failures += Expect(world.units.rows[0].haul_days_remaining == 0.0F,
+                     "empty store: with no room left, no carrying is asked for");
+  // Room again, and a pause: nothing is asked for, the order stands.
+  world.units.rows[1].stock = {0, 0};
+  world.units.rows[0].paused = 1;
+  core::SettleStoreEmptying(config, world);
+  failures +=
+      Expect(world.units.rows[0].haul_days_remaining == 0.0F && world.units.rows[0].emptying == 1,
+             "empty store: a paused perevalka asks for nobody, and the order stands");
+  world.units.rows[0].paused = 0;
+  core::SettleStoreEmptying(config, world);
+  failures += Expect(world.units.rows[0].haul_days_remaining > 0.0F,
+                     "empty store: unpaused, the carrying is asked for again");
+  // Cancelled: the church accepts again.
+  const core::OrderId cancel = issue(church_id, 0);
+  core::ConsumeProductionOrders(config, world);
+  failures +=
+      Expect(answer(cancel) == core::OrderRefusal::kNone && world.units.rows[0].emptying == 0 &&
+                 world.units.rows[0].haul_days_remaining == 0.0F,
+             "empty store: cancelled, it accepts again and asks for no carrying");
+  return failures;
+}
+
 /// THE MILK CART (district §9; register 231; boss seq 98 and 113): the
 /// position named off the kolkhoz's milking day, the day's share at the
 /// milking, the rest before the next one, the winter's milk outside any
@@ -6172,6 +6261,7 @@ int main() {
   failures += CheckDistrictLimit();
   failures += CheckDeliverPlanNow();
   failures += CheckTheMilkCart();
+  failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();
   failures += CheckTheLimitKeepsTheTeamsOats();
   failures += CheckTheMtsColumn();

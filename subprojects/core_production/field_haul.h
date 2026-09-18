@@ -75,6 +75,16 @@ HaulRate SiteHaulRate(const ProductionConfig& config,
 /// @pre The day's last tick, sequential slot, after labor has run.
 void SettleSiteHauling(const ProductionConfig& config, WorldState& current);
 
+/// @brief «ПЕРЕВАЛКА» — the settlement for a store being emptied (kEmptyStore;
+/// start §5; registers 214 and 233): the carrying delivered today moves that
+/// share of what lies in the unit to the stores that accept it, the
+/// shortest spoil_days first, then what is stolen more readily
+/// (ProductionConfig::theft_rank), then row order; tomorrow's demand is
+/// re-sized for what is left that has somewhere to go. A paused unit carries
+/// nothing and asks for nobody; the order stands.
+/// @pre The day's last tick, sequential slot, after labor has run.
+void SettleStoreEmptying(const ProductionConfig& config, WorldState& current);
+
 /// @brief A day in the life of everything lying in a unit's store.
 /// @pre Called AFTER the village has eaten: the meal is the needs slot,
 ///      phase 2, and this is phase 3 of the same tick. Eaten food cannot

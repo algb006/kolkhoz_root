@@ -1287,6 +1287,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.pelt_resource = ResourceByKey(resources, "mink_pelt");
   config.down_resource = ResourceByKey(resources, "down");
   config.compost_heap_type = UnitTypeByKey(unit_types, "manure_pile");
+  config.church_store_type = UnitTypeByKey(unit_types, "church_store");
+  config.clamp_type = UnitTypeByKey(unit_types, "clamp");
   // The stable is not a unit of its own: it is the SECOND step of the
   // kolkhoz yard (boss 2026-08-30), and foals come only under its roof
   // (livestock design §5). The type is resolved here; whether one is BUILT
@@ -1395,6 +1397,24 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     // handed out does go bad at home.
     if (config.milk_resource.value < config.spoil_days.size()) {
       config.spoil_days[config.milk_resource.value] = 0.0F;
+    }
+    // WHAT IS STOLEN (resources.csv `theft`, boss's export of 2026-09-19):
+    // eager 2, some 1, none and a cell not yet written 0 — «не расписано»
+    // is not «none», but the perevalka has no third place to put it, and
+    // last is where it would go either way. Any other word is a typo.
+    config.theft_rank.assign(resources->RowCount(), 0);
+    const std::uint32_t theft_column = resources->FindColumn("theft");
+    for (std::uint32_t row = 0; row < resources->RowCount() && theft_column != kNoTableColumn;
+         ++row) {
+      const std::string_view word = resources->CellText(row, theft_column);
+      if (word == "eager") {
+        config.theft_rank[row] = 2;
+      } else if (word == "some") {
+        config.theft_rank[row] = 1;
+      } else if (!word.empty() && word != "none") {
+        error = "resources: theft: '" + std::string(word) + "' is not eager, some or none";
+        return false;
+      }
     }
   }
   config.horse_kind = KindByKey(livestock, "horse");

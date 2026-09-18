@@ -672,6 +672,19 @@ struct ProductionConfig {
 
   UnitTypeId compost_heap_type;  ///< unit_types.csv "compost_heap".
 
+  /// The two stores kEmptyStore empties (start §5; registers 214 and 233):
+  /// unit_types.csv "church_store" and "clamp". Neither has a post, so both
+  /// hold the store leak open while they hold raw material.
+  UnitTypeId church_store_type;
+  UnitTypeId clamp_type;
+
+  /// resources.csv `theft`, dense by ResourceId: 2 eager, 1 some, 0 none or
+  /// not yet written. The perevalka carries what is stolen more readily
+  /// before the rest (start §5, «сначала то что портится и то что
+  /// воруют»). WHAT IS STOLEN, not what samogon is made of: the distiller's
+  /// raw material is core_residents' own list (boss seq 117).
+  std::vector<std::uint8_t> theft_rank;
+
   /// unit_types.csv "stable": the closed housing horse breeding requires
   /// (boss rules 2026-08-29 §2.2); other kinds breed under any roof.
   /// The kolkhoz yard, whose SECOND step is the stable. Foals come only

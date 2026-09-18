@@ -221,6 +221,8 @@ class ProductionSystem final : public IProductionSystem {
       SettleHauling(config_, current);
       SettleStandHauling(config_, current);
       SettleSiteHauling(config_, current);
+      // And the perevalka out of a store being emptied (field_haul.h).
+      SettleStoreEmptying(config_, current);
       // The sawmill after the carting, so tonight's logs off the stands are
       // in tomorrow's demand (unit_production.h).
       SettleUnitProduction(config_, current);

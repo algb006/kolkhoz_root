@@ -134,7 +134,9 @@ static_assert(AggregateArity<FieldRow>() == 33,
 // moved neither assert on the row: it has its own pair now.
 // 2026-09-15: the insulated byte landed in padding beside `dead` — the size
 // stayed, the field count went to 14 (VERSION_SAVE 44).
-static_assert(sizeof(UnitRow) == 64 + (2 * kAmountsSize),
+// 2026-09-19, save 67: the store's emptying byte and the perevalka's two
+// floats — 64 -> 80 + two amounts (measured by a sizeof probe), 17 fields.
+static_assert(sizeof(UnitRow) == 80 + (2 * kAmountsSize),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
               "ConstructionState changed — update the codec and VERSION_SAVE");
@@ -142,7 +144,7 @@ static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
 // stays (measured), 7 fields.
 static_assert(AggregateArity<ConstructionState>() == 7,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<UnitRow>() == 14,
+static_assert(AggregateArity<UnitRow>() == 17,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 18,
@@ -731,6 +733,10 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // A7 sprang with OrderRow::profession. The wire grew all the same, and
   // that is what VERSION_SAVE counts.
   out.WriteU8(row.paused);
+  // The store's emptying and its carrying seam (save 67).
+  out.WriteU8(row.emptying);
+  out.WriteFloat(row.haul_days_remaining);
+  out.WriteFloat(row.haul_days_written);
   // The dead byte of a start placement (2026-09-12) went into the same
   // padding, and the tripwire stayed silent for the third time running —
   // which is the documented usual outcome, not the surprise. VERSION_SAVE
@@ -764,6 +770,9 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.reserved = source.ReadAmounts(DefKind::kResource);
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
+  row.emptying = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "store emptying"));
+  row.haul_days_remaining = in.ReadFloat();
+  row.haul_days_written = in.ReadFloat();
   row.dead = in.ReadU8();
   row.insulated = in.ReadU8();
   row.stink_radius_m = in.ReadFloat();

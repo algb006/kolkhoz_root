@@ -265,6 +265,21 @@ struct UnitRow {
   /// is what they will consult, and the ORDER is what will wait.
   std::uint8_t paused = 0;
 
+  /// «ОСВОБОДИТЬ СКЛАД» (kEmptyStore; start §5; registers 214 and 233; save
+  /// 67): 1 while the chairman's order stands — the church store or a clamp
+  /// accepts no delivery, and what lies in it is the load of the «перевалка»
+  /// (core_production field_haul.h, SettleStoreEmptying). `paused` on such a
+  /// unit pauses the carrying and leaves the order standing.
+  std::uint8_t emptying = 0;
+
+  /// THE PEREVALKA'S SEAM (save 67), game man-days: labor drains
+  /// `haul_days_remaining` as it drains a field's haul, and the day's
+  /// settlement moves the share done (`written` − `remaining`) / `written`
+  /// of the load and writes tomorrow's demand into both. 0 when nothing is
+  /// left to carry or no order stands.
+  float haul_days_remaining = 0.0F;
+  float haul_days_written = 0.0F;
+
   /// THE UNIT STANDS AND DOES NOT WORK AT ALL until it is restored — the
   /// wrecked water mill of the first morning (start design; boss's decision
   /// of 2026-09-12). Set by genesis from start_layout.csv and by nothing

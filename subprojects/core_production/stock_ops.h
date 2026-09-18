@@ -142,6 +142,12 @@ inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
 /// A table set without that table keeps the rule the core had before it —
 /// where the resource already lies (STUB for hand-built worlds).
 inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, ResourceId resource) {
+  // A STORE BEING EMPTIED IS NOBODY'S HOME (kEmptyStore; start §5): every
+  // delivery asks this predicate or NumberedStoreTakes, and neither says yes
+  // for it. Taking from it is untouched — IsTakenFrom does not ask here.
+  if (unit.emptying != 0) {
+    return false;
+  }
   if (config.resource_stores_read == 0) {
     return StockOf(unit.stock, resource) > 0;
   }
@@ -168,7 +174,8 @@ inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, Resour
 inline bool NumberedStoreTakes(const UnitRow& unit,
                                const ProductionConfig& config,
                                ResourceId resource) {
-  return config.resource_stores_read == 0 || IsHomeOf(unit, config, resource);
+  return unit.emptying == 0 &&
+         (config.resource_stores_read == 0 || IsHomeOf(unit, config, resource));
 }
 
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:

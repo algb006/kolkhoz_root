@@ -2466,6 +2466,44 @@ int TestTheAvralAndTheCancelledDayOff() {
   return failures;
 }
 
+/// THE PEREVALKA ON THE LABOR SIDE (kEmptyStore; start §5): a store being
+/// emptied with carrying asked for gets a carrier, who drains the unit's own
+/// carting seam; a paused one gets nobody.
+int TestTheStoreBeingEmptiedGetsItsCarrier() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_perevalka";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "oat,5,9,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "perevalka: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto carried_on = [&labor](bool paused) {
+    DayWorld day(1);
+    core::UnitRow church;
+    church.position = core::Vec2{.x = 30.0F, .y = 0.0F};
+    church.emptying = 1;
+    church.paused = paused ? 1 : 0;
+    church.haul_days_remaining = 5.0F;
+    church.haul_days_written = 5.0F;
+    const core::UnitId id = core::AppendRow(day.world.units, church);
+    day.RunDay(*labor, 30);  // a Wednesday
+    return 5.0F - day.world.units.rows[core::FindRow(day.world.units, id)].haul_days_remaining;
+  };
+  failures += Expect(carried_on(false) > 0.0F,
+                     "perevalka: the store being emptied gets a carrier, who drains its seam");
+  failures += Expect(carried_on(true) == 0.0F, "perevalka: a paused one gets nobody");
+  return failures;
+}
+
 int TestFallowBeforeWinterRyeHasTheRyesWindow() {
   int failures = 0;
   const std::filesystem::path root =
@@ -2901,6 +2939,7 @@ int main() {
   failures += TestTheLastDaysGoByTheGrams();
   failures += TestTheReapingPaceIsBookedWithItsDaylight();
   failures += TestTheAvralAndTheCancelledDayOff();
+  failures += TestTheStoreBeingEmptiedGetsItsCarrier();
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();

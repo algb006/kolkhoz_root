@@ -663,6 +663,23 @@ class LaborSystem final : public ILaborSystem {
           jobs.push_back(job);
         }
       }
+      // THE PEREVALKA (kEmptyStore; start §5): the carting out of a store
+      // being emptied, on the same carts and hands, and WINDOWLESS — below
+      // the harvest's carting by default (boss seq 116-117). A paused unit
+      // asks for nobody; its order stands.
+      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+        const UnitRow& unit = current.units.rows[row];
+        if (unit.emptying == 0 || unit.paused != 0 || !(unit.haul_days_remaining > 0.0F)) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.unit = current.units.row_ids[row];
+        job.position = unit.position;
+        job.work_days_remaining = unit.haul_days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        jobs.push_back(job);
+      }
     }
     for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
       const HerdRow& herd = current.herds.rows[row];

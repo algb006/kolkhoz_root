@@ -315,6 +315,11 @@ core::WorldState MakeWorld() {
   site.construction.labor_days_remaining = 6.25F;
   site.construction.max_crew = 8;
   site.construction.rush_step = 5;  // save 65: the avral at its ceiling
+  // Save 67: a store being emptied, its carrying half done — all three away
+  // from their zero defaults.
+  site.emptying = 1;
+  site.haul_days_remaining = 2.5F;
+  site.haul_days_written = 4.0F;
   core::AppendRow(world.units, site);
 
   core::HerdRow herd;
@@ -1064,7 +1069,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // named; the second, with the fixture's values, was predicted and held.
     {"families", 204, 0xdf80f905badb3e6bULL},
     {"fields", 269, 0x8a59944f0a209f67ULL},
-    {"units", 326, 0x8dbbc6ff86e381f6ULL},
+    // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
+    // three units; predicted before the fields were added, and held.
+    {"units", 353, 0x2c6b2b3117a7d2b1ULL},
     {"herds", 66, 0xe3846623b64933cfULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
@@ -1615,6 +1622,9 @@ int main() {
           site_back.construction.labor_days_remaining == 6.25F &&
           site_back.construction.max_crew == 8 && site_back.construction.rush_step == 5,
       "a half-built unit resumes half-built, crew ceiling and avral included");
+  failures += Expect(site_back.emptying == 1 && site_back.haul_days_remaining == 2.5F &&
+                         site_back.haul_days_written == 4.0F,
+                     "a store being emptied comes back emptying, its carrying half done (save 67)");
 
   // -- the staged batch ----------------------------------------------------
   //

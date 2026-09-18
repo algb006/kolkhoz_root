@@ -18,6 +18,7 @@
 #include "field_removal.h"
 #include "herd_system.h"
 #include "night_pasture.h"
+#include "stock_ops.h"
 #include "timber_felling.h"
 
 namespace core {
@@ -310,6 +311,51 @@ OrderRefusal SetRotation(const ProductionConfig& config,
   return OrderRefusal::kNone;
 }
 
+/// @brief «Освободить склад» (kEmptyStore; start §5; registers 214, 233).
+/// @return kNoSuchSubject for no such unit; kNotEligible for anything but the
+///         church store or a clamp; kRuleForbids to empty with no other built
+///         store that takes a food, or to cancel an order that does not stand.
+OrderRefusal EmptyStore(const ProductionConfig& config,
+                        WorldState& current,
+                        const OrderRow& order) {
+  const std::uint32_t row = FindRow(current.units, order.unit);
+  if (row == kNoRow) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  const UnitTypeId type = current.units.rows[row].type;
+  if (type.value != config.church_store_type.value && type.value != config.clamp_type.value) {
+    return OrderRefusal::kNotEligible;
+  }
+  if (order.enable == 0) {
+    UnitRow& unit = current.units.rows[row];
+    if (unit.emptying == 0) {
+      return OrderRefusal::kRuleForbids;  // nothing to cancel
+    }
+    unit.emptying = 0;
+    unit.haul_days_remaining = 0.0F;
+    unit.haul_days_written = 0.0F;
+    return OrderRefusal::kNone;
+  }
+  // «КОГДА ПОСТРОЕН ХОТЬ ОДИН СКЛАД, ПРИНИМАЮЩИЙ ЕДУ» (start §5): a built
+  // store, not this one and not being emptied, that takes some food.
+  bool somewhere = false;
+  for (std::uint32_t other = 0; other < current.units.rows.size() && !somewhere; ++other) {
+    const UnitRow& store = current.units.rows[other];
+    if (other == row || !StoresGoods(store, config)) {
+      continue;
+    }
+    for (std::uint32_t index = 0; index < config.food_kcal_per_gram.size() && !somewhere; ++index) {
+      somewhere = config.food_kcal_per_gram[index] > 0.0F &&
+                  NumberedStoreTakes(store, config, DefIdFromIndex<ResourceIdTag>(index));
+    }
+  }
+  if (!somewhere) {
+    return OrderRefusal::kRuleForbids;
+  }
+  current.units.rows[row].emptying = 1;
+  return OrderRefusal::kNone;
+}
+
 void Settle(OrderRow& order, OrderRefusal refusal) {
   order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
   order.refusal = refusal;
@@ -352,7 +398,12 @@ OrderRefusal SetPaused(const ProductionConfig& config,
   // the rule can always be let go.
   const bool pausable =
       target.type.value < config.unit_types.size() && config.unit_types[target.type.value].pausable;
-  if (paused != 0 && !pausable && !work_at_site) {
+  // AND A STORE BEING EMPTIED (kEmptyStore; boss seq 117 Б): its carrying is
+  // the work, and the pause holds the perevalka with the order standing.
+  // What that costs, named rather than hidden: the pause stops the church's
+  // wear too while it stands — the escape the ruling above closed, reopened
+  // for a store the chairman is already emptying.
+  if (paused != 0 && !pausable && !work_at_site && target.emptying == 0) {
     return OrderRefusal::kNotEligible;
   }
   if (current.units.rows[row].paused == paused) {
@@ -419,6 +470,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kDeliverPlan:
         Settle(order, DeliverPlanNow(config, current, order.resource, order.amount));
+        break;
+      case OrderKind::kEmptyStore:
+        Settle(order, EmptyStore(config, current, order));
         break;
       default:
         break;  // not ours: another consumer's, or the events slot's refusal

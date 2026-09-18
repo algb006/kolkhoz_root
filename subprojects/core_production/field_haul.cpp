@@ -5,8 +5,10 @@
 
 #include "field_haul.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
@@ -338,6 +340,91 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
 /// @brief A day in the life of everything lying in a unit's store.
 /// The larders are core_residents' rows and rot there, by the same rule
 /// out of the same column — one rule, two owners, no drift.
+namespace {
+
+/// What leaves an emptied store first (start §5, «сначала то что портится и
+/// то что воруют»): the shortest shelf life — nought, «keeps for ever», is
+/// the longest — then what is stolen more readily, then row order.
+std::vector<std::uint32_t> EmptyingOrder(const ProductionConfig& config, const UnitRow& unit) {
+  std::vector<std::uint32_t> order;
+  for (std::uint32_t index = 0; index < unit.stock.size(); ++index) {
+    if (unit.stock[index] > 0) {
+      order.push_back(index);
+    }
+  }
+  const auto shelf = [&config](std::uint32_t index) {
+    const float days = index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;
+    return days > 0.0F ? days : std::numeric_limits<float>::infinity();
+  };
+  const auto theft = [&config](std::uint32_t index) {
+    return index < config.theft_rank.size() ? config.theft_rank[index] : std::uint8_t{0};
+  };
+  std::ranges::sort(order, [&shelf, &theft](std::uint32_t left, std::uint32_t right) {
+    if (shelf(left) != shelf(right)) {
+      return shelf(left) < shelf(right);
+    }
+    if (theft(left) != theft(right)) {
+      return theft(left) > theft(right);
+    }
+    return left < right;
+  });
+  return order;
+}
+
+}  // namespace
+
+void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
+  for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+    UnitRow& unit = current.units.rows[row];
+    if (unit.emptying == 0) {
+      continue;
+    }
+    const std::vector<std::uint32_t> order = EmptyingOrder(config, unit);
+    // What has somewhere to go today: each resource up to the room that
+    // takes it (the emptied unit is nobody's home, stock_ops.h).
+    const auto movable = [&config, &current, &unit, &order]() {
+      Grams total = 0;
+      for (const std::uint32_t index : order) {
+        const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+        const Grams room = ReceivableRoom(config, current, resource);
+        total += unit.stock[index] < room ? unit.stock[index] : room;
+      }
+      return total;
+    };
+    const float done = unit.haul_days_written > unit.haul_days_remaining
+                           ? unit.haul_days_written - unit.haul_days_remaining
+                           : 0.0F;
+    if (unit.paused == 0 && done > 0.0F && unit.haul_days_written > 0.0F) {
+      const float share = done / unit.haul_days_written;
+      Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
+      for (const std::uint32_t index : order) {
+        if (budget <= 0) {
+          break;
+        }
+        const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+        const Grams wanted = unit.stock[index] < budget ? unit.stock[index] : budget;
+        const Grams moved = DeliverToStores(current, config, resource, wanted);
+        AddToStock(unit.stock, resource, -moved);
+        budget -= moved;
+      }
+    }
+    // Tomorrow's demand: what is left that has somewhere to go, toward the
+    // first store that takes the first of it.
+    const Grams left = unit.paused == 0 ? movable() : 0;
+    Vec2 destination = unit.position;
+    for (const UnitRow& other : current.units.rows) {
+      if (!order.empty() && StoresGoods(other, config) &&
+          NumberedStoreTakes(other, config, DefIdFromIndex<ResourceIdTag>(order.front()))) {
+        destination = other.position;
+        break;
+      }
+    }
+    const HaulRate rate = RateToward(config, current, unit.position, destination);
+    unit.haul_days_remaining = left > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
+    unit.haul_days_written = unit.haul_days_remaining;
+  }
+}
+
 void SpoilStores(const ProductionConfig& config, WorldState& current) {
   if (config.spoil_days.empty()) {
     return;  // a table-less world keeps everything for ever

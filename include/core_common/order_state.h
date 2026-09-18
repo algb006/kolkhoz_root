@@ -636,8 +636,9 @@ enum class OrderKind : std::uint8_t {
   /// delivery (the harvest's carting, the district's carts, the field
   /// haul), and what lies in it becomes the load of a new hauling task,
   /// «перевалка», to the stores that do accept it. `enable` 0 cancels: the
-  /// unit accepts again and the carrying stops. CONTRACT, 2026-09-19; no
-  /// consumer yet — refused kNoConsumer until the implementation lands.
+  /// unit accepts again and the carrying stops. Contract and implementation
+  /// 2026-09-19 (production_orders.cpp EmptyStore, field_haul.h
+  /// SettleStoreEmptying).
   ///
   /// WHY A DOOR: the church is the first row of the start layout and every
   /// delivery takes the first place a resource may lie, so a granary built

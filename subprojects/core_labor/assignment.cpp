@@ -88,7 +88,9 @@ constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
   if (job.kind == WorkKind::kHerdCare) {
     return job.herd.value;
   }
-  if (job.kind == WorkKind::kConstruction || job.kind == WorkKind::kUnitWork) {
+  // The perevalka carries out of a unit (kEmptyStore): its target is the unit.
+  if (job.kind == WorkKind::kConstruction || job.kind == WorkKind::kUnitWork ||
+      job.unit.value != kInvalidEntityIdValue) {
     return job.unit.value;
   }
   // A stand's id and a field's may be the same number; a tie there falls to
