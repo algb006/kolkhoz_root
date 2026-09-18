@@ -46,9 +46,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // exactly why the arity below stands beside the size and not instead of it.
 // 2026-09-17 again, save 53: the worst season's food variety and the count of
 // seasons lived, for the transition's variety block. 200 became 208.
-static_assert(sizeof(YearLedger) == 208 + (15 * kAmountsSize),
+// 2026-09-18, save 58: plan_due, what the district asked by position (M12) —
+// a sixteenth amounts column and a fifty-sixth field.
+static_assert(sizeof(YearLedger) == 208 + (16 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 55,
+static_assert(AggregateArity<YearLedger>() == 56,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -265,6 +267,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.herd_hungry_head_days);
 
   sink.WriteAmounts(DefKind::kResource, book.delivered);
+  // What the district asked, by position (save 58, M12).
+  sink.WriteAmounts(DefKind::kResource, book.plan_due);
 
   WriteFloatArray(out, book.work_days_by_kind);
   out.WriteI32(book.trudodni_accrued);
@@ -332,6 +336,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_hungry_head_days = in.ReadFloat();
 
   book.delivered = source.ReadAmounts(DefKind::kResource);
+  book.plan_due = source.ReadAmounts(DefKind::kResource);
 
   ReadFloatArray(in, book.work_days_by_kind);
   book.trudodni_accrued = in.ReadI32();

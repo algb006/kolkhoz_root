@@ -489,6 +489,9 @@ core::WorldState MakeWorld() {
   world.ledger.closed.deaths = 3;
   world.ledger.closed.harvest = Amounts({43'000'000, 5'000'000, 0, 0, 0, 0});
   world.ledger.closed.eaten = Amounts({0, 0, 9'000'000, 1'200'000, 0, 0});
+  // What the district asked (save 58, M12): not empty, or a codec that forgot
+  // to read the column would round-trip it perfectly.
+  world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -1038,7 +1041,10 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // and the four numbers of the wintering as it stood on 1 December.
     // 2026-09-17 again, save 53: the worst season's food variety and the
     // count of seasons lived, over the two books. +10 bytes.
-    {"ledger", 644, 0xbe1b4e335f6e05bcULL},
+    // 2026-09-18, save 58: plan_due (M12) — the current book's empty column
+    // (a 2-byte length) and the closed book's three positions (2 + 3 x 8).
+    // +28, counted before the build.
+    {"ledger", 672, 0x22880b30acc9fa67ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1291,6 +1297,9 @@ int main() {
                      "a digger comes back at her pit");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
+  failures += Expect(
+      loaded.ledger.closed.plan_due.size() == 3 && loaded.ledger.closed.plan_due[0] == 12'000'000,
+      "what the district asked comes back in the closed book (save 58)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.

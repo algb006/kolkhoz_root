@@ -340,6 +340,13 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   // it asked for nothing" — the one state the byte exists to tell apart
   // from "no figure yet", wrong for a sixth of every year, and a save
   // taken in that window carried the lie across a load.
+  //
+  // THE FIGURE GOES INTO THE BOOK BEFORE IT GOES (M12, 2026-09-18): the
+  // closing year's book keeps what was asked beside what was shipped, lost
+  // for want of room and issued, so a failed position can say which of the
+  // two took the grain. The book is still the closing year's here — the
+  // rotation that closes it runs later in this very tick (world.cpp).
+  current.ledger.current.plan_due = current.plan.due;
   current.plan.due.assign(current.plan.due.size(), 0);
   current.plan.announced = 0;
   // The unsealings go with the year they were an emergency of. Carried

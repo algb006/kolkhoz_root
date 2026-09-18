@@ -3300,6 +3300,13 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     const core::WorldState after = turn(1'000'000, 5'000'000, core::PlanState{});
     failures += Expect(after.plan.last_verdict == core::PlanVerdict::kMet,
                        "a plan delivered in full closes the year as met");
+    // THE FIGURE GOES INTO THE BOOK BEFORE IT IS CLEARED (M12): the judged
+    // year's book keeps what was asked, beside what was shipped.
+    failures += Expect(after.ledger.current.plan_due.size() > wheat.value &&
+                           after.ledger.current.plan_due[wheat.value] == 1'000'000 &&
+                           after.plan.due[wheat.value] == 0,
+                       "the judged year's book keeps what the district asked, and the plan "
+                       "is cleared");
     // "and the failed run stands at nothing" stood here and was REMOVED: the
     // counter starts at nothing, so the claim held whether the verdict ran
     // or not — true under both implementations, which is decoration and not

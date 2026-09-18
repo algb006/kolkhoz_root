@@ -221,6 +221,15 @@ struct YearLedger {
   // -- district ------------------------------------------------------------
   ResourceAmounts delivered;  ///< Shipped against the plan.
 
+  /// WHAT THE DISTRICT ASKED, by position, written by the plan's judge at
+  /// the turn before it clears the figure (econ's audit M12, Л1; boss, seq
+  /// 56). Beside `delivered`, `lost_no_room`, `issued` and `ration` of the
+  /// same book it answers the player's question about a failed position:
+  /// «сорвали — от склада или от выдачи?». Without it the closed book knew
+  /// what was shipped and what was lost, and no longer knew what had been
+  /// owed: the figure was cleared at the turn that judged it.
+  ResourceAmounts plan_due;
+
   /// What went bad in a store or a larder over the year, by resource
   /// (task A4; transport design §10). A separate column from `lost_no_room`
   /// because they are different failures with different cures: lost_no_room is

@@ -331,6 +331,9 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   EmitResourceBlock(out, resources, "spoiled", book.spoiled);
   EmitResourceBlock(out, resources, "seed", book.seed);
   EmitResourceBlock(out, resources, "delivered", book.delivered);
+  // What the district asked by position (M12): beside `delivered`, the
+  // year's lost_no_room and issued, a failed position names its cause.
+  EmitResourceBlock(out, resources, "plan_due", book.plan_due);
   EmitResourceBlock(out, resources, "herd_produce", book.herd_produce);
   EmitResourceBlock(out, resources, "feed", book.feed);
   EmitResourceBlock(out, resources, "issued", book.issued);
