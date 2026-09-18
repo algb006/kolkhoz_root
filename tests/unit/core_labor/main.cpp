@@ -2109,12 +2109,18 @@ int TestTheLastDaysGoByTheGrams() {
     return 1;
   }
   // First row the turnip (in its window), second the potato (past it).
-  const auto worked_on_by = [](core::ILaborSystem& system, std::uint32_t game_day) {
+  // Norm-days of reaping left on each. At five apiece neither fits what one
+  // hand reaps from day 37 to the snow (four working days at 12 h of light
+  // over a 10 h norm: 4.8), so both are beyond it and the grams alone rank.
+  float turnip_work = 5.0F;
+  float potato_work = 5.0F;
+  const auto worked_on_by = [&turnip_work, &potato_work](core::ILaborSystem& system,
+                                                         std::uint32_t game_day) {
     DayWorld day(1);
     const core::FieldId turnip =
-        day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+        day.AddField(core::FieldPhase::kHarvest, turnip_work, core::Vec2{.x = 0.0F, .y = 20.0F});
     const core::FieldId potato =
-        day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+        day.AddField(core::FieldPhase::kHarvest, potato_work, core::Vec2{.x = 0.0F, .y = -20.0F});
     day.world.fields.rows[core::FindRow(day.world.fields, turnip)].crop = core::CropId{3};
     day.world.fields.rows[core::FindRow(day.world.fields, potato)].crop = core::CropId{2};
     for (std::uint32_t hour = 0; hour <= 12; ++hour) {
@@ -2146,6 +2152,22 @@ int TestTheLastDaysGoByTheGrams() {
   potato_grams = 9'000'000;
   failures += Expect(worked_on(37) == 2,
                      "last days: the heavier potato is reaped first when the grams turn round");
+  // WHAT CAN STILL BE DONE, THEN THE HEAVIER (boss seq 103). The turnip
+  // heavier again, but its five norm-days do not fit the 4.8 left, and the
+  // potato's two do: the potato goes first — the turnip would be lost
+  // anyway, and reaping it would lose the potato too.
+  turnip_grams = 9'000'000;
+  potato_grams = 2'000'000;
+  potato_work = 2.0F;
+  failures += Expect(worked_on(37) == 2,
+                     "last days: a field that can still be finished before the snow goes before "
+                     "a heavier one that cannot");
+  // Both fit (2 + 2 of 4.8): the heavier turnip first again.
+  turnip_work = 2.0F;
+  failures += Expect(worked_on(37) == 1,
+                     "last days: among the fields that can be finished, the heavier first");
+  turnip_work = 5.0F;
+  potato_work = 5.0F;
   // labor.csv's harvest_snow_last_days 0 switches the rule off: the window
   // ranks to the snow, and the heavier turnip waits for the potato again.
   std::ofstream(root / "labor.csv") << "key,value\nharvest_snow_last_days,0\n";

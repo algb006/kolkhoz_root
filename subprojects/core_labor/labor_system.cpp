@@ -705,7 +705,59 @@ class LaborSystem final : public ILaborSystem {
         jobs.push_back(job);
       }
     }
+    MarkTheReapingsTheSnowWillTake(current, jobs);
     return jobs;
+  }
+
+  /// THE LAST DAYS: WHAT CAN STILL BE DONE, THEN THE HEAVIER (boss seq 103).
+  /// Reaping is all or nothing — the grams come when the field is reaped
+  /// whole, and the snow takes the whole standing crop — so the heaviest
+  /// field first could start one the days cannot finish and lose both. The
+  /// reapings carrying grams are walked heaviest first against what the
+  /// village can still reap before the snow; each that fits is kept and
+  /// spends its days, each that does not is marked `beyond_the_snow` and
+  /// ranks after every one that fits (assignment.cpp).
+  ///
+  /// THE CAPACITY IS AN OPTIMIST'S, on purpose: every employable hand, every
+  /// working day to the snow inclusive, today's daylight over the standard
+  /// day, efficiency one. The light keeps falling and the barn keeps some
+  /// hands, so a field called finishable may still not be — but one called
+  /// beyond the snow truly is, and only those lose their place.
+  void MarkTheReapingsTheSnowWillTake(const WorldState& current,
+                                      std::vector<AssignmentJob>& jobs) const {
+    std::vector<std::uint32_t> reapings;
+    for (std::uint32_t index = 0; index < jobs.size(); ++index) {
+      if (jobs[index].grams_at_risk > 0) {
+        reapings.push_back(index);
+      }
+    }
+    if (reapings.empty()) {
+      return;
+    }
+    std::ranges::stable_sort(reapings, [&jobs](std::uint32_t left, std::uint32_t right) {
+      return jobs[left].grams_at_risk > jobs[right].grams_at_risk;
+    });
+    std::uint32_t hands = 0;
+    for (const ResidentRow& resident : current.residents.rows) {
+      hands += Employable(current, resident) ? 1U : 0U;
+    }
+    const auto today = static_cast<std::uint32_t>(current.calendar.day % kDaysPerYear);
+    std::uint32_t working_days = 0;
+    for (std::uint32_t day = today; day <= config_.growing_season_last_day; ++day) {
+      const SimDay sim_day = current.calendar.day - today + day;
+      working_days +=
+          IsRestDay(sim_day, current.calendar.day_zero_weekday, current.epoch) ? 0U : 1U;
+    }
+    float capacity = static_cast<float>(hands) * static_cast<float>(working_days) *
+                     current.weather.daylight_hours / config_.standard_day_hours;
+    for (const std::uint32_t index : reapings) {
+      AssignmentJob& job = jobs[index];
+      if (job.work_days_remaining <= capacity) {
+        capacity -= job.work_days_remaining;
+      } else {
+        job.beyond_the_snow = true;
+      }
+    }
   }
 
   /// Grams of `resource` lying in every unit's stock — the tools a felling

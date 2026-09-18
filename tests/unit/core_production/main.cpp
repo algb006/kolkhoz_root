@@ -5342,6 +5342,17 @@ int CheckDeliverPlanNow() {
   // Rye 3 t over, potato 4 t over at 0.77 / 3.3: 3 + 0.933 = 3.933 t of grain.
   failures += Expect(over > 3.93F && over < 3.94F,
                      "overfulfilment: a tonne of potato over weighs its calories in grain");
+  // THE +150 ASKS THE MET SHARE, not 100 % (boss seq 103): 99 % of the potato
+  // earns it, 98 % does not, and a plan of nothing earns nothing.
+  early.plan.delivered[1] = (2 * kTonne) * 99 / 100;
+  failures += Expect(core::PlanFullyDelivered(config, early),
+                     "premium: every position at the met share earns the +150");
+  early.plan.delivered[1] = (2 * kTonne) * 98 / 100;
+  failures += Expect(!core::PlanFullyDelivered(config, early),
+                     "premium: one position below the share does not");
+  core::WorldState nothing_asked;
+  failures += Expect(!core::PlanFullyDelivered(config, nothing_asked),
+                     "premium: a plan of nothing earns nothing");
   return failures;
 }
 

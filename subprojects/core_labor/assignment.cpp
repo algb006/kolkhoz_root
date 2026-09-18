@@ -216,14 +216,21 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;
     }
-    // THE LAST DAYS BEFORE THE SNOW (boss seq 95): two reapings with one
-    // edge, the snow, go by what the snow would take — the heavier first.
-    // Asked only when BOTH carry grams, so no other pair changes its order.
-    if (a.grams_at_risk > 0 && b.grams_at_risk > 0 && a.grams_at_risk != b.grams_at_risk) {
-      return a.grams_at_risk > b.grams_at_risk;
-    }
     if (KindPriority(a.kind) != KindPriority(b.kind)) {
       return KindPriority(a.kind) < KindPriority(b.kind);
+    }
+    // THE LAST DAYS BEFORE THE SNOW (boss seq 95 and 103): between reapings
+    // with one edge, the snow — first those the village can still finish,
+    // then the heavier. KEYS AND NOT A PAIRWISE RULE, after the kind: asked
+    // only when both sides carry grams, a zero-gram job of the same kind and
+    // days compared by id with each made a cycle possible (UB-001's shape).
+    // A job with no grams never carries beyond_the_snow, so it ranks as a
+    // finishable one of weight nought — after every weighed reaping.
+    if (a.beyond_the_snow != b.beyond_the_snow) {
+      return !a.beyond_the_snow;
+    }
+    if (a.grams_at_risk != b.grams_at_risk) {
+      return a.grams_at_risk > b.grams_at_risk;
     }
     if (TargetIdValue(a) != TargetIdValue(b)) {
       return TargetIdValue(a) < TargetIdValue(b);

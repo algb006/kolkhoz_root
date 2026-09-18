@@ -109,6 +109,11 @@ struct AssignmentJob {
   /// LaborConfig::harvest_snow_last_days); 0 otherwise. Between two such
   /// jobs with the same days left, the heavier goes first.
   Grams grams_at_risk = 0;
+
+  /// Set among those reapings for a field the village cannot finish before
+  /// the snow once the heavier finishable ones have spent their days
+  /// (boss seq 103): it ranks after every reaping that can still be done.
+  bool beyond_the_snow = false;
 };
 
 /// @brief One available worker, in placement terms.

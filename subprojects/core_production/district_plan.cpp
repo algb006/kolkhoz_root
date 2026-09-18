@@ -79,11 +79,13 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config,
   return shipped > 0 ? OrderRefusal::kNone : OrderRefusal::kRuleForbids;
 }
 
-/// @brief Was every position delivered IN FULL — 100 %, not the share that
-/// counts as met? The limit's premium is for full delivery and the met
-/// share decides failure and trial (boss, parcel 211). A plan of nothing is
-/// not delivered in full: there was nothing to deliver.
-bool PlanFullyDelivered(const WorldState& current) {
+/// @brief Was every position DELIVERED (PositionDelivered, the met share)?
+/// The limit's premium. It asked 100 % until 2026-09-19, apart from the
+/// share that decides failure and trial (boss, parcel 211); boss seq 103
+/// joined the two — «сдано в полном объёме» and «выполнен» are one thing to
+/// the district. It still differs from PlanWasMet in one case: a plan of
+/// nothing earns no premium, there was nothing to deliver.
+bool PlanFullyDelivered(const ProductionConfig& config, const WorldState& current) {
   bool asked = false;
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const Grams due = current.plan.due[index];
@@ -93,7 +95,7 @@ bool PlanFullyDelivered(const WorldState& current) {
     asked = true;
     const Grams delivered =
         index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
-    if (delivered < due) {
+    if (!PositionDelivered(config, due, delivered)) {
       return false;
     }
   }

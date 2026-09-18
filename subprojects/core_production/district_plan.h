@@ -46,16 +46,16 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config,
                             ResourceId only,
                             Grams amount);
 
-/// @brief Whether every position was delivered in full, 100 % — the limit's
-/// premium. A plan of nothing is not delivered in full.
-bool PlanFullyDelivered(const WorldState& current);
+/// @brief Whether every position was delivered (PositionDelivered, the met
+/// share; 100 % until boss seq 103) — the limit's premium. A plan of nothing
+/// is not delivered.
+bool PlanFullyDelivered(const ProductionConfig& config, const WorldState& current);
 
 /// @brief Whether a position counts as DELIVERED: `delivered` stands at
 /// campaign.csv's `plan_met_share` of `due` or above (0.99 since 2026-09-19,
 /// boss seq 89: six kilograms of rye short of 1.116 t must not fail a year).
-/// The one rule the verdict (PlanWasMet) and the overfulfilment's deduction
-/// ask. The +150 for a plan delivered IN FULL (PlanFullyDelivered) is not
-/// this question and stays at 100 %.
+/// The one rule the verdict (PlanWasMet), the overfulfilment's deduction and
+/// the +150 premium (PlanFullyDelivered, since boss seq 103) ask.
 bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivered);
 
 /// @brief The year's overfulfilment, in TONNES OF GRAIN EQUIVALENT (district

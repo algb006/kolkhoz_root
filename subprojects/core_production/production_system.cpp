@@ -332,7 +332,7 @@ class ProductionSystem final : public IProductionSystem {
   void RunYearStart(WorldState& current) const {
     DeliverPlan(config_, current);
     // Read before JudgePlan hands the next year's plan down over this one.
-    const bool plan_fully_met = PlanFullyDelivered(current);
+    const bool plan_fully_met = PlanFullyDelivered(config_, current);
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
     JudgePlan(config_, current);
     TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
