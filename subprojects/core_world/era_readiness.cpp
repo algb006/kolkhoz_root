@@ -123,6 +123,20 @@ ReadinessComponent SharePercent(float part, float whole) {
   return whole > 0.0F ? Scored(part / whole * 100.0F) : kUnmeasured;
 }
 
+/// How many of the era's social objects stand in `world`: one per type, a
+/// built level, not dead. Read by the yearly component AND by the standing
+/// block, so the two cannot count differently.
+std::uint32_t SocialObjectsStanding(const ReadinessCatalog& catalog, const WorldState& world) {
+  std::uint32_t built = 0;
+  for (const UnitTypeId type : catalog.social_objects) {
+    const bool stands = std::ranges::any_of(world.units.rows, [type](const UnitRow& unit) {
+      return unit.type.value == type.value && unit.level >= 1 && unit.dead == 0;
+    });
+    built += stands ? 1U : 0U;
+  }
+  return built;
+}
+
 }  // namespace
 
 float ReadFoodVarietyThreshold(const ITableSet& tables, Epoch era) {
@@ -370,13 +384,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   out.society.kolkhoz_effort = SharePercent(book.total_assignment_days, book.able_bodied_days);
 
   // -- THE SOCIAL OBJECTS OF THE ERA'S LIST --------------------------------
-  std::uint32_t built = 0;
-  for (const UnitTypeId type : catalog.social_objects) {
-    const bool stands = std::ranges::any_of(current.units.rows, [type](const UnitRow& unit) {
-      return unit.type.value == type.value && unit.level >= 1 && unit.dead == 0;
-    });
-    built += stands ? 1U : 0U;
-  }
+  const std::uint32_t built = SocialObjectsStanding(catalog, current);
   out.society.social_objects =
       SharePercent(static_cast<float>(built), static_cast<float>(catalog.social_objects.size()));
 
@@ -426,7 +434,12 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   // Facts and not scores, each standing apart from the weights: while one is
   // unmet the transition does not open however high the indices stand, which
   // is what makes them blocks rather than a ninth component.
-  out.blocks.social_objects = built >= kSocialObjectsRequired ? 1U : 0U;
+  // The three STANDING blocks are written here for the report and the year's
+  // record; the transition order reads them live (TransitionRefusal).
+  const TransitionBlocks standing_now = StandingBlocks(catalog, current);
+  out.blocks.social_objects = standing_now.social_objects;
+  out.blocks.units_at_level = standing_now.units_at_level;
+  out.blocks.office_repaired = standing_now.office_repaired;
   out.blocks.wintering_two_years = out.wintering_run >= 2 ? 1U : 0U;
   // VARIETY IN EVERY SEASON INCLUDING WINTER, and it is the village's mean
   // rather than any one family's: the design's word is «колхозное среднее не
@@ -449,6 +462,11 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
       });
   out.blocks.own_traction =
       (book.horse_backed_assignment_days > 0.0F || repair_base_stands) ? 1U : 0U;
+}
+
+TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldState& world) {
+  TransitionBlocks blocks;
+  blocks.social_objects = SocialObjectsStanding(catalog, world) >= kSocialObjectsRequired ? 1U : 0U;
   // EVERY UNIT OF THE ERA AT ITS LEVEL. Sites do not count — a marked plot is
   // not a unit that has failed to be upgraded, it is a unit that does not
   // exist yet.
@@ -464,7 +482,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   // derelict — is carried by WEAR, which repair mends. A level is an
   // enlargement, not a mending.
   const bool all_at_level =
-      std::ranges::all_of(current.units.rows, [&catalog, &current](const UnitRow& unit) {
+      std::ranges::all_of(world.units.rows, [&catalog, &world](const UnitRow& unit) {
         if (unit.level == 0 || unit.dead != 0) {
           return true;
         }
@@ -474,21 +492,21 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
         // stands have their second rung in a LATER era; asking either for a
         // second level locked the era with the design's unfinishedness or
         // with the next era's door (RequiredUnitLevel).
-        if (unit.level >= RequiredUnitLevel(catalog, unit.type, current.epoch)) {
+        if (unit.level >= RequiredUnitLevel(catalog, unit.type, world.epoch)) {
           return true;
         }
         return !std::ranges::any_of(catalog.kolkhoz_types, [&unit](UnitTypeId type) {
           return type.value == unit.type.value;
         });
       });
-  out.blocks.units_at_level = all_at_level ? 1U : 0U;
+  blocks.units_at_level = all_at_level ? 1U : 0U;
   // THE OFFICE, STANDING AND JUST REPAIRED. One per cent and not nought,
   // because nought is unreachable: wear runs continuously, so a threshold of
   // nought would be a block that can never be met — the same defect as a rule
   // that can never fire (units rules §11).
-  out.blocks.office_repaired =
+  blocks.office_repaired =
       catalog.office.value != kInvalidDefIdValue &&
-              std::ranges::any_of(current.units.rows,
+              std::ranges::any_of(world.units.rows,
                                   [&catalog](const UnitRow& unit) {
                                     return unit.type.value == catalog.office.value &&
                                            unit.level >= 1 && unit.dead == 0 &&
@@ -497,43 +515,49 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
                                   })
           ? 1U
           : 0U;
+  return blocks;
 }
 
-OrderRefusal TransitionRefusal(const ReadinessState& readiness, Epoch era) {
+OrderRefusal TransitionRefusal(const ReadinessState& readiness,
+                               const TransitionBlocks& standing,
+                               Epoch era) {
   if (era != Epoch::kOne) {
     return OrderRefusal::kNotEligible;
   }
   if (readiness.both_above_run < kIndexYearsRequired) {
     return OrderRefusal::kIndicesNotHeld;
   }
-  const TransitionBlocks& blocks = readiness.blocks;
-  if (blocks.own_traction == 0) {
+  // The ACCUMULATED blocks off the year's turn, the STANDING ones off the
+  // world now (era_readiness.h, TransitionRefusal).
+  const TransitionBlocks& year = readiness.blocks;
+  if (year.own_traction == 0) {
     return OrderRefusal::kNoOwnTraction;
   }
-  if (blocks.wintering_two_years == 0) {
+  if (year.wintering_two_years == 0) {
     return OrderRefusal::kWinteringNotClosed;
   }
-  if (blocks.office_repaired == 0) {
+  if (standing.office_repaired == 0) {
     return OrderRefusal::kOfficeNotRepaired;
   }
-  if (blocks.food_variety == 0) {
+  if (year.food_variety == 0) {
     return OrderRefusal::kFoodVarietyShort;
   }
-  if (blocks.social_objects == 0) {
+  if (standing.social_objects == 0) {
     return OrderRefusal::kSocialObjectsShort;
   }
-  if (blocks.units_at_level == 0) {
+  if (standing.units_at_level == 0) {
     return OrderRefusal::kUnitsBelowLevel;
   }
   return OrderRefusal::kNone;
 }
 
-void ConsumeTransitionOrders(WorldState& current) {
+void ConsumeTransitionOrders(const ReadinessCatalog& catalog, WorldState& current) {
   for (OrderRow& order : current.orders.rows) {
     if (order.status != OrderStatus::kPending || order.kind != OrderKind::kAdvanceEra) {
       continue;
     }
-    const OrderRefusal refusal = TransitionRefusal(current.readiness, current.epoch);
+    const OrderRefusal refusal =
+        TransitionRefusal(current.readiness, StandingBlocks(catalog, current), current.epoch);
     if (refusal != OrderRefusal::kNone) {
       order.status = OrderStatus::kRefused;
       order.refusal = refusal;

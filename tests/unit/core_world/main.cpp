@@ -316,11 +316,42 @@ int CheckTransitionOrder() {
                  .wintering_two_years = 1,
                  .units_at_level = 1,
                  .office_repaired = 1};
-  failures += Expect(core::TransitionRefusal(open, core::Epoch::kOne) == core::OrderRefusal::kNone,
+  // The standing three are passed apart from the year's bytes; where a test
+  // is about the ORDER of the answers both carry the same, so shutting one
+  // shuts it for whichever the function reads.
+  const auto refusal = [](const core::ReadinessState& readiness, core::Epoch era) {
+    return core::TransitionRefusal(readiness, readiness.blocks, era);
+  };
+  failures += Expect(refusal(open, core::Epoch::kOne) == core::OrderRefusal::kNone,
                      "transition: three years of both indices and six open blocks let it through");
-  failures +=
-      Expect(core::TransitionRefusal(open, core::Epoch::kTwo) == core::OrderRefusal::kNotEligible,
-             "transition: Epoch II has no transition in this build");
+  failures += Expect(refusal(open, core::Epoch::kTwo) == core::OrderRefusal::kNotEligible,
+                     "transition: Epoch II has no transition in this build");
+
+  // THE STANDING THREE ARE READ FROM THE WORLD NOW, NOT FROM THE YEAR. An
+  // office repaired after the turn — the year's byte says worn, the world
+  // says repaired — lets the order through; and one that wore past 1 per
+  // cent since the turn refuses it, whatever the year's byte says.
+  core::ReadinessState turned_worn = open;
+  turned_worn.blocks.office_repaired = 0;
+  failures += Expect(core::TransitionRefusal(turned_worn, open.blocks, core::Epoch::kOne) ==
+                         core::OrderRefusal::kNone,
+                     "transition: an office repaired since the turn opens the door now");
+  core::TransitionBlocks worn_now = open.blocks;
+  worn_now.office_repaired = 0;
+  failures += Expect(core::TransitionRefusal(open, worn_now, core::Epoch::kOne) ==
+                         core::OrderRefusal::kOfficeNotRepaired,
+                     "transition: an office worn since the turn shuts it, the year's byte aside");
+  core::TransitionBlocks built_now = open.blocks;
+  built_now.social_objects = 0;
+  built_now.units_at_level = 0;
+  failures += Expect(core::TransitionRefusal(open, built_now, core::Epoch::kOne) ==
+                         core::OrderRefusal::kSocialObjectsShort,
+                     "transition: the social objects and the units are read now, too");
+  core::ReadinessState starved = open;
+  starved.blocks.food_variety = 0;
+  failures += Expect(core::TransitionRefusal(starved, open.blocks, core::Epoch::kOne) ==
+                         core::OrderRefusal::kFoodVarietyShort,
+                     "transition: the food of the year stays the year's, the standing aside");
 
   // THE ORDER OF THE ANSWERS. Each step shuts one more condition at the
   // FRONT of the list, so every later one is shut too and the answer must
@@ -358,18 +389,49 @@ int CheckTransitionOrder() {
   core::ReadinessState shutting = open;
   for (const Step& step : steps) {
     step.shut(shutting);
-    failures +=
-        Expect(core::TransitionRefusal(shutting, core::Epoch::kOne) == step.expected, step.label);
+    failures += Expect(refusal(shutting, core::Epoch::kOne) == step.expected, step.label);
   }
-  failures += Expect(core::TransitionRefusal(core::ReadinessState{}, core::Epoch::kOne) ==
-                         core::OrderRefusal::kIndicesNotHeld,
-                     "transition: a readiness never scored has held nothing");
+  failures += Expect(
+      refusal(core::ReadinessState{}, core::Epoch::kOne) == core::OrderRefusal::kIndicesNotHeld,
+      "transition: a readiness never scored has held nothing");
+
+  // STANDING BLOCKS OFF A WORLD. Type 0 the office, types 1..4 the era's
+  // social objects, no kolkhoz ladders — so every unit stands at its level.
+  core::ReadinessCatalog catalog;
+  catalog.office = core::UnitTypeId{0};
+  catalog.social_objects = {
+      core::UnitTypeId{1}, core::UnitTypeId{2}, core::UnitTypeId{3}, core::UnitTypeId{4}};
+  const auto ready_world = [&catalog] {
+    core::WorldState world;
+    world.readiness.both_above_run = 3;
+    world.readiness.blocks.own_traction = 1;
+    world.readiness.blocks.wintering_two_years = 1;
+    world.readiness.blocks.food_variety = 1;
+    for (std::uint16_t type = 0; type <= catalog.social_objects.size(); ++type) {
+      core::UnitRow unit;
+      unit.type = core::UnitTypeId{type};
+      unit.level = 1;
+      unit.wear = 0.5F;  // per cent: just repaired
+      AppendRow(world.units, unit);
+    }
+    return world;
+  };
+  const core::WorldState fresh = ready_world();
+  const core::TransitionBlocks fresh_blocks = core::StandingBlocks(catalog, fresh);
+  failures += Expect(fresh_blocks.office_repaired == 1 && fresh_blocks.social_objects == 1 &&
+                         fresh_blocks.units_at_level == 1,
+                     "standing blocks: an office at 0.5 % and four social objects stand open");
+  core::WorldState worn = ready_world();
+  worn.units.rows[0].wear = 2.0F;
+  worn.units.rows[4].dead = 1;
+  const core::TransitionBlocks worn_blocks = core::StandingBlocks(catalog, worn);
+  failures += Expect(worn_blocks.office_repaired == 0 && worn_blocks.social_objects == 0,
+                     "standing blocks: an office at 2 % and a dead fourth object shut them");
 
   // THE CONSUMER. Two orders in one step: the first takes the village, the
   // second finds it gone and is not eligible. A cancelled one and another
   // kind are left for their own doors.
-  core::WorldState world;
-  world.readiness = open;
+  core::WorldState world = ready_world();
   const auto order_of = [](core::OrderKind kind, core::OrderStatus status) {
     core::OrderRow row;
     row.kind = kind;
@@ -384,7 +446,7 @@ int CheckTransitionOrder() {
       world.orders, order_of(core::OrderKind::kAdvanceEra, core::OrderStatus::kCancelled));
   const core::OrderId other = AppendRow(
       world.orders, order_of(core::OrderKind::kGrazeAtNight, core::OrderStatus::kPending));
-  core::ConsumeTransitionOrders(world);
+  core::ConsumeTransitionOrders(catalog, world);
   const auto row = [&world](core::OrderId id) -> const core::OrderRow& {
     return world.orders.rows[FindRow(world.orders, id)];
   };
@@ -398,12 +460,14 @@ int CheckTransitionOrder() {
                          row(other).status == core::OrderStatus::kPending,
                      "transition order: a cancelled one and another kind are not touched");
 
-  core::WorldState shut;
-  shut.readiness = open;
-  shut.readiness.blocks.office_repaired = 0;
+  // The consumer reads the office in the WORLD: the year's byte says open,
+  // the office stands at 2 per cent — refused.
+  core::WorldState shut = ready_world();
+  shut.readiness.blocks.office_repaired = 1;
+  shut.units.rows[0].wear = 2.0F;
   const core::OrderId refused =
       AppendRow(shut.orders, order_of(core::OrderKind::kAdvanceEra, core::OrderStatus::kPending));
-  core::ConsumeTransitionOrders(shut);
+  core::ConsumeTransitionOrders(catalog, shut);
   const core::OrderRow& refused_row = shut.orders.rows[FindRow(shut.orders, refused)];
   failures +=
       Expect(shut.epoch == core::Epoch::kOne && refused_row.status == core::OrderStatus::kRefused &&

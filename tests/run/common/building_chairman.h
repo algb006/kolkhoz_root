@@ -59,7 +59,8 @@ class BuildingChairman {
         upgrades(tables),
         watchman(tables),
         insulation(tables),
-        digging(tables) {
+        digging(tables),
+        transition(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -184,14 +185,13 @@ class BuildingChairman {
     // queue: children and roofs come first, as everywhere else here.
     office.RunDay(simulation, farm_first);
     // AND THE OFFICE IS PUT IN ORDER WHEN THE REST IS READY, because that is
-    // when a chairman would be thinking of putting the question to a meeting
-    // — which is the moment units rules §11 checks its wear at.
-    const core::ReadinessState& readiness = simulation.CompletedState().readiness;
-    office.RunMeetingUpkeep(
-        simulation,
-        readiness.blocks.food_variety != 0 && readiness.blocks.social_objects != 0 &&
-            readiness.blocks.own_traction != 0 && readiness.blocks.wintering_two_years != 0 &&
-            readiness.blocks.units_at_level != 0);
+    // when a chairman would be thinking of putting the question — which is
+    // the moment units rules §11 checks its wear at, and the moment the core
+    // reads it now (era_readiness.h, StandingBlocks). "The rest" is the
+    // core's own answer with the office set aside, the indices included: the
+    // yearly bytes this read until 2026-09-18 left the indices out and saw
+    // the standing blocks only at the year's turn.
+    office.RunMeetingUpkeep(simulation, transition.AllButOfficeReady(simulation.CompletedState()));
     // And the era's social objects last of the buildings, because they are
     // the least urgent of them and the most easily starved: measured before
     // this line existed, one of the six was ever marked in thirty-three years

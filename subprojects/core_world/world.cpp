@@ -178,7 +178,7 @@ class EventsSlot final : public ISequentialPhase {
     // year's first tick it reads the readiness of the turn BEFORE, because
     // the rotation below scores the new one: an order and a turn in the same
     // step meet the older verdict, and the next step the newer.
-    ConsumeTransitionOrders(current);
+    ConsumeTransitionOrders(readiness_, current);
     SweepOrderBook(current);
     RotateLedger(current);
   }

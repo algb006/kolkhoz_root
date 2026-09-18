@@ -110,21 +110,43 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
                     float life_speedup,
                     WorldState& current);
 
+/// @brief The three blocks that are a STATE OF THE VILLAGE NOW, read off
+/// `world` as it stands: four social objects, every kolkhoz unit at its
+/// level, the office at wear 1 per cent or less. The other three fields are
+/// left 0 — they are accumulated over a term and are not this function's.
+///
+/// WHY LIVE (boss, epoch1-next seq 27). Units rules §11 checks the office
+/// «когда вопрос выносят на собрание» — the moment the player chooses. Read
+/// off the year's turn, an office repaired in March opened the door only in
+/// January, by when it had worn past 1 per cent again: 17 of 33 years in the
+/// runs were refused on it, and a player who repaired and then ordered was
+/// refused for doing exactly what the design says. The same holds for a
+/// social object built in March. What is ACCUMULATED — the food over four
+/// seasons, the wintering over two years, the indices over three, the
+/// traction off the horse work of the year — stays on the yearly turn.
+TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldState& world);
+
 /// @brief Why the village may not go into the next era now, or kNone when it
 /// may: the first unmet condition of the transition, the indices first and
 /// then the six blocks in epochs §6 order (order_state.h, kAdvanceEra).
-/// @param readiness As of the last year's turn; a state never yet scored
+/// @param readiness As of the last year's turn: the indices and the three
+///        accumulated blocks are read from it. A state never yet scored
 ///        (year 0) has held nothing and answers kIndicesNotHeld.
+/// @param standing StandingBlocks of the world now: the office, the social
+///        objects and the units at level are read from it, NOT from
+///        `readiness.blocks`, which holds the same three as of the turn.
 /// @param era The era the village is in. Anything but Epoch I answers
 ///        kNotEligible: this build has no transition past it.
-OrderRefusal TransitionRefusal(const ReadinessState& readiness, Epoch era);
+OrderRefusal TransitionRefusal(const ReadinessState& readiness,
+                               const TransitionBlocks& standing,
+                               Epoch era);
 
 /// @brief Settles every pending kAdvanceEra: kDone and the next era when
 /// TransitionRefusal says kNone, kRefused with its answer otherwise. A
 /// second order in the same step finds the era already moved and answers
 /// kNotEligible.
 /// Side effect: writes `current.epoch`, the one writer of it.
-void ConsumeTransitionOrders(WorldState& current);
+void ConsumeTransitionOrders(const ReadinessCatalog& catalog, WorldState& current);
 
 }  // namespace core
 

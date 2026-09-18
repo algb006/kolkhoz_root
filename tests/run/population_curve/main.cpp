@@ -368,7 +368,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       }
     }
     out.all_six_years += shut == 0 ? 1U : 0U;
-    const core::OrderRefusal door = core::TransitionRefusal(state.readiness, state.epoch);
+    const core::OrderRefusal door = builder.transition.Refusal(state);
     ++out.door_answers[DoorAnswerSlot(door)];
     if (door == core::OrderRefusal::kNone && out.door_first_open_year == 0) {
       out.door_first_open_year = static_cast<std::uint16_t>(year);
