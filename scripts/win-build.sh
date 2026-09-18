@@ -130,11 +130,27 @@ fi
 # keeps its index there, and rsync creating those directories on NTFS hit
 # exactly the permission error the flags above are chosen to avoid — a
 # whole publish failing over an editor's cache that the host never needed.
+# EXIT 23 SAYS WHAT IT IS, because twice on 2026-09-18 it was read from
+# scratch: the first publish after a NEW file lands in scripts/ fails with
+# "failed to set permissions" on rsync's temporary file there — and the file
+# itself arrives, so the repeat passes (check_manual_paths.py at 0.32.3,
+# check_plan_positions.py at 0.32.6). The cause, the host directory's NTFS
+# rights, is not repaired here; the reader is only spared the search.
+rsync_status=0
 rsync -rlz --checksum --delete --omit-dir-times \
       --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
       --exclude 'claude/' --exclude 'artifacts/' --exclude 'publish/' \
       --exclude '.cache/' \
-      "${project_dir}/" "${host}:${remote_dir}/"
+      "${project_dir}/" "${host}:${remote_dir}/" || rsync_status=$?
+if [ "${rsync_status}" -eq 23 ]; then
+  echo "ОТКАЗ rsync 23 (часть атрибутов не передана). Если строкой выше «failed to set permissions»" >&2
+  echo "       на файле в scripts/ — это первая выкладка нового файла: сам файл доехал," >&2
+  echo "       права каталога на хосте не дали поправить атрибуты. Повтори ту же команду." >&2
+  exit 23
+fi
+if [ "${rsync_status}" -ne 0 ]; then
+  exit "${rsync_status}"
+fi
 
 if [ "${sync_only}" -eq 1 ]; then
   echo "Исходники на хосте, сборка не запускалась."
