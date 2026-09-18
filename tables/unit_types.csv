@@ -58,7 +58,7 @@ winery,Винодельня,production,2,0,1,era,,1,30,,,absorbed,1,,0,none,,0,,
 brewery,Пивоварня,production,2,0,1,era,,1,30,,,absorbed,1,,0,none,,0,,1
 greenhouse,Теплица,production,3,0,1,era,,1,45,,,absorbed,1,,0,none,,0,,1
 orchard,Колхозный сад,production,1,0,1,era,,1,,,,follows,0,,0,none,,0,,1
-fishery,Рыболовная артель,production,2,0,1,era,,1,15,,,absorbed,1,,0,none,,0,,1
+fishery,Рыболовная артель,production,1,0,1,era,,1,15,,,absorbed,1,,0,none,,0,,1
 apiary,Пасека,production,1,0,1,era,,1,,,,follows,1,,0,none,,0,,0
 silage_trench,Силосная траншея,production,1,1,1,era,,1,30,,,follows,0,,0,medium,always,0,,1
 hop_yard,Хмельник,production,2,0,1,era,,1,,,,follows,0,,0,none,,0,,1
