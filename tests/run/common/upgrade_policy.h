@@ -35,7 +35,6 @@
 
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -57,46 +56,15 @@ namespace run {
 /// @brief Raises one kolkhoz building a time to the era's level.
 class UpgradePolicy {
  public:
-  explicit UpgradePolicy(const core::ITableSet& tables) {
-    const core::ReadinessCatalog catalog = core::ReadReadinessCatalog(tables, core::Epoch::kOne);
-    kolkhoz_ = catalog.kolkhoz_types;
-    // THE LADDER, BECAUSE MOST TYPES HAVE NONE. Of 111 types in
-    // unit_levels.csv, 77 carry a single level and cannot be upgraded at all —
-    // units rules §11 says so in words: «у остальных пока только первая, и это
-    // значит „ещё не расписано"». Without this the policy ordered the first
-    // un-upgradable building it met, was refused with kRuleForbids, returned,
-    // and did the same the next day: 428 orders a village, one building
-    // raised, and the world identical to a policy that never ran.
-    const core::ITable* types = tables.FindTable("unit_types");
-    const core::ITable* levels = tables.FindTable("unit_levels");
-    if (types == nullptr || levels == nullptr) {
-      return;
-    }
-    ladder_.assign(types->RowCount(), 0);
-    const std::uint32_t unit_column = levels->FindColumn("unit");
-    if (unit_column == core::kNoTableColumn) {
-      return;
-    }
-    // The era each rung opens in, read beside the ladder: the verdict at the
-    // unit splits its refusals by it (ReadAtSubject).
-    const std::uint32_t level_column = levels->FindColumn("level");
-    const std::uint32_t era_column = levels->FindColumn("era");
-    rung_era_.assign(types->RowCount(), {});
-    for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
-      const std::uint32_t type_row = types->FindRowByKey(levels->CellText(row, unit_column));
-      if (type_row != core::kNoTableRow && type_row < ladder_.size()) {
-        ++ladder_[type_row];
-        if (level_column != core::kNoTableColumn && era_column != core::kNoTableColumn) {
-          const auto level = static_cast<std::size_t>(
-              std::strtoul(std::string(levels->CellText(row, level_column)).c_str(), nullptr, 10));
-          if (level < kRungs) {
-            rung_era_[type_row][level] = static_cast<std::uint8_t>(
-                std::strtoul(std::string(levels->CellText(row, era_column)).c_str(), nullptr, 10));
-          }
-        }
-      }
-    }
-  }
+  // THE SCORE'S OWN CATALOGUE AND ITS OWN RULE, not a ladder parsed here. This
+  // policy used to count rungs itself, and a count could not tell a second
+  // rung of Epoch I from one of Epoch II: it ordered the same school to its
+  // Epoch II rung day after day, and four orders in five were refused with
+  // kGateClosed (2026-09-18). The level it now aims at is RequiredUnitLevel —
+  // the one the block reads — so the fixture and the score cannot disagree
+  // about what "at its level" means.
+  explicit UpgradePolicy(const core::ITableSet& tables)
+      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)) {}
 
   /// @brief The question asked before every upgrade (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
@@ -106,7 +74,7 @@ class UpgradePolicy {
   /// @param farm_first The farm's own shortage has a site waiting: nothing is
   ///        raised today.
   void RunDay(core::ISimulation& simulation, bool farm_first) {
-    if (kolkhoz_.empty() || farm_first) {
+    if (catalog_.kolkhoz_types.empty() || farm_first) {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
@@ -133,12 +101,19 @@ class UpgradePolicy {
     }
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
-      if (unit.level == 0 || unit.dead != 0 || unit.level >= kEraLevel || !Kolkhoz(unit.type)) {
+      if (unit.level == 0 || unit.dead != 0 || !Kolkhoz(unit.type)) {
         continue;
       }
-      // A type whose ladder ends here has no next level to ask for, and
-      // asking is not free: the refusal ends this day's attention.
-      if (unit.type.value >= ladder_.size() || ladder_[unit.type.value] < kEraLevel) {
+      // At the level this era requires, or with no rung left that the era
+      // has opened: nothing to ask for, and asking is not free — the refusal
+      // ends this day's attention.
+      if (unit.level >= core::RequiredUnitLevel(catalog_, unit.type, world.epoch)) {
+        continue;
+      }
+      // A unit that is already a site — being delivered to, repaired,
+      // insulated — cannot take an upgrade until that closes: 19 orders a
+      // village went onto such units and were refused, measured the same day.
+      if (unit.construction.phase != core::ConstructionPhase::kNone) {
         continue;
       }
       const auto next = static_cast<std::uint8_t>(unit.level + 1U);
@@ -182,7 +157,8 @@ class UpgradePolicy {
   static void Declare(std::string_view run_name) {
     std::cout << run_name
               << ": FIXTURE DIFFERS FROM THE START CANON — once the chairman's yard stands, the "
-                 "run's chairman raises the KOLKHOZ's buildings to level 2 one at a time, taking "
+                 "run's chairman raises the KOLKHOZ's buildings one at a time to the level the "
+                 "era requires — the highest rung the era has opened (epochs §6) — taking "
                  "the list from the design base rather than by name; the families' houses are "
                  "NOT in it, because a house at level one in good repair is a hundred-per-cent "
                  "house (housing §6) and the funds component already excludes them. Measured "
@@ -279,12 +255,14 @@ class UpgradePolicy {
   }
 
   /// @brief The era (1-based, as unit_levels.csv spells it) the rung `level`
-  /// of `type` opens in; 0 when the ladder has no such rung.
+  /// of `type` opens in; 0 when the ladder has no such rung. Read off the
+  /// score's catalogue.
   std::uint8_t RungEra(core::UnitTypeId type, std::uint32_t level) const {
-    if (type.value >= rung_era_.size() || level >= kRungs) {
+    if (type.value >= catalog_.rung_eras.size() || level == 0 ||
+        level > catalog_.rung_eras[type.value].size()) {
       return 0;
     }
-    return rung_era_[type.value][level];
+    return catalog_.rung_eras[type.value][level - 1U];
   }
 
   /// @brief The fates, with the upgrades still open counted by phase.
@@ -324,12 +302,8 @@ class UpgradePolicy {
     core::SimDay day = 0;
   };
 
-  /// The level every Era I unit must reach for the I -> II transition (units
-  /// rules §11). Not a stub: the design's own table.
-  static constexpr std::uint8_t kEraLevel = 2;
-
   bool Kolkhoz(core::UnitTypeId type) const {
-    for (const core::UnitTypeId id : kolkhoz_) {
+    for (const core::UnitTypeId id : catalog_.kolkhoz_types) {
       if (id.value == type.value) {
         return true;
       }
@@ -337,16 +311,8 @@ class UpgradePolicy {
     return false;
   }
 
-  std::vector<core::UnitTypeId> kolkhoz_;
-
-  /// How many levels each type has, dense by type row.
-  std::vector<std::uint32_t> ladder_;
-
-  /// Rungs kept per type, level 0 unused; the tables stop at three.
-  static constexpr std::size_t kRungs = 6;
-
-  /// The era each rung opens in, by type row and level.
-  std::vector<std::array<std::uint8_t, kRungs>> rung_era_;
+  /// The score's catalogue: the kolkhoz's types and the ladders by era.
+  core::ReadinessCatalog catalog_;
 
   StartGate start_gate_;
 

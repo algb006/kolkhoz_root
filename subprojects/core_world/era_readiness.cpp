@@ -45,7 +45,10 @@ constexpr float kChildShareTarget = 0.30F;         ///< STUB
 constexpr float kChildUntilYears = 16.0F;
 constexpr std::uint8_t kSocialObjectsRequired = 4;  ///< STUB — «4 из 6»
 constexpr float kOfficeWearAtMostPercent = 1.0F;    ///< units rules §11, not a stub
-constexpr std::uint8_t kEraOneUnitLevel = 2;        ///< units rules §11, not a stub
+/// Bounds of a level table row this reader accepts: past them a cell is a
+/// typo, and the table's own check says so. The game has three eras.
+constexpr std::int64_t kHighestRung = 16;
+constexpr std::int64_t kLastEraNumber = 3;
 
 /// The satisfaction metric's two frozen parts in Era I, in points of its
 /// hundred: «общее дело» at 20 and «нужды» at 25, drawn once at genesis and
@@ -225,19 +228,48 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
   // is a gate above its own quantity's ceiling.
   if (const ITable* levels = tables.FindTable("unit_levels")) {
     const std::uint32_t unit_column = levels->FindColumn("unit");
-    if (unit_column != kNoTableColumn) {
-      catalog.ladder.assign(types->RowCount(), 0);
+    const std::uint32_t rung_level_column = levels->FindColumn("level");
+    const std::uint32_t rung_era_column = levels->FindColumn("era");
+    if (unit_column != kNoTableColumn && rung_level_column != kNoTableColumn &&
+        rung_era_column != kNoTableColumn) {
+      catalog.rung_eras.assign(types->RowCount(), {});
       for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
         const std::uint32_t type_row = types->FindRowByKey(levels->CellText(row, unit_column));
-        if (type_row != kNoTableRow && type_row < catalog.ladder.size()) {
-          ++catalog.ladder[type_row];
+        const std::optional<std::int64_t> rung = levels->CellInteger(row, rung_level_column);
+        const std::optional<std::int64_t> opens = levels->CellInteger(row, rung_era_column);
+        if (type_row == kNoTableRow || type_row >= catalog.rung_eras.size() || !rung.has_value() ||
+            !opens.has_value() || *rung < 1 || *rung > kHighestRung || *opens < 1 ||
+            *opens > kLastEraNumber) {
+          continue;  // the level table's own check refuses a malformed row
         }
+        std::vector<std::uint8_t>& rungs = catalog.rung_eras[type_row];
+        const auto index = static_cast<std::size_t>(*rung - 1);
+        if (rungs.size() <= index) {
+          rungs.resize(index + 1U, 0);  // 0: a rung the table skipped
+        }
+        rungs[index] = static_cast<std::uint8_t>(*opens);
       }
     }
   }
   catalog.office = DefIdFromRow<UnitTypeIdTag>(types->FindRowByKey("farm_office"));
   catalog.repair_base = DefIdFromRow<UnitTypeIdTag>(types->FindRowByKey("workshops"));
   return catalog;
+}
+
+std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog, UnitTypeId type, Epoch era) {
+  if (type.value >= catalog.rung_eras.size()) {
+    return 0;
+  }
+  // Up from the first rung and stopping at the first the era has not opened
+  // — or the table skipped — so a gap is never stepped over.
+  std::uint8_t required = 0;
+  for (const std::uint8_t rung_era : catalog.rung_eras[type.value]) {
+    if (rung_era == 0 || rung_era > EpochHumanNumber(era)) {
+      break;
+    }
+    ++required;
+  }
+  return required;
 }
 
 void ScoreReadiness(const ReadinessCatalog& catalog,
@@ -429,17 +461,17 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   // derelict — is carried by WEAR, which repair mends. A level is an
   // enlargement, not a mending.
   const bool all_at_level =
-      std::ranges::all_of(current.units.rows, [&catalog](const UnitRow& unit) {
-        if (unit.level == 0 || unit.dead != 0 || unit.level >= kEraOneUnitLevel) {
+      std::ranges::all_of(current.units.rows, [&catalog, &current](const UnitRow& unit) {
+        if (unit.level == 0 || unit.dead != 0) {
           return true;
         }
-        // AND ONLY OF A TYPE THAT HAS THE LEVEL TO REACH. Seventy-seven types
-        // of a hundred and eleven carry a single rung, so before this line the
-        // block was shut in every year of every village and no chairman on
-        // earth could open it: the requirement asked for a level the design
-        // has not written yet.
-        if (unit.type.value >= catalog.ladder.size() ||
-            catalog.ladder[unit.type.value] < kEraOneUnitLevel) {
+        // AT THE LEVEL THIS ERA REQUIRES — the highest rung it has opened —
+        // and nothing above it. Seventy-seven types of a hundred and eleven
+        // carry a single rung, and nineteen of the fifty buildings a village
+        // stands have their second rung in a LATER era; asking either for a
+        // second level locked the era with the design's unfinishedness or
+        // with the next era's door (RequiredUnitLevel).
+        if (unit.level >= RequiredUnitLevel(catalog, unit.type, current.epoch)) {
           return true;
         }
         return !std::ranges::any_of(catalog.kolkhoz_types, [&unit](UnitTypeId type) {

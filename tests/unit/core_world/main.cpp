@@ -259,10 +259,55 @@ int CheckReadinessShape() {
   return failures;
 }
 
+/// The level the transition requires (boss, 2026-09-18; epochs §6
+/// «доведены до требуемого уровня»): the highest rung the CURRENT era has
+/// opened, counted up without stepping over a gap — and the block reads it.
+int CheckRequiredUnitLevel() {
+  int failures = 0;
+  core::ReadinessCatalog catalog;
+  // 0: rung 2 in Epoch II · 1: rungs 1, 2 in Epoch I, 3 in II · 2: no ladder
+  // row at all · 3: rung 2 missing from the table, rung 3 in Epoch I.
+  catalog.rung_eras = {{1, 2}, {1, 1, 2}, {}, {1, 0, 1}};
+  const auto required = [&catalog](std::uint16_t type, core::Epoch era) {
+    return core::RequiredUnitLevel(catalog, core::UnitTypeId{type}, era);
+  };
+  failures += Expect(required(0, core::Epoch::kOne) == 1 && required(0, core::Epoch::kTwo) == 2,
+                     "required level: a second rung of Epoch II is not asked in Epoch I, and is "
+                     "in Epoch II");
+  failures += Expect(required(1, core::Epoch::kOne) == 2,
+                     "required level: the highest rung the era has opened, not the first");
+  failures += Expect(required(2, core::Epoch::kOne) == 0 && required(9, core::Epoch::kOne) == 0,
+                     "required level: no ladder, and a type past the catalogue, ask nothing");
+  failures += Expect(required(3, core::Epoch::kOne) == 1,
+                     "required level: a rung the table skipped is not stepped over");
+
+  // THE BLOCK READS IT. A kolkhoz building of type 0 at level 1 is at its
+  // level in Epoch I; type 1 at level 1 is not.
+  catalog.kolkhoz_types = {core::UnitTypeId{0}, core::UnitTypeId{1}};
+  core::WorldState world;
+  core::UnitRow school;
+  school.type = core::UnitTypeId{0};
+  school.level = 1;
+  AppendRow(world.units, school);
+  core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
+  failures += Expect(world.readiness.blocks.units_at_level == 1,
+                     "units block: a building whose second rung is the NEXT era's stands at "
+                     "its level at level one");
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{1};
+  granary.level = 1;
+  AppendRow(world.units, granary);
+  core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
+  failures += Expect(world.readiness.blocks.units_at_level == 0,
+                     "units block: and one whose second rung this era opens holds it shut");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
   failures += CheckReadinessShape();
+  failures += CheckRequiredUnitLevel();
 
   // The wiring config must default to the deterministic verification setup:
   // no tables, seed 0, one worker (world.h).

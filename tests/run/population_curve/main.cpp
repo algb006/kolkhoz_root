@@ -152,6 +152,7 @@ struct Trajectory {
   /// The standing kolkhoz buildings by the era their SECOND rung opens in:
   /// Epoch I, a later era, or no second rung at all. Three counts that must
   /// sum to `units_standing`, printed beside it.
+  std::uint32_t units_at_required = 0;
   std::uint32_t rung2_this_era = 0;
   std::uint32_t rung2_later_era = 0;
   std::uint32_t rung2_none = 0;
@@ -393,6 +394,10 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     }
     ++out.units_standing;
     out.units_at_level += unit.level >= 2 ? 1U : 0U;
+    // And at the level the era REQUIRES — what the block reads since
+    // 2026-09-18 — beside the level-2 count, so the two can be compared.
+    out.units_at_required +=
+        unit.level >= core::RequiredUnitLevel(catalog, unit.type, final_state.epoch) ? 1U : 0U;
     // WHICH OF THEM CAN GET THERE IN THIS ERA AT ALL: the rung 2 of a type
     // opens in the era unit_levels.csv names, and an order for a later era's
     // rung is refused with kGateClosed however often it is repeated.
@@ -726,15 +731,20 @@ int main(int argc, char** argv) {
   // the true narrow place is the blocker most often the SOLE one shut, which
   // is not the one with the fewest open years.
   float all_six = 0.0F;
+  // And IN HOW MANY VILLAGES, because a mean of 0.9 years is one village with
+  // eight or eight villages with one, and the door is a village's door.
+  std::uint32_t villages_opened = 0;
   std::array<float, 6> sole = {};
   for (const Trajectory& walk : walks) {
     all_six += static_cast<float>(walk.all_six_years);
+    villages_opened += walk.all_six_years > 0 ? 1U : 0U;
     for (std::size_t index = 0; index < sole.size(); ++index) {
       sole[index] += static_cast<float>(walk.sole_holdout[index]);
     }
   }
   std::cout << "population_curve: ALL SIX blocks open together — " << (all_six / villages)
-            << " years of " << kYears << "; years with exactly one shut, by which:\n";
+            << " years of " << kYears << ", in " << villages_opened << " villages of "
+            << walks.size() << "; years with exactly one shut, by which:\n";
   for (std::size_t index = 0; index < kBlockNames.size(); ++index) {
     std::cout << "  " << kBlockNames[index] << "  " << (sole[index] / villages) << '\n';
   }
@@ -775,11 +785,14 @@ int main(int argc, char** argv) {
                "question to a meeting, and a living chairman repairs before he does\n";
 
   float ordered = 0.0F;
+  float at_required = 0.0F;
   for (const Trajectory& walk : walks) {
     ordered += static_cast<float>(walk.upgrades_ordered);
+    at_required += static_cast<float>(walk.units_at_required);
   }
   std::cout << "population_curve: units at year " << kYears << " — " << (at_level / villages)
-            << " of " << (standing / villages) << " kolkhoz buildings have reached level 2, after "
+            << " of " << (standing / villages) << " kolkhoz buildings have reached level 2, "
+            << (at_required / villages) << " stand at the level their era REQUIRES, after "
             << (ordered / villages) << " upgrades ORDERED (means of nine)\n";
   // READ AT THE UNIT, and the four verdicts are printed beside the orders
   // they must sum to, so a reader that saw nothing cannot pass for a world

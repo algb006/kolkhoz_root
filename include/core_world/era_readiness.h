@@ -50,7 +50,9 @@ struct ReadinessCatalog {
   /// The repair base, the other half of "its own traction or a repair base".
   UnitTypeId repair_base;
 
-  /// How many levels each type has, dense by type row — the LADDER.
+  /// The LADDER, dense by type row: the era each rung opens in, 1-based as
+  /// unit_levels.csv spells it, indexed by level − 1. Empty for a type the
+  /// level table does not name.
   ///
   /// THE TRANSITION ASKS ITS LEVEL ONLY OF TYPES THAT HAVE ONE (boss, design
   /// commit 9177c6f7). Of 111 types in unit_levels.csv, 34 carry a second
@@ -59,11 +61,25 @@ struct ReadinessCatalog {
   /// расписано"». Requiring a level the design has not written is locking the
   /// era with its own unfinishedness rather than with the state of the farm.
   ///
+  /// AND ONLY THE RUNGS THE CURRENT ERA OPENS (boss, 2026-09-18; epochs §6
+  /// «доведены до требуемого уровня»). This was a COUNT of rungs until that
+  /// day, and the count could not tell a second rung of Epoch I from one of
+  /// Epoch II: of 49.9 standing kolkhoz buildings, 19.3 had their second rung
+  /// in a later era, construction refused every order for it with
+  /// kGateClosed — rightly — and the block stood shut in Epoch I by
+  /// construction. A transition cannot require what the next era opens.
+  ///
   /// Read by the REGISTER and not by a list of names, so that the day a
   /// ladder is written the requirement grows by itself — which is right:
   /// more ladders means more that must be put in order.
-  std::vector<std::uint32_t> ladder;
+  std::vector<std::vector<std::uint8_t>> rung_eras;
 };
+
+/// @brief The level the transition requires of `type` in `era`: the highest
+/// rung the era has opened, counting up from the first without a gap
+/// (epochs §6, «требуемый уровень»). 0 for a type with no ladder at all.
+/// @param type A unit type; one past the catalogue reads as no ladder.
+std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog, UnitTypeId type, Epoch era);
 
 /// @brief The era's food-variety threshold — the top of its own era's norm,
 /// 4 categories for Era I (metrics design §8). Read from the same table row
