@@ -483,12 +483,11 @@ small_canteen,1,glass,25
 small_canteen,1,cement,5
 small_canteen,1,insulation,8
 small_canteen,1,spare_part,6
-field_canteen,1,straw,4
-field_canteen,1,log,60
-field_canteen,1,board,8
-field_canteen,1,stone,5
-field_canteen,1,clay,3
-field_canteen,1,glass,6
+field_canteen,1,straw,2
+field_canteen,1,log,12
+field_canteen,1,board,3
+field_canteen,1,stone,1
+field_canteen,1,clay,0.5
 beer_stall,1,board,15
 beer_stall,1,sand,12
 beer_stall,1,brick,5000

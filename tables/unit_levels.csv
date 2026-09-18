@@ -89,7 +89,7 @@ buffet,1,2,300,brick_small,10,,,80,55,1
 restaurant,1,3,600,brick_mid,16,,,90,60,1
 summer_veranda,1,3,600,brick_mid,16,,,90,60,1
 small_canteen,1,2,300,brick_small,10,,,80,55,1
-field_canteen,1,1,120,wood_small,8,,,50,30,1.1
+field_canteen,1,1,40,shelter,5,,,30,18,1.1
 beer_stall,1,2,300,brick_small,10,,,80,55,1
 road_canteen,1,3,600,brick_mid,16,,,90,60,1
 bathhouse,1,1,120,wood_small,8,,,50,30,1.1
