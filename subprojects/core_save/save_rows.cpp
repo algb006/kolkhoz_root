@@ -770,7 +770,8 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.reserved = source.ReadAmounts(DefKind::kResource);
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
-  row.emptying = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "store emptying"));
+  // 0 none, 1 emptying, 2 emptying with its carrying paused (boss seq 119).
+  row.emptying = static_cast<std::uint8_t>(source.ReadEnumValue(0, 2, "store emptying"));
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
   row.dead = in.ReadU8();

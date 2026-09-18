@@ -266,10 +266,11 @@ struct UnitRow {
   std::uint8_t paused = 0;
 
   /// «ОСВОБОДИТЬ СКЛАД» (kEmptyStore; start §5; registers 214 and 233; save
-  /// 67): 1 while the chairman's order stands — the church store or a clamp
-  /// accepts no delivery, and what lies in it is the load of the «перевалка»
-  /// (core_production field_haul.h, SettleStoreEmptying). `paused` on such a
-  /// unit pauses the carrying and leaves the order standing.
+  /// 67): 0 none; 1 while the chairman's order stands — the church store or a
+  /// clamp accepts no delivery, and what lies in it is the load of the
+  /// «перевалка» (core_production field_haul.h, SettleStoreEmptying); 2 the
+  /// same with the carrying paused by kPauseUnit. The pause lives HERE and
+  /// not in `paused`, so the unit keeps wearing (boss seq 119).
   std::uint8_t emptying = 0;
 
   /// THE PEREVALKA'S SEAM (save 67), game man-days: labor drains

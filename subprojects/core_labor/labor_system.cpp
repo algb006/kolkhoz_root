@@ -669,7 +669,7 @@ class LaborSystem final : public ILaborSystem {
       // asks for nobody; its order stands.
       for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
         const UnitRow& unit = current.units.rows[row];
-        if (unit.emptying == 0 || unit.paused != 0 || !(unit.haul_days_remaining > 0.0F)) {
+        if (unit.emptying != 1 || !(unit.haul_days_remaining > 0.0F)) {
           continue;
         }
         AssignmentJob job;

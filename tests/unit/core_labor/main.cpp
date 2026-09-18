@@ -2490,8 +2490,7 @@ int TestTheStoreBeingEmptiedGetsItsCarrier() {
     DayWorld day(1);
     core::UnitRow church;
     church.position = core::Vec2{.x = 30.0F, .y = 0.0F};
-    church.emptying = 1;
-    church.paused = paused ? 1 : 0;
+    church.emptying = paused ? 2 : 1;  // 2: the carrying paused (boss seq 119)
     church.haul_days_remaining = 5.0F;
     church.haul_days_written = 5.0F;
     const core::UnitId id = core::AppendRow(day.world.units, church);

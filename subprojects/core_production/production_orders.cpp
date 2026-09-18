@@ -398,12 +398,25 @@ OrderRefusal SetPaused(const ProductionConfig& config,
   // the rule can always be let go.
   const bool pausable =
       target.type.value < config.unit_types.size() && config.unit_types[target.type.value].pausable;
-  // AND A STORE BEING EMPTIED (kEmptyStore; boss seq 117 Б): its carrying is
-  // the work, and the pause holds the perevalka with the order standing.
-  // What that costs, named rather than hidden: the pause stops the church's
-  // wear too while it stands — the escape the ruling above closed, reopened
-  // for a store the chairman is already emptying.
-  if (paused != 0 && !pausable && !work_at_site && target.emptying == 0) {
+  // A STORE BEING EMPTIED PAUSES ITS CARRYING, NOT ITSELF (kEmptyStore; boss
+  // seq 117 Б and 119). The pause is written into `emptying` — 2 holds the
+  // perevalka, 1 lets it go — and `paused` is not touched, so the church
+  // keeps wearing as it did. For one version it set `paused`, and that
+  // stopped the wear too: the escape the ruling above closed, reopened by a
+  // new door (boss seq 119).
+  if (target.emptying != 0 && !work_at_site) {
+    const std::uint8_t wanted = paused != 0 ? 2U : 1U;
+    if (target.emptying == wanted) {
+      return OrderRefusal::kRuleForbids;
+    }
+    current.units.rows[row].emptying = wanted;
+    SimEvent& held = EmitEvent(current,
+                               paused != 0 ? EventKind::kUnitPaused : EventKind::kUnitResumed,
+                               EventSeverity::kNotable);
+    held.unit = unit;
+    return OrderRefusal::kNone;
+  }
+  if (paused != 0 && !pausable && !work_at_site) {
     return OrderRefusal::kNotEligible;
   }
   if (current.units.rows[row].paused == paused) {

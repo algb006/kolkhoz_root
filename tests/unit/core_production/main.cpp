@@ -5323,14 +5323,26 @@ int CheckTheChurchStoreIsEmptied() {
                      "empty store: the spoiling potato is carried before the rye");
   failures += Expect(world.units.rows[0].haul_days_remaining == 0.0F,
                      "empty store: with no room left, no carrying is asked for");
-  // Room again, and a pause: nothing is asked for, the order stands.
+  // Room again, and a pause: nothing is asked for, the order stands — and
+  // the unit itself is NOT paused, so the church keeps wearing (boss seq 119).
   world.units.rows[1].stock = {0, 0};
-  world.units.rows[0].paused = 1;
+  const auto pause = [&world](core::UnitId unit, bool stop) {
+    core::OrderRow order;
+    order.kind = stop ? core::OrderKind::kPauseUnit : core::OrderKind::kResumeUnit;
+    order.status = core::OrderStatus::kPending;
+    order.unit = unit;
+    return core::AppendRow(world.orders, order);
+  };
+  const core::OrderId stop = pause(church_id, true);
+  core::ConsumeProductionOrders(config, world);
   core::SettleStoreEmptying(config, world);
-  failures +=
-      Expect(world.units.rows[0].haul_days_remaining == 0.0F && world.units.rows[0].emptying == 1,
-             "empty store: a paused perevalka asks for nobody, and the order stands");
-  world.units.rows[0].paused = 0;
+  failures += Expect(answer(stop) == core::OrderRefusal::kNone &&
+                         world.units.rows[0].haul_days_remaining == 0.0F &&
+                         world.units.rows[0].emptying == 2 && world.units.rows[0].paused == 0,
+                     "empty store: the pause holds the carrying, the order stands, and the "
+                     "church itself is not paused — it keeps wearing");
+  pause(church_id, false);
+  core::ConsumeProductionOrders(config, world);
   core::SettleStoreEmptying(config, world);
   failures += Expect(world.units.rows[0].haul_days_remaining > 0.0F,
                      "empty store: unpaused, the carrying is asked for again");

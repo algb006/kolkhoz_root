@@ -40,14 +40,14 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
   }
   // THE PEREVALKA (kEmptyStore; 2026-09-19): carting out of a store being
   // emptied drains the unit's own carting seam — only while the order
-  // stands and the unit is not paused.
+  // stands and its carrying is not paused (emptying 1, not 2).
   if (work.kind == WorkKind::kHauling && work.unit.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.units, work.unit);
     if (row == kNoRow) {
       return nullptr;
     }
     const UnitRow& unit = world.units.rows[row];
-    return unit.emptying != 0 && unit.paused == 0 ? &unit.haul_days_remaining : nullptr;
+    return unit.emptying == 1 ? &unit.haul_days_remaining : nullptr;
   }
   // A STAND: felling drains the felling seam while timber is marked, and
   // carting drains the stand's own carting seam while logs lie there — the

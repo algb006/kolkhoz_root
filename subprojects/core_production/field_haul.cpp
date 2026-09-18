@@ -394,7 +394,8 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
     const float done = unit.haul_days_written > unit.haul_days_remaining
                            ? unit.haul_days_written - unit.haul_days_remaining
                            : 0.0F;
-    if (unit.paused == 0 && done > 0.0F && unit.haul_days_written > 0.0F) {
+    const bool carrying = unit.emptying == 1;  // 2: the carrying is paused
+    if (carrying && done > 0.0F && unit.haul_days_written > 0.0F) {
       const float share = done / unit.haul_days_written;
       Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
       for (const std::uint32_t index : order) {
@@ -410,7 +411,7 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
     }
     // Tomorrow's demand: what is left that has somewhere to go, toward the
     // first store that takes the first of it.
-    const Grams left = unit.paused == 0 ? movable() : 0;
+    const Grams left = carrying ? movable() : 0;
     Vec2 destination = unit.position;
     for (const UnitRow& other : current.units.rows) {
       if (!order.empty() && StoresGoods(other, config) &&
