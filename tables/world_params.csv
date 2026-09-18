@@ -49,8 +49,6 @@ limit_base_points_average,320,core
 limit_base_points_strong,285,core
 limit_base_points_leading,250,core
 limit_plan_met_points,150,core
-limit_overfulfil_points_per_percent,10,core
-limit_overfulfil_points_max,200,core
 limit_delivery_days,2,core
 limit_delivery_delay_days_max,2,core
 teacher_pupils_per_teacher,30,core
@@ -161,3 +159,9 @@ distiller_replace_months,2,core
 samogon_buy_kg_drinks,3,core
 samogon_buy_kg_abuses,8,core
 samogon_lights_out_hour,23,core
+limit_overfulfil_tier1_t,5,core
+limit_overfulfil_tier2_t,20,core
+limit_overfulfil_tier1_points_per_t,20,core
+limit_overfulfil_tier2_points_per_t,10,core
+limit_overfulfil_tier3_points_per_t,4,core
+limit_overfulfil_grain_kcal_per_gram,3.3,core
