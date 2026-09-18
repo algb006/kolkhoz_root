@@ -144,12 +144,17 @@ struct Trajectory {
   /// by (i, j) with i < j. The blocker in the most pairs is the real narrow
   /// place even when it never holds the door alone.
   std::array<std::uint32_t, 36> pair_years = {};
-  /// Why the upgrades that did not come out were refused, by kind. Three
-  /// readings of the 120-ordered/9.9-finished gap were wrong in one night;
-  /// this counts instead of reading.
-  std::array<std::uint32_t, 16> upgrade_refusals = {};
-  /// And the same orders by STATUS, so the tally can prove it saw anything.
-  std::array<std::uint32_t, 8> upgrade_seen = {};
+  /// What became of the upgrade orders, read at the UNIT (upgrade_policy.h).
+  /// The tally that stood here read the order book a day after the events
+  /// slot had swept it, and saw not one order of any status in nine villages
+  /// over thirty-three years (retracted, 3af834f).
+  run::UpgradePolicy::Fates upgrade_fates;
+  /// The standing kolkhoz buildings by the era their SECOND rung opens in:
+  /// Epoch I, a later era, or no second rung at all. Three counts that must
+  /// sum to `units_standing`, printed beside it.
+  std::uint32_t rung2_this_era = 0;
+  std::uint32_t rung2_later_era = 0;
+  std::uint32_t rung2_none = 0;
 };
 
 constexpr std::array<const char*, 6> kBlockNames = {"разнообразие пищи ",
@@ -388,10 +393,16 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     }
     ++out.units_standing;
     out.units_at_level += unit.level >= 2 ? 1U : 0U;
+    // WHICH OF THEM CAN GET THERE IN THIS ERA AT ALL: the rung 2 of a type
+    // opens in the era unit_levels.csv names, and an order for a later era's
+    // rung is refused with kGateClosed however often it is repeated.
+    const std::uint8_t era = builder.upgrades.RungEra(unit.type, 2);
+    out.rung2_this_era += era == 1 ? 1U : 0U;
+    out.rung2_later_era += era > 1 ? 1U : 0U;
+    out.rung2_none += era == 0 ? 1U : 0U;
   }
   out.upgrades_ordered = builder.upgrades.ordered();
-  out.upgrade_refusals = builder.upgrades.refusals();
-  out.upgrade_seen = builder.upgrades.seen();
+  out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
   out.epoch = final_state.epoch;
@@ -769,34 +780,56 @@ int main(int argc, char** argv) {
   }
   std::cout << "population_curve: units at year " << kYears << " — " << (at_level / villages)
             << " of " << (standing / villages) << " kolkhoz buildings have reached level 2, after "
-            << (ordered / villages) << " upgrades ORDERED. Refused, by kind (OrderRefusal):\n";
-  std::array<float, 16> refusals = {};
+            << (ordered / villages) << " upgrades ORDERED (means of nine)\n";
+  // READ AT THE UNIT, and the four verdicts are printed beside the orders
+  // they must sum to, so a reader that saw nothing cannot pass for a world
+  // that refused nothing.
+  run::UpgradePolicy::Fates sum;
   for (const Trajectory& walk : walks) {
-    for (std::size_t index = 0; index < refusals.size(); ++index) {
-      refusals[index] += static_cast<float>(walk.upgrade_refusals[index]);
-    }
+    const run::UpgradePolicy::Fates& fate = walk.upgrade_fates;
+    sum.onto_open_site += fate.onto_open_site;
+    sum.started += fate.started;
+    sum.refused += fate.refused;
+    sum.refused_later_era += fate.refused_later_era;
+    sum.other += fate.other;
+    sum.finished += fate.finished;
+    sum.abandoned += fate.abandoned;
+    sum.gone += fate.gone;
+    sum.days_to_finish += fate.days_to_finish;
+    sum.open_delivering += fate.open_delivering;
+    sum.open_building += fate.open_building;
+    sum.open_other += fate.open_other;
   }
-  for (std::size_t index = 0; index < refusals.size(); ++index) {
-    if (refusals[index] > 0.0F) {
-      std::cout << "  refusal " << index << ": " << (refusals[index] / villages) << '\n';
-    }
-  }
-  // AND THE TALLY'S OWN PROOF THAT IT SEES ANYTHING: the events slot sweeps
-  // settled rows, and this reads a day later, so a count of nought refusals
-  // means nothing until the accepted ones are counted beside it.
-  std::array<float, 8> seen = {};
+  const auto mean = [villages](std::uint64_t total) {
+    return static_cast<float>(total) / villages;
+  };
+  const std::uint32_t read =
+      sum.onto_open_site + sum.started + sum.refused + sum.refused_later_era + sum.other;
+  std::cout << "  verdicts at the unit: onto an open site " << mean(sum.onto_open_site)
+            << ", started " << mean(sum.started) << ", refused with the rung in THIS era "
+            << mean(sum.refused) << ", refused with the rung in a LATER era "
+            << mean(sum.refused_later_era) << ", other " << mean(sum.other) << " — sum "
+            << mean(read) << " of " << (ordered / villages) << " ordered\n";
+  std::uint64_t this_era = 0;
+  std::uint64_t later_era = 0;
+  std::uint64_t no_rung = 0;
   for (const Trajectory& walk : walks) {
-    for (std::size_t index = 0; index < seen.size(); ++index) {
-      seen[index] += static_cast<float>(walk.upgrade_seen[index]);
-    }
+    this_era += walk.rung2_this_era;
+    later_era += walk.rung2_later_era;
+    no_rung += walk.rung2_none;
   }
-  std::cout << "  seen in the book at all, by OrderStatus:";
-  for (std::size_t index = 0; index < seen.size(); ++index) {
-    if (seen[index] > 0.0F) {
-      std::cout << ' ' << index << '=' << (seen[index] / villages);
-    }
-  }
-  std::cout << '\n';
+  std::cout << "  of the " << (standing / villages)
+            << " standing kolkhoz buildings, level 2 opens in Epoch I for " << mean(this_era)
+            << ", in a LATER era for " << mean(later_era) << ", and does not exist for "
+            << mean(no_rung) << '\n';
+  std::cout << "  the started, followed: finished " << mean(sum.finished) << ", abandoned "
+            << mean(sum.abandoned) << ", gone " << mean(sum.gone) << ", still open "
+            << mean(sum.open_delivering) << " delivering / " << mean(sum.open_building)
+            << " building / " << mean(sum.open_other) << " other; days to finish, mean "
+            << (sum.finished == 0
+                    ? 0.0F
+                    : static_cast<float>(sum.days_to_finish) / static_cast<float>(sum.finished))
+            << '\n';
 
   failures += run::Expect(first_days.size() == kSeeds.size(),
                           "every one of the nine villages reached the filth threshold at all");

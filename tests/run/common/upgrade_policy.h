@@ -33,8 +33,11 @@
 #ifndef TESTS_RUN_COMMON_UPGRADE_POLICY_H_
 #define TESTS_RUN_COMMON_UPGRADE_POLICY_H_
 
+#include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -74,10 +77,23 @@ class UpgradePolicy {
     if (unit_column == core::kNoTableColumn) {
       return;
     }
+    // The era each rung opens in, read beside the ladder: the verdict at the
+    // unit splits its refusals by it (ReadAtSubject).
+    const std::uint32_t level_column = levels->FindColumn("level");
+    const std::uint32_t era_column = levels->FindColumn("era");
+    rung_era_.assign(types->RowCount(), {});
     for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
       const std::uint32_t type_row = types->FindRowByKey(levels->CellText(row, unit_column));
       if (type_row != core::kNoTableRow && type_row < ladder_.size()) {
         ++ladder_[type_row];
+        if (level_column != core::kNoTableColumn && era_column != core::kNoTableColumn) {
+          const auto level = static_cast<std::size_t>(
+              std::strtoul(std::string(levels->CellText(row, level_column)).c_str(), nullptr, 10));
+          if (level < kRungs) {
+            rung_era_[type_row][level] = static_cast<std::uint8_t>(
+                std::strtoul(std::string(levels->CellText(row, era_column)).c_str(), nullptr, 10));
+          }
+        }
       }
     }
   }
@@ -154,6 +170,10 @@ class UpgradePolicy {
       const std::array<core::OrderRow, 1> one = {order};
       simulation.StageOrders(std::span<const core::OrderRow>(one.data(), one.size()), {});
       ++ordered_;
+      last_ = Placed{.unit = order.unit,
+                     .type = unit.type,
+                     .level = unit.level,
+                     .phase = unit.construction.phase};
       return;
     }
   }
@@ -172,41 +192,138 @@ class UpgradePolicy {
 
   std::uint32_t ordered() const { return ordered_; }
 
-  /// @brief Counts yesterday's verdicts on this policy's own orders, by
-  /// refusal kind. Call once a day, BEFORE RunDay, while the order book still
-  /// carries the settled rows.
+  /// @brief What became of the orders, read off the UNIT and not the book.
+  struct Fates {
+    /// Yesterday's order, judged by the unit today. The four sum to the
+    /// orders read; an order placed on the run's last day is never read.
+    std::uint32_t onto_open_site = 0;  ///< the unit already had a site when ordered
+    std::uint32_t started = 0;         ///< a site opened for level + 1
+    std::uint32_t refused = 0;         ///< no site, level unchanged, the rung IS this era's
+    /// Refused where the next rung opens in a LATER era than the world's —
+    /// the pair beside `refused`, so the era gate is counted, not inferred.
+    std::uint32_t refused_later_era = 0;
+    std::uint32_t other = 0;  ///< the unit gone, or anything else
+    /// And every started upgrade, followed to its end.
+    std::uint32_t finished = 0;   ///< the level rose to the target
+    std::uint32_t abandoned = 0;  ///< the site closed at the old level
+    std::uint32_t gone = 0;       ///< the unit left the world
+    std::uint64_t days_to_finish = 0;
+    /// Still open when the run ends, by phase.
+    std::uint32_t open_delivering = 0;
+    std::uint32_t open_building = 0;
+    std::uint32_t open_other = 0;
+  };
+
+  /// @brief Reads yesterday's order and every open upgrade AT THE UNIT.
+  /// Call once a day, BEFORE RunDay.
   ///
-  /// WHY A TALLY AND NOT A GUESS. 120 upgrades ordered a village and 9.9
-  /// finished, and three readings of that gap in one night were wrong — the
-  /// veto, the materials, the missing door. A count by KIND answers it once
-  /// and cannot be argued with.
-  void CollectVerdicts(const core::ISimulation& simulation) {
-    for (const core::OrderRow& order : simulation.CompletedState().orders.rows) {
-      if (order.kind != core::OrderKind::kUpgradeUnit) {
-        continue;
-      }
-      // EVERY STATUS, NOT ONLY THE REFUSALS — because the events slot SWEEPS
-      // settled rows, and this runs a day later. A tally that counted only
-      // refusals and found none could not tell "none were refused" from "the
-      // book was already swept", which is the same blindness it was added to
-      // cure. Seeing the accepted ones proves the tally can see anything at
-      // all.
-      ++seen_[static_cast<std::size_t>(order.status)];
-      if (order.status == core::OrderStatus::kRefused) {
-        const auto index = static_cast<std::size_t>(order.refusal);
-        if (index < refusals_.size()) {
-          ++refusals_[index];
+  /// WHY THE UNIT AND NOT THE BOOK. The first tally read the order book a
+  /// day late, after the events slot had swept every settled row, and
+  /// reported nought refusals from a book it could not see one order in —
+  /// published as "the orders are accepted" and retracted (3af834f).
+  /// Construction settles an upgrade in the step it reads it: a site opens
+  /// for level + 1, or the unit is left as it was. So the unit, read the next
+  /// day, IS the verdict, and it is not swept.
+  void ReadAtSubject(const core::ISimulation& simulation) {
+    const core::WorldState& world = simulation.CompletedState();
+    const auto unit_of = [&world](core::UnitId id) -> const core::UnitRow* {
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        if (world.units.row_ids[row].value == id.value && world.units.rows[row].dead == 0) {
+          return &world.units.rows[row];
         }
       }
+      return nullptr;
+    };
+    if (last_.has_value()) {
+      const core::UnitRow* unit = unit_of(last_->unit);
+      if (last_->phase != core::ConstructionPhase::kNone) {
+        ++fates_.onto_open_site;
+      } else if (unit == nullptr) {
+        ++fates_.other;
+      } else if (unit->construction.phase != core::ConstructionPhase::kNone &&
+                 unit->construction.target_level == last_->level + 1U) {
+        ++fates_.started;
+        watching_.push_back({.unit = last_->unit,
+                             .target = unit->construction.target_level,
+                             .day = world.calendar.day});
+      } else if (unit->construction.phase == core::ConstructionPhase::kNone &&
+                 unit->level == last_->level) {
+        const std::uint8_t era = RungEra(last_->type, last_->level + 1U);
+        if (era > core::EpochHumanNumber(world.epoch)) {
+          ++fates_.refused_later_era;
+        } else {
+          ++fates_.refused;
+        }
+      } else {
+        ++fates_.other;
+      }
+      last_.reset();
     }
+    std::erase_if(watching_, [&](const Watch& watch) {
+      const core::UnitRow* unit = unit_of(watch.unit);
+      if (unit == nullptr) {
+        ++fates_.gone;
+        return true;
+      }
+      if (unit->level >= watch.target) {
+        ++fates_.finished;
+        fates_.days_to_finish += world.calendar.day - watch.day;
+        return true;
+      }
+      if (unit->construction.phase == core::ConstructionPhase::kNone) {
+        ++fates_.abandoned;
+        return true;
+      }
+      return false;
+    });
   }
 
-  const std::array<std::uint32_t, 16>& refusals() const { return refusals_; }
+  /// @brief The era (1-based, as unit_levels.csv spells it) the rung `level`
+  /// of `type` opens in; 0 when the ladder has no such rung.
+  std::uint8_t RungEra(core::UnitTypeId type, std::uint32_t level) const {
+    if (type.value >= rung_era_.size() || level >= kRungs) {
+      return 0;
+    }
+    return rung_era_[type.value][level];
+  }
 
-  /// Orders of this kind seen in the book at all, by OrderStatus.
-  const std::array<std::uint32_t, 8>& seen() const { return seen_; }
+  /// @brief The fates, with the upgrades still open counted by phase.
+  Fates FatesAtEnd(const core::ISimulation& simulation) const {
+    Fates fates = fates_;
+    const core::WorldState& world = simulation.CompletedState();
+    for (const Watch& watch : watching_) {
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        if (world.units.row_ids[row].value != watch.unit.value) {
+          continue;
+        }
+        const core::ConstructionPhase phase = world.units.rows[row].construction.phase;
+        fates.open_delivering += phase == core::ConstructionPhase::kDelivering ? 1U : 0U;
+        fates.open_building += phase == core::ConstructionPhase::kBuilding ? 1U : 0U;
+        fates.open_other += phase != core::ConstructionPhase::kDelivering &&
+                                    phase != core::ConstructionPhase::kBuilding
+                                ? 1U
+                                : 0U;
+      }
+    }
+    return fates;
+  }
 
  private:
+  /// The order placed today, as the unit stood when it was placed.
+  struct Placed {
+    core::UnitId unit;
+    core::UnitTypeId type;
+    std::uint8_t level = 0;
+    core::ConstructionPhase phase = core::ConstructionPhase::kNone;
+  };
+
+  /// A started upgrade being followed.
+  struct Watch {
+    core::UnitId unit;
+    std::uint8_t target = 0;
+    core::SimDay day = 0;
+  };
+
   /// The level every Era I unit must reach for the I -> II transition (units
   /// rules §11). Not a stub: the design's own table.
   static constexpr std::uint8_t kEraLevel = 2;
@@ -225,16 +342,19 @@ class UpgradePolicy {
   /// How many levels each type has, dense by type row.
   std::vector<std::uint32_t> ladder_;
 
+  /// Rungs kept per type, level 0 unused; the tables stop at three.
+  static constexpr std::size_t kRungs = 6;
+
+  /// The era each rung opens in, by type row and level.
+  std::vector<std::array<std::uint8_t, kRungs>> rung_era_;
+
   StartGate start_gate_;
 
   std::uint32_t ordered_ = 0;
 
-  /// Refused orders of this policy's kind, by OrderRefusal value.
-  std::array<std::uint32_t, 16> refusals_ = {};
-
-  /// Orders of this kind seen at all, by OrderStatus — the tally's own proof
-  /// that it is not looking at an empty book.
-  std::array<std::uint32_t, 8> seen_ = {};
+  std::optional<Placed> last_;
+  std::vector<Watch> watching_;
+  Fates fates_;
 };
 
 }  // namespace run

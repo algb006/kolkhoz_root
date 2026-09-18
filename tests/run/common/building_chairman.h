@@ -194,8 +194,9 @@ class BuildingChairman {
     social.RunDay(simulation, farm_first);
     // The upgrades last of the buildings: «наведение порядка, а не
     // перестройка» waits behind everything that houses or feeds anybody.
-    // Yesterday's verdicts before today's order: the book still carries them.
-    upgrades.CollectVerdicts(simulation);
+    // Yesterday's order read at the unit before today's is placed. NOT the
+    // book: it was swept the step the order settled (upgrade_policy.h).
+    upgrades.ReadAtSubject(simulation);
     upgrades.RunDay(simulation, farm_first);
     watchman.RunDay(simulation);
     insulation.RunDay(simulation);
