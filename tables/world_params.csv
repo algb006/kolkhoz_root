@@ -118,7 +118,6 @@ school_pupil_capacity_level_3,80,core
 school_year_start_month,9,core
 school_year_end_month,6,core
 night_distiller_raw_kg,50,core
-night_watchman_theft_cut,0.6,core
 alcohol_adult_from_years,16,core
 alcohol_gain_with_distiller,2,core
 alcohol_gain_winter_idle,1,core
@@ -156,3 +155,9 @@ hygiene_fall_dirty_work_factor,1.6,core
 hygiene_fall_heat_extra,0.3,core
 hygiene_rise_bath_per_day,1.2,core
 hygiene_disease_threshold,25,core
+night_sober_keeper_max,20,core
+samogon_reach_m,1000,core
+distiller_replace_months,2,core
+samogon_buy_kg_drinks,3,core
+samogon_buy_kg_abuses,8,core
+samogon_lights_out_hour,23,core
