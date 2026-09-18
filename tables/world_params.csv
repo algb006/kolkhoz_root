@@ -167,3 +167,4 @@ limit_overfulfil_tier3_points_per_t,4,core
 limit_overfulfil_grain_kcal_per_gram,3.3,core
 limit_accumulation_share,1.5,core
 limit_seizure_reputation_loss,10,core
+limit_overfulfil_shortfall_factor,3,core
