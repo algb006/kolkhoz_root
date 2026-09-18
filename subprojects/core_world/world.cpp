@@ -747,12 +747,6 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   nothing consults, because a knob with a reader that ignores it
       //   is worse than a knob with none: it looks answered.
       known.emplace_back("road_access_m");
-      //   `alcohol_women_factor` (2026-09-18) — RETIRED, not waiting. A
-      //   woman has no alcoholism at all (crime design §6, boss's
-      //   correction of his own table that morning), so no door will ever
-      //   read it; it is named here only until the design base drops the
-      //   row and the export follows. Remove this line with that export.
-      known.emplace_back("alcohol_women_factor");
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

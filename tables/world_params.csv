@@ -127,8 +127,9 @@ alcohol_low_satisfaction_below,40,core
 alcohol_loss_employed,1,core
 alcohol_employed_days_min,3,core
 alcohol_loss_married,1,core
-alcohol_women_factor,0.25,core
+alcohol_loss_sober,1,core
 alcohol_epoch1_cap,60,core
+alcohol_sober_months_min,2,core
 mts_column_ha_limit,70,core
 mts_column_ha_per_work_day,10,core
 mts_column_spring_from_month,3,core
