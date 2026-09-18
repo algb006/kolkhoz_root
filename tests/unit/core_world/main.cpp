@@ -510,6 +510,39 @@ int main() {
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
 
+  // THE DRINKING VILLAGE (start §13; register 223; boss seq 121): the men
+  // start inside their classes' bands, 15..55; women and children at nought;
+  // the village about thirty, and somebody over forty from the first day.
+  {
+    const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+    const core::WorldState start =
+        shipped == nullptr
+            ? core::WorldState{}
+            : core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+    std::uint32_t drinkers = 0;
+    std::uint32_t over_forty = 0;
+    float sum = 0.0F;
+    bool in_bands = true;
+    for (const core::ResidentRow& person : start.residents.rows) {
+      if (person.sex != core::Sex::kMale) {
+        in_bands = in_bands && person.alcoholism == 0.0F;
+        continue;
+      }
+      if (person.alcoholism == 0.0F) {
+        continue;  // a boy
+      }
+      in_bands = in_bands && person.alcoholism >= 15.0F && person.alcoholism <= 55.0F;
+      ++drinkers;
+      sum += person.alcoholism;
+      over_forty += person.alcoholism > 40.0F ? 1U : 0U;
+    }
+    const float mean = drinkers > 0 ? sum / static_cast<float>(drinkers) : 0.0F;
+    failures += Expect(in_bands && drinkers > 0,
+                       "drinking village: men start inside 15..55, women at nought");
+    failures += Expect(mean > 25.0F && mean < 35.0F && over_forty >= 1,
+                       "drinking village: the village about thirty, somebody over forty");
+  }
+
   // THE DIGGING PLOTS OF THE SHIPPED MAP (construction design §3; boss,
   // parcels 270 and 273): genesis makes one site a row, two each of clay,
   // stone and sand, each with its area × its material's density.

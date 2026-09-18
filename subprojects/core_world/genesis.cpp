@@ -63,7 +63,7 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 /// the list the assembly is handed and the list actually read cannot be two
 /// lists: they are the same array. A second copy written out beside the
 /// reader would be correct on the day it was written and mute ever after.
-constexpr std::array<std::string_view, 15> kGenesisWorldParamKeys = {
+constexpr std::array<std::string_view, 23> kGenesisWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -96,7 +96,111 @@ constexpr std::array<std::string_view, 15> kGenesisWorldParamKeys = {
     // the people and core_residents moves the metric afterwards, and each
     // list is the single source for ITS module.
     "hygiene_start_min",
-    "hygiene_start_max"};
+    "hygiene_start_max",
+    // THE DRINKING VILLAGE (start §13 «Пьющая деревня»; register 223; econ's
+    // alcohol-start-and-sport.md §2.1; boss seq 121): the band each man of
+    // 16 and over starts in, by his class, and the two marks that make a man
+    // «незанятый» on day 0, when nobody has a working past to read yet.
+    "alcohol_start_married_min",
+    "alcohol_start_married_max",
+    "alcohol_start_single_min",
+    "alcohol_start_single_max",
+    "alcohol_start_idle_min",
+    "alcohol_start_idle_max",
+    "alcohol_start_idle_age",
+    "alcohol_start_sick_health"};
+
+/// Where the drinking village's keys begin in the list above.
+constexpr std::size_t kStartDrinkingKeyFirst = 15;
+static_assert(kGenesisWorldParamKeys[kStartDrinkingKeyFirst] == "alcohol_start_married_min" &&
+                  kGenesisWorldParamKeys[kStartDrinkingKeyFirst + 7] == "alcohol_start_sick_health",
+              "the drinking village's keys moved out from under their index");
+
+/// The drinking village's numbers (econ's §2.1; STUB, boss seq 121).
+struct StartDrinking {
+  float married_min = 15.0F;
+  float married_max = 35.0F;
+  float single_min = 25.0F;
+  float single_max = 45.0F;
+  float idle_min = 35.0F;
+  float idle_max = 55.0F;
+  float idle_age = 55.0F;     ///< «старик»: this many biological years and over
+  float sick_health = 50.0F;  ///< «больной»: health below this
+};
+
+/// Reads the drinking village's numbers; a table without them keeps the
+/// documented figures above.
+StartDrinking ReadStartDrinking(const ITableSet& tables) {
+  StartDrinking start;
+  const ITable* const world = tables.FindTable("world_params");
+  if (world == nullptr) {
+    return start;
+  }
+  const Range points{.low = 0.0F, .high = 100.0F};
+  const std::size_t first = kStartDrinkingKeyFirst;
+  const std::array<ScalarKnob, 8> rows = {
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first], .value = &start.married_min, .range = points},
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first + 1], .value = &start.married_max, .range = points},
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first + 2], .value = &start.single_min, .range = points},
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first + 3], .value = &start.single_max, .range = points},
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first + 4], .value = &start.idle_min, .range = points},
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first + 5], .value = &start.idle_max, .range = points},
+      ScalarKnob{.key = kGenesisWorldParamKeys[first + 6],
+                 .value = &start.idle_age,
+                 .range = Range{.low = 0.0F, .high = 150.0F}},
+      ScalarKnob{
+          .key = kGenesisWorldParamKeys[first + 7], .value = &start.sick_health, .range = points}};
+  std::string trouble;
+  if (!ReadKnobs(*world, "world_params", rows, trouble)) {
+    LogError("genesis: " + trouble + " — the documented drinking village is used");
+    return StartDrinking{};
+  }
+  return start;
+}
+
+/// THE DIFFICULTY'S PLACE (boss seq 121: three levels, every test on the
+/// normal one, the others tuned at polish). The start band is multiplied by
+/// it; normal is one, and a difficulty setting has this one line to change.
+constexpr float kNormalDifficultyScale = 1.0F;
+
+/// THE DRINKING VILLAGE, drawn once the marriages are made (start §13;
+/// register 223): every man of `adult_years` and over gets a past drawn
+/// uniformly in his class's band — «незанятый» (old or sick) first, then
+/// married, then single. Women have no such metric (crime §6) and children
+/// are clean. FROM THE COUNTER HASH and not from the world's generator, for
+/// the hygiene's reason above: a field added to a person must not move every
+/// later draw in the village.
+void SeedStartDrinking(const StartDrinking& start,
+                       float adult_years,
+                       float life_speedup,
+                       std::uint64_t world_seed,
+                       WorldState& world) {
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    ResidentRow& person = world.residents.rows[row];
+    const float age = BiologicalAgeYears(life_speedup, person.birth_day, world.calendar.day);
+    if (person.sex != Sex::kMale || age < adult_years) {
+      continue;
+    }
+    float low = start.single_min;
+    float high = start.single_max;
+    if (age >= start.idle_age || person.health < start.sick_health) {
+      low = start.idle_min;
+      high = start.idle_max;
+    } else if (person.spouse.value != kInvalidEntityIdValue) {
+      low = start.married_min;
+      high = start.married_max;
+    }
+    const float draw =
+        CounterHashUnitFloat(world_seed, 0, world.residents.row_ids[row].value, 0x414C4300ULL);
+    person.alcoholism = (low + (draw * (high - low))) * kNormalDifficultyScale;
+  }
+}
 
 /// The band a founder's hygiene is drawn from. Read here rather than handed
 /// down because genesis already reads its own knobs this way, and the band is
@@ -1385,6 +1489,9 @@ WorldState CreateStartWorld(const ITableSet& tables,
       }
     }
   }
+  // After the marriages, which the classes read (start §13).
+  SeedStartDrinking(
+      ReadStartDrinking(tables), body.age_adult_from_years, life_speedup, world_seed, world);
   MakeTimberStands(tables, world, error);
   MakeExtractionSites(tables, world, error);
   return world;
