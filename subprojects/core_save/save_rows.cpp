@@ -56,9 +56,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // land in padding — 188 now — so both tripwires fired, which is the pair
 // doing what it is for: the size alone misses a field that slips into a hole,
 // the arity alone misses one that widens an existing member.
-static_assert(sizeof(ResidentRow) == 188,
+// 2026-09-18, save 59: distiller_supplied_month took it to 196 (measured).
+static_assert(sizeof(ResidentRow) == 196,
               "ResidentRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ResidentRow>() == 42,
+// 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
+// (crime §7, register 206) — 43 fields; the size is read off the build.
+static_assert(AggregateArity<ResidentRow>() == 43,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -380,6 +383,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
 
   out.WriteU8(static_cast<std::uint8_t>(row.social_status));
   out.WriteU8(static_cast<std::uint8_t>(row.night_trade));
+  out.WriteU32(row.distiller_supplied_month);  // save 59
   out.WriteU8(row.days_worked_this_month);
   out.WriteFloat(row.alcoholism);
   out.WriteFloat(row.crime_inclination);
@@ -448,6 +452,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.social_status =
       static_cast<SocialStatus>(source.ReadEnumValue(0, kMaxSocialStatus, "social status"));
   row.night_trade = static_cast<NightTrade>(source.ReadEnumValue(0, kMaxNightTrade, "night trade"));
+  row.distiller_supplied_month = in.ReadU32();
   row.days_worked_this_month = in.ReadU8();
   row.alcoholism = in.ReadFloat();
   row.crime_inclination = in.ReadFloat();

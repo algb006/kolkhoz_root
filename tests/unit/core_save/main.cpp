@@ -169,6 +169,7 @@ core::WorldState MakeWorld() {
   first.education_stage = core::EducationStage::kVocational;
   first.social_status = core::SocialStatus::kKomsomol;
   first.night_trade = core::NightTrade::kHunter;  // the top of the enum, save format 39
+  first.distiller_supplied_month = 7;             // save 59: not nought, so a lost read shows
   first.school = core::UnitId{6};                 // a pupil, save format 41
   first.days_worked_this_month = 3;               // the month's work, save format 43
   first.offense_count = 2;
@@ -993,7 +994,8 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
     // the float did NOT land in padding, so 184 became 188.
-    {"residents", 362, 0xbe016209773f94e2ULL},
+    // 2026-09-18, save 59: distiller_supplied_month, 4 bytes by 2 residents.
+    {"residents", 370, 0xda375fdf183f1167ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     {"families", 194, 0xbcc55423c2869a5ULL},
     {"fields", 263, 0x224499bb25ff9b5bULL},
@@ -1445,7 +1447,8 @@ int main() {
                          loaded.night_outings.rows[0].hour_back == 3,
                      "a night outing came back with who, what, the night, the place and the hours");
   failures += Expect(!loaded.residents.rows.empty() &&
-                         loaded.residents.rows[0].night_trade == core::NightTrade::kHunter,
+                         loaded.residents.rows[0].night_trade == core::NightTrade::kHunter &&
+                         loaded.residents.rows[0].distiller_supplied_month == 7,
                      "a resident came back with his night trade");
   failures += Expect(!loaded.residents.rows.empty() && loaded.residents.rows[0].school.value == 6,
                      "a pupil came back enrolled in his school");

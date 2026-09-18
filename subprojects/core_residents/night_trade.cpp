@@ -24,24 +24,30 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 17> kNightTradeWorldParamKeys = {
-    "night_distillers_max",
-    "night_fisher_age_from_years",
-    "night_fisher_age_to_years",
-    "night_hunter_age_from_years",
-    "night_hunter_age_to_years",
-    "night_moon_day_in_month",
-    "night_trade_hour_out",
-    "night_trade_hour_back",
-    "night_fishing_min_mean_celsius",
-    "night_hunt_reach_min_m",
-    "night_hunt_reach_max_m",
-    "night_fishing_catch_kg",
-    "night_hunt_catch_kg",
-    "night_hunt_success_chance",
-    "night_distiller_raw_kg",
-    "night_watchman_theft_cut",
-    "store_leak_complaint_kg"};
+/// `night_watchman_theft_cut` left it on 2026-09-18 (the leak is closed or
+/// open, not cut) and stands in kNightTradeKnownKeys below, known and not
+/// read, until the base drops the row.
+constexpr std::array<std::string_view, 22> kNightTradeWorldParamKeys = {
+    "night_distillers_max",        "night_fisher_age_from_years", "night_fisher_age_to_years",
+    "night_hunter_age_from_years", "night_hunter_age_to_years",   "night_moon_day_in_month",
+    "night_trade_hour_out",        "night_trade_hour_back",       "night_fishing_min_mean_celsius",
+    "night_hunt_reach_min_m",      "night_hunt_reach_max_m",      "night_fishing_catch_kg",
+    "night_hunt_catch_kg",         "night_hunt_success_chance",   "night_distiller_raw_kg",
+    "store_leak_complaint_kg",     "night_sober_keeper_max",      "samogon_reach_m",
+    "distiller_replace_months",    "samogon_buy_kg_drinks",       "samogon_buy_kg_abuses",
+    "samogon_lights_out_hour",
+};
+
+/// Every key the night trades answer for: those read, and the one retired.
+constexpr std::array<std::string_view, kNightTradeWorldParamKeys.size() + 1> kNightTradeKnownKeys =
+    [] {
+      std::array<std::string_view, kNightTradeWorldParamKeys.size() + 1> keys{};
+      for (std::size_t index = 0; index < kNightTradeWorldParamKeys.size(); ++index) {
+        keys[index] = kNightTradeWorldParamKeys[index];
+      }
+      keys.back() = "night_watchman_theft_cut";  // RETIRED 2026-09-18, known and not read
+      return keys;
+    }();
 
 /// The raw material a distiller takes, in the order he takes it (crime design
 /// §7: grain, potato, sugar).
@@ -184,7 +190,7 @@ void GoOut(const NightTradeConfig& config, WorldState& current) {
     switch (person.night_trade) {
       case NightTrade::kDistiller:
         RecordOuting(current, row, yard, config);  // at his own gate
-        StealRawMaterial(config, current);         // and what he distils is the kolkhoz's
+        StealRawMaterial(config, current, row);    // and what he distils is the kolkhoz's
         break;
       case NightTrade::kNetFisher:
         if (!warm_water || config.fishing_spots.empty()) {
@@ -258,7 +264,7 @@ void ComeBack(const NightTradeConfig& config, WorldState& current) {
 }  // namespace
 
 std::span<const std::string_view> NightTradeWorldParamKeys() {
-  return kNightTradeWorldParamKeys;
+  return kNightTradeKnownKeys;
 }
 
 bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, std::string& error) {
@@ -304,17 +310,25 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
          .value = &config.distiller_raw_kg,
          .range = catch_kg},
         {.key = kNightTradeWorldParamKeys[15],
-         .value = &config.watchman_theft_cut,
-         .range = {.low = 0.0F, .high = 1.0F}},
-        {.key = kNightTradeWorldParamKeys[16],
          .value = &config.store_leak_complaint_kg,
          .range = {.low = 0.0F, .high = 100000.0F}},
+        {.key = kNightTradeWorldParamKeys[16],
+         .value = &config.sober_keeper_max,
+         .range = {.low = 0.0F, .high = 100.0F}},
+        {.key = kNightTradeWorldParamKeys[17], .value = &config.samogon_reach_m, .range = reach},
+        {.key = kNightTradeWorldParamKeys[18],
+         .value = &config.distiller_replace_months,
+         .range = {.low = 0.0F, .high = 120.0F}},
+        {.key = kNightTradeWorldParamKeys[19], .value = &config.buy_kg_drinks, .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[20], .value = &config.buy_kg_abuses, .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[21], .value = &config.lights_out_hour, .range = hours},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
-    if (!Whole(distillers) || !Whole(moon) || !Whole(out) || !Whole(back)) {
-      error = "world_params: a night trade count, day or hour is not a whole number";
+    if (!Whole(distillers) || !Whole(moon) || !Whole(out) || !Whole(back) ||
+        !Whole(config.distiller_replace_months) || !Whole(config.lights_out_hour)) {
+      error = "world_params: a night trade count, day, month or hour is not a whole number";
       return false;
     }
     if (config.fisher_age_from_years >= config.fisher_age_to_years ||
@@ -346,6 +360,8 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
   // The posts' shifts, so the leak can ask whether a unit's watchman is at
   // his post tonight.
   if (const ITable* const professions = tables.FindTable("professions")) {
+    config.storekeeper_post =
+        DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("storekeeper"));
     const std::uint32_t shift_column = professions->FindColumn("shift");
     config.post_shift.assign(professions->RowCount(), PostShift::kWorkday);
     for (std::uint32_t row = 0; row < professions->RowCount(); ++row) {
@@ -377,7 +393,45 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
   return true;
 }
 
-Grams StealRawMaterial(const NightTradeConfig& config, WorldState& current) {
+bool StoreLeakClosed(const NightTradeConfig& config,
+                     const WorldState& current,
+                     std::uint32_t unit_row) {
+  if (unit_row >= current.units.rows.size()) {
+    return false;
+  }
+  // A MODULE IS KEPT BY ITS PARENT'S WATCH: the staff table posts the
+  // watchman at the food yard, never at the granary on its plot, and the
+  // grain lies in the granary — reading the unit's own posts alone left every
+  // granary unguarded whoever stood at the gate (found by the runs' watchman,
+  // 2026-09-15).
+  const std::uint32_t here = current.units.row_ids[unit_row].value;
+  const std::uint32_t parent = current.units.rows[unit_row].parent.value;
+  bool sober_watch = false;
+  bool drinking_keeper = false;
+  for (const ResidentRow& person : current.residents.rows) {
+    const std::uint32_t post_unit = person.post.unit.value;
+    if (post_unit != here && (parent == kInvalidEntityIdValue || post_unit != parent)) {
+      continue;
+    }
+    const std::uint32_t profession = person.post.profession.value;
+    const bool sober = person.alcoholism <= config.sober_keeper_max;
+    // A DRINKING WATCHMAN IS AS GOOD AS NONE (register 206; it was a 60 % cut
+    // until 2026-09-18): the leak is closed or open, not trimmed.
+    if (profession < config.post_shift.size() &&
+        config.post_shift[profession] == PostShift::kNight && sober) {
+      sober_watch = true;
+    }
+    // And a storekeeper, where the store has one, must be sober too.
+    if (profession == config.storekeeper_post.value && !sober) {
+      drinking_keeper = true;
+    }
+  }
+  return sober_watch && !drinking_keeper;
+}
+
+Grams StealRawMaterial(const NightTradeConfig& config,
+                       WorldState& current,
+                       std::uint32_t distiller_row) {
   const Date date = DateFromDay(current.calendar.day);
   const std::uint32_t month_index = (static_cast<std::uint32_t>(date.year) * kMonthsPerYear) +
                                     static_cast<std::uint32_t>(date.month);
@@ -390,41 +444,21 @@ Grams StealRawMaterial(const NightTradeConfig& config, WorldState& current) {
   for (const ResourceId raw : config.raw_material) {
     for (std::uint32_t unit_row = 0; unit_row < current.units.rows.size() && wanted > 0;
          ++unit_row) {
-      UnitRow& unit = current.units.rows[unit_row];
-      const Grams free = UnreservedOf(unit, raw);
-      if (free <= 0) {
-        continue;
+      const Grams free = UnreservedOf(current.units.rows[unit_row], raw);
+      if (free <= 0 || StoreLeakClosed(config, current, unit_row)) {
+        continue;  // nothing here, or a sober watch: he goes on to the next store
       }
-      // A watchman at his post at this unit tonight cuts what he takes here
-      // (crime design §11); the attempt is spent all the same. AND A MODULE IS
-      // KEPT BY ITS PARENT'S WATCHMAN: the staff table posts the watchman at
-      // the food yard, never at the granary on its plot, and the grain lies in
-      // the granary — reading the unit's own posts alone left every granary
-      // unguarded whoever stood at the gate (found by the runs' watchman,
-      // 2026-09-15).
-      const std::uint32_t here = current.units.row_ids[unit_row].value;
-      const std::uint32_t parent = unit.parent.value;
-      bool kept = false;
-      for (const ResidentRow& person : current.residents.rows) {
-        const std::uint32_t profession = person.post.profession.value;
-        const std::uint32_t post_unit = person.post.unit.value;
-        kept = kept ||
-               ((post_unit == here || (parent != kInvalidEntityIdValue && post_unit == parent)) &&
-                profession < config.post_shift.size() &&
-                config.post_shift[profession] == PostShift::kNight);
-      }
-      const Grams attempt = free < wanted ? free : wanted;
-      wanted -= attempt;
-      // ROUNDED, not truncated: 0.6F is 0.600000024, and a cast would carry
-      // 7 999 grams of an 8 000 the rule names (found by the unit test).
-      const Grams carried = kept ? static_cast<Grams>(std::llround(
-                                       static_cast<double>(attempt) *
-                                       (1.0 - static_cast<double>(config.watchman_theft_cut))))
-                                 : attempt;
-      unit.stock[raw.value] -= carried;
+      const Grams carried = free < wanted ? free : wanted;
+      wanted -= carried;
+      current.units.rows[unit_row].stock[raw.value] -= carried;
       taken += carried;
       AddLedgerAmount(current.ledger.current.stolen, raw, carried);
     }
+  }
+  // SUPPLIED THIS MONTH, and only when anything came: «самогонщик без сырья
+  // этого месяца не продаёт» (register 206).
+  if (taken > 0 && distiller_row < current.residents.rows.size()) {
+    current.residents.rows[distiller_row].distiller_supplied_month = month_index + 1U;
   }
   current.night_theft.stolen_this_month += taken;
   // The village comes to complain once a campaign, when the month's loss

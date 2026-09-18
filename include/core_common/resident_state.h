@@ -287,6 +287,13 @@ struct ResidentRow {
   /// The night trade he keeps (NightTrade); kNone for nearly everyone.
   NightTrade night_trade = NightTrade::kNone;
 
+  /// A distiller's supply: the month (NightTheftTally month index + 1) in
+  /// which his last night at the stores brought any raw material; 0 never.
+  /// «Самогонщик без сырья этого месяца не продаёт» (crime design §7;
+  /// register 206): the +2, the purchase and the sobriety all ask whether
+  /// a SUPPLIED distiller is in reach, not whether a distiller exists.
+  std::uint32_t distiller_supplied_month = 0;
+
   /// Days of the current calendar month on which he went out to work (hours
   /// away above zero) — counted by the labor day close, read and cleared at
   /// the month's turn by

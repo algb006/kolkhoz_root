@@ -1800,9 +1800,12 @@ int CheckNightTrades() {
 int CheckRawMaterialLeak() {
   int failures = 0;
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
-  core::NightTradeConfig config;  // 50 kg, 60 %, 100 kg
+  core::NightTradeConfig config;  // 50 kg, sober at 20 or under, 100 kg
   config.raw_material = {core::ResourceId{0}};
-  config.post_shift = {core::PostShift::kWorkday, core::PostShift::kNight};
+  // 0 labourer, 1 watchman (night), 2 storekeeper (workday).
+  config.post_shift = {
+      core::PostShift::kWorkday, core::PostShift::kNight, core::PostShift::kWorkday};
+  config.storekeeper_post = core::ProfessionId{2};
 
   core::WorldState world;
   core::UnitRow open_store;
@@ -1815,27 +1818,62 @@ int CheckRawMaterialLeak() {
   const core::UnitId kept_id = AppendRow(world.units, kept_store);
   core::ResidentRow watchman;
   watchman.post = core::PostAssignment{.profession = core::ProfessionId{1}, .unit = kept_id};
-  AppendRow(world.residents, watchman);
+  const core::ResidentId watchman_id = AppendRow(world.residents, watchman);
+  core::ResidentRow distiller;
+  distiller.night_trade = core::NightTrade::kDistiller;
+  AppendRow(world.residents, distiller);
+  constexpr std::uint32_t kDistillerRow = 1;
   const auto stock_of = [&world](core::UnitId unit) {
     return world.units.rows[FindRow(world.units, unit)].stock[0];
   };
 
-  // 30 kg from the open store, then the remaining 20 attempted at the kept
-  // one, of which 40 % — 8 kg — is carried off.
-  const core::Grams first = core::StealRawMaterial(config, world);
+  // A SOBER WATCH CLOSES THE STORE (register 206; it was a 60 % cut until
+  // 2026-09-18): 30 kg from the open store, nothing from the kept one.
+  failures +=
+      Expect(core::StoreLeakClosed(config, world, 1) && !core::StoreLeakClosed(config, world, 0),
+             "leak: a sober watchman closes his store, an unwatched one is open");
+  const core::Grams first = core::StealRawMaterial(config, world, kDistillerRow);
   failures += Expect(
-      first == 38 * kKilo && stock_of(open_id) == 0 && stock_of(kept_id) == 92 * kKilo &&
-          world.ledger.current.stolen.size() == 1 && world.ledger.current.stolen[0] == 38 * kKilo,
-      "leak: the open store gives all it holds, the watchman's store 60 % less, "
-      "and the book carries what went");
+      first == 30 * kKilo && stock_of(open_id) == 0 && stock_of(kept_id) == 100 * kKilo &&
+          world.ledger.current.stolen.size() == 1 && world.ledger.current.stolen[0] == 30 * kKilo,
+      "leak: the open store gives all it holds, the watched one nothing, and the book carries "
+      "what went");
+  failures += Expect(world.residents.rows[kDistillerRow].distiller_supplied_month ==
+                         world.night_theft.month_index + 1U,
+                     "leak: a night that brought raw material supplies the distiller this month");
   failures += Expect(world.step_events.empty() && world.night_theft.complaint_raised == 0,
-                     "leak: 38 kg in the month raises no complaint");
+                     "leak: 30 kg in the month raises no complaint");
+
+  // A DRINKING WATCHMAN IS AS GOOD AS NONE, and a drinking storekeeper opens a
+  // store whatever the watchman: the leak is closed only by a sober pair.
+  {
+    core::WorldState drunk = world;
+    drunk.residents.rows[FindRow(drunk.residents, watchman_id)].alcoholism = 30.0F;
+    failures += Expect(!core::StoreLeakClosed(config, drunk, 1),
+                       "leak: a watchman at 30 does not close his store");
+    core::WorldState keeper = world;
+    core::ResidentRow storekeeper;
+    storekeeper.alcoholism = 25.0F;
+    storekeeper.post = core::PostAssignment{.profession = core::ProfessionId{2}, .unit = kept_id};
+    AppendRow(keeper.residents, storekeeper);
+    failures += Expect(!core::StoreLeakClosed(config, keeper, 1),
+                       "leak: a sober watchman beside a drinking storekeeper does not close it");
+  }
+
+  // Nothing to take anywhere — every store empty or closed: no supply.
+  {
+    core::WorldState dry = world;
+    dry.residents.rows[kDistillerRow].distiller_supplied_month = 0;
+    failures += Expect(core::StealRawMaterial(config, dry, kDistillerRow) == 0 &&
+                           dry.residents.rows[kDistillerRow].distiller_supplied_month == 0,
+                       "leak: a night that brought nothing leaves the distiller unsupplied");
+  }
 
   // Two more nights in the same month from a refilled open store — 50 kg each:
   // past 100 kg, the complaint, once.
   world.units.rows[FindRow(world.units, open_id)].stock[0] = 200 * kKilo;
-  core::StealRawMaterial(config, world);
-  core::StealRawMaterial(config, world);
+  core::StealRawMaterial(config, world, kDistillerRow);
+  core::StealRawMaterial(config, world, kDistillerRow);
   std::uint32_t complaints = 0;
   for (const core::SimEvent& event : world.step_events) {
     complaints += event.kind == core::EventKind::kStoreLeakComplaint ? 1U : 0U;
@@ -1849,9 +1887,9 @@ int CheckRawMaterialLeak() {
   world.calendar.tick = static_cast<core::Tick>(core::kDaysPerMonth) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   world.units.rows[FindRow(world.units, open_id)].stock[0] = 500 * kKilo;
-  core::StealRawMaterial(config, world);
-  core::StealRawMaterial(config, world);
-  core::StealRawMaterial(config, world);
+  core::StealRawMaterial(config, world, kDistillerRow);
+  core::StealRawMaterial(config, world, kDistillerRow);
+  core::StealRawMaterial(config, world, kDistillerRow);
   failures +=
       Expect(world.night_theft.stolen_this_month == 150 * kKilo && world.step_events.empty(),
              "leak: a new month counts from zero, and the complaint does not come again");
@@ -1880,13 +1918,13 @@ int CheckRawMaterialLeak() {
   yard_watchman.post =
       core::PostAssignment{.profession = core::ProfessionId{1}, .unit = watched_id};
   AppendRow(yards.residents, yard_watchman);
-  const core::Grams yard_night = core::StealRawMaterial(config, yards);
-  // 30 kg attempted at the kept granary, 12 carried; the remaining 20 kg at
-  // the open one, all carried.
+  AppendRow(yards.residents, distiller);  // row 1
+  const core::Grams yard_night = core::StealRawMaterial(config, yards, 1);
+  // The kept granary is closed; the whole 50 kg come out of the open one.
   failures += Expect(
-      yard_night == 32 * kKilo &&
-          yards.units.rows[FindRow(yards.units, kept_granary_id)].stock[0] == 18 * kKilo &&
-          yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] == 80 * kKilo,
+      yard_night == 50 * kKilo &&
+          yards.units.rows[FindRow(yards.units, kept_granary_id)].stock[0] == 30 * kKilo &&
+          yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] == 50 * kKilo,
       "leak: the yard's watchman keeps the granary on its plot, and an unwatched yard's does not");
   return failures;
 }

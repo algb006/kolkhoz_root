@@ -79,11 +79,42 @@ struct NightTradeConfig {
   float hunt_success_chance = 0.3F;        ///< `night_hunt_success_chance`
 
   /// Raw material a distiller carries off the kolkhoz stores on his night,
-  /// kilograms (`night_distiller_raw_kg`), and the share a watchman at his
-  /// post cuts from what is taken out of the unit he keeps
-  /// (`night_watchman_theft_cut`). Boss, parcel 364: 50 kg, 60 %.
+  /// kilograms (`night_distiller_raw_kg`). Boss, parcel 364: 50 kg.
   float distiller_raw_kg = 50.0F;
-  float watchman_theft_cut = 0.6F;
+
+  /// THE LEAK OF A STORE IS CLOSED OR OPEN, NOT CUT (crime design §7,
+  /// register 206, 2026-09-18): closed when a watchman stands at his post
+  /// with alcoholism at most this, and every storekeeper of the store too;
+  /// a drinking watchman is as good as none. `night_sober_keeper_max`, 20.
+  /// It replaced `night_watchman_theft_cut` (a 60 % cut), which is known and
+  /// no longer read until the design base drops the row.
+  float sober_keeper_max = 20.0F;
+
+  /// «Самогонщик достаёт на 1000 м от своего двора» (crime §6, register
+  /// 207): the reach of a supplied distiller for the +2, the purchase and
+  /// the sobriety. `samogon_reach_m`.
+  float samogon_reach_m = 1000.0F;
+
+  /// A distiller taken or gone is replaced this many months after, if the
+  /// village's leak is open that month; never while it is closed, and not at
+  /// the year's turn either (register 206). `distiller_replace_months`.
+  float distiller_replace_months = 2.0F;
+
+  /// The month's purchase in kind, kilograms, by the drinker's band of the
+  /// metric (crime §6, «Самогон стоит семье»): 21–40 «выпивает», 41–60
+  /// «злоупотребляет»; 0–20 buys nothing. `samogon_buy_kg_drinks`,
+  /// `samogon_buy_kg_abuses`. Boss's numbers, not measured.
+  float buy_kg_drinks = 3.0F;
+  float buy_kg_abuses = 8.0F;
+
+  /// Lights-out for the evening sale at the gate: a sale lands in a random
+  /// hour from sunset up to this one. STUB, 23:00 (register 206).
+  /// `samogon_lights_out_hour`.
+  float lights_out_hour = 23.0F;
+
+  /// professions.csv `storekeeper`: a store with one posted keeps its leak
+  /// closed only if he, too, is sober. Invalid when the roster has none.
+  ProfessionId storekeeper_post;
 
   /// The month's loss at which the village complains (`store_leak_complaint_kg`).
   float store_leak_complaint_kg = 100.0F;
@@ -131,16 +162,29 @@ void AssignNightTrades(const NightTradeConfig& config, float life_speedup, World
 /// @pre Called once per tick of the decisions slot.
 void RunNightOutings(const NightTradeConfig& config, WorldState& current);
 
+/// @brief Is the leak of the store at `unit_row` CLOSED (crime design §7,
+///        register 206)? A watchman at his post — at the unit or at its
+///        parent — with alcoholism at most `sober_keeper_max`, and every
+///        storekeeper posted there sober too. A drinking watchman is as good
+///        as none; a store with no watchman is open.
+bool StoreLeakClosed(const NightTradeConfig& config,
+                     const WorldState& current,
+                     std::uint32_t unit_row);
+
 /// @brief A distiller's night at the stores: up to `distiller_raw_kg` of the
 ///        raw material, unreserved, unit by unit in row order and resource by
-///        resource in the config's order; from a unit kept by a watchman at
-///        his post — at the unit or at its parent — a share
-///        `watchman_theft_cut` smaller. What is taken leaves
-///        the world and is booked as `stolen`; the month's tally grows, and at
-///        `store_leak_complaint_kg` the complaint is raised, once a campaign
-///        (the constable's post is a STUB: Epoch I has none).
+///        resource in the config's order, from every store whose leak is OPEN
+///        (StoreLeakClosed) — a closed store gives nothing, and he goes on to
+///        the next. What is taken leaves the world and is booked as `stolen`;
+///        the month's tally grows, and at `store_leak_complaint_kg` the
+///        complaint is raised, once a campaign (the constable's post is a
+///        STUB: Epoch I has none). When anything was taken, the distiller at
+///        `distiller_row` is SUPPLIED this month
+///        (ResidentRow::distiller_supplied_month).
 /// @return Grams taken.
-Grams StealRawMaterial(const NightTradeConfig& config, WorldState& current);
+Grams StealRawMaterial(const NightTradeConfig& config,
+                       WorldState& current,
+                       std::uint32_t distiller_row);
 
 /// @brief Settles every pending kTakeNightTrader: the man named keeps no
 ///        trade from now on, and his row among tonight's outings, if he is
