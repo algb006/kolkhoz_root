@@ -20,7 +20,7 @@ namespace {
 /// The first kPointKnobCount are whole points and days; the rest are the MTS
 /// column's (ReadMtsColumnKnobs), the handover shares, the electrification
 /// mark and the overfulfilment scale (ReadOverfulfilKnobs).
-constexpr std::array<std::string_view, 24> kLimitWorldParamKeys = {
+constexpr std::array<std::string_view, 26> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
@@ -57,7 +57,12 @@ constexpr std::array<std::string_view, 24> kLimitWorldParamKeys = {
     "limit_overfulfil_tier1_points_per_t",
     "limit_overfulfil_tier2_points_per_t",
     "limit_overfulfil_tier3_points_per_t",
-    "limit_overfulfil_grain_kcal_per_gram"};
+    "limit_overfulfil_grain_kcal_per_gram",
+    // THE ACCUMULATION LIMIT (district §9; register 234; boss seq 81): the
+    // share of (seed + the plan's figure + last year's eaten and fed) the
+    // kolkhoz may hold, and what a seizure costs the raikom's reputation.
+    "limit_accumulation_share",
+    "limit_seizure_reputation_loss"};
 
 constexpr std::size_t kPointKnobCount = 7;
 
@@ -71,6 +76,13 @@ static_assert(kLimitWorldParamKeys[kOverfulfilKnobFirst] == "limit_overfulfil_ti
 static_assert(kLimitWorldParamKeys[kOverfulfilKnobFirst + 5] ==
                   "limit_overfulfil_grain_kcal_per_gram",
               "the grain reference moved out from under its index");
+
+/// Where the accumulation limit's two knobs begin in the list above.
+constexpr std::size_t kAccumulationKnobFirst = 24;
+static_assert(kLimitWorldParamKeys[kAccumulationKnobFirst] == "limit_accumulation_share" &&
+                  kLimitWorldParamKeys[kAccumulationKnobFirst + 1] ==
+                      "limit_seizure_reputation_loss",
+              "the accumulation knobs moved out from under their index");
 // A HAND-WRITTEN INDEX INTO A LIST THAT GROWS, so it is nailed to the name it
 // means rather than to a count somebody has to remember to re-derive. Free,
 // and it is the same shape this tree names beside its enums: a length written
@@ -424,6 +436,21 @@ bool ReadOverfulfilKnobs(const ITable& world, LimitCatalog& catalog, std::string
   return ReadKnobs(world, "world_params", knobs, error);
 }
 
+/// The accumulation limit's share and the seizure's reputation cost. A share
+/// of nought would be a limit of nothing — every gram seized — and is a typo.
+bool ReadAccumulationKnobs(const ITable& world, LimitCatalog& catalog, std::string& error) {
+  constexpr float kMostShare = 100.0F;
+  constexpr float kMostReputation = 100.0F;
+  const std::array<ScalarKnob, 2> knobs = {
+      ScalarKnob{.key = kLimitWorldParamKeys[kAccumulationKnobFirst],
+                 .value = &catalog.accumulation_share,
+                 .range = Range{.low = 0.01F, .high = kMostShare}},
+      ScalarKnob{.key = kLimitWorldParamKeys[kAccumulationKnobFirst + 1],
+                 .value = &catalog.seizure_reputation_loss,
+                 .range = Range{.low = 0.0F, .high = kMostReputation}}};
+  return ReadKnobs(world, "world_params", knobs, error);
+}
+
 }  // namespace
 
 std::span<const std::string_view> LimitWorldParamKeys() {
@@ -482,7 +509,8 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
       return false;
     }
     if (!ReadElectrificationKnob(*world, catalog, error) ||
-        !ReadOverfulfilKnobs(*world, catalog, error)) {
+        !ReadOverfulfilKnobs(*world, catalog, error) ||
+        !ReadAccumulationKnobs(*world, catalog, error)) {
       return false;
     }
   }

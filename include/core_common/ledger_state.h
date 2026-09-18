@@ -203,6 +203,12 @@ struct YearLedger {
   /// all (econ-host-lever-pass3 seq 35): nothing vanishes without a line.
   ResourceAmounts lost_to_snow;
 
+  /// WHAT THE DISTRICT SEIZED above the accumulation limit (district §9: «Не
+  /// сдал и попался — изымает целиком»): a finance auditor's visit found it
+  /// standing over PlanState::accumulation_limit and took it all. Not a
+  /// delivery — it counts toward no plan and no overfulfilment. Save 62.
+  ResourceAmounts seized;
+
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 
   float area_sown_ha = 0.0F;

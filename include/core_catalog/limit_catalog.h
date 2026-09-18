@@ -125,6 +125,17 @@ struct LimitCatalog {
   /// of any position is (its food.csv kcal_per_gram / this) tonnes of grain.
   float overfulfil_grain_kcal_per_gram = 3.3F;
 
+  /// THE ACCUMULATION LIMIT (district §9; register 234; boss seq 81), STUB
+  /// figures, boss's: each plannable produce may be held up to this share of
+  /// (next year's seed + this year's figure + last year's eaten and fed, off
+  /// the closed book) — roomy, so wintering, seed and the plan reserve fit
+  /// with room to spare. The first year has no book and no limit.
+  float accumulation_share = 1.5F;
+
+  /// What a seizure above the limit costs the raikom's reputation, points of
+  /// 0..100 (district §9: «репутация вниз»).
+  float seizure_reputation_loss = 10.0F;
+
   /// Days the district's cart takes, and the most it may be late by.
   std::uint32_t delivery_days = 2;
   std::uint32_t delivery_delay_days_max = 2;

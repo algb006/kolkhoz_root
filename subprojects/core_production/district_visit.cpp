@@ -10,7 +10,9 @@
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/ids.h"
+#include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
+#include "stock_ops.h"
 
 namespace core {
 namespace {
@@ -96,28 +98,73 @@ void CallPlanFailedVisit(WorldState& current) {
   CallExtraordinary(current, DistrictFace::kKorenev, DistrictVisitCause::kPlanFailed);
 }
 
-DistrictVisitOutcome InspectVisit(const WorldState& /*current*/, const DistrictVisitRow& visit) {
-  // STUB, AND IT IS THE WHOLE SUBJECT THAT IS MISSING, not a computation that
-  // was skipped. The core keeps no books for a discrepancy to be in, and the
-  // faces have no personal reputations to answer a gift with.
-  //
-  // THIS IS THE DESIGN'S OWN DECISION AND NOT A GAP IN THE DELIVERY
-  // (characters design §2, "Эпоха I числами", boss 2026-09-14, re-read and
-  // unchanged on 2026-09-17): «Находка: STUB „ничего не найдено", пока нет
-  // модели книг и учёта» and «Приём и подарок: не в сборке Эпохи I — приказа
-  // нет, личные репутации лиц — STUB. Дверь — после».
-  //
-  // Three seam fields stand nil because of it — `found`, the reception and
-  // gift kinds, and `gift` — and one written rule downstream cannot fire at
-  // all (the junior's signal, in ArriveDistrictVisits below). ALL OF THEM
-  // COME ALIVE WITH THE BOOKS AND NONE BEFORE, so they are one debt with one
-  // door, not four.
-  //
-  // The outcome is the visit as it came, found nothing.
-  return DistrictVisitOutcome{.face = visit.face, .kind = visit.kind};
+namespace {
+
+/// The finance channel's two faces — the ones who count the stores.
+bool CountsTheStores(DistrictFace face) {
+  return face == DistrictFace::kPolushkina || face == DistrictFace::kZhernova;
 }
 
-void ArriveDistrictVisits(WorldState& current) {
+/// Grams of the produce at `index` standing in the stores above the
+/// accumulation limit; 0 where there is no limit on it.
+Grams SurplusAboveLimit(const WorldState& current, std::uint32_t index) {
+  const Grams limit = index < current.plan.accumulation_limit.size()
+                          ? current.plan.accumulation_limit[index]
+                          : Grams{0};
+  if (limit <= 0) {
+    return 0;
+  }
+  const Grams held = HeldEverywhere(current, DefIdFromIndex<ResourceIdTag>(index));
+  return held > limit ? held - limit : 0;
+}
+
+}  // namespace
+
+DistrictVisitOutcome InspectVisit(const WorldState& current, const DistrictVisitRow& visit) {
+  DistrictVisitOutcome outcome{.face = visit.face, .kind = visit.kind};
+  // THE ONE FINDING WITHOUT BOOKS (district §9; boss seq 76 and 81,
+  // 2026-09-18; characters §2 amended the same day): a finance auditor counts
+  // the stores against the accumulation limit, and a surplus is a
+  // discrepancy. A COUNT OF THE STORE, NOT A DISCREPANCY IN THE ACCOUNTS —
+  // which is why it did not wait for the books.
+  //
+  // EVERY OTHER FINDING IS STILL A STUB, the design's own decision
+  // (characters §2, "Эпоха I числами", boss 2026-09-14): «Находка: STUB
+  // „ничего не найдено", пока нет модели книг и учёта», and «Приём и
+  // подарок: не в сборке Эпохи I». The reception and gift kinds and `gift`
+  // stay nil, and come alive with the books and not before.
+  if (CountsTheStores(visit.face)) {
+    for (std::uint32_t index = 0; index < current.plan.accumulation_limit.size(); ++index) {
+      if (SurplusAboveLimit(current, index) > 0) {
+        outcome.found = DistrictVisitFinding::kDiscrepancy;
+        break;
+      }
+    }
+  }
+  return outcome;
+}
+
+Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
+  Grams seized = 0;
+  for (std::uint32_t index = 0; index < current.plan.accumulation_limit.size(); ++index) {
+    const Grams surplus = SurplusAboveLimit(current, index);
+    if (surplus <= 0) {
+      continue;
+    }
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams taken = TakeFromStorage(current, config, resource, surplus);
+    AddLedgerAmount(current.ledger.current.seized, resource, taken);
+    seized += taken;
+  }
+  if (seized > 0) {
+    // «Репутация вниз» (district §9), once a seizure, whatever it took.
+    current.chairman.raikom_reputation =
+        std::max(0.0F, current.chairman.raikom_reputation - config.limit.seizure_reputation_loss);
+  }
+  return seized;
+}
+
+void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
   // In the order they were announced or called, by id — not by row, which a
   // removal reshuffles (the wedding queue's lesson of 0.24.0).
   std::vector<DistrictVisitId> due;
@@ -136,6 +183,11 @@ void ArriveDistrictVisits(WorldState& current) {
     const DistrictVisitRow visit = current.district_visits.rows[row];
     RemoveRow(current.district_visits, id);
     const DistrictVisitOutcome outcome = InspectVisit(current, visit);
+    // «Не сдал и попался — изымает целиком» (district §9): the surplus the
+    // auditor found goes on the day she finds it.
+    if (outcome.found == DistrictVisitFinding::kDiscrepancy && CountsTheStores(visit.face)) {
+      SeizeAboveLimit(config, current);
+    }
     const bool extraordinary = visit.kind == DistrictVisitKind::kExtraordinary;
     SimEvent& event =
         EmitEvent(current,
@@ -144,24 +196,13 @@ void ArriveDistrictVisits(WorldState& current) {
     event.amount = PackDistrictVisit(outcome);
     // "Младший заметил, доложил, приехал старший" (characters design §2).
     //
-    // STUB, AND IT IS THE GATE THAT IS STUBBED, NOT THE RULE. The rule is the
-    // design's and stands, written and working; what it reads is nil. `found`
-    // comes from InspectVisit, which computes kNone and nothing else, so THIS
-    // BRANCH IS NEVER TAKEN — no extraordinary visit on a junior's signal
-    // happens in a campaign, not once, and neither does kJuniorMiss, which is
-    // computed from the same finding.
-    //
-    // WHAT IS MISSING IS THE BOOKS. Not a field and not a condition: the core
-    // keeps no accounts for a discrepancy to be found in, and the design says
-    // so in as many words — «Находка: STUB „ничего не найдено", пока нет
-    // модели книг и учёта» (characters design §2, "Эпоха I числами", boss's
-    // decision of 2026-09-14, unchanged). The mark comes off WITH THE MODEL
-    // OF THE BOOKS, in one move, and not a day earlier.
-    //
-    // Marked rather than mended because a rule that cannot fire is a stub,
-    // and the next reader who finds it unmarked reports it as a live rule —
-    // which happened three times in two days, once costing a named rejection
-    // in the design of the only way out of a dead end.
+    // IT FIRES SINCE 2026-09-18, on one finding only. Until then `found` was
+    // kNone by construction and this branch was never taken — a rule that
+    // could not fire, marked STUB so no reader would call it live. The
+    // accumulation limit gave Polushkina her first real finding (InspectVisit),
+    // and her regular visit that finds a surplus now calls Zhernova. The other
+    // findings — the accounts', and kJuniorMiss with them — still wait for the
+    // books (characters §2).
     if (visit.kind == DistrictVisitKind::kRegular && outcome.found != DistrictVisitFinding::kNone) {
       CallExtraordinary(current, SeniorOfChannel(visit.face), DistrictVisitCause::kJuniorSignal);
     }

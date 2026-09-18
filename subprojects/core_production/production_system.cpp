@@ -265,7 +265,7 @@ class ProductionSystem final : public IProductionSystem {
     // The district's people: announced first, so a notice of zero days
     // announces a visit before it arrives on the same tick (district_visit.h).
     AnnounceRegularVisits(config_, current);
-    ArriveDistrictVisits(current);
+    ArriveDistrictVisits(config_, current);
     // THE YEAR'S HIGH-WATER MARK OF WORKED LAND, raised once a day. The
     // district's next norm comes off it (world_state.h), and it is a MAXIMUM
     // so that no single day's order can decide a year's figure.

@@ -4956,12 +4956,12 @@ int CheckDistrictVisits() {
       "visits: two days before June Karasev's regular visit is announced, once however often "
       "the day asks");
   day(kJuneFirst - 1U);
-  core::ArriveDistrictVisits(world);
+  core::ArriveDistrictVisits(config, world);
   failures +=
       Expect(world.district_visits.rows.size() == 1 && count(core::EventKind::kDistrictVisit) == 0,
              "visits: the day before, he has not arrived");
   day(kJuneFirst);
-  core::ArriveDistrictVisits(world);
+  core::ArriveDistrictVisits(config, world);
   core::DistrictVisitOutcome arrived;
   failures +=
       Expect(world.district_visits.rows.empty() && count(core::EventKind::kDistrictVisit) == 1 &&
@@ -4984,7 +4984,7 @@ int CheckDistrictVisits() {
   day(2U * core::kDaysPerYear);
   core::CallPlanFailedVisit(world);
   core::CallPlanFailedVisit(world);
-  core::ArriveDistrictVisits(world);
+  core::ArriveDistrictVisits(config, world);
   failures +=
       Expect(world.district_visits.rows.size() == 1 &&
                  world.district_visits.rows[0].face == core::DistrictFace::kKorenev &&
@@ -4994,7 +4994,7 @@ int CheckDistrictVisits() {
                  count(core::EventKind::kDistrictVisitAnnounced) == 0,
              "visits: a failed plan calls Korenev once, unannounced, not for today");
   day((2U * core::kDaysPerYear) + 1U);
-  core::ArriveDistrictVisits(world);
+  core::ArriveDistrictVisits(config, world);
   core::DistrictVisitOutcome korenev;
   failures +=
       Expect(world.district_visits.rows.empty() && count(core::EventKind::kDistrictVisit) == 1 &&
@@ -5009,7 +5009,7 @@ int CheckDistrictVisits() {
   config.district_visits.notice_days = 0;
   day(kJuneFirst);
   core::AnnounceRegularVisits(config, world);
-  core::ArriveDistrictVisits(world);
+  core::ArriveDistrictVisits(config, world);
   failures += Expect(world.step_events.size() == 2 &&
                          world.step_events[0].kind == core::EventKind::kDistrictVisitAnnounced &&
                          world.step_events[1].kind == core::EventKind::kDistrictVisit,
@@ -5020,6 +5020,82 @@ int CheckDistrictVisits() {
           core::SeniorOfChannel(core::DistrictFace::kPolushkina) == core::DistrictFace::kZhernova &&
           core::SeniorOfChannel(core::DistrictFace::kKorenev) == core::DistrictFace::kKorenev,
       "visits: a junior's senior is the senior of the channel");
+  return failures;
+}
+
+/// THE ACCUMULATION LIMIT (district §9; register 234; boss seq 76 and 81):
+/// named with the plan off (next year's seed + the figure + last year's eaten
+/// and fed) × the share, absent in the first year; a finance auditor finds a
+/// surplus above it and the district seizes it whole, reputation down; the
+/// agronomist does not count stores, and a store under the limit is clean.
+int CheckTheAccumulationLimit() {
+  int failures = 0;
+  constexpr core::Grams kTonne = core::kGramsPerTonne;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {100'000.0F};
+  core::CropDef rye;
+  rye.resource = core::ResourceId{0};
+  rye.yield_kg_per_ha = 1000.0F;
+  rye.sowing_norm_kg_per_ha = 100.0F;
+  config.crops = {rye};
+  config.plan_positions = {
+      core::ProductionConfig::PlanPosition{.crop = core::CropId{0}, .area_share = 0.5F}};
+  config.limit.accumulation_share = 1.5F;
+  config.limit.seizure_reputation_loss = 10.0F;
+
+  core::WorldState world;
+  core::FieldRow next_rye;
+  next_rye.kind = core::LandKind::kArable;
+  next_rye.area_ga = 10.0F;  // 1 t of seed next year
+  next_rye.rotation_assigned = 1;
+  next_rye.rotation_year1 = core::CropId{0};
+  core::AppendRow(world.fields, next_rye);
+  world.plan.due = {5 * kTonne};
+  world.ledger.closed.eaten = {3 * kTonne};
+  world.ledger.closed.feed = {1 * kTonne};
+
+  core::NameAccumulationLimit(config, world, true);
+  failures += Expect(world.plan.accumulation_limit.empty() || world.plan.accumulation_limit[0] == 0,
+                     "limit: the first year has none — the district has no book to size it");
+  core::NameAccumulationLimit(config, world, false);
+  // (1 seed + 5 figure + 3 eaten + 1 fed) × 1.5 = 15 t.
+  failures += Expect(
+      world.plan.accumulation_limit.size() == 1 && world.plan.accumulation_limit[0] == 15 * kTonne,
+      "limit: seed, figure, eaten and fed of the year gone, times the share");
+
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {14 * kTonne};
+  const core::UnitId barn_id = core::AppendRow(world.units, barn);
+  const auto visit_of = [](core::DistrictFace face) {
+    core::DistrictVisitRow row;
+    row.face = face;
+    row.kind = core::DistrictVisitKind::kRegular;
+    return row;
+  };
+  failures += Expect(core::InspectVisit(world, visit_of(core::DistrictFace::kPolushkina)).found ==
+                         core::DistrictVisitFinding::kNone,
+                     "limit: 14 t under a 15 t limit is clean");
+  world.units.rows[core::FindRow(world.units, barn_id)].stock = {20 * kTonne};
+  failures += Expect(core::InspectVisit(world, visit_of(core::DistrictFace::kPolushkina)).found ==
+                             core::DistrictVisitFinding::kDiscrepancy &&
+                         core::InspectVisit(world, visit_of(core::DistrictFace::kKarasev)).found ==
+                             core::DistrictVisitFinding::kNone,
+                     "limit: the finance auditor finds 5 t over; the agronomist counts no store");
+
+  world.chairman.raikom_reputation = 50.0F;
+  const core::Grams seized = core::SeizeAboveLimit(config, world);
+  failures += Expect(
+      seized == 5 * kTonne &&
+          world.units.rows[core::FindRow(world.units, barn_id)].stock[0] == 15 * kTonne &&
+          world.ledger.current.seized.size() == 1 && world.ledger.current.seized[0] == 5 * kTonne,
+      "limit: the surplus is seized whole and booked, the limit left standing");
+  failures += Expect(world.chairman.raikom_reputation == 40.0F,
+                     "limit: a seizure costs the raikom's reputation");
+  failures += Expect(world.plan.delivered.empty() || world.plan.delivered[0] == 0,
+                     "limit: what is seized is not delivered and pays no overfulfilment");
   return failures;
 }
 
@@ -5781,6 +5857,7 @@ int main() {
   failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
   failures += CheckDeliverPlanNow();
+  failures += CheckTheAccumulationLimit();
   failures += CheckTheMtsColumn();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();

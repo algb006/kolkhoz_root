@@ -52,9 +52,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 205) — a seventeenth column and a fifty-seventh field.
 // 2026-09-18 again, save 61: lost_to_snow, the standing crop the snow took —
 // an eighteenth column and a fifty-eighth field.
-static_assert(sizeof(YearLedger) == 208 + (18 * kAmountsSize),
+// Save 62: seized, what the district took above the accumulation limit — a
+// nineteenth column and a fifty-ninth field.
+static_assert(sizeof(YearLedger) == 208 + (19 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 58,
+static_assert(AggregateArity<YearLedger>() == 59,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -90,9 +92,10 @@ static_assert(AggregateArity<ChairmanState>() == 8,
 // this is the third time in two days that the count was the only one to see
 // a change. A size guessed from "a byte plus a float must be twelve" would
 // have been wrong here too, which is why it is measured and not reasoned.
-static_assert(sizeof(PlanState) == (2 * kAmountsSize) + 16,
+// 2026-09-18, save 62: the accumulation limit, a third amounts vector.
+static_assert(sizeof(PlanState) == (3 * kAmountsSize) + 16,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 8,
+static_assert(AggregateArity<PlanState>() == 9,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -259,6 +262,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.harvest);
   sink.WriteAmounts(DefKind::kResource, book.lost_no_room);
   sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
+  sink.WriteAmounts(DefKind::kResource, book.seized);        // save 62
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
@@ -330,6 +334,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.harvest = source.ReadAmounts(DefKind::kResource);
   book.lost_no_room = source.ReadAmounts(DefKind::kResource);
   book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
+  book.seized = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
   book.seed = source.ReadAmounts(DefKind::kResource);
   book.area_sown_ha = in.ReadFloat();
@@ -524,6 +529,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.issue_norms);
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
+  sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);  // save 62
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
   out.WriteU8(world.plan.failed_years_in_a_row);
   out.WriteU8(world.plan.met_years_in_a_row);
@@ -640,6 +646,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->issue_norms = source.ReadAmounts(DefKind::kResource);
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
+  world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
   world->plan.last_verdict =
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));
   world->plan.failed_years_in_a_row = in.ReadU8();

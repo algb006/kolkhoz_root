@@ -143,6 +143,9 @@ core::WorldState MakeWorld() {
   world.chairman.ration_auto = 0;     // save 57: off, against the struct's default on
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
+  // The accumulation limit (save 62): not empty, or a codec that forgot it
+  // would round-trip an empty vector perfectly.
+  world.plan.accumulation_limit = Amounts({15'000'000, 0, 4'000'000});
   // The district's verdict on the year and the two runs it keeps. Set to
   // three DIFFERENT values on purpose: equal ones would survive a codec that
   // wrote the same field three times.
@@ -498,6 +501,8 @@ core::WorldState MakeWorld() {
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // The standing crop the snow took (save 61): host's 150 t of potato.
   world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
+  // What the district seized above the limit (save 62).
+  world.ledger.closed.seized = Amounts({5'000'000});
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -711,6 +716,7 @@ core::WorldState MakeWitnessWorld() {
   witness.issue_norms = {500, 0, 1'500};
   witness.plan.due = Amounts({7'000'000, 250, 3});
   witness.plan.delivered = Amounts({11});
+  witness.plan.accumulation_limit = Amounts({0, 21'000'000});
   witness.plan.last_verdict = core::PlanVerdict::kFailed;
   witness.plan.failed_years_in_a_row = 2;
   witness.plan.met_years_in_a_row = 5;
@@ -796,6 +802,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
+  AppendAmounts(chunks, "plan.accumulation_limit", world.plan.accumulation_limit);  // save 62
   chunks.push_back({"plan.last_verdict", Enum8(world.plan.last_verdict)});
   chunks.push_back({"plan.failed_years_in_a_row", U8(world.plan.failed_years_in_a_row)});
   chunks.push_back({"plan.met_years_in_a_row", U8(world.plan.met_years_in_a_row)});
@@ -1006,7 +1013,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // issue norms, empty in this fixture (a 2-byte length). Predicted +3.
     // Save 60: +8 — the tally lost dry_months (1) and gained the month's open
     // leak (1), the vacancy (4) and the settlement's alcoholism (4).
-    {"world", 396, 0x333a6ca60c4614c5ULL},
+    // Save 62: +26 — the accumulation limit, three positions (2 + 3 x 8),
+    // predicted before the build.
+    {"world", 422, 0x0d939c567a3c71dfULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1068,7 +1077,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // the closed book's two positions (2 + 2 x 8).
     // Save 61: +20 again — lost_to_snow, the same shape, predicted before the
     // build and read off it.
-    {"ledger", 712, 0x3cc29da912b2a70eULL},
+    // Save 62: +12 — seized, the current book's empty column (2) and the
+    // closed book's one position (2 + 8), predicted before the build.
+    {"ledger", 724, 0x3c393ef48ebbaa4aULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1333,6 +1344,10 @@ int main() {
                      "the drink's price in kind comes back in the closed book (save 60)");
   failures += Expect(AmountAt(loaded.ledger.closed.lost_to_snow, 1) == 150'000'000,
                      "the standing crop the snow took comes back in the closed book (save 61)");
+  failures += Expect(AmountAt(loaded.ledger.closed.seized, 0) == 5'000'000 &&
+                         AmountAt(loaded.plan.accumulation_limit, 0) == 15'000'000 &&
+                         AmountAt(loaded.plan.accumulation_limit, 2) == 4'000'000,
+                     "the seizure and the accumulation limit come back (save 62)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.

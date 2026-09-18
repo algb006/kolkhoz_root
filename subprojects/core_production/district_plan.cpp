@@ -10,6 +10,7 @@
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "district_visit.h"
@@ -242,11 +243,61 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
                crop.resource,
                GramsFromKilograms(crop.yield_kg_per_ha * area * config.plan_grain_share));
   }
+  NameAccumulationLimit(config, current, first_year);
   // ANNOUNCED EVEN WHEN THE FIGURE IS ZERO, and that is the whole point of
   // the byte: a settlement that worked no land last year is one the
   // district HAS spoken to and asked nothing of, which is not the same
   // state as a world with no district in its tables (world_state.h).
   current.plan.announced = 1;
+}
+
+void NameAccumulationLimit(const ProductionConfig& config, WorldState& current, bool first_year) {
+  current.plan.accumulation_limit.assign(current.plan.accumulation_limit.size(), 0);
+  // THE FIRST YEAR HAS NO LIMIT, and that is a decision (boss seq 81): the
+  // district sizes it off the book of a year gone, and a first year has
+  // none — «год без памяти у района». Its plan is off the start stock anyway.
+  if (first_year || !(config.limit.accumulation_share > 0.0F)) {
+    return;
+  }
+  const YearLedger& book = current.ledger.closed;
+  const auto at = [](const ResourceAmounts& column, ResourceId resource) {
+    return resource.value < column.size() ? column[resource.value] : Grams{0};
+  };
+  // ON EVERY PRODUCE A PLAN CAN ASK FOR, not only this year's positions
+  // (district §9: «на все ресурсы, которые могут попасть в план»): the
+  // positions list is the district's roster, whatever this year's figure.
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (position.crop.value >= config.crops.size()) {
+      continue;
+    }
+    const ResourceId produce = config.crops[position.crop.value].resource;
+    if (produce.value == kInvalidDefIdValue || at(current.plan.accumulation_limit, produce) > 0) {
+      continue;  // two positions of one produce share one limit
+    }
+    // ROOMY BY CONSTRUCTION (§9: «зимовка, семенной фонд и резерв плана
+    // помещаются с запасом»): next year's seed of every field whose next slot
+    // grows this produce, this year's figure, and what the village ate and
+    // fed of it in the year gone — the wintering read off the book rather
+    // than off a second formula of rations — times a share above one.
+    Grams seed = 0;
+    for (const FieldRow& field : current.fields.rows) {
+      if (field.kind != LandKind::kArable || !HasRotation(field) ||
+          field.rotation_year1.value >= config.crops.size()) {
+        continue;
+      }
+      const CropDef& next = config.crops[field.rotation_year1.value];
+      if (next.resource.value == produce.value) {
+        seed += GramsFromKilograms(next.sowing_norm_kg_per_ha * field.area_ga);
+      }
+    }
+    const Grams base =
+        seed + at(current.plan.due, produce) + at(book.eaten, produce) + at(book.feed, produce);
+    const auto limit = static_cast<Grams>(std::llround(
+        static_cast<double>(base) * static_cast<double>(config.limit.accumulation_share)));
+    if (limit > 0) {
+      AddToStock(current.plan.accumulation_limit, produce, limit);
+    }
+  }
 }
 
 /// @brief The arable the village actually worked this year, in hectares —

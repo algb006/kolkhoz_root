@@ -518,6 +518,15 @@ struct PlanState {
   /// What has been delivered against `due` so far this year.
   ResourceAmounts delivered;
 
+  /// THE ACCUMULATION LIMIT (district §9 «Лимиты накопления»; register 234;
+  /// boss, 2026-09-18): how much of each plannable produce the kolkhoz may
+  /// hold in its stores, named with the plan in the spring. Dense by
+  /// ResourceId; 0 = no limit on it (the first year has none — the district
+  /// has no book of a year gone to size it from). A finance auditor's visit
+  /// seizes whatever stands above it (district_visit.cpp). Save 62. The plan
+  /// board shows it beside the stock, so the seizure can be foreseen.
+  ResourceAmounts accumulation_limit;
+
   /// The verdict on the year that closed last. kNone until the first one
   /// closes.
   PlanVerdict last_verdict = PlanVerdict::kNone;

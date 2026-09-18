@@ -218,9 +218,13 @@ int main(int argc, char** argv) {
     // What the distillers carried off the stores (crime design §7, 2026-09-15):
     // a road out of the world, named in the book as `stolen`.
     const core::Grams stolen = core::AmountOf(book.stolen, oat);
+    // What the district seized above the accumulation limit (district §9,
+    // save 62): a road out of the world opened on 2026-09-18, and this run
+    // was the first to see oats leave by it unnamed.
+    const core::Grams seized = core::AmountOf(book.seized, oat);
 
     const core::Grams expected =
-        opening + harvest - fed - eaten - spoiled - sown - shipped - lost_no_room - stolen;
+        opening + harvest - fed - eaten - spoiled - sown - shipped - lost_no_room - stolen - seized;
     const core::Grams residual = closing - expected;
     // A kilogram of one crop over a year of a whole settlement is the width
     // of the rounding, not of a leak.
@@ -261,6 +265,9 @@ int main(int argc, char** argv) {
               << std::setw(6) << demanding_days << "   сена " << Tonnes(hay_fed);
     if (demanding_days > 0) {
       std::cout << "  (days " << first_demand_day << "-" << last_demand_day << ")";
+    }
+    if (seized > 0) {
+      std::cout << "  изъято районом " << Tonnes(seized);
     }
     std::cout << '\n';
 

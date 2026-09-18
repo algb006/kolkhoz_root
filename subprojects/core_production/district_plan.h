@@ -78,6 +78,15 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current);
 /// nothing (ProductionConfig::first_plan_start_stock_share).
 void AnnouncePlan(const ProductionConfig& config, WorldState& current);
 
+/// @brief The accumulation limit, named with the plan (district §9; register
+/// 234): for every produce of the district's positions, `accumulation_share`
+/// × (next year's seed of the fields whose next slot grows it + this year's
+/// figure + last year's eaten and fed of it, off the closed book), into
+/// PlanState::accumulation_limit. Cleared first; left empty in the first
+/// year, which has no book of a year gone. Called by AnnouncePlan after the
+/// figure is set.
+void NameAccumulationLimit(const ProductionConfig& config, WorldState& current, bool first_year);
+
 /// @brief Reads the first plan's knobs: campaign.csv
 ///        `first_plan_start_stock_percent` and the start stock by resource
 ///        (start_stock.csv, amount x kg_per_unit, summed over places).

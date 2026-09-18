@@ -44,17 +44,27 @@ void AnnounceRegularVisits(const ProductionConfig& config, WorldState& current);
 void CallPlanFailedVisit(WorldState& current);
 
 /// @brief What a visit finds, computed on the day it arrives: the outcome the
-///        event carries. STUB: found is always kNone — the core keeps no books
-///        for a discrepancy to be in (boss, parcel 324) — and gift is kNone,
-///        as no gift visit is raised.
+///        event carries. A finance face (Polushkina, Zhernova) finds
+///        kDiscrepancy when any plannable produce stands in the stores above
+///        PlanState::accumulation_limit (district §9, 2026-09-18). Every other
+///        finding is STUB kNone — the accounts' wait for the books (characters
+///        §2) — and gift is kNone, as no gift visit is raised.
 DistrictVisitOutcome InspectVisit(const WorldState& current, const DistrictVisitRow& visit);
 
+/// @brief «Не сдал и попался» (district §9): takes every gram standing above
+///        the accumulation limit out of the stores, books it in
+///        YearLedger::seized, and lowers the raikom's reputation by the
+///        catalog's seizure loss once if anything was taken.
+/// @return Grams seized, all produce together.
+Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current);
+
 /// @brief At the day's first tick: every visit whose day has come is
-///        inspected (InspectVisit), raised as kDistrictVisit — kInterrupting
-///        when extraordinary, kNotable otherwise — and leaves the table. A
-///        regular visit that found anything calls the senior of its channel
-///        for tomorrow on DistrictVisitCause::kJuniorSignal.
-void ArriveDistrictVisits(WorldState& current);
+///        inspected (InspectVisit), a finance face's finding is seized on the
+///        spot (SeizeAboveLimit), the visit is raised as kDistrictVisit —
+///        kInterrupting when extraordinary, kNotable otherwise — and leaves the
+///        table. A regular visit that found anything calls the senior of its
+///        channel for tomorrow on DistrictVisitCause::kJuniorSignal.
+void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current);
 
 }  // namespace core
 
