@@ -129,6 +129,7 @@ check-tests:
 	@python3 scripts/check_includes.py
 	@python3 scripts/boundary_enums.py
 	@python3 scripts/check_tables_export.py
+	@python3 scripts/check_plan_positions.py
 	@python3 scripts/event_sites.py
 	@python3 scripts/check_manual_paths.py
 
