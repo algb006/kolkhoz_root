@@ -333,10 +333,18 @@ class ProductionSystem final : public IProductionSystem {
     // book is consumed at the top of this very call — and re-filled the next
     // morning at no cost at all. Against the year's maximum the same escape
     // costs the whole harvest (world_state.h).
+    //
+    // AND THE BASE ONLY GROWS (boss, register 222; econ's reading): against
+    // the year's maximum alone the escape cost ONE failed year, and then the
+    // plan was off for good — withdraw every chain, fail once, owe nothing
+    // ever after, which made «three failed years to the trial» unreachable
+    // (host measured it: no plan at all from day 144). District §9: «Недосев
+    // — способ провалить план, а не уменьшить его». A removed field does not
+    // lower it either; only the district writes arable off, and Epoch I has
+    // no such verb.
     const float worked_today = WorkedArableHa(current);
-    current.plan.worked_ha_last_year = worked_today > current.plan.worked_ha_this_year
-                                           ? worked_today
-                                           : current.plan.worked_ha_this_year;
+    const float year_max = std::max(worked_today, current.plan.worked_ha_this_year);
+    current.plan.worked_ha_last_year = std::max(current.plan.worked_ha_last_year, year_max);
     current.plan.worked_ha_this_year = worked_today;
     for (FieldRow& field : current.fields.rows) {
       if (field.kind != LandKind::kArable) {

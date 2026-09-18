@@ -3270,6 +3270,28 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
         Expect(turned.plan.worked_ha_last_year > 11.9F && turned.plan.worked_ha_last_year < 12.1F,
                "a chain withdrawn on the turn's own tick does not empty the year's figure: the "
                "district counts the LARGEST area the year held");
+
+    // -- AND A WHOLE YEAR RELEASED DOES NOT LOWER IT EITHER ----------------
+    //
+    // The escape that survived the yearly maximum: every chain withdrawn for
+    // a WHOLE year costs that year's harvest and one failed plan, and then
+    // the district asked nothing for ever (host, 0.32.4: no plan from day
+    // 144). The base only grows (register 222). Twenty hectares on the books,
+    // a year that worked none: the base stays twenty.
+    core::WorldState idle_year = previous;
+    idle_year.plan.worked_ha_last_year = 20.0F;
+    idle_year.plan.worked_ha_this_year = 0.0F;
+    for (core::FieldRow& field : idle_year.fields.rows) {
+      field.rotation_assigned = 0;
+    }
+    core::WorldState idle_turned = idle_year;
+    idle_turned.calendar.tick += 1;
+    core::RefreshCalendarCaches(idle_turned.calendar);
+    system->RunProductionDecisions(idle_year, idle_turned);
+    failures += Expect(idle_turned.plan.worked_ha_last_year > 19.9F &&
+                           idle_turned.plan.worked_ha_last_year < 20.1F,
+                       "a year with every chain withdrawn does not lower the plan's base: "
+                       "sowing less fails the plan, it does not shrink it");
   }
 
   // -- a year delivered in full ---------------------------------------------

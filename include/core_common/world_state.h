@@ -580,6 +580,13 @@ struct PlanState {
   /// must cost something, and against a yearly maximum it costs the whole
   /// harvest: the fields have to stay released all year for the figure to
   /// fall.
+  ///
+  /// AND SINCE 2026-09-18 IT DOES NOT FALL AT ALL: the base is the larger of
+  /// itself and the year's maximum (register 222). The yearly maximum made
+  /// the escape cost one failed year and then switched the plan off for good;
+  /// «недосев — способ провалить план, а не уменьшить его» (district §9)
+  /// needs a base that sowing less cannot lower. Only the district writes
+  /// arable off, and Epoch I has no such verb — a removed field stays on it.
   float worked_ha_last_year = 0.0F;
 
   /// The largest worked arable seen so far THIS year, in hectares — the
