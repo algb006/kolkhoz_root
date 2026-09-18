@@ -1942,6 +1942,92 @@ int CheckRawMaterialLeak() {
   return failures;
 }
 
+/// THE READING HUT (lever ②; crime §6; econ §2.2; boss seq 129-133): open
+/// only with its librarian; in a winter month it takes the idle man's gain
+/// off and a goer's −1 on — and one «goes» a month, not two.
+int CheckTheReadingHut(core::SportConfig sport) {
+  int failures = 0;
+  sport.culture_house_type = core::UnitTypeId{9};
+  core::WorldState world;
+  core::FamilyRow yard;
+  yard.in_tent = 1;
+  yard.lost_house_position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  yard.satisfaction = 55.0F;
+  const core::FamilyId family = core::AppendRow(world.families, yard);
+  core::UnitRow stadium;  // far away unless a case moves it near
+  stadium.type = sport.stadium_type;
+  stadium.position = core::Vec2{.x = 5000.0F, .y = 0.0F};
+  core::AppendRow(world.units, stadium);
+  core::UnitRow hut;
+  hut.type = core::UnitTypeId{9};
+  hut.level = 1;
+  hut.position = core::Vec2{.x = 900.0F, .y = 0.0F};
+  const core::UnitId hut_id = core::AppendRow(world.units, hut);
+  core::ResidentRow man;
+  man.sex = core::Sex::kMale;
+  man.family = family;
+
+  // -- reach: open only with its librarian ----------------------------------
+  failures += Expect(!core::ReachesTheHut(sport, world, man),
+                     "hut: without its librarian the hut is an empty frame");
+  core::ResidentRow librarian;
+  librarian.family = family;
+  librarian.post = core::PostAssignment{.profession = core::ProfessionId{1}, .unit = hut_id};
+  core::AppendRow(world.residents, librarian);
+  failures += Expect(core::ReachesTheHut(sport, world, man),
+                     "hut: with its librarian, 900 m away, it is within reach");
+  world.units.rows[1].position = core::Vec2{.x = 1500.0F, .y = 0.0F};
+  failures += Expect(!core::ReachesTheHut(sport, world, man), "hut: nor beyond the evening's walk");
+  world.units.rows[1].position = core::Vec2{.x = 900.0F, .y = 0.0F};
+
+  // -- the winter turn (day 48: December closed), hut against none ----------
+  struct Case {
+    bool hut = false;
+    bool staffed = true;
+    bool field = false;
+    std::int32_t age_years = 35;
+    std::uint8_t days_worked = 0;
+  };
+
+  const auto turn = [&sport, &world](const Case& c) {
+    core::WorldState month = world;
+    month.units.rows[1].level = c.hut ? 1 : 0;
+    if (!c.staffed) {
+      month.residents.rows[0].post = core::PostAssignment{};
+    }
+    month.units.rows[0].position = core::Vec2{.x = c.field ? 900.0F : 5000.0F, .y = 0.0F};
+    month.sport_month.open_days = c.field ? 2 : 0;
+    month.calendar.tick = core::kDaysPerYear * static_cast<core::Tick>(core::kTicksPerDay);
+    core::RefreshCalendarCaches(month.calendar);
+    core::ResidentRow person;
+    person.sex = core::Sex::kMale;
+    person.family = month.families.row_ids[0];
+    // Biological years at a life speed of 4: twelve days a year.
+    person.birth_day = static_cast<std::int32_t>(core::kDaysPerYear) - (c.age_years * 12);
+    person.alcoholism = 18.0F;
+    person.days_worked_this_month = c.days_worked;
+    core::AppendRow(month.residents, person);
+    const core::AlcoholismConfig config;
+    const core::NightTradeConfig night;
+    core::TurnAlcoholismMonth(config, night, sport, 4.0F, month);
+    return month.residents.rows[1].alcoholism;
+  };
+  const core::AlcoholismConfig config;
+  failures += Expect(turn({.hut = true}) == turn({}) - config.gain_winter_idle,
+                     "hut: an idle man within reach loses the winter's idle gain");
+  failures += Expect(turn({.hut = true, .staffed = false}) == turn({}),
+                     "hut: a hut without its librarian changes nobody's winter");
+  failures += Expect(turn({.hut = true, .age_years = 20}) ==
+                         turn({.age_years = 20}) - config.gain_winter_idle - sport.hut_alcohol_loss,
+                     "hut: a young sober idle goer loses the idle gain and one more");
+  failures += Expect(turn({.hut = true, .days_worked = 3}) == turn({.days_worked = 3}),
+                     "hut: a working man who does not go is not touched by it");
+  failures += Expect(
+      turn({.hut = true, .field = true, .age_years = 20}) == turn({.hut = true, .age_years = 20}),
+      "hut: field and hut in one month — one «goes», the losses do not add");
+  return failures;
+}
+
 /// The drinking (crime design §6; boss, parcels 364 and 370): the month's
 /// change by supply, winter idleness, an unhappy yard, work, a post and a
 /// wife; men only; the cap; the crossings both ways; the counter
@@ -2033,12 +2119,19 @@ int CheckTheSportsField() {
   failures += Expect(turn(false, 35.0F).first == plain - 1.0F,
                      "field month: sportiness of thirty takes one more off, field or not");
   failures += Expect(cleared == 0, "field month: the month's open days are cleared at its turn");
+  failures += CheckTheReadingHut(sport);
   return failures;
 }
 
 int CheckAlcoholism() {
   int failures = 0;
-  const core::AlcoholismConfig config;  // boss's numbers
+  // The rule in whole numbers — the +2, +1 and −1 of parcel 364, before
+  // econ's halves (seq 130) — so every sum below reads in integers; the rule
+  // is what is tested, and the halves are only its knobs.
+  core::AlcoholismConfig config;
+  config.gain_with_distiller = 2.0F;
+  config.gain_winter_idle = 1.0F;
+  config.loss_married = 1.0F;
   // The distillers' reach and purchase at their defaults; no raw material
   // named, so this test buys nothing (the purchase has its own below).
   const core::NightTradeConfig night;
@@ -2214,7 +2307,10 @@ int CheckAlcoholism() {
 /// 1000 m has no samogon; the settlement's alcoholism crosses its lines.
 int CheckSamogonPurchase() {
   int failures = 0;
-  const core::AlcoholismConfig config;
+  // Whole numbers, as in CheckAlcoholism: +2 supply, +1 winter idleness.
+  core::AlcoholismConfig config;
+  config.gain_with_distiller = 2.0F;
+  config.gain_winter_idle = 1.0F;
   // Defaults: reach 1000 m, 3 kg for a drinker and 8 kg for an abuser.
   core::NightTradeConfig night;
   night.raw_material = {core::ResourceId{0}, core::ResourceId{1}};  // grain, potato

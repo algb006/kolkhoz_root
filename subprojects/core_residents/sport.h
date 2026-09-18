@@ -13,6 +13,16 @@
 /// himself, when a stadium of step 1 or more stands within `field_radius_m`
 /// of his home. The chairman's talk (lever ③) will add the others. The rest
 /// of the hidden urge to train (metrics §2) has no numbers and is not built.
+///
+/// THE READING HUT (lever ②; register 223; crime §6; econ §2.2; boss seq
+/// 129): a `culture_house` of step 1 or more within `hut_radius_m` of a
+/// man's home, in a winter month (December to February), takes the winter
+/// idleness +1 off him, and −`hut_alcohol_loss` off a goer — the same goer as
+/// the field's, measured from the hut. The hut is open every evening: no
+/// weather, no open days. It grows no sportiness — it is not sport. One
+/// «goes» per month: the field's and the hut's losses do not add up.
+/// The hut is open only while somebody holds its post — its librarian (boss
+/// seq 133: «без человека изба — пустой сруб»); the stadium needs no one.
 
 #ifndef CORE_RESIDENTS_SPORT_H_
 #define CORE_RESIDENTS_SPORT_H_
@@ -46,6 +56,9 @@ struct SportConfig {
   float decay_old_extra = 1.0F;          ///< `sportiness_decay_old_extra`
   float sober_from = 30.0F;              ///< `sportiness_sober_from`
   float sportiness_alcohol_loss = 1.0F;  ///< `sportiness_alcohol_loss`
+  UnitTypeId culture_house_type;         ///< unit_types.csv "culture_house"
+  float hut_radius_m = 1000.0F;          ///< `reading_hut_radius_m`
+  float hut_alcohol_loss = 1.0F;         ///< `reading_hut_alcohol_loss`
 };
 
 /// @brief The world_params.csv keys this file reads.
@@ -72,6 +85,15 @@ bool GoesToTheField(const SportConfig& config,
                     const WorldState& world,
                     const ResidentRow& person,
                     float age_years);
+
+/// @brief Whether an open reading hut (culture_house, step 1 or more, its
+/// post held) stands within `hut_radius_m` of this resident's home. False
+/// with no home. Scans the residents for the post: called monthly.
+bool ReachesTheHut(const SportConfig& config, const WorldState& world, const ResidentRow& person);
+
+/// @brief Whether this resident goes by himself, to the field or the hut:
+/// under `goer_age_max` years and at or under `goer_alcohol_max` (@file).
+bool GoesBySelf(const SportConfig& config, const ResidentRow& person, float age_years);
 
 /// @brief The month's sportiness for a resident of 16 and over: +gain_goer
 /// if he went (× gain_drinker_share above `drinker_above` alcoholism), else

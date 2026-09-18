@@ -11,13 +11,18 @@
 /// WHAT DECIDES, in boss's numbers (assigned, not measured), for every MAN of
 /// 16 and older, at the first day of the month, of the month that closed —
 /// a woman has no such metric and stays at 0 (boss, 2026-09-18):
-///   * up +2 when the village has a distiller (the supply);
-///   * up +1 in a winter month (December to February) for one who had not a
-///     single day of work in it (idleness and winter);
+///   * up +0.5 when the village has a distiller (the supply);
+///   * up +0.5 in a winter month (December to February) for one who had not a
+///     single day of work in it (idleness and winter) — unless an open
+///     reading hut is within his reach (sport.h);
 ///   * up +1 when his family's satisfaction is under 40;
 ///   * down −1 when he holds a post or worked at least 3 of the month's 4 days
 ///     (the design's "two thirds of the working days");
-///   * down −1 when he is married;
+///   * down −0.5 when he is married;
+///   * the three halves are econ's rebalance (seq 130, boss seq 132): at +2,
+///     +1 and −1 the building village drank itself up (≈32 → 34–43 over two
+///     years), against the human's «сам по себе алкоголизм снижается
+///     медленно»;
 ///   * down −1 when the village has turned without a distiller for the second
 ///     month running or longer — the human's word, 2026-09-18: «Если люди
 ///     долго не пьют то алкоголизм медленно уменьшается». The count is
@@ -29,7 +34,7 @@
 /// — are a door of their own; company, shocks and tradition (weddings,
 /// wakes, the harvest's end) do not move the metric yet; the chairman's
 /// attention and treatment do not lower it. The one way the chairman lowers
-/// it is the supply: a distiller taken (kTakeNightTrader) and the +2 goes
+/// it is the supply: a distiller taken (kTakeNightTrader) and the +0.5 goes
 /// when the LAST one does — and comes back at the year's turn.
 
 #ifndef CORE_RESIDENTS_ALCOHOLISM_H_
@@ -47,16 +52,17 @@
 namespace core {
 
 /// @brief The drinking numbers (world_params.csv). Defaults are boss's
-/// figures of parcel 364, kept for a world with no tables.
+/// figures of parcel 364 with econ's three halves (seq 130), kept for a
+/// world with no tables.
 struct AlcoholismConfig {
   float adult_from_years = 16.0F;        ///< `alcohol_adult_from_years`
-  float gain_with_distiller = 2.0F;      ///< `alcohol_gain_with_distiller`
-  float gain_winter_idle = 1.0F;         ///< `alcohol_gain_winter_idle`
+  float gain_with_distiller = 0.5F;      ///< `alcohol_gain_with_distiller`
+  float gain_winter_idle = 0.5F;         ///< `alcohol_gain_winter_idle`
   float gain_low_satisfaction = 1.0F;    ///< `alcohol_gain_low_satisfaction`
   float low_satisfaction_below = 40.0F;  ///< `alcohol_low_satisfaction_below`
   float loss_employed = 1.0F;            ///< `alcohol_loss_employed`
   float employed_days_min = 3.0F;        ///< `alcohol_employed_days_min`, of the month's days
-  float loss_married = 1.0F;             ///< `alcohol_loss_married`
+  float loss_married = 0.5F;             ///< `alcohol_loss_married`
   float loss_sober = 1.0F;               ///< `alcohol_loss_sober`
   float sober_months_min = 2.0F;         ///< `alcohol_sober_months_min`
   float epoch1_cap = 60.0F;              ///< `alcohol_epoch1_cap`

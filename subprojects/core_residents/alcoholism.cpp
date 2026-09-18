@@ -186,6 +186,20 @@ float MonthChange(const AlcoholismConfig& config,
   return change;
 }
 
+/// THE READING HUT (sport.h; lever ②): a winter month's goer within reach
+/// of an open hut drinks less — but one «goes» a month, so the field's and
+/// the hut's losses never add up. (The hut's other half, the idle man's
+/// winter gain taken off, is the caller's `winter && !hut_reached`.)
+float GoerLoss(const SportConfig& sport,
+               const ResidentRow& person,
+               float age_years,
+               bool went_to_field,
+               bool hut_reached) {
+  const bool went_to_hut = hut_reached && GoesBySelf(sport, person, age_years);
+  return std::max(went_to_field ? sport.field_alcohol_loss : 0.0F,
+                  went_to_hut ? sport.hut_alcohol_loss : 0.0F);
+}
+
 }  // namespace
 
 std::span<const std::string_view> AlcoholismWorldParamKeys() {
@@ -252,7 +266,8 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
     // sportiness stood at, before either moves (sport.h).
     const bool adult = age_years >= config.adult_from_years;
     const bool went = adult && field_month && GoesToTheField(sport, current, person, age_years);
-    const float field_loss = went ? sport.field_alcohol_loss : 0.0F;
+    const bool hut_reached = adult && winter && ReachesTheHut(sport, current, person);
+    const float field_loss = GoerLoss(sport, person, age_years, went, hut_reached);
     const float sportiness_loss =
         adult && person.sportiness >= sport.sober_from ? sport.sportiness_alcohol_loss : 0.0F;
     if (adult) {
@@ -282,7 +297,7 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
                                        person,
                                        distiller != kNoRow,
                                        sober_yard,
-                                       winter,
+                                       winter && !hut_reached,
                                        field_loss,
                                        sportiness_loss);
       person.alcoholism = std::clamp(before + change, kMetricMin, config.epoch1_cap);

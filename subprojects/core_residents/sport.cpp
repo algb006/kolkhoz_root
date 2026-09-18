@@ -17,7 +17,7 @@
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 14> kSportWorldParamKeys = {"sport_field_radius_m",
+constexpr std::array<std::string_view, 16> kSportWorldParamKeys = {"sport_field_radius_m",
                                                                    "sport_open_temp_c",
                                                                    "sport_open_days_min",
                                                                    "sport_goer_age_max",
@@ -30,7 +30,47 @@ constexpr std::array<std::string_view, 14> kSportWorldParamKeys = {"sport_field_
                                                                    "sportiness_decay_old_from",
                                                                    "sportiness_decay_old_extra",
                                                                    "sportiness_sober_from",
-                                                                   "sportiness_alcohol_loss"};
+                                                                   "sportiness_alcohol_loss",
+                                                                   "reading_hut_radius_m",
+                                                                   "reading_hut_alcohol_loss"};
+
+/// Someone holds a post at this unit — for the hut, its librarian, the one
+/// post of its staff (unit_staff.csv).
+bool IsStaffed(const WorldState& world, UnitId unit) {
+  return std::ranges::any_of(world.residents.rows, [unit](const ResidentRow& resident) {
+    return resident.post.unit.value == unit.value;
+  });
+}
+
+/// A unit of `type`, step 1 or more, within `radius_m` of the man's home;
+/// with `staffed`, only one somebody holds a post at.
+bool BuiltWithinReach(const WorldState& world,
+                      const ResidentRow& person,
+                      UnitTypeId type,
+                      float radius_m,
+                      bool staffed) {
+  if (type.value == kInvalidDefIdValue) {
+    return false;
+  }
+  Vec2 home;
+  if (!HomePositionOf(world, person.family, home)) {
+    return false;
+  }
+  const float radius_sq = radius_m * radius_m;
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.type.value != type.value || unit.level == 0) {
+      continue;
+    }
+    const float dx = unit.position.x - home.x;
+    const float dy = unit.position.y - home.y;
+    if ((dx * dx) + (dy * dy) <= radius_sq &&
+        (!staffed || IsStaffed(world, world.units.row_ids[row]))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 }  // namespace
 
@@ -41,6 +81,8 @@ std::span<const std::string_view> SportWorldParamKeys() {
 bool ParseSportConfig(const ITableSet& tables, SportConfig& config, std::string& error) {
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
     config.stadium_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("stadium"));
+    config.culture_house_type =
+        DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("culture_house"));
   }
   const ITable* const world = tables.FindTable("world_params");
   if (world == nullptr) {
@@ -74,6 +116,10 @@ bool ParseSportConfig(const ITableSet& tables, SportConfig& config, std::string&
       {.key = kSportWorldParamKeys[11], .value = &config.decay_old_extra, .range = points},
       {.key = kSportWorldParamKeys[12], .value = &config.sober_from, .range = points},
       {.key = kSportWorldParamKeys[13], .value = &config.sportiness_alcohol_loss, .range = points},
+      {.key = kSportWorldParamKeys[14],
+       .value = &config.hut_radius_m,
+       .range = {.low = 0.0F, .high = 20000.0F}},
+      {.key = kSportWorldParamKeys[15], .value = &config.hut_alcohol_loss, .range = points},
   }};
   return ReadKnobs(*world, "world_params", knobs, error);
 }
@@ -97,23 +143,16 @@ bool GoesToTheField(const SportConfig& config,
                     const WorldState& world,
                     const ResidentRow& person,
                     float age_years) {
-  if (age_years >= config.goer_age_max || person.alcoholism > config.goer_alcohol_max ||
-      config.stadium_type.value == kInvalidDefIdValue) {
-    return false;
-  }
-  Vec2 home;
-  if (!HomePositionOf(world, person.family, home)) {
-    return false;
-  }
-  const float radius_sq = config.field_radius_m * config.field_radius_m;
-  return std::ranges::any_of(world.units.rows, [&](const UnitRow& unit) {
-    if (unit.type.value != config.stadium_type.value || unit.level == 0) {
-      return false;
-    }
-    const float dx = unit.position.x - home.x;
-    const float dy = unit.position.y - home.y;
-    return (dx * dx) + (dy * dy) <= radius_sq;
-  });
+  return GoesBySelf(config, person, age_years) &&
+         BuiltWithinReach(world, person, config.stadium_type, config.field_radius_m, false);
+}
+
+bool ReachesTheHut(const SportConfig& config, const WorldState& world, const ResidentRow& person) {
+  return BuiltWithinReach(world, person, config.culture_house_type, config.hut_radius_m, true);
+}
+
+bool GoesBySelf(const SportConfig& config, const ResidentRow& person, float age_years) {
+  return age_years < config.goer_age_max && person.alcoholism <= config.goer_alcohol_max;
 }
 
 void TurnSportiness(const SportConfig& config, bool went, float age_years, ResidentRow& person) {
