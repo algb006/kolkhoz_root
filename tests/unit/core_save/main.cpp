@@ -503,6 +503,9 @@ core::WorldState MakeWorld() {
   world.night_theft.stolen_this_month = 73'000;
   world.night_theft.month_index = 17;
   world.night_theft.complaint_raised = 1;
+  // Months without a distiller (save format 55): not 0, so the round trip
+  // can tell the field from a byte nobody wrote.
+  world.night_theft.dry_months = 5;
   // The district MTS's column (save format 46): every field set apart.
   world.mts_column.phase = core::MtsColumnPhase::kWorking;
   world.mts_column.lot = core::LimitLotId{1};
@@ -698,6 +701,7 @@ core::WorldState MakeWitnessWorld() {
   witness.night_theft.stolen_this_month = 4500;
   witness.night_theft.month_index = 17;
   witness.night_theft.complaint_raised = 1;
+  witness.night_theft.dry_months = 7;
 
   witness.mts_column.phase = core::MtsColumnPhase::kWorking;
   witness.mts_column.lot = core::LimitLotId{1};
@@ -778,6 +782,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
                     Little(static_cast<std::uint64_t>(world.night_theft.stolen_this_month), 8)});
   chunks.push_back({"night_theft.month_index", U32(world.night_theft.month_index)});
   chunks.push_back({"night_theft.complaint_raised", U8(world.night_theft.complaint_raised)});
+  chunks.push_back({"night_theft.dry_months", U8(world.night_theft.dry_months)});
 
   chunks.push_back({"mts_column.phase", Enum8(world.mts_column.phase)});
   chunks.push_back({"mts_column.lot", U16(world.mts_column.lot.value)});
@@ -949,7 +954,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // rather than the last one. +13 bytes.
     // 2026-09-17, save 54: `measured` split off `available`, one byte per
     // component. +8 bytes.
-    {"world", 381, 0xc6e3d1353fe08fe4ULL},
+    // 2026-09-18, save 55: +1 — the months the village has gone without a
+    // distiller, the clock of the sobriety the human asked for.
+    {"world", 382, 0x311e25932e0581a3ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -973,7 +980,10 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // two bytes of the six orders changed. VERSION_SAVE does not move for it:
     // an appended enumerator widens a range that old saves were already
     // inside, and nothing in the record grew or shrank.
-    {"orders", 464, 0x471b559e1bff628bULL},
+    // A fifth, 2026-09-18: kTakeNightTrader became the last OrderKind — the
+    // first way out of a night trade. Same 464 bytes, same reason, same save
+    // number.
+    {"orders", 464, 0x6ef6ab9c15aa596aULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
@@ -1399,6 +1409,8 @@ int main() {
                  loaded.night_theft.stolen_this_month == 73'000 &&
                  loaded.night_theft.month_index == 17 && loaded.night_theft.complaint_raised == 1,
              "the stolen and the distillers' month came back, each its own number");
+  failures += Expect(loaded.night_theft.dry_months == 5,
+                     "the months without a distiller came back (save format 55)");
   failures +=
       Expect(loaded.mts_column.phase == core::MtsColumnPhase::kWorking &&
                  loaded.mts_column.lot.value == 1 && loaded.mts_column.arrive_day == 110 &&

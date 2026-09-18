@@ -128,9 +128,11 @@ static_assert(AggregateArity<LimitState>() == 2,
 // struct has three bytes of it after `complaint_raised` — exactly the hole
 // `rotation_skips_turn` slipped into in save_rows.cpp, where the size said
 // "nothing changed" about a byte that had. The arity asks the other question.
+// And it asked it on 2026-09-18, save 55, when `dry_months` went into that
+// very padding: the size stayed 16, the arity went red, alone.
 static_assert(sizeof(NightTheftTally) == 16,
               "NightTheftTally changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<NightTheftTally>() == 3,
+static_assert(AggregateArity<NightTheftTally>() == 4,
               "NightTheftTally gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(MtsColumnState) == 24,
               "MtsColumnState changed — update the codec and VERSION_SAVE");
@@ -517,6 +519,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU64(static_cast<std::uint64_t>(world.night_theft.stolen_this_month));
   out.WriteU32(world.night_theft.month_index);
   out.WriteU8(world.night_theft.complaint_raised);
+  // Months without a distiller (save format 55): the sobriety's clock.
+  out.WriteU8(world.night_theft.dry_months);
 
   // The district MTS's column of this season (MTS design §1, save format 46).
   out.WriteU8(static_cast<std::uint8_t>(world.mts_column.phase));
@@ -609,6 +613,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->night_theft.stolen_this_month = static_cast<Grams>(in.ReadU64());
   world->night_theft.month_index = in.ReadU32();
   world->night_theft.complaint_raised = in.ReadU8();
+  world->night_theft.dry_months = in.ReadU8();
 
   world->mts_column.phase = static_cast<MtsColumnPhase>(
       source.ReadEnumValue(0,

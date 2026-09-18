@@ -318,6 +318,9 @@ class ResidentsSystem final : public IResidentsSystem {
   /// the exchange counts eaters and hands out food, and the vitals window
   /// closes the day last, over the settlement demography has just finalized.
   void RunDemographyDecisions(const WorldState& previous, WorldState& current) override {
+    // The chairman's word on a trader first, in whatever hour it came: a man
+    // taken in the hour back carries nothing home (night_trade.h).
+    ConsumeNightTradeOrders(current);
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
     RunNightOutings(config_.night_trade, current);

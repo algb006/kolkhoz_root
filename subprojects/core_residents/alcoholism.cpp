@@ -19,7 +19,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 10> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 11> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -28,7 +28,8 @@ constexpr std::array<std::string_view, 10> kAlcoholismWorldParamKeys = {
     "alcohol_loss_employed",
     "alcohol_employed_days_min",
     "alcohol_loss_married",
-    "alcohol_women_factor",
+    "alcohol_loss_sober",
+    "alcohol_sober_months_min",
     "alcohol_epoch1_cap"};
 
 /// The width of a band (crime design §6: 0-20, 20-40, 40-60, 60-80, 80-100).
@@ -48,11 +49,12 @@ bool VillageHasDistiller(const WorldState& current) {
   });
 }
 
-/// The month's change for one adult, before the women's factor.
+/// The month's change for one adult man.
 float MonthChange(const AlcoholismConfig& config,
                   const WorldState& current,
                   const ResidentRow& person,
                   bool distiller,
+                  bool sober_village,
                   bool winter) {
   const bool holds_post = person.post.profession.value != kInvalidDefIdValue;
   float change = distiller ? config.gain_with_distiller : 0.0F;
@@ -71,6 +73,9 @@ float MonthChange(const AlcoholismConfig& config,
   }
   if (person.spouse.value != kInvalidEntityIdValue) {
     change -= config.loss_married;
+  }
+  if (sober_village) {
+    change -= config.loss_sober;
   }
   return change;
 }
@@ -104,10 +109,11 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
        .value = &config.employed_days_min,
        .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerMonth)}},
       {.key = kAlcoholismWorldParamKeys[7], .value = &config.loss_married, .range = points},
-      {.key = kAlcoholismWorldParamKeys[8],
-       .value = &config.women_factor,
-       .range = {.low = 0.0F, .high = 1.0F}},
-      {.key = kAlcoholismWorldParamKeys[9], .value = &config.epoch1_cap, .range = points},
+      {.key = kAlcoholismWorldParamKeys[8], .value = &config.loss_sober, .range = points},
+      {.key = kAlcoholismWorldParamKeys[9],
+       .value = &config.sober_months_min,
+       .range = {.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)}},
+      {.key = kAlcoholismWorldParamKeys[10], .value = &config.epoch1_cap, .range = points},
   }};
   return ReadKnobs(*world, "world_params", knobs, error);
 }
@@ -127,14 +133,28 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config, float life_speedup, Wor
   const std::uint32_t month_index = ((day / kDaysPerMonth) + kMonthsPerYear - 1U) % kMonthsPerYear;
   const bool winter = IsWinterMonth(static_cast<Month>(month_index));
   const bool distiller = VillageHasDistiller(current);
+  // The supply is read at the turn, and so is its absence: a month counts
+  // as dry when the turn that closes it finds no distiller, the same moment
+  // the +2 is decided on, so the two can never disagree about one month.
+  std::uint8_t& dry = current.night_theft.dry_months;
+  if (distiller) {
+    dry = 0;
+  } else if (dry < UINT8_MAX) {
+    ++dry;
+  }
+  const bool sober_village = static_cast<float>(dry) >= config.sober_months_min;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     ResidentRow& person = current.residents.rows[row];
     const float age_years = BiologicalAgeYears(life_speedup, person.birth_day, day);
-    if (age_years >= config.adult_from_years) {
-      float change = MonthChange(config, current, person, distiller, winter);
-      if (person.sex == Sex::kFemale) {
-        change *= config.women_factor;
-      }
+    // MEN ONLY: «пьют мужчины», and a woman has no such metric at all (crime
+    // design §6; boss, 2026-09-18). Until that day a woman's change was a
+    // quarter of a man's — the numbers table contradicted its own section,
+    // and the section was right. Her value stays at nought, and is written
+    // so, not merely left: a save made before carries what the old rule gave.
+    if (person.sex != Sex::kMale) {
+      person.alcoholism = kMetricMin;
+    } else if (age_years >= config.adult_from_years) {
+      const float change = MonthChange(config, current, person, distiller, sober_village, winter);
       const float before = person.alcoholism;
       person.alcoholism = std::clamp(before + change, kMetricMin, config.epoch1_cap);
       const int band = AlcoholismBand(person.alcoholism);

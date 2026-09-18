@@ -1741,7 +1741,7 @@ int CheckRawMaterialLeak() {
 
 /// The drinking (crime design §6; boss, parcels 364 and 370): the month's
 /// change by supply, winter idleness, an unhappy yard, work, a post and a
-/// wife; a woman's quarter; the cap; the crossings both ways; the counter
+/// wife; men only; the cap; the crossings both ways; the counter
 /// cleared; a child untouched; nothing on a day that is not a month's first.
 int CheckAlcoholism() {
   int failures = 0;
@@ -1815,9 +1815,10 @@ int CheckAlcoholism() {
                      "drinking: supply and an idle winter month take a single man over 20");
   failures += Expect(row_of(husband).alcoholism == 0.0F && crossings(husband).empty(),
                      "drinking: a married man who worked 3 of 4 days holds against the supply");
-  // +2 supply, +1 an unhappy yard, -1 four days worked, times a quarter.
-  failures += Expect(row_of(woman).alcoholism == 10.5F,
-                     "drinking: a woman moves by a quarter of a man's change");
+  // +2 supply, +1 an unhappy yard, -1 four days worked would be +2 for a man;
+  // she has no such metric, and the 10 an older rule gave her is written back.
+  failures += Expect(row_of(woman).alcoholism == 0.0F && crossings(woman).empty(),
+                     "drinking: a woman has no alcoholism at all, whatever her month");
   // A post keeps him from idleness: +2 -1 = +1, and 60.8 stops at the cap.
   failures += Expect(row_of(watchman).alcoholism == 60.0F && crossings(watchman).size() == 1 &&
                          crossings(watchman)[0] == 60,
@@ -1846,6 +1847,107 @@ int CheckAlcoholism() {
                          crossings(watchman)[0] == 40,
                      "drinking: a crossing downward is said with the band he is in now");
   failures += Expect(row_of(husband).alcoholism == 0.0F, "drinking: never below zero");
+  failures += Expect(world.night_theft.dry_months == 1,
+                     "sobriety: the first turn without a distiller counts one dry month");
+
+  // March's first day, still no distiller: the SECOND dry month, and the
+  // human's word applies — «если люди долго не пьют, алкоголизм медленно
+  // уменьшается».
+  world.step_events.clear();
+  row_of(drinking_husband).days_worked_this_month = 3;
+  world.calendar.tick =
+      static_cast<core::Tick>(kJanuaryFirst + (2U * core::kDaysPerMonth)) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  failures +=
+      Expect(world.night_theft.dry_months == 2, "sobriety: the second turn without one counts two");
+  // -1 work, -1 wife, -1 sober: 38.5 to 35.5.
+  failures += Expect(row_of(drinking_husband).alcoholism == 35.5F,
+                     "sobriety: from the second dry month a working husband loses three");
+  // A post holder, single: -1 the post, -1 sober — 59 to 57.
+  failures += Expect(row_of(watchman).alcoholism == 57.0F,
+                     "sobriety: from the second dry month a single post holder loses two");
+  // An idle bachelor: February closed is a winter month, +1 idle, -1 sober —
+  // 22 stays 22. Winter idleness and a dry village cancel.
+  failures += Expect(row_of(distiller).alcoholism == 22.0F,
+                     "sobriety: an idle winter month and a dry village cancel");
+
+  // April: a distiller again, and the clock starts from nought.
+  row_of(watchman).night_trade = core::NightTrade::kDistiller;
+  world.calendar.tick =
+      static_cast<core::Tick>(kJanuaryFirst + (3U * core::kDaysPerMonth)) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, kSpeedup, world);
+  failures += Expect(world.night_theft.dry_months == 0,
+                     "sobriety: a distiller at the turn resets the dry months");
+  return failures;
+}
+
+/// The chairman takes a night trader (kTakeNightTrader; crime design §7, §9;
+/// boss, 2026-09-18): the man keeps no trade, his outing of the night is
+/// dropped and nobody else's is, and the two refusals say which of them it
+/// was. Other kinds and settled rows are not this consumer's.
+int CheckTakeNightTrader() {
+  int failures = 0;
+  core::WorldState world;
+  const auto add = [&world](core::NightTrade trade) {
+    core::ResidentRow person;
+    person.sex = core::Sex::kMale;
+    person.night_trade = trade;
+    return AppendRow(world.residents, person);
+  };
+  const core::ResidentId distiller = add(core::NightTrade::kDistiller);
+  const core::ResidentId fisher = add(core::NightTrade::kNetFisher);
+  const core::ResidentId sober = add(core::NightTrade::kNone);
+  for (const core::ResidentId out : {distiller, fisher}) {
+    core::NightOutingRow outing;
+    outing.resident = out;
+    AppendRow(world.night_outings, outing);
+  }
+  const auto order = [&world](
+                         core::OrderKind kind, core::ResidentId who, core::OrderStatus status) {
+    core::OrderRow row;
+    row.kind = kind;
+    row.resident = who;
+    row.status = status;
+    return AppendRow(world.orders, row);
+  };
+  const core::OrderId take =
+      order(core::OrderKind::kTakeNightTrader, distiller, core::OrderStatus::kPending);
+  const core::OrderId clean =
+      order(core::OrderKind::kTakeNightTrader, sober, core::OrderStatus::kPending);
+  const core::OrderId nobody =
+      order(core::OrderKind::kTakeNightTrader, core::ResidentId{9999}, core::OrderStatus::kPending);
+  const core::OrderId settled =
+      order(core::OrderKind::kTakeNightTrader, fisher, core::OrderStatus::kCancelled);
+  const core::OrderId other =
+      order(core::OrderKind::kReleaseWork, fisher, core::OrderStatus::kPending);
+
+  core::ConsumeNightTradeOrders(world);
+
+  const auto order_of = [&world](core::OrderId id) -> const core::OrderRow& {
+    return world.orders.rows[FindRow(world.orders, id)];
+  };
+  const auto trade_of = [&world](core::ResidentId id) {
+    return world.residents.rows[FindRow(world.residents, id)].night_trade;
+  };
+  failures += Expect(order_of(take).status == core::OrderStatus::kDone &&
+                         trade_of(distiller) == core::NightTrade::kNone,
+                     "take a trader: the distiller taken keeps no trade");
+  failures +=
+      Expect(world.night_outings.rows.size() == 1 && world.night_outings.rows[0].resident == fisher,
+             "take a trader: his outing tonight is dropped, and only his");
+  failures += Expect(order_of(clean).status == core::OrderStatus::kRefused &&
+                         order_of(clean).refusal == core::OrderRefusal::kNotEligible,
+                     "take a trader: a man who keeps no trade is refused as not eligible");
+  failures += Expect(order_of(nobody).status == core::OrderStatus::kRefused &&
+                         order_of(nobody).refusal == core::OrderRefusal::kNoSuchSubject,
+                     "take a trader: no such resident is refused as no such subject");
+  failures += Expect(order_of(settled).status == core::OrderStatus::kCancelled &&
+                         trade_of(fisher) == core::NightTrade::kNetFisher,
+                     "take a trader: a row already settled is not read again");
+  failures += Expect(order_of(other).status == core::OrderStatus::kPending,
+                     "take a trader: another kind is left for its own consumer");
   return failures;
 }
 
@@ -2160,6 +2262,7 @@ int main() {
   failures += CheckSchooling();
   failures += CheckRawMaterialLeak();
   failures += CheckAlcoholism();
+  failures += CheckTakeNightTrader();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
   }

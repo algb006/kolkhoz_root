@@ -523,4 +523,33 @@ bool ApplyStartNightTrades(const ITableSet& tables,
   return true;
 }
 
+void ConsumeNightTradeOrders(WorldState& current) {
+  for (OrderRow& order : current.orders.rows) {
+    if (order.status != OrderStatus::kPending || order.kind != OrderKind::kTakeNightTrader) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(current.residents, order.resident);
+    OrderRefusal refusal = OrderRefusal::kNone;
+    if (row == kNoRow) {
+      refusal = OrderRefusal::kNoSuchSubject;
+    } else if (current.residents.rows[row].night_trade == NightTrade::kNone) {
+      refusal = OrderRefusal::kNotEligible;
+    } else {
+      current.residents.rows[row].night_trade = NightTrade::kNone;
+      // By id and after the scan: removal moves the rows behind it.
+      std::vector<NightOutingId> out_tonight;
+      for (std::uint32_t outing = 0; outing < current.night_outings.rows.size(); ++outing) {
+        if (current.night_outings.rows[outing].resident.value == order.resident.value) {
+          out_tonight.push_back(current.night_outings.row_ids[outing]);
+        }
+      }
+      for (const NightOutingId id : out_tonight) {
+        RemoveRow(current.night_outings, id);
+      }
+    }
+    order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
+    order.refusal = refusal;
+  }
+}
+
 }  // namespace core

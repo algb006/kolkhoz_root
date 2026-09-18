@@ -32,11 +32,15 @@
 ///     granary is kept by the food yard's — and it leaves the world
 ///     (boss, parcel 364; StealRawMaterial).
 ///
+/// THE WAY OUT OF A TRADE is kTakeNightTrader (2026-09-18): the man taken
+/// keeps no trade from that step, and the year's turn hands it out again.
+/// Until then nothing ever cleared a trade, and a trade was kept for life.
+///
 /// STUB, each with its place: the truancy and the lost rest of the night out
-/// wait for the rest door; the chairman's orders against a trade (talk, take
-/// the still, hand over to the constable) are a later door, and until then a
-/// trade is kept for life; a hunter with no old-forest square in his reach
-/// does not go out that night.
+/// wait for the rest door; the chairman's other words to a trader (talk,
+/// close his eyes, take him under his wing, hand him to the constable — §7)
+/// are later doors, and only the taking is built; a hunter with no
+/// old-forest square in his reach does not go out that night.
 
 #ifndef CORE_RESIDENTS_NIGHT_TRADE_H_
 #define CORE_RESIDENTS_NIGHT_TRADE_H_
@@ -137,6 +141,16 @@ void RunNightOutings(const NightTradeConfig& config, WorldState& current);
 ///        (the constable's post is a STUB: Epoch I has none).
 /// @return Grams taken.
 Grams StealRawMaterial(const NightTradeConfig& config, WorldState& current);
+
+/// @brief Settles every pending kTakeNightTrader: the man named keeps no
+///        trade from now on, and his row among tonight's outings, if he is
+///        out, is dropped — a poacher taken brings no catch home (crime §9,
+///        «взятый браконьер перестаёт таскать рыбу»). Refused kNoSuchSubject
+///        for no such resident and kNotEligible for one who keeps no trade.
+/// @pre Called once per step in the decisions slot, before RunNightOutings,
+///      so that an order read in the hour back is settled before the catch
+///      is carried home.
+void ConsumeNightTradeOrders(WorldState& current);
 
 }  // namespace core
 

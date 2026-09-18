@@ -51,9 +51,10 @@ struct NightOutingRow {
 /// @brief The night's outings, in the order they were laid down.
 using NightOutingTable = StateTable<NightOutingId, NightOutingRow>;
 
-/// @brief What the distillers have carried off the kolkhoz stores this
-/// calendar month, and whether the village has come to complain yet (crime
-/// design §7, "Утечка сырья… числами"; boss, parcel 364). SAVED.
+/// @brief The village's side of the distillers: what they have carried off
+/// the kolkhoz stores this calendar month, whether the village has come to
+/// complain yet (crime design §7, "Утечка сырья… числами"; boss, parcel
+/// 364), and how long it has gone without one. SAVED.
 struct NightTheftTally {
   /// Grams of raw material taken since the first day of `month_index`.
   Grams stolen_this_month = 0;
@@ -64,6 +65,13 @@ struct NightTheftTally {
 
   /// 0/1: kStoreLeakComplaint has been raised — once a campaign.
   std::uint8_t complaint_raised = 0;
+
+  /// Months in a row the village has turned without a distiller, read at
+  /// each month's turn as the supply is; 0 when there was one at the last
+  /// turn, stops at 255. From the second such month every man drinks less
+  /// (the human's word, 2026-09-18: «Если люди долго не пьют то алкоголизм
+  /// медленно уменьшается»; core_residents/alcoholism.h). Save format 55.
+  std::uint8_t dry_months = 0;
 };
 
 }  // namespace core

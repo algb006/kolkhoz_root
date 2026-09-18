@@ -9,16 +9,21 @@
 /// and MARKS cancellations before phase 1, in arrival order (buffer-law
 /// rule 2, core_sim/step.h). The consuming half is wired for EVERY kind
 /// since 2026-09-12:
-/// THERE ARE THREE CONSUMERS NOW, all in sub-steps of the decisions slot
-/// (phase 3), and each settles its own kinds to kDone or kRefused IN THE
-/// STEP THE ROW IS READ — never to kAccepted or kActive, except where a kind
-/// says otherwise:
+/// THERE ARE FOUR CONSUMERS NOW, and each settles its own kinds to kDone or
+/// kRefused IN THE STEP THE ROW IS READ — never to kAccepted or kActive,
+/// except where a kind says otherwise:
 ///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
-///     kDemolishUnit, kRepairUnit;
-///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund and
-///     kSetRotation;
+///     kDemolishUnit, kRepairUnit, kInsulateUnit;
+///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund, kSetRotation,
+///     kMarkFelling, kMarkExtraction, kOrderLimitLot, kRemoveField,
+///     kGrazeAtNight and kHandStock;
 ///   * core_labor — kAssignWork, kReleaseWork, kAppoint and kDismiss, the
-///     last two applied at the day's close rather than at once.
+///     last two applied at the day's close rather than at once;
+///   * core_residents — kTakeNightTrader (since 2026-09-18).
+/// This list was three consumers and short by seven kinds on 2026-09-18,
+/// when the fourth consumer was added and the list counted rather than
+/// appended to: every kind below names its consumer, and that is the
+/// contract; this list is its index.
 /// The events slot (phase 6) then emits every terminal row's event and
 /// REMOVES the row, so the book is empty again by the end of the step that
 /// settled it.
@@ -436,6 +441,32 @@ enum class OrderKind : std::uint8_t {
   ///
   /// Seam key `hand_stock`. Consumer: core_production.
   kHandStock,
+
+  /// THE CHAIRMAN TOOK A NIGHT TRADER AT IT (crime design §7, §9): `resident`
+  /// names the man, and from this step he keeps no trade. The year's turn
+  /// hands the trade out again to whoever it draws — «Выбывший не замещается
+  /// до следующего перелома», and the hunt is yearly by design (boss,
+  /// 2026-09-18).
+  ///
+  /// IT EXISTS BECAUSE THE WORLD HAD NO WAY DOWN. Alcoholism rises by +2
+  /// while the village has any distiller, and nothing in the core ever set a
+  /// trade back to none: the host judged catches that reached nobody, and a
+  /// run with 38 catches drew the same curve as one with 11 (host, 0.7.250).
+  /// «Взял последнего — метрика по селу поползла вниз» had no door to walk
+  /// through.
+  ///
+  /// THE CATCH IS NOT JUDGED HERE. Whether the chairman stood near enough,
+  /// at the right hour, unseen, is host's rule (host_script/night_catch.h),
+  /// and a second copy of it here would be one rule with two houses. The
+  /// core answers only what it alone knows: is there such a man, and does
+  /// he keep a trade. Any of the three trades — a poacher taken stops
+  /// carrying fish as a distiller taken stops distilling (§9).
+  ///
+  /// Refusals: kNoSuchSubject (no such resident), kNotEligible (he keeps no
+  /// trade).
+  ///
+  /// Seam key `take_night_trader`. Consumer: core_residents.
+  kTakeNightTrader,
 
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport

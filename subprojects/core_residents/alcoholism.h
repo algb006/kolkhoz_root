@@ -8,8 +8,9 @@
 /// days_worked_this_month, and emits events, so it can only live in a
 /// sequential slot.
 ///
-/// WHAT DECIDES, in boss's numbers (assigned, not measured), for everyone of
-/// 16 and older, at the first day of the month, of the month that closed:
+/// WHAT DECIDES, in boss's numbers (assigned, not measured), for every MAN of
+/// 16 and older, at the first day of the month, of the month that closed —
+/// a woman has no such metric and stays at 0 (boss, 2026-09-18):
 ///   * up +2 when the village has a distiller (the supply);
 ///   * up +1 in a winter month (December to February) for one who had not a
 ///     single day of work in it (idleness and winter);
@@ -17,14 +18,19 @@
 ///   * down −1 when he holds a post or worked at least 3 of the month's 4 days
 ///     (the design's "two thirds of the working days");
 ///   * down −1 when he is married;
-///   * a woman's change is a quarter of a man's ("пьют мужчины");
+///   * down −1 when the village has turned without a distiller for the second
+///     month running or longer — the human's word, 2026-09-18: «Если люди
+///     долго не пьют то алкоголизм медленно уменьшается». The count is
+///     NightTheftTally::dry_months, kept here at each turn;
 ///   * never above 60 in Epoch I, never below 0;
 ///   * a crossing of 20, 40 or 60, either way, raises kAlcoholismBandCrossed.
 ///
 /// STUB: the bands' effects — work quality, truancy, the inclination to crime
 /// — are a door of their own; company, shocks and tradition (weddings,
 /// wakes, the harvest's end) do not move the metric yet; the chairman's
-/// attention and treatment do not lower it.
+/// attention and treatment do not lower it. The one way the chairman lowers
+/// it is the supply: a distiller taken (kTakeNightTrader) and the +2 goes
+/// when the LAST one does — and comes back at the year's turn.
 
 #ifndef CORE_RESIDENTS_ALCOHOLISM_H_
 #define CORE_RESIDENTS_ALCOHOLISM_H_
@@ -49,7 +55,8 @@ struct AlcoholismConfig {
   float loss_employed = 1.0F;            ///< `alcohol_loss_employed`
   float employed_days_min = 3.0F;        ///< `alcohol_employed_days_min`, of the month's days
   float loss_married = 1.0F;             ///< `alcohol_loss_married`
-  float women_factor = 0.25F;            ///< `alcohol_women_factor`
+  float loss_sober = 1.0F;               ///< `alcohol_loss_sober`
+  float sober_months_min = 2.0F;         ///< `alcohol_sober_months_min`
   float epoch1_cap = 60.0F;              ///< `alcohol_epoch1_cap`
 };
 
@@ -63,9 +70,10 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
 /// @brief The lower edge of the band `alcoholism` is in: 0, 20, 40, 60 or 80.
 int AlcoholismBand(float alcoholism);
 
-/// @brief The month's turn: every adult's alcoholism moved by the rules above
-///        for the month that closed, crossings said, and every resident's
-///        days_worked_this_month cleared.
+/// @brief The month's turn: the village's months without a distiller
+///        counted, every adult man's alcoholism moved by the rules above for
+///        the month that closed, every woman's held at 0, crossings said,
+///        and every resident's days_worked_this_month cleared.
 /// @param life_speedup LifeConfig::life_speedup, for the biological age.
 /// @pre Called on the first day of a month, before anything counts a day of
 ///      the new month.
