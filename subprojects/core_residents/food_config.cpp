@@ -428,6 +428,12 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   // THE DISTRICT'S POSITIONS, as resources: what "first the plan" holds before
   // the spring names this year's figure (family_exchange.cpp). The list is
   // core_production's to validate and warn about; here it is only read.
+  if (resources != nullptr) {
+    const std::uint32_t milk_row = resources->FindRowByKey("milk");
+    if (milk_row != kNoTableRow) {
+      config.carted_daily = DefIdFromRow<ResourceIdTag>(milk_row);
+    }
+  }
   const ITable* const campaign = tables.FindTable("campaign");
   const ITable* const plan_crops = tables.FindTable("crops");
   if (campaign != nullptr && plan_crops != nullptr && resources != nullptr) {

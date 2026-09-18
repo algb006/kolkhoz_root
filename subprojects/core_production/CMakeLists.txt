@@ -11,6 +11,7 @@ kolkhoz_add_module(core_production
     field_work.cpp
     herd_life.cpp
     herd_system.cpp
+    milk_cart.cpp
     stable_horses.cpp
     night_pasture.cpp
     production_alarms.cpp

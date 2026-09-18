@@ -36,6 +36,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "herd_system.h"
+#include "milk_cart.h"
 #include "night_pasture.h"
 #include "production_alarms.h"
 #include "production_config.h"
@@ -5254,6 +5255,75 @@ int CheckTheLimitKeepsTheTeamsOats() {
 
 /// «СДАТЬ СЕЙЧАС» (kDeliverPlan; econ's audit M2, Л1): the chairman ships
 /// what is owed before the turn, and the turn ships only the rest.
+/// THE MILK CART (district §9; register 231; boss seq 98 and 113): the
+/// position named off the kolkhoz's milking day, the day's share at the
+/// milking, the rest before the next one, the winter's milk outside any
+/// position — and counted over the plan.
+int CheckTheMilkCart() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  // AnnouncePlan asks a district: one position of a crop that yields
+  // nothing, so the only figure the spring names is the milk's.
+  config.crops.resize(1);
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F}};
+  config.plan_grain_share = 0.5F;
+  config.plan_milk_share = 0.5F;
+  core::WorldState world = MakeHerdWorld(0.0F);
+  // Ten kolkhoz cows, two of them bulls: eight milk 10 litres a day, 80 kg.
+  AddHerd(world, 0, 10, 2, true);
+  // And a household's cow, whose milk is the household's.
+  const core::HerdId yard = AddHerd(world, 0, 5, 0, false);
+  world.herds.rows[core::FindRow(world.herds, yard)].household_owned = 1;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  failures += Expect(core::KolkhozMilkDayGrams(config, world) == 80 * kKilo,
+                     "milk: the kolkhoz's day is its own cows' — the yard's cow is the yard's");
+
+  // Announced on day 8: 40 days to the turn, a share of 40 kg a day.
+  world.calendar.tick = 8 * static_cast<core::Tick>(core::kTicksPerDay);
+  core::RefreshCalendarCaches(world.calendar);
+  core::AnnouncePlan(config, world);
+  const core::ResourceId milk{1};
+  failures += Expect(world.plan.milk_daily_share == 40 * kKilo &&
+                         core::AmountOf(world.plan.due, milk) == 1600 * kKilo,
+                     "milk: the share is half the day, the position the share x days to the turn");
+
+  // The day's share leaves at the milking; the rest waits for the issue.
+  world.units.rows[0].stock[1] = 50 * kKilo;
+  core::ShipMilkShare(config, world);
+  failures += Expect(
+      core::AmountOf(world.plan.delivered, milk) == 40 * kKilo && StoreOf(world, 1) == 10 * kKilo,
+      "milk: the cart takes the day's share at the milking");
+  // What the issue left goes before the next milking, against the position.
+  core::ShipMilkLeftover(config, world);
+  failures +=
+      Expect(core::AmountOf(world.plan.delivered, milk) == 50 * kKilo && StoreOf(world, 1) == 0,
+             "milk: and what the issue left goes before the next milking — nothing "
+             "stays overnight");
+
+  // THE WINTER, before the spring names a figure: the cart runs all the
+  // same, and what it takes is outside any position.
+  world.plan.announced = 0;
+  world.plan.milk_daily_share = 0;
+  world.units.rows[0].stock[1] = 7 * kKilo;
+  core::ShipMilkShare(config, world);
+  failures += Expect(StoreOf(world, 1) == 7 * kKilo, "milk: no share is taken with no position");
+  core::ShipMilkLeftover(config, world);
+  failures += Expect(core::AmountOf(world.plan.delivered, milk) == 50 * kKilo &&
+                         core::AmountOf(world.plan.delivered_outside, milk) == 7 * kKilo &&
+                         StoreOf(world, 1) == 0,
+                     "milk: the winter's milk goes outside any position");
+
+  // And what went outside is over the plan: 3.3 t of milk at 0.64 / 3.3 is
+  // 0.64 t of grain.
+  core::WorldState outside;
+  outside.plan.delivered_outside = {0, 3'300 * kKilo};
+  config.food_kcal_per_gram = {0.0F, 0.64F, 0.0F};
+  const float tonnes = core::PlanOverfulfilGrainTonnes(config, outside);
+  failures += Expect(tonnes > 0.639F && tonnes < 0.641F,
+                     "milk: what went with no position counts over the plan, in grain");
+  return failures;
+}
+
 int CheckDeliverPlanNow() {
   int failures = 0;
   constexpr core::Grams kTonne = 1'000'000;
@@ -6101,6 +6171,7 @@ int main() {
   failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
   failures += CheckDeliverPlanNow();
+  failures += CheckTheMilkCart();
   failures += CheckTheAccumulationLimit();
   failures += CheckTheLimitKeepsTheTeamsOats();
   failures += CheckTheMtsColumn();

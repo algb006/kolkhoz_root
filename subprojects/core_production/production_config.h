@@ -814,6 +814,13 @@ struct ProductionConfig {
   /// plan delivered IN FULL does not read it and still asks 100 %.
   float plan_met_share = 0.99F;
 
+  /// THE MILK POSITION'S SHARE (district §9, «Молоко — в плане с первого
+  /// года»; register 231; campaign.csv `plan_milk_share`): the share of the
+  /// kolkhoz's milking herd's day, at the herd's own factor on the day of
+  /// the announcement, that the district's cart takes against the position.
+  /// STUB 0.5, boss's. 0 puts no milk in the plan.
+  float plan_milk_share = 0.5F;
+
   /// How many failed years in a row make the "Под суд" condition (epochs
   /// design §8: "три сорванных плана подряд"). campaign.csv.
   std::uint8_t plan_failed_years_to_trial = 3;

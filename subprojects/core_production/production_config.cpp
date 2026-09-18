@@ -1116,6 +1116,18 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     config.plan_met_share = share;
+    float milk_share = config.plan_milk_share;
+    if (!CellOrDefault(*campaign,
+                       campaign->FindRowByKey("plan_milk_share"),
+                       value_col,
+                       Range::Unit(),
+                       config.plan_milk_share,
+                       milk_share,
+                       error)) {
+      error = "campaign: plan_milk_share: " + error;
+      return false;
+    }
+    config.plan_milk_share = milk_share;
     float years = config.plan_failed_years_to_trial;
     if (!CellOrDefault(*campaign,
                        campaign->FindRowByKey("plan_failed_years_to_trial"),
@@ -1374,6 +1386,15 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
         error = "resources: spoil_days: " + error;
         return false;
       }
+    }
+    // MILK DOES NOT GO BAD IN A KOLKHOZ STORE (district §9; boss seq 113):
+    // the district's cart takes the day's share at the milking and the rest
+    // after the morning issue, so a store holds milk only overnight, waiting
+    // for the issue — and the design says «ночевать нечему, порчи нет». The
+    // pantry keeps its own shelf life (core_residents, food.csv): milk
+    // handed out does go bad at home.
+    if (config.milk_resource.value < config.spoil_days.size()) {
+      config.spoil_days[config.milk_resource.value] = 0.0F;
     }
   }
   config.horse_kind = KindByKey(livestock, "horse");

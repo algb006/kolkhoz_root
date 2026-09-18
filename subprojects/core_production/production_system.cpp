@@ -51,6 +51,7 @@
 #include "field_removal.h"
 #include "field_work.h"
 #include "herd_system.h"
+#include "milk_cart.h"
 #include "night_pasture.h"
 #include "production_alarms.h"
 #include "production_config.h"
@@ -282,7 +283,12 @@ class ProductionSystem final : public IProductionSystem {
     // grant they weigh is booked at the year's turn, and an office raised
     // this morning is standing by now.
     RunEraEvents(config_, current);
+    // THE MILK CART AROUND THE MILKING (milk_cart.h): what this morning's
+    // issue left goes first, then the herd gives the day, then the cart
+    // takes the day's share of the position.
+    ShipMilkLeftover(config_, current);
     RunHerdDay(config_, current);
+    ShipMilkShare(config_, current);
   }
 
   std::int32_t DaysToNextHarvest(const WorldState& completed) const override {
@@ -336,6 +342,9 @@ class ProductionSystem final : public IProductionSystem {
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
     JudgePlan(config_, current);
     TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
+    // Scored, and gone with its year: what went with no position counts
+    // once (district_plan.h, PlanOverfulfilGrainTonnes).
+    current.plan.delivered_outside.assign(current.plan.delivered_outside.size(), 0);
     GrowOldForest(config_, current);
     // THE CLOSING YEAR'S LARGEST WORKED AREA becomes next spring's figure,
     // and the running maximum is what makes it un-gameable: a single tick's

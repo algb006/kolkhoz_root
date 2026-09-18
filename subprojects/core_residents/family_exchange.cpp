@@ -200,6 +200,11 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
 /// so a position failed outright was not held, and a failed plan opened the
 /// issue and prepared the next failure.
 bool PlanHoldsIt(const FoodConfig& config, const WorldState& world, std::uint32_t index) {
+  // The cart's position is never sealed: its share left at the milking
+  // (food_config.h, carted_daily; boss seq 113).
+  if (index == config.carted_daily.value) {
+    return false;
+  }
   if (world.plan.announced != 0) {
     return index < world.plan.due.size() && world.plan.due[index] > 0;
   }

@@ -95,6 +95,13 @@ Grams FodderFundGrams(const ProductionConfig& config,
                       const WorldState& current,
                       ResourceId resource);
 
+/// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor
+/// today (YieldFactor: billeting, underfeeding), grams — the same sum
+/// RunProduce delivers, read without delivering it. A household's cow is the
+/// household's and not in it. The milk position's base (district §9: «дойные
+/// на день объявления × надой × множитель стада на тот день»).
+Grams KolkhozMilkDayGrams(const ProductionConfig& config, const WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_HERD_SYSTEM_H_

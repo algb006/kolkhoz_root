@@ -288,6 +288,13 @@ struct FoodConfig {
   /// whatever last year delivered of them (boss, parcel 440).
   std::vector<std::uint8_t> plan_position;
 
+  /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
+  /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
+  /// seal it from the issue — its share of the day has left at the milking
+  /// (core_production/milk_cart.h), and the issue takes from the rest. Invalid
+  /// without a milk row. Meat and eggs join it when their cart is built.
+  ResourceId carted_daily;
+
   /// Game days a resource keeps, dense by ResourceId — resources.csv
   /// `spoil_days`, zero for what does not go bad (task A4; transport design
   /// §10). Read here for the FAMILIES' LARDERS; core_production reads the

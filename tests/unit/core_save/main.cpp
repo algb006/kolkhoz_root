@@ -149,6 +149,10 @@ core::WorldState MakeWorld() {
   // The accumulation limit (save 62): not empty, or a codec that forgot it
   // would round-trip an empty vector perfectly.
   world.plan.accumulation_limit = Amounts({15'000'000, 0, 4'000'000});
+  // The milk cart (save 66): a daily share, and the winter's milk that went
+  // with no position — both away from their empty defaults.
+  world.plan.milk_daily_share = 250'000;
+  world.plan.delivered_outside = Amounts({0, 0, 3'000'000});
   // The district's verdict on the year and the two runs it keeps. Set to
   // three DIFFERENT values on purpose: equal ones would survive a codec that
   // wrote the same field three times.
@@ -733,6 +737,8 @@ core::WorldState MakeWitnessWorld() {
   witness.plan.due = Amounts({7'000'000, 250, 3});
   witness.plan.delivered = Amounts({11});
   witness.plan.accumulation_limit = Amounts({0, 21'000'000});
+  witness.plan.milk_daily_share = 180'000;
+  witness.plan.delivered_outside = Amounts({0, 500'000});
   witness.plan.last_verdict = core::PlanVerdict::kFailed;
   witness.plan.failed_years_in_a_row = 2;
   witness.plan.met_years_in_a_row = 5;
@@ -823,6 +829,10 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
   AppendAmounts(chunks, "plan.accumulation_limit", world.plan.accumulation_limit);  // save 62
+  // The milk cart's daily share and the deliveries outside any position (save 66).
+  chunks.push_back(
+      {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
+  AppendAmounts(chunks, "plan.delivered_outside", world.plan.delivered_outside);
   chunks.push_back({"plan.last_verdict", Enum8(world.plan.last_verdict)});
   chunks.push_back({"plan.failed_years_in_a_row", U8(world.plan.failed_years_in_a_row)});
   chunks.push_back({"plan.met_years_in_a_row", U8(world.plan.met_years_in_a_row)});
@@ -1036,7 +1046,10 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // Save 62: +26 — the accumulation limit, three positions (2 + 3 x 8),
     // predicted before the build.
     // Save 65: +5 — the cancelled day off's series (1) and day (4).
-    {"world", 427, 0xd1922c8d0dfe786aULL},
+    // Save 66: +34 — the milk cart's share (8) and the deliveries outside any
+    // position (2 + 3 x 8). The first build ran unpredicted (a miss, named);
+    // 437 with the empty vector and then 461 were predicted and held.
+    {"world", 461, 0x4299d768efe04083ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1389,6 +1402,9 @@ int main() {
                          AmountAt(loaded.plan.accumulation_limit, 0) == 15'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 2) == 4'000'000,
                      "the seizure and the accumulation limit come back (save 62)");
+  failures += Expect(loaded.plan.milk_daily_share == 250'000 &&
+                         AmountAt(loaded.plan.delivered_outside, 2) == 3'000'000,
+                     "the milk cart's share and the winter's milk come back (save 66)");
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_best_day == 22.5F,
       "the season's reaping pace comes back (save 63)");

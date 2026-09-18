@@ -282,6 +282,18 @@ int CheckExchange() {
                        "before the spring names a plan, the district's positions are held, a "
                        "position that delivered nothing included");
 
+    // THE CART'S POSITION IS NOT SEALED (district §9; boss seq 113): its
+    // share of the day left at the milking, so the issue takes from the rest.
+    // The same announced plan that holds resource 0 above hands it out here.
+    core::FoodConfig carted = config;
+    carted.carted_daily = core::ResourceId{0};
+    core::WorldState milk_day = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    milk_day.plan.announced = 1;
+    milk_day.plan.due = {50 * kKilo, 0, 0, 0};
+    core::RunFamilyExchange(carted, 4.0F, milk_day);
+    failures += Expect(PantryOf(milk_day, 0) > 0,
+                       "the district cart's position is not sealed from the issue");
+
     core::WorldState hungry = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
     hungry.plan.announced = 1;
     hungry.plan.due = {50 * kKilo, 0, 0, 0};

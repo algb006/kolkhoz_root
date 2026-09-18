@@ -538,6 +538,22 @@ struct PlanState {
   /// board shows it beside the stock, so the seizure can be foreseen.
   ResourceAmounts accumulation_limit;
 
+  /// THE MILK CART'S SHARE OF A DAY (district §9 «Молоко — в плане с
+  /// первого года»; register 231; boss seq 98 and 113; save 66), grams: the
+  /// milk position ÷ the milking days from the spring's announcement to the
+  /// turn. Named once with the figure, so a day the herd gives less stays a
+  /// day short of the position and is not taken back from tomorrow's issue.
+  /// 0 before the announcement and after the turn.
+  Grams milk_daily_share = 0;
+
+  /// WHAT WENT TO THE DISTRICT WITH NO POSITION TO GO AGAINST, by resource
+  /// (district §1; boss seq 113; save 66): the winter's milk, from the turn
+  /// to the spring's figure, left after the issue and carted all the same.
+  /// Over the plan by construction: the overfulfilment counts it in tonnes of
+  /// grain beside every position's surplus, and nothing in it can make up a
+  /// position short. Cleared at the turn, after the year is scored.
+  ResourceAmounts delivered_outside;
+
   /// The verdict on the year that closed last. kNone until the first one
   /// closes.
   PlanVerdict last_verdict = PlanVerdict::kNone;

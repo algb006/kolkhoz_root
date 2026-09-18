@@ -1,0 +1,43 @@
+/// @file
+/// @brief The district's milk cart (district §9, «Молоко — в плане с первого
+/// года, и его увозит телега района»; register 231; boss seq 98 and 113).
+/// @threading SINGLE_THREADED
+/// Both calls run in the production decisions sub-step (phase 3) on the sim
+/// thread, around the herd day: they take from the stores and write the
+/// plan's books.
+///
+/// THE MILK DAY, as the design orders it — «сперва району, как с колёс»:
+///   milking → the cart takes the position's share of the day → the issue
+///   by the norm from what is left → the rest by the same cart over the plan
+///   → nothing stays overnight.
+/// In the core's slot the residents' issue runs BEFORE the herd day, so the
+/// day is cut at the issue: the share leaves at tonight's milking
+/// (ShipMilkShare), the family issue takes its milk next morning, and what
+/// the issue left goes before the next milking (ShipMilkLeftover). The
+/// district's horse and hands: the kolkhoz pays nothing for the cart. All
+/// year: before the spring names a figure, what is left goes as delivered
+/// outside any position — over the plan by construction.
+
+#ifndef CORE_PRODUCTION_MILK_CART_H_
+#define CORE_PRODUCTION_MILK_CART_H_
+
+#include "core_common/world_state.h"
+#include "production_config.h"
+
+namespace core {
+
+/// @brief Before the day's milking: every gram of milk the stores still hold
+/// — what the morning issue left — leaves for the district. Against the
+/// position while a plan stands (PlanState::delivered), outside any position
+/// before the spring's figure (PlanState::delivered_outside). Booked in the
+/// ledger's delivered either way.
+void ShipMilkLeftover(const ProductionConfig& config, WorldState& current);
+
+/// @brief After the day's milking: the position's share of the day
+/// (PlanState::milk_daily_share), or as much of it as the stores hold,
+/// leaves against the milk position. Nothing before the spring's figure.
+void ShipMilkShare(const ProductionConfig& config, WorldState& current);
+
+}  // namespace core
+
+#endif  // CORE_PRODUCTION_MILK_CART_H_

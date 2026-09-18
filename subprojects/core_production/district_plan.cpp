@@ -141,6 +141,16 @@ float PlanOverfulfilGrainTonnes(const ProductionConfig& config, const WorldState
       short_grams += static_cast<double>(due - delivered) * in_grain;
     }
   }
+  // WHAT WENT WITH NO POSITION IS OVER BY CONSTRUCTION (boss seq 113): the
+  // winter's milk, carted before the spring named a figure. Weighed the same
+  // way, and never a position's to make up.
+  for (std::uint32_t index = 0;
+       index < current.plan.delivered_outside.size() && index < config.food_kcal_per_gram.size();
+       ++index) {
+    over_grams += static_cast<double>(current.plan.delivered_outside[index]) *
+                  static_cast<double>(config.food_kcal_per_gram[index] /
+                                      config.limit.overfulfil_grain_kcal_per_gram);
+  }
   const double net =
       over_grams - (static_cast<double>(config.limit.overfulfil_shortfall_factor) * short_grams);
   return net > 0.0 ? static_cast<float>(net / static_cast<double>(kGramsPerTonne)) : 0.0F;
@@ -195,6 +205,33 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current) {
 /// THE POSITIONS ARE THE DISTRICT'S, not the chairman's crops: campaign.csv
 /// names them and the share of the worked arable counted under each. A norm
 /// priced off what he planted is a norm he sets.
+namespace {
+
+/// THE MILK POSITION (district §9, «Молоко — в плане с первого года»;
+/// register 231; boss seq 98 and 113). In the plan from the first year on —
+/// the exception to "no start stock, no first-year position": milk does not
+/// keep, its stock is the herd. The day's share is the kolkhoz's milking day
+/// at each herd's factor TODAY × plan_milk_share; the position is that share
+/// × the days from today to the turn, so the cart that takes the share each
+/// day brings exactly the position in a year of steady milking. The share is
+/// named once and kept (PlanState::milk_daily_share): a day the herd gives
+/// less stays short, it is not taken back from tomorrow's issue.
+void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
+  current.plan.milk_daily_share = 0;
+  if (config.milk_resource.value == kInvalidDefIdValue || !(config.plan_milk_share > 0.0F)) {
+    return;
+  }
+  const auto share =
+      static_cast<Grams>(std::llround(static_cast<double>(KolkhozMilkDayGrams(config, current)) *
+                                      static_cast<double>(config.plan_milk_share)));
+  const auto days_to_turn =
+      static_cast<Grams>(kDaysPerYear - (current.calendar.day % kDaysPerYear));
+  current.plan.milk_daily_share = share;
+  AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
+}
+
+}  // namespace
+
 void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
   // THE RELEASES ARE NOT CLEARED HERE, and they were for one afternoon:
   // the edit that put the clearing into JudgePlan matched this line too,
@@ -272,6 +309,7 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
                crop.resource,
                GramsFromKilograms(crop.yield_kg_per_ha * area * config.plan_grain_share));
   }
+  AnnounceMilkPosition(config, current);
   NameAccumulationLimit(config, current, first_year);
   // ANNOUNCED EVEN WHEN THE FIGURE IS ZERO, and that is the whole point of
   // the byte: a settlement that worked no land last year is one the
@@ -463,6 +501,9 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   current.ledger.current.plan_due = current.plan.due;
   current.plan.due.assign(current.plan.due.size(), 0);
   current.plan.announced = 0;
+  // And the milk cart's share goes with the figure it was a share of: the
+  // winter's milk has no position until the spring names one (boss seq 113).
+  current.plan.milk_daily_share = 0;
   // The unsealings go with the year they were an emergency of. Carried
   // over, they would quietly become a lower fund instead of a decision
   // somebody took on a particular hungry winter.

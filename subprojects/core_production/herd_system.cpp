@@ -389,6 +389,16 @@ float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   return factor;
 }
 
+/// One herd's milk of a day at `factor`: the females only, a litre a
+/// kilogram (quantities.h). ONE HOME for what the herd gives and what the
+/// plan asks of it (KolkhozMilkDayGrams).
+Grams HerdMilkDayGrams(const LivestockDef& kind, const HerdRow& herd, float factor) {
+  const auto females = static_cast<float>(kind.sexed != 0 ? herd.adult_count - herd.adult_male_count
+                                                          : herd.adult_count);
+  return KilogramsToGrams(kind.milk_l_per_year * females * factor /
+                          static_cast<float>(kDaysPerYear));
+}
+
 void RunProduce(const ProductionConfig& config,
                 const LivestockDef& kind,
                 const HerdRow& herd,
@@ -396,16 +406,10 @@ void RunProduce(const ProductionConfig& config,
                 WorldState& world) {
   const float factor = YieldFactor(config, herd);
   const auto adults = static_cast<float>(herd.adult_count);
-  const auto females = static_cast<float>(kind.sexed != 0 ? herd.adult_count - herd.adult_male_count
-                                                          : herd.adult_count);
   const auto year = static_cast<float>(kDaysPerYear);
   // Milk counts females only; eggs, wool and manure count every adult.
   // A litre of milk is a kilogram in the store (quantities.h).
-  DeliverProduce(world,
-                 config,
-                 place,
-                 config.milk_resource,
-                 KilogramsToGrams(kind.milk_l_per_year * females * factor / year));
+  DeliverProduce(world, config, place, config.milk_resource, HerdMilkDayGrams(kind, herd, factor));
   DeliverProduce(world,
                  config,
                  place,
@@ -790,6 +794,17 @@ Grams FodderFundGrams(const ProductionConfig& config,
   }
   const float year_units = units * static_cast<float>(kDaysPerYear) * share;
   return GramsFromKilograms(year_units / value);
+}
+
+Grams KolkhozMilkDayGrams(const ProductionConfig& config, const WorldState& current) {
+  Grams total = 0;
+  for (const HerdRow& herd : current.herds.rows) {
+    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+      continue;
+    }
+    total += HerdMilkDayGrams(config.livestock[herd.kind.value], herd, YieldFactor(config, herd));
+  }
+  return total;
 }
 
 }  // namespace core
