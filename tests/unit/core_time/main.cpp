@@ -2,6 +2,7 @@
 // determinism of the daily draws, and factory validation.
 
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -15,6 +16,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_time/time_system.h"
+#include "weather_of_day.h"
 
 static_assert(std::is_abstract_v<core::ITimeSystem>, "ITimeSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::ITimeSystem>,
@@ -78,6 +80,126 @@ std::uint32_t CoveredDaysInAYear(core::ISequentialPhase& phase) {
 }
 
 }  // namespace
+
+/// The five sky steps (camera design §4; the human's words of 2026-09-18):
+/// the shares by season, the heavy day never twice running and its phase
+/// only on itself, the forms by window and temperature, the signs on their
+/// own steps, the still frost, and the swing averaging one.
+int CheckSkySteps(const std::filesystem::path& root) {
+  int failures = 0;
+  core::SeasonTable seasons = core::DefaultSeasonTable();
+  for (core::SeasonWeather& season : seasons) {
+    season.temperature_amplitude_celsius = 5.0F;
+  }
+  constexpr std::uint64_t kSeed = 7;
+  constexpr core::SimDay kDays = 200 * core::kDaysPerYear;
+  std::array<std::array<std::uint32_t, core::kSkyStepCountValue>, core::kSeasonsPerYear> counts{};
+  std::array<std::uint32_t, core::kSeasonsPerYear> days_in{};
+  std::array<float, core::kSeasonsPerYear> multiplier_sum{};
+  bool no_two_heavy = true;
+  bool phase_only_on_heavy = true;
+  bool wet_iff_step = true;
+  bool forms_by_window = true;
+  bool signs_on_their_steps = true;
+  core::SkyStep yesterday = core::SkyStep::kClear;
+  for (core::SimDay day = 0; day < kDays; ++day) {
+    const core::WeatherState weather = core::WeatherOfDay(seasons, kSeed, day);
+    const std::uint32_t month = (day % core::kDaysPerYear) / core::kDaysPerMonth;
+    const auto season =
+        static_cast<std::uint32_t>(core::SeasonOfMonth(static_cast<core::Month>(month)));
+    ++counts[season][static_cast<std::size_t>(weather.sky)];
+    ++days_in[season];
+    multiplier_sum[season] += weather.temperature_swing_celsius / 5.0F;
+    const bool heavy = weather.sky == core::SkyStep::kHeavyPrecipitation;
+    no_two_heavy = no_two_heavy && !(heavy && yesterday == core::SkyStep::kHeavyPrecipitation);
+    yesterday = weather.sky;
+    phase_only_on_heavy =
+        phase_only_on_heavy && (heavy ? weather.heavy_hours >= 2 && weather.heavy_hours <= 12 &&
+                                            weather.heavy_from_hour <= 23
+                                      : weather.heavy_hours == 0 && weather.heavy_from_hour == 0);
+    const bool wet = weather.sky >= core::SkyStep::kLightPrecipitation;
+    wet_iff_step = wet_iff_step && (wet == (weather.precipitation != core::Precipitation::kNone));
+    const core::WeatherPhenomenon name = weather.phenomenon;
+    const bool storm_window = month >= 4 && month <= 7;  // May..August, 0-based
+    const bool blizzard_window = month == 11 || month <= 1;
+    if (heavy && weather.air_temperature_celsius > -1.0F) {
+      forms_by_window =
+          forms_by_window && name == (storm_window ? core::WeatherPhenomenon::kThunderstorm
+                                                   : core::WeatherPhenomenon::kRain);
+    }
+    if (heavy && weather.air_temperature_celsius < -1.0F) {
+      forms_by_window =
+          forms_by_window && name == (blizzard_window ? core::WeatherPhenomenon::kBlizzard
+                                                      : core::WeatherPhenomenon::kHeavySnowfall);
+    }
+    if (name == core::WeatherPhenomenon::kFrost || name == core::WeatherPhenomenon::kHeat) {
+      signs_on_their_steps = signs_on_their_steps && weather.sky <= core::SkyStep::kPartlyCloudy;
+    }
+    if (name == core::WeatherPhenomenon::kFog) {
+      signs_on_their_steps = signs_on_their_steps && weather.sky <= core::SkyStep::kOvercast;
+    }
+  }
+  failures += Expect(no_two_heavy, "sky: never two heavy days running");
+  failures += Expect(phase_only_on_heavy,
+                     "sky: a heavy phase of 2..12 hours on step 5, and none on any other step");
+  failures += Expect(wet_iff_step, "sky: precipitation exactly on steps 4 and 5");
+  failures += Expect(forms_by_window,
+                     "sky: step 5 is a storm in May-August and a blizzard in December-February, "
+                     "a downpour and a heavy snowfall outside");
+  failures +=
+      Expect(signs_on_their_steps, "sky: frost and heat only on steps 1-2, fog only on steps 1-3");
+  // THE WET SHARE STANDS: what the heavy rule cuts goes to step 4, never to a
+  // dry step, so 4 + 5 is the table's own within the draw's noise — and the
+  // swing multiplier averages one over the season.
+  bool wet_share_holds = true;
+  bool swing_averages_one = true;
+  for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+    const float wet = static_cast<float>(counts[season][3] + counts[season][4]) * 100.0F /
+                      static_cast<float>(days_in[season]);
+    const float table = seasons[season].sky_percent[3] + seasons[season].sky_percent[4];
+    wet_share_holds = wet_share_holds && std::fabs(wet - table) < 1.5F;
+    const float mean = multiplier_sum[season] / static_cast<float>(days_in[season]);
+    swing_averages_one = swing_averages_one && std::fabs(mean - 1.0F) < 0.03F;
+  }
+  failures +=
+      Expect(wet_share_holds, "sky: the wet share of every season is steps 4 + 5 of its table");
+  failures += Expect(swing_averages_one, "sky: the swing multiplier averages one in every season");
+
+  // THE STILL FROST: a winter below −12 is clear or broken, and still.
+  core::SeasonTable frozen = seasons;
+  frozen[0].temperature_mean_celsius = -14.5F;
+  frozen[0].temperature_spread_celsius = 0.5F;
+  bool frost_is_still = true;
+  for (core::SimDay day = 0; day < 8; ++day) {  // January and February
+    const core::WeatherState weather = core::WeatherOfDay(frozen, kSeed, day);
+    if (weather.air_temperature_celsius < -12.0F) {
+      frost_is_still = frost_is_still && weather.sky <= core::SkyStep::kPartlyCloudy &&
+                       weather.wind == core::WindBand::kCalm;
+    }
+  }
+  failures += Expect(frost_is_still, "sky: below -12 only steps 1-2, and still air");
+
+  // THE TABLE: all five shares or none, and a hundred between them.
+  const auto refused = [&root](const char* name, const char* header, const char* winter) {
+    const std::filesystem::path dir = root / name;
+    std::filesystem::create_directories(dir);
+    WriteFile(dir / "weather.csv",
+              std::string("key,temp_mean_c,temp_spread_c,temp_amplitude_c,") + header + "\n" +
+                  "winter,-10,2,3," + winter + "\nspring,5,7,5," + winter + "\nsummer,19,5,6," +
+                  winter + "\nautumn,6,7,5," + winter + "\n");
+    const auto tables = core::LoadTableSet(dir.string(), nullptr);
+    return tables != nullptr &&
+           core::CreateTimeSystem(*tables, core::StubTables::kAllowed) == nullptr;
+  };
+  failures += Expect(refused("partial", "sky_1_percent,sky_2_percent", "50,50"),
+                     "sky: two share columns of five are refused, not topped up from the code");
+  failures +=
+      Expect(refused("sum",
+                     "sky_1_percent,sky_2_percent,sky_3_percent,sky_4_percent,sky_5_percent",
+                     "20,20,20,20,30"),
+             "sky: shares making 110 per cent are refused");
+  return failures;
+}
 
 int main() {
   namespace fs = std::filesystem;
@@ -259,8 +381,7 @@ int main() {
     // June and June only, in human months. Zero-based that is 5.
     WriteFile(root / "knobs" / "weather_params.csv",
               "key,value,reader\nthunder_from_month,6,core\nthunder_to_month,6,core\n"
-              "thunder_share,1,core\nthunder_min_c,-15,core\ncalm_share,1,core\n"
-              "wind_share,0,core\n");
+              "calm_share,1,core\nwind_share,0,core\n");
     const auto knob_tables = core::LoadTableSet((root / "knobs").string(), nullptr);
     const auto knobbed = knob_tables == nullptr
                              ? nullptr
@@ -270,9 +391,17 @@ int main() {
       std::uint32_t storms = 0;
       std::uint32_t storms_outside_june = 0;
       bool all_still = true;
+      bool heavy_blows = true;
       for (core::SimDay day = 0; day < 10 * core::kDaysPerYear; ++day) {
         const core::DayForecast at = knobbed->WeatherOn(11, day);
-        all_still = all_still && at.wind == core::WindBand::kCalm;
+        // THE SHARE RULES STEPS 1–4 ONLY since 2026-09-18: step 5 blows by
+        // its own rule — «сильные осадки и сильный ветер» — whatever the
+        // share says, and a squall in a storm.
+        if (at.sky == core::SkyStep::kHeavyPrecipitation) {
+          heavy_blows = heavy_blows && at.wind >= core::WindBand::kStrongWind;
+        } else {
+          all_still = all_still && at.wind == core::WindBand::kCalm;
+        }
         if (at.phenomenon != core::WeatherPhenomenon::kThunderstorm) {
           continue;
         }
@@ -285,7 +414,9 @@ int main() {
       failures += Expect(storms_outside_june == 0,
                          "and month 6 in the table means JUNE, not July: every storm lands in the "
                          "sixth month counting from one");
-      failures += Expect(all_still, "calm_share = 1 from the params table makes every day still");
+      failures += Expect(all_still,
+                         "calm_share = 1 from the params table makes every day of steps 1-4 still");
+      failures += Expect(heavy_blows, "and step 5 blows hard whatever the share says");
     }
   }
 
@@ -681,13 +812,18 @@ int main() {
   // A malformed weather table is refused, not patched over.
   fs::create_directories(root / "bad");
   WriteFile(root / "bad" / "weather.csv",
-            "key,temp_mean_c,temp_spread_c\nwinter,-10,5\n");  // column missing
+            // Three season rows missing. It said "column missing" until
+            // 2026-09-18, and the column it meant — the rain chance — is no
+            // longer required: the rows are what refuses it now.
+            "key,temp_mean_c,temp_spread_c\nwinter,-10,5\n");
   const auto bad_tables = core::LoadTableSet((root / "bad").string(), nullptr);
   failures += Expect(bad_tables != nullptr, "the malformed table itself parses as CSV");
   if (bad_tables != nullptr) {
     failures += Expect(core::CreateTimeSystem(*bad_tables, core::StubTables::kAllowed) == nullptr,
                        "the factory refuses a malformed weather table");
   }
+
+  failures += CheckSkySteps(root);
 
   fs::remove_all(root);
   if (failures == 0) {

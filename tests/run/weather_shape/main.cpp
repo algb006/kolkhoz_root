@@ -18,6 +18,13 @@
 // work. The twin has the same climate and no memory, which is exactly the
 // difference under test.
 //
+// THE SKY STEPS, 2026-09-18 (camera design §4, the human's five steps). The
+// day draws its step first and reads the rest from it, so this run now also
+// prints the steps' shares beside boss's table, the swing multiplier against
+// the table's amplitude, the heavy phase and its "never two running", the
+// storm and blizzard windows that are «всегда», and the still frost beside
+// the count of days that could ask it.
+//
 // It drives the time phase alone — no fields, no people, no ledger. Weather
 // is a pure function of (seed, day), so nothing else can inform it, and
 // leaving the rest of the step out makes two hundred years cheap.
@@ -36,6 +43,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -62,10 +70,27 @@ constexpr std::uint64_t kDefaultSeed = 20260904;
 /// to move the seed and look again.
 std::uint64_t g_seed = kDefaultSeed;
 
-/// The three columns that make the weather remember. Stripping them is how
-/// the control is built.
-constexpr std::array<std::string_view, 3> kMemoryColumns = {
-    "temp_memory", "wet_persistence", "cloud_swing"};
+/// The column that makes the weather remember. Stripping it is how the
+/// control is built. It was three until 2026-09-18: the wet chain's
+/// persistence and the cloud's swing went with the sky steps, which draw a
+/// day at a time and read the cloud from the step.
+constexpr std::array<std::string_view, 1> kMemoryColumns = {"temp_memory"};
+
+/// BOSS'S TABLE OF THE SKY, as the design writes it (camera design §4, the
+/// relaid table of 2026-09-18), percent by season and step. WRITTEN HERE AND
+/// NOT READ FROM tables/weather.csv, on purpose: it is the second side of the
+/// comparison, and an instrument that read the shares from the table it
+/// measures would agree with any typo in it.
+constexpr std::array<std::array<double, core::kSkyStepCountValue>, core::kSeasonsPerYear>
+    kDesignSkyPercent = {{
+        {20.0, 15.0, 30.0, 28.0, 7.0},   // winter
+        {15.0, 20.0, 30.0, 23.0, 12.0},  // spring
+        {30.0, 30.0, 15.0, 17.0, 8.0},   // summer
+        {10.0, 15.0, 30.0, 32.0, 13.0},  // autumn
+    }};
+
+/// The still frost of the design, spelled here for the same reason.
+constexpr double kStillFrostCelsius = -12.0;
 
 struct SeasonStats {
   double temperature_sum = 0.0;
@@ -143,8 +168,33 @@ struct Shape {
 
   std::array<std::array<std::uint32_t, core::kWindBandCountValue>, core::kSeasonsPerYear> winds{};
 
-  /// The coldest day on which a blizzard was named, and the coldest day
-  /// there was at all. The gap between them is the ruling.
+  /// THE SKY, by season and step (2026-09-18) — printed beside boss's table.
+  std::array<std::array<std::uint32_t, core::kSkyStepCountValue>, core::kSeasonsPerYear> steps{};
+
+  /// Two heavy days running: must be none. And the heavy phase's hours.
+  std::uint32_t heavy_after_heavy = 0;
+  std::uint32_t heavy_days = 0;
+  std::uint32_t heavy_hours_sum = 0;
+  std::uint32_t heavy_hours_min = 99;
+  std::uint32_t heavy_hours_max = 0;
+
+  /// Days whose mean was below the still frost, and of them the ones whose
+  /// sky was not clear or broken or whose air moved. The first is the
+  /// denominator: a nought in the second means nothing when the first is
+  /// nought too, and in the shipped climate it is.
+  std::uint32_t below_still_frost = 0;
+  std::uint32_t still_frost_broken = 0;
+
+  /// Heavy days in the warm inside May..August that were NOT a storm, and
+  /// cold heavy days inside December..February that were NOT a blizzard:
+  /// «всегда», the human's word, so both must be nought — beside the count of
+  /// heavy days that were asked.
+  std::uint32_t heavy_in_storm_window = 0;
+  std::uint32_t storm_window_not_storm = 0;
+  std::uint32_t heavy_in_blizzard_window = 0;
+  std::uint32_t blizzard_window_not_blizzard = 0;
+
+  /// The coldest day there was at all.
   double coldest_blizzard = 1000.0;
 
   double coldest_day = 1000.0;
@@ -155,27 +205,11 @@ struct Shape {
 
   std::uint32_t squalls_without_a_storm = 0;
 
-  /// SNOW AND A STRONG WIND THAT WAS STILL NOT A BLIZZARD — which is exactly
-  /// the set the cold rule refused, since a weaker wind is the only other
-  /// way to be a snowfall. Counted as a SHARE and not as a temperature on
-  /// boss's condition (2026-09-05), and the reason is that the measurement
-  /// ages and the assertion does not: the shipped climate has both memory
-  /// knobs at zero, and the day somebody turns them on the distribution
-  /// moves while the threshold stays. A threshold that refuses NOBODY is a
-  /// comment, not a rule (architecture §8аб), and only a share can say so
-  /// years from now.
-  std::uint32_t snowfall_denied_by_cold = 0;
-
+  /// THE TWO COUNTERS THAT STOOD HERE WENT WITH THEIR RULES (2026-09-18):
+  /// the blizzard's −10 ceiling and the storm's +15 floor are gone — every
+  /// cold heavy day in December..February is a blizzard, every warm one in
+  /// May..August a storm — and their windows are counted above instead.
   std::uint32_t snowy_days = 0;
-
-  /// WET DAYS INSIDE THE STORM WINDOW, split by what refused them a storm.
-  /// Asked because the cold ceiling on a blizzard turned out to be a rule
-  /// that could not fire, and `thunder_min_c` is a threshold of exactly the
-  /// same shape: if the window is never cold enough to refuse anybody, the
-  /// number is a comment (architecture §8аб) and belongs in no table.
-  std::uint32_t wet_in_storm_window = 0;
-
-  std::uint32_t refused_by_cold = 0;
 
   /// THE SETTLED SNOW, which is the one word three readers wait on: the
   /// layer's white winter, the leaf that lies until the snow, and the field
@@ -198,6 +232,10 @@ struct Shape {
   /// ground. One entry per year; the design's leaf lies "until the snow"
   /// and not for a fixed forty days, so this is the length of that "until".
   std::vector<std::uint32_t> leaf_waits;
+
+  /// Each season's table amplitude, read as an INPUT (the knob, not the
+  /// result), so the swing multiplier can be printed as swing / amplitude.
+  std::array<double, core::kSeasonsPerYear> amplitude{};
 
   /// Years in which the wait ran a whole year without a cover. THE DESIGN
   /// HAS NO SECOND END for the leaf, so a single snowless year is not a
@@ -278,6 +316,16 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
     std::cout << "FAIL: the time system did not build over " << tables_dir << '\n';
     return false;
   }
+  if (const core::ITable* weather = tables->FindTable("weather")) {
+    const std::uint32_t column = weather->FindColumn("temp_amplitude_c");
+    for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+      const std::uint32_t row = weather->FindRowByKey(SeasonName(season));
+      const std::optional<float> cell = column == core::kNoTableColumn || row == core::kNoTableRow
+                                            ? std::nullopt
+                                            : weather->CellReal(row, column);
+      shape.amplitude[season] = cell.has_value() ? static_cast<double>(*cell) : 0.0;
+    }
+  }
 
   constexpr float kDroughtAfternoonCelsius = 25.0F;  // tables/farming.csv drought_temp_c
   core::WorldState previous;
@@ -316,7 +364,8 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
     // edit to either, and nobody would notice until a forecast promised a
     // clear day and the storm came.
     const core::DayForecast ahead = system->WeatherOn(g_seed, current.calendar.day);
-    if (ahead.phenomenon != current.weather.phenomenon || ahead.wind != current.weather.wind) {
+    if (ahead.sky != current.weather.sky || ahead.phenomenon != current.weather.phenomenon ||
+        ahead.wind != current.weather.wind) {
       ++forecast_disagreements;
     }
 
@@ -326,25 +375,46 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
     // seasonal ones (camera design §4).
     shape.phenomena[season][static_cast<std::size_t>(current.weather.phenomenon)] += 1U;
     shape.winds[season][static_cast<std::size_t>(current.weather.wind)] += 1U;
+    shape.steps[season][static_cast<std::size_t>(current.weather.sky)] += 1U;
     const auto today = static_cast<double>(current.weather.air_temperature_celsius);
     shape.coldest_day = today < shape.coldest_day ? today : shape.coldest_day;
     if (current.weather.phenomenon == core::WeatherPhenomenon::kBlizzard) {
       shape.coldest_blizzard = today < shape.coldest_blizzard ? today : shape.coldest_blizzard;
     }
-    // The window is May..August, 0-based months 4..7 — the same months the
-    // generator tests, spelled here so the instrument does not read the
-    // table it is measuring.
+    // THE HEAVY DAY: never two running, and its phase's hours.
+    const bool heavy = current.weather.sky == core::SkyStep::kHeavyPrecipitation;
+    if (heavy) {
+      ++shape.heavy_days;
+      shape.heavy_after_heavy +=
+          previous.weather.sky == core::SkyStep::kHeavyPrecipitation && day > 1 ? 1U : 0U;
+      const std::uint32_t hours = current.weather.heavy_hours;
+      shape.heavy_hours_sum += hours;
+      shape.heavy_hours_min = std::min(shape.heavy_hours_min, hours);
+      shape.heavy_hours_max = std::max(shape.heavy_hours_max, hours);
+    }
+    // THE STILL FROST, with its denominator.
+    if (today < kStillFrostCelsius) {
+      ++shape.below_still_frost;
+      shape.still_frost_broken += current.weather.sky > core::SkyStep::kPartlyCloudy ||
+                                          current.weather.wind != core::WindBand::kCalm
+                                      ? 1U
+                                      : 0U;
+    }
+    // THE WINDOWS, «всегда»: May..August and December..February, 0-based
+    // 4..7 and 11, 0, 1 — spelled here so the instrument does not read the
+    // table it is measuring. Warm is above −1 (wet snow on a heavy day is
+    // "the same as in the warm"), cold below it.
     const std::uint32_t month_now =
         (current.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth % core::kMonthsPerYear;
-    if (current.weather.precipitation == core::Precipitation::kRain && month_now >= 4U &&
-        month_now <= 7U) {
-      ++shape.wet_in_storm_window;
-      // Not a storm, and warm enough to have been one: then it was the draw
-      // that refused it, not the cold. The complement is what the ceiling
-      // actually costs.
-      const double afternoon = static_cast<double>(current.weather.air_temperature_celsius) +
-                               static_cast<double>(current.weather.temperature_swing_celsius);
-      shape.refused_by_cold += afternoon < 15.0 ? 1U : 0U;
+    if (heavy && today > -1.0 && month_now >= 4U && month_now <= 7U) {
+      ++shape.heavy_in_storm_window;
+      shape.storm_window_not_storm +=
+          current.weather.phenomenon == core::WeatherPhenomenon::kThunderstorm ? 0U : 1U;
+    }
+    if (heavy && today < -1.0 && (month_now == 11U || month_now <= 1U)) {
+      ++shape.heavy_in_blizzard_window;
+      shape.blizzard_window_not_blizzard +=
+          current.weather.phenomenon == core::WeatherPhenomenon::kBlizzard ? 0U : 1U;
     }
     // The cover, and the two things worth knowing about it: how much of the
     // year it lies, and how often it fails to last a second day.
@@ -360,11 +430,6 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
     }
     if (current.weather.precipitation == core::Precipitation::kSnow) {
       ++shape.snowy_days;
-      shape.snowfall_denied_by_cold +=
-          current.weather.phenomenon == core::WeatherPhenomenon::kSnowfall &&
-                  current.weather.wind >= core::WindBand::kStrongWind
-              ? 1U
-              : 0U;
     }
     if (current.weather.wind == core::WindBand::kSquall) {
       ++shape.squalls;
@@ -435,8 +500,54 @@ void Print(const char* label, const Shape& shape) {
             << shape.dry_runs.AtLeast(3) << ", 5+ " << shape.dry_runs.AtLeast(5) << '\n';
   std::cout << "  hot afternoons in a row: longest " << shape.hot_runs.Longest() << ", 3+ "
             << shape.hot_runs.AtLeast(3) << ", 5+ " << shape.hot_runs.AtLeast(5) << '\n';
+  // THE SKY BESIDE BOSS'S TABLE, measured / table, per cent — and the mean
+  // swing multiplier, which the steps are normalised to keep at one.
+  constexpr std::array<const char*, core::kSkyStepCountValue> kStepNames = {
+      "1 clear", "2 broken", "3 overcast", "4 light", "5 heavy"};
+  for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+    const double days = shape.seasons[season].days == 0 ? 1.0 : shape.seasons[season].days;
+    std::cout << "  sky " << SeasonName(season) << ":";
+    for (std::size_t step = 0; step < core::kSkyStepCountValue; ++step) {
+      std::cout << ' ' << kStepNames[step] << ' ' << (100.0 * shape.steps[season][step] / days)
+                << '/' << kDesignSkyPercent[season][step];
+    }
+    const double wet = 100.0 * (shape.steps[season][3] + shape.steps[season][4]) / days;
+    std::cout << " | 4+5 " << wet << '/'
+              << (kDesignSkyPercent[season][3] + kDesignSkyPercent[season][4])
+              << " | swing multiplier "
+              << (shape.amplitude[season] > 0.0
+                      ? shape.seasons[season].MeanSwing() / shape.amplitude[season]
+                      : 0.0)
+              << '\n';
+  }
+  std::cout << "  heavy days " << shape.heavy_days << ", of them right after a heavy day "
+            << shape.heavy_after_heavy << "; heavy phase hours min " << shape.heavy_hours_min
+            << " max " << shape.heavy_hours_max << " mean "
+            << (shape.heavy_days == 0
+                    ? 0.0
+                    : static_cast<double>(shape.heavy_hours_sum) / shape.heavy_days)
+            << '\n';
+  std::cout << "  heavy days in the storm window " << shape.heavy_in_storm_window
+            << ", of them not a storm " << shape.storm_window_not_storm
+            << "; cold heavy days in the blizzard window " << shape.heavy_in_blizzard_window
+            << ", of them not a blizzard " << shape.blizzard_window_not_blizzard << '\n';
+  std::cout << "  days below the still frost (" << kStillFrostCelsius << " C) "
+            << shape.below_still_frost << ", of them not clear-and-still "
+            << shape.still_frost_broken
+            << (shape.below_still_frost == 0
+                    ? "  <-- NOBODY WAS ASKED: the rule cannot fire in this climate"
+                    : "")
+            << '\n';
   constexpr std::array<const char*, core::kWeatherPhenomenonCountValue> kPhenomenonNames = {
-      "clear", "fog", "rain", "thunderstorm", "snowfall", "blizzard", "frost", "heat"};
+      "none",
+      "fog",
+      "rain",
+      "thunderstorm",
+      "snowfall",
+      "blizzard",
+      "frost",
+      "heat",
+      "heavy snowfall"};
   constexpr std::array<const char*, core::kWindBandCountValue> kWindNames = {
       "calm", "wind", "strong", "squall"};
   for (std::size_t name = 0; name < kPhenomenonNames.size(); ++name) {
@@ -458,8 +569,6 @@ void Print(const char* label, const Shape& shape) {
   std::cout << "  coldest blizzard " << shape.coldest_blizzard << " C, coldest day "
             << shape.coldest_day << " C; squalls " << shape.squalls << ", of them outside a storm "
             << shape.squalls_without_a_storm << '\n';
-  std::cout << "  wet days in the storm window " << shape.wet_in_storm_window
-            << ", of them too cool to thunder " << shape.refused_by_cold << '\n';
   std::cout << "  snow on the ground " << shape.covered_days << " days ("
             << (100.0 * shape.covered_days / (kYears * core::kDaysPerYear))
             << "% of the year), longest unbroken " << shape.longest_cover
@@ -482,11 +591,7 @@ void Print(const char* label, const Shape& shape) {
     std::cout << ' ' << SeasonName(season) << ' ' << shape.covered_by_season[season];
   }
   std::cout << '\n';
-  std::cout << "  snowy days " << shape.snowy_days << ", of them blown but too cold for a blizzard "
-            << shape.snowfall_denied_by_cold << " ("
-            << (shape.snowy_days == 0 ? 0.0
-                                      : 100.0 * shape.snowfall_denied_by_cold / shape.snowy_days)
-            << "% of snow)\n";
+  std::cout << "  snowy days " << shape.snowy_days << '\n';
 }
 
 }  // namespace
@@ -609,12 +714,11 @@ int main(int argc, char** argv) {
     failures +=
         run::Expect(std::abs(now.WetShare() - was.WetShare()) <= kWetSharePoints,
                     (name + ": memory did not move the season's share of wet days").c_str());
-    // AND THE SWING AVERAGES TO WHAT IT WAS. Clear days buy their extra
-    // swing from overcast ones; a mean multiplier below one would make every
-    // night milder than the design says, with nothing pointing at the sky.
-    failures += run::Expect(
-        std::abs(now.MeanSwing() - was.MeanSwing()) <= kSwingCelsius,
-        (name + ": the sky redistributed the diurnal swing without changing its mean").c_str());
+    // AND THE SWING AVERAGES TO WHAT IT WAS without memory. The sky's own
+    // redistribution is checked against the table amplitude below, since
+    // 2026-09-18 — the control carries the same sky and could not see it.
+    failures += run::Expect(std::abs(now.MeanSwing() - was.MeanSwing()) <= kSwingCelsius,
+                            (name + ": memory did not move the season's mean swing").c_str());
   }
 
   failures += run::Expect(forecast_disagreements == 0,
@@ -648,16 +752,43 @@ int main(int argc, char** argv) {
   failures += run::Expect(shipped.squalls > 0, "squalls happen");
   failures += run::Expect(shipped.squalls_without_a_storm == 0,
                           "and every one of them is inside a thunderstorm");
-  // THE COLD RULING, and it needs BOTH halves. That blizzards exist proves
-  // nothing; that the coldest day of two hundred years was too cold to be
-  // one is the ruling. Damage it and the two numbers meet.
-  failures += run::Expect(
-      shipped.coldest_blizzard > shipped.coldest_day + 0.5,
-      "the coldest days are too cold for a blizzard — the stillest day is the cruellest");
-  // AND THE SAME RULING AS A SHARE, which is the half that survives a change
-  // of climate. The two numbers above are a MEASUREMENT of today's
-  // distribution and they age silently; this one says what the rule must
-  // always do — refuse somebody — and it cannot age (boss, 2026-09-05).
+  // -- THE SKY, 2026-09-18: the steps, their table, and their rules ---------
+  //
+  // THE COLD RULING OF 2026-09-05 STOOD HERE and is gone with its rule: a
+  // blizzard no longer needs a strong wind above −10, it IS the cold heavy
+  // day of December..February, and the still frost at −12 keeps it out of
+  // the cruellest cold. The still frost cannot fire in the shipped climate
+  // (the line above says who was asked), so what is checked is that it was
+  // never broken, beside the count of days it had the chance.
+  for (std::size_t season = 0; season < core::kSeasonsPerYear; ++season) {
+    const SeasonStats& now = shipped.seasons[season];
+    const double days = now.days == 0 ? 1.0 : now.days;
+    const double wet = 100.0 * (shipped.steps[season][3] + shipped.steps[season][4]) / days;
+    const double table = kDesignSkyPercent[season][3] + kDesignSkyPercent[season][4];
+    const std::string name = SeasonName(season);
+    failures += run::Expect(std::abs(wet - table) <= kWetSharePoints,
+                            (name + ": the wet share is steps 4 + 5 of the design's table — the "
+                                    "heavy rule's cut went to step 4, not to a dry step")
+                                .c_str());
+    const double multiplier =
+        shipped.amplitude[season] > 0.0 ? now.MeanSwing() / shipped.amplitude[season] : 1.0;
+    failures +=
+        run::Expect(std::abs(multiplier - 1.0) <= 0.03,
+                    (name + ": the sky's swing multiplier averages one over the season").c_str());
+  }
+  failures += run::Expect(shipped.heavy_days > 0 && shipped.heavy_after_heavy == 0,
+                          "heavy days happen, and never two running");
+  failures += run::Expect(shipped.heavy_hours_min >= 2 && shipped.heavy_hours_max <= 12,
+                          "every heavy phase lasts 2..12 hours — never more than half a day");
+  failures +=
+      run::Expect(shipped.heavy_in_storm_window > 0 && shipped.storm_window_not_storm == 0,
+                  "every warm heavy day of May..August is a thunderstorm, and there were some");
+  failures +=
+      run::Expect(shipped.heavy_in_blizzard_window > 0 && shipped.blizzard_window_not_blizzard == 0,
+                  "every cold heavy day of December..February is a blizzard, and there were some");
+  failures += run::Expect(shipped.still_frost_broken == 0,
+                          "below the still frost the day is clear or broken and still, every time "
+                          "it was asked");
   // -- THE SETTLED SNOW, three claims and each can fail --------------------
   //
   // The layer paints winter white on THIS WORD and on nothing else, and the
@@ -699,9 +830,6 @@ int main(int argc, char** argv) {
   failures += run::Expect(shipped.dustings > 0,
                           "a snowfall that thaws next day leaves no cover — the melt rule refuses "
                           "a non-zero share of them");
-  failures += run::Expect(shipped.snowfall_denied_by_cold > 0,
-                          "and the cold rule refuses a non-zero share of blown snowy days: a "
-                          "threshold outside what the world produces is a comment, not a rule");
 
   // A stopped generator passes every invariant above — it would report the
   // same day forever, which is why the measure has to prove it measured.

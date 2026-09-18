@@ -95,11 +95,38 @@ enum class Precipitation : std::uint8_t {
   kPrecipitationCount,
 };
 
-/// @brief What the day IS, one name for it — the eight the design names
-/// (camera design §4). One per day: the presentation shows one icon and the
-/// quest layer orders one name, so a day that is both raining and foggy has
-/// to be called something, and the roster is ordered so that the call is
-/// always the same one.
+/// @brief THE SKY OF THE DAY — five steps, the day's first quantity (camera
+/// design §4 «Небо — пять ступеней»; the human's word, 2026-09-18: «1. Ясно.
+/// 2. Переменная облачность. 3. Пасмурно. 4. Слабые осадки. 5. Сильные осадки
+/// и сильный ветер»). The generator draws it before anything else and every
+/// other field of the day is read from it; the HUD icon is drawn by it.
+///
+/// NAMED, NEVER NUMBERED. The design counts the steps from one and this enum
+/// counts from nought; a table indexed by the enum is indexed by the NAME's
+/// value, and a human number is never computed from it by adding one — that
+/// arithmetic is how Epoch's `+ 1` bug lived a week (world_state.h, above).
+enum class SkyStep : std::uint8_t {
+  kClear = 0,           ///< 1. Ясно — no cloud, no precipitation.
+  kPartlyCloudy,        ///< 2. Переменная облачность — sky in breaks.
+  kOvercast,            ///< 3. Пасмурно — solid cloud, dry.
+  kLightPrecipitation,  ///< 4. Слабые осадки — drizzle, rain, sparse snow.
+  /// 5. Сильные осадки — a HEAVY PHASE of 2–12 hours inside the day, the
+  /// rest of the day light (WeatherState::heavy_from_hour, heavy_hours);
+  /// strong wind, a squall in a thunderstorm, only inside the phase. Never
+  /// two such days running.
+  kHeavyPrecipitation,
+
+  /// NOT A VALUE: the count, for a consumer's mirror and a table's size.
+  kSkyStepCount,
+};
+
+inline constexpr std::size_t kSkyStepCountValue = static_cast<std::size_t>(SkyStep::kSkyStepCount);
+
+/// @brief What the day IS CALLED beyond its sky: the FORM of its
+/// precipitation on steps 4–5, or one SIGN beside a dry sky (camera design §4).
+/// One per day, and since 2026-09-18 the two families cannot meet — a form
+/// exists only on a wet step and a sign only on a dry one — so the priority
+/// below orders only the signs among themselves.
 ///
 /// WIND IS NOT IN HERE, and that is the whole shape of this enum
 /// (Кожаный босс, 2026-09-05). Wind is random and almost unrelated to the
@@ -108,47 +135,51 @@ enum class Precipitation : std::uint8_t {
 /// and still" and "clear and blowing" would be two different days with one
 /// name, and the icon would have to drop "clear" to say "wind".
 enum class WeatherPhenomenon : std::uint8_t {
-  /// Nothing is happening to the sky worth a name of its own. The commonest
-  /// day, and it exists as a NAME rather than as an absence so that the
-  /// quest layer can order it: "a clear morning for the holiday".
-  kClear = 0,
+  /// NOTHING BEYOND THE SKY: the step says it all. Until 2026-09-18 this was
+  /// `kClear` and meant "a clear day"; clear is now SkyStep::kClear, and a
+  /// dry overcast day is also this value. Renamed rather than given a second
+  /// meaning under the old name — a name that changes what it means and
+  /// keeps its spelling is how two readers part without either noticing.
+  kNone = 0,
 
-  /// Fog: the dense morning kind lying along the floodplain. Delays the
-  /// start of work.
+  /// SIGN: fog, the dense morning kind lying along the floodplain — on
+  /// steps 1–3, in still or light wind. Delays the start of work.
   kFog,
 
-  /// Rain, from drizzle to downpour. Stops the harvest and spoils grain on
-  /// the threshing floor.
+  /// FORM of steps 4–5 in the warm: drizzle on 4, a downpour on 5 outside
+  /// the storm window. Stops the harvest and spoils grain on the threshing
+  /// floor.
   kRain,
 
-  /// Thunder, lightning, darkening. MAY TO AUGUST AND NEVER OUTSIDE IT, by
-  /// climate and by quest order alike: a thunderstorm in January is refused,
-  /// not granted.
-  ///
-  /// A SQUALL IS POSSIBLE INSIDE IT AND NOWHERE ELSE, which is not the same
-  /// as "a storm has one": the wind is drawn first and on its own, and a
-  /// storm that was going to blow hard blows a squall instead. A still storm
-  /// stays still — the rain is not what lays the corn.
+  /// FORM of step 5 in the warm, MAY TO AUGUST — ALWAYS, and never outside
+  /// it (the human's word, 2026-09-18: «грозы бывают с мая по август»). The
+  /// squall is inside it and nowhere else.
   kThunderstorm,
 
-  /// Snowfall, piling on the ground and the roofs. Snow on a field not yet
-  /// reaped kills that harvest whole (farming design §6).
+  /// FORM of step 4 in the cold, and of step 4 between −1 and +1 where it is
+  /// wet snow — DRAWN as snow and COUNTED as rain (precipitation kRain).
+  /// Snow on a field not yet reaped kills that harvest whole (farming §6).
   kSnowfall,
 
-  /// A blizzard: wind and snow together, no visibility, drifts, the road
-  /// shut. IT DOES NOT COME IN A HARD FROST, which is physics and a live
-  /// signal at once — the cruellest cold stands on the stillest, clearest
-  /// day, so the two winter troubles look like opposites and neither can be
-  /// mistaken for the other. The word is BLIZZARD and not "buran": the
-  /// design keeps one term per thing.
+  /// FORM of step 5 in the cold, DECEMBER TO FEBRUARY — ALWAYS (the human's
+  /// word, 2026-09-18: «Тоже самое метель»). Wind and snow together, the
+  /// road shut. Below −12 step 5 does not come at all: the cruellest cold
+  /// is the stillest, clearest day. The word is BLIZZARD and not "buran".
   kBlizzard,
 
-  /// Frost: rime and a skin of ice. Kills seedlings; anything tender dies
-  /// in the night (farming design §4).
+  /// SIGN: frost, rime and a skin of ice — on steps 1–2, a clear night in
+  /// the growing months. Kills seedlings (farming design §4).
   kFrost,
 
-  /// Heat: shimmer and burnt grass. Drought and a fall in the milk.
+  /// SIGN: heat, shimmer and burnt grass — on steps 1–2, afternoon from
+  /// +28. Drought and a fall in the milk.
   kHeat,
+
+  /// FORM of step 5 in the cold OUTSIDE December–February: heavy snowfall,
+  /// a second row of flakes on the icon and no wind strokes (boss,
+  /// 2026-09-18, commit 32849dd5). Appended, not placed beside its
+  /// siblings: the order of this enum is the wire format.
+  kHeavySnowfall,
 
   /// NOT A VALUE: the count, for a consumer's mirror. Values are appended
   /// BEFORE it.
@@ -195,7 +226,11 @@ inline constexpr std::size_t kWindBandCountValue =
 /// WindBand) — "clear and a strong wind" is a legitimate forecast and a
 /// legitimate quest order, and one name could not carry it.
 struct DayForecast {
-  WeatherPhenomenon phenomenon = WeatherPhenomenon::kClear;
+  /// The sky first, as the generator draws it and the icon is drawn by it.
+  /// A forecast shows a day of step 5 as step 5, whatever its hours.
+  SkyStep sky = SkyStep::kPartlyCloudy;
+
+  WeatherPhenomenon phenomenon = WeatherPhenomenon::kNone;
 
   WindBand wind = WindBand::kCalm;
 };
@@ -227,14 +262,26 @@ struct WeatherState {
   /// which is one number with two homes.
   float temperature_swing_celsius = 0.0f;
 
-  /// Overcast, 0 = clear sky, 1 = solid cloud. A quantity of the day in its
-  /// own right: rain implies cloud, cloud does not imply rain, and an
-  /// overcast dry day is exactly the day the swing rule exists for.
+  /// Overcast, 0 = clear sky, 1 = solid cloud. SINCE 2026-09-18 A READING OF
+  /// THE STEP, not a draw of its own: the step is the seam's word and the
+  /// layer does not interpret this number. Kept for its readers.
   float cloud_cover = 0.5f;
 
-  /// What this day is CALLED — one name, the presentation's icon and the
-  /// quest layer's order (WeatherPhenomenon).
-  WeatherPhenomenon phenomenon = WeatherPhenomenon::kClear;
+  /// THE SKY — the day's first quantity (SkyStep). Everything else in this
+  /// struct except the temperature and the snow is read from it.
+  SkyStep sky = SkyStep::kPartlyCloudy;
+
+  /// Step 5 only: the hour its heavy phase begins, 0..23, and how many hours
+  /// it lasts, 2..12 by the tables; the rest of the day is step 4. Both 0 on
+  /// any other step. The layer draws the downpour in these hours and decides
+  /// nothing itself (camera design §4, the human's word 2026-09-18: «Сильные
+  /// остадки не должны продолжаться долго, н более половину суток»).
+  std::uint8_t heavy_from_hour = 0;
+  std::uint8_t heavy_hours = 0;
+
+  /// What this day is CALLED beyond its sky — a precipitation form on steps
+  /// 4–5 or one sign on a dry step (WeatherPhenomenon).
+  WeatherPhenomenon phenomenon = WeatherPhenomenon::kNone;
 
   /// How hard it blows, as a band (WindBand). A SECOND FIELD BESIDE THE
   /// FIRST and not a ninth name in it: the icon for wind is drawn next to

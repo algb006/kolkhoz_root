@@ -1250,20 +1250,28 @@ int TestStockLights(const core::ITableSet& tables) {
   // AND THE WIND TRAVELS BESIDE THE NAME, not inside it: the middle day here
   // is clear AND blowing hard, which is precisely the day that could not be
   // expressed while the forecast was one field wide.
-  script->forecast_ = {core::DayForecast{.phenomenon = core::WeatherPhenomenon::kThunderstorm,
+  // AND THE SKY TRAVELS FIRST (2026-09-18): the clear day is a STEP and not a
+  // name, and its name is "nothing beyond the sky".
+  script->forecast_ = {core::DayForecast{.sky = core::SkyStep::kHeavyPrecipitation,
+                                         .phenomenon = core::WeatherPhenomenon::kThunderstorm,
                                          .wind = core::WindBand::kSquall},
-                       core::DayForecast{.phenomenon = core::WeatherPhenomenon::kClear,
+                       core::DayForecast{.sky = core::SkyStep::kClear,
+                                         .phenomenon = core::WeatherPhenomenon::kNone,
                                          .wind = core::WindBand::kStrongWind},
-                       core::DayForecast{.phenomenon = core::WeatherPhenomenon::kBlizzard,
+                       core::DayForecast{.sky = core::SkyStep::kHeavyPrecipitation,
+                                         .phenomenon = core::WeatherPhenomenon::kBlizzard,
                                          .wind = core::WindBand::kStrongWind}};
   session->AdvanceStep();
   const std::span<const core::DayForecast> forecast = session->WeatherForecast();
   failures += Expect(forecast.size() == 3, "the forecast is three days, always");
   failures += Expect(forecast.size() == 3 &&
                          forecast[0].phenomenon == core::WeatherPhenomenon::kThunderstorm &&
-                         forecast[1].phenomenon == core::WeatherPhenomenon::kClear &&
+                         forecast[1].phenomenon == core::WeatherPhenomenon::kNone &&
                          forecast[2].phenomenon == core::WeatherPhenomenon::kBlizzard,
                      "and they arrive as tomorrow, the day after, the third");
+  failures += Expect(forecast.size() == 3 && forecast[1].sky == core::SkyStep::kClear &&
+                         forecast[2].sky == core::SkyStep::kHeavyPrecipitation,
+                     "the sky step travels beside the name");
   failures += Expect(forecast.size() == 3 && forecast[0].wind == core::WindBand::kSquall &&
                          forecast[1].wind == core::WindBand::kStrongWind,
                      "a clear day that blows hard is a day the forecast can say");

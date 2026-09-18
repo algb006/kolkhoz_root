@@ -56,9 +56,11 @@ static_assert(AggregateArity<VitalsState>() == 4,
 static_assert(sizeof(CalendarState) == 24, "CalendarState changed — update the codec");
 static_assert(AggregateArity<CalendarState>() == 6,
               "CalendarState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(WeatherState) == 28,
+// 2026-09-18, save 56: the sky step and its heavy phase, three bytes — both
+// tripwires fired, as predicted before the build.
+static_assert(sizeof(WeatherState) == 32,
               "WeatherState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WeatherState>() == 9,
+static_assert(AggregateArity<WeatherState>() == 12,
               "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-17, save 49: the night pasture's standing order, its first night and
 // its camp took the block from 16 bytes to 24 and from four fields to seven.
@@ -194,6 +196,12 @@ constexpr std::uint8_t kMaxPhenomenon =
     static_cast<std::uint8_t>(WeatherPhenomenon::kWeatherPhenomenonCount) - 1;
 
 constexpr std::uint8_t kMaxWindBand = static_cast<std::uint8_t>(WindBand::kWindBandCount) - 1;
+
+// The sky's five steps and its heavy phase (save format 56): an hour of the
+// day for the start, and at most the whole day for the length.
+constexpr std::uint8_t kMaxSkyStep = static_cast<std::uint8_t>(SkyStep::kSkyStepCount) - 1;
+constexpr std::uint8_t kLastHour = 23;
+constexpr std::uint8_t kHoursInDay = 24;
 
 constexpr std::uint8_t kMaxWeekday = static_cast<std::uint8_t>(Weekday::kSunday);
 
@@ -446,6 +454,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // before it has stepped once.
   out.WriteFloat(world.weather.temperature_swing_celsius);
   out.WriteFloat(world.weather.cloud_cover);
+  // The day's SKY STEP and its heavy phase (save format 56, 2026-09-18).
+  // Recomputable like the rest, saved for the same reason.
+  out.WriteU8(static_cast<std::uint8_t>(world.weather.sky));
+  out.WriteU8(world.weather.heavy_from_hour);
+  out.WriteU8(world.weather.heavy_hours);
   // The day's NAME and the day's wind band (the wind parcel, 2026-09-05).
   // Recomputable from (seed, day) like everything above them, and saved for
   // the same reason: a loaded world must be able to answer before it has
@@ -565,6 +578,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<Precipitation>(source.ReadEnumValue(0, kMaxPrecipitation, "precipitation"));
   world->weather.temperature_swing_celsius = in.ReadFloat();
   world->weather.cloud_cover = in.ReadFloat();
+  world->weather.sky = static_cast<SkyStep>(source.ReadEnumValue(0, kMaxSkyStep, "sky step"));
+  world->weather.heavy_from_hour =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, kLastHour, "heavy phase start"));
+  world->weather.heavy_hours =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, kHoursInDay, "heavy phase hours"));
   world->weather.phenomenon =
       static_cast<WeatherPhenomenon>(source.ReadEnumValue(0, kMaxPhenomenon, "weather phenomenon"));
   world->weather.wind = static_cast<WindBand>(source.ReadEnumValue(0, kMaxWindBand, "wind band"));

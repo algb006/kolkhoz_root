@@ -119,6 +119,11 @@ core::WorldState MakeWorld() {
   // either field would still load a snowy day and look right.
   world.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
   world.weather.wind = core::WindBand::kStrongWind;
+  // The sky step and its heavy phase (save format 56): the top of the enum,
+  // and an hour and a length that are neither nought nor each other.
+  world.weather.sky = core::SkyStep::kHeavyPrecipitation;
+  world.weather.heavy_from_hour = 21;
+  world.weather.heavy_hours = 7;
   // AND THE SNOW ON THE GROUND, which is the one weather field that cannot
   // be recomputed from (seed, day): lose it here and a loaded January shows
   // bare earth until the next snowfall. It was written and NOT read once,
@@ -658,6 +663,9 @@ core::WorldState MakeWitnessWorld() {
   witness.weather.cloud_cover = 0.25F;
   witness.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
   witness.weather.wind = core::WindBand::kStrongWind;
+  witness.weather.sky = core::SkyStep::kHeavyPrecipitation;
+  witness.weather.heavy_from_hour = 5;
+  witness.weather.heavy_hours = 11;
   witness.weather.snow_cover_days = 9;
   witness.weather.cover_since_leaf_fall = true;
 
@@ -732,6 +740,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back(
       {"weather.temperature_swing_celsius", F32(world.weather.temperature_swing_celsius)});
   chunks.push_back({"weather.cloud_cover", F32(world.weather.cloud_cover)});
+  chunks.push_back({"weather.sky", Enum8(world.weather.sky)});
+  chunks.push_back({"weather.heavy_from_hour", U8(world.weather.heavy_from_hour)});
+  chunks.push_back({"weather.heavy_hours", U8(world.weather.heavy_hours)});
   chunks.push_back({"weather.phenomenon", Enum8(world.weather.phenomenon)});
   chunks.push_back({"weather.wind", Enum8(world.weather.wind)});
   chunks.push_back({"weather.snow_cover_days", U16(world.weather.snow_cover_days)});
@@ -956,7 +967,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // component. +8 bytes.
     // 2026-09-18, save 55: +1 — the months the village has gone without a
     // distiller, the clock of the sobriety the human asked for.
-    {"world", 382, 0x311e25932e0581a3ULL},
+    // 2026-09-18, save 56: +3 — the sky step and its heavy phase' hour and
+    // length (the human's five steps of the sky).
+    {"world", 385, 0x1c1ac4f257bd7787ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1197,6 +1210,9 @@ int main() {
   failures += Expect(loaded.weather.phenomenon == core::WeatherPhenomenon::kBlizzard &&
                          loaded.weather.wind == core::WindBand::kStrongWind,
                      "the day's name and its wind band survive the round trip");
+  failures += Expect(loaded.weather.sky == core::SkyStep::kHeavyPrecipitation &&
+                         loaded.weather.heavy_from_hour == 21 && loaded.weather.heavy_hours == 7,
+                     "the sky step and its heavy phase survive the round trip (save format 56)");
   failures +=
       Expect(loaded.weather.snow_cover_days == 9, "and so does the snow lying on the ground");
   failures += Expect(loaded.weather.cover_since_leaf_fall,
