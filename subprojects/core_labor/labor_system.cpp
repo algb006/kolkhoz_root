@@ -310,6 +310,11 @@ class LaborSystem final : public ILaborSystem {
     for (ResidentRow& resident : current.residents.rows) {
       resident.work = WorkAssignment{};
     }
+    // The reaping pace rolls over: yesterday's whole day of hand reaping on
+    // the arable is a candidate for the season's best (ledger_state.h).
+    YearLedger& book = current.ledger.current;
+    book.reaping_best_day = std::max(book.reaping_best_day, book.reaping_today);
+    book.reaping_today = 0.0F;
     RefillHerdCare(current);
     AssignPostHolders(current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
@@ -1021,6 +1026,14 @@ class LaborSystem final : public ILaborSystem {
     // still ploughed.
     if (kind_index < current.ledger.current.work_days_by_kind.size()) {
       current.ledger.current.work_days_by_kind[kind_index] += resident.work.worked_norm_days_today;
+    }
+    // THE REAPING OF THE ARABLE, apart from the meadow cut that shares its
+    // kind: the pace the harvest-will-not-be-gathered alarm reads.
+    if (resident.work.kind == WorkKind::kHarvest) {
+      const std::uint32_t field_row = FindRow(current.fields, resident.work.field);
+      if (field_row != kNoRow && current.fields.rows[field_row].kind == LandKind::kArable) {
+        current.ledger.current.reaping_today += resident.work.worked_norm_days_today;
+      }
     }
     if (kind_index < config_.rates.size() && resident.work.worked_norm_days_today > 0.0F) {
       const float trudodni =

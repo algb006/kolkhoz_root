@@ -2386,6 +2386,88 @@ int CheckTheSnowBooksWhatItTakes() {
   return failures;
 }
 
+/// kHarvestWillNotBeGathered (boss seq 78 and 91): the reaping's days are
+/// spent in the order the annuals ripen, at the season's best reaping day —
+/// or every hand of working age before the season has reaped — and a field
+/// that cannot be reaped by the snow is named with the grams the snow takes.
+int CheckTheHarvestWillNotBeGathered() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.growing_season_last_day = 40;
+  config.farming.life_speedup = 1.0F;
+  config.farming.adult_age_years = 16.0F;
+  core::CropDef potato;
+  potato.resource = core::ResourceId{1};
+  potato.yield_kg_per_ha = 1000.0F;
+  potato.sow_to_month = 4;        // sown by day 19
+  potato.harvest_from_month = 8;  // reaped from day 32: ripens in 13 days
+  potato.harvest_to_month = 8;
+  potato.harvest_days_per_ha = 5.0F;  // 50 norm-days on 10 ha
+  core::CropDef oat = potato;
+  oat.resource = core::ResourceId{0};
+  oat.harvest_from_month = 7;      // reaped from day 28: ripens in 9 days
+  oat.harvest_days_per_ha = 2.0F;  // 20 norm-days on 10 ha
+  config.crops = {potato, oat};
+  core::WorldState world;
+  world.calendar.tick = 30 * static_cast<core::Tick>(core::kTicksPerDay);
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 10.0F;
+  field.fertility = 50.0F;
+  field.phase = core::FieldPhase::kGrowing;
+  field.crop = core::CropId{0};
+  field.sown_day = 19;  // ripe on day 32
+  const core::FieldId id = core::AppendRow(world.fields, field);
+  // The oat ripens FIRST and stands SECOND in row order: the pair is what
+  // tells the ripening order from the row order.
+  core::FieldRow oats = field;
+  oats.crop = core::CropId{1};  // ripe on day 28, open today
+  core::AppendRow(world.fields, oats);
+  const auto warned = [&config, &world, id]() {
+    std::vector<core::Alarm> alarms;
+    core::CollectGatherAlarms(config, world, alarms);
+    std::int64_t grams = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotBeGathered &&
+          alarm.field.value == id.value) {
+        grams += alarm.amount;
+      }
+    }
+    return grams;
+  };
+  // Day 30, snow after 40. At the season's 5 norm-days a day the oat, open
+  // today, takes four (30..33); the potato, ripe on 32, starts on 34 with
+  // seven days left and needs ten: three tenths of 10 t go to the snow.
+  // Reaped in row order it would start on 32 and lose one tenth.
+  world.ledger.current.reaping_best_day = 5.0F;
+  failures += Expect(warned() == 3'000'000,
+                     "gather: the potato ripening after the oat finds the days it took, and it is "
+                     "said before the potato is ripe");
+  world.ledger.current.reaping_best_day = 10.0F;
+  failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
+  // No reaping yet this season: every hand of working age, one norm-day each.
+  world.ledger.current.reaping_best_day = 0.0F;
+  failures += Expect(warned() == 10'000'000,
+                     "gather: before the season's first reaping, no hands means the whole crop");
+  // Three adults and a child in a tent (a home without a house): three hands.
+  // The oat takes 6.67 days, the potato starts at 36.67 with 4.33 left of the
+  // 16.67 it needs — 74 % of 10 t. Counting the child would make it 52 %.
+  core::FamilyRow family;
+  family.in_tent = 1;
+  const core::FamilyId household = core::AppendRow(world.families, family);
+  for (const std::int32_t age_years : {30, 25, 40, 5}) {
+    core::ResidentRow person;
+    person.family = household;
+    person.birth_day = 30 - (age_years * static_cast<std::int32_t>(core::kDaysPerYear));
+    core::AppendRow(world.residents, person);
+  }
+  const std::int64_t by_hands = warned();
+  failures += Expect(by_hands > 7'300'000 && by_hands < 7'500'000,
+                     "gather: before the season reaps, the hands of working age are the pace");
+  return failures;
+}
+
 int CheckTheSowingWillNotFit() {
   int failures = 0;
   core::ProductionConfig config;
@@ -5949,6 +6031,7 @@ int main() {
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckTheSowingWillNotFit();
+  failures += CheckTheHarvestWillNotBeGathered();
   failures += CheckTheSnowBooksWhatItTakes();
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();

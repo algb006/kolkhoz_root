@@ -59,6 +59,16 @@ void CollectSowingAlarms(const ProductionConfig& config,
                          const WorldState& world,
                          std::vector<Alarm>& alarms);
 
+/// @brief Appends kHarvestWillNotBeGathered for every annual the snow gates
+/// that the village cannot reap by the snow at its reaping pace — the
+/// season's best day, or every hand of working age before the season's
+/// first reaping — the days spent in the order the fields ripen; `amount` is
+/// the grams the snow will take (alarm_state.h).
+/// @param alarms Appended to; never cleared.
+void CollectGatherAlarms(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms);
+
 /// @brief Appends the herd alarms standing in `world`, the stable's among
 /// them: fodder running out, a byre over its head count, horses unfed.
 /// @param alarms Appended to; never cleared.

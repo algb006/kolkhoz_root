@@ -503,6 +503,9 @@ core::WorldState MakeWorld() {
   world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
   // What the district seized above the limit (save 62).
   world.ledger.closed.seized = Amounts({5'000'000});
+  // The season's reaping pace (save 63).
+  world.ledger.closed.reaping_today = 3.25F;
+  world.ledger.closed.reaping_best_day = 22.5F;
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -1079,7 +1082,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // build and read off it.
     // Save 62: +12 — seized, the current book's empty column (2) and the
     // closed book's one position (2 + 8), predicted before the build.
-    {"ledger", 724, 0x3c393ef48ebbaa4aULL},
+    // Save 63: +16 — the reaping pace, two floats in each of the two books.
+    // Not predicted before the build this time; read off it and named so.
+    {"ledger", 740, 0xf17328fb6644dfa3ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1348,6 +1353,9 @@ int main() {
                          AmountAt(loaded.plan.accumulation_limit, 0) == 15'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 2) == 4'000'000,
                      "the seizure and the accumulation limit come back (save 62)");
+  failures += Expect(
+      loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_best_day == 22.5F,
+      "the season's reaping pace comes back (save 63)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.

@@ -1017,11 +1017,18 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // The life acceleration, from the same row core_labor reads it from: the
   // night pasture asks how old a child is, and a copy of the speedup here
   // would be the drift this project keeps finding.
+  // AND THE WORKING AGE, the same row labor reads it from (boss seq 91): the
+  // harvest-will-not-be-gathered alarm counts the village's hands before the
+  // season's first reaping, and the rule of who is a hand is labor's —
+  // read here a second time, not copied.
   if (const ITable* const life = tables.FindTable("life")) {
-    const std::array<ScalarKnob, 1> knobs = {
+    const std::array<ScalarKnob, 2> knobs = {
         ScalarKnob{.key = "life_speedup",
                    .value = &config.farming.life_speedup,
-                   .range = Range{.low = 0.1F, .high = 100.0F}}};
+                   .range = Range{.low = 0.1F, .high = 100.0F}},
+        ScalarKnob{.key = "adult_age_years",
+                   .value = &config.farming.adult_age_years,
+                   .range = Range{.low = 1.0F, .high = 100.0F}}};
     if (!ReadKnobs(*life, "life", knobs, error)) {
       return false;
     }

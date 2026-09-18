@@ -584,6 +584,11 @@ struct FarmingConfig {
   float wear_output_loss_at_full = 0.5F;
   float life_speedup = 4.0F;
 
+  /// life.csv `adult_age_years`, read beside `life_speedup` from the row
+  /// labor reads it from: who counts as a hand when the harvest alarm has no
+  /// season's pace yet (production_alarms.cpp).
+  float adult_age_years = 16.0F;
+
   /// The month the autumn pig slaughter falls in, 0-based. Everything but
   /// the sows and the sire goes to meat then (livestock design §6).
   std::uint8_t pig_slaughter_month = 9;  ///< October.

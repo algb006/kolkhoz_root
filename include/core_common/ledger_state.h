@@ -209,6 +209,15 @@ struct YearLedger {
   /// delivery — it counts toward no plan and no overfulfilment. Save 62.
   ResourceAmounts seized;
 
+  /// THE SEASON'S REAPING PACE (boss seq 91): norm-days of hand reaping on
+  /// ARABLE fields — the meadow cut is not in it — delivered today so far,
+  /// and the best whole day of the year. Written by labor at the day's pay
+  /// and roll-over; read by the harvest-will-not-be-gathered alarm as "the
+  /// hands the village has been seen to put on the reaping". The book turns
+  /// with the year, so the pace is this season's. Save 63.
+  float reaping_today = 0.0F;
+  float reaping_best_day = 0.0F;
+
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 
   float area_sown_ha = 0.0F;

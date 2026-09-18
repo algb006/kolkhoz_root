@@ -1060,7 +1060,8 @@ int CheckAlarmSubjectValue() {
   failures += Expect(subject(core::AlarmKind::kHarvestWillNotFit, field_id) == 22 &&
                          subject(core::AlarmKind::kHarvestWaitingOnField, field_id) == 22 &&
                          subject(core::AlarmKind::kSeedShort, field_id) == 22 &&
-                         subject(core::AlarmKind::kSowingWillNotFit, field_id) == 22,
+                         subject(core::AlarmKind::kSowingWillNotFit, field_id) == 22 &&
+                         subject(core::AlarmKind::kHarvestWillNotBeGathered, field_id) == 22,
                      "the alarms of a field answer with the field");
   failures += Expect(subject(core::AlarmKind::kHerdStarving, herd_id) == 33 &&
                          subject(core::AlarmKind::kHerdWithoutStable, herd_id) == 33,

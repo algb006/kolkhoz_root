@@ -317,6 +317,16 @@ enum class AlarmKind : std::uint8_t {
   /// `amount` = the SQUARE METRES that will not be sown, not grams.
   kSowingWillNotFit,
 
+  /// THE HARVEST WILL NOT BE GATHERED BEFORE THE SNOW (boss seq 78; alarms.csv
+  /// `harvest_will_not_be_gathered`, «Не успеть убрать до снега»): an annual
+  /// that will ripen, or has, cannot be reaped by the snow at the village's
+  /// reaping pace, and the snow will take what is left standing. The answer
+  /// is the chairman's — an аврал on the reaping (register 220), hands off
+  /// other work. The fields spend the days in the order they ripen; the one
+  /// that finds them gone is named. Subject: `field`; `resource` = its crop's
+  /// produce; `amount` = GRAMS the snow will take at that pace.
+  kHarvestWillNotBeGathered,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

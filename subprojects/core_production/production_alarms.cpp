@@ -13,6 +13,7 @@
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "field_work.h"
 #include "herd_system.h"
 #include "stock_ops.h"
@@ -585,6 +586,119 @@ std::vector<SowingClaim> SpringFieldsInThePlough(const ProductionConfig& config,
 }
 
 }  // namespace
+
+namespace {
+
+/// One annual still to be reaped, as the gathering alarm wants it.
+struct GatherClaim {
+  std::uint32_t row = 0;
+  std::int32_t open_day = 0;  ///< day of the year its reaping may open
+  float owed_days = 0.0F;     ///< reaping still owed, norm-days
+};
+
+/// The village's hands before the season has shown its pace: residents of
+/// working age with a home to leave from — labor's own rule (Employable),
+/// read off the same life.csv row, one norm-day each.
+std::uint32_t HandsOfTheVillage(const ProductionConfig& config, const WorldState& world) {
+  std::uint32_t hands = 0;
+  Vec2 home;
+  for (const ResidentRow& person : world.residents.rows) {
+    const float age =
+        BiologicalAgeYears(config.farming.life_speedup, person.birth_day, world.calendar.day);
+    if (age >= config.farming.adult_age_years && HomePositionOf(world, person.family, home)) {
+      ++hands;
+    }
+  }
+  return hands;
+}
+
+/// The annuals standing or being reaped that the snow gates, each with the
+/// first day its reaping may open — the reaping gate's own answer, asked day
+/// by day — and the reaping it still owes. A crop that cannot open before
+/// the snow is not here: that is the sowing's loss, not the reaping's.
+std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
+                                         const WorldState& world,
+                                         std::uint32_t day_of_year) {
+  std::vector<GatherClaim> claims;
+  const auto snow = static_cast<std::int32_t>(config.growing_season_last_day);
+  const SimDay year_start = world.calendar.day - day_of_year;
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    const bool standing =
+        field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
+    if (field.kind != LandKind::kArable || !standing || field.crop.value >= config.crops.size() ||
+        RipenDays(config, field.crop) == 0) {
+      continue;
+    }
+    const CropDef& crop = config.crops[field.crop.value];
+    GatherClaim claim{.row = row};
+    if (field.phase == FieldPhase::kHarvest) {
+      claim.open_day = static_cast<std::int32_t>(day_of_year);
+      claim.owed_days = field.work_days_remaining;
+    } else {
+      claim.open_day = -1;
+      for (auto day = static_cast<std::int32_t>(day_of_year); day <= snow; ++day) {
+        const auto month =
+            static_cast<std::uint8_t>(static_cast<std::uint32_t>(day) / kDaysPerMonth);
+        if (ReapingMayOpen(config, field, month, year_start + static_cast<SimDay>(day))) {
+          claim.open_day = day;
+          break;
+        }
+      }
+      claim.owed_days = crop.harvest_days_per_ha * field.area_ga;
+    }
+    if (claim.open_day >= 0 && claim.owed_days > 0.0F) {
+      claims.push_back(claim);
+    }
+  }
+  return claims;
+}
+
+}  // namespace
+
+void CollectGatherAlarms(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms) {
+  const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
+  std::vector<GatherClaim> claims = AnnualsToGather(config, world, day_of_year);
+  if (claims.empty()) {
+    return;
+  }
+  // IN THE ORDER THEY RIPEN, the reaping's days spent as the sowing alarm
+  // spends the team's: the field that opens last finds what is left.
+  std::ranges::stable_sort(claims, [](const GatherClaim& left, const GatherClaim& right) {
+    return left.open_day < right.open_day;
+  });
+  // THE PACE (boss seq 91, option В): once the season has reaped, the best
+  // day it has been seen to manage; before that, every hand at one norm-day
+  // — optimistic on purpose, so that it does not cry before there is a
+  // season to read.
+  const double pace = world.ledger.current.reaping_best_day > 0.0F
+                          ? static_cast<double>(world.ledger.current.reaping_best_day)
+                          : static_cast<double>(HandsOfTheVillage(config, world));
+  const auto snow = static_cast<double>(config.growing_season_last_day);
+  double clock = static_cast<double>(day_of_year);
+  for (const GatherClaim& claim : claims) {
+    const double start = std::max(clock, static_cast<double>(claim.open_day));
+    const double available = snow - start + 1.0;
+    const double needed = pace > 0.0 ? static_cast<double>(claim.owed_days) / pace
+                                     : std::numeric_limits<double>::infinity();
+    clock = start + needed;
+    if (needed <= available) {
+      continue;
+    }
+    const double short_share = available > 0.0 && pace > 0.0 ? (needed - available) / needed : 1.0;
+    const FieldRow& field = world.fields.rows[claim.row];
+    const CropDef& crop = config.crops[field.crop.value];
+    Alarm alarm;
+    alarm.kind = AlarmKind::kHarvestWillNotBeGathered;
+    alarm.field = world.fields.row_ids[claim.row];
+    alarm.resource = crop.resource;
+    alarm.amount = static_cast<std::int64_t>(
+        static_cast<double>(FieldYieldGrams(config, field, crop)) * short_share);
+    alarms.push_back(alarm);
+  }
+}
 
 void CollectSowingAlarms(const ProductionConfig& config,
                          const WorldState& world,
