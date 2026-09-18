@@ -389,6 +389,41 @@ int CheckRationSwitch() {
   return failures;
 }
 
+/// FOOD LOCKED IN THE FUNDS (I6; kReserveFullNothingToEat): a ration
+/// position with nothing free while the funds hold it. The seed fund is the
+/// plainest case: a field whose next sowing wants 180 kg of the grain, and
+/// 100 kg in the store — all of it is next spring's seed. (The plan's hold
+/// before the delivery is NOT a fund the ration respects — labor-payment §7
+/// holds the planned crop from the trudodni issue only — so it locks nothing
+/// here; that is the ration's rule, not the alarm's.)
+int CheckLockedRationFood() {
+  int failures = 0;
+  const core::FoodConfig config = MakeExchangeConfig();
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::WorldState seed = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  core::FieldRow field;
+  field.area_ga = 1.0F;
+  field.phase = core::FieldPhase::kIdle;
+  field.rotation_year0 = core::CropId{0};  // 180 kg/ha of resource 0
+  AppendRow(seed.fields, field);
+  const auto locked = core::LockedRationFood(config, seed);
+  failures +=
+      Expect(locked.size() == 1 && locked[0].first.value == 0 && locked[0].second == 100 * kKilo,
+             "all hundred kilograms are next spring's seed: food locked in a fund");
+
+  const core::WorldState free = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  failures += Expect(core::LockedRationFood(config, free).empty(),
+                     "the same grain with no field to seed is free, and nothing is locked");
+
+  // Some in the fund and some free: food can still be had, and the alarm is
+  // for when it cannot — 300 kg against a 180 kg seed fund leaves 120 free.
+  core::WorldState plenty = MakeExchangeWorld(300.0F, 100.0F, 0, 10.0F);
+  AppendRow(plenty.fields, field);
+  failures += Expect(core::LockedRationFood(config, plenty).empty(),
+                     "a fund beside free grain locks nothing a family could not have");
+  return failures;
+}
+
 /// THE ISSUE NORMS ARE THE CHAIRMAN'S, BY POSITION (labor-payment §3; econ's
 /// audit M1, Л1): «хлеба меньше, молока столько же» is the decision the
 /// bundle exists for (boss, epoch1-next seq 54).
@@ -2372,6 +2407,7 @@ int main() {
   failures += CheckExchange();
   failures += CheckRationSwitch();
   failures += CheckIssueNorms();
+  failures += CheckLockedRationFood();
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();

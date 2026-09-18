@@ -488,6 +488,30 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
   }
 }
 
+std::vector<std::pair<ResourceId, Grams>> LockedRationFood(const FoodConfig& config,
+                                                           const WorldState& world) {
+  std::vector<std::pair<ResourceId, Grams>> locked;
+  if (config.resources.empty()) {
+    return locked;
+  }
+  // The same reserve the distribution and the ration read, so the alarm and
+  // the ration cannot disagree about what is free.
+  const std::vector<Grams> reserve = IssueReserve(config, world);
+  for (std::uint32_t index = 0; index < config.resources.size(); ++index) {
+    if (!(config.resources[index].ration_kg_per_day > 0.0F)) {
+      continue;  // not a ration position: its absence starves nobody
+    }
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams stock = VillageStock(world, resource);
+    const Grams held = index < reserve.size() ? reserve[index] : 0;
+    const Grams in_funds = held < stock ? held : stock;
+    if (FreeStock(world, reserve, resource) <= 0 && in_funds > 0) {
+      locked.emplace_back(resource, in_funds);
+    }
+  }
+  return locked;
+}
+
 void ConsumeRationOrders(WorldState& current) {
   for (OrderRow& order : current.orders.rows) {
     if (order.status != OrderStatus::kPending || order.kind != OrderKind::kSetRation) {

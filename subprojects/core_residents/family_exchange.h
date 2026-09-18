@@ -19,6 +19,9 @@
 #ifndef CORE_RESIDENTS_FAMILY_EXCHANGE_H_
 #define CORE_RESIDENTS_FAMILY_EXCHANGE_H_
 
+#include <utility>
+#include <vector>
+
 #include "core_common/world_state.h"
 #include "food_config.h"
 
@@ -34,6 +37,14 @@ namespace core {
 /// @note A config without a resource roster (a table-less test world) makes
 ///       every step below a no-op rather than an error.
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current);
+
+/// @brief The ration positions whose FREE stock is nought while the sealed
+/// funds (seed, plan reserve, fodder — the distribution's own reserve) hold
+/// some: the position and the grams in the funds. The half of
+/// kReserveFullNothingToEat that is about the stores; the other half — a
+/// family at the threshold — is the caller's.
+std::vector<std::pair<ResourceId, Grams>> LockedRationFood(const FoodConfig& config,
+                                                           const WorldState& world);
 
 /// @brief Settles every pending kSetRation (order_state.h): the village-wide
 /// checkbox when the order names no family, the yard's decision when it

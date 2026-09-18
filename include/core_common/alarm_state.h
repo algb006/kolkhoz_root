@@ -294,6 +294,15 @@ enum class AlarmKind : std::uint8_t {
   /// day grows. Ranked 13 in the design's roster (alarms.csv).
   kFellingUnreachable,
 
+  /// FOOD LOCKED IN THE FUNDS WHILE A FAMILY GOES HUNGRY (econ's audit I6,
+  /// Л1; alarms.csv `reserve_full_nothing_to_eat`, rank 2, «Еда заперта в
+  /// фондах»): some family stands at the ration's threshold, nothing of a
+  /// ration position is free in the stores, and the sealed funds — the seed,
+  /// the plan's reserve, the fodder — hold some. The door is the chairman's
+  /// own: unseal a fund (kUnsealFund) or switch the ration. One per such
+  /// position. Subject: `resource`; `amount` = the grams held in the funds.
+  kReserveFullNothingToEat,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

@@ -216,6 +216,18 @@ class ResidentsSystem final : public IResidentsSystem {
       alarm.family = family;
       alarms.push_back(alarm);
     }
+    // FOOD LOCKED IN THE FUNDS (I6): only while somebody is at the threshold
+    // — food in a fund beside a fed village is a fund doing its job.
+    if (hungry.empty()) {
+      return;
+    }
+    for (const auto& [resource, grams] : LockedRationFood(food_, completed)) {
+      Alarm alarm;
+      alarm.kind = AlarmKind::kReserveFullNothingToEat;
+      alarm.resource = resource;
+      alarm.amount = grams;
+      alarms.push_back(alarm);
+    }
   }
 
   /// Everything edible of one resource the settlement can reach: the stores
