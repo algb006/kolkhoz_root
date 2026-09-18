@@ -52,6 +52,7 @@
 #ifndef CORE_LABOR_LABOR_SYSTEM_H_
 #define CORE_LABOR_LABOR_SYSTEM_H_
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -130,10 +131,15 @@ class ILaborSystem {
 ///        number production's sowing gate is given: the edge of a late
 ///        crop's reaping in the queue. The default, the year's last day,
 ///        changes nothing.
+/// @param standing_crop_grams Grams the snow would take from a field's
+///        standing crop — IProductionSystem::StandingCropGrams, bound by the
+///        assembly. Empty: every field weighs nought, and the last days
+///        before the snow keep the queue's own order.
 std::unique_ptr<ILaborSystem> CreateLaborSystem(
     const ITableSet& tables,
     StubTables stubs,
-    std::uint32_t growing_season_last_day = kDaysPerYear - 1U);
+    std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
+    std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams = {});
 
 }  // namespace core
 

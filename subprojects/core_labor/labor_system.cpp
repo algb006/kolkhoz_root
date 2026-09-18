@@ -316,9 +316,15 @@ class LaborSystem final : public ILaborSystem {
     }
     // The reaping pace rolls over: yesterday's whole day of hand reaping on
     // the arable is a candidate for the season's best (ledger_state.h).
+    // Its daylight goes with it (save 64): the best day's pace is only
+    // readable against the sun it was reaped under.
     YearLedger& book = current.ledger.current;
-    book.reaping_best_day = std::max(book.reaping_best_day, book.reaping_today);
+    if (book.reaping_today > book.reaping_best_day) {
+      book.reaping_best_day = book.reaping_today;
+      book.reaping_best_day_daylight = book.reaping_today_daylight;
+    }
     book.reaping_today = 0.0F;
+    book.reaping_today_daylight = 0.0F;
     RefillHerdCare(current);
     AssignPostHolders(current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
@@ -536,6 +542,9 @@ class LaborSystem final : public ILaborSystem {
         job.position = field.center;
         job.work_days_remaining = field.work_days_remaining;
         job.window = FieldWindow(current.calendar, field, kind);
+        if (config_.standing_crop_grams && InSnowLastDays(current.calendar, field, kind)) {
+          job.grams_at_risk = config_.standing_crop_grams(current, field);
+        }
         job.prepares_winter_crop = PreparesWinterCrop(field, kind);
         // THE THIRD TIER IS NOT WIRED, AND THE REASON IS MEASURED. The rule
         // asked for is "an overdue sowing is not offered at all" — seed put
@@ -771,6 +780,21 @@ class LaborSystem final : public ILaborSystem {
   /// labor_year, seed 1930: the start's 3.5 ha fallow opened for ploughing on
   /// day 16 and stood unworked to the year's end with sixty people idle a
   /// day; the rye was never sown and the ploughing band read 84.29.
+  /// Whether this is the reaping of an annual the snow gates (ripen days
+  /// above nought) with `harvest_snow_last_days` or fewer to the snow, the
+  /// snow's own day included. Nothing past the snow: the field is gone.
+  bool InSnowLastDays(const CalendarState& calendar, const FieldRow& field, WorkKind kind) const {
+    if (kind != WorkKind::kHarvest || config_.harvest_snow_last_days == 0 ||
+        field.crop.value >= config_.crops.size() ||
+        config_.crops[field.crop.value].ripen_days <= 0) {
+      return false;
+    }
+    const auto day_of_year = static_cast<std::int32_t>(calendar.day % kDaysPerYear);
+    const auto snow = static_cast<std::int32_t>(config_.growing_season_last_day);
+    const std::int32_t to_snow = snow - day_of_year;
+    return to_snow >= 0 && to_snow <= static_cast<std::int32_t>(config_.harvest_snow_last_days);
+  }
+
   Deadline FieldWindow(const CalendarState& calendar, const FieldRow& field, WorkKind kind) const {
     // THE MEADOW CUT HAS A WINDOW OF ITS OWN, June to July (farming design,
     // the months' row: "рост и сенокос"). A meadow has no crop, and until
@@ -815,6 +839,12 @@ class LaborSystem final : public ILaborSystem {
     // of a village that had few — on the no-horses arm of idle_curve, seeds
     // 1930-1939, five of ten twelfth years sowed nothing against none before
     // — for a field the player never got to start.
+    if (InSnowLastDays(calendar, field, kind)) {
+      // THE LAST DAYS (boss seq 95, register 235): open window or closed,
+      // the snow is the one edge, and CollectJobs weighs the fields by the
+      // grams the snow would take.
+      return DueByDay(calendar, static_cast<std::int32_t>(config_.growing_season_last_day));
+    }
     const bool ploughed = kind == WorkKind::kHarrowing || kind == WorkKind::kSowing;
     if (windows.ripen_days > 0 && window.kind == DeadlineKind::kOverdue &&
         (harvest || (ploughed && !PreparesWinterCrop(field, kind)))) {
@@ -1090,6 +1120,7 @@ class LaborSystem final : public ILaborSystem {
       const std::uint32_t field_row = FindRow(current.fields, resident.work.field);
       if (field_row != kNoRow && current.fields.rows[field_row].kind == LandKind::kArable) {
         current.ledger.current.reaping_today += resident.work.worked_norm_days_today;
+        current.ledger.current.reaping_today_daylight = current.weather.daylight_hours;
       }
     }
     if (kind_index < config_.rates.size() && resident.work.worked_norm_days_today > 0.0F) {
@@ -1120,9 +1151,11 @@ class LaborSystem final : public ILaborSystem {
 
 }  // namespace
 
-std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables,
-                                                StubTables stubs,
-                                                std::uint32_t growing_season_last_day) {
+std::unique_ptr<ILaborSystem> CreateLaborSystem(
+    const ITableSet& tables,
+    StubTables stubs,
+    std::uint32_t growing_season_last_day,
+    std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1154,6 +1187,7 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(const ITableSet& tables,
     return nullptr;
   }
   config.growing_season_last_day = growing_season_last_day;
+  config.standing_crop_grams = std::move(standing_crop_grams);
   return std::make_unique<LaborSystem>(std::move(config));
 }
 

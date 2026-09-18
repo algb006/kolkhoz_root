@@ -103,6 +103,12 @@ struct AssignmentJob {
   /// value. Daily work that expires tonight — barn care — still passes
   /// kDays with 0, which is the one honest use of that zero.
   Deadline window = DeadlineNotApplicable();
+
+  /// Grams the snow would take from this field's standing crop, set only for
+  /// the reaping of an annual in the last days before the snow (boss seq 95,
+  /// LaborConfig::harvest_snow_last_days); 0 otherwise. Between two such
+  /// jobs with the same days left, the heavier goes first.
+  Grams grams_at_risk = 0;
 };
 
 /// @brief One available worker, in placement terms.

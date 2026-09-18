@@ -29,12 +29,13 @@
 namespace core {
 namespace {
 
-/// @brief Reads the twelve scalar knobs of labor.csv, each with its range.
+/// @brief Reads the thirteen scalar knobs of labor.csv, each with its range.
 /// The block that stood here described PrefixError, which moved to
 /// core_catalog and left its documentation over this function.
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
-  const std::array<ScalarKnob, 12> knobs = {{
+  auto last_days = static_cast<float>(config.harvest_snow_last_days);
+  const std::array<ScalarKnob, 13> knobs = {{
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
        .range = {.low = 1.0F, .high = 24.0F}},
@@ -65,11 +66,15 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
        .value = &config.self_education_max_bonus,
        .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "placement_level", .value = &placement, .range = {.low = 0.0F, .high = 3.0F}},
+      {.key = "harvest_snow_last_days",
+       .value = &last_days,
+       .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
   }};
   if (!ReadKnobs(table, "labor", knobs, error)) {
     return false;
   }
   config.placement_level = static_cast<std::uint8_t>(placement);
+  config.harvest_snow_last_days = static_cast<std::uint32_t>(last_days);
   return true;
 }
 

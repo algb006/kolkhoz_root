@@ -712,9 +712,21 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // day it has been seen to manage; before that, every hand at one norm-day
   // — optimistic on purpose, so that it does not cry before there is a
   // season to read.
-  const double pace = world.ledger.current.reaping_best_day > 0.0F
-                          ? static_cast<double>(world.ledger.current.reaping_best_day)
-                          : static_cast<double>(HandsOfTheVillage(config, world));
+  //
+  // THE BEST DAY UNDER TODAY'S SUN (boss seq 95): a man reaps from sunrise to
+  // sunset less the road, so the best day's norm-days are scaled by today's
+  // daylight over the best day's. Taken of TODAY and not of each day to come:
+  // the light keeps falling to the snow, so this still errs on the side of
+  // silence, only by less than 15.2 h against 8.4 h did.
+  const YearLedger& book = world.ledger.current;
+  double pace = static_cast<double>(HandsOfTheVillage(config, world));
+  if (book.reaping_best_day > 0.0F) {
+    pace = static_cast<double>(book.reaping_best_day);
+    if (book.reaping_best_day_daylight > 0.0F && world.weather.daylight_hours > 0.0F) {
+      pace *= static_cast<double>(world.weather.daylight_hours) /
+              static_cast<double>(book.reaping_best_day_daylight);
+    }
+  }
   const auto snow = static_cast<double>(config.growing_season_last_day);
   double clock = static_cast<double>(day_of_year);
   for (const GatherClaim& claim : claims) {

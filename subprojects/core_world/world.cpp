@@ -702,7 +702,18 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   const std::uint32_t season_last_day =
       time == nullptr ? kDaysPerYear - 1U : time->GrowingSeasonLastDay();
   auto production = CreateProductionSystem(*config.tables, config.stub_tables, season_last_day);
-  auto labor = CreateLaborSystem(*config.tables, config.stub_tables, season_last_day);
+  // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
+  // days before the snow order the reaping by them (boss seq 95): labor is
+  // handed the one estimate, not a copy of its formula. The world owns both
+  // modules for as long as either runs, so the raw pointer outlives no one.
+  const IProductionSystem* const estimate = production.get();
+  auto labor = CreateLaborSystem(
+      *config.tables,
+      config.stub_tables,
+      season_last_day,
+      [estimate](const WorldState& world, const FieldRow& field) -> Grams {
+        return estimate == nullptr ? 0 : estimate->StandingCropGrams(world, field);
+      });
   auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).

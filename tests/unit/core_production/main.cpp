@@ -1021,6 +1021,20 @@ int CheckABrokenPlanPositionsLineIsNamedNotFatal() {
   core::ShutdownLogFile();
   failures += Expect(system != nullptr,
                      "a mistyped plan_positions line still builds the production tables");
+  // THE STANDING CROP labor's last days weigh (boss seq 95): rye 850 kg/ha on
+  // 2 ha at neutral soil, no stress — 1.7 t; a field with no crop, nought.
+  if (system != nullptr) {
+    core::WorldState world;
+    core::FieldRow rye;
+    rye.area_ga = 2.0F;
+    rye.fertility = 50.0F;
+    rye.crop = core::CropId{0};
+    core::FieldRow bare = rye;
+    bare.crop = core::CropId{};
+    failures += Expect(system->StandingCropGrams(world, rye) == 1'700'000 &&
+                           system->StandingCropGrams(world, bare) == 0,
+                       "standing crop: the harvest's own estimate, nought with no crop");
+  }
   if (!logging) {
     return failures + Expect(false, "the parse log opened");
   }
@@ -2446,6 +2460,17 @@ int CheckTheHarvestWillNotBeGathered() {
                      "said before the potato is ripe");
   world.ledger.current.reaping_best_day = 10.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
+  // THE SAME TEN UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour day,
+  // read on a 7.6-hour one, they are five — and the potato loses its three
+  // tenths again.
+  world.ledger.current.reaping_best_day_daylight = 15.2F;
+  world.weather.daylight_hours = 7.6F;
+  failures += Expect(warned() == 3'000'000,
+                     "gather: the best day's pace is scaled by today's daylight over its own");
+  world.ledger.current.reaping_best_day_daylight = 0.0F;
+  failures +=
+      Expect(warned() == 0, "gather: a best day with no daylight booked is read as it stands");
+  world.weather.daylight_hours = 12.0F;
   // No reaping yet this season: every hand of working age, one norm-day each.
   world.ledger.current.reaping_best_day = 0.0F;
   failures += Expect(warned() == 10'000'000,

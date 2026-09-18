@@ -55,9 +55,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 62: seized, what the district took above the accumulation limit — a
 // nineteenth column and a fifty-ninth field.
 // Save 63: the season's reaping pace, two floats (today and the best day).
-static_assert(sizeof(YearLedger) == 216 + (19 * kAmountsSize),
+// Save 64: the daylight of those two days, two floats more.
+static_assert(sizeof(YearLedger) == 224 + (19 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 61,
+static_assert(AggregateArity<YearLedger>() == 63,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -290,6 +291,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // The season's reaping pace (save 63).
   out.WriteFloat(book.reaping_today);
   out.WriteFloat(book.reaping_best_day);
+  // And the daylight they were reaped under (save 64).
+  out.WriteFloat(book.reaping_today_daylight);
+  out.WriteFloat(book.reaping_best_day_daylight);
   out.WriteU32(book.walk_offs);
   out.WriteFloat(book.horse_backed_assignment_days);
   out.WriteFloat(book.total_assignment_days);
@@ -363,6 +367,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.trudodni_burned = in.ReadI32();
   book.reaping_today = in.ReadFloat();
   book.reaping_best_day = in.ReadFloat();
+  book.reaping_today_daylight = in.ReadFloat();
+  book.reaping_best_day_daylight = in.ReadFloat();
   book.walk_offs = in.ReadU32();
   book.horse_backed_assignment_days = in.ReadFloat();
   book.total_assignment_days = in.ReadFloat();

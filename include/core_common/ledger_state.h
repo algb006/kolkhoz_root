@@ -218,6 +218,14 @@ struct YearLedger {
   float reaping_today = 0.0F;
   float reaping_best_day = 0.0F;
 
+  /// THE DAYLIGHT OF THOSE TWO DAYS, hours (boss seq 95; save 64): a man
+  /// reaps from sunrise to sunset less the road, so the best day of August
+  /// (15.2 h of sun) overstates what the same hands reap in November (8.4 h)
+  /// about 1.8 times. The alarm scales the best day by today's light over
+  /// the best day's. Written with the reaping at the pay, rolled with it.
+  float reaping_today_daylight = 0.0F;
+  float reaping_best_day_daylight = 0.0F;
+
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 
   float area_sown_ha = 0.0F;

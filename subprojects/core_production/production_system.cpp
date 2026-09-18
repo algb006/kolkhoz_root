@@ -289,6 +289,13 @@ class ProductionSystem final : public IProductionSystem {
     return DaysToHarvest(config_, completed);
   }
 
+  Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
+    if (field.crop.value >= config_.crops.size()) {
+      return 0;
+    }
+    return FieldYieldGrams(config_, field, config_.crops[field.crop.value]);
+  }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));

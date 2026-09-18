@@ -216,6 +216,12 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;
     }
+    // THE LAST DAYS BEFORE THE SNOW (boss seq 95): two reapings with one
+    // edge, the snow, go by what the snow would take — the heavier first.
+    // Asked only when BOTH carry grams, so no other pair changes its order.
+    if (a.grams_at_risk > 0 && b.grams_at_risk > 0 && a.grams_at_risk != b.grams_at_risk) {
+      return a.grams_at_risk > b.grams_at_risk;
+    }
     if (KindPriority(a.kind) != KindPriority(b.kind)) {
       return KindPriority(a.kind) < KindPriority(b.kind);
     }

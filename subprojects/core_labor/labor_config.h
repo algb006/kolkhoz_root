@@ -26,6 +26,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,12 +36,15 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/land_state.h"
 #include "core_common/post_shift.h"
+#include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 
 namespace core {
 
 class ITableSet;  // Defined in core_tables.
+struct WorldState;
 
 /// Per-work-kind pay and hardness (tables/labor.csv, one row per kind).
 struct WorkKindRates {
@@ -242,6 +246,19 @@ struct LaborConfig {
   /// sowing's end does not use it yet — see FieldWindow. The default, the
   /// year's last day, changes nothing.
   std::uint32_t growing_season_last_day = kDaysPerYear - 1U;
+
+  /// THE LAST DAYS BEFORE THE SNOW (boss seq 95, register 235; labor.csv
+  /// `harvest_snow_last_days`, STUB 3): when an annual's reaping has this
+  /// many days to the snow or fewer, its window is no longer the urgency —
+  /// the snow is the one edge, and the field the snow would take more grams
+  /// from is reaped first. 0 switches the rule off.
+  std::uint32_t harvest_snow_last_days = 3;
+
+  /// Grams the snow would take from a field's standing crop, asked of
+  /// production (IProductionSystem::StandingCropGrams) through the assembly.
+  /// Empty in a labor built alone: every field then weighs nought, and the
+  /// last days fall back to the queue's own order.
+  std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams;
 
   /// The last month of the meadow cut, 0-based (farming.csv
   /// meadow_cut_month_end, 1-based in the file). A meadow has no crop, so

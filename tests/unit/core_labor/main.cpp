@@ -2066,9 +2066,102 @@ int TestTheFieldsEdgeIsTheSnow() {
   failures += Expect(worked_on(21, core::FieldPhase::kHarrowing, 1, 0) == 2,
                      "snow edge: ploughed ground past its window is due by its last ripening day "
                      "— the cabbage, two days left, is harrowed before the oat with ten");
-  failures += Expect(worked_on(37, core::FieldPhase::kHarvest, 3, 2) == 2,
-                     "snow edge: a potato past its reaping window, three days before the snow, "
-                     "is reaped before a turnip still in its window with six");
+  // Day 36, four days before the snow: one day outside the last days
+  // (harvest_snow_last_days 3), where the window still ranks.
+  failures += Expect(worked_on(36, core::FieldPhase::kHarvest, 3, 2) == 2,
+                     "snow edge: a potato past its reaping window, four days before the snow, "
+                     "is reaped before a turnip still in its window with seven");
+  return failures;
+}
+
+/// THE LAST DAYS BEFORE THE SNOW (boss seq 95, register 235): with three
+/// days to the snow or fewer, the window no longer ranks the reaping — the
+/// field the snow would take more grams from goes first.
+int TestTheLastDaysGoByTheGrams() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_last_days";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv")
+      << "key,sow_to_month,harvest_from_month,harvest_to_month,is_winter,is_perennial\n"
+         "cabbage,5,10,10,0,0\noat,7,9,9,0,0\npotato,5,8,9,0,0\nturnip,5,8,11,0,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  if (Expect(tables != nullptr, "last days: the tables load") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  constexpr std::uint32_t kSnowDay = 40;
+  // The standing grams by crop, as production would count them: the test's
+  // own numbers, so both orders can be asked for.
+  core::Grams turnip_grams = 0;
+  core::Grams potato_grams = 0;
+  const auto labor = core::CreateLaborSystem(
+      *tables,
+      core::StubTables::kAllowed,
+      kSnowDay,
+      [&turnip_grams, &potato_grams](const core::WorldState&, const core::FieldRow& field) {
+        return field.crop.value == 3 ? turnip_grams : potato_grams;
+      });
+  if (Expect(labor != nullptr, "last days: the tables build a labor system") != 0) {
+    return 1;
+  }
+  // First row the turnip (in its window), second the potato (past it).
+  const auto worked_on_by = [](core::ILaborSystem& system, std::uint32_t game_day) {
+    DayWorld day(1);
+    const core::FieldId turnip =
+        day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+    const core::FieldId potato =
+        day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+    day.world.fields.rows[core::FindRow(day.world.fields, turnip)].crop = core::CropId{3};
+    day.world.fields.rows[core::FindRow(day.world.fields, potato)].crop = core::CropId{2};
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(game_day) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      system.RunAssignmentDecisions(previous, day.world);
+    }
+    const core::WorkAssignment& work = day.world.residents.rows[0].work;
+    return work.field.value == turnip.value ? 1 : (work.field.value == potato.value ? 2 : 0);
+  };
+  const auto worked_on = [&labor, &worked_on_by](std::uint32_t game_day) {
+    return worked_on_by(*labor, game_day);
+  };
+  // The turnip heavier: in the last days it goes first, though the potato
+  // is the one past its window.
+  turnip_grams = 9'000'000;
+  potato_grams = 2'000'000;
+  failures += Expect(worked_on(37) == 1,
+                     "last days: three days before the snow the heavier turnip is reaped before "
+                     "the potato past its window");
+  failures += Expect(worked_on(kSnowDay) == 1,
+                     "last days: and on the snow's own day, the last one the rule counts");
+  failures += Expect(worked_on(36) == 2,
+                     "last days: four days before the snow the window still ranks — the potato "
+                     "due by the snow first, however light");
+  // The potato heavier: the grams, not the rows, decided above.
+  turnip_grams = 2'000'000;
+  potato_grams = 9'000'000;
+  failures += Expect(worked_on(37) == 2,
+                     "last days: the heavier potato is reaped first when the grams turn round");
+  // labor.csv's harvest_snow_last_days 0 switches the rule off: the window
+  // ranks to the snow, and the heavier turnip waits for the potato again.
+  std::ofstream(root / "labor.csv") << "key,value\nharvest_snow_last_days,0\n";
+  const auto off_tables = core::LoadTableSet(root.string(), &error);
+  const auto off =
+      off_tables == nullptr
+          ? nullptr
+          : core::CreateLaborSystem(*off_tables,
+                                    core::StubTables::kAllowed,
+                                    kSnowDay,
+                                    [](const core::WorldState&, const core::FieldRow& field) {
+                                      return field.crop.value == 3 ? core::Grams{9'000'000}
+                                                                   : core::Grams{2'000'000};
+                                    });
+  failures += Expect(off != nullptr && worked_on_by(*off, 37) == 2,
+                     "last days: harvest_snow_last_days 0 in labor.csv switches the rule off");
   return failures;
 }
 
@@ -2126,6 +2219,52 @@ int TestTheWorkOpenedAfterTheMorningIsCrewed() {
              "top-up: the field opened after the morning is crewed at hour 1, not tomorrow");
   failures += Expect(crew_of(crewed) == morning_crew,
                      "top-up: the job crewed in the morning gets no surplus hands at hour 1");
+  return failures;
+}
+
+/// THE REAPING PACE AND ITS SUN (boss seq 91 and 95; saves 63-64): the pay
+/// books the day's hand reaping on the arable with the day's daylight, and
+/// the morning rolls the best day over with the daylight IT was reaped under
+/// — not the latest day's.
+int TestTheReapingPaceIsBookedWithItsDaylight() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_reaping_pace";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "oat,5,9,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "reaping pace: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(3);
+  const core::FieldId oat =
+      day.AddField(core::FieldPhase::kHarvest, 50.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+  core::FieldRow& field = day.world.fields.rows[core::FindRow(day.world.fields, oat)];
+  field.kind = core::LandKind::kArable;
+  field.crop = core::CropId{0};
+  // Day 30 is a Wednesday: a long day, then a short one.
+  day.world.weather.daylight_hours = 14.0F;
+  day.RunDay(*labor, 30);
+  const core::YearLedger& book = day.world.ledger.current;
+  const float long_day = book.reaping_today;
+  failures += Expect(long_day > 0.0F && book.reaping_today_daylight == 14.0F,
+                     "reaping pace: the pay books the reaping with the day's daylight");
+  day.world.weather.daylight_hours = 9.0F;
+  day.RunDay(*labor, 31);
+  failures += Expect(book.reaping_best_day == long_day && book.reaping_best_day_daylight == 14.0F &&
+                         book.reaping_today > 0.0F && book.reaping_today < long_day &&
+                         book.reaping_today_daylight == 9.0F,
+                     "reaping pace: the morning rolls the long day over as the best, with its sun");
+  day.RunDay(*labor, 32);
+  failures += Expect(book.reaping_best_day == long_day && book.reaping_best_day_daylight == 14.0F,
+                     "reaping pace: a shorter day does not lend the best day its daylight");
   return failures;
 }
 
@@ -2561,6 +2700,8 @@ int main() {
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();
   failures += TestTheFieldsEdgeIsTheSnow();
+  failures += TestTheLastDaysGoByTheGrams();
+  failures += TestTheReapingPaceIsBookedWithItsDaylight();
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAPausedSiteDrawsNoCrew();

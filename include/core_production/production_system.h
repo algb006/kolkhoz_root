@@ -57,12 +57,14 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/quantities.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
 
 namespace core {
 
 class ITableSet;  // Defined in core_tables (stage 1, task F5).
+struct FieldRow;  // Defined in core_common/land_state.h.
 
 /// @brief The land-and-production subsystem: owner of step slot 4 and of the
 /// production sub-step of the decisions slot.
@@ -141,6 +143,17 @@ class IProductionSystem {
   /// owns and that one may not read from here.
   /// @note Called between steps on the sim thread. A pure read.
   virtual std::int32_t DaysToNextHarvest(const WorldState& completed) const = 0;
+
+  /// @brief Grams the snow would take from this field's standing crop now:
+  /// the harvest's own estimate (fertility, weather stress, late sowing),
+  /// the number LoseFieldToSnow books. 0 for a field with no crop.
+  ///
+  /// Exposed for labor's last days before the snow (boss seq 95): the reaping
+  /// that would lose more goes first, and the grams are this module's to
+  /// count — labor is handed this through the assembly, not a copy of the
+  /// formula.
+  /// @note A pure read; called by labor in the decisions slot (phase 3).
+  virtual Grams StandingCropGrams(const WorldState& world, const FieldRow& field) const = 0;
 };
 
 /// @brief Creates the production subsystem.

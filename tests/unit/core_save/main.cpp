@@ -506,6 +506,9 @@ core::WorldState MakeWorld() {
   // The season's reaping pace (save 63).
   world.ledger.closed.reaping_today = 3.25F;
   world.ledger.closed.reaping_best_day = 22.5F;
+  // And the daylight of those two days (save 64).
+  world.ledger.closed.reaping_today_daylight = 8.25F;
+  world.ledger.closed.reaping_best_day_daylight = 15.5F;
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -1084,7 +1087,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // closed book's one position (2 + 8), predicted before the build.
     // Save 63: +16 — the reaping pace, two floats in each of the two books.
     // Not predicted before the build this time; read off it and named so.
-    {"ledger", 740, 0xf17328fb6644dfa3ULL},
+    // Save 64: +16 — the daylight of those two days, two floats in each book.
+    // Predicted before the build (756) and read off it.
+    {"ledger", 756, 0x9da9c3992885c25fULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1356,6 +1361,9 @@ int main() {
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_best_day == 22.5F,
       "the season's reaping pace comes back (save 63)");
+  failures += Expect(loaded.ledger.closed.reaping_today_daylight == 8.25F &&
+                         loaded.ledger.closed.reaping_best_day_daylight == 15.5F,
+                     "and the daylight it was reaped under (save 64)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.
