@@ -254,6 +254,12 @@ struct UnitTypeDef {
   /// carries the flag for exactly that reason.
   std::uint8_t capacity_by_plot = 0;
 
+  /// 0/1: the chairman may pause a unit of this type — the production and
+  /// livestock classes of unit_types.csv (units rules §5, «Производственный
+  /// юнит можно остановить»; its own example is a milking). A school, a
+  /// house or a road is not stopped by a pause: kPauseUnit on one is refused.
+  std::uint8_t pausable = 0;
+
   /// The resources this type is the declared home of (resource_stores.csv:
   /// the row names the type as its `unit` or as its `storage`). Asked of an
   /// outline store only — a heap under the open sky takes what the table

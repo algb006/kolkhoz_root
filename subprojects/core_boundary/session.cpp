@@ -36,6 +36,11 @@
 namespace core {
 namespace {
 
+/// The largest issue norm a kSetIssueNorm may carry, grams per trudoden. Ten
+/// kilograms is five times food.csv's largest position: a bound on a TYPO,
+/// not on a decision (order_state.h).
+constexpr Grams kMaxIssueNormGrams = 10 * kGramsPerKilogram;
+
 /// @brief Does this order name the entities its kind reads? SHAPE only —
 /// whether the subject exists, is eligible or is already busy is the
 /// consumer's verdict and comes back as an event after the step (session.h,
@@ -190,6 +195,22 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kAdvanceEra:
       // Nothing at all: the whole village goes. Whether it is ready is the
       // year's readiness, the consumer's verdict (order_state.h).
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kSetRation:
+      // A family or none (the whole village), and a switch that is a switch.
+      // Whether the family still lives is the consumer's (order_state.h).
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
+             order.enable <= 1;
+    case OrderKind::kSetIssueNorm:
+      // A position and a norm that a trudoden could buy: nought strikes it,
+      // ten kilograms is past anything the bundle ever carried (food.csv's
+      // largest is two). Whether the resource is food is the consumer's.
+      return order.resource.value != kInvalidDefIdValue && order.amount >= 0 &&
+             order.amount <= kMaxIssueNormGrams && !has_resident && !has_unit && !has_field &&
+             !has_herd && !has_stand && !has_site;
+    case OrderKind::kDeliverPlan:
+      // One position or all of them (resource invalid); no other subject.
+      // What is owed and what the stores hold is the consumer's.
       return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
   }
   return false;

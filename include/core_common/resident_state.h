@@ -134,7 +134,11 @@ struct ResidentRow {
   std::int32_t birth_day = 0;
 
   // -- current state (metrics design §2, "what is with him now") -----------
-  Metric satiety = 70.0F;  ///< STUB neutral until food arrives (stage 6).
+  /// Written by the family meal (family_meal.cpp) since stage 6; read by
+  /// health and, since 2026-09-18, by the worker's output (labor_day.h,
+  /// FedFactor). It said "STUB neutral until food arrives" until that day,
+  /// long after the food had arrived.
+  Metric satiety = 70.0F;
 
   Metric health = 70.0F;
 

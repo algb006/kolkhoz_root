@@ -13,6 +13,7 @@
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
+#include "district_plan.h"
 #include "extraction_digging.h"
 #include "field_removal.h"
 #include "herd_system.h"
@@ -383,7 +384,10 @@ void Settle(OrderRow& order, OrderRefusal refusal) {
 ///         stop) and for an order that asks for the state the unit is
 ///         already in: "pause the paused" is not a no-op to be swallowed,
 ///         it means the chairman is looking at something stale.
-OrderRefusal SetPaused(WorldState& current, UnitId unit, std::uint8_t paused) {
+OrderRefusal SetPaused(const ProductionConfig& config,
+                       WorldState& current,
+                       UnitId unit,
+                       std::uint8_t paused) {
   const std::uint32_t row = FindRow(current.units, unit);
   if (row == kNoRow) {
     return OrderRefusal::kNoSuchSubject;
@@ -400,6 +404,19 @@ OrderRefusal SetPaused(WorldState& current, UnitId unit, std::uint8_t paused) {
                             target.construction.phase == ConstructionPhase::kDemolishing;
   if (target.level == 0 && !work_at_site) {
     return OrderRefusal::kRuleForbids;
+  }
+  // ONLY A UNIT THAT PRODUCES IS STOPPED BY A PAUSE (units rules §5; boss's
+  // ruling on econ's audit, П5 / R1, 2026-09-18 — a defect of the core, not
+  // a revision). A school or a house has no production to stand still: a
+  // pause on it would only stop its wear, which is the ESCAPE the ruling
+  // closed. Work at a site stays pausable whatever the class — the building
+  // and the demolition are the work, and the human's word of 2026-09-14
+  // stands. RESUME IS NEVER REFUSED on this ground, so a unit paused before
+  // the rule can always be let go.
+  const bool pausable =
+      target.type.value < config.unit_types.size() && config.unit_types[target.type.value].pausable;
+  if (paused != 0 && !pausable && !work_at_site) {
+    return OrderRefusal::kNotEligible;
   }
   if (current.units.rows[row].paused == paused) {
     return OrderRefusal::kRuleForbids;
@@ -434,10 +451,10 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
     }
     switch (order.kind) {
       case OrderKind::kPauseUnit:
-        Settle(order, SetPaused(current, order.unit, 1));
+        Settle(order, SetPaused(config, current, order.unit, 1));
         break;
       case OrderKind::kResumeUnit:
-        Settle(order, SetPaused(current, order.unit, 0));
+        Settle(order, SetPaused(config, current, order.unit, 0));
         break;
       case OrderKind::kUnsealFund:
         Settle(order, UnsealFund(config, current, order));
@@ -462,6 +479,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kHandStock:
         Settle(order, OrderHandStock(config, current, order));
+        break;
+      case OrderKind::kDeliverPlan:
+        Settle(order, DeliverPlanNow(config, current, order.resource));
         break;
       default:
         break;  // not ours: another consumer's, or the events slot's refusal

@@ -64,8 +64,10 @@ static_assert(AggregateArity<WeatherState>() == 12,
               "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-17, save 49: the night pasture's standing order, its first night and
 // its camp took the block from 16 bytes to 24 and from four fields to seven.
+// 2026-09-18, save 57: the ration's checkbox, eight fields; it landed in the
+// padding beside the night pasture's two bytes, so the size stays 24.
 static_assert(sizeof(ChairmanState) == 24, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 7,
+static_assert(AggregateArity<ChairmanState>() == 8,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -156,7 +158,8 @@ static_assert(AggregateArity<ReadinessComponent>() == 3,
               "ReadinessComponent changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TransitionBlocks>() == 6,
               "TransitionBlocks gained or lost a block — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 31,
+// 2026-09-18, save 57: the chairman's issue norms (kSetIssueNorm), 32.
+static_assert(AggregateArity<WorldState>() == 32,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -495,8 +498,14 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.chairman.night_pasture_begun);
   out.WriteFloat(world.chairman.night_pasture_place.x);
   out.WriteFloat(world.chairman.night_pasture_place.y);
+  // The ration's checkbox (save 57): labor-payment §5, kSetRation.
+  out.WriteU8(world.chairman.ration_auto);
 
   out.WriteFloat(world.traction_ration);
+  // The chairman's issue norms (save 57, kSetIssueNorm), through the
+  // resource dictionary like every amounts vector; empty until his first
+  // order, and empty round-trips as empty.
+  sink.WriteAmounts(DefKind::kResource, world.issue_norms);
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
@@ -605,8 +614,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.night_pasture_begun = in.ReadU8();
   world->chairman.night_pasture_place.x = in.ReadFloat();
   world->chairman.night_pasture_place.y = in.ReadFloat();
+  world->chairman.ration_auto =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the ration's checkbox"));
 
   world->traction_ration = in.ReadFloat();
+  world->issue_norms = source.ReadAmounts(DefKind::kResource);
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
   world->plan.last_verdict =

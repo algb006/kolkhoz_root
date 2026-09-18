@@ -1370,6 +1370,21 @@ WorldState CreateStartWorld(const ITableSet& tables,
       world.plan.worked_ha_last_year += field.area_ga;
     }
   }
+  // THE RATION'S CHECKBOX STARTS WHERE THE TABLE SAYS (food.csv
+  // `ration_auto`; boss, 2026-08-30: «авто-режим станет стартовым значением
+  // галочки»), and from here only the chairman's kSetRation moves it. A table
+  // set without the row keeps the struct's default, on — a village with no
+  // number for it is not left without its ration.
+  if (const ITable* food = tables.FindTable("food")) {
+    const std::uint32_t row = food->FindRowByKey("ration_auto");
+    const std::uint32_t column = food->FindColumn("value");
+    if (row != kNoTableRow && column != kNoTableColumn) {
+      const std::optional<double> value = food->CellReal(row, column);
+      if (value.has_value()) {
+        world.chairman.ration_auto = *value != 0.0 ? 1U : 0U;
+      }
+    }
+  }
   MakeTimberStands(tables, world, error);
   MakeExtractionSites(tables, world, error);
   return world;

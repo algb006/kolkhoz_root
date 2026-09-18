@@ -317,6 +317,123 @@ int CheckExchange() {
   return failures;
 }
 
+/// THE RATION'S SWITCH IS THE CHAIRMAN'S (labor-payment §5; econ's audit M3,
+/// Л1): the village-wide checkbox, or the decision for one yard. Until
+/// 2026-09-18 nothing in the unit tests touched the ration at all — only the
+/// event_journal run saw it — and it was a table constant nobody could turn.
+int CheckRationSwitch() {
+  int failures = 0;
+  const core::FoodConfig config = MakeExchangeConfig();
+  // A hungry yard (satiety 10, under the threshold of 25) owed nothing, beside
+  // full stores: only the ration can feed it grain.
+  {
+    core::WorldState off = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+    off.chairman.ration_auto = 0;
+    core::RunFamilyExchange(config, 4.0F, off);
+    failures += Expect(PantryOf(off, 0) == 0,
+                       "with the checkbox off and no decision for the yard, no ration is given");
+
+    core::WorldState granted = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+    granted.chairman.ration_auto = 0;
+    granted.families.rows[0].ration_granted = 1;
+    core::RunFamilyExchange(config, 4.0F, granted);
+    failures += Expect(PantryOf(granted, 0) > 0,
+                       "the yard the chairman decided for is given it, checkbox or not");
+
+    core::WorldState automatic = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+    automatic.chairman.ration_auto = 1;
+    core::RunFamilyExchange(config, 4.0F, automatic);
+    failures += Expect(PantryOf(automatic, 0) > 0,
+                       "and with the checkbox on every yard at the threshold is given it");
+
+    core::WorldState fed = MakeExchangeWorld(100.0F, 100.0F, 0, 70.0F);
+    fed.families.rows[0].ration_granted = 1;
+    core::RunFamilyExchange(config, 4.0F, fed);
+    failures += Expect(PantryOf(fed, 0) == 0,
+                       "the switch says who may have it, the threshold says when: a fed yard "
+                       "granted the ration is not given it");
+  }
+
+  // THE ORDER (kSetRation): no family is the checkbox, a family is its yard.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    const core::FamilyId yard = world.families.row_ids[0];
+    const auto order = [&world](core::FamilyId family, std::uint8_t enable) {
+      core::OrderRow row;
+      row.kind = core::OrderKind::kSetRation;
+      row.status = core::OrderStatus::kPending;
+      row.family = family;
+      row.enable = enable;
+      return AppendRow(world.orders, row);
+    };
+    const core::OrderId off = order(core::FamilyId{}, 0);
+    const core::OrderId grant = order(yard, 1);
+    const core::OrderId nobody = order(core::FamilyId{999}, 1);
+    core::ConsumeRationOrders(world);
+    const auto settled = [&world](core::OrderId id) -> const core::OrderRow& {
+      return world.orders.rows[core::FindRow(world.orders, id)];
+    };
+    failures +=
+        Expect(settled(off).status == core::OrderStatus::kDone && world.chairman.ration_auto == 0,
+               "set_ration with no family switches the village's checkbox");
+    failures += Expect(settled(grant).status == core::OrderStatus::kDone &&
+                           world.families.rows[0].ration_granted == 1,
+                       "and with a family decides for that yard");
+    failures += Expect(settled(nobody).refusal == core::OrderRefusal::kNoSuchSubject,
+                       "a family that is not there is refused for the family");
+    const core::OrderId again = order(core::FamilyId{}, 0);
+    core::ConsumeRationOrders(world);
+    failures += Expect(settled(again).refusal == core::OrderRefusal::kRuleForbids,
+                       "switching off what is off is refused, not silently agreed with");
+  }
+  return failures;
+}
+
+/// THE ISSUE NORMS ARE THE CHAIRMAN'S, BY POSITION (labor-payment §3; econ's
+/// audit M1, Л1): «хлеба меньше, молока столько же» is the decision the
+/// bundle exists for (boss, epoch1-next seq 54).
+int CheckIssueNorms() {
+  int failures = 0;
+  const core::FoodConfig config = MakeExchangeConfig();
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+  const auto order = [&world](std::uint16_t resource, core::Grams grams) {
+    core::OrderRow row;
+    row.kind = core::OrderKind::kSetIssueNorm;
+    row.status = core::OrderStatus::kPending;
+    row.resource = core::ResourceId{resource};
+    row.amount = grams;
+    return AppendRow(world.orders, row);
+  };
+  const core::OrderId half_bread = order(0, kKilo / 2);
+  const core::OrderId not_food = order(9, kKilo);
+  core::ConsumeIssueNormOrders(config, world);
+  failures += Expect(
+      world.orders.rows[core::FindRow(world.orders, half_bread)].status == core::OrderStatus::kDone,
+      "a norm set on a position of the bundle is done");
+  failures += Expect(world.orders.rows[core::FindRow(world.orders, not_food)].refusal ==
+                         core::OrderRefusal::kNotEligible,
+                     "a resource that is not food is no position of the bundle");
+  core::RunFamilyExchange(config, 4.0F, world);
+  failures += Expect(PantryOf(world, 0) == 1 * kKilo,
+                     "two trudodni at the chairman's half kilogram buy one kilogram of bread");
+  failures += Expect(PantryOf(world, 1) == 4 * kKilo,
+                     "and the position he did not touch keeps the table's norm");
+
+  core::WorldState struck = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+  core::OrderRow nought;
+  nought.kind = core::OrderKind::kSetIssueNorm;
+  nought.status = core::OrderStatus::kPending;
+  nought.resource = core::ResourceId{0};
+  nought.amount = 0;
+  AppendRow(struck.orders, nought);
+  core::ConsumeIssueNormOrders(config, struck);
+  core::RunFamilyExchange(config, 4.0F, struck);
+  failures += Expect(PantryOf(struck, 0) == 0 && PantryOf(struck, 1) == 4 * kKilo,
+                     "a norm of nought strikes the position out, and only that one");
+  return failures;
+}
+
 int CheckVitals() {
   int failures = 0;
   const core::LifeConfig life;
@@ -2253,6 +2370,8 @@ int main() {
   failures += CheckSatietyComponent();
   failures += CheckPlot();
   failures += CheckExchange();
+  failures += CheckRationSwitch();
+  failures += CheckIssueNorms();
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();

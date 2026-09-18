@@ -767,7 +767,11 @@ class LaborSystem final : public ILaborSystem {
       AssignmentCandidate candidate;
       candidate.resident_row = row;
       candidate.home = home;
-      candidate.efficiency = ResidentEfficiency(config_, resident, age, aging_from);
+      // Ranked before any work is chosen, so the sober factor is the general
+      // one: the three spared works (AlcoholSparesWork) are spared where the
+      // work is delivered, below, and not in who comes first to the list.
+      candidate.efficiency = ResidentEfficiency(
+          config_, resident, age, aging_from, current.calendar.date.year == 0, false);
       candidate.rest = resident.rest;
       candidate.skill = FieldSkillBlend(config_, resident);
       candidate.horse_locked = horse_locked[row];
@@ -893,8 +897,12 @@ class LaborSystem final : public ILaborSystem {
       }
       resident.work.hours_away_today += worked;
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
-      const float efficiency =
-          ResidentEfficiency(config_, resident, age, AgingFromYears(config_, current));
+      const float efficiency = ResidentEfficiency(config_,
+                                                  resident,
+                                                  age,
+                                                  AgingFromYears(config_, current),
+                                                  current.calendar.date.year == 0,
+                                                  AlcoholSparesWork(resident.work));
       float delivered = worked * efficiency / config_.standard_day_hours;
       delivered = delivered > *seam ? *seam : delivered;
       if (delivered <= 0.0F) {

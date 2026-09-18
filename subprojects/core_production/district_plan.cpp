@@ -22,13 +22,50 @@ namespace core {
 /// "simply a smaller delivery" because the district had no mechanics, and
 /// JudgePlan below is those mechanics arriving.
 void DeliverPlan(const ProductionConfig& config, WorldState& current) {
-  current.plan.delivered.assign(current.plan.due.size(), 0);
+  // THE TURN SHIPS WHAT IS STILL OWED, not the whole figure again: whatever
+  // the chairman shipped earlier by order (kDeliverPlan) is already in
+  // `delivered`. «Держать до срока» is this — the default, the deadline.
+  if (current.plan.delivered.size() < current.plan.due.size()) {
+    current.plan.delivered.resize(current.plan.due.size(), 0);
+  }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    const Grams owed = current.plan.due[index] - current.plan.delivered[index];
+    if (owed <= 0) {
+      continue;
+    }
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams taken = TakeFromStorage(current, config, resource, current.plan.due[index]);
-    current.plan.delivered[index] = taken;
+    const Grams taken = TakeFromStorage(current, config, resource, owed);
+    current.plan.delivered[index] += taken;
     AddLedgerAmount(current.ledger.current.delivered, resource, taken);
   }
+}
+
+OrderRefusal DeliverPlanNow(const ProductionConfig& config, WorldState& current, ResourceId only) {
+  if (current.plan.announced == 0 || current.plan.due.empty()) {
+    return OrderRefusal::kNoPlanYet;
+  }
+  if (current.plan.delivered.size() < current.plan.due.size()) {
+    current.plan.delivered.resize(current.plan.due.size(), 0);
+  }
+  Grams shipped = 0;
+  for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    if (only.value != kInvalidDefIdValue && index != only.value) {
+      continue;
+    }
+    const Grams owed = current.plan.due[index] - current.plan.delivered[index];
+    if (owed <= 0) {
+      continue;
+    }
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams taken = TakeFromStorage(current, config, resource, owed);
+    current.plan.delivered[index] += taken;
+    AddLedgerAmount(current.ledger.current.delivered, resource, taken);
+    shipped += taken;
+  }
+  // NOTHING SHIPPED IS A REFUSAL AND NOT A DONE: nothing owed, or nothing of
+  // it in the stores. A "done" that moved no gram would teach the chairman
+  // that the button works when it did nothing.
+  return shipped > 0 ? OrderRefusal::kNone : OrderRefusal::kRuleForbids;
 }
 
 /// @brief Was every position delivered IN FULL — 100 %, not the share that
@@ -110,6 +147,13 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
   // successful; this one was found by the delivery cycle's RACE pass.
   current.plan.due.assign(current.plan.due.size(), 0);
   current.plan.announced = 0;
+  // WHAT WAS DELIVERED IS COUNTED FROM THE ANNOUNCEMENT ON (kDeliverPlan,
+  // econ's audit M2, 2026-09-18): the chairman may ship any time between the
+  // spring's figure and the year's turn, and the turn ships only what is
+  // still owed. Cleared here, where the year's figure starts, and not at the
+  // turn — last year's delivered stays readable through the winter, as it
+  // always was.
+  current.plan.delivered.assign(current.plan.delivered.size(), 0);
   if (!(config.plan_grain_share > 0.0F) || config.plan_positions.empty()) {
     return;  // no district in these tables: nothing is asked and nothing is judged
   }

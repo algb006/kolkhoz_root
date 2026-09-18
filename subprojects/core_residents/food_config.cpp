@@ -152,20 +152,20 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
 bool ParseDistribution(const ITable& table, FoodConfig& config, std::string& error) {
   DistributionConfig& distribution = config.distribution;
   auto period = static_cast<float>(distribution.period_days);
-  auto ration_auto = static_cast<float>(distribution.ration_auto);
   auto reserve_seed = static_cast<float>(distribution.reserve_seed_fund);
-  const std::array<ScalarKnob, 3> knobs = {{
+  // `ration_auto` is NOT read here since 2026-09-18: it is the start value
+  // of the chairman's checkbox, written once by genesis into
+  // ChairmanState::ration_auto, and the ration reads the checkbox.
+  const std::array<ScalarKnob, 2> knobs = {{
       {.key = "distribution_period_days",
        .value = &period,
        .range = {.low = 1.0F, .high = static_cast<float>(kDaysPerYear)}},
-      {.key = "ration_auto", .value = &ration_auto, .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "reserve_seed_fund", .value = &reserve_seed, .range = {.low = 0.0F, .high = 1.0F}},
   }};
   if (!ReadKnobs(table, "food", knobs, error)) {
     return false;
   }
   distribution.period_days = static_cast<std::uint32_t>(period);
-  distribution.ration_auto = static_cast<std::uint8_t>(ration_auto);
   distribution.reserve_seed_fund = static_cast<std::uint8_t>(reserve_seed);
   return true;
 }

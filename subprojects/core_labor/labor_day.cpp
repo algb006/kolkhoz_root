@@ -93,10 +93,46 @@ float AgingFromYears(const LaborConfig& config, const WorldState& world) {
   return threshold > 1.0F ? threshold : 1.0F;
 }
 
+float FedFactor(const EfficiencyFactors& factors, Metric satiety, bool first_year) {
+  const float floor =
+      first_year ? factors.satiety_factor_floor_first_year : factors.satiety_factor_floor;
+  if (satiety >= factors.satiety_full) {
+    return 1.0F;
+  }
+  if (satiety <= factors.satiety_floor) {
+    return floor;
+  }
+  const float share =
+      (factors.satiety_full - satiety) / (factors.satiety_full - factors.satiety_floor);
+  return 1.0F - (share * (1.0F - floor));
+}
+
+float SoberFactor(const EfficiencyFactors& factors, Metric alcoholism) {
+  if (alcoholism <= factors.alcoholism_from) {
+    return 1.0F;
+  }
+  if (alcoholism >= factors.alcoholism_to) {
+    return factors.alcoholism_factor_floor;
+  }
+  const float share =
+      (alcoholism - factors.alcoholism_from) / (factors.alcoholism_to - factors.alcoholism_from);
+  return 1.0F - (share * (1.0F - factors.alcoholism_factor_floor));
+}
+
+bool AlcoholSparesWork(const WorkAssignment& work) {
+  if (work.kind == WorkKind::kFelling) {
+    return true;
+  }
+  // Logs off a stand: the forest's work for the kolkhoz.
+  return work.kind == WorkKind::kHauling && work.stand.value != kInvalidEntityIdValue;
+}
+
 float ResidentEfficiency(const LaborConfig& config,
                          const ResidentRow& resident,
                          float age_years,
-                         float aging_from_years) {
+                         float aging_from_years,
+                         bool first_year,
+                         bool drink_spared) {
   const EfficiencyFactors& factors = config.efficiency;
   const auto stage = static_cast<std::uint32_t>(resident.education_stage);
   const float education =
@@ -108,7 +144,9 @@ float ResidentEfficiency(const LaborConfig& config,
       PivotFactor(resident.health, factors.health_pivot, factors.health_slope) *
       RestFactor(factors, resident.rest) *
       PivotFactor(resident.mood, factors.mood_pivot, factors.mood_slope) * education * self_taught *
-      PivotFactor(FieldSkillBlend(config, resident), factors.skill_pivot, factors.skill_slope);
+      PivotFactor(FieldSkillBlend(config, resident), factors.skill_pivot, factors.skill_slope) *
+      FedFactor(factors, resident.satiety, first_year) *
+      (drink_spared ? 1.0F : SoberFactor(factors, resident.alcoholism));
   return efficiency > 0.0F ? efficiency : 0.0F;
 }
 

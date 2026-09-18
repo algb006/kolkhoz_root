@@ -105,6 +105,30 @@ struct EfficiencyFactors {
 
   float rest_factor_spent = 0.75F;
 
+  // -- satiety and alcoholism: register 218 (metrics §8, «Голодный работает
+  // хуже»; boss 2026-09-18, numbers econ's and the human's, not measured) --
+  /// At or above this personal satiety a worker is fed: factor 1.
+  float satiety_full = 70.0F;
+
+  /// At or below this satiety the factor stands at its floor. Linear between.
+  float satiety_floor = 25.0F;
+
+  /// The floor — «голодный работает как вымотанный», rest_factor_spent's 0.75.
+  float satiety_factor_floor = 0.75F;
+
+  /// The floor in the campaign's FIRST year: the yards' pantries are empty by
+  /// the tenth day and the chairman has no ration decision yet, so the first
+  /// spring would pass on the floor with nothing decided (metrics §8).
+  float satiety_factor_floor_first_year = 0.85F;
+
+  /// Alcoholism up to this value costs nothing; linear above it.
+  float alcoholism_from = 50.0F;
+
+  /// ...down to the floor at this value, Epoch I's ceiling of the metric.
+  float alcoholism_to = 60.0F;
+
+  float alcoholism_factor_floor = 0.8F;
+
   /// Biological age at which the plateau ends and output starts to fall.
   /// Decision 105: the aging threshold is life expectancy minus 20, and the
   /// starting expectancy is 60 — so 40 while the expectancy formula itself

@@ -173,11 +173,6 @@ struct DistributionConfig {
   /// the design's own default auto-rule.
   std::uint32_t period_days = kDaysPerMonth;
 
-  /// The ration auto-rule is armed for everyone (labor-payment §5 allows
-  /// arming it in advance; phase 1 has no player to decide per family).
-  /// 0/1. ASSUMPTION as a default, the mechanic itself is canon.
-  std::uint8_t ration_auto = 1;
-
   /// Family satiety at or below which the ration triggers.
   float ration_satiety_threshold = 25.0F;  ///< ASSUMPTION.
 

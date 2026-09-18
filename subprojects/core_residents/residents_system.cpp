@@ -321,6 +321,10 @@ class ResidentsSystem final : public IResidentsSystem {
     // The chairman's word on a trader first, in whatever hour it came: a man
     // taken in the hour back carries nothing home (night_trade.h).
     ConsumeNightTradeOrders(current);
+    // And the ration's switch before the exchange below reads it: a switch
+    // given this hour is the rule of this day's ration.
+    ConsumeRationOrders(current);
+    ConsumeIssueNormOrders(food_, current);
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
     RunNightOutings(config_.night_trade, current);

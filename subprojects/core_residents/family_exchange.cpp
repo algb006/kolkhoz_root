@@ -22,6 +22,7 @@
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
+#include "core_common/state_table_ops.h"
 
 namespace core {
 namespace {
@@ -216,6 +217,19 @@ Grams PlanUnsealed(const WorldState& world, std::uint32_t index) {
 }
 
 /// @brief What is free to hand out: what lies in the stores minus the funds.
+/// The issue norm of one position, kilograms per trudoden: the chairman's
+/// (WorldState::issue_norms) once he has set any, the table's until then.
+/// ONE READER for both distribution passes, so they cannot disagree about a
+/// norm (econ's audit M1; kSetIssueNorm).
+float IssueNormKg(const FoodConfig& config, const WorldState& world, std::uint32_t index) {
+  if (!world.issue_norms.empty()) {
+    return index < world.issue_norms.size() ? static_cast<float>(world.issue_norms[index]) /
+                                                  static_cast<float>(kGramsPerKilogram)
+                                            : 0.0F;
+  }
+  return index < config.resources.size() ? config.resources[index].issue_kg_per_trudoden : 0.0F;
+}
+
 Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
   const Grams free_stock = VillageStock(world, resource) - held;
@@ -262,7 +276,7 @@ void RunDistribution(const FoodConfig& config,
     outstanding_total += outstanding;
     const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
     for (std::uint32_t index = 0; index < roster; ++index) {
-      const float norm = config.resources[index].issue_kg_per_trudoden;
+      const float norm = IssueNormKg(config, current, index);
       if (norm > 0.0F) {
         wanted[index] += KilogramsToGrams(norm * trudodni);
       }
@@ -314,7 +328,7 @@ void RunDistribution(const FoodConfig& config,
     }
     const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
     for (std::uint32_t index = 0; index < roster; ++index) {
-      const float norm = config.resources[index].issue_kg_per_trudoden;
+      const float norm = IssueNormKg(config, current, index);
       if (norm <= 0.0F || !(coverage[index] > 0.0F)) {
         continue;
       }
@@ -345,20 +359,25 @@ void RunDistribution(const FoodConfig& config,
 /// ration that stalls whole for want of milk would be a ration that starves
 /// people over bookkeeping.
 ///
-/// Phase 1 arms it for everyone (DistributionConfig::ration_auto): with no
-/// player at the wheel, "the village starves under bad management" and "the
-/// ration was never switched on" would otherwise be the same reading.
+/// WHO MAY HAVE IT IS THE CHAIRMAN'S (labor-payment §5, «для конкретной семьи
+/// или для всех сразу»; econ's audit M3, Л1): the village-wide checkbox
+/// (ChairmanState::ration_auto) or the decision for this yard
+/// (FamilyRow::ration_granted). Until 2026-09-18 a table constant armed it
+/// for everyone and nothing could switch it — «паёк платит цену скупой
+/// выдачи за игрока», and the issue norms had no price. The table's value
+/// is now the checkbox's START value, written at genesis.
 void RunRation(const FoodConfig& config,
                float life_speedup,
                const std::vector<Grams>& reserve,
                WorldState& current) {
-  if (config.distribution.ration_auto == 0) {
-    return;
-  }
+  const bool for_everyone = current.chairman.ration_auto != 0;
   const SimDay day = current.calendar.day;
   const auto days = static_cast<float>(config.distribution.period_days);
   for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
     const FamilyId id = current.families.row_ids[row];
+    if (!for_everyone && current.families.rows[row].ration_granted == 0) {
+      continue;
+    }
     if (FamilySatiety(current, id) > config.distribution.ration_satiety_threshold) {
       continue;
     }
@@ -466,6 +485,62 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
   }
   if (day > 0 && day % kDaysPerYear == 0) {
     BurnTrudodni(current);
+  }
+}
+
+void ConsumeRationOrders(WorldState& current) {
+  for (OrderRow& order : current.orders.rows) {
+    if (order.status != OrderStatus::kPending || order.kind != OrderKind::kSetRation) {
+      continue;
+    }
+    const std::uint8_t wanted = order.enable != 0 ? 1U : 0U;
+    OrderRefusal refusal = OrderRefusal::kNone;
+    if (order.family.value == kInvalidEntityIdValue) {
+      if (current.chairman.ration_auto == wanted) {
+        refusal = OrderRefusal::kRuleForbids;
+      } else {
+        current.chairman.ration_auto = wanted;
+      }
+    } else {
+      const std::uint32_t row = FindRow(current.families, order.family);
+      if (row == kNoRow) {
+        refusal = OrderRefusal::kNoSuchSubject;
+      } else if (current.families.rows[row].ration_granted == wanted) {
+        refusal = OrderRefusal::kRuleForbids;
+      } else {
+        current.families.rows[row].ration_granted = wanted;
+      }
+    }
+    order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
+    order.refusal = refusal;
+  }
+}
+
+void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current) {
+  for (OrderRow& order : current.orders.rows) {
+    if (order.status != OrderStatus::kPending || order.kind != OrderKind::kSetIssueNorm) {
+      continue;
+    }
+    const std::size_t index = order.resource.value;
+    // FOOD ONLY: a position of the bundle is something eaten. Hay and straw
+    // go through the fodder table, and a norm on them here would be a second
+    // door to the same stores.
+    if (index >= config.resources.size() || !(config.resources[index].kcal_per_gram > 0.0F)) {
+      order.status = OrderStatus::kRefused;
+      order.refusal = OrderRefusal::kNotEligible;
+      continue;
+    }
+    // The first order copies the whole bundle out of the table, so every
+    // position the chairman did not touch keeps the table's norm.
+    if (current.issue_norms.empty()) {
+      current.issue_norms.assign(config.resources.size(), 0);
+      for (std::size_t position = 0; position < config.resources.size(); ++position) {
+        current.issue_norms[position] =
+            KilogramsToGrams(config.resources[position].issue_kg_per_trudoden);
+      }
+    }
+    current.issue_norms[index] = order.amount;
+    order.status = OrderStatus::kDone;
   }
 }
 

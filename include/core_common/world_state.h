@@ -395,6 +395,14 @@ struct ChairmanState {
   /// once and not every evening of every summer.
   std::uint8_t night_pasture_begun = 0;
 
+  /// 0/1: the automatic minimum ration — the checkbox of labor-payment §5
+  /// («можно включить заранее, и тогда паёк выдаётся автоматически всем, кто
+  /// просел»). Genesis writes it from food.csv `ration_auto`, which is its
+  /// START VALUE and no longer the rule (boss, 2026-08-30: «авто-режим станет
+  /// стартовым значением галочки, когда появится игрок»); from then on only
+  /// the chairman's kSetRation moves it.
+  std::uint8_t ration_auto = 1;
+
   /// Where the children keep the team: a point on a floodplain meadow,
   /// drawn once from the campaign's own generator when the order is given.
   ///
@@ -678,6 +686,15 @@ struct WorldState {
   /// is opened on a field and the core does not say which horse pulls it.
   /// Naming a horse would be a precision the order book does not carry.
   float traction_ration = 0.0F;
+
+  /// THE CHAIRMAN'S ISSUE NORMS, grams per trudoden, by ResourceId — the
+  /// bundle's positions of labor-payment §3 as the chairman set them
+  /// (kSetIssueNorm; econ's audit M1, Л1). EMPTY until his first order, and
+  /// empty means the table's norms stand (food.csv `issue_kg_per_trudoden`):
+  /// the first order copies the whole bundle out of the table and moves one
+  /// position, so the table is read in one place and the world holds only
+  /// what the chairman decided. Read through IssueNormOf (family_exchange).
+  ResourceAmounts issue_norms;
 
   /// What the chairman has taken out of the sealed funds this economic year
   /// (FundReleaseState). Zeroed at the year's turn with the plan it belongs

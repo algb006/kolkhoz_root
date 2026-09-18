@@ -24,9 +24,20 @@
 
 namespace core {
 
-/// @brief The year's delivery: what the plan asked for leaves the stores and
-/// is recorded as delivered and in the ledger.
+/// @brief The year's delivery at the turn: what the plan asked for and is
+/// STILL OWED leaves the stores and is recorded as delivered and in the
+/// ledger. What the chairman shipped earlier (DeliverPlanNow) is not asked
+/// for twice.
 void DeliverPlan(const ProductionConfig& config, WorldState& current);
+
+/// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
+/// owed of one position — or of every position when `only` is invalid —
+/// leaves the stores now, as much as the stores hold, and is added to
+/// `delivered`. A partial shipment is a shipment; the rest waits for the
+/// turn or for the next order.
+/// @return kNoPlanYet before the spring's figure; kRuleForbids when nothing
+///         left the stores (nothing owed, or none of it there); kNone else.
+OrderRefusal DeliverPlanNow(const ProductionConfig& config, WorldState& current, ResourceId only);
 
 /// @brief Whether every position was delivered in full, 100 % — the limit's
 /// premium. A plan of nothing is not delivered in full.

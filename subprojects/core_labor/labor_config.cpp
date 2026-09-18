@@ -75,7 +75,28 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
 bool ParseEfficiencyKnobs(const ITable& table, LaborConfig& config, std::string& error) {
   EfficiencyFactors& factors = config.efficiency;
   SkillBlend& skill = config.skill;
-  const std::array<ScalarKnob, 16> knobs = {{
+  const std::array<ScalarKnob, 23> knobs = {{
+      {.key = "efficiency_satiety_full",
+       .value = &factors.satiety_full,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_satiety_floor",
+       .value = &factors.satiety_floor,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_satiety_factor_floor",
+       .value = &factors.satiety_factor_floor,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "efficiency_satiety_factor_floor_first_year",
+       .value = &factors.satiety_factor_floor_first_year,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = "efficiency_alcoholism_from",
+       .value = &factors.alcoholism_from,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_alcoholism_to",
+       .value = &factors.alcoholism_to,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "efficiency_alcoholism_factor_floor",
+       .value = &factors.alcoholism_factor_floor,
+       .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "efficiency_health_pivot",
        .value = &factors.health_pivot,
        .range = {.low = 0.0F, .high = 100.0F}},
@@ -125,7 +146,20 @@ bool ParseEfficiencyKnobs(const ITable& table, LaborConfig& config, std::string&
        .value = &skill.schooled_weight,
        .range = {.low = 0.0F, .high = 1.0F}},
   }};
-  return ReadKnobs(table, "labor", knobs, error);
+  if (!ReadKnobs(table, "labor", knobs, error)) {
+    return false;
+  }
+  // The two linear stretches need a length: a floor at or above its top
+  // would divide by nought, or run the line backwards.
+  if (!(factors.satiety_full > factors.satiety_floor)) {
+    error = "labor: efficiency_satiety_full must be above efficiency_satiety_floor";
+    return false;
+  }
+  if (!(factors.alcoholism_to > factors.alcoholism_from)) {
+    error = "labor: efficiency_alcoholism_to must be above efficiency_alcoholism_from";
+    return false;
+  }
+  return true;
 }
 
 /// The education multipliers, one key per completed stage, in the order of

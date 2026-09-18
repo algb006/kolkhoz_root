@@ -57,8 +57,10 @@ namespace {
 /// a sixth entity id, its mass the unsealing's `amount`; and for the livestock
 /// window (2026-09-16): the bought head's sex is ONE RAW BYTE that is not an
 /// enum, and it is the last term below for exactly that reason — folding it
-/// into the "five one-byte enums" would have hidden what it is.
-constexpr std::size_t kOrderBytes = 5 + 8 + (6 * 4) + (7 * 2) + (3 * 4) + 8 + 1;
+/// into the "five one-byte enums" would have hidden what it is. And for the
+/// ration's switch (kSetRation, 2026-09-18): the family is a SEVENTH entity
+/// id, and `enable` a second raw 0/1 byte beside `male`.
+constexpr std::size_t kOrderBytes = 5 + 8 + (7 * 4) + (7 * 2) + (3 * 4) + 8 + 2;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -72,7 +74,7 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// makes the build fail until WriteOrder, ReadOrder and kOrderBytes have all
 /// been brought along — and VERSION_SAVE bumped by the human, since an order
 /// row is a state row.
-static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the journal codec too");
+static_assert(sizeof(OrderRow) == 88, "OrderRow changed — update the journal codec too");
 
 /// AND THE FIELD COUNT BESIDE THE SIZE, for the reason the size alone cannot
 /// give (2026-09-12). The size tripwire caught kUnsealFund — three fields
@@ -90,7 +92,9 @@ static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the journal c
 /// LEFT sizeof AT 80 — it fell into the padding. The size assert above stayed
 /// silent, this one fired, and the paragraph above finally has its worked
 /// example rather than a warning about a case that had not happened yet.
-static_assert(AggregateArity<OrderRow>() == 23,
+/// 2026-09-18: the ration's family and switch, 25 fields and 88 bytes —
+/// both tripwires fired this time.
+static_assert(AggregateArity<OrderRow>() == 25,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -260,6 +264,10 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   // still 80 — so the size tripwire said nothing and only the arity one
   // fired, which is the exact case it was written for.
   out.U8(row.male);
+  // The ration's switch (kSetRation, 2026-09-18): the family, a seventh
+  // entity id, and the 0/1 byte.
+  out.U32(row.family.value);
+  out.U8(row.enable);
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -298,6 +306,8 @@ OrderRow ReadOrder(Reader& in) {
   // the field is only ever tested `!= 0` — and that is exactly the kind of
   // "harmless today" the codec's tripwires exist to stop being told.
   row.male = in.EnumValue(1);
+  row.family = FamilyId{in.U32()};
+  row.enable = in.EnumValue(1);
   return row;
 }
 

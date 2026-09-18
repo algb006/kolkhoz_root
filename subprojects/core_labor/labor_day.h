@@ -62,25 +62,51 @@ float BiologicalAgeYears(const LaborConfig& config, std::int32_t birth_day, SimD
 /// on plowing and mowing it is strength that decides, not schooling).
 float FieldSkillBlend(const LaborConfig& config, const ResidentRow& resident);
 
-/// @brief Norm man-days this resident delivers over one standard working
-/// day: the product of the age, health, rest, mood, education and skill
-/// factors. Always >= 0.
-/// @note Satiety and alcoholism belong in this product by design
-/// (life-cycle §1) and are left out on purpose while they are STUB
-/// constants — a constant factor would only rescale the balance.
+/// @brief The fed factor of a worker's output (register 218; metrics §8,
+/// «Голодный работает хуже»): 1 at personal satiety `satiety_full` and
+/// above, linear down to the floor at `satiety_floor` and below. The floor
+/// is `satiety_factor_floor_first_year` in the campaign's first year and
+/// `satiety_factor_floor` after it.
+float FedFactor(const EfficiencyFactors& factors, Metric satiety, bool first_year);
+
+/// @brief The sober factor (register 218, the human's word of 2026-09-18):
+/// 1 up to `alcoholism_from`, linear down to `alcoholism_factor_floor` at
+/// `alcoholism_to` and above. The metric lives on men only, so a woman's
+/// nought costs nothing — by the metric, not by a test of sex here.
+float SoberFactor(const EfficiencyFactors& factors, Metric alcoholism);
+
+/// @brief Whether `work` is one of the works alcoholism does not cut (the
+/// human's word of 2026-09-18, metrics §8, «Где алкоголизм не режет»): of
+/// the three, only «добыча в лесу для колхоза» is in the core — felling and
+/// hauling off a timber stand. NETTING IN THE PONDS (register 219) is not
+/// built yet, and fishing with a rod is not a work kind; neither has
+/// anything to spare here until it exists. The lake ARTEL is NOT on the list
+/// (boss, epoch1-next seq 54): it is an ordinary producing unit, and a
+/// drinking artel fisher works worse like anyone.
+bool AlcoholSparesWork(const WorkAssignment& work);
+
 /// @brief The age at which output starts to decline: the settlement's life
 /// expectancy less labor's own margin (decision 105). A derivative, never a
 /// stored field — one fact, one home, and the home of life expectancy is
 /// WorldState::vitals.
 float AgingFromYears(const LaborConfig& config, const WorldState& world);
 
-/// @brief A worker's output as a multiple of the reference worker's day.
+/// @brief A worker's output as a multiple of the reference worker's day:
+/// the product of the age, health, rest, mood, education, skill, fed and
+/// sober factors. Always >= 0.
 /// @param aging_from_years From AgingFromYears above; passed in rather than
 ///        read here, so that this stays a pure function of its arguments.
+/// @param first_year The campaign's first calendar year: the fed factor's
+///        floor is the gentler one (FedFactor).
+/// @param drink_spared The work is one of the three the human spared from
+///        alcoholism (metrics §8, «Где алкоголизм не режет»): the sober
+///        factor is 1 whatever the metric. See AlcoholSparesWork.
 float ResidentEfficiency(const LaborConfig& config,
                          const ResidentRow& resident,
                          float age_years,
-                         float aging_from_years);
+                         float aging_from_years,
+                         bool first_year,
+                         bool drink_spared);
 
 /// @brief Rest lost for `norm_days` of delivered work of `kind`, in metric
 /// points. Stamina and sportiness soften it; they never raise output.

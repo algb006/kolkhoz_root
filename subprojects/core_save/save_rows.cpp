@@ -66,7 +66,9 @@ static_assert(AggregateArity<ResidentRow>() == 42,
 // and 18 fields.
 static_assert(sizeof(FamilyRow) == 72 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FamilyRow>() == 18,
+// 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
+// the size is read off the build below, not guessed.
+static_assert(AggregateArity<FamilyRow>() == 19,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -142,11 +144,13 @@ static_assert(AggregateArity<HerdRow>() == 18,
 // 2026-09-14: the extraction site landed in the order row's padding — 80
 // still, 22 fields, which is exactly the case the arity check is for — and
 // took the assignment from 28 to 32.
-static_assert(sizeof(OrderRow) == 80, "OrderRow changed — update the codec and VERSION_SAVE");
+// 2026-09-18, save 57: the ration's family and switch (kSetRation) took it
+// to 88 and 25 fields.
+static_assert(sizeof(OrderRow) == 88, "OrderRow changed — update the codec and VERSION_SAVE");
 // 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
 // 23 fields. Two padding fields in a row now, which is the answer to whether
 // the arity check was worth its line.
-static_assert(AggregateArity<OrderRow>() == 23,
+static_assert(AggregateArity<OrderRow>() == 25,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 32,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
@@ -484,6 +488,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteFloat(row.household_hours);
   out.WriteFloat(row.plot_ratio_sum);
   out.WriteU16(row.plot_ratio_days);
+  // The chairman's ration decision for this yard (kSetRation, save 57).
+  out.WriteU8(row.ration_granted);
   out.WriteFloat(row.private_plot_share);
 
   out.WriteI32(row.trudodni_account);
@@ -512,6 +518,8 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.household_hours = in.ReadFloat();
   row.plot_ratio_sum = in.ReadFloat();
   row.plot_ratio_days = in.ReadU16();
+  row.ration_granted =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's ration granted"));
   row.private_plot_share = in.ReadFloat();
 
   row.trudodni_account = in.ReadI32();
@@ -845,6 +853,11 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // dictionary id: it is a fact about the order, not a name of anything in
   // the tables.
   out.WriteU8(row.male);
+
+  // The ration's switch (kSetRation, 2026-09-18, save 57): the family and
+  // the 0/1 byte.
+  WriteEntityId(out, row.family);
+  out.WriteU8(row.enable);
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -878,6 +891,8 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.male = in.ReadU8();
+  row.family = ReadEntityId<FamilyId>(in);
+  row.enable = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "order ration switch"));
   return row;
 }
 

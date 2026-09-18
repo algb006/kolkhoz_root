@@ -35,6 +35,19 @@ namespace core {
 ///       every step below a no-op rather than an error.
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current);
 
+/// @brief Settles every pending kSetRation (order_state.h): the village-wide
+/// checkbox when the order names no family, the yard's decision when it
+/// names one. Settled in the step it is read, like the night trader's.
+/// Refusals: kNoSuchSubject (the family is gone), kRuleForbids (already so).
+/// Side effects: ChairmanState::ration_auto, FamilyRow::ration_granted.
+void ConsumeRationOrders(WorldState& current);
+
+/// @brief Settles every pending kSetIssueNorm (order_state.h): the position's
+/// grams per trudoden from the next distribution on. The first such order
+/// copies the whole bundle out of `config` into WorldState::issue_norms.
+/// Refusal: kNotEligible (not food). Side effect: WorldState::issue_norms.
+void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_RESIDENTS_FAMILY_EXCHANGE_H_

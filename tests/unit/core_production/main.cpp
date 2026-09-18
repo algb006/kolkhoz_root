@@ -30,6 +30,7 @@
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
 #include "district_limit.h"
+#include "district_plan.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
 #include "field_haul.h"
@@ -4008,7 +4009,10 @@ int CheckPauseAndResume() {
   std::filesystem::create_directories(root);
   // No capacity column at all: this test is about the order book, and a
   // capacity with no level row behind it is now a refusal (CheckPauseStore).
-  std::ofstream(root / "unit_types.csv") << "key\nbarn\n";
+  // The class decides whether a standing unit may be paused (units rules §5):
+  // a barn produces, a byre is a farm that produces, a school does not.
+  std::ofstream(root / "unit_types.csv")
+      << "key,class\nbarn,production\nschool,social\nbyre,livestock\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
   const auto system = tables == nullptr
@@ -4074,6 +4078,46 @@ int CheckPauseAndResume() {
                      "and so is a demolition");
   failures += Expect(refusal(nowhere) == core::OrderRefusal::kNoSuchSubject,
                      "and a unit that does not exist is refused for the unit");
+
+  // ONLY WHAT PRODUCES IS PAUSED (units rules §5; boss on econ's audit, П5 /
+  // R1). A standing school is refused — a pause there would only stop its
+  // wear — while a school being BUILT is work and pauses like any site, and a
+  // byre is a farm that produces.
+  {
+    core::UnitRow school;
+    school.type = core::UnitTypeId{1};
+    school.level = 1;
+    const core::UnitId school_id = core::AppendRow(world.units, school);
+    core::UnitRow school_site = school;
+    school_site.level = 0;
+    school_site.construction.phase = core::ConstructionPhase::kBuilding;
+    const core::UnitId school_site_id = core::AppendRow(world.units, school_site);
+    core::UnitRow byre;
+    byre.type = core::UnitTypeId{2};
+    byre.level = 1;
+    const core::UnitId byre_id = core::AppendRow(world.units, byre);
+    const core::OrderId pause_school = give(core::OrderKind::kPauseUnit, school_id);
+    const core::OrderId pause_school_site = give(core::OrderKind::kPauseUnit, school_site_id);
+    const core::OrderId pause_byre = give(core::OrderKind::kPauseUnit, byre_id);
+    const core::WorldState previous = world;
+    system->RunProductionDecisions(previous, world);
+    failures += Expect(refusal(pause_school) == core::OrderRefusal::kNotEligible &&
+                           world.units.rows[core::FindRow(world.units, school_id)].paused == 0,
+                       "a standing school is not paused: it produces nothing to stop");
+    failures += Expect(status(pause_school_site) == core::OrderStatus::kDone,
+                       "a school being built is work, and work at a site pauses");
+    failures += Expect(status(pause_byre) == core::OrderStatus::kDone,
+                       "a byre is a farm that produces, and pauses");
+    // A school paused before the rule is still let go: resume is never
+    // refused for the class.
+    world.units.rows[core::FindRow(world.units, school_id)].paused = 1;
+    const core::OrderId resume_school = give(core::OrderKind::kResumeUnit, school_id);
+    const core::WorldState paused_before = world;
+    system->RunProductionDecisions(paused_before, world);
+    failures += Expect(status(resume_school) == core::OrderStatus::kDone &&
+                           world.units.rows[core::FindRow(world.units, school_id)].paused == 0,
+                       "and a school paused before the rule can be resumed");
+  }
 
   // Pausing the paused is refused rather than swallowed: it is not a
   // harmless repeat, it means the chairman is looking at something stale.
@@ -4845,6 +4889,52 @@ int CheckDistrictVisits() {
   return failures;
 }
 
+/// «СДАТЬ СЕЙЧАС» (kDeliverPlan; econ's audit M2, Л1): the chairman ships
+/// what is owed before the turn, and the turn ships only the rest.
+int CheckDeliverPlanNow() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {100'000.0F};
+  const auto make_world = [](core::Grams in_store) {
+    core::WorldState world;
+    core::UnitRow barn;
+    barn.type = core::UnitTypeId{0};
+    barn.level = 1;
+    barn.stock = {in_store, 0};
+    core::AppendRow(world.units, barn);
+    world.plan.announced = 1;
+    world.plan.due = {10 * kTonne, 2 * kTonne};
+    world.plan.delivered = {0, 0};
+    return world;
+  };
+
+  core::WorldState before_spring;
+  failures += Expect(core::DeliverPlanNow(config, before_spring, core::ResourceId{}) ==
+                         core::OrderRefusal::kNoPlanYet,
+                     "before the spring's figure there is nothing to ship");
+
+  // Six tonnes in the barn of ten owed: all six go now, the plan counts them.
+  core::WorldState early = make_world(6 * kTonne);
+  failures += Expect(
+      core::DeliverPlanNow(config, early, core::ResourceId{0}) == core::OrderRefusal::kNone &&
+          early.plan.delivered[0] == 6 * kTonne && early.units.rows[0].stock[0] == 0,
+      "shipping now takes what the barn holds of what is owed");
+  failures += Expect(early.plan.delivered[1] == 0, "and only the position named: the other waits");
+  failures += Expect(
+      core::DeliverPlanNow(config, early, core::ResourceId{0}) == core::OrderRefusal::kRuleForbids,
+      "a shipment that moves nothing is refused, not done");
+
+  // The harvest brings eight more; the turn ships the four still owed, not ten.
+  early.units.rows[0].stock[0] = 8 * kTonne;
+  core::DeliverPlan(config, early);
+  failures +=
+      Expect(early.plan.delivered[0] == 10 * kTonne && early.units.rows[0].stock[0] == 4 * kTonne,
+             "the turn ships what is still owed and not the figure twice");
+  return failures;
+}
+
 int CheckDistrictLimit() {
   int failures = 0;
   constexpr core::Grams kPane = 5 * core::kGramsPerKilogram;
@@ -5517,6 +5607,7 @@ int main() {
   failures += CheckSawing();
   failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
+  failures += CheckDeliverPlanNow();
   failures += CheckTheMtsColumn();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();

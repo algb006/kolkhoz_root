@@ -140,6 +140,7 @@ core::WorldState MakeWorld() {
   core::NextRandomBits(world.rng);
   world.chairman.raikom_reputation = 61.5F;
   world.chairman.horses_stabled = 1;  // the campaign's one-time milestone (task A7)
+  world.chairman.ration_auto = 0;     // save 57: off, against the struct's default on
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   // The district's verdict on the year and the two runs it keeps. Set to
@@ -200,6 +201,7 @@ core::WorldState MakeWorld() {
   rich.first_meal_eaten = 1;  // `bare` below keeps 0: the pair a constant fails on
   rich.lost_house_position = core::Vec2{.x = 812.5F, .y = 9044.25F};  // save format 35
   rich.in_tent = 1;
+  rich.ration_granted = 1;  // save 57; `bare` keeps 0
   rich.household_hours = 4.25F;
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
@@ -367,6 +369,9 @@ core::WorldState MakeWorld() {
   // this morning, one field further down, and one non-zero value is the whole
   // cure.
   refused.male = 1;
+  // The ration's switch (save 57): a family and a 1, for the same reason.
+  refused.family = core::FamilyId{2};
+  refused.enable = 1;
   core::AppendRow(world.orders, refused);
 
   // The district's limit (save format 31): the year's points, a cart on the
@@ -684,8 +689,14 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.night_pasture_ordered = 1;
   witness.chairman.night_pasture_begun = 1;
   witness.chairman.night_pasture_place = core::Vec2{.x = 8140.5F, .y = 10312.25F};
+  // The ration's checkbox OFF (save 57): the struct's default is on, so a
+  // codec that forgot to read it would load a 1 and fail here.
+  witness.chairman.ration_auto = 0;
 
   witness.traction_ration = 0.75F;
+  // The chairman's issue norms (save 57): NOT empty, since empty is what a
+  // codec that forgot them would read back.
+  witness.issue_norms = {500, 0, 1'500};
   witness.plan.due = Amounts({7'000'000, 250, 3});
   witness.plan.delivered = Amounts({11});
   witness.plan.last_verdict = core::PlanVerdict::kFailed;
@@ -764,8 +775,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.night_pasture_begun", U8(world.chairman.night_pasture_begun)});
   chunks.push_back({"chairman.night_pasture_place.x", F32(world.chairman.night_pasture_place.x)});
   chunks.push_back({"chairman.night_pasture_place.y", F32(world.chairman.night_pasture_place.y)});
+  // The ration's checkbox (save 57).
+  chunks.push_back({"chairman.ration_auto", U8(world.chairman.ration_auto)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
+  AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
   chunks.push_back({"plan.last_verdict", Enum8(world.plan.last_verdict)});
@@ -969,13 +983,16 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // distiller, the clock of the sobriety the human asked for.
     // 2026-09-18, save 56: +3 — the sky step and its heavy phase' hour and
     // length (the human's five steps of the sky).
-    {"world", 385, 0x1c1ac4f257bd7787ULL},
+    // 2026-09-18, save 57: +3 — the ration's checkbox (1) and the chairman's
+    // issue norms, empty in this fixture (a 2-byte length). Predicted +3.
+    {"world", 388, 0xcc82f418ab7409a9ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
     // the float did NOT land in padding, so 184 became 188.
     {"residents", 362, 0xbe016209773f94e2ULL},
-    {"families", 192, 0x3ecbc6310aefce3aULL},
+    // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
+    {"families", 194, 0xbcc55423c2869a5ULL},
     {"fields", 263, 0x224499bb25ff9b5bULL},
     {"units", 323, 0xcfb11cfce6d72141ULL},
     {"herds", 66, 0xe3846623b64933cfULL},
@@ -1000,7 +1017,10 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // kUnitsBelowLevel the last OrderRefusal — the chairman's order into
     // Epoch II and its seven answers. Both tops again, same 464 bytes, same
     // save number.
-    {"orders", 464, 0x95a82e17545ffccULL},
+    // 2026-09-18, save 57: +30 — the ration order's family (4) and switch (1),
+    // five bytes a row over six rows; the top OrderKind moved to kDeliverPlan
+    // in the same stroke.
+    {"orders", 494, 0x640abfc325dfb612ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
@@ -1224,6 +1244,8 @@ int main() {
                      "since the leaf fall — survives with it");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
+  failures += Expect(loaded.chairman.ration_auto == 0,
+                     "the ration's checkbox the chairman switched off comes back off (save 57)");
   failures += Expect(loaded.residents.next_id_value == world.residents.next_id_value &&
                          loaded.residents.rows.size() == 2,
                      "the spent id of a dead resident was not reissued");
@@ -1243,6 +1265,9 @@ int main() {
                          loaded.families.rows[0].lost_house_position.x == 812.5F &&
                          loaded.families.rows[0].lost_house_position.y == 9044.25F,
                      "a family in a tent comes back in its tent, on its old plot");
+  failures += Expect(
+      loaded.families.rows[0].ration_granted == 1 && loaded.families.rows[1].ration_granted == 0,
+      "a yard granted the ration comes back granted, and one not granted, not");
   failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
                          loaded.wedding_waits.rows[0].bride.value == 7 &&
                          loaded.wedding_waits.rows[0].groom.value == 9 &&
@@ -1331,6 +1356,8 @@ int main() {
   // recorded payload proves only that the byte was written.
   failures += Expect(loaded.orders.rows[3].male == 1,
                      "the sex the chairman chose for a head comes back off the save");
+  failures += Expect(loaded.orders.rows[3].family.value == 2 && loaded.orders.rows[3].enable == 1,
+                     "the ration order's family and switch come back off the save (save 57)");
   // The head on its way, field by field. The byte-for-byte re-encode above
   // would catch a dropped field too, but it would say only "the file differs";
   // this says WHICH of the six.

@@ -16,10 +16,11 @@
 ///     kDemolishUnit, kRepairUnit, kInsulateUnit;
 ///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund, kSetRotation,
 ///     kMarkFelling, kMarkExtraction, kOrderLimitLot, kRemoveField,
-///     kGrazeAtNight and kHandStock;
+///     kGrazeAtNight, kHandStock and kDeliverPlan;
 ///   * core_labor — kAssignWork, kReleaseWork, kAppoint and kDismiss, the
 ///     last two applied at the day's close rather than at once;
-///   * core_residents — kTakeNightTrader (since 2026-09-18);
+///   * core_residents — kTakeNightTrader, kSetRation and kSetIssueNorm (since
+///     2026-09-18);
 ///   * core_world — kAdvanceEra (since 2026-09-18), in the events slot, where
 ///     the readiness is scored.
 /// This list was three consumers and short by seven kinds on 2026-09-18,
@@ -150,6 +151,12 @@ enum class OrderKind : std::uint8_t {
   /// from the demolition, and the materials already reserved stay the site's —
   /// no saw and no other building takes them. A marked plot is not work and is
   /// not paused (refused kRuleForbids).
+  ///
+  /// ONLY A UNIT THAT PRODUCES (since 2026-09-18; units rules §5, «Производственный
+  /// юнит можно остановить»): a STANDING unit outside the production and
+  /// livestock classes is refused kNotEligible — a school or a house has no
+  /// production to stop, and a pause there only stopped its wear. Work at a
+  /// site pauses whatever the class. kResumeUnit is never refused for it.
   kPauseUnit,
 
   /// Resume a paused `unit`; work restarts the next day. Consumer:
@@ -499,6 +506,57 @@ enum class OrderKind : std::uint8_t {
   ///
   /// Seam key `advance_era`. Consumer: core_world (the readiness is there).
   kAdvanceEra,
+
+  /// THE MINIMUM RATION, SWITCHED BY THE CHAIRMAN (labor-payment §5, «Кто
+  /// включает — председатель, для конкретной семьи или для всех сразу»;
+  /// econ's audit M3, Л1). `enable` 1 switches on, 0 off.
+  ///   * `family` INVALID — the village-wide automatic ration, the checkbox
+  ///     (ChairmanState::ration_auto): every family that sinks to the
+  ///     threshold is given the ration.
+  ///   * `family` VALID — the decision for that yard (FamilyRow::ration_granted):
+  ///     given the ration at the threshold whatever the checkbox says.
+  /// Either way the ration still waits for the family's satiety to reach
+  /// `ration_satiety_threshold`: the switch says WHO may have it, the
+  /// threshold says WHEN.
+  ///
+  /// WHY IT EXISTS: until 2026-09-18 the ration was a table constant armed
+  /// for everyone, and «паёк платит цену скупой выдачи за игрока» (econ,
+  /// measured: at half norms the auto ration issued 102 times more, and the
+  /// village's satiety stayed inside the spread). While the ration answered
+  /// for the player, the issue norms had no price.
+  ///
+  /// Refusals: kNoSuchSubject (no such family), kRuleForbids (already so —
+  /// a repeat means the chairman is looking at something stale, as with
+  /// the pause). Seam key `set_ration`. Consumer: core_residents.
+  kSetRation,
+
+  /// THE ISSUE NORM OF ONE POSITION OF THE BUNDLE (labor-payment §3; econ's
+  /// audit M1, Л1): `resource` is the position, `amount` its grams per
+  /// trudoden from the next distribution on; 0 strikes the position out of
+  /// the bundle. The other positions keep theirs (WorldState::issue_norms).
+  ///
+  /// WHY IT EXISTS: the norm was a table constant, and the table's own
+  /// comment called it «нормы председателя». Without it none of the three
+  /// sides of «накормить / сдать / посеять» was in the player's hands.
+  ///
+  /// Refusals: kNotEligible (the resource is not food — hay and straw are
+  /// fed through the fodder table, not the bundle). The boundary refuses a
+  /// norm over 10 kg a trudoden by shape. Seam key `set_issue_norm`.
+  /// Consumer: core_residents.
+  kSetIssueNorm,
+
+  /// «СДАТЬ СЕЙЧАС» (econ's audit M2 in its minimum form, Л1; district §9):
+  /// what is still owed of the plan's position `resource` — or of every
+  /// position when `resource` is invalid — leaves the stores now, as much as
+  /// they hold. «Держать до срока» is the default and needs no order: the
+  /// year's turn ships whatever is still owed. A shipment that moves the
+  /// grain out early frees the store and ends its rot in the kolkhoz's
+  /// hands; what is shipped cannot be handed out after.
+  ///
+  /// Refusals: kNoPlanYet (the spring's figure is not named yet),
+  /// kRuleForbids (nothing left the stores: nothing owed, or none of it
+  /// there). Seam key `deliver_plan`. Consumer: core_production.
+  kDeliverPlan,
 
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
@@ -927,6 +985,14 @@ struct OrderRow {
 
   /// kMarkExtraction: the site to dig on; the mass is `amount`, in grams.
   ExtractionSiteId extraction_site;
+
+  /// kSetRation: the yard the decision is for; invalid = the whole village.
+  FamilyId family;
+
+  /// kSetRation: 1 switches on, 0 off. A byte of its own rather than `male`
+  /// or `amount` borrowed: a seam field read under two meanings is how a
+  /// layer ends up sending a sex where a switch was meant.
+  std::uint8_t enable = 0;
 };
 
 /// @brief The order book type used by WorldState.

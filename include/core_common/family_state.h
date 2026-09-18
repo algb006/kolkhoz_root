@@ -137,6 +137,12 @@ struct FamilyRow {
 
   std::uint16_t plot_ratio_days = 0;
 
+  /// 0/1: the chairman decided the ration for THIS yard (labor-payment §5,
+  /// «для конкретной семьи»; kSetRation with a family). A granted family is
+  /// given the minimum ration at the threshold whatever the village-wide
+  /// checkbox says (ChairmanState::ration_auto).
+  std::uint8_t ration_granted = 0;
+
   /// Share of the family's effort drifting into the private plot, 0-100.
   /// The central health indicator of the whole economy (life-cycle §10).
   /// STUB: no drift arithmetic exists in the design yet (phase 2).

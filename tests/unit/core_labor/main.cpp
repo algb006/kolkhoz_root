@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -335,17 +336,67 @@ int TestReferenceWorkerDeliversOneNorm() {
   reference.education_stage = core::EducationStage::kPrimary;
   // The plateau ends at life expectancy less labor's margin: 60 - 20.
   constexpr float kAgingFrom = 40.0F;
-  const float efficiency = core::ResidentEfficiency(config, reference, 30.0F, kAgingFrom);
+  const auto worth = [&config](const core::ResidentRow& worker, float age) {
+    return core::ResidentEfficiency(config, worker, age, kAgingFrom, false, false);
+  };
+  const float efficiency = worth(reference, 30.0F);
   failures += Expect(efficiency > 0.97F && efficiency < 1.03F,
                      "the reference worker is worth exactly one norm day");
 
   core::ResidentRow illiterate = reference;
   illiterate.education_stage = core::EducationStage::kNone;
+  failures += Expect(worth(illiterate, 30.0F) < efficiency * 0.9F,
+                     "illiteracy costs the canonical 15% (education design §6)");
+  failures += Expect(worth(reference, 70.0F) < efficiency, "past the aging threshold output falls");
+
+  // FED AND SOBER (register 218; metrics §8). The reference worker is fed
+  // (satiety 70) and sober, so both factors are 1 for him — which is what
+  // lets the lines above stand unchanged.
+  core::ResidentRow hungry = reference;
+  hungry.satiety = 47.5F;  // half-way between 70 and 25
+  failures += Expect(std::abs(worth(hungry, 30.0F) - (efficiency * 0.875F)) < 0.01F,
+                     "a worker half-way to the ration's line gives 0.875 of his day");
+  hungry.satiety = 10.0F;
+  failures += Expect(std::abs(worth(hungry, 30.0F) - (efficiency * 0.75F)) < 0.01F,
+                     "below the ration's line the floor is 0.75");
   failures +=
-      Expect(core::ResidentEfficiency(config, illiterate, 30.0F, kAgingFrom) < efficiency * 0.9F,
-             "illiteracy costs the canonical 15% (education design §6)");
-  failures += Expect(core::ResidentEfficiency(config, reference, 70.0F, kAgingFrom) < efficiency,
-                     "past the aging threshold output falls");
+      Expect(std::abs(core::ResidentEfficiency(config, hungry, 30.0F, kAgingFrom, true, false) -
+                      (efficiency * 0.85F)) < 0.01F,
+             "and 0.85 in the campaign's first year");
+  core::ResidentRow drinker = reference;
+  drinker.alcoholism = 50.0F;
+  failures += Expect(std::abs(worth(drinker, 30.0F) - efficiency) < 0.01F,
+                     "alcoholism up to 50 costs nothing");
+  drinker.alcoholism = 55.0F;
+  failures += Expect(std::abs(worth(drinker, 30.0F) - (efficiency * 0.9F)) < 0.01F,
+                     "at 55 the sober factor is half-way to its floor, 0.9");
+  drinker.alcoholism = 60.0F;
+  failures += Expect(std::abs(worth(drinker, 30.0F) - (efficiency * 0.8F)) < 0.01F,
+                     "at 60, Epoch I's ceiling, it is 0.8");
+  failures +=
+      Expect(std::abs(core::ResidentEfficiency(config, drinker, 30.0F, kAgingFrom, false, true) -
+                      efficiency) < 0.01F,
+             "and on a spared work it costs nothing at all");
+
+  // WHICH WORKS ARE SPARED (the human's word, metrics §8): of the three, only
+  // the forest's work for the kolkhoz is in the core — felling, and hauling
+  // off a stand. Work at a unit is NOT, the lake artel included (boss,
+  // epoch1-next seq 54): an ordinary producing unit.
+  const auto spared = [](core::WorkKind kind, core::TimberStandId stand) {
+    core::WorkAssignment work;
+    work.kind = kind;
+    work.stand = stand;
+    work.unit = core::UnitId{1};
+    return core::AlcoholSparesWork(work);
+  };
+  const core::TimberStandId grove{2};
+  failures +=
+      Expect(spared(core::WorkKind::kFelling, grove) && spared(core::WorkKind::kHauling, grove),
+             "felling and hauling off a stand are spared");
+  failures += Expect(!spared(core::WorkKind::kHauling, core::TimberStandId{}) &&
+                         !spared(core::WorkKind::kUnitWork, core::TimberStandId{}) &&
+                         !spared(core::WorkKind::kHarvest, core::TimberStandId{}),
+                     "hauling elsewhere, work at a unit (the artel's too) and the harvest are not");
 
   core::ResidentRow tough = reference;
   tough.stamina = 100.0F;

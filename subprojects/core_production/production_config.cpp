@@ -42,6 +42,10 @@
 namespace core {
 namespace {
 
+/// The two unit_types.csv classes a unit may be paused in (units rules §5).
+constexpr std::string_view kProductionClass = "production";
+constexpr std::string_view kLivestockClass = "livestock";
+
 /// @brief ResourceId by key of the resources table; invalid when absent.
 ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
   if (resources == nullptr) {
@@ -564,6 +568,7 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
 /// UnitTypeDef for why the type's own figure had to go.
 bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::string& error) {
   const std::uint32_t by_plot_col = table.FindColumn("capacity_by_plot");
+  const std::uint32_t class_col = table.FindColumn("class");
   types.resize(table.RowCount());
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     float by_plot = 0.0F;
@@ -572,6 +577,14 @@ bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::s
       return false;
     }
     types[row].capacity_by_plot = static_cast<std::uint8_t>(by_plot);
+    // Units rules §5: «Производственный юнит можно остановить», and the same
+    // section's own example is a milking — so the livestock class, a farm
+    // that produces, pauses too. A missing class column pauses nothing: a
+    // table that cannot say a unit produces cannot license stopping it.
+    const std::string_view unit_class =
+        class_col == kNoTableColumn ? std::string_view() : table.CellText(row, class_col);
+    types[row].pausable =
+        (unit_class == kProductionClass || unit_class == kLivestockClass) ? 1U : 0U;
   }
   return true;
 }
