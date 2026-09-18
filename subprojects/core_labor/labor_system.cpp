@@ -44,6 +44,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/module_rules.h"
 #include "core_common/quantities.h"
+#include "core_common/reaping_pace.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
@@ -718,11 +719,15 @@ class LaborSystem final : public ILaborSystem {
   /// spends its days, each that does not is marked `beyond_the_snow` and
   /// ranks after every one that fits (assignment.cpp).
   ///
-  /// THE CAPACITY IS AN OPTIMIST'S, on purpose: every employable hand, every
-  /// working day to the snow inclusive, today's daylight over the standard
-  /// day, efficiency one. The light keeps falling and the barn keeps some
-  /// hands, so a field called finishable may still not be — but one called
-  /// beyond the snow truly is, and only those lose their place.
+  /// THE CAPACITY IS THE ALARM'S PACE (core_common/reaping_pace.h; boss,
+  /// core-host-l1-stage1 seq 28) times the working days to the snow
+  /// inclusive. It was every employable hand at today's daylight over the
+  /// standard day, efficiency one, until 2026-09-19, and host's seed 9 with
+  /// the reaping made three times longer showed what that costs: 46 hands
+  /// reaped 22.7 norm-days a November day against about 39 counted, both
+  /// fields read as finishable, and the first step of the rule could not
+  /// tell them apart. Still an optimist's: the light keeps falling to the
+  /// snow and the pace is today's.
   void MarkTheReapingsTheSnowWillTake(const WorldState& current,
                                       std::vector<AssignmentJob>& jobs) const {
     std::vector<std::uint32_t> reapings;
@@ -748,12 +753,13 @@ class LaborSystem final : public ILaborSystem {
       working_days +=
           IsRestDay(sim_day, current.calendar.day_zero_weekday, current.epoch) ? 0U : 1U;
     }
-    float capacity = static_cast<float>(hands) * static_cast<float>(working_days) *
-                     current.weather.daylight_hours / config_.standard_day_hours;
+    double capacity =
+        ReapingPacePerDay(current.ledger.current, current.weather.daylight_hours, hands) *
+        static_cast<double>(working_days);
     for (const std::uint32_t index : reapings) {
       AssignmentJob& job = jobs[index];
-      if (job.work_days_remaining <= capacity) {
-        capacity -= job.work_days_remaining;
+      if (static_cast<double>(job.work_days_remaining) <= capacity) {
+        capacity -= static_cast<double>(job.work_days_remaining);
       } else {
         job.beyond_the_snow = true;
       }

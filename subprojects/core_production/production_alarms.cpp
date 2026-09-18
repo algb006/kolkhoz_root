@@ -13,6 +13,7 @@
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
+#include "core_common/reaping_pace.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "district_plan.h"
@@ -717,16 +718,10 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // sunset less the road, so the best day's norm-days are scaled by today's
   // daylight over the best day's. Taken of TODAY and not of each day to come:
   // the light keeps falling to the snow, so this still errs on the side of
-  // silence, only by less than 15.2 h against 8.4 h did.
-  const YearLedger& book = world.ledger.current;
-  double pace = static_cast<double>(HandsOfTheVillage(config, world));
-  if (book.reaping_best_day > 0.0F) {
-    pace = static_cast<double>(book.reaping_best_day);
-    if (book.reaping_best_day_daylight > 0.0F && world.weather.daylight_hours > 0.0F) {
-      pace *= static_cast<double>(world.weather.daylight_hours) /
-              static_cast<double>(book.reaping_best_day_daylight);
-    }
-  }
+  // silence, only by less than 15.2 h against 8.4 h did. One home with
+  // labor's last days (core_common/reaping_pace.h).
+  const double pace = ReapingPacePerDay(
+      world.ledger.current, world.weather.daylight_hours, HandsOfTheVillage(config, world));
   const auto snow = static_cast<double>(config.growing_season_last_day);
   double clock = static_cast<double>(day_of_year);
   for (const GatherClaim& claim : claims) {

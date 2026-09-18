@@ -2110,13 +2110,19 @@ int TestTheLastDaysGoByTheGrams() {
   }
   // First row the turnip (in its window), second the potato (past it).
   // Norm-days of reaping left on each. At five apiece neither fits what one
-  // hand reaps from day 37 to the snow (four working days at 12 h of light
-  // over a 10 h norm: 4.8), so both are beyond it and the grams alone rank.
+  // hand reaps from day 37 to the snow before the season has a best day
+  // (reaping_pace.h: one norm-day a hand, four working days: 4.0), so both
+  // are beyond it and the grams alone rank.
   float turnip_work = 5.0F;
   float potato_work = 5.0F;
-  const auto worked_on_by = [&turnip_work, &potato_work](core::ILaborSystem& system,
-                                                         std::uint32_t game_day) {
+  // The season's best reaping day and its daylight, when the case books one.
+  float best_day = 0.0F;
+  float best_daylight = 0.0F;
+  const auto worked_on_by = [&turnip_work, &potato_work, &best_day, &best_daylight](
+                                core::ILaborSystem& system, std::uint32_t game_day) {
     DayWorld day(1);
+    day.world.ledger.current.reaping_best_day = best_day;
+    day.world.ledger.current.reaping_best_day_daylight = best_daylight;
     const core::FieldId turnip =
         day.AddField(core::FieldPhase::kHarvest, turnip_work, core::Vec2{.x = 0.0F, .y = 20.0F});
     const core::FieldId potato =
@@ -2153,7 +2159,7 @@ int TestTheLastDaysGoByTheGrams() {
   failures += Expect(worked_on(37) == 2,
                      "last days: the heavier potato is reaped first when the grams turn round");
   // WHAT CAN STILL BE DONE, THEN THE HEAVIER (boss seq 103). The turnip
-  // heavier again, but its five norm-days do not fit the 4.8 left, and the
+  // heavier again, but its five norm-days do not fit the 4.0 left, and the
   // potato's two do: the potato goes first — the turnip would be lost
   // anyway, and reaping it would lose the potato too.
   turnip_grams = 9'000'000;
@@ -2162,10 +2168,24 @@ int TestTheLastDaysGoByTheGrams() {
   failures += Expect(worked_on(37) == 2,
                      "last days: a field that can still be finished before the snow goes before "
                      "a heavier one that cannot");
-  // Both fit (2 + 2 of 4.8): the heavier turnip first again.
+  // Both fit (2 + 2 of 4.0): the heavier turnip first again.
   turnip_work = 2.0F;
   failures += Expect(worked_on(37) == 1,
                      "last days: among the fields that can be finished, the heavier first");
+  // THE CAPACITY IS THE ALARM'S PACE (reaping_pace.h; core-host seq 28): a
+  // best day of 1 norm-day under 24 h of sun is 0.5 under today's 12 h, 2.0
+  // over the four days. The turnip's 3 no longer fit, the potato's 1.5 do.
+  // Counted by hands and light as it was (4.8), both fit and the heavier
+  // turnip went first — the case host's seed 9 lost 150.7 t on.
+  turnip_work = 3.0F;
+  potato_work = 1.5F;
+  best_day = 1.0F;
+  best_daylight = 24.0F;
+  failures += Expect(worked_on(37) == 2,
+                     "last days: the capacity is the season's pace under today's light, not "
+                     "every hand at a norm-day");
+  best_day = 0.0F;
+  best_daylight = 0.0F;
   turnip_work = 5.0F;
   potato_work = 5.0F;
   // labor.csv's harvest_snow_last_days 0 switches the rule off: the window
