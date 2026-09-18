@@ -35,13 +35,32 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current);
 /// leaves the stores now, as much as the stores hold, and is added to
 /// `delivered`. A partial shipment is a shipment; the rest waits for the
 /// turn or for the next order.
+/// @param amount Grams of `only` to ship, over the debt as readily as under
+///        it (district §1: the surplus is overfulfilment); 0 ships the debt.
+///        Positive only with a valid `only` (the boundary's shape).
 /// @return kNoPlanYet before the spring's figure; kRuleForbids when nothing
-///         left the stores (nothing owed, or none of it there); kNone else.
-OrderRefusal DeliverPlanNow(const ProductionConfig& config, WorldState& current, ResourceId only);
+///         left the stores (nothing owed, none of it there, or `only` is no
+///         position of the plan); kNone else.
+OrderRefusal DeliverPlanNow(const ProductionConfig& config,
+                            WorldState& current,
+                            ResourceId only,
+                            Grams amount);
 
 /// @brief Whether every position was delivered in full, 100 % — the limit's
 /// premium. A plan of nothing is not delivered in full.
 bool PlanFullyDelivered(const WorldState& current);
+
+/// @brief The year's overfulfilment, in percent (district §1, «За
+/// перевыполнение»; boss, 2026-09-18): the mean over the positions the
+/// district asked for of (delivered / due − 1) × 100, and 0 unless EVERY
+/// position was delivered in full — «сверху» is above a plan met, so a
+/// surplus of rye does not cover a potato short.
+///
+/// THE MEAN OF SHARES AND NOT OF TONNES: rye is not potato, the same reason
+/// PlanWasMet asks position by position. Three positions and one of them
+/// sixty percent over read as twenty.
+/// @return 0 or more; unbounded (the points' cap is YearLimitPoints').
+float PlanOverfulfilPercent(const WorldState& current);
 
 /// @brief Whether every position was delivered to the share that counts as
 /// met (`plan_met_share`), position by position and not by the total.

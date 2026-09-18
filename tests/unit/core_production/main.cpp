@@ -4996,20 +4996,20 @@ int CheckDeliverPlanNow() {
   };
 
   core::WorldState before_spring;
-  failures += Expect(core::DeliverPlanNow(config, before_spring, core::ResourceId{}) ==
+  failures += Expect(core::DeliverPlanNow(config, before_spring, core::ResourceId{}, 0) ==
                          core::OrderRefusal::kNoPlanYet,
                      "before the spring's figure there is nothing to ship");
 
   // Six tonnes in the barn of ten owed: all six go now, the plan counts them.
   core::WorldState early = make_world(6 * kTonne);
   failures += Expect(
-      core::DeliverPlanNow(config, early, core::ResourceId{0}) == core::OrderRefusal::kNone &&
+      core::DeliverPlanNow(config, early, core::ResourceId{0}, 0) == core::OrderRefusal::kNone &&
           early.plan.delivered[0] == 6 * kTonne && early.units.rows[0].stock[0] == 0,
       "shipping now takes what the barn holds of what is owed");
   failures += Expect(early.plan.delivered[1] == 0, "and only the position named: the other waits");
-  failures += Expect(
-      core::DeliverPlanNow(config, early, core::ResourceId{0}) == core::OrderRefusal::kRuleForbids,
-      "a shipment that moves nothing is refused, not done");
+  failures += Expect(core::DeliverPlanNow(config, early, core::ResourceId{0}, 0) ==
+                         core::OrderRefusal::kRuleForbids,
+                     "a shipment that moves nothing is refused, not done");
 
   // The harvest brings eight more; the turn ships the four still owed, not ten.
   early.units.rows[0].stock[0] = 8 * kTonne;
@@ -5017,6 +5017,31 @@ int CheckDeliverPlanNow() {
   failures +=
       Expect(early.plan.delivered[0] == 10 * kTonne && early.units.rows[0].stock[0] == 4 * kTonne,
              "the turn ships what is still owed and not the figure twice");
+
+  // OVER THE DEBT (district §1): the position is paid in full, and three more
+  // tonnes of it go by quantity — the surplus the limit points are for.
+  failures += Expect(core::DeliverPlanNow(config, early, core::ResourceId{0}, 3 * kTonne) ==
+                             core::OrderRefusal::kNone &&
+                         early.plan.delivered[0] == 13 * kTonne &&
+                         early.units.rows[0].stock[0] == 1 * kTonne,
+                     "a quantity ships over the debt: delivered stands above due");
+  failures += Expect(core::DeliverPlanNow(config, early, core::ResourceId{5}, kTonne) ==
+                         core::OrderRefusal::kRuleForbids,
+                     "a resource the plan asks nothing of is no position to deliver to");
+  failures += Expect(core::DeliverPlanNow(config, early, core::ResourceId{1}, kTonne) ==
+                             core::OrderRefusal::kRuleForbids &&
+                         early.plan.delivered[1] == 0,
+                     "a quantity of what the barn does not hold moves nothing and is refused");
+
+  // THE PERCENT OVER (district §1; boss, 2026-09-18): the mean of the
+  // positions' shares over, and nothing while any position is short.
+  failures += Expect(core::PlanOverfulfilPercent(early) == 0.0F,
+                     "overfulfilment: rye 30 % over does not cover a potato not delivered");
+  early.plan.delivered[1] = 2 * kTonne;
+  const float over = core::PlanOverfulfilPercent(early);
+  failures +=
+      Expect(over > 14.99F && over < 15.01F,
+             "overfulfilment: rye 30 % over and potato in full read as 15 %, not by tonnes");
   return failures;
 }
 
@@ -5208,7 +5233,7 @@ int CheckDistrictLimit() {
 
   world.chairman.raikom_reputation = 50.0F;
   const std::int32_t granted_before = world.limit.points_granted_total;
-  core::TurnLimitYear(config, world, true);
+  core::TurnLimitYear(config, world, true, 0.0F);
   failures += Expect(world.ledger.current.limit_points_burned == 5 && world.limit.points == 500,
                      "limit: at the year's turn the unspent points burn and a plan in full earns "
                      "base plus 150");
@@ -5219,6 +5244,16 @@ int CheckDistrictLimit() {
   failures += Expect(world.limit.points_granted_total - granted_before == 500,
                      "limit: and every point granted goes on the running total, the burn not "
                      "subtracted from it");
+  // THE OVERFULFILMENT TERM REACHES THE GRANT: 15.6 % counts fifteen whole
+  // percents, 150 points; forty percents would be 400 and stop at the cap.
+  const std::int32_t points_saved = world.limit.points;
+  core::TurnLimitYear(config, world, true, 15.6F);
+  failures += Expect(world.limit.points == 650,
+                     "limit: fifteen whole percents over the plan add 150 to the year's grant");
+  core::TurnLimitYear(config, world, true, 40.0F);
+  failures += Expect(world.limit.points == 700,
+                     "limit: and the overfulfilment term stops at its cap of 200");
+  world.limit.points = points_saved;
   // AND A SALE DOES NOT TOUCH IT. Handing stock back pays into this year's
   // points; if it reached the running total it would be a pump — buy a head
   // at full price, hand it back at a fraction, lose points on every turn of

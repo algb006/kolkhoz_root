@@ -481,7 +481,7 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         Settle(order, OrderHandStock(config, current, order));
         break;
       case OrderKind::kDeliverPlan:
-        Settle(order, DeliverPlanNow(config, current, order.resource));
+        Settle(order, DeliverPlanNow(config, current, order.resource, order.amount));
         break;
       default:
         break;  // not ours: another consumer's, or the events slot's refusal

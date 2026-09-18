@@ -204,9 +204,12 @@ bool ShapeIsValid(const OrderRow& order) {
              order.amount <= kMaxIssueNormGrams && !has_resident && !has_unit && !has_field &&
              !has_herd && !has_stand && !has_site;
     case OrderKind::kDeliverPlan:
-      // One position or all of them (resource invalid); no other subject.
+      // One position or all of them (resource invalid); no other subject. A
+      // quantity names its position: "this many of everything" means nothing.
       // What is owed and what the stores hold is the consumer's.
-      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+      return order.amount >= 0 &&
+             (order.amount == 0 || order.resource.value != kInvalidDefIdValue) && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
   }
   return false;
 }

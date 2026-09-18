@@ -313,6 +313,17 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   dismiss.kind = core::OrderKind::kDismiss;
   failures += Expect(session->IssueOrder(dismiss).value == 0,
                      "a dismissal names the man, and nothing else will do");
+  // A quantity to deliver names its position: "three tonnes of everything"
+  // is not an order, and a negative shipment is not one either.
+  core::OrderRow deliver;
+  deliver.kind = core::OrderKind::kDeliverPlan;
+  deliver.amount = 3'000'000;
+  failures += Expect(session->IssueOrder(deliver).value == 0,
+                     "a quantity to deliver without its position is refused");
+  deliver.resource = core::ResourceId{0};
+  deliver.amount = -1;
+  failures +=
+      Expect(session->IssueOrder(deliver).value == 0, "a negative quantity to deliver is refused");
 
   work.herd = core::HerdId{3};
   const core::OrderId first = session->IssueOrder(work);

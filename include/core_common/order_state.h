@@ -541,7 +541,8 @@ enum class OrderKind : std::uint8_t {
   ///
   /// Refusals: kNotEligible (the resource is not food — hay and straw are
   /// fed through the fodder table, not the bundle). The boundary refuses a
-  /// norm over 10 kg a trudoden by shape. Seam key `set_issue_norm`.
+  /// norm over kMaxIssueNormGrams (1000 kg a trudoden, a typo bound) by
+  /// shape. Seam key `set_issue_norm`.
   /// Consumer: core_residents.
   kSetIssueNorm,
 
@@ -553,9 +554,18 @@ enum class OrderKind : std::uint8_t {
   /// grain out early frees the store and ends its rot in the kolkhoz's
   /// hands; what is shipped cannot be handed out after.
   ///
+  /// `amount` > 0 (since 2026-09-18; district §1, overfulfilment): ship that
+  /// many grams of the position `resource`, OVER what is owed as readily as
+  /// under it — the surplus is the overfulfilment the district pays for in
+  /// limit points. `amount` 0 is «the whole debt», as before. A resource the
+  /// plan asks nothing of is not a position: refused until the milk package
+  /// brings deliveries without one.
+  ///
   /// Refusals: kNoPlanYet (the spring's figure is not named yet),
-  /// kRuleForbids (nothing left the stores: nothing owed, or none of it
-  /// there). Seam key `deliver_plan`. Consumer: core_production.
+  /// kRuleForbids (nothing left the stores: nothing owed, none of it there,
+  /// or the resource is no position of the plan). The boundary refuses a
+  /// negative amount, and an amount with no resource, by shape. Seam key
+  /// `deliver_plan`. Consumer: core_production.
   kDeliverPlan,
 
   // Reserved, appended by their tasks and named here so the numbering is

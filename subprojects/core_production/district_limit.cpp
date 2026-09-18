@@ -474,26 +474,32 @@ namespace {
 /// every turn after it — and the running total has to rise at both or it
 /// measures neither. Written as a function rather than two lines twice
 /// because the second copy is the one that gets forgotten.
-void GrantYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met) {
+void GrantYear(const ProductionConfig& config,
+               WorldState& current,
+               bool plan_fully_met,
+               float overfulfil_percent) {
   // STUB: the farm's status tier is kLagging until the economic readiness
-  // index exists, and the overfulfilment term is zero until the core can
-  // deliver above the plan (boss, parcel 211).
+  // index exists. The overfulfilment term was nought beside it until
+  // 2026-09-18, when kDeliverPlan learned to ship over the debt.
   current.limit.points = YearLimitPoints(config.limit,
                                          FarmStatusTier::kLagging,
                                          plan_fully_met,
-                                         0.0F,
+                                         overfulfil_percent,
                                          current.chairman.raikom_reputation);
   current.limit.points_granted_total += current.limit.points;
 }
 
 }  // namespace
 
-void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met) {
+void TurnLimitYear(const ProductionConfig& config,
+                   WorldState& current,
+                   bool plan_fully_met,
+                   float overfulfil_percent) {
   // The closing year's book is still `current` here: the ledger turns in the
   // events slot, later in this same tick (core_world/world.cpp, RotateLedger),
   // which is also where the new year's grant is booked.
   current.ledger.current.limit_points_burned += current.limit.points;
-  GrantYear(config, current, plan_fully_met);
+  GrantYear(config, current, plan_fully_met, overfulfil_percent);
 }
 
 void RunEraEvents(const ProductionConfig& config, WorldState& current) {
@@ -529,7 +535,7 @@ void RunEraEvents(const ProductionConfig& config, WorldState& current) {
 }
 
 void GrantFirstLimitYear(const ProductionConfig& config, WorldState& current) {
-  GrantYear(config, current, false);
+  GrantYear(config, current, false, 0.0F);
   current.ledger.current.limit_points_granted = current.limit.points;
 }
 

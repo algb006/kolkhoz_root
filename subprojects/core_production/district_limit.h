@@ -54,8 +54,9 @@ float LimitReputationMultiplier(float reputation);
 /// @param plan_fully_met Every position delivered at 100 % — not the
 ///        district's met share, which decides failure and trial (boss, parcel
 ///        211). False for the first year, which has had no verdict.
-/// @param overfulfil_percent Percent over the plan. STUB: 0 until the core
-///        can deliver above the plan (district design §9, surplus delivery).
+/// @param overfulfil_percent Percent over the plan (PlanOverfulfilPercent,
+///        district_plan.h): whole percents count, ten points each, to the
+///        catalog's cap.
 std::int32_t YearLimitPoints(const LimitCatalog& catalog,
                              FarmStatusTier tier,
                              bool plan_fully_met,
@@ -155,7 +156,12 @@ void RunEraEvents(const ProductionConfig& config, WorldState& current);
 ///        unspent points burn into the closing year's ledger, and the new
 ///        year's grant is made from that verdict.
 /// @param plan_fully_met As YearLimitPoints.
-void TurnLimitYear(const ProductionConfig& config, WorldState& current, bool plan_fully_met);
+/// @param overfulfil_percent As YearLimitPoints: PlanOverfulfilPercent of
+///        the closing year, read before the verdict hands the next plan down.
+void TurnLimitYear(const ProductionConfig& config,
+                   WorldState& current,
+                   bool plan_fully_met,
+                   float overfulfil_percent);
 
 /// @brief The district MTS's column, every tick after the field phases move
 ///        (limit_state.h, MtsColumnState — the contract is written there).

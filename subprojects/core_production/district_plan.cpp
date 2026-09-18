@@ -40,7 +40,10 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-OrderRefusal DeliverPlanNow(const ProductionConfig& config, WorldState& current, ResourceId only) {
+OrderRefusal DeliverPlanNow(const ProductionConfig& config,
+                            WorldState& current,
+                            ResourceId only,
+                            Grams amount) {
   if (current.plan.announced == 0 || current.plan.due.empty()) {
     return OrderRefusal::kNoPlanYet;
   }
@@ -52,12 +55,18 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config, WorldState& current,
     if (only.value != kInvalidDefIdValue && index != only.value) {
       continue;
     }
+    // A POSITION IS WHAT THE DISTRICT ASKED FOR: a resource with no figure is
+    // not over-delivered, it is delivered to nobody.
+    if (current.plan.due[index] <= 0) {
+      continue;
+    }
     const Grams owed = current.plan.due[index] - current.plan.delivered[index];
-    if (owed <= 0) {
+    const Grams wanted = amount > 0 ? amount : owed;
+    if (wanted <= 0) {
       continue;
     }
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams taken = TakeFromStorage(current, config, resource, owed);
+    const Grams taken = TakeFromStorage(current, config, resource, wanted);
     current.plan.delivered[index] += taken;
     AddLedgerAmount(current.ledger.current.delivered, resource, taken);
     shipped += taken;
@@ -87,6 +96,26 @@ bool PlanFullyDelivered(const WorldState& current) {
     }
   }
   return asked;
+}
+
+float PlanOverfulfilPercent(const WorldState& current) {
+  if (!PlanFullyDelivered(current)) {
+    return 0.0F;
+  }
+  double over_sum = 0.0;
+  std::uint32_t positions = 0;
+  for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    const Grams due = current.plan.due[index];
+    if (due <= 0) {
+      continue;
+    }
+    // PlanFullyDelivered has just said every such index is delivered.
+    const auto delivered = static_cast<double>(current.plan.delivered[index]);
+    over_sum += (delivered / static_cast<double>(due)) - 1.0;
+    ++positions;
+  }
+  constexpr double kPercent = 100.0;
+  return positions > 0 ? static_cast<float>(over_sum / positions * kPercent) : 0.0F;
 }
 
 /// @brief Was every position delivered to the share that counts as met?
