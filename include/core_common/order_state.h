@@ -867,6 +867,18 @@ enum class OrderRefusal : std::uint8_t {
   kOrderRefusalCount,
 };
 
+/// The largest issue norm a kSetIssueNorm may carry, grams per trudoden: a
+/// bound on a TYPO, not on a decision. A thousand kilograms a trudoden is
+/// past anything a trudoden could buy of any position.
+///
+/// IT WAS TEN KILOGRAMS in 0.32.7 and 0.32.8, on the claim "five times
+/// food.csv's largest position" — and food.csv gives milk 30 kg a trudoden, so the
+/// chairman could not even order milk's own table norm back (host, 0.32.8,
+/// the "milk ×2" arm refused 7 of 7). A bound on a quantity must sit above
+/// the table that feeds it; food_config.cpp static_asserts that its parse
+/// ceiling for `issue_kg_per_trudoden` passes this bound.
+inline constexpr Grams kMaxIssueNormGrams = 1000 * kGramsPerKilogram;
+
 /// @brief Which of the sealed funds an order unseals (resources design §6).
 /// The ladder has three rungs and only the top two are sealed: the kolkhoz
 /// fund is what the automation already spends, so there is nothing in it to

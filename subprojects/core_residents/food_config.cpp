@@ -23,6 +23,8 @@
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/order_state.h"
+#include "core_common/quantities.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -58,6 +60,17 @@ static_assert(
       return true;
     }(),
     "every food category carries a name: a blank cell must not parse as one");
+
+/// @brief The largest issue norm food.csv may hold, kg per trudoden.
+constexpr float kMaxTableIssueKgPerTrudoden = 100.0F;
+
+// A TABLE NORM THE CHAIRMAN CANNOT ORDER BACK is the defect host found in
+// 0.32.8: the order's shape bound was 10 kg and milk's row is 30. The bound
+// of a quantity sits at or above the table that feeds it, so every norm this
+// parser accepts is one kSetIssueNorm can carry.
+static_assert(static_cast<Grams>(kMaxTableIssueKgPerTrudoden) * kGramsPerKilogram <=
+                  kMaxIssueNormGrams,
+              "every issue norm food.csv may hold must pass the set_issue_norm shape bound");
 
 bool ParseCategory(std::string_view text, FoodCategory& category, std::string& error) {
   for (std::uint32_t index = 0; index < kCategoryNames.size(); ++index) {
@@ -300,7 +313,7 @@ bool ParseResourceRows(const ITable& food,
         !OptionalCell(food,
                       food_row,
                       issue_column,
-                      Range{.low = 0.0F, .high = 100.0F},
+                      Range{.low = 0.0F, .high = kMaxTableIssueKgPerTrudoden},
                       def.issue_kg_per_trudoden,
                       error) ||
         !OptionalCell(food,

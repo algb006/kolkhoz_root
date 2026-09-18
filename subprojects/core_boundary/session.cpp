@@ -36,11 +36,6 @@
 namespace core {
 namespace {
 
-/// The largest issue norm a kSetIssueNorm may carry, grams per trudoden. Ten
-/// kilograms is five times food.csv's largest position: a bound on a TYPO,
-/// not on a decision (order_state.h).
-constexpr Grams kMaxIssueNormGrams = 10 * kGramsPerKilogram;
-
 /// @brief Does this order name the entities its kind reads? SHAPE only —
 /// whether the subject exists, is eligible or is already busy is the
 /// consumer's verdict and comes back as an event after the step (session.h,
@@ -202,9 +197,9 @@ bool ShapeIsValid(const OrderRow& order) {
       return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
              order.enable <= 1;
     case OrderKind::kSetIssueNorm:
-      // A position and a norm that a trudoden could buy: nought strikes it,
-      // ten kilograms is past anything the bundle ever carried (food.csv's
-      // largest is two). Whether the resource is food is the consumer's.
+      // A position and a norm under the typo bound (order_state.h,
+      // kMaxIssueNormGrams): nought strikes it. Whether the resource is food
+      // is the consumer's.
       return order.resource.value != kInvalidDefIdValue && order.amount >= 0 &&
              order.amount <= kMaxIssueNormGrams && !has_resident && !has_unit && !has_field &&
              !has_herd && !has_stand && !has_site;
