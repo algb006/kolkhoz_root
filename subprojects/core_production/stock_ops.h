@@ -352,6 +352,36 @@ inline Grams DeliverToStores(WorldState& world,
   return placed;
 }
 
+/// @brief Whether TakeFromStorage takes from this unit: built, and a store
+/// of goods (a numbered store or an outline the player drew).
+///
+/// ONE PREDICATE FOR THE TAKE AND FOR ITS FORECAST (2026-09-19). The plan's
+/// shortfall alarm counts what the turn's delivery WILL take; had it counted
+/// HeldEverywhere, a heap outside any store would have hidden a failing
+/// position. Two walks that must agree ask one question.
+inline bool IsTakenFrom(const UnitRow& unit, const ProductionConfig& config) {
+  // A site: what is on it belongs to its own building. Then neither a
+  // numbered store nor an outline the player drew. This used to spell the
+  // second half out — `&& StorageCapacityGrams(...) >= 0` — because
+  // StoresGoods answered no for an outline; that compensation is what the
+  // predicate now does itself.
+  return unit.level != 0 && StoresGoods(unit, config);
+}
+
+/// @brief Grams of `resource` TakeFromStorage could take now: the unreserved
+/// stock of every unit IsTakenFrom answers yes for.
+inline Grams TakeableGrams(const WorldState& world,
+                           const ProductionConfig& config,
+                           ResourceId resource) {
+  Grams total = 0;
+  for (const UnitRow& unit : world.units.rows) {
+    if (IsTakenFrom(unit, config)) {
+      total += UnreservedOf(unit, resource);
+    }
+  }
+  return total;
+}
+
 /// @brief Takes up to `wanted` grams of `resource` from anywhere the
 /// settlement keeps it, in row order; returns what was actually taken.
 ///
@@ -372,15 +402,7 @@ inline Grams TakeFromStorage(WorldState& world,
   Grams taken = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size() && taken < wanted; ++row) {
     UnitRow& unit = world.units.rows[row];
-    if (unit.level == 0) {
-      continue;  // a site: what is on it belongs to its own building
-    }
-    if (!StoresGoods(unit, config)) {
-      // Neither a numbered store nor an outline the player drew. This used to
-      // spell the second half out — `&& StorageCapacityGrams(...) >= 0` —
-      // because StoresGoods answered no for an outline; that compensation is
-      // what the predicate now does itself, and keeping it would leave a
-      // patch standing over a hole that has been filled.
+    if (!IsTakenFrom(unit, config)) {
       continue;
     }
     // Not what the works of a standing unit hold back for its next level

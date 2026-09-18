@@ -5,6 +5,7 @@
 #include "production_alarms.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -14,6 +15,7 @@
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
+#include "district_plan.h"
 #include "field_work.h"
 #include "herd_system.h"
 #include "stock_ops.h"
@@ -485,6 +487,42 @@ float ChainHectares(const ProductionConfig& config,
   return grown_ha;
 }
 
+/// kPlanPositionShort (boss seq 89): on the year's last day, every position
+/// the turn's delivery cannot bring to the met share. The turn takes what is
+/// owed from the stores (DeliverPlan), so the forecast is delivered plus the
+/// least of owed and takeable — the same walk the take makes (IsTakenFrom).
+void CollectPlanShortAlarms(const ProductionConfig& config,
+                            const WorldState& world,
+                            std::vector<Alarm>& alarms) {
+  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word: the day the turn follows.
+  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear != kDaysPerYear - 1) {
+    return;
+  }
+  for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
+    const Grams due = world.plan.due[index];
+    if (due <= 0) {
+      continue;
+    }
+    const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams owed = due > delivered ? due - delivered : 0;
+    const Grams takeable = TakeableGrams(world, config, resource);
+    const Grams shipped_at_turn = delivered + (takeable < owed ? takeable : owed);
+    if (PositionDelivered(config, due, shipped_at_turn)) {
+      continue;
+    }
+    const auto met_grams = static_cast<Grams>(
+        std::llround(static_cast<double>(due) * static_cast<double>(config.plan_met_share)));
+    Alarm alarm;
+    alarm.kind = AlarmKind::kPlanPositionShort;
+    alarm.resource = resource;
+    // At least a gram: the share compares in float and the grams in double,
+    // and a position PositionDelivered calls short is never short by nought.
+    alarm.amount = std::max<Grams>(met_grams - shipped_at_turn, 1);
+    alarms.push_back(alarm);
+  }
+}
+
 }  // namespace
 
 void CollectPlanAlarms(const ProductionConfig& config,
@@ -525,6 +563,7 @@ void CollectPlanAlarms(const ProductionConfig& config,
       alarms.push_back(alarm);
     }
   }
+  CollectPlanShortAlarms(config, world, alarms);
 }
 
 namespace {

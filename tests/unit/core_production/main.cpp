@@ -5805,6 +5805,66 @@ int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
 /// produce and the year, and goes out once any chain grows it then. By
 /// produce, so a second crop of the same produce covers it; fallow and
 /// unassigned ground cover nothing.
+/// kPlanPositionShort (boss seq 89): on the year's last day, a position the
+/// turn's delivery cannot bring to the met share, with the grams it lacks.
+int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(2);
+  config.unit_types[0].level_storage_capacity_kg = {100'000.0F};  // a barn
+  config.unit_types[1].level_storage_capacity_kg = {0.0F};        // keeps no goods
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {5 * kTonne, 0, 0};  // rye in the barn, no potato
+  core::AppendRow(world.units, barn);
+  // Rye lying where no store is: the turn does not take from it, so it must
+  // not hide the shortfall either.
+  core::UnitRow shed;
+  shed.type = core::UnitTypeId{1};
+  shed.level = 1;
+  shed.stock = {20 * kTonne, 0, 0};
+  core::AppendRow(world.units, shed);
+  world.plan.announced = 1;
+  world.plan.due = {10 * kTonne, 2 * kTonne, kTonne};
+  world.plan.delivered = {4 * kTonne, 0, kTonne};
+
+  const auto shorts = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    std::vector<std::pair<std::uint16_t, std::int64_t>> found;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        found.emplace_back(alarm.resource.value, alarm.amount);
+      }
+    }
+    return found;
+  };
+  using Short = std::pair<std::uint16_t, std::int64_t>;
+  // Rye: 4 delivered + 5 in the barn = 9 of the 9.9 that is met: 0.9 t short.
+  // Potato: nothing anywhere, 1.98 t short. The third is delivered in full.
+  const std::vector<Short> expected = {Short{std::uint16_t{0}, std::int64_t{900'000}},
+                                       Short{std::uint16_t{1}, std::int64_t{1'980'000}}};
+  failures += Expect(shorts(core::kDaysPerYear - 1) == expected,
+                     "plan short: on the year's last day each position the stores cannot make "
+                     "whole is named with the grams it lacks");
+  failures += Expect(shorts(core::kDaysPerYear - 2).empty() && shorts(0).empty(),
+                     "plan short: not on any other day — the boss's «за сутки до поворота»");
+  failures += Expect(shorts((2 * core::kDaysPerYear) - 1) == expected,
+                     "plan short: and on the last day of every year, not only the first");
+  // 9.9 t of rye in reach is met at 0.99: the alarm goes out.
+  world.units.rows[0].stock[0] = 5'900'000;
+  failures += Expect(shorts(core::kDaysPerYear - 1) == std::vector<Short>{expected[1]},
+                     "plan short: a position the stores bring to the met share is not short");
+  world.plan.announced = 0;
+  failures += Expect(shorts(core::kDaysPerYear - 1).empty(),
+                     "plan short: no plan announced, nothing to fall short of");
+  return failures;
+}
+
 int CheckAnUncoveredPlanPositionIsAnAlarm() {
   int failures = 0;
   core::ProductionConfig config;
@@ -5995,6 +6055,7 @@ int main() {
   int failures = 0;
   failures += CheckTheChairmanRemovesAField();
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
+  failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();

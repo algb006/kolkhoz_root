@@ -1089,6 +1089,14 @@ int CheckAlarmSubjectValue() {
                  core::AlarmSubjectValue(position) < core::AlarmSubjectValue(next_year),
              "an uncovered plan position sorts by its resource and then by its year");
 
+  core::Alarm short_position;
+  short_position.kind = core::AlarmKind::kPlanPositionShort;
+  short_position.resource = core::ResourceId{4};
+  short_position.unit = core::UnitId{11};
+  short_position.amount = 900'000;  // grams, not a year: must not enter the subject
+  failures += Expect(core::AlarmSubjectValue(short_position) == 4,
+                     "a short plan position answers with its resource alone");
+
   core::Alarm nothing;
   failures += Expect(core::AlarmSubjectValue(nothing) == 0, "kNone names no subject");
   return failures;

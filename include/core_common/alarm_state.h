@@ -327,6 +327,15 @@ enum class AlarmKind : std::uint8_t {
   /// produce; `amount` = GRAMS the snow will take at that pace.
   kHarvestWillNotBeGathered,
 
+  /// A PLAN POSITION WILL FALL SHORT AT THE TURN (boss seq 89; alarms.csv
+  /// `plan_position_short`, core's proposed key): on the year's last day, a
+  /// position's delivered grams plus what the turn's delivery can take from
+  /// the stores stand below the met share (PositionDelivered). The turn
+  /// ships the debt by itself, so a position merely not yet shipped is not
+  /// this alarm — only one the stores cannot make whole. Subject: `resource`;
+  /// `amount` = GRAMS short of the met share.
+  kPlanPositionShort,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

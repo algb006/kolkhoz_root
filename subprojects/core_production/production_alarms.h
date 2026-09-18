@@ -44,7 +44,9 @@ void CollectFieldAlarms(const ProductionConfig& config,
 /// @brief Appends kPlanPositionUncovered for every position of the district's
 /// plan and every one of the chains' three years in which the arable grows
 /// its crop on fewer hectares than worked arable × area share × plan share
-/// (alarm_state.h; year 0 priced off last year's worked arable).
+/// (alarm_state.h; year 0 priced off last year's worked arable). On the
+/// year's last day, also kPlanPositionShort for every position that delivered
+/// plus takeable (TakeableGrams) will not bring to the met share.
 /// @param alarms Appended to; never cleared.
 void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
