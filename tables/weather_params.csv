@@ -7,9 +7,6 @@
 key,value,reader
 thunder_from_month,5,core
 thunder_to_month,8,core
-thunder_share,0.35,core
-thunder_min_c,15,core
-blizzard_min_c,-10,core
 frost_night_c,0,core
 sultry_afternoon_c,28,core
 calm_share,0.35,core
@@ -18,5 +15,17 @@ fog_share,0.2,core
 snow_melt_c,2,core
 insect_buzz_min_c,15,layer
 hot_afternoon_c,25,core
+still_frost_c,-12,core
+snow_below_c,-1,core
+rain_above_c,1,core
+heavy_hours_min,2,core
+heavy_hours_max,12,core
+sky_swing_1,1.4,core
+sky_swing_2,1.15,core
+sky_swing_3,0.8,core
+sky_swing_4,0.7,core
+sky_swing_5,0.6,core
+blizzard_from_month,12,core
+blizzard_to_month,2,core
 frost_from_month,4,core
 frost_to_month,10,core
