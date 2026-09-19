@@ -221,5 +221,5 @@ summon_letter_delay_days,1,core
 summon_after_letter_days,2,core
 plan_trade_percent,10,core
 plan_trade_percent_rep_cost,5,core
-plan_trade_swap_rep_cost,8,core
+plan_trade_swap_rep_cost,6,core
 plan_trade_min_reputation,20,core
