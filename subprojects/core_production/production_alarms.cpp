@@ -738,15 +738,17 @@ void CollectGatherAlarms(const ProductionConfig& config,
     if (needed <= available) {
       continue;
     }
-    const double short_share = available > 0.0 && pace > 0.0 ? (needed - available) / needed : 1.0;
     const FieldRow& field = world.fields.rows[claim.row];
     const CropDef& crop = config.crops[field.crop.value];
     Alarm alarm;
     alarm.kind = AlarmKind::kHarvestWillNotBeGathered;
     alarm.field = world.fields.row_ids[claim.row];
     alarm.resource = crop.resource;
-    alarm.amount = static_cast<std::int64_t>(
-        static_cast<double>(FieldYieldGrams(config, field, crop)) * short_share);
+    // THE WHOLE FIELD, and not the share left unreaped (boss seq 176): the
+    // crop is gathered only when its reaping finishes, and the snow on a field
+    // still being reaped takes all of it (LoseFieldToSnow). Until 2026-09-19
+    // this named the missing share — less than the snow takes.
+    alarm.amount = static_cast<std::int64_t>(FieldYieldGrams(config, field, crop));
     alarms.push_back(alarm);
   }
 }

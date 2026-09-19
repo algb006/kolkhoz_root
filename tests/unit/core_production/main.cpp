@@ -2467,22 +2467,23 @@ int CheckTheHarvestWillNotBeGathered() {
     }
     return grams;
   };
-  // Day 30, snow after 40. At the season's 5 norm-days a day the oat, open
-  // today, takes four (30..33); the potato, ripe on 32, starts on 34 with
-  // seven days left and needs ten: three tenths of 10 t go to the snow.
-  // Reaped in row order it would start on 32 and lose one tenth.
-  world.ledger.current.reaping_last_day = 5.0F;
-  failures += Expect(warned() == 3'000'000,
+  // Day 30, snow after 40. At 6 norm-days a day the oat, open today, takes
+  // 3.33 days; the potato, ripe on 32, starts at 33.33 with 7.67 days left
+  // and needs 8.33 — the snow takes it, and the alarm names THE WHOLE 10 t
+  // (boss seq 176: the snow takes a field being reaped entire). Reaped in row
+  // order it would start on 32, need 8.33 of 9 days and be said nothing — so
+  // the pace 6 tells the ripening order from the row order.
+  world.ledger.current.reaping_last_day = 6.0F;
+  failures += Expect(warned() == 10'000'000,
                      "gather: the potato ripening after the oat finds the days it took, and it is "
-                     "said before the potato is ripe");
-  world.ledger.current.reaping_last_day = 10.0F;
+                     "said before the potato is ripe — the whole field, which the snow takes");
+  world.ledger.current.reaping_last_day = 12.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
-  // THE SAME TEN UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour day,
-  // read on a 7.6-hour one, they are five — and the potato loses its three
-  // tenths again.
+  // THE SAME TWELVE UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour
+  // day, read on a 7.6-hour one, they are six — and the potato is lost again.
   world.ledger.current.reaping_last_day_daylight = 15.2F;
   world.weather.daylight_hours = 7.6F;
-  failures += Expect(warned() == 3'000'000,
+  failures += Expect(warned() == 10'000'000,
                      "gather: the last day's pace is scaled by today's daylight over its own");
   world.ledger.current.reaping_last_day_daylight = 0.0F;
   failures +=
@@ -2492,20 +2493,20 @@ int CheckTheHarvestWillNotBeGathered() {
   world.ledger.current.reaping_last_day = 0.0F;
   failures += Expect(warned() == 10'000'000,
                      "gather: before the season's first reaping, no hands means the whole crop");
-  // Three adults and a child in a tent (a home without a house): three hands.
-  // The oat takes 6.67 days, the potato starts at 36.67 with 4.33 left of the
-  // 16.67 it needs — 74 % of 10 t. Counting the child would make it 52 %.
+  // Six adults and a child in a tent (a home without a house): six hands, the
+  // pace 6 above — the potato is lost, the whole 10 t said. Counting the child
+  // would make seven, and at 7 a day both are reaped (the potato needs 7.14 of
+  // 8.14 days): the answer flips, so the count of hands is what is tested.
   core::FamilyRow family;
   family.in_tent = 1;
   const core::FamilyId household = core::AppendRow(world.families, family);
-  for (const std::int32_t age_years : {30, 25, 40, 5}) {
+  for (const std::int32_t age_years : {30, 25, 40, 35, 28, 45, 5}) {
     core::ResidentRow person;
     person.family = household;
     person.birth_day = 30 - (age_years * static_cast<std::int32_t>(core::kDaysPerYear));
     core::AppendRow(world.residents, person);
   }
-  const std::int64_t by_hands = warned();
-  failures += Expect(by_hands > 7'300'000 && by_hands < 7'500'000,
+  failures += Expect(warned() == 10'000'000,
                      "gather: before the season reaps, the hands of working age are the pace");
   return failures;
 }

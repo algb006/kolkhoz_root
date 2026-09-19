@@ -324,7 +324,10 @@ enum class AlarmKind : std::uint8_t {
   /// is the chairman's — an аврал on the reaping (register 220), hands off
   /// other work. The fields spend the days in the order they ripen; the one
   /// that finds them gone is named. Subject: `field`; `resource` = its crop's
-  /// produce; `amount` = GRAMS the snow will take at that pace.
+  /// produce; `amount` = GRAMS the snow will take: the WHOLE field's crop, as
+  /// LoseFieldToSnow takes it — a field still being reaped is lost entire, not
+  /// by its unreaped share (boss seq 176; it named the share until
+  /// 2026-09-19, less than the snow takes).
   kHarvestWillNotBeGathered,
 
   /// A PLAN POSITION WILL FALL SHORT AT THE TURN (boss seq 89; alarms.csv
