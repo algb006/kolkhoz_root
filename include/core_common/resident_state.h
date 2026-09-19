@@ -310,6 +310,10 @@ struct ResidentRow {
   /// does not take in the calendar.
   std::uint32_t talk_until_day = 0;
 
+  /// THE TWIN (life cycle §4, «Двойня»; register 245; save 78): the other
+  /// child of the same birth, invalid for a single birth. Set on both.
+  ResidentId twin;
+
   Metric crime_inclination = 0.0F;  ///< Recomputed seasonally from its formula.
 
   std::uint16_t offense_count = 0;  ///< Recorded offenses; the village remembers.
@@ -340,6 +344,12 @@ struct ResidentRow {
   Metric attitude_to_chairman = 50.0F;
 
   std::uint8_t has_passport = 0;  ///< 0/1. Kolkhozniks have none until Epoch III.
+
+  /// 0/1: identical twins (life cycle §4) — always of one sex, one figure
+  /// (height_deviation, build_deviation) and, for the layer, «один набор
+  /// жителя на двоих»: they differ by clothes and character only. 0 for
+  /// fraternal twins and single births. Set on both.
+  std::uint8_t identical_twin = 0;
 
   /// Character traits bitmask (life-cycle §1: 2-4 per person). STUB: the
   /// trait roster and its effects arrive with dialogues (project phase 3);

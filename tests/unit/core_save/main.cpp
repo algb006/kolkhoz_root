@@ -213,6 +213,14 @@ core::WorldState MakeWorld() {
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
+  // Save 78: the first two are identical twins — each names the other, and
+  // the mark is 1, away from its nought. Not the third: it dies below, and
+  // the section carries the living (two of them — +10 bytes, not +15; the
+  // prediction counted the appended rows, not the saved ones).
+  world.residents.rows[0].twin = world.residents.row_ids[1];
+  world.residents.rows[0].identical_twin = 1;
+  world.residents.rows[1].twin = first_id;
+  world.residents.rows[1].identical_twin = 1;
   // A death: the id is spent and must never be reissued, so next_id_value
   // has to survive the save on its own (state_table.h).
   core::RemoveRow(world.residents, third_id);
@@ -1118,7 +1126,7 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // the float did NOT land in padding, so 184 became 188.
     // 2026-09-18, save 59: distiller_supplied_month, 4 bytes by 2 residents.
     // Save 69: talk_until_day, 4 bytes by 2 residents; predicted, and held.
-    {"residents", 378, 0x1ededb9d3ccc5c5bULL},
+    {"residents", 388, 0xb4f4317c581f2158ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1500,6 +1508,10 @@ int main() {
                      "closed book (save 70)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_share == 0.625F,
                      "a herd's covered share of the ration comes back (save 71)");
+  failures += Expect(loaded.residents.rows.size() >= 2 &&
+                         loaded.residents.rows[0].twin.value == loaded.residents.row_ids[1].value &&
+                         loaded.residents.rows[1].identical_twin == 1,
+                     "twins name each other and keep their mark (save 78)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].autumn_slaughter_done == 1,
                      "a herd remembers its autumn slaughter was done (save 76)");
   failures += Expect(AmountAt(loaded.ledger.closed.seized, 0) == 5'000'000 &&
