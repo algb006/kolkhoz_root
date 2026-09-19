@@ -339,6 +339,16 @@ enum class AlarmKind : std::uint8_t {
   /// `amount` = GRAMS short of the met share.
   kPlanPositionShort,
 
+  /// A SHOP STANDS AND SAYS WHY (production units §8а, «нет свободных бочек —
+  /// квашня стоит и говорит почему»; boss seq 184; alarms.csv
+  /// `processing_stopped`, core's proposed key): a sauerkraut shop, smokehouse
+  /// or the workshops' cooperage has something to work — its main input lies
+  /// in the stores — and stands for want of `resource`: barrels for what it
+  /// makes, or a second input (grocery for the salt, firewood for the smoke,
+  /// boards or steel for a barrel). Nothing to work is no alarm. Subject:
+  /// `unit`; `resource` = what is missing; `amount` = 0.
+  kProcessingStopped,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

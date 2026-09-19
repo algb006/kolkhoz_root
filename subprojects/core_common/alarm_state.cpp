@@ -24,6 +24,7 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kSiteWithoutCrew:
     case AlarmKind::kSiteUnreachable:
     case AlarmKind::kYardWithoutGroom:
+    case AlarmKind::kProcessingStopped:
       return alarm.unit.value;
     case AlarmKind::kHarvestWillNotFit:
     case AlarmKind::kHarvestWaitingOnField:

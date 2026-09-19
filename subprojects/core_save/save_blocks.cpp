@@ -59,9 +59,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 70: built_in, what went into a building, and yard_feed, what the
 // yards' beasts ate — a twenty-first column and a sixty-fifth field, each
 // predicted before its field was added.
-static_assert(sizeof(YearLedger) == 224 + (21 * kAmountsSize),
+// Save 73: processed and made, what the shops took in and turned out — a
+// twenty-third column and a sixty-seventh field, predicted before the build.
+static_assert(sizeof(YearLedger) == 224 + (23 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 65,
+static_assert(AggregateArity<YearLedger>() == 67,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -283,6 +285,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
   sink.WriteAmounts(DefKind::kResource, book.built_in);   // save 70
   sink.WriteAmounts(DefKind::kResource, book.yard_feed);  // save 70
+  sink.WriteAmounts(DefKind::kResource, book.processed);  // save 73
+  sink.WriteAmounts(DefKind::kResource, book.made);       // save 73
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
   out.WriteFloat(book.area_harvested_ha);
@@ -364,6 +368,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.spoiled = source.ReadAmounts(DefKind::kResource);
   book.built_in = source.ReadAmounts(DefKind::kResource);
   book.yard_feed = source.ReadAmounts(DefKind::kResource);
+  book.processed = source.ReadAmounts(DefKind::kResource);
+  book.made = source.ReadAmounts(DefKind::kResource);
   book.seed = source.ReadAmounts(DefKind::kResource);
   book.area_sown_ha = in.ReadFloat();
   book.area_harvested_ha = in.ReadFloat();

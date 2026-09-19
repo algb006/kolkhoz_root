@@ -525,6 +525,10 @@ core::WorldState MakeWorld() {
   world.ledger.closed.seized = Amounts({5'000'000});
   world.ledger.closed.built_in = Amounts({0, 250});      // save 70: straw into a roof
   world.ledger.closed.yard_feed = Amounts({0, 0, 300});  // save 70: a goat's hay
+  world.ledger.closed.processed = Amounts({0, 0, 400});  // save 73: cabbage pickled
+  // Cell 2 and not 3: resource 3 is the key a later check removes as unused,
+  // and a gram of it here made it used (2026-09-19, the first build of save 73).
+  world.ledger.closed.made = Amounts({0, 0, 300});  // save 73: sauerkraut made
   // The season's reaping pace (save 63).
   world.ledger.closed.reaping_today = 3.25F;
   world.ledger.closed.reaping_last_day = 22.5F;
@@ -1168,7 +1172,11 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // Save 70: +20 — built_in in both books, the current one empty (a 2-byte
     // length) and the closed one two cells (2 + 2 x 8); predicted and held.
     // Then +28 — yard_feed the same way, three cells closed; predicted, held.
-    {"ledger", 804, 0x6292c63f68a2cf5bULL},
+    // Save 73: +56 — processed (three cells closed, 2 + 24; the current book
+    // empty, 2) and made (three cells, 2 + 24; 2). First predicted +64 with
+    // made on four cells, and held to the byte; the fourth cell was moved off
+    // a key another check removes, and the second prediction, +56, held too.
+    {"ledger", 860, 0xd6a96c6e190bf057ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1446,6 +1454,9 @@ int main() {
                      "the drink's price in kind comes back in the closed book (save 60)");
   failures += Expect(AmountAt(loaded.ledger.closed.lost_to_snow, 1) == 150'000'000,
                      "the standing crop the snow took comes back in the closed book (save 61)");
+  failures += Expect(AmountAt(loaded.ledger.closed.processed, 2) == 400 &&
+                         AmountAt(loaded.ledger.closed.made, 2) == 300,
+                     "the shops' two lines survive the round trip (save 73)");
   failures += Expect(AmountAt(loaded.ledger.closed.built_in, 1) == 250 &&
                          AmountAt(loaded.ledger.closed.yard_feed, 2) == 300,
                      "what went into a building and what the yards' beasts ate come back in the "

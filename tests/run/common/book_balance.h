@@ -130,11 +130,12 @@ class BookBalance {
   /// The year's net inflow by the book (see @file for what is not in it).
   static double NetFlow(const core::YearLedger& book, std::size_t r) {
     const double in = At(book.harvest, r) + At(book.plot_harvest, r) + At(book.yard_produce, r) +
-                      At(book.nets, r) + At(book.night_catch, r) + At(book.herd_produce, r);
+                      At(book.nets, r) + At(book.night_catch, r) + At(book.herd_produce, r) +
+                      At(book.made, r);
     const double out = At(book.eaten, r) + At(book.spoiled, r) + At(book.lost_no_room, r) +
                        At(book.seed, r) + At(book.feed, r) + At(book.yard_feed, r) +
                        At(book.delivered, r) + At(book.seized, r) + At(book.stolen, r) +
-                       At(book.built_in, r);
+                       At(book.built_in, r) + At(book.processed, r);
     return in - out;
   }
 

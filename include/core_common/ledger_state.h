@@ -299,6 +299,17 @@ struct YearLedger {
   /// book's balance found it as 15–42 t of hay a year gone with no line.
   ResourceAmounts yard_feed;
 
+  /// WHAT THE SHOPS TOOK IN (production units §8а; save 73): the cabbage and
+  /// the salt of the sauerkraut shop, the meat, fish and firewood of the
+  /// smokehouse, the boards and steel of the cooperage. Vegetables are a
+  /// harvested resource, and without this line the book's balance would lose
+  /// every tonne pickled.
+  ResourceAmounts processed;
+
+  /// WHAT THE SHOPS MADE (save 73): sauerkraut, smoked meat, smoked fish,
+  /// barrels — beside `processed`, so a report sees the shop's year.
+  ResourceAmounts made;
+
   // -- labor ---------------------------------------------------------------
   /// Game man-days delivered, by WorkKind (index = the enum value).
   std::array<float, kWorkKindCount> work_days_by_kind = {};

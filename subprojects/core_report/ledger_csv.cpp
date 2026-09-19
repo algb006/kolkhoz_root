@@ -347,6 +347,9 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   EmitResourceBlock(out, resources, "yard_produce", book.yard_produce);
   EmitResourceBlock(out, resources, "plot_harvest", book.plot_harvest);
   EmitResourceBlock(out, resources, "eaten", book.eaten);
+  // The shops' year (save 73): what they took in and what they made.
+  EmitResourceBlock(out, resources, "processed", book.processed);
+  EmitResourceBlock(out, resources, "made", book.made);
   EmitResourceBlock(out, resources, "store", VillageStores(state, resources.size()));
   EmitResourceBlock(out, resources, "pantry", VillagePantries(state, resources.size()));
   EmitResourceBlock(out, resources, "plan_due", state.plan.due);
