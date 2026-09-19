@@ -345,8 +345,13 @@ enum class AlarmKind : std::uint8_t {
   /// or the workshops' cooperage has something to work — its main input lies
   /// in the stores — and stands for want of `resource`: barrels for what it
   /// makes, or a second input (grocery for the salt, firewood for the smoke,
-  /// boards or steel for a barrel). Nothing to work is no alarm. Subject:
-  /// `unit`; `resource` = what is missing; `amount` = 0.
+  /// boards or steel for a barrel), or ROOM for what it makes — `resource`
+  /// is then the output itself (boss, host-econ-shops seq 11: «простой
+  /// законный — тревога с причиной»; until 0.34.8 a full store stood the
+  /// shop in silence, kStoreFull naming the store and not the shop). The
+  /// room is counted after the inputs are out: cabbage leaving a store is
+  /// room for its sauerkraut. Nothing to work is no alarm. Subject: `unit`;
+  /// `resource` = what is missing; `amount` = 0.
   kProcessingStopped,
 
   // Appended by later tasks and phases: children out of school, sewage,

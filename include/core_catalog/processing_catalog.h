@@ -143,6 +143,13 @@ struct ProcessingCatalog {
   /// 1..12 — econ: «сезон — только осень, с сентября по декабрь»).
   std::uint8_t pickling_from_month = 8;
   std::uint8_t pickling_to_month = 11;
+
+  /// kCooperage's season, 0-based months inclusive: July to December
+  /// (world_params.csv `cooperage_from_month`, `cooperage_to_month`, human
+  /// 1..12 — production units §8а, «Когда»: «с июля по декабрь и только пока
+  /// свободных бочек меньше нужды»). Outside it the cooper makes nothing.
+  std::uint8_t cooperage_from_month = 6;
+  std::uint8_t cooperage_to_month = 11;
 };
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's
