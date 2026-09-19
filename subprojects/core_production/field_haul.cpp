@@ -430,6 +430,33 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+void RescaleHaulForMud(const ProductionConfig& config, bool mud_yesterday, WorldState& current) {
+  const float factor = config.farming.mud_speed_factor;
+  if (mud_yesterday == current.weather.mud || !(factor > 0.0F)) {
+    return;
+  }
+  // Days go as one over the speed: priced at `was`, worked at `now`.
+  const float was = mud_yesterday ? factor : 1.0F;
+  const float now = current.weather.mud ? factor : 1.0F;
+  const float scale = was / now;
+  const auto rescale = [scale](float& remaining, float& written) {
+    remaining *= scale;
+    written *= scale;
+  };
+  for (FieldRow& field : current.fields.rows) {
+    rescale(field.haul_days_remaining, field.haul_days_written);
+  }
+  for (TimberStandRow& stand : current.stands.rows) {
+    rescale(stand.haul_days_remaining, stand.haul_days_written);
+  }
+  for (ExtractionSiteRow& site : current.extraction_sites.rows) {
+    rescale(site.haul_days_remaining, site.haul_days_written);
+  }
+  for (UnitRow& unit : current.units.rows) {
+    rescale(unit.haul_days_remaining, unit.haul_days_written);
+  }
+}
+
 void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current) {
   const float keeping = config.keeping_factor * config.farming.field_heap_keeping_factor;
   for (FieldRow& field : current.fields.rows) {

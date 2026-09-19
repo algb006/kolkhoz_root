@@ -267,7 +267,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 22> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 23> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -300,7 +300,10 @@ constexpr std::array<std::string_view, 22> kLifeWorldParamKeys = {
     "hygiene_fall_dirty_work_factor",
     "hygiene_fall_heat_extra",
     "hygiene_rise_bath_per_day",
-    "hygiene_disease_threshold"};
+    "hygiene_disease_threshold",
+    // The mud season (boss seq 189): the specialist rides the district's cart,
+    // so its term stretches as the lot's does — a second reader of one row.
+    "mud_speed_factor"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
@@ -373,7 +376,11 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 100.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[21],
                  .value = &config.hygiene_disease_threshold,
-                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      // The same range core_production reads it in: the mud slows, never stops.
+      ScalarKnob{.key = kLifeWorldParamKeys[22],
+                 .value = &config.specialist_mud_speed_factor,
+                 .range = Range{.low = 0.05F, .high = 1.0F}}};
   return ReadKnobs(world, "world_params", rows, error);
 }
 

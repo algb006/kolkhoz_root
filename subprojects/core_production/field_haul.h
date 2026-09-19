@@ -85,6 +85,16 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current);
 /// @pre The day's last tick, sequential slot, after labor has run.
 void SettleStoreEmptying(const ProductionConfig& config, WorldState& current);
 
+/// @brief РАСПУТИЦА at the dawn it changes (the 0.34.3 static analysis' med
+/// finding, first of the mud's tails by boss's word): tonight's haul demand (the four settlements
+/// above) was priced with today's mud and is worked tomorrow, so when the word flips overnight
+/// every load's haul_days_remaining and haul_days_written are scaled by the ratio of the two speeds
+/// — × 1 / mud_speed_factor when the mud comes, × mud_speed_factor when it goes. Both are scaled
+/// together, so the evening's share done / written is unchanged.
+/// @param mud_yesterday The word the demand was priced with (previous state).
+/// @pre The day's first tick, before anything writes a new demand today.
+void RescaleHaulForMud(const ProductionConfig& config, bool mud_yesterday, WorldState& current);
+
 /// @brief A day in the life of everything lying in a unit's store.
 /// @pre Called AFTER the village has eaten: the meal is the needs slot,
 ///      phase 2, and this is phase 3 of the same tick. Eaten food cannot

@@ -5546,6 +5546,29 @@ int CheckMudSeason() {
   config.farming.mud_speed_factor = 0.7F;
   failures += Expect(core::LimitBaseDeliveryDays(config, world) == 3,
                      "at 0.7 the term is 2 / 0.7 rounded: 3 days");
+
+  // THE DAWN THE WORD FLIPS: tonight's demand was priced with yesterday's mud.
+  config.farming.mud_speed_factor = 0.5F;
+  field.haul_days_remaining = 3.0F;
+  field.haul_days_written = 4.0F;
+  core::AppendRow(world.fields, field);
+  core::FieldRow& heap = world.fields.rows.back();
+  world.weather.mud = true;
+  core::RescaleHaulForMud(config, false, world);
+  failures += Expect(heap.haul_days_remaining == 6.0F && heap.haul_days_written == 8.0F,
+                     "the mud came overnight: yesterday's demand doubles, remaining and written "
+                     "together");
+  // Set, not carried from the step above: carried, a rescale that does nothing
+  // twice returns 3 and 4 as well, and this check could not tell (damage of
+  // 2026-09-19 — predicted 2 red, got 1).
+  heap.haul_days_remaining = 6.0F;
+  heap.haul_days_written = 8.0F;
+  world.weather.mud = false;
+  core::RescaleHaulForMud(config, true, world);
+  failures += Expect(heap.haul_days_remaining == 3.0F && heap.haul_days_written == 4.0F,
+                     "and it went: halves back");
+  // No "no flip, no change" check: without a flip the ratio is one by
+  // construction, so no implementation of this function could fail it.
   return failures;
 }
 

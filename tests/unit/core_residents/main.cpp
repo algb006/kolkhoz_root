@@ -1415,6 +1415,15 @@ int CheckTheDistrictSendsSpecialists() {
     return count;
   };
 
+  // -- the same month's first day in the mud: the cart takes twice as long ---
+  core::WorldState muddy = world;
+  RefreshCalendarCaches(muddy.calendar);
+  muddy.weather.mud = true;
+  core::RunSpecialistArrivals(config, muddy);
+  failures += Expect(muddy.specialist_arrivals.rows.size() == 1 &&
+                         muddy.specialist_arrivals.rows[0].arrive_day == 4,
+                     "specialists: sent in the mud, the teacher is due in four days, not two");
+
   // -- the first day of a month: one teacher is sent -------------------------
   day(0);
   core::RunSpecialistArrivals(config, world);

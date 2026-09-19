@@ -99,8 +99,12 @@ void SendOrRefuse(const LifeConfig& config,
   SpecialistArrivalRow arrival;
   arrival.profession = post;
   arrival.unit = unit;
+  // In the mud the cart takes longer, as the lot's does (LimitBaseDeliveryDays).
+  const float days = current.weather.mud
+                         ? config.specialist_delivery_days / config.specialist_mud_speed_factor
+                         : config.specialist_delivery_days;
   arrival.arrive_day = static_cast<std::uint32_t>(current.calendar.day) +
-                       static_cast<std::uint32_t>(std::lround(config.specialist_delivery_days));
+                       static_cast<std::uint32_t>(std::lround(days));
   AppendRow(current.specialist_arrivals, arrival);
 }
 

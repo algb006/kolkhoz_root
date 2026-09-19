@@ -130,6 +130,12 @@ struct LifeConfig {
   /// shared with the limit's carts): a specialist comes as the goods do.
   float specialist_delivery_days = 2.0F;
 
+  /// world_params.csv `mud_speed_factor` (boss seq 189): a specialist sent in
+  /// the mud (WeatherState::mud) takes specialist_delivery_days divided by
+  /// it, as the district's lot does. Only the postman is not delayed — and he
+  /// is not modelled here.
+  float specialist_mud_speed_factor = 0.5F;
+
   // -- personal cleanliness (health design §3; world_params.csv) ------------
 
   /// The band a resident's hygiene is drawn from at the founding. A BAND and
