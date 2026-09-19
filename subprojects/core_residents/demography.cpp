@@ -605,7 +605,7 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       done.push_back(id);  // one of the two died or left: the couple falls apart
       continue;
     }
-    const UnitId house = FreeHouseForCouple(config, current);
+    const UnitId house = FreeHouseNotOnTheBrink(config, current);
     if (house.value == kInvalidEntityIdValue) {
       break;  // no free house for the oldest, so none for anyone behind it
     }
@@ -651,7 +651,7 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
         continue;
       }
       const UnitId house =
-          current.wedding_waits.rows.empty() ? FreeHouseForCouple(config, current) : UnitId{};
+          current.wedding_waits.rows.empty() ? FreeHouseNotOnTheBrink(config, current) : UnitId{};
       if (house.value != kInvalidEntityIdValue) {
         Wed(current, bride_id, groom_id, house);
         break;
@@ -682,7 +682,9 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     // come to you if you have a free house"). Until 2026-09-14 a house was
     // raised from nothing for him too; with none free, nobody comes today.
     FamilyRow household;
-    household.house = FreeHouse(config, current);
+    // And not a house on the brink (boss, 2026-09-19): a migrant moved into
+    // one leaves as a couple would.
+    household.house = FreeHouseNotOnTheBrink(config, current);
     if (household.house.value == kInvalidEntityIdValue) {
       continue;
     }

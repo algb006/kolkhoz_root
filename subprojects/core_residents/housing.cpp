@@ -34,7 +34,7 @@ UnitId FreeHouse(const LifeConfig& config, const WorldState& current) {
   return UnitId{};
 }
 
-UnitId FreeHouseForCouple(const LifeConfig& config, const WorldState& current) {
+UnitId FreeHouseNotOnTheBrink(const LifeConfig& config, const WorldState& current) {
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
     const UnitRow& unit = current.units.rows[row];
     if (IsFreeHouse(config, unit) && !OnTheBrink(config, unit)) {

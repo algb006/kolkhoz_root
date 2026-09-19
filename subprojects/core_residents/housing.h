@@ -26,11 +26,13 @@ namespace core {
 ///        none.
 UnitId FreeHouse(const LifeConfig& config, const WorldState& current);
 
-/// @brief FreeHouse for a WEDDING: the same, less an old house on the brink —
-///        wear at or above old_house_near_collapse_wear of the scale (boss
-///        seq 191). The couple waits on in the parents' households rather than
-///        move into a house about to fall. Invalid when no other is free.
-UnitId FreeHouseForCouple(const LifeConfig& config, const WorldState& current);
+/// @brief FreeHouse for a NEWCOMER — a wedding couple or a migrant: the same,
+///        less an old house on the brink, wear at or above
+///        old_house_near_collapse_wear of the scale (boss seq 191; migrants by
+///        boss's word the same day). The couple waits on in the parents'
+///        households, the migrant does not come. Only the roofless still take
+///        such a house. Invalid when no other is free.
+UnitId FreeHouseNotOnTheBrink(const LifeConfig& config, const WorldState& current);
 
 }  // namespace core
 

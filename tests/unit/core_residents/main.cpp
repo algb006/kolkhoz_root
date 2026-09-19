@@ -944,8 +944,9 @@ int CheckSettleHouse() {
   return failures;
 }
 
-/// Boss seq 191: a couple does not take an old house on the brink (wear at or
-/// above old_house_near_collapse_wear of the scale); the roofless still do.
+/// Boss seq 191: a couple — and a migrant, by boss's word the same day — does
+/// not take an old house on the brink (wear at or above
+/// old_house_near_collapse_wear of the scale); the roofless still do.
 int CheckCoupleSkipsHouseOnTheBrink() {
   int failures = 0;
   core::LifeConfig config;
@@ -961,20 +962,21 @@ int CheckCoupleSkipsHouseOnTheBrink() {
 
   failures += Expect(core::FreeHouse(config, world).value == brink.value,
                      "brink: a roofless family still takes the old house about to fall");
-  failures += Expect(core::FreeHouseForCouple(config, world).value == core::kInvalidEntityIdValue,
-                     "brink: a couple does not — with nothing else free it waits");
+  failures +=
+      Expect(core::FreeHouseNotOnTheBrink(config, world).value == core::kInvalidEntityIdValue,
+             "brink: a couple or a migrant does not — with nothing else free, none");
 
   core::UnitRow new_house;
   new_house.type = core::UnitTypeId{1};
   new_house.level = 1;
   new_house.wear = 95.0F;  // as worn, but not an old house
   const core::UnitId sound = AppendRow(world.units, new_house);
-  failures += Expect(core::FreeHouseForCouple(config, world).value == sound.value,
+  failures += Expect(core::FreeHouseNotOnTheBrink(config, world).value == sound.value,
                      "brink: the couple passes the old house for the next free one, whatever "
                      "its wear — the rule is the old house's");
 
   world.units.rows[0].wear = 89.0F;
-  failures += Expect(core::FreeHouseForCouple(config, world).value == brink.value,
+  failures += Expect(core::FreeHouseNotOnTheBrink(config, world).value == brink.value,
                      "brink: below 90 the old house is a house like any other");
   return failures;
 }
