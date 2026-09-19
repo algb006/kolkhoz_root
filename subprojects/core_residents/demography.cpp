@@ -605,7 +605,7 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       done.push_back(id);  // one of the two died or left: the couple falls apart
       continue;
     }
-    const UnitId house = FreeHouse(config, current);
+    const UnitId house = FreeHouseForCouple(config, current);
     if (house.value == kInvalidEntityIdValue) {
       break;  // no free house for the oldest, so none for anyone behind it
     }
@@ -651,7 +651,7 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
         continue;
       }
       const UnitId house =
-          current.wedding_waits.rows.empty() ? FreeHouse(config, current) : UnitId{};
+          current.wedding_waits.rows.empty() ? FreeHouseForCouple(config, current) : UnitId{};
       if (house.value != kInvalidEntityIdValue) {
         Wed(current, bride_id, groom_id, house);
         break;

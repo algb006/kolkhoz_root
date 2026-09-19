@@ -26,6 +26,12 @@ namespace core {
 ///        none.
 UnitId FreeHouse(const LifeConfig& config, const WorldState& current);
 
+/// @brief FreeHouse for a WEDDING: the same, less an old house on the brink —
+///        wear at or above old_house_near_collapse_wear of the scale (boss
+///        seq 191). The couple waits on in the parents' households rather than
+///        move into a house about to fall. Invalid when no other is free.
+UnitId FreeHouseForCouple(const LifeConfig& config, const WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_RESIDENTS_HOUSING_H_

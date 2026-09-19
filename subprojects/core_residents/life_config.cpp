@@ -267,7 +267,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 23> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 24> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -303,7 +303,10 @@ constexpr std::array<std::string_view, 23> kLifeWorldParamKeys = {
     "hygiene_disease_threshold",
     // The mud season (boss seq 189): the specialist rides the district's cart,
     // so its term stretches as the lot's does — a second reader of one row.
-    "mud_speed_factor"};
+    "mud_speed_factor",
+    // The old house «on the brink» (boss seq 191): host's fact's row, read by
+    // the wedding too — a couple does not move into it.
+    "old_house_near_collapse_wear"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
@@ -380,7 +383,10 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
       // The same range core_production reads it in: the mud slows, never stops.
       ScalarKnob{.key = kLifeWorldParamKeys[22],
                  .value = &config.specialist_mud_speed_factor,
-                 .range = Range{.low = 0.05F, .high = 1.0F}}};
+                 .range = Range{.low = 0.05F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[23],
+                 .value = &config.old_house_near_collapse_wear,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   return ReadKnobs(world, "world_params", rows, error);
 }
 
@@ -437,6 +443,7 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     config.bathhouse_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("bathhouse"));
     config.reading_hut_type =
         DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("culture_house"));
+    config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
   }
   if (const ITable* professions = tables.FindTable("professions")) {
     config.teacher_post =

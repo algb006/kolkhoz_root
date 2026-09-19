@@ -38,6 +38,7 @@
 #include "family_meal.h"
 #include "food_config.h"
 #include "household_plot.h"
+#include "housing.h"
 #include "life_config.h"
 #include "membership.h"
 #include "night_trade.h"
@@ -940,6 +941,41 @@ int CheckSettleHouse() {
                  "both of them, into that house");
     }
   }
+  return failures;
+}
+
+/// Boss seq 191: a couple does not take an old house on the brink (wear at or
+/// above old_house_near_collapse_wear of the scale); the roofless still do.
+int CheckCoupleSkipsHouseOnTheBrink() {
+  int failures = 0;
+  core::LifeConfig config;
+  config.definitions.units.is_housing = {1, 1};
+  config.old_house_type = core::UnitTypeId{0};
+  config.old_house_near_collapse_wear = 0.9F;
+  core::WorldState world;
+  core::UnitRow old_house;
+  old_house.type = core::UnitTypeId{0};
+  old_house.level = 1;
+  old_house.wear = 95.0F;
+  const core::UnitId brink = AppendRow(world.units, old_house);
+
+  failures += Expect(core::FreeHouse(config, world).value == brink.value,
+                     "brink: a roofless family still takes the old house about to fall");
+  failures += Expect(core::FreeHouseForCouple(config, world).value == core::kInvalidEntityIdValue,
+                     "brink: a couple does not — with nothing else free it waits");
+
+  core::UnitRow new_house;
+  new_house.type = core::UnitTypeId{1};
+  new_house.level = 1;
+  new_house.wear = 95.0F;  // as worn, but not an old house
+  const core::UnitId sound = AppendRow(world.units, new_house);
+  failures += Expect(core::FreeHouseForCouple(config, world).value == sound.value,
+                     "brink: the couple passes the old house for the next free one, whatever "
+                     "its wear — the rule is the old house's");
+
+  world.units.rows[0].wear = 89.0F;
+  failures += Expect(core::FreeHouseForCouple(config, world).value == brink.value,
+                     "brink: below 90 the old house is a house like any other");
   return failures;
 }
 
@@ -2988,6 +3024,7 @@ int main() {
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();
+  failures += CheckCoupleSkipsHouseOnTheBrink();
   failures += CheckRooflessLadder();
   failures += CheckMembership();
   failures += CheckNightTrades();

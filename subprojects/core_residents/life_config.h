@@ -201,6 +201,15 @@ struct LifeConfig {
   /// The bathhouse, and the only riser of hygiene this core has.
   UnitTypeId bathhouse_type;
   UnitTypeId reading_hut_type;
+
+  /// The start's old houses (unit_types.csv `old_house`) and the share of the
+  /// wear scale at which one stands «on the brink» (world_params.csv
+  /// `old_house_near_collapse_wear`, 0.9 — the row host's fact reads): a
+  /// couple does not take such a house (life-cycle design, «Пара не берёт дом
+  /// на грани», boss seq 191; host: 127 of 128 families gone had lived in an
+  /// old house that fell). The roofless still do — for them it beats leaving.
+  UnitTypeId old_house_type;
+  float old_house_near_collapse_wear = 0.9F;
   ProfessionId teacher_post;
   ProfessionId librarian_post;
 
