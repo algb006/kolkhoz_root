@@ -332,6 +332,8 @@ class Session final : public ISession {
 
   Deadline WearDeadline(UnitId unit) const override { return simulation_->WearDeadline(unit); }
 
+  DeliveryTerm LimitDeliveryTerm() const override { return simulation_->LimitDeliveryTerm(); }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return simulation_->MaterialsShortFor(unit);
   }

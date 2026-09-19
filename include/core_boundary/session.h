@@ -646,6 +646,16 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual Deadline WearDeadline(UnitId unit) const = 0;
 
+  /// @brief How many days the district's cart takes for a lot ordered NOW,
+  /// {min, max} — the order window shows it before the points are spent
+  /// (boss seq 189: the mud season's decision is «order ahead», and a term
+  /// seen only after the order is a punishment for the unforeseeable). In the
+  /// mud (WeatherState::mud) the base term is divided by mud_speed_factor:
+  /// 2..4 days become 4..6 in the shipped tables. The same term the order
+  /// itself will get, from the same rule (LimitBaseDeliveryDays).
+  /// @note Between steps; the answer describes State().
+  virtual DeliveryTerm LimitDeliveryTerm() const = 0;
+
   /// @brief What the village lacks to START the works on `unit`, line by line:
   /// the resource, needed, held (construction design §6, "старт проверяет
   /// материалы — и называет, чего не хватает"; the human's word of

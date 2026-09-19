@@ -144,6 +144,11 @@ class IProductionSystem {
   /// @note Called between steps on the sim thread. A pure read.
   virtual std::int32_t DaysToNextHarvest(const WorldState& completed) const = 0;
 
+  /// @brief The district cart's term for a lot ordered on `completed`'s day:
+  /// LimitBaseDeliveryDays, and that plus limit_delivery_delay_days_max.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual DeliveryTerm LimitDeliveryTerm(const WorldState& completed) const = 0;
+
   /// @brief Grams the snow would take from this field's standing crop now:
   /// the harvest's own estimate (fertility, weather stress, late sowing),
   /// the number LoseFieldToSnow books. 0 for a field with no crop.

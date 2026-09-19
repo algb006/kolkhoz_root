@@ -520,6 +520,10 @@ class StandardSimulation final : public ISimulation {
     return construction_->WearDeadline(engine_->CompletedState(), unit);
   }
 
+  DeliveryTerm LimitDeliveryTerm() const override {
+    return production_->LimitDeliveryTerm(engine_->CompletedState());
+  }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
   }

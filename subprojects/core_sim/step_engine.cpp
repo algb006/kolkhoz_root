@@ -167,6 +167,9 @@ class StepEngine final : public ISimulation {
   /// would be an answer this object has no business giving.
   Deadline WearDeadline(UnitId /*unit*/) const override { return DeadlineNoData(); }
 
+  /// No district here: no cart and no term (delivery_term.h, both 0).
+  DeliveryTerm LimitDeliveryTerm() const override { return DeliveryTerm{}; }
+
   /// No subsystems, so no recipe: nothing is short.
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId /*unit*/) const override { return {}; }
 

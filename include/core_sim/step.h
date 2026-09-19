@@ -68,6 +68,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/deadline.h"
+#include "core_common/delivery_term.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/material_shortfall.h"
@@ -287,6 +288,12 @@ class ISimulation {
   /// rate; the bare engine knows no subsystems and answers kNoData.
   /// @note Called between steps on the sim thread.
   virtual Deadline WearDeadline(UnitId unit) const = 0;
+
+  /// @brief The district cart's term for a lot ordered today (DeliveryTerm;
+  /// boss seq 189, the mud season). Fans out to core_production, which owns
+  /// the rule; the bare engine answers {0, 0}.
+  /// @note Called between steps on the sim thread.
+  virtual DeliveryTerm LimitDeliveryTerm() const = 0;
 
   /// @brief What the village lacks to start the works on `unit`, line by line
   /// (construction design §6). Fans out to core_construction; the bare engine

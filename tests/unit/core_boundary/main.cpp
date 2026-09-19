@@ -112,6 +112,11 @@ class ScriptedSimulation final : public core::ISimulation {
     return core::DeadlineNoData();
   }
 
+  /// A scripted term, so the session's pass-through has something to carry.
+  core::DeliveryTerm LimitDeliveryTerm() const override {
+    return core::DeliveryTerm{.days_min = 4, .days_max = 6};
+  }
+
   /// No recipe here either: nothing is short.
   std::vector<core::MaterialShortfall> MaterialsShortFor(core::UnitId /*unit*/) const override {
     return {};
@@ -1320,6 +1325,9 @@ int TestStockLights(const core::ITableSet& tables) {
                          forecast[1].phenomenon == core::WeatherPhenomenon::kNone &&
                          forecast[2].phenomenon == core::WeatherPhenomenon::kBlizzard,
                      "and they arrive as tomorrow, the day after, the third");
+  const core::DeliveryTerm term = session->LimitDeliveryTerm();
+  failures += Expect(term.days_min == 4 && term.days_max == 6,
+                     "the lot's term reaches the order window as the simulation computes it");
   failures += Expect(forecast.size() == 3 && forecast[1].sky == core::SkyStep::kClear &&
                          forecast[2].sky == core::SkyStep::kHeavyPrecipitation,
                      "the sky step travels beside the name");

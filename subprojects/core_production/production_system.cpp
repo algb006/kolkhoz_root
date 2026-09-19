@@ -311,6 +311,11 @@ class ProductionSystem final : public IProductionSystem {
     return DaysToHarvest(config_, completed);
   }
 
+  DeliveryTerm LimitDeliveryTerm(const WorldState& completed) const override {
+    const std::uint32_t base = LimitBaseDeliveryDays(config_, completed);
+    return DeliveryTerm{.days_min = base, .days_max = base + config_.limit.delivery_delay_days_max};
+  }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;
