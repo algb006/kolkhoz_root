@@ -381,6 +381,10 @@ class ResidentsSystem final : public IResidentsSystem {
     TurnNightTheftMonth(config_.night_trade, config_.life_speedup, current);
     TurnAlcoholismMonth(
         config_.alcoholism, config_.night_trade, config_.sport, config_.life_speedup, current);
+    // After the month's turn: a son who comes of age on a month's first day
+    // starts from his father's share, not from what the turn just gave a boy
+    // it already counted a man (alcoholism.h).
+    InheritAlcoholismDay(config_.alcoholism, config_.life_speedup, current);
     // And today's weather at the field, counted in the month that opens
     // (sport.h) — after the turn, which read and cleared the one that closed.
     CountSportDay(config_.sport, current);

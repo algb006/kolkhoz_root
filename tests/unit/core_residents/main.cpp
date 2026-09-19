@@ -13,6 +13,7 @@
 //     ceiling, the plot hours with their factors and the garden they pay.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -2301,6 +2302,70 @@ int CheckAlcoholism() {
   return failures;
 }
 
+/// THE INHERITANCE (crime §2, Epoch I; boss seq 151): a son coming of age
+/// today takes (father − 40) × 0.3, 0..12; nobody else is touched.
+int CheckAlcoholismInheritance() {
+  int failures = 0;
+  constexpr float kSpeedup = 4.0F;  // 12 days a biological year
+  constexpr core::SimDay kDay = 100;
+  constexpr std::int32_t kSixteenToday = static_cast<std::int32_t>(kDay) - 192;
+  constexpr std::int32_t kSixteenYesterday = kSixteenToday - 1;
+  constexpr std::int32_t kFatherBirth = static_cast<std::int32_t>(kDay) - 480;  // 40 years
+  constexpr float kTolerance = 1e-4F;
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(kDay) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  const auto add =
+      [&world](core::Sex sex, std::int32_t birth, core::ResidentId father, float alcoholism) {
+        core::ResidentRow person;
+        person.sex = sex;
+        person.birth_day = birth;
+        person.father = father;
+        person.alcoholism = alcoholism;
+        return AppendRow(world.residents, person);
+      };
+  // The fathers first, so a rule that touched them too would be read by
+  // their sons below.
+  const core::ResidentId at_cap = add(core::Sex::kMale, kFatherBirth, {}, 60.0F);
+  const core::ResidentId at_50 = add(core::Sex::kMale, kFatherBirth, {}, 50.0F);
+  const core::ResidentId at_40 = add(core::Sex::kMale, kFatherBirth, {}, 40.0F);
+  const core::ResidentId at_30 = add(core::Sex::kMale, kFatherBirth, {}, 30.0F);
+  const core::ResidentId son_of_cap = add(core::Sex::kMale, kSixteenToday, at_cap, 0.0F);
+  const core::ResidentId son_of_50 = add(core::Sex::kMale, kSixteenToday, at_50, 0.0F);
+  const core::ResidentId son_of_40 = add(core::Sex::kMale, kSixteenToday, at_40, 0.0F);
+  const core::ResidentId son_of_30 = add(core::Sex::kMale, kSixteenToday, at_30, 0.0F);
+  const core::ResidentId orphan =
+      add(core::Sex::kMale, kSixteenToday, core::ResidentId{9999}, 0.0F);
+  const core::ResidentId grown = add(core::Sex::kMale, kSixteenYesterday, at_cap, 5.0F);
+  const core::ResidentId daughter = add(core::Sex::kFemale, kSixteenToday, at_cap, 0.0F);
+  const auto value_of = [&world](core::ResidentId id) {
+    return world.residents.rows[FindRow(world.residents, id)].alcoholism;
+  };
+  const core::AlcoholismConfig config;
+  core::InheritAlcoholismDay(config, kSpeedup, world);
+  failures += Expect(std::fabs(value_of(son_of_cap) - 6.0F) < kTolerance,
+                     "inheritance: a son of a father at 60 comes of age at 6");
+  failures += Expect(std::fabs(value_of(son_of_50) - 3.0F) < kTolerance,
+                     "inheritance: a son of a father at 50 comes of age at 3");
+  failures +=
+      Expect(value_of(son_of_40) == 0.0F, "inheritance: a father at the threshold leaves nothing");
+  failures += Expect(value_of(son_of_30) == 0.0F,
+                     "inheritance: a father below the threshold leaves nothing, not less");
+  failures += Expect(value_of(orphan) == 0.0F, "inheritance: no father alive, a clean slate");
+  failures += Expect(value_of(grown) == 5.0F,
+                     "inheritance: a man who came of age yesterday is not touched today");
+  failures += Expect(value_of(daughter) == 0.0F, "inheritance: a daughter has no such metric");
+  failures += Expect(value_of(at_cap) == 60.0F && value_of(at_30) == 30.0F,
+                     "inheritance: the fathers are not touched");
+  // THE CAP, on a factor that would give more: (60 − 40) × 1 = 20 → 12.
+  core::AlcoholismConfig steep;
+  steep.inherit_factor = 1.0F;
+  world.residents.rows[FindRow(world.residents, son_of_cap)].alcoholism = 0.0F;
+  core::InheritAlcoholismDay(steep, kSpeedup, world);
+  failures += Expect(value_of(son_of_cap) == 12.0F, "inheritance: never more than 12");
+  return failures;
+}
+
 /// THE PURCHASE AND THE REACH (crime §6; registers 205, 207): a drinker's
 /// family pays in kind out of its pantry — grain first, then potato — into
 /// the pantry of the nearest supplied distiller's family; a yard beyond
@@ -2778,6 +2843,7 @@ int main() {
   failures += CheckSchooling();
   failures += CheckRawMaterialLeak();
   failures += CheckAlcoholism();
+  failures += CheckAlcoholismInheritance();
   failures += CheckTheSportsField();
   failures += CheckTakeNightTrader();
   if (system != nullptr) {

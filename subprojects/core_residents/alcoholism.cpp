@@ -19,7 +19,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 11> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 14> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -30,7 +30,14 @@ constexpr std::array<std::string_view, 11> kAlcoholismWorldParamKeys = {
     "alcohol_loss_married",
     "alcohol_loss_sober",
     "alcohol_sober_months_min",
-    "alcohol_epoch1_cap"};
+    "alcohol_epoch1_cap",
+    "alcohol_inherit_threshold",
+    "alcohol_inherit_factor",
+    "alcohol_inherit_max"};
+
+/// Past this the inheritance factor is a typo: more than the father's own
+/// excess, ten times over.
+constexpr float kInheritFactorMax = 10.0F;
 
 /// The width of a band (crime design §6: 0-20, 20-40, 40-60, 60-80, 80-100).
 constexpr float kBandWidth = 20.0F;
@@ -234,6 +241,11 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
        .value = &config.sober_months_min,
        .range = {.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)}},
       {.key = kAlcoholismWorldParamKeys[10], .value = &config.epoch1_cap, .range = points},
+      {.key = kAlcoholismWorldParamKeys[11], .value = &config.inherit_threshold, .range = points},
+      {.key = kAlcoholismWorldParamKeys[12],
+       .value = &config.inherit_factor,
+       .range = {.low = 0.0F, .high = kInheritFactorMax}},
+      {.key = kAlcoholismWorldParamKeys[13], .value = &config.inherit_max, .range = points},
   }};
   return ReadKnobs(*world, "world_params", knobs, error);
 }
@@ -315,6 +327,25 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
   // The field's month is read; the new month counts from nought.
   current.sport_month.open_days = 0;
   TurnSettlementAlcoholism(config, life_speedup, current);
+}
+
+void InheritAlcoholismDay(const AlcoholismConfig& config, float life_speedup, WorldState& current) {
+  const SimDay day = current.calendar.day;
+  if (day == 0) {
+    return;
+  }
+  for (ResidentRow& son : current.residents.rows) {
+    if (son.sex != Sex::kMale ||
+        BiologicalAgeYears(life_speedup, son.birth_day, day) < config.adult_from_years ||
+        BiologicalAgeYears(life_speedup, son.birth_day, day - 1U) >= config.adult_from_years) {
+      continue;
+    }
+    const std::uint32_t father = FindRow(current.residents, son.father);
+    const float excess = father != kNoRow
+                             ? current.residents.rows[father].alcoholism - config.inherit_threshold
+                             : 0.0F;
+    son.alcoholism = std::clamp(excess * config.inherit_factor, kMetricMin, config.inherit_max);
+  }
 }
 
 }  // namespace core

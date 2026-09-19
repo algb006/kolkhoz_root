@@ -71,6 +71,9 @@ struct AlcoholismConfig {
   float loss_sober = 1.0F;               ///< `alcohol_loss_sober`
   float sober_months_min = 2.0F;         ///< `alcohol_sober_months_min`
   float epoch1_cap = 60.0F;              ///< `alcohol_epoch1_cap`
+  float inherit_threshold = 40.0F;       ///< `alcohol_inherit_threshold`, the father's
+  float inherit_factor = 0.3F;           ///< `alcohol_inherit_factor`
+  float inherit_max = 12.0F;             ///< `alcohol_inherit_max`
 };
 
 /// @brief The world_params.csv keys this file reads.
@@ -113,6 +116,18 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
                          const SportConfig& sport,
                          float life_speedup,
                          WorldState& current);
+
+/// @brief THE INHERITANCE (crime §2 «Наследование и порог», Epoch I; the
+/// human's «второй вариант», boss seq 151): a son who comes of age TODAY —
+/// `adult_from_years` reached today and not yesterday — takes
+/// (father's alcoholism − `inherit_threshold`) × `inherit_factor`, at least
+/// 0 and at most `inherit_max`; a father at the cap of 60 gives +6. No
+/// father alive, nought: the mother has no such metric. A clean slate below
+/// the threshold. A daughter and a man who came of age earlier are not
+/// touched; neither is a man who arrives already grown.
+/// @param life_speedup LifeConfig::life_speedup, for the biological age.
+/// @pre Once a day, at the day's turn; day 0 is genesis's and is skipped.
+void InheritAlcoholismDay(const AlcoholismConfig& config, float life_speedup, WorldState& current);
 
 }  // namespace core
 
