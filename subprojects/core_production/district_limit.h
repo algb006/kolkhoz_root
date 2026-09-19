@@ -67,10 +67,14 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
 ///        points, and puts the lot's goods on a cart due on the day given by
 ///        limit_delivery_days plus a delay drawn from the world's random
 ///        stream.
+/// @param unstorable When not null and the answer is kNowhereToStore, set to
+///        the first of the lot's goods no store of the village takes — the
+///        refused row names WHAT (boss seq 159); left alone otherwise.
 /// @return The refusal, or kNone when bought.
 OrderRefusal OrderLimitLot(const ProductionConfig& config,
                            WorldState& current,
-                           const OrderRow& order);
+                           const OrderRow& order,
+                           ResourceId* unstorable = nullptr);
 
 /// @brief The carts at the day's last tick: every cart whose day has come
 ///        puts what it still carries through the store door; an empty cart

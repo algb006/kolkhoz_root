@@ -176,7 +176,8 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
 
 OrderRefusal OrderLimitLot(const ProductionConfig& config,
                            WorldState& current,
-                           const OrderRow& order) {
+                           const OrderRow& order,
+                           ResourceId* unstorable) {
   const OrderRefusal refusal = LotOrderable(config.limit, order.lot, current.epoch);
   if (refusal != OrderRefusal::kNone) {
     return refusal;
@@ -192,6 +193,19 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
       static_cast<float>(KolkhozHeads(current) + def.head_count) >
           PlacesForStock(config, current)) {
     return OrderRefusal::kNoRoomForStock;
+  }
+  // THE STORE BEFORE THE POINTS too (boss seq 156): goods no store of the
+  // village takes would stand at the gate for good, and the points with them.
+  if (def.kind != LimitLotKind::kLivestock) {
+    for (std::size_t resource = 0; resource < def.goods.size(); ++resource) {
+      const ResourceId goods = DefIdFromIndex<ResourceIdTag>(resource);
+      if (def.goods[resource] > 0 && !SomeStoreAccepts(current, config, goods)) {
+        if (unstorable != nullptr) {
+          *unstorable = goods;
+        }
+        return OrderRefusal::kNowhereToStore;
+      }
+    }
   }
   if (current.limit.points < def.points) {
     return OrderRefusal::kLimitShort;
@@ -263,6 +277,21 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current) 
     // again at tomorrow's last tick; an empty cart leaves.
     if (!CarriesAnything(current.limit_deliveries.rows[row].goods)) {
       emptied.push_back(current.limit_deliveries.row_ids[row]);
+      continue;
+    }
+    // AND IT IS SAID, once, on the day the cart comes (boss seq 156): its
+    // store may have been pulled down on the road, which the order could not
+    // foresee. The later days are retries and stay quiet.
+    if (current.limit_deliveries.rows[row].arrive_day == current.calendar.day) {
+      const ResourceAmounts& left = current.limit_deliveries.rows[row].goods;
+      for (std::size_t resource = 0; resource < left.size(); ++resource) {
+        if (left[resource] > 0) {
+          SimEvent& waits =
+              EmitEvent(current, EventKind::kLimitGoodsAtTheGate, EventSeverity::kNotable);
+          waits.resource = DefIdFromIndex<ResourceIdTag>(resource);
+          waits.amount = left[resource];
+        }
+      }
     }
   }
   for (const LimitDeliveryId cart : emptied) {

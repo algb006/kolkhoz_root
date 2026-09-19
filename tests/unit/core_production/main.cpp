@@ -5615,6 +5615,17 @@ int CheckDistrictLimit() {
   core::OrderRow order;
   order.kind = core::OrderKind::kOrderLimitLot;
   order.lot = core::LimitLotId{0};
+  // NOWHERE TO STORE (boss seq 156): the one store a site, not built — no
+  // store of the village takes glass, so the lot is refused and costs nothing.
+  world.units.rows[0].level = 0;
+  core::ResourceId unstorable;
+  failures += Expect(core::OrderLimitLot(config, world, order, &unstorable) ==
+                             core::OrderRefusal::kNowhereToStore &&
+                         world.limit.points == 30 && world.limit_deliveries.rows.empty() &&
+                         unstorable.value == 0,
+                     "limit: goods no store takes are refused before the points, no cart leaves, "
+                     "and the refusal names the glass");
+  world.units.rows[0].level = 1;
   failures += Expect(core::OrderLimitLot(config, world, order) == core::OrderRefusal::kNone &&
                          world.limit.points == 5 && world.ledger.current.limit_points_spent == 25,
                      "limit: buying glass takes its 25 points and books them as spent");
@@ -5636,8 +5647,22 @@ int CheckDistrictLimit() {
                          world.limit_deliveries.rows.size() == 1 &&
                          world.limit_deliveries.rows[0].goods[0] == 4 * kPane,
                      "limit: what fits goes in, what does not waits on the cart");
-  world.units.rows[0].stock[0] = 0;
+  const auto at_the_gate = [&world] {
+    return std::ranges::count_if(world.step_events, [](const core::SimEvent& event) {
+      return event.kind == core::EventKind::kLimitGoodsAtTheGate && event.resource.value == 0 &&
+             event.amount == 4 * kPane;
+    });
+  };
+  failures += Expect(at_the_gate() == 1,
+                     "limit: what waits at the gate is said on the cart's day, with its grams");
+  world.step_events.clear();
+  world.units.rows[0].stock[0] = 100 * core::kGramsPerKilogram;  // still full
   world.calendar.day = arrive + 1;
+  core::ArriveLimitDeliveries(config, world);
+  failures += Expect(at_the_gate() == 0 && world.limit_deliveries.rows.size() == 1,
+                     "limit: the days after are retries, and quiet");
+  world.units.rows[0].stock[0] = 0;
+  world.calendar.day = arrive + 2;
   core::ArriveLimitDeliveries(config, world);
   failures +=
       Expect(world.units.rows[0].stock[0] == 4 * kPane && world.limit_deliveries.rows.empty(),

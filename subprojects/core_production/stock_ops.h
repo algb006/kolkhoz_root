@@ -25,6 +25,7 @@
 #ifndef CORE_PRODUCTION_STOCK_OPS_H_
 #define CORE_PRODUCTION_STOCK_OPS_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -283,6 +284,45 @@ inline Grams FreeRoomGrams(const UnitRow& unit, const ProductionConfig& config) 
   return held >= capacity ? 0 : capacity - held;
 }
 
+/// @brief Whether THE DOOR below may put `resource` into this unit at all,
+/// room aside: a built numbered store that takes it. One home for the door
+/// and for the limit lot's question «is there anywhere at all» (boss seq
+/// 156) — two copies of the test would part the day one gained a reason.
+inline bool NumberedStoreAccepts(const UnitRow& unit,
+                                 const ProductionConfig& config,
+                                 ResourceId resource) {
+  // A NUMBERED store, and the test says so itself. It has always had to:
+  // an outline reports unbounded room and would swallow the whole load,
+  // leaving the door's second pass unreachable and the ceiling unenforced.
+  // What changed on 2026-09-07 is only the reason it is not redundant —
+  // it used to guard against a hypothetical row carrying both a tonnage
+  // and the by-plot flag, and it now carries the whole weight, because
+  // StoresGoods counts outlines.
+  return StoresGoods(unit, config) && StorageCapacityGrams(unit, config) >= 0 &&
+         NumberedStoreTakes(unit, config, resource);
+}
+
+/// @brief Whether the door's SECOND pass takes `resource` here: a built
+/// outline the player drew that is this resource's home (IsHomeOf) — the
+/// haystack for the hay. No ceiling: the contour is its size.
+inline bool HomeOutlineAccepts(const UnitRow& unit,
+                               const ProductionConfig& config,
+                               ResourceId resource) {
+  return unit.level != 0 && StorageCapacityGrams(unit, config) < 0 &&
+         IsHomeOf(unit, config, resource);
+}
+
+/// @brief Whether some unit of the village would take `resource` through
+/// the door by either pass, full or not.
+inline bool SomeStoreAccepts(const WorldState& world,
+                             const ProductionConfig& config,
+                             ResourceId resource) {
+  return std::ranges::any_of(world.units.rows, [&config, resource](const UnitRow& unit) {
+    return NumberedStoreAccepts(unit, config, resource) ||
+           HomeOutlineAccepts(unit, config, resource);
+  });
+}
+
 /// @brief THE DOOR. Puts up to `amount` grams of `resource` into the
 /// settlement's stores, in row order, none of them above its capacity;
 /// returns what actually went in.
@@ -309,15 +349,7 @@ inline Grams DeliverToStores(WorldState& world,
   Grams placed = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
     UnitRow& unit = world.units.rows[row];
-    // A NUMBERED store, and the test says so itself. It has always had to:
-    // an outline reports unbounded room and would swallow the whole load,
-    // leaving the second pass below unreachable and the ceiling unenforced.
-    // What changed on 2026-09-07 is only the reason it is not redundant —
-    // it used to guard against a hypothetical row carrying both a tonnage
-    // and the by-plot flag, and it now carries the whole weight, because
-    // StoresGoods counts outlines.
-    if (!StoresGoods(unit, config) || StorageCapacityGrams(unit, config) < 0 ||
-        !NumberedStoreTakes(unit, config, resource)) {
+    if (!NumberedStoreAccepts(unit, config, resource)) {
       continue;
     }
     const Grams room = FreeRoomGrams(unit, config);
@@ -348,11 +380,10 @@ inline Grams DeliverToStores(WorldState& world,
   // and not first: the numbered stores are still the settlement's stores.
   for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
     UnitRow& unit = world.units.rows[row];
-    if (unit.level == 0 || StorageCapacityGrams(unit, config) >= 0) {
-      continue;  // not built, or a numbered store the first pass has seen
-    }
-    if (!IsHomeOf(unit, config, resource)) {
-      continue;  // an outline that is not this resource's home
+    // Not built, a numbered store the first pass has seen, or an outline
+    // that is not this resource's home.
+    if (!HomeOutlineAccepts(unit, config, resource)) {
+      continue;
     }
     placed += AddToStock(unit.stock, resource, amount - placed);
   }

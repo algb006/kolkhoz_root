@@ -470,7 +470,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         Settle(order, MarkExtraction(config, current, order));
         break;
       case OrderKind::kOrderLimitLot:
-        Settle(order, OrderLimitLot(config, current, order));
+        // A refusal for goods nowhere to store names them in the row's
+        // resource (boss seq 159); a lot order carries none otherwise.
+        Settle(order, OrderLimitLot(config, current, order, &order.resource));
         break;
       case OrderKind::kRemoveField:
         Settle(order, RemoveField(current, order));
