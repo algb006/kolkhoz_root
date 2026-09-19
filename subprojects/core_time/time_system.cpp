@@ -102,6 +102,12 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     current.weather.cover_since_leaf_fall =
         (!new_leaf_fall && previous.weather.cover_since_leaf_fall) ||
         current.weather.snow_cover_days > 0;
+    // РАСПУТИЦА, once a day like the cover: a function of the day, but one
+    // that walks the autumn back to 1 September, so it is not re-walked every
+    // tick of the same day (world_state.h, WeatherState::mud).
+    current.weather.mud = first_tick_of_a_day
+                              ? MudOnDay(seasons_, current.world_seed, current.calendar.day)
+                              : previous.weather.mud;
     // THE HEAT IS SAID ONCE A DAY, at its first tick, whatever the day is
     // called (boss, parcel 364): the afternoon — the mean plus the day's
     // swing — against +25. A rainy hot day is still a hot day.

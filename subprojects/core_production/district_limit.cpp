@@ -75,7 +75,7 @@ OrderRefusal OrderMtsColumn(const ProductionConfig& config,
   const std::uint8_t window_end =
       spring ? config.limit.mts_spring_to_month : config.limit.mts_autumn_to_month;
   const std::uint32_t arrive_day =
-      static_cast<std::uint32_t>(current.calendar.day) + config.limit.delivery_days;
+      static_cast<std::uint32_t>(current.calendar.day) + LimitBaseDeliveryDays(config, current);
   const std::uint32_t arrive_month = (arrive_day % kDaysPerYear) / kDaysPerMonth;
   if (arrive_month > window_end) {
     return OrderRefusal::kRuleForbids;  // it would come after its season
@@ -93,6 +93,15 @@ OrderRefusal OrderMtsColumn(const ProductionConfig& config,
 }
 
 }  // namespace
+
+std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldState& world) {
+  const std::uint32_t dry = config.limit.delivery_days;
+  const float factor = config.farming.mud_speed_factor;
+  if (!world.weather.mud || !(factor > 0.0F)) {
+    return dry;
+  }
+  return static_cast<std::uint32_t>(std::lround(static_cast<float>(dry) / factor));
+}
 
 OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epoch) {
   if (lot.value == kInvalidDefIdValue || lot.value >= catalog.lots.size()) {
@@ -225,8 +234,8 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   RngState rng = SeedRngState(current.rng.state ^ order.issued_tick, kDeliveryDelayStream);
   const std::uint32_t delay = NextRandomBelow(rng, spread);
 
-  const std::uint32_t arrive_day =
-      static_cast<std::uint32_t>(current.calendar.day) + config.limit.delivery_days + delay;
+  const std::uint32_t arrive_day = static_cast<std::uint32_t>(current.calendar.day) +
+                                   LimitBaseDeliveryDays(config, current) + delay;
 
   // STOCK TRAVELS ON NOTHING, and the same days it would have taken on a
   // cart: «голова появляется в закрытом помещении через несколько суток

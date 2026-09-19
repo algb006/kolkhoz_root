@@ -125,7 +125,11 @@ HaulRate RateToward(const ProductionConfig& config,
                     Vec2 from,
                     Vec2 destination) {
   const bool harnessed = DraughtHorsesFree(config, world);
-  const float speed_kmh = harnessed ? config.harness_speed_kmh : config.walk_speed_kmh;
+  // РАСПУТИЦА slows the cart and the carrier alike (WeatherState::mud); on
+  // every road, because the haul is measured in a straight line and the core
+  // knows no gravel on it (production_config.h, mud_speed_factor).
+  const float mud = world.weather.mud ? config.farming.mud_speed_factor : 1.0F;
+  const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * mud;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
   const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
   return RateBetween(from, destination, hours_per_km, load);

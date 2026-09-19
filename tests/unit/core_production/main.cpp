@@ -5504,6 +5504,40 @@ int CheckPlanDebtFromFields() {
   return failures;
 }
 
+/// РАСПУТИЦА (boss seq 182, 186): the cart's round trip and the district
+/// lot's base term both stretch by 1 / mud_speed_factor on a mud day.
+int CheckMudSeason() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.harness_speed_kmh = 12.0F;
+  config.walk_speed_kmh = 5.0F;
+  SetStorageKg(config.unit_types[0], 10000.0F);
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  core::FieldRow field;
+  field.center = core::Vec2{.x = 2000.0F, .y = 0.0F};
+
+  const core::HaulRate dry = core::FieldHaulRate(config, world, field);
+  world.weather.mud = true;
+  const core::HaulRate muddy = core::FieldHaulRate(config, world, field);
+  failures += Expect(dry.round_trip_hours > 0.0F &&
+                         std::fabs(muddy.round_trip_hours - (2.0F * dry.round_trip_hours)) <
+                             1e-3F * dry.round_trip_hours,
+                     "in the mud a cart's round trip to the same store takes twice as long");
+
+  config.limit.delivery_days = 2;
+  world.weather.mud = false;
+  failures += Expect(core::LimitBaseDeliveryDays(config, world) == 2,
+                     "a lot ordered on a dry day takes the district's own term");
+  world.weather.mud = true;
+  failures += Expect(core::LimitBaseDeliveryDays(config, world) == 4,
+                     "ordered in the mud it takes twice as long: 2 days become 4");
+  config.farming.mud_speed_factor = 0.7F;
+  failures += Expect(core::LimitBaseDeliveryDays(config, world) == 3,
+                     "at 0.7 the term is 2 / 0.7 rounded: 3 days");
+  return failures;
+}
+
 int CheckDeliverPlanNow() {
   int failures = 0;
   constexpr core::Grams kTonne = 1'000'000;
@@ -6410,6 +6444,7 @@ int main() {
   failures += CheckDistrictLimit();
   failures += CheckDeliverPlanNow();
   failures += CheckPlanDebtFromFields();
+  failures += CheckMudSeason();
   failures += CheckTheMilkCart();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();

@@ -43,6 +43,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -216,6 +217,20 @@ struct Shape {
   /// where snow on an unreaped crop is the whole loss.
   std::uint32_t covered_days = 0;
 
+  /// РАСПУТИЦА (WeatherState::mud, boss seq 186): the March days, those of
+  /// the first year among them (the rule spares that spring, so it must be
+  /// nought), the autumn days, the autumns that had any, and the longest
+  /// autumn stretch. The autumn is the half the weather decides.
+  std::uint32_t mud_march = 0;
+  std::uint32_t mud_first_year = 0;
+  std::uint32_t mud_autumn = 0;
+  std::uint32_t mud_autumns = 0;
+  std::uint32_t mud_autumn_longest = 0;
+
+  /// Autumn mud days whose own mean is at or below freezing or on which snow
+  /// falls: the frost closes the season, so this must stay nought.
+  std::uint32_t mud_on_frost = 0;
+
   /// Snowfalls that laid a cover which did NOT reach a second day — the set
   /// the melt rule refuses. Zero here would mean the rule never separates a
   /// dusting from a winter, and the number would be a comment.
@@ -338,6 +353,8 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
   std::uint32_t hot_run = 0;
   bool waiting = false;
   std::uint32_t waited = 0;
+  std::uint32_t mud_year = std::numeric_limits<std::uint32_t>::max();
+  std::uint32_t mud_run = 0;
 
   for (std::uint32_t day = 1; day <= kYears * core::kDaysPerYear; ++day) {
     // One tick per day is enough and is the whole point: the weather is a
@@ -415,6 +432,31 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
       ++shape.heavy_in_blizzard_window;
       shape.blizzard_window_not_blizzard +=
           current.weather.phenomenon == core::WeatherPhenomenon::kBlizzard ? 0U : 1U;
+    }
+    // РАСПУТИЦА: March in one bin, the autumn in the other, and a new autumn
+    // counted on the first mud day after a mud-less one in a later year.
+    if (current.weather.mud) {
+      const core::Date date = core::DateFromDay(current.calendar.day);
+      if (date.month == core::Month::kMarch) {
+        ++shape.mud_march;
+        shape.mud_first_year += current.calendar.day < core::kDaysPerYear ? 1U : 0U;
+      } else {
+        const std::uint32_t year = current.calendar.day / core::kDaysPerYear;
+        if (year != mud_year) {
+          ++shape.mud_autumns;
+          mud_year = year;
+          mud_run = 0;
+        }
+        ++shape.mud_autumn;
+        shape.mud_on_frost += current.weather.air_temperature_celsius <= 0.0F ||
+                                      current.weather.precipitation == core::Precipitation::kSnow
+                                  ? 1U
+                                  : 0U;
+        ++mud_run;
+        shape.mud_autumn_longest = std::max(shape.mud_autumn_longest, mud_run);
+      }
+    } else {
+      mud_run = 0;
     }
     // The cover, and the two things worth knowing about it: how much of the
     // year it lies, and how often it fails to last a second day.
@@ -592,6 +634,10 @@ void Print(const char* label, const Shape& shape) {
   }
   std::cout << '\n';
   std::cout << "  snowy days " << shape.snowy_days << '\n';
+  std::cout << "  mud season: march " << shape.mud_march << " days (first year "
+            << shape.mud_first_year << "), autumn " << shape.mud_autumn << " days in "
+            << shape.mud_autumns << " of " << kYears << " autumns, longest autumn stretch "
+            << shape.mud_autumn_longest << ", on a frost " << shape.mud_on_frost << '\n';
 }
 
 }  // namespace
@@ -795,6 +841,16 @@ int main(int argc, char** argv) {
   // fallen leaf lies until it, so the failure that matters is not "the number
   // is wrong" but "the word never comes" or "it never goes".
   failures += run::Expect(shipped.covered_days > 0, "snow does lie on the ground");
+  // РАСПУТИЦА: March is the calendar's and exact — every March day but the
+  // first year's; the autumn is the weather's, and a count of nought would
+  // be a rule that never opens.
+  failures += run::Expect(
+      shipped.mud_march == (kYears - 1U) * core::kDaysPerMonth && shipped.mud_first_year == 0,
+      "the mud season holds every March but the campaign's first");
+  failures += run::Expect(shipped.mud_autumn > 0 && shipped.mud_autumns > 0,
+                          "and the autumn rains open it in some years");
+  failures += run::Expect(shipped.mud_on_frost == 0,
+                          "and the frost closes it: no mud day freezes or snows");
   // AND IT LIES AFTER THE SNOWFALL, which is the whole of what a cover is
   // and the thing the first three checks could not see. Damage the carry so
   // that yesterday's cover is never read, and every one of them still

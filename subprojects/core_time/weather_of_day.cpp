@@ -305,4 +305,35 @@ std::uint16_t SnowCoverAfter(const SeasonTable& seasons,
   return older;
 }
 
+bool MudOnDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day) {
+  const std::uint32_t year = day / kDaysPerYear;
+  const std::uint32_t day_of_year = day % kDaysPerYear;
+  const std::uint32_t month = day_of_year / kDaysPerMonth;
+  if (month == static_cast<std::uint32_t>(Month::kMarch)) {
+    return year >= 1U;
+  }
+  if (month < static_cast<std::uint32_t>(Month::kSeptember) ||
+      month > static_cast<std::uint32_t>(Month::kNovember)) {
+    return false;
+  }
+  // WALKED FROM 1 SEPTEMBER, because «once closed, not again that autumn» is
+  // a fact about the days before today, and every one of them can draw its
+  // own weather (the struct's rule: a function of the seed and the day).
+  const SimDay autumn_first =
+      (year * kDaysPerYear) + (static_cast<std::uint32_t>(Month::kSeptember) * kDaysPerMonth);
+  bool open = false;
+  bool rained_yesterday = false;
+  for (SimDay walked = autumn_first; walked <= day; ++walked) {
+    const WeatherState weather = WeatherOfDay(seasons, world_seed, walked);
+    if (weather.air_temperature_celsius <= 0.0F || weather.precipitation == Precipitation::kSnow) {
+      return false;  // the frost closes it for the autumn, today included
+    }
+    const bool rain = weather.sky >= SkyStep::kLightPrecipitation &&
+                      weather.precipitation == Precipitation::kRain;
+    open = open || (rain && rained_yesterday);
+    rained_yesterday = rain;
+  }
+  return open;
+}
+
 }  // namespace core
