@@ -209,6 +209,12 @@ struct LifeConfig {
   /// на грани», boss seq 191; host: 127 of 128 families gone had lived in an
   /// old house that fell). The roofless still do — for them it beats leaving.
   UnitTypeId old_house_type;
+
+  /// People a unit holds when many families share it — the barrack (housing
+  /// §9; unit_levels.csv `residents_capacity`, boss seq 197: the barrack 25),
+  /// by unit type row and then level − 1. Blank or absent: not housing for
+  /// many families. A unit with a capacity here is no single family's house.
+  std::vector<std::vector<float>> residents_capacity;
   float old_house_near_collapse_wear = 0.9F;
 
   /// The warm months a roofless family may live in a tent (housing §20
@@ -231,6 +237,11 @@ struct LifeConfig {
   /// is recomputed every day, and a sum over days would take everybody to
   /// nought by the form of the rule).
   float lodging_satisfaction_penalty = 20.0F;
+
+  /// Satiety above `ration_satiety_threshold` a family must reach before its
+  /// hunger alarm goes out (world_params `hunger_alarm_clear_margin`, 10,
+  /// STUB; boss, core-host-l1 seq 45) — the alarm's hysteresis.
+  float hunger_alarm_clear_margin = 10.0F;
   ProfessionId teacher_post;
   ProfessionId librarian_post;
 

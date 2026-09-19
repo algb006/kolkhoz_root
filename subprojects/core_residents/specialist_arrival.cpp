@@ -11,6 +11,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "housing.h"
 
 namespace core {
 namespace {
@@ -33,8 +34,10 @@ std::vector<std::uint32_t> FreeHouses(const LifeConfig& config, const WorldState
   for (const std::uint8_t reserved : {std::uint8_t{1}, std::uint8_t{0}}) {
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       const UnitRow& unit = current.units.rows[row];
+      // Not a barrack: nobody's house, and no house for a specialist.
       if (unit.household.value == kInvalidEntityIdValue && unit.level > 0 &&
-          unit.reserved_for_specialist == reserved && IsHousing(config, unit.type)) {
+          unit.reserved_for_specialist == reserved && IsHousing(config, unit.type) &&
+          ResidentsCapacity(config, unit) <= 0.0F) {
         free.push_back(row);
       }
     }

@@ -479,7 +479,7 @@ bool WaitsForHouse(const WorldState& current, ResidentId resident) {
 
 /// @brief The wedding itself, into the free house `house`: a new household,
 /// the dowries, the two moved in, their old yards dropped if emptied.
-void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId house) {
+void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId house, bool shared) {
   const std::uint32_t bride_row = FindRow(current.residents, bride_id);
   const std::uint32_t groom_row = FindRow(current.residents, groom_id);
   const std::uint32_t house_row = FindRow(current.units, house);
@@ -489,8 +489,13 @@ void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId h
   FamilyRow household;
   household.house = house;
   household.lost_house_position = current.units.rows[house_row].position;
+  // A barrack place (housing §9, boss seq 197) is the couple's roof and
+  // nobody's house: the unit's household stays unset.
+  household.in_barrack = shared ? 1U : 0U;
   const FamilyId home = AppendRow(current.families, household);
-  current.units.rows[house_row].household = home;
+  if (!shared) {
+    current.units.rows[house_row].household = home;
+  }
   const FamilyId bride_was = current.residents.rows[bride_row].family;
   const FamilyId groom_was = current.residents.rows[groom_row].family;
   PassDowry(current, bride_was, home);
@@ -547,11 +552,12 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       done.push_back(id);  // one of the two died or left: the couple falls apart
       continue;
     }
-    const UnitId house = FreeHouseNotOnTheBrink(config, current);
+    bool shared = false;
+    const UnitId house = HomeForNewcomers(config, current, 2, shared);
     if (house.value == kInvalidEntityIdValue) {
       break;  // no free house for the oldest, so none for anyone behind it
     }
-    Wed(current, couple.bride, couple.groom, house);
+    Wed(current, couple.bride, couple.groom, house, shared);
     done.push_back(id);
   }
   for (const WeddingWaitId id : done) {
@@ -592,10 +598,12 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
       if (!eligible) {
         continue;
       }
-      const UnitId house =
-          current.wedding_waits.rows.empty() ? FreeHouseNotOnTheBrink(config, current) : UnitId{};
+      bool shared = false;
+      const UnitId house = current.wedding_waits.rows.empty()
+                               ? HomeForNewcomers(config, current, 2, shared)
+                               : UnitId{};
       if (house.value != kInvalidEntityIdValue) {
-        Wed(current, bride_id, groom_id, house);
+        Wed(current, bride_id, groom_id, house, shared);
         break;
       }
       WeddingWaitRow couple;
@@ -626,15 +634,20 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     FamilyRow household;
     // And not a house on the brink (boss, 2026-09-19): a migrant moved into
     // one leaves as a couple would.
-    household.house = FreeHouseNotOnTheBrink(config, current);
+    // Or a barrack place (housing §9 «переселенцы размещаются», boss seq 197).
+    bool shared = false;
+    household.house = HomeForNewcomers(config, current, 1, shared);
     if (household.house.value == kInvalidEntityIdValue) {
       continue;
     }
     household.lost_house_position =
         current.units.rows[FindRow(current.units, household.house)].position;
+    household.in_barrack = shared ? 1U : 0U;
     migrant.family = AppendRow(current.families, household);
     const std::uint32_t house_row = FindRow(current.units, household.house);
-    current.units.rows[house_row].household = migrant.family;
+    if (!shared) {
+      current.units.rows[house_row].household = migrant.family;
+    }
     migrant.sex = DrawNewbornSex(config, current, current.rng, day);
     // A MIGRANT HAS NO PARENTS HERE, so his figure is an independent draw,
     // like a founder's. Same counter hash, same cost to the stream: none.

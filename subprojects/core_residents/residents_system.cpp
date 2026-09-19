@@ -186,32 +186,48 @@ class ResidentsSystem final : public IResidentsSystem {
   /// reason the ration itself uses it: the component is capped by the
   /// variety ceiling, and a family living on nothing but bread would raise
   /// a hunger alarm with full bins.
+  ///
+  /// THE ALARM HAS A MEMORY since 2026-09-19 (FamilyRow::hunger_alarm_lit,
+  /// boss core-host-l1 seq 45): lit at the threshold, out only above it by
+  /// `hunger_alarm_clear_margin` — written by UpdateHungerAlarms, read here.
   void CollectHungryFamilies(const WorldState& completed, std::vector<FamilyId>& out) const {
-    const std::size_t families = completed.families.rows.size();
-    if (families == 0) {
-      return;
+    for (std::uint32_t row = 0; row < completed.families.rows.size(); ++row) {
+      if (completed.families.rows[row].hunger_alarm_lit != 0) {
+        out.push_back(completed.families.row_ids[row]);
+      }
     }
-    // One pass over the residents rather than one pass per family: the same
-    // answer, and it does not become quadratic on a grown village.
+  }
+
+  /// Lights and puts out every family's hunger alarm by its members' mean
+  /// satiety — one pass over the residents, not one per family, so it does
+  /// not become quadratic on a grown village. An empty household eats
+  /// nothing and triggers nothing.
+  void UpdateHungerAlarms(WorldState& current) const {
+    const std::size_t families = current.families.rows.size();
     std::vector<float> satiety_sum(families, 0.0F);
     std::vector<std::uint32_t> counted(families, 0);
-    for (const ResidentRow& resident : completed.residents.rows) {
-      const std::uint32_t row = FindRow(completed.families, resident.family);
+    for (const ResidentRow& resident : current.residents.rows) {
+      const std::uint32_t row = FindRow(current.families, resident.family);
       if (row == kNoRow) {
         continue;
       }
       satiety_sum[row] += resident.satiety;
       ++counted[row];
     }
+    const float threshold = food_.distribution.ration_satiety_threshold;
+    const float clear_at = threshold + config_.hunger_alarm_clear_margin;
     for (std::uint32_t row = 0; row < families; ++row) {
+      FamilyRow& family = current.families.rows[row];
       if (counted[row] == 0) {
-        continue;  // an empty household eats nothing and triggers nothing
-      }
-      const float satiety = satiety_sum[row] / static_cast<float>(counted[row]);
-      if (satiety > food_.distribution.ration_satiety_threshold) {
+        family.hunger_alarm_lit = 0;
         continue;
       }
-      out.push_back(completed.families.row_ids[row]);
+      const float satiety = satiety_sum[row] / static_cast<float>(counted[row]);
+      if (satiety <= threshold) {
+        family.hunger_alarm_lit = 1;
+      } else if (satiety > clear_at) {
+        family.hunger_alarm_lit = 0;
+      }
     }
   }
 
@@ -356,6 +372,9 @@ class ResidentsSystem final : public IResidentsSystem {
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
     RunNightOutings(config_.night_trade, current);
+    // Every hour, as the alarm was read every hour before it had a memory:
+    // the needs phase of this very step has moved the satiety it reads.
+    UpdateHungerAlarms(current);
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
     }

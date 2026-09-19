@@ -36,6 +36,27 @@ UnitId FreeHouse(const LifeConfig& config, const WorldState& current, bool cold)
 ///        no other is free.
 UnitId FreeHouseNotOnTheBrink(const LifeConfig& config, const WorldState& current);
 
+/// @brief People a unit holds when many families share it (the barrack,
+///        housing §9; LifeConfig::residents_capacity at the unit's level); 0
+///        for a single family's house, a site or a ruin.
+float ResidentsCapacity(const LifeConfig& config, const UnitRow& unit);
+
+/// @brief The first barrack, in row order, with room for `people` more: its
+///        capacity less everybody living in it (every family whose house it
+///        is). Invalid when none has room. The ladder's second rung (§20),
+///        and a couple's or a migrant's roof when no house is free (§9).
+UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::uint32_t people);
+
+/// @brief A NEWCOMER's roof — a couple's, a migrant's (housing §9 «свадьбы не
+///        встают», «переселенцы размещаются»; boss seq 197): a free house not
+///        on the brink, else a barrack place for `people`. `shared` says which:
+///        true for the barrack, whose `household` the newcomer must not take.
+///        Invalid when neither is there.
+UnitId HomeForNewcomers(const LifeConfig& config,
+                        const WorldState& current,
+                        std::uint32_t people,
+                        bool& shared);
+
 }  // namespace core
 
 #endif  // CORE_RESIDENTS_HOUSING_H_

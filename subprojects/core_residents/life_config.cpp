@@ -267,7 +267,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 28> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 29> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -312,7 +312,51 @@ constexpr std::array<std::string_view, 28> kLifeWorldParamKeys = {
     "tent_from_month",
     "tent_to_month",
     "leave_request_answer_days",
-    "lodging_satisfaction_penalty"};
+    "lodging_satisfaction_penalty",
+    // The hunger alarm's hysteresis (core-host-l1 seq 45).
+    "hunger_alarm_clear_margin"};
+
+/// The barrack's places (housing §9; boss seq 197): unit_levels.csv
+/// `residents_capacity`, by type and level. A table without the column leaves
+/// every unit a single family's.
+bool ParseResidentsCapacity(const ITableSet& tables, LifeConfig& config, std::string& error) {
+  const ITable* const unit_types = tables.FindTable("unit_types");
+  const ITable* const levels = tables.FindTable("unit_levels");
+  if (unit_types == nullptr || levels == nullptr) {
+    return true;
+  }
+  const std::uint32_t unit_col = levels->FindColumn("unit");
+  const std::uint32_t level_col = levels->FindColumn("level");
+  const std::uint32_t people_col = levels->FindColumn("residents_capacity");
+  config.residents_capacity.assign(unit_types->RowCount(), {});
+  if (people_col == kNoTableColumn) {
+    return true;
+  }
+  for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+    const std::uint32_t type_row = unit_types->FindRowByKey(levels->CellText(row, unit_col));
+    if (type_row == kNoTableRow) {
+      continue;  // the construction parser owns this table's rows
+    }
+    float level = 0.0F;
+    float people = 0.0F;
+    if (!OptionalCell(*levels, row, level_col, Range{.low = 1.0F, .high = 255.0F}, level, error) ||
+        !OptionalCell(
+            *levels, row, people_col, Range{.low = 0.0F, .high = 10000.0F}, people, error)) {
+      PrefixError("unit_levels", levels->CellText(row, unit_col), error);
+      return false;
+    }
+    if (!(level >= 1.0F)) {
+      continue;
+    }
+    std::vector<float>& ladder = config.residents_capacity[type_row];
+    const auto index = static_cast<std::size_t>(level) - 1U;
+    if (ladder.size() <= index) {
+      ladder.resize(index + 1U, 0.0F);
+    }
+    ladder[index] = people;
+  }
+  return true;
+}
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
   // Human months 1..12 in the table, 0-based in the config.
@@ -404,6 +448,9 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 48.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[27],
                  .value = &config.lodging_satisfaction_penalty,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[28],
+                 .value = &config.hunger_alarm_clear_margin,
                  .range = Range{.low = 0.0F, .high = 100.0F}}};
   if (!ReadKnobs(world, "world_params", rows, error)) {
     return false;
@@ -453,6 +500,9 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       !ParseSchoolingConfig(tables, config.schooling, error) ||
       !ParseAlcoholismConfig(tables, config.alcoholism, error) ||
       !ParseSportConfig(tables, config.sport, error)) {
+    return false;
+  }
+  if (!ParseResidentsCapacity(tables, config, error)) {
     return false;
   }
   if (const ITable* unit_types = tables.FindTable("unit_types")) {

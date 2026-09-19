@@ -498,6 +498,10 @@ GiftQueues CollectGiftQueues(const WorldState& world, const ProductionConfig& co
     }
   }
   for (std::uint32_t row = 0; row < groups.size(); ++row) {
+    // No yard in a barrack, so no grown head is walked there (housing §9).
+    if (world.families.rows[row].in_barrack != 0) {
+      continue;
+    }
     if ((groups[row] & (1U << 1U)) == 0U) {
       queues.without_stock.push_back(world.families.row_ids[row]);
     }

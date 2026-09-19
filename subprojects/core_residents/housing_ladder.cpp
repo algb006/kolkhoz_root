@@ -40,7 +40,44 @@ void MoveIn(WorldState& current, std::uint32_t family_row, UnitId house) {
   family.in_tent = 0;
   family.lodged_in = UnitId{};
   family.asked_to_leave = 0;
+  family.in_barrack = 0;
 }
+
+std::uint32_t MembersOf(const WorldState& world, FamilyId family) {
+  std::uint32_t members = 0;
+  for (const ResidentRow& resident : world.residents.rows) {
+    members += resident.family.value == family.value ? 1U : 0U;
+  }
+  return members;
+}
+
+}  // namespace
+
+void MoveIntoBarrack(WorldState& current, std::uint32_t family_row, UnitId barrack) {
+  const std::uint32_t barrack_row = FindRow(current.units, barrack);
+  const FamilyId id = current.families.row_ids[family_row];
+  FamilyRow& family = current.families.rows[family_row];
+  // The barrack is nobody's house: `household` stays as it is (unset), and
+  // the families living there say so by their own `house`.
+  family.house = barrack;
+  family.lost_house_position = current.units.rows[barrack_row].position;
+  family.in_tent = 0;
+  family.lodged_in = UnitId{};
+  family.asked_to_leave = 0;
+  family.in_barrack = 1;
+  // NO YARD, SO NO ANIMALS OF ITS OWN (housing §9; boss seq 197): the
+  // family's herds go to the kolkhoz — fed from the stores and billeted,
+  // as the start's horses are.
+  for (HerdRow& herd : current.herds.rows) {
+    if (herd.household_owned != 0 && herd.household.value == id.value) {
+      herd.household_owned = 0;
+      herd.household = FamilyId{};
+      herd.unit = UnitId{};
+    }
+  }
+}
+
+namespace {
 
 /// With the certificate: every member leaves the kolkhoz for good (the path
 /// the ladder's fourth rung took by itself until 2026-09-19).
@@ -218,12 +255,12 @@ bool TentWeather(const LifeConfig& config, Month month) {
   return index >= config.tent_from_month && index <= config.tent_to_month;
 }
 
-void RunRoofless(const LifeConfig& config, WorldState& current) {
-  const bool cold = !TentWeather(config, current.calendar.date.month);
-  const auto day = static_cast<std::uint32_t>(current.calendar.day);
-  // THE LODGED FIRST (boss seq 197): a free house takes them out of a
-  // stranger's house before it goes to anybody else. A lodging whose house
-  // is gone is no lodging: the family is back on the ladder below.
+namespace {
+
+/// THE LODGED FIRST (boss seq 197): a free house, or a barrack place, takes
+/// them out of a stranger's house before it goes to anybody else. A lodging
+/// whose house is gone is no lodging: the family is back on the ladder.
+void ClimbFromLodging(const LifeConfig& config, WorldState& current, bool cold) {
   for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
     FamilyRow& family = current.families.rows[row];
     if (family.lodged_in.value == kInvalidEntityIdValue || HasHouse(current, family)) {
@@ -236,8 +273,57 @@ void RunRoofless(const LifeConfig& config, WorldState& current) {
     const UnitId house = FreeHouse(config, current, cold);
     if (house.value != kInvalidEntityIdValue) {
       MoveIn(current, row, house);
+      continue;
+    }
+    // Or a barrack place: out of a stranger's house (§20: «пока не найдётся
+    // свободный дом, место в бараке или новый дом»).
+    const UnitId barrack =
+        BarrackPlace(config, current, MembersOf(current, current.families.row_ids[row]));
+    if (barrack.value != kInvalidEntityIdValue) {
+      MoveIntoBarrack(current, row, barrack);
     }
   }
+}
+
+/// THE BARRACK NEXT (boss seq 197): a free house takes a barrack family
+/// before any couple.
+void ClimbFromBarrack(const LifeConfig& config, WorldState& current, bool cold) {
+  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+    if (current.families.rows[row].in_barrack == 0) {
+      continue;
+    }
+    const UnitId house = FreeHouse(config, current, cold);
+    if (house.value == kInvalidEntityIdValue) {
+      break;
+    }
+    MoveIn(current, row, house);
+  }
+}
+
+/// THE COLD AND NOWHERE TO GO: the certificate is asked for, and silence
+/// refuses it (§20 step 4). Until 2026-09-19 the family left by itself.
+void AskOrLodge(const LifeConfig& config,
+                WorldState& current,
+                std::uint32_t row,
+                std::uint32_t day) {
+  FamilyRow& family = current.families.rows[row];
+  family.in_tent = 0;
+  if (family.asked_to_leave == 0) {
+    family.asked_to_leave = 1;
+    family.asked_day = day;
+    SimEvent& asks = EmitEvent(current, EventKind::kLeaveRequested, EventSeverity::kInterrupting);
+    asks.family = current.families.row_ids[row];
+    asks.amount = 0;  // the reason: no house
+    return;
+  }
+  if (static_cast<float>(day - family.asked_day) >= config.leave_request_answer_days) {
+    Lodge(current, row);
+  }
+}
+
+/// Everybody else without a roof, down the ladder to the first rung that holds.
+void DescendTheLadder(const LifeConfig& config, WorldState& current, bool cold) {
+  const auto day = static_cast<std::uint32_t>(current.calendar.day);
   for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
     FamilyRow& family = current.families.rows[row];
     if (HasHouse(current, family) || family.lodged_in.value != kInvalidEntityIdValue) {
@@ -249,6 +335,12 @@ void RunRoofless(const LifeConfig& config, WorldState& current) {
       MoveIn(current, row, house);
       continue;
     }
+    // THE SECOND RUNG, the barrack (§9, §20), before the tent.
+    const UnitId barrack = BarrackPlace(config, current, MembersOf(current, id));
+    if (barrack.value != kInvalidEntityIdValue) {
+      MoveIntoBarrack(current, row, barrack);
+      continue;
+    }
     family.house = UnitId{};
     if (!cold) {
       if (family.in_tent == 0) {
@@ -258,21 +350,17 @@ void RunRoofless(const LifeConfig& config, WorldState& current) {
       }
       continue;
     }
-    // THE COLD AND NOWHERE TO GO: the certificate is asked for, and silence
-    // refuses it (§20 step 4). Until 2026-09-19 the family left by itself.
-    family.in_tent = 0;
-    if (family.asked_to_leave == 0) {
-      family.asked_to_leave = 1;
-      family.asked_day = day;
-      SimEvent& asks = EmitEvent(current, EventKind::kLeaveRequested, EventSeverity::kInterrupting);
-      asks.family = id;
-      asks.amount = 0;  // the reason: no house
-      continue;
-    }
-    if (static_cast<float>(day - family.asked_day) >= config.leave_request_answer_days) {
-      Lodge(current, row);
-    }
+    AskOrLodge(config, current, row, day);
   }
+}
+
+}  // namespace
+
+void RunRoofless(const LifeConfig& config, WorldState& current) {
+  const bool cold = !TentWeather(config, current.calendar.date.month);
+  ClimbFromLodging(config, current, cold);
+  ClimbFromBarrack(config, current, cold);
+  DescendTheLadder(config, current, cold);
   // After the morning's moves: who is lodged or hosts today pays today.
   ChargeLodging(config, current);
 }

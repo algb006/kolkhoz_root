@@ -39,6 +39,7 @@
 #include "food_config.h"
 #include "household_plot.h"
 #include "housing.h"
+#include "housing_ladder.h"
 #include "life_config.h"
 #include "membership.h"
 #include "night_trade.h"
@@ -1238,6 +1239,102 @@ int CheckRooflessLadder() {
     failures += Expect(family.house.value == built_id.value && family.in_tent == 0,
                        "a free house takes the family out of its tent");
   }
+  return failures;
+}
+
+/// The barrack (housing §9, §20 second rung; boss seq 197): many families, no
+/// yard. A roofless family takes a place before the tent, its herds go to the
+/// kolkhoz, a full barrack takes nobody, a free house takes the barrack family
+/// out, and a couple with no free house gets a place.
+int CheckBarrack() {
+  int failures = 0;
+  core::LifeConfig config;
+  config.definitions.units.is_housing = {1, 1};
+  config.residents_capacity = {{}, {5.0F}};  // type 1 is a barrack of five
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(16) * core::kTicksPerDay;  // May
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow barrack;
+  barrack.type = core::UnitTypeId{1};
+  barrack.position = core::Vec2{.x = 100.0F, .y = 100.0F};
+  const core::UnitId barrack_id = AppendRow(world.units, barrack);
+  const core::FamilyId three = AppendRow(world.families, core::FamilyRow{});
+  AddAdult(world, three, core::Sex::kFemale, 30.0F);
+  AddAdult(world, three, core::Sex::kMale, 32.0F);
+  AddAdult(world, three, core::Sex::kFemale, 60.0F);
+  core::HerdRow goat;
+  goat.household = three;
+  goat.household_owned = 1;
+  goat.adult_count = 1;
+  AppendRow(world.herds, goat);
+
+  core::RunRoofless(config, world);
+  failures += Expect(world.families.rows[0].house.value == barrack_id.value &&
+                         world.families.rows[0].in_barrack == 1 &&
+                         world.units.rows[0].household.value == core::kInvalidEntityIdValue,
+                     "barrack: a roofless family takes a place before the tent; nobody's house");
+  failures += Expect(world.herds.rows[0].household_owned == 0 &&
+                         world.herds.rows[0].household.value == core::kInvalidEntityIdValue,
+                     "and its goat goes to the kolkhoz: no yard, no animals of its own");
+
+  const core::FamilyId another = AppendRow(world.families, core::FamilyRow{});
+  AddAdult(world, another, core::Sex::kFemale, 25.0F);
+  AddAdult(world, another, core::Sex::kMale, 26.0F);
+  AddAdult(world, another, core::Sex::kMale, 5.0F);
+  core::RunRoofless(config, world);
+  failures += Expect(world.families.rows[1].in_barrack == 0 && world.families.rows[1].in_tent == 1,
+                     "three more do not fit a barrack of five with three in it: a tent");
+
+  bool shared = false;
+  const core::UnitId couple_home = core::HomeForNewcomers(config, world, 2, shared);
+  failures += Expect(couple_home.value == barrack_id.value && shared,
+                     "a couple with no free house gets the two places left");
+
+  core::UnitRow house;
+  house.type = core::UnitTypeId{0};
+  const core::UnitId house_id = AppendRow(world.units, house);
+  world.families.rows[1].in_tent = 0;
+  core::RunRoofless(config, world);
+  failures += Expect(world.families.rows[0].house.value == house_id.value &&
+                         world.families.rows[0].in_barrack == 0,
+                     "a free house takes the barrack family out, before the one in the tent");
+  return failures;
+}
+
+/// The hunger alarm's memory (boss, core-host-l1 seq 45): lit at the
+/// threshold (25), out only above it by the margin (10) — a family the ration
+/// holds at 22 ↔ 26 keeps its alarm lit instead of lighting it every other
+/// day (host seq 44).
+int CheckHungerAlarmHysteresis() {
+  int failures = 0;
+  const HousingTables tables;
+  const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
+  core::WorldState world;
+  const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+  AddAdult(world, yard, core::Sex::kFemale, 30.0F);
+  AddAdult(world, yard, core::Sex::kMale, 31.0F);
+  const auto lit_after = [&system, &world](float satiety) {
+    for (core::ResidentRow& resident : world.residents.rows) {
+      resident.satiety = satiety;
+    }
+    const core::WorldState previous = world;
+    system->RunDemographyDecisions(previous, world);
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kFamilyGoingHungry) {
+        return true;
+      }
+    }
+    return false;
+  };
+  failures += Expect(lit_after(22.0F), "hunger: at 22, under the threshold, the alarm is lit");
+  failures += Expect(lit_after(26.0F),
+                     "at 26 — over the threshold, under its margin — it stays lit: the ration's "
+                     "swing no longer blinks it");
+  failures += Expect(!lit_after(36.0F), "at 36, above threshold and margin, it goes out");
+  failures +=
+      Expect(!lit_after(30.0F), "and at 30 it does not light again: only the threshold does");
   return failures;
 }
 
@@ -3130,6 +3227,8 @@ int main() {
   failures += CheckWeddingQueueOrder();
   failures += CheckCoupleSkipsHouseOnTheBrink();
   failures += CheckRooflessLadder();
+  failures += CheckBarrack();
+  failures += CheckHungerAlarmHysteresis();
   failures += CheckMembership();
   failures += CheckNightTrades();
   failures += CheckSchooling();

@@ -146,6 +146,12 @@ void RunHouseholdPlot(const FoodConfig& config,
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   const FamilyId id = current.families.row_ids[family_item];
   FamilyRow& family = current.families.rows[family_item];
+  // A BARRACK HAS NO GARDEN (housing §9; boss seq 197: «огорода нет —
+  // просто нет»): no hours on it, no harvest from it.
+  if (family.in_barrack != 0) {
+    family.household_hours = 0.0F;
+    return;
+  }
 
   const YardToday yard = SurveyYard(plot, life_speedup, current, id, day);
   family.household_hours = PlotHours(plot, yard, month);
