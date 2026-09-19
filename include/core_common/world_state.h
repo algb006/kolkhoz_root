@@ -495,12 +495,16 @@ struct ChairmanState {
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md
-/// §3; boss seq 206). The core sees two causes today; an audit's discrepancy
-/// and a complaint upward are STUBs until those exist.
+/// §3; boss seq 206). A complaint upward is a STUB until it exists.
 enum class SummonCause : std::uint8_t {
   kNone = 0,
   kFailedYear,   ///< The year closed with the plan failed (PlanVerdict::kFailed).
   kOnThePencil,  ///< raikom_reputation fell to 20 or below («на карандаше»).
+
+  /// An auditor's visit found a discrepancy (DistrictVisitFinding::
+  /// kDiscrepancy). Appended the day after the contract: the estimate called
+  /// the audit a STUB, and the core has had it since 2026-09-15.
+  kAuditDiscrepancy,
 
   /// NOT A CAUSE: the count, for the mirrors.
   kSummonCauseCount,
