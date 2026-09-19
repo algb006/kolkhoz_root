@@ -425,6 +425,15 @@ enum class EventKind : std::uint8_t {
   /// the month's supply tag. kNotable. Seam key `store_leak_closed_dry_month`.
   kStoreLeakClosedDryMonth,
 
+  /// A district cart has come to the gate and some of its goods fit in no
+  /// store — no store of the village takes that resource, or those that do
+  /// are full (boss seq 156, host's milk pass: a lot whose store was pulled
+  /// down while it travelled). Said ONCE, on the cart's arrival day, one
+  /// event per resource left on it; the cart waits and is offered again at
+  /// every day's end, as before. resource = what waits; amount = GRAMS left.
+  /// kNotable. Seam key proposed: `limit_goods_at_the_gate`.
+  kLimitGoodsAtTheGate,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

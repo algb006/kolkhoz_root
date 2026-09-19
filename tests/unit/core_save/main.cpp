@@ -1123,7 +1123,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // 2026-09-19, the chairman's talk contract: the top OrderKind moved to
     // kTalkToSport and the top OrderRefusal to kNowhereToGo — same 494
     // bytes, same save number, predicted before the build.
-    {"orders", 494, 0x6f7676a629493e08ULL},
+    // The same day, kNowhereToStore became the top OrderRefusal — the lot
+    // with nowhere to store: same 494 bytes, predicted.
+    {"orders", 494, 0x262177d18544a243ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of

@@ -162,6 +162,8 @@ const char* KindName(core::EventKind kind) {
       return "samogon_sale";
     case core::EventKind::kStoreLeakClosedDryMonth:
       return "store_leak_closed_dry_month";
+    case core::EventKind::kLimitGoodsAtTheGate:
+      return "limit_goods_at_the_gate";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

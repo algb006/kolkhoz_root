@@ -309,8 +309,10 @@ enum class OrderKind : std::uint8_t {
   /// does not carry; kGateClosed for a lot of a later epoch; kRuleForbids for
   /// a lot that is not goods (machines, people and "choice" have their own
   /// windows — STUB), for a lot with no price, and for one none of
-  /// whose resources has an amount yet; kLimitShort when the points left this
-  /// year are fewer than the price. Settled in the step it is read.
+  /// whose resources has an amount yet; kNowhereToStore for goods some of
+  /// which no built store of the village takes (boss seq 156); kLimitShort
+  /// when the points left this year are fewer than the price. Settled in the
+  /// step it is read.
   /// Consumer: core_production.
   ///
   /// STOCK IS BOUGHT HERE TOO, and by this same kind rather than one of its
@@ -1006,6 +1008,18 @@ enum class OrderRefusal : std::uint8_t {
   /// Named apart because the remedy is a building (or a librarian), not a
   /// talk. Seam key `nowhere_to_go`.
   kNowhereToGo,
+
+  /// kOrderLimitLot of goods: some resource of the lot is taken by no built
+  /// numbered store of the village — compound feed with no granary, say
+  /// (boss seq 156, host's milk pass: fourteen such lots, 280 points, all
+  /// «done», and the carts stood at the gate for good). Refused BEFORE the
+  /// points, as the livestock's room is: a refusal must not cost anything.
+  /// Named apart from kNoRoomForStock, which is heads and roofs; the repair
+  /// here is a store for this resource. The refused row NAMES the goods in
+  /// its `resource`: the first of the lot's goods no store takes (boss seq
+  /// 159 — a refusal that says «what» by itself is cheaper than three tables
+  /// at the layer). Seam key `nowhere_to_store` (boss).
+  kNowhereToStore,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
