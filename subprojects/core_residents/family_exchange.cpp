@@ -9,9 +9,12 @@
 
 #include "family_exchange.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -241,6 +244,122 @@ Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, Reso
   return free_stock > 0 ? free_stock : 0;
 }
 
+/// Days a resource keeps, for the order of the issue: zero in the table is
+/// "does not go bad", the longest there is.
+float KeepsDays(const FoodConfig& config, std::uint32_t index) {
+  const float days = index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;
+  return days > 0.0F ? days : std::numeric_limits<float>::infinity();
+}
+
+/// Per food category, what the positions served so far that keep SHORTER
+/// than the one at hand left uncovered, grams, and whether there were any;
+/// and the same for the group of equal spoil_days being served now.
+struct ShortfallByCategory {
+  static constexpr auto kCategories = static_cast<std::size_t>(FoodCategory::kNotFood) + 1;
+
+  std::array<float, kCategories> shortfall{};
+  std::array<bool, kCategories> served{};
+  std::array<float, kCategories> group_shortfall{};
+  std::array<bool, kCategories> group_served{};
+
+  /// A new spoil_days begins: what the last group left short is now shorter.
+  void CloseGroup() {
+    for (std::size_t category = 0; category < kCategories; ++category) {
+      shortfall[category] += group_shortfall[category];
+      served[category] = served[category] || group_served[category];
+    }
+    group_shortfall.fill(0.0F);
+    group_served.fill(false);
+  }
+};
+
+/// What the monthly bundle can cover, position by position.
+struct BundleCover {
+  /// Share of each position's norm that is issued, 0..1.
+  std::vector<float> coverage;
+
+  /// The bundle's food value asked and covered, kilocalories.
+  float wanted_kcal = 0.0F;
+  float covered_kcal = 0.0F;
+};
+
+/// What each position can cover, and what share of the bundle's food VALUE
+/// that comes to. Value is in kilocalories — the one unit in which a litre
+/// of milk and a kilogram of potatoes are comparable at all.
+///
+/// THE FRESH GOES FIRST (boss seq 11 on econ seq 10; Metrics §8, the store
+/// after the family, 12cbf2c): within a food category the positions are
+/// served shortest spoil_days first, and a position that keeps longer than
+/// another of its category with a norm is its SUBSTITUTE — it covers, gram
+/// for gram, what the shorter ones could not, and nothing while they were
+/// whole. Before this the sauerkraut had a norm of its own beside the
+/// vegetables': host's seed 9 pickled 1.6 t on day 84 and the store held none
+/// on day 88, eaten while the fresh lay beside it. A substitute's value is
+/// counted in the covered kilocalories only — it answers the shorter
+/// position's want and asks none of its own. Positions that keep equally
+/// long do not substitute for one another: the bread's rye, wheat and
+/// barley stay three positions.
+BundleCover CoverBundle(const FoodConfig& config,
+                        const std::vector<Grams>& reserve,
+                        const WorldState& current,
+                        const std::vector<Grams>& wanted) {
+  const auto roster = static_cast<std::uint32_t>(wanted.size());
+  BundleCover cover;
+  cover.coverage.assign(roster, 0.0F);
+  std::vector<std::uint32_t> order;
+  for (std::uint32_t index = 0; index < roster; ++index) {
+    if (wanted[index] > 0) {
+      order.push_back(index);
+    }
+  }
+  std::ranges::stable_sort(order, [&config](std::uint32_t left, std::uint32_t right) {
+    return KeepsDays(config, left) < KeepsDays(config, right);
+  });
+  ShortfallByCategory shorter;
+  float group_days = -1.0F;
+  for (const std::uint32_t index : order) {
+    if (KeepsDays(config, index) != group_days) {
+      shorter.CloseGroup();
+      group_days = KeepsDays(config, index);
+    }
+    const FoodResourceDef& food = config.resources[index];
+    const auto category = static_cast<std::size_t>(food.category);
+    const bool substitute = food.category != FoodCategory::kNotFood && shorter.served[category];
+    float asked = static_cast<float>(wanted[index]);
+    if (substitute) {
+      asked = std::min(asked, shorter.shortfall[category]);
+      shorter.shortfall[category] -= asked;
+    }
+    // HALF THE MILK, and only half (boss answer Q4): the bundle carries a
+    // share of what the farm holds, the rest stays the kolkhoz's. The share
+    // is per resource and lives in the table — it is one for everything the
+    // farm hands out whole. It applies to the BUNDLE only: the ration below
+    // sees the full free stock, because holding milk back from a starving
+    // household would be the very "full barn beside a hungry village" this
+    // rule exists to forbid.
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    Grams free_stock = FreeStock(current, reserve, resource);
+    if (PlanHoldsIt(config, current, index)) {
+      const Grams unsealed = PlanUnsealed(current, index);
+      free_stock = free_stock < unsealed ? free_stock : unsealed;
+    }
+    const float pool = static_cast<float>(free_stock) * food.issue_share_of_stock;
+    const float given = asked > 0.0F ? std::min(pool, asked) : 0.0F;
+    cover.coverage[index] = given / static_cast<float>(wanted[index]);
+    if (substitute) {
+      shorter.shortfall[category] += asked - given;  // what it could not cover either
+    } else {
+      shorter.group_shortfall[category] += asked - given;
+      shorter.group_served[category] = true;
+    }
+    if (food.kcal_per_gram > 0.0F) {
+      cover.wanted_kcal += substitute ? 0.0F : asked * food.kcal_per_gram;
+      cover.covered_kcal += given * food.kcal_per_gram;
+    }
+  }
+  return cover;
+}
+
 /// The monthly distribution (labor-payment §3, §7): the family trades its
 /// outstanding trudodni for a basket of goods.
 ///
@@ -290,41 +409,10 @@ void RunDistribution(const FoodConfig& config,
   if (outstanding_total <= 0) {
     return;
   }
-  // What each position can cover, and what share of the bundle's food VALUE
-  // that comes to. Value is in kilocalories — the one unit in which a litre
-  // of milk and a kilogram of potatoes are comparable at all.
-  std::vector<float> coverage(roster, 0.0F);
-  float wanted_kcal = 0.0F;
-  float covered_kcal = 0.0F;
-  for (std::uint32_t index = 0; index < roster; ++index) {
-    if (wanted[index] <= 0) {
-      continue;
-    }
-    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    // HALF THE MILK, and only half (boss answer Q4): the bundle carries a
-    // share of what the farm holds, the rest stays the kolkhoz's. The share
-    // is per resource and lives in the table — it is one for everything the
-    // farm hands out whole. It applies to the BUNDLE only: the ration below
-    // sees the full free stock, because holding milk back from a starving
-    // household would be the very "full barn beside a hungry village" this
-    // rule exists to forbid.
-    Grams free_stock = FreeStock(current, reserve, resource);
-    if (PlanHoldsIt(config, current, index)) {
-      const Grams unsealed = PlanUnsealed(current, index);
-      free_stock = free_stock < unsealed ? free_stock : unsealed;
-    }
-    const float pool =
-        static_cast<float>(free_stock) * config.resources[index].issue_share_of_stock;
-    const float share = pool / static_cast<float>(wanted[index]);
-    coverage[index] = share < 1.0F ? share : 1.0F;
-    const float kcal = config.resources[index].kcal_per_gram;
-    if (kcal > 0.0F) {
-      const float position = static_cast<float>(wanted[index]) * kcal;
-      wanted_kcal += position;
-      covered_kcal += position * coverage[index];
-    }
-  }
-  const float redeemed_share = wanted_kcal > 0.0F ? covered_kcal / wanted_kcal : 0.0F;
+  const BundleCover cover = CoverBundle(config, reserve, current, wanted);
+  const std::vector<float>& coverage = cover.coverage;
+  const float redeemed_share =
+      cover.wanted_kcal > 0.0F ? cover.covered_kcal / cover.wanted_kcal : 0.0F;
   bool issued_to_anyone = false;
   for (FamilyRow& family : current.families.rows) {
     const TrudodniHundredths outstanding = family.trudodni_account - family.trudodni_redeemed;
@@ -339,6 +427,9 @@ void RunDistribution(const FoodConfig& config,
       }
       const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams issue = KilogramsToGrams(norm * trudodni * coverage[index]);
+      // `coverage` carries the substitution too (CoverBundle): a keeping
+      // position covers a share of its norm that is the shorter ones'
+      // shortfall, and nothing when they were whole.
       // What the store could actually give, not what the norm asked for:
       // the ledger records the hand-out, not the intention.
       const Grams given = TakeFromUnits(current, resource, issue);

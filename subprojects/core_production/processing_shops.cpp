@@ -22,6 +22,9 @@ namespace {
 /// Below this a batch count is nothing: a gram of cabbage is no work.
 constexpr double kNoBatch = 1e-6;
 
+/// Halvings of the room's search: 2^-40 of the input bound, far below a gram.
+constexpr int kRoomSearchSteps = 40;
+
 /// What a recipe can do today, and what it stands for when it cannot.
 struct Availability {
   /// Whole or part batches the stores, the room and the barrels allow.
@@ -30,8 +33,9 @@ struct Availability {
   /// The main input lies there (the cooperage: barrels are wanted).
   bool has_work = false;
 
-  /// A barrel or a second input it stands for; invalid when it works, has
-  /// no work, or stands for room (kStoreFull says that).
+  /// A barrel, a second input, or the output with no room left for it (boss
+  /// seq 11: a legitimate stand says why); invalid when it works or has no
+  /// work.
   ResourceId missing;
 };
 
@@ -97,23 +101,78 @@ Grams PicklingReserve(const ProductionConfig& config,
                    static_cast<double>(config.processing.sauerkraut_fresh_share)));
 }
 
-/// Barrels wanted, in the cooperage's batches: what the vegetables in the
-/// stores would fill as sauerkraut, less the barrels free (boss seq 184).
+/// Batches of `pickling` its inputs in the stores allow: the main input
+/// above the fresh reserve when `main_too`, and every other input (the
+/// grocery's salt) always. Never below zero.
+double PicklingBatchesStocked(const ProductionConfig& config,
+                              const WorldState& world,
+                              const ProcessingRecipe& pickling,
+                              bool main_too) {
+  double batches = std::numeric_limits<double>::infinity();
+  for (std::size_t line = main_too ? 0 : 1; line < pickling.inputs.size(); ++line) {
+    const ProcessingAmount& input = pickling.inputs[line];
+    Grams available = TakeableGrams(world, config, input.resource);
+    if (line == 0) {
+      available -= PicklingReserve(config, world, input.resource);
+    }
+    const double by = available > 0 && input.grams > 0
+                          ? static_cast<double>(available) / static_cast<double>(input.grams)
+                          : 0.0;
+    batches = std::min(batches, by);
+  }
+  return batches;
+}
+
+/// Grams of sauerkraut the barrels are to be ready for (production units
+/// §8а, «Когда»; boss seq 7 and 11 on econ seq 6 and 8). Before this year's
+/// vegetables are in the book, last season's sauerkraut — the closed book's
+/// `made`, the season lying whole inside the calendar year — «готовим
+/// столько, сколько заполнили в прошлом году»; the first year's closed book
+/// is empty and the 150 start barrels do. After, what the vegetables above
+/// the fresh reserve would make. Either way no more than the grocery in the
+/// stores salts: «без соли бочек не делаем».
+Grams SauerkrautToBarrel(const ProductionConfig& config,
+                         const WorldState& world,
+                         const ProcessingRecipe& pickling) {
+  const ProcessingAmount& vegetables = pickling.inputs.front();
+  const ProcessingAmount& sauerkraut = pickling.outputs.front();
+  const auto per_batch = static_cast<double>(sauerkraut.grams);
+  const double salted = PicklingBatchesStocked(config, world, pickling, false) * per_batch;
+  double wanted = 0.0;
+  if (AmountOf(world.ledger.current.harvest, vegetables.resource) <= 0) {
+    wanted = static_cast<double>(AmountOf(world.ledger.closed.made, sauerkraut.resource));
+  } else {
+    wanted = PicklingBatchesStocked(config, world, pickling, true) * per_batch;
+  }
+  return static_cast<Grams>(std::llround(std::min(wanted, salted)));
+}
+
+/// Barrels wanted, in the cooperage's batches (production units §8а,
+/// «Когда»): from July to December, while the free barrels are fewer than
+/// the need — the sauerkraut to come (SauerkrautToBarrel) and the smoked
+/// goods held, each ÷ the barrel's capacity.
+///
+/// Until 0.34.8 the need was every vegetable in the stores, with neither
+/// the reserve nor the season: host's first acceptance saw the cooper make
+/// 51-67 barrels from May to August out of boards Epoch I has few of.
 double CooperageWant(const ProductionConfig& config,
                      const WorldState& world,
                      const ProcessingRecipe& cooperage) {
   const ProcessingCatalog& catalog = config.processing;
   const ProcessingRecipe* const pickling = FindRule(catalog, ProcessingRule::kPickling);
   if (pickling == nullptr || catalog.barrel_capacity_grams <= 0 || cooperage.outputs.empty() ||
-      catalog.barrel_grams <= 0 || pickling->inputs.front().grams <= 0) {
+      catalog.barrel_grams <= 0 || pickling->inputs.empty() || pickling->outputs.empty() ||
+      !MonthInRange(static_cast<std::uint8_t>(world.calendar.date.month),
+                    catalog.cooperage_from_month,
+                    catalog.cooperage_to_month)) {
     return 0.0;
   }
-  const double ratio = static_cast<double>(pickling->outputs.front().grams) /
-                       static_cast<double>(pickling->inputs.front().grams);
   const double capacity = static_cast<double>(catalog.barrel_capacity_grams);
-  const double vegetables =
-      static_cast<double>(TakeableGrams(world, config, pickling->inputs.front().resource));
-  const double needed = std::ceil(vegetables * ratio / capacity);
+  const Grams smoked =
+      HeldInBarrels(config, world) - HeldEverywhere(world, pickling->outputs.front().resource);
+  const double needed =
+      std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity) +
+      std::ceil(static_cast<double>(std::max<Grams>(smoked, 0)) / capacity);
   const double free = std::floor(static_cast<double>(BarrelRoomFree(config, world)) / capacity);
   const double barrels_per_batch = static_cast<double>(cooperage.outputs.front().grams) /
                                    static_cast<double>(catalog.barrel_grams);
@@ -168,8 +227,92 @@ void LimitByInputs(const ProductionConfig& config,
   }
 }
 
-/// The outputs' bound: the stores' room (not a stand — kStoreFull says it)
-/// and, for what lives in barrels, the free barrels (a stand).
+/// Grams of `output` the stores would take once `batches` of the recipe's
+/// inputs are out of them: the door's room (ReceivableRoom) over the stock
+/// the take (TakeFromStorage, row order) would leave.
+///
+/// THE INPUTS MAKE ROOM, and until 2026-09-19 the bound did not know it. The
+/// room was read off the stores as they stood, full of the very cabbage the
+/// shop was to take: forty tonnes in the food store and a sauerkraut shop
+/// standing idle beside it, its demand zero, though every tonne pickled
+/// frees a tonne and asks back three hundred and seventy-five kilograms
+/// (shop_pace, seed 9; host's seed 9 days 38-40 and 86-90, thread
+/// host-econ-shops seq 9).
+Grams RoomAfterTaking(const ProductionConfig& config,
+                      const WorldState& world,
+                      const ProcessingRecipe& recipe,
+                      double batches,
+                      ResourceId output) {
+  std::vector<Grams> left(recipe.inputs.size(), 0);
+  for (std::size_t line = 0; line < recipe.inputs.size(); ++line) {
+    left[line] =
+        static_cast<Grams>(std::llround(batches * static_cast<double>(recipe.inputs[line].grams)));
+  }
+  Grams room = 0;
+  for (const UnitRow& unit : world.units.rows) {
+    if (!StoresGoods(unit, config)) {
+      continue;
+    }
+    Grams freed = 0;
+    if (IsTakenFrom(unit, config)) {
+      for (std::size_t line = 0; line < recipe.inputs.size(); ++line) {
+        const ResourceId input = recipe.inputs[line].resource;
+        const Grams take = std::min(UnreservedOf(unit, input), left[line]);
+        left[line] -= take;
+        freed += RoomTaken(config.processing, input, take);
+      }
+    }
+    const Grams capacity = StorageCapacityGrams(unit, config);
+    if (capacity < 0) {
+      if (IsHomeOf(unit, config, output)) {
+        return std::numeric_limits<Grams>::max();  // an outline: no ceiling
+      }
+      continue;
+    }
+    if (!NumberedStoreTakes(unit, config, output)) {
+      continue;
+    }
+    const Grams used = RoomUsed(unit.stock, config) - freed;
+    room += used < capacity ? GramsFitting(config.processing, output, capacity - used) : 0;
+  }
+  return room;
+}
+
+/// The most batches, up to `upper`, whose `output` the stores take after the
+/// inputs are out (RoomAfterTaking). The room grows with the batches only
+/// where the take empties a store that also takes the output, so the answer
+/// is searched rather than solved: `upper` itself first — the usual answer —
+/// then halving toward the last batch count that fits.
+double BatchesTheRoomTakes(const ProductionConfig& config,
+                           const WorldState& world,
+                           const ProcessingRecipe& recipe,
+                           const ProcessingAmount& output,
+                           double upper) {
+  const auto fits = [&](double batches) {
+    const double made = batches * static_cast<double>(output.grams);
+    return made <=
+           static_cast<double>(RoomAfterTaking(config, world, recipe, batches, output.resource));
+  };
+  if (!std::isfinite(upper)) {
+    // No input bounds it: nothing leaves the stores, the room is as it is.
+    return static_cast<double>(ReceivableRoom(config, world, output.resource)) /
+           static_cast<double>(output.grams);
+  }
+  if (fits(upper)) {
+    return upper;
+  }
+  double low = 0.0;
+  double high = upper;
+  for (int step = 0; step < kRoomSearchSteps; ++step) {
+    const double middle = (low + high) / 2.0;
+    (fits(middle) ? low : high) = middle;
+  }
+  return low;
+}
+
+/// The outputs' bound: the stores' room after the inputs are out (a stand
+/// for room, boss seq 11: a shop that has work and nowhere to put it says
+/// so) and, for what lives in barrels, the free barrels (a stand).
 void LimitByOutputs(const ProductionConfig& config,
                     const WorldState& world,
                     const ProcessingRecipe& recipe,
@@ -180,9 +323,8 @@ void LimitByOutputs(const ProductionConfig& config,
       continue;
     }
     const auto grams = static_cast<double>(output.grams);
-    limit.Tighten(static_cast<double>(ReceivableRoom(config, world, output.resource)) / grams,
-                  output.resource,
-                  false);
+    limit.Tighten(
+        BatchesTheRoomTakes(config, world, recipe, output, limit.batches), output.resource, true);
     if (InBarrel(config.processing, output.resource)) {
       limit.Tighten(
           static_cast<double>(barrel_room) / grams, config.processing.barrel_resource, true);

@@ -5605,11 +5605,88 @@ int CheckProcessingShops() {
   core::AppendRow(cooper.units, site);
   core::TakeFromStorage(cooper, config, barrel, 140 * 15 * kKilo);  // ten barrels left
   core::SettleProcessing(config, cooper);
-  // 10 t of vegetables fill 75 barrels as sauerkraut, 10 are free: 65 wanted.
-  // Boards: 2 t less the 1.5 t the site still lacks = 500 kg = 40 barrels.
+  // After the harvest: 8 t of vegetables above the reserve fill 60 barrels as
+  // sauerkraut, 10 are free: 50 wanted. Boards: 2 t less the 1.5 t the site
+  // still lacks = 500 kg = 40 barrels.
   failures +=
       Expect(std::fabs(cooper.units.rows[3].production_days_written - (40.0F * 0.125F)) < 1e-4F,
              "shops: the cooper makes what is wanted, from the boards no site waits for");
+
+  // §8а «Когда» (boss seq 7 and 11): July to December; before the harvest
+  // last season's sauerkraut, after it the vegetables above the reserve;
+  // either way no more than the grocery salts. Ten free barrels in each.
+  const auto cooper_world = [&](std::uint32_t day, bool harvested, core::Grams salt) {
+    core::WorldState world = make_world(day);
+    core::AddToStock(world.units.rows[0].stock, board, 2 * kTonne);
+    core::AddToStock(world.units.rows[0].stock, steel, kTonne);
+    core::TakeFromStorage(world, config, barrel, 140 * 15 * kKilo);
+    core::TakeFromStorage(world, config, grocery, kTonne - salt);
+    if (!harvested) {
+      world.ledger.current.harvest.clear();
+    }
+    return world;
+  };
+  const auto cooper_asks = [&](core::WorldState world) {
+    core::SettleProcessing(config, world);
+    return world.units.rows[3].production_days_written / 0.125F;  // in barrels
+  };
+  constexpr std::uint32_t kMay = 4 * core::kDaysPerMonth;
+  constexpr std::uint32_t kJuly = 6 * core::kDaysPerMonth;
+  core::WorldState last_season = cooper_world(kJuly, false, kTonne);
+  core::AddLedgerAmount(last_season.ledger.closed.made, kraut, 3 * kTonne);
+  failures += Expect(std::fabs(cooper_asks(last_season) - 20.0F) < 1e-3F,
+                     "shops: in July the cooper readies last season's 3 t — 30 barrels, 10 free");
+  core::WorldState in_may = last_season;
+  in_may.calendar.tick = static_cast<core::Tick>(kMay) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(in_may.calendar);
+  failures += Expect(cooper_asks(in_may) == 0.0F, "shops: in May the cooper makes no barrels");
+  failures += Expect(cooper_asks(cooper_world(kJuly, false, kTonne)) == 0.0F,
+                     "shops: the first July, with no season behind it, the start's barrels do");
+  failures +=
+      Expect(std::fabs(cooper_asks(cooper_world(kOctober, true, 100 * kKilo)) - 28.0F) < 1e-3F,
+             "shops: 100 kg of grocery salts 5 t — 38 barrels, 10 free: 28, not 50");
+  core::WorldState unsalted = last_season;
+  core::TakeFromStorage(unsalted, config, grocery, kTonne);
+  failures += Expect(cooper_asks(unsalted) == 0.0F,
+                     "shops: without salt no barrels, not even last season's");
+  core::WorldState smoking_too = last_season;
+  core::AddToStock(smoking_too.units.rows[0].stock, smoked, 500 * kKilo);
+  // The literal §8а: the smoked goods' 5 barrels join the need, and they
+  // already take 5 of the 10 free — 30 + 5 - 5.
+  failures += Expect(std::fabs(cooper_asks(smoking_too) - 30.0F) < 1e-3F,
+                     "shops: smoked goods add their barrels to the need");
+
+  // -- the room the inputs make (boss seq 11) ----------------------------------------
+  core::WorldState crammed = make_world(kOctober);
+  // 13.25 t held (vegetables, grocery, barrels); rye fills the rest to the roof.
+  core::AddToStock(crammed.units.rows[0].stock, rye, 100 * kTonne - (13 * kTonne + 250 * kKilo));
+  core::SettleProcessing(config, crammed);
+  failures +=
+      Expect(std::fabs(crammed.units.rows[1].production_days_written - (8.0F * 0.1667F)) < 1e-4F,
+             "shops: a store full of the cabbage the shop takes has room for its sauerkraut");
+  core::ProductionConfig clamped = config;
+  clamped.resource_stores_read = 1;
+  clamped.unit_types.resize(5);  // 4 a clamp, vegetables only
+  for (std::uint16_t resource = 0; resource < 10; ++resource) {
+    clamped.unit_types[0].home_of.push_back(core::ResourceId{resource});
+  }
+  SetStorageKg(clamped.unit_types[4], 100'000.0F);
+  clamped.unit_types[4].home_of = {veg};
+  core::WorldState no_room = make_world(kOctober);
+  core::TakeFromStorage(no_room, clamped, veg, 10 * kTonne);
+  core::UnitRow clamp;
+  clamp.type = core::UnitTypeId{4};
+  clamp.level = 1;
+  core::AddToStock(clamp.stock, veg, 10 * kTonne);
+  core::AppendRow(no_room.units, clamp);
+  core::AddToStock(no_room.units.rows[0].stock, rye, 100 * kTonne - (3 * kTonne + 250 * kKilo));
+  core::SettleProcessing(clamped, no_room);
+  alarms.clear();
+  core::CollectProcessingAlarms(clamped, no_room, alarms);
+  failures += Expect(no_room.units.rows[1].production_days_written == 0.0F && alarms.size() == 1 &&
+                         alarms[0].resource.value == kraut.value,
+                     "shops: the cabbage in the clamp and no room for sauerkraut — the shop "
+                     "stands and says it is the sauerkraut's room");
 
   // -- the barrels' year ---------------------------------------------------------
   core::WorldState year = make_world(kJanuary);

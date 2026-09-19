@@ -330,6 +330,41 @@ int CheckExchange() {
                            world.families.rows[0].trudodni_redeemed == 0,
                        "both counters burn at the turn of the economic year");
   }
+
+  // THE FRESH GOES FIRST (boss, host-econ-shops seq 11): within a category
+  // the shorter-keeping position is served first, and the longer-keeping one
+  // covers only what it could not. Resource 4 is sauerkraut, a vegetable
+  // keeping 600 days against the fresh vegetables' 120; each asks 1 kg a
+  // trudoden, two trudodni are owed.
+  {
+    core::FoodConfig pickled = config;
+    pickled.resources.resize(5);
+    pickled.resources[3].issue_kg_per_trudoden = 1.0F;
+    pickled.resources[4] = {.kcal_per_gram = 0.2F,
+                            .category = core::FoodCategory::kVegetables,
+                            .issue_kg_per_trudoden = 1.0F,
+                            .ration_kg_per_day = 0.0F};
+    pickled.spoil_days = {0.0F, 0.0F, 0.0F, 120.0F, 600.0F};
+    const auto stocked = [](float vegetables_kg) {
+      core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+      world.units.rows[0].stock.resize(5, 0);
+      world.units.rows[0].stock[3] = static_cast<core::Grams>(vegetables_kg * 1000.0F);
+      world.units.rows[0].stock[4] = 100 * kKilo;
+      return world;
+    };
+    core::WorldState fresh = stocked(100.0F);
+    core::RunFamilyExchange(pickled, 4.0F, fresh);
+    failures += Expect(PantryOf(fresh, 3) == 2 * kKilo && PantryOf(fresh, 4) == 0 &&
+                           fresh.families.rows[0].trudodni_redeemed == 200,
+                       "with the fresh vegetables in the store the sauerkraut stays there, and "
+                       "the basket is whole without it");
+    core::WorldState short_fresh = stocked(0.5F);
+    core::RunFamilyExchange(pickled, 4.0F, short_fresh);
+    failures +=
+        Expect(PantryOf(short_fresh, 3) == kKilo / 2 && PantryOf(short_fresh, 4) == 3 * kKilo / 2,
+               "half a kilogram of fresh: the sauerkraut covers the other kilogram and a "
+               "half, gram for gram, and no more");
+  }
   return failures;
 }
 

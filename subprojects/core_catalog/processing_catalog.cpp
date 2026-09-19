@@ -17,11 +17,13 @@
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 5> kProcessingWorldParamKeys = {"barrel_capacity_kg",
+constexpr std::array<std::string_view, 7> kProcessingWorldParamKeys = {"barrel_capacity_kg",
                                                                        "barrel_wear_per_year",
                                                                        "sauerkraut_fresh_share",
                                                                        "sauerkraut_from_month",
-                                                                       "sauerkraut_to_month"};
+                                                                       "sauerkraut_to_month",
+                                                                       "cooperage_from_month",
+                                                                       "cooperage_to_month"};
 
 /// The recipes the design gives a rule of their own (processing_catalog.h).
 constexpr std::string_view kPicklingKey = "pickling";
@@ -266,6 +268,8 @@ bool ParseProcessingCatalog(const ITableSet& tables,
     // Human months 1..12 in the table, 0-based below, as the pasture's are.
     float from_month = static_cast<float>(catalog.pickling_from_month) + 1.0F;
     float to_month = static_cast<float>(catalog.pickling_to_month) + 1.0F;
+    float cooper_from = static_cast<float>(catalog.cooperage_from_month) + 1.0F;
+    float cooper_to = static_cast<float>(catalog.cooperage_to_month) + 1.0F;
     const Range months{.low = 1.0F, .high = 12.0F};
     const std::array<ScalarKnob, kProcessingWorldParamKeys.size()> knobs = {{
         {.key = kProcessingWorldParamKeys[0],
@@ -279,6 +283,8 @@ bool ParseProcessingCatalog(const ITableSet& tables,
          .range = {.low = 0.0F, .high = 1.0F}},
         {.key = kProcessingWorldParamKeys[3], .value = &from_month, .range = months},
         {.key = kProcessingWorldParamKeys[4], .value = &to_month, .range = months},
+        {.key = kProcessingWorldParamKeys[5], .value = &cooper_from, .range = months},
+        {.key = kProcessingWorldParamKeys[6], .value = &cooper_to, .range = months},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -286,6 +292,8 @@ bool ParseProcessingCatalog(const ITableSet& tables,
     catalog.barrel_capacity_grams = GramsFromKilograms(capacity_kg);
     catalog.pickling_from_month = static_cast<std::uint8_t>(from_month - 1.0F);
     catalog.pickling_to_month = static_cast<std::uint8_t>(to_month - 1.0F);
+    catalog.cooperage_from_month = static_cast<std::uint8_t>(cooper_from - 1.0F);
+    catalog.cooperage_to_month = static_cast<std::uint8_t>(cooper_to - 1.0F);
   }
   const ITable* const resources = tables.FindTable("resources");
   if (resources == nullptr) {
