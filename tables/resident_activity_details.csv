@@ -10,7 +10,6 @@ treated,at_home,Дома,0
 treated,post,Медпункт (ФАП),0
 treated,local_hospital,Своя участковая больница,0
 treated,hospital,Районная больница,1
-away,messenger,Гонцом,1
 away,market,Рынок райцентра,1
 away,raikom,По вызову райкома,1
 away,fair,На ярмарку,1

@@ -30,7 +30,6 @@ tractor_unit,350,2,vehicle
 truck_unit,300,2,vehicle
 tanker_unit,320,2,vehicle
 motorcycle_sidecar_unit,90,2,vehicle
-motorcycle_messenger_unit,70,2,vehicle
 motor_fuel_lot,40,2,goods
 uaz_unit,280,3,vehicle
 combine_unit,500,2,vehicle
