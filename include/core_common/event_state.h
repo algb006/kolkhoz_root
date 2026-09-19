@@ -441,6 +441,21 @@ enum class EventKind : std::uint8_t {
   /// proposed: `district_took_from_field`.
   kDistrictTookFromField,
 
+  /// family — a family with no roof, no free house, no barrack place, in the
+  /// cold, comes to the chairman for the certificate to leave (housing §20
+  /// step 4; «Без подписи председателя уехать нельзя»). Once per request;
+  /// amount = the reason, 0 = no house. The answer is kAnswerLeaveRequest,
+  /// and silence for `leave_request_answer_days` is a refusal. Interrupting:
+  /// a family stands at the door. Seam key proposed: `leave_requested`.
+  kLeaveRequested,
+
+  /// family, unit = the house it is lodged in — refused its certificate, the
+  /// family moves in with kin, or with the nearest neighbour (housing §20:
+  /// «подселение»). Two families in one house is a live signal for the layer
+  /// (washing, smoke, a crowd at the porch; look). kNotable. Seam key
+  /// proposed: `family_lodged`.
+  kFamilyLodged,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

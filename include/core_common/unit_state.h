@@ -304,6 +304,13 @@ struct UnitRow {
   /// bytes in a row. A dead mill is a fact about the mill.
   std::uint8_t dead = 0;
 
+  /// 0/1: A HOUSE HELD FOR A SPECIALIST (kReserveHouse; social units, the
+  /// reading hut; boss seq 191, 197): no couple, migrant or roofless family
+  /// moves in — except a roofless family in the cold — and the specialist the
+  /// district sends takes it first; the mark comes off when he is in. Written
+  /// by core_residents' decisions sub-step and the save's load. Save 74.
+  std::uint8_t reserved_for_specialist = 0;
+
   /// 0/1: THE UNIT IS "WARM" — insulated (unit rules §16). Written only by
   /// the construction sub-step of the decisions slot (phase 3) and by the
   /// save's load. Set by a finished kInsulateUnit; cleared by a finished

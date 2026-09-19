@@ -1097,11 +1097,16 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // step and phase, three fields), units +3 (the site's avral step, three
     // units). The first build ran before a prediction was written — a miss,
     // named; the second, with the fixture's values, was predicted and held.
-    {"families", 204, 0xdf80f905badb3e6bULL},
+    // 2026-09-19, save 74: +13 a family — the certificate asked (a byte and
+    // a day), the house lodged in and the lodging's cost; two families, +26.
+    // Predicted +18 before the cost was added, held; then +26, held.
+    {"families", 230, 0x7ac9a19343793bdULL},
     {"fields", 269, 0x8a59944f0a209f67ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
-    {"units", 353, 0x2c6b2b3117a7d2b1ULL},
+    // Save 74: +1 a unit — the house held for a specialist; three units, +3,
+    // predicted.
+    {"units", 356, 0x33b35b114e9503b1ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     {"herds", 70, 0x438d5136d7f12aa8ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
@@ -1138,7 +1143,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // bytes, same save number, predicted before the build.
     // The same day, kNowhereToStore became the top OrderRefusal — the lot
     // with nowhere to store: same 494 bytes, predicted.
-    {"orders", 494, 0x262177d18544a243ULL},
+    // Save 74: kAnswerLeaveRequest became the top OrderKind — same 494 bytes,
+    // the hash moved, predicted.
+    {"orders", 494, 0xc530cd0aff0349f9ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of

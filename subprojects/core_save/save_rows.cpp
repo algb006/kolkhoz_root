@@ -72,12 +72,16 @@ static_assert(AggregateArity<ResidentRow>() == 44,
 // and 18 fields.
 // 2026-09-19, save 65: overwork_penalty, a float — 72 -> 80 + amounts,
 // measured by a sizeof probe, not reasoned; 21 fields.
-static_assert(sizeof(FamilyRow) == 80 + kAmountsSize,
+// Save 74: a byte beside in_tent and two words after it — 80 -> 88 + amounts,
+// by the layout, confirmed by the build.
+static_assert(sizeof(FamilyRow) == 88 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
 // 2026-09-18, save 60: dry_months, the yard's sobriety clock — 20 fields.
-static_assert(AggregateArity<FamilyRow>() == 21,
+// Save 74: asked_to_leave, asked_day, lodged_in and lodging_penalty — 25
+// fields.
+static_assert(AggregateArity<FamilyRow>() == 25,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -147,7 +151,8 @@ static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
 // stays (measured), 7 fields.
 static_assert(AggregateArity<ConstructionState>() == 7,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<UnitRow>() == 17,
+// Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields.
+static_assert(AggregateArity<UnitRow>() == 18,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after.
@@ -507,6 +512,11 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   // stood, and whether it lives in a tent there.
   WriteVec2(out, row.lost_house_position);
   out.WriteU8(row.in_tent);
+  // The certificate asked for, and the house lodged in (save 74).
+  out.WriteU8(row.asked_to_leave);
+  out.WriteU32(row.asked_day);
+  out.WriteU32(row.lodged_in.value);
+  out.WriteFloat(row.lodging_penalty);
 
   out.WriteFloat(row.household_hours);
   out.WriteFloat(row.plot_ratio_sum);
@@ -539,6 +549,11 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's first meal eaten"));
   row.lost_house_position = ReadVec2(in);
   row.in_tent = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family in a tent"));
+  row.asked_to_leave =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family asked to leave"));
+  row.asked_day = in.ReadU32();
+  row.lodged_in.value = in.ReadU32();
+  row.lodging_penalty = in.ReadFloat();
 
   row.household_hours = in.ReadFloat();
   row.plot_ratio_sum = in.ReadFloat();
@@ -749,7 +764,8 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // which is the documented usual outcome, not the surprise. VERSION_SAVE
   // is 20 for it.
   out.WriteU8(row.dead);
-  out.WriteU8(row.insulated);  // unit rules §16, VERSION_SAVE 44
+  out.WriteU8(row.reserved_for_specialist);  // save 74
+  out.WriteU8(row.insulated);                // unit rules §16, VERSION_SAVE 44
   out.WriteFloat(row.stink_radius_m);
   // Modules and the production seam (2026-09-13, VERSION_SAVE 30).
   WriteEntityId(out, row.parent);
@@ -782,6 +798,8 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
   row.dead = in.ReadU8();
+  row.reserved_for_specialist =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "house held for a specialist"));
   row.insulated = in.ReadU8();
   row.stink_radius_m = in.ReadFloat();
   row.parent = ReadEntityId<UnitId>(in);

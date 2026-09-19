@@ -230,6 +230,16 @@ bool ShapeIsValid(const OrderRow& order) {
       // already, and has somewhere to go change with the world — the
       // consumer's verdict (order_state.h).
       return has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kReserveHouse:
+      // The house and a switch that is a switch. Whether it stands free is
+      // the consumer's (order_state.h).
+      return has_unit && !has_resident && !has_field && !has_herd && !has_stand && !has_site &&
+             order.enable <= 1;
+    case OrderKind::kAnswerLeaveRequest:
+      // The family and a switch: sign or refuse. Whether it has asked is the
+      // consumer's (order_state.h).
+      return order.family.value != kInvalidEntityIdValue && !has_resident && !has_unit &&
+             !has_field && !has_herd && !has_stand && !has_site && order.enable <= 1;
   }
   return false;
 }

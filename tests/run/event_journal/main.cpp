@@ -166,6 +166,10 @@ const char* KindName(core::EventKind kind) {
       return "limit_goods_at_the_gate";
     case core::EventKind::kDistrictTookFromField:
       return "district_took_from_field";
+    case core::EventKind::kLeaveRequested:
+      return "leave_requested";
+    case core::EventKind::kFamilyLodged:
+      return "family_lodged";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

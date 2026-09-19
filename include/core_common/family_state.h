@@ -124,10 +124,35 @@ struct FamilyRow {
   Vec2 lost_house_position;
 
   /// 1 while the family lives in a tent on its old plot: no free house, no
-  /// barrack (STUB, the rung is skipped), a warm season. Cleared when a free
-  /// house takes it in; when the cold comes with the family still in a tent,
-  /// it leaves the kolkhoz (§20, the fourth rung).
+  /// barrack (STUB, the rung is skipped), a warm season (world_params
+  /// `tent_from_month`..`tent_to_month`). Cleared when a free house takes it
+  /// in; when the cold comes with the family still in a tent, it comes for
+  /// the certificate (§20, the fourth rung) — until 2026-09-19 it left.
   std::uint8_t in_tent = 0;
+
+  /// 1 while the family has asked the chairman for the certificate to leave
+  /// and has had no answer (housing §20 step 4; «Без подписи председателя
+  /// уехать нельзя»), and `asked_day` the day it asked: silence for
+  /// `leave_request_answer_days` refuses it. Cleared by the answer. Save 74.
+  std::uint8_t asked_to_leave = 0;
+  std::uint32_t asked_day = 0;
+
+  /// The house the family is lodged in, refused its certificate: kin's, or
+  /// the nearest neighbour's (§20 «подселение»). `house` stays invalid — the
+  /// family has no roof of its own and every morning climbs the ladder again:
+  /// a free house or a barrack place takes it out. Invalid when not lodged.
+  /// Save 74.
+  UnitId lodged_in;
+
+  /// WHAT LODGING COSTS (housing §20 «комфорт и довольство обеих семей
+  /// сильно вниз»; boss seq 199-200): satisfaction points taken off the
+  /// aggregate, `lodging_satisfaction_penalty` while the family is lodged —
+  /// or hosts a lodged family — and nought the day that ends. A level and not
+  /// a sum over days: satisfaction is recomputed daily. On
+  /// satisfaction because the core has no housing comfort and no cold yet
+  /// (the design's two multipliers); when they come, the cost moves to them.
+  /// Written by the housing ladder at the day's start. Save 74.
+  float lodging_penalty = 0.0F;
 
   // -- private plot (household design §1, life-cycle §10) ------------------
   /// Game hours per day the household has for its plot: the working

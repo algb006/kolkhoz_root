@@ -697,6 +697,29 @@ enum class OrderKind : std::uint8_t {
   /// Seam key `talk_to_sport` (boss). Consumer: core_residents.
   kTalkToSport,
 
+  /// «ПОД СПЕЦИАЛИСТА» (social units, the reading hut; boss seq 191 and 197):
+  /// the chairman marks a free house to be held for the specialist the
+  /// district sends — the librarian, the teacher of epoch I. Names the unit
+  /// and a switch: `enable` 1 marks, 0 lifts. A marked house is taken by no
+  /// couple, no migrant, no roofless family — except a roofless family in the
+  /// cold, when a tent is impossible. The specialist moves into it at his
+  /// arrival and the mark comes off. Refusals: kNoSuchSubject (no such unit),
+  /// kNotEligible (not a standing house), kNotEmpty (somebody lives there).
+  /// Seam key `reserve_house` (boss). Consumer: core_residents.
+  kReserveHouse,
+
+  /// THE ANSWER TO A REQUEST FOR THE CERTIFICATE (housing §20 step 4; the
+  /// human's word of 2026-09-19 «Без подписи председателя уехать нельзя»):
+  /// names the family and a switch — `enable` 1 signs (the family leaves for
+  /// good; nothing else moves — epoch I has no authority to raise, boss's
+  /// correction the same day), 0 refuses (the family is lodged with kin, or
+  /// the nearest neighbour, until a house or a barrack place is found). A request unanswered for
+  /// `leave_request_answer_days` is refused by itself. Refusals:
+  /// kNoSuchSubject (no such family), kNotEligible (the family has not asked,
+  /// or has been answered). Seam key `answer_leave_request` (boss).
+  /// Consumer: core_residents.
+  kAnswerLeaveRequest,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
