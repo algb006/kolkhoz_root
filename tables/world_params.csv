@@ -199,3 +199,4 @@ reading_hut_alcohol_loss,1,core
 alcohol_inherit_threshold,40,core
 alcohol_inherit_factor,0.3,core
 alcohol_inherit_max,12,core
+talk_months,12,core
