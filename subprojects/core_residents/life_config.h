@@ -210,6 +210,27 @@ struct LifeConfig {
   /// old house that fell). The roofless still do — for them it beats leaving.
   UnitTypeId old_house_type;
   float old_house_near_collapse_wear = 0.9F;
+
+  /// The warm months a roofless family may live in a tent (housing §20
+  /// «только в тёплое время»; world_params `tent_from_month`, `tent_to_month`,
+  /// human 1..12, boss seq 197: May to September), 0-based here. Outside them
+  /// is «the cold»: a roofless family may take a house held for a specialist,
+  /// and one with nowhere to go asks for the certificate. Until 2026-09-19 the
+  /// months were written in the code.
+  std::uint8_t tent_from_month = 4;
+  std::uint8_t tent_to_month = 8;
+
+  /// Days a request for the certificate waits for the chairman before it is
+  /// refused by itself (world_params `leave_request_answer_days`, 2; STUB,
+  /// housing §20): a family does not stand in the frost waiting for a button.
+  float leave_request_answer_days = 2.0F;
+
+  /// Satisfaction points a lodged family, and the family that hosts it, lose
+  /// while the lodging lasts — a LEVEL, not a daily loss (world_params
+  /// `lodging_satisfaction_penalty`, 20; STUB, econ; boss seq 200: satisfaction
+  /// is recomputed every day, and a sum over days would take everybody to
+  /// nought by the form of the rule).
+  float lodging_satisfaction_penalty = 20.0F;
   ProfessionId teacher_post;
   ProfessionId librarian_post;
 

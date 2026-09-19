@@ -8,7 +8,6 @@
 #include "core_common/unit_state.h"
 
 namespace core {
-
 namespace {
 
 bool IsFreeHouse(const LifeConfig& config, const UnitRow& unit) {
@@ -25,9 +24,12 @@ bool OnTheBrink(const LifeConfig& config, const UnitRow& unit) {
 
 }  // namespace
 
-UnitId FreeHouse(const LifeConfig& config, const WorldState& current) {
+UnitId FreeHouse(const LifeConfig& config, const WorldState& current, bool cold) {
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-    if (IsFreeHouse(config, current.units.rows[row])) {
+    const UnitRow& unit = current.units.rows[row];
+    // A house held for a specialist is nobody's — but a freezing family's
+    // (boss seq 191: «кроме бездомных зимой: замерзающая семья важнее»).
+    if (IsFreeHouse(config, unit) && (cold || unit.reserved_for_specialist == 0)) {
       return current.units.row_ids[row];
     }
   }
@@ -37,7 +39,8 @@ UnitId FreeHouse(const LifeConfig& config, const WorldState& current) {
 UnitId FreeHouseNotOnTheBrink(const LifeConfig& config, const WorldState& current) {
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
     const UnitRow& unit = current.units.rows[row];
-    if (IsFreeHouse(config, unit) && !OnTheBrink(config, unit)) {
+    if (IsFreeHouse(config, unit) && !OnTheBrink(config, unit) &&
+        unit.reserved_for_specialist == 0) {
       return current.units.row_ids[row];
     }
   }

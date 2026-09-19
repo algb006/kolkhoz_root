@@ -19,6 +19,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "housing.h"
+#include "housing_ladder.h"
 
 namespace core {
 namespace {
@@ -57,6 +58,11 @@ Metric BlendInclination(RngState& rng,
   const float parents_mid = (mother_value + father_value) * 0.5F;
   return parents_mid * parent_pull + DrawInRange(rng, 0.0F, 100.0F) * (1.0F - parent_pull);
 }
+
+}  // namespace
+
+// DropFamilyIfEmpty and RemoveResident are demography.h's: the housing ladder
+// (housing_ladder.cpp) sends a family away by the same two doors.
 
 /// @brief Drops a household that has nobody left in it, and settles what it
 /// leaves behind.
@@ -217,6 +223,8 @@ void RemoveResident(WorldState& current, ResidentId id) {
   }
   DropFamilyIfEmpty(current, family);
 }
+
+namespace {
 
 void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
   std::vector<ResidentId> dead;
@@ -404,6 +412,8 @@ void RunBirths(const LifeConfig& config,
   }
 }
 
+}  // namespace
+
 /// @brief Close kin may not marry: same household, a shared parent
 /// (maternal or paternal half-siblings included), or a direct
 /// parent-child pair (possible after remarriage).
@@ -423,6 +433,8 @@ bool AreCloseKin(const ResidentRow& bride,
       bride.mother.value == groom_id.value || groom.father.value == bride_id.value;
   return shared_mother || shared_father || parent_child;
 }
+
+namespace {
 
 /// A new household is not conjured out of nothing. The couple comes from
 /// two existing yards, and food comes with them — the dowry is the oldest
@@ -452,76 +464,6 @@ void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
     const auto share = GramsFromFloat(static_cast<float>(parents[index]) * kDowryShare);
     parents[index] -= share;
     newlyweds[index] += share;
-  }
-}
-
-/// @brief Whether the month is warm enough for a tent (housing design §20,
-/// "только в тёплое время"): May to September. The months are the core's
-/// reading of the design's words, named here (STUB until a temperature rule
-/// is written for it).
-bool TentWeather(Month month) {
-  return month >= Month::kMay && month <= Month::kSeptember;
-}
-
-/// @brief Families whose house is gone go down housing design §20's ladder,
-/// the same for every way a roof is lost: a free house; the barrack (STUB —
-/// the core keeps one family to a unit, so the rung is skipped); a tent on
-/// the old plot in the warm months; and when the cold comes with nowhere to
-/// go, the family leaves the kolkhoz for good. Runs first in the day, so a
-/// house freed yesterday goes to a family out in the open before any couple.
-///
-/// Until 2026-09-14 a house was raised from nothing instead (boss, parcel
-/// 257).
-void RunRoofless(const LifeConfig& config, WorldState& current) {
-  std::vector<FamilyId> leaving;
-  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
-    FamilyRow& family = current.families.rows[row];
-    if (family.house.value != kInvalidEntityIdValue &&
-        FindRow(current.units, family.house) != kNoRow) {
-      continue;
-    }
-    const FamilyId id = current.families.row_ids[row];
-    const UnitId house = FreeHouse(config, current);
-    if (house.value != kInvalidEntityIdValue) {
-      const std::uint32_t house_row = FindRow(current.units, house);
-      current.units.rows[house_row].household = id;
-      family.house = house;
-      family.lost_house_position = current.units.rows[house_row].position;
-      family.in_tent = 0;
-      continue;
-    }
-    family.house = UnitId{};
-    if (TentWeather(current.calendar.date.month)) {
-      if (family.in_tent == 0) {
-        family.in_tent = 1;
-        SimEvent& tent = EmitEvent(current, EventKind::kFamilyInTent, EventSeverity::kNotable);
-        tent.family = id;
-      }
-      continue;
-    }
-    leaving.push_back(id);
-  }
-  for (const FamilyId family : leaving) {
-    std::vector<ResidentId> members;
-    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
-      if (current.residents.rows[row].family.value == family.value) {
-        members.push_back(current.residents.row_ids[row]);
-      }
-    }
-    SimEvent& gone =
-        EmitEvent(current, EventKind::kFamilyLeftForNoHouse, EventSeverity::kInterrupting);
-    gone.family = family;
-    gone.amount = static_cast<std::int64_t>(members.size());
-    for (const ResidentId member : members) {
-      SimEvent& left = EmitEvent(current, EventKind::kResidentLeft, EventSeverity::kNotable);
-      left.resident = member;
-      left.family = family;
-      RemoveResident(current, member);
-    }
-    current.ledger.current.departures += static_cast<std::uint32_t>(members.size());
-    // A family with nobody in it was dropped by the last RemoveResident; one
-    // that had nobody to begin with goes here.
-    DropFamilyIfEmpty(current, family);
   }
 }
 

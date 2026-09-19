@@ -60,6 +60,23 @@ void RunDemographyDay(const LifeConfig& config, WorldState& current);
 ///        rules do.
 void RunHygiene(const LifeConfig& config, WorldState& current);
 
+/// @brief Drops a household that has nobody left in it, and settles what it
+/// leaves behind (its yard's herds to an heir, its house free). Shared with
+/// the housing ladder (housing_ladder.h), which sends a family away by it.
+void DropFamilyIfEmpty(WorldState& current, FamilyId family);
+
+/// @brief Removes a resident and repairs links: the spouse becomes widowed,
+/// an emptied family disappears, a post held is announced vacant.
+void RemoveResident(WorldState& current, ResidentId id);
+
+/// @brief Close kin: same household, a shared parent, or a parent and child.
+/// A couple may not marry; a family refused its certificate is lodged with
+/// kin first (housing_ladder.h).
+bool AreCloseKin(const ResidentRow& bride,
+                 ResidentId bride_id,
+                 const ResidentRow& groom,
+                 ResidentId groom_id);
+
 }  // namespace core
 
 #endif  // CORE_RESIDENTS_DEMOGRAPHY_H_

@@ -25,14 +25,18 @@ bool IsHousing(const LifeConfig& config, UnitTypeId type) {
          config.definitions.units.is_housing[type.value] != 0;
 }
 
-/// Rows of empty housing that stands, in row order.
+/// Rows of empty housing that stands: the houses held for a specialist first
+/// (kReserveHouse; boss seq 191, 197 — the specialist takes the house kept for
+/// him), then the rest, each in row order.
 std::vector<std::uint32_t> FreeHouses(const LifeConfig& config, const WorldState& current) {
   std::vector<std::uint32_t> free;
-  for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-    const UnitRow& unit = current.units.rows[row];
-    if (unit.household.value == kInvalidEntityIdValue && unit.level > 0 &&
-        IsHousing(config, unit.type)) {
-      free.push_back(row);
+  for (const std::uint8_t reserved : {std::uint8_t{1}, std::uint8_t{0}}) {
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      const UnitRow& unit = current.units.rows[row];
+      if (unit.household.value == kInvalidEntityIdValue && unit.level > 0 &&
+          unit.reserved_for_specialist == reserved && IsHousing(config, unit.type)) {
+        free.push_back(row);
+      }
     }
   }
   return free;
@@ -197,6 +201,8 @@ void ArriveThoseDue(const LifeConfig& config, WorldState& current) {
       continue;  // the house was taken on the road; he waits for tomorrow
     }
     Arrive(config, current, arrival, free.front());
+    // He is in: the house is his, and no longer held (boss seq 191).
+    current.units.rows[free.front()].reserved_for_specialist = 0;
     arrived.push_back(current.specialist_arrivals.row_ids[row]);
   }
   for (const SpecialistArrivalId id : arrived) {

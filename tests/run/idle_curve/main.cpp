@@ -651,6 +651,17 @@ int main(int argc, char** argv) {
   /// SHARE of the season, not a nought — boss seq 78).
   float first_year_sown_ha = -1.0F;
   float canon_sown_ha = 0.0F;
+  /// THE HOUSING LADDER (housing §20; boss seq 199-200): families gone for
+  /// want of a house — with no chairman to sign, only when nowhere at all is
+  /// left to lodge them — requests for the certificate, lodgings; and the
+  /// population at each year's end, for the year it crosses
+  /// `village_end_population`.
+  std::uint32_t families_left_no_house = 0;
+  std::uint32_t left_while_a_house_stood = 0;
+  std::int32_t last_house_fell_year = -1;
+  std::uint32_t leave_requests = 0;
+  std::uint32_t lodgings = 0;
+  std::vector<std::size_t> population_by_year;
   for (const core::FieldRow& field : world.State().fields.rows) {
     if (field.kind == core::LandKind::kArable && core::HasRotation(field) &&
         field.rotation_year0.value != core::kInvalidDefIdValue) {
@@ -679,6 +690,23 @@ int main(int argc, char** argv) {
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world->AdvanceStep();
         const core::WorldState& state = world.State();
+        bool lived_in_house = false;
+        for (const core::UnitRow& unit : state.units.rows) {
+          lived_in_house = lived_in_house ||
+                           (unit.level > 0 && unit.household.value != core::kInvalidEntityIdValue);
+        }
+        for (const core::SimEvent& event : state.step_events) {
+          const bool gone = event.kind == core::EventKind::kFamilyLeftForNoHouse;
+          families_left_no_house += gone ? 1U : 0U;
+          // (в): leaving without a certificate is right only when nowhere is
+          // left to lodge — not one house lived in at that step.
+          left_while_a_house_stood += gone && lived_in_house ? 1U : 0U;
+          leave_requests += event.kind == core::EventKind::kLeaveRequested ? 1U : 0U;
+          lodgings += event.kind == core::EventKind::kFamilyLodged ? 1U : 0U;
+        }
+        if (!lived_in_house && last_house_fell_year < 0) {
+          last_house_fell_year = static_cast<std::int32_t>(year + 1);
+        }
         for (std::uint32_t row = 0; row < state.residents.rows.size(); ++row) {
           const core::ResidentActivity what = core::ActivityOfResident(state, row, rules).activity;
           worked += what == core::ResidentActivity::kWorking ? 1U : 0U;
@@ -790,6 +818,7 @@ int main(int argc, char** argv) {
       }
       last_stalled_year = static_cast<std::int32_t>(year + 1);
     }
+    population_by_year.push_back(done.residents.rows.size());
     std::cout << "idle_curve: " << (year + 1) << " | " << done.residents.rows.size() << " | "
               << of_age << " | " << worked << " | " << idled << " | "
               << (seam_sum / (samples == 0 ? 1 : samples)) << " | назначено-но-нечем " << blocked
@@ -1103,12 +1132,53 @@ int main(int argc, char** argv) {
                             "a village with a chairman and a team sows every year: a year with "
                             "nothing sown is the shape of the dead end");
   }
+  // A VILLAGE NOBODY STEERS NO LONGER ENDS BY EMPTYING, and that is the
+  // design's word since 2026-09-19: «Без подписи председателя уехать нельзя»,
+  // and a refused family is lodged (housing §20). Until then this arm asserted
+  // a year with nothing sown — the village had emptied through the roofless
+  // leaving by themselves (86 souls to 22 in twelve years). Measured the same
+  // day with lodging at no cost: 88 → 106 → 73, no end in twelve years.
+  //
+  // What it asserts now (boss seq 202): nobody leaves for want of a house
+  // while a single house is lived in — leaving without a certificate is right
+  // only when nowhere is left to lodge (seq 199 (в)); and it PRINTS the year
+  // the population crosses `village_end_population` (40) beside the year the
+  // last lived-in house fell. Measured 2026-09-19 with the lodging's cost:
+  // both arms end in year 10, through the housing stock — all 21 start houses
+  // are old houses that fall within twelve years, and nobody builds. Growth
+  // after the third year is not asserted: it is held by the houses, not by
+  // the lodging's price, since lodging starts only as houses fall.
   if (no_chairman || yard_only) {
     std::cout << "idle_curve: без председателя село встало в " << stalled_years << " годах из "
               << kYears << '\n';
-    failures += run::Expect(stalled_years > 0,
-                            "a village nobody steers comes to a stop: the state the host declares "
-                            "«Село кончилось» from (world_params.csv village_end_population)");
+    constexpr std::size_t kVillageEndPopulation = 40;  // world_params.csv, host's row
+    std::int32_t crossed = -1;
+    for (std::size_t year = 0; year < population_by_year.size(); ++year) {
+      if (crossed < 0 && population_by_year[year] < kVillageEndPopulation) {
+        crossed = static_cast<std::int32_t>(year + 1);
+      }
+    }
+    std::cout << "idle_curve: жилищная лестница — просьб о справке " << leave_requests
+              << ", подселений " << lodgings << ", ушло без дома семей " << families_left_no_house
+              << " (из них при стоящем жилом доме " << left_while_a_house_stood << ")\n";
+    std::cout << "idle_curve: население ниже " << kVillageEndPopulation << " — "
+              << (crossed < 0 ? std::string("не опустилось за ") + std::to_string(kYears) + " лет"
+                              : "с " + std::to_string(crossed) + "-го года")
+              << "; последний жилой дом рухнул — "
+              << (last_house_fell_year < 0
+                      ? std::string("не рухнул")
+                      : "на " + std::to_string(last_house_fell_year) + "-м году")
+              // The same year or the next: the refused wait two days for an
+              // answer, and a house that falls at a year's end is left the
+              // year after.
+              << (crossed > 0 && last_house_fell_year > 0 && crossed >= last_house_fell_year &&
+                          crossed <= last_house_fell_year + 1
+                      ? " — конец через жилой фонд"
+                      : "")
+              << '\n';
+    failures += run::Expect(left_while_a_house_stood == 0,
+                            "nobody leaves for want of a house while a single house is lived in: "
+                            "without a signature a family is lodged");
   }
   // --no-horses ASSERTS THE OPPOSITE OF ITS NEIGHBOURS ABOVE, and the
   // difference between them is the whole design. There the chairman is gone

@@ -45,6 +45,7 @@
 #include "family_meal.h"
 #include "food_config.h"
 #include "household_plot.h"
+#include "housing_ladder.h"
 #include "life_config.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
@@ -120,7 +121,9 @@ class FamilyMetricsPhase final : public IParallelPhase {
       // members by labor at their pay (family_state.h). Off the aggregate
       // and not a component: the design says «бьёт по довольству» and names
       // no component it belongs to.
-      const float after_overwork = capped - family.overwork_penalty;
+      // AND LODGING, the same way (housing §20; boss seq 199): two families
+      // in one house, both of them (family_state.h, lodging_penalty).
+      const float after_overwork = capped - family.overwork_penalty - family.lodging_penalty;
       family.satisfaction = after_overwork > 0.0F ? after_overwork : 0.0F;
     }
   }
@@ -340,6 +343,9 @@ class ResidentsSystem final : public IResidentsSystem {
     // The chairman's word on a trader first, in whatever hour it came: a man
     // taken in the hour back carries nothing home (night_trade.h).
     ConsumeNightTradeOrders(current);
+    // The house held for a specialist and the answer to a certificate, in
+    // whatever hour they came (housing_ladder.h).
+    ConsumeHousingOrders(config_, current);
     // The chairman's talk, in whatever hour it came (sport.h).
     ConsumeTalkOrders(
         config_.sport, config_.alcoholism.adult_from_years, config_.life_speedup, current);

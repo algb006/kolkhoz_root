@@ -159,7 +159,12 @@ bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home) {
     home = household.lost_house_position;
     return true;
   }
-  const std::uint32_t house_row = FindRow(world.units, household.house);
+  // A lodged family lives in the house it is lodged in (housing §20).
+  const UnitId roof = household.house.value == kInvalidEntityIdValue &&
+                              household.lodged_in.value != kInvalidEntityIdValue
+                          ? household.lodged_in
+                          : household.house;
+  const std::uint32_t house_row = FindRow(world.units, roof);
   if (house_row == kNoRow) {
     return false;
   }

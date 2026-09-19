@@ -22,16 +22,18 @@ namespace core {
 
 /// @brief The first FREE house, in row order: a unit of a housing type,
 ///        standing (level 1 or more), with no household in it — new, freed,
-///        or inherited at the start (life-cycle §12). Invalid when there is
-///        none.
-UnitId FreeHouse(const LifeConfig& config, const WorldState& current);
+///        or inherited at the start (life-cycle §12). A house held for a
+///        specialist only when `cold` — the roofless family's house, in the
+///        months a tent is impossible (boss seq 191). Invalid when none.
+UnitId FreeHouse(const LifeConfig& config, const WorldState& current, bool cold);
 
 /// @brief FreeHouse for a NEWCOMER — a wedding couple or a migrant: the same,
 ///        less an old house on the brink, wear at or above
 ///        old_house_near_collapse_wear of the scale (boss seq 191; migrants by
-///        boss's word the same day). The couple waits on in the parents'
-///        households, the migrant does not come. Only the roofless still take
-///        such a house. Invalid when no other is free.
+///        boss's word the same day), and less a house held for a specialist.
+///        The couple waits on in the parents' households, the migrant does
+///        not come. Only the roofless still take such a house. Invalid when
+///        no other is free.
 UnitId FreeHouseNotOnTheBrink(const LifeConfig& config, const WorldState& current);
 
 }  // namespace core

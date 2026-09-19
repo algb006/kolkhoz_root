@@ -960,7 +960,7 @@ int CheckCoupleSkipsHouseOnTheBrink() {
   old_house.wear = 95.0F;
   const core::UnitId brink = AppendRow(world.units, old_house);
 
-  failures += Expect(core::FreeHouse(config, world).value == brink.value,
+  failures += Expect(core::FreeHouse(config, world, false).value == brink.value,
                      "brink: a roofless family still takes the old house about to fall");
   failures +=
       Expect(core::FreeHouseNotOnTheBrink(config, world).value == core::kInvalidEntityIdValue,
@@ -1059,8 +1059,9 @@ int CheckWeddingQueueOrder() {
 
 /// A family whose house fell goes down housing design §20's ladder: a tent on
 /// its old plot in the warm season — its day starts there — and, when the
-/// cold comes with no free house, it leaves the kolkhoz; a free house takes
-/// it in at any rung.
+/// cold comes with no free house, it asks for the certificate: signed, it
+/// leaves; refused or unanswered, it is lodged. A free house takes it in at
+/// any rung; a house held for a specialist only in the cold.
 int CheckRooflessLadder() {
   int failures = 0;
   const HousingTables tables;
@@ -1106,22 +1107,123 @@ int CheckRooflessLadder() {
                        "and its day starts on the plot its house stood on");
     failures += Expect(world.units.rows.empty(), "and no house was raised from nothing");
   }
-  // October (days 36-39): no tent in the cold, and no house — the family leaves.
+  // A neighbour's house, lived in: where a refused family is lodged.
+  const core::Vec2 next_door{.x = 4100.0F, .y = 7000.0F};
+  const auto add_neighbour = [&next_door](core::WorldState& world) {
+    const core::FamilyId neighbours = AppendRow(world.families, core::FamilyRow{});
+    AddAdult(world, neighbours, core::Sex::kFemale, 50.0F);
+    core::UnitRow house;
+    house.type = core::UnitTypeId{2};
+    house.position = next_door;
+    house.household = neighbours;
+    const core::UnitId house_id = AppendRow(world.units, house);
+    world.families.rows.back().house = house_id;
+    return house_id;
+  };
+  const auto answer = [](core::WorldState& world, core::FamilyId family, std::uint8_t sign) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kAnswerLeaveRequest;
+    order.family = family;
+    order.enable = sign;
+    AppendRow(world.orders, order);
+  };
+  // October (days 36-39): no tent in the cold, no free house — the family comes
+  // for the certificate («Без подписи председателя уехать нельзя», 2026-09-19),
+  // and silence for two days lodges it with the neighbour.
   {
     core::WorldState world = roofless_world(36);
+    const core::UnitId neighbours_house = add_neighbour(world);
+    const core::FamilyId yard = world.families.row_ids[0];
     world.step_events.clear();
     RunDays(*system, world, 1);
-    const std::uint32_t left = count(world, core::EventKind::kResidentLeft);
+    failures += Expect(count(world, core::EventKind::kLeaveRequested) == 1 &&
+                           world.families.rows[0].asked_to_leave == 1 &&
+                           world.residents.rows.size() == 3 && world.ledger.current.departures == 0,
+                       "roofless in October: the family asks for the certificate and stays");
+    RunDays(*system, world, 1);
+    failures += Expect(world.families.rows[0].lodged_in.value == core::kInvalidEntityIdValue,
+                       "a day's silence is not yet a refusal");
+    world.step_events.clear();
+    RunDays(*system, world, 1);
+    core::Vec2 home{};
+    const bool has_home = core::HomePositionOf(world, yard, home);
+    failures += Expect(world.families.rows[0].lodged_in.value == neighbours_house.value &&
+                           world.families.rows[0].asked_to_leave == 0 &&
+                           count(world, core::EventKind::kFamilyLodged) == 1,
+                       "two days' silence refuses it: the family is lodged with the neighbour");
+    failures += Expect(has_home && home.x == next_door.x && home.y == next_door.y,
+                       "and its day starts from the house it is lodged in");
+    // Both pay, a level and not a sum (boss seq 200; the default, 20).
+    failures += Expect(world.families.rows[0].lodging_penalty == 20.0F &&
+                           world.families.rows[1].lodging_penalty == 20.0F,
+                       "the lodged family and its host each carry the lodging's cost");
+    RunDays(*system, world, 1);
+    failures += Expect(world.families.rows[0].lodging_penalty == 20.0F,
+                       "and the next day the same cost, not twice it");
+  }
+  // Nowhere to lodge — not one house lived in: the refusal cannot be carried
+  // out, and the family leaves as if signed (boss seq 199 (в)).
+  {
+    core::WorldState world = roofless_world(36);
+    RunDays(*system, world, 3);
+    failures += Expect(world.residents.rows.empty() && world.ledger.current.departures == 2,
+                       "no house lived in at all: the refused family leaves, both of them");
+  }
+  // Signed: the family leaves for good, by the chairman's hand.
+  {
+    core::WorldState world = roofless_world(36);
+    add_neighbour(world);
+    const core::FamilyId yard = world.families.row_ids[0];
+    RunDays(*system, world, 1);
+    answer(world, yard, 1);
+    world.step_events.clear();
+    RunDays(*system, world, 1);
     bool whole_family = false;
     for (const core::SimEvent& event : world.step_events) {
       whole_family = whole_family ||
                      (event.kind == core::EventKind::kFamilyLeftForNoHouse && event.amount == 2);
     }
-    failures += Expect(world.residents.rows.empty() && world.families.rows.empty(),
-                       "roofless in October: the family leaves the kolkhoz");
-    failures += Expect(whole_family && left == 2,
-                       "and the village hears the family left for want of a house, both of them");
-    failures += Expect(world.ledger.current.departures == 2, "counted as two departures");
+    failures += Expect(world.residents.rows.size() == 1 && whole_family &&
+                           world.ledger.current.departures == 2 &&
+                           world.orders.rows.back().status == core::OrderStatus::kDone,
+                       "signed: the family leaves the kolkhoz, both of them, two departures");
+  }
+  // Refused by the chairman: lodged at once; a family that has not asked
+  // cannot be answered.
+  {
+    core::WorldState world = roofless_world(36);
+    const core::UnitId neighbours_house = add_neighbour(world);
+    const core::FamilyId yard = world.families.row_ids[0];
+    answer(world, yard, 0);
+    RunDays(*system, world, 1);
+    failures += Expect(world.orders.rows.back().refusal == core::OrderRefusal::kNotEligible,
+                       "an answer before the family has asked is refused");
+    answer(world, yard, 0);
+    RunDays(*system, world, 1);
+    failures += Expect(world.families.rows[0].lodged_in.value == neighbours_house.value &&
+                           world.orders.rows.back().status == core::OrderStatus::kDone,
+                       "refused: lodged with the neighbour the same day");
+  }
+  // A house held for a specialist: passed over in May, a roof in October.
+  {
+    const auto reserved_world = [&roofless_world](std::uint32_t day) {
+      core::WorldState world = roofless_world(day);
+      core::UnitRow held;
+      held.type = core::UnitTypeId{2};
+      held.position = core::Vec2{.x = 4200.0F, .y = 7000.0F};
+      held.reserved_for_specialist = 1;
+      AppendRow(world.units, held);
+      return world;
+    };
+    core::WorldState may = reserved_world(16);
+    RunDays(*system, may, 1);
+    failures += Expect(may.families.rows[0].in_tent == 1 &&
+                           may.units.rows[0].household.value == core::kInvalidEntityIdValue,
+                       "held for a specialist: in May the family pitches a tent beside it");
+    core::WorldState october = reserved_world(36);
+    RunDays(*system, october, 1);
+    failures += Expect(october.families.rows[0].house.value == october.units.row_ids[0].value,
+                       "in the cold a freezing family takes it all the same");
   }
   // A free house takes in a family in a tent, and the tent is struck.
   {

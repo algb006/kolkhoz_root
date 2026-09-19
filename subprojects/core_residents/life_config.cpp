@@ -267,7 +267,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 24> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 28> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -306,9 +306,19 @@ constexpr std::array<std::string_view, 24> kLifeWorldParamKeys = {
     "mud_speed_factor",
     // The old house «on the brink» (boss seq 191): host's fact's row, read by
     // the wedding too — a couple does not move into it.
-    "old_house_near_collapse_wear"};
+    "old_house_near_collapse_wear",
+    // The housing ladder (boss seq 197): the tent's months and the days a
+    // request for the certificate waits for an answer.
+    "tent_from_month",
+    "tent_to_month",
+    "leave_request_answer_days",
+    "lodging_satisfaction_penalty"};
 
 bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error) {
+  // Human months 1..12 in the table, 0-based in the config.
+  float tent_from = static_cast<float>(config.tent_from_month) + 1.0F;
+  float tent_to = static_cast<float>(config.tent_to_month) + 1.0F;
+  const Range months{.low = 1.0F, .high = 12.0F};
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
       ScalarKnob{.key = kLifeWorldParamKeys[0],
                  .value = &config.body.height_male_m,
@@ -386,8 +396,21 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.05F, .high = 1.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[23],
                  .value = &config.old_house_near_collapse_wear,
-                 .range = Range{.low = 0.0F, .high = 1.0F}}};
-  return ReadKnobs(world, "world_params", rows, error);
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[24], .value = &tent_from, .range = months},
+      ScalarKnob{.key = kLifeWorldParamKeys[25], .value = &tent_to, .range = months},
+      ScalarKnob{.key = kLifeWorldParamKeys[26],
+                 .value = &config.leave_request_answer_days,
+                 .range = Range{.low = 0.0F, .high = 48.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[27],
+                 .value = &config.lodging_satisfaction_penalty,
+                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+  if (!ReadKnobs(world, "world_params", rows, error)) {
+    return false;
+  }
+  config.tent_from_month = static_cast<std::uint8_t>(tent_from - 1.0F);
+  config.tent_to_month = static_cast<std::uint8_t>(tent_to - 1.0F);
+  return true;
 }
 
 bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& error) {
