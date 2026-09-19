@@ -513,13 +513,33 @@ class LaborSystem final : public ILaborSystem {
       work.kind = WorkKind::kUnitWork;
       work.unit = current.units.row_ids[row];
       const float* const seam = WorkSeamOf(current, work);
-      if (seam == nullptr || *seam <= 0.0F) {
+      if (seam == nullptr || *seam <= 0.0F || !ReachesForADay(current, resident, work)) {
         continue;
       }
       resident.work = work;
       ++places_taken[row];
       return;
     }
+  }
+
+  /// Whether the holder walks to `work` today by the accountant's own road
+  /// rule (RoadLeavesAWorkingDay; boss, host-econ-shops seq 13, production
+  /// units §8а «Мастер цеха и дорога»): a post is no licence to walk further
+  /// than a work order would send him, or out into a day the road eats. He
+  /// stays home instead, and the shop says why (kProcessingStopped).
+  bool ReachesForADay(const WorldState& current,
+                      const ResidentRow& resident,
+                      const WorkAssignment& work) const {
+    Vec2 home;
+    Vec2 place;
+    if (!HomePosition(current, resident.family, home) || !WorkPlace(current, work, place)) {
+      return false;
+    }
+    const float travel = TravelHours(home, place, HoursPerKm(config_, WorkKind::kHarvest));
+    return RoadLeavesAWorkingDay(travel,
+                                 current.weather.daylight_hours,
+                                 config_.travel_limit_hours,
+                                 config_.min_usable_hours);
   }
 
   /// Barn work is a daily quantity: the yearly norm of the kind spread over

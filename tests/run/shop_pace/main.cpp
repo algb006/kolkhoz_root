@@ -38,6 +38,7 @@
 #include "../common/run_harness.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/resident_state.h"
@@ -168,16 +169,27 @@ core::UnitId BuildShop(core::WorldState& world,
   return shop_id;
 }
 
-/// The day's alarm that says why the shop stands, or kInvalidDefIdValue.
-std::uint32_t StandReason(core::ISimulation& simulation, core::UnitId shop) {
+/// The day's alarm that says why the shop stands, in words; empty if none.
+std::string StandReason(core::ISimulation& simulation, core::UnitId shop) {
   std::vector<core::Alarm> alarms;
   simulation.CollectAlarms(alarms);
   for (const core::Alarm& alarm : alarms) {
-    if (alarm.kind == core::AlarmKind::kProcessingStopped && alarm.unit.value == shop.value) {
-      return alarm.resource.value;
+    if (alarm.kind != core::AlarmKind::kProcessingStopped || alarm.unit.value != shop.value) {
+      continue;
+    }
+    switch (alarm.stop_reason) {
+      case core::ProcessingStopReason::kShortOf:
+        return "short_of r" + std::to_string(alarm.resource.value);
+      case core::ProcessingStopReason::kNoRoom:
+        return "no_room r" + std::to_string(alarm.resource.value);
+      case core::ProcessingStopReason::kTooFar:
+        return "too_far " + std::to_string(alarm.amount) + " h";
+      case core::ProcessingStopReason::kNone:
+      case core::ProcessingStopReason::kProcessingStopReasonCount:
+        return "UNNAMED";
     }
   }
-  return core::kInvalidDefIdValue;
+  return "";
 }
 
 }  // namespace
@@ -204,10 +216,16 @@ int main(int argc, char** argv) {
   float best_day = 0.0F;
   std::uint32_t silent_stands = 0;
   std::uint32_t kraut_issued_days = 0;
-  std::cout << "day  master by the hour (U shop, . none) | demand | worked man-days | veg t | "
-               "kraut t | stands for\n";
+  std::uint32_t too_far_days = 0;
+  std::uint32_t walked_too_far = 0;
+  bool previous_too_far = false;
+  std::cout << "day      master by the hour (U shop, . none) | demand | worked man-days | veg t | "
+               "kraut t | daylight h | stands for\n";
   for (std::uint32_t day = 0; day < kDaysWatched; ++day) {
     const core::Grams kraut_before = HeldOf(world.State(), keys.sauerkraut);
+    const float asked_this_morning = world.State()
+                                         .units.rows[core::FindRow(world.State().units, shop_id)]
+                                         .production_days_written;
     std::string hours;
     float worked = 0.0F;
     for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -222,20 +240,31 @@ int main(int argc, char** argv) {
     const core::Grams kraut = HeldOf(after, keys.sauerkraut);
     const auto reserve = static_cast<core::Grams>(
         0.25 * static_cast<double>(core::AmountOf(after.ledger.current.harvest, keys.vegetables)));
-    const std::uint32_t reason = StandReason(*world, shop_id);
-    std::cout << std::setw(3) << after.calendar.day << "  " << hours << " | "
+    const std::string reason = StandReason(*world, shop_id);
+    const core::SimDay watched = after.calendar.day - 1;
+    const bool day_off = core::IsDayOffIn(after, watched);
+    std::cout << std::setw(3) << watched << (day_off ? " off " : "     ") << hours << " | "
               << shop.production_days_written << " | " << worked << " | "
               << static_cast<double>(vegetables) / 1e6 << " | " << static_cast<double>(kraut) / 1e6
-              << " | " << (reason == core::kInvalidDefIdValue ? "-" : std::to_string(reason))
+              << " | " << after.weather.daylight_hours << " | " << (reason.empty() ? "-" : reason)
               << '\n';
     best_day = std::max(best_day, worked);
-    // A shop in its season (world_params sauerkraut_from/to_month, September
-    // to December) with a tonne above the reserve that asks for nothing must
-    // say why.
+    too_far_days += reason.starts_with("too_far") ? 1U : 0U;
+    // The alarm is tomorrow's word: labor must agree with it tomorrow.
+    walked_too_far += previous_too_far && hours.find('U') != std::string::npos ? 1U : 0U;
+    previous_too_far = reason.starts_with("too_far");
+    // Two silences, each must carry the shop's reason: a shop with a tonne
+    // above the reserve that asks nothing for tomorrow, and a working day on
+    // which the master worked nothing of what the shop asked this morning.
+    // The alarm is read at the turn of the day, so a day is judged only when
+    // tomorrow is in the season too (world_params sauerkraut_from/to_month,
+    // September to December): the season's last day is not.
     const bool in_season = after.calendar.date.month >= core::Month::kSeptember &&
                            after.calendar.date.month <= core::Month::kDecember;
-    if (in_season && shop.production_days_written <= 0.0F && vegetables - reserve >= kTonne &&
-        reason == core::kInvalidDefIdValue) {
+    const bool asks_nothing =
+        shop.production_days_written <= 0.0F && vegetables - reserve >= kTonne;
+    const bool stayed_home = asked_this_morning > 0.0F && !day_off && !(worked > 0.0F);
+    if (in_season && (asks_nothing || stayed_home) && reason.empty()) {
       ++silent_stands;
     }
     if (vegetables >= kTonne &&
@@ -246,8 +275,15 @@ int main(int argc, char** argv) {
   }
   std::cout << "shop_pace: best day " << best_day << " man-days; silent stands " << silent_stands
             << "; days the sauerkraut left beside fresh vegetables " << kraut_issued_days << " of "
-            << kDaysWatched << '\n';
-  if (!far) {
+            << kDaysWatched << "; days too far " << too_far_days
+            << ", of them the master set out anyway " << walked_too_far << '\n';
+  if (far) {
+    // 1.6 km is 3.9 game hours a way: in December's seven-hour days the
+    // road leaves less than min_usable_hours, and he stays home (boss seq 13).
+    failures += run::Expect(too_far_days > 0 && walked_too_far == 0,
+                            "shop_pace --far: when the road eats the short day the master stays "
+                            "home and the shop says it is too far");
+  } else {
     failures += run::Expect(best_day >= kFullDayAtHome,
                             "shop_pace: a master at his own door works a whole man-day — six "
                             "tonnes of vegetables, the recipe");

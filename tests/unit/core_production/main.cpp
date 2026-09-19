@@ -5573,8 +5573,9 @@ int CheckProcessingShops() {
   failures += Expect(no_barrels.units.rows[1].production_days_written == 0.0F &&
                          alarms.size() == 2 && of_kraut_shop != alarms.end() &&
                          of_kraut_shop->kind == core::AlarmKind::kProcessingStopped &&
-                         of_kraut_shop->resource.value == barrel.value,
-                     "shops: with no barrels the shop stands and says it is the barrels");
+                         of_kraut_shop->resource.value == barrel.value &&
+                         of_kraut_shop->stop_reason == core::ProcessingStopReason::kShortOf,
+                     "shops: with no barrels the shop stands and says it is short of barrels");
   core::WorldState no_salt = make_world(kOctober);
   core::TakeFromStorage(no_salt, config, grocery, kTonne);
   alarms.clear();
@@ -5612,9 +5613,9 @@ int CheckProcessingShops() {
       Expect(std::fabs(cooper.units.rows[3].production_days_written - (40.0F * 0.125F)) < 1e-4F,
              "shops: the cooper makes what is wanted, from the boards no site waits for");
 
-  // §8а «Когда» (boss seq 7 and 11): July to December; before the harvest
-  // last season's sauerkraut, after it the vegetables above the reserve;
-  // either way no more than the grocery salts. Ten free barrels in each.
+  // §8а «Когда» (boss seq 7, 11 and 13): July to December; before the
+  // harvest last season's sauerkraut, after it the vegetables above the
+  // reserve, no more than the grocery salts. Ten free barrels in each.
   const auto cooper_world = [&](std::uint32_t day, bool harvested, core::Grams salt) {
     core::WorldState world = make_world(day);
     core::AddToStock(world.units.rows[0].stock, board, 2 * kTonne);
@@ -5645,16 +5646,20 @@ int CheckProcessingShops() {
   failures +=
       Expect(std::fabs(cooper_asks(cooper_world(kOctober, true, 100 * kKilo)) - 28.0F) < 1e-3F,
              "shops: 100 kg of grocery salts 5 t — 38 barrels, 10 free: 28, not 50");
-  core::WorldState unsalted = last_season;
-  core::TakeFromStorage(unsalted, config, grocery, kTonne);
-  failures += Expect(cooper_asks(unsalted) == 0.0F,
-                     "shops: without salt no barrels, not even last season's");
+  // The salt binds after the harvest only (boss seq 13): the lot comes in
+  // August, and last season's figure was bounded by last season's salt.
+  core::WorldState unsalted_july = last_season;
+  core::TakeFromStorage(unsalted_july, config, grocery, kTonne);
+  failures += Expect(std::fabs(cooper_asks(unsalted_july) - 20.0F) < 1e-3F,
+                     "shops: in July, before the grocery lot, last season's barrels all the same");
+  failures += Expect(cooper_asks(cooper_world(kOctober, true, 0)) == 0.0F,
+                     "shops: after the harvest, without salt, no barrels");
   core::WorldState smoking_too = last_season;
   core::AddToStock(smoking_too.units.rows[0].stock, smoked, 500 * kKilo);
-  // The literal §8а: the smoked goods' 5 barrels join the need, and they
-  // already take 5 of the 10 free — 30 + 5 - 5.
-  failures += Expect(std::fabs(cooper_asks(smoking_too) - 30.0F) < 1e-3F,
-                     "shops: smoked goods add their barrels to the need");
+  // §8а as boss rewrote it: the smoked goods are in barrels already and
+  // take 5 of the 10 free; they are not in the need — 30 - 5.
+  failures += Expect(std::fabs(cooper_asks(smoking_too) - 25.0F) < 1e-3F,
+                     "shops: smoked goods take free barrels and are not counted again in the need");
 
   // -- the room the inputs make (boss seq 11) ----------------------------------------
   core::WorldState crammed = make_world(kOctober);
@@ -5684,9 +5689,48 @@ int CheckProcessingShops() {
   alarms.clear();
   core::CollectProcessingAlarms(clamped, no_room, alarms);
   failures += Expect(no_room.units.rows[1].production_days_written == 0.0F && alarms.size() == 1 &&
-                         alarms[0].resource.value == kraut.value,
+                         alarms[0].resource.value == kraut.value &&
+                         alarms[0].stop_reason == core::ProcessingStopReason::kNoRoom,
                      "shops: the cabbage in the clamp and no room for sauerkraut — the shop "
                      "stands and says it is the sauerkraut's room");
+
+  // -- the master's road (boss seq 13, §8а «Мастер цеха и дорога») ---------------
+  // The kraut shop's parent is the store; its one master lives 5 km out in
+  // one world — 12 game hours a way — and 100 m out in the other.
+  const auto with_master = [&](float house_x) {
+    core::WorldState world = make_world(kOctober);
+    world.weather.daylight_hours = 10.0F;
+    world.units.rows[1].parent = world.units.row_ids[0];
+    core::UnitRow house;
+    house.level = 1;
+    house.position = {.x = house_x, .y = 0.0F};
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow family;
+    family.house = house_id;
+    const core::FamilyId family_id = core::AppendRow(world.families, family);
+    core::ResidentRow master;
+    master.family = family_id;
+    master.post.profession = core::ProfessionId{0};
+    master.post.unit = world.units.row_ids[0];
+    core::AppendRow(world.residents, master);
+    return world;
+  };
+  const auto kraut_shop_alarm = [&](const core::WorldState& world) {
+    std::vector<core::Alarm> found;
+    core::CollectProcessingAlarms(config, world, found);
+    const auto at = std::ranges::find_if(found, [&world](const core::Alarm& alarm) {
+      return alarm.unit.value == world.units.row_ids[1].value;
+    });
+    return at == found.end() ? core::Alarm{} : *at;
+  };
+  const core::Alarm far_alarm = kraut_shop_alarm(with_master(5000.0F));
+  failures += Expect(far_alarm.kind == core::AlarmKind::kProcessingStopped &&
+                         far_alarm.stop_reason == core::ProcessingStopReason::kTooFar &&
+                         far_alarm.amount == 12,
+                     "shops: a master 12 hours' walk away does not set out, and the shop says "
+                     "it is too far, and how far");
+  failures += Expect(kraut_shop_alarm(with_master(100.0F)).kind == core::AlarmKind::kNone,
+                     "shops: a master 100 m away is in reach, and the shop says nothing");
 
   // -- the barrels' year ---------------------------------------------------------
   core::WorldState year = make_world(kJanuary);

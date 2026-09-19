@@ -10,8 +10,11 @@
 
 #include "core_catalog/processing_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/geometry.h"
 #include "core_common/ledger_state.h"
+#include "core_common/resident_state.h"
 #include "core_common/unit_state.h"
+#include "core_common/work_seam.h"
 #include "field_haul.h"
 #include "stock_ops.h"
 #include "unit_production.h"
@@ -129,32 +132,35 @@ double PicklingBatchesStocked(const ProductionConfig& config,
 /// `made`, the season lying whole inside the calendar year — «готовим
 /// столько, сколько заполнили в прошлом году»; the first year's closed book
 /// is empty and the 150 start barrels do. After, what the vegetables above
-/// the fresh reserve would make. Either way no more than the grocery in the
-/// stores salts: «без соли бочек не делаем».
+/// the fresh reserve would make, and no more than the grocery in the stores
+/// salts (PicklingBatchesStocked takes every input).
+///
+/// THE SALT BINDS AFTER THE HARVEST ONLY (boss seq 13): last season's figure
+/// was already bounded by last season's salt, and the grocery lot comes in
+/// August — a cap before the harvest ate the whole of July. 0.34.8 capped
+/// both; that was my reading, and it was wrong.
 Grams SauerkrautToBarrel(const ProductionConfig& config,
                          const WorldState& world,
                          const ProcessingRecipe& pickling) {
   const ProcessingAmount& vegetables = pickling.inputs.front();
   const ProcessingAmount& sauerkraut = pickling.outputs.front();
-  const auto per_batch = static_cast<double>(sauerkraut.grams);
-  const double salted = PicklingBatchesStocked(config, world, pickling, false) * per_batch;
-  double wanted = 0.0;
   if (AmountOf(world.ledger.current.harvest, vegetables.resource) <= 0) {
-    wanted = static_cast<double>(AmountOf(world.ledger.closed.made, sauerkraut.resource));
-  } else {
-    wanted = PicklingBatchesStocked(config, world, pickling, true) * per_batch;
+    return AmountOf(world.ledger.closed.made, sauerkraut.resource);
   }
-  return static_cast<Grams>(std::llround(std::min(wanted, salted)));
+  const double batches = PicklingBatchesStocked(config, world, pickling, true);
+  return static_cast<Grams>(std::llround(batches * static_cast<double>(sauerkraut.grams)));
 }
 
 /// Barrels wanted, in the cooperage's batches (production units §8а,
 /// «Когда»): from July to December, while the free barrels are fewer than
-/// the need — the sauerkraut to come (SauerkrautToBarrel) and the smoked
-/// goods held, each ÷ the barrel's capacity.
+/// the sauerkraut to come (SauerkrautToBarrel) ÷ the barrel's capacity.
 ///
 /// Until 0.34.8 the need was every vegetable in the stores, with neither
 /// the reserve nor the season: host's first acceptance saw the cooper make
-/// 51-67 barrels from May to August out of boards Epoch I has few of.
+/// 51-67 barrels from May to August out of boards Epoch I has few of. 0.34.8
+/// added the smoked goods held to the need, as §8а then read — and they are
+/// already in barrels, so they took the free ones as well and counted twice
+/// (boss seq 13 rewrote the line).
 double CooperageWant(const ProductionConfig& config,
                      const WorldState& world,
                      const ProcessingRecipe& cooperage) {
@@ -168,11 +174,8 @@ double CooperageWant(const ProductionConfig& config,
     return 0.0;
   }
   const double capacity = static_cast<double>(catalog.barrel_capacity_grams);
-  const Grams smoked =
-      HeldInBarrels(config, world) - HeldEverywhere(world, pickling->outputs.front().resource);
   const double needed =
-      std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity) +
-      std::ceil(static_cast<double>(std::max<Grams>(smoked, 0)) / capacity);
+      std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity);
   const double free = std::floor(static_cast<double>(BarrelRoomFree(config, world)) / capacity);
   const double barrels_per_batch = static_cast<double>(cooperage.outputs.front().grams) /
                                    static_cast<double>(catalog.barrel_grams);
@@ -442,29 +445,89 @@ void SettleProcessing(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+namespace {
+
+/// The road one way, game hours, from the nearest post holder of `parent`
+/// to `place`; negative when the parent has no holder with a home. Walking,
+/// at the labour model's own chronometer (timber_felling.cpp does the same
+/// for the brigade's ride): real km/h over the clock's scale.
+float NearestHolderRoadHours(const ProductionConfig& config,
+                             const WorldState& world,
+                             UnitId parent,
+                             Vec2 place) {
+  if (!(config.walk_speed_kmh > 0.0F)) {
+    return -1.0F;
+  }
+  const float hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
+  float best = -1.0F;
+  for (const ResidentRow& person : world.residents.rows) {
+    Vec2 home;
+    if (person.post.profession.value == kInvalidDefIdValue ||
+        person.post.unit.value != parent.value || !HomePositionOf(world, person.family, home)) {
+      continue;
+    }
+    const float hours = TravelHoursBetween(home, place, hours_per_km);
+    best = best < 0.0F || hours < best ? hours : best;
+  }
+  return best;
+}
+
+/// Why the shop at `row` stands today, as an alarm; false when it works or
+/// has nothing to work. The recipes speak first, in production.csv order;
+/// then the road — a shop that could work and whose every master lives
+/// beyond the accountant's rule (labor_system.cpp, ReachesForADay) stands
+/// with nobody to work it.
+bool ShopStands(const ProductionConfig& config,
+                const WorldState& world,
+                std::uint32_t row,
+                Alarm& alarm) {
+  const UnitRow& unit = world.units.rows[row];
+  alarm.kind = AlarmKind::kProcessingStopped;
+  alarm.unit = world.units.row_ids[row];
+  bool can_work = false;
+  for (const ProcessingRecipe& recipe : config.processing.recipes) {
+    if (recipe.unit_type.value != unit.type.value) {
+      continue;
+    }
+    const Availability can = Available(config, world, recipe);
+    can_work = can_work || can.batches > kNoBatch;
+    if (can.missing.value == kInvalidDefIdValue) {
+      continue;
+    }
+    const bool is_output = std::ranges::any_of(recipe.outputs, [&can](const ProcessingAmount& out) {
+      return out.resource.value == can.missing.value;
+    });
+    alarm.resource = can.missing;
+    alarm.stop_reason = is_output ? ProcessingStopReason::kNoRoom : ProcessingStopReason::kShortOf;
+    return true;  // one per shop: the first recipe that stands says why
+  }
+  if (!can_work) {
+    return false;
+  }
+  const float road = NearestHolderRoadHours(config, world, unit.parent, unit.position);
+  if (road < 0.0F ||
+      RoadLeavesAWorkingDay(
+          road, world.weather.daylight_hours, config.travel_limit_hours, config.min_usable_hours)) {
+    return false;  // no master at all is not this alarm; a master in reach works
+  }
+  alarm.stop_reason = ProcessingStopReason::kTooFar;
+  alarm.amount = static_cast<std::int64_t>(std::ceil(road));
+  return true;
+}
+
+}  // namespace
+
 void CollectProcessingAlarms(const ProductionConfig& config,
                              const WorldState& world,
                              std::vector<Alarm>& alarms) {
-  const ProcessingCatalog& catalog = config.processing;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (!IsShop(catalog, unit.type) || !UnitCanWork(world, unit)) {
+    if (!IsShop(config.processing, unit.type) || !UnitCanWork(world, unit)) {
       continue;
     }
-    for (const ProcessingRecipe& recipe : catalog.recipes) {
-      if (recipe.unit_type.value != unit.type.value) {
-        continue;
-      }
-      const Availability can = Available(config, world, recipe);
-      if (can.missing.value == kInvalidDefIdValue) {
-        continue;
-      }
-      Alarm alarm;
-      alarm.kind = AlarmKind::kProcessingStopped;
-      alarm.unit = world.units.row_ids[row];
-      alarm.resource = can.missing;
+    Alarm alarm;
+    if (ShopStands(config, world, row, alarm)) {
       alarms.push_back(alarm);
-      break;  // one per shop: the first recipe that stands says why
     }
   }
 }

@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/geometry.h"
+
 namespace core {
 namespace {
 
@@ -276,13 +278,12 @@ bool ConsiderCandidate(const AssignmentJob& job,
   const bool rides = horse_work || RidesOut(job.kind);
   const float travel = TravelHours(
       candidate.home, job.position, rides ? params.harness_hours_per_km : params.walk_hours_per_km);
-  if (travel > params.travel_limit_hours) {
-    return false;  // The road limit is a game rule, not accountant quality.
-  }
-  const float usable_hours = params.window_hours - (2.0F * travel);
-  if (usable_hours < params.min_usable_hours) {
+  // The road limit is a game rule, not accountant quality.
+  if (!RoadLeavesAWorkingDay(
+          travel, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
     return false;
   }
+  const float usable_hours = params.window_hours - (2.0F * travel);
   const float daily_norm = usable_hours * candidate.efficiency / params.standard_day_hours;
   if (daily_norm <= 0.0F) {
     return false;
