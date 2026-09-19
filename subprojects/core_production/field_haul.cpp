@@ -426,6 +426,26 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current) {
+  const float keeping = config.keeping_factor * config.farming.field_heap_keeping_factor;
+  for (FieldRow& field : current.fields.rows) {
+    const ResourceId resource = field.reaped_resource;
+    if (field.reaped_grams <= 0 || resource.value >= config.spoil_days.size()) {
+      continue;
+    }
+    const Grams gone = SpoiledToday(field.reaped_grams, config.spoil_days[resource.value], keeping);
+    if (gone <= 0) {
+      continue;
+    }
+    field.reaped_grams -= gone;
+    AddLedgerAmount(current.ledger.current.spoiled, resource, gone);
+    if (field.reaped_grams <= 0) {
+      field.reaped_grams = 0;
+      field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
+    }
+  }
+}
+
 void SpoilStores(const ProductionConfig& config, WorldState& current) {
   if (config.spoil_days.empty()) {
     return;  // a table-less world keeps everything for ever

@@ -239,6 +239,8 @@ class ProductionSystem final : public IProductionSystem {
       // the settlement starves beside a full store, with both halves
       // looking correct (boss, 2026-09-03; transport design §10).
       SpoilStores(config_, current);
+      // And the heaps waiting on their fields, faster (field_haul.h).
+      SpoilFieldHeaps(config_, current);
     }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work

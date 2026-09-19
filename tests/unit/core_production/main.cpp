@@ -24,6 +24,7 @@
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
@@ -6171,6 +6172,39 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
 /// kRemoveField (2026-09-14): the start quest's first gesture, and the one
 /// construction design §12 teaches every removal by. Free and at once; refused
 /// only where bread stands; the reserve's mark rides out on the event.
+/// THE HEAP ON THE FIELD ROTS (boss seq 165; econ's 0.33): a reaped load
+/// waiting for a cart loses a day's rot at a third of the store's keeping,
+/// booked in `spoiled`; what does not go bad stays whole.
+int CheckAHeapOnTheFieldRots() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.spoil_days = {10.0F, 0.0F};  // resource 0 goes bad, resource 1 keeps
+  config.keeping_factor = 1.0F;
+  config.farming.field_heap_keeping_factor = 0.33F;
+  constexpr core::Grams kHeap = 1'000'000;
+  core::WorldState world;
+  core::FieldRow rotting;
+  rotting.reaped_grams = kHeap;
+  rotting.reaped_resource = core::ResourceId{0};
+  core::AppendRow(world.fields, rotting);
+  core::FieldRow keeping;
+  keeping.reaped_grams = kHeap;
+  keeping.reaped_resource = core::ResourceId{1};
+  core::AppendRow(world.fields, keeping);
+  core::SpoilFieldHeaps(config, world);
+  const core::Grams heap_loss = core::SpoiledToday(kHeap, 10.0F, 0.33F);
+  const core::Grams store_loss = core::SpoiledToday(kHeap, 10.0F, 1.0F);
+  failures +=
+      Expect(heap_loss > store_loss && world.fields.rows[0].reaped_grams == kHeap - heap_loss,
+             "heap: a day on the field rots more than a day in a store would");
+  failures +=
+      Expect(!world.ledger.current.spoiled.empty() && world.ledger.current.spoiled[0] == heap_loss,
+             "heap: the rot is booked in spoiled");
+  failures +=
+      Expect(world.fields.rows[1].reaped_grams == kHeap, "heap: what does not go bad lies whole");
+  return failures;
+}
+
 int CheckTheChairmanRemovesAField() {
   int failures = 0;
   std::string error;
@@ -6364,6 +6398,7 @@ int main() {
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
   failures += CheckTheChairmanCanUnsealAFund();
+  failures += CheckAHeapOnTheFieldRots();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

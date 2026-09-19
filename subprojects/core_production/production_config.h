@@ -582,6 +582,26 @@ struct FarmingConfig {
   /// still works», and the only thing in the game that falls down from wear
   /// is the start's old house.
   float wear_output_loss_at_full = 0.5F;
+
+  /// world_params.csv `gather_alarm_horizon_days` — STUB 4 (boss seq 161 А):
+  /// the harvest-will-not-be-gathered alarm judges only the fields in the
+  /// reaping and those whose reaping opens within this many days. «Пока
+  /// игрок ещё может успеть, а не за месяц»: a field three weeks from ripe
+  /// was judged by the June pace, when the village's hands are on other
+  /// work, and the alarm cried for 150 t that the autumn reaped (host, seq
+  /// 35). WHEN THE STUB COMES OFF (boss seq 161): when a run shows that at
+  /// this horizon the alarm lights, on every seed, before the debt is beyond
+  /// every hand the village has — the player can still make it.
+  float gather_alarm_horizon_days = 4.0F;
+
+  /// world_params.csv `field_heap_keeping_factor` — 0.33, econ's number
+  /// accepted by boss (econ-boss-field-heap-2026-09-19): a reaped heap waiting
+  /// on its field for a cart keeps a third as long as the same produce in a
+  /// store — spoil_days × the store's keeping_factor × this. Until 2026-09-19
+  /// the heap did not rot at all, and a field was a free store with no loss
+  /// (host: 139.6 t of vegetables lying out a whole autumn). Grain in the heap
+  /// too: rain on a field rots it. The settled snow still takes what is left.
+  float field_heap_keeping_factor = 0.33F;
   float life_speedup = 4.0F;
 
   /// life.csv `adult_age_years`, read beside `life_speedup` from the row

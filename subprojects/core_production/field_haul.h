@@ -92,6 +92,13 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current);
 ///      store with both halves looking correct.
 void SpoilStores(const ProductionConfig& config, WorldState& current);
 
+/// @brief A day in the life of a reaped heap waiting on its field (boss seq
+/// 165): it rots as its produce does in a store, at
+/// FarmingConfig::field_heap_keeping_factor of the store's keeping — 0.33, a
+/// third as long — booked in `spoiled`, as a store's rot is.
+/// @pre With SpoilStores, after the village has eaten.
+void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_FIELD_HAUL_H_
