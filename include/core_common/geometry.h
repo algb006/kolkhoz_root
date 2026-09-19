@@ -59,6 +59,22 @@ inline float TravelHoursBetween(const Vec2& from, const Vec2& to, float hours_pe
   return std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
 }
 
+/// @brief The accountant's road rule (decision 109, one rule for units and
+/// fields): a one-way road of `travel_hours` is walked for a day's work only
+/// if it is no longer than `limit_hours` and leaves at least
+/// `min_usable_hours` of the `daylight_hours` once walked both ways.
+///
+/// ONE HOME FOR THE RULE since 0.34.9: the accountant's placement asked it,
+/// and the post holder's did not — a food master 1.6 km from his shop stood
+/// on it all of a December day and worked nothing (shop_pace --far; boss,
+/// host-econ-shops seq 13).
+constexpr bool RoadLeavesAWorkingDay(float travel_hours,
+                                     float daylight_hours,
+                                     float limit_hours,
+                                     float min_usable_hours) {
+  return travel_hours <= limit_hours && daylight_hours - (2.0F * travel_hours) >= min_usable_hours;
+}
+
 }  // namespace core
 
 #endif  // CORE_COMMON_GEOMETRY_H_

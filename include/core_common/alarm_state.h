@@ -350,8 +350,12 @@ enum class AlarmKind : std::uint8_t {
   /// законный — тревога с причиной»; until 0.34.8 a full store stood the
   /// shop in silence, kStoreFull naming the store and not the shop). The
   /// room is counted after the inputs are out: cabbage leaving a store is
-  /// room for its sauerkraut. Nothing to work is no alarm. Subject: `unit`;
-  /// `resource` = what is missing; `amount` = 0.
+  /// room for its sauerkraut. Or it stands with nobody to work it: every
+  /// post holder of its parent lives beyond the accountant's road rule
+  /// (since 0.34.9; boss seq 13, production units §8а «Мастер цеха и
+  /// дорога»). Nothing to work is no alarm. Subject: `unit`; `stop_reason`
+  /// says which of the three (ProcessingStopReason); `resource` = what is
+  /// missing, invalid for kTooFar; `amount` = 0, or the road for kTooFar.
   kProcessingStopped,
 
   // Appended by later tasks and phases: children out of school, sewage,
@@ -369,6 +373,24 @@ enum class AlarmKind : std::uint8_t {
   /// (boss, 2026-09-04). Narrowing a rule by a property that was not its
   /// reason looks like tidiness and works like a hole.
   kAlarmKindCount,
+};
+
+/// @brief Why a kProcessingStopped shop stands — the seam's vocabulary
+/// `processing_stop_reason`, its words the enumerators' snake_case (boss,
+/// host-econ-shops seq 13: «причина „далеко“, слово выбери сам»). Appended,
+/// never renumbered.
+enum class ProcessingStopReason : std::uint8_t {
+  kNone = 0,  ///< Not a kProcessingStopped alarm.
+  kShortOf,   ///< `resource` is missing: a barrel, or a second input.
+  kNoRoom,    ///< `resource` is the shop's output, and the stores have no room for it.
+  /// Every post holder of the shop's parent lives beyond the accountant's
+  /// road rule for today (geometry.h, RoadLeavesAWorkingDay): he does not
+  /// set out. `amount` = the nearest holder's road one way, whole game hours
+  /// rounded up; `resource` invalid.
+  kTooFar,
+
+  /// NOT A REASON: the count, so a consumer can static_assert its mirror.
+  kProcessingStopReasonCount,
 };
 
 /// @brief One standing condition. Which fields are meaningful is fixed by
@@ -397,6 +419,10 @@ struct Alarm {
 
   /// Grams, heads — the kind says which. 0 when the kind has no number.
   std::int64_t amount = 0;
+
+  /// kProcessingStopped only: why the shop stands. kNone for every other
+  /// kind.
+  ProcessingStopReason stop_reason = ProcessingStopReason::kNone;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id
