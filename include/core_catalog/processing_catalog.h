@@ -150,7 +150,17 @@ struct ProcessingCatalog {
   /// свободных бочек меньше нужды»). Outside it the cooper makes nothing.
   std::uint8_t cooperage_from_month = 6;
   std::uint8_t cooperage_to_month = 11;
+
+  /// Dense by ResourceId: 1 where resources.csv `spoilage` is `very_fast`
+  /// (meat, fish, milk — two days). A shop whose main input is such works
+  /// the day it arrives (boss, host-econ-shops seq 31 on econ seq 30):
+  /// «после дневной выдачи и до ночной порчи», not tomorrow.
+  std::vector<std::uint8_t> very_fast;
 };
+
+/// @brief Whether `recipe`'s main input spoils very fast, so its shop works
+/// the day the input arrives (ProcessingCatalog::very_fast).
+bool WorksTheSameDay(const ProcessingCatalog& catalog, const ProcessingRecipe& recipe);
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's
 /// check that every row declared for the core has a reader.
