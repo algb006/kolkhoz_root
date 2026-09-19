@@ -192,10 +192,15 @@ buckwheat,,3.3,bread,,,
 pea,,3.3,bread,,,
 potato,,0.77,potato,5,3,
 vegetables,,0.25,vegetables,5,,
+# ЦЕХА ЭПОХИ I (boss и econ, 19.09.2026): квашеное, копчёное и копчёная рыба
+# выдаются как сырое той же категории — иначе цех копит то, чего никто не ест.
+sauerkraut,,0.2,vegetables,5,,
 milk,,0.64,dairy,30,1,1
 meat,,2.5,meat_and_egg,,,
+smoked_meat,,3.0,meat_and_egg,,,
 egg,,1.4,meat_and_egg,,,
 fish,,0.9,fish,,,
+smoked_fish,,2.0,fish,,,
 honey,,3,sweet,,,
 # СЕНА В СВЯЗКЕ НЕТ: двор косит его себе сам временем ЛПХ (решение boss
 # 31.08.2026, ключ hay_kg_per_yard_year выше). Строка стояла здесь с тех

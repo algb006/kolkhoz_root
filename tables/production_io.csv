@@ -1,0 +1,16 @@
+# generated from db/design.db — do not edit by hand
+# amount per batch in the resource's OWN measure (resources.csv measure, grams = amount * kg_per_unit * 1000)
+# direction: in = consumed by the batch, out = made by it
+production,resource,amount,direction
+smoking_meat,meat,1,in
+smoking_meat,firewood,0.3,in
+smoking_meat,smoked_meat,0.6,out
+smoking_fish,fish,1,in
+smoking_fish,firewood,0.3,in
+smoking_fish,smoked_fish,0.45,out
+cooperage,board,0.025,in
+cooperage,steel,0.001,in
+cooperage,barrel,1,out
+pickling,vegetables,1,in
+pickling,grocery,20,in
+pickling,sauerkraut,0.75,out

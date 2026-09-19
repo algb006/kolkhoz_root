@@ -22,3 +22,4 @@ site_without_materials,unit,14
 store_full,unit,15
 plan_position_uncovered,resource,16
 felling_unreachable,stand,17
+processing_stopped,unit,18

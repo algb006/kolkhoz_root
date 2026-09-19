@@ -1,0 +1,8 @@
+# generated from db/design.db — do not edit by hand
+# one row per processing recipe the core runs; labor_days are game man-days per batch, places how many of the parent's post holders stand in the shop at once (empty = 1)
+# inputs and outputs are in production_io.csv, per batch
+key,unit,labor_days,places
+smoking_meat,smokehouse,1,1
+smoking_fish,smokehouse,1,1
+cooperage,workshops,0.125,1
+pickling,sauerkraut_shop,0.1667,1

@@ -203,3 +203,8 @@ talk_months,12,core
 gather_alarm_horizon_days,4,core
 field_heap_keeping_factor,0.33,core
 mud_speed_factor,0.5,core
+barrel_capacity_kg,100,core
+barrel_wear_per_year,0.1,core
+sauerkraut_fresh_share,0.25,core
+sauerkraut_from_month,9,core
+sauerkraut_to_month,12,core

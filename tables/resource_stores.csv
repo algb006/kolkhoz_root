@@ -6,6 +6,8 @@ resource,unit,storage
 barley,church_store,church_store
 barley,elevator,elevator
 barley,food_yard,granary
+barrel,church_store,church_store
+barrel,food_yard,food_store
 bicycle,selpo,selpo
 bicycle,utility_yard,goods_store
 board,build_yard,build_yard
@@ -114,6 +116,8 @@ rye,church_store,church_store
 rye,elevator,elevator
 rye,food_yard,granary
 sand,build_yard,build_yard
+sauerkraut,church_store,church_store
+sauerkraut,food_yard,food_store
 sausage,food_yard,food_store
 school_uniform,utility_yard,goods_store
 shoes_midseason,selpo,selpo

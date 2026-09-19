@@ -681,7 +681,8 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
                       "unit_types",      "unit_levels",   "feed_links",      "meadow_kinds",
                       "field_phases",    "campaign",      "transport",       "labor",
                       "professions",     "world_params",  "timber_stands",   "extraction_sites",
-                      "resource_stores", "limit_catalog", "limit_lot_goods", "limit_lot_livestock"},
+                      "resource_stores", "limit_catalog", "limit_lot_goods", "limit_lot_livestock",
+                      "production",      "production_io", "unit_level_cost"},
                      nullptr)) {
     return nullptr;
   }
