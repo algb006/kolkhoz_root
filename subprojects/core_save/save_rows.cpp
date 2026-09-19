@@ -74,14 +74,17 @@ static_assert(AggregateArity<ResidentRow>() == 44,
 // measured by a sizeof probe, not reasoned; 21 fields.
 // Save 74: a byte beside in_tent and two words after it — 80 -> 88 + amounts,
 // by the layout, confirmed by the build.
-static_assert(sizeof(FamilyRow) == 88 + kAmountsSize,
+// Save 75: in_barrack, a byte after lodging_penalty — 88 -> 96 + amounts (the
+// byte opened a new word).
+static_assert(sizeof(FamilyRow) == 96 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
 // 2026-09-18, save 60: dry_months, the yard's sobriety clock — 20 fields.
 // Save 74: asked_to_leave, asked_day, lodged_in and lodging_penalty — 25
 // fields.
-static_assert(AggregateArity<FamilyRow>() == 25,
+// Save 75: in_barrack and hunger_alarm_lit — 27 fields.
+static_assert(AggregateArity<FamilyRow>() == 27,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -517,6 +520,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteU32(row.asked_day);
   out.WriteU32(row.lodged_in.value);
   out.WriteFloat(row.lodging_penalty);
+  out.WriteU8(row.in_barrack);        // save 75
+  out.WriteU8(row.hunger_alarm_lit);  // save 75
 
   out.WriteFloat(row.household_hours);
   out.WriteFloat(row.plot_ratio_sum);
@@ -554,6 +559,9 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.asked_day = in.ReadU32();
   row.lodged_in.value = in.ReadU32();
   row.lodging_penalty = in.ReadFloat();
+  row.in_barrack = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family in a barrack"));
+  row.hunger_alarm_lit =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's hunger alarm lit"));
 
   row.household_hours = in.ReadFloat();
   row.plot_ratio_sum = in.ReadFloat();

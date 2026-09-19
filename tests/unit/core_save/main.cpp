@@ -1100,7 +1100,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // 2026-09-19, save 74: +13 a family — the certificate asked (a byte and
     // a day), the house lodged in and the lodging's cost; two families, +26.
     // Predicted +18 before the cost was added, held; then +26, held.
-    {"families", 230, 0x7ac9a19343793bdULL},
+    // Save 75: +2 a family — in_barrack and the hunger alarm's memory; two
+    // families, +4, each byte predicted before its build.
+    {"families", 234, 0xb453a11b8ea5ef95ULL},
     {"fields", 269, 0x8a59944f0a209f67ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.

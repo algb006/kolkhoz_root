@@ -154,6 +154,24 @@ struct FamilyRow {
   /// Written by the housing ladder at the day's start. Save 74.
   float lodging_penalty = 0.0F;
 
+  /// 1 while the family's `house` is a barrack (housing §9): a roof shared
+  /// with other families, with no yard — no garden, no animals of its own
+  /// (its herds went to the kolkhoz when it moved in; boss seq 197). Every
+  /// morning such a family climbs to a free house before the wedding queue
+  /// does. Read by production too (a grown head is not walked to a barrack).
+  /// Save 75.
+  std::uint8_t in_barrack = 0;
+
+  /// 1 while the family's hunger alarm is lit (kFamilyGoingHungry): lit when
+  /// the members' mean satiety is at or below `ration_satiety_threshold`, put
+  /// out only when it has risen above the threshold by
+  /// `hunger_alarm_clear_margin` (boss, core-host-l1 seq 45). Without the
+  /// margin a family the ration holds at the threshold (22 ↔ 26, host seq 44)
+  /// lit the alarm every other day — the alarm new each time, the quest on
+  /// it hidden and shown daily. Written by the residents' decisions sub-step.
+  /// Save 75.
+  std::uint8_t hunger_alarm_lit = 0;
+
   // -- private plot (household design §1, life-cycle §10) ------------------
   /// Game hours per day the household has for its plot: the working
   /// members' remainder of the day plus the additive factors of household
