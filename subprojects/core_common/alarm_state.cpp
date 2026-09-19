@@ -35,6 +35,7 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
       return alarm.field.value;
     case AlarmKind::kHerdStarving:
     case AlarmKind::kHerdWithoutStable:
+    case AlarmKind::kSlaughterWaitsForRoom:
       return alarm.herd.value;
     case AlarmKind::kReserveFullNothingToEat:
     case AlarmKind::kPlanPositionShort:

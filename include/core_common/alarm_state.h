@@ -367,6 +367,14 @@ enum class AlarmKind : std::uint8_t {
   /// GRAMS of everything waiting on the site.
   kDemolitionStockWaiting,
 
+  /// THE PIG SLAUGHTER WAITS: an October day on which a kolkhoz pig herd's
+  /// slaughter is due and the stores have no room for its meat, so it does
+  /// not happen today (HerdRow::autumn_slaughter_done; boss, host-econ-shops
+  /// seq 26 on econ seq 25). The month's last day slaughters whatever the
+  /// room. Subject: `herd`; `resource` = the meat; `amount` = GRAMS of meat
+  /// the stores lack room for.
+  kSlaughterWaitsForRoom,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

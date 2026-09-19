@@ -152,6 +152,17 @@ struct HerdRow {
   /// final; no mechanics reads or writes it in phase 1.
   std::uint8_t disease_stage = 0;
 
+  /// 0/1: this autumn's pig slaughter is done (livestock design, «Свиньи —
+  /// сезонное содержание»; boss, host-econ-shops seq 26-28; save 76). THE
+  /// SLAUGHTER WAITS FOR ROOM: on an October day with no room in the stores
+  /// for its meat it does not happen and kSlaughterWaitsForRoom says so; the
+  /// first day with room it does, and the month's last day it does whatever
+  /// the room. Set when it happens, cleared outside the slaughter month. The
+  /// herd must remember it: the sows kept are a share of the adults LEFT, so
+  /// a slaughter asked again the next day would take a third of what it kept,
+  /// and the herd would melt day by day through October.
+  std::uint8_t autumn_slaughter_done = 0;
+
   /// Game man-days of barn work left today (stage 5). Refilled every morning
   /// by the labor sub-step from the kind's yearly care norm (real man-days
   /// / 7 / days per year x heads), drained by assigned kHerdCare workers.

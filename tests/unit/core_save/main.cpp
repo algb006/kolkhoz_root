@@ -333,7 +333,8 @@ core::WorldState MakeWorld() {
   herd.billeted_count = 4;
   herd.adult_age_game_years_total = 137.5F;
   herd.hunger_progress = 0.375F;
-  herd.fed_share = 0.625F;  // save 71: a third short of the ration, not its default 1
+  herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
+  herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
   core::AppendRow(world.herds, herd);
 
   // The chairman's order book (the boundary, manual/70-boundary.md §2): one
@@ -1110,7 +1111,7 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // predicted.
     {"units", 356, 0x33b35b114e9503b1ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
-    {"herds", 70, 0x438d5136d7f12aa8ULL},
+    {"herds", 71, 0xc6fa8b5b6c1ae5dbULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -1472,6 +1473,8 @@ int main() {
                      "closed book (save 70)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_share == 0.625F,
                      "a herd's covered share of the ration comes back (save 71)");
+  failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].autumn_slaughter_done == 1,
+                     "a herd remembers its autumn slaughter was done (save 76)");
   failures += Expect(AmountAt(loaded.ledger.closed.seized, 0) == 5'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 0) == 15'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 2) == 4'000'000,
