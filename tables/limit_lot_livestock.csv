@@ -7,5 +7,5 @@ lot,livestock,head_count,arrives_stage,sex_choice
 horse_head,horse,1,adult_start,1
 cow_head,cow,1,adult_start,1
 sheep_head,sheep,1,adult_start,1
-piglet_lot,pig,,young,0
+piglet_lot,pig,15,young,0
 chick_lot,chicken,,young,0
