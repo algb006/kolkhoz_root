@@ -687,7 +687,12 @@ std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
       }
       claim.owed_days = crop.harvest_days_per_ha * field.area_ga;
     }
-    if (claim.open_day >= 0 && claim.owed_days > 0.0F) {
+    // THE HORIZON (boss seq 161 А): a field whose reaping opens further off
+    // than the chairman needs to act is not judged yet — its pace would be
+    // today's, and today's hands are not the autumn's.
+    const auto horizon = static_cast<std::int32_t>(config.farming.gather_alarm_horizon_days);
+    if (claim.open_day >= 0 && claim.owed_days > 0.0F &&
+        claim.open_day <= static_cast<std::int32_t>(day_of_year) + horizon) {
       claims.push_back(claim);
     }
   }

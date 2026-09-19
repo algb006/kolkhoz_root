@@ -303,12 +303,13 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   WriteFloatArray(out, book.work_days_by_kind);
   out.WriteI32(book.trudodni_accrued);
   out.WriteI32(book.trudodni_burned);
-  // The season's reaping pace (save 63).
+  // The season's reaping pace (save 63; the best day's bytes carry the last
+  // day since 2026-09-19 — same place, same width).
   out.WriteFloat(book.reaping_today);
-  out.WriteFloat(book.reaping_best_day);
+  out.WriteFloat(book.reaping_last_day);
   // And the daylight they were reaped under (save 64).
   out.WriteFloat(book.reaping_today_daylight);
-  out.WriteFloat(book.reaping_best_day_daylight);
+  out.WriteFloat(book.reaping_last_day_daylight);
   out.WriteU32(book.walk_offs);
   out.WriteFloat(book.horse_backed_assignment_days);
   out.WriteFloat(book.total_assignment_days);
@@ -383,9 +384,9 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.trudodni_accrued = in.ReadI32();
   book.trudodni_burned = in.ReadI32();
   book.reaping_today = in.ReadFloat();
-  book.reaping_best_day = in.ReadFloat();
+  book.reaping_last_day = in.ReadFloat();
   book.reaping_today_daylight = in.ReadFloat();
-  book.reaping_best_day_daylight = in.ReadFloat();
+  book.reaping_last_day_daylight = in.ReadFloat();
   book.walk_offs = in.ReadU32();
   book.horse_backed_assignment_days = in.ReadFloat();
   book.total_assignment_days = in.ReadFloat();

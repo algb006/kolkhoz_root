@@ -2457,25 +2457,25 @@ int CheckTheHarvestWillNotBeGathered() {
   // today, takes four (30..33); the potato, ripe on 32, starts on 34 with
   // seven days left and needs ten: three tenths of 10 t go to the snow.
   // Reaped in row order it would start on 32 and lose one tenth.
-  world.ledger.current.reaping_best_day = 5.0F;
+  world.ledger.current.reaping_last_day = 5.0F;
   failures += Expect(warned() == 3'000'000,
                      "gather: the potato ripening after the oat finds the days it took, and it is "
                      "said before the potato is ripe");
-  world.ledger.current.reaping_best_day = 10.0F;
+  world.ledger.current.reaping_last_day = 10.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
   // THE SAME TEN UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour day,
   // read on a 7.6-hour one, they are five — and the potato loses its three
   // tenths again.
-  world.ledger.current.reaping_best_day_daylight = 15.2F;
+  world.ledger.current.reaping_last_day_daylight = 15.2F;
   world.weather.daylight_hours = 7.6F;
   failures += Expect(warned() == 3'000'000,
-                     "gather: the best day's pace is scaled by today's daylight over its own");
-  world.ledger.current.reaping_best_day_daylight = 0.0F;
+                     "gather: the last day's pace is scaled by today's daylight over its own");
+  world.ledger.current.reaping_last_day_daylight = 0.0F;
   failures +=
-      Expect(warned() == 0, "gather: a best day with no daylight booked is read as it stands");
+      Expect(warned() == 0, "gather: a last day with no daylight booked is read as it stands");
   world.weather.daylight_hours = 12.0F;
   // No reaping yet this season: every hand of working age, one norm-day each.
-  world.ledger.current.reaping_best_day = 0.0F;
+  world.ledger.current.reaping_last_day = 0.0F;
   failures += Expect(warned() == 10'000'000,
                      "gather: before the season's first reaping, no hands means the whole crop");
   // Three adults and a child in a tent (a home without a house): three hands.

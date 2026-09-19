@@ -2121,8 +2121,8 @@ int TestTheLastDaysGoByTheGrams() {
   const auto worked_on_by = [&turnip_work, &potato_work, &best_day, &best_daylight](
                                 core::ILaborSystem& system, std::uint32_t game_day) {
     DayWorld day(1);
-    day.world.ledger.current.reaping_best_day = best_day;
-    day.world.ledger.current.reaping_best_day_daylight = best_daylight;
+    day.world.ledger.current.reaping_last_day = best_day;
+    day.world.ledger.current.reaping_last_day_daylight = best_daylight;
     const core::FieldId turnip =
         day.AddField(core::FieldPhase::kHarvest, turnip_work, core::Vec2{.x = 0.0F, .y = 20.0F});
     const core::FieldId potato =
@@ -2300,13 +2300,16 @@ int TestTheReapingPaceIsBookedWithItsDaylight() {
                      "reaping pace: the pay books the reaping with the day's daylight");
   day.world.weather.daylight_hours = 9.0F;
   day.RunDay(*labor, 31);
-  failures += Expect(book.reaping_best_day == long_day && book.reaping_best_day_daylight == 14.0F &&
-                         book.reaping_today > 0.0F && book.reaping_today < long_day &&
-                         book.reaping_today_daylight == 9.0F,
-                     "reaping pace: the morning rolls the long day over as the best, with its sun");
+  const float short_day = book.reaping_today;
+  failures +=
+      Expect(book.reaping_last_day == long_day && book.reaping_last_day_daylight == 14.0F &&
+                 short_day > 0.0F && short_day < long_day && book.reaping_today_daylight == 9.0F,
+             "reaping pace: the morning rolls yesterday over as the pace, with its sun");
   day.RunDay(*labor, 32);
-  failures += Expect(book.reaping_best_day == long_day && book.reaping_best_day_daylight == 14.0F,
-                     "reaping pace: a shorter day does not lend the best day its daylight");
+  // THE LAST DAY, NOT THE BEST (boss seq 161 Б): the shorter day is today's
+  // pace, with its own shorter sun — the field still owes reaping.
+  failures += Expect(book.reaping_last_day == short_day && book.reaping_last_day_daylight == 9.0F,
+                     "reaping pace: the shorter day becomes the pace — the last day, not the best");
   return failures;
 }
 

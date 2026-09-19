@@ -525,10 +525,10 @@ core::WorldState MakeWorld() {
   world.ledger.closed.yard_feed = Amounts({0, 0, 300});  // save 70: a goat's hay
   // The season's reaping pace (save 63).
   world.ledger.closed.reaping_today = 3.25F;
-  world.ledger.closed.reaping_best_day = 22.5F;
+  world.ledger.closed.reaping_last_day = 22.5F;
   // And the daylight of those two days (save 64).
   world.ledger.closed.reaping_today_daylight = 8.25F;
-  world.ledger.closed.reaping_best_day_daylight = 15.5F;
+  world.ledger.closed.reaping_last_day_daylight = 15.5F;
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   world.ledger.closed.trudodni_burned = 4200;
@@ -1450,10 +1450,10 @@ int main() {
                          AmountAt(loaded.plan.delivered_outside, 2) == 3'000'000,
                      "the milk cart's share and the winter's milk come back (save 66)");
   failures += Expect(
-      loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_best_day == 22.5F,
+      loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");
   failures += Expect(loaded.ledger.closed.reaping_today_daylight == 8.25F &&
-                         loaded.ledger.closed.reaping_best_day_daylight == 15.5F,
+                         loaded.ledger.closed.reaping_last_day_daylight == 15.5F,
                      "and the daylight it was reaped under (save 64)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that

@@ -209,22 +209,31 @@ struct YearLedger {
   /// delivery — it counts toward no plan and no overfulfilment. Save 62.
   ResourceAmounts seized;
 
-  /// THE SEASON'S REAPING PACE (boss seq 91): norm-days of hand reaping on
-  /// ARABLE fields — the meadow cut is not in it — delivered today so far,
-  /// and the best whole day of the year. Written by labor at the day's pay
-  /// and roll-over; read by the harvest-will-not-be-gathered alarm as "the
-  /// hands the village has been seen to put on the reaping". The book turns
-  /// with the year, so the pace is this season's. Save 63.
+  /// THE SEASON'S REAPING PACE (boss seq 91, 161 Б): norm-days of hand
+  /// reaping on ARABLE fields — the meadow cut is not in it — delivered today
+  /// so far, and the LAST whole day of reaping that still left reaping owed
+  /// at its end: a day the hands, not the work, were short. Written by labor
+  /// at the day's pay and roll-over; read by the harvest-will-not-be-gathered
+  /// alarm and labor's last days as "the hands the village puts on the
+  /// reaping now". The book turns with the year, so the pace is this season's.
+  /// Save 63.
+  ///
+  /// IT WAS THE BEST DAY until 2026-09-19 (the same bytes, save 63): a summer
+  /// best day, scaled by the light, overstated a November day by a fifth to a
+  /// third — the road and the fatigue do not shorten with the sun — and a
+  /// June day of a few hands, the rest on other work, set a best day that
+  /// cried for the autumn's fields three weeks early (host core-host-l1 seq
+  /// 35; my measure, boss seq 160). Yesterday is the best forecast of today.
   float reaping_today = 0.0F;
-  float reaping_best_day = 0.0F;
+  float reaping_last_day = 0.0F;
 
   /// THE DAYLIGHT OF THOSE TWO DAYS, hours (boss seq 95; save 64): a man
-  /// reaps from sunrise to sunset less the road, so the best day of August
-  /// (15.2 h of sun) overstates what the same hands reap in November (8.4 h)
-  /// about 1.8 times. The alarm scales the best day by today's light over
-  /// the best day's. Written with the reaping at the pay, rolled with it.
+  /// reaps from sunrise to sunset less the road, so a day's pace is read
+  /// against its own sun. The pace scales the last day by today's light over
+  /// the last day's — between neighbouring days a few per cent. Written with
+  /// the reaping at the pay, rolled with it.
   float reaping_today_daylight = 0.0F;
-  float reaping_best_day_daylight = 0.0F;
+  float reaping_last_day_daylight = 0.0F;
 
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 

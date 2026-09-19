@@ -25,24 +25,26 @@ namespace core {
 
 /// @brief Norm-days of hand reaping the village can put in today.
 ///
-/// Once the season has reaped (YearLedger::reaping_best_day), the best day it
-/// has been seen to manage, scaled by today's daylight over that day's own
-/// (boss seq 95): a man reaps from sunrise to sunset less the road. Before the
-/// season's first reaping, `hands` at one norm-day each — optimistic on
-/// purpose, so nothing is called lost before there is a season to read. A
-/// best day with no daylight booked is taken as it stands.
+/// Once the season has reaped (YearLedger::reaping_last_day), the LAST day of
+/// reaping that ended with reaping still owed — the hands the village puts on
+/// it now — scaled by today's daylight over that day's own (boss seq 95, 161
+/// Б). Until 2026-09-19 it was the season's BEST day, which overstated the
+/// autumn and, set by a few June hands, understated it (ledger_state.h).
+/// Before the season's first such day, `hands` at one norm-day each —
+/// optimistic on purpose, so nothing is called lost before there is a season
+/// to read. A day with no daylight booked is taken as it stands.
 /// @param book The current year's ledger.
 /// @param daylight_hours Today's daylight (WorldState::weather).
 /// @param hands The caller's count of people who could reap, for the season's
 ///        first days only.
 inline double ReapingPacePerDay(const YearLedger& book, float daylight_hours, std::uint32_t hands) {
-  if (!(book.reaping_best_day > 0.0F)) {
+  if (!(book.reaping_last_day > 0.0F)) {
     return static_cast<double>(hands);
   }
-  double pace = static_cast<double>(book.reaping_best_day);
-  if (book.reaping_best_day_daylight > 0.0F && daylight_hours > 0.0F) {
+  double pace = static_cast<double>(book.reaping_last_day);
+  if (book.reaping_last_day_daylight > 0.0F && daylight_hours > 0.0F) {
     pace *=
-        static_cast<double>(daylight_hours) / static_cast<double>(book.reaping_best_day_daylight);
+        static_cast<double>(daylight_hours) / static_cast<double>(book.reaping_last_day_daylight);
   }
   return pace;
 }

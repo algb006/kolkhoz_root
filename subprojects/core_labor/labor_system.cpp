@@ -316,19 +316,30 @@ class LaborSystem final : public ILaborSystem {
   // only after the year's last issue has been made against them. Labor runs
   // BEFORE residents in the decisions slot, so burning here would have
   // emptied the account the exchange was about to spend.
+  /// Some arable field still owes reaping: yesterday's reaping was short of
+  /// hands, not of work (the pace's condition, ledger_state.h).
+  static bool ReapingStillOwed(const WorldState& current) {
+    return std::ranges::any_of(current.fields.rows, [](const FieldRow& field) {
+      return field.kind == LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+             field.work_days_remaining > 0.0F;
+    });
+  }
+
   void StartDay(WorldState& current) const {
     for (ResidentRow& resident : current.residents.rows) {
       resident.work = WorkAssignment{};
     }
     StandDownRushes(current);
     // The reaping pace rolls over: yesterday's whole day of hand reaping on
-    // the arable is a candidate for the season's best (ledger_state.h).
-    // Its daylight goes with it (save 64): the best day's pace is only
-    // readable against the sun it was reaped under.
+    // the arable becomes the pace (ledger_state.h, boss seq 161 Б) — IF it
+    // ended with reaping still owed. A day that finished the last field is
+    // short of work, not of hands, and would read as a slow village. Its
+    // daylight goes with it (save 64): a day's pace is only readable against
+    // the sun it was reaped under.
     YearLedger& book = current.ledger.current;
-    if (book.reaping_today > book.reaping_best_day) {
-      book.reaping_best_day = book.reaping_today;
-      book.reaping_best_day_daylight = book.reaping_today_daylight;
+    if (book.reaping_today > 0.0F && ReapingStillOwed(current)) {
+      book.reaping_last_day = book.reaping_today;
+      book.reaping_last_day_daylight = book.reaping_today_daylight;
     }
     book.reaping_today = 0.0F;
     book.reaping_today_daylight = 0.0F;
