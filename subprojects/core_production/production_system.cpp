@@ -43,6 +43,7 @@
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
+#include "demolition_stock.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_visit.h"
@@ -229,6 +230,9 @@ class ProductionSystem final : public IProductionSystem {
       SettleSiteHauling(config_, current);
       // And the perevalka out of a store being emptied (field_haul.h).
       SettleStoreEmptying(config_, current);
+      // And what a unit being taken down held (demolition_stock.h) — before
+      // the shops, so the manor's firewood reaches the smokehouse tonight.
+      SettleDemolitionStock(config_, current);
       // The sawmill after the carting, so tonight's logs off the stands are
       // in tomorrow's demand (unit_production.h).
       SettleUnitProduction(config_, current);
@@ -347,6 +351,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectPlanAlarms(config_, completed, alarms);
     CollectTimberAlarms(config_, completed, alarms);
     CollectProcessingAlarms(config_, completed, alarms);
+    CollectDemolitionAlarms(completed, alarms);
   }
 
  private:

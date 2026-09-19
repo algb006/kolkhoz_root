@@ -30,6 +30,7 @@
 #include "core_log/log.h"
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
+#include "demolition_stock.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_visit.h"
@@ -5748,6 +5749,50 @@ int CheckProcessingShops() {
   return failures;
 }
 
+/// Boss, host-econ-shops seq 23: what a unit being taken down held goes to
+/// the stores through their door as room allows; what does not fit waits on
+/// the site, lost to nobody, and the alarm says what waits.
+int CheckDemolitionStockWaits() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  SetStorageKg(config.unit_types[0], 100'000.0F);
+  core::WorldState world;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.stock = {97 * kTonne};
+  core::AppendRow(world.units, store);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{0};
+  site.level = 0;
+  site.construction.phase = core::ConstructionPhase::kDemolishing;
+  site.stock = {5 * kTonne};
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+
+  core::SettleDemolitionStock(config, world);
+  std::vector<core::Alarm> alarms;
+  core::CollectDemolitionAlarms(world, alarms);
+  failures += Expect(
+      world.units.rows[0].stock[0] == 100 * kTonne && world.units.rows[1].stock[0] == 2 * kTonne &&
+          core::AmountOf(world.ledger.current.lost_no_room, core::ResourceId{0}) == 0,
+      "demolition: three tonnes into the store's room, two wait on the site, "
+      "none lost");
+  failures +=
+      Expect(alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kDemolitionStockWaiting &&
+                 alarms[0].unit.value == site_id.value && alarms[0].resource.value == 0 &&
+                 alarms[0].amount == 2 * kTonne,
+             "demolition: and the alarm says two tonnes of it wait on the site");
+
+  world.units.rows[0].stock[0] = 50 * kTonne;  // the village ate half the store
+  core::SettleDemolitionStock(config, world);
+  alarms.clear();
+  core::CollectDemolitionAlarms(world, alarms);
+  failures += Expect(world.units.rows[1].stock[0] == 0 && alarms.empty(),
+                     "demolition: room appears, the rest goes, and the alarm goes out");
+  return failures;
+}
+
 /// Register 242, boss seq 180: on the day the snow settles the district's cart
 /// takes the plan's debt off the fields' heaps — the whole debt, before the
 /// stores, never more than the debt.
@@ -6787,6 +6832,7 @@ int main() {
   failures += CheckPlanDebtFromFields();
   failures += CheckMudSeason();
   failures += CheckProcessingShops();
+  failures += CheckDemolitionStockWaits();
   failures += CheckTheMilkCart();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();

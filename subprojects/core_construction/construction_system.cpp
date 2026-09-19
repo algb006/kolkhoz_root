@@ -730,10 +730,13 @@ class ConstructionSystem final : public IConstructionSystem {
     }
 
     const float norm = LevelLaborDays(site.type, site.level);
-    MoveStockOut(current, row);
+    // THE STOCK STAYS ON THE SITE (unit_state.h, kDemolishing; boss seq 23):
+    // production puts it through the stores' door each evening as room
+    // allows, and nothing is lost at the order. Until 0.34.9 it went out here,
+    // through MoveStockOut's door of its own, and what did not fit was lost.
     site.level = 0;
-    // An upgrade stopped by the demolition: its recipe went out with the
-    // rest of the stock, and nothing is held back for works that are gone.
+    // An upgrade stopped by the demolition: its recipe is stock like the
+    // rest, and nothing is held back for works that are gone.
     site.construction.reserved.clear();
     site.construction.phase = ConstructionPhase::kDemolishing;
     site.construction.target_level = 0;
@@ -890,7 +893,11 @@ class ConstructionSystem final : public IConstructionSystem {
       } else if (site.construction.phase == ConstructionPhase::kRepairing) {
         CompleteRepair(current, current.units.row_ids[row], site);
       } else if (site.construction.phase == ConstructionPhase::kDemolishing) {
-        gone.push_back(current.units.row_ids[row]);
+        // Taken down — and gone once what it held has gone to the stores:
+        // the stock waiting for room waits on this row (boss seq 23).
+        if (std::ranges::none_of(site.stock, [](Grams held) { return held > 0; })) {
+          gone.push_back(current.units.row_ids[row]);
+        }
       } else if (InsulationDone(config_, current, row)) {
         CompleteInsulation(config_, current, row);
       }
@@ -1008,15 +1015,17 @@ class ConstructionSystem final : public IConstructionSystem {
     return false;
   }
 
-  /// The demolition's first step: the buffers go to the stores, and what has
-  /// nowhere to go is lost — the design says so and says the player is
-  /// warned (unit rules §14). The instant-delivery stub again.
-  /// What a demolished unit was holding goes out through the store door —
+  /// A COLLAPSED HOUSE'S stock, and nothing else since 0.34.10: demolition
+  /// leaves its stock on the site for production's door (unit_state.h,
+  /// kDemolishing). A house that falls vanishes the same hour and has no site
+  /// to wait on, so this second door stays for it — it is the stores' door
+  /// in spirit only: it asks neither the resource's home nor space_factor. A
+  /// house's own stock is its build remainder, if any; the family's larder
+  /// is on the family row and does not pass here.
+  /// What a collapsed unit was holding goes out through the store door —
   /// none of the receivers above its ceiling (task A3,
   /// manual/72-storage-and-alarms.md §2). What no store has room for is
-  /// GONE, and booked to the year's lost_no_room: demolishing a full barn with
-  /// nowhere to put its contents is the player's decision, and the cost of
-  /// it belongs in the book rather than in silence.
+  /// GONE, and booked to the year's lost_no_room rather than in silence.
   void MoveStockOut(WorldState& current, std::uint32_t row) {
     ResourceAmounts stock = current.units.rows[row].stock;
     current.units.rows[row].stock.clear();

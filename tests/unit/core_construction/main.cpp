@@ -527,6 +527,45 @@ int TestDemolition(const core::ITableSet& tables) {
     announced = announced || event.kind == core::EventKind::kUnitDemolished;
   }
   failures += Expect(announced, "the world is told a unit came down");
+
+  // WHAT IT HELD WAITS ON THE SITE (boss, host-econ-shops seq 23): the
+  // order moves nothing and loses nothing; the row outlives its labour
+  // while stock is left on it, and goes once production has taken it away.
+  // The first barn took the store's logs; the second is given its own.
+  world.units.rows[core::FindRow(world.units, store)].stock[0] += 10 * kLogGrams;
+  Issue(world, BuildOrder(kBarnType, 2000.0F, 2000.0F));
+  Run(*system, world, 0);
+  const core::UnitId full = world.units.row_ids.back();
+  Issue(world, UnitOrder(core::OrderKind::kStartBuild, full));
+  Run(*system, world, 0);
+  if (core::FindRow(world.units, full) == core::kNoRow) {
+    return failures + Expect(false, "the second barn was not built — the fixture, not the rule");
+  }
+  world.units.rows[core::FindRow(world.units, full)].construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 1);
+  world.units.rows[core::FindRow(world.units, full)].stock.assign(1, 3 * kLogGrams);
+  const core::Grams store_before = core::AmountOf(
+      world.units.rows[core::FindRow(world.units, store)].stock, core::ResourceId{0});
+  Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, full));
+  Run(*system, world, 0);
+  world.units.rows[core::FindRow(world.units, full)].construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 2);
+  const std::uint32_t still = core::FindRow(world.units, full);
+  failures += Expect(
+      still != core::kNoRow &&
+          core::AmountOf(world.units.rows[still].stock, core::ResourceId{0}) == 3 * kLogGrams &&
+          core::AmountOf(world.units.rows[core::FindRow(world.units, store)].stock,
+                         core::ResourceId{0}) == store_before &&
+          core::AmountOf(world.ledger.current.lost_no_room, core::ResourceId{0}) == 0,
+      "a unit taken down keeps what it held on the site, lost to nobody, and "
+      "its row waits for it");
+  if (still == core::kNoRow) {
+    return failures;  // already said; indexing the gone row would abort the rest
+  }
+  world.units.rows[still].stock.clear();
+  Run(*system, world, 2);
+  failures += Expect(core::FindRow(world.units, full) == core::kNoRow,
+                     "and goes once what it held has gone");
   return failures;
 }
 

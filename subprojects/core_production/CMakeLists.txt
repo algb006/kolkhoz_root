@@ -20,6 +20,7 @@ kolkhoz_add_module(core_production
     extraction_digging.cpp
     unit_production.cpp
     processing_shops.cpp
+    demolition_stock.cpp
     district_limit.cpp
     mts_column.cpp
     district_visit.cpp
