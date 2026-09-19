@@ -4,10 +4,15 @@
 # this is a MIX, not a layout: draw each tree from the shares with the map's tree_noise_seed, so one biome never repeats itself and two maps of the same biome never look the same
 # priority resolves overlapping biome contours — higher wins, and wet ground wins over everything because it grows what it grows
 # is_default marks the biome that fills forest no contour covers. The map therefore carries contours only for what differs from it
+# planted marks a biome PEOPLE made — the old village, the belt along the road. It is a rule for filling the start map, not a wood: it does not regrow, it is not felled, and no timber stand is baked from its ground
+# self_renewing: does it come back on its own. Wood does; a swept yard does not. The two columns differ on the roadside belt (planted AND self-renewing) and on the village gone wild — NOBODY READS THIS COLUMN YET, it is accepted design that has not reached the engine
 # canopy dark means the crowns close and the floor is bare: that is the look, and the danger is NOT from here — it follows clutter
-biome,title,canopy,priority,is_default
-spruce_dark,Тёмный ельник,dark,30,0
-pine_bor,Сосновый бор,light,20,0
-birch_mixed,Березняк смешанный,light,10,1
-oak_grove,Дубрава,light,25,0
-alder_wet,Ольшаник,dark,40,0
+biome,title,canopy,priority,is_default,planted,self_renewing
+spruce_dark,Тёмный ельник,dark,30,0,0,1
+pine_bor,Сосновый бор,light,20,0,0,1
+birch_mixed,Березняк смешанный,light,10,1,0,1
+oak_grove,Дубрава,light,25,0,0,1
+alder_wet,Ольшаник,dark,40,0,0,1
+old_village,Старая деревня,light,35,0,1,0
+roadside_belt,Лесополоса,light,15,0,1,1
+old_village_wild,"Старая деревня, одичавшая",light,35,0,1,1
