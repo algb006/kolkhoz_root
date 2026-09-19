@@ -278,6 +278,11 @@ class ProductionSystem final : public IProductionSystem {
     current.plan.worked_ha_this_year = worked_today > current.plan.worked_ha_this_year
                                            ? worked_today
                                            : current.plan.worked_ha_this_year;
+    // The district's cart takes the plan's debt off the heaps first (register
+    // 242): RunFields' settled snow takes them whole the same morning.
+    if (current.weather.snow_cover_days >= kSettledSnowCoverDays) {
+      TakePlanDebtFromFields(current);
+    }
     RunFields(current);
     // BEFORE THE HERD DAY, because the herd day is what reads it: the feed
     // need asks whether the team is out tonight, and the first night has to

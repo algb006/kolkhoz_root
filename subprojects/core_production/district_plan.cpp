@@ -42,6 +42,54 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+void TakePlanDebtFromFields(WorldState& current) {
+  if (current.plan.announced == 0) {
+    return;
+  }
+  if (current.plan.delivered.size() < current.plan.due.size()) {
+    current.plan.delivered.resize(current.plan.due.size(), 0);
+  }
+  for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    Grams owed = current.plan.due[index] - current.plan.delivered[index];
+    if (owed <= 0) {
+      continue;
+    }
+    // THE HEAP FIRST, AND THE WHOLE DEBT (boss seq 180, on core's question):
+    // the heap is gone by the evening anyway, and what the stores hold is the
+    // village's winter. Taking only what the stores could not cover in
+    // November left the position short again in January, once the winter had
+    // eaten the stores it was counted on.
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    Grams taken = 0;
+    for (FieldRow& field : current.fields.rows) {
+      if (owed <= 0) {
+        break;
+      }
+      if (field.reaped_grams <= 0 || field.reaped_resource.value != resource.value) {
+        continue;
+      }
+      const Grams from_heap = field.reaped_grams < owed ? field.reaped_grams : owed;
+      field.reaped_grams -= from_heap;
+      owed -= from_heap;
+      taken += from_heap;
+      if (field.reaped_grams == 0) {
+        field.reaped_resource = ResourceId{};
+        field.haul_days_remaining = 0.0F;
+        field.haul_days_written = 0.0F;
+      }
+    }
+    if (taken <= 0) {
+      continue;
+    }
+    current.plan.delivered[index] += taken;
+    AddLedgerAmount(current.ledger.current.delivered, resource, taken);
+    SimEvent& event =
+        EmitEvent(current, EventKind::kDistrictTookFromField, EventSeverity::kNotable);
+    event.resource = resource;
+    event.amount = taken;
+  }
+}
+
 OrderRefusal DeliverPlanNow(const ProductionConfig& config,
                             WorldState& current,
                             ResourceId only,

@@ -5441,6 +5441,69 @@ int CheckTheMilkCart() {
   return failures;
 }
 
+/// Register 242, boss seq 180: on the day the snow settles the district's cart
+/// takes the plan's debt off the fields' heaps — the whole debt, before the
+/// stores, never more than the debt.
+int CheckPlanDebtFromFields() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  const auto heap = [](core::WorldState& world, core::Grams grams, std::uint16_t resource) {
+    core::FieldRow field;
+    field.reaped_grams = grams;
+    field.reaped_resource = core::ResourceId{resource};
+    field.haul_days_remaining = 3.0F;
+    core::AppendRow(world.fields, field);
+  };
+  const auto make_world = [&heap]() {
+    core::WorldState world;
+    core::UnitRow barn;
+    barn.level = 1;
+    barn.stock = {6 * kTonne, 0};
+    core::AppendRow(world.units, barn);
+    world.plan.announced = 1;
+    world.plan.due = {10 * kTonne, 2 * kTonne};
+    world.plan.delivered = {0, 0};
+    heap(world, 4 * kTonne, 0);
+    heap(world, 1 * kTonne, 1);
+    heap(world, 9 * kTonne, 0);
+    return world;
+  };
+
+  core::WorldState before_spring = make_world();
+  before_spring.plan.announced = 0;
+  core::TakePlanDebtFromFields(before_spring);
+  failures += Expect(
+      before_spring.fields.rows[0].reaped_grams == 4 * kTonne && before_spring.step_events.empty(),
+      "before the spring's figure nothing is owed and no heap is touched");
+
+  core::WorldState world = make_world();
+  core::TakePlanDebtFromFields(world);
+  const std::vector<core::FieldRow>& fields = world.fields.rows;
+  failures +=
+      Expect(world.plan.delivered[0] == 10 * kTonne && world.units.rows[0].stock[0] == 6 * kTonne,
+             "the heap pays the whole debt first, and the barn keeps the village's winter");
+  failures += Expect(
+      fields[0].reaped_grams == 0 && fields[0].reaped_resource.value == core::kInvalidDefIdValue &&
+          fields[0].haul_days_remaining == 0.0F && fields[2].reaped_grams == 3 * kTonne,
+      "heaps in row order, and the cart takes the debt and not the heap: 3 t stay");
+  failures += Expect(world.plan.delivered[1] == 1 * kTonne && fields[1].reaped_grams == 0,
+                     "a debt bigger than its heaps takes the heaps, the rest waits for the turn");
+  failures += Expect(
+      !world.ledger.current.delivered.empty() && world.ledger.current.delivered[0] == 10 * kTonne,
+      "taken from the field is booked delivered, like any delivery");
+  failures += Expect(
+      world.step_events.size() == 2 &&
+          world.step_events[0].kind == core::EventKind::kDistrictTookFromField &&
+          world.step_events[0].resource.value == 0 && world.step_events[0].amount == 10 * kTonne &&
+          world.step_events[1].resource.value == 1 && world.step_events[1].amount == 1 * kTonne,
+      "one event per resource, with the grams taken");
+
+  core::TakePlanDebtFromFields(world);
+  failures += Expect(fields[2].reaped_grams == 3 * kTonne && world.step_events.size() == 2,
+                     "a paid position takes nothing more off the field");
+  return failures;
+}
+
 int CheckDeliverPlanNow() {
   int failures = 0;
   constexpr core::Grams kTonne = 1'000'000;
@@ -6346,6 +6409,7 @@ int main() {
   failures += CheckAnUpgradesRecipeIsNobodysElse();
   failures += CheckDistrictLimit();
   failures += CheckDeliverPlanNow();
+  failures += CheckPlanDebtFromFields();
   failures += CheckTheMilkCart();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();
