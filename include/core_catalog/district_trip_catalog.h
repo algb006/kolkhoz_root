@@ -46,8 +46,8 @@ struct DistrictTripCatalog {
   float plan_trade_percent_rep_cost = 5.0F;
 
   /// raikom_reputation a crop replacement costs (`plan_trade_swap_rep_cost`):
-  /// 8, STUB (econ's).
-  float plan_trade_swap_rep_cost = 8.0F;
+  /// 6, STUB (econ's; boss seq 210 — it was 8).
+  float plan_trade_swap_rep_cost = 6.0F;
 
   /// Below this raikom_reputation the district does not bargain at all
   /// (`plan_trade_min_reputation`): 20 — «на карандаше». The same figure

@@ -152,7 +152,9 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   // The year counts from 1 (calendar.h, Date), so 0 stays «never».
   const Date date = current.calendar.date;
   const std::uint16_t year_mark = date.year;
-  if (current.plan.announced == 0 || date.month != Month::kMarch ||
+  // From the letter (January; the first morning in the first year) to the
+  // end of March — boss seq 210, 213.
+  if (current.plan.announced == 0 || date.month > Month::kMarch ||
       current.chairman.plan_traded_year == year_mark) {
     return OrderRefusal::kTradeClosed;
   }

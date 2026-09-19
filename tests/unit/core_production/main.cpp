@@ -3702,7 +3702,18 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     failures += Expect(after.plan.met_years_in_a_row == 0, "and no run of met years begins");
   }
 
-  // -- the norm is announced in the spring, off the land that was worked ----
+  // -- the first year's letter lies in the box from the start (boss seq 213) --
+  {
+    core::WorldState dawn;
+    core::WorldState first_hour = dawn;
+    first_hour.calendar.tick = 1;
+    core::RefreshCalendarCaches(first_hour.calendar);
+    system->RunProductionDecisions(dawn, first_hour);
+    failures += Expect(first_hour.plan.announced == 1,
+                       "the first year's plan is named on the first morning, beside the limit");
+  }
+
+  // -- the norm is announced in January's letter, off the land that was worked
   //
   // THE CHECK THAT KEEPS THE PLAN FROM BEING A SHARE OF THE REAPING AGAIN.
   // It asserts the figure against area x normal yield x share — numbers a
@@ -3713,19 +3724,23 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
 
     core::WorldState previous;
-    // The last day of winter OF THE SECOND YEAR: the step below crosses into
-    // spring. The first year's norm is off the start stock (below), so the
-    // arable's rule is asserted from the second (boss, parcel 399).
+    // The last day OF THE FIRST YEAR: the step below crosses into the second
+    // year's January, the day its letter comes. The first year's norm is off
+    // the start stock (below), so the arable's rule is asserted from the
+    // second (boss, parcel 399).
+    // THE LETTER COMES IN JANUARY (boss seq 210): the second year's turn, not
+    // its spring.
     previous.calendar.tick =
-        (static_cast<core::Tick>(core::kDaysPerYear + (2U * core::kDaysPerMonth)) *
-         core::kTicksPerDay) -
-        1U;
+        (static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay) - 1U;
     core::RefreshCalendarCaches(previous.calendar);
     // THE AREA THE NORM IS COMPUTED FROM IS LAST YEAR'S, and it is state now
     // rather than a walk over today's fields: ten worked hectares, written at
     // the year's turn. What this fixture's fields carry TODAY must not enter
     // the figure at all — that is the whole repair (world_state.h).
     previous.plan.worked_ha_last_year = 10.0F;
+    // The turn writes the closing year's worked land into last year's the
+    // same morning the letter is read, so the closing year worked ten too.
+    previous.plan.worked_ha_this_year = 10.0F;
     core::FieldRow worked;
     worked.kind = core::LandKind::kArable;
     worked.area_ga = 10.0F;
@@ -3751,9 +3766,9 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    const bool crossed = previous.calendar.season != current.calendar.season &&
-                         current.calendar.season == core::Season::kSpring;
-    failures += Expect(crossed, "the fixture really does cross into spring");
+    const bool crossed = previous.calendar.day != current.calendar.day &&
+                         current.calendar.day % core::kDaysPerYear == 0;
+    failures += Expect(crossed, "the fixture really does cross into the year's turn");
     system->RunProductionDecisions(previous, current);
 
     core::Grams asked = 0;
@@ -3761,8 +3776,8 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
       asked += due;
     }
     failures += Expect(asked > 0,
-                       "the district names the year's norm in the spring, off land that has "
-                       "reaped nothing yet — a norm a share of the harvest could not produce");
+                       "the district names the year's norm in January's letter, off land that "
+                       "has reaped nothing yet — a norm a share of the harvest could not produce");
     // THE FIGURE IS THE DISTRICT'S POSITIONS ON LAST YEAR'S TEN HECTARES,
     // and every number in it is read back out of the tables: a second copy of
     // balance data in a test is a copy that drifts, and this project has been
@@ -5497,6 +5512,21 @@ int CheckTheMilkCart() {
                          StoreOf(world, 1) == 0,
                      "milk: the winter's milk goes outside any position");
 
+  // THE LETTER IN JANUARY (boss seq 210, 213): named on day 0, the milk
+  // still counts from the first day of spring (day 8) — 40 days, not 48 —
+  // and the winter's milk still goes outside the position.
+  core::WorldState january = MakeHerdWorld(0.0F);
+  AddHerd(january, 0, 10, 2, true);
+  core::AnnouncePlan(config, january);
+  failures += Expect(core::AmountOf(january.plan.due, milk) == 1600 * kKilo,
+                     "milk: named in January, the position is still the spring's 40 days");
+  january.units.rows[0].stock[1] = 30 * kKilo;
+  core::ShipMilkShare(config, january);
+  core::ShipMilkLeftover(config, january);
+  failures += Expect(core::AmountOf(january.plan.delivered, milk) == 0 &&
+                         core::AmountOf(january.plan.delivered_outside, milk) == 30 * kKilo,
+                     "milk: and in January the cart takes no share, and what it takes is outside");
+
   // And what went outside is over the plan: 3.3 t of milk at 0.64 / 3.3 is
   // 0.64 t of grain.
   core::WorldState outside;
@@ -5925,8 +5955,8 @@ int CheckDistrictTrip() {
   core::WorldState replaced = march();
   failures += Expect(core::OrderTradePlan(config, replaced, swap) == core::OrderRefusal::kNone &&
                          replaced.plan.due[0] == 0 && replaced.plan.due[1] == 80 * kTonne &&
-                         replaced.chairman.raikom_reputation == 42.0F,
-                     "plan: 10 t of rye is 20 ha; the same 20 ha of potato is 80 t, for eight");
+                         replaced.chairman.raikom_reputation == 44.0F,
+                     "plan: 10 t of rye is 20 ha; the same 20 ha of potato is 80 t, for six");
   core::WorldState pencil = march();
   pencil.chairman.raikom_reputation = 15.0F;
   failures +=
@@ -5938,6 +5968,13 @@ int CheckDistrictTrip() {
   april.chairman.away_until_tick = april.calendar.tick + 10;
   failures += Expect(core::OrderTradePlan(config, april, down) == core::OrderRefusal::kTradeClosed,
                      "plan: after March, no bargain");
+  // The letter comes in January (boss seq 210): the window opens with it.
+  core::WorldState january = march();
+  at(january, 1, 9);
+  january.chairman.away_from_tick = january.calendar.tick - 1;
+  january.chairman.away_until_tick = january.calendar.tick + 10;
+  failures += Expect(core::OrderTradePlan(config, january, down) == core::OrderRefusal::kNone,
+                     "plan: in January, with the letter in hand, the bargain is open");
 
   // -- the reputation crossing «на карандаше» -------------------------------------
   core::WorldState before;

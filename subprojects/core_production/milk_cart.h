@@ -26,6 +26,12 @@
 
 namespace core {
 
+/// @brief The first day of the year the milk position runs from: the first
+/// day of spring. The plan's letter comes in January (boss seq 210), and the
+/// milk still counts from the spring and the cart still comes from it (boss
+/// seq 213) — before this day the position does not stand.
+std::uint32_t MilkSeasonFirstDay();
+
 /// @brief Before the day's milking: every gram of milk the stores still hold
 /// — what the morning issue left — leaves for the district. Against the
 /// position while a plan stands (PlanState::delivered), outside any position

@@ -221,6 +221,9 @@ class ProductionSystem final : public IProductionSystem {
       // And the first year's limit, for the same reason: genesis hands over a
       // world, and the district's plan stands from the first day.
       GrantFirstLimitYear(config_, current);
+      // And the first year's plan: its letter lies in the box from the start
+      // (boss seq 213), so it is named on the first morning, beside the limit.
+      AnnouncePlan(config_, current);
     }
     // The day's hauling is settled at its LAST tick, and the hour matters.
     // Labor runs earlier in this same slot, so by now the carriers have
@@ -268,10 +271,13 @@ class ProductionSystem final : public IProductionSystem {
     }
     // After the year's verdict, which is what moves the reputation.
     SummonOnThePencil(config_, previous, current);
-    // THE NORM IS ANNOUNCED IN THE SPRING, on the day the season turns
-    // (boss, 2026-09-12). Not at the year's turn: by spring the worked land
-    // and its rotation are settled, and the figure never moves again.
-    if (current.calendar.season == Season::kSpring && previous.calendar.season != Season::kSpring) {
+    // THE PLAN'S LETTER COMES IN JANUARY (the human's word of 2026-09-19,
+    // «Письмо в январе»; boss seq 210, 213; district §5): at the year's turn,
+    // after the old year is judged and its worked land written. Until then
+    // the figure was named on the first day of spring (boss, 2026-09-12);
+    // the positions do not move with the day, only the day the player learns
+    // them — and the milk still counts from the spring (district_plan.h).
+    if (current.calendar.day % kDaysPerYear == 0) {
       AnnouncePlan(config_, current);
     }
     // THE WINTERING AS IT STANDS ON ITS DATE (epochs design §6): the fodder

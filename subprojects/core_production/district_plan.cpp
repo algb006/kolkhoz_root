@@ -3,6 +3,7 @@
 
 #include "district_plan.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -15,6 +16,7 @@
 #include "core_common/quantities.h"
 #include "district_visit.h"
 #include "herd_system.h"
+#include "milk_cart.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -277,8 +279,12 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   const auto share =
       static_cast<Grams>(std::llround(static_cast<double>(KolkhozMilkDayGrams(config, current)) *
                                       static_cast<double>(config.plan_milk_share)));
-  const auto days_to_turn =
-      static_cast<Grams>(kDaysPerYear - (current.calendar.day % kDaysPerYear));
+  // THE MILK COUNTS FROM THE SPRING (boss seq 213): the letter comes in
+  // January, and the position is still the milking days from the first day
+  // of spring to the turn — the cart does not come in the winter.
+  const std::uint32_t today = current.calendar.day % kDaysPerYear;
+  const std::uint32_t from = std::max(today, MilkSeasonFirstDay());
+  const auto days_to_turn = static_cast<Grams>(kDaysPerYear - from);
   current.plan.milk_daily_share = share;
   AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
 }
