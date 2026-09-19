@@ -61,7 +61,7 @@ extraction_days_per_t_clay,0.05,core
 extraction_days_per_t_stone,0.25,core
 extraction_days_per_t_sand,0.03,core
 extraction_tools_per_worker,1,core
-old_house_near_collapse_wear,0.9,host
+old_house_near_collapse_wear,0.9,both
 store_leak_complaint_kg,100,core
 district_visit_karasev_month,6,core
 district_visit_polushkina_month,12,core
