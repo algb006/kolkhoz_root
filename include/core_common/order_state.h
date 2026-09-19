@@ -667,6 +667,34 @@ enum class OrderKind : std::uint8_t {
   /// Consumer: core_production.
   kEmptyStore,
 
+  /// THE CHAIRMAN'S TALK (lever ③ against the drinking village; register
+  /// 223; crime §6 «Спорт и изба-читальня», «Кто ходит»; leisure §12
+  /// «Беседа»; boss seq 140-141): the chairman talks `resident` into sport,
+  /// and he GOES for `talk_months` months (world_params, 12) from the day of
+  /// the talk — to the field in a counted warm month and to the reading hut
+  /// in winter, the same «goes» as a man who goes by himself, WITHOUT the
+  /// age and sobriety conditions. The talk is no term of the month's count:
+  /// it makes a goer, and the field's and the hut's terms do the rest. When
+  /// the months run out he goes by himself if the rule lets him (under 30,
+  /// at or under 20), or drops it — «пьющее село само не выздоравливает: его
+  /// вытаскивает председатель, человек за человеком».
+  ///
+  /// ONE TALK A CALENDAR SEASON FOR THE WHOLE VILLAGE (boss seq 141 А:
+  /// «председательский рычаг, а не право жителя»): December–February,
+  /// March–May, June–August, September–November. The talk holds no place:
+  /// if the field goes later, he has nowhere to go and the months give
+  /// nothing. Where it will live (save 69): the day the talk runs out on the
+  /// resident, the season of the last talk on the village.
+  ///
+  /// Refusals: kNoSuchSubject (no such resident), kNotEligible (not a man of
+  /// `alcohol_adult_from_years` or over — the metric is men's only, crime §6
+  /// «Пол»), kConflictsWithActive (he is under a talk already — a second one
+  /// would burn the season), kOncePerSeason, kNowhereToGo (measured on the
+  /// day of the order, from his home, with the field's and the hut's own
+  /// radii). The boundary refuses any subject but the resident by shape.
+  /// Seam key `talk_to_sport` (boss). Consumer: core_residents.
+  kTalkToSport,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -966,6 +994,18 @@ enum class OrderRefusal : std::uint8_t {
   /// Some unit stands below the level the era asks of it. Seam key
   /// `units_below_level`.
   kUnitsBelowLevel,
+
+  /// kTalkToSport: the village has had its talk this calendar season (one
+  /// talk, one man, a season — boss seq 141 А). Named apart from
+  /// kRuleForbids because the remedy is the next season, not another man
+  /// (boss seq 141 Б). Seam key `once_per_season`.
+  kOncePerSeason,
+
+  /// kTalkToSport: neither a stadium of step 1 or more nor an open reading
+  /// hut stands within reach of the man's home — «ходить некуда» (crime §6).
+  /// Named apart because the remedy is a building (or a librarian), not a
+  /// talk. Seam key `nowhere_to_go`.
+  kNowhereToGo,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

@@ -356,6 +356,14 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   day_off.field = core::FieldId{2};
   failures += Expect(session->IssueOrder(day_off).value == 0,
                      "a cancelled day off that names a field is refused");
+  // THE CHAIRMAN'S TALK (contract, 2026-09-19): the man and nothing else.
+  core::OrderRow talk;
+  talk.kind = core::OrderKind::kTalkToSport;
+  failures += Expect(session->IssueOrder(talk).value == 0, "a talk to nobody is refused");
+  talk.resident = core::ResidentId{7};
+  talk.unit = core::UnitId{4};
+  failures +=
+      Expect(session->IssueOrder(talk).value == 0, "a talk that also names a unit is refused");
 
   work.herd = core::HerdId{3};
   const core::OrderId first = session->IssueOrder(work);

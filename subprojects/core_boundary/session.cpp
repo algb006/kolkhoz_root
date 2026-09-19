@@ -225,6 +225,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // is the consumer's.
       return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
              order.amount == 0;
+    case OrderKind::kTalkToSport:
+      // The man, and nothing else. Whether he is a man of age, under a talk
+      // already, and has somewhere to go change with the world — the
+      // consumer's verdict (order_state.h).
+      return has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
   }
   return false;
 }
