@@ -14,16 +14,11 @@
 #include "stock_ops.h"
 
 namespace core {
-namespace {
 
-bool CanSaw(const WorldState& world, const UnitRow& unit) {
+bool UnitCanWork(const WorldState& world, const UnitRow& unit) {
   return unit.level > 0 && unit.dead == 0 && unit.paused == 0 && ModuleParentSound(world, unit);
 }
 
-/// What a unit at `wear` still turns out, as a share of what a new one would:
-/// 1 at nought, 1 − `wear_output_loss_at_full` at the top of the scale, and
-/// straight between them (unit rules §15).
-///
 /// ON THE OUTPUT AND NOT ON THE DEMAND, and that is a decision rather than a
 /// convenience. A worn saw saws SLOWER: the same man-days give fewer boards.
 /// How many days the stores could feed it is a question about the logs lying
@@ -41,6 +36,8 @@ float WearOutputFactor(const ProductionConfig& config, const UnitRow& unit) {
   const float kept = 1.0F - (worn * config.farming.wear_output_loss_at_full);
   return kept > 0.0F ? kept : 0.0F;
 }
+
+namespace {
 
 /// Boards the drained man-days made, taking their logs out of the stores and
 /// putting the boards through the door. What the door refuses goes back as
@@ -103,8 +100,9 @@ void SettleUnitProduction(const ProductionConfig& config, WorldState& current) {
     const float worked = written > remaining ? written - remaining : 0.0F;
     SawWhatWasWorked(
         timber, config, current, worked * WearOutputFactor(config, current.units.rows[row]));
-    const float demand =
-        CanSaw(current, current.units.rows[row]) ? SawingDemandDays(timber, config, current) : 0.0F;
+    const float demand = UnitCanWork(current, current.units.rows[row])
+                             ? SawingDemandDays(timber, config, current)
+                             : 0.0F;
     current.units.rows[row].production_days_remaining = demand;
     current.units.rows[row].production_days_written = demand;
   }

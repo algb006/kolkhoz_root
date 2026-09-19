@@ -502,8 +502,11 @@ class LaborSystem final : public ILaborSystem {
     }
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       const UnitRow& unit = current.units.rows[row];
-      if (unit.parent.value != resident.post.unit.value ||
-          places_taken[row] >= UnitWorkPlaces(config_.timber, unit.type)) {
+      // The sawmill's places or a shop's (processing_catalog.h): a type is
+      // one or the other, so the larger is the one it has.
+      const std::uint32_t places = std::max(UnitWorkPlaces(config_.timber, unit.type),
+                                            ProcessingPlaces(config_.processing, unit.type));
+      if (unit.parent.value != resident.post.unit.value || places_taken[row] >= places) {
         continue;
       }
       WorkAssignment work;

@@ -272,15 +272,33 @@ inline Grams TotalStock(const ResourceAmounts& stock) {
   return total;
 }
 
-/// @brief Free room of one unit in grams: capacity minus what it holds.
-/// Negative capacity (an outline the player drew) means unbounded, and is
-/// reported as the largest value rather than as zero — a heap is never full.
+/// @brief The room a unit's stock takes, in grams of the store's tonnage:
+/// each resource's grams × its space_factor (processing_catalog.h) —
+/// sauerkraut takes half its mass, «намного компактнее сырой» (register 239).
+/// TotalStock is the MASS; this is the ROOM, and a ceiling compares the room.
+inline Grams RoomUsed(const ResourceAmounts& stock, const ProductionConfig& config) {
+  Grams total = 0;
+  for (std::size_t index = 0; index < stock.size(); ++index) {
+    if (stock[index] > 0) {
+      total += RoomTaken(config.processing,
+                         DefIdFromIndex<ResourceIdTag>(static_cast<std::uint32_t>(index)),
+                         stock[index]);
+    }
+  }
+  return total;
+}
+
+/// @brief Free room of one unit in grams of its tonnage: capacity minus the
+/// room its stock takes (RoomUsed). How much of ONE resource fits in it is
+/// GramsFitting of this. Negative capacity (an outline the player drew) means
+/// unbounded, and is reported as the largest value rather than as zero — a
+/// heap is never full.
 inline Grams FreeRoomGrams(const UnitRow& unit, const ProductionConfig& config) {
   const Grams capacity = StorageCapacityGrams(unit, config);
   if (capacity < 0) {
     return std::numeric_limits<Grams>::max();
   }
-  const Grams held = TotalStock(unit.stock);
+  const Grams held = RoomUsed(unit.stock, config);
   return held >= capacity ? 0 : capacity - held;
 }
 
@@ -352,7 +370,8 @@ inline Grams DeliverToStores(WorldState& world,
     if (!NumberedStoreAccepts(unit, config, resource)) {
       continue;
     }
-    const Grams room = FreeRoomGrams(unit, config);
+    // In grams of THIS resource: half-room sauerkraut fits twice its room.
+    const Grams room = GramsFitting(config.processing, resource, FreeRoomGrams(unit, config));
     if (room <= 0) {
       continue;
     }

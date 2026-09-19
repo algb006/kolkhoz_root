@@ -17,6 +17,7 @@
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
+#include "core_catalog/processing_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
@@ -742,6 +743,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       const std::span<const std::string_view> from_life = LifeWorldParamKeys();
       const std::span<const std::string_view> from_timber = TimberWorldParamKeys();
       known.insert(known.end(), from_timber.begin(), from_timber.end());
+      const std::span<const std::string_view> from_processing = ProcessingWorldParamKeys();
+      known.insert(known.end(), from_processing.begin(), from_processing.end());
       const std::span<const std::string_view> from_extraction = ExtractionWorldParamKeys();
       known.insert(known.end(), from_extraction.begin(), from_extraction.end());
       const std::span<const std::string_view> from_construction = ConstructionWorldParamKeys();

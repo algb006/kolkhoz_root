@@ -38,6 +38,16 @@ namespace core {
 /// gives at length.
 void SettleUnitProduction(const ProductionConfig& config, WorldState& current);
 
+/// @brief What a unit at its wear still turns out, as a share of a new one:
+/// 1 at nought, 1 − `wear_output_loss_at_full` at the top of the scale, and
+/// straight between them (unit rules §15). One rule for the sawmill and the
+/// shops (processing_shops.h).
+float WearOutputFactor(const ProductionConfig& config, const UnitRow& unit);
+
+/// @brief Whether a producing unit can work at all today: built, standing,
+/// not paused, and its parent sound (module rules).
+bool UnitCanWork(const WorldState& world, const UnitRow& unit);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_UNIT_PRODUCTION_H_

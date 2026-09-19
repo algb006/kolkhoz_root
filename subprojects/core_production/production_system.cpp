@@ -53,6 +53,7 @@
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
+#include "processing_shops.h"
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
@@ -231,6 +232,10 @@ class ProductionSystem final : public IProductionSystem {
       // The sawmill after the carting, so tonight's logs off the stands are
       // in tomorrow's demand (unit_production.h).
       SettleUnitProduction(config_, current);
+      // The shops beside it: after the day's issue, before the night's rot —
+      // the village eats first, and the meat is smoked before it spoils
+      // (processing_shops.h).
+      SettleProcessing(config_, current);
       // The district's carts: what came today goes through the same door.
       ArriveLimitDeliveries(config_, current);
       // And the stock bought on the limit, which comes through no door at
@@ -341,6 +346,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectHerdAlarms(config_, completed, alarms);
     CollectPlanAlarms(config_, completed, alarms);
     CollectTimberAlarms(config_, completed, alarms);
+    CollectProcessingAlarms(config_, completed, alarms);
   }
 
  private:
@@ -357,6 +363,8 @@ class ProductionSystem final : public IProductionSystem {
   /// January 1: the rotation plan advances one year, and fallow that stood
   /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
+    // The barrels' year (register 240), booked in the book that closes.
+    WearBarrels(config_, current);
     DeliverPlan(config_, current);
     // Read before JudgePlan hands the next year's plan down over this one.
     const bool plan_fully_met = PlanFullyDelivered(config_, current);

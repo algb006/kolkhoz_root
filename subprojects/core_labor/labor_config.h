@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "core_catalog/extraction_catalog.h"
+#include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -435,6 +436,10 @@ struct LaborConfig {
   /// Timber design §8a: how many tools a feller needs, and the tool's mass,
   /// to cap a felling crew by the tools in the stores (2026-09-13).
   TimberCatalog timber;
+
+  /// Production units §8а: how many of the parent's post holders a shop takes
+  /// at once (ProcessingPlaces) — the sawmill's places live in `timber`.
+  ProcessingCatalog processing;
 
   /// Construction design §3: the digging crew's cap by tools (boss, parcel 270).
   ExtractionCatalog extraction;

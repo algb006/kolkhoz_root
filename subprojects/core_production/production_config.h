@@ -24,6 +24,7 @@
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
+#include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -879,6 +880,10 @@ struct ProductionConfig {
 
   /// Timber design §8a: the stands and the felling numbers (2026-09-13).
   TimberCatalog timber;
+
+  /// Production units §8а: the shops' recipes, the barrels and the room a
+  /// resource takes in a store (2026-09-19).
+  ProcessingCatalog processing;
 
   /// Construction design §3: the plots clay, stone and sand are dug on and
   /// the digging numbers (boss, parcel 270).

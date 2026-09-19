@@ -19,6 +19,7 @@ kolkhoz_add_module(core_production
     timber_felling.cpp
     extraction_digging.cpp
     unit_production.cpp
+    processing_shops.cpp
     district_limit.cpp
     mts_column.cpp
     district_visit.cpp

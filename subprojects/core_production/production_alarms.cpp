@@ -313,7 +313,7 @@ void CollectStoreAlarms(const ProductionConfig& config,
       continue;
     }
     const Grams capacity = StorageCapacityGrams(unit, config);
-    if (capacity <= 0 || TotalStock(unit.stock) < capacity) {
+    if (capacity <= 0 || RoomUsed(unit.stock, config) < capacity) {
       continue;
     }
     Alarm alarm;

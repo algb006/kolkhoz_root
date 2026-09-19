@@ -15,6 +15,7 @@ kolkhoz_add_module(core_catalog
     table_lookup.cpp
     table_value.cpp
     timber_catalog.cpp
+    processing_catalog.cpp
     extraction_catalog.cpp
     limit_catalog.cpp
     district_visit_catalog.cpp)

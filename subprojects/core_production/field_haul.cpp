@@ -113,7 +113,8 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
     if (!NumberedStoreTakes(unit, config, resource)) {
       continue;
     }
-    room += free_here;
+    // In grams of this resource, as the door counts it (DeliverToStores).
+    room += GramsFitting(config.processing, resource, free_here);
   }
   return room;
 }

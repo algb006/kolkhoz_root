@@ -39,6 +39,7 @@
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
+#include "processing_shops.h"
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
@@ -5441,6 +5442,191 @@ int CheckTheMilkCart() {
   return failures;
 }
 
+/// The shops of epoch I (production units §8а, registers 239-240; boss seq
+/// 183-189): the sauerkraut shop above the fresh reserve and in its season,
+/// the barrels as room, the smokehouse, the cooperage on demand and not on the
+/// boards a started site still lacks, and sauerkraut taking half its mass.
+int CheckProcessingShops() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  constexpr core::Grams kTonne = 1000 * kKilo;
+  // Resources: 0 vegetables, 1 grocery, 2 sauerkraut, 3 barrel, 4 board,
+  // 5 steel, 6 meat, 7 firewood, 8 smoked meat, 9 rye (a filler).
+  const core::ResourceId veg{0};
+  const core::ResourceId grocery{1};
+  const core::ResourceId kraut{2};
+  const core::ResourceId barrel{3};
+  const core::ResourceId board{4};
+  const core::ResourceId steel{5};
+  const core::ResourceId meat{6};
+  const core::ResourceId firewood{7};
+  const core::ResourceId smoked{8};
+  const core::ResourceId rye{9};
+  core::ProductionConfig config;
+  config.unit_types.resize(4);  // 0 a store; 1 the kraut shop; 2 smokehouse; 3 workshops
+  SetStorageKg(config.unit_types[0], 100'000.0F);
+  core::ProcessingCatalog& catalog = config.processing;
+  catalog.space_factor.assign(10, 1.0F);
+  catalog.space_factor[kraut.value] = 0.5F;
+  catalog.in_barrel.assign(10, 0);
+  catalog.in_barrel[kraut.value] = 1;
+  catalog.in_barrel[smoked.value] = 1;
+  catalog.barrel_resource = barrel;
+  catalog.barrel_grams = 15 * kKilo;
+  catalog.barrel_capacity_grams = 100 * kKilo;
+  catalog.barrel_wear_per_year = 0.1F;
+  catalog.sauerkraut_fresh_share = 0.25F;
+  core::ProcessingRecipe pickling;
+  pickling.key = "pickling";
+  pickling.rule = core::ProcessingRule::kPickling;
+  pickling.unit_type = core::UnitTypeId{1};
+  pickling.labor_days = 0.1667F;
+  pickling.inputs = {{.resource = veg, .grams = kTonne},
+                     {.resource = grocery, .grams = 20 * kKilo}};
+  pickling.outputs = {{.resource = kraut, .grams = 750 * kKilo}};
+  core::ProcessingRecipe smoking;
+  smoking.key = "smoking_meat";
+  smoking.unit_type = core::UnitTypeId{2};
+  smoking.labor_days = 1.0F;
+  smoking.inputs = {{.resource = meat, .grams = kTonne},
+                    {.resource = firewood, .grams = 150 * kKilo}};
+  smoking.outputs = {{.resource = smoked, .grams = 600 * kKilo}};
+  core::ProcessingRecipe cooperage;
+  cooperage.key = "cooperage";
+  cooperage.rule = core::ProcessingRule::kCooperage;
+  cooperage.unit_type = core::UnitTypeId{3};
+  cooperage.labor_days = 0.125F;
+  cooperage.inputs = {{.resource = board, .grams = 12'500}, {.resource = steel, .grams = kKilo}};
+  cooperage.outputs = {{.resource = barrel, .grams = 15 * kKilo}};
+  catalog.recipes = {pickling, smoking, cooperage};
+  // The workshops' site owes 1.5 t of boards to a level being raised.
+  catalog.level_costs = {
+      {.unit_type = core::UnitTypeId{0}, .level = 2, .resource = board, .grams = 1500 * kKilo}};
+
+  const auto make_world = [&](std::uint32_t day) {
+    core::WorldState world;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::UnitRow store;
+    store.type = core::UnitTypeId{0};
+    store.level = 1;
+    core::AddToStock(store.stock, veg, 10 * kTonne);
+    core::AddToStock(store.stock, grocery, kTonne);
+    core::AddToStock(store.stock, barrel, 150 * 15 * kKilo);  // 150 barrels, 15 t of room
+    core::AppendRow(world.units, store);
+    for (std::uint16_t type = 1; type <= 3; ++type) {
+      core::UnitRow shop;
+      shop.type = core::UnitTypeId{type};
+      shop.level = 1;
+      core::AppendRow(world.units, shop);
+    }
+    core::AddLedgerAmount(world.ledger.current.harvest, veg, 8 * kTonne);  // reserve 2 t
+    return world;
+  };
+  constexpr std::uint32_t kJanuary = 0;
+  constexpr std::uint32_t kOctober = 9 * core::kDaysPerMonth;
+
+  // -- the sauerkraut shop ----------------------------------------------------
+  core::WorldState winter = make_world(kJanuary);
+  core::SettleProcessing(config, winter);
+  failures += Expect(winter.units.rows[1].production_days_written == 0.0F,
+                     "shops: out of its September-December season the kraut shop asks nobody");
+
+  core::WorldState autumn = make_world(kOctober);
+  core::SettleProcessing(config, autumn);
+  // 10 t held less the 2 t reserve: 8 batches, the grocery (50) and the
+  // barrels (15 t of room / 0.75 t = 20) allow more.
+  failures +=
+      Expect(std::fabs(autumn.units.rows[1].production_days_written - (8.0F * 0.1667F)) < 1e-4F,
+             "shops: in October the shop asks for the vegetables above the fresh "
+             "reserve — 8 t of 10 when 8 t were harvested");
+  autumn.units.rows[1].production_days_remaining = 0.0F;  // the master worked it all
+  core::SettleProcessing(config, autumn);
+  const core::UnitRow& store = autumn.units.rows[0];
+  failures += Expect(core::StockOf(store.stock, veg) == 2 * kTonne &&
+                         core::StockOf(store.stock, kraut) == 6 * kTonne &&
+                         core::StockOf(store.stock, grocery) == kTonne - (160 * kKilo),
+                     "shops: the day's work pickles 8 t into 6 t, with 160 kg of salt");
+  failures += Expect(core::AmountOf(autumn.ledger.current.processed, veg) == 8 * kTonne &&
+                         core::AmountOf(autumn.ledger.current.made, kraut) == 6 * kTonne,
+                     "shops: booked processed and made, so the book still balances");
+  failures += Expect(autumn.units.rows[1].production_days_written == 0.0F,
+                     "shops: and nothing is asked for past the reserve");
+  failures += Expect(core::BarrelRoomFree(config, autumn) == 9 * kTonne,
+                     "shops: six tonnes of sauerkraut fill sixty barrels of the hundred and fifty");
+  failures += Expect(core::RoomUsed(store.stock, config) ==
+                         (2 + 3 + 1) * kTonne - (160 * kKilo) + (150 * 15 * kKilo),
+                     "shops: and in the store sauerkraut takes half its mass");
+
+  // -- standing, and saying why ------------------------------------------------
+  core::WorldState no_barrels = make_world(kOctober);
+  core::TakeFromStorage(no_barrels, config, barrel, 150 * 15 * kKilo);
+  core::SettleProcessing(config, no_barrels);
+  std::vector<core::Alarm> alarms;
+  core::CollectProcessingAlarms(config, no_barrels, alarms);
+  // Two stand: the kraut shop for barrels, and the cooper — barrels are now
+  // wanted and there are no boards.
+  const core::UnitId kraut_shop = no_barrels.units.row_ids[1];
+  const auto of_kraut_shop = std::ranges::find_if(alarms, [kraut_shop](const core::Alarm& alarm) {
+    return alarm.unit.value == kraut_shop.value;
+  });
+  failures += Expect(no_barrels.units.rows[1].production_days_written == 0.0F &&
+                         alarms.size() == 2 && of_kraut_shop != alarms.end() &&
+                         of_kraut_shop->kind == core::AlarmKind::kProcessingStopped &&
+                         of_kraut_shop->resource.value == barrel.value,
+                     "shops: with no barrels the shop stands and says it is the barrels");
+  core::WorldState no_salt = make_world(kOctober);
+  core::TakeFromStorage(no_salt, config, grocery, kTonne);
+  alarms.clear();
+  core::CollectProcessingAlarms(config, no_salt, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].resource.value == grocery.value,
+                     "shops: with no grocery it says the salt");
+  alarms.clear();
+  core::CollectProcessingAlarms(config, winter, alarms);
+  failures += Expect(alarms.empty(), "shops: out of season is no work, and no alarm");
+
+  // -- the smokehouse ------------------------------------------------------------
+  core::WorldState slaughter = make_world(kJanuary);
+  core::AddToStock(slaughter.units.rows[0].stock, meat, 2 * kTonne);
+  core::AddToStock(slaughter.units.rows[0].stock, firewood, kTonne);
+  core::SettleProcessing(config, slaughter);
+  failures += Expect(slaughter.units.rows[2].production_days_written == 2.0F,
+                     "shops: the smokehouse knows no season — two tonnes of meat, two days");
+
+  // -- the cooperage -------------------------------------------------------------
+  core::WorldState cooper = make_world(kOctober);
+  core::AddToStock(cooper.units.rows[0].stock, board, 2 * kTonne);
+  core::AddToStock(cooper.units.rows[0].stock, steel, kTonne);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{0};
+  site.level = 1;
+  site.construction.phase = core::ConstructionPhase::kDelivering;
+  site.construction.target_level = 2;
+  core::AppendRow(cooper.units, site);
+  core::TakeFromStorage(cooper, config, barrel, 140 * 15 * kKilo);  // ten barrels left
+  core::SettleProcessing(config, cooper);
+  // 10 t of vegetables fill 75 barrels as sauerkraut, 10 are free: 65 wanted.
+  // Boards: 2 t less the 1.5 t the site still lacks = 500 kg = 40 barrels.
+  failures +=
+      Expect(std::fabs(cooper.units.rows[3].production_days_written - (40.0F * 0.125F)) < 1e-4F,
+             "shops: the cooper makes what is wanted, from the boards no site waits for");
+
+  // -- the barrels' year ---------------------------------------------------------
+  core::WorldState year = make_world(kJanuary);
+  core::WearBarrels(config, year);
+  failures += Expect(core::BarrelsHeld(config, year) == 135 &&
+                         core::AmountOf(year.ledger.current.spoiled, barrel) == 15 * 15 * kKilo,
+                     "shops: a tenth of the barrels goes at the turn, booked spoiled");
+
+  // -- the room --------------------------------------------------------------------
+  core::WorldState full = make_world(kJanuary);
+  // The store holds 13.25 t (vegetables, grocery, barrels); rye leaves one tonne.
+  core::AddToStock(full.units.rows[0].stock, rye, 100 * kTonne - (14 * kTonne + 250 * kKilo));
+  failures += Expect(core::DeliverToStores(full, config, kraut, 2 * kTonne) == 2 * kTonne,
+                     "shops: a tonne of room takes two tonnes of sauerkraut");
+  return failures;
+}
+
 /// Register 242, boss seq 180: on the day the snow settles the district's cart
 /// takes the plan's debt off the fields' heaps — the whole debt, before the
 /// stores, never more than the debt.
@@ -6479,6 +6665,7 @@ int main() {
   failures += CheckDeliverPlanNow();
   failures += CheckPlanDebtFromFields();
   failures += CheckMudSeason();
+  failures += CheckProcessingShops();
   failures += CheckTheMilkCart();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();
