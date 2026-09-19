@@ -340,6 +340,9 @@ class ResidentsSystem final : public IResidentsSystem {
     // The chairman's word on a trader first, in whatever hour it came: a man
     // taken in the hour back carries nothing home (night_trade.h).
     ConsumeNightTradeOrders(current);
+    // The chairman's talk, in whatever hour it came (sport.h).
+    ConsumeTalkOrders(
+        config_.sport, config_.alcoholism.adult_from_years, config_.life_speedup, current);
     // And the ration's switch before the exchange below reads it: a switch
     // given this hour is the rule of this day's ration.
     ConsumeRationOrders(current);

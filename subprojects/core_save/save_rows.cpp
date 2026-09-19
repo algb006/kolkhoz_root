@@ -57,11 +57,14 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // doing what it is for: the size alone misses a field that slips into a hole,
 // the arity alone misses one that widens an existing member.
 // 2026-09-18, save 59: distiller_supplied_month took it to 196 (measured).
-static_assert(sizeof(ResidentRow) == 196,
+// 2026-09-19, save 69: talk_until_day, the chairman's talk — 200, predicted
+// before the field was added and measured after.
+static_assert(sizeof(ResidentRow) == 200,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
-static_assert(AggregateArity<ResidentRow>() == 43,
+// Save 69: talk_until_day — 44.
+static_assert(AggregateArity<ResidentRow>() == 44,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -397,6 +400,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU32(row.distiller_supplied_month);  // save 59
   out.WriteU8(row.days_worked_this_month);
   out.WriteFloat(row.alcoholism);
+  out.WriteU32(row.talk_until_day);  // save 69
   out.WriteFloat(row.crime_inclination);
   out.WriteU16(row.offense_count);
   out.WriteFloat(row.attitude_to_chairman);
@@ -466,6 +470,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.distiller_supplied_month = in.ReadU32();
   row.days_worked_this_month = in.ReadU8();
   row.alcoholism = in.ReadFloat();
+  row.talk_until_day = in.ReadU32();
   row.crime_inclination = in.ReadFloat();
   row.offense_count = in.ReadU16();
   row.attitude_to_chairman = in.ReadFloat();

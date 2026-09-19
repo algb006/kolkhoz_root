@@ -10,14 +10,16 @@
 #include <string_view>
 
 #include "core_catalog/table_value.h"
+#include "core_common/calendar.h"
 #include "core_common/geometry.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_tables/tables.h"
 
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 16> kSportWorldParamKeys = {"sport_field_radius_m",
+constexpr std::array<std::string_view, 17> kSportWorldParamKeys = {"sport_field_radius_m",
                                                                    "sport_open_temp_c",
                                                                    "sport_open_days_min",
                                                                    "sport_goer_age_max",
@@ -32,7 +34,11 @@ constexpr std::array<std::string_view, 16> kSportWorldParamKeys = {"sport_field_
                                                                    "sportiness_sober_from",
                                                                    "sportiness_alcohol_loss",
                                                                    "reading_hut_radius_m",
-                                                                   "reading_hut_alcohol_loss"};
+                                                                   "reading_hut_alcohol_loss",
+                                                                   "talk_months"};
+
+/// Past this a talk's length is a typo: ten years of evenings.
+constexpr float kTalkMonthsMax = 120.0F;
 
 /// Someone holds a post at this unit — for the hut, its librarian, the one
 /// post of its staff (unit_staff.csv).
@@ -120,6 +126,9 @@ bool ParseSportConfig(const ITableSet& tables, SportConfig& config, std::string&
        .value = &config.hut_radius_m,
        .range = {.low = 0.0F, .high = 20000.0F}},
       {.key = kSportWorldParamKeys[15], .value = &config.hut_alcohol_loss, .range = points},
+      {.key = kSportWorldParamKeys[16],
+       .value = &config.talk_months,
+       .range = {.low = 0.0F, .high = kTalkMonthsMax}},
   }};
   return ReadKnobs(*world, "world_params", knobs, error);
 }
@@ -143,7 +152,7 @@ bool GoesToTheField(const SportConfig& config,
                     const WorldState& world,
                     const ResidentRow& person,
                     float age_years) {
-  return GoesBySelf(config, person, age_years) &&
+  return Goes(config, person, age_years, world.calendar.day) &&
          BuiltWithinReach(world, person, config.stadium_type, config.field_radius_m, false);
 }
 
@@ -153,6 +162,55 @@ bool ReachesTheHut(const SportConfig& config, const WorldState& world, const Res
 
 bool GoesBySelf(const SportConfig& config, const ResidentRow& person, float age_years) {
   return age_years < config.goer_age_max && person.alcoholism <= config.goer_alcohol_max;
+}
+
+bool Goes(const SportConfig& config, const ResidentRow& person, float age_years, SimDay day) {
+  return GoesBySelf(config, person, age_years) ||
+         (person.talk_until_day != 0 && day <= person.talk_until_day);
+}
+
+std::uint32_t TalkSeasonOf(SimDay day) {
+  // The calendar's own seasons (calendar.h, SeasonOfMonth), counted on instead of
+  // wrapped: December joins the January after it.
+  return ((day / kDaysPerMonth) + 1U) / kMonthsPerSeason;
+}
+
+void ConsumeTalkOrders(const SportConfig& config,
+                       float adult_from_years,
+                       float life_speedup,
+                       WorldState& current) {
+  const SimDay day = current.calendar.day;
+  const std::uint32_t season = TalkSeasonOf(day) + 1U;
+  for (OrderRow& order : current.orders.rows) {
+    if (order.status != OrderStatus::kPending || order.kind != OrderKind::kTalkToSport) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(current.residents, order.resident);
+    OrderRefusal refusal = OrderRefusal::kNone;
+    if (row == kNoRow) {
+      refusal = OrderRefusal::kNoSuchSubject;
+    } else {
+      ResidentRow& man = current.residents.rows[row];
+      if (man.sex != Sex::kMale ||
+          BiologicalAgeYears(life_speedup, man.birth_day, day) < adult_from_years) {
+        refusal = OrderRefusal::kNotEligible;
+      } else if (man.talk_until_day != 0 && day <= man.talk_until_day) {
+        refusal = OrderRefusal::kConflictsWithActive;
+      } else if (current.chairman.last_talk_season == season) {
+        refusal = OrderRefusal::kOncePerSeason;
+      } else if (!BuiltWithinReach(
+                     current, man, config.stadium_type, config.field_radius_m, false) &&
+                 !ReachesTheHut(config, current, man)) {
+        refusal = OrderRefusal::kNowhereToGo;
+      } else {
+        man.talk_until_day =
+            day + static_cast<SimDay>(std::lround(config.talk_months * kDaysPerMonth));
+        current.chairman.last_talk_season = season;
+      }
+    }
+    order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
+    order.refusal = refusal;
+  }
 }
 
 void TurnSportiness(const SportConfig& config, bool went, float age_years, ResidentRow& person) {

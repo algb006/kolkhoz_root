@@ -11,8 +11,16 @@
 /// WHO GOES (register 223, boss seq 127): a resident of `goer_age_max`
 /// years or under and alcoholism at or under `goer_alcohol_max` goes by
 /// himself, when a stadium of step 1 or more stands within `field_radius_m`
-/// of his home. The chairman's talk (lever ③) will add the others. The rest
-/// of the hidden urge to train (metrics §2) has no numbers and is not built.
+/// of his home. The rest of the hidden urge to train (metrics §2) has no
+/// numbers and is not built.
+///
+/// THE CHAIRMAN'S TALK (lever ③; kTalkToSport; register 223; boss seq
+/// 140-141) adds the others: a man talked into sport goes for `talk_months`
+/// months from the day of the talk, to the field and to the hut, whatever
+/// his age and drinking (Goes); then by himself or not at all. One talk a
+/// calendar season for the whole village; refused when neither the field
+/// nor an open hut is in reach. The talk holds no place: a field gone later
+/// leaves him nowhere to go, and the months give nothing.
 ///
 /// THE READING HUT (lever ②; register 223; crime §6; econ §2.2; boss seq
 /// 129): a `culture_house` of step 1 or more within `hut_radius_m` of a
@@ -59,6 +67,7 @@ struct SportConfig {
   UnitTypeId culture_house_type;         ///< unit_types.csv "culture_house"
   float hut_radius_m = 1000.0F;          ///< `reading_hut_radius_m`
   float hut_alcohol_loss = 1.0F;         ///< `reading_hut_alcohol_loss`
+  float talk_months = 12.0F;             ///< `talk_months`, a talk's length
 };
 
 /// @brief The world_params.csv keys this file reads.
@@ -94,6 +103,30 @@ bool ReachesTheHut(const SportConfig& config, const WorldState& world, const Res
 /// @brief Whether this resident goes by himself, to the field or the hut:
 /// under `goer_age_max` years and at or under `goer_alcohol_max` (@file).
 bool GoesBySelf(const SportConfig& config, const ResidentRow& person, float age_years);
+
+/// @brief Whether this resident goes, to the field or the hut, on `day`: by
+/// himself, or because a chairman's talk stands on him (talk_until_day at or
+/// after `day`) — whatever his age and drinking.
+bool Goes(const SportConfig& config, const ResidentRow& person, float age_years, SimDay day);
+
+/// @brief The calendar season `day` falls in, counted from the campaign's
+/// start: 0 for January–February of the first year, then one per March–May,
+/// June–August, September–November and December–February.
+std::uint32_t TalkSeasonOf(SimDay day);
+
+/// @brief Settles every pending kTalkToSport (order_state.h): refused
+/// kNoSuchSubject, kNotEligible (not a man of `adult_from_years`),
+/// kConflictsWithActive (a talk stands on him), kOncePerSeason (the village
+/// had its talk this season) or kNowhereToGo (no stadium of step 1 or more,
+/// nor an open reading hut, in reach of his home today); otherwise done —
+/// he goes for `talk_months` months from today, and the season is spent.
+/// @param adult_from_years AlcoholismConfig::adult_from_years: the metric's
+///        own threshold of a man.
+/// @param life_speedup LifeConfig::life_speedup, for the biological age.
+void ConsumeTalkOrders(const SportConfig& config,
+                       float adult_from_years,
+                       float life_speedup,
+                       WorldState& current);
 
 /// @brief The month's sportiness for a resident of 16 and over: +gain_goer
 /// if he went (× gain_drinker_share above `drinker_above` alcoholism), else

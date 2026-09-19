@@ -2029,6 +2029,106 @@ int CheckTheReadingHut(core::SportConfig sport) {
   return failures;
 }
 
+/// THE CHAIRMAN'S TALK (lever ③; kTalkToSport; boss seq 140-141): a man of
+/// age goes for twelve months whatever his drinking; one talk a season for
+/// the village; a man under a talk is refused; nowhere to go is refused and
+/// spends nothing.
+int CheckTheTalk(const core::SportConfig& sport) {
+  int failures = 0;
+  constexpr float kSpeedup = 4.0F;
+  constexpr float kAdult = 16.0F;
+  constexpr core::SimDay kDay = 100;
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(kDay) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::FamilyRow yard;
+  yard.in_tent = 1;
+  yard.lost_house_position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  const core::FamilyId family = core::AppendRow(world.families, yard);
+  core::UnitRow stadium;
+  stadium.type = sport.stadium_type;
+  stadium.position = core::Vec2{.x = 900.0F, .y = 0.0F};
+  core::AppendRow(world.units, stadium);
+  const auto add = [&world, family](core::Sex sex, std::int32_t age_years, float alcoholism) {
+    core::ResidentRow person;
+    person.sex = sex;
+    person.family = family;
+    person.birth_day = static_cast<std::int32_t>(kDay) - (age_years * 12);
+    person.alcoholism = alcoholism;
+    return core::AppendRow(world.residents, person);
+  };
+  const core::ResidentId drunk = add(core::Sex::kMale, 40, 45.0F);
+  const core::ResidentId other = add(core::Sex::kMale, 35, 30.0F);
+  const core::ResidentId woman = add(core::Sex::kFemale, 30, 0.0F);
+  const core::ResidentId boy = add(core::Sex::kMale, 10, 0.0F);
+  const auto talk = [&sport](core::WorldState& at, core::ResidentId man) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kTalkToSport;
+    order.resident = man;
+    const core::OrderId id = core::AppendRow(at.orders, order);
+    core::ConsumeTalkOrders(sport, kAdult, kSpeedup, at);
+    return at.orders.rows[FindRow(at.orders, id)].refusal;
+  };
+  const auto row_of = [&world](core::ResidentId id) -> core::ResidentRow& {
+    return world.residents.rows[FindRow(world.residents, id)];
+  };
+
+  // Who may be talked to — on a copy, so a wrong acceptance spends nothing.
+  core::WorldState copy = world;
+  failures += Expect(talk(copy, core::ResidentId{99}) == core::OrderRefusal::kNoSuchSubject,
+                     "talk: nobody by that id");
+  failures += Expect(talk(copy, woman) == core::OrderRefusal::kNotEligible,
+                     "talk: a woman has no drinking to talk her out of");
+  failures += Expect(talk(copy, boy) == core::OrderRefusal::kNotEligible,
+                     "talk: a boy is no man of the metric yet");
+
+  failures += Expect(!core::GoesToTheField(sport, world, row_of(drunk), 40.0F),
+                     "talk: a drinking man of forty does not go by himself");
+  failures += Expect(talk(world, drunk) == core::OrderRefusal::kNone &&
+                         row_of(drunk).talk_until_day == kDay + 48 &&
+                         world.chairman.last_talk_season == core::TalkSeasonOf(kDay) + 1,
+                     "talk: accepted — twelve months from today, the season spent");
+  failures += Expect(core::GoesToTheField(sport, world, row_of(drunk), 40.0F),
+                     "talk: talked into it, he goes whatever his age and drinking");
+  // EACH REFUSAL ON ITS OWN COPY of the world after that talk: a rule that
+  // failed would otherwise accept, spend a season or extend a talk, and the
+  // asserts after it would redden for a breakage that is not theirs.
+  {
+    core::WorldState same_season = world;
+    failures += Expect(talk(same_season, other) == core::OrderRefusal::kOncePerSeason,
+                       "talk: one talk a season for the whole village");
+  }
+  core::WorldState next_season = world;
+  next_season.calendar.tick =
+      static_cast<core::Tick>(kDay + core::kDaysPerSeason) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(next_season.calendar);
+  {
+    core::WorldState again = next_season;
+    failures += Expect(talk(again, drunk) == core::OrderRefusal::kConflictsWithActive,
+                       "talk: a man under a talk is not talked to again");
+  }
+  {
+    core::WorldState nowhere = next_season;
+    nowhere.units.rows[0].position = core::Vec2{.x = 5000.0F, .y = 0.0F};
+    failures += Expect(talk(nowhere, other) == core::OrderRefusal::kNowhereToGo,
+                       "talk: with no field or hut in reach there is nowhere to go");
+    nowhere.units.rows[0].position = core::Vec2{.x = 900.0F, .y = 0.0F};
+    failures += Expect(talk(nowhere, other) == core::OrderRefusal::kNone,
+                       "talk: a refusal spends no season — the next one that season is heard");
+  }
+
+  // The months run out: in force on its last day, not the day after.
+  world.calendar.tick = static_cast<core::Tick>(kDay + 48) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  failures += Expect(core::GoesToTheField(sport, world, row_of(drunk), 40.0F),
+                     "talk: he still goes on the twelfth month's last day");
+  world.calendar.tick = static_cast<core::Tick>(kDay + 49) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  failures += Expect(!core::GoesToTheField(sport, world, row_of(drunk), 40.0F),
+                     "talk: and the day after, still drinking, he drops it");
+  return failures;
+}
+
 /// The drinking (crime design §6; boss, parcels 364 and 370): the month's
 /// change by supply, winter idleness, an unhappy yard, work, a post and a
 /// wife; men only; the cap; the crossings both ways; the counter
@@ -2121,6 +2221,7 @@ int CheckTheSportsField() {
                      "field month: sportiness of thirty takes one more off, field or not");
   failures += Expect(cleared == 0, "field month: the month's open days are cleared at its turn");
   failures += CheckTheReadingHut(sport);
+  failures += CheckTheTalk(sport);
   return failures;
 }
 

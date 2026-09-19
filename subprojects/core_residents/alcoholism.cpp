@@ -200,9 +200,10 @@ float MonthChange(const AlcoholismConfig& config,
 float GoerLoss(const SportConfig& sport,
                const ResidentRow& person,
                float age_years,
+               SimDay day,
                bool went_to_field,
                bool hut_reached) {
-  const bool went_to_hut = hut_reached && GoesBySelf(sport, person, age_years);
+  const bool went_to_hut = hut_reached && Goes(sport, person, age_years, day);
   return std::max(went_to_field ? sport.field_alcohol_loss : 0.0F,
                   went_to_hut ? sport.hut_alcohol_loss : 0.0F);
 }
@@ -279,7 +280,7 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
     const bool adult = age_years >= config.adult_from_years;
     const bool went = adult && field_month && GoesToTheField(sport, current, person, age_years);
     const bool hut_reached = adult && winter && ReachesTheHut(sport, current, person);
-    const float field_loss = GoerLoss(sport, person, age_years, went, hut_reached);
+    const float field_loss = GoerLoss(sport, person, age_years, day, went, hut_reached);
     const float sportiness_loss =
         adult && person.sportiness >= sport.sober_from ? sport.sportiness_alcohol_loss : 0.0F;
     if (adult) {

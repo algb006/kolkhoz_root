@@ -144,6 +144,7 @@ core::WorldState MakeWorld() {
   // Save 65: a series of two cancelled days off, and the next one standing.
   world.chairman.days_off_cancelled_in_a_row = 2;
   world.chairman.cancelled_day_off = 55;
+  world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   // The accumulation limit (save 62): not empty, or a codec that forgot it
@@ -182,6 +183,7 @@ core::WorldState MakeWorld() {
   first.distiller_supplied_month = 7;             // save 59: not nought, so a lost read shows
   first.school = core::UnitId{6};                 // a pupil, save format 41
   first.days_worked_this_month = 3;               // the month's work, save format 43
+  first.talk_until_day = 140;                     // talked into sport, save 69
   first.offense_count = 2;
   first.traits = 0xBEEF;
   // A post he HOLDS (task A7): the second half of the row that only the
@@ -737,6 +739,8 @@ core::WorldState MakeWitnessWorld() {
   // The cancelled day off (save 65): both away from their zero defaults.
   witness.chairman.days_off_cancelled_in_a_row = 2;
   witness.chairman.cancelled_day_off = 55;
+  // The chairman's talk (save 69): the last season away from nought.
+  witness.chairman.last_talk_season = 5;
 
   witness.traction_ration = 0.75F;
   // The chairman's issue norms (save 57): NOT empty, since empty is what a
@@ -833,6 +837,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back(
       {"chairman.days_off_cancelled_in_a_row", U8(world.chairman.days_off_cancelled_in_a_row)});
   chunks.push_back({"chairman.cancelled_day_off", U32(world.chairman.cancelled_day_off)});
+  chunks.push_back({"chairman.last_talk_season", U32(world.chairman.last_talk_season)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
@@ -1064,13 +1069,16 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // 437 with the empty vector and then 461 were predicted and held.
     // Save 68: +2 — the sports field's month, two bytes; predicted before
     // the fields were added, and held.
-    {"world", 463, 0xbe95da902d77065fULL},
+    // Save 69: +4 — the season of the chairman's last talk; predicted before
+    // the field was added, and held.
+    {"world", 467, 0x9d4826336e1c1864ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
     // the float did NOT land in padding, so 184 became 188.
     // 2026-09-18, save 59: distiller_supplied_month, 4 bytes by 2 residents.
-    {"residents", 370, 0xda375fdf183f1167ULL},
+    // Save 69: talk_until_day, 4 bytes by 2 residents; predicted, and held.
+    {"residents", 378, 0x1ededb9d3ccc5c5bULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1357,6 +1365,9 @@ int main() {
   failures += Expect(
       loaded.chairman.days_off_cancelled_in_a_row == 2 && loaded.chairman.cancelled_day_off == 55,
       "the cancelled day off and its series come back (save 65)");
+  failures += Expect(
+      loaded.chairman.last_talk_season == 5 && loaded.residents.rows[0].talk_until_day == 140,
+      "the talk's season and a man's talk come back (save 69)");
   failures += Expect(loaded.families.rows[0].overwork_penalty == 3.75F,
                      "a yard's overwork memory comes back (save 65)");
   failures += Expect(loaded.fields.rows[2].rush_step == 3 &&

@@ -302,6 +302,14 @@ struct ResidentRow {
 
   Metric alcoholism = 0.0F;
 
+  /// THE CHAIRMAN'S TALK (kTalkToSport; register 223; save 69): the last day
+  /// he goes to the field and the reading hut because he was talked into it,
+  /// whatever his age and drinking; 0 when no talk stands. The month's turn
+  /// reads it on its own day: in force while that day is at or before this
+  /// one (core_residents/sport.h, Goes). A SimDay, spelt out so this header
+  /// does not take in the calendar.
+  std::uint32_t talk_until_day = 0;
+
   Metric crime_inclination = 0.0F;  ///< Recomputed seasonally from its formula.
 
   std::uint16_t offense_count = 0;  ///< Recorded offenses; the village remembers.

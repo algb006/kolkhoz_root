@@ -427,6 +427,13 @@ struct ChairmanState {
   /// Read through IsDayOffIn (core_common/day_off.h) and nowhere else.
   SimDay cancelled_day_off = 0;
 
+  /// THE CHAIRMAN'S TALK (kTalkToSport; boss seq 141 А; save 69): the
+  /// calendar season of the village's last talk, plus one — 0 when there has
+  /// been none. A season is December–February, March–May, June–August or
+  /// September–November, counted from the campaign's start (TalkSeasonOf,
+  /// core_residents/sport.h); one talk a season.
+  std::uint32_t last_talk_season = 0;
+
   /// Where the children keep the team: a point on a floodplain meadow,
   /// drawn once from the campaign's own generator when the order is given.
   ///
