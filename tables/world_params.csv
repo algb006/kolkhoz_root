@@ -212,3 +212,4 @@ tent_from_month,5,core
 tent_to_month,9,core
 leave_request_answer_days,2,core
 lodging_satisfaction_penalty,20,core
+hunger_alarm_clear_margin,10,core
