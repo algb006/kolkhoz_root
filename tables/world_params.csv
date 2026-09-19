@@ -223,3 +223,5 @@ plan_trade_percent,10,core
 plan_trade_percent_rep_cost,5,core
 plan_trade_swap_rep_cost,6,core
 plan_trade_min_reputation,20,core
+twins_share,0.0125,core
+identical_twins_share,0.3333,core
