@@ -12,8 +12,9 @@ build_yard,unit,build_yard,7560,9200,,,,,0,,-1,40,0
 cattle_yard,unit,cattle_yard,7801.8,9015.4,,,,,0,,-1,55,0
 church_store,unit,church_store,9250,9330,,,,,0,,-1,70,0
 clay_pile,unit,clay_pile,7380,8560,,,,,0,,-1,-1,0
-field_barley,field,,9501.2,9924.3,7.5,barley,cabbage,wheat_spring,0,,-1,-1,0
-field_cabbage,field,,9551.2,8759.3,7,cabbage,oat,cabbage,0,,-1,-1,0
+field_barley,field,,9501.2,9924.3,7.5,barley,pea,wheat_spring,0,,-1,-1,0
+field_barley_north,field,,9551.2,8846.8,3.5,barley,cabbage,barley,0,,-1,-1,0
+field_cabbage,field,,9551.2,8671.8,3.5,cabbage,oat,cabbage,0,,-1,-1,0
 field_derelict_1,field,,8626.2,8509.3,45,,,,1,,-1,-1,0
 field_derelict_2,field,,8626.2,8209.3,45,,,,1,,-1,-1,0
 field_fallow,field,,8088.7,8894.3,3.5,,rye_winter,oat,0,,-1,-1,0

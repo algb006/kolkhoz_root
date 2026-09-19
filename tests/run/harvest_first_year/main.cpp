@@ -293,9 +293,11 @@ int main() {
   // field, which genesis lays as a derelict field too (it is not in the
   // 160). Twenty-one rows since 2026-09-18, when the potato wedge gave its
   // north 7 ha to an oat field of its own (the human's variant B); the count
-  // used to say nineteen and describe twenty.
+  // used to say nineteen and describe twenty. Twenty-two since 2026-09-19,
+  // when econ's wedge layout split the cabbage field and gave its north
+  // 3.5 ha to field_barley_north (boss 28d2fefd).
   failures +=
-      run::Expect(start.fields.rows.size() == 21, "genesis lays out the arable and the meadows");
+      run::Expect(start.fields.rows.size() == 22, "genesis lays out the arable and the meadows");
   failures += run::Expect(start.units.rows.size() >= 29, "genesis places the start units");
   // 39 cows, 16 billeted horses, and every yard's own goats and hens.
   failures +=
