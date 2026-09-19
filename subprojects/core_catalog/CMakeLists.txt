@@ -18,7 +18,8 @@ kolkhoz_add_module(core_catalog
     processing_catalog.cpp
     extraction_catalog.cpp
     limit_catalog.cpp
-    district_visit_catalog.cpp)
+    district_visit_catalog.cpp
+    district_trip_catalog.cpp)
 
 target_link_libraries(core_catalog
     PUBLIC core_common core_tables)

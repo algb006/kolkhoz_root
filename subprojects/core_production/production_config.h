@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/district_trip_catalog.h"
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
@@ -896,6 +897,9 @@ struct ProductionConfig {
   /// Characters design §2, "Эпоха I числами": the regular visits' months and
   /// notice (boss, parcel 324).
   DistrictVisitCatalog district_visits;
+
+  /// The chairman's trip to the district in numbers (boss seq 206).
+  DistrictTripCatalog district_trip;
 };
 
 /// @brief Parses every table core_production reads into `config`.

@@ -33,6 +33,7 @@
 #include "demolition_stock.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
 #include "field_haul.h"
@@ -5813,6 +5814,164 @@ int CheckProcessingShops() {
   return failures;
 }
 
+/// The chairman's trip (district_trip.h; boss seq 206): the day's hours with
+/// mud and blizzard, the summons, the plan bargained in March, and a visit
+/// that waits for him. The gate itself is the district_trip run's.
+int CheckDistrictTrip() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.plan_grain_share = 0.5F;
+  config.crops.resize(2);
+  config.crops[0].resource = core::ResourceId{0};  // rye
+  config.crops[0].yield_kg_per_ha = 1000.0F;
+  config.crops[1].resource = core::ResourceId{1};  // potato
+  config.crops[1].yield_kg_per_ha = 8000.0F;
+  const auto at = [](core::WorldState& world, core::SimDay day, std::uint32_t hour) {
+    world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(world.calendar);
+  };
+  const auto saw = [](const core::WorldState& world, core::EventKind kind) {
+    return std::ranges::any_of(world.step_events,
+                               [kind](const core::SimEvent& event) { return event.kind == kind; });
+  };
+  constexpr core::SimDay kMay = 4U * core::kDaysPerMonth;
+
+  // -- the day: booked, gone at 8, back at 20; in the mud, the next morning --
+  core::WorldState trip;
+  at(trip, kMay, 3);
+  failures += Expect(core::OrderTripToDistrict(config, trip) == core::OrderRefusal::kNone &&
+                         trip.chairman.away_from_tick == (kMay * 24ULL) + 8,
+                     "trip: booked at 3:00 for this 8:00");
+  at(trip, kMay, 8);
+  trip.weather.mud = true;
+  core::RunDistrictTrip(config, trip);
+  failures += Expect(saw(trip, core::EventKind::kTripDeparted) &&
+                         trip.chairman.away_until_tick == ((kMay + 1) * 24ULL) + 8 &&
+                         trip.chairman.last_trip_day == kMay + 1,
+                     "trip: gone at 8:00, and in the mud back only the next morning");
+  trip.step_events.clear();
+  at(trip, kMay + 1, 8);
+  core::RunDistrictTrip(config, trip);
+  failures += Expect(saw(trip, core::EventKind::kTripReturned) && trip.chairman.away_from_tick == 0,
+                     "trip: back the next morning at 8:00");
+  at(trip, kMay + 2, 3);
+  failures += Expect(core::OrderTripToDistrict(config, trip) == core::OrderRefusal::kTripThisMonth,
+                     "trip: a second of his own in the same month is refused");
+
+  // -- the blizzard: his own trip cancelled and not counted; a summons moved --
+  core::WorldState snow;
+  at(snow, 0, 3);
+  core::OrderTripToDistrict(config, snow);
+  at(snow, 0, 8);
+  snow.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
+  core::RunDistrictTrip(config, snow);
+  failures += Expect(saw(snow, core::EventKind::kTripCancelled) &&
+                         snow.chairman.away_from_tick == 0 && snow.chairman.last_trip_day == 0,
+                     "blizzard: his own trip does not go, and does not count");
+  core::SummonChairman(config, snow, core::SummonCause::kFailedYear);
+  failures += Expect(snow.chairman.summon_letter_day == 1 && snow.chairman.summon_day == 3,
+                     "summons: the letter the next day, the summons two days after it");
+  at(snow, 1, 0);
+  core::RunDistrictTrip(config, snow);
+  failures +=
+      Expect(saw(snow, core::EventKind::kSummonLetter), "summons: the letter comes on its day");
+  at(snow, 3, 0);
+  core::RunDistrictTrip(config, snow);
+  at(snow, 3, 8);
+  core::RunDistrictTrip(config, snow);
+  failures += Expect(saw(snow, core::EventKind::kSummonPostponed) && snow.chairman.summon_day == 4,
+                     "summons: a blizzard on its morning moves it a day — it is not refused");
+  snow.weather.phenomenon = core::WeatherPhenomenon::kNone;
+  at(snow, 4, 8);
+  core::RunDistrictTrip(config, snow);
+  at(snow, 4, 20);
+  core::RunDistrictTrip(config, snow);
+  failures += Expect(snow.chairman.summon_day == 0 && snow.chairman.last_trip_day == 0 &&
+                         snow.chairman.away_from_tick == 0,
+                     "summons: gone and back, and it counted as no trip of his own");
+
+  // -- the plan bargained ------------------------------------------------------
+  const auto march = [&]() {
+    core::WorldState world;
+    world.plan.announced = 1;
+    world.plan.due = {10 * kTonne, 0};
+    world.chairman.raikom_reputation = 50.0F;
+    at(world, 2U * core::kDaysPerMonth, 9);  // March, away since 8:00
+    world.chairman.away_from_tick = world.calendar.tick - 1;
+    world.chairman.away_until_tick = world.calendar.tick + 10;
+    return world;
+  };
+  core::OrderRow down;
+  down.kind = core::OrderKind::kTradePlan;
+  down.resource = core::ResourceId{0};
+  down.amount = -1;
+  core::WorldState home = march();
+  home.chairman.away_from_tick = 0;
+  failures += Expect(core::OrderTradePlan(config, home, down) == core::OrderRefusal::kNotEligible,
+                     "plan: bargained only in the district");
+  core::WorldState bargain = march();
+  failures +=
+      Expect(core::OrderTradePlan(config, bargain, down) == core::OrderRefusal::kNone &&
+                 bargain.plan.due[0] == 9 * kTonne && bargain.chairman.raikom_reputation == 45.0F,
+             "plan: the rye down by a tenth, for five of reputation");
+  failures +=
+      Expect(core::OrderTradePlan(config, bargain, down) == core::OrderRefusal::kTradeClosed,
+             "plan: once a year");
+  core::OrderRow swap;
+  swap.kind = core::OrderKind::kTradePlan;
+  swap.resource = core::ResourceId{0};
+  swap.rotation_year0 = core::CropId{1};
+  core::WorldState replaced = march();
+  failures += Expect(core::OrderTradePlan(config, replaced, swap) == core::OrderRefusal::kNone &&
+                         replaced.plan.due[0] == 0 && replaced.plan.due[1] == 80 * kTonne &&
+                         replaced.chairman.raikom_reputation == 42.0F,
+                     "plan: 10 t of rye is 20 ha; the same 20 ha of potato is 80 t, for eight");
+  core::WorldState pencil = march();
+  pencil.chairman.raikom_reputation = 15.0F;
+  failures +=
+      Expect(core::OrderTradePlan(config, pencil, down) == core::OrderRefusal::kReputationTooLow,
+             "plan: «на карандаше» the district does not bargain");
+  core::WorldState april = march();
+  at(april, 3U * core::kDaysPerMonth, 9);
+  april.chairman.away_from_tick = april.calendar.tick - 1;
+  april.chairman.away_until_tick = april.calendar.tick + 10;
+  failures += Expect(core::OrderTradePlan(config, april, down) == core::OrderRefusal::kTradeClosed,
+                     "plan: after March, no bargain");
+
+  // -- the reputation crossing «на карандаше» -------------------------------------
+  core::WorldState before;
+  before.chairman.raikom_reputation = 25.0F;
+  core::WorldState after = before;
+  after.chairman.raikom_reputation = 18.0F;
+  core::SummonOnThePencil(config, before, after);
+  failures += Expect(
+      after.chairman.summon_cause == static_cast<std::uint8_t>(core::SummonCause::kOnThePencil),
+      "summons: the reputation crossing twenty calls him");
+
+  // -- a visit waits for him (boss seq 206, 6) -------------------------------------
+  const auto visit_day = [&](bool away) {
+    core::WorldState world;
+    at(world, kMay, 0);
+    core::DistrictVisitRow visit;
+    visit.arrive_day = kMay;
+    core::AppendRow(world.district_visits, visit);
+    if (away) {
+      world.chairman.away_from_tick = world.calendar.tick + 8;
+      world.chairman.away_until_tick = world.calendar.tick + 20;
+    }
+    core::ArriveDistrictVisits(config, world);
+    return world;
+  };
+  const core::WorldState waited = visit_day(true);
+  failures += Expect(waited.district_visits.rows.size() == 1 &&
+                         waited.district_visits.rows[0].arrive_day == kMay + 1,
+                     "visit: on the day he goes to the district, the visit waits till tomorrow");
+  failures += Expect(visit_day(false).district_visits.rows.empty(),
+                     "visit: and on a day he is home it comes");
+  return failures;
+}
+
 /// Boss, host-econ-shops seq 23: what a unit being taken down held goes to
 /// the stores through their door as room allows; what does not fit waits on
 /// the site, lost to nobody, and the alarm says what waits.
@@ -6897,6 +7056,7 @@ int main() {
   failures += CheckMudSeason();
   failures += CheckProcessingShops();
   failures += CheckDemolitionStockWaits();
+  failures += CheckDistrictTrip();
   failures += CheckTheMilkCart();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();

@@ -14,6 +14,7 @@
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_trip.h"
 #include "extraction_digging.h"
 #include "field_removal.h"
 #include "herd_system.h"
@@ -488,6 +489,12 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kEmptyStore:
         Settle(order, EmptyStore(config, current, order));
+        break;
+      case OrderKind::kTripToDistrict:
+        Settle(order, OrderTripToDistrict(config, current));
+        break;
+      case OrderKind::kTradePlan:
+        Settle(order, OrderTradePlan(config, current, order));
         break;
       default:
         break;  // not ours: another consumer's, or the events slot's refusal

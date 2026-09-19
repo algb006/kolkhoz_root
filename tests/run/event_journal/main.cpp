@@ -170,6 +170,18 @@ const char* KindName(core::EventKind kind) {
       return "leave_requested";
     case core::EventKind::kFamilyLodged:
       return "family_lodged";
+    case core::EventKind::kTripDeparted:
+      return "trip_departed";
+    case core::EventKind::kTripReturned:
+      return "trip_returned";
+    case core::EventKind::kTripCancelled:
+      return "trip_cancelled";
+    case core::EventKind::kSummonLetter:
+      return "summon_letter";
+    case core::EventKind::kSummonPostponed:
+      return "summon_postponed";
+    case core::EventKind::kPlanTraded:
+      return "plan_traded";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

@@ -46,6 +46,7 @@
 #include "demolition_stock.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
 #include "field_haul.h"
@@ -193,6 +194,9 @@ class ProductionSystem final : public IProductionSystem {
     // order nobody reads is refused by the events slot with kNoConsumer, and
     // "the tables were thin" is not a reason the chairman should ever see.
     ConsumeProductionOrders(config_, current);
+    // The chairman's trip, its hour (district_trip.h): after the orders, so
+    // a trip booked before 8:00 goes the same morning.
+    RunDistrictTrip(config_, current);
     // A felling the crew finished this hour is lying on the ground this hour
     // (timber_felling.h) — the same reasoning as the field phases below.
     FellFinishedStands(config_, current);
@@ -262,6 +266,8 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
     }
+    // After the year's verdict, which is what moves the reputation.
+    SummonOnThePencil(config_, previous, current);
     // THE NORM IS ANNOUNCED IN THE SPRING, on the day the season turns
     // (boss, 2026-09-12). Not at the year's turn: by spring the worked land
     // and its rotation are settled, and the figure never moves again.
@@ -378,6 +384,7 @@ class ProductionSystem final : public IProductionSystem {
     const bool plan_fully_met = PlanFullyDelivered(config_, current);
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
     JudgePlan(config_, current);
+    SummonIfTheYearFailed(config_, current);
     TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
     // Scored, and gone with its year: what went with no position counts
     // once (district_plan.h, PlanOverfulfilGrainTonnes).

@@ -456,6 +456,36 @@ enum class EventKind : std::uint8_t {
   /// proposed: `family_lodged`.
   kFamilyLodged,
 
+  // -- the trip to the district (district-trip.md; boss seq 206) ------------
+
+  /// The chairman leaves for the district at 8:00, on his own trip or called
+  /// «на ковёр». amount = the tick he is back. kInterrupting: the layer cuts
+  /// to the road and rolls the day. Seam key proposed: `trip_departed`.
+  kTripDeparted,
+
+  /// He is back. kNotable. Seam key proposed: `trip_returned`.
+  kTripReturned,
+
+  /// His own trip booked for this morning did not go: a blizzard at 8:00.
+  /// It does not count against the month. kNotable. Seam key proposed:
+  /// `trip_cancelled`.
+  kTripCancelled,
+
+  /// The district's letter «на ковёр»: amount = the day he is called for,
+  /// resource invalid; the cause is ChairmanState::summon_cause. kInterrupting
+  /// — a day of the chairman's is taken, and he must see it coming. Seam key
+  /// proposed: `summon_letter`.
+  kSummonLetter,
+
+  /// A blizzard on the summons' day: the summons moves to the next day.
+  /// amount = the new day. kNotable. Seam key proposed: `summon_postponed`.
+  kSummonPostponed,
+
+  /// The plan bargained: resource = the position moved or dropped; amount =
+  /// its new grams (0 for a replaced one — the crop that replaced it is its
+  /// own position then). kNotable. Seam key proposed: `plan_traded`.
+  kPlanTraded,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

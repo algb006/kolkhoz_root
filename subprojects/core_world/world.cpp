@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "campaign_tables.h"
+#include "core_catalog/district_trip_catalog.h"
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
@@ -21,6 +22,7 @@
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/chairman_away.h"
 #include "core_common/emit_event.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
@@ -58,6 +60,9 @@ class DecisionsSlot final : public ISequentialPhase {
         construction_(&construction) {}
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
+    // The chairman in the district (core_common/chairman_away.h): the
+    // village's orders are answered before any consumer can take one.
+    RefuseVillageOrdersWhileAway(current);
     labor_->RunAssignmentDecisions(previous, current);
     residents_->RunDemographyDecisions(previous, current);
     production_->RunProductionDecisions(previous, current);
@@ -753,6 +758,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_limit.begin(), from_limit.end());
       const std::span<const std::string_view> from_visits = DistrictVisitWorldParamKeys();
       known.insert(known.end(), from_visits.begin(), from_visits.end());
+      const std::span<const std::string_view> from_trip = DistrictTripWorldParamKeys();
+      known.insert(known.end(), from_trip.begin(), from_trip.end());
       const std::span<const std::string_view> from_production = ProductionWorldParamKeys();
       known.insert(known.end(), from_production.begin(), from_production.end());
       known.insert(known.end(), from_time.begin(), from_time.end());

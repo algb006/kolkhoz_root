@@ -12,6 +12,7 @@
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
+#include "district_trip.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -165,6 +166,16 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
 }
 
 void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
+  // A VISIT WAITS FOR THE CHAIRMAN (boss seq 206, 6): on a day he is in the
+  // district the scene needs him and moves to tomorrow (district_trip.h).
+  if (AwayToday(current)) {
+    for (DistrictVisitRow& visit : current.district_visits.rows) {
+      if (visit.arrive_day <= current.calendar.day) {
+        visit.arrive_day = current.calendar.day + 1;
+      }
+    }
+    return;
+  }
   // In the order they were announced or called, by id — not by row, which a
   // removal reshuffles (the wedding queue's lesson of 0.24.0).
   std::vector<DistrictVisitId> due;
@@ -187,6 +198,10 @@ void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
     // auditor found goes on the day she finds it.
     if (outcome.found == DistrictVisitFinding::kDiscrepancy && CountsTheStores(visit.face)) {
       SeizeAboveLimit(config, current);
+    }
+    // A discrepancy calls him «на ковёр» (district-trip.md §3).
+    if (outcome.found == DistrictVisitFinding::kDiscrepancy) {
+      SummonChairman(config, current, SummonCause::kAuditDiscrepancy);
     }
     const bool extraordinary = visit.kind == DistrictVisitKind::kExtraordinary;
     SimEvent& event =

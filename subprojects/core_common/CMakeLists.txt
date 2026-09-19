@@ -19,4 +19,5 @@ kolkhoz_add_module(core_common
     stock_forecast.cpp
     resident_activity.cpp
     version_pin.cpp
-    work_seam.cpp)
+    work_seam.cpp
+    chairman_away.cpp)
