@@ -486,6 +486,13 @@ enum class EventKind : std::uint8_t {
   /// own position then). kNotable. Seam key proposed: `plan_traded`.
   kPlanTraded,
 
+  /// TWINS ARE BORN (life cycle §4; register 245): «событие колхоза, а не
+  /// только семьи». resident = the first child, family; amount = the second
+  /// child's id value; the identical mark is ResidentRow::identical_twin.
+  /// Emitted beside the two kResidentBorn. kNotable. Seam key proposed:
+  /// `twins_born`.
+  kTwinsBorn,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

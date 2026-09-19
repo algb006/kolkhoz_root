@@ -980,6 +980,71 @@ int CheckSettleHouse() {
   return failures;
 }
 
+/// Life cycle §4 «Двойня» (register 245): twins_share of births are two,
+/// identical_twins_share of those are one sex and one figure; the pair name
+/// each other; and the world's generator is not touched by the second child.
+int CheckTwins() {
+  int failures = 0;
+  const auto birth_day = [](float twins, float identical) {
+    core::LifeConfig config;
+    config.definitions.units.is_housing = {1};
+    for (core::EpochDemography& epoch : config.epochs) {
+      epoch.children_per_family = 1.0e6F;  // a birth, surely
+      epoch.child_mortality_percent = 0.0F;
+    }
+    config.twins_share = twins;
+    config.identical_twins_share = identical;
+    core::WorldState world;
+    world.world_seed = 1929;
+    world.rng = core::SeedRngState(1929, 0);
+    world.calendar.tick = core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::UnitRow house;
+    house.level = 1;
+    const core::UnitId house_id = AppendRow(world.units, house);
+    core::FamilyRow family;
+    family.house = house_id;
+    const core::FamilyId family_id = AppendRow(world.families, family);
+    world.units.rows[0].household = family_id;
+    core::ResidentRow wife;
+    wife.family = family_id;
+    wife.sex = core::Sex::kFemale;
+    wife.birth_day = -300;  // 25 biological years at speedup 4
+    wife.satiety = 80.0F;
+    const core::ResidentId wife_id = AppendRow(world.residents, wife);
+    core::ResidentRow husband = wife;
+    husband.sex = core::Sex::kMale;
+    husband.spouse = wife_id;
+    const core::ResidentId husband_id = AppendRow(world.residents, husband);
+    world.residents.rows[0].spouse = husband_id;
+    core::RunDemographyDay(config, world);
+    return world;
+  };
+  const core::WorldState single = birth_day(0.0F, 0.0F);
+  const core::WorldState same = birth_day(1.0F, 1.0F);
+  const core::WorldState pair = birth_day(1.0F, 0.0F);
+  failures += Expect(single.residents.rows.size() == 3 && same.residents.rows.size() == 4,
+                     "twins: at twins_share 1 a birth brings two children, at 0 one");
+  const core::ResidentRow& a = same.residents.rows[2];
+  const core::ResidentRow& b = same.residents.rows[3];
+  failures += Expect(a.twin.value == same.residents.row_ids[3].value &&
+                         b.twin.value == same.residents.row_ids[2].value && a.identical_twin == 1 &&
+                         b.identical_twin == 1 && a.sex == b.sex &&
+                         a.height_deviation == b.height_deviation &&
+                         a.build_deviation == b.build_deviation && a.birth_day == b.birth_day,
+                     "twins: identical ones name each other, one sex, one figure, one day");
+  failures += Expect(pair.residents.rows.size() == 4 && pair.residents.rows[3].identical_twin == 0,
+                     "twins: fraternal ones are not marked identical");
+  const bool announced = std::ranges::any_of(same.step_events, [](const core::SimEvent& event) {
+    return event.kind == core::EventKind::kTwinsBorn;
+  });
+  failures += Expect(announced && same.ledger.current.births == 2,
+                     "twins: the village is told, and the book counts two births");
+  failures += Expect(single.rng.state == same.rng.state && single.rng.stream == same.rng.stream,
+                     "twins: the world's generator stands where a single birth leaves it");
+  return failures;
+}
+
 /// Boss seq 191: a couple — and a migrant, by boss's word the same day — does
 /// not take an old house on the brink (wear at or above
 /// old_house_near_collapse_wear of the scale); the roofless still do.
@@ -3261,6 +3326,7 @@ int main() {
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();
   failures += CheckCoupleSkipsHouseOnTheBrink();
+  failures += CheckTwins();
   failures += CheckRooflessLadder();
   failures += CheckBarrack();
   failures += CheckHungerAlarmHysteresis();

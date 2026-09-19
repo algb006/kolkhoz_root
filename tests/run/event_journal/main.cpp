@@ -182,6 +182,8 @@ const char* KindName(core::EventKind kind) {
       return "summon_postponed";
     case core::EventKind::kPlanTraded:
       return "plan_traded";
+    case core::EventKind::kTwinsBorn:
+      return "twins_born";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

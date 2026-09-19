@@ -267,7 +267,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 29> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 31> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -314,7 +314,10 @@ constexpr std::array<std::string_view, 29> kLifeWorldParamKeys = {
     "leave_request_answer_days",
     "lodging_satisfaction_penalty",
     // The hunger alarm's hysteresis (core-host-l1 seq 45).
-    "hunger_alarm_clear_margin"};
+    "hunger_alarm_clear_margin",
+    // Twins (life cycle §4; register 245).
+    "twins_share",
+    "identical_twins_share"};
 
 /// The barrack's places (housing §9; boss seq 197): unit_levels.csv
 /// `residents_capacity`, by type and level. A table without the column leaves
@@ -451,7 +454,13 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 100.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[28],
                  .value = &config.hunger_alarm_clear_margin,
-                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[29],
+                 .value = &config.twins_share,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[30],
+                 .value = &config.identical_twins_share,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", rows, error)) {
     return false;
   }

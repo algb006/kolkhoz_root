@@ -242,6 +242,14 @@ struct LifeConfig {
   /// hunger alarm goes out (world_params `hunger_alarm_clear_margin`, 10,
   /// STUB; boss, core-host-l1 seq 45) — the alarm's hysteresis.
   float hunger_alarm_clear_margin = 10.0F;
+
+  /// A birth is twins with this chance (world_params `twins_share`, 1/80,
+  /// STUB — econ's; life cycle §4).
+  float twins_share = 0.0125F;
+
+  /// Twins are identical with this chance (world_params
+  /// `identical_twins_share`, 1/3, STUB — econ's).
+  float identical_twins_share = 1.0F / 3.0F;
   ProfessionId teacher_post;
   ProfessionId librarian_post;
 

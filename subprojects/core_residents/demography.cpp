@@ -329,6 +329,77 @@ bool BirthsStopped(const LifeConfig& config, const WorldState& current, const Re
          current.families.rows[family_row].satiety_year_mean < births.satiety_stop;
 }
 
+/// The counter-hash salts of the twins' draws (life cycle §4).
+constexpr std::uint64_t kTwinsSalt = 0x7457696EULL;          // "tWin"
+constexpr std::uint64_t kIdenticalSalt = 0x49644E74ULL;      // "IdNt"
+constexpr std::uint64_t kTwinGeneratorSalt = 0x54774752ULL;  // "TwGR"
+
+/// A TWIN, maybe, beside the child just born (life cycle §4; register 245):
+/// twins_share of births, identical_twins_share of those — one sex and one
+/// figure. Nothing more than the second child: «механики сверх одного
+/// ребёнка нет»; the same child mortality, drawn for this one on its own.
+///
+/// THE WORLD'S GENERATOR IS NOT TOUCHED. The draws come off a counter hash
+/// keyed by the first child's id, and the second child's own draws off a
+/// generator seeded from it (random.h), so a world without twins is the
+/// same world bit for bit — `current.rng` would have rerolled every later
+/// decision of every campaign, twins or not, which is what the body's roll
+/// learned (the comment above RollBodyFromParents).
+void MaybeBearTwin(const LifeConfig& config,
+                   WorldState& current,
+                   const EpochDemography& epoch,
+                   SimDay day,
+                   const ResidentRow& mother,
+                   const ResidentRow& father,
+                   ResidentId first_id) {
+  const std::uint64_t seed = current.world_seed;
+  if (!(CounterHashUnitFloat(seed, day, first_id.value, kTwinsSalt) < config.twins_share)) {
+    return;
+  }
+  RngState rng =
+      SeedRngState(CounterHashBits(seed, day, first_id.value, kTwinGeneratorSalt), first_id.value);
+  if (NextRandomUnitFloat(rng) * 100.0F < epoch.child_mortality_percent) {
+    return;  // the second did not live: a single birth, for the village
+  }
+  const std::uint32_t first_row = FindRow(current.residents, first_id);
+  const ResidentRow first = current.residents.rows[first_row];
+  const bool identical = CounterHashUnitFloat(seed, day, first_id.value, kIdenticalSalt) <
+                         config.identical_twins_share;
+  ResidentRow child;
+  child.family = first.family;
+  child.mother = first.mother;
+  child.father = first.father;
+  child.sex = identical ? first.sex : DrawNewbornSex(config, current, rng, day);
+  child.birth_day = first.birth_day;
+  // «Различимы только одеждой и характером»: the character is its own.
+  child.intellect = BlendInclination(rng, mother.intellect, father.intellect, 0.25F);
+  child.stamina = BlendInclination(rng, mother.stamina, father.stamina, 0.15F);
+  child.optimism = BlendInclination(rng, mother.optimism, father.optimism, 0.15F);
+  child.ideology = BirthIdeology(config.membership, rng, mother, &father);
+  child.satiety = 70.0F;
+  child.health = DrawInRange(rng, 70.0F, 95.0F);
+  if (identical) {
+    child.height_deviation = first.height_deviation;
+    child.build_deviation = first.build_deviation;
+  } else {
+    RollBodyFromParents(seed, current.residents.next_id_value, config.body, mother, father, child);
+  }
+  child.twin = first_id;
+  child.identical_twin = identical ? 1U : 0U;
+  const ResidentId second_id = AppendRow(current.residents, child);
+  ResidentRow& first_row_ref = current.residents.rows[FindRow(current.residents, first_id)];
+  first_row_ref.twin = second_id;
+  first_row_ref.identical_twin = child.identical_twin;
+  SimEvent& born = EmitEvent(current, EventKind::kResidentBorn, EventSeverity::kNotable);
+  born.resident = second_id;
+  born.family = child.family;
+  current.ledger.current.births += 1;
+  SimEvent& twins = EmitEvent(current, EventKind::kTwinsBorn, EventSeverity::kNotable);
+  twins.resident = first_id;
+  twins.family = child.family;
+  twins.amount = static_cast<std::int64_t>(second_id.value);
+}
+
 void RunBirths(const LifeConfig& config,
                WorldState& current,
                const EpochDemography& epoch,
@@ -409,6 +480,7 @@ void RunBirths(const LifeConfig& config,
     // skips some of them, and a birth nobody survived is not a birth the
     // village saw.
     current.ledger.current.births += 1;
+    MaybeBearTwin(config, current, epoch, day, mother, father, child_id);
   }
 }
 
