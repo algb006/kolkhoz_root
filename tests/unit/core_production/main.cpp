@@ -200,6 +200,20 @@ int CheckFeeding() {
     failures += Expect(StoreOf(world, 1) == 10 * kKilo,
                        "and a hungry day halves the milk: two cows at 10 l, halved");
   }
+
+  // HUNGER IS A SHARE (boss seq 171 А): three kilograms for a need of four
+  // cover three quarters, and the milk is three quarters — not the hungry
+  // half it was when any short day counted as none.
+  {
+    core::WorldState world = MakeHerdWorld(3.0F);
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    const core::HerdRow& herd = world.herds.rows[0];
+    failures += Expect(herd.unfed_days == 1.0F && std::fabs(herd.fed_share - 0.75F) < 0.01F,
+                       "share: three kilograms of four is a hungry day at three quarters");
+    failures += Expect(StoreOf(world, 1) > 14 * kKilo && StoreOf(world, 1) < 16 * kKilo,
+                       "share: and three quarters of the milk, fifteen litres, not the half");
+  }
   return failures;
 }
 

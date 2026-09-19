@@ -291,15 +291,17 @@ struct WorkRation {
 ///        "fully fed" — the most flattering possible wrong answer. Named
 ///        fields cannot be swapped silently.
 /// @return true when the whole need was covered.
-bool RunFeeding(const ProductionConfig& config,
-                LivestockKindId kind_id,
-                const HerdPlace& place,
-                float need_units,
-                float working_share,
-                WorldState& world,
-                WorkRation* work = nullptr) {
+/// The day's feeding: the share of the need it covered, 0..1 (boss seq 171 А:
+/// hunger is a share, not a yes-or-no). 1 when there is no need.
+float RunFeeding(const ProductionConfig& config,
+                 LivestockKindId kind_id,
+                 const HerdPlace& place,
+                 float need_units,
+                 float working_share,
+                 WorldState& world,
+                 WorkRation* work = nullptr) {
   if (!(need_units > 0.0F)) {
-    return true;
+    return 1.0F;
   }
   float covered = 0.0F;
   float work_covered = 0.0F;
@@ -378,14 +380,19 @@ bool RunFeeding(const ProductionConfig& config,
   }
   // A hair of tolerance: the need is a float and the take is integer grams,
   // so an exactly-fed herd can land a milligram short of its own norm.
-  return covered + 0.001F >= need_units;
+  return std::min(1.0F, (covered + 0.001F) / need_units);
 }
 
 /// What the day's produce is multiplied by. Two leaks, both of them the
 /// design's: a hungry herd gives less at once, and a billeted head gives
 /// less because part of what it makes settles in the yard it stands in.
 float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
-  float factor = herd.unfed_days > 0.0F ? config.farming.unfed_produce_factor : 1.0F;
+  // THE SHARE OF THE RATION, floored at the hungry factor (boss seq 171 А):
+  // a herd fed a third gives a third, never less than a starving one. Until
+  // 2026-09-19 any short day gave the hungry factor whole, so bought feed
+  // that closed part of the ration gave nothing back.
+  float factor =
+      herd.unfed_days > 0.0F ? std::max(config.farming.unfed_produce_factor, herd.fed_share) : 1.0F;
   const auto total = static_cast<float>(TotalHeads(herd));
   if (total > 0.0F && herd.billeted_count > 0) {
     const float billeted_share = static_cast<float>(herd.billeted_count) / total;
@@ -707,14 +714,16 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     // starving on an empty manger — the flag says the store is not their
     // source, not that they eat nothing.
     const bool self_fed = herd.household_owned != 0 && kind.household_self_fed != 0;
-    const bool fed =
-        self_fed || RunFeeding(config,
-                               herd.kind,
-                               place,
-                               FeedNeedUnits(config, kind, herd, month, grazing_tonight(herd.kind)),
-                               working_share,
-                               current,
-                               &work);
+    herd.fed_share =
+        self_fed ? 1.0F
+                 : RunFeeding(config,
+                              herd.kind,
+                              place,
+                              FeedNeedUnits(config, kind, herd, month, grazing_tonight(herd.kind)),
+                              working_share,
+                              current,
+                              &work);
+    const bool fed = herd.fed_share >= 1.0F;
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
     if (fed) {
       herd.hunger_progress = 0.0F;  // a fed day clears the debt, not just the count

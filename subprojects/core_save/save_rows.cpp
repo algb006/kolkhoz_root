@@ -149,8 +149,10 @@ static_assert(AggregateArity<ConstructionState>() == 7,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<UnitRow>() == 17,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(HerdRow) == 64, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 18,
+// Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
+// predicted before the field was added and measured after.
+static_assert(sizeof(HerdRow) == 68, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 19,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -813,6 +815,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
 
   out.WriteU16(row.billeted_count);
   out.WriteFloat(row.unfed_days);
+  out.WriteFloat(row.fed_share);  // save 71
   out.WriteU8(row.disease_stage);
   out.WriteFloat(row.care_days_remaining);
 }
@@ -839,6 +842,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
 
   row.billeted_count = in.ReadU16();
   row.unfed_days = in.ReadFloat();
+  row.fed_share = in.ReadFloat();
   row.disease_stage = in.ReadU8();
   row.care_days_remaining = in.ReadFloat();
   return row;

@@ -332,6 +332,7 @@ core::WorldState MakeWorld() {
   herd.billeted_count = 4;
   herd.adult_age_game_years_total = 137.5F;
   herd.hunger_progress = 0.375F;
+  herd.fed_share = 0.625F;  // save 71: a third short of the ration, not its default 1
   core::AppendRow(world.herds, herd);
 
   // The chairman's order book (the boundary, manual/70-boundary.md §2): one
@@ -1092,7 +1093,8 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     {"units", 353, 0x2c6b2b3117a7d2b1ULL},
-    {"herds", 66, 0xe3846623b64933cfULL},
+    // Save 71: +4 — fed_share, one herd; predicted before the field, held.
+    {"herds", 70, 0x438d5136d7f12aa8ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -1442,6 +1444,8 @@ int main() {
                          AmountAt(loaded.ledger.closed.yard_feed, 2) == 300,
                      "what went into a building and what the yards' beasts ate come back in the "
                      "closed book (save 70)");
+  failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_share == 0.625F,
+                     "a herd's covered share of the ration comes back (save 71)");
   failures += Expect(AmountAt(loaded.ledger.closed.seized, 0) == 5'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 0) == 15'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 2) == 4'000'000,

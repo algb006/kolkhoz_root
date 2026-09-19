@@ -139,6 +139,15 @@ struct HerdRow {
   /// herd stands under a roof.
   float unfed_days = 0.0F;
 
+  /// THE SHARE OF TODAY'S RATION THE HERD GOT, 0..1 (boss seq 171 А; save
+  /// 71): what the day's feeding covered of the need. Hunger is a SHARE and
+  /// not a yes-or-no: the produce is scaled by it, floored at
+  /// unfed_produce_factor, so bought feed that closes a third of the ration
+  /// gives a third back — until 2026-09-19 a herd fed 30 % gave exactly what
+  /// one fed 0 % did (host's MG+, «как без корма, до сотых»). 1 for a fed day
+  /// and for the yards' self-fed beasts.
+  float fed_share = 1.0F;
+
   /// STUB: disease degree 0-3. The field exists so saves and interfaces are
   /// final; no mechanics reads or writes it in phase 1.
   std::uint8_t disease_stage = 0;
