@@ -11,7 +11,8 @@
 /// WHAT DECIDES, in boss's numbers (assigned, not measured), for every MAN of
 /// 16 and older, at the first day of the month, of the month that closed —
 /// a woman has no such metric and stays at 0 (boss, 2026-09-18):
-///   * up +0.65 when the village has a distiller (the supply);
+///   * up +0.65 when a distiller supplied last month stands within reach of
+///     HIS yard (the supply; NearestSuppliedDistiller, register 207);
 ///   * up +0.5 in a winter month (December to February) for one who had not a
 ///     single day of work in it (idleness and winter) — unless an open
 ///     reading hut is within his reach (sport.h);
@@ -28,10 +29,11 @@
 ///     measure is those men and not the mean of men 16+: boys come of age
 ///     near nought and the heavy drinkers die, which moves the mean by
 ///     −7…−13 whatever the numbers (boss seq 144 А);
-///   * down −1 when the village has turned without a distiller for the second
-///     month running or longer — the human's word, 2026-09-18: «Если люди
-///     долго не пьют то алкоголизм медленно уменьшается». The count is
-///     NightTheftTally::dry_months, kept here at each turn;
+///   * down −1 when his yard has turned without a supplied distiller in reach
+///     for the second month running or longer — the human's word, 2026-09-18:
+///     «Если люди долго не пьют то алкоголизм медленно уменьшается». The
+///     count is the yard's FamilyRow::dry_months (save 60), kept here at each
+///     turn;
 ///   * never above 60 in Epoch I, never below 0;
 ///   * a crossing of 20, 40 or 60, either way, raises kAlcoholismBandCrossed.
 ///

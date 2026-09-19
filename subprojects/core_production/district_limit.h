@@ -51,12 +51,14 @@ float LimitReputationMultiplier(float reputation);
 /// @brief The points granted for a year: (base by tier + plan_met_points if
 /// the plan was delivered in full + the overfulfilment term) × the reputation
 /// multiplier, rounded to whole points and never negative.
-/// @param plan_fully_met Every position delivered at 100 % — not the
-///        district's met share, which decides failure and trial (boss, parcel
-///        211). False for the first year, which has had no verdict.
-/// @param overfulfil_grain_tonnes Tonnes of grain equivalent over a plan met
-///        in full (PlanOverfulfilGrainTonnes, district_plan.h), priced by the
-///        catalog's falling scale (OverfulfilPoints).
+/// @param plan_fully_met Every position delivered at the district's met
+///        share (PlanFullyDelivered through PositionDelivered, boss seq 103;
+///        it read «at 100 %» until then). False for the first year, which has
+///        had no verdict.
+/// @param overfulfil_grain_tonnes Tonnes of grain equivalent over the plan,
+///        less the short positions' deduction (PlanOverfulfilGrainTonnes,
+///        district_plan.h; boss seq 88 — no longer gated on a plan met in
+///        full), priced by the catalog's falling scale (OverfulfilPoints).
 std::int32_t YearLimitPoints(const LimitCatalog& catalog,
                              FarmStatusTier tier,
                              bool plan_fully_met,

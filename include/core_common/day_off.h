@@ -12,8 +12,10 @@
 /// them knew of would work the fields and recover the village's rest as on a
 /// Sunday — or the reverse. Two doors to one question, and the rule that
 /// hangs on one is walked around through the other in silence. The
-/// implementation moves every caller here; calendar.h's IsRestDay stays as
-/// the calendar's own answer, which this door reads first.
+/// implementation moved every caller of «is this a day off» here; calendar.h's
+/// IsRestDay stays as the calendar's own answer, which this door reads first
+/// — and which one caller asks on purpose: rush.cpp's IsCancelledDayOff wants
+/// the calendar's Sunday, not the village's.
 
 #ifndef CORE_COMMON_DAY_OFF_H_
 #define CORE_COMMON_DAY_OFF_H_

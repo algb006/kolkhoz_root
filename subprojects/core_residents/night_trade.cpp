@@ -87,7 +87,7 @@ void AddCatchToPantry(FamilyRow& family, ResourceId resource, Grams amount) {
   family.pantry[resource.value] += amount;
 }
 
-/// Where a resident's yard is: his family's house, or where it stood.
+/// Neither Komsomol nor Party: who a night trade may be handed to.
 bool OutsideTheOrganizations(const ResidentRow& person) {
   return person.social_status != SocialStatus::kKomsomol &&
          person.social_status != SocialStatus::kParty;

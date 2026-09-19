@@ -37,8 +37,10 @@ float SettlementFoodDays(const FoodConfig& food, const LifeConfig& life, const W
 /// one person-day for every able-bodied villager, and — on the first of
 /// December — the days of food the wintering starts with.
 ///
-/// READ AFTER THE METRICS PHASE HAS RUN, so the satisfaction sampled is the
-/// one today's meal and today's rest produced. One reading per family per
+/// READ IN THE DECISIONS SLOT (phase 3), before today's metrics phase (5): the
+/// satisfaction sampled is YESTERDAY's metrics phase over today's households
+/// (residents_system.cpp says so at the call; this line said «after the
+/// metrics phase» until 2026-09-19's analysis). One reading per family per
 /// day, summed with its own count beside it because the village gains and
 /// loses families all year and a mean kept in one float would weigh a
 /// January of twenty-one households against a December of forty.

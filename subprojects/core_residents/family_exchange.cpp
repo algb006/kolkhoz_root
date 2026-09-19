@@ -221,7 +221,6 @@ Grams PlanUnsealed(const WorldState& world, std::uint32_t index) {
   return index < opened.size() ? opened[index] : 0;
 }
 
-/// @brief What is free to hand out: what lies in the stores minus the funds.
 /// The issue norm of one position, kilograms per trudoden: the chairman's
 /// (WorldState::issue_norms) once he has set any, the table's until then.
 /// ONE READER for both distribution passes, so they cannot disagree about a
@@ -235,6 +234,7 @@ float IssueNormKg(const FoodConfig& config, const WorldState& world, std::uint32
   return index < config.resources.size() ? config.resources[index].issue_kg_per_trudoden : 0.0F;
 }
 
+/// @brief What is free to hand out: what lies in the stores minus the funds.
 Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
   const Grams free_stock = VillageStock(world, resource) - held;

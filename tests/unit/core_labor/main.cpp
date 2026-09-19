@@ -2388,6 +2388,10 @@ int TestTheAvralAndTheCancelledDayOff() {
       order.amount = step;
       return core::AppendRow(day.world.orders, order);
     };
+    // A row past the boundary's shape check (a save's pending order): −1 must
+    // not wrap into a step of 255. Issued first, so a wrap would be undone by
+    // the declared step and redden this assert alone.
+    const core::OrderId wrapped = issue(id, -1);
     const core::OrderId declared = issue(id, 3);
     const core::OrderId on_growing = issue(still_growing, 3);
     const core::OrderId on_nothing = issue(core::FieldId{99}, 3);
@@ -2402,6 +2406,8 @@ int TestTheAvralAndTheCancelledDayOff() {
     failures += Expect(order_of(on_growing).refusal == core::OrderRefusal::kRuleForbids &&
                            order_of(on_nothing).refusal == core::OrderRefusal::kNoSuchSubject,
                        "rush: refused on a field with no work standing, and on no field at all");
+    failures += Expect(order_of(wrapped).refusal == core::OrderRefusal::kRuleForbids,
+                       "rush: a step below nought is refused, not wrapped into 255");
     // The reaping ends: the avral goes out with it the next morning.
     day.world.fields.rows[core::FindRow(day.world.fields, id)].phase = core::FieldPhase::kIdle;
     day.RunDay(*labor, 31);
@@ -2435,7 +2441,13 @@ int TestTheAvralAndTheCancelledDayOff() {
     const float saturday = rest_lost_on(5);
     const float left_before =
         day.world.fields.rows[core::FindRow(day.world.fields, id)].work_days_remaining;
+    // ON THE CANCELLED DAY ITSELF a second order is refused too — it once
+    // moved the cancellation to next Sunday and made today a day off again.
+    const core::OrderId on_the_day = core::AppendRow(day.world.orders, cancel);
     const float sunday = rest_lost_on(6);
+    failures += Expect(day.world.orders.rows[core::FindRow(day.world.orders, on_the_day)].refusal ==
+                           core::OrderRefusal::kRuleForbids,
+                       "day off: a cancellation on the cancelled day itself is refused");
     const float reaped_sunday =
         left_before -
         day.world.fields.rows[core::FindRow(day.world.fields, id)].work_days_remaining;

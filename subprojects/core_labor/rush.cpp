@@ -56,6 +56,12 @@ void Settle(OrderRow& order, OrderRefusal refusal) {
 }
 
 OrderRefusal DeclareRush(WorldState& current, const OrderRow& order) {
+  // THE RANGE BEFORE THE NARROWING (static analysis, 2026-09-19): a row that
+  // reaches here past the boundary's shape check — a pending order loaded
+  // from a save — would wrap, −1 into a step of 255, a twelve-fold boost.
+  if (order.amount < 0 || order.amount > kMaxRushStep) {
+    return OrderRefusal::kRuleForbids;
+  }
   const auto step = static_cast<std::uint8_t>(order.amount);
   if (order.field.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(current.fields, order.field);
@@ -88,7 +94,11 @@ OrderRefusal DeclareRush(WorldState& current, const OrderRow& order) {
 OrderRefusal CancelDayOff(WorldState& current) {
   const SimDay today = current.calendar.day;
   ChairmanState& chairman = current.chairman;
-  if (chairman.cancelled_day_off != 0 && chairman.cancelled_day_off > today) {
+  // AT OR AFTER TODAY (static analysis, 2026-09-19): on the cancelled day
+  // itself a second order moved the cancellation to next Sunday — today
+  // became a day off again halfway through it, unpriced, and the series
+  // reset as if a day off had been taken.
+  if (chairman.cancelled_day_off != 0 && chairman.cancelled_day_off >= today) {
     return OrderRefusal::kRuleForbids;  // one order, one day
   }
   for (SimDay day = today + 1; day <= today + kDayOffSearchDays; ++day) {
