@@ -65,7 +65,10 @@ bool BuiltWithinReach(const WorldState& world,
   const float radius_sq = radius_m * radius_m;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (unit.type.value != type.value || unit.level == 0) {
+    // A ruin is no field and no hut (boss seq 176): a talk accepted with
+    // nowhere to go, and a goer counted at a dead stadium, punished the
+    // other way round.
+    if (unit.type.value != type.value || unit.level == 0 || unit.dead != 0) {
       continue;
     }
     const float dx = unit.position.x - home.x;

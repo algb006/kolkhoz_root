@@ -2215,6 +2215,13 @@ int CheckTheSportsField() {
   world.units.rows[0].position = core::Vec2{.x = 1500.0F, .y = 0.0F};
   failures += Expect(!core::GoesToTheField(sport, world, young, 20.0F),
                      "field: nor with the stadium beyond the evening's walk");
+  // A RUIN IS NO FIELD (boss seq 176): near again, but dead.
+  world.units.rows[0].position = core::Vec2{.x = 900.0F, .y = 0.0F};
+  world.units.rows[0].dead = 1;
+  failures += Expect(!core::GoesToTheField(sport, world, young, 20.0F),
+                     "field: nor to a dead stadium — a ruin is no field");
+  world.units.rows[0].dead = 0;
+  world.units.rows[0].position = core::Vec2{.x = 1500.0F, .y = 0.0F};
 
   // -- the month's sportiness ---------------------------------------------
   core::ResidentRow person;
