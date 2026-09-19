@@ -87,6 +87,7 @@ bread,Хлеб,t,1000,,2.2,fast,6,,some
 smoked_meat,Копчёности,t,1000,,3,very_slow,2400,,eager
 smoked_fish,Копчёная рыба,t,1000,,2,very_slow,2400,,eager
 sauerkraut,Квашеная капуста,t,1000,,0.2,slow,600,,some
+barrel,Бочка,pcs,15,,,none,,,some
 sausage,Колбасы,t,1000,,2.8,slow,600,Эпоха II,eager
 pastry,Выпечка,t,1000,,3.4,fast,6,,some
 cloth,Своя ткань и пряжа,pcs,15,,,none,,,some

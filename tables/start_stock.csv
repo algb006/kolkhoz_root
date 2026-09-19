@@ -15,6 +15,7 @@ church_store,wheat,2.5,1000
 church_store,oat,5,1000
 church_store,barley,3.5,1000
 church_store,potato,35,1000
+church_store,barrel,150,15
 clay_pile,clay,40,1000
 hay_stack,hay,165,1000
 hay_stack,straw,40,1000
