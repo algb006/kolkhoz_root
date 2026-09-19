@@ -522,7 +522,30 @@ class ConstructionSystem final : public IConstructionSystem {
         default:
           break;  // not ours; another consumer's, or the events slot's refusal
       }
+      if (order.refusal == OrderRefusal::kMaterialsShort) {
+        order.resource = FirstShortMaterial(current, order);
+      }
     }
+  }
+
+  /// THE REFUSAL NAMES WHAT (boss seq 167, econ's ask): the first line of the
+  /// recipe the village does not hold in full, in the refused row's
+  /// `resource` — a hint and not a wall, as kNowhereToStore names its goods.
+  /// The whole list stays the door MaterialsShortFor's.
+  ResourceId FirstShortMaterial(const WorldState& current, const OrderRow& order) const {
+    if (order.kind == OrderKind::kInsulateUnit) {
+      return config_.straw_resource;  // the one material insulation asks
+    }
+    const std::uint32_t row = FindRow(current.units, order.unit);
+    if (row == kNoRow) {
+      return ResourceId{};
+    }
+    const UnitRow& site = current.units.rows[row];
+    const auto level = order.kind == OrderKind::kUpgradeUnit
+                           ? static_cast<std::uint8_t>(site.level + 1U)
+                           : site.construction.target_level;
+    const std::vector<MaterialShortfall> short_lines = ShortfallOf(current, row, level);
+    return short_lines.empty() ? ResourceId{} : short_lines.front().resource;
   }
 
   static void Settle(OrderRow& order, OrderRefusal refusal) {

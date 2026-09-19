@@ -188,6 +188,13 @@ core::OrderRefusal RefusalOf(const core::WorldState& world, core::OrderId order)
   return row == core::kNoRow ? core::OrderRefusal::kNone : world.orders.rows[row].refusal;
 }
 
+/// What a refused row names in its resource (boss seq 167: kMaterialsShort
+/// names the first short material).
+core::ResourceId NamedOf(const core::WorldState& world, core::OrderId order) {
+  const std::uint32_t row = core::FindRow(world.orders, order);
+  return row == core::kNoRow ? core::ResourceId{} : world.orders.rows[row].resource;
+}
+
 /// One step of the sub-step, at the hour it is given: hour 0 is when the
 /// delivery stub runs.
 void Run(core::IConstructionSystem& system, core::WorldState& world, std::uint32_t hour) {
@@ -231,6 +238,8 @@ int TestStartChecksTheRecipe(const core::ITableSet& tables) {
                  world.units.rows[core::FindRow(world.units, store)].stock[0] == 6 * kLogGrams,
              "recipe: the start is refused kMaterialsShort, the plot stays marked, "
              "and nothing leaves the store");
+  failures += Expect(NamedOf(world, refused).value == 0,
+                     "recipe: the refusal names the short material — the logs");
 
   world.units.rows[core::FindRow(world.units, store)].stock[0] = 12 * kLogGrams;
   failures += Expect(system->MaterialsShortFor(world, site).empty(),

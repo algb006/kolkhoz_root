@@ -911,10 +911,11 @@ enum class OrderRefusal : std::uint8_t {
   /// village IN FULL — the stores, the heaps and what already lies on the site
   /// together (construction design §6, "старт проверяет материалы — и
   /// называет, чего не хватает"; the human's word of 2026-09-14). The works do
-  /// not start. WHAT is short, line by line, is answered by the construction
-  /// door MaterialsShortFor (the session's too), not carried on the row: the
-  /// order row is a fixed-width record and a recipe is a list. Seam key
-  /// `materials_short`.
+  /// not start. The refused row NAMES the first short line in its `resource`
+  /// (boss seq 167, econ's ask; kInsulateUnit's is always the straw) — a hint,
+  /// as kNowhereToStore's. The whole list, line by line, is the construction
+  /// door MaterialsShortFor's (the session's too): the order row is a
+  /// fixed-width record and a recipe is a list. Seam key `materials_short`.
   kMaterialsShort,
 
   /// kBuildUnit field_camp: the plot lies on arable land — the camp stands
