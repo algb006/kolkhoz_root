@@ -434,6 +434,13 @@ enum class EventKind : std::uint8_t {
   /// kNotable. Seam key proposed: `limit_goods_at_the_gate`.
   kLimitGoodsAtTheGate,
 
+  /// The district's cart took the plan's debt off the fields' heaps on the
+  /// day the snow settled, before the snow took them (register 242, boss
+  /// seq 180): one event per resource; resource = what was taken; amount =
+  /// GRAMS taken, all of them counted as delivered. kNotable. Seam key
+  /// proposed: `district_took_from_field`.
+  kDistrictTookFromField,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

@@ -164,6 +164,8 @@ const char* KindName(core::EventKind kind) {
       return "store_leak_closed_dry_month";
     case core::EventKind::kLimitGoodsAtTheGate:
       return "limit_goods_at_the_gate";
+    case core::EventKind::kDistrictTookFromField:
+      return "district_took_from_field";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

@@ -30,6 +30,18 @@ namespace core {
 /// for twice.
 void DeliverPlan(const ProductionConfig& config, WorldState& current);
 
+/// @brief The district's cart for the debt, on the day the settled snow
+/// takes the fields' heaps (district design, «Долг плана телега района берёт
+/// и с поля»; register 242, boss seq 180): before the snow, every position
+/// still owed is taken from the reaped heaps of its resource on the fields,
+/// in row order — the WHOLE debt, first, before the stores, and never more
+/// than the debt. Recorded as delivered, in the plan and in the ledger, with
+/// one kDistrictTookFromField per resource taken.
+/// @pre The caller has seen the snow settle and has not yet let it take the
+///      heaps; before the spring's figure (announced == 0) nothing is owed.
+/// @note kDeliverPlan does not come here: the chairman ships from the stores.
+void TakePlanDebtFromFields(WorldState& current);
+
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —
 /// leaves the stores now, as much as the stores hold, and is added to
