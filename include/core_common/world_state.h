@@ -355,7 +355,9 @@ struct WeatherState {
   ///
   /// A FUNCTION OF (seed, day), like the sky and unlike the snow cover: it is
   /// decided by MudOnDay (weather_of_day.h) from the days' own weather, which
-  /// any day can draw for itself — so the forecast could ask it too. Saved
+  /// any day can draw for itself — so a forecast could ask MudOnDay too. NOT
+  /// WeatherOfDay: that one leaves this field false, and only the weather
+  /// phase writes it. Saved
   /// anyway, for the reason the sky is: a loaded world answers before it has
   /// stepped once. Save 72.
   bool mud = false;

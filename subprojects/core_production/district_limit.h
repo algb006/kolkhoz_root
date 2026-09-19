@@ -70,6 +70,8 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
 ///        on a day of РАСПУТИЦА (WeatherState::mud; boss seq 182) — 2 becomes
 ///        4. The random delay comes on top and is not stretched. Decided on
 ///        the order's day: a cart that set out dry arrives as it would have.
+///        The MTS column's «does it arrive inside its window» asks the same
+///        term, so a column ordered in the March mud can be refused as late.
 std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldState& world);
 
 /// @brief Reads a kOrderLimitLot: checks the lot and the balance, takes the

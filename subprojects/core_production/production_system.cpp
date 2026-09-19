@@ -279,7 +279,9 @@ class ProductionSystem final : public IProductionSystem {
                                            ? worked_today
                                            : current.plan.worked_ha_this_year;
     // The district's cart takes the plan's debt off the heaps first (register
-    // 242): RunFields' settled snow takes them whole the same morning.
+    // 242): RunFields' settled snow takes them whole the same morning. The
+    // snow has a second door it does not guard — LoseFieldToSnow on a field
+    // still standing, on the first snowy day (OPEN_ITEMS, MEM-X01).
     if (current.weather.snow_cover_days >= kSettledSnowCoverDays) {
       TakePlanDebtFromFields(current);
     }

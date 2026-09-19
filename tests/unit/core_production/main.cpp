@@ -5501,6 +5501,17 @@ int CheckPlanDebtFromFields() {
   core::TakePlanDebtFromFields(world);
   failures += Expect(fields[2].reaped_grams == 3 * kTonne && world.step_events.size() == 2,
                      "a paid position takes nothing more off the field");
+
+  // A SNOW THAT SETTLES AFTER THE TURN (host seq 42): the turn itself takes
+  // the heaps first, and only then the stores.
+  const core::ProductionConfig config;
+  core::WorldState late_snow = make_world();
+  core::DeliverPlan(config, late_snow);
+  failures += Expect(late_snow.plan.delivered[0] == 10 * kTonne &&
+                         late_snow.units.rows[0].stock[0] == 6 * kTonne &&
+                         late_snow.fields.rows[2].reaped_grams == 3 * kTonne,
+                     "no snow before the turn: the turn takes the debt off the heaps, "
+                     "the barn keeps its six tonnes");
   return failures;
 }
 

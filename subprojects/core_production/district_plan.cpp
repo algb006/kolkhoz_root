@@ -27,6 +27,11 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   // THE TURN SHIPS WHAT IS STILL OWED, not the whole figure again: whatever
   // the chairman shipped earlier by order (kDeliverPlan) is already in
   // `delivered`. «Держать до срока» is this — the default, the deadline.
+  // THE HEAPS FIRST AT THE TURN TOO (host seq 42 on 0.34.2): in a year whose
+  // snow settles after the turn the snow's day never came, and seeds 1 and 23
+  // failed the potato beside a 68 t heap. The cart comes on the snow's day or
+  // at the turn, whichever is first; after the snow there is no heap to take.
+  TakePlanDebtFromFields(current);
   if (current.plan.delivered.size() < current.plan.due.size()) {
     current.plan.delivered.resize(current.plan.due.size(), 0);
   }
