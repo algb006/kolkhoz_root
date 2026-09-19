@@ -32,6 +32,7 @@ bakery,Пекарня,production,1,0,1,era,,1,25,,,absorbed,1,,0,none,,0,food_ya
 smokehouse,Коптильня,production,1,0,1,era,,1,25,,,absorbed,1,,0,weak,working,0,food_yard,1
 sausage_shop,Колбасный цех,production,2,0,1,era,,1,30,,,absorbed,1,,0,none,,0,food_yard,1
 elevator,Элеватор,production,2,0,1,era,,1,70,,,absorbed,1,,0,none,,0,,1
+sauerkraut_shop,Квашня,production,1,0,1,era,,1,25,,,absorbed,1,,0,weak,working,0,food_yard,1
 log_pile,Куча брёвен,production,1,1,1,era,,0,,3,open,follows,0,,0,none,,0,,0
 stone_pile,Куча камня,production,1,1,1,era,,0,,3,open,follows,0,,0,none,,0,,1
 clay_pile,Куча глины,production,1,1,1,era,,0,,3,open,follows,0,,0,none,,0,,1
