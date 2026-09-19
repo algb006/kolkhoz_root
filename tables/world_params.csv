@@ -117,7 +117,7 @@ school_year_start_month,9,core
 school_year_end_month,6,core
 night_distiller_raw_kg,50,core
 alcohol_adult_from_years,16,core
-alcohol_gain_with_distiller,0.5,core
+alcohol_gain_with_distiller,0.65,core
 alcohol_gain_winter_idle,0.5,core
 alcohol_gain_low_satisfaction,1,core
 alcohol_low_satisfaction_below,40,core
