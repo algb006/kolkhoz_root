@@ -720,6 +720,32 @@ enum class OrderKind : std::uint8_t {
   /// Consumer: core_residents.
   kAnswerLeaveRequest,
 
+  /// THE TRIP TO THE DISTRICT (econ/manual/proposals/district-trip.md; the
+  /// human's words of 2026-09-19 «Председатель едет на лошади», «Раз в
+  /// месяц»; boss seq 187, 205-206): no fields. The chairman leaves at the
+  /// next 8:00 and is back that evening — the next morning in the mud
+  /// (ChairmanState::away_*). A blizzard at 8:00 cancels it (event
+  /// kTripCancelled), and it does not count. Refusals: kChairmanAway (a trip
+  /// or a summons already stands), kTripThisMonth (his own trip this month
+  /// already). Seam key `trip_to_district` (boss). Consumer: core_production.
+  kTripToDistrict,
+
+  /// THE PLAN BARGAINED IN THE DISTRICT (the human's word «Раз в год, до
+  /// апреля»; boss seq 206): accepted only while the chairman is away in the
+  /// district, from the day the plan is named to the end of March, once a
+  /// year. `resource` names the position; `rotation_year0` invalid and
+  /// `amount` +1 or -1 moves it by plan_trade_percent (10 %), up or down —
+  /// or `rotation_year0` a crop replaces the position: the position's
+  /// hectares stay, its tonnes are the new crop's yield on them. The price is
+  /// raikom_reputation (world_params plan_trade_percent_rep_cost 5,
+  /// plan_trade_swap_rep_cost 8, STUB). Refusals: kNotEligible (not away),
+  /// kTradeClosed (outside the window, or bargained already this year),
+  /// kReputationTooLow (raikom_reputation below plan_trade_min_reputation
+  /// 20: «на карандаше» the district does not listen), kNoSuchSubject (no
+  /// such position, or the crop gives nothing). Seam key `trade_plan`
+  /// (boss). Consumer: core_production.
+  kTradePlan,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -1044,6 +1070,23 @@ enum class OrderRefusal : std::uint8_t {
   /// 159 — a refusal that says «what» by itself is cheaper than three tables
   /// at the layer). Seam key `nowhere_to_store` (boss).
   kNowhereToStore,
+
+  /// THE CHAIRMAN IS IN THE DISTRICT (district-trip.md §1; boss seq 206):
+  /// an order to the village — work, building, the issue — given while he is
+  /// away. Answered before any consumer sees it. The district's own doors
+  /// (kTradePlan, kOrderLimitLot) are not refused.
+  kChairmanAway,
+
+  /// «Раз в месяц»: his own trip this month already (kTripToDistrict).
+  kTripThisMonth,
+
+  /// kTradePlan outside its window (from the plan's naming to the end of
+  /// March) or a second time in the year.
+  kTradeClosed,
+
+  /// kTradePlan with raikom_reputation below plan_trade_min_reputation: «на
+  /// карандаше» the district does not bargain.
+  kReputationTooLow,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

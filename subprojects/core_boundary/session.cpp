@@ -240,6 +240,21 @@ bool ShapeIsValid(const OrderRow& order) {
       // consumer's (order_state.h).
       return order.family.value != kInvalidEntityIdValue && !has_resident && !has_unit &&
              !has_field && !has_herd && !has_stand && !has_site && order.enable <= 1;
+    case OrderKind::kTripToDistrict:
+      // Nothing: he goes at the next 8:00. Whether he may is the consumer's.
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
+             order.amount == 0;
+    case OrderKind::kTradePlan: {
+      // The position, and EITHER a direction (+1 or -1, the crop invalid) OR
+      // the crop that replaces it (the amount zero) — never both, never
+      // neither. The window, the reputation and the position's existence are
+      // the consumer's (order_state.h).
+      const bool swap = order.rotation_year0.value != kInvalidDefIdValue;
+      const bool step = order.amount == 1 || order.amount == -1;
+      return order.resource.value != kInvalidDefIdValue && !has_resident && !has_unit &&
+             !has_field && !has_herd && !has_stand && !has_site &&
+             (swap ? order.amount == 0 : step);
+    }
   }
   return false;
 }

@@ -146,6 +146,15 @@ core::WorldState MakeWorld() {
   world.chairman.days_off_cancelled_in_a_row = 2;
   world.chairman.cancelled_day_off = 55;
   world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
+  // Save 77: away on a summons, a trip of his own before, a trade had.
+  world.chairman.away_from_tick = 2'000;
+  world.chairman.away_until_tick = 2'012;
+  world.chairman.last_trip_day = 70;
+  world.chairman.summon_letter_day = 81;
+  world.chairman.summon_day = 83;
+  world.chairman.plan_traded_year = 2;
+  world.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
+  world.chairman.away_summoned = 1;
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   // The accumulation limit (save 62): not empty, or a codec that forgot it
@@ -751,6 +760,15 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.cancelled_day_off = 55;
   // The chairman's talk (save 69): the last season away from nought.
   witness.chairman.last_talk_season = 5;
+  // The trip to the district (save 77): every field away from nought.
+  witness.chairman.away_from_tick = 2'000;
+  witness.chairman.away_until_tick = 2'012;
+  witness.chairman.last_trip_day = 70;
+  witness.chairman.summon_letter_day = 81;
+  witness.chairman.summon_day = 83;
+  witness.chairman.plan_traded_year = 2;
+  witness.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
+  witness.chairman.away_summoned = 1;
 
   witness.traction_ration = 0.75F;
   // The chairman's issue norms (save 57): NOT empty, since empty is what a
@@ -849,6 +867,15 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       {"chairman.days_off_cancelled_in_a_row", U8(world.chairman.days_off_cancelled_in_a_row)});
   chunks.push_back({"chairman.cancelled_day_off", U32(world.chairman.cancelled_day_off)});
   chunks.push_back({"chairman.last_talk_season", U32(world.chairman.last_talk_season)});
+  // The trip to the district (save 77).
+  chunks.push_back({"chairman.away_from_tick", U64(world.chairman.away_from_tick)});
+  chunks.push_back({"chairman.away_until_tick", U64(world.chairman.away_until_tick)});
+  chunks.push_back({"chairman.last_trip_day", U32(world.chairman.last_trip_day)});
+  chunks.push_back({"chairman.summon_letter_day", U32(world.chairman.summon_letter_day)});
+  chunks.push_back({"chairman.summon_day", U32(world.chairman.summon_day)});
+  chunks.push_back({"chairman.plan_traded_year", U16(world.chairman.plan_traded_year)});
+  chunks.push_back({"chairman.summon_cause", U8(world.chairman.summon_cause)});
+  chunks.push_back({"chairman.away_summoned", U8(world.chairman.away_summoned)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
@@ -1084,7 +1111,7 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // the field was added, and held.
     // 2026-09-19, save 72: +1 — РАСПУТИЦА (WeatherState::mud), predicted
     // before the build together with the seventeen sections that did not move.
-    {"world", 468, 0xcab909370a55fc37ULL},
+    {"world", 500, 0x528da5bf9769afaULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1148,7 +1175,7 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // with nowhere to store: same 494 bytes, predicted.
     // Save 74: kAnswerLeaveRequest became the top OrderKind — same 494 bytes,
     // the hash moved, predicted.
-    {"orders", 494, 0xc530cd0aff0349f9ULL},
+    {"orders", 494, 0x1ff4157a231b0f3ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of

@@ -87,8 +87,11 @@ static_assert(AggregateArity<WeatherState>() == 13,
 // and its day (four bytes, which do not fit): 24 -> 32, ten fields.
 // Save 69: the season of the last talk, four bytes: 32 -> 36, eleven fields,
 // predicted before the field was added and measured after.
-static_assert(sizeof(ChairmanState) == 36, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 11,
+// Save 77: the trip to the district — two ticks (eight-aligned, so 36 pads to
+// 40), three days, a year, two bytes: 36 -> 72, nineteen fields; 32 bytes in
+// the codec. Predicted before the fields were added.
+static_assert(sizeof(ChairmanState) == 72, "ChairmanState changed — update the codec");
+static_assert(AggregateArity<ChairmanState>() == 19,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -567,6 +570,15 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU32(world.chairman.cancelled_day_off);
   // The chairman's talk (save 69): the season of the last one, plus one.
   out.WriteU32(world.chairman.last_talk_season);
+  // The trip to the district (save 77).
+  out.WriteU64(world.chairman.away_from_tick);
+  out.WriteU64(world.chairman.away_until_tick);
+  out.WriteU32(world.chairman.last_trip_day);
+  out.WriteU32(world.chairman.summon_letter_day);
+  out.WriteU32(world.chairman.summon_day);
+  out.WriteU16(world.chairman.plan_traded_year);
+  out.WriteU8(world.chairman.summon_cause);
+  out.WriteU8(world.chairman.away_summoned);
 
   out.WriteFloat(world.traction_ration);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
@@ -697,6 +709,17 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.days_off_cancelled_in_a_row = in.ReadU8();
   world->chairman.cancelled_day_off = in.ReadU32();
   world->chairman.last_talk_season = in.ReadU32();
+  world->chairman.away_from_tick = in.ReadU64();
+  world->chairman.away_until_tick = in.ReadU64();
+  world->chairman.last_trip_day = in.ReadU32();
+  world->chairman.summon_letter_day = in.ReadU32();
+  world->chairman.summon_day = in.ReadU32();
+  world->chairman.plan_traded_year = in.ReadU16();
+  world->chairman.summon_cause = source.ReadEnumValue(
+      0,
+      static_cast<std::uint8_t>(static_cast<std::uint8_t>(SummonCause::kSummonCauseCount) - 1),
+      "the summons' cause");
+  world->chairman.away_summoned = source.ReadEnumValue(0, 1, "the summons' mark");
 
   world->traction_ration = in.ReadFloat();
   world->issue_norms = source.ReadAmounts(DefKind::kResource);

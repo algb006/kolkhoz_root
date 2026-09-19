@@ -456,6 +456,54 @@ struct ChairmanState {
   /// point the layer drew would part company with the save on the first
   /// evening. Zero when no order stands.
   Vec2 night_pasture_place;
+
+  // -- the trip to the district (econ/manual/proposals/district-trip.md;
+  // boss seq 187, 205-206; save 77) ----------------------------------------
+
+  /// The chairman is AWAY from `away_from_tick` (the day's 8:00) to
+  /// `away_until_tick` (that evening; in the mud the next morning). Both 0
+  /// when no trip stands; a trip booked for tomorrow stands with its future
+  /// ticks. While away, no order to the village is accepted
+  /// (OrderRefusal::kChairmanAway) and a district visit waits for him; the
+  /// standing orders and rules run the village.
+  Tick away_from_tick = 0;
+  Tick away_until_tick = 0;
+
+  /// The day of the last trip of his own, + 1 — 0 when none: «раз в месяц»,
+  /// a second in the same month is refused (kTripThisMonth). A summons does
+  /// not count.
+  std::uint32_t last_trip_day = 0;
+
+  /// «НА КОВЁР» (district-trip.md §3): the day the district's letter comes
+  /// and the day he is called for, 0 when none stands. The letter comes with
+  /// the next post after the cause (STUB: the next day — the core knows no
+  /// post days), the summons two days after the letter. He cannot refuse:
+  /// at 8:00 of `summon_day` he leaves by himself; a blizzard moves the day
+  /// to the first passable one.
+  std::uint32_t summon_letter_day = 0;
+  std::uint32_t summon_day = 0;
+
+  /// The year whose plan he has bargained, + 1 — 0 when never: «раз в год,
+  /// до апреля» (kTradePlan).
+  std::uint16_t plan_traded_year = 0;
+
+  /// Why he is summoned (SummonCause), kNone when no summons stands.
+  std::uint8_t summon_cause = 0;
+
+  /// 0/1: the trip under way is a summons — it does not count as his own.
+  std::uint8_t away_summoned = 0;
+};
+
+/// @brief Why the district calls the chairman «на ковёр» (district-trip.md
+/// §3; boss seq 206). The core sees two causes today; an audit's discrepancy
+/// and a complaint upward are STUBs until those exist.
+enum class SummonCause : std::uint8_t {
+  kNone = 0,
+  kFailedYear,   ///< The year closed with the plan failed (PlanVerdict::kFailed).
+  kOnThePencil,  ///< raikom_reputation fell to 20 or below («на карандаше»).
+
+  /// NOT A CAUSE: the count, for the mirrors.
+  kSummonCauseCount,
 };
 
 /// @brief Settlement-wide vital statistics (design decision 105).
