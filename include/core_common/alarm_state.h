@@ -358,6 +358,15 @@ enum class AlarmKind : std::uint8_t {
   /// missing, invalid for kTooFar; `amount` = 0, or the road for kTooFar.
   kProcessingStopped,
 
+  /// A UNIT BEING TAKEN DOWN STILL HOLDS STOCK THE STORES HAVE NO ROOM FOR
+  /// (boss, host-econ-shops seq 23; unit_state.h, kDemolishing): the
+  /// evening's delivery through the stores' door left it on the site — no
+  /// store that keeps it has room, or none keeps it at all. Nothing is lost:
+  /// it waits there, and goes the evening room appears. Subject: `unit` (the
+  /// site); `resource` = the resource most grams of which wait; `amount` =
+  /// GRAMS of everything waiting on the site.
+  kDemolitionStockWaiting,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

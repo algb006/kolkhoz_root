@@ -91,9 +91,17 @@ enum class ConstructionPhase : std::uint8_t {
   /// phase the labor sub-step drains (construction.labor_days_remaining).
   kBuilding,
 
-  /// Being taken down (construction design §12): stock already moved out,
-  /// labour being invested in the dismantling; the row is removed when it
-  /// reaches zero. The unit is at level 0 from the moment this begins.
+  /// Being taken down (construction design §12): labour being invested in
+  /// the dismantling. The unit is at level 0 from the moment this begins.
+  ///
+  /// ITS STOCK WAITS ON THE SITE (since 0.34.10; boss, host-econ-shops seq
+  /// 23: «разбор не теряет запас в момент приказа»): what the unit held goes
+  /// to the stores through the stores' door each evening, as room allows,
+  /// and what has no room yet lies here — nobody takes from a level-0 site,
+  /// and kDemolitionStockWaiting says what lies and why. The row is removed
+  /// once the labour reaches zero AND the stock is gone. Until 0.34.9 the
+  /// stock went out at the order through a door of construction's own, and
+  /// what did not fit was booked lost that instant.
   kDemolishing,
 
   /// Being repaired (task A5; construction design §11, unit rules §15):
