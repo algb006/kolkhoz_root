@@ -134,6 +134,7 @@ core::WorldState MakeWorld() {
   // Set to the value that is NOT the default: a round trip that loses the
   // field would still read back `false` and pass on a default-shaped world.
   world.weather.cover_since_leaf_fall = true;
+  world.weather.mud = true;  // not the default, for the same reason
   world.epoch = core::Epoch::kTwo;
   world.world_seed = 0x0BADC0FFEEULL;
   world.rng = core::SeedRngState(world.world_seed, 3);
@@ -720,6 +721,7 @@ core::WorldState MakeWitnessWorld() {
   witness.weather.heavy_hours = 11;
   witness.weather.snow_cover_days = 9;
   witness.weather.cover_since_leaf_fall = true;
+  witness.weather.mud = true;
 
   witness.epoch = core::Epoch::kTwo;
   witness.world_seed = 0x0BADC0FFEEULL;
@@ -818,6 +820,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"weather.snow_cover_days", U16(world.weather.snow_cover_days)});
   chunks.push_back(
       {"weather.cover_since_leaf_fall", U8(world.weather.cover_since_leaf_fall ? 1U : 0U)});
+  chunks.push_back({"weather.mud", U8(world.weather.mud ? 1U : 0U)});
 
   chunks.push_back({"epoch", Enum8(world.epoch)});
   chunks.push_back({"world_seed", U64(world.world_seed)});
@@ -1074,7 +1077,9 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // the fields were added, and held.
     // Save 69: +4 — the season of the chairman's last talk; predicted before
     // the field was added, and held.
-    {"world", 467, 0x9d4826336e1c1864ULL},
+    // 2026-09-19, save 72: +1 — РАСПУТИЦА (WeatherState::mud), predicted
+    // before the build together with the seventeen sections that did not move.
+    {"world", 468, 0xcab909370a55fc37ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1367,6 +1372,7 @@ int main() {
   failures += Expect(loaded.weather.cover_since_leaf_fall,
                      "and the word that separates the count's two zeros — a cover having lain "
                      "since the leaf fall — survives with it");
+  failures += Expect(loaded.weather.mud, "and the mud season survives the round trip (save 72)");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.chairman.ration_auto == 0,

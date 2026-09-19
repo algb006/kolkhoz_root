@@ -71,9 +71,11 @@ static_assert(AggregateArity<CalendarState>() == 6,
               "CalendarState gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-18, save 56: the sky step and its heavy phase, three bytes — both
 // tripwires fired, as predicted before the build.
+// 2026-09-19, save 72: РАСПУТИЦА, one byte — it sits in the tail padding, so
+// only the field count fired, as predicted before the build.
 static_assert(sizeof(WeatherState) == 32,
               "WeatherState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WeatherState>() == 12,
+static_assert(AggregateArity<WeatherState>() == 13,
               "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-17, save 49: the night pasture's standing order, its first night and
 // its camp took the block from 16 bytes to 24 and from four fields to seven.
@@ -530,6 +532,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // which is exactly the pair a loaded world cannot rediscover by looking at
   // today.
   out.WriteU8(world.weather.cover_since_leaf_fall ? 1U : 0U);
+  // РАСПУТИЦА (save 72, boss seq 186). Recomputable from (seed, day) like the
+  // sky, and saved for the sky's reason.
+  out.WriteU8(world.weather.mud ? 1U : 0U);
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -665,6 +670,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   // Range-checked like every other narrow field: a byte that is neither 0
   // nor 1 is a corrupt save, not a truthy value.
   world->weather.cover_since_leaf_fall = source.ReadEnumValue(0, 1, "cover since leaf fall") != 0;
+  world->weather.mud = source.ReadEnumValue(0, 1, "mud season") != 0;
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

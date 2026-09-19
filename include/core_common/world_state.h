@@ -347,6 +347,18 @@ struct WeatherState {
   /// A cover lying on that day raises it again the same day: the leaf falls
   /// in the morning and snow that evening rots it.
   bool cover_since_leaf_fall = false;
+
+  /// РАСПУТИЦА — the dirt roads are soaked today (econ's mud-season audit,
+  /// boss seq 182 and 186; roads design §1). Carts and carriers go at
+  /// `mud_speed_factor` of their speed, and a district lot ordered today takes
+  /// its base term divided by it. The layer draws the mud from this word.
+  ///
+  /// A FUNCTION OF (seed, day), like the sky and unlike the snow cover: it is
+  /// decided by MudOnDay (weather_of_day.h) from the days' own weather, which
+  /// any day can draw for itself — so the forecast could ask it too. Saved
+  /// anyway, for the reason the sky is: a loaded world answers before it has
+  /// stepped once. Save 72.
+  bool mud = false;
 };
 
 /// @brief The sports field's month (leisure §12, «Погода для уличных

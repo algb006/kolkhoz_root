@@ -139,6 +139,19 @@ float SkySwingMultiplier(const SeasonWeather& season, SkyStep step);
 /// defaults: they are history, carried by the phase (SnowCoverAfter).
 WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day);
 
+/// @brief РАСПУТИЦА on `day` (WeatherState::mud; boss seq 186), from the
+/// days' own weather alone:
+///   - every day of March, from the campaign's second year on (the first
+///     spring is spared, difficulty design §3);
+///   - in September to November, from the SECOND running day of rain (sky
+///     step 4 or 5 with Precipitation::kRain) until the first day whose mean
+///     is at or below freezing or on which snow falls — and once closed, not
+///     again that autumn: a thaw after the frost is no mud season.
+/// @return false on every other day.
+/// @note Walks at most the autumn's days back to 1 September, each one a
+///       WeatherOfDay; the phase asks once a day.
+bool MudOnDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day);
+
 /// @brief Yesterday's snow cover carried into today: snow lays a cover, a
 /// warm day takes it away, any other day leaves it lying and one day older.
 std::uint16_t SnowCoverAfter(const SeasonTable& seasons,

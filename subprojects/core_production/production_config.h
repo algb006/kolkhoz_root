@@ -602,6 +602,16 @@ struct FarmingConfig {
   /// (host: 139.6 t of vegetables lying out a whole autumn). Grain in the heap
   /// too: rain on a field rots it. The settled snow still takes what is left.
   float field_heap_keeping_factor = 0.33F;
+
+  /// world_params.csv `mud_speed_factor` — 0.5, econ's number accepted by
+  /// boss (seq 182; econ/manual/proposals/mud-season-links.md): on a day of
+  /// РАСПУТИЦА (WeatherState::mud) a cart or a carrier hauling a load goes at
+  /// this share of its speed, and a district lot ordered that day takes its
+  /// base term divided by it. STUB until host's measure: with a clamp by the
+  /// field the chairman must lose at most 8 % of any plan crop in the heaps,
+  /// or this rises to 0.7. STUB too: no exemption on gravel — the haul is
+  /// measured in a straight line and the core knows no route.
+  float mud_speed_factor = 0.5F;
   float life_speedup = 4.0F;
 
   /// life.csv `adult_age_years`, read beside `life_speedup` from the row

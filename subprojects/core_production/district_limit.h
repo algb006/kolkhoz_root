@@ -65,9 +65,16 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
                              float overfulfil_grain_tonnes,
                              float reputation);
 
+/// @brief The district cart's base term, in days, for a lot ordered today:
+///        `limit_delivery_days`, divided by `mud_speed_factor` and rounded
+///        on a day of РАСПУТИЦА (WeatherState::mud; boss seq 182) — 2 becomes
+///        4. The random delay comes on top and is not stretched. Decided on
+///        the order's day: a cart that set out dry arrives as it would have.
+std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldState& world);
+
 /// @brief Reads a kOrderLimitLot: checks the lot and the balance, takes the
 ///        points, and puts the lot's goods on a cart due on the day given by
-///        limit_delivery_days plus a delay drawn from the world's random
+///        LimitBaseDeliveryDays plus a delay drawn from the world's random
 ///        stream.
 /// @param unstorable When not null and the answer is kNowhereToStore, set to
 ///        the first of the lot's goods no store of the village takes — the

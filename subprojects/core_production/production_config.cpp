@@ -951,7 +951,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 9> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 10> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -960,7 +960,8 @@ constexpr std::array<std::string_view, 9> kProductionWorldParamKeys = {
     "age_adult_from_years",
     "wear_output_loss_at_full",
     "gather_alarm_horizon_days",
-    "field_heap_keeping_factor"};
+    "field_heap_keeping_factor",
+    "mud_speed_factor"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1003,7 +1004,12 @@ bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std
                  .range = Range{.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
       ScalarKnob{.key = kProductionWorldParamKeys[8],
                  .value = &farming.field_heap_keeping_factor,
-                 .range = Range{.low = 0.01F, .high = 1.0F}}};
+                 .range = Range{.low = 0.01F, .high = 1.0F}},
+      // Above nought: the mud slows a cart and never stops it (econ's audit
+      // §4 — in epoch I everything goes by horse, and a horse gets through).
+      ScalarKnob{.key = kProductionWorldParamKeys[9],
+                 .value = &farming.mud_speed_factor,
+                 .range = Range{.low = 0.05F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
