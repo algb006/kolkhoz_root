@@ -47,10 +47,10 @@ sawmill,Лесопилка,production,1,0,1,era,,1,15,,,follows,1,1.4,0,none,,0,
 firewood_yard,Дровяной участок,production,1,1,1,era,,1,25,,,follows,0,,0,none,,0,utility_yard,1
 fuel_point,Пункт заправки,production,2,0,1,era,,1,15,,,follows,0,,0,weak,always,0,utility_yard,1
 crafts_yard,Промысловый двор,production,1,0,1,era,,1,45,,,absorbed,1,,1,none,,0,,1
-weaving_shop,Ткацкая мастерская,production,1,0,1,era,,1,25,,,absorbed,1,,0,none,,0,crafts_yard,1
-sewing_shop,Швейная мастерская,production,1,0,1,era,,1,25,,,absorbed,1,,0,none,,0,crafts_yard,1
-shoemaking_shop,Сапожная мастерская,production,1,0,1,era,,1,25,,,absorbed,1,,0,none,,0,crafts_yard,1
-furrier_shop,Скорняжная мастерская,production,3,0,1,era,,1,45,,,absorbed,1,,0,none,,0,crafts_yard,1
+weaving_shop,Ткацкая мастерская,production,1,0,1,era,,1,15,,,follows,0,,0,none,,0,crafts_yard,0
+sewing_shop,Швейная мастерская,production,1,0,1,era,,1,15,,,follows,0,,0,none,,0,crafts_yard,0
+shoemaking_shop,Сапожная мастерская,production,1,0,1,era,,1,15,,,follows,0,,0,none,,0,crafts_yard,0
+furrier_shop,Скорняжная мастерская,production,3,0,1,era,,1,45,,,follows,0,,0,none,,0,crafts_yard,0
 dye_house,Красильня,production,2,0,1,era,,1,30,,,absorbed,1,,0,weak,working,0,crafts_yard,1
 tannery,Дубильня,production,1,0,1,era,,1,20,,,follows,1,,0,strong,working,0,,1
 garment_factory,Швейный цех,production,3,0,1,era,,1,45,,,absorbed,1,,0,none,,0,,1
