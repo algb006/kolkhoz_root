@@ -8,8 +8,11 @@
 
 #include "family_meal.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -77,40 +80,101 @@ std::uint32_t PantryRoster(const FoodConfig& config, const FamilyRow& family) {
   return static_cast<std::uint32_t>(smaller);
 }
 
-/// @brief Puts the meal on the table and takes it out of the pantry.
+/// The shelf life a bin is eaten by: its `spoil_days`, 0 for what does not
+/// go bad (and for a roster the column does not reach).
+float SpoilDaysOf(const FoodConfig& config, std::uint32_t index) {
+  return index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;
+}
+
+/// Takes `take` grams of bin `index` onto the table: out of the pantry, into
+/// the variety mask. Returns the kilocalories.
+float PutOnTable(const FoodConfig& config, FamilyRow& family, std::uint32_t index, Grams take) {
+  const FoodResourceDef& def = config.resources[index];
+  family.pantry[index] -= take;
+  if (def.category != FoodCategory::kNotFood && def.category != FoodCategory::kCount) {
+    family.food_variety_mask |=
+        static_cast<std::uint16_t>(1U << static_cast<std::uint32_t>(def.category));
+  }
+  return static_cast<float>(take) * def.kcal_per_gram;
+}
+
+/// THE PERISHABLE FIRST (boss seq 159, option А; metrics §8): the bins that
+/// go bad are eaten one after another, the shortest shelf life first, and
+/// only what they leave of the need is taken PROPORTIONALLY from the bins
+/// that keep. Until 2026-09-19 every bin was eaten in proportion to what it
+/// held, and the milk rotted beside the grain: the more the kolkhoz issued,
+/// the larger the larder, the smaller the share taken from each bin — so a
+/// generous norm fed the rot and not the table (host's milk pass: M2 issued
+/// more than M½, ate less milk and lost three times as much). The variety
+/// mask fills with what stood on the table; it is read over the season
+/// (metrics §8), so a day of milk alone costs the family nothing there.
+/// Ties in shelf life keep row order: deterministic. (EatFromPantry below;
+/// this is its first half.)
 ///
-/// Eating is PROPORTIONAL to what is stored: it is deterministic, it burns
-/// the bins evenly instead of emptying one at a time, and it fills the
-/// variety mask with what actually stood on the table.
+/// The bins that go bad, shortest shelf life first, each eaten out before
+/// the next is touched. Returns the kilocalories.
+float EatPerishableFirst(const FoodConfig& config, FamilyRow& family, float need_kcal) {
+  const std::uint32_t roster = PantryRoster(config, family);
+  float eaten_kcal = 0.0F;
+  std::vector<std::uint32_t> perishable;
+  for (std::uint32_t index = 0; index < roster; ++index) {
+    if (config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0 &&
+        SpoilDaysOf(config, index) > 0.0F) {
+      perishable.push_back(index);
+    }
+  }
+  std::ranges::stable_sort(perishable, [&config](std::uint32_t left, std::uint32_t right) {
+    return SpoilDaysOf(config, left) < SpoilDaysOf(config, right);
+  });
+  for (const std::uint32_t index : perishable) {
+    const float left_kcal = need_kcal - eaten_kcal;
+    if (!(left_kcal > 0.0F)) {
+      break;
+    }
+    // Rounded down, so the table never passes the need; the grams it leaves
+    // are the next bin's.
+    const Grams wanted =
+        GramsFromFloat(std::floor(left_kcal / config.resources[index].kcal_per_gram));
+    const Grams take = wanted < family.pantry[index] ? wanted : family.pantry[index];
+    if (take > 0) {
+      eaten_kcal += PutOnTable(config, family, index, take);
+    }
+  }
+  return eaten_kcal;
+}
+
+/// @brief Puts the meal on the table and takes it out of the pantry: the
+/// perishable first (above), then what keeps in proportion to what is stored.
 /// @return The kilocalories eaten; never more than `need_kcal`.
 float EatFromPantry(const FoodConfig& config, FamilyRow& family, float need_kcal) {
   const std::uint32_t roster = PantryRoster(config, family);
+  if (!(need_kcal > 0.0F)) {
+    return 0.0F;
+  }
+  const auto edible = [&config, &family](std::uint32_t index) {
+    return config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0;
+  };
+  float eaten_kcal = EatPerishableFirst(config, family, need_kcal);
+  // What keeps, in proportion to what is stored, for the rest of the need.
+  const float left_kcal = need_kcal - eaten_kcal;
   float available_kcal = 0.0F;
   for (std::uint32_t index = 0; index < roster; ++index) {
-    if (config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0) {
+    if (edible(index) && !(SpoilDaysOf(config, index) > 0.0F)) {
       available_kcal +=
           static_cast<float>(family.pantry[index]) * config.resources[index].kcal_per_gram;
     }
   }
-  if (!(available_kcal > 0.0F) || !(need_kcal > 0.0F)) {
-    return 0.0F;
+  if (!(left_kcal > 0.0F) || !(available_kcal > 0.0F)) {
+    return eaten_kcal;
   }
-  const float share = need_kcal < available_kcal ? need_kcal / available_kcal : 1.0F;
-  float eaten_kcal = 0.0F;
+  const float share = left_kcal < available_kcal ? left_kcal / available_kcal : 1.0F;
   for (std::uint32_t index = 0; index < roster; ++index) {
-    const FoodResourceDef& def = config.resources[index];
-    if (def.kcal_per_gram <= 0.0F || family.pantry[index] <= 0) {
+    if (!edible(index) || SpoilDaysOf(config, index) > 0.0F) {
       continue;
     }
     const auto take = GramsFromFloat(static_cast<float>(family.pantry[index]) * share);
-    if (take <= 0) {
-      continue;
-    }
-    family.pantry[index] -= take;
-    eaten_kcal += static_cast<float>(take) * def.kcal_per_gram;
-    if (def.category != FoodCategory::kNotFood && def.category != FoodCategory::kCount) {
-      family.food_variety_mask |=
-          static_cast<std::uint16_t>(1U << static_cast<std::uint32_t>(def.category));
+    if (take > 0) {
+      eaten_kcal += PutOnTable(config, family, index, take);
     }
   }
   return eaten_kcal;

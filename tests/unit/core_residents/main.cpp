@@ -583,6 +583,40 @@ int CheckMeal() {
         Expect(world.families.rows[0].food_variety_mask == 0b11, "both categories reach the mask");
   }
 
+  // THE PERISHABLE FIRST (boss seq 159, option А): bin 1 goes bad in two
+  // days, bin 0 keeps. The meal is taken out of bin 1 alone while it lasts,
+  // and only what it leaves of the need comes out of bin 0.
+  {
+    core::FoodConfig perishable = config;
+    perishable.spoil_days.assign(perishable.resources.size(), 0.0F);
+    perishable.spoil_days[1] = 2.0F;
+    const float kcal_1 = perishable.resources[1].kcal_per_gram;
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    FillPantry(world, 0, 10.0F);
+    FillPantry(world, 1, 30.0F);  // 23 100 kcal at 0.77: more than the day's need
+    SetClock(world, 4, core::kTicksPerDay - 1U);
+    core::RunFamilyMeal(perishable, 4.0F, world, world, 0);
+    const core::Grams took_1 = (30 * core::kGramsPerKilogram) - world.families.rows[0].pantry[1];
+    failures +=
+        Expect(world.families.rows[0].pantry[0] == 10 * core::kGramsPerKilogram &&
+                   std::fabs((static_cast<float>(took_1) * kcal_1) - kNeedKcal) < kcal_1 + 1.0F,
+               "the perishable bin is eaten first and alone while it covers the need");
+
+    core::WorldState short_world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    FillPantry(short_world, 0, 10.0F);
+    FillPantry(short_world, 1, 1.0F);
+    SetClock(short_world, 4, core::kTicksPerDay - 1U);
+    core::RunFamilyMeal(perishable, 4.0F, short_world, short_world, 0);
+    const float from_0 = static_cast<float>((10 * core::kGramsPerKilogram) -
+                                            short_world.families.rows[0].pantry[0]) *
+                         perishable.resources[0].kcal_per_gram;
+    const float from_1 = static_cast<float>(core::kGramsPerKilogram) * kcal_1;
+    failures += Expect(short_world.families.rows[0].pantry[1] == 0 &&
+                           std::fabs(from_0 + from_1 - kNeedKcal) < kNeedKcal * 0.01F,
+                       "a perishable bin that runs out is eaten out, the rest comes from what "
+                       "keeps");
+  }
+
   // An empty pantry: satiety falls by the day's drift and, once under the
   // threshold, health follows it down.
   {
