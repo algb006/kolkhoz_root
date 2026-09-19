@@ -11,7 +11,7 @@
 /// WHAT DECIDES, in boss's numbers (assigned, not measured), for every MAN of
 /// 16 and older, at the first day of the month, of the month that closed —
 /// a woman has no such metric and stays at 0 (boss, 2026-09-18):
-///   * up +0.5 when the village has a distiller (the supply);
+///   * up +0.65 when the village has a distiller (the supply);
 ///   * up +0.5 in a winter month (December to February) for one who had not a
 ///     single day of work in it (idleness and winter) — unless an open
 ///     reading hut is within his reach (sport.h);
@@ -22,7 +22,12 @@
 ///   * the three halves are econ's rebalance (seq 130, boss seq 132): at +2,
 ///     +1 and −1 the building village drank itself up (≈32 → 34–43 over two
 ///     years), against the human's «сам по себе алкоголизм снижается
-///     медленно»;
+///     медленно»; the supply's 0.5 then overshot the other way and was
+///     measured to 0.65 (boss seq 142-150): the men who lived through both
+///     years −4.1 in the median over nine seeds, none above nought. The
+///     measure is those men and not the mean of men 16+: boys come of age
+///     near nought and the heavy drinkers die, which moves the mean by
+///     −7…−13 whatever the numbers (boss seq 144 А);
 ///   * down −1 when the village has turned without a distiller for the second
 ///     month running or longer — the human's word, 2026-09-18: «Если люди
 ///     долго не пьют то алкоголизм медленно уменьшается». The count is
@@ -34,7 +39,7 @@
 /// — are a door of their own; company, shocks and tradition (weddings,
 /// wakes, the harvest's end) do not move the metric yet; the chairman's
 /// attention and treatment do not lower it. The one way the chairman lowers
-/// it is the supply: a distiller taken (kTakeNightTrader) and the +0.5 goes
+/// it is the supply: a distiller taken (kTakeNightTrader) and the +0.65 goes
 /// when the LAST one does — and comes back at the year's turn.
 
 #ifndef CORE_RESIDENTS_ALCOHOLISM_H_
@@ -52,11 +57,11 @@
 namespace core {
 
 /// @brief The drinking numbers (world_params.csv). Defaults are boss's
-/// figures of parcel 364 with econ's three halves (seq 130), kept for a
-/// world with no tables.
+/// figures of parcel 364 with econ's three halves (seq 130) and the supply
+/// measured to 0.65 (seq 150), kept for a world with no tables.
 struct AlcoholismConfig {
   float adult_from_years = 16.0F;        ///< `alcohol_adult_from_years`
-  float gain_with_distiller = 0.5F;      ///< `alcohol_gain_with_distiller`
+  float gain_with_distiller = 0.65F;     ///< `alcohol_gain_with_distiller`
   float gain_winter_idle = 0.5F;         ///< `alcohol_gain_winter_idle`
   float gain_low_satisfaction = 1.0F;    ///< `alcohol_gain_low_satisfaction`
   float low_satisfaction_below = 40.0F;  ///< `alcohol_low_satisfaction_below`
@@ -82,7 +87,7 @@ int AlcoholismBand(float alcoholism);
 ///        - each yard's dry months counted — a yard is dry when no distiller
 ///          SUPPLIED that month stands within reach (NearestSuppliedDistiller;
 ///          register 207);
-///        - every adult man's alcoholism moved by the rules above, the +2 by
+///        - every adult man's alcoholism moved by the rules above, the supply by
 ///          the samogon at HIS yard and the sobriety by his yard's dryness;
 ///          every woman's held at 0; crossings said;
 ///        - THE PURCHASE (crime §6, «Самогон стоит семье»; register 205): a
