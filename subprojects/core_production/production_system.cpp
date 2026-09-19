@@ -314,6 +314,9 @@ class ProductionSystem final : public IProductionSystem {
     ShipMilkLeftover(config_, current);
     RunHerdDay(config_, current);
     ShipMilkShare(config_, current);
+    // After the herd day: its slaughter and cull are in the stores, and the
+    // smokehouse asks for them this morning (processing_shops.h).
+    OpenSameDayShops(config_, current);
   }
 
   std::int32_t DaysToNextHarvest(const WorldState& completed) const override {

@@ -99,7 +99,71 @@ struct Keys {
   core::ResourceId grocery;
   core::ResourceId barrel;
   core::ResourceId sauerkraut;
+  core::UnitTypeId smokehouse;
+  core::ResourceId meat;
+  core::ResourceId firewood;
 };
+
+/// --smoke: the morning's meat, as host's seed 9 had it — 490 kg of a
+/// slaughter in the stores at the day's first tick.
+constexpr core::Grams kSlaughterGrams = 490'000;
+
+/// econ's condition (host-econ-shops seq 25, 30): raw meat rotten at most a
+/// tenth of what was slaughtered — so by the day's end at most a tenth of it
+/// may still lie raw, for the night takes half of what lies.
+constexpr double kRawLeftShare = 0.1;
+
+/// Puts the smokehouse beside the kraut shop and firewood in the store.
+void AddSmokehouse(core::WorldState& world, const Keys& keys, core::UnitId shop) {
+  const core::UnitRow& kraut_shop = world.units.rows[core::FindRow(world.units, shop)];
+  core::UnitRow smokehouse;
+  smokehouse.type = keys.smokehouse;
+  smokehouse.position = kraut_shop.position;
+  smokehouse.parent = kraut_shop.parent;
+  core::AppendRow(world.units, smokehouse);
+  for (core::UnitRow& unit : world.units.rows) {
+    if (unit.parent.value == kraut_shop.parent.value && unit.type.value != keys.shop.value &&
+        unit.type.value != keys.smokehouse.value) {
+      Put(unit, keys.firewood, 2 * kTonne);  // the store
+      break;
+    }
+  }
+}
+
+/// --smoke: waits for a working day, puts the slaughter's meat in the store
+/// before its first tick, runs the day, and says what is left raw.
+int RunSmokeDay(run::Simulation& world, const Keys& keys) {
+  // THE COMPLETED STATE HAS RUN ITS TICK: at tick 840 the day's hour 0 —
+  // the herd day, the shops' morning — is done already. The slaughter's meat
+  // is in the stores when that hour runs, so it goes in at the previous
+  // day's last tick: the night's rot has already been booked by then.
+  const auto on_eve = [&world]() {
+    const core::Tick tick = world.State().calendar.tick;
+    return tick % core::kTicksPerDay == core::kTicksPerDay - 1 &&
+           !core::IsDayOffIn(world.State(),
+                             static_cast<core::SimDay>((tick + 1) / core::kTicksPerDay));
+  };
+  while (!on_eve()) {
+    world->AdvanceStep();
+  }
+  core::WorldState morning = world.State();
+  for (core::UnitRow& unit : morning.units.rows) {
+    if (unit.type.value == keys.store.value) {
+      Put(unit, keys.meat, kSlaughterGrams);
+      break;
+    }
+  }
+  world->ResetWorld(morning);
+  const core::Grams raw_before = HeldOf(world.State(), keys.meat);
+  run::AdvanceDays(*world, 1);
+  const core::Grams raw_left = HeldOf(world.State(), keys.meat);
+  std::cout << "shop_pace --smoke: " << raw_before / 1000 << " kg of raw meat at dawn, "
+            << raw_left / 1000 << " kg left raw after the night\n";
+  return run::Expect(
+      static_cast<double>(raw_left) <= kRawLeftShare * static_cast<double>(kSlaughterGrams),
+      "shop_pace --smoke: the smokehouse works the morning's meat the same day, "
+      "and the night takes almost nothing (boss seq 31)");
+}
 
 Keys ReadKeys(const core::ITableSet& tables) {
   return {.yard = RowOf<core::UnitTypeIdTag>(tables, "unit_types", "food_yard"),
@@ -109,7 +173,10 @@ Keys ReadKeys(const core::ITableSet& tables) {
           .vegetables = RowOf<core::ResourceIdTag>(tables, "resources", "vegetables"),
           .grocery = RowOf<core::ResourceIdTag>(tables, "resources", "grocery"),
           .barrel = RowOf<core::ResourceIdTag>(tables, "resources", "barrel"),
-          .sauerkraut = RowOf<core::ResourceIdTag>(tables, "resources", "sauerkraut")};
+          .sauerkraut = RowOf<core::ResourceIdTag>(tables, "resources", "sauerkraut"),
+          .smokehouse = RowOf<core::UnitTypeIdTag>(tables, "unit_types", "smokehouse"),
+          .meat = RowOf<core::ResourceIdTag>(tables, "resources", "meat"),
+          .firewood = RowOf<core::ResourceIdTag>(tables, "resources", "firewood")};
 }
 
 /// The first man of 25 to 40 without a post; kNoRow if none.
@@ -210,6 +277,12 @@ int main(int argc, char** argv) {
     return 1;
   }
   const core::UnitId shop_id = BuildShop(fixture, keys, master_row, far);
+  if (std::ranges::find(args, "--smoke") != args.end()) {
+    AddSmokehouse(fixture, keys, shop_id);
+    world->ResetWorld(fixture);
+    run::AdvanceDays(*world, 2);  // the kraut shop has asked; the master is on it
+    return RunSmokeDay(world, keys) == 0 ? 0 : 1;
+  }
   world->ResetWorld(fixture);
 
   int failures = 0;

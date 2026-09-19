@@ -18,6 +18,7 @@
 #include "core_common/work_seam.h"
 #include "district_plan.h"
 #include "field_work.h"
+#include "herd_life.h"
 #include "herd_system.h"
 #include "stock_ops.h"
 
@@ -447,6 +448,20 @@ void CollectHerdAlarms(const ProductionConfig& config,
     alarm.amount = static_cast<std::int64_t>(herd.newborn_count) +
                    static_cast<std::int64_t>(herd.juvenile_count) +
                    static_cast<std::int64_t>(herd.adult_count);
+    alarms.push_back(alarm);
+  }
+  // The pig slaughter that waits for room (herd_life.h): the herd, and the
+  // meat the stores lack room for.
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    const Grams short_of = AutumnSlaughterMeatShort(config, world, world.herds.rows[row]);
+    if (short_of <= 0) {
+      continue;
+    }
+    Alarm alarm;
+    alarm.kind = AlarmKind::kSlaughterWaitsForRoom;
+    alarm.herd = world.herds.row_ids[row];
+    alarm.resource = config.meat_resource;
+    alarm.amount = short_of;
     alarms.push_back(alarm);
   }
   CollectStableAlarms(config, world, alarms);

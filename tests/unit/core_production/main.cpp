@@ -444,6 +444,70 @@ int CheckAutumnPigs() {
   failures += Expect(herd.juvenile_count == 0, "the autumn takes the whole fattening stock");
   failures += Expect(herd.adult_count == 5, "and leaves the sows and the boar");
   failures += Expect(StoreOf(world, 2) > 0, "the slaughter pays out in meat");
+
+  // THE SLAUGHTER WAITS FOR ROOM (boss, host-econ-shops seq 26). The same
+  // herd: nine heads to go, 450 kg of meat; the store has 100 kg of room.
+  const auto october_day = [](core::WorldState& at, std::uint32_t day_in_month) {
+    at.calendar.tick =
+        static_cast<core::Tick>((9U * core::kDaysPerMonth) + day_in_month) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(at.calendar);
+  };
+  const auto crowded = [&]() {
+    core::WorldState at = MakeHerdWorld(1.0e6F - 100.0F);
+    const core::HerdId pigs = AddHerd(at, 1, 8, 1, true);
+    at.herds.rows[FindRow(at.herds, pigs)].juvenile_count = 6;
+    return at;
+  };
+  core::WorldState waits = crowded();
+  october_day(waits, 0);
+  core::RunHerdDay(config, waits);
+  std::vector<core::Alarm> alarms;
+  core::CollectHerdAlarms(config, waits, alarms);
+  const auto waiting = std::ranges::find_if(alarms, [](const core::Alarm& alarm) {
+    return alarm.kind == core::AlarmKind::kSlaughterWaitsForRoom;
+  });
+  // Juveniles > 0 and not == 6: the herd's own day matures one before the
+  // slaughter's turn, which is growth, not a slaughter.
+  failures +=
+      Expect(waits.herds.rows[0].juvenile_count > 0 && StoreOf(waits, 2) == 0 &&
+                 waiting != alarms.end() && waiting->amount == 350 * core::kGramsPerKilogram,
+             "with 100 kg of room for 450 kg of meat the slaughter waits, and says it "
+             "lacks room for 350 kg");
+  waits.units.rows[0].stock[0] -= 1000 * core::kGramsPerKilogram;  // the hay went out
+  october_day(waits, 1);
+  core::RunHerdDay(config, waits);
+  failures +=
+      Expect(waits.herds.rows[0].juvenile_count == 0 && waits.herds.rows[0].adult_count == 5 &&
+                 StoreOf(waits, 2) == 450 * core::kGramsPerKilogram &&
+                 waits.herds.rows[0].autumn_slaughter_done == 1,
+             "the first October day with room it happens, all the meat in the store");
+  october_day(waits, 2);
+  core::RunHerdDay(config, waits);
+  failures += Expect(waits.herds.rows[0].adult_count == 5,
+                     "and once: the next day the kept sows are not slaughtered in their turn");
+  alarms.clear();
+  core::CollectHerdAlarms(config, waits, alarms);
+  failures +=
+      Expect(std::ranges::none_of(alarms,
+                                  [](const core::Alarm& alarm) {
+                                    return alarm.kind == core::AlarmKind::kSlaughterWaitsForRoom;
+                                  }),
+             "and a done slaughter waits for nothing");
+
+  core::WorldState never = crowded();
+  for (std::uint32_t day = 0; day < core::kDaysPerMonth; ++day) {
+    october_day(never, day);
+    core::RunHerdDay(config, never);
+  }
+  failures += Expect(
+      never.herds.rows[0].juvenile_count == 0 && never.herds.rows[0].autumn_slaughter_done == 1,
+      "no room all October: the month's last day slaughters whatever the room");
+  never.calendar.tick =
+      static_cast<core::Tick>(10U * core::kDaysPerMonth) * core::kTicksPerDay;  // November
+  core::RefreshCalendarCaches(never.calendar);
+  core::RunHerdDay(config, never);
+  failures += Expect(never.herds.rows[0].autumn_slaughter_done == 0,
+                     "and out of the month the mark is cleared for next autumn");
   return failures;
 }
 

@@ -53,6 +53,18 @@ Grams BarrelRoomFree(const ProductionConfig& config, const WorldState& world);
 ///      SpoilStores.
 void SettleProcessing(const ProductionConfig& config, WorldState& current);
 
+/// @brief THE SAME-DAY SHOPS' MORNING (boss, host-econ-shops seq 31 on econ
+/// seq 30): a shop whose main input spoils very fast (WorksTheSameDay — the
+/// smokehouse's meat and fish, two days) writes its demand now, from what
+/// the day's slaughter and cull have just put in the stores, so its master
+/// is placed this morning and the meat is worked before tonight's rot.
+/// Until 0.34.11 it waited for the evening, like every shop, and worked
+/// tomorrow: host's seed 9 slaughtered 490 kg and smoked 245 — the night
+/// between had taken the half.
+/// @pre The day's first tick, after the herd day, before sunrise — nothing
+///      of today is drained yet, so the seam is rewritten whole.
+void OpenSameDayShops(const ProductionConfig& config, WorldState& current);
+
 /// @brief One kProcessingStopped per shop that has something to work and
 /// stands for want of a barrel or a second input (alarm_state.h).
 void CollectProcessingAlarms(const ProductionConfig& config,

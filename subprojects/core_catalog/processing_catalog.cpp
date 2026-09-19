@@ -75,9 +75,14 @@ bool ParseResourceProperties(const ITable& resources,
   const std::uint32_t count = resources.RowCount();
   catalog.space_factor.assign(count, 1.0F);
   catalog.in_barrel.assign(count, 0);
+  catalog.very_fast.assign(count, 0);
   const std::uint32_t space_col = resources.FindColumn("space_factor");
   const std::uint32_t barrel_col = resources.FindColumn("in_barrel");
+  const std::uint32_t spoilage_col = resources.FindColumn("spoilage");
   for (std::uint32_t row = 0; row < count; ++row) {
+    if (spoilage_col != kNoTableColumn) {
+      catalog.very_fast[row] = resources.CellText(row, spoilage_col) == "very_fast" ? 1U : 0U;
+    }
     // Above nought: a resource that takes no room would fit a store without
     // end. One at most: nothing here takes more room than its mass says.
     if (!OptionalCell(resources,
@@ -317,6 +322,14 @@ bool ParseProcessingCatalog(const ITableSet& tables,
     return true;  // no shops in this world: nothing processes (the stub worlds)
   }
   return ParseRecipes(*production, *io, *unit_types, *resources, catalog, error);
+}
+
+bool WorksTheSameDay(const ProcessingCatalog& catalog, const ProcessingRecipe& recipe) {
+  if (recipe.inputs.empty()) {
+    return false;
+  }
+  const std::uint32_t main = recipe.inputs.front().resource.value;
+  return main < catalog.very_fast.size() && catalog.very_fast[main] != 0;
 }
 
 std::uint32_t ProcessingPlaces(const ProcessingCatalog& catalog, UnitTypeId type) {

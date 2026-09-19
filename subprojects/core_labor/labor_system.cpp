@@ -120,6 +120,7 @@ class LaborSystem final : public ILaborSystem {
       StartDay(current);
     }
     if (hour == 1) {
+      PlaceIdleHoldersOnModules(current);
       TopUpDay(current);
     }
     RunHour(current, hour);
@@ -490,36 +491,104 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
+  /// THE WORK THAT OPENED AFTER THE MORNING, for the post holders (boss,
+  /// host-econ-shops seq 31): production's daily block runs after labor's
+  /// hour 0, and the smokehouse writes its demand there, from the morning's
+  /// slaughter (OpenSameDayShops). A holder left idle at hour 0 is placed now,
+  /// before sunrise, on a module with work and a free place — as TopUpDay does
+  /// for the accountant's pool. The places already taken are counted first.
+  void PlaceIdleHoldersOnModules(WorldState& current) const {
+    if (IsDayOffIn(current, current.calendar.day)) {
+      return;
+    }
+    std::vector<std::uint32_t> places_taken(current.units.rows.size(), 0);
+    for (const ResidentRow& resident : current.residents.rows) {
+      if (resident.work.kind != WorkKind::kUnitWork) {
+        continue;
+      }
+      const std::uint32_t row = FindRow(current.units, resident.work.unit);
+      if (row != kNoRow) {
+        ++places_taken[row];
+      }
+    }
+    for (ResidentRow& resident : current.residents.rows) {
+      if (resident.post.profession.value == kInvalidDefIdValue) {
+        continue;
+      }
+      if (resident.work.kind == WorkKind::kNone) {
+        PutOnModuleWork(current, resident, places_taken);
+        continue;
+      }
+      // On a module that keeps (the sauerkraut shop) and the smokehouse's
+      // meat opened overnight: he moves, before sunrise, so nothing of his
+      // day is lost — the cabbage waits, the meat does not.
+      if (resident.work.kind != WorkKind::kUnitWork) {
+        continue;
+      }
+      const std::uint32_t from = FindRow(current.units, resident.work.unit);
+      if (from == kNoRow || IsSameDayModule(current.units.rows[from].type)) {
+        continue;
+      }
+      const WorkAssignment before = resident.work;
+      if (PutOnModuleWork(current, resident, places_taken, true)) {
+        --places_taken[from];
+      } else {
+        resident.work = before;
+      }
+    }
+  }
+
   /// The first module of the holder's unit, in row order, that has work
   /// today and a free place. Whether it can work at all is asked of the same
   /// seam the working hour drains (WorkSeamOf): a paused sawmill or a yard
   /// that fell still answers nullptr there, and one rule serves both.
-  void PutOnModuleWork(WorldState& current,
+  ///
+  /// THE SAME-DAY SHOPS FIRST (boss, host-econ-shops seq 31): a module whose
+  /// input spoils very fast (WorksTheSameDay — the smokehouse's meat) is
+  /// served before the rest; the sauerkraut keeps, the meat does not.
+  /// `same_day_only` asks for those alone. Returns whether he was placed.
+  bool PutOnModuleWork(WorldState& current,
                        ResidentRow& resident,
-                       std::vector<std::uint32_t>& places_taken) const {
+                       std::vector<std::uint32_t>& places_taken,
+                       bool same_day_only = false) const {
     if (resident.post.unit.value == kInvalidEntityIdValue) {
-      return;
+      return false;
     }
-    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-      const UnitRow& unit = current.units.rows[row];
-      // The sawmill's places or a shop's (processing_catalog.h): a type is
-      // one or the other, so the larger is the one it has.
-      const std::uint32_t places = std::max(UnitWorkPlaces(config_.timber, unit.type),
-                                            ProcessingPlaces(config_.processing, unit.type));
-      if (unit.parent.value != resident.post.unit.value || places_taken[row] >= places) {
-        continue;
+    for (const bool same_day_pass : {true, false}) {
+      if (!same_day_pass && same_day_only) {
+        break;
       }
-      WorkAssignment work;
-      work.kind = WorkKind::kUnitWork;
-      work.unit = current.units.row_ids[row];
-      const float* const seam = WorkSeamOf(current, work);
-      if (seam == nullptr || *seam <= 0.0F || !ReachesForADay(current, resident, work)) {
-        continue;
+      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+        const UnitRow& unit = current.units.rows[row];
+        // The sawmill's places or a shop's (processing_catalog.h): a type is
+        // one or the other, so the larger is the one it has.
+        const std::uint32_t places = std::max(UnitWorkPlaces(config_.timber, unit.type),
+                                              ProcessingPlaces(config_.processing, unit.type));
+        if (unit.parent.value != resident.post.unit.value || places_taken[row] >= places ||
+            IsSameDayModule(unit.type) != same_day_pass) {
+          continue;
+        }
+        WorkAssignment work;
+        work.kind = WorkKind::kUnitWork;
+        work.unit = current.units.row_ids[row];
+        const float* const seam = WorkSeamOf(current, work);
+        if (seam == nullptr || *seam <= 0.0F || !ReachesForADay(current, resident, work)) {
+          continue;
+        }
+        resident.work = work;
+        ++places_taken[row];
+        return true;
       }
-      resident.work = work;
-      ++places_taken[row];
-      return;
     }
+    return false;
+  }
+
+  /// Whether a module of `type` works a recipe whose input spoils very fast
+  /// (processing_catalog.h, WorksTheSameDay).
+  bool IsSameDayModule(UnitTypeId type) const {
+    return std::ranges::any_of(config_.processing.recipes, [&](const ProcessingRecipe& recipe) {
+      return recipe.unit_type.value == type.value && WorksTheSameDay(config_.processing, recipe);
+    });
   }
 
   /// Whether the holder walks to `work` today by the accountant's own road

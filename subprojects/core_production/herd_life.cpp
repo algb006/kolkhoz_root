@@ -17,6 +17,7 @@
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "field_haul.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -528,6 +529,32 @@ void RunHungerDeaths(const ProductionConfig& config,
 /// and the sire goes to meat. How many sows the herd keeps is the one number
 /// the design does not name, so it is a table knob — ASSUMPTION, and the
 /// balance run is what will move it.
+std::uint16_t AutumnSlaughterHeads(const ProductionConfig& config,
+                                   const LivestockDef& kind,
+                                   const HerdRow& herd) {
+  const std::uint16_t sows =
+      AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
+  const std::uint16_t keep = static_cast<std::uint16_t>(sows + TargetMales(kind, herd.adult_count));
+  const std::uint16_t adults = herd.adult_count > keep ? herd.adult_count - keep : 0;
+  return static_cast<std::uint16_t>(herd.juvenile_count + adults);
+}
+
+Grams AutumnSlaughterMeatShort(const ProductionConfig& config,
+                               const WorldState& world,
+                               const HerdRow& herd) {
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  if (herd.kind.value != config.pig_kind.value || herd.household_owned != 0 ||
+      herd.autumn_slaughter_done != 0 || month != config.farming.pig_slaughter_month ||
+      herd.kind.value >= config.livestock.size()) {
+    return 0;
+  }
+  const LivestockDef& kind = config.livestock[herd.kind.value];
+  const Grams meat = KilogramsToGrams(kind.meat_kg_per_head *
+                                      static_cast<float>(AutumnSlaughterHeads(config, kind, herd)));
+  const Grams room = ReceivableRoom(config, world, config.meat_resource);
+  return meat > room ? meat - room : 0;
+}
+
 void RunAutumnSlaughter(const ProductionConfig& config,
                         const LivestockDef& kind,
                         LivestockKindId kind_id,
@@ -536,10 +563,26 @@ void RunAutumnSlaughter(const ProductionConfig& config,
                         WorldState& world,
                         const CalendarState& calendar) {
   const auto month = static_cast<std::uint8_t>(calendar.date.month);
-  if (kind_id.value != config.pig_kind.value || month != config.farming.pig_slaughter_month ||
-      calendar.date.day_in_month != 0) {
+  if (kind_id.value != config.pig_kind.value) {
     return;
   }
+  if (month != config.farming.pig_slaughter_month) {
+    herd.autumn_slaughter_done = 0;  // a new season's slaughter will be due
+    return;
+  }
+  if (herd.autumn_slaughter_done != 0) {
+    return;
+  }
+  // THE SLAUGHTER WAITS FOR ROOM (boss, host-econ-shops seq 26): until
+  // 2026-09-19 it fell on the month's first day whatever the stores held, and
+  // host's seed 5 lost 420 kg of 420 that day. A kolkhoz herd's meat with no
+  // room waits — kSlaughterWaitsForRoom says so — and the month's last day
+  // takes it whatever the room, as it always did. A larder takes all.
+  const bool last_day = calendar.date.day_in_month + 1U >= kDaysPerMonth;
+  if (!last_day && place.pantry == nullptr && AutumnSlaughterMeatShort(config, world, herd) > 0) {
+    return;
+  }
+  herd.autumn_slaughter_done = 1;
   const std::uint16_t sows =
       AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
   const std::uint16_t males = TargetMales(kind, herd.adult_count);

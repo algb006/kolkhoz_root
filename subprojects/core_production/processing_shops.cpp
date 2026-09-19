@@ -445,6 +445,30 @@ void SettleProcessing(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+void OpenSameDayShops(const ProductionConfig& config, WorldState& current) {
+  const ProcessingCatalog& catalog = config.processing;
+  for (UnitRow& unit : current.units.rows) {
+    if (!IsShop(catalog, unit.type)) {
+      continue;
+    }
+    const bool same_day = std::ranges::any_of(catalog.recipes, [&](const ProcessingRecipe& r) {
+      return r.unit_type.value == unit.type.value && WorksTheSameDay(catalog, r);
+    });
+    if (!same_day || !UnitCanWork(current, unit)) {
+      continue;
+    }
+    double demand = 0.0;
+    for (const ProcessingRecipe& recipe : catalog.recipes) {
+      if (recipe.unit_type.value == unit.type.value) {
+        demand +=
+            Available(config, current, recipe).batches * static_cast<double>(recipe.labor_days);
+      }
+    }
+    unit.production_days_remaining = static_cast<float>(demand);
+    unit.production_days_written = static_cast<float>(demand);
+  }
+}
+
 namespace {
 
 /// The road one way, game hours, from the nearest post holder of `parent`

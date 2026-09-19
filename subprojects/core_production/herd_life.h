@@ -200,8 +200,24 @@ void RunHungerDeaths(const ProductionConfig& config,
                      WorldState& world,
                      YearLedger& book);
 
+/// @brief Heads the autumn pig slaughter takes from `herd` today: every
+/// juvenile, and the adults above the sows kept and the sires.
+std::uint16_t AutumnSlaughterHeads(const ProductionConfig& config,
+                                   const LivestockDef& kind,
+                                   const HerdRow& herd);
+
+/// @brief Grams of meat the stores lack room for, were a kolkhoz pig herd's
+/// due slaughter done now; 0 when there is room, when it is not due (not the
+/// month, already done, not pigs) or when the herd is a household's — a
+/// larder takes what it is given (herd_state.h, autumn_slaughter_done).
+Grams AutumnSlaughterMeatShort(const ProductionConfig& config,
+                               const WorldState& world,
+                               const HerdRow& herd);
+
 /// @brief The autumn cull: the heads the kolkhoz does not carry through the
-/// winter go under the knife on the season's day.
+/// winter go under the knife in the season's month — on its first day with
+/// room in the stores for the meat, or on its last day whatever the room
+/// (boss, host-econ-shops seq 26). A household herd's first day.
 void RunAutumnSlaughter(const ProductionConfig& config,
                         const LivestockDef& kind,
                         LivestockKindId kind_id,
