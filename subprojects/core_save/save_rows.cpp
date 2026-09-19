@@ -61,12 +61,15 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // before the field was added and measured after.
 // Save 78: the twin — an id after talk_until_day (+4) and the identical mark
 // into the padding after has_passport: 204, predicted before.
-static_assert(sizeof(ResidentRow) == 204,
+// Save 79: away in the district — a day (+4) and three bytes beside the
+// passport, which push `traits` a word on (+4): 212, predicted before.
+static_assert(sizeof(ResidentRow) == 212,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
 // Save 69: talk_until_day — 44. Save 78: twin and identical_twin — 46.
-static_assert(AggregateArity<ResidentRow>() == 46,
+// Save 79: away_until_day, _hour, _walk_hours, _reason — 50.
+static_assert(AggregateArity<ResidentRow>() == 50,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -218,6 +221,12 @@ static_assert(sizeof(NightOutingRow) == 24,
               "NightOutingRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<NightOutingRow>() == 6,
               "NightOutingRow gained or lost a field — update the codec and VERSION_SAVE");
+// Save 79: the district's car — two bytes, an id, two ticks: 24 and five
+// fields, predicted before the row was written.
+static_assert(sizeof(DistrictCarRow) == 24,
+              "DistrictCarRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<DistrictCarRow>() == 5,
+              "DistrictCarRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictVisitRow) == 8,
               "DistrictVisitRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<DistrictVisitRow>() == 4,
@@ -294,6 +303,11 @@ constexpr std::uint8_t kMaxDistrictVisitKind =
     static_cast<std::uint8_t>(DistrictVisitKind::kDistrictVisitKindCount) - 1;
 static_assert(kMaxDistrictVisitKind <
               static_cast<std::uint8_t>(DistrictVisitKind::kDistrictVisitKindCount));
+constexpr std::uint8_t kMaxDistrictCarKind =
+    static_cast<std::uint8_t>(DistrictCarKind::kDistrictCarKindCount) - 1;
+constexpr std::uint8_t kMaxDistrictCarPhase =
+    static_cast<std::uint8_t>(DistrictCarPhase::kDistrictCarPhaseCount) - 1;
+constexpr std::uint8_t kMaxAwayReason = static_cast<std::uint8_t>(AwayReason::kAwayReasonCount) - 1;
 constexpr std::uint8_t kMaxDistrictVisitCause =
     static_cast<std::uint8_t>(DistrictVisitCause::kDistrictVisitCauseCount) - 1;
 static_assert(kMaxDistrictVisitCause <
@@ -416,11 +430,15 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.alcoholism);
   out.WriteU32(row.talk_until_day);  // save 69
   WriteEntityId(out, row.twin);      // save 78
+  out.WriteU32(row.away_until_day);  // save 79
   out.WriteFloat(row.crime_inclination);
   out.WriteU16(row.offense_count);
   out.WriteFloat(row.attitude_to_chairman);
   out.WriteU8(row.has_passport);
-  out.WriteU8(row.identical_twin);  // save 78
+  out.WriteU8(row.identical_twin);   // save 78
+  out.WriteU8(row.away_until_hour);  // save 79
+  out.WriteU8(row.away_walk_hours);
+  out.WriteU8(row.away_reason);
   out.WriteU16(row.traits);
   out.WriteFloat(row.height_deviation);
   out.WriteFloat(row.build_deviation);
@@ -488,11 +506,15 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.alcoholism = in.ReadFloat();
   row.talk_until_day = in.ReadU32();
   row.twin = ReadEntityId<ResidentId>(in);
+  row.away_until_day = in.ReadU32();
   row.crime_inclination = in.ReadFloat();
   row.offense_count = in.ReadU16();
   row.attitude_to_chairman = in.ReadFloat();
   row.has_passport = in.ReadU8();
   row.identical_twin = source.ReadEnumValue(0, 1, "the identical twin's mark");
+  row.away_until_hour = in.ReadU8();
+  row.away_walk_hours = in.ReadU8();
+  row.away_reason = source.ReadEnumValue(0, kMaxAwayReason, "the reason for being away");
   row.traits = in.ReadU16();
   row.height_deviation = in.ReadFloat();
   row.build_deviation = in.ReadFloat();
@@ -1194,6 +1216,28 @@ void WriteDistrictVisitRow(SaveSink& sink, const DistrictVisitRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.face));
   out.WriteU8(static_cast<std::uint8_t>(row.kind));
   out.WriteU8(static_cast<std::uint8_t>(row.cause));
+}
+
+void WriteDistrictCarRow(SaveSink& sink, const DistrictCarRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  out.WriteU8(static_cast<std::uint8_t>(row.phase));
+  WriteEntityId(out, row.resident);
+  out.WriteU64(row.arrive_tick);
+  out.WriteU64(row.leave_tick);
+}
+
+DistrictCarRow ReadDistrictCarRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  DistrictCarRow row;
+  row.kind = static_cast<DistrictCarKind>(
+      source.ReadEnumValue(0, kMaxDistrictCarKind, "district car kind"));
+  row.phase = static_cast<DistrictCarPhase>(
+      source.ReadEnumValue(0, kMaxDistrictCarPhase, "district car phase"));
+  row.resident = ReadEntityId<ResidentId>(in);
+  row.arrive_tick = in.ReadU64();
+  row.leave_tick = in.ReadU64();
+  return row;
 }
 
 DistrictVisitRow ReadDistrictVisitRow(LoadSource& source) {

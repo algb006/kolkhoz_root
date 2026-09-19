@@ -314,6 +314,16 @@ struct ResidentRow {
   /// child of the same birth, invalid for a single birth. Set on both.
   ResidentId twin;
 
+  /// AWAY IN THE DISTRICT (district_car_state.h; save 79): the day he is
+  /// home again, 0 when he is in the village. With `away_until_hour` it names
+  /// the tick; the last `away_walk_hours` of it he walks in from the border
+  /// (0 when he comes with the milk cart). While away he is nobody's worker,
+  /// eats nothing from the larder and is not judged by the village's
+  /// metrics; his family still counts him. A SimDay and an hour spelt out, so
+  /// this header does not take in the calendar and the row keeps its
+  /// four-byte alignment.
+  std::uint32_t away_until_day = 0;
+
   Metric crime_inclination = 0.0F;  ///< Recomputed seasonally from its formula.
 
   std::uint16_t offense_count = 0;  ///< Recorded offenses; the village remembers.
@@ -350,6 +360,15 @@ struct ResidentRow {
   /// жителя на двоих»: they differ by clothes and character only. 0 for
   /// fraternal twins and single births. Set on both.
   std::uint8_t identical_twin = 0;
+
+  /// The hour of `away_until_day` he is home (see away_until_day).
+  std::uint8_t away_until_hour = 0;
+
+  /// The last hours of his absence spent walking in from the border.
+  std::uint8_t away_walk_hours = 0;
+
+  /// Why he is away (AwayReason); kNone when he is in the village.
+  std::uint8_t away_reason = 0;
 
   /// Character traits bitmask (life-cycle §1: 2-4 per person). STUB: the
   /// trait roster and its effects arrive with dialogues (project phase 3);

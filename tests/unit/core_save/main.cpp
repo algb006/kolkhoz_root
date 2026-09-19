@@ -462,6 +462,20 @@ core::WorldState MakeWorld() {
   visit.kind = core::DistrictVisitKind::kExtraordinary;
   visit.cause = core::DistrictVisitCause::kJuniorSignal;
   core::AppendRow(world.district_visits, visit);
+  // Save 79: the ambulance at the yard for the first resident, every field
+  // away from its default; and the second resident away in the hospital,
+  // walking the last three hours in.
+  core::DistrictCarRow car;
+  car.kind = core::DistrictCarKind::kAmbulance;
+  car.phase = core::DistrictCarPhase::kAtTheYard;
+  car.resident = world.residents.row_ids[0];
+  car.arrive_tick = 1'234;
+  car.leave_tick = 1'236;
+  core::AppendRow(world.district_cars, car);
+  world.residents.rows[1].away_until_day = 91;
+  world.residents.rows[1].away_until_hour = 14;
+  world.residents.rows[1].away_walk_hours = 3;
+  world.residents.rows[1].away_reason = static_cast<std::uint8_t>(core::AwayReason::kHospital);
 
   // A night fisher out tonight (save format 39): every field off its default.
   core::NightOutingRow outing;
@@ -1080,7 +1094,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     {"dictionaries", 143, 0xe35419cb6704df6aULL},
     // 2026-09-17, save 49: +10 bytes — the night pasture's standing order,
     // its first night and the camp's two floats.
@@ -1126,7 +1140,7 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // the float did NOT land in padding, so 184 became 188.
     // 2026-09-18, save 59: distiller_supplied_month, 4 bytes by 2 residents.
     // Save 69: talk_until_day, 4 bytes by 2 residents; predicted, and held.
-    {"residents", 388, 0xb4f4317c581f2158ULL},
+    {"residents", 402, 0x7b93a74f44d77f4fULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1194,6 +1208,7 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     {"extraction_sites", 63, 0x52bb8a69b99d0d65ULL},
     {"district_visits", 19, 0x3785c4246ee3283bULL},
     {"night_outings", 31, 0xa7633d02f71169f5ULL},
+    {"district_cars", 34, 0xaeab8ced44f30f22ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -1508,6 +1523,16 @@ int main() {
                      "closed book (save 70)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_share == 0.625F,
                      "a herd's covered share of the ration comes back (save 71)");
+  failures += Expect(loaded.district_cars.rows.size() == 1 &&
+                         loaded.district_cars.rows[0].phase == core::DistrictCarPhase::kAtTheYard &&
+                         loaded.district_cars.rows[0].leave_tick == 1'236 &&
+                         loaded.residents.rows.size() >= 2 &&
+                         loaded.residents.rows[1].away_until_day == 91 &&
+                         loaded.residents.rows[1].away_until_hour == 14 &&
+                         loaded.residents.rows[1].away_walk_hours == 3 &&
+                         loaded.residents.rows[1].away_reason ==
+                             static_cast<std::uint8_t>(core::AwayReason::kHospital),
+                     "the district's car and a resident away in the hospital come back (save 79)");
   failures += Expect(loaded.residents.rows.size() >= 2 &&
                          loaded.residents.rows[0].twin.value == loaded.residents.row_ids[1].value &&
                          loaded.residents.rows[1].identical_twin == 1,
@@ -1950,7 +1975,9 @@ int main() {
     // the livestock arrivals took a section of their own. A section index
     // written by hand is a length written by hand: it is right until the file
     // grows in the middle, and then it is quietly pointing at the neighbour.
-    const std::size_t at = SectionAt(tampered, 17, length);  // the staged batch
+    // And it did again on 2026-09-19 (save 79): the district's cars came
+    // before the ledger, and the staged batch moved to 18.
+    const std::size_t at = SectionAt(tampered, 18, length);  // the staged batch
     if (at != 0) {
       for (std::size_t index = 0; index < 4; ++index) {
         const std::uint32_t many = 1U << 24U;

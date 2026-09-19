@@ -193,7 +193,9 @@ static_assert(AggregateArity<TransitionBlocks>() == 6,
 static_assert(sizeof(SportMonth) == 2, "SportMonth changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<SportMonth>() == 2,
               "SportMonth gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 33,
+// 2026-09-19, save 79: the district's cars, 34 — written and read as their
+// own section (save.cpp, district_cars).
+static_assert(AggregateArity<WorldState>() == 34,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

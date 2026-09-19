@@ -136,6 +136,12 @@ struct WeddingWaitIdTag {};
 /// (core_common/wedding_state.h).
 using WeddingWaitId = EntityId<WeddingWaitIdTag>;
 
+struct DistrictCarIdTag {};
+
+/// @brief One of the district's cars on the road for somebody of the village
+/// (core_common/district_car_state.h).
+using DistrictCarId = EntityId<DistrictCarIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------

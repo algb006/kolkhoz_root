@@ -17,6 +17,7 @@
 #ifndef CORE_SAVE_SAVE_ROWS_H_
 #define CORE_SAVE_SAVE_ROWS_H_
 
+#include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
@@ -75,6 +76,8 @@ NightOutingRow ReadNightOutingRow(LoadSource& source);
 
 void WriteDistrictVisitRow(SaveSink& sink, const DistrictVisitRow& row);
 DistrictVisitRow ReadDistrictVisitRow(LoadSource& source);
+void WriteDistrictCarRow(SaveSink& sink, const DistrictCarRow& row);
+DistrictCarRow ReadDistrictCarRow(LoadSource& source);
 
 }  // namespace core
 

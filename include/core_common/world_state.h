@@ -32,6 +32,7 @@
 #include <cstdint>
 
 #include "core_common/calendar.h"
+#include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/event_state.h"
 #include "core_common/extraction_state.h"
@@ -873,6 +874,11 @@ struct WorldState {
   /// The district's visits announced or called and not arrived yet
   /// (characters design §2); SAVED. district_visit_state.h.
   DistrictVisitTable district_visits;
+
+  /// The district's cars on the road for somebody of the village — the
+  /// ambulance (register 236; boss seq 210); SAVED (save 79).
+  /// district_car_state.h.
+  DistrictCarTable district_cars;
 
   /// The quiet trades out tonight (crime design §9); SAVED.
   /// night_trade_state.h.
