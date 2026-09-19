@@ -25,6 +25,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../common/book_balance.h"
 #include "../common/brakes_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/extraction_policy.h"
@@ -581,6 +582,9 @@ int main(int argc, char** argv) {
   run::BrakesTally brakes(*world.tables);
   run::HaulTally hauls;
   run::DepartureTally departures;
+  // Every gram of a harvested resource on a line, checked at every year's
+  // turn (boss seq 162, 165; book_balance.h).
+  run::BookBalance book_balance(world.State());
 
   std::uint64_t growing_field_days = 0;
   std::uint64_t drying_field_days = 0;
@@ -689,6 +693,7 @@ int main(int argc, char** argv) {
       continue;  // the first year has not turned yet
     }
     last_year = state.ledger.closed.year;
+    failures += book_balance.CloseYear(state, *world.tables);
     sheet << core::LedgerCsvRow(state, *world.tables);
     ++rows_written;
     PrintYear(state);

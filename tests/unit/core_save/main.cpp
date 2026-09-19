@@ -521,6 +521,8 @@ core::WorldState MakeWorld() {
   world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
   // What the district seized above the limit (save 62).
   world.ledger.closed.seized = Amounts({5'000'000});
+  world.ledger.closed.built_in = Amounts({0, 250});      // save 70: straw into a roof
+  world.ledger.closed.yard_feed = Amounts({0, 0, 300});  // save 70: a goat's hay
   // The season's reaping pace (save 63).
   world.ledger.closed.reaping_today = 3.25F;
   world.ledger.closed.reaping_best_day = 22.5F;
@@ -1156,7 +1158,10 @@ constexpr std::array<RecordedSection, 18> kRecordedPayload = {{
     // Not predicted before the build this time; read off it and named so.
     // Save 64: +16 — the daylight of those two days, two floats in each book.
     // Predicted before the build (756) and read off it.
-    {"ledger", 756, 0x9da9c3992885c25fULL},
+    // Save 70: +20 — built_in in both books, the current one empty (a 2-byte
+    // length) and the closed one two cells (2 + 2 x 8); predicted and held.
+    // Then +28 — yard_feed the same way, three cells closed; predicted, held.
+    {"ledger", 804, 0x6292c63f68a2cf5bULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1433,6 +1438,10 @@ int main() {
                      "the drink's price in kind comes back in the closed book (save 60)");
   failures += Expect(AmountAt(loaded.ledger.closed.lost_to_snow, 1) == 150'000'000,
                      "the standing crop the snow took comes back in the closed book (save 61)");
+  failures += Expect(AmountAt(loaded.ledger.closed.built_in, 1) == 250 &&
+                         AmountAt(loaded.ledger.closed.yard_feed, 2) == 300,
+                     "what went into a building and what the yards' beasts ate come back in the "
+                     "closed book (save 70)");
   failures += Expect(AmountAt(loaded.ledger.closed.seized, 0) == 5'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 0) == 15'000'000 &&
                          AmountAt(loaded.plan.accumulation_limit, 2) == 4'000'000,

@@ -56,9 +56,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // nineteenth column and a fifty-ninth field.
 // Save 63: the season's reaping pace, two floats (today and the best day).
 // Save 64: the daylight of those two days, two floats more.
-static_assert(sizeof(YearLedger) == 224 + (19 * kAmountsSize),
+// Save 70: built_in, what went into a building, and yard_feed, what the
+// yards' beasts ate — a twenty-first column and a sixty-fifth field, each
+// predicted before its field was added.
+static_assert(sizeof(YearLedger) == 224 + (21 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 63,
+static_assert(AggregateArity<YearLedger>() == 65,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -276,6 +279,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
   sink.WriteAmounts(DefKind::kResource, book.seized);        // save 62
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
+  sink.WriteAmounts(DefKind::kResource, book.built_in);   // save 70
+  sink.WriteAmounts(DefKind::kResource, book.yard_feed);  // save 70
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
   out.WriteFloat(book.area_harvested_ha);
@@ -354,6 +359,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
   book.seized = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
+  book.built_in = source.ReadAmounts(DefKind::kResource);
+  book.yard_feed = source.ReadAmounts(DefKind::kResource);
   book.seed = source.ReadAmounts(DefKind::kResource);
   book.area_sown_ha = in.ReadFloat();
   book.area_harvested_ha = in.ReadFloat();

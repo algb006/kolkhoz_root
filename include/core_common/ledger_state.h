@@ -275,6 +275,21 @@ struct YearLedger {
   /// a line — the same rule that gave lost_no_room its column.
   ResourceAmounts spoiled;
 
+  /// WHAT WENT INTO A BUILDING (boss seq 165; save 70): the recipe of a
+  /// finished level, a repair's spare parts, an insulation's straw — taken
+  /// out of the site's stock when the works close and gone from the village
+  /// into the walls. Found by the book's balance (host core-host-l1 seq 39):
+  /// straw left the village 23–65 t a year through the builders with no line
+  /// at all. Nothing vanishes without a line.
+  ResourceAmounts built_in;
+
+  /// WHAT THE YARDS' OWN BEASTS ATE out of the family larders (boss seq 165;
+  /// save 70). Its own column and not `feed`: `feed` is the kolkhoz herds'
+  /// fodder, and two sums read it as the kolkhoz's need — the issue's reserve
+  /// and the accumulation limit's base — which a family's goat is not. The
+  /// book's balance found it as 15–42 t of hay a year gone with no line.
+  ResourceAmounts yard_feed;
+
   // -- labor ---------------------------------------------------------------
   /// Game man-days delivered, by WorkKind (index = the enum value).
   std::array<float, kWorkKindCount> work_days_by_kind = {};

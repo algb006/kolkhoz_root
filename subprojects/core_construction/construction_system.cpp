@@ -768,6 +768,7 @@ class ConstructionSystem final : public IConstructionSystem {
   void CompleteRepair(WorldState& current, UnitId unit, UnitRow& site) {
     const Grams used = RepairPartsGrams(site.construction.labor_days_total);
     AddTo(site.stock, config_.spare_part_resource, -used);
+    AddLedgerAmount(current.ledger.current.built_in, config_.spare_part_resource, used);
     site.wear = 0.0F;
     // AND THIS IS THE "UNTIL IT IS RESTORED" of the dead byte (unit_state.h).
     // The start's wrecked mill comes back into service here and nowhere
@@ -882,6 +883,8 @@ class ConstructionSystem final : public IConstructionSystem {
     if (step != nullptr) {
       for (const BuildMaterial& material : step->recipe) {
         AddTo(site.stock, material.resource, -material.grams);
+        // Into the walls, with a line (ledger_state.h, built_in).
+        AddLedgerAmount(current.ledger.current.built_in, material.resource, material.grams);
       }
     }
     site.level = site.construction.target_level;

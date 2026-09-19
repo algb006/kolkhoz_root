@@ -54,17 +54,22 @@ HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdR
   return place;
 }
 
-/// Only the KOLKHOZ herds' fodder is booked as `feed`: what a family's goat
-/// eats came out of that family's pantry, and the pantry side of the year is
-/// already counted as `eaten` and `issued`. Booking it twice would make the
-/// settlement's food balance stop closing.
+/// Only the KOLKHOZ herds' fodder is booked as `feed`; what a family's goat
+/// eats out of the family's pantry is `yard_feed` (save 70). This comment said
+/// until 2026-09-19 that the pantry side was «already counted as `eaten` and
+/// `issued`» — it was not: `eaten` is the family meal and `issued` a transfer
+/// into the pantry, and the book's balance found the goats' hay in no column.
 Grams TakeFeed(WorldState& world,
                const ProductionConfig& config,
                const HerdPlace& place,
                ResourceId resource,
                Grams wanted) {
   if (place.pantry != nullptr) {
-    return TakeFromAmounts(*place.pantry, resource, wanted);
+    // Booked in its own column (ledger_state.h, yard_feed): the family's
+    // `eaten` is the family meal and does not hold a goat's hay.
+    const Grams eaten = TakeFromAmounts(*place.pantry, resource, wanted);
+    AddLedgerAmount(world.ledger.current.yard_feed, resource, eaten);
+    return eaten;
   }
   if (!place.at_unit) {
     return 0;

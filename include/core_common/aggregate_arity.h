@@ -63,8 +63,14 @@ struct FitsArity<T,
 
 template <typename T, std::size_t Count>
 constexpr std::size_t CountUpwards() {
-  if constexpr (Count > 64) {
-    return 0;  // a struct this wide is a design problem, not a codec one
+  // THE CEILING WAS 64 until 2026-09-19, when the year's book reached its
+  // sixty-fifth field (save 70, yard_feed) and the count fell to nought — the
+  // assert said so, loudly, which is the ceiling doing its job. The book is
+  // wide by nature: one column per line of the village's account, and every
+  // one a door the balance watches. Splitting it to please a counter would be
+  // a save-format change with no reason in the model. 96 leaves room.
+  if constexpr (Count > 96) {
+    return 0;  // a struct wider than this is a design problem, not a codec one
   } else if constexpr (FitsArity<T, std::make_index_sequence<Count + 1>>::value) {
     return CountUpwards<T, Count + 1>();
   } else {

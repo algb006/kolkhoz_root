@@ -154,7 +154,9 @@ bool InsulationDone(const ConstructionConfig& config,
 
 void CompleteInsulation(const ConstructionConfig& config, WorldState& current, std::uint32_t row) {
   UnitRow& site = current.units.rows[row];
-  AddTo(site.stock, config.straw_resource, -FrozenStraw(config, site));
+  const Grams straw = FrozenStraw(config, site);
+  AddTo(site.stock, config.straw_resource, -straw);
+  AddLedgerAmount(current.ledger.current.built_in, config.straw_resource, straw);  // into the walls
   site.insulated = 1;
   site.construction = ConstructionState{};
   SimEvent& event = EmitEvent(current, EventKind::kUnitInsulated, EventSeverity::kNotable);
