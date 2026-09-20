@@ -61,6 +61,7 @@
 #ifndef CORE_SIM_STEP_H_
 #define CORE_SIM_STEP_H_
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -369,6 +370,54 @@ class ISimulation {
 std::unique_ptr<ISimulation> CreateStepEngine(const WorldState& initial,
                                               const StepPhaseSet& phases,
                                               std::uint32_t worker_count);
+
+// ---------------------------------------------------------------------------
+// The step clock — a MEASUREMENT DOOR, off by default
+// ---------------------------------------------------------------------------
+
+/// @brief What one completed step cost, by the parts of the step.
+///
+/// THE PROLOGUE IS A LINE OF ITS OWN, and that is the point of the shape: the
+/// step begins by copying the whole completed world into the buffer being
+/// built (buffer-law rule 2), so its cost grows with the SIZE OF THE WORLD
+/// and not with the work anybody asked for. A summary tick in milliseconds
+/// hides exactly that, and it is the first suspect whenever a tick grows
+/// faster than the village does.
+///
+/// `step_ns` is the whole of AdvanceStep, so `step_ns` minus the six phases
+/// minus the prologue is the swap and the clock's own overhead — small, and
+/// visible rather than assumed.
+struct StepTiming {
+  /// Nanoseconds in each phase, indexed by StepPhase's value.
+  std::array<std::uint64_t, kStepPhaseCount> phase_ns = {};
+
+  /// Nanoseconds before phase 1: the buffer copy and the staged orders.
+  std::uint64_t prologue_ns = 0;
+
+  /// Nanoseconds of the whole AdvanceStep call.
+  std::uint64_t step_ns = 0;
+};
+
+/// @brief Turns the step clock on or off for every engine in this process.
+///
+/// OFF BY DEFAULT AND NOT A DEVICE. A measurement answers once; a device
+/// answers when the answer changes (root rules §6), and nothing yet says
+/// this number needs watching. The runs enable it behind a flag of their
+/// own, the unit tests and ctest never do, and with the clock off a step
+/// pays one branch — which is itself measured rather than called negligible.
+///
+/// @note Process-wide on purpose: it is a door for a run that drives one
+/// simulation, not per-engine state. Enabling it while two engines are
+/// stepping makes LastStepTiming say whichever stepped last.
+void EnableStepTiming(bool enabled);
+
+/// @brief Whether the step clock is on. A measure that never ran is under
+/// every budget, so the reader of a timing asks this before believing it.
+bool StepTimingEnabled();
+
+/// @brief The timing of the last step that ran with the clock on; all zeros
+/// if none has. Read it between steps, on the sim thread.
+const StepTiming& LastStepTiming();
 
 }  // namespace core
 

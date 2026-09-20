@@ -9,6 +9,7 @@
 // code.
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -23,6 +24,35 @@
 
 namespace core {
 namespace {
+
+/// THE CLOCK IS A DOOR AND NOT A DEVICE (step.h, EnableStepTiming): off by
+/// default, process-wide, and read only between steps by whoever opened it.
+/// Plain variables and not atomics on purpose — AdvanceStep belongs to the
+/// sim thread, and an atomic here would buy nothing but the suggestion that
+/// some other thread may read this while a step runs.
+///
+/// It lives behind a function rather than at namespace scope so that the
+/// door costs a constant-initialized local static — no guard, no global
+/// mutable state for the analysis to flag, and one place that owns both
+/// halves of the clock.
+struct StepClock {
+  bool enabled = false;
+
+  StepTiming last;
+};
+
+StepClock& Clock() {
+  static StepClock clock;
+  return clock;
+}
+
+/// Nanoseconds since some fixed point; steady_clock because the question is
+/// how long a thing took, not when it happened.
+std::uint64_t NowNanos() {
+  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                        std::chrono::steady_clock::now().time_since_epoch())
+                                        .count());
+}
 
 /// Maps the public worker-count contract to a live thread count:
 /// 0 = one worker per hardware core minus one (leaving a core for the rest
@@ -99,6 +129,15 @@ class StepEngine final : public ISimulation {
   }
 
   void AdvanceStep() override {
+    // ONE branch per step and not seven: with the clock off the untimed path
+    // below is the step exactly as it was written, and the timed path is a
+    // separate reading of the same six calls. Sprinkling `if (clock)` between
+    // the phases would put the cost of the question inside the thing being
+    // measured.
+    if (Clock().enabled) {
+      AdvanceStepTimed();
+      return;
+    }
     // Buffer law, rule 2: current starts as an exact copy of previous, then
     // takes what the boundary staged, before any phase sees it.
     current_ = previous_;
@@ -184,6 +223,40 @@ class StepEngine final : public ISimulation {
   float ResidentHeightMeters(ResidentId /*resident*/) const override { return 0.0F; }
 
  private:
+  /// The same step, read by the clock. The phase order and the buffer law
+  /// are the ones above — this is a second copy of six calls and nothing
+  /// else, and it is a copy on purpose: the untimed step is what ships.
+  void AdvanceStepTimed() {
+    const std::uint64_t step_began = NowNanos();
+    current_ = previous_;
+    ApplyStaged();
+    std::uint64_t mark = NowNanos();
+    Clock().last.prologue_ns = mark - step_began;
+
+    phases_.time_and_weather->RunSequential(previous_, current_);
+    mark = MarkPhase(StepPhase::kTimeAndWeather, mark);
+    RunParallelPhase(*phases_.needs);
+    mark = MarkPhase(StepPhase::kNeeds, mark);
+    phases_.decisions->RunSequential(previous_, current_);
+    mark = MarkPhase(StepPhase::kDecisions, mark);
+    RunParallelPhase(*phases_.production);
+    mark = MarkPhase(StepPhase::kProduction, mark);
+    RunParallelPhase(*phases_.metrics);
+    mark = MarkPhase(StepPhase::kMetrics, mark);
+    phases_.events->RunSequential(previous_, current_);
+    mark = MarkPhase(StepPhase::kEvents, mark);
+
+    std::swap(previous_, current_);
+    Clock().last.step_ns = NowNanos() - step_began;
+  }
+
+  /// Books the time since `since` against `phase` and returns the new mark.
+  static std::uint64_t MarkPhase(StepPhase phase, std::uint64_t since) {
+    const std::uint64_t now = NowNanos();
+    Clock().last.phase_ns[static_cast<std::size_t>(phase)] = now - since;
+    return now;
+  }
+
   /// Buffer-law rule 2, the whole of it: empty the outbox of the step just
   /// completed, append the issued rows in arrival order (the table issues the
   /// ids, so they are exactly the ones the boundary promised the caller),
@@ -254,6 +327,23 @@ std::unique_ptr<ISimulation> CreateStepEngine(const WorldState& initial,
                                               const StepPhaseSet& phases,
                                               std::uint32_t worker_count) {
   return std::make_unique<StepEngine>(initial, phases, worker_count);
+}
+
+void EnableStepTiming(bool enabled) {
+  Clock().enabled = enabled;
+  if (enabled) {
+    // A reading left over from an earlier measurement would be indis-
+    // tinguishable from a step that ran: the door opens on zeros.
+    Clock().last = StepTiming{};
+  }
+}
+
+bool StepTimingEnabled() {
+  return Clock().enabled;
+}
+
+const StepTiming& LastStepTiming() {
+  return Clock().last;
 }
 
 }  // namespace core

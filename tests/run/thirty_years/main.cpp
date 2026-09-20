@@ -42,6 +42,7 @@
 #include "../common/sawmill_policy.h"
 #include "../common/school_policy.h"
 #include "../common/sowing_policy.h"
+#include "../common/tick_cost.h"
 #include "../common/timber_chain_tally.h"
 #include "../common/watchman_policy.h"
 #include "../common/yard_policy.h"
@@ -52,6 +53,7 @@
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_report/ledger_csv.h"
+#include "core_sim/step.h"
 
 namespace {
 
@@ -104,6 +106,18 @@ std::uint32_t g_house_sites = 3;
 /// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
 /// order up to the saw's places, and no craftsman is appointed.
 bool g_saw_by_anyone = false;
+
+/// `--tick-cost`: times every step by the parts of the step and prints what
+/// a tick costs at 80, 500 and 1500 residents (tick_cost.h; boss, thread
+/// boss-core-tick-growth-2026-09-20).
+///
+/// A FLAG AND NOT A DEFAULT, so that ctest never runs the clock: the
+/// measurement answers the growth question once, and until it says the tick
+/// is near a limit there is nothing here for a guard to watch. It changes no
+/// number of the simulation — the clock reads time and writes nothing the
+/// world can see — which is why it does not take the run out of the
+/// canonical set the way a doctored table set does.
+bool g_tick_cost = false;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -416,6 +430,7 @@ int main(int argc, char** argv) {
     g_free_materials = g_free_materials || argument == "--free-materials";
     g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
     g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
+    g_tick_cost = g_tick_cost || argument == "--tick-cost";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -582,6 +597,9 @@ int main(int argc, char** argv) {
   run::BrakesTally brakes(*world.tables);
   run::HaulTally hauls;
   run::DepartureTally departures;
+  // What a tick costs as the village grows, and only when asked for it.
+  run::TickCost tick_cost;
+  core::EnableStepTiming(g_tick_cost);
   // Every gram of a harvested resource on a line, checked at every year's
   // turn (boss seq 162, 165; book_balance.h).
   run::BookBalance book_balance(world.State());
@@ -607,6 +625,11 @@ int main(int argc, char** argv) {
       // (house contract; boss, parcel 287).
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world.simulation->AdvanceStep();
+        if (g_tick_cost) {
+          // Right after the step and before anything else reads the world:
+          // the timing the clock holds is that step's.
+          tick_cost.CountStep(world.State());
+        }
         departures.CountStep(world.State());
         if (tick == core::kTicksPerDay / 2) {
           brakes.CountDay(*world.simulation);  // the working day's middle
@@ -959,6 +982,9 @@ int main(int argc, char** argv) {
             << layout.Unanswered() << " found no field\n";
   digging.Report(state, "thirty_years");
   timber_chain.Report("thirty_years", g_years);
+  if (g_tick_cost) {
+    tick_cost.Report("thirty_years");
+  }
   departures.Report("thirty_years");
   brakes.Report("thirty_years", 14);
   hauls.Report("thirty_years", 14);
