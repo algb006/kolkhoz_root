@@ -995,13 +995,36 @@ int main(int argc, char** argv) {
   // table set the village was built on, so a missing table here would mean
   // the run had already been assembled on one.
   core::LoadDefinitions(*world.tables, core::StubTables::kRefused, definitions, catalog_error);
-  const core::PlotRules plot_rules = definitions.Plots();
+  // THE RULE COUNTS PAIRS OF PLOTS, so the radii it asks by are the PLOTS —
+  // `definitions.Plots()` answers by the KEEP-OUT radius instead, which is
+  // the plot where a type has one and the body where it has not, and that is
+  // right for placing a building and wrong for this question. The fire gong
+  // found it (boss, 2026-09-20): it has no plot, a body of 0.6 m, and hangs
+  // 22.8 m from the church, whose plot is 35 — so the church was reported as
+  // standing on somebody else's plot although nothing of the sort happened.
+  // A thing on the ground is not a neighbouring household: a plot fences the
+  // land off from other PLOTS, not from every object standing on it.
+  const core::PlotRules plot_rules{.radius_by_type = definitions.units.plot_radius_m,
+                                   .map_side_m = definitions.Plots().map_side_m};
   const std::span<const float> plot_radii = definitions.units.plot_radius_m;
+  const std::span<const float> keep_out_radii = definitions.units.keep_out_radius_m;
   std::uint32_t overlapping = 0;
+  // NOT AN ERROR, AND NOT A ZERO EITHER, so it is printed rather than
+  // asserted: how many plotless things — a gong, a post, a well — stand
+  // inside a plot that belongs to somebody.
+  std::uint32_t plotless_inside = 0;
   for (std::uint32_t row = 0; row < state.units.rows.size(); ++row) {
     const core::UnitRow& unit = state.units.rows[row];
     const float radius = unit.type.value < plot_radii.size() ? plot_radii[unit.type.value] : 0.0F;
     if (!(radius > 0.0F)) {
+      const float body =
+          unit.type.value < keep_out_radii.size() ? keep_out_radii[unit.type.value] : 0.0F;
+      const core::UnitId own_yard =
+          unit.parent.value != core::kInvalidEntityIdValue ? unit.parent : state.units.row_ids[row];
+      if (core::PlotOverlaps(
+              state.units, plot_rules, unit.position, body, state.units.row_ids[row], own_yard)) {
+        ++plotless_inside;
+      }
       continue;
     }
     // A YARD AND ITS PARTS SHARE ONE PLOT (boss, 2026-09-13, parcel 206): a
@@ -1042,7 +1065,8 @@ int main(int argc, char** argv) {
     }
   }
   std::cout << "thirty_years: " << state.units.rows.size() << " units stand, " << overlapping
-            << " of them on somebody else's plot; " << housed << " lived-in houses reach " << spread
+            << " of them on somebody else's plot; plotless things standing inside one: "
+            << plotless_inside << "; " << housed << " lived-in houses reach " << spread
             << " m from the village centre\n";
   failures += run::Expect(overlapping == 0, "no two plots overlap after thirty years of weddings");
 
