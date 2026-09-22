@@ -1,6 +1,7 @@
 // Implementation of the core_time boundary (include/core_time/time_system.h).
 // Stage 2: the phase advances the clock, refreshes the calendar caches and
-// writes the day's weather — daylight from the solar curve (daylight_table.h),
+// writes the day's weather — daylight from the solar curve
+// (core_common/daylight.h),
 // the sky, the temperature and the rest from the per-season weather table.
 //
 // WHAT A DAY IS lives in weather_of_day.cpp since 2026-09-18; this file says

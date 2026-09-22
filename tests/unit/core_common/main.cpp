@@ -2,6 +2,8 @@
 // Plain executable, exit code = number of failed expectations (framework not
 // chosen yet — tests/CMakeLists.txt).
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -11,6 +13,8 @@
 #include "core_common/alarm_state.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/day_window.h"
+#include "core_common/daylight.h"
 #include "core_common/deadline.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/fund_ladder.h"
@@ -231,6 +235,110 @@ int TestRandom() {
 /// is UNDEFINED for nan, for an infinity and for anything whose truncation
 /// does not fit — and the floats that reach it come off hand-editable tables
 /// and off save files a reader bit_casts without inspecting.
+/// THE SOLAR DOOR (boss, thread boss-core-sunrise-for-month-2026-09-23): the
+/// presentation asks when the sun rises in a given month WITHOUT running the
+/// simulation to that day. What is checked here is the door's own shape; that
+/// its answer equals the one the simulation writes is checked over all 48
+/// days in tests/unit/core_time, where the weather of a day is built.
+int TestDaylightCurve() {
+  int failures = 0;
+
+  failures += Expect(core::kDaylightGameHours.size() == core::kDaysPerYear,
+                     "daylight: the curve has a value for every day of the year");
+
+  // Every day of the year answers, and the window is a window: the sun rises
+  // before it sets, both inside the day, and the two are symmetric about
+  // noon — which is the whole of SolarWindow and the reason a caller can
+  // trust either end alone.
+  bool windows_sane = true;
+  bool symmetric_about_noon = true;
+  float shortest = core::kDaylightGameHours[0];
+  float longest = core::kDaylightGameHours[0];
+  for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+    const float hours = core::DaylightHoursOfDay(day);
+    const core::DayWindow window = core::SolarWindowOfDay(day);
+    windows_sane = windows_sane && hours > 0.0F && hours < 24.0F && window.sunrise > 0.0F &&
+                   window.sunset < 24.0F && window.sunrise < window.sunset;
+    symmetric_about_noon =
+        symmetric_about_noon && std::fabs((window.sunrise + window.sunset) - 24.0F) < 1e-4F;
+    shortest = std::min(shortest, hours);
+    longest = std::max(longest, hours);
+  }
+  failures += Expect(windows_sane, "daylight: every day of the year has the sun up inside the day");
+  failures +=
+      Expect(symmetric_about_noon, "daylight: sunrise and sunset stand either side of noon");
+  // The setting's own two ends (time design §3): about 7 hours in December,
+  // about 17.5 at midsummer. A curve that lost its amplitude would still pass
+  // every check above.
+  failures += Expect(shortest > 6.9F && shortest < 7.1F, "daylight: the shortest day is ~7 hours");
+  failures +=
+      Expect(longest > 17.5F && longest < 17.6F, "daylight: the longest day is ~17.5 hours");
+
+  // ANY day number answers, and that is what lets the presentation step a
+  // month at a time past the year's end without guarding the boundary.
+  failures += Expect(core::DaylightHoursOfDay(core::kDaysPerYear) == core::DaylightHoursOfDay(0) &&
+                         core::DaylightHoursOfDay((core::kDaysPerYear * 7U) + 45U) ==
+                             core::DaylightHoursOfDay(45U),
+                     "daylight: the year is a cycle, so any day number lands on the curve");
+
+  // The month form answers for the SECOND of four days, and says so by name.
+  failures += Expect(core::SecondDayOfMonth(core::Month::kJanuary) == 1U &&
+                         core::SecondDayOfMonth(core::Month::kDecember) == 45U,
+                     "daylight: a month's second day is its day of the year");
+  failures += Expect(core::DaylightHoursOfMonthSecondDay(core::Month::kDecember) ==
+                             core::DaylightHoursOfDay(45U) &&
+                         core::SolarWindowOfMonthSecondDay(core::Month::kDecember).sunrise ==
+                             core::SolarWindowOfDay(45U).sunrise,
+                     "daylight: the month form is the second day's answer and nothing else");
+
+  // Every month answers, December included, AND no two months answer the
+  // same: a month form that quietly returned one month's light for another
+  // would pass every check above.
+  bool all_months_differ = true;
+  for (std::uint32_t first = 0; first < core::kMonthsPerYear; ++first) {
+    const float light = core::DaylightHoursOfMonthSecondDay(static_cast<core::Month>(first));
+    for (std::uint32_t second = first + 1; second < core::kMonthsPerYear; ++second) {
+      all_months_differ = all_months_differ && light != core::DaylightHoursOfMonthSecondDay(
+                                                            static_cast<core::Month>(second));
+    }
+  }
+  failures += Expect(all_months_differ, "daylight: each of the twelve months has its own light");
+
+  // THE SIGN OF THE ROUNDING, measured rather than promised. The middle of
+  // four days lies between the second and the third; the door takes the
+  // EARLIER. So in a month of growing light it answers SHORT of the month's
+  // mean, and in a month of shrinking light it answers LONG of it.
+  const auto mean_of_month = [](core::Month month) {
+    float sum = 0.0F;
+    for (std::uint32_t day = 0; day < core::kDaysPerMonth; ++day) {
+      sum +=
+          core::DaylightHoursOfDay((static_cast<std::uint32_t>(month) * core::kDaysPerMonth) + day);
+    }
+    return sum / static_cast<float>(core::kDaysPerMonth);
+  };
+  failures += Expect(core::DaylightHoursOfMonthSecondDay(core::Month::kMarch) <
+                             mean_of_month(core::Month::kMarch) &&
+                         core::DaylightHoursOfMonthSecondDay(core::Month::kSeptember) >
+                             mean_of_month(core::Month::kSeptember),
+                     "daylight: the month form takes the earlier of the two middle days");
+
+  // The tolerance the header states out loud, checked instead of promised:
+  // inside a month the light moves by at most ~1.2 game hours (September).
+  float worst_gap = 0.0F;
+  for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+    const float picked = core::DaylightHoursOfMonthSecondDay(static_cast<core::Month>(month));
+    for (std::uint32_t day = 0; day < core::kDaysPerMonth; ++day) {
+      worst_gap = std::max(
+          worst_gap,
+          std::fabs(core::DaylightHoursOfDay((month * core::kDaysPerMonth) + day) - picked));
+    }
+  }
+  std::cout << "daylight: a month's answer is off by at most " << worst_gap
+            << " game hours inside that month\n";
+  failures += Expect(worst_gap < 1.25F, "daylight: the month form's error stays under 1.25 hours");
+  return failures;
+}
+
 int TestGramsFromFloat() {
   int failures = 0;
   failures += Expect(core::GramsFromKilograms(2.5F) == 2500, "two and a half kilos are 2500 g");
@@ -1164,6 +1272,7 @@ int main() {
     failures += Expect(core::IsRestDay(16, monday, one) && !core::IsRestDay(17, monday, one),
                        "holiday: a holiday is a day of rest, the day after it is not");
   }
+  failures += TestDaylightCurve();
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
   failures += CheckAlarmSubjectValue();

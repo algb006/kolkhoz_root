@@ -13,6 +13,8 @@
 
 #include "../../common/fake_tables.h"
 #include "core_common/calendar.h"
+#include "core_common/day_window.h"
+#include "core_common/daylight.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_time/time_system.h"
@@ -306,6 +308,65 @@ int main() {
   failures +=
       Expect(late_march.weather.daylight_hours > 11.5F && late_march.weather.daylight_hours < 12.7F,
              "spring equinox daylight is ~12.2 game hours");
+
+  {
+    // THE TWO PATHS TO SUNRISE MUST AGREE, and this is the check that makes
+    // "the move changed no number in the world" a measurement rather than a
+    // promise (boss, thread boss-core-sunrise-for-month-2026-09-23).
+    //
+    // The presentation used to reach a month's light the only way there was:
+    // CRANK THE CLOCK to that day and read the weather. The door in
+    // core_common/daylight.h answers without a world. Here both are asked,
+    // for every day of two years — the year boundary among them — and the
+    // floats must be EQUAL, not close: they come off one table through one
+    // function, so any difference at all would mean a second home appeared.
+    core::WorldState previous;
+    previous.world_seed = 1;
+    core::WorldState current;
+    std::uint32_t days_compared = 0;
+    bool same_light = true;
+    bool same_window = true;
+    core::SimDay last_day_seen = previous.calendar.day;
+    while (previous.calendar.day < 2 * core::kDaysPerYear) {
+      current = previous;
+      phase.RunSequential(previous, current);
+      std::swap(previous, current);
+      if (previous.calendar.day == last_day_seen) {
+        continue;
+      }
+      last_day_seen = previous.calendar.day;
+      ++days_compared;
+      const float cranked = previous.weather.daylight_hours;
+      const float asked = core::DaylightHoursOfDay(previous.calendar.day);
+      same_light = same_light && cranked == asked;
+      const core::DayWindow by_crank = core::SolarWindow(cranked);
+      const core::DayWindow by_door = core::SolarWindowOfDay(previous.calendar.day);
+      same_window =
+          same_window && by_crank.sunrise == by_door.sunrise && by_crank.sunset == by_door.sunset;
+    }
+    // THE COUNT BESIDE THE VERDICT: a sweep that compared nothing would
+    // otherwise report a clean world.
+    // Days 1..96: day 0 is not compared, because the phase has not run yet
+    // and its weather is the default of a fresh WorldState, not a written
+    // day. The loop stops once day 96 — the first day of year three — has
+    // been stepped into, so the count is the length of two years exactly.
+    std::cout << "sunrise: crank and door compared on " << days_compared << " days, days 1.."
+              << 2 * core::kDaysPerYear << "\n";
+    failures += Expect(days_compared == 2 * core::kDaysPerYear,
+                       "sunrise: every day of two years was compared");
+    failures += Expect(same_light,
+                       "sunrise: the daylight the clock writes equals the daylight the door "
+                       "answers, on every day of two years");
+    failures += Expect(same_window,
+                       "sunrise: the window built from the cranked weather equals the window "
+                       "the door answers");
+    // And the month form lands on the day it names: December's answer is the
+    // second day of December, which the clock reaches as day 45.
+    const core::WorldState december_second = RunToDay(phase, 1, 45);
+    failures += Expect(december_second.weather.daylight_hours ==
+                           core::DaylightHoursOfMonthSecondDay(core::Month::kDecember),
+                       "sunrise: the December form answers with the second day of December");
+  }
 
   // A whole year of weather: bounds hold, snow only at or below zero, and
   // both kinds of precipitation actually occur.

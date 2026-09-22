@@ -11,8 +11,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include "core_common/daylight.h"
 #include "core_common/random.h"
-#include "daylight_table.h"
 
 namespace core {
 namespace {
@@ -178,7 +178,11 @@ float SkySwingMultiplier(const SeasonWeather& season, SkyStep step) {
 WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day) {
   WeatherState weather;
   const std::uint32_t day_of_year = day % kDaysPerYear;
-  weather.daylight_hours = kDaylightGameHours[day_of_year];
+  // Through the shared function, not through the table by hand: the
+  // presentation asks the same question of core_common/daylight.h without a
+  // world, and one call site for one number is what keeps the two answers
+  // the same by construction rather than by comparison.
+  weather.daylight_hours = DaylightHoursOfDay(day);
   const SeasonWeather& season = SeasonOfDayOfYear(seasons, day_of_year);
   const float temperature = MeanTemperatureOfDay(seasons, world_seed, day);
   weather.air_temperature_celsius = temperature;
