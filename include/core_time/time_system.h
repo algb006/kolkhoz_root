@@ -24,6 +24,7 @@
 #include <span>
 #include <string_view>
 
+#include "core_common/rain_stops_work.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
@@ -84,6 +85,25 @@ class ITimeSystem {
   /// the snow (field_work.h), and a second copy of the interpolation there is
   /// exactly the drift this project keeps finding.
   virtual std::uint32_t GrowingSeasonLastDay() const = 0;
+
+  /// @brief The expected share of rain days on each day of the year — the
+  /// days on which rain stops the sowing and the reaping
+  /// (core_common/rain_stops_work.h).
+  ///
+  /// THE CLIMATE'S ANSWER AND NOT THE SEED'S, for GrowingSeasonLastDay's own
+  /// reason: the gathering alarm and labor's last days before the snow
+  /// discount the days ahead by it, and a forecast of the work that read the
+  /// seed's coming rain would be a forecast the chairman cannot make.
+  ///
+  /// COUNTED OFF THE GENERATOR, not derived from the season table by a
+  /// formula. Whether a wet day is rain or snow depends on the day's drawn
+  /// temperature against −1, and a closed form of that share needs the
+  /// normal distribution's tail — library maths that is not bit-for-bit
+  /// across compilers, the reason the solar curve is precomputed
+  /// (core_common/daylight.h). The generator's own days are the one home of
+  /// what a rain day is.
+  /// @return 0..1 per day of the year; all zeros from a system with no rain.
+  virtual RainDayShares ClimateRainDayShares() const = 0;
 };
 
 /// @brief Creates the time subsystem.

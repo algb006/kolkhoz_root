@@ -159,6 +159,11 @@ class TimeSystem final : public ITimeSystem {
     return kDaysPerYear - 1U;
   }
 
+  // STUB: no rain is counted yet, so rain stops nothing ahead of the clock —
+  // exactly what every consumer did before the rule existed. The count off
+  // the generator comes with the implementation.
+  RainDayShares ClimateRainDayShares() const override { return RainDayShares{}; }
+
  private:
   SeasonTable seasons_;
   TimeAndWeatherSlot phase_;
