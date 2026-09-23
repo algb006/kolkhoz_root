@@ -179,6 +179,14 @@ struct Trajectory {
   /// slot had swept it, and saw not one order of any status in nine villages
   /// over thirty-three years (retracted, 3af834f).
   run::UpgradePolicy::Fates upgrade_fates;
+  /// WHY the upgrades were refused, by OrderRefusal code, read off the
+  /// kOrderRefused event of the step that consumed the order. The verdicts
+  /// at the unit said "refused, the rung is this era's" 26.7 times a village
+  /// and could not say why (2026-09-23, the Epoch II diagnosis).
+  std::array<std::uint32_t, static_cast<std::size_t>(core::OrderRefusal::kOrderRefusalCount)>
+      upgrade_refusals = {};
+  /// What held the social objects' marking (social_objects_policy.h, Held).
+  run::SocialObjectsPolicy::Held social_held;
   /// The standing kolkhoz buildings by the era their SECOND rung opens in:
   /// Epoch I, a later era, or no second rung at all. Three counts that must
   /// sum to `units_standing`, printed beside it.
@@ -262,14 +270,26 @@ constexpr float kHotAfternoonCelsius = 25.0F;
 /// (event_journal's header says the same of itself). This IS `AdvanceDays(1)`
 /// — the order of the chairman's day after it is untouched, and the
 /// population bands are the proof.
-void LiveOneDay(core::ISimulation& simulation, Trajectory& out) {
+void LiveOneDay(core::ISimulation& simulation,
+                const run::UpgradePolicy& upgrades,
+                Trajectory& out) {
   bool hot_at_any_tick = false;
+  const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
     simulation.AdvanceStep();
+    const core::WorldState& state = simulation.CompletedState();
+    if (awaiting.value != core::kInvalidEntityIdValue) {
+      for (const core::SimEvent& event : state.step_events) {
+        if (event.kind == core::EventKind::kOrderRefused && event.unit.value == awaiting.value &&
+            event.amount >= 0 &&
+            static_cast<std::size_t>(event.amount) < out.upgrade_refusals.size()) {
+          ++out.upgrade_refusals[static_cast<std::size_t>(event.amount)];
+        }
+      }
+    }
     if (out.first_disease_day != 0) {
       continue;
     }
-    const core::WorldState& state = simulation.CompletedState();
     const float afternoon =
         state.weather.air_temperature_celsius + state.weather.temperature_swing_celsius;
     hot_at_any_tick = hot_at_any_tick || afternoon >= kHotAfternoonCelsius;
@@ -320,7 +340,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // calls the rest silence (event_journal's own header says the same).
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
-      LiveOneDay(*simulation, out);
+      LiveOneDay(*simulation, builder.upgrades, out);
       builder.RunDay(*simulation);
     }
     const core::WorldState& state = simulation->CompletedState();
@@ -472,6 +492,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
   out.upgrades_ordered = builder.upgrades.ordered();
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
+  out.social_held = builder.social.held();
   out.transition_calendar_year = builder.transition.YearTaken();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
@@ -792,6 +813,23 @@ int main(int argc, char** argv) {
             << "; highest unit level reached " << (level / villages) << "; worst season's variety "
             << (variety / villages) << " categories over " << (seasons / villages)
             << " seasons seen\n";
+  // WHAT HELD THE MARKING, day by day after the farm stood, the first reason
+  // in the policy's order (social_objects_policy.h, Held); means of nine.
+  float nothing_left = 0.0F;
+  float going_up = 0.0F;
+  float farm_first = 0.0F;
+  float house_waits = 0.0F;
+  for (const Trajectory& walk : walks) {
+    nothing_left += static_cast<float>(walk.social_held.nothing_left);
+    going_up += static_cast<float>(walk.social_held.one_going_up);
+    farm_first += static_cast<float>(walk.social_held.farm_first);
+    house_waits += static_cast<float>(walk.social_held.a_house_waits);
+  }
+  std::cout << "population_curve: social marking held, days of " << 33U * core::kDaysPerYear
+            << " — every object stands " << (nothing_left / villages) << ", one still going up "
+            << (going_up / villages) << ", the farm first " << (farm_first / villages)
+            << ", a house waits " << (house_waits / villages)
+            << " (days before the farm stood are not counted)\n";
   // THE DENOMINATOR BESIDE THE ANSWER. "Nought years open" says nothing about
   // whether the shortfall is one stubborn type or the whole farm, and the two
   // have different repairs.
@@ -941,6 +979,26 @@ int main(int argc, char** argv) {
             << mean(sum.refused) << ", refused with the rung in a LATER era "
             << mean(sum.refused_later_era) << ", other " << mean(sum.other) << " — sum "
             << mean(read) << " of " << (ordered / villages) << " ordered\n";
+  // AND WHY, by the core's own refusal code (order_state.h, OrderRefusal —
+  // the number is the enumerator's position). Printed whole, zeros named by
+  // their count, so an empty line reads as "no refusal event seen".
+  std::array<std::uint64_t, static_cast<std::size_t>(core::OrderRefusal::kOrderRefusalCount)> why =
+      {};
+  for (const Trajectory& walk : walks) {
+    for (std::size_t code = 0; code < why.size(); ++code) {
+      why[code] += walk.upgrade_refusals[code];
+    }
+  }
+  std::uint64_t events = 0;
+  std::cout << "  refusal events at the upgraded unit, by OrderRefusal code (sum of nine):";
+  for (std::size_t code = 0; code < why.size(); ++code) {
+    if (why[code] != 0) {
+      std::cout << " code " << code << " x" << why[code];
+      events += why[code];
+    }
+  }
+  std::cout << " — " << events << " events against " << sum.refused + sum.refused_later_era
+            << " refusals read at the unit\n";
   std::uint64_t this_era = 0;
   std::uint64_t later_era = 0;
   std::uint64_t no_rung = 0;

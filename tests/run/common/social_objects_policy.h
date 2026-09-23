@@ -121,6 +121,18 @@ class SocialObjectsPolicy {
         }
       }
     }
+    // WHY NOTHING WAS MARKED TODAY, one reason a day in this order (the Epoch
+    // II diagnosis, 2026-09-23: 2.56 of 6 marked in thirty-three years).
+    const bool nothing_left = NextUnbuilt(world).value == core::kInvalidDefIdValue;
+    if (nothing_left) {
+      ++held_.nothing_left;
+    } else if (one_is_going_up) {
+      ++held_.one_going_up;
+    } else if (farm_first) {
+      ++held_.farm_first;
+    } else if (a_house_waits) {
+      ++held_.a_house_waits;
+    }
     // ONE AT A TIME: nothing new is marked while one is still going up.
     if (!one_is_going_up && !farm_first && !a_house_waits) {
       const core::UnitTypeId next = NextUnbuilt(world);
@@ -157,6 +169,17 @@ class SocialObjectsPolicy {
   std::uint32_t marked() const { return marked_; }
 
   std::uint32_t started() const { return started_; }
+
+  /// Days after the farm stood on which no new object was marked, by the
+  /// first reason that held it, in RunDay's order.
+  struct Held {
+    std::uint32_t nothing_left = 0;   ///< every object of the list stands or is a site
+    std::uint32_t one_going_up = 0;   ///< one at a time: a site still at level 0
+    std::uint32_t farm_first = 0;     ///< the farm's own shortage waits for its recipe
+    std::uint32_t a_house_waits = 0;  ///< a couple, a roofless family or a house site
+  };
+
+  const Held& held() const { return held_; }
 
  private:
   bool Wanted(core::UnitTypeId type) const {
@@ -210,6 +233,8 @@ class SocialObjectsPolicy {
   std::uint32_t marked_ = 0;
 
   std::uint32_t started_ = 0;
+
+  Held held_;
 };
 
 }  // namespace run

@@ -168,6 +168,11 @@ class UpgradePolicy {
 
   std::uint32_t ordered() const { return ordered_; }
 
+  /// @brief The unit whose upgrade order was placed and not yet read at the
+  /// unit (ReadAtSubject) — the one a kOrderRefused of the steps between is
+  /// about. Invalid when none is waiting.
+  core::UnitId Awaiting() const { return last_.has_value() ? last_->unit : core::UnitId{}; }
+
   /// @brief What became of the orders, read off the UNIT and not the book.
   struct Fates {
     /// Yesterday's order, judged by the unit today. The four sum to the
