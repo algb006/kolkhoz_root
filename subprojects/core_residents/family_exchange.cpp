@@ -566,21 +566,13 @@ std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world
   if (config.resources.empty()) {
     return {};
   }
-  std::vector<Grams> sealed = IssueReserve(config, world);
-  // AND A PLANNED CROP WHOLE, TO WHAT THE CHAIRMAN UNSEALED (boss seq 25,
-  // answer 2: «что держит выдача, то опечатано и для вора»). The distribution
-  // gives a planned crop no more than min(free, unsealed); the same cap as a
-  // sealed amount is the stock less the unsealed, where that is larger.
-  for (std::uint32_t index = 0; index < sealed.size(); ++index) {
-    if (!PlanHoldsIt(config, world, index)) {
-      continue;
-    }
-    const Grams stock = VillageStock(world, DefIdFromIndex<ResourceIdTag>(index));
-    const Grams unsealed = PlanUnsealed(world, index);
-    const Grams whole = stock > unsealed ? stock - unsealed : 0;
-    sealed[index] = std::max(sealed[index], whole);
-  }
-  return sealed;
+  // THE FUNDS, AND NOT THE PLANNED CROP WHOLE (boss, boss-core-epoch1-4 seq
+  // 2). 0.34.39 sealed a crop the plan names whole down to the unsealed, as
+  // the distribution holds it (PlanHoldsIt), and the distiller took not one
+  // kilogram of rye, oats or potatoes in 270 village-years — the samogon, a
+  // live trouble of the village, switched off. Holding the planned crop
+  // whole is a promise to the FAMILIES, not a lock against the thief.
+  return IssueReserve(config, world);
 }
 
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current) {

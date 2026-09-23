@@ -826,10 +826,10 @@ int CheckFoodConfigDefaults(const core::ITableSet& tables) {
   return failures;
 }
 
-/// WHAT THE ISSUE HOLDS IS SEALED FOR THE THIEF TOO (boss seq 25, answer 2):
-/// a crop the plan names is held whole down to what the chairman unsealed,
-/// before any of this year's reaping has filled the plan rung.
-int CheckSealedFundsHoldThePlannedCropWhole() {
+/// THE SEALED FUNDS ARE THE FUNDS (boss, boss-core-epoch1-4 seq 2): what the
+/// thief stays above is the seed, the plan rung and the fodder — not a crop
+/// the plan names held whole, which is the issue's promise to the families.
+int CheckSealedFundsAreTheFundsNotThePlannedCrop() {
   int failures = 0;
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
   core::FoodConfig config;
@@ -841,18 +841,20 @@ int CheckSealedFundsHoldThePlannedCropWhole() {
   AppendRow(world.units, store);
   world.plan.announced = 1;
   world.plan.due = {0, 500 * kKilo};  // resource 1 is planned, 0 is not
+  // January: the plan names the rye, nothing of it is reaped yet. The issue
+  // holds it whole (PlanHoldsIt); the FUNDS hold none, and the thief may
+  // reach it (boss, boss-core-epoch1-4 seq 2 — 0.34.39 sealed it whole and
+  // the distiller took not one kilogram in 270 village-years).
   const std::vector<core::Grams> sealed = core::SealedFunds(config, world);
-  failures += Expect(sealed.size() == 2 && sealed[0] == 0 && sealed[1] == 300 * kKilo,
-                     "sealed: January's planned rye is sealed whole, the unplanned crop not");
-  world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {0, 50 * kKilo};
-  failures += Expect(core::SealedFunds(config, world)[1] == 250 * kKilo,
-                     "sealed: 50 kg unsealed of the plan's crop leaves 250 kg sealed");
-  // The plan rung the larger (the reaping covers 400 kg of the due, less the
-  // 50 unsealed: 350): the seal is the larger of the two, never their sum
-  // (600) and never the smaller (250).
+  failures += Expect(sealed.size() == 2 && sealed[0] == 0 && sealed[1] == 0,
+                     "sealed: the planned rye before its reaping is the issue's promise, not a "
+                     "fund — nothing sealed against the thief");
+  // Reaped 400 kg against the 500 due, 50 of it unsealed: the plan rung holds
+  // 350, and that is sealed.
   world.ledger.current.harvest = {0, 400 * kKilo};
+  world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {0, 50 * kKilo};
   failures += Expect(core::SealedFunds(config, world)[1] == 350 * kKilo,
-                     "sealed: the reaping's rung of 350 kg outweighs the 250 kg whole-crop seal");
+                     "sealed: the reaping's plan rung, less the unsealed, is sealed — 350 kg");
   return failures;
 }
 
@@ -3515,7 +3517,7 @@ int main() {
 
   failures += CheckFoodConfigDefaults(tables);
   failures += CheckSeedNormsReadWinter();
-  failures += CheckSealedFundsHoldThePlannedCropWhole();
+  failures += CheckSealedFundsAreTheFundsNotThePlannedCrop();
   failures += CheckEmptiedYard(*system);
   failures += CheckVacatedPostIsAnnounced(*system);
   failures += CheckMeal();

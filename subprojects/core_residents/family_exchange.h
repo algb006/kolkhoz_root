@@ -38,14 +38,14 @@ namespace core {
 ///       every step below a no-op rather than an error.
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current);
 
-/// @brief The SEALED FUNDS, grams per resource, dense by ResourceId: what the
-/// monthly distribution will not hand out — the seed fund, the plan reserve
-/// with what will rot before the delivery and the fodder claim, less the
-/// chairman's unsealings (resources design §6), and a crop the plan still
-/// holds WHOLE down to what the chairman has unsealed of it (PlanHoldsIt).
-/// The night theft stays above it (boss seq 18 and 25: «опечатанное не
-/// крадётся», «что держит выдача, то опечатано и для вора»). The RATION does
-/// not: hunger ranks above the plan, and it stays above the funds alone.
+/// @brief The SEALED FUNDS, grams per resource, dense by ResourceId: the seed
+/// fund, the plan reserve with what will rot before the delivery and the
+/// fodder claim, less the chairman's unsealings (resources design §6) — the
+/// reserve the distribution, the ration and the ration alarm stay above, and
+/// the night theft too (boss seq 18: «опечатанное не крадётся»). NOT the
+/// planned crop whole: the distribution also holds that until unsealed
+/// (PlanHoldsIt), a promise to the families and not a lock against the thief
+/// (boss, boss-core-epoch1-4 seq 2, withdrawing 0.34.39's reading).
 /// @return Sized to the resource roster; empty when there is none.
 std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world);
 
