@@ -291,6 +291,28 @@ int TestRainStopsWork() {
                          std::isinf(core::CalendarPointAfterDryDays(
                              half, 0.0, std::numeric_limits<double>::infinity())),
                      "calendar point: never, when it always rains or nothing is ever done");
+  // UB-001/002 OF THE 0.34.16 CYCLE: a tiny pace makes the walk long. A
+  // million dry days at half rain is two million calendar days, reached by
+  // skipping whole years and not a day at a time — and the answer must be
+  // the one the day-by-day walk would give. Past any campaign it is never,
+  // and an infinite or NaN start is never too; a span with such an end holds
+  // no countable day.
+  const double far = core::CalendarPointAfterDryDays(half, 10.0, 1.0e6);
+  failures += Expect(std::fabs(far - (10.0 + 2.0e6)) < 1.0e-6 * 2.0e6,
+                     "calendar point: a million dry days at half rain, two million days on");
+  failures += Expect(std::fabs(core::DryDaysBetween(half, 10.0, far) - 1.0e6) < 1.0,
+                     "calendar point: and the skip agrees with the span it skipped");
+  failures += Expect(std::isinf(core::CalendarPointAfterDryDays(half, 0.0, 1.0e12)),
+                     "calendar point: a point past any campaign is never");
+  failures += Expect(std::isinf(core::CalendarPointAfterDryDays(
+                         half, std::numeric_limits<double>::infinity(), 1.0)) &&
+                         std::isinf(core::CalendarPointAfterDryDays(
+                             half, std::numeric_limits<double>::quiet_NaN(), 1.0)),
+                     "calendar point: from infinity or NaN, never");
+  failures +=
+      Expect(core::DryDaysBetween(half, std::numeric_limits<double>::infinity(), 5.0) == 0.0 &&
+                 core::DryDaysBetween(half, 0.0, std::numeric_limits<double>::quiet_NaN()) == 0.0,
+             "dry days: a span with an end at infinity or NaN holds none");
   return failures;
 }
 

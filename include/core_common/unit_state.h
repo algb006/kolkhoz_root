@@ -185,6 +185,12 @@ struct ConstructionState {
   /// concrete stand in the core's winter season and lose nothing, like a
   /// pause (construction design §8; core_common/rain_stops_work.h,
   /// WinterStopsSite). 1 when nothing is being built.
+  ///
+  /// "LIKE A PAUSE" MEANS THE WORK ONLY (boss, boss-core-epoch1-resume seq
+  /// 23): the recipe is still carried in all winter — «зима — время
+  /// подготовки: лес, доски, подвоз материалов» (§8) — while the player's
+  /// pause stops the delivery too (§6). The two never shared a flag: this
+  /// byte gates the crew, `UnitRow::paused` the crew and the delivery.
   std::uint8_t winter_works = 1;
 
   /// THE WORKS' OWN SHARE OF A STANDING UNIT'S STOCK, dense by ResourceId:

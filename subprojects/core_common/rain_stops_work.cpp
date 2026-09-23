@@ -31,6 +31,12 @@ bool WinterStopsSite(Season season, std::uint8_t winter_works) {
 }
 
 double DryDaysBetween(const RainDayShares& shares, double from, double to) {
+  // A span with an end at infinity or NaN holds no countable day, and the
+  // day-by-day walk below must not be handed one (UB-002 of the 0.34.16
+  // cycle: DryShareOf casts floor(day) to int64).
+  if (!std::isfinite(from) || !std::isfinite(to)) {
+    return 0.0;
+  }
   double dry = 0.0;
   double position = from;
   while (position < to) {
@@ -53,11 +59,28 @@ double CalendarPointAfterDryDays(const RainDayShares& shares, double from, doubl
   for (std::uint32_t day = 0; day < kDaysPerYear; ++day) {
     dry_per_year += DryShareOf(shares, static_cast<double>(day));
   }
-  if (!(dry_per_year > 0.0)) {
+  if (!(dry_per_year > 0.0) || !std::isfinite(from)) {
     return std::numeric_limits<double>::infinity();
   }
   double position = from;
   double owed = dry_days;
+  // WHOLE YEARS IN ONE STEP (UB-001 of the 0.34.16 cycle): the walk below
+  // goes a day at a time, and a tiny positive pace makes `owed` a thousand
+  // years long — the between-steps alarm refresh would walk it day by day,
+  // and past 2^53 `floor(position) + 1 == position` and it never ends, which
+  // for a loop with no side effect is undefined ([intro.progress]). A year of
+  // the shares holds `dry_per_year` dry days from any starting point, so all
+  // but the last year or two are skipped whole, and a point beyond any
+  // campaign is "never".
+  const double whole_years = std::floor(owed / dry_per_year) - 1.0;
+  if (whole_years > 0.0) {
+    position += whole_years * static_cast<double>(kDaysPerYear);
+    owed -= whole_years * dry_per_year;
+  }
+  constexpr double kNeverDays = 1.0e9;  // ~20 million game years: past any campaign
+  if (!(position < kNeverDays)) {
+    return std::numeric_limits<double>::infinity();
+  }
   while (true) {
     const double day_end = std::floor(position) + 1.0;
     const double rate = DryShareOf(shares, position);
