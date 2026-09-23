@@ -32,6 +32,7 @@
 
 #include "assignment.h"
 #include "core_common/alarm_state.h"
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
 #include "core_common/emit_event.h"
@@ -473,8 +474,9 @@ class LaborSystem final : public ILaborSystem {
     const bool day_off = IsDayOffIn(current, current.calendar.day);
     std::vector<std::uint32_t> places_taken(current.units.rows.size(), 0);
     for (ResidentRow& resident : current.residents.rows) {
-      if (resident.post.profession.value == kInvalidDefIdValue) {
-        continue;
+      if (resident.post.profession.value == kInvalidDefIdValue ||
+          AwayInDistrict(resident, current.calendar.tick)) {
+        continue;  // no post, or its holder is in the district
       }
       for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
         const HerdRow& herd = current.herds.rows[row];
@@ -513,8 +515,9 @@ class LaborSystem final : public ILaborSystem {
       }
     }
     for (ResidentRow& resident : current.residents.rows) {
-      if (resident.post.profession.value == kInvalidDefIdValue) {
-        continue;
+      if (resident.post.profession.value == kInvalidDefIdValue ||
+          AwayInDistrict(resident, current.calendar.tick)) {
+        continue;  // no post, or its holder is in the district (district_car.h)
       }
       if (resident.work.kind == WorkKind::kNone) {
         PutOnModuleWork(current, resident, places_taken);
@@ -1073,6 +1076,11 @@ class LaborSystem final : public ILaborSystem {
   /// be given work. Counting him idle would put the village's groom into a
   /// red number every day of his life.
   bool Employable(const WorldState& state, const ResidentRow& resident) const {
+    // AWAY IN THE DISTRICT (away_in_district.h): in its hospital, or on the
+    // road home from its border — nobody's worker (district_car.h).
+    if (AwayInDistrict(resident, state.calendar.tick)) {
+      return false;
+    }
     Vec2 home;
     const float age = BiologicalAgeYears(config_, resident.birth_day, state.calendar.day);
     return age >= config_.adult_age_years && HomePosition(state, resident.family, home);

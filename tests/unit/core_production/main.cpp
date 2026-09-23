@@ -20,6 +20,7 @@
 
 #include "../../common/fake_tables.h"
 #include "core_common/alarm_state.h"
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -31,6 +32,7 @@
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
 #include "demolition_stock.h"
+#include "district_car.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_trip.h"
@@ -7018,6 +7020,110 @@ int CheckTheRationRepricesTheHorseWork() {
   return failures;
 }
 
+/// THE DISTRICT'S AMBULANCE (district_car.h; boss seq 210): sent at the day's
+/// turn for health below the line, at the house the next morning — a day
+/// later in the mud, held by a blizzard — the patient away in the hospital
+/// for its term, home on foot out of the milk cart's season, with the
+/// return health. Each step is asked with its neighbour that must NOT move.
+int CheckTheAmbulance() {
+  int failures = 0;
+  core::ProductionConfig config;  // the defaults: line 15, 8 days, back at 60, 8:00, 4 h walk
+  const auto at = [](core::WorldState& world, core::SimDay day, std::uint32_t hour) {
+    world.calendar.tick = core::TickOfDayHour(day, hour);
+    core::RefreshCalendarCaches(world.calendar);
+    world.step_events.clear();
+  };
+  const auto make = [](float health) {
+    core::WorldState world;
+    core::ResidentRow sick;
+    sick.health = health;
+    const core::ResidentId id = core::AppendRow(world.residents, sick);
+    core::ResidentRow well;
+    well.health = 80.0F;
+    core::AppendRow(world.residents, well);
+    return std::pair{world, id};
+  };
+  auto [world, sick] = make(10.0F);
+  const auto patient = [&world, sick]() -> core::ResidentRow& {
+    return world.residents.rows[core::FindRow(world.residents, sick)];
+  };
+
+  // Day 60 (May, a dry day): sent at the turn for the one below the line only.
+  at(world, 60, 0);
+  core::RunDistrictCars(config, world);
+  failures += Expect(world.district_cars.rows.size() == 1 &&
+                         world.district_cars.rows[0].resident.value == sick.value &&
+                         EventsOf(world, core::EventKind::kAmbulanceSent).size() == 1,
+                     "ambulance: sent at the day's turn for the one below the line, not the other");
+  failures += Expect(world.district_cars.rows[0].arrive_tick == core::TickOfDayHour(61, 8),
+                     "ambulance: at the house the next morning at eight");
+  at(world, 61, 0);
+  core::RunDistrictCars(config, world);
+  failures += Expect(world.district_cars.rows.size() == 1, "ambulance: one car, not a second");
+
+  // At eight: the patient is carried out and away for eight days.
+  at(world, 61, 8);
+  core::RunDistrictCars(config, world);
+  failures += Expect(core::AwayInDistrict(patient(), world.calendar.tick) &&
+                         patient().away_until_day == 69 &&
+                         EventsOf(world, core::EventKind::kAmbulanceAtHouse).size() == 1,
+                     "ambulance: at eight he is carried out, in the hospital until day 69");
+  at(world, 61, 9);
+  core::RunDistrictCars(config, world);
+  failures += Expect(world.district_cars.rows.empty(), "ambulance: an hour later the car is gone");
+
+  // Day 69, eight o'clock: out of the milk cart's season (no plan named), he
+  // walks in from the border — four hours more on the road, then home at 60.
+  at(world, 69, 8);
+  // THE RETURN TICK ITSELF STILL COUNTS AS AWAY (away_in_district.h): every
+  // reader that runs before production in this step — the family meal,
+  // labor — must still see him out. Asked BEFORE the car step, which is when
+  // they ask; a strict `<` would show him home here.
+  failures += Expect(core::AwayInDistrict(patient(), world.calendar.tick),
+                     "ambulance: on the tick his term ends he is still away to earlier readers");
+  core::RunDistrictCars(config, world);
+  failures += Expect(core::WalkingHomeFromDistrict(patient(), world.calendar.tick) &&
+                         EventsOf(world, core::EventKind::kBackFromDistrict).empty(),
+                     "ambulance: out of the cart's season he walks in from the border first");
+  at(world, 69, 12);
+  core::RunDistrictCars(config, world);
+  failures +=
+      Expect(!core::AwayInDistrict(patient(), world.calendar.tick) && patient().health == 60.0F &&
+                 EventsOf(world, core::EventKind::kBackFromDistrict).size() == 1,
+             "ambulance: home four hours later, with the return health");
+
+  // THE MUD: a day later. THE BLIZZARD: held in the district, out the first
+  // morning without one.
+  auto [muddy, muddy_sick] = make(10.0F);
+  muddy.weather.mud = true;
+  at(muddy, 60, 0);
+  core::RunDistrictCars(config, muddy);
+  failures += Expect(muddy.district_cars.rows[0].arrive_tick == core::TickOfDayHour(62, 8),
+                     "ambulance: in the mud, the morning after next");
+  auto [snowy, snowy_sick] = make(10.0F);
+  snowy.weather.phenomenon = core::WeatherPhenomenon::kBlizzard;
+  at(snowy, 60, 0);
+  core::RunDistrictCars(config, snowy);
+  failures += Expect(snowy.district_cars.rows[0].phase == core::DistrictCarPhase::kWaiting &&
+                         snowy.district_cars.rows[0].arrive_tick == 0,
+                     "ambulance: a blizzard holds it in the district");
+  snowy.weather.phenomenon = core::WeatherPhenomenon::kNone;
+  at(snowy, 61, 0);
+  core::RunDistrictCars(config, snowy);
+  failures += Expect(snowy.district_cars.rows[0].phase == core::DistrictCarPhase::kOnTheRoad &&
+                         snowy.district_cars.rows[0].arrive_tick == core::TickOfDayHour(62, 8),
+                     "ambulance: and it sets out the first morning without one");
+
+  // NO DEATH OF ITS OWN: a patient gone before it comes takes the errand.
+  core::RemoveRow(snowy.residents, snowy_sick);
+  at(snowy, 61, 1);
+  core::RunDistrictCars(config, snowy);
+  failures += Expect(snowy.district_cars.rows.empty(),
+                     "ambulance: a patient gone before it comes takes the car's errand with him");
+  (void)muddy_sick;
+  return failures;
+}
+
 int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
   int failures = 0;
   core::WorldState world;
@@ -7367,6 +7473,7 @@ int main() {
   failures += CheckTheColumnDrillInTheRain();
   failures += CheckTheRationRepricesTheHorseWork();
   failures += CheckTheFodderRungIsTheTeamsRationToTheNextOats();
+  failures += CheckTheAmbulance();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();

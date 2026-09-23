@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/random.h"
@@ -43,7 +44,9 @@ std::uint32_t ChildrenOfTheBand(const ProductionConfig& config, const WorldState
   for (const ResidentRow& person : world.residents.rows) {
     const float age =
         BiologicalAgeYears(config.farming.life_speedup, person.birth_day, world.calendar.day);
-    count += age >= config.farming.senior_school_from_years && age < config.farming.adult_from_years
+    count += age >= config.farming.senior_school_from_years &&
+                     age < config.farming.adult_from_years &&
+                     !AwayInDistrict(person, world.calendar.tick)
                  ? 1U
                  : 0U;
   }

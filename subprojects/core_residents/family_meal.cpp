@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "life_config.h"
@@ -60,7 +61,8 @@ float FamilyNeedKcal(const FoodConfig& config,
   float kilograms = 0.0F;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     const ResidentRow& resident = current.residents.rows[row];
-    if (resident.family.value != id.value) {
+    // Away in the district eats nothing from the larder (district_car.h).
+    if (resident.family.value != id.value || AwayInDistrict(resident, current.calendar.tick)) {
       continue;
     }
     const bool heavy = row < previous.residents.rows.size() &&
@@ -196,7 +198,9 @@ void MoveSatietyAndHealth(const FoodConfig& config,
   const float loss_per_day = satiety.health_loss_per_week / static_cast<float>(kDaysPerWeek);
   const float gain_per_day = satiety.health_recovery_per_week / static_cast<float>(kDaysPerWeek);
   for (ResidentRow& resident : current.residents.rows) {
-    if (resident.family.value != id.value) {
+    // Away in the district: the village's table neither feeds nor starves
+    // him, and his health is the hospital's until he is back.
+    if (resident.family.value != id.value || AwayInDistrict(resident, current.calendar.tick)) {
       continue;
     }
     const float delta = target - resident.satiety;
@@ -242,6 +246,9 @@ float SettlementDailyNeedKilograms(const FoodConfig& config,
                                    const WorldState& world) {
   float kilograms = 0.0F;
   for (const ResidentRow& resident : world.residents.rows) {
+    if (AwayInDistrict(resident, world.calendar.tick)) {
+      continue;  // eats nothing from the village's stores (district_car.h)
+    }
     const float age = BiologicalAgeYears(life_speedup, resident.birth_day, world.calendar.day);
     kilograms += DailyNeedKilograms(config.consumption, age, false);
   }
@@ -274,7 +281,7 @@ void RunFamilyMeal(const FoodConfig& config,
   float total = 0.0F;
   std::uint32_t counted = 0;
   for (const ResidentRow& resident : current.residents.rows) {
-    if (resident.family.value == id.value) {
+    if (resident.family.value == id.value && !AwayInDistrict(resident, current.calendar.tick)) {
       total += resident.satiety;
       ++counted;
     }
@@ -294,7 +301,8 @@ Metric SatietyComponent(const FoodConfig& config,
   float total = 0.0F;
   std::uint32_t counted = 0;
   for (const ResidentRow& resident : current.residents.rows) {
-    if (resident.family.value == id.value) {
+    // Away in the district: not judged by the village's metrics.
+    if (resident.family.value == id.value && !AwayInDistrict(resident, current.calendar.tick)) {
       total += resident.satiety;
       ++counted;
     }

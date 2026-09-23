@@ -493,6 +493,25 @@ enum class EventKind : std::uint8_t {
   /// `twins_born`.
   kTwinsBorn,
 
+  /// THE DISTRICT'S AMBULANCE IS SENT (health «Скорая помощь из района»;
+  /// register 236; boss seq 210): a resident's health fell below the line
+  /// and the district learnt of it by itself — no call (district_car_state.h).
+  /// resident, family; amount = the tick the car will stand at the house, 0
+  /// while a blizzard holds it in the district. kNotable. Seam key proposed:
+  /// `ambulance_sent`.
+  kAmbulanceSent,
+
+  /// The ambulance stands at the house and the patient is carried out; he is
+  /// away in the district's hospital from this tick (ResidentRow::away_*).
+  /// resident, family; amount = the day he is due back. kNotable. Seam key
+  /// proposed: `ambulance_at_house`.
+  kAmbulanceAtHouse,
+
+  /// A resident is home from the district — with the milk cart in its season,
+  /// else on foot from the border. resident, family; amount = the reason he
+  /// was away (AwayReason). kNotable. Seam key proposed: `back_from_district`.
+  kBackFromDistrict,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

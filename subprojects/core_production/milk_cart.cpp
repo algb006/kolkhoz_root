@@ -26,13 +26,13 @@ void BookDelivered(const ProductionConfig& config,
   AddLedgerAmount(current.ledger.current.delivered, config.milk_resource, grams);
 }
 
+}  // namespace
+
 bool MilkPositionStands(const ProductionConfig& config, const WorldState& current) {
   return current.plan.announced != 0 && config.milk_resource.value < current.plan.due.size() &&
          current.plan.due[config.milk_resource.value] > 0 &&
          current.calendar.day % kDaysPerYear >= MilkSeasonFirstDay();
 }
-
-}  // namespace
 
 std::uint32_t MilkSeasonFirstDay() {
   return static_cast<std::uint32_t>(Month::kMarch) * kDaysPerMonth;

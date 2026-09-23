@@ -21,6 +21,7 @@ kolkhoz_add_module(core_production
     unit_production.cpp
     processing_shops.cpp
     demolition_stock.cpp
+    district_car.cpp
     district_trip.cpp
     district_limit.cpp
     mts_column.cpp

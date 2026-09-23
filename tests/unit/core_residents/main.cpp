@@ -630,6 +630,27 @@ int CheckMeal() {
                        "and a satiety above the recovery threshold mends health");
   }
 
+  // AWAY IN THE DISTRICT (district_car.h): the same adult in the district's
+  // hospital eats nothing from the bin, and his satiety and health stand
+  // where the hospital took them. Asked beside the meal above, which moves
+  // both, so that it is the absence that holds them.
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    FillPantry(world, 0, 10.0F);
+    SetClock(world, 4, core::kTicksPerDay - 1U);
+    core::ResidentRow& away = world.residents.rows[0];
+    away.away_reason = static_cast<std::uint8_t>(core::AwayReason::kHospital);
+    away.away_until_day = 10;
+    const float satiety_before = away.satiety;
+    const float health_before = away.health;
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(world.families.rows[0].pantry[0] == 10 * core::kGramsPerKilogram,
+                       "away: the patient in the district eats nothing from the bin");
+    failures += Expect(world.residents.rows[0].satiety == satiety_before &&
+                           world.residents.rows[0].health == health_before,
+                       "away: his satiety and health stand where the hospital took them");
+  }
+
   // Two bins, one meal: the burn is proportional to what is stored, so
   // neither bin is emptied while the other stands full.
   {

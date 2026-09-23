@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdint>
 
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
@@ -109,8 +110,12 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   if (resident.health < rules.treated_health) {
     set(ResidentActivity::kTreated);
   }
-  // STUB: kAway. Nothing in the core sends anybody to the district, and the
-  // order that would belongs to the quest layer.
+  // AWAY IN THE DISTRICT (district_car.h; away_in_district.h): in its
+  // hospital or on the road home from its border. Until 0.34.18 this was a
+  // STUB — nothing in the core sent anybody to the district.
+  if (AwayInDistrict(resident, world.calendar.tick)) {
+    set(ResidentActivity::kAway);
+  }
   // OFF WORK WITHOUT LEAVE, and the world says it without a new field.
   //
   // A man who walks off from fatigue is settled on the spot: PayDay books

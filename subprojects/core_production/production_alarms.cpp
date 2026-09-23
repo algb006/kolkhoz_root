@@ -10,6 +10,7 @@
 #include <limits>
 #include <vector>
 
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
 #include "core_common/land_state.h"
@@ -662,7 +663,10 @@ std::uint32_t HandsOfTheVillage(const ProductionConfig& config, const WorldState
   for (const ResidentRow& person : world.residents.rows) {
     const float age =
         BiologicalAgeYears(config.farming.life_speedup, person.birth_day, world.calendar.day);
-    if (age >= config.farming.adult_age_years && HomePositionOf(world, person.family, home)) {
+    // Away in the district is nobody's hand — labor's Employable says so,
+    // and this copy of that rule has to say it too.
+    if (age >= config.farming.adult_age_years && HomePositionOf(world, person.family, home) &&
+        !AwayInDistrict(person, world.calendar.tick)) {
       ++hands;
     }
   }

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core_catalog/processing_catalog.h"
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ledger_state.h"
@@ -486,8 +487,12 @@ float NearestHolderRoadHours(const ProductionConfig& config,
   float best = -1.0F;
   for (const ResidentRow& person : world.residents.rows) {
     Vec2 home;
+    // A master in the district's hospital is no master in reach
+    // (away_in_district.h): with him counted, a shop whose only master is
+    // away would stand in silence under "a master in reach works".
     if (person.post.profession.value == kInvalidDefIdValue ||
-        person.post.unit.value != parent.value || !HomePositionOf(world, person.family, home)) {
+        person.post.unit.value != parent.value || !HomePositionOf(world, person.family, home) ||
+        AwayInDistrict(person, world.calendar.tick)) {
       continue;
     }
     const float hours = TravelHoursBetween(home, place, hours_per_km);

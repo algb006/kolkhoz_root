@@ -678,7 +678,37 @@ struct FarmingConfig {
   std::uint8_t birth_to_month = 4;  ///< Inclusive: May.
 };
 
+/// The district's ambulance (district_car.h; boss seq 210, register 236).
+/// world_params.csv keys, read with these defaults until the base carries
+/// them — every one a STUB of boss's decision, except where noted.
+struct DistrictCarConfig {
+  /// `ambulance_health_line` — health below this is "grave" and the district
+  /// sends its car. STUB 15 (boss seq 210, 1).
+  float health_line = 15.0F;
+
+  /// `hospital_days` — days in the district's hospital. STUB 8, two months
+  /// of the game (boss seq 210, 3).
+  float hospital_days = 8.0F;
+
+  /// `hospital_return_health` — the health he comes home with. STUB 60.
+  float return_health = 60.0F;
+
+  /// `ambulance_arrive_hour` — the hour the car stands at the house: the
+  /// morning after it was sent, the district's working morning like the
+  /// trip's departure. STUB 8.
+  float arrive_hour = 8.0F;
+
+  /// `walk_home_hours` — out of the milk cart's season he walks in from the
+  /// district's border, and these are the last hours of his absence, drawn
+  /// on the road. STUB 4 — core's own number, not boss's: the border is
+  /// ~6 km off and a convalescent walks it slowly.
+  float walk_home_hours = 4.0F;
+};
+
 struct ProductionConfig {
+  /// The district's ambulance (district_car.h).
+  DistrictCarConfig district_car;
+
   /// The last day of the year a standing crop is safe from the snow — the
   /// physical end of the growing season, handed in by the assembly from
   /// ITimeSystem::GrowingSeasonLastDay because the seasonal curve is

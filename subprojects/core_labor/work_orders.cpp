@@ -2,6 +2,7 @@
 
 #include "work_orders.h"
 
+#include "core_common/away_in_district.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -361,6 +362,11 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     const std::uint32_t resident_row = FindRow(current.residents, order.resident);
     if (resident_row == kNoRow) {
       continue;  // he died in the night; the sweep will not remove the row, but nobody works it
+    }
+    // AWAY IN THE DISTRICT (away_in_district.h): the order stands for the
+    // day he is back, and nobody is sent to work in his name meanwhile.
+    if (AwayInDistrict(current.residents.rows[resident_row], current.calendar.tick)) {
+      continue;
     }
     WorkAssignment& work = current.residents.rows[resident_row].work;
     work.kind = order.work;

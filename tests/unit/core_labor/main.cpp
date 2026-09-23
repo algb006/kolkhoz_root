@@ -589,6 +589,24 @@ int TestRainStopsTheSowingAndTheReaping() {
     }
   }
 
+  // AWAY IN THE DISTRICT (district_car.h): a man in its hospital is nobody's
+  // worker — the dry reaping above sends the crew, and the same field with
+  // every hand away sends none.
+  {
+    DayWorld away(3);
+    away.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+    for (core::ResidentRow& resident : away.world.residents.rows) {
+      resident.away_reason = static_cast<std::uint8_t>(core::AwayReason::kHospital);
+      resident.away_until_day = 10;
+    }
+    run_hours(away, 1, 0, 12);
+    bool anyone_out = false;
+    for (const core::ResidentRow& resident : away.world.residents.rows) {
+      anyone_out = anyone_out || resident.work.kind != core::WorkKind::kNone;
+    }
+    failures += Expect(!anyone_out, "away: nobody in the district's hospital is sent to work");
+  }
+
   // THE STANDING ORDER YIELDS TO THE RAIN AND OUTLIVES IT: read on day 0,
   // skipped on the rainy day 1, obeyed again on the dry day 2.
   DayWorld day(2);
@@ -1399,6 +1417,17 @@ int TestSawyersAreTheYardsCraftsmen() {
   world.units.rows[row_of(sawmill_id)].production_days_remaining = 0.0F;
   morning(0);
   failures += Expect(sawing() == 0, "sawyers: nor when the logs give no work");
+  // AWAY IN THE DISTRICT (district_car.h): the same saw with work, and every
+  // craftsman in the district's hospital — nobody saws, neither placed at
+  // the morning nor as an idle holder at hour 1 (the static loop of 23
+  // September found the second door open).
+  world.units.rows[row_of(sawmill_id)].production_days_remaining = 5.0F;
+  for (core::ResidentRow& resident : world.residents.rows) {
+    resident.away_reason = static_cast<std::uint8_t>(core::AwayReason::kHospital);
+    resident.away_until_day = 10;
+  }
+  morning(8);
+  failures += Expect(sawing() == 0, "sawyers: a craftsman in the district's hospital saws nothing");
   std::filesystem::remove_all(root);
   return failures;
 }

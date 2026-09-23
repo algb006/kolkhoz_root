@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_window.h"
 #include "core_common/geometry.h"
@@ -46,7 +47,9 @@ bool InsideDaylight(std::uint32_t hour, const DayWindow& window) {
 /// own to be at instead. The unit is not asked; the caller compares it.
 bool AtPostNow(const BoundaryConfig& config, const WorldState& world, const ResidentRow& resident) {
   const std::uint32_t profession = resident.post.profession.value;
-  if (profession == kInvalidDefIdValue) {
+  // Away in the district, he stands at no post (away_in_district.h) — the
+  // same answer DeriveWhereabouts gives, or the two would disagree.
+  if (profession == kInvalidDefIdValue || AwayInDistrict(resident, world.calendar.tick)) {
     return false;
   }
   const PostShift shift =
@@ -199,6 +202,30 @@ ResidentWhereabouts DeriveWhereabouts(const BoundaryConfig& config,
   }
   where.resident = resident;
   const ResidentRow& person = world.residents.rows[row];
+
+  // AWAY IN THE DISTRICT (district_car.h; away_in_district.h): in its
+  // hospital he is kAway, and on the last hours of it he is kOnTheRoad home.
+  // The road's start is the district's border, which the core does not place
+  // (district_road_mark of roads.csv, STUB): `from` stays unset, and the leg's
+  // ticks and its end — his house — are what the core can say.
+  if (AwayInDistrict(person, world.calendar.tick)) {
+    const std::uint32_t home_row = FindRow(world.families, person.family);
+    const UnitId home = home_row != kNoRow ? world.families.rows[home_row].house : UnitId{};
+    if (WalkingHomeFromDistrict(person, world.calendar.tick)) {
+      where.place = Whereabouts::kOnTheRoad;
+      where.unit = home;
+      where.to = UnitPosition(world, home);
+      where.arrives = AwayUntilTick(person);
+      // Saturated: a loaded row may carry an hour short of its walk, and a
+      // wrapped departure tick would put the leg 2^64 ticks in the future.
+      where.departed =
+          where.arrives > person.away_walk_hours ? where.arrives - person.away_walk_hours : 0;
+      return where;
+    }
+    where.place = Whereabouts::kAway;
+    where.arrives = AwayUntilTick(person);
+    return where;
+  }
 
   // The house is where he is when he is not at work, and it is also the
   // fallback address: a resident whose household has no house yet (genesis

@@ -235,6 +235,12 @@ struct CalendarState {
 // Calendar arithmetic — pure functions of the clocks
 // ---------------------------------------------------------------------------
 
+/// @brief The tick of `hour` on `day` — the inverse of SimDayFromTick and
+/// HourFromTick together.
+constexpr Tick TickOfDayHour(SimDay day, std::uint32_t hour) {
+  return (static_cast<Tick>(day) * kTicksPerDay) + hour;
+}
+
 constexpr SimDay SimDayFromTick(Tick tick) {
   return static_cast<SimDay>(tick / kTicksPerDay);
 }

@@ -44,6 +44,7 @@
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "demolition_stock.h"
+#include "district_car.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_trip.h"
@@ -197,6 +198,9 @@ class ProductionSystem final : public IProductionSystem {
     // The chairman's trip, its hour (district_trip.h): after the orders, so
     // a trip booked before 8:00 goes the same morning.
     RunDistrictTrip(config_, current);
+    // The district's ambulance, its hour (district_car.h): the car sent at
+    // the day's turn, at the house in the morning, the patient home again.
+    RunDistrictCars(config_, current);
     // A felling the crew finished this hour is lying on the ground this hour
     // (timber_felling.h) — the same reasoning as the field phases below.
     FellFinishedStands(config_, current);

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core_catalog/table_value.h"
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_window.h"
 #include "core_common/emit_event.h"
@@ -179,8 +180,9 @@ void GoOut(const NightTradeConfig& config, WorldState& current) {
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     const ResidentRow& person = current.residents.rows[row];
     Vec2 yard;
-    if (person.night_trade == NightTrade::kNone || !YardOf(current, person, yard)) {
-      continue;
+    if (person.night_trade == NightTrade::kNone || !YardOf(current, person, yard) ||
+        AwayInDistrict(person, current.calendar.tick)) {
+      continue;  // no trade, no yard, or in the district's hospital
     }
     switch (person.night_trade) {
       case NightTrade::kDistiller:

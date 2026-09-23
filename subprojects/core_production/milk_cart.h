@@ -32,6 +32,12 @@ namespace core {
 /// seq 213) — before this day the position does not stand.
 std::uint32_t MilkSeasonFirstDay();
 
+/// @brief Whether the milk position stands today, and so whether the
+/// district's cart comes every day: a plan named with milk in it, and the
+/// spring reached. Also the ride home a patient from the district's hospital
+/// takes (district_car.h) — out of it he walks in from the border.
+bool MilkPositionStands(const ProductionConfig& config, const WorldState& current);
+
 /// @brief Before the day's milking: every gram of milk the stores still hold
 /// — what the morning issue left — leaves for the district. Against the
 /// position while a plan stands (PlanState::delivered), outside any position

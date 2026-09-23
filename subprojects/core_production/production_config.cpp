@@ -967,7 +967,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 11> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 16> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -978,7 +978,12 @@ constexpr std::array<std::string_view, 11> kProductionWorldParamKeys = {
     "gather_alarm_horizon_days",
     "field_heap_keeping_factor",
     "mud_speed_factor",
-    "gather_alarm_snow_day"};
+    "gather_alarm_snow_day",
+    "ambulance_health_line",
+    "hospital_days",
+    "hospital_return_health",
+    "ambulance_arrive_hour",
+    "walk_home_hours"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -989,7 +994,10 @@ constexpr std::array<std::string_view, 11> kProductionWorldParamKeys = {
 ///
 /// AND THE MONTHS COME IN HUMAN 1..12 while everything downstream counts from
 /// zero, which is the same conversion the pasture and sowing windows get.
-bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std::string& error) {
+bool ParseProductionWorldParams(const ITable& world,
+                                FarmingConfig& farming,
+                                DistrictCarConfig& car,
+                                std::string& error) {
   float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
@@ -1034,7 +1042,23 @@ bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std
       // field (the static loop of 23 September).
       ScalarKnob{.key = kProductionWorldParamKeys[10],
                  .value = &farming.gather_alarm_snow_day,
-                 .range = Range{.low = 1.0F, .high = static_cast<float>(kDaysPerYear - 1U)}}};
+                 .range = Range{.low = 1.0F, .high = static_cast<float>(kDaysPerYear - 1U)}},
+      // The district's ambulance (district_car.h; boss seq 210).
+      ScalarKnob{.key = kProductionWorldParamKeys[11],
+                 .value = &car.health_line,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[12],
+                 .value = &car.hospital_days,
+                 .range = Range{.low = 1.0F, .high = static_cast<float>(kDaysPerYear)}},
+      ScalarKnob{.key = kProductionWorldParamKeys[13],
+                 .value = &car.return_health,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[14],
+                 .value = &car.arrive_hour,
+                 .range = Range{.low = 0.0F, .high = static_cast<float>(kTicksPerDay - 1U)}},
+      ScalarKnob{.key = kProductionWorldParamKeys[15],
+                 .value = &car.walk_home_hours,
+                 .range = Range{.low = 0.0F, .high = static_cast<float>(kTicksPerDay - 1U)}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
@@ -1049,7 +1073,7 @@ std::span<const std::string_view> ProductionWorldParamKeys() {
 
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
   if (const ITable* const world = tables.FindTable("world_params")) {
-    if (!ParseProductionWorldParams(*world, config.farming, error)) {
+    if (!ParseProductionWorldParams(*world, config.farming, config.district_car, error)) {
       return false;
     }
   }
