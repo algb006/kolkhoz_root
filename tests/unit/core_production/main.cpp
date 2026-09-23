@@ -3289,6 +3289,13 @@ int CheckTheChairmanCanUnsealAFund() {
             core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
         horses.adult_count = 40;
         core::AppendRow(previous.herds, horses);
+        // A granary of oats: the fund is laid out against what the stores
+        // hold (0.34.20), so a settlement with none holds no fund to open.
+        core::UnitRow granary;
+        granary.level = 1;
+        granary.stock.assign(resources->RowCount(), 0);
+        granary.stock[oat.value] = 100'000'000;
+        core::AppendRow(previous.units, granary);
         core::OrderRow order;
         order.kind = core::OrderKind::kUnsealFund;
         order.fund = fund;
@@ -5452,7 +5459,28 @@ int CheckTheFodderRungIsTheTeamsRationToTheNextOats() {
   team.kind = core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
   team.adult_count = 40;
   core::AppendRow(world.herds, team);
-  const double year = static_cast<double>(core::FodderFundGrams(config, world, oat));
+  // THE STORES, since the fund is laid out against what lies in them (host's
+  // barley trace, boss-core-epoch1-2 seq 1): a thousand tonnes of each grain.
+  const auto barley =
+      core::ResourceId{static_cast<std::uint16_t>(resources->FindRowByKey("barley"))};
+  core::UnitRow granary;
+  granary.level = 1;
+  granary.stock.assign(resources->RowCount(), 0);
+  granary.stock[oat.value] = 1'000'000'000;
+  granary.stock[barley.value] = 1'000'000'000;
+  core::AppendRow(world.units, granary);
+  // ONE WORK RATION: the year's fund (every fund feed at its own cap, the
+  // accumulation limit's base) is the oats' cap; the rung is the achievable
+  // work ration — traction_full_ration_share — down the feeding order.
+  float oat_share = 0.0F;
+  for (const core::FeedLinkDef& link : config.feed_links) {
+    if (link.resource.value == oat.value && link.work_only != 0) {
+      oat_share = link.max_share;
+      break;
+    }
+  }
+  const double year = static_cast<double>(core::FodderFundGrams(config, world, oat)) *
+                      static_cast<double>(config.farming.traction_full_ration_share / oat_share);
   const auto near = [year](core::Grams value, double days) {
     const double expected = year * days / static_cast<double>(core::kDaysPerYear);
     return std::abs(static_cast<double>(value) - expected) <= expected * 1.0e-4 + 1.0;
@@ -5465,6 +5493,81 @@ int CheckTheFodderRungIsTheTeamsRationToTheNextOats() {
                      "fodder rung: in May, the team's ration to the end of the oat reaping");
   failures += Expect(core::FodderClaimGrams(config, world, hay) == 0,
                      "fodder rung: hay is no work feed and holds nothing in rung 3");
+  // BARLEY IS A RESERVE: with oats enough in the store it is held not at all;
+  // with half the oats, it is held for the other half — at its lowered value.
+  failures += Expect(core::FodderClaimGrams(config, world, barley) == 0,
+                     "fodder rung: with oats enough, the barley reserve holds nothing");
+  {
+    core::WorldState short_oats = world;
+    const core::Grams half = may / 2;
+    short_oats.units.rows[0].stock[oat.value] = half;
+    const float oat_value = config.feed_values[oat.value];
+    const float barley_value =
+        config.feed_values[barley.value] * config.farming.reserve_feed_factor;
+    const double barley_expected = static_cast<double>(may - half) *
+                                   static_cast<double>(oat_value) /
+                                   static_cast<double>(barley_value);
+    const core::Grams oat_held = core::FodderClaimGrams(config, short_oats, oat);
+    const core::Grams barley_held = core::FodderClaimGrams(config, short_oats, barley);
+    std::cout << "fodder rung: oats short — oat " << static_cast<double>(oat_held) / 1.0e6
+              << " t, barley " << static_cast<double>(barley_held) / 1.0e6 << " t\n";
+    failures += Expect(oat_held == half,
+                       "fodder rung: the oats held are no more than the oats in the stores");
+    failures += Expect(std::abs(static_cast<double>(barley_held) - barley_expected) <=
+                           barley_expected * 1.0e-4 + 1.0,
+                       "fodder rung: with half the oats, barley is held for the other half");
+  }
+  // THROUGH THE HERD'S DOOR AND UNDER THE HARVEST CAP (the static loop of
+  // 23 September): oats the herd may not eat and oats the cap cuts off both
+  // leave their share to the barley. Barley reaped last year, so its own cap
+  // holds nothing back.
+  const auto barley_for_rest = [&](core::Grams ration, core::Grams oats) {
+    return static_cast<double>(ration - oats) * static_cast<double>(config.feed_values[oat.value]) /
+           static_cast<double>(config.feed_values[barley.value] *
+                               config.farming.reserve_feed_factor);
+  };
+  const auto barley_near = [](core::Grams value, double expected) {
+    return std::abs(static_cast<double>(value) - expected) <= expected * 1.0e-4 + 1.0;
+  };
+  {
+    // The plan holds all the oats but half the ration: the herd day eats
+    // above the plan rung only (FeedAllowance).
+    // The plan fills from THIS year's reaping, so the oats are in and the
+    // ration runs to next year's window: the half is of that ration.
+    core::WorldState planned = world;
+    planned.ledger.closed.harvest[barley.value] = 1'000'000'000;
+    planned.plan.due.assign(resources->RowCount(), 0);
+    planned.ledger.current.harvest[oat.value] = 1'000'000'000;
+    const core::Grams ration = core::FodderClaimGrams(config, planned, oat);
+    const core::Grams half = ration / 2;
+    planned.plan.due[oat.value] = 1'000'000'000 - half;
+    std::cout << "fodder rung: the plan holds the oats — ration "
+              << static_cast<double>(ration) / 1.0e6 << " t, oat "
+              << static_cast<double>(core::FodderClaimGrams(config, planned, oat)) / 1.0e6
+              << " t, barley "
+              << static_cast<double>(core::FodderClaimGrams(config, planned, barley)) / 1.0e6
+              << " t\n";
+    failures += Expect(ration > may && core::FodderClaimGrams(config, planned, oat) == half,
+                       "fodder rung: the plan's oats do not cover the team");
+    failures += Expect(
+        barley_near(core::FodderClaimGrams(config, planned, barley), barley_for_rest(ration, half)),
+        "fodder rung: barley is held for what the plan's oats leave uncovered");
+  }
+  {
+    // The second May: last year's oats reaping brought in half the ration.
+    core::WorldState capped = world;
+    capped.calendar.tick = (core::kDaysPerYear + 16U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(capped.calendar);
+    capped.ledger.closed.harvest[barley.value] = 1'000'000'000;
+    const core::Grams ration = core::FodderClaimGrams(config, capped, oat);
+    const core::Grams half = ration / 2;
+    capped.ledger.closed.harvest[oat.value] = half;
+    failures += Expect(ration > 0 && core::FodderClaimGrams(config, capped, oat) == half,
+                       "fodder rung: the oats held are no more than last year's reaping");
+    failures += Expect(
+        barley_near(core::FodderClaimGrams(config, capped, barley), barley_for_rest(ration, half)),
+        "fodder rung: barley is held for what the oat cap cut off");
+  }
   // BREAD GRAIN NEVER (boss seq 21; feed_links.csv fodder_fund): rye is a
   // work feed of the horse's, and it is not the fund's. Sized off every work
   // feed, the rung held it — and thirty_years failed a plan year for it.

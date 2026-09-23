@@ -757,6 +757,13 @@ int TestResidentActivity() {
                      "a child in the daytime is at school, not idling");
   failures += Expect(at(2, 10.0F).activity == core::ResidentActivity::kAtHome,
                      "and at night he is at home: school does not run round the clock");
+  // A GRAVE CHILD WAITING FOR THE DISTRICT'S CAR goes to no school (boss,
+  // boss-core-epoch1-2 seq 3, 1): the same ten-year-old in daylight.
+  world.residents.rows[0].away_reason =
+      static_cast<std::uint8_t>(core::AwayReason::kAwaitingAmbulance);
+  failures += Expect(at(10, 10.0F).activity != core::ResidentActivity::kStudying,
+                     "a child waiting for the district's car lies at home, not at school");
+  world.residents.rows[0].away_reason = static_cast<std::uint8_t>(core::AwayReason::kNone);
 
   // THE WATCHMAN (boss, parcel 360): a night post holds him at his unit from
   // sunset to sunrise; by day he is at home, as his day's sleep is a STUB.
@@ -775,6 +782,12 @@ int TestResidentActivity() {
              "the watchman at midnight is working at the yard he keeps");
   failures += Expect(at(12, 60.0F).activity != core::ResidentActivity::kWorking,
                      "and at noon he is not at his post");
+  // The same watchman waiting for the district's car keeps no watch — the
+  // answer the post signal and the shift announcement give (0.34.19).
+  world.residents.rows[0].away_reason =
+      static_cast<std::uint8_t>(core::AwayReason::kAwaitingAmbulance);
+  failures += Expect(at(0, 60.0F).activity != core::ResidentActivity::kWorking,
+                     "a watchman waiting for the district's car is not at his post at midnight");
   return failures;
 }
 

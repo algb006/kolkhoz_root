@@ -95,13 +95,18 @@ Grams FodderFundGrams(const ProductionConfig& config,
                       const WorldState& current,
                       ResourceId resource);
 
-/// @brief RUNG 3 OF THE LADDER TODAY, grams of one work feed: what the
-/// kolkhoz's working stock will still eat of it until its next reaping,
-/// capped by the last reaping of it (boss, boss-core-epoch1-resume seq 14,
-/// answer 2). Not the year's fund above: that one is the unsealing's old
+/// @brief RUNG 3 OF THE LADDER TODAY, grams of one fund feed: its share of
+/// ONE work ration of the kolkhoz's working stock until the next reaping of
+/// the kind's staple, laid down the feeding order — the staple as far as the
+/// herd may eat of it (FeedAllowance, capped by its last reaping: boss,
+/// boss-core-epoch1-resume seq 14, answer 2) and its max_share lets it cover,
+/// a reserve feed only for the rest (host's barley trace, boss-core-epoch1-2
+/// seq 1). Not the year's fund above: that one is the unsealing's old
 /// ceiling and the accumulation limit's base, and a year held in April
 /// starves the spring beside a store the team cannot eat by August.
-/// @return 0 for a resource that is no work feed.
+/// @return 0 for a resource that is no fund feed; never more than the
+/// allowance of it, so the answer moves with the stores and with the other
+/// fund feeds.
 Grams FodderClaimGrams(const ProductionConfig& config,
                        const WorldState& current,
                        ResourceId resource);

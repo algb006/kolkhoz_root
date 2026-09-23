@@ -187,8 +187,11 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   if (Inside(hour, rules.meal_hour, rules.meal_hour + 1.0F)) {
     set(ResidentActivity::kEating);
   }
+  // A GRAVE CHILD LIES AT HOME and goes to no school, waiting for the car or
+  // away in the district (boss, boss-core-epoch1-2 seq 3, 1): school is as
+  // much "busy" as the day's work, and OffWork is its one question.
   if (age_years >= rules.school_from_bio_years && age_years < rules.school_to_bio_years &&
-      Inside(hour, window.sunrise, window.sunset)) {
+      Inside(hour, window.sunrise, window.sunset) && !OffWork(resident, world.calendar.tick)) {
     set(ResidentActivity::kStudying);
   }
   // INVENTED SCHEDULE, and it is invented rather than missing. The yard's

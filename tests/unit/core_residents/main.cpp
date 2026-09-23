@@ -311,6 +311,17 @@ int CheckExchange() {
     core::RunFamilyExchange(config, 4.0F, world);
     failures += Expect(PantryOf(world, 0) == 8 * kKilo,
                        "the ration is 2 kg an eater a day over the 4-day period");
+    // A second adult of the yard lies in the district's hospital: the
+    // district's bread feeds him, so the yard's ration is still one eater's
+    // (boss, boss-core-epoch1-2 seq 1, answer 4).
+    core::WorldState halved = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+    core::ResidentRow away = halved.residents.rows[0];
+    away.away_reason = static_cast<std::uint8_t>(core::AwayReason::kHospital);
+    away.away_until_day = 30;
+    AppendRow(halved.residents, away);
+    core::RunFamilyExchange(config, 4.0F, halved);
+    failures += Expect(PantryOf(halved, 0) == 8 * kKilo,
+                       "the member away in the district is no eater of the yard's ration");
     failures +=
         Expect(world.families.rows[0].trudodni_redeemed == 0, "the ration costs no trudodni");
     core::WorldState fed = MakeExchangeWorld(100.0F, 100.0F, 0, 70.0F);

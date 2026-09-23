@@ -267,6 +267,28 @@ struct WorkRation {
   float covered = 0.0F;
 };
 
+/// Feed units a kilogram of this link's feed gives. A reserve ration covers
+/// less than it weighs: the design says "with a lowered effect" and names no
+/// number, so one multiplier stands in for all of them until polish question
+/// P22n settles what it hides. ONE HOME for the herd day and the fodder fund
+/// (FodderClaim), which must lay a ration out exactly as the day eats it.
+float FeedLinkValue(const ProductionConfig& config, const FeedLinkDef& link) {
+  if (link.resource.value >= config.feed_values.size()) {
+    return 0.0F;
+  }
+  return config.feed_values[link.resource.value] *
+         (link.reserve != 0 ? config.farming.reserve_feed_factor : 1.0F);
+}
+
+/// Feed units this link may cover of a day's `need_units`. The order says
+/// what to spend FIRST; the cap says how much of it the animal can eat at
+/// all. Without the cap the model lies twice over: a ruminant would live on
+/// grain alone, and the first horse in the village would eat its whole year
+/// of oats by itself. One home with FeedLinkValue's, and for the same reason.
+float FeedLinkRoom(const FeedLinkDef& link, float need_units, float working_share) {
+  return need_units * link.max_share * (link.work_only != 0 ? working_share : 1.0F);
+}
+
 /// Feeds one herd down the feeding order of feed_links.csv. ROW ORDER IS THE
 /// PRIORITY — staple before reserve, own feed before bought concentrate,
 /// fodder grain before bread grain — and nothing is sorted here: the order
@@ -325,19 +347,11 @@ float RunFeeding(const ProductionConfig& config,
     if (link.kind.value != kind_id.value || link.resource.value >= config.feed_values.size()) {
       continue;
     }
-    // A reserve ration covers less than it weighs: the design says "with a
-    // lowered effect" and names no number, so one multiplier stands in for
-    // all of them until polish question P22n settles what it hides.
-    const float value = config.feed_values[link.resource.value] *
-                        (link.reserve != 0 ? config.farming.reserve_feed_factor : 1.0F);
+    const float value = FeedLinkValue(config, link);
     if (!(value > 0.0F)) {
       continue;
     }
-    // The order says what to spend FIRST; the cap says how much of it the
-    // animal can eat at all. Without the cap the model lies twice over: a
-    // ruminant would live on grain alone, and the first horse in the village
-    // would eat its whole year of oats by itself.
-    const float room = need_units * link.max_share * (link.work_only != 0 ? working_share : 1.0F);
+    const float room = FeedLinkRoom(link, need_units, working_share);
     float take_units = need_units - covered;
     take_units = take_units < room ? take_units : room;
     if (!(take_units > 0.0F)) {
@@ -872,51 +886,107 @@ Grams FodderFundGrams(const ProductionConfig& config,
 Grams FodderClaimGrams(const ProductionConfig& config,
                        const WorldState& current,
                        ResourceId resource) {
-  // ONLY A FEED THE DESIGN NAMES FOR THE FUND (FeedLinkDef::fodder_fund):
-  // the horse's oats and barley. Sized off every work feed, the fund held
-  // one horse-day six times over, bread grain among it.
-  bool in_fund = false;
-  for (const FeedLinkDef& link : config.feed_links) {
-    in_fund = in_fund || (link.fodder_fund != 0 && link.resource.value == resource.value);
-  }
-  if (!in_fund) {
-    return 0;
-  }
-  const WorkFeedDay day = WorkFeedDayOf(config, current, resource);
-  if (!(day.value > 0.0F) || !(day.share > 0.0F)) {
-    return 0;
-  }
-  // THE TEAM'S RATION UNTIL THE NEXT OATS ARE IN (boss seq 14, answer 2):
-  // what the working stock will still eat of this feed before its next
-  // reaping, and no more than the last reaping of it brought in — the plan
-  // rung's own shape, filled by the harvest and not by the calendar. A year's
-  // ration held in April would starve the spring beside a store the team
-  // cannot eat in the four months left.
-  const float days = static_cast<float>(DaysToNextReaping(config, current, resource));
-  const Grams need = GramsFromKilograms(day.units * days * day.share / day.value);
-  const ResourceAmounts& this_year = current.ledger.current.harvest;
-  const ResourceAmounts& last_year = current.ledger.closed.harvest;
-  const Grams reaped_now = resource.value < this_year.size() ? this_year[resource.value] : 0;
-  const Grams reaped_before = resource.value < last_year.size() ? last_year[resource.value] : 0;
-  // THE FIRST YEAR HAS NO LAST REAPING, and the start stock stands in for
-  // it: the campaign opens with oats that no harvest of this village brought
-  // in, and a cap read off an empty book would size the fund at nought —
-  // the winter's decision dead in the very year boss's answer keeps it alive
-  // (seq 17: "max keeps the winter decision alive in year 1"). Before the
-  // first reaping of it in the campaign, the need alone.
-  const bool first_year_unreaped =
-      reaped_now == 0 && current.calendar.day < static_cast<SimDay>(kDaysPerYear);
-  if (first_year_unreaped) {
-    return need;
-  }
-  const Grams cap = reaped_now > 0 ? reaped_now : reaped_before;
-  return need < cap ? need : cap;
+  const ResourceAmounts claim = FodderClaim(config, current);
+  return resource.value < claim.size() ? claim[resource.value] : 0;
 }
 
 ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& current) {
   ResourceAmounts claim(config.feed_values.size(), 0);
-  for (std::size_t index = 0; index < claim.size(); ++index) {
-    claim[index] = FodderClaimGrams(config, current, DefIdFromIndex<ResourceIdTag>(index));
+  // What each feed can still give the fund, spent kind by kind as the ration
+  // is laid out, so two working kinds cannot both count the same sack.
+  //
+  // THROUGH THE HERD'S OWN DOOR (the static loop of 23 September): the walk
+  // first read every sack in the stores, the plan's oats included, which the
+  // herd day never eats (FeedAllowance) — so oats held for the district
+  // "covered" the team, the barley went out in the issue, and the team was
+  // left with neither. The seed oats DO count: the herds stay below the plan
+  // rung only, pending boss's answer on the seed fund (FeedAllowance).
+  //
+  // FILLED BY THE HARVEST, NOT BY THE CALENDAR (boss seq 14, answer 2): no
+  // more of a feed than its last reaping brought in. THE FIRST YEAR HAS NO
+  // LAST REAPING, and the start stock stands in for it (boss seq 17: the
+  // winter decision must live in year 1): before the first reaping of a feed
+  // in the campaign, no cap. The cap was applied after the walk until the
+  // same loop, and what it cut off a staple no reserve then took up.
+  ResourceAmounts stock = FeedAllowance(config, current);
+  stock.resize(claim.size(), 0);
+  const ResourceAmounts& this_year = current.ledger.current.harvest;
+  const ResourceAmounts& last_year = current.ledger.closed.harvest;
+  for (std::size_t index = 0; index < stock.size(); ++index) {
+    const Grams reaped_now = index < this_year.size() ? this_year[index] : 0;
+    const Grams reaped_before = index < last_year.size() ? last_year[index] : 0;
+    const bool first_year_unreaped =
+        reaped_now == 0 && current.calendar.day < static_cast<SimDay>(kDaysPerYear);
+    if (first_year_unreaped) {
+      continue;
+    }
+    const Grams cap = reaped_now > 0 ? reaped_now : reaped_before;
+    stock[index] = stock[index] < cap ? stock[index] : cap;
+  }
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  for (std::uint32_t kind = 0; kind < config.livestock.size(); ++kind) {
+    // THE TEAM'S NEED, ONCE (host's barley trace, boss-core-epoch1-2 seq 1):
+    // the fund held each fund feed at its own cap — oats 0.5 AND barley 0.4
+    // of the ration, at once — and barley, a reserve eaten only when oats
+    // run out, was held about thirty times what the horses ate of it: all
+    // the barley kept from the people in winter and let out in March. The
+    // fund holds "the annual NEED of working stock" (resources design §6):
+    // one work ration, the same achievable ration the traction ratio is
+    // measured against, laid out down the feeding order below.
+    float need_day = 0.0F;
+    for (const HerdRow& herd : current.herds.rows) {
+      if (herd.household_owned == 0 && herd.kind.value == kind) {
+        // FALSE: the fund does not count on the night pasture — the
+        // chairman's order and the children make it, and a reserve sized
+        // against a gain that can stop is short in the year it stops.
+        need_day += FeedNeedUnits(config, config.livestock[kind], herd, month, false);
+      }
+    }
+    if (!(need_day > 0.0F)) {
+      continue;
+    }
+    // Until the next reaping of the kind's STAPLE fund feed — the first in
+    // the feeding order: when it comes in, the rung fills again.
+    float days = -1.0F;
+    for (const FeedLinkDef& link : config.feed_links) {
+      if (link.kind.value == kind && link.fodder_fund != 0) {
+        days = static_cast<float>(DaysToNextReaping(config, current, link.resource));
+        break;
+      }
+    }
+    if (!(days > 0.0F)) {
+      continue;  // this kind has no fund feed
+    }
+    float owed = need_day * config.farming.traction_full_ration_share * days;
+    // DOWN THE FEEDING ORDER, as the herd day eats it (FeedLinkValue,
+    // FeedLinkRoom — the one home of both): the staple first, as far as it
+    // lies in the stores and its cap lets it cover; a reserve only for what
+    // the staple cannot.
+    for (const FeedLinkDef& link : config.feed_links) {
+      if (!(owed > 0.0F)) {
+        break;
+      }
+      if (link.kind.value != kind || link.fodder_fund == 0 || link.resource.value >= claim.size()) {
+        continue;
+      }
+      const float value = FeedLinkValue(config, link);
+      if (!(value > 0.0F)) {
+        continue;
+      }
+      const float room = FeedLinkRoom(link, need_day, 1.0F) * days;
+      const float in_store = static_cast<float>(stock[link.resource.value]) /
+                             static_cast<float>(kGramsPerKilogram) * value;
+      float units = owed < room ? owed : room;
+      units = units < in_store ? units : in_store;
+      if (!(units > 0.0F)) {
+        continue;
+      }
+      const Grams grams = GramsFromKilograms(units / value);
+      claim[link.resource.value] += grams;
+      stock[link.resource.value] -=
+          grams < stock[link.resource.value] ? grams : stock[link.resource.value];
+      owed -= units;
+    }
   }
   return claim;
 }
