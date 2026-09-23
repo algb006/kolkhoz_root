@@ -332,6 +332,9 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   EmitResourceBlock(out, resources, "seized", book.seized);
   EmitResourceBlock(out, resources, "spoiled", book.spoiled);
   EmitResourceBlock(out, resources, "seed", book.seed);
+  // EVERYTHING SHIPPED, NOT THE POSITION MET: the milk cart books milk sent
+  // outside any position here too (milk_cart.cpp), so delivered >= due does
+  // not mean the position held — plan_verdict says that (manual/68 §5).
   EmitResourceBlock(out, resources, "delivered", book.delivered);
   // What the district asked by position (M12): beside `delivered`, the
   // year's lost_no_room and issued, a failed position names its cause.

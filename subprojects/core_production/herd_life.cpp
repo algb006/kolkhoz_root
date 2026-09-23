@@ -23,6 +23,12 @@
 namespace core {
 namespace {
 
+/// The share of the day's ration below which a kolkhoz herd adds no calving
+/// progress that day (boss seq 19, B). STUB: core's number, three quarters
+/// of the ration — a herd fed that far is short, not starving. It belongs in
+/// world_params once boss names the key.
+constexpr float kCalvingFedShareFloor = 0.75F;
+
 /// @brief Moves `count` whole heads out of a rung, never below zero.
 std::uint16_t TakeHeads(std::uint16_t& rung, std::uint16_t count) {
   const std::uint16_t taken = count < rung ? count : rung;
@@ -318,6 +324,13 @@ void RunBirths(const ProductionConfig& config,
     }
   } else if (herd.billeted_count > 0) {
     return;  // no room: they breed under a roof and only when there is space
+  } else if (herd.fed_share < kCalvingFedShareFloor) {
+    // A HUNGRY HERD DOES NOT CALVE (boss, boss-core-epoch1-2 seq 19, B): the
+    // natural brake. The billet gate above was the only one, so a herd given
+    // every yard of its kind grew to three times what the hay fed, starved
+    // and failed the milk position named off its January size — 41 plan
+    // years on nine seeds. A day short of the ration adds no birth progress.
+    return;
   }
   // A sire is required only of a kind that KEEPS sires. `males_share == 0`
   // says the table does not model males for this kind at all — the goat is

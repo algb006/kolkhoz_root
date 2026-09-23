@@ -361,6 +361,22 @@ int CheckBilletingAndProduce() {
     failures += Expect(herd.birth_progress == 0.0F, "and a full roof stops the offspring");
   }
 
+  // A HUNGRY HERD DOES NOT CALVE (boss seq 19, B): the same ten under the
+  // same roof, one with hay in the store and one with none. The pair.
+  {
+    core::WorldState fed = MakeHerdWorld(1000.0F);
+    AddHerd(fed, 0, 10, 5, true);
+    core::RunHerdDay(config, fed);
+    core::WorldState hungry = MakeHerdWorld(0.0F);
+    AddHerd(hungry, 0, 10, 5, true);
+    core::RunHerdDay(config, hungry);
+    failures += Expect(fed.herds.rows[0].birth_progress > 0.0F,
+                       "a fed herd under its roof moves towards calving");
+    failures += Expect(
+        hungry.herds.rows[0].fed_share < 0.75F && hungry.herds.rows[0].birth_progress == 0.0F,
+        "a hungry herd under the same roof does not");
+  }
+
   // A kolkhoz herd with no roof at all — the sixteen start horses — is
   // billeted whole and still eats from the farm's store.
   {
