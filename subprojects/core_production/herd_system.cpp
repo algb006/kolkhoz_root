@@ -7,8 +7,10 @@
 
 #include "herd_system.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -175,9 +177,43 @@ void RunBilleting(const HerdRow& herd,
     billeted = AsHeads(heads);
     return;
   }
-  const float housed = heads < room[unit_row] ? heads : room[unit_row];
-  room[unit_row] -= housed;
-  billeted = AsHeads(heads - housed);
+  // THE HERD'S ROOM IS EVERY YARD OF ITS KIND (livestock design, 0093a1cb;
+  // boss, boss-core-epoch1-2 seq 13): its own yard first, then the other
+  // yards of the same TYPE, nearest first. Only the own yard's room counted
+  // until 0.34.25, so the first calf past 24 put the herd on billet and the
+  // births gate shut for the year beside a builder's seven empty yards. The
+  // tables name no kind for a yard, so "of its kind" is read as "of the
+  // type the herd stands in" — cattle yard, horse yard, poultry farm (boss
+  // seq 15). STUB: the herd stays ONE row; which yard shows which heads is
+  // the layer's to lay out, and splitting the row by yard waits until the
+  // layer draws herds per yard (boss seq 15).
+  float left = heads;
+  const float at_home = left < room[unit_row] ? left : room[unit_row];
+  room[unit_row] -= at_home;
+  left -= at_home;
+  if (left > 0.0F) {
+    const UnitRow& home = world.units.rows[unit_row];
+    std::vector<std::pair<float, std::uint32_t>> others;
+    for (std::uint32_t row = 0; row < world.units.rows.size() && row < room.size(); ++row) {
+      const UnitRow& unit = world.units.rows[row];
+      if (row == unit_row || unit.type.value != home.type.value || !(room[row] > 0.0F)) {
+        continue;
+      }
+      const float dx = unit.position.x - home.position.x;
+      const float dy = unit.position.y - home.position.y;
+      others.emplace_back((dx * dx) + (dy * dy), row);
+    }
+    std::sort(others.begin(), others.end());  // nearest first; ties by row
+    for (const auto& [distance_sq, row] : others) {
+      if (!(left > 0.0F)) {
+        break;
+      }
+      const float housed = left < room[row] ? left : room[row];
+      room[row] -= housed;
+      left -= housed;
+    }
+  }
+  billeted = AsHeads(left);
 }
 
 /// @brief Share of the draught animals that went out to work today, 0..1.

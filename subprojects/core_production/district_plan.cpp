@@ -276,9 +276,25 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   if (config.milk_resource.value == kInvalidDefIdValue || !(config.plan_milk_share > 0.0F)) {
     return;
   }
-  const auto share =
-      static_cast<Grams>(std::llround(static_cast<double>(KolkhozMilkDayGrams(config, current)) *
-                                      static_cast<double>(config.plan_milk_share)));
+  // OFF LAST YEAR'S AVERAGE HERD, NOT JANUARY'S (boss, boss-core-epoch1-2
+  // seq 21, option 1): the milk the kolkhoz herds gave over the closing year,
+  // a day of it. The January day was the worst point on a herd that swings:
+  // a cohort grown in the good years and dying off together named a position
+  // in January that the summer herd could not give — 43 failed plan years on
+  // nine seeds once every yard held the herd. At the turn `ledger.current`
+  // is still the closing year (the events slot rotates it later this tick,
+  // as the limit grant beside it relies on). The FIRST year has no closing
+  // year, and the start herd's January day stands in.
+  const bool closing_year_booked = current.calendar.tick >= kTicksPerYear;
+  const ResourceAmounts& closing_produce = current.ledger.current.herd_produce;
+  const Grams milk_day =
+      closing_year_booked
+          ? (config.milk_resource.value < closing_produce.size()
+                 ? closing_produce[config.milk_resource.value] / static_cast<Grams>(kDaysPerYear)
+                 : 0)
+          : KolkhozMilkDayGrams(config, current);
+  const auto share = static_cast<Grams>(
+      std::llround(static_cast<double>(milk_day) * static_cast<double>(config.plan_milk_share)));
   // THE MILK COUNTS FROM THE SPRING (boss seq 213): the letter comes in
   // January, and the position is still the milking days from the first day
   // of spring to the turn — the cart does not come in the winter.

@@ -537,6 +537,12 @@ struct FarmingConfig {
   /// share of the herd. ASSUMPTION.
   float billet_yield_factor = 0.6F;
 
+  /// A HUNGRY HERD DOES NOT CALVE (world_params.csv `calving_fed_share_floor`,
+  /// boss seq 19 and 21; livestock design): the share of the day's ration
+  /// below which a kolkhoz herd adds no calving progress that day. STUB,
+  /// core's number.
+  float calving_fed_share_floor = 0.75F;
+
   /// HOW MANY HEAD OF KOLKHOZ STOCK ONE YARD CAN BILLET (world_params.csv
   /// `billet_heads_per_yard`, source `measurement`). Until 2026-09-16 there
   /// was no ceiling at all, and a village of twenty-one households could

@@ -38,6 +38,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
+#include "core_common/stock_forecast.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
@@ -80,6 +81,7 @@ class FixturePolicy {
   void RunDay(core::ISimulation& simulation) {
     CountWaitStreaks(simulation.CompletedState());
     NoteStoreDays(simulation.CompletedState());
+    NoteFeedLight(simulation);
     if (cooldown_ > 0) {
       --cooldown_;
       return;
@@ -238,21 +240,46 @@ class FixturePolicy {
     return built;
   }
 
-  /// @brief Whether the kolkhoz animals have a roof over all of them. The
-  /// billeted count is the herd system's own answer to that question, so the
-  /// fixture asks it rather than guessing at capacities.
-  static bool RoofWasShort(const core::WorldState& world) {
+  /// @brief Whether some kolkhoz animals stand without a roof, and the herd
+  /// they belong to is fed. The billeted count is the herd system's own
+  /// answer to the first half, so the fixture asks it rather than guessing
+  /// at capacities.
+  ///
+  /// IT ASKED THE OPPOSITE until 0.34.25: "short" whenever a single head
+  /// stood UNDER a roof (heads > billeted), which is nearly always, so the
+  /// builder raised seven to fourteen cattle yards for twenty cows. Harmless
+  /// while a herd counted its own yard only; once every yard of its kind
+  /// held it (boss seq 13) the herd bred into them, swung to fifty cows and
+  /// back, and failed the milk position in 43 plan years on nine seeds.
+  ///
+  /// AND ONLY WHILE THE WINTER'S FODDER HOLDS (boss seq 21, option 3): a
+  /// chairman does not raise a yard for a herd his hay cannot keep — the
+  /// roof would only hold more hungry animals. Asked of the office's own
+  /// feed light, the fodder-days against the WINTER ration: today's fed
+  /// share was tried first and said "fed" all summer at pasture, so the
+  /// builder still raised fourteen yards and the herd still swung.
+  bool RoofWasShort(const core::WorldState& world) const {
+    if (!feed_holds_) {
+      return false;
+    }
     for (const core::HerdRow& herd : world.herds.rows) {
-      if (herd.household_owned != 0) {
-        continue;
-      }
-      const std::uint32_t heads =
-          static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
-      if (heads > herd.billeted_count) {
+      if (herd.household_owned == 0 && herd.billeted_count > 0) {
         return true;
       }
     }
     return false;
+  }
+
+  /// Reads the day's feed light off the simulation, for RoofWasShort.
+  void NoteFeedLight(const core::ISimulation& simulation) {
+    std::vector<core::StockForecast> lights;
+    simulation.CollectStockForecast(lights);
+    feed_holds_ = false;
+    for (const core::StockForecast& light : lights) {
+      if (light.kind == core::StockKind::kFeed) {
+        feed_holds_ = light.light == core::StockLight::kGreen;
+      }
+    }
   }
 
   /// @brief Whether the village is short of somewhere to put its harvest.
@@ -528,6 +555,9 @@ class FixturePolicy {
   core::UnitTypeId granary_;
 
   core::UnitTypeId cattle_;
+
+  /// The day's feed light is green (NoteFeedLight): the winter's fodder holds.
+  bool feed_holds_ = false;
 
   /// The granary's parent by unit_types.csv — the food yard.
   core::UnitTypeId granary_yard_;

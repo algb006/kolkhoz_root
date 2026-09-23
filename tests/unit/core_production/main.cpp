@@ -361,6 +361,38 @@ int CheckBilletingAndProduce() {
     failures += Expect(herd.birth_progress == 0.0F, "and a full roof stops the offspring");
   }
 
+  // EVERY YARD OF ITS KIND (boss, boss-core-epoch1-2 seq 13 and 15): a second
+  // barn of the same type holds the ten the first cannot, so nobody stands
+  // on billet and the offspring go on; a building of ANOTHER type with room
+  // right beside it holds none of them — the pair.
+  {
+    core::ProductionConfig two_types = config;
+    two_types.unit_types.resize(2);
+    SetLivestockHead(two_types.unit_types[1], 10.0F);
+    const auto world_with = [](std::uint16_t heads) {
+      core::WorldState world = MakeHerdWorld(1000.0F);
+      core::UnitRow second_barn = world.units.rows[0];
+      second_barn.position = core::Vec2{.x = 500.0F, .y = 0.0F};
+      second_barn.stock.assign(3, 0);
+      core::AppendRow(world.units, second_barn);
+      core::UnitRow other_type = second_barn;
+      other_type.type = core::UnitTypeId{1};
+      other_type.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+      core::AppendRow(world.units, other_type);
+      AddHerd(world, 0, heads, heads / 2U, true);
+      return world;
+    };
+    core::WorldState fits = world_with(20);
+    core::RunHerdDay(two_types, fits);
+    failures +=
+        Expect(fits.herds.rows[0].billeted_count == 0 && fits.herds.rows[0].birth_progress > 0.0F,
+               "a second yard of the same type holds the overflow, and births go on");
+    core::WorldState overflows = world_with(30);
+    core::RunHerdDay(two_types, overflows);
+    failures += Expect(overflows.herds.rows[0].billeted_count == 10,
+                       "and a building of another type beside it holds none of the herd");
+  }
+
   // A HUNGRY HERD DOES NOT CALVE (boss seq 19, B): the same ten under the
   // same roof, one with hay in the store and one with none. The pair.
   {
@@ -5783,6 +5815,20 @@ int CheckTheMilkCart() {
   failures += Expect(world.plan.milk_daily_share == 40 * kKilo &&
                          core::AmountOf(world.plan.due, milk) == 1600 * kKilo,
                      "milk: the share is half the day, the position the share x days to the turn");
+  // FROM THE SECOND YEAR, OFF THE CLOSING YEAR'S HERD (boss seq 21, option
+  // 1): the same ten cows today, but the year behind gave 1440 kg — 30 kg a
+  // day, a share of 15 — and that is what the district names, not today's 80.
+  {
+    core::WorldState turn = world;
+    turn.plan = core::PlanState{};
+    turn.calendar.tick = static_cast<core::Tick>(core::kTicksPerYear);
+    core::RefreshCalendarCaches(turn.calendar);
+    turn.ledger.current.herd_produce.assign(3, 0);
+    turn.ledger.current.herd_produce[1] = 1440 * kKilo;
+    core::AnnouncePlan(config, turn);
+    failures += Expect(turn.plan.milk_daily_share == 15 * kKilo,
+                       "milk: from the second year the share is off the closing year's herd");
+  }
 
   // The day's share leaves at the milking; the rest waits for the issue.
   world.units.rows[0].stock[1] = 50 * kKilo;

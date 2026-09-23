@@ -967,7 +967,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 16> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 17> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -983,7 +983,8 @@ constexpr std::array<std::string_view, 16> kProductionWorldParamKeys = {
     "hospital_days",
     "hospital_return_health",
     "ambulance_arrive_hour",
-    "walk_home_hours"};
+    "walk_home_hours",
+    "calving_fed_share_floor"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1058,7 +1059,12 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = static_cast<float>(kTicksPerDay - 1U)}},
       ScalarKnob{.key = kProductionWorldParamKeys[15],
                  .value = &car.walk_home_hours,
-                 .range = Range{.low = 0.0F, .high = static_cast<float>(kTicksPerDay - 1U)}}};
+                 .range = Range{.low = 0.0F, .high = static_cast<float>(kTicksPerDay - 1U)}},
+      // A share of the ration: 0 would let a starving herd calve, 1 only a
+      // herd fed to the gram (boss seq 19, B).
+      ScalarKnob{.key = kProductionWorldParamKeys[16],
+                 .value = &farming.calving_fed_share_floor,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
