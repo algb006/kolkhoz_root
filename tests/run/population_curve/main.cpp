@@ -194,6 +194,7 @@ struct Trajectory {
   run::SocialObjectsPolicy::Held social_held;
   /// Where the logs went, year by year (timber_flow_tally.h).
   std::vector<run::TimberFlowTally::Year> timber;
+  std::int64_t first_sawmill_day = -1;
   /// The standing kolkhoz buildings by the era their SECOND rung opens in:
   /// Epoch I, a later era, or no second rung at all. Three counts that must
   /// sum to `units_standing`, printed beside it.
@@ -515,6 +516,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
   out.social_held = builder.social.held();
   out.timber = timber.years();
+  out.first_sawmill_day = timber.first_sawmill_day();
   out.transition_calendar_year = builder.transition.YearTaken();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
@@ -878,6 +880,15 @@ int main(int argc, char** argv) {
         total.load_tonnes_on_carted_days += y.load_tonnes_on_carted_days;
         total.carted_off_tonnes += y.carted_off_tonnes;
         total.carter_days_before += y.carter_days_before;
+        total.sawmill_days += y.sawmill_days;
+        total.sawmill_demand_days += y.sawmill_demand_days;
+        total.sawmill_dead_days += y.sawmill_dead_days;
+        total.sawmill_unbuilt_days += y.sawmill_unbuilt_days;
+        total.sawmill_paused_days += y.sawmill_paused_days;
+        total.sawyer_days += y.sawyer_days;
+        total.boards_to_sites += y.boards_to_sites;
+        total.boards_to_upgrades += y.boards_to_upgrades;
+        total.boards_in_stores += y.boards_in_stores;
       }
     }
     const double nine = static_cast<double>(walks.size());
@@ -895,6 +906,30 @@ int main(int argc, char** argv) {
     // WHY THE LOGS LAY (boss seq 27, step 2): stand-days with a load, by the
     // first reason — the carting demand is sized to what the stores can take
     // in, so "no demand" reads "no room to receive", not "nobody asked".
+    // THE BOARDS (boss, boss-core-epoch1-3 seq 3): means of nine over the
+    // 33 years; a sawmill-day is one it stood at level and unpaused.
+    std::cout << "population_curve: boards, means of " << walks.size() << " — sawmill-days "
+              << static_cast<double>(total.sawmill_days) / nine << " of "
+              << 33U * core::kDaysPerYear << ", with sawing demand "
+              << static_cast<double>(total.sawmill_demand_days) / nine << ", sawyer-days "
+              << total.sawyer_days / nine << ", boards onto sites " << total.boards_to_sites / nine
+              << " t (of them upgrades " << total.boards_to_upgrades / nine
+              << " t), in the stores at the turn, mean over village-years "
+              << (years_seen > 0 ? total.boards_in_stores / static_cast<double>(years_seen) : 0.0)
+              << " t; boards made NOT MEASURED (the sawmill books no column)\n";
+    std::cout << "population_curve: sawmill row-days that could not work, means of " << walks.size()
+              << " — dead " << static_cast<double>(total.sawmill_dead_days) / nine
+              << ", a site at level 0 " << static_cast<double>(total.sawmill_unbuilt_days) / nine
+              << ", paused " << static_cast<double>(total.sawmill_paused_days) / nine << '\n';
+    std::cout << "population_curve: the first sawmill standing, campaign year per village:";
+    for (const Trajectory& walk : walks) {
+      if (walk.first_sawmill_day < 0) {
+        std::cout << " never";
+      } else {
+        std::cout << ' ' << (walk.first_sawmill_day / core::kDaysPerYear) + 1;
+      }
+    }
+    std::cout << '\n';
     std::cout << "population_curve: stand-days with logs lying, sum of " << walks.size()
               << " — no carting demand (the stores could take none) " << total.lying_no_demand
               << ", demand and no carter " << total.lying_no_carter << ", demand and carters "

@@ -82,6 +82,21 @@ class TimberFlowTally {
     /// the day before — what the carting actually moved per carter-day.
     double carted_off_tonnes = 0.0;
     double carter_days_before = 0.0;
+    /// THE BOARDS (boss, boss-core-epoch1-3 seq 3): days a sawmill stood and
+    /// could work, of those the days it had sawing demand, the sawyers on it
+    /// summed over the days, boards carted onto sites (tonnes, arrivals only,
+    /// as the logs) and boards in the stores at the turn.
+    std::uint32_t sawmill_days = 0;
+    /// Sawmill-row-days that could not work: dead, still a site at level 0,
+    /// or paused (a stopped unit, or its parent unsound — the core pauses it).
+    std::uint32_t sawmill_dead_days = 0;
+    std::uint32_t sawmill_unbuilt_days = 0;
+    std::uint32_t sawmill_paused_days = 0;
+    std::uint32_t sawmill_demand_days = 0;
+    double sawyer_days = 0.0;
+    double boards_to_sites = 0.0;
+    double boards_to_upgrades = 0.0;
+    double boards_in_stores = 0.0;
   };
 
   explicit TimberFlowTally(const core::ITableSet& tables) {
@@ -89,9 +104,15 @@ class TimberFlowTally {
       const std::uint32_t row = resources->FindRowByKey("log");
       log_ = row == core::kNoTableRow ? kNoLog : row;
     }
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      const std::uint32_t row = resources->FindRowByKey("board");
+      board_ = row == core::kNoTableRow ? kNoLog : row;
+    }
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       const std::uint32_t row = types->FindRowByKey("wooden_house");
       house_ = row == core::kNoTableRow ? kNoType : row;
+      const std::uint32_t saw = types->FindRowByKey("sawmill");
+      sawmill_ = saw == core::kNoTableRow ? kNoType : saw;
     }
     for (const core::UnitTypeId id :
          core::ReadReadinessCatalog(tables, core::Epoch::kOne).social_objects) {
@@ -156,6 +177,42 @@ class TimberFlowTally {
         }
       }
       site_logs_[id] = site ? logs : 0;
+      // The boards the same way, arrivals only.
+      const core::Grams boards = board_ < unit.stock.size() ? unit.stock[board_] : 0;
+      const auto boards_seen = site_boards_.find(id);
+      const core::Grams boards_before = boards_seen == site_boards_.end() ? 0 : boards_seen->second;
+      if (site && boards > boards_before) {
+        const double arrived = Tonnes(boards - boards_before);
+        current_.boards_to_sites += arrived;
+        if (unit.construction.target_level >= 2 && unit.type.value != house_) {
+          current_.boards_to_upgrades += arrived;
+        }
+      }
+      site_boards_[id] = site ? boards : 0;
+      // A sawmill row that CANNOT work today, by the first reason.
+      if (unit.type.value == sawmill_) {
+        if (unit.dead != 0) {
+          ++current_.sawmill_dead_days;
+        } else if (unit.level == 0) {
+          ++current_.sawmill_unbuilt_days;
+        } else if (unit.paused != 0) {
+          ++current_.sawmill_paused_days;
+        }
+      }
+      // The sawmill: standing and able to work, its demand, its sawyers.
+      if (unit.type.value == sawmill_ && unit.level > 0 && unit.dead == 0 && unit.paused == 0) {
+        if (first_sawmill_day_ < 0) {
+          first_sawmill_day_ = world.calendar.day;
+        }
+        ++current_.sawmill_days;
+        current_.sawmill_demand_days += unit.production_days_written > 0.0F ? 1U : 0U;
+        for (const core::ResidentRow& resident : world.residents.rows) {
+          current_.sawyer_days +=
+              resident.work.kind == core::WorkKind::kUnitWork && resident.work.unit.value == id
+                  ? 1.0
+                  : 0.0;
+        }
+      }
     }
     // THE TURN: the ledger has rotated, `closed` is the year just ended.
     if (world.calendar.day != 0 && world.calendar.day % core::kDaysPerYear == 0 &&
@@ -169,6 +226,9 @@ class TimberFlowTally {
         const core::Grams logs = log_ < unit.stock.size() ? unit.stock[log_] : 0;
         const bool site = unit.construction.phase != core::ConstructionPhase::kNone;
         (site ? current_.on_sites : current_.in_stores) += Tonnes(logs);
+        if (!site && board_ < unit.stock.size()) {
+          current_.boards_in_stores += Tonnes(unit.stock[board_]);
+        }
       }
       years_.push_back(current_);
       current_ = Year{};
@@ -176,6 +236,9 @@ class TimberFlowTally {
   }
 
   const std::vector<Year>& years() const { return years_; }
+
+  /// The first day a sawmill stood and could work, or -1 if none ever did.
+  std::int64_t first_sawmill_day() const { return first_sawmill_day_; }
 
   /// @brief Prints the year-by-year sheet, with what the numbers are not.
   static void PrintYears(std::string_view run_name, const std::vector<Year>& years) {
@@ -232,7 +295,11 @@ class TimberFlowTally {
   std::unordered_map<std::uint32_t, core::Grams> stand_load_;
   std::unordered_map<std::uint32_t, std::uint32_t> stand_carters_;
   std::unordered_map<std::uint32_t, core::Grams> site_logs_;
+  std::unordered_map<std::uint32_t, core::Grams> site_boards_;
+  std::uint32_t board_ = kNoLog;
+  std::uint32_t sawmill_ = kNoType;
   std::int64_t last_turn_day_ = -1;
+  std::int64_t first_sawmill_day_ = -1;
   Year current_;
   std::vector<Year> years_;
 };

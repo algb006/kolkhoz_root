@@ -69,6 +69,13 @@ class BuildingChairman {
     WireSawGate(social, sawmill);
     WireSawGate(upgrades, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
+    // THE SAW KEEPS A RESERVE (boss, parcel 314's P1; the Epoch II boards,
+    // boss-core-epoch1-3 seq 3). Sawing only towards the MARKED sites' need,
+    // the saw stood paused 791 days of about 1536 a village: an upgrade is
+    // refused for boards before it is ever a site, so it never raised the
+    // need that would have sawn its boards — 163 of 227 upgrade refusals
+    // were boards.
+    sawmill.KeepBoardReserve(true);
   }
 
   /// @brief Tells the felling, the limit and the digging of the step the
