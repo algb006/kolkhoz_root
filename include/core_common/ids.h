@@ -248,6 +248,13 @@ struct LimitLotIdTag {};
 /// definition id.
 using LimitLotId = DefId<LimitLotIdTag>;
 
+struct TreeSpeciesIdTag {};
+
+/// @brief Row of tables/tree_species.csv — what a planting is of (timber
+/// design §2; boss, boss-core-epoch1-3 seq 15 and 17). Saved and journalled
+/// by key, like every definition id.
+using TreeSpeciesId = DefId<TreeSpeciesIdTag>;
+
 }  // namespace core
 
 #endif  // CORE_COMMON_IDS_H_

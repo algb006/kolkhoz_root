@@ -95,6 +95,9 @@ void WriteTableSet(const std::filesystem::path& root, const std::vector<std::str
   // The sixth (2026-09-13): the limit's lots, named by key in an order and on
   // a cart.
   WriteTableFile(root / "limit_catalog.csv", {"glass_container_lot", "roofing_lot"}, "points");
+  // The seventh (save 82): the tree species, named by key in a planting
+  // order and on a planting stand.
+  WriteTableFile(root / "tree_species.csv", {"pine", "birch"}, "plantable");
 }
 
 core::ResourceAmounts Amounts(std::initializer_list<core::Grams> values) {
@@ -510,6 +513,19 @@ core::WorldState MakeWorld() {
   pit.haul_days_written = 2.25F;
   pit.exhausted = 1;
   core::AppendRow(world.extraction_sites, pit);
+
+  // A planting (save 82): birch, the second species, so a codec that wrote
+  // the row index raw would come back pine after a reshuffle; planted and
+  // growing, both days set.
+  core::TimberStandRow planting;
+  planting.table_row = 0xFFFFFFFFU;
+  planting.kind = core::TimberStandKind::kPlanted;
+  planting.position = core::Vec2{.x = 5120.5F, .y = 6400.25F};
+  planting.species = core::TreeSpeciesId{1};
+  planting.planted_area_ha = 2.5F;
+  planting.planted_day = 97;
+  planting.matures_day = 337;
+  core::AppendRow(world.stands, planting);
 
   // An appointment still waiting (task A7): kAccepted is exactly the status
   // that has to survive a save — the order is visible, cancellable, and
@@ -1099,7 +1115,9 @@ struct RecordedSection {
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
 constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
-    {"dictionaries", 143, 0xe35419cb6704df6aULL},
+    // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
+    // 6, «birch» 7); predicted before the build, held.
+    {"dictionaries", 158, 0x3aabc08a948e5793ULL},
     // 2026-09-17, save 49: +10 bytes — the night pasture's standing order,
     // its first night and the camp's two floats.
     // 2026-09-17, save 50: +5 — four bytes for every limit point ever
@@ -1210,8 +1228,13 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // 2026-09-23: the hash again at the same 494 bytes, when kSiteExhausted
     // became the last OrderRefusal — the top of the enum the fixture carries.
     // Not written down before the build (a miss); VERSION_SAVE stays 81.
-    {"orders", 494, 0xac05130466c3a912ULL},
-    {"stands", 8, 0x89cd31291d2aefa4ULL},
+    // Save 82: +36 — a planting's hectares (4) and species (2) on each of
+    // the six orders; predicted, held.
+    {"orders", 530, 0xd68c60b5832c9e27ULL},
+    // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
+    // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
+    // held.
+    {"stands", 67, 0x9d5183df2ce65288ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
     // its own beside the carts, because a head rides nothing.
@@ -1249,7 +1272,9 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // empty, 2) and made (three cells, 2 + 24; 2). First predicted +64 with
     // made on four cells, and held to the byte; the fourth cell was moved off
     // a key another check removes, and the second prediction, +56, held too.
-    {"ledger", 860, 0xd6a96c6e190bf057ULL},
+    // Save 82: +8 — the year's work-day arrays run by WorkKind, and
+    // kPlanting lengthened them. NOT predicted (a miss, named).
+    {"ledger", 868, 0xd413190a61fc53e7ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1512,6 +1537,13 @@ int main() {
                          loaded.extraction_sites.rows[0].haul_days_written == 2.25F &&
                          loaded.extraction_sites.rows[0].exhausted == 1,
                      "a clay pit comes back half dug, its load waiting and its mark standing");
+  failures += Expect(loaded.stands.rows.size() == 1 &&
+                         loaded.stands.rows[0].kind == core::TimberStandKind::kPlanted &&
+                         loaded.stands.rows[0].species.value == 1 &&
+                         loaded.stands.rows[0].planted_area_ha == 2.5F &&
+                         loaded.stands.rows[0].planted_day == 97 &&
+                         loaded.stands.rows[0].matures_day == 337,
+                     "a birch planting comes back birch, its hectares and both its days");
   failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
                          loaded.residents.rows[1].work.extraction_site.value == 4,
                      "a digger comes back at her pit");

@@ -223,7 +223,8 @@ bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& e
                                                                       "hauling",
                                                                       "felling",
                                                                       "unit_work",
-                                                                      "extraction"};
+                                                                      "extraction",
+                                                                      "planting"};
   // EVERY KEY WRITTEN. The array takes its length from the enum, so a kind
   // appended without a key leaves an empty one at the end, and an empty key
   // finds no row and keeps the compiled default without a word — the same

@@ -45,7 +45,8 @@ constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {"none",
                                                                     "hauling",
                                                                     "felling",
                                                                     "unit_work",
-                                                                    "extraction"};
+                                                                    "extraction",
+                                                                    "planting"};
 
 // EVERY CELL HAS A NAME, which is not the same question as "are there as
 // many cells" (host, 2026-09-04). The array takes its length from the enum

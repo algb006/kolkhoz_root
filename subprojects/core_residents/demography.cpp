@@ -758,6 +758,7 @@ bool DirtyWorkToday(WorkKind kind) {
     case WorkKind::kSowing:
     case WorkKind::kHarvest:
     case WorkKind::kFelling:
+    case WorkKind::kPlanting:  // earth and saplings: «поле» (save 82)
       return true;
     default:
       return false;

@@ -740,6 +740,17 @@ class LaborSystem final : public ILaborSystem {
           job.max_crew = static_cast<std::uint8_t>(crew_cap);
           jobs.push_back(job);
         }
+        // A planting still to be planted (timber_planting.h): windowless,
+        // uncapped by tools — a sapling and a spade (map design §7).
+        if (stand.kind == TimberStandKind::kPlanted && stand.planted_day == kNeverPlanted &&
+            stand.work_days_remaining > 0.0F) {
+          AssignmentJob job;
+          job.kind = WorkKind::kPlanting;
+          job.stand = current.stands.row_ids[row];
+          job.position = stand.position;
+          job.work_days_remaining = stand.work_days_remaining;
+          jobs.push_back(job);
+        }
         if (stand.load_grams > 0 && stand.haul_days_remaining > 0.0F) {
           AssignmentJob job;
           job.kind = WorkKind::kHauling;

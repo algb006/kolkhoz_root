@@ -21,6 +21,7 @@
 #include "night_pasture.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
+#include "timber_planting.h"
 
 namespace core {
 namespace {
@@ -474,6 +475,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kMarkFelling:
         Settle(order, MarkFelling(config, current, order));
+        break;
+      case OrderKind::kPlantForest:
+        Settle(order, OrderPlantForest(config, current, order));
         break;
       case OrderKind::kMarkExtraction:
         Settle(order, MarkExtraction(config, current, order));

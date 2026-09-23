@@ -1338,16 +1338,16 @@ int main() {
   {
     // Read by the host, the layer, or nobody yet — the core never asks for
     // them, so their absence cannot change a single number it computes.
-    const std::array<std::string_view, 10> not_read_by_the_core = {"alarms",
-                                                                   "difficulty",
-                                                                   "diseases",
-                                                                   "disease_severity",
-                                                                   "event_sites",
-                                                                   "farm_health_bands",
-                                                                   "forest_biome_mix",
-                                                                   "forest_biomes",
-                                                                   "forest_forage",
-                                                                   "tree_species"};
+    // tree_species LEFT this list at save 82: the planting reads it.
+    const std::array<std::string_view, 9> not_read_by_the_core = {"alarms",
+                                                                  "difficulty",
+                                                                  "diseases",
+                                                                  "disease_severity",
+                                                                  "event_sites",
+                                                                  "farm_health_bands",
+                                                                  "forest_biome_mix",
+                                                                  "forest_biomes",
+                                                                  "forest_forage"};
     const std::array<std::string_view, 2> also_not_read = {"resident_activities",
                                                            "resident_activity_details"};
     // AND ONE THAT IS NOT "NEVER READ" BUT "NOT READ YET", which is a

@@ -61,6 +61,14 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     if (work.kind == WorkKind::kFelling) {
       return stand.marked_m3 > 0.0F ? &stand.work_days_remaining : nullptr;
     }
+    // A planting drains the same cell as its PLANTING seam while it is not
+    // yet planted (timber_planting.h); a planting holds nothing to fell until
+    // it has grown, so the two never share the cell at once.
+    if (work.kind == WorkKind::kPlanting) {
+      return stand.kind == TimberStandKind::kPlanted && stand.planted_day == kNeverPlanted
+                 ? &stand.work_days_remaining
+                 : nullptr;
+    }
     if (work.kind == WorkKind::kHauling) {
       return stand.load_grams > 0 ? &stand.haul_days_remaining : nullptr;
     }

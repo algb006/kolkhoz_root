@@ -74,15 +74,20 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
     // it saws: a sawyer at an empty log pile turns out nothing.
     case WorkKind::kUnitWork:
       return 9;
+    // Planting a forest zone last of all (save 82): no window, and a planted
+    // hectare pays back in five years — anything that feeds or houses the
+    // village this year goes before it.
+    case WorkKind::kPlanting:
+      return 10;
     // Not a kind of work, and neither is the terminator. Handled beside
     // kNone so this switch keeps no default and a genuinely new kind stays
     // a build error here — which is exactly where a new kind must declare
     // where it stands in the queue.
     case WorkKind::kNone:
     case WorkKind::kWorkKindCount:
-      return 10;
+      return 11;
   }
-  return 10;
+  return 11;
 }
 
 /// The stable identity of a job's target, for deterministic tie-breaks.

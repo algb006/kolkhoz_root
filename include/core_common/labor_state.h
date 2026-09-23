@@ -91,6 +91,12 @@ enum class WorkKind : std::uint8_t {
   /// `extraction`.
   kExtraction,
 
+  /// Planting a forest zone (timber design §2; boss, boss-core-epoch1-3 seq
+  /// 15): windowless, drains the planting stand's work_days_remaining.
+  /// Target: WorkAssignment::stand. Walks: saplings are no cartload. Seam
+  /// key `planting`.
+  kPlanting,
+
   /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
   /// appended BEFORE it.
   kWorkKindCount,

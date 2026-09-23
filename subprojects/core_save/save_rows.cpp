@@ -179,11 +179,13 @@ static_assert(AggregateArity<HerdRow>() == 20,
 // took the assignment from 28 to 32.
 // 2026-09-18, save 57: the ration's family and switch (kSetRation) took it
 // to 88 and 25 fields.
-static_assert(sizeof(OrderRow) == 88, "OrderRow changed — update the codec and VERSION_SAVE");
+// Save 82: the planting's hectares and species — predicted 88 -> 96 and 27
+// fields before the fields were added.
+static_assert(sizeof(OrderRow) == 96, "OrderRow changed — update the codec and VERSION_SAVE");
 // 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
 // 23 fields. Two padding fields in a row now, which is the answer to whether
 // the arity check was worth its line.
-static_assert(AggregateArity<OrderRow>() == 25,
+static_assert(AggregateArity<OrderRow>() == 27,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 32,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
@@ -210,9 +212,11 @@ static_assert(sizeof(WeddingWaitRow) == 12,
               "WeddingWaitRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<WeddingWaitRow>() == 3,
               "WeddingWaitRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(TimberStandRow) == 48,
+// Save 82: a planting's species, hectares and two days — 48 -> 64, nine
+// fields -> thirteen, predicted before the fields were added.
+static_assert(sizeof(TimberStandRow) == 64,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TimberStandRow>() == 9,
+static_assert(AggregateArity<TimberStandRow>() == 13,
               "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(ExtractionSiteRow) == 64,
               "ExtractionSiteRow changed — update the codec and VERSION_SAVE");
@@ -953,6 +957,9 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // The felling mark (kMarkFelling, 2026-09-13).
   WriteEntityId(out, row.stand);
   out.WriteFloat(row.volume_m3);
+  // The planting (kPlantForest, save 82): the zone's hectares and species.
+  out.WriteFloat(row.area_ha);
+  sink.WriteDefId(DefKind::kTreeSpecies, row.species.value);
 
   // The limit lot (kOrderLimitLot, 2026-09-13), through the dictionary.
   sink.WriteDefId(DefKind::kLimitLot, row.lot.value);
@@ -999,6 +1006,8 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.amount = static_cast<Grams>(in.ReadU64());
   row.stand = ReadEntityId<TimberStandId>(in);
   row.volume_m3 = in.ReadFloat();
+  row.area_ha = in.ReadFloat();
+  row.species = TreeSpeciesId{source.ReadDefId(DefKind::kTreeSpecies)};
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.male = in.ReadU8();
@@ -1032,6 +1041,12 @@ void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
   out.WriteU64(static_cast<std::uint64_t>(row.load_grams));
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
+  // A planting (save 82): its species through the dictionary, its own
+  // hectares, and its two days.
+  sink.WriteDefId(DefKind::kTreeSpecies, row.species.value);
+  out.WriteFloat(row.planted_area_ha);
+  out.WriteU32(row.planted_day);
+  out.WriteU32(row.matures_day);
 }
 
 TimberStandRow ReadTimberStandRow(LoadSource& source) {
@@ -1047,6 +1062,10 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.load_grams = static_cast<Grams>(in.ReadU64());
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  row.species = TreeSpeciesId{source.ReadDefId(DefKind::kTreeSpecies)};
+  row.planted_area_ha = in.ReadFloat();
+  row.planted_day = in.ReadU32();
+  row.matures_day = in.ReadU32();
   return row;
 }
 

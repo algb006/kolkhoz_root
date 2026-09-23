@@ -513,6 +513,16 @@ enum class EventKind : std::uint8_t {
   /// was away (AwayReason). kNotable. Seam key proposed: `back_from_district`.
   kBackFromDistrict,
 
+  /// A planting's crew finished: the zone is planted and grows from today
+  /// (timber_planting.h). stand = the planting; amount = hectares × 100.
+  /// kNotable. Seam key `forest_planted`.
+  kForestPlanted,
+
+  /// A planting grew to logs and may be felled like a grove. stand = the
+  /// planting; amount = its standing m3, rounded. kNotable. Seam key
+  /// `planting_matured`.
+  kPlantingMatured,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -566,6 +576,10 @@ struct SimEvent {
   /// order's row is swept the same step its event is emitted, so the event is
   /// the only place a reader can still see which lot was ordered.
   LimitLotId lot;
+
+  /// The timber stand an event is about: kForestPlanted, kPlantingMatured
+  /// (0.34.35). Invalid on every other kind.
+  TimberStandId stand;
 };
 
 /// @brief The outbox type used by WorldState: one step's events, in the

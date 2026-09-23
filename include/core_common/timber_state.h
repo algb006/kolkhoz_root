@@ -58,11 +58,19 @@ enum class TimberStandKind : std::uint8_t {
   /// each year may be taken, and in Epoch I what is not taken vanishes.
   kForestOld,
 
+  /// A zone the chairman planted (kPlantForest; timber_planting.h). Holds
+  /// nothing to fell until its matures_day, then as a grove: felled down to
+  /// nothing, and the ground free again. Seam key `planted`.
+  kPlanted,
+
   /// NOT A VALUE, and never written to a save or read from one: the codecs
   /// range-check 0..kTimberStandKindCount-1 against it. Values are appended
   /// BEFORE it.
   kTimberStandKindCount,
 };
+
+/// A planting's day not yet come (TimberStandRow::planted_day, matures_day).
+inline constexpr std::uint32_t kNeverPlanted = 0xFFFFFFFFU;
 
 /// @brief One stand. Plain data.
 struct TimberStandRow {
@@ -110,6 +118,23 @@ struct TimberStandRow {
   /// what people carried from what the room did. Same contract as
   /// FieldRow::haul_days_written.
   float haul_days_written = 0.0F;
+
+  // -- a planting (kind kPlanted; timber_planting.h; save 82) ---------------
+  /// What was planted; invalid for every other kind.
+  TreeSpeciesId species;
+
+  /// The zone's hectares — a planting's own, since it has no table row to
+  /// read them from. 0 for every other kind (their area is the table's).
+  float planted_area_ha = 0.0F;
+
+  /// The day the planting crew finished, kNeverPlanted while it is still
+  /// planting (its work_days_remaining is then the PLANTING seam, drained by
+  /// WorkKind::kPlanting), and for every other kind.
+  std::uint32_t planted_day = kNeverPlanted;
+
+  /// The day the planting reaches its logs (planted_day + the species'
+  /// plant_years_to_logs); kNeverPlanted until planted.
+  std::uint32_t matures_day = kNeverPlanted;
 };
 
 /// @brief The table type used by WorldState.

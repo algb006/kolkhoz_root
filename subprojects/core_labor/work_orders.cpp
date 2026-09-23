@@ -33,7 +33,7 @@ bool TargetExists(const WorldState& world, const OrderRow& order) {
     return FindRow(world.units, order.unit) != kNoRow;
   }
   // A stand for felling, and for carting the logs lying on one (2026-09-13).
-  if (order.work == WorkKind::kFelling ||
+  if (order.work == WorkKind::kFelling || order.work == WorkKind::kPlanting ||
       (order.work == WorkKind::kHauling && order.stand.value != kInvalidEntityIdValue)) {
     return FindRow(world.stands, order.stand) != kNoRow;
   }
@@ -92,6 +92,17 @@ void CloseOrphanedWork(WorldState& current) {
       if (worked_out) {
         order.status = OrderStatus::kRefused;
         order.refusal = OrderRefusal::kSiteExhausted;
+        continue;
+      }
+    }
+    // A PLANTING IS PLANTED ONCE (the static loop of 0.34.35): the standing
+    // order to plant it has run as ordered the day the crew finished, and is
+    // stood down kDone — left standing, it put the man on a finished zone
+    // every morning for years.
+    if (order.work == WorkKind::kPlanting) {
+      const std::uint32_t stand_row = FindRow(current.stands, order.stand);
+      if (stand_row != kNoRow && current.stands.rows[stand_row].planted_day != kNeverPlanted) {
+        order.status = OrderStatus::kDone;
         continue;
       }
     }
@@ -165,6 +176,7 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     case WorkKind::kFelling:
     case WorkKind::kUnitWork:
     case WorkKind::kExtraction:
+    case WorkKind::kPlanting:
     case WorkKind::kNone:
       return OrderRefusal::kNone;  // no field named; nothing to ask about
     case WorkKind::kPlowing:

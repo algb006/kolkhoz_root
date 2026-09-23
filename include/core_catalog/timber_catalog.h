@@ -44,6 +44,16 @@ struct TimberStandDef {
   float log_share = 0.0F;
 };
 
+/// @brief One row of tables/tree_species.csv as a planting reads it (timber
+/// design §2; boss, boss-core-epoch1-3 seq 15 and 17). A species PLANTS only
+/// if its plant_years_to_logs is filled (pine, birch); `years_to_logs` is
+/// then above zero, and negative for every other row.
+struct PlantableSpecies {
+  float years_to_logs = -1.0F;  ///< Game years from planted to logs; <0 = does not plant.
+  float m3_per_ha = 0.0F;       ///< Standing stock when grown.
+  float log_share = 0.0F;       ///< Share of that stock that is logs (the export's figure).
+};
+
 /// @brief Timber design §8a, in numbers. Defaults are the design's figures,
 /// kept for a world with no tables; a shipped build reads them.
 struct TimberCatalog {
@@ -90,6 +100,18 @@ struct TimberCatalog {
   /// nomenclature table yet, so the one producing unit is known by its key.
   /// The bakery and the smokehouse replace this with a table, not a second key.
   UnitTypeId sawmill_type;
+
+  // -- planting a forest by zone (timber_planting.h; save 82) ---------------
+  /// Game man-days to plant a hectare: world_params
+  /// timber_planting_days_per_ha, a REAL figure (econ: one person-day a
+  /// hectare) divided by kRealDaysPerGameDay when read. STUB.
+  float planting_days_per_ha = 1.0F / 7.0F;
+
+  /// The most hectares one order may plant (timber_planting_max_ha). STUB.
+  float planting_max_ha = 5.0F;
+
+  /// tables/tree_species.csv in row order: TreeSpeciesId indexes it.
+  std::vector<PlantableSpecies> species;
 };
 
 /// @brief The world_params.csv keys this catalogue reads, for the assembly's

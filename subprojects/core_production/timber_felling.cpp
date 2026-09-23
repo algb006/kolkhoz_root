@@ -10,6 +10,7 @@
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
+#include "timber_planting.h"
 
 namespace core {
 namespace {
@@ -53,8 +54,15 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current) {
     if (!(stand.marked_m3 > 0.0F) || stand.work_days_remaining > 0.0F) {
       continue;
     }
-    const TimberStandDef* const def = DefOf(config, stand);
     const float felled = std::min(stand.marked_m3, stand.stock_m3);
+    // A PLANTING has no table row: its hectares and its species' log share
+    // stand in (timber_planting.h, save 82). A grove replanted keeps its old
+    // table row, so the kind is asked first.
+    TimberStandDef planted;
+    const TimberStandDef* const def =
+        PlantedStandDef(config, stand, planted)
+            ? &planted
+            : (stand.kind == TimberStandKind::kPlanted ? nullptr : DefOf(config, stand));
     if (def != nullptr) {
       stand.load_grams += LogGramsFromVolume(config.timber, *def, felled);
     }

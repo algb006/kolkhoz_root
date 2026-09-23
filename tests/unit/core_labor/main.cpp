@@ -2881,6 +2881,58 @@ int TestFellersRideOut() {
   return failures;
 }
 
+/// A PLANTING IS PLANTED (timber_planting.h, save 82): the accountant sends
+/// people to a planting not yet planted, and they drain its seam. The pair:
+/// the same stand once planted asks for nobody.
+int TestPlantersPlant() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  const auto labor = core::CreateLaborSystem(nothing, core::StubTables::kAllowed);
+  const auto planted_by = [&labor](std::uint32_t planted_day) {
+    DayWorld day(2);
+    core::TimberStandRow zone;
+    zone.kind = core::TimberStandKind::kPlanted;
+    zone.position = core::Vec2{.x = 300.0F, .y = 0.0F};
+    zone.planted_area_ha = 2.0F;
+    zone.work_days_remaining = 2.0F;
+    zone.planted_day = planted_day;
+    core::AppendRow(day.world.stands, zone);
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    return day.world.stands.rows[0].work_days_remaining;
+  };
+  failures += Expect(planted_by(core::kNeverPlanted) < 2.0F,
+                     "planting: people are sent to a zone not yet planted, and plant it");
+  failures += Expect(planted_by(5U) == 2.0F, "planting: a zone already planted asks for nobody");
+  // A STANDING ORDER TO PLANT a zone that is planted has run as ordered: it
+  // is stood down kDone, and the man is not put on the zone again.
+  {
+    DayWorld day(2);
+    core::TimberStandRow zone;
+    zone.kind = core::TimberStandKind::kPlanted;
+    zone.planted_day = 5U;
+    const core::TimberStandId zone_id = core::AppendRow(day.world.stands, zone);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kAssignWork;
+    order.status = core::OrderStatus::kAccepted;
+    order.work = core::WorkKind::kPlanting;
+    order.resident = day.world.residents.row_ids[0];
+    order.stand = zone_id;
+    core::AppendRow(day.world.orders, order);
+    day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + 8U;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+    failures += Expect(day.world.orders.rows[0].status == core::OrderStatus::kDone,
+                       "planting: a standing order to plant a planted zone is stood down done");
+  }
+  return failures;
+}
+
 /// THE CARTING RIDES IN THE HOUR WHEN THERE IS A HORSE (the Epoch II
 /// diagnosis; boss seq 27): the assignment measured a hauling job's shoulder
 /// at harness speed whenever a draught horse stood in the village, and the
@@ -3234,6 +3286,7 @@ int main() {
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAWorkedOutSiteTakesItsOrderOff();
   failures += TestLogCartingRidesWithAHorse();
+  failures += TestPlantersPlant();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();
   failures += TestMeadowCutRidesAndTakesOneHorse();

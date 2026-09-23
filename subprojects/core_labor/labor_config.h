@@ -332,6 +332,10 @@ struct LaborConfig {
       // felling's row — ASSUMPTION, the form of the digging is the felling's
       // (boss, parcel 270), and labor.csv carries no `extraction` row yet.
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
+      // Planting a forest zone: ordinary grade, ordinary drain — «саженец
+      // почти ничего», children plant (map design §7). ASSUMPTION; labor.csv
+      // carries no `planting` row yet.
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
   }};
 
   // -- the day (labor.csv; time design §6-§7) ------------------------------

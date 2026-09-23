@@ -31,11 +31,13 @@
 #include <system_error>
 #include <vector>
 
+#include "core_catalog/definitions.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_log/log.h"
+#include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "district_plan.h"
 
@@ -1496,6 +1498,14 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
     config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("groom"));
   }
   config.pig_kind = KindByKey(livestock, "pig");
+  // The plot rule's numbers (save 82, the planting zone's place). Allowed
+  // stubs: a table set without the definitions plants anywhere on no map.
+  Definitions definitions;
+  if (!LoadDefinitions(tables, StubTables::kAllowed, definitions, error)) {
+    return false;
+  }
+  config.plot_radius_m = definitions.units.keep_out_radius_m;
+  config.map_side_m = definitions.map_side_m;
   return ParseTimberCatalog(tables, config.timber, error) &&
          ParseProcessingCatalog(tables, config.processing, error) &&
          ParseExtractionCatalog(tables, config.extraction, error) &&

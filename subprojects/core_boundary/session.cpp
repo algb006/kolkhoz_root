@@ -99,8 +99,8 @@ bool ShapeIsValid(const OrderRow& order) {
       }
       // Felling names the STAND (2026-09-13), and carting names whichever
       // holder the load lies on — a field or a stand, exactly one.
-      if (order.work == WorkKind::kFelling) {
-        return has_stand;
+      if (order.work == WorkKind::kFelling || order.work == WorkKind::kPlanting) {
+        return has_stand;  // a planting crew names its planting (save 82)
       }
       // Digging names the extraction site (2026-09-14), and carting may name
       // one too: exactly one holder of the load.
@@ -138,6 +138,12 @@ bool ShapeIsValid(const OrderRow& order) {
       // The post he holds is on his row; naming it again would let the two
       // disagree.
       return has_resident;
+    case OrderKind::kPlantForest:
+      // Hectares above nothing and a species named; a stand or a position,
+      // which the consumer tells apart. Whether the species plants, the
+      // stand is a felled grove or the ground is free is its verdict.
+      return order.area_ha > 0.0F && order.species.value != kInvalidDefIdValue && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_site;
     case OrderKind::kRemoveField:
       // kRemoveField names the field alone: whether it still holds bread, and
       // whether it is arable at all, change with the season — the consumer's

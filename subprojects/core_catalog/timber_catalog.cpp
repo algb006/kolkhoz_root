@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "core_catalog/table_value.h"
+#include "core_common/calendar.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -21,7 +22,7 @@ namespace {
 // its biome and ships only the result, in timber_stands.csv. The core read
 // them for one commit because they were declared `core`; boss re-declared
 // them on 2026-09-13 and they left world_params.csv.
-constexpr std::array<std::string_view, 11> kTimberWorldParamKeys = {
+constexpr std::array<std::string_view, 13> kTimberWorldParamKeys = {
     "timber_log_m3",
     "timber_grove_stock_m3_per_ha",
     "timber_shelterbelt_stock_m3_per_ha",
@@ -32,7 +33,9 @@ constexpr std::array<std::string_view, 11> kTimberWorldParamKeys = {
     "timber_tools_per_feller",
     "timber_board_yield",
     "timber_sawing_days_per_m3",
-    "sawmill_sawyers_max"};
+    "sawmill_sawyers_max",
+    "timber_planting_days_per_ha",
+    "timber_planting_max_ha"};
 
 /// The largest mass any conversion of the core accepts — the same ceiling as
 /// GramsFromFloat's (quantities.cpp), nine thousand million tonnes.
@@ -109,6 +112,50 @@ bool ParseStands(const ITable& table, TimberCatalog& catalog, std::string& error
   return true;
 }
 
+/// tree_species.csv's planting columns (boss, boss-core-epoch1-3 seq 17): a
+/// row plants only if plant_years_to_logs is filled, and then its stock and
+/// log share must be too. A table without the columns plants nothing.
+bool ParseSpecies(const ITable& table, TimberCatalog& catalog, std::string& error) {
+  const std::uint32_t years_column = table.FindColumn("plant_years_to_logs");
+  const std::uint32_t stock_column = table.FindColumn("plant_m3_per_ha");
+  const std::uint32_t share_column = table.FindColumn("plant_log_share");
+  catalog.species.assign(table.RowCount(), PlantableSpecies{});
+  if (years_column == kNoTableColumn) {
+    return true;
+  }
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    float years = -1.0F;
+    if (!OptionalCell(table, row, years_column, Range{.low = 0.1F, .high = 200.0F}, years, error)) {
+      error = "tree_species: plant_years_to_logs: " + error;
+      return false;
+    }
+    if (!(years > 0.0F)) {
+      continue;  // blank: this species does not plant
+    }
+    PlantableSpecies& species = catalog.species[row];
+    species.years_to_logs = years;
+    if (!RequiredCell(table,
+                      "tree_species",
+                      "plant_m3_per_ha",
+                      row,
+                      stock_column,
+                      Range{.low = 0.0F, .high = 2000.0F},
+                      species.m3_per_ha,
+                      error) ||
+        !RequiredCell(table,
+                      "tree_species",
+                      "plant_log_share",
+                      row,
+                      share_column,
+                      Range{.low = 0.0F, .high = 1.0F},
+                      species.log_share,
+                      error)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 std::span<const std::string_view> TimberWorldParamKeys() {
@@ -155,8 +202,25 @@ bool ParseTimberCatalog(const ITableSet& tables, TimberCatalog& catalog, std::st
         {.key = kTimberWorldParamKeys[10],
          .value = &catalog.sawyers_max,
          .range = {.low = 0.0F, .high = 50.0F}},
+        // Planting (save 82): the REAL person-days a hectare, turned into
+        // game man-days below; and one order's most hectares.
+        {.key = kTimberWorldParamKeys[11],
+         .value = &catalog.planting_days_per_ha,
+         .range = {.low = 0.01F, .high = 100.0F}},
+        {.key = kTimberWorldParamKeys[12],
+         .value = &catalog.planting_max_ha,
+         .range = {.low = 0.1F, .high = 1000.0F}},
     }};
+    const float default_planting_days = catalog.planting_days_per_ha;
+    catalog.planting_days_per_ha = default_planting_days * kRealDaysPerGameDay;  // back to real
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
+      return false;
+    }
+    // «Реальные чел-дни ÷ 7 = игровые сутки» (root rules §9).
+    catalog.planting_days_per_ha /= kRealDaysPerGameDay;
+  }
+  if (const ITable* const species = tables.FindTable("tree_species")) {
+    if (!ParseSpecies(*species, catalog, error)) {
       return false;
     }
   }
@@ -228,6 +292,8 @@ float StartStockM3(const TimberCatalog& catalog, const TimberStandDef& stand) {
     case TimberStandKind::kShelterbelt:
       return stand.area_ha * catalog.shelterbelt_stock_m3_per_ha;
     case TimberStandKind::kForestOld:
+    // A planting has no table stock: it grows from the order (timber_planting.h).
+    case TimberStandKind::kPlanted:
     case TimberStandKind::kTimberStandKindCount:
       return 0.0F;
   }

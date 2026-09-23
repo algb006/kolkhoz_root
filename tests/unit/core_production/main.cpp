@@ -51,6 +51,7 @@
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
+#include "timber_planting.h"
 #include "unit_production.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
@@ -4806,6 +4807,115 @@ int CheckFellingUnreachable() {
   return failures;
 }
 
+/// PLANTING A FOREST BY ZONE (timber_planting.h; boss, boss-core-epoch1-3 seq
+/// 15 and 17): the order's refusals and two forms, the crew's end, the
+/// growing, and the grown planting felled at its species' log share.
+int CheckPlanting() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::TimberCatalog& timber = config.timber;
+  timber.log_m3 = 0.25F;
+  timber.log_grams = 200000;
+  timber.planting_days_per_ha = 1.0F / 7.0F;
+  timber.planting_max_ha = 5.0F;
+  // Row 0 does not plant (its plant_years_to_logs is blank), row 1 is pine.
+  timber.species = {
+      core::PlantableSpecies{},
+      core::PlantableSpecies{.years_to_logs = 5.0F, .m3_per_ha = 30.0F, .log_share = 0.6F}};
+  timber.stands = {{.kind = core::TimberStandKind::kGrove,
+                    .position = core::Vec2{.x = 8000.0F, .y = 8000.0F},
+                    .area_ha = 20.0F,
+                    .log_share = 0.25F}};
+  config.map_side_m = 12000.0F;
+
+  core::WorldState world;
+  core::FieldRow field;
+  field.center = core::Vec2{.x = 1000.0F, .y = 1000.0F};
+  field.area_ga = 10.0F;
+  core::AppendRow(world.fields, field);
+  core::TimberStandRow grove;  // felled to nothing
+  grove.table_row = 0;
+  grove.kind = core::TimberStandKind::kGrove;
+  grove.position = core::Vec2{.x = 8000.0F, .y = 8000.0F};
+  const core::TimberStandId grove_id = core::AppendRow(world.stands, grove);
+
+  const auto plant = [&](core::TreeSpeciesId species,
+                         float hectares,
+                         core::Vec2 place,
+                         core::TimberStandId stand) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kPlantForest;
+    order.species = species;
+    order.area_ha = hectares;
+    order.position = place;
+    order.stand = stand;
+    return core::OrderPlantForest(config, world, order);
+  };
+  const core::Vec2 free_ground{.x = 5000.0F, .y = 5000.0F};
+  const core::TreeSpeciesId pine{1};
+  failures += Expect(
+      plant(core::TreeSpeciesId{7}, 2.0F, free_ground, {}) == core::OrderRefusal::kNoSuchSubject,
+      "planting: a species not in the roster is no subject");
+  failures += Expect(
+      plant(core::TreeSpeciesId{0}, 2.0F, free_ground, {}) == core::OrderRefusal::kNotEligible,
+      "planting: a species with no years to logs does not plant");
+  failures += Expect(plant(pine, 6.0F, free_ground, {}) == core::OrderRefusal::kRuleForbids,
+                     "planting: no more than one order's hectares");
+  failures += Expect(plant(pine, 2.0F, field.center, {}) == core::OrderRefusal::kWrongLand,
+                     "planting: not on a field");
+  failures += Expect(plant(pine, 5.0F, core::Vec2{.x = 11990.0F, .y = 5000.0F}, {}) ==
+                         core::OrderRefusal::kRuleForbids,
+                     "planting: the whole zone on the map, not its centre only");
+  failures += Expect(plant(pine, 2.0F, core::Vec2{.x = 8050.0F, .y = 8000.0F}, {}) ==
+                         core::OrderRefusal::kTooClose,
+                     "planting: not on another stand's contour");
+  failures += Expect(plant(pine, 2.0F, free_ground, {}) == core::OrderRefusal::kNone &&
+                         world.stands.rows.size() == 2 &&
+                         world.stands.rows[1].kind == core::TimberStandKind::kPlanted &&
+                         std::abs(world.stands.rows[1].work_days_remaining - 2.0F / 7.0F) < 1e-5F,
+                     "planting: a new zone on free ground is a planting stand, 2 ha to plant");
+  failures += Expect(plant(pine, 3.0F, {}, grove_id) == core::OrderRefusal::kNone &&
+                         world.stands.rows[0].kind == core::TimberStandKind::kPlanted &&
+                         world.stands.rows[0].planted_area_ha == 3.0F,
+                     "planting: a grove felled to nothing is planted in its own row");
+  failures += Expect(plant(pine, 1.0F, {}, grove_id) == core::OrderRefusal::kNotEligible,
+                     "planting: and a planting still growing is no ground to plant over");
+
+  // The crew finishes: planted today, grown five game years on.
+  world.stands.rows[0].work_days_remaining = 0.0F;
+  world.calendar.tick = 10U * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::FinishPlantings(config, world);
+  const std::uint32_t grown = 10U + (5U * core::kDaysPerYear);
+  failures +=
+      Expect(world.stands.rows[0].planted_day == 10U && world.stands.rows[0].matures_day == grown &&
+                 world.stands.rows[1].planted_day == core::kNeverPlanted,
+             "planting: the finished crew plants it, grown in five years; the other waits");
+  // PLANTED AND NOT YET GROWN — the case that holds nothing to fell and is
+  // still no ground to plant over (the first check above ran before the crew
+  // had planted it, when the growing day was not set; a fault that forgot
+  // the growing passed it).
+  failures += Expect(plant(pine, 1.0F, {}, grove_id) == core::OrderRefusal::kNotEligible,
+                     "planting: a planting planted and growing is no ground to plant over");
+  world.calendar.tick = (static_cast<core::Tick>(grown) - 1U) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::GrowPlantings(config, world);
+  const bool young = world.stands.rows[0].stock_m3 == 0.0F;
+  world.calendar.tick = static_cast<core::Tick>(grown) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::GrowPlantings(config, world);
+  failures += Expect(young && world.stands.rows[0].stock_m3 == 90.0F,
+                     "planting: nothing to fell the day before, 3 ha x 30 m3 on its day");
+
+  // Felled at the pine's share: 10 m3 x 0.6 / 0.25 m3 a log = 24 logs.
+  world.stands.rows[0].marked_m3 = 10.0F;
+  world.stands.rows[0].work_days_remaining = 0.0F;
+  core::FellFinishedStands(config, world);
+  failures += Expect(world.stands.rows[0].load_grams == 24 * 200000,
+                     "planting: felled at its species' log share");
+  return failures;
+}
+
 /// Felling (timber design §8a, 2026-09-13): the mark, its refusals, the logs
 /// laid down when the crew is done, and the old forest's ceiling.
 int CheckFelling() {
@@ -7745,6 +7855,7 @@ int main() {
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
+  failures += CheckPlanting();
   failures += CheckFellingUnreachable();
   failures += CheckExtraction();
   failures += CheckSawing();

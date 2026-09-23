@@ -43,6 +43,8 @@ const char* DefTableName(DefKind kind) {
       return "professions";
     case DefKind::kLimitLot:
       return "limit_catalog";
+    case DefKind::kTreeSpecies:
+      return "tree_species";
   }
   return "unknown";
 }

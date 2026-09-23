@@ -746,6 +746,15 @@ enum class OrderKind : std::uint8_t {
   /// (boss). Consumer: core_production.
   kTradePlan,
 
+  /// Plant a forest by zone (timber design §2; map design §7; boss,
+  /// boss-core-epoch1-3 seq 10, 15 and 17). `area_ha` hectares of `species`
+  /// — a species with plant_years_to_logs in tree_species.csv (pine, birch)
+  /// — either on `stand`, a grove or belt felled to nothing, or as a new
+  /// zone at `position` outside the fields. Refusals: kNoSuchSubject,
+  /// kNotEligible, kRuleForbids, kWrongLand, kTooClose (timber_planting.h).
+  /// Seam key `plant_forest`. Consumer: core_production.
+  kPlantForest,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -1223,6 +1232,14 @@ struct OrderRow {
   /// kMarkFelling: how much of the stand's stock to fell, cubic metres. The
   /// chairman's figure, for the same reason `amount` is.
   float volume_m3 = 0.0F;
+
+  /// kPlantForest: the zone's hectares. A field of its own and not
+  /// `volume_m3` borrowed: a seam field read under two meanings is how a
+  /// layer sends one where the other was meant.
+  float area_ha = 0.0F;
+
+  /// kPlantForest: what is planted (tables/tree_species.csv).
+  TreeSpeciesId species;
 
   /// kOrderLimitLot: the catalogue row to buy.
   LimitLotId lot;

@@ -962,6 +962,13 @@ struct ProductionConfig {
   /// Timber design §8a: the stands and the felling numbers (2026-09-13).
   TimberCatalog timber;
 
+  /// THE PLOT RULE's numbers, for a planting zone's place (timber_planting.h):
+  /// the keep-out radius by unit type and the map's side, from the same
+  /// definitions construction reads. Held as a VECTOR and not a PlotRules:
+  /// that one carries a span, and this config is copied into the system.
+  std::vector<float> plot_radius_m;
+  float map_side_m = 0.0F;
+
   /// Production units §8а: the shops' recipes, the barrels and the room a
   /// resource takes in a store (2026-09-19).
   ProcessingCatalog processing;

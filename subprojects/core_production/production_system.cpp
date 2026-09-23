@@ -63,6 +63,7 @@
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
+#include "timber_planting.h"
 #include "unit_production.h"
 
 namespace core {
@@ -220,6 +221,9 @@ class ProductionSystem final : public IProductionSystem {
     // A felling the crew finished this hour is lying on the ground this hour
     // (timber_felling.h) — the same reasoning as the field phases below.
     FellFinishedStands(config_, current);
+    // And a planting finished this hour is planted this hour
+    // (timber_planting.h).
+    FinishPlantings(config_, current);
     // And a digging finished this hour lies on its site this hour
     // (extraction_digging.h).
     DigFinishedSites(current);
@@ -289,6 +293,9 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
     }
+    // A planting that reaches its day holds its logs from this morning
+    // (timber_planting.h).
+    GrowPlantings(config_, current);
     // THE PLAN'S LETTER COMES IN JANUARY (the human's word of 2026-09-19,
     // «Письмо в январе»; boss seq 210, 213; district §5): at the year's turn,
     // after the old year is judged and its worked land written. Until then
@@ -728,12 +735,33 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
   if (!RequireTables(tables,
                      stubs,
                      "production",
-                     {"crops",           "livestock",     "farming",         "resources",
-                      "unit_types",      "unit_levels",   "feed_links",      "meadow_kinds",
-                      "field_phases",    "campaign",      "transport",       "labor",
-                      "professions",     "world_params",  "timber_stands",   "extraction_sites",
-                      "resource_stores", "limit_catalog", "limit_lot_goods", "limit_lot_livestock",
-                      "production",      "production_io", "unit_level_cost"},
+                     {"crops",
+                      "livestock",
+                      "farming",
+                      "resources",
+                      "unit_types",
+                      "unit_levels",
+                      "feed_links",
+                      "meadow_kinds",
+                      "field_phases",
+                      "campaign",
+                      "transport",
+                      "labor",
+                      "professions",
+                      "world_params",
+                      "timber_stands",
+                      "extraction_sites",
+                      "resource_stores",
+                      "limit_catalog",
+                      "limit_lot_goods",
+                      "limit_lot_livestock",
+                      "production",
+                      "production_io",
+                      "unit_level_cost",
+                      // Save 82: the planting reads the species and the plot
+                      // rule's map (timber_planting.h).
+                      "tree_species",
+                      "map"},
                      nullptr)) {
     return nullptr;
   }

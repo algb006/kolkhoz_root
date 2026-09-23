@@ -61,6 +61,8 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // predicted before its field was added.
 // Save 73: processed and made, what the shops took in and turned out — a
 // twenty-third column and a sixty-seventh field, predicted before the build.
+// Save 82: WorkKind::kPlanting lengthened work_days_by_kind by one entry — the
+// struct's size and arity stay, the section grows 8 bytes; not predicted.
 static_assert(sizeof(YearLedger) == 224 + (23 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 67,

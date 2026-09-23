@@ -188,6 +188,10 @@ const char* KindName(core::EventKind kind) {
       return "ambulance_at_house";
     case core::EventKind::kBackFromDistrict:
       return "back_from_district";
+    case core::EventKind::kForestPlanted:
+      return "forest_planted";
+    case core::EventKind::kPlantingMatured:
+      return "planting_matured";
     case core::EventKind::kTwinsBorn:
       return "twins_born";
     case core::EventKind::kEventKindCount:

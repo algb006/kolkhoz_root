@@ -9,9 +9,9 @@
 /// tick after labor, the growing at the day's turn. They change stand rows,
 /// so they can only live in a sequential slot.
 ///
-/// CONTRACT, 0.34.34 — NO BODIES. The implementation is a task of its own
-/// (core/CLAUDE.md §12a). What the implementation adds to the SEAM, named
-/// here so boss can enter the words in the same move as the delivery:
+/// CONTRACT 0.34.34, IMPLEMENTED 0.34.35 (timber_planting.cpp). What the
+/// implementation added to the SEAM, named so boss enters the words in the
+/// same move as the delivery:
 ///
 ///   OrderKind::kPlantForest (appended)      seam key `plant_forest`
 ///   TimberStandKind::kPlanted (appended)    seam key `planted`
@@ -25,14 +25,17 @@
 ///     of its own and not `volume_m3` borrowed: a seam field read under two
 ///     meanings is how a layer sends one where the other was meant.
 ///   OrderRow::species (TreeSpeciesId) — kPlantForest: what is planted.
-///   TimberStandRow::species (TreeSpeciesId), ::planted_day (SimDay, the day
-///     the crew finished; kNeverPlanted while planting), ::matures_day
-///     (SimDay). `area_ha` is the stand table's already. Save format +1,
-///     sizes predicted before the fields are added.
+///   TimberStandRow::species (TreeSpeciesId), ::planted_area_ha — a planting
+///     has no table row to read its hectares from, which the contract missed
+///     — ::planted_day (the day the crew finished; kNeverPlanted while
+///     planting) and ::matures_day. Save format 82, sizes predicted before
+///     the fields were added. SimEvent::stand, the planting the two events
+///     are about.
 ///
 /// THE DATA (design base; boss adds the columns, core reads them):
-///   tree_species.plantable            (exists) — 0 refuses the order
-///   tree_species.plant_years_to_logs  STUB 5 game years (design: 3-6)
+///   tree_species.plant_years_to_logs  STUB 5 game years (design: 3-6); a
+///     blank cell refuses the order — THIS decides what plants, not
+///     `plantable` (boss seq 17): pine and birch
 ///   tree_species.plant_m3_per_ha      STUB 30, a grove's stock
 ///   tree_species.plant_log_share      the EXPORT's figure, from log_yield
 ///     and the timber_log_share_* knobs (pine full 0.6, birch part 0.25) —
@@ -97,6 +100,15 @@ void FinishPlantings(const ProductionConfig& config, WorldState& current);
 ///       planting holds nothing to fell (stock 0): MarkFelling refuses it
 ///       with kRuleForbids by its own rule.
 void GrowPlantings(const ProductionConfig& config, WorldState& current);
+
+/// @brief A grown planting as a catalogue stand — its own hectares and its
+///        species' log share — for the felling's log arithmetic
+///        (LogGramsFromVolume). A planting has no table row to read them from.
+/// @return false for a row that is not a planting or whose species is not
+///         in the roster.
+bool PlantedStandDef(const ProductionConfig& config,
+                     const TimberStandRow& stand,
+                     TimberStandDef& def);
 
 }  // namespace core
 
