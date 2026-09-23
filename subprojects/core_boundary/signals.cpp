@@ -49,7 +49,7 @@ bool AtPostNow(const BoundaryConfig& config, const WorldState& world, const Resi
   const std::uint32_t profession = resident.post.profession.value;
   // Away in the district, he stands at no post (away_in_district.h) — the
   // same answer DeriveWhereabouts gives, or the two would disagree.
-  if (profession == kInvalidDefIdValue || AwayInDistrict(resident, world.calendar.tick)) {
+  if (profession == kInvalidDefIdValue || OffWork(resident, world.calendar.tick)) {
     return false;
   }
   const PostShift shift =

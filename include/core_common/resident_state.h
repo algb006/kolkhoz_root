@@ -369,7 +369,9 @@ struct ResidentRow {
   /// The last hours of his absence spent walking in from the border.
   std::uint8_t away_walk_hours = 0;
 
-  /// Why he is away (AwayReason); kNone when he is in the village.
+  /// Why he is away (AwayReason); kNone when he is in the village with no
+  /// car coming. kAwaitingAmbulance is the one reason that is NOT away: he
+  /// lies at home for the car (away_in_district.h tells the two apart).
   std::uint8_t away_reason = 0;
 
   /// Character traits bitmask (life-cycle §1: 2-4 per person). STUB: the

@@ -475,8 +475,8 @@ class LaborSystem final : public ILaborSystem {
     std::vector<std::uint32_t> places_taken(current.units.rows.size(), 0);
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.post.profession.value == kInvalidDefIdValue ||
-          AwayInDistrict(resident, current.calendar.tick)) {
-        continue;  // no post, or its holder is in the district
+          OffWork(resident, current.calendar.tick)) {
+        continue;  // no post, or its holder is in the district or waits for its car
       }
       for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
         const HerdRow& herd = current.herds.rows[row];
@@ -516,8 +516,8 @@ class LaborSystem final : public ILaborSystem {
     }
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.post.profession.value == kInvalidDefIdValue ||
-          AwayInDistrict(resident, current.calendar.tick)) {
-        continue;  // no post, or its holder is in the district (district_car.h)
+          OffWork(resident, current.calendar.tick)) {
+        continue;  // no post, or its holder is off work (district_car.h)
       }
       if (resident.work.kind == WorkKind::kNone) {
         PutOnModuleWork(current, resident, places_taken);
@@ -1078,7 +1078,7 @@ class LaborSystem final : public ILaborSystem {
   bool Employable(const WorldState& state, const ResidentRow& resident) const {
     // AWAY IN THE DISTRICT (away_in_district.h): in its hospital, or on the
     // road home from its border — nobody's worker (district_car.h).
-    if (AwayInDistrict(resident, state.calendar.tick)) {
+    if (OffWork(resident, state.calendar.tick)) {
       return false;
     }
     Vec2 home;

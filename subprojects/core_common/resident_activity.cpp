@@ -164,6 +164,10 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   const bool on_night_post =
       profession != kInvalidDefIdValue && profession < rules.post_shift.size() &&
       rules.post_shift[profession] == PostShift::kNight && post_unit_row != kNoRow &&
+      // Off work — waiting for the district's car or away in the district —
+      // keeps no watch, the same answer AtPostNow and the shift announcement
+      // give (away_in_district.h, OffWork).
+      !OffWork(resident, world.calendar.tick) &&
       InPostShift(
           PostShift::kNight, world.calendar.weekday, HourFromTick(world.calendar.tick), window);
   if (on_night_post) {

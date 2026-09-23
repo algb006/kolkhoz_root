@@ -22,6 +22,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
+#include "core_common/chairman_away.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -6071,6 +6072,19 @@ int CheckDistrictTrip() {
     world.chairman.away_until_tick = world.calendar.tick + 10;
     return world;
   };
+  // «В ОТЪЕЗДЕ» — ОДНО СЛОВО, ОДИН ОТВЕТ (boss, boss-core-epoch1-2 seq 1,
+  // answer 6): the chairman's return tick still counts as away, like a
+  // resident's; the tick after it does not.
+  {
+    core::WorldState edge = march();
+    edge.calendar.tick = edge.chairman.away_until_tick;
+    core::RefreshCalendarCaches(edge.calendar);
+    const bool on_return = core::ChairmanAway(edge);
+    edge.calendar.tick += 1;
+    core::RefreshCalendarCaches(edge.calendar);
+    failures += Expect(on_return && !core::ChairmanAway(edge),
+                       "trip: the chairman is still away on his return tick, home the tick after");
+  }
   core::OrderRow down;
   down.kind = core::OrderKind::kTradePlan;
   down.resource = core::ResourceId{0};
@@ -7057,6 +7071,12 @@ int CheckTheAmbulance() {
                      "ambulance: sent at the day's turn for the one below the line, not the other");
   failures += Expect(world.district_cars.rows[0].arrive_tick == core::TickOfDayHour(61, 8),
                      "ambulance: at the house the next morning at eight");
+  // FROM THE SENDING HE LIES AT HOME AND TAKES NO WORK (boss seq 1, answer
+  // 3): off work, but not away — at home for the table and the layer.
+  failures += Expect(core::OffWork(patient(), world.calendar.tick) &&
+                         !core::AwayInDistrict(patient(), world.calendar.tick) &&
+                         patient().work.kind == core::WorkKind::kNone,
+                     "ambulance: waiting for the car he takes no work, and is still at home");
   at(world, 61, 0);
   core::RunDistrictCars(config, world);
   failures += Expect(world.district_cars.rows.size() == 1, "ambulance: one car, not a second");
@@ -7120,6 +7140,29 @@ int CheckTheAmbulance() {
   core::RunDistrictCars(config, snowy);
   failures += Expect(snowy.district_cars.rows.empty(),
                      "ambulance: a patient gone before it comes takes the car's errand with him");
+
+  // A LOADED WORLD WHERE THE WAIT AND THE CAR DISAGREE: a 0.34.18 save has a
+  // car coming for a man with no reason; a damaged one, the reason with no
+  // car. One tick puts both right — off work for the car, back to work
+  // without one (and sent for again at the day's turn if still grave).
+  auto [loaded, loaded_sick] = make(80.0F);
+  core::DistrictCarRow coming;
+  coming.phase = core::DistrictCarPhase::kOnTheRoad;
+  coming.resident = loaded_sick;
+  coming.arrive_tick = core::TickOfDayHour(61, 8);
+  core::AppendRow(loaded.district_cars, coming);
+  const core::ResidentId stranded = loaded.residents.row_ids[1];
+  loaded.residents.rows[1].away_reason =
+      static_cast<std::uint8_t>(core::AwayReason::kAwaitingAmbulance);
+  at(loaded, 60, 5);
+  core::RunDistrictCars(config, loaded);
+  const auto row_of = [&loaded](core::ResidentId id) -> const core::ResidentRow& {
+    return loaded.residents.rows[core::FindRow(loaded.residents, id)];
+  };
+  failures += Expect(core::OffWork(row_of(loaded_sick), loaded.calendar.tick),
+                     "ambulance: a car on the road for a man with no reason puts him off work");
+  failures += Expect(!core::OffWork(row_of(stranded), loaded.calendar.tick),
+                     "ambulance: the waiting reason with no car behind it lets him work again");
   (void)muddy_sick;
   return failures;
 }

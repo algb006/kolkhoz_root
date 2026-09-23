@@ -23,7 +23,8 @@
 namespace core {
 
 /// @brief The tick the resident is home again: `away_until_day` at
-/// `away_until_hour`. Meaningful only while `away_reason` is not kNone.
+/// `away_until_hour`. Meaningful only while he is away — a reason that is
+/// neither kNone nor kAwaitingAmbulance (the wait has no term).
 constexpr Tick AwayUntilTick(const ResidentRow& resident) {
   return (static_cast<Tick>(resident.away_until_day) * kTicksPerDay) + resident.away_until_hour;
 }
@@ -39,7 +40,19 @@ constexpr Tick AwayUntilTick(const ResidentRow& resident) {
 /// his day's work. He is home from the tick after production clears it.
 constexpr bool AwayInDistrict(const ResidentRow& resident, Tick now) {
   return resident.away_reason != static_cast<std::uint8_t>(AwayReason::kNone) &&
+         resident.away_reason != static_cast<std::uint8_t>(AwayReason::kAwaitingAmbulance) &&
          now <= AwayUntilTick(resident);
+}
+
+/// @brief Whether the resident takes no work at `now`: away in the district,
+/// or lying at home for the car that is coming (boss seq 1, answer 3 — from
+/// the sending to the car there are no working hours, so none go unpaid when
+/// it takes him). The question every reader that HANDS OUT WORK asks; the
+/// family's table and the layer ask AwayInDistrict, because a man waiting
+/// for the car is at home and eats at home.
+constexpr bool OffWork(const ResidentRow& resident, Tick now) {
+  return resident.away_reason == static_cast<std::uint8_t>(AwayReason::kAwaitingAmbulance) ||
+         AwayInDistrict(resident, now);
 }
 
 /// @brief Whether he is on the last stretch of it — walking in from the

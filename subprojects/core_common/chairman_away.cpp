@@ -7,8 +7,13 @@ namespace core {
 bool ChairmanAway(const WorldState& world) {
   const ChairmanState& chairman = world.chairman;
   const Tick now = world.calendar.tick;
+  // INCLUSIVE OF THE RETURN TICK, like a resident's absence (boss,
+  // boss-core-epoch1-2 seq 1, answer 6: «в отъезде — одно слово, один
+  // ответ»): the village's orders of that tick are answered first in the
+  // decisions slot, before the trip brings him home, so on that tick he is
+  // still away for them.
   return chairman.away_from_tick != 0 && chairman.away_from_tick <= now &&
-         now < chairman.away_until_tick;
+         now <= chairman.away_until_tick;
 }
 
 bool DistrictDoor(OrderKind kind) {

@@ -365,7 +365,7 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     }
     // AWAY IN THE DISTRICT (away_in_district.h): the order stands for the
     // day he is back, and nobody is sent to work in his name meanwhile.
-    if (AwayInDistrict(current.residents.rows[resident_row], current.calendar.tick)) {
+    if (OffWork(current.residents.rows[resident_row], current.calendar.tick)) {
       continue;
     }
     WorkAssignment& work = current.residents.rows[resident_row].work;

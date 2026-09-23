@@ -181,7 +181,7 @@ void GoOut(const NightTradeConfig& config, WorldState& current) {
     const ResidentRow& person = current.residents.rows[row];
     Vec2 yard;
     if (person.night_trade == NightTrade::kNone || !YardOf(current, person, yard) ||
-        AwayInDistrict(person, current.calendar.tick)) {
+        OffWork(person, current.calendar.tick)) {
       continue;  // no trade, no yard, or in the district's hospital
     }
     switch (person.night_trade) {

@@ -1030,7 +1030,7 @@ int CheckSettleHouse() {
 /// each other; and the world's generator is not touched by the second child.
 int CheckTwins() {
   int failures = 0;
-  const auto birth_day = [](float twins, float identical) {
+  const auto birth_day = [](float twins, float identical, bool mother_away = false) {
     core::LifeConfig config;
     config.definitions.units.is_housing = {1};
     for (core::EpochDemography& epoch : config.epochs) {
@@ -1056,6 +1056,12 @@ int CheckTwins() {
     wife.sex = core::Sex::kFemale;
     wife.birth_day = -300;  // 25 biological years at speedup 4
     wife.satiety = 80.0F;
+    if (mother_away) {
+      // In the district's hospital, with health restored above the birth
+      // stop — so that only the absence can hold the birth.
+      wife.away_reason = static_cast<std::uint8_t>(core::AwayReason::kHospital);
+      wife.away_until_day = 10;
+    }
     const core::ResidentId wife_id = AppendRow(world.residents, wife);
     core::ResidentRow husband = wife;
     husband.sex = core::Sex::kMale;
@@ -1070,6 +1076,11 @@ int CheckTwins() {
   const core::WorldState pair = birth_day(1.0F, 0.0F);
   failures += Expect(single.residents.rows.size() == 3 && same.residents.rows.size() == 4,
                      "twins: at twins_share 1 a birth brings two children, at 0 one");
+  // AWAY, THE BIRTH WAITS FOR HER RETURN (boss, boss-core-epoch1-2 seq 1,
+  // answer 5): the same sure birth, the mother in the district's hospital
+  // with her health above the stop — no child.
+  failures += Expect(birth_day(0.0F, 0.0F, true).residents.rows.size() == 2,
+                     "births: a mother away in the district has no child until she is back");
   const core::ResidentRow& a = same.residents.rows[2];
   const core::ResidentRow& b = same.residents.rows[3];
   failures += Expect(a.twin.value == same.residents.row_ids[3].value &&

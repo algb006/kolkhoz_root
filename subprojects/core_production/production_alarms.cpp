@@ -666,7 +666,7 @@ std::uint32_t HandsOfTheVillage(const ProductionConfig& config, const WorldState
     // Away in the district is nobody's hand — labor's Employable says so,
     // and this copy of that rule has to say it too.
     if (age >= config.farming.adult_age_years && HomePositionOf(world, person.family, home) &&
-        !AwayInDistrict(person, world.calendar.tick)) {
+        !OffWork(person, world.calendar.tick)) {
       ++hands;
     }
   }

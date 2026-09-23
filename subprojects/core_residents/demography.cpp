@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_common/away_in_district.h"
 #include "core_common/emit_event.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
@@ -321,7 +322,11 @@ float BirthMultiplier(const LifeConfig& config, Metric satisfaction) {
 /// year. Health needs no such care because health is already slow.
 bool BirthsStopped(const LifeConfig& config, const WorldState& current, const ResidentRow& mother) {
   const BirthConditionsConfig& births = config.birth_conditions;
-  if (mother.health < births.mother_health_stop) {
+  // AWAY, THE BIRTH WAITS FOR HER RETURN (boss, boss-core-epoch1-2 seq 1,
+  // answer 5), said here and not left to the hospital's health lying below
+  // the health stop: that held only while hospital_return_health and the
+  // reasons for going away happened to agree with it.
+  if (mother.health < births.mother_health_stop || AwayInDistrict(mother, current.calendar.tick)) {
     return true;
   }
   const std::uint32_t family_row = FindRow(current.families, mother.family);

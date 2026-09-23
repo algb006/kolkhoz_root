@@ -45,8 +45,7 @@ std::uint32_t ChildrenOfTheBand(const ProductionConfig& config, const WorldState
     const float age =
         BiologicalAgeYears(config.farming.life_speedup, person.birth_day, world.calendar.day);
     count += age >= config.farming.senior_school_from_years &&
-                     age < config.farming.adult_from_years &&
-                     !AwayInDistrict(person, world.calendar.tick)
+                     age < config.farming.adult_from_years && !OffWork(person, world.calendar.tick)
                  ? 1U
                  : 0U;
   }

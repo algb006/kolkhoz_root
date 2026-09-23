@@ -492,7 +492,7 @@ float NearestHolderRoadHours(const ProductionConfig& config,
     // away would stand in silence under "a master in reach works".
     if (person.post.profession.value == kInvalidDefIdValue ||
         person.post.unit.value != parent.value || !HomePositionOf(world, person.family, home) ||
-        AwayInDistrict(person, world.calendar.tick)) {
+        OffWork(person, world.calendar.tick)) {
       continue;
     }
     const float hours = TravelHoursBetween(home, place, hours_per_km);

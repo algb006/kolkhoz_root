@@ -223,7 +223,7 @@ void AnnounceNightShifts(const LaborConfig& config, WorldState& current) {
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     const ResidentRow& resident = current.residents.rows[row];
     const std::uint32_t profession = resident.post.profession.value;
-    if (AwayInDistrict(resident, current.calendar.tick)) {
+    if (OffWork(resident, current.calendar.tick)) {
       continue;  // a night post's holder in the district keeps no watch
     }
     if (profession == kInvalidDefIdValue || profession >= config.professions.size() ||

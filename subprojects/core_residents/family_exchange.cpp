@@ -17,6 +17,7 @@
 #include <limits>
 #include <vector>
 
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/fund_ladder.h"
@@ -87,7 +88,9 @@ float FamilySatiety(const WorldState& world, FamilyId family) {
   float total = 0.0F;
   std::uint32_t counted = 0;
   for (const ResidentRow& resident : world.residents.rows) {
-    if (resident.family.value == family.value) {
+    // Away in the district: the district feeds him and his hunger is not the
+    // family's (boss seq 1, answer 4).
+    if (resident.family.value == family.value && !AwayInDistrict(resident, world.calendar.tick)) {
       total += resident.satiety;
       ++counted;
     }
@@ -104,7 +107,11 @@ std::uint32_t EaterCount(const FoodConfig& config,
                          SimDay day) {
   std::uint32_t eaters = 0;
   for (const ResidentRow& resident : world.residents.rows) {
-    if (resident.family.value != family.value) {
+    // AWAY IN THE DISTRICT EATS THE DISTRICT'S BREAD (boss, boss-core-epoch1-2
+    // seq 1, answer 4): counted an eater, his share of the ration and the
+    // issue went to the yard, which the family meal then does not spend on
+    // him — the kolkhoz fed him twice, once in the hospital and once at home.
+    if (resident.family.value != family.value || AwayInDistrict(resident, world.calendar.tick)) {
       continue;
     }
     if (BiologicalAgeYears(life_speedup, resident.birth_day, day) >=

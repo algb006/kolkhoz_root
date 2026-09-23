@@ -61,6 +61,13 @@ enum class AwayReason : std::uint8_t {
   kHospital,       ///< «лечится · районная больница».
   kInvestigation,  ///< «в районе · под следствием» — with the police car, STUB.
 
+  /// NOT AWAY YET: the car is sent and he lies at home until it comes,
+  /// taking no work (boss, boss-core-epoch1-2 seq 1, answer 3). At home for
+  /// the table, the metrics and the layer; off work for everybody who hands
+  /// out work (away_in_district.h, OffWork). Appended last: a widened range
+  /// old saves are already inside.
+  kAwaitingAmbulance,
+
   /// NOT A REASON: the count, for the mirrors.
   kAwayReasonCount,
 };

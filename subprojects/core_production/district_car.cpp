@@ -58,11 +58,13 @@ void SendAndSetOut(const DistrictCarConfig& config, WorldState& current) {
       SetOut(config, current, car);
     }
   }
-  const Tick now = current.calendar.tick;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
-    const ResidentRow& resident = current.residents.rows[row];
+    ResidentRow& resident = current.residents.rows[row];
     const ResidentId id = current.residents.row_ids[row];
-    if (!(resident.health < config.health_line) || AwayInDistrict(resident, now) ||
+    // Anybody with a reason already — waiting for a car, or away — is not
+    // sent for again.
+    if (!(resident.health < config.health_line) ||
+        resident.away_reason != static_cast<std::uint8_t>(AwayReason::kNone) ||
         CarComingFor(current, id)) {
       continue;
     }
@@ -74,6 +76,13 @@ void SendAndSetOut(const DistrictCarConfig& config, WorldState& current) {
     }
     const Tick arrive = car.arrive_tick;
     AppendRow(current.district_cars, car);
+    // FROM THE SENDING TO THE CAR HE LIES AT HOME and takes no work (boss,
+    // boss-core-epoch1-2 seq 1, answer 3): no working hours for the car to
+    // cut, so none go unpaid. This is the day's turn, after labor's hour-0
+    // placement and before sunrise: the placement he got is taken back
+    // before a minute of it is worked.
+    resident.away_reason = static_cast<std::uint8_t>(AwayReason::kAwaitingAmbulance);
+    resident.work = WorkAssignment{};
     Emit(current, EventKind::kAmbulanceSent, resident, id, static_cast<std::int64_t>(arrive));
   }
 }
@@ -124,7 +133,11 @@ void BringThemHome(const ProductionConfig& config, WorldState& current) {
   const Tick now = current.calendar.tick;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     ResidentRow& resident = current.residents.rows[row];
+    // Waiting for the car is not away: there is no term to end (its until is
+    // nought, and read as a term it would bring him "home" the tick he was
+    // sent for).
     if (resident.away_reason == static_cast<std::uint8_t>(AwayReason::kNone) ||
+        resident.away_reason == static_cast<std::uint8_t>(AwayReason::kAwaitingAmbulance) ||
         now < AwayUntilTick(resident)) {
       continue;
     }
@@ -148,7 +161,31 @@ void BringThemHome(const ProductionConfig& config, WorldState& current) {
 
 }  // namespace
 
+namespace {
+
+/// THE WAIT AND THE CAR SAY THE SAME THING, every tick. They are set in one
+/// move and only a loaded world can part them: a 0.34.18 save has a car on
+/// the road for a resident with no reason (he would work until it came), and
+/// a hand-edited or damaged one could carry the waiting reason with no car
+/// (he would take no work for ever, and never be sent for again).
+void ReconcileTheWait(WorldState& current) {
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    ResidentRow& resident = current.residents.rows[row];
+    const bool car = CarComingFor(current, current.residents.row_ids[row]);
+    const auto reason = static_cast<AwayReason>(resident.away_reason);
+    if (car && reason == AwayReason::kNone) {
+      resident.away_reason = static_cast<std::uint8_t>(AwayReason::kAwaitingAmbulance);
+      resident.work = WorkAssignment{};
+    } else if (!car && reason == AwayReason::kAwaitingAmbulance) {
+      resident.away_reason = static_cast<std::uint8_t>(AwayReason::kNone);
+    }
+  }
+}
+
+}  // namespace
+
 void RunDistrictCars(const ProductionConfig& config, WorldState& current) {
+  ReconcileTheWait(current);
   if (HourFromTick(current.calendar.tick) == 0) {
     SendAndSetOut(config.district_car, current);
   }
