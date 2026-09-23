@@ -2881,6 +2881,56 @@ int TestFellersRideOut() {
   return failures;
 }
 
+/// THE CARTING RIDES IN THE HOUR WHEN THERE IS A HORSE (the Epoch II
+/// diagnosis; boss seq 27): the assignment measured a hauling job's shoulder
+/// at harness speed whenever a draught horse stood in the village, and the
+/// hour walked it — a stand 3 km out is 7.2 hours on foot each way, so the
+/// carters were sent and did nothing, 0.015 t of logs a carter-day. The
+/// pair: with no horse the same stand is carted not at all.
+int TestLogCartingRidesWithAHorse() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_cart_ride";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "cart ride: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto carted = [&labor](bool with_horse) {
+    DayWorld day(2);
+    if (with_horse) {
+      core::HerdRow team;
+      team.kind = core::LivestockKindId{0};
+      team.adult_count = 2;
+      core::AppendRow(day.world.herds, team);
+    }
+    core::TimberStandRow stand;
+    stand.position = core::Vec2{.x = 3000.0F, .y = 0.0F};
+    stand.load_grams = 10'000'000;
+    stand.haul_days_remaining = 5.0F;
+    stand.haul_days_written = 5.0F;
+    core::AppendRow(day.world.stands, stand);
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    return day.world.stands.rows[0].haul_days_remaining;
+  };
+  failures += Expect(carted(true) < 5.0F,
+                     "cart ride: with a horse the carters ride to a stand 3 km out and cart there");
+  failures +=
+      Expect(carted(false) == 5.0F, "cart ride: with none the same stand is not carted on foot");
+  return failures;
+}
+
 /// THE MEADOW CUT RIDES IN THE HOUR TOO, AND TAKES ONE HORSE FOR THE BRIGADE
 /// (time design §7; boss, parcel 312). A meadow 3 km out is 7.2 hours on foot
 /// and 3 on the mower's cart: the mowers are sent and mow there. The day's
@@ -3183,6 +3233,7 @@ int main() {
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAWorkedOutSiteTakesItsOrderOff();
+  failures += TestLogCartingRidesWithAHorse();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();
   failures += TestMeadowCutRidesAndTakesOneHorse();

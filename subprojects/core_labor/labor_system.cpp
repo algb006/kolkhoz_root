@@ -1228,9 +1228,17 @@ class LaborSystem final : public ILaborSystem {
       }
       // Asked of the ASSIGNMENT and not of the kind: a meadow's cut rides and
       // a strip's harvest walks, one kind between them (work_seam.h).
-      const WorkKind road_kind = WorkRidesOut(current, current.residents.rows[row].work)
-                                     ? WorkKind::kPlowing
-                                     : WorkKind::kHarvest;
+      // AND THE CARTING RIDES WHEN THERE IS A HORSE — the one question the
+      // assignment asks of every hauling job (CollectJobs, `harnessed`). The
+      // shoulder was measured riding and the day walking until 0.34.28: on a
+      // stand three kilometres out a carter walked his day away, 0.015 t of
+      // logs a carter-day, and the logs lay on the stands while every site
+      // in the village waited for them (the Epoch II diagnosis; boss seq 27;
+      // the meadow's same defect, parcel 312).
+      const WorkAssignment& work = current.residents.rows[row].work;
+      const bool rides = WorkRidesOut(current, work) ||
+                         (work.kind == WorkKind::kHauling && DraughtHorses(current) > 0);
+      const WorkKind road_kind = rides ? WorkKind::kPlowing : WorkKind::kHarvest;
       const float travel = TravelHours(home, target, HoursPerKm(config_, road_kind));
       const float worked = HoursInside(hour, window.sunrise + travel, window.sunset - travel);
       if (worked <= 0.0F) {

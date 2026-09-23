@@ -854,6 +854,14 @@ int main(int argc, char** argv) {
         total.spoiled += y.spoiled;
         total.lying_on_stands += y.lying_on_stands;
         total.in_stores += y.in_stores;
+        total.lying_no_demand += y.lying_no_demand;
+        total.lying_no_carter += y.lying_no_carter;
+        total.lying_carted += y.lying_carted;
+        total.carters_on_carted_days += y.carters_on_carted_days;
+        total.demand_days_on_carted_days += y.demand_days_on_carted_days;
+        total.load_tonnes_on_carted_days += y.load_tonnes_on_carted_days;
+        total.carted_off_tonnes += y.carted_off_tonnes;
+        total.carter_days_before += y.carter_days_before;
       }
     }
     const double nine = static_cast<double>(walks.size());
@@ -868,6 +876,31 @@ int main(int argc, char** argv) {
               << (years_seen > 0 ? total.lying_on_stands / static_cast<double>(years_seen) : 0.0)
               << ", in the stores "
               << (years_seen > 0 ? total.in_stores / static_cast<double>(years_seen) : 0.0) << '\n';
+    // WHY THE LOGS LAY (boss seq 27, step 2): stand-days with a load, by the
+    // first reason — the carting demand is sized to what the stores can take
+    // in, so "no demand" reads "no room to receive", not "nobody asked".
+    std::cout << "population_curve: stand-days with logs lying, sum of " << walks.size()
+              << " — no carting demand (the stores could take none) " << total.lying_no_demand
+              << ", demand and no carter " << total.lying_no_carter << ", demand and carters "
+              << total.lying_carted << '\n';
+    const double carted_days = static_cast<double>(total.lying_carted);
+    std::cout << "population_curve: on the stand-days with carters — carters a stand "
+              << (carted_days > 0.0 ? total.carters_on_carted_days / carted_days : 0.0)
+              << ", carting demand "
+              << (total.load_tonnes_on_carted_days > 0.0
+                      ? total.demand_days_on_carted_days / total.load_tonnes_on_carted_days
+                      : 0.0)
+              << " man-days a tonne of logs lying, load a stand "
+              << (carted_days > 0.0 ? total.load_tonnes_on_carted_days / carted_days : 0.0)
+              << " t (a demand is written for what the stores can take, so man-days a tonne "
+                 "is the road's price only while the stores take it all)\n";
+    std::cout << "population_curve: what the carting moved — " << total.carted_off_tonnes
+              << " t off the stands over " << total.carter_days_before << " carter-days, "
+              << (total.carter_days_before > 0.0
+                      ? total.carted_off_tonnes / total.carter_days_before
+                      : 0.0)
+              << " t a carter-day (a stand's load falls by the carting only; felling the same "
+                 "day hides a fall, so this is a floor)\n";
   }
   // THE DENOMINATOR BESIDE THE ANSWER. "Nought years open" says nothing about
   // whether the shortfall is one stubborn type or the whole farm, and the two
