@@ -703,7 +703,6 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     return nullptr;
   }
   auto time = CreateTimeSystem(*config.tables, config.stub_tables);
-  auto residents = CreateResidentsSystem(*config.tables, config.stub_tables);
   // The growing season's last day travels from the clock to the fields: it is
   // derived from the seasonal curve, which is core_time's, and production
   // refuses a sowing that cannot ripen before it. The same day goes to labor,
@@ -721,7 +720,12 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both
-  // modules for as long as either runs, so the raw pointer outlives no one.
+  // modules for as long as either runs, so the raw pointer outlives no one
+  // WHILE ANYTHING RUNS. At teardown it does, for residents' copy below: the
+  // members die in reverse declaration order and residents_ is declared
+  // before production_, so its std::function holds a dangling pointer for the
+  // span of the destruction. Harmless today — no destructor calls it — and
+  // named so that none starts to (the static loop of 23 September).
   const IProductionSystem* const estimate = production.get();
   auto labor = CreateLaborSystem(
       *config.tables,
@@ -731,6 +735,14 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
         return estimate == nullptr ? 0 : estimate->StandingCropGrams(world, field);
       },
       rain_days);
+  // THE FODDER FUND IS PRODUCTION'S to size, and the people's issue must stay
+  // below rung 3 of the ladder, which holds it (core_common/fund_ladder.h;
+  // boss seq 14 and 17): residents is handed the one size by the same road
+  // labor is handed the grams of a crop, and is therefore built after it.
+  auto residents = CreateResidentsSystem(
+      *config.tables, config.stub_tables, [estimate](const WorldState& world) {
+        return estimate == nullptr ? ResourceAmounts{} : estimate->FodderFund(world);
+      });
   auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).

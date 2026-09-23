@@ -1243,13 +1243,32 @@ int main(int argc, char** argv) {
     // trap had no teeth» still stands: the first year must sow under a
     // quarter of the canon. The finding is written down before this line
     // changed (claude/l1_predictions.md §11b).
-    constexpr float kLostSeasonShare = 0.25F;
+    //
+    // A BAND SINCE 0.34.17, AND THE QUARTER WAS NEVER A RULE (boss,
+    // boss-core-epoch1-resume seq 19). The bought horses are fed, and until
+    // 0.34.17 the ploughing opened before them stayed priced on the empty
+    // ration of a village with no team, 1.43 times over (field_work.h,
+    // RescaleHorseWorkForRation). "Under a quarter" was the number of a run
+    // in that world. Measured on the 0.34.17 tree, first-year sowing of the
+    // canon's 66.5 ha: seed 0 21.5, 1929 11, 1930 11, 1931 21.5, 1932 14.5,
+    // 1933 14.5, 1934 11, 1935 14.5, 1936 14.5, 1937 11 — shares 0.165 to
+    // 0.323. The design holds that the rescue COSTS the season, and it does:
+    // two thirds of it at the least. Boss's condition: above half on any
+    // seed is a design question, not a band to widen.
+    //
+    // CTEST MEASURES SEED 0, NOT 1930: the seed is atoi(argv[1]), and the
+    // arm's first argument is its flag. The top of the band is that seed.
+    constexpr float kBandLowShare = 0.16F;   // 11 / 66.5 = 0.165, rounded outward
+    constexpr float kBandHighShare = 0.33F;  // 21.5 / 66.5 = 0.323, rounded outward
+    const float sown_share = canon_sown_ha > 0.0F ? first_year_sown_ha / canon_sown_ha : 1.0F;
     std::cout << "idle_curve: первый год посеял " << first_year_sown_ha << " га из канона "
-              << canon_sown_ha << " га\n";
-    failures += run::Expect(canon_sown_ha > 0.0F && first_year_sown_ha >= 0.0F &&
-                                first_year_sown_ha < kLostSeasonShare * canon_sown_ha,
-                            "and the rescue costs the sowing window the head is bought in: the "
-                            "first year sows under a quarter of the canon");
+              << canon_sown_ha << " га (доля " << sown_share << ", полоса десяти зёрен "
+              << kBandLowShare << "-" << kBandHighShare << ")\n";
+    failures += run::Expect(
+        canon_sown_ha > 0.0F && sown_share >= kBandLowShare && sown_share <= kBandHighShare,
+        "and the rescue costs the sowing window the head is bought in: the "
+        "first year sows inside the ten seeds' band, two thirds of the "
+        "canon lost at the least");
     if (last_stalled_year > first_stalled_year) {
       std::cout << "idle_curve: и ещё один вставший год — " << last_stalled_year << ", через "
                 << (last_stalled_year - first_stalled_year)

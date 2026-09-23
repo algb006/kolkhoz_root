@@ -107,26 +107,34 @@ OrderRefusal UnsealFund(const ProductionConfig& config,
   // kolkhoz fund — a release with no cost, which is the shape this whole
   // verb was built to avoid.
   //
-  // Told apart by the feed roster's own `work_only` flag rather than by a
-  // list of keys here: that flag IS the statement "this is the working
-  // ration and not the maintenance one", it comes from the design db, and
+  // Told apart by the feed roster's own flag rather than by a list of keys
+  // here — `fodder_fund` since 0.34.17, `work_only` before it (see below):
+  // that flag IS the statement "this feed is the fund's", it comes from the
+  // design db, and
   // a second list of fodder grains in this file would be its second home.
   if (order.fund == FundKind::kFodder) {
-    bool work_feed = false;
+    // AND TOLD APART BY `fodder_fund`, NOT BY `work_only`, since 0.34.17:
+    // the fund holds the feeds the design names for it (oats and barley),
+    // and FodderClaimGrams sizes it by the same flag. Asked by work_only,
+    // this door said "a fodder grain" of the horse's rye and wheat and left
+    // the refusal to a ceiling of nought — two doors, one fund.
+    bool fund_feed = false;
     for (const FeedLinkDef& link : config.feed_links) {
-      if (link.work_only != 0 && link.resource.value == index) {
-        work_feed = true;
+      if (link.fodder_fund != 0 && link.resource.value == index) {
+        fund_feed = true;
         break;
       }
     }
-    if (!work_feed) {
+    if (!fund_feed) {
       return OrderRefusal::kRuleForbids;
     }
-    // AND NOT WIDER THAN THE FUND ITSELF. Its size is the year's work
-    // ration of the working stock in feed units (resources design §6,
-    // boss's decision of 2026-09-12) — the seed fund is measured off the
-    // sowing to come, and this one off the harness that will plough.
-    const Grams held = FodderFundGrams(config, current, order.resource);
+    // AND NOT WIDER THAN THE RUNG TODAY. It was the year's work ration of
+    // the working stock until 0.34.17 — a size the ladder held nowhere, so
+    // the order could open a year of oats that no rung was keeping. The rung
+    // is now held (fund_ladder.h, FodderRungLeft), and its size today is the
+    // team's ration until the next reaping, capped by the last one (boss,
+    // boss-core-epoch1-resume seq 14).
+    const Grams held = FodderClaimGrams(config, current, order.resource);
     if (opened > held || order.amount > held - opened) {
       return OrderRefusal::kRuleForbids;
     }

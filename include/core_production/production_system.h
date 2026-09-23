@@ -160,6 +160,19 @@ class IProductionSystem {
   /// formula.
   /// @note A pure read; called by labor in the decisions slot (phase 3).
   virtual Grams StandingCropGrams(const WorldState& world, const FieldRow& field) const = 0;
+
+  /// @brief The fodder FUND today, grams, dense by ResourceId: the working
+  /// stock's ration of each work feed until its next reaping, capped by the
+  /// last reaping of it (boss, boss-core-epoch1-resume seq 14). 0 for a
+  /// resource that is no work feed.
+  ///
+  /// Exposed for the people's issue, which must stay below rung 3 of the
+  /// ladder (core_common/fund_ladder.h, FodderRungLeft) and cannot size it:
+  /// the herds and the feed table are this module's. Handed to residents
+  /// through the assembly, as StandingCropGrams is to labor.
+  /// @note A pure read; called by residents in the decisions slot (phase 3)
+  /// and between steps for the ration alarm.
+  virtual ResourceAmounts FodderFund(const WorldState& world) const = 0;
 };
 
 /// @brief Creates the production subsystem.

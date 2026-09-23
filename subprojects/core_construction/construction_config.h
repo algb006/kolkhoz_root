@@ -68,6 +68,13 @@ struct BuildLevel {
   /// The build class's brigade ceiling; 0 = none named.
   std::uint8_t max_crew = 0;
 
+  /// unit_levels.csv `winter_works`: 1 — the class keeps working in the
+  /// core's winter season, 0 — its site stands and loses nothing, like a
+  /// pause (construction design §8 «Сезонность»; boss seq 8, 2214dba2). A
+  /// blank cell or a table without the column reads 1: a site nobody said
+  /// stands does not stand.
+  std::uint8_t winter_works = 1;
+
   /// The era this level belongs to (1..3): an upgrade waits for its era
   /// even when the unit itself is older.
   std::uint8_t era = 1;

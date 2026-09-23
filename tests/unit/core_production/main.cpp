@@ -2534,47 +2534,59 @@ int CheckTheHarvestWillNotBeGathered() {
     }
     return grams;
   };
-  // Day 30, snow after 40. At 6 norm-days a day the oat, open today, takes
-  // 3.33 days; the potato, ripe on 32, starts at 33.33 with 7.67 days left
-  // and needs 8.33 — the snow takes it, and the alarm names THE WHOLE 10 t
-  // (boss seq 176: the snow takes a field being reaped entire). Reaped in row
-  // order it would start on 32, need 8.33 of 9 days and be said nothing — so
-  // the pace 6 tells the ripening order from the row order.
-  world.ledger.current.reaping_last_day = 6.0F;
+  // Day 30. THE DAYS THAT COUNT, since 0.34.17: day 34 is a Sunday and no
+  // working day, and the early snow's key of 40 is the day the snow LIES, so
+  // day 39 is the last counted (the mean edge, 40, is later). From day 32
+  // that leaves 32, 33 and 35-39: seven.
+  //
+  // At 7.5 norm-days a day the oat, open today, takes 2.67 days and runs to
+  // 32.67; the potato, ripe on 32, starts there with 6.33 days left and needs
+  // 6.67 — the snow takes it, and the alarm names THE WHOLE 10 t (boss seq
+  // 176: the snow takes a field being reaped entire). Reaped in row order it
+  // would start on 32, need 6.67 of the 7 and be said nothing — so the pace
+  // tells the ripening order from the row order. (It was 6 until 0.34.17,
+  // when the Sunday and the snow's own day made 6 warn in both orders, and
+  // the check stopped telling them apart while staying green.)
+  world.ledger.current.reaping_last_day = 7.5F;
   failures += Expect(warned() == 10'000'000,
                      "gather: the potato ripening after the oat finds the days it took, and it is "
                      "said before the potato is ripe — the whole field, which the snow takes");
   world.ledger.current.reaping_last_day = 12.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
   // RAIN STOPS THE REAPING (core_common/rain_stops_work.h): the same twelve,
-  // with six days in ten ahead rained out. Today (day 30) is dry and counts
-  // whole; the oat's 1.67 days then run to day 32.67, and the potato's 4.17
-  // dry days need more than the 3.33 left before the snow — lost. At four in
-  // ten the oat is done by 32.11 and 5.33 dry days remain: both in time. The
-  // pair is what shows the share is read, and read in the right direction.
+  // the days counted as above (no Sunday 34, last day 39). Today (day 30) is
+  // dry and counts whole. Six rain days in ten ahead: the oat's 1.67 days run
+  // to 32.67, and the potato's 4.17 dry days need more than the 2.53 left —
+  // lost. Thirty-five in a hundred: the oat is done by 32.03 and 4.53 dry
+  // days remain — both in time. The pair is what shows the share is read,
+  // and read in the right direction.
   config.rain_day_shares.fill(0.6F);
   failures += Expect(warned() == 10'000'000,
                      "gather: six rain days in ten ahead leave the potato to the snow");
-  config.rain_day_shares.fill(0.4F);
-  failures += Expect(warned() == 0, "gather: four in ten still leave both reaped in time");
-  // And today is not a forecast. At 45 in a hundred ahead a dry today leaves
-  // the potato 4.83 dry days, enough; a rained-out today gives nothing, the
-  // oat runs to day 34.03 and 3.83 are left — lost. Only today's sky differs.
-  config.rain_day_shares.fill(0.45F);
-  failures += Expect(warned() == 0, "gather: at 45 in 100 with a dry today, both in time");
+  config.rain_day_shares.fill(0.35F);
+  failures += Expect(warned() == 0, "gather: 35 in 100 still leave both reaped in time");
+  // And today is not a forecast. At 30 in a hundred ahead a dry today leaves
+  // the potato 4.9 dry days, enough; a rained-out today gives nothing, the
+  // oat runs to day 33.38 and 3.93 are left — lost. Only today's sky differs.
+  config.rain_day_shares.fill(0.3F);
+  failures += Expect(warned() == 0, "gather: at 30 in 100 with a dry today, both in time");
   world.weather.precipitation = core::Precipitation::kRain;
   failures += Expect(warned() == 10'000'000, "gather: a rained-out today counts no day at all");
   world.weather.precipitation = core::Precipitation::kNone;
   config.rain_day_shares.fill(0.0F);
-  // TO THE EARLY SNOW (gather_alarm_snow_day): the same twelve, the potato's
-  // 4.17 days from day 32. Counted to day 36 they fit in five; to day 35 in
-  // four they do not — and the mean edge, 40, has not moved. The pair is the
-  // proof the early edge is read and that it is the EARLIER of the two.
-  config.farming.gather_alarm_snow_day = 36.0F;
-  failures += Expect(warned() == 0, "gather: to an early snow on day 36 the potato still fits");
-  config.farming.gather_alarm_snow_day = 35.0F;
+  // TO THE EARLY SNOW (gather_alarm_snow_day, the FIRST day the snow lies):
+  // the same twelve, the potato's 4.17 days from day 32 — 32, 33, then 35,
+  // 36 and a sixth of 37, the Sunday skipped. Snow lying on day 38: the
+  // potato is in by 37, and fits. Snow lying on day 37 — the day it would
+  // finish: it does not, and the alarm lights. That is econ's condition
+  // word for word (econ-boss-snow-edge-reading): a field finished ON the
+  // snow's first day is a field lost, and 0.34.16, which counted that day,
+  // said nothing about it. The mean edge, 40, has not moved.
+  config.farming.gather_alarm_snow_day = 38.0F;
+  failures += Expect(warned() == 0, "gather: snow lying on day 38 — the potato is in by 37");
+  config.farming.gather_alarm_snow_day = 37.0F;
   failures += Expect(warned() == 10'000'000,
-                     "gather: to an early snow on day 35 it does not, whatever the mean edge says");
+                     "gather: snow lying on the very day the potato would finish — it lights");
   config.farming.gather_alarm_snow_day = 45.0F;
   config.growing_season_last_day = 35;
   failures += Expect(warned() == 10'000'000,
@@ -2595,14 +2607,17 @@ int CheckTheHarvestWillNotBeGathered() {
   world.ledger.current.reaping_last_day = 0.0F;
   failures += Expect(warned() == 10'000'000,
                      "gather: before the season's first reaping, no hands means the whole crop");
-  // Six adults and a child in a tent (a home without a house): six hands, the
-  // pace 6 above — the potato is lost, the whole 10 t said. Counting the child
-  // would make seven, and at 7 a day both are reaped (the potato needs 7.14 of
-  // 8.14 days): the answer flips, so the count of hands is what is tested.
+  // Seven adults and a child in a tent (a home without a house): seven hands
+  // — the oat runs to 32.86, the potato needs 7.14 of the 6.14 days left, and
+  // the whole 10 t is said. Counting the child would make eight, and at 8 a
+  // day both are reaped (6.25 of 6.5): the answer flips, so the count of hands
+  // is what is tested. (Six adults until 0.34.17, when the Sunday and the
+  // snow's own day made seven hands lose the potato too and the child's count
+  // stopped mattering to the verdict.)
   core::FamilyRow family;
   family.in_tent = 1;
   const core::FamilyId household = core::AppendRow(world.families, family);
-  for (const std::int32_t age_years : {30, 25, 40, 35, 28, 45, 5}) {
+  for (const std::int32_t age_years : {30, 25, 40, 35, 28, 45, 33, 5}) {
     core::ResidentRow person;
     person.family = household;
     person.birth_day = 30 - (age_years * static_cast<std::int32_t>(core::kDaysPerYear));
@@ -3257,28 +3272,32 @@ int CheckTheChairmanCanUnsealAFund() {
   // hold anything at all, because its size is the harness's year of work
   // ration. A fixture with no herds is the sharpest form of the other check
   // below: whatever the chairman names, there is no fund to name it out of.
-  const auto order_unseal_with_horses = [&](core::FundKind fund, core::Grams asked) {
-    core::WorldState previous;
-    previous.calendar.tick = 10U * core::kTicksPerDay;
-    core::RefreshCalendarCaches(previous.calendar);
-    const core::ITable* const livestock = tables->FindTable("livestock");
-    core::HerdRow horses;
-    horses.kind =
-        core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
-    horses.adult_count = 40;
-    core::AppendRow(previous.herds, horses);
-    core::OrderRow order;
-    order.kind = core::OrderKind::kUnsealFund;
-    order.fund = fund;
-    order.resource = rye;
-    order.amount = asked;
-    core::AppendRow(previous.orders, order);
-    core::WorldState current = previous;
-    current.calendar.tick += 1;
-    core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
-    return current;
-  };
+  // OATS, NOT RYE, since 0.34.17: the fund holds the horse's oats and barley
+  // only (feed_links.csv fodder_fund; boss seq 21) — rye is bread grain.
+  const core::ResourceId oat{static_cast<std::uint16_t>(resources->FindRowByKey("oat"))};
+  const auto order_unseal_with_horses =
+      [&](core::FundKind fund, core::Grams asked, core::ResourceId what) {
+        core::WorldState previous;
+        previous.calendar.tick = 10U * core::kTicksPerDay;
+        core::RefreshCalendarCaches(previous.calendar);
+        const core::ITable* const livestock = tables->FindTable("livestock");
+        core::HerdRow horses;
+        horses.kind =
+            core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
+        horses.adult_count = 40;
+        core::AppendRow(previous.herds, horses);
+        core::OrderRow order;
+        order.kind = core::OrderKind::kUnsealFund;
+        order.fund = fund;
+        order.resource = what;
+        order.amount = asked;
+        core::AppendRow(previous.orders, order);
+        core::WorldState current = previous;
+        current.calendar.tick += 1;
+        core::RefreshCalendarCaches(current.calendar);
+        system->RunProductionDecisions(previous, current);
+        return current;
+      };
 
   // -- the plan reserve opens, and by the figure the chairman named --------
   {
@@ -3448,19 +3467,24 @@ int CheckTheChairmanCanUnsealAFund() {
   // fund arrived the same day the second was written, and it needed no field
   // of its own. A fourth will need none either.
   {
-    // Rye is a fodder grain for the horse in the shipped roster (feed_links
-    // marks it work_only), so it may come out of this fund.
-    const core::WorldState after = order_unseal_with_horses(core::FundKind::kFodder, 120'000);
+    // Oats are the fund's grain in the shipped roster (feed_links marks them
+    // fodder_fund), so they may come out of it. Until 0.34.17 this was rye,
+    // then a work feed of the horse's and so "fodder"; it is bread grain, and
+    // the pair below says the fund refuses it now.
+    const core::WorldState after = order_unseal_with_horses(core::FundKind::kFodder, 120'000, oat);
     failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone,
                        "the fodder fund opens by the same verb as the other two");
     const auto slot = static_cast<std::size_t>(core::FundKind::kFodder);
-    const core::Grams opened = rye.value < after.unsealed.by_fund[slot].size()
-                                   ? after.unsealed.by_fund[slot][rye.value]
+    const core::Grams opened = oat.value < after.unsealed.by_fund[slot].size()
+                                   ? after.unsealed.by_fund[slot][oat.value]
                                    : 0;
     failures += Expect(opened == 120'000, "and by the figure the chairman named");
+    const core::WorldState bread = order_unseal_with_horses(core::FundKind::kFodder, 120'000, rye);
+    failures += Expect(bread.orders.rows[0].status == core::OrderStatus::kRefused,
+                       "and rye, the horse's work feed but bread grain, is no part of the fund");
     const auto plan_slot = static_cast<std::size_t>(core::FundKind::kPlanReserve);
     failures += Expect(after.unsealed.by_fund[plan_slot].empty() ||
-                           after.unsealed.by_fund[plan_slot][rye.value] == 0,
+                           after.unsealed.by_fund[plan_slot][oat.value] == 0,
                        "and the funds he did not name stay shut — the index is the enum, and "
                        "an off-by-one there would open the neighbour");
   }
@@ -5387,6 +5411,84 @@ int CheckTheLimitKeepsTheTeamsOats() {
   return failures;
 }
 
+/// RUNG 3 TODAY (FodderClaimGrams; boss, boss-core-epoch1-resume seq 14,
+/// answer 2): forty working horses on the shipped tables hold their ration
+/// of oats until the next oats are in, no more than the last reaping brought
+/// — and hold no hay, which is no work feed.
+int CheckTheFodderRungIsTheTeamsRationToTheNextOats() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "fodder rung: the shipped tables give a production configuration") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ITable* const livestock = tables->FindTable("livestock");
+  const auto oat = core::ResourceId{static_cast<std::uint16_t>(resources->FindRowByKey("oat"))};
+  const auto hay = core::ResourceId{static_cast<std::uint16_t>(resources->FindRowByKey("hay"))};
+  std::uint32_t window_start = core::kDaysPerYear;
+  std::uint32_t window_end = 0;
+  for (const core::CropDef& crop : config.crops) {
+    if (crop.resource.value == oat.value) {
+      window_start =
+          std::min<std::uint32_t>(window_start, crop.harvest_from_month * core::kDaysPerMonth);
+      window_end =
+          std::max<std::uint32_t>(window_end, (crop.harvest_to_month + 1U) * core::kDaysPerMonth);
+    }
+  }
+  core::WorldState world;
+  world.calendar.tick = 16U * core::kTicksPerDay;  // May: this year's oats not in
+  core::RefreshCalendarCaches(world.calendar);
+  world.ledger.current.harvest.assign(resources->RowCount(), 0);
+  world.ledger.closed.harvest.assign(resources->RowCount(), 0);
+  world.ledger.closed.harvest[oat.value] = 1'000'000'000;  // a big crop last year
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{static_cast<std::uint16_t>(livestock->FindRowByKey("horse"))};
+  team.adult_count = 40;
+  core::AppendRow(world.herds, team);
+  const double year = static_cast<double>(core::FodderFundGrams(config, world, oat));
+  const auto near = [year](core::Grams value, double days) {
+    const double expected = year * days / static_cast<double>(core::kDaysPerYear);
+    return std::abs(static_cast<double>(value) - expected) <= expected * 1.0e-4 + 1.0;
+  };
+  const core::Grams may = core::FodderClaimGrams(config, world, oat);
+  std::cout << "fodder rung: year " << year / 1.0e6 << " t, May "
+            << static_cast<double>(may) / 1.0e6 << " t to the end of the oat window (day "
+            << window_end << ")\n";
+  failures += Expect(year > 0.0 && near(may, static_cast<double>(window_end - 16U)),
+                     "fodder rung: in May, the team's ration to the end of the oat reaping");
+  failures += Expect(core::FodderClaimGrams(config, world, hay) == 0,
+                     "fodder rung: hay is no work feed and holds nothing in rung 3");
+  // BREAD GRAIN NEVER (boss seq 21; feed_links.csv fodder_fund): rye is a
+  // work feed of the horse's, and it is not the fund's. Sized off every work
+  // feed, the rung held it — and thirty_years failed a plan year for it.
+  const auto rye = core::ResourceId{static_cast<std::uint16_t>(resources->FindRowByKey("rye"))};
+  failures += Expect(core::FodderClaimGrams(config, world, rye) == 0,
+                     "fodder rung: rye, a work feed but bread grain, is not held in the fund");
+  // THE FIRST YEAR HAS NO LAST REAPING (boss seq 17: the fund must live in
+  // year 1): a poor book in the first May caps nothing — the start stock
+  // stands in for last year's crop. From the second year it caps.
+  world.ledger.closed.harvest[oat.value] = 2'000'000;  // a poor crop last year: 2 t
+  failures += Expect(core::FodderClaimGrams(config, world, oat) == may,
+                     "fodder rung: in the first year, before any reaping, no cap — the need alone");
+  world.calendar.tick = (core::kDaysPerYear + 16U) * core::kTicksPerDay;  // May of year 2
+  core::RefreshCalendarCaches(world.calendar);
+  failures += Expect(core::FodderClaimGrams(config, world, oat) == 2'000'000,
+                     "fodder rung: from the second year, never more than the last reaping");
+  // Reaped this year: the rung runs to next year's window, capped by THIS
+  // year's reaping, however poor last year's was.
+  world.calendar.tick = (core::kDaysPerYear + 34U) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  world.ledger.current.harvest[oat.value] = 1'000'000'000;
+  failures += Expect(near(core::FodderClaimGrams(config, world, oat),
+                          static_cast<double>(window_start + core::kDaysPerYear - 34U)),
+                     "fodder rung: after this year's oats, the ration to next year's reaping");
+  return failures;
+}
+
 /// «СДАТЬ СЕЙЧАС» (kDeliverPlan; econ's audit M2, Л1): the chairman ships
 /// what is owed before the turn, and the turn ships only the rest.
 /// «ОСВОБОДИТЬ СКЛАД» (kEmptyStore; start §5; registers 214 and 233): the
@@ -6842,17 +6944,77 @@ int CheckTheColumnDrillInTheRain() {
   failures +=
       Expect(field().phase == core::FieldPhase::kSowing && world.mts_column.worked_ha == 10.0F,
              "mts: in the rain the field is ploughed and harrowed, and waits at its sowing");
+  // THE DRILL ITSELF STOPS, not only the seed (boss, seq 12: «сев стоит,
+  // кто бы его ни вёл»): the sowing's work is still owed after the rainy
+  // day — the column did none of it, and holds the field for a dry one.
+  failures += Expect(field().work_days_remaining > 0.0F && world.mts_column.field == id,
+                     "mts: in the rain the drill does no sowing and keeps the field");
   world.weather.precipitation = core::Precipitation::kNone;
   const core::SimDay dry = next_working_day(rainy + 1U);
   world.calendar.tick = static_cast<core::Tick>(dry) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   core::AdvanceFinishedField(config, world, field());  // production's hour: phases first
   EndColumnDay(config, world, dry);
+  // The next tick: the column held the crew to its share of a sowing whose
+  // hectares it has worked — nothing owed — and the phase is picked up now.
+  core::AdvanceFinishedField(config, world, field());
   std::cout << "mts drill in the rain: phase " << static_cast<int>(field().phase) << ", worked "
             << world.mts_column.worked_ha << " ha of the field's 10\n";
   failures +=
       Expect(field().phase == core::FieldPhase::kGrowing && world.mts_column.worked_ha == 10.0F,
              "mts: dry again, the seed goes in and the field is not worked twice");
+  return failures;
+}
+
+/// THE PLOUGHING FOLLOWS THE RATION IT IS WORKED ON (field_work.h,
+/// RescaleHorseWorkForRation; host, econ-host-fodder-and-winter seq 2): a
+/// phase priced on last autumn's hungry ration is re-priced when the herd
+/// day writes a full one — and only the horse work, only on the arable.
+int CheckTheRationRepricesTheHorseWork() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.farming.traction_hungry_factor = 0.7F;
+  config.farming.plow_days_per_ha = 1.0F;
+  config.farming.harrow_days_per_ha = 0.5F;
+  config.farming.meadow_mow_days_per_ha = 2.0F;
+  config.crops.resize(1);
+  config.crops[0].sow_days_per_ha = 0.25F;
+  core::WorldState world;
+  world.traction_ration = 0.0F;  // last autumn: the team went hungry
+  const auto add = [&config, &world](core::LandKind kind, core::FieldPhase phase) {
+    core::FieldRow row;
+    row.kind = kind;
+    row.area_ga = 10.0F;
+    row.crop = core::CropId{0};
+    row.phase = phase;
+    row.work_days_remaining = core::PhaseWorkDays(config, world, row, phase);
+    core::AppendRow(world.fields, row);
+  };
+  add(core::LandKind::kArable, core::FieldPhase::kPlowing);    // 10 / 0.7
+  add(core::LandKind::kArable, core::FieldPhase::kHarrowing);  // 5 / 0.7
+  add(core::LandKind::kArable, core::FieldPhase::kSowing);     // 2.5, hand work
+  add(core::LandKind::kMeadow, core::FieldPhase::kHarvest);    // 20, no ration
+  const auto owed = [&world](std::size_t row) {
+    return world.fields.rows[row].work_days_remaining;
+  };
+  failures += Expect(ManDaysNear(owed(0), 10.0F / 0.7F) && ManDaysNear(owed(1), 5.0F / 0.7F),
+                     "ration: a ploughing opened on a hungry ration is priced at 1.43 times");
+  core::RescaleHorseWorkForRation(config, 0.0F, world);  // the ration did not move
+  failures += Expect(ManDaysNear(owed(0), 10.0F / 0.7F), "ration: no move, no re-pricing");
+  world.traction_ration = 1.0F;  // today's herd day: the team is fed
+  core::RescaleHorseWorkForRation(config, 0.0F, world);
+  failures += Expect(ManDaysNear(owed(0), 10.0F) && ManDaysNear(owed(1), 5.0F),
+                     "ration: fed today, the ploughing and harrowing owed are a fed team's");
+  failures += Expect(ManDaysNear(owed(2), 2.5F) && ManDaysNear(owed(3), 20.0F),
+                     "ration: the sowing (by hand) and the meadow's cut are not re-priced");
+  // A half-done ploughing keeps its half: 4 of 10 fed days owed, hungry
+  // again tomorrow, 4 / 0.7 owed.
+  world.fields.rows[0].work_days_remaining = 4.0F;
+  world.traction_ration = 0.0F;
+  core::RescaleHorseWorkForRation(config, 1.0F, world);
+  failures +=
+      Expect(ManDaysNear(owed(0), 4.0F / 0.7F),
+             "ration: hungry again, what is left is priced hungry — the done part stays done");
   return failures;
 }
 
@@ -7203,6 +7365,8 @@ int main() {
   failures += CheckTheLimitKeepsTheTeamsOats();
   failures += CheckTheMtsColumn();
   failures += CheckTheColumnDrillInTheRain();
+  failures += CheckTheRationRepricesTheHorseWork();
+  failures += CheckTheFodderRungIsTheTeamsRationToTheNextOats();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();

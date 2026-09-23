@@ -100,6 +100,27 @@ float PhaseWorkDays(const ProductionConfig& config,
                     const FieldRow& field,
                     FieldPhase phase);
 
+/// @brief How much of a fed horse's pull a horse on this traction ration
+/// has, 0..1 — the divisor PhaseWorkDays lengthens horse work by. One home,
+/// because the rescale below must undo exactly what the opening priced.
+/// @return 1 when the rule is off (`traction_hungry_factor` 0).
+float TractionFactor(const ProductionConfig& config, float traction_ration);
+
+/// @brief Re-prices the horse work still owed on the arable when the
+/// traction ration moved: remaining x factor(was) / factor(now).
+///
+/// WHY. A phase is sized once, when it opens, by the ration of that tick, and
+/// the spring's ploughing opens on its first day at the day's turn — before
+/// the team has worked a day, on the ration of last autumn. host measured it
+/// (econ-host-fodder-and-winter seq 2): the base paid hungry ploughing, 114.29
+/// man-days against 80, in 6 seeds of 7 with a full oat store, and the
+/// winter's fodder decision never reached the spring's biggest work. The
+/// shape is RescaleHaulForMud's: priced at `was`, worked at `now`.
+/// @param traction_ration_was The ration before today's herd day wrote it.
+void RescaleHorseWorkForRation(const ProductionConfig& config,
+                               float traction_ration_was,
+                               WorldState& current);
+
 /// @brief The manure bonus this field has coming, by the share of its dose
 /// it received (FieldRow::manure_applied is that share in percent).
 float ManureBonus(const ProductionConfig& config, const FieldRow& field);

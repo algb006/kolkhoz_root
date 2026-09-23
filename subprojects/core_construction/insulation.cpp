@@ -114,6 +114,11 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
   opened.construction.labor_days_remaining = 0.0F;  // opened with the straw
   const BuildLevel& step = config.types[opened.type.value].levels[opened.level - 1];
   opened.construction.max_crew = step.max_crew;
+  // STRAW WORK AND NOT THE HOUSE'S CLASS: laying the straw coat on a
+  // standing building is the winter's own job — it is done against the cold
+  // — whatever the walls under it were built of. A reading, named: the
+  // design's seasons table names masonry and earthworks, not insulation.
+  opened.construction.winter_works = 1;
   opened.construction.reserved.clear();
   AddTo(opened.construction.reserved, config.straw_resource, need);
   if (AmountOf(opened.stock, config.straw_resource) >= need) {

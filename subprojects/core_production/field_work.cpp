@@ -521,12 +521,39 @@ float PhaseWorkDays(const ProductionConfig& config,
   // than being kept in step by hand — but `AssignmentJob::harnessed` is a
   // THIRD way of saying "a horse is in this", and until all three are one
   // question this can open again.
-  if (horse_pulled && config.farming.traction_hungry_factor > 0.0F) {
-    const float factor = config.farming.traction_hungry_factor +
-                         (1.0F - config.farming.traction_hungry_factor) * current.traction_ration;
+  if (horse_pulled) {
+    const float factor = TractionFactor(config, current.traction_ration);
     norm = factor > 0.0F ? norm / factor : norm;
   }
   return norm * field.area_ga;
+}
+
+float TractionFactor(const ProductionConfig& config, float traction_ration) {
+  const float hungry = config.farming.traction_hungry_factor;
+  if (!(hungry > 0.0F)) {
+    return 1.0F;
+  }
+  return hungry + ((1.0F - hungry) * traction_ration);
+}
+
+void RescaleHorseWorkForRation(const ProductionConfig& config,
+                               float traction_ration_was,
+                               WorldState& current) {
+  if (traction_ration_was == current.traction_ration) {
+    return;
+  }
+  const float was = TractionFactor(config, traction_ration_was);
+  const float now = TractionFactor(config, current.traction_ration);
+  if (!(was > 0.0F) || !(now > 0.0F)) {
+    return;
+  }
+  // Days go as one over the pull: priced at `was`, worked at `now`.
+  const float scale = was / now;
+  for (FieldRow& field : current.fields.rows) {
+    if (field.kind == LandKind::kArable && IsHorseWork(KindOfPhase(field.phase))) {
+      field.work_days_remaining *= scale;
+    }
+  }
 }
 
 float ManureBonus(const ProductionConfig& config, const FieldRow& field) {

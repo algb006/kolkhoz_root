@@ -496,6 +496,48 @@ int TestBarnRunsOnTheDayOff() {
   return failures;
 }
 
+/// THE WINTER STANDS A BRICK SITE AND NOT A LOG ONE (construction design §8
+/// «Сезонность»; unit_levels.csv winter_works; core_common/rain_stops_work.h,
+/// WinterStopsSite). Asked on a January working day and a July one, so that
+/// it is the season that parts the two sites and not the fixture.
+int TestWinterStandsTheBrickSite() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  for (const std::uint32_t sim_day : {1U, 25U}) {  // a Tuesday of January; a July Friday
+    DayWorld day(4);
+    const auto add_site = [&day](float x, std::uint8_t winter_works) {
+      core::UnitRow site;
+      site.level = 0;
+      site.position = core::Vec2{.x = x, .y = 0.0F};
+      site.construction.phase = core::ConstructionPhase::kBuilding;
+      site.construction.labor_days_remaining = 10.0F;
+      site.construction.max_crew = 2;  // so the first site cannot take all four hands
+      site.construction.winter_works = winter_works;
+      return core::AppendRow(day.world.units, site);
+    };
+    const core::UnitId log_site = add_site(100.0F, 1);
+    const core::UnitId brick_site = add_site(150.0F, 0);
+    day.RunDay(*labor, sim_day);
+    const bool winter = day.world.calendar.season == core::Season::kWinter;
+    const auto worked = [&day](core::UnitId id) {
+      return day.world.units.rows[core::FindRow(day.world.units, id)]
+                 .construction.labor_days_remaining < 10.0F;
+    };
+    std::cout << "winter class: day " << sim_day << (winter ? " (winter)" : " (not winter)")
+              << ", log site " << (worked(log_site) ? "worked" : "stood") << ", brick site "
+              << (worked(brick_site) ? "worked" : "stood") << '\n';
+    failures += Expect(worked(log_site), "winter class: a log site is built in every season");
+    failures += Expect(worked(brick_site) != winter,
+                       winter ? "winter class: in winter the brick site stands"
+                              : "winter class: out of winter the brick site is built");
+  }
+  return failures;
+}
+
 /// RAIN STOPS THE SOWING AND THE REAPING (farming design §5; core_common/
 /// rain_stops_work.h), for the accountant and for the chairman's standing
 /// order alike — and it stops them as a day off does, not by leaving a crew
@@ -3008,6 +3050,7 @@ int main() {
   failures += TestWalkOffPaysAndStops();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();
+  failures += TestWinterStandsTheBrickSite();
   failures += TestLaborTableParsing();
   {
     // EVERY WORK KIND BUT NONE HAS A COMPILED RATE. The rates' brace

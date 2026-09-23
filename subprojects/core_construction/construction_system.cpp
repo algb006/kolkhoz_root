@@ -29,6 +29,7 @@
 #include "core_common/module_rules.h"
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
@@ -173,7 +174,12 @@ class ConstructionSystem final : public IConstructionSystem {
       // kSiteWithoutCrew). Counted from the assignments themselves and not
       // from an order that was once given: yesterday's hands are in the
       // fields today.
+      // NOT A SITE THAT STANDS FOR THE WINTER (WinterStopsSite): nobody is
+      // sent to it by rule, and an alarm asking the chairman for hands the
+      // rule refuses would cry every day from December to February on every
+      // brick site (the static loop of 23 September, 0.34.17).
       if (site.construction.phase == ConstructionPhase::kBuilding &&
+          !WinterStopsSite(completed.calendar.season, site.construction.winter_works) &&
           CrewOnSite(completed, completed.units.row_ids[row]) == 0) {
         Alarm alarm;
         alarm.kind = AlarmKind::kSiteWithoutCrew;
@@ -473,6 +479,7 @@ class ConstructionSystem final : public IConstructionSystem {
     site.construction.labor_days_total = days;
     site.construction.labor_days_remaining = 0.0F;  // set when the parts are in
     site.construction.max_crew = LevelCrew(site.type, site.level);
+    site.construction.winter_works = LevelWinterWorks(site.type, site.level);
     return OrderRefusal::kNone;
   }
 
@@ -743,6 +750,9 @@ class ConstructionSystem final : public IConstructionSystem {
     site.construction.labor_days_total = norm * config_.demolition_labor_share;
     site.construction.labor_days_remaining = site.construction.labor_days_total;
     site.construction.max_crew = LevelCrew(site.type, site.level == 0 ? 1 : site.level);
+    // Taking brick down is brick work: the demolition stands in winter by
+    // the class it is taking apart, the way its crew is capped by it.
+    site.construction.winter_works = LevelWinterWorks(site.type, site.level == 0 ? 1 : site.level);
     return OrderRefusal::kNone;
   }
 
@@ -753,6 +763,7 @@ class ConstructionSystem final : public IConstructionSystem {
   void OpenWorks(WorldState& current, UnitId unit, UnitRow& site, std::uint8_t level) {
     site.construction.target_level = level;
     site.construction.max_crew = LevelCrew(site.type, level);
+    site.construction.winter_works = LevelWinterWorks(site.type, level);
     const BuildLevel* const step = LevelOf(site.type, level);
     if (step != nullptr && step->is_marking != 0) {
       CompleteBuild(current, unit, site);
@@ -1129,6 +1140,12 @@ class ConstructionSystem final : public IConstructionSystem {
   std::uint8_t LevelCrew(UnitTypeId type, std::uint8_t level) const {
     const BuildLevel* const step = LevelOf(type, level);
     return step == nullptr ? 0 : step->max_crew;
+  }
+
+  /// The level's winter class; 1 (works) for a level the tables do not know.
+  std::uint8_t LevelWinterWorks(UnitTypeId type, std::uint8_t level) const {
+    const BuildLevel* const step = LevelOf(type, level);
+    return step == nullptr ? 1 : step->winter_works;
   }
 
   ConstructionConfig config_;

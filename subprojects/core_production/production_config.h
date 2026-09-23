@@ -223,6 +223,16 @@ struct FeedLinkDef {
   /// whole starting oat field yields — and the run duly fed them the
   /// village's bread grain until both ran out.
   std::uint8_t work_only = 0;
+
+  /// 0/1: this feed is held in the FODDER FUND, rung 3 of the ladder
+  /// (feed_links.csv `fodder_fund`; resources design §6, «фуражное зерно:
+  /// овёс и ячмень»; boss, boss-core-epoch1-resume seq 21). The horse's oats
+  /// and barley and nothing else: bread grain never, and bought compound
+  /// feed is not named. Until 0.34.17 the fund was sized off every work feed
+  /// at once — a horse-day held six times over, rye and wheat among them —
+  /// and thirty_years failed its milk plan in year 30 for it. 0 when the
+  /// table has no such column.
+  std::uint8_t fodder_fund = 0;
 };
 
 /// Everything a unit type contributes to production, and every capacity in
@@ -611,11 +621,13 @@ struct FarmingConfig {
   /// early in nearly all of them. WHEN THE STUB COMES OFF: when the climate
   /// table moves, this is re-read off the same probe, not guessed.
   ///
-  /// READ AS THE LAST DAY THAT STILL COUNTS, inclusive, exactly as
-  /// growing_season_last_day is read — and that is a reading, not a fact of
-  /// the probe. If econ's day 40 is the day the snow is already DOWN, the
-  /// last working day is 39 and this edge is a day late; asked of econ and
-  /// boss with the delivery (static loop of 23 September).
+  /// THE FIRST DAY THE SNOW LIES, NOT THE LAST DAY THAT COUNTS (econ,
+  /// econ-boss-snow-edge-reading, adopted by boss): the probe's P10 is of
+  /// the first kSnow day, which takes a standing field on its morning, so
+  /// the alarm counts up to the day BEFORE it — 39 at 40. 0.34.16 read it as
+  /// the last day counted and was a day late; the value stayed, the reading
+  /// moved (0.34.17). Unlike growing_season_last_day, which IS a last safe
+  /// day.
   ///
   /// ONLY THE ALARM. The queue's last days before the snow keep the mean's
   /// edge: the alarm is a warning to the chairman, the queue is the

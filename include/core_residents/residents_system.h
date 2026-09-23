@@ -26,6 +26,7 @@
 #ifndef CORE_RESIDENTS_RESIDENTS_SYSTEM_H_
 #define CORE_RESIDENTS_RESIDENTS_SYSTEM_H_
 
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -131,8 +132,15 @@ class IResidentsSystem {
 ///        tables, on the documented defaults (core_tables/stub_tables.h).
 ///        There is no default value: a caller that has not thought about
 ///        it cannot be served a different world in silence.
-
-std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables, StubTables stubs);
+/// @param fodder_fund The fodder fund today, dense by ResourceId —
+///        IProductionSystem::FodderFund, bound by the assembly. The people's
+///        issue stays below rung 3 of the ladder, the larger of last year's
+///        feed and this fund (core_common/fund_ladder.h). Empty: no fund, and
+///        rung 3 is last year's feed alone, as it was before 0.34.17.
+std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
+    const ITableSet& tables,
+    StubTables stubs,
+    std::function<ResourceAmounts(const WorldState&)> fodder_fund = {});
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
 /// figure a newborn is given, and the organizations' and ideology's numbers).

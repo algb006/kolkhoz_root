@@ -178,6 +178,15 @@ struct ConstructionState {
   /// village (construction design §8).
   std::uint8_t max_crew = 0;
 
+  /// WHETHER THE SITE WORKS IN WINTER (unit_levels.csv `winter_works`, save
+  /// 80), copied from the level's row with `max_crew` and for its reason:
+  /// the labor sub-step reads it where it reads the days left. 1 — log,
+  /// plank, shelter and gear keep going; 0 — earthworks, pads, brick and
+  /// concrete stand in the core's winter season and lose nothing, like a
+  /// pause (construction design §8; core_common/rain_stops_work.h,
+  /// WinterStopsSite). 1 when nothing is being built.
+  std::uint8_t winter_works = 1;
+
   /// THE WORKS' OWN SHARE OF A STANDING UNIT'S STOCK, dense by ResourceId:
   /// grams of `UnitRow::stock` held for the level being raised (or the
   /// spare parts of a repair) and for nothing else. A level-0 site needs no

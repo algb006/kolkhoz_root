@@ -437,7 +437,10 @@ class ResidentsSystem final : public IResidentsSystem {
 
 }  // namespace
 
-std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables, StubTables stubs) {
+std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
+    const ITableSet& tables,
+    StubTables stubs,
+    std::function<ResourceAmounts(const WorldState&)> fodder_fund) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -490,6 +493,7 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(const ITableSet& tables,
     LogError(error);
     return nullptr;
   }
+  food.fodder_fund = std::move(fodder_fund);
   // The cold metric is not "zero cold", it is "cold is not counted": phase 1
   // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
   // never moves. Said out loud at world creation so that a run showing

@@ -102,7 +102,9 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current);
 ///        rather than from an empty job list (task A8 delivery cycle).
 /// @note A sowing or reaping order on a day of rain is skipped the same way
 ///       (core_common/rain_stops_work.h): its man keeps the accountant's
-///       placement for the day, and the order stands for the next.
+///       placement for the day, and the order stands for the next. A building
+///       order on a site whose class stands in winter (WinterStopsSite) is
+///       skipped the same way through the winter season.
 void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_off);
 
 }  // namespace core

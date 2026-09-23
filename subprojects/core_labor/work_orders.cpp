@@ -349,6 +349,15 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     if (RainStopsWork(world.weather.precipitation, order.work)) {
       continue;
     }
+    // AND THE WINTER, for a site whose class stands in it — the same skip.
+    if (order.work == WorkKind::kConstruction) {
+      const std::uint32_t site_row = FindRow(world.units, order.unit);
+      if (site_row != kNoRow &&
+          WinterStopsSite(world.calendar.season,
+                          world.units.rows[site_row].construction.winter_works)) {
+        continue;
+      }
+    }
     const std::uint32_t resident_row = FindRow(current.residents, order.resident);
     if (resident_row == kNoRow) {
       continue;  // he died in the night; the sweep will not remove the row, but nobody works it

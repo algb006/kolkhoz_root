@@ -116,7 +116,12 @@ void KeepColumnField(const ProductionConfig& config, WorldState& current) {
   FieldRow& field = current.fields.rows[row];
   const bool spring = IsSpringLot(config.limit, column.lot);
   if (InSeasonChain(field, spring)) {
-    HoldCrewShare(config, current, field);
+    // NOT IN THE RAIN for a phase the rain stops: holding the crew to the
+    // column's share would zero a sowing the drill has not done, and the seed
+    // would go in at the first dry hour as if it had (FinishColumnField).
+    if (!RainStopsWork(current.weather.precipitation, KindOfPhase(field.phase))) {
+      HoldCrewShare(config, current, field);
+    }
     return;
   }
   if (!spring && column.phase == MtsColumnPhase::kWorking && field.area_ga > 0.0F) {
@@ -127,26 +132,31 @@ void KeepColumnField(const ProductionConfig& config, WorldState& current) {
 
 /// The column has worked every hectare of the field: spring puts the seed in
 /// as far as the sowing term allows, autumn reaps and carries it all.
-void FinishColumnField(const ProductionConfig& config,
+/// @return true when the rain stopped the chain at a phase it stops — the
+///         drill at the sowing — so that the caller keeps the field.
+bool FinishColumnField(const ProductionConfig& config,
                        WorldState& current,
                        FieldRow& field,
                        bool spring) {
-  // THE DRILL IN THE RAIN is not stopped here but where every sowing ends
-  // (AdvanceFinishedField): the column finishes the field's work and the seed
-  // waits at its sowing, owed nothing, until a dry hour puts it in. Until the
-  // static loop of 23 September the chain was halted HERE and the sowing left
-  // owed — and the column's queue, which takes any field still owed work,
-  // came back the next dry day and booked the field's hectares a second time.
+  // THE DRILL STOPS IN THE RAIN, not only the seed (boss, seq 12: «сев
+  // стоит, кто бы его ни вёл»; rain_stops_work.h). The chain halts at the
+  // sowing it has just opened, the sowing stays owed, and the caller KEEPS
+  // the field: its hectares are worked, so the next dry day finishes it with
+  // none, and the queue never takes it up afresh. Twice before this shape:
+  // halted and FORGOTTEN, the queue came back and booked the hectares again
+  // (the static loop of 23 September); zeroed and waiting for the seed, the
+  // drill had done its work in the rain on a field whose sowing opened that
+  // day and refused it on one that was already sowing.
   for (int step = 0; step < kSpringChainSteps && InSeasonChain(field, spring); ++step) {
+    if (RainStopsWork(current.weather.precipitation, KindOfPhase(field.phase))) {
+      return true;
+    }
     const FieldPhase before = field.phase;
     field.work_days_remaining = 0.0F;
     AdvanceFinishedField(config, current, field);
     if (field.phase == before) {
-      // Two reasons stop the chain here. A harrowed field before its sowing
-      // term waits, as a crew's would, and the seed then goes in by hand
-      // (STUB: the column's sowing is not banked). And a sowing finished in
-      // the rain waits in kSowing owed nothing, for the first dry hour's
-      // AdvanceFinishedField to put the seed in (rain_stops_work.h).
+      // A harrowed field before its sowing term waits, as a crew's would; the
+      // seed then goes in by hand (STUB: the column's sowing is not banked).
       break;
     }
   }
@@ -156,6 +166,7 @@ void FinishColumnField(const ProductionConfig& config,
   if (!spring) {
     CarryShare(config, current, field, 1.0F);
   }
+  return false;
 }
 
 /// The next field by the brigade's queue: of the fields owed the season's
@@ -221,7 +232,9 @@ void WorkColumnDay(const ProductionConfig& config, WorldState& current) {
     column.worked_ha += hectares;
     budget -= hectares;
     if (column.field_ha >= field.area_ga - kHectareDust) {
-      FinishColumnField(config, current, field, spring);
+      if (FinishColumnField(config, current, field, spring)) {
+        return;  // the rain stopped the drill: the field is kept, the day is over
+      }
       ForgetField(column);
     } else {
       HoldCrewShare(config, current, field);

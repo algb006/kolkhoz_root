@@ -776,23 +776,35 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-Grams FodderFundGrams(const ProductionConfig& config,
-                      const WorldState& current,
-                      ResourceId resource) {
-  const float value =
+namespace {
+
+/// The working stock's day of one work feed, in the pieces the fund's two
+/// sizes are built from — kept as pieces so that the year's size keeps the
+/// exact arithmetic it had before the rung was sized (a float reordered is a
+/// gram moved, and the accumulation limit's base reads the year's size).
+struct WorkFeedDay {
+  float units = 0.0F;  ///< feed units a day, the whole working stock, before the share
+  float share = 0.0F;  ///< the work feed's share of the ration (feed_links.max_share)
+  float value = 0.0F;  ///< feed units per kilogram of this resource
+};
+
+WorkFeedDay WorkFeedDayOf(const ProductionConfig& config,
+                          const WorldState& current,
+                          ResourceId resource) {
+  WorkFeedDay day;
+  day.value =
       resource.value < config.feed_values.size() ? config.feed_values[resource.value] : 0.0F;
-  if (!(value > 0.0F)) {
-    return 0;
+  if (!(day.value > 0.0F)) {
+    return day;
   }
-  float share = 0.0F;
   for (const FeedLinkDef& link : config.feed_links) {
     if (link.work_only != 0 && link.resource.value == resource.value) {
-      share = link.max_share;
+      day.share = link.max_share;
       break;
     }
   }
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
-  float units = 0.0F;
+  float& units = day.units;
   for (const HerdRow& herd : current.herds.rows) {
     if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
       continue;  // the fund is the kolkhoz's; a yard's animals feed themselves
@@ -810,8 +822,103 @@ Grams FodderFundGrams(const ProductionConfig& config,
     // (herd_system.h).
     units += FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, false);
   }
-  const float year_units = units * static_cast<float>(kDaysPerYear) * share;
-  return GramsFromKilograms(year_units / value);
+  return day;
+}
+
+/// Days from today to the next reaping of `resource`: to the END of its
+/// crop's reaping window while this year's has not come in (the team eats
+/// until the new oats are in the store, and a window is where a reaping may
+/// yet fall), to the START of next year's window once it has. The nearest of
+/// the crops that give it; 0 when no crop does.
+std::uint32_t DaysToNextReaping(const ProductionConfig& config,
+                                const WorldState& current,
+                                ResourceId resource) {
+  const std::uint32_t today = current.calendar.day % kDaysPerYear;
+  const ResourceAmounts& reaped = current.ledger.current.harvest;
+  const bool in_this_year = resource.value < reaped.size() && reaped[resource.value] > 0;
+  std::uint32_t nearest = 0;
+  bool found = false;
+  for (const CropDef& crop : config.crops) {
+    if (crop.resource.value != resource.value) {
+      continue;
+    }
+    const std::uint32_t window_start = crop.harvest_from_month * kDaysPerMonth;
+    const std::uint32_t window_end = (crop.harvest_to_month + 1U) * kDaysPerMonth;
+    std::uint32_t days = 0;
+    if (in_this_year) {
+      days = window_start + kDaysPerYear - today;  // next year's window
+    } else {
+      days = window_end > today ? window_end - today : window_start + kDaysPerYear - today;
+    }
+    nearest = found ? std::min(nearest, days) : days;
+    found = true;
+  }
+  return nearest;
+}
+
+}  // namespace
+
+Grams FodderFundGrams(const ProductionConfig& config,
+                      const WorldState& current,
+                      ResourceId resource) {
+  const WorkFeedDay day = WorkFeedDayOf(config, current, resource);
+  if (!(day.value > 0.0F)) {
+    return 0;
+  }
+  const float year_units = day.units * static_cast<float>(kDaysPerYear) * day.share;
+  return GramsFromKilograms(year_units / day.value);
+}
+
+Grams FodderClaimGrams(const ProductionConfig& config,
+                       const WorldState& current,
+                       ResourceId resource) {
+  // ONLY A FEED THE DESIGN NAMES FOR THE FUND (FeedLinkDef::fodder_fund):
+  // the horse's oats and barley. Sized off every work feed, the fund held
+  // one horse-day six times over, bread grain among it.
+  bool in_fund = false;
+  for (const FeedLinkDef& link : config.feed_links) {
+    in_fund = in_fund || (link.fodder_fund != 0 && link.resource.value == resource.value);
+  }
+  if (!in_fund) {
+    return 0;
+  }
+  const WorkFeedDay day = WorkFeedDayOf(config, current, resource);
+  if (!(day.value > 0.0F) || !(day.share > 0.0F)) {
+    return 0;
+  }
+  // THE TEAM'S RATION UNTIL THE NEXT OATS ARE IN (boss seq 14, answer 2):
+  // what the working stock will still eat of this feed before its next
+  // reaping, and no more than the last reaping of it brought in — the plan
+  // rung's own shape, filled by the harvest and not by the calendar. A year's
+  // ration held in April would starve the spring beside a store the team
+  // cannot eat in the four months left.
+  const float days = static_cast<float>(DaysToNextReaping(config, current, resource));
+  const Grams need = GramsFromKilograms(day.units * days * day.share / day.value);
+  const ResourceAmounts& this_year = current.ledger.current.harvest;
+  const ResourceAmounts& last_year = current.ledger.closed.harvest;
+  const Grams reaped_now = resource.value < this_year.size() ? this_year[resource.value] : 0;
+  const Grams reaped_before = resource.value < last_year.size() ? last_year[resource.value] : 0;
+  // THE FIRST YEAR HAS NO LAST REAPING, and the start stock stands in for
+  // it: the campaign opens with oats that no harvest of this village brought
+  // in, and a cap read off an empty book would size the fund at nought —
+  // the winter's decision dead in the very year boss's answer keeps it alive
+  // (seq 17: "max keeps the winter decision alive in year 1"). Before the
+  // first reaping of it in the campaign, the need alone.
+  const bool first_year_unreaped =
+      reaped_now == 0 && current.calendar.day < static_cast<SimDay>(kDaysPerYear);
+  if (first_year_unreaped) {
+    return need;
+  }
+  const Grams cap = reaped_now > 0 ? reaped_now : reaped_before;
+  return need < cap ? need : cap;
+}
+
+ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& current) {
+  ResourceAmounts claim(config.feed_values.size(), 0);
+  for (std::size_t index = 0; index < claim.size(); ++index) {
+    claim[index] = FodderClaimGrams(config, current, DefIdFromIndex<ResourceIdTag>(index));
+  }
+  return claim;
 }
 
 Grams KolkhozMilkDayGrams(const ProductionConfig& config, const WorldState& current) {

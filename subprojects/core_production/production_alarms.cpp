@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -750,13 +751,32 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // TODAY IS NOT A FORECAST: its sky is written, and its share is 0 or 1.
   RainDayShares ahead = config.rain_day_shares;
   ahead[day_of_year] = RainStopsWork(world.weather.precipitation, WorkKind::kHarvest) ? 1.0F : 0.0F;
+  // A DAY OFF IS NO WORKING DAY EITHER (the static loop of 23 September):
+  // labor's queue before the snow never counted the Sundays and holidays,
+  // this alarm did, and was a seventh more hopeful than the village that
+  // does the reaping. Written as "no dry share" so that the one walk
+  // (DryDaysBetween, CalendarPointAfterDryDays) skips it. The rest of the
+  // year is not asked: nothing past the snow counts.
+  const SimDay year_start = world.calendar.day - day_of_year;
+  for (std::uint32_t day = day_of_year; day < kDaysPerYear; ++day) {
+    if (IsDayOffIn(world, year_start + static_cast<SimDay>(day))) {
+      ahead[day] = 1.0F;
+    }
+  }
   // TO THE EARLY SNOW (production_config.h, gather_alarm_snow_day): whichever
   // comes first of the probe's P10 and the climate's mean edge. Which fields
   // are judged at all still asks the mean edge (AnnualsToGather): a crop that
   // cannot open before it is the sowing's loss, and one that opens between
   // the two edges is exactly the one to warn about.
+  //
+  // THE EARLY SNOW IS THE FIRST DAY THE SNOW LIES, and that day counts for
+  // nothing: RunFields takes a standing field on its morning. econ's answer
+  // (econ-boss-snow-edge-reading): the key is the P10 of the first kSnow
+  // day, so the last day that still counts is the one before. 0.34.16
+  // counted the snow's own day and was a day late. The mean edge is a last
+  // SAFE day and is counted as it is.
   const auto snow = std::min(static_cast<double>(config.growing_season_last_day),
-                             static_cast<double>(config.farming.gather_alarm_snow_day));
+                             static_cast<double>(config.farming.gather_alarm_snow_day) - 1.0);
   double clock = static_cast<double>(day_of_year);
   for (const GatherClaim& claim : claims) {
     const double start = std::max(clock, static_cast<double>(claim.open_day));

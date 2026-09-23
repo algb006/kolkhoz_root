@@ -324,7 +324,13 @@ class ProductionSystem final : public IProductionSystem {
     // issue left goes first, then the herd gives the day, then the cart
     // takes the day's share of the position.
     ShipMilkLeftover(config_, current);
+    // THE HORSE WORK FOLLOWS THE RATION IT IS WORKED ON (field_work.h,
+    // RescaleHorseWorkForRation): a ploughing opened this morning was priced
+    // on whatever ration the team last had, and the herd day is what writes
+    // today's.
+    const float traction_ration_was = current.traction_ration;
     RunHerdDay(config_, current);
+    RescaleHorseWorkForRation(config_, traction_ration_was, current);
     ShipMilkShare(config_, current);
     // After the herd day: its slaughter and cull are in the stores, and the
     // smokehouse asks for them this morning (processing_shops.h).
@@ -345,6 +351,10 @@ class ProductionSystem final : public IProductionSystem {
       return 0;
     }
     return FieldYieldGrams(config_, field, config_.crops[field.crop.value]);
+  }
+
+  ResourceAmounts FodderFund(const WorldState& world) const override {
+    return FodderClaim(config_, world);
   }
 
   void CollectStockForecast(const WorldState& completed,

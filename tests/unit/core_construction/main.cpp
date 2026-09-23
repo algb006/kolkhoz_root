@@ -6,6 +6,7 @@
 // parser reads. That is on purpose — the point of this test is the rules,
 // and a test that needs tables/ on disk stops being a unit test.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -117,15 +118,19 @@ class BuildTables final : public core::ITableSet {
                            "max_crew",
                            "wear_years_idle",
                            "wear_years_in_use",
-                           "wear_factor"},
-                          {{"store", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"},
-                           {"barn", "1", "1", "70", "wood_small", "5", "10", "5", ""},
-                           {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10", "1.1"},
-                           {"club", "1", "2", "70", "wood_small", "5", "10", "5", ""},
-                           {"orchard", "1", "1", "0", "plot", "", "", "", ""},
-                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1"},
-                           {"well", "1", "1", "14", "earthwork", "2", "", "", ""},
-                           {"field_camp", "1", "1", "14", "earthwork", "2", "", "", ""}}};
+                           "wear_factor",
+                           "winter_works"},
+                          // winter_works: the barn's second step is written 0, as a brick
+                          // class would be, so that the byte riding with the site is seen
+                          // to come from ITS step and not from the default.
+                          {{"store", "1", "1", "70", "wood_small", "5", "10", "5", "1.1", "1"},
+                           {"barn", "1", "1", "70", "wood_small", "5", "10", "5", "", "1"},
+                           {"barn", "2", "1", "140", "wood_small_ext", "8", "20", "10", "1.1", "0"},
+                           {"club", "1", "2", "70", "wood_small", "5", "10", "5", "", "1"},
+                           {"orchard", "1", "1", "0", "plot", "", "", "", "", "1"},
+                           {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1", "1"},
+                           {"well", "1", "1", "14", "earthwork", "2", "", "", "", "0"},
+                           {"field_camp", "1", "1", "14", "earthwork", "2", "", "", "", "0"}}};
 
   test::FakeTable costs_{{"unit", "level", "resource", "amount"},
                          {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
@@ -338,6 +343,42 @@ int TestAnUpgradeHoldsItsRecipe(const core::ITableSet& tables) {
   return failures;
 }
 
+/// THE WINTER'S STANDING SITE IS NOT A SITE WITHOUT A CREW (WinterStopsSite;
+/// the static loop of 23 September, 0.34.17): a brick site in January is
+/// crewed by nobody by rule, and kSiteWithoutCrew asking the chairman for
+/// hands the rule refuses would cry all winter. Asked with a log site beside
+/// it and again in July, so that it is the season that parts them.
+int TestTheWinterSiteIsNoAlarm(const core::ITableSet& tables) {
+  int failures = 0;
+  const std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (!system) {
+    return Expect(false, "winter alarm: the subsystem accepts its tables");
+  }
+  const auto alarms_of = [&system](std::uint32_t sim_day, std::uint8_t winter_works) {
+    core::WorldState world;
+    world.calendar.tick = static_cast<core::Tick>(sim_day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::UnitRow site;
+    site.construction.phase = core::ConstructionPhase::kBuilding;
+    site.construction.labor_days_remaining = 10.0F;
+    site.construction.winter_works = winter_works;
+    core::AppendRow(world.units, site);
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    return std::ranges::count_if(alarms, [](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kSiteWithoutCrew;
+    });
+  };
+  failures +=
+      Expect(alarms_of(1, 0) == 0, "winter alarm: a brick site standing in January is quiet");
+  failures += Expect(alarms_of(1, 1) == 1,
+                     "winter alarm: a log site with nobody on it in January still calls");
+  failures += Expect(alarms_of(25, 0) == 1,
+                     "winter alarm: the same brick site with nobody on it in July calls");
+  return failures;
+}
+
 int TestMarkAndBuild(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
@@ -378,6 +419,8 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
                      "70 real man-days is 10 game man-days of work left");
   failures +=
       Expect(building.construction.max_crew == 5, "the class's brigade rides with the site");
+  failures += Expect(building.construction.winter_works == 1,
+                     "and its winter class: a log barn is built in winter (save 80)");
   failures += Expect(world.units.rows[core::FindRow(world.units, store)].stock[0] == 20 * kLogGrams,
                      "ten logs left the store for the site");
 
@@ -410,6 +453,8 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
                      "twenty more logs were on hand");
   failures +=
       Expect(raising.construction.max_crew == 8, "the bigger class allows a bigger brigade");
+  failures += Expect(raising.construction.winter_works == 0,
+                     "and the step's own winter class, 0 here, rides with the upgrade's site");
   return failures;
 }
 
@@ -2330,6 +2375,7 @@ int main() {
   failures += TestABodyKeepsItsMetre(tables);
   failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
+  failures += TestTheWinterSiteIsNoAlarm(tables);
   failures += TestStartChecksTheRecipe(tables);
   failures += TestAnUpgradeHoldsItsRecipe(tables);
   failures += TestRefusals(tables);

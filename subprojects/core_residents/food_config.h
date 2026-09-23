@@ -37,6 +37,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -281,6 +282,19 @@ using SeedNormDef = SeedNorm;
 struct FoodConfig {
   /// Dense by ResourceId, sized to the resource roster.
   std::vector<FoodResourceDef> resources;
+
+  /// THE FODDER FUND TODAY, handed in by the assembly and not parsed
+  /// (IProductionSystem::FodderFund): the working stock's ration of each work
+  /// feed until its next reaping. The issue stays below rung 3, the larger
+  /// of last year's feed and this (core_common/fund_ladder.h). Empty: no
+  /// fund, rung 3 is last year's feed alone.
+  ///
+  /// A CALL INTO core_production, NOT DATA, and this config is read from the
+  /// parallel slots 2 and 5 (PARALLEL_READONLY): call it only from the
+  /// sequential decisions slot (phase 3) and between steps — the two callers
+  /// it has, IssueReserve's distribution and the ration alarm. A parallel
+  /// phase that called it would run production's read on a worker thread.
+  std::function<ResourceAmounts(const WorldState&)> fodder_fund;
 
   /// 1 for a resource the district's plan names (campaign.csv plan_positions,
   /// by the crops they grow), dense by ResourceId; empty without a campaign.

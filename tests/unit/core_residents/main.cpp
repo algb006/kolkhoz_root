@@ -472,6 +472,30 @@ int CheckLockedRationFood() {
   AppendRow(plenty.fields, field);
   failures += Expect(core::LockedRationFood(config, plenty).empty(),
                      "a fund beside free grain locks nothing a family could not have");
+
+  // RUNG 3, THE FODDER CLAIM AND THE FUND INSIDE IT (boss seq 14, 17): the
+  // people stay below the larger of last year's feed and the team's fund,
+  // and the chairman's fodder release opens the larger. Before 0.34.17 the
+  // fund held nothing, and releasing it opened the plan instead.
+  const auto slot = static_cast<std::size_t>(core::FundKind::kFodder);
+  core::FoodConfig with_fund = MakeExchangeConfig();
+  with_fund.fodder_fund = [](const core::WorldState& /*world*/) {
+    return core::ResourceAmounts{100 * kKilo};
+  };
+  core::WorldState team = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  failures += Expect(core::LockedRationFood(with_fund, team).size() == 1,
+                     "fodder rung: the team's fund holds the whole hundred kilograms");
+  team.unsealed.by_fund[slot] = {60 * kKilo};
+  failures += Expect(core::LockedRationFood(with_fund, team).empty(),
+                     "fodder rung: a release of 60 kg opens it to the people");
+  core::WorldState herd = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  herd.ledger.closed.feed = {150 * kKilo};  // last year's feed, larger than the fund
+  failures += Expect(core::LockedRationFood(with_fund, herd).size() == 1,
+                     "fodder rung: last year's feed, the larger, is held");
+  herd.unsealed.by_fund[slot] = {100 * kKilo};
+  failures += Expect(core::LockedRationFood(with_fund, herd).empty(),
+                     "fodder rung: and the release comes off it — off the fund alone it would "
+                     "free nothing");
   return failures;
 }
 

@@ -3,8 +3,9 @@
 ///        place for the two modules that must stay below them.
 /// @threading PARALLEL_READONLY
 /// A pure function of the world it is given: it reads the fields, the plan,
-/// the year's harvest book and the unsealings, and writes nothing. Both
-/// callers run it in the sequential decisions slot today.
+/// the year's harvest book and the unsealings, and writes nothing. Its
+/// callers run it in the sequential decisions slot and, for the ration
+/// alarm (LockedRationFood), between steps on the sim thread.
 ///
 /// Resources design §6: "Урожай расписан по фондам. Наполняются в порядке
 /// приоритета, и при нехватке первым страдает нижний" — 1 the seed fund,
@@ -51,9 +52,11 @@ struct SeedNorm {
 /// reserving the whole norm from January starves the spring beside grain it
 /// may not touch).
 ///
-/// UNSEALED: every fund's release comes off this one total, clamped at zero
-/// per resource — which fund was opened is which risk was taken, not which
-/// share the subtraction comes from.
+/// UNSEALED: EACH FUND OPENS ITS OWN RUNG, clamped at zero per resource —
+/// the seed fund's release comes off the seed rung, the plan reserve's off
+/// the plan rung, and the fodder fund's off neither (FodderRungLeft). Until
+/// 0.34.17 every release came off one total of the two, and unsealing the
+/// fodder fund opened the plan's oats (boss seq 14, answer 3).
 ///
 /// @param seed_norms_by_crop Dense by CropId; a crop past its end needs no seed.
 /// @param resource_count Size of the returned vector.
@@ -62,6 +65,27 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
                                 std::span<const SeedNorm> seed_norms_by_crop,
                                 std::size_t resource_count,
                                 bool reserve_seed_fund);
+
+/// @brief Rung 3 as the people's issue must stay below it: THE FODDER CLAIM,
+///        AND INSIDE IT THE FODDER FUND (resources design §6; boss seq 17) —
+///        per resource the larger of last year's feed of the kolkhoz's herds
+///        and the working stock's fund, less what the chairman has unsealed
+///        of the FODDER fund, never below nought.
+///
+/// Last year's feed holds every herd's feed from the people — a cow's oats
+/// do not go to the table. The fund is the team's ration until the next
+/// reaping of a work feed, and it is what keeps the winter decision alive in
+/// the first year, which has no closed book. Both are sized elsewhere and
+/// arrive as numbers: the book by the ledger, the fund by production
+/// (FodderClaimGrams). What the ladder owns is the composition and the rule
+/// that a fodder release opens this rung and no other.
+/// @param last_year_feed Dense by ResourceId: `ledger.closed.feed`.
+/// @param fodder_fund Dense by ResourceId: the fund's size today, 0 for a
+///        resource that is no work feed.
+/// @return Dense by ResourceId, the longer of the two sizes.
+ResourceAmounts FodderRungLeft(const WorldState& world,
+                               const ResourceAmounts& last_year_feed,
+                               const ResourceAmounts& fodder_fund);
 
 }  // namespace core
 

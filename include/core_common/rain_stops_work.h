@@ -44,6 +44,19 @@ namespace core {
 /// @return true when the work does not go on this day.
 bool RainStopsWork(Precipitation precipitation, WorkKind kind);
 
+/// @brief Whether the core's winter season stops this building site.
+///
+/// THE SEASON'S HALF OF "WHAT STOPS THE WORK", beside the rain's, for the
+/// same three readers — the accountant, the standing order, and whoever asks
+/// what a site is doing. Construction design §8 «Сезонность»: «кладка и
+/// земляные работы стоят, плотницкие идут»; the class is resolved into the
+/// site's `winter_works` byte when the site starts (unit_state.h). WINTER IS
+/// THE CORE'S WINTER SEASON, December to February (SeasonOfMonth); boss
+/// named no second definition (seq 8).
+/// @param season The day's season (CalendarState::season).
+/// @param winter_works The site's byte: 0 stands in winter, anything else goes.
+bool WinterStopsSite(Season season, std::uint8_t winter_works);
+
 /// @brief The expected share of rain days on each day of the year, 0..1 —
 /// the climate's answer and not the seed's (core_time/time_system.h,
 /// ITimeSystem::ClimateRainDayShares). All zeros means "rain never stops the

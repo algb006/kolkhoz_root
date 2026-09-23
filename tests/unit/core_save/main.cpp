@@ -334,7 +334,8 @@ core::WorldState MakeWorld() {
   site.construction.labor_days_total = 17.5F;
   site.construction.labor_days_remaining = 6.25F;
   site.construction.max_crew = 8;
-  site.construction.rush_step = 5;  // save 65: the avral at its ceiling
+  site.construction.rush_step = 5;     // save 65: the avral at its ceiling
+  site.construction.winter_works = 0;  // save 80: away from its default of 1
   // Save 67: a store being emptied, its carrying half done — all three away
   // from their zero defaults.
   site.emptying = 1;
@@ -1158,7 +1159,9 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
     // predicted.
-    {"units", 356, 0x33b35b114e9503b1ULL},
+    // Save 80: +1 a unit — the site's winter class; three units, +3,
+    // predicted before the build.
+    {"units", 359, 0x61bc71a02abf847bULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     {"herds", 71, 0xc6fa8b5b6c1ae5dbULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
@@ -1760,6 +1763,8 @@ int main() {
   failures += Expect(site_back.emptying == 1 && site_back.haul_days_remaining == 2.5F &&
                          site_back.haul_days_written == 4.0F,
                      "a store being emptied comes back emptying, its carrying half done (save 67)");
+  failures += Expect(site_back.construction.winter_works == 0,
+                     "a site that stands in winter still stands after a load (save 80)");
 
   // -- the staged batch ----------------------------------------------------
   //

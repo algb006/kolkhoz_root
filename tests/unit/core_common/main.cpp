@@ -1097,7 +1097,7 @@ int TestDefIdFromRow() {
 
 /// The top two rungs of the ladder of funds (fund_ladder.h): seed for a field
 /// not yet sown, the plan reserve only as far as this year's reaping covers
-/// it, and every unsealing off the one total.
+/// it, and each unsealing off its own rung (0.34.17).
 int CheckTheTopOfTheLadder() {
   int failures = 0;
   core::WorldState world;
@@ -1140,12 +1140,36 @@ int CheckTheTopOfTheLadder() {
                        "ladder: a field reaped last year holds this year's seed again");
   }
 
-  world.unsealed.by_fund[0] = {0, 0, 450'000};
-  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 50'000,
-                     "ladder: an unsealing comes off the one total");
-  world.unsealed.by_fund[1] = {0, 0, 900'000};
-  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 0,
-                     "ladder: releases past the total clamp at zero");
+  // EACH FUND OPENS ITS OWN RUNG (boss, boss-core-epoch1-resume seq 14,
+  // answer 3). Until 0.34.17 every release came off one total, and that is
+  // how unsealing the FODDER fund opened the plan's oats. Rungs here: seed
+  // 200 000, plan 300 000.
+  const auto slot = [](core::FundKind fund) { return static_cast<std::size_t>(fund); };
+  world.unsealed.by_fund[slot(core::FundKind::kSeed)] = {0, 0, 150'000};
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 50'000 + 300'000,
+                     "ladder: the seed fund's release comes off the seed rung only");
+  world.unsealed.by_fund[slot(core::FundKind::kPlanReserve)] = {0, 0, 100'000};
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 50'000 + 200'000,
+                     "ladder: the plan reserve's release comes off the plan rung only");
+  world.unsealed.by_fund[slot(core::FundKind::kFodder)] = {0, 0, 1'000'000};
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 50'000 + 200'000,
+                     "ladder: the fodder fund's release opens neither the seed nor the plan");
+  world.unsealed.by_fund[slot(core::FundKind::kSeed)] = {0, 0, 900'000};
+  failures += Expect(core::HeldAboveFodder(world, norms, 3, true)[2] == 200'000,
+                     "ladder: a release past its own rung clamps at zero and reaches no other");
+  // RUNG 3: the claim (last year's feed) and inside it the fund — the larger
+  // is held, and the fodder release comes off THAT (boss seq 17). Checked
+  // with the claim larger, with the fund larger, and past both.
+  world.unsealed.by_fund[slot(core::FundKind::kFodder)] = {0, 0, 100'000};
+  failures += Expect(core::FodderRungLeft(world, {0, 0, 500'000}, {0, 0, 400'000})[2] == 400'000,
+                     "ladder: last year's feed the larger, the release comes off it");
+  failures += Expect(core::FodderRungLeft(world, {0, 0, 0}, {0, 0, 400'000})[2] == 300'000,
+                     "ladder: no book (the first year), the fund held and the release off it");
+  failures += Expect(core::FodderRungLeft(world, {7'000, 0, 0}, {0, 0, 0})[0] == 7'000,
+                     "ladder: a feed with no fund — the cow's — is held whole");
+  world.unsealed.by_fund[slot(core::FundKind::kFodder)] = {0, 0, 1'000'000};
+  failures += Expect(core::FodderRungLeft(world, {0, 0, 500'000}, {0, 0, 400'000})[2] == 0,
+                     "ladder: a fodder release past rung 3 empties it and no more");
   return failures;
 }
 

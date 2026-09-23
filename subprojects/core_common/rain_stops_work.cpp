@@ -26,6 +26,10 @@ bool RainStopsWork(Precipitation precipitation, WorkKind kind) {
          (kind == WorkKind::kSowing || kind == WorkKind::kHarvest);
 }
 
+bool WinterStopsSite(Season season, std::uint8_t winter_works) {
+  return season == Season::kWinter && winter_works == 0;
+}
+
 double DryDaysBetween(const RainDayShares& shares, double from, double to) {
   double dry = 0.0;
   double position = from;

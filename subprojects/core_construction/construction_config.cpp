@@ -415,6 +415,7 @@ bool ReadLevels(const ITable& levels,
   const std::uint32_t days_col = levels.FindColumn("labor_days");
   const std::uint32_t class_col = levels.FindColumn("build_class");
   const std::uint32_t crew_col = levels.FindColumn("max_crew");
+  const std::uint32_t winter_col = levels.FindColumn("winter_works");
   const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
   const std::uint32_t idle_col = levels.FindColumn("wear_years_idle");
   const std::uint32_t in_use_col = levels.FindColumn("wear_years_in_use");
@@ -488,6 +489,12 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
     step.max_crew = static_cast<std::uint8_t>(number);
+    if (!CellOrDefault(
+            levels, row, winter_col, Range{.low = 0.0F, .high = 1.0F}, 1.0F, number, error)) {
+      Fail(error, "unit_levels", "winter_works is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    step.winter_works = number > 0.5F ? 1U : 0U;
     if (!CellOrDefault(levels,
                        row,
                        era_col,

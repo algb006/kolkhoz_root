@@ -829,6 +829,12 @@ class LaborSystem final : public ILaborSystem {
             unit.paused != 0) {
           continue;
         }
+        // AND A SITE OF A CLASS THAT STANDS IN WINTER asks for nobody in the
+        // core's winter season (construction design §8; rain_stops_work.h,
+        // WinterStopsSite) — the pause's rule: nothing is lost, nobody sent.
+        if (WinterStopsSite(current.calendar.season, unit.construction.winter_works)) {
+          continue;
+        }
         AssignmentJob job;
         job.kind = WorkKind::kConstruction;
         job.unit = current.units.row_ids[row];

@@ -158,7 +158,14 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
                                                config.seed_norms,
                                                config.resources.size(),
                                                config.distribution.reserve_seed_fund != 0);
-  const ResourceAmounts& fodder = world.ledger.closed.feed;
+  // RUNG 3: THE FODDER CLAIM, AND INSIDE IT THE FODDER FUND (resources
+  // design §6; boss, boss-core-epoch1-resume seq 17). Last year's feed of the
+  // kolkhoz's herds is held as it was — a cow's oats do not go to the table —
+  // and for a work feed the team's fund today, if larger; the chairman's
+  // fodder release comes off the larger (core_common/fund_ladder.h). Until
+  // 0.34.17 the fund was held nowhere, and releasing it opened the plan.
+  const ResourceAmounts fund = config.fodder_fund ? config.fodder_fund(world) : ResourceAmounts{};
+  const ResourceAmounts fodder = FodderRungLeft(world, world.ledger.closed.feed, fund);
   for (std::uint32_t index = 0; index < fodder.size() && index < reserve.size(); ++index) {
     reserve[index] += fodder[index];
   }

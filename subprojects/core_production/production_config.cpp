@@ -833,6 +833,7 @@ bool ParseFeedLinks(const ITable& table,
   const std::uint32_t reserve_col = table.FindColumn("reserve");
   const std::uint32_t share_col = table.FindColumn("max_share");
   const std::uint32_t work_only_col = table.FindColumn("work_only");
+  const std::uint32_t fund_col = table.FindColumn("fodder_fund");
   if (kind_col == kNoTableColumn || resource_col == kNoTableColumn) {
     error = "feed_links: no livestock or resource column";
     return false;
@@ -860,18 +861,33 @@ bool ParseFeedLinks(const ITable& table,
     float reserve = 0.0F;
     float max_share = 1.0F;
     float work_only = 0.0F;
+    float fodder_fund = 0.0F;
     if (!CellOrDefault(table, row, reserve_col, Range{.low = 0, .high = 1}, 0, reserve, error) ||
         !CellOrDefault(table, row, share_col, Range{.low = 0, .high = 1}, 1, max_share, error) ||
         !CellOrDefault(
-            table, row, work_only_col, Range{.low = 0, .high = 1}, 0, work_only, error)) {
+            table, row, work_only_col, Range{.low = 0, .high = 1}, 0, work_only, error) ||
+        !CellOrDefault(table, row, fund_col, Range{.low = 0, .high = 1}, 0, fodder_fund, error)) {
       error = "feed_links: " + error;
       return false;
     }
-    links.push_back(FeedLinkDef{.kind = DefIdFromRow<LivestockKindIdTag>(kind_row),
-                                .resource = DefIdFromRow<ResourceIdTag>(resource_row),
-                                .reserve = static_cast<std::uint8_t>(reserve),
-                                .max_share = max_share,
-                                .work_only = static_cast<std::uint8_t>(work_only)});
+    // A FUND FEED IS A WORK FEED, or its share of the team's ration reads
+    // nought (WorkFeedDayOf takes the share off the work link) and the fund
+    // holds nothing without a word. Refused by name, not sized silently.
+    if (fodder_fund > 0.5F && work_only < 0.5F) {
+      error = "feed_links: row " + std::to_string(row) +
+              " has fodder_fund 1 and work_only 0 — the fund holds work feed only";
+      return false;
+    }
+    links.push_back(
+        FeedLinkDef{.kind = DefIdFromRow<LivestockKindIdTag>(kind_row),
+                    .resource = DefIdFromRow<ResourceIdTag>(resource_row),
+                    .reserve = static_cast<std::uint8_t>(reserve),
+                    .max_share = max_share,
+                    // Stored by the SAME threshold the refusal above
+                    // asks, not by truncation: 0.7 of a flag would
+                    // pass the check and be kept as 0.
+                    .work_only = static_cast<std::uint8_t>(work_only > 0.5F ? 1 : 0),
+                    .fodder_fund = static_cast<std::uint8_t>(fodder_fund > 0.5F ? 1 : 0)});
   }
   return true;
 }
@@ -1011,10 +1027,14 @@ bool ParseProductionWorldParams(const ITable& world, FarmingConfig& farming, std
       ScalarKnob{.key = kProductionWorldParamKeys[9],
                  .value = &farming.mud_speed_factor,
                  .range = Range{.low = 0.05F, .high = 1.0F}},
-      // A day of the year, 0-based like growing_season_last_day.
+      // A day of the year, 0-based — the FIRST DAY THE SNOW LIES, read the
+      // opposite way to growing_season_last_day (a last safe day): the
+      // alarm counts to the day before it. So not below 1: a snow lying on
+      // day 0 would leave the alarm counting to day −1 and crying for every
+      // field (the static loop of 23 September).
       ScalarKnob{.key = kProductionWorldParamKeys[10],
                  .value = &farming.gather_alarm_snow_day,
-                 .range = Range{.low = 0.0F, .high = static_cast<float>(kDaysPerYear - 1U)}}};
+                 .range = Range{.low = 1.0F, .high = static_cast<float>(kDaysPerYear - 1U)}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }

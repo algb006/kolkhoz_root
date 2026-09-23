@@ -95,6 +95,21 @@ Grams FodderFundGrams(const ProductionConfig& config,
                       const WorldState& current,
                       ResourceId resource);
 
+/// @brief RUNG 3 OF THE LADDER TODAY, grams of one work feed: what the
+/// kolkhoz's working stock will still eat of it until its next reaping,
+/// capped by the last reaping of it (boss, boss-core-epoch1-resume seq 14,
+/// answer 2). Not the year's fund above: that one is the unsealing's old
+/// ceiling and the accumulation limit's base, and a year held in April
+/// starves the spring beside a store the team cannot eat by August.
+/// @return 0 for a resource that is no work feed.
+Grams FodderClaimGrams(const ProductionConfig& config,
+                       const WorldState& current,
+                       ResourceId resource);
+
+/// @brief FodderClaimGrams for every resource, dense by ResourceId — the
+/// size core_common/fund_ladder.h (FodderRungLeft) is handed.
+ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& current);
+
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor
 /// today (YieldFactor: billeting, underfeeding), grams — the same sum
 /// RunProduce delivers, read without delivering it. A household's cow is the
