@@ -2099,6 +2099,13 @@ int CheckMembership() {
   return failures;
 }
 
+/// A world with no food roster: nothing is sealed, the night's theft is
+/// capped by the stores alone.
+const core::FoodConfig& NoFood() {
+  static const core::FoodConfig kNoRoster;
+  return kNoRoster;
+}
+
 /// The night trades (crime design §9; boss, parcel 346): who is handed one,
 /// the moonlit night, where each goes, and what comes home at the return hour.
 int CheckNightTrades() {
@@ -2222,12 +2229,39 @@ int CheckNightTrades() {
     world.step_events.clear();
   };
   world.weather.air_temperature_celsius = 20.0F;
+
+  // THE NIGHT READS THE SEALED FUNDS (boss seq 18; static review of 0.34.37:
+  // every other call here passes a food config with nothing sealed). Both
+  // distillers go out on this night; the raw material is resource 3, not the
+  // first, and 70 kg of an open store's 100 are owed to the plan's reaping —
+  // the two of them carry the 30 kg above, between them.
+  {
+    constexpr core::Grams kKilo = core::kGramsPerKilogram;
+    core::NightTradeConfig raw_config = config;
+    raw_config.raw_material = {core::ResourceId{3}};
+    core::FoodConfig food;
+    food.resources.resize(4);
+    core::WorldState wired = world;
+    wired.calendar.tick = (2 * core::kTicksPerDay) + raw_config.hour_out;
+    core::RefreshCalendarCaches(wired.calendar);
+    core::UnitRow store;
+    store.level = 1;
+    store.stock = {0, 0, 0, 100 * kKilo};
+    AppendRow(wired.units, store);
+    wired.plan.due = {0, 0, 0, 70 * kKilo};
+    wired.ledger.current.harvest = {0, 0, 0, 70 * kKilo};
+    core::RunNightOutings(raw_config, food, wired);
+    const core::ResourceAmounts& stolen = wired.ledger.current.stolen;
+    failures += Expect(stolen.size() > 3 && stolen[3] == 30 * kKilo,
+                       "night: two distillers carry only the 30 kg above the sealed plan");
+  }
+
   at(2, 22);
-  core::RunNightOutings(config, world);
+  core::RunNightOutings(config, NoFood(), world);
   failures += Expect(world.night_outings.rows.empty() && world.step_events.empty(),
                      "night: at 22 of the moonlit day nobody is out yet");
   at(2, 23);
-  core::RunNightOutings(config, world);
+  core::RunNightOutings(config, NoFood(), world);
   bool places_right = true;
   for (const core::NightOutingRow& outing : world.night_outings.rows) {
     const core::ResidentRow& person =
@@ -2257,7 +2291,7 @@ int CheckNightTrades() {
              "at the spot, the hunter in the forest — each said once");
 
   at(3, 3);
-  core::RunNightOutings(config, world);
+  core::RunNightOutings(config, NoFood(), world);
   core::Grams fish = 0;
   core::Grams game = 0;
   for (const core::FamilyRow& family : world.families.rows) {
@@ -2275,7 +2309,7 @@ int CheckNightTrades() {
 
   world.weather.air_temperature_celsius = 10.0F;
   at(6, 23);
-  core::RunNightOutings(config, world);
+  core::RunNightOutings(config, NoFood(), world);
   std::uint32_t fishers_out = 0;
   for (const core::NightOutingRow& outing : world.night_outings.rows) {
     fishers_out += outing.trade == core::NightTrade::kNetFisher ? 1U : 0U;
@@ -2338,7 +2372,7 @@ int CheckRawMaterialLeak() {
   failures +=
       Expect(core::StoreLeakClosed(config, world, 1) && !core::StoreLeakClosed(config, world, 0),
              "leak: a sober watchman closes his store, an unwatched one is open");
-  const core::Grams first = core::StealRawMaterial(config, world, kDistillerRow);
+  const core::Grams first = core::StealRawMaterial(config, {}, world, kDistillerRow);
   failures += Expect(
       first == 30 * kKilo && stock_of(open_id) == 0 && stock_of(kept_id) == 100 * kKilo &&
           world.ledger.current.stolen.size() == 1 && world.ledger.current.stolen[0] == 30 * kKilo,
@@ -2370,7 +2404,7 @@ int CheckRawMaterialLeak() {
   {
     core::WorldState dry = world;
     dry.residents.rows[kDistillerRow].distiller_supplied_month = 0;
-    failures += Expect(core::StealRawMaterial(config, dry, kDistillerRow) == 0 &&
+    failures += Expect(core::StealRawMaterial(config, {}, dry, kDistillerRow) == 0 &&
                            dry.residents.rows[kDistillerRow].distiller_supplied_month == 0,
                        "leak: a night that brought nothing leaves the distiller unsupplied");
   }
@@ -2378,8 +2412,8 @@ int CheckRawMaterialLeak() {
   // Two more nights in the same month from a refilled open store — 50 kg each:
   // past 100 kg, the complaint, once.
   world.units.rows[FindRow(world.units, open_id)].stock[0] = 200 * kKilo;
-  core::StealRawMaterial(config, world, kDistillerRow);
-  core::StealRawMaterial(config, world, kDistillerRow);
+  core::StealRawMaterial(config, {}, world, kDistillerRow);
+  core::StealRawMaterial(config, {}, world, kDistillerRow);
   std::uint32_t complaints = 0;
   for (const core::SimEvent& event : world.step_events) {
     complaints += event.kind == core::EventKind::kStoreLeakComplaint ? 1U : 0U;
@@ -2393,9 +2427,9 @@ int CheckRawMaterialLeak() {
   world.calendar.tick = static_cast<core::Tick>(core::kDaysPerMonth) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   world.units.rows[FindRow(world.units, open_id)].stock[0] = 500 * kKilo;
-  core::StealRawMaterial(config, world, kDistillerRow);
-  core::StealRawMaterial(config, world, kDistillerRow);
-  core::StealRawMaterial(config, world, kDistillerRow);
+  core::StealRawMaterial(config, {}, world, kDistillerRow);
+  core::StealRawMaterial(config, {}, world, kDistillerRow);
+  core::StealRawMaterial(config, {}, world, kDistillerRow);
   failures +=
       Expect(world.night_theft.stolen_this_month == 150 * kKilo && world.step_events.empty(),
              "leak: a new month counts from zero, and the complaint does not come again");
@@ -2425,13 +2459,39 @@ int CheckRawMaterialLeak() {
       core::PostAssignment{.profession = core::ProfessionId{1}, .unit = watched_id};
   AppendRow(yards.residents, yard_watchman);
   AppendRow(yards.residents, distiller);  // row 1
-  const core::Grams yard_night = core::StealRawMaterial(config, yards, 1);
+  const core::Grams yard_night = core::StealRawMaterial(config, {}, yards, 1);
   // The kept granary is closed; the whole 50 kg come out of the open one.
   failures += Expect(
       yard_night == 50 * kKilo &&
           yards.units.rows[FindRow(yards.units, kept_granary_id)].stock[0] == 30 * kKilo &&
           yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] == 50 * kKilo,
       "leak: the yard's watchman keeps the granary on its plot, and an unwatched yard's does not");
+
+  // THE SEALED FUNDS ARE NOT HIS (boss seq 18): the village's unreserved raw
+  // material above them, and no more. Here 50 kg lie open and 30 kg kept —
+  // 80 kg in the village.
+  {
+    const auto night = [&](core::WorldState state, std::vector<core::Grams> sealed) {
+      state.residents.rows[1].distiller_supplied_month = 0;
+      const core::Grams taken = core::StealRawMaterial(config, sealed, state, 1);
+      return std::pair{taken, state.residents.rows[1].distiller_supplied_month != 0};
+    };
+    failures += Expect(night(yards, {60 * kKilo}).first == 20 * kKilo,
+                       "sealed: 60 kg of 80 in the funds, the distiller carries the 20 above them");
+    const auto [none, supplied] = night(yards, {100 * kKilo});
+    failures += Expect(none == 0 && !supplied,
+                       "sealed: funds past the stock, he carries nothing and is not supplied");
+    failures += Expect(night(yards, {30 * kKilo}).first == 50 * kKilo,
+                       "sealed: the funds are the village's — the kept granary's 30 kg count");
+    core::WorldState two_open = yards;
+    core::UnitRow second_granary;
+    second_granary.level = 1;
+    second_granary.parent = open_yard_id;
+    second_granary.stock = {40 * kKilo};
+    AppendRow(two_open.units, second_granary);
+    failures += Expect(night(two_open, {100 * kKilo}).first == 20 * kKilo,
+                       "sealed: 20 kg above the funds is 20 kg across every open store, not each");
+  }
   return failures;
 }
 

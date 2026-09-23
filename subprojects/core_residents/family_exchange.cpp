@@ -562,6 +562,13 @@ void BurnTrudodni(WorldState& current) {
 
 }  // namespace
 
+std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world) {
+  if (config.resources.empty()) {
+    return {};
+  }
+  return IssueReserve(config, world);
+}
+
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current) {
   if (config.resources.empty()) {
     return;  // a table-less world has no food roster and nothing to hand out

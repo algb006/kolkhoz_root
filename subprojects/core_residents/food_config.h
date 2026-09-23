@@ -291,8 +291,9 @@ struct FoodConfig {
   ///
   /// A CALL INTO core_production, NOT DATA, and this config is read from the
   /// parallel slots 2 and 5 (PARALLEL_READONLY): call it only from the
-  /// sequential decisions slot (phase 3) and between steps — the two callers
-  /// it has, IssueReserve's distribution and the ration alarm. A parallel
+  /// sequential decisions slot (phase 3) and between steps — the callers it
+  /// has, IssueReserve's distribution, the ration alarm and the night theft
+  /// (SealedFunds, 0.34.37). A parallel
   /// phase that called it would run production's read on a worker thread.
   std::function<ResourceAmounts(const WorldState&)> fodder_fund;
 

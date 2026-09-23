@@ -371,7 +371,7 @@ class ResidentsSystem final : public IResidentsSystem {
     ConsumeIssueNormOrders(food_, current);
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
-    RunNightOutings(config_.night_trade, current);
+    RunNightOutings(config_.night_trade, food_, current);
     // Every hour, as the alarm was read every hour before it had a memory:
     // the needs phase of this very step has moved the satiety it reads.
     UpdateHungerAlarms(current);

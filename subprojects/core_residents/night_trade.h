@@ -29,8 +29,9 @@
 ///     yards' pantries; the hunter 5 kg of meat with a chance of 0.3; the
 ///     distiller carries 50 kg of raw material off the kolkhoz stores, less
 ///     60 % from a unit whose watchman is at his post — or whose parent's, as a
-///     granary is kept by the food yard's — and it leaves the world
-///     (boss, parcel 364; StealRawMaterial).
+///     granary is kept by the food yard's — and never out of the sealed
+///     funds (boss seq 18) — and it leaves the world (boss, parcel 364;
+///     StealRawMaterial).
 ///
 /// THE WAY OUT OF A TRADE is kTakeNightTrader (2026-09-18): the man taken
 /// keeps no trade from that step, and the year's turn hands it out again.
@@ -58,6 +59,8 @@
 #include "core_tables/tables.h"
 
 namespace core {
+
+struct FoodConfig;
 
 /// @brief The night trades' numbers (world_params.csv) and the fishing spots
 /// (tables/night_fishing_spots.csv). Defaults are boss's figures of parcel
@@ -177,8 +180,10 @@ void TurnNightTheftMonth(const NightTradeConfig& config, float life_speedup, Wor
 ///        every keeper whose night it is goes out — a row, a
 ///        kNightTradeOuting and the catch in his yard's pantry. Does nothing
 ///        at any other hour or on any other night.
+/// @param food Sizes the sealed funds the distiller stays above
+///        (SealedFunds), asked once a night and only when one goes out.
 /// @pre Called once per tick of the decisions slot.
-void RunNightOutings(const NightTradeConfig& config, WorldState& current);
+void RunNightOutings(const NightTradeConfig& config, const FoodConfig& food, WorldState& current);
 
 /// @brief Where a resident's yard stands: his family's house, or where it
 ///        stood if it fell. False when he has no family row.
@@ -211,14 +216,19 @@ bool StoreLeakClosed(const NightTradeConfig& config,
 ///        raw material, unreserved, unit by unit in row order and resource by
 ///        resource in the config's order, from every store whose leak is OPEN
 ///        (StoreLeakClosed) — a closed store gives nothing, and he goes on to
-///        the next. What is taken leaves the world and is booked as `stolen`;
+///        the next — and NEVER INTO THE SEALED FUNDS: of each raw material no
+///        more than the village's unreserved stock above `sealed` (boss
+///        seq 18; SealedFunds). What is taken leaves the world and is booked
+///        as `stolen`;
 ///        the month's tally grows, and at `store_leak_complaint_kg` the
 ///        complaint is raised, once a campaign (the constable's post is a
 ///        STUB: Epoch I has none). When anything was taken, the distiller at
 ///        `distiller_row` is SUPPLIED this month
 ///        (ResidentRow::distiller_supplied_month).
+/// @param sealed Dense by ResourceId; a resource past its end is not sealed.
 /// @return Grams taken.
 Grams StealRawMaterial(const NightTradeConfig& config,
+                       std::span<const Grams> sealed,
                        WorldState& current,
                        std::uint32_t distiller_row);
 

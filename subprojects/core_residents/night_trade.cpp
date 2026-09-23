@@ -22,6 +22,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
+#include "family_exchange.h"
 
 namespace core {
 namespace {
@@ -170,8 +171,13 @@ void RecordOuting(WorldState& current,
 }
 
 /// The hour out: the night's rows and events.
-void GoOut(const NightTradeConfig& config, WorldState& current) {
+void GoOut(const NightTradeConfig& config, const FoodConfig& food, WorldState& current) {
   current.night_outings = NightOutingTable{};
+  // The sealed funds, once a night and only if a distiller goes out: every
+  // distiller of the night stays above the same funds, and what the first
+  // carried is off the stock the second one finds.
+  std::vector<Grams> sealed;
+  bool sealed_read = false;
   const bool warm_water =
       current.weather.air_temperature_celsius >= config.fishing_min_mean_celsius;
   // Both fishers net the same spot, drawn once for the night.
@@ -187,7 +193,11 @@ void GoOut(const NightTradeConfig& config, WorldState& current) {
     switch (person.night_trade) {
       case NightTrade::kDistiller:
         RecordOuting(current, row, yard, config);  // at his own gate
-        StealRawMaterial(config, current, row);    // and what he distils is the kolkhoz's
+        if (!sealed_read) {
+          sealed = SealedFunds(food, current);
+          sealed_read = true;
+        }
+        StealRawMaterial(config, sealed, current, row);  // what he distils is the kolkhoz's
         break;
       case NightTrade::kNetFisher:
         if (!warm_water || config.fishing_spots.empty()) {
@@ -467,6 +477,7 @@ bool StoreLeakClosed(const NightTradeConfig& config,
 }
 
 Grams StealRawMaterial(const NightTradeConfig& config,
+                       std::span<const Grams> sealed,
                        WorldState& current,
                        std::uint32_t distiller_row) {
   const Date date = DateFromDay(current.calendar.day);
@@ -479,14 +490,28 @@ Grams StealRawMaterial(const NightTradeConfig& config,
   Grams wanted = GramsFromKilograms(config.distiller_raw_kg);
   Grams taken = 0;
   for (const ResourceId raw : config.raw_material) {
-    for (std::uint32_t unit_row = 0; unit_row < current.units.rows.size() && wanted > 0;
+    // THE SEALED FUNDS ARE NOT HIS (boss seq 18, econ plan-700 §3). Until
+    // 0.34.37 he took from under a construction's reserve and no other: the
+    // plan's rye went into the still on moonlit nights — 1.1-1.2 t a year
+    // against a due of 1.1 t — and the district was delivered less than the
+    // reaping had put aside for it. The funds are the village's, not a
+    // store's, so the cap is the village's unreserved stock above them.
+    Grams village = 0;
+    for (const UnitRow& unit : current.units.rows) {
+      village += UnreservedOf(unit, raw);
+    }
+    const Grams held = raw.value < sealed.size() ? sealed[raw.value] : 0;
+    Grams above_funds = village > held ? village - held : 0;
+    for (std::uint32_t unit_row = 0;
+         unit_row < current.units.rows.size() && wanted > 0 && above_funds > 0;
          ++unit_row) {
       const Grams free = UnreservedOf(current.units.rows[unit_row], raw);
       if (free <= 0 || StoreLeakClosed(config, current, unit_row)) {
         continue;  // nothing here, or a sober watch: he goes on to the next store
       }
-      const Grams carried = free < wanted ? free : wanted;
+      const Grams carried = std::min({free, wanted, above_funds});
       wanted -= carried;
+      above_funds -= carried;
       current.units.rows[unit_row].stock[raw.value] -= carried;
       taken += carried;
       AddLedgerAmount(current.ledger.current.stolen, raw, carried);
@@ -585,7 +610,7 @@ void AssignNightTrades(const NightTradeConfig& config,
   }
 }
 
-void RunNightOutings(const NightTradeConfig& config, WorldState& current) {
+void RunNightOutings(const NightTradeConfig& config, const FoodConfig& food, WorldState& current) {
   const std::uint32_t hour = HourFromTick(current.calendar.tick);
   // THE LEAK, SEEN EVERY NIGHT (register 206): a month is dry only if no
   // night of it found a store of grain or potato open. Asked at the hour out
@@ -619,7 +644,7 @@ void RunNightOutings(const NightTradeConfig& config, WorldState& current) {
     }
   }
   if (hour == config.hour_out && IsMoonlitNight(config, current.calendar.day)) {
-    GoOut(config, current);
+    GoOut(config, food, current);
     return;
   }
   // The return belongs to the night that began on the moonlit day: on that

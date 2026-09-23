@@ -38,6 +38,15 @@ namespace core {
 ///       every step below a no-op rather than an error.
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current);
 
+/// @brief The SEALED FUNDS, grams per resource, dense by ResourceId: the seed
+/// fund, the plan reserve with what will rot before the delivery, and the
+/// fodder claim, less the chairman's unsealings (resources design §6). The
+/// ration, the ration alarm and the night theft stay above it (boss seq 18:
+/// «опечатанное не крадётся»); the distribution stays above it AND holds a
+/// planned crop whole until unsealed (PlanHoldsIt), which the theft does not.
+/// @return Sized to the resource roster; empty when there is none.
+std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world);
+
 /// @brief The ration positions whose FREE stock is nought while the sealed
 /// funds (seed, plan reserve, fodder — the distribution's own reserve) hold
 /// some: the position and the grams in the funds. The half of
