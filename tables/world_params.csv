@@ -226,3 +226,8 @@ plan_trade_min_reputation,20,core
 twins_share,0.0125,core
 identical_twins_share,0.3333,core
 gather_alarm_snow_day,40,core
+ambulance_health_line,15,core
+hospital_days,8,core
+hospital_return_health,60,core
+ambulance_arrive_hour,8,core
+walk_home_hours,4,core
