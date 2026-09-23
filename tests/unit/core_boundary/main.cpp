@@ -261,6 +261,42 @@ int TestTheLotRidesTheOrderEvent(const core::ITableSet& tables) {
   return failures;
 }
 
+/// THE RESOURCE RIDES THE ORDER'S EVENT TOO (boss seq 167, «отказ называет
+/// что»; the Epoch II diagnosis): a refused order's row carries the material
+/// it lacked, and the row is swept the same step — so the answer must name
+/// it, or no reader ever learns what held a site.
+int TestTheResourceRidesTheOrderEvent(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    return Expect(false, "resource: the session was built");
+  }
+  core::OrderRow order;
+  order.kind = core::OrderKind::kOrderLimitLot;
+  order.lot = core::LimitLotId{3};
+  order.resource = core::ResourceId{2};
+  const core::OrderId issued = session->IssueOrder(order);
+  session->AdvanceStep();
+  bool named = false;
+  for (const core::SimEvent& event : session->Events()) {
+    named = named || (event.order.value == issued.value &&
+                      (event.kind == core::EventKind::kOrderRefused ||
+                       event.kind == core::EventKind::kOrderDone) &&
+                      event.resource.value == 2);
+  }
+  failures += Expect(issued.value != 0 && named,
+                     "resource: the answer names the resource the swept order carried");
+  return failures;
+}
+
 int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
@@ -1459,6 +1495,7 @@ int main() {
   failures += Expect(core::kJournalMagic.size() == 8, "the journal magic is eight bytes");
   failures += TestTheStampNamesTheHoliday(tables);
   failures += TestTheLotRidesTheOrderEvent(tables);
+  failures += TestTheResourceRidesTheOrderEvent(tables);
   failures += TestOrdersThroughTheEngine(tables);
   failures += TestEventsAndFastForward(tables);
   failures += TestEventReaders(tables);

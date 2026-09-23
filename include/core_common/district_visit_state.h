@@ -17,6 +17,15 @@
 /// проверки": the outcome is computed here and handed out as words, so no
 /// script has to compute an inspection a second time.
 ///
+/// WHAT A VISIT FINDS (since 2026-09-18; district_visit.cpp, InspectVisit):
+/// kDiscrepancy when the stores hold more than the accumulation limit. A face
+/// that counts the stores then seizes the surplus (SeizeAboveLimit) and the
+/// chairman is summoned «на ковёр» (SummonCause::kAuditDiscrepancy). Until
+/// 0.34.29 this header said a finding was "always kNone", a week after it had
+/// stopped being so, and host wrote an audit on the word. The trial's
+/// shortfall trigger (epochs §8, a SHORTAGE of 20 % against the books) has no
+/// writer: the auditor finds only a surplus.
+///
 /// WHAT EPOCH I RAISES (boss, parcel 324):
 ///   * regular visits — Karasev in `district_visit_karasev_month`, Polushkina in
 ///     `district_visit_polushkina_month`, announced `district_visit_notice_days`
@@ -26,9 +35,8 @@
 ///     channel after a regular visit that found something (Karasev → Stozharov,
 ///     Polushkina → Zhernova).
 /// STUB: residents' complaint, an emergency, a newspaper satire and a
-/// denunciation call nobody yet (the design's other four causes); a visit's
-/// finding is always kNone, as the core keeps no books to find a discrepancy
-/// in; reception and gift are in the vocabulary and never raised, as the
+/// denunciation call nobody yet (the design's other four causes);
+/// reception and gift are in the vocabulary and never raised, as the
 /// chairman has no order for either and the faces have no personal
 /// reputations.
 
@@ -69,9 +77,9 @@ enum class DistrictVisitKind : std::uint8_t {
 
 /// @brief What a visit found. Seam words `none`, `discrepancy`, `junior_miss`.
 enum class DistrictVisitFinding : std::uint8_t {
-  kNone = 0,     ///< Nothing. STUB: the only finding Epoch I computes.
-  kDiscrepancy,  ///< A discrepancy in the accounts or the village.
-  kJuniorMiss,   ///< A senior found what the junior of the channel missed.
+  kNone = 0,     ///< Nothing.
+  kDiscrepancy,  ///< The stores above the accumulation limit (InspectVisit, since 2026-09-18).
+  kJuniorMiss,   ///< A senior found what the junior of the channel missed. STUB: never computed.
 
   kDistrictVisitFindingCount,
 };

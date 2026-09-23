@@ -177,6 +177,17 @@ class BuildingChairman {
     repairs.RunDay(simulation);
     // The farm's own shortage before any house (boss, parcel 298).
     const bool farm_first = fixture.HoldsHousesBack(simulation) || yard.HoldsHousesBack(simulation);
+    // THE UPGRADES BEFORE THE HOUSES WHEN NOBODY WAITS FOR A ROOF (the Epoch
+    // II material race; boss, boss-core-epoch1-2 seq 29). Placed last, an
+    // upgrade asked its materials of the stores and was refused them the next
+    // step by the houses and social objects staged before it in the same
+    // batch — 360 of 360 refusals kMaterialsShort in nine villages. A family
+    // without a house or a couple waiting still comes first, as everywhere.
+    const bool upgrades_first = !FamilyWaitsForARoof(simulation.CompletedState());
+    if (upgrades_first) {
+      upgrades.ReadAtSubject(simulation);
+      upgrades.RunDay(simulation, farm_first);
+    }
     houses.RunDay(simulation, farm_first);
     // The school after the houses: a family without a roof comes first.
     school.RunDay(simulation, farm_first);
@@ -201,11 +212,26 @@ class BuildingChairman {
     // перестройка» waits behind everything that houses or feeds anybody.
     // Yesterday's order read at the unit before today's is placed. NOT the
     // book: it was swept the step the order settled (upgrade_policy.h).
-    upgrades.ReadAtSubject(simulation);
-    upgrades.RunDay(simulation, farm_first);
+    if (!upgrades_first) {
+      upgrades.ReadAtSubject(simulation);
+      upgrades.RunDay(simulation, farm_first);
+    }
     watchman.RunDay(simulation);
     insulation.RunDay(simulation);
     digging.RunDay(simulation);
+  }
+
+  /// A couple waiting for a house, or a family with no roof of its own.
+  static bool FamilyWaitsForARoof(const core::WorldState& world) {
+    if (!world.wedding_waits.rows.empty()) {
+      return true;
+    }
+    for (const core::FamilyRow& family : world.families.rows) {
+      if (family.house.value == core::kInvalidEntityIdValue) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // Public on purpose: a run reports on the ones it cares about.

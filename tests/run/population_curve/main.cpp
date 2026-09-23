@@ -186,6 +186,10 @@ struct Trajectory {
   /// and could not say why (2026-09-23, the Epoch II diagnosis).
   std::array<std::uint32_t, static_cast<std::size_t>(core::OrderRefusal::kOrderRefusalCount)>
       upgrade_refusals = {};
+  /// The material an upgrade's kMaterialsShort named, by resource row (the
+  /// event carries it since 0.34.29), and the resources' keys to print it by.
+  std::array<std::uint32_t, 256> upgrade_short_by_resource = {};
+  std::vector<std::string> resource_keys;
   /// What held the social objects' marking (social_objects_policy.h, Held).
   run::SocialObjectsPolicy::Held social_held;
   /// Where the logs went, year by year (timber_flow_tally.h).
@@ -287,6 +291,10 @@ void LiveOneDay(core::ISimulation& simulation,
             event.amount >= 0 &&
             static_cast<std::size_t>(event.amount) < out.upgrade_refusals.size()) {
           ++out.upgrade_refusals[static_cast<std::size_t>(event.amount)];
+          if (event.amount == static_cast<std::int64_t>(core::OrderRefusal::kMaterialsShort) &&
+              event.resource.value < out.upgrade_short_by_resource.size()) {
+            ++out.upgrade_short_by_resource[event.resource.value];
+          }
         }
       }
     }
@@ -335,6 +343,14 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   // a village leaving in its first winters — 36 at year 7, nobody at 14.
   run::BuildingChairman builder(*world.tables);
   run::TimberFlowTally timber(*world.tables);
+  if (const core::ITable* const resources = world.tables->FindTable("resources")) {
+    const std::uint32_t key_column = resources->FindColumn("key");
+    for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+      out.resource_keys.emplace_back(key_column == core::kNoTableColumn
+                                         ? std::to_string(row)
+                                         : std::string(resources->CellText(row, key_column)));
+    }
+  }
 
   for (std::uint32_t year = 1; year <= kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
@@ -1071,6 +1087,27 @@ int main(int argc, char** argv) {
   }
   std::cout << " — " << events << " events against " << sum.refused + sum.refused_later_era
             << " refusals read at the unit\n";
+  // AND WHICH MATERIAL the kMaterialsShort named (the event's resource).
+  std::array<std::uint64_t, 256> short_by = {};
+  std::uint64_t short_seen = 0;
+  for (const Trajectory& walk : walks) {
+    for (std::size_t index = 0; index < short_by.size(); ++index) {
+      short_by[index] += walk.upgrade_short_by_resource[index];
+      short_seen += walk.upgrade_short_by_resource[index];
+    }
+  }
+  std::cout << "  materials short on the refused upgrades (sum of nine):";
+  for (std::size_t index = 0; index < short_by.size(); ++index) {
+    if (short_by[index] == 0) {
+      continue;
+    }
+    const std::vector<std::string>& keys = walks.front().resource_keys;
+    std::cout << ' ' << (index < keys.size() ? keys[index] : std::to_string(index)) << " x"
+              << short_by[index];
+  }
+  std::cout << " — " << short_seen << " named of "
+            << why[static_cast<std::size_t>(core::OrderRefusal::kMaterialsShort)]
+            << " kMaterialsShort\n";
   std::uint64_t this_era = 0;
   std::uint64_t later_era = 0;
   std::uint64_t no_rung = 0;

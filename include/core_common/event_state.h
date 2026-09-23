@@ -102,7 +102,8 @@ enum class EventKind : std::uint8_t {
   /// already knows it asked for.
   kOrderStarted,    ///< order.
   kOrderDone,       ///< order.
-  kOrderRefused,    ///< order; amount = the OrderRefusal value.
+  kOrderRefused,    ///< order; amount = the OrderRefusal value; resource = the
+                    ///< order's resource, for kMaterialsShort the first short line.
   kOrderCancelled,  ///< order.
 
   // -- units -------------------------------------------------------------------

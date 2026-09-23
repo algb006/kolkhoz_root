@@ -230,6 +230,12 @@ class EventsSlot final : public ISequentialPhase {
       // The lot the order named (host door request no. 4): the row is gone
       // at the end of this sweep, so the event is where it has to travel.
       event.lot = order.lot;
+      // AND THE RESOURCE IT NAMED — for kMaterialsShort the first line of the
+      // recipe the village lacks (boss seq 167, «отказ называет что»). The
+      // construction wrote it into the row, and the row is swept here: until
+      // 0.34.29 the what died with it, and no reader of the refusal ever saw
+      // which material held a site (the Epoch II diagnosis).
+      event.resource = order.resource;
       done.push_back(current.orders.row_ids[row]);
     }
     for (const OrderId id : done) {
