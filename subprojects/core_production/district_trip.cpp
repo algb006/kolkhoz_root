@@ -90,7 +90,7 @@ bool ReplacePosition(const ProductionConfig& config,
 void Depart(const ProductionConfig& config, WorldState& current) {
   ChairmanState& chairman = current.chairman;
   const SimDay day = current.calendar.day;
-  if (current.weather.phenomenon == WeatherPhenomenon::kBlizzard) {
+  if (WeatherHoldsDeparture(current)) {
     if (chairman.away_summoned != 0) {
       chairman.summon_day += 1;
       chairman.away_from_tick += kTicksPerDay;
@@ -243,8 +243,15 @@ bool AwayToday(const WorldState& world) {
   const bool leaves_today = chairman.away_from_tick >= dawn && chairman.away_from_tick < dusk;
   const bool still_away = chairman.away_from_tick != 0 && chairman.away_from_tick < dawn &&
                           chairman.away_until_tick > dawn;
-  return leaves_today || still_away ||
-         (chairman.summon_day != 0 && chairman.summon_day == world.calendar.day);
+  const bool summoned_today = chairman.summon_day != 0 && chairman.summon_day == world.calendar.day;
+  // A DEPARTURE THE WEATHER HOLDS IS NO DAY AWAY (the static loop of 23
+  // September): the day's weather is known at its turn, and a blizzard then
+  // cancels his own trip or moves the summons — the visit sent off at 0:00
+  // found him home all day. A trip already under way is not held.
+  if (WeatherHoldsDeparture(world)) {
+    return still_away;
+  }
+  return leaves_today || still_away || summoned_today;
 }
 
 }  // namespace core

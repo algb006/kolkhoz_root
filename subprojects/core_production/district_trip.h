@@ -46,13 +46,17 @@ void SummonChairman(const ProductionConfig& config, WorldState& current, SummonC
 void SummonIfTheYearFailed(const ProductionConfig& config, WorldState& current);
 
 /// @brief The reputation that crossed into «на карандаше» since `previous`
-/// calls him. Call in the daily block, after the year's verdict.
+/// calls him. Call EVERY TICK, after every writer of the reputation in the
+/// decisions slot (verdict, plan trade, seizure): `previous` is one tick old,
+/// so a crossing not compared on its own tick is never compared. A crossing
+/// while another summons stands is lost (SummonChairman, one at a time).
 void SummonOnThePencil(const ProductionConfig& config,
                        const WorldState& previous,
                        WorldState& current);
 
 /// @brief Whether he is away at any hour of today — a district visit waits
-/// for him (boss seq 206, 6).
+/// for him (boss seq 206, 6). A departure the day's weather holds
+/// (WeatherHoldsDeparture) is no day away; a trip under way still is.
 bool AwayToday(const WorldState& world);
 
 }  // namespace core

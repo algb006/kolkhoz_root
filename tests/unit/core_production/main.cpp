@@ -5379,6 +5379,45 @@ int CheckTheAccumulationLimit() {
   return failures;
 }
 
+/// «НА КАРАНДАШЕ» RINGS ON ANY TICK (the static loop of 23 September, line
+/// 1): through the system's own door, a reputation that crosses twenty in
+/// the afternoon — a plan bargained at 14:00 — calls him. The comparison sat
+/// in the daily block, which the afternoon never reaches.
+int CheckThePencilRingsInTheAfternoon() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "pencil: the shipped tables build a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  core::WorldState world;
+  world.calendar.tick = (2U * core::kDaysPerMonth * core::kTicksPerDay) + 14U;  // March, 14:00
+  core::RefreshCalendarCaches(world.calendar);
+  world.chairman.raikom_reputation = 25.0F;
+  const core::WorldState before = world;
+  world.chairman.raikom_reputation = 18.0F;  // the bargain's five and more, this hour
+  system->RunProductionDecisions(before, world);
+  failures += Expect(
+      world.chairman.summon_cause == static_cast<std::uint8_t>(core::SummonCause::kOnThePencil) &&
+          world.chairman.summon_day != 0,
+      "pencil: a reputation crossing twenty at 14:00 calls him");
+  // And not twice: the next hour, already below, calls nobody new.
+  core::WorldState next = world;
+  next.chairman.summon_day = 0;
+  next.chairman.summon_cause = 0;
+  next.calendar.tick += 1;
+  core::RefreshCalendarCaches(next.calendar);
+  const core::WorldState still_below = world;
+  system->RunProductionDecisions(still_below, next);
+  failures += Expect(next.chairman.summon_day == 0,
+                     "pencil: a reputation already below twenty calls nobody again");
+  return failures;
+}
+
 /// THE TEAM'S OATS ARE HUSBANDRY, NOT A HOARD (boss seq 83): on the shipped
 /// tables, forty working horses raise the oat limit by exactly the share of
 /// their fodder fund — the term that kept the bare village from being seized
@@ -6188,6 +6227,29 @@ int CheckDistrictTrip() {
     failures += Expect(on_return && !core::ChairmanAway(edge),
                        "trip: the chairman is still away on his return tick, home the tick after");
   }
+  // THE DEPARTURE A BLIZZARD HOLDS IS NO DEPARTURE (the static loop of 23
+  // September, line 8): the gate runs before the trip is decided, so on the
+  // departure tick it must already know the weather keeps him home. The
+  // pair: the same tick in clear weather turns the village's order away.
+  {
+    const auto departure_tick = [&](core::WeatherPhenomenon weather) {
+      core::WorldState world = march();
+      world.chairman.away_from_tick = world.calendar.tick;
+      world.weather.phenomenon = weather;
+      core::OrderRow day_off;
+      day_off.kind = core::OrderKind::kCancelDayOff;
+      day_off.status = core::OrderStatus::kPending;
+      core::AppendRow(world.orders, day_off);
+      core::RefuseVillageOrdersWhileAway(world);
+      return world.orders.rows[0].status;
+    };
+    failures +=
+        Expect(departure_tick(core::WeatherPhenomenon::kBlizzard) == core::OrderStatus::kPending,
+               "trip: a departure the blizzard holds turns no order of that tick away");
+    failures +=
+        Expect(departure_tick(core::WeatherPhenomenon::kNone) == core::OrderStatus::kRefused,
+               "trip: a departure in clear weather turns the village's orders away");
+  }
   core::OrderRow down;
   down.kind = core::OrderKind::kTradePlan;
   down.resource = core::ResourceId{0};
@@ -6243,9 +6305,11 @@ int CheckDistrictTrip() {
       "summons: the reputation crossing twenty calls him");
 
   // -- a visit waits for him (boss seq 206, 6) -------------------------------------
-  const auto visit_day = [&](bool away) {
+  const auto visit_day = [&](bool away,
+                             core::WeatherPhenomenon weather = core::WeatherPhenomenon::kNone) {
     core::WorldState world;
     at(world, kMay, 0);
+    world.weather.phenomenon = weather;
     core::DistrictVisitRow visit;
     visit.arrive_day = kMay;
     core::AppendRow(world.district_visits, visit);
@@ -6262,6 +6326,11 @@ int CheckDistrictTrip() {
                      "visit: on the day he goes to the district, the visit waits till tomorrow");
   failures += Expect(visit_day(false).district_visits.rows.empty(),
                      "visit: and on a day he is home it comes");
+  // The day's blizzard holds his departure, so he is home: the visit comes
+  // (the static loop of 23 September, WeatherHoldsDeparture).
+  failures +=
+      Expect(visit_day(true, core::WeatherPhenomenon::kBlizzard).district_visits.rows.empty(),
+             "visit: on a day the blizzard keeps him from leaving, the visit comes");
   return failures;
 }
 
@@ -7682,6 +7751,7 @@ int main() {
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
   failures += CheckTheChairmanCanUnsealAFund();
+  failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();
 
   if (failures == 0) {

@@ -14,7 +14,15 @@
 
 namespace core {
 
-/// @brief True from the tick he leaves to the tick he is back.
+/// @brief Whether today's weather keeps him from setting out: a blizzard at
+/// the departure hour postpones a summons and cancels a trip of his own
+/// (district_trip.cpp, Depart). One home, because the refusal of the
+/// village's orders runs BEFORE the trip is decided in the same tick.
+bool WeatherHoldsDeparture(const WorldState& world);
+
+/// @brief True from the tick he leaves to the tick he is back, both
+/// inclusive — except the departure tick itself when the weather holds him
+/// (WeatherHoldsDeparture): he never left, so that tick's orders are his.
 bool ChairmanAway(const WorldState& world);
 
 /// @brief Whether an order of `kind` is one of the district's own doors,

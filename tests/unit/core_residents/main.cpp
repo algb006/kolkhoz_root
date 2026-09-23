@@ -1329,6 +1329,27 @@ int CheckRooflessLadder() {
     failures += Expect(world.families.rows[0].lodging_penalty == 20.0F,
                        "and the next day the same cost, not twice it");
   }
+  // THE WARMTH ENDS THE REQUEST (boss, boss-core-epoch1-resume seq 22): asked
+  // on the last cold day of April, the family goes to its tent on the first
+  // day of May, and the request goes out with it — the chairman cannot sign
+  // a tent away in May, and the cold of autumn asks anew.
+  {
+    core::WorldState world = roofless_world(14);  // the ladder runs at day 15's turn
+    add_neighbour(world);
+    const core::FamilyId yard = world.families.row_ids[0];
+    RunDays(*system, world, 1);
+    const bool asked_in_april = world.families.rows[0].asked_to_leave == 1;
+    RunDays(*system, world, 1);
+    failures += Expect(asked_in_april && world.families.rows[0].in_tent == 1 &&
+                           world.families.rows[0].asked_to_leave == 0,
+                       "asked in April, in a tent in May: the request goes out with the cold");
+    const std::size_t people = world.residents.rows.size();
+    answer(world, yard, 1);
+    RunDays(*system, world, 1);
+    failures +=
+        Expect(world.ledger.current.departures == 0 && world.residents.rows.size() == people,
+               "and a signature in May sends nobody away from a tent");
+  }
   // Nowhere to lodge — not one house lived in: the refusal cannot be carried
   // out, and the family leaves as if signed (boss seq 199 (в)).
   {

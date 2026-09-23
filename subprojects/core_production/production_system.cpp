@@ -185,6 +185,21 @@ class ProductionSystem final : public IProductionSystem {
   IParallelPhase& ProductionPhase() override { return phase_; }
 
   void RunProductionDecisions(const WorldState& previous, WorldState& current) override {
+    RunDecisionsOfTheHour(previous, current);
+    // EVERY TICK, AFTER EVERY WRITER OF THE REPUTATION (the static loop of
+    // 23 September, line 1). It sat in the daily block after the year's
+    // verdict, and a plan trade at 14:00 was never compared: the block runs
+    // at the day's turn only, and by then `previous` had crossed too. The
+    // other two writers summon him on their own cause first — a seizure
+    // comes only with the audit's summons, a failed year with its own — so
+    // for them the pencil adds no second summons (one at a time).
+    SummonOnThePencil(config_, previous, current);
+  }
+
+ private:
+  /// The slot's work for this tick; the pencil comparison is the caller's,
+  /// after all of it, whichever early return this takes.
+  void RunDecisionsOfTheHour(const WorldState& previous, WorldState& current) {
     // Tonight's haul demand was priced with yesterday's mud; at the dawn the
     // word flips, it is re-priced before anything today writes a new one.
     if (HourFromTick(current.calendar.tick) == 0U) {
@@ -273,8 +288,6 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
     }
-    // After the year's verdict, which is what moves the reputation.
-    SummonOnThePencil(config_, previous, current);
     // THE PLAN'S LETTER COMES IN JANUARY (the human's word of 2026-09-19,
     // «Письмо в январе»; boss seq 210, 213; district §5): at the year's turn,
     // after the old year is judged and its worked land written. Until then
@@ -341,6 +354,7 @@ class ProductionSystem final : public IProductionSystem {
     OpenSameDayShops(config_, current);
   }
 
+ public:
   std::int32_t DaysToNextHarvest(const WorldState& completed) const override {
     return DaysToHarvest(config_, completed);
   }

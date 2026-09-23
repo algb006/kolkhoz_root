@@ -343,6 +343,13 @@ void DescendTheLadder(const LifeConfig& config, WorldState& current, bool cold) 
     }
     family.house = UnitId{};
     if (!cold) {
+      // THE WARMTH ENDS THE REQUEST (boss, boss-core-epoch1-resume seq 22:
+      // «заявка гаснет, когда семья уходит в палатку, и открывается заново,
+      // когда вернётся холод»). It stayed open all summer with its old day,
+      // so the chairman could sign a tent away in July, and the first cold
+      // morning lodged the family at once — silence counted from last
+      // winter's request, with no new one asked.
+      family.asked_to_leave = 0;
       if (family.in_tent == 0) {
         family.in_tent = 1;
         SimEvent& tent = EmitEvent(current, EventKind::kFamilyInTent, EventSeverity::kNotable);
