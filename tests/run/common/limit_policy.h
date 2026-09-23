@@ -15,9 +15,12 @@
 /// material the stores cannot cover, the material comes in a goods lot of the
 /// catalogue, and the points cover that lot → buy the cheapest such lot. No
 /// cart already carrying that material → no second one while it is on the
-/// road. LOGS AND BOARDS ARE NOT BOUGHT: they have channels of their own in
-/// the core (felling, the sawmill) and their own prostheses; buying them too
-/// would measure the limit and the timber together.
+/// road. LOGS AND BOARDS ONLY AS THE EMERGENCY: they have channels of their
+/// own in the core (felling, the sawmill), and buying them at once would
+/// measure the limit and the timber together — but the groves are felled to
+/// nothing by year twenty, and the design gives the district's timber lot as
+/// the emergency channel (timber §2; boss, boss-core-epoch1-3 seq 9). So a
+/// site that has waited a quarter of the year may have them bought.
 
 #ifndef TESTS_RUN_COMMON_LIMIT_POLICY_H_
 #define TESTS_RUN_COMMON_LIMIT_POLICY_H_
@@ -28,6 +31,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core_catalog/limit_catalog.h"
@@ -66,18 +71,28 @@ class LimitPolicy {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman BUYS on the "
                  "district's limit the cheapest goods lot carrying a material a building site "
-                 "waits for and the stores cannot cover, logs and boards excepted, when the "
-                 "year's points cover it and no cart with that material is on the road "
-                 "(district design §1; boss, 2026-09-13)\n";
+                 "waits for and the stores cannot cover, logs and boards excepted unless the "
+                 "run turns on the emergency (a site waiting a quarter of the year; timber §2), "
+                 "when the year's points cover it and no cart with that material is on the road "
+                 "(district design §1; boss, 2026-09-13 and 2026-09-24)\n";
   }
 
   /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
   void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 
+  /// @brief Lets a site that has waited a quarter of the year have its logs
+  /// and boards bought on the limit (the design's emergency). OFF by default
+  /// and said out loud where on: thirty_years with it failed the plan in 16
+  /// years on 8 seeds of 9 against 1 — the timber grows a village of 700 the
+  /// grain does not carry — and whether the floor run should buy timber is
+  /// boss's question (boss-core-epoch1-3, 2026-09-24).
+  void BuyTimberInEmergency(bool buy) { timber_emergency_ = buy; }
+
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     Book(world);
+    CountWaits(world);
     if (!ready_) {
       return;
     }
@@ -105,6 +120,32 @@ class LimitPolicy {
 
  private:
   static constexpr std::uint32_t kCooldownDays = 1;
+
+  /// Game days a site waits in the queue before its logs and boards may be
+  /// bought on the limit: a quarter of the year. The run's number, not the
+  /// design's — the design says only «аварийный случай».
+  static constexpr std::uint32_t kTimberEmergencyDays = 12;
+
+  /// Days each site has stood marked or delivering, by unit id; a unit that
+  /// is no longer a site is forgotten.
+  void CountWaits(const core::WorldState& world) {
+    std::unordered_map<std::uint32_t, std::uint32_t> next;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::ConstructionPhase phase = world.units.rows[row].construction.phase;
+      if (phase != core::ConstructionPhase::kMarked &&
+          phase != core::ConstructionPhase::kDelivering) {
+        continue;
+      }
+      const std::uint32_t id = world.units.row_ids[row].value;
+      const auto seen = waited_days_.find(id);
+      next[id] = (seen == waited_days_.end() ? 0U : seen->second) + 1U;
+    }
+    waited_days_ = std::move(next);
+  }
+
+  std::unordered_map<std::uint32_t, std::uint32_t> waited_days_;
+
+  bool timber_emergency_ = false;
 
   /// Adult draught head the run buys back up to, and no further: a pair, the
   /// design's own condition for a foal.
@@ -226,9 +267,20 @@ class LimitPolicy {
       }
       const std::uint8_t target = waits_to_rise ? static_cast<std::uint8_t>(unit.level + 1U)
                                                 : unit.construction.target_level;
+      // LOGS AND BOARDS ONLY AS THE EMERGENCY (boss, boss-core-epoch1-3 seq
+      // 9; timber design §2, «лимит райкома — дорого, годится для аварийных
+      // случаев»; the district's «Лес и пиломатериалы» lot): after a site has
+      // waited kTimberEmergencyDays. Never excepting them, the run measured a
+      // village with no timber after its groves were cut — the selpo stood
+      // a site 2248 days waiting for 60 logs.
+      const auto waited = waited_days_.find(world.units.row_ids[row].value);
+      const bool emergency = timber_emergency_ && waited != waited_days_.end() &&
+                             waited->second >= kTimberEmergencyDays;
       for (const Cost& cost : costs_) {
-        if (cost.type.value != unit.type.value || cost.level != target || cost.resource == log_ ||
-            cost.resource == board_) {
+        if (cost.type.value != unit.type.value || cost.level != target) {
+          continue;
+        }
+        if ((cost.resource == log_ || cost.resource == board_) && !emergency) {
           continue;
         }
         const core::Grams on_site =

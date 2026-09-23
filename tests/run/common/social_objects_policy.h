@@ -43,6 +43,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -136,8 +137,20 @@ class SocialObjectsPolicy {
         continue;
       }
       if (unit.level == 0) {
-        one_is_going_up = true;
         const bool marked = unit.construction.phase == core::ConstructionPhase::kMarked;
+        // A SITE STALLED FOR ITS MATERIALS DOES NOT HOLD THE QUEUE (boss,
+        // boss-core-epoch1-3 seq 9): marked and short of its recipe for
+        // kStalledDays in a row, it stops counting as the one going up, and
+        // the next type may be marked. The selpo waited 2248 days for logs
+        // with five types behind it.
+        const std::uint32_t id = world.units.row_ids[row].value;
+        const bool short_now =
+            marked && !simulation.MaterialsShortFor(world.units.row_ids[row]).empty();
+        const std::uint32_t stalled = short_now ? stalled_days_[id] + 1U : 0U;
+        stalled_days_[id] = stalled;
+        if (stalled < kStalledDays) {
+          one_is_going_up = true;
+        }
         // STARTED WITHOUT THE HOUSING VETO, on purpose. The veto belongs on
         // MARKING a new one; applied here it leaves a marked plot standing
         // empty for thirty-three years, which is what the measurement found.
@@ -280,6 +293,13 @@ class SocialObjectsPolicy {
   std::uint32_t marked_ = 0;
 
   std::uint32_t started_ = 0;
+
+  /// Marked-and-short days in a row after which a site no longer holds the
+  /// queue: a quarter of the year. The run's number.
+  static constexpr std::uint32_t kStalledDays = 12;
+
+  /// Consecutive marked-and-short days by unit id.
+  std::unordered_map<std::uint32_t, std::uint32_t> stalled_days_;
 
   Held held_;
 

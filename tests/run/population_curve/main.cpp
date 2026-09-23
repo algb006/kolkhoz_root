@@ -844,7 +844,9 @@ int main(int argc, char** argv) {
   }
   const auto villages = static_cast<float>(walks.size());
   std::cout << "population_curve: was it ever asked for — social types MARKED "
-            << (sites / villages) << " of 6, FINISHED " << (built / villages)
+            << (sites / villages) << " of "
+            << (walks.empty() ? 0U : walks.front().social_keys.size())
+            << " the era wants (the block asks 4), FINISHED " << (built / villages)
             << "; highest unit level reached " << (level / villages) << "; worst season's variety "
             << (variety / villages) << " categories over " << (seasons / villages)
             << " seasons seen\n";
