@@ -26,11 +26,13 @@
 #include <cstddef>
 #include <span>
 
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 
 namespace core {
 
+struct FieldRow;
 struct WorldState;
 
 /// @brief What one crop's sowing takes out of the stores.
@@ -44,6 +46,28 @@ struct SeedNorm {
   bool is_winter = false;
 };
 
+/// @brief The crop a field's NEXT sowing puts in, read off its rotation and
+///        its state today: the first slot until it is sown, reaped or given
+///        up for the second slot's winter crop; then the second; and the
+///        third once the second is already in the ground (a winter crop sown
+///        this autumn). A chain the turn will hold still
+///        (FieldRow::rotation_skips_turn) sows its first slot next, unless the
+///        second slot's crop is already being worked. A fallow first slot
+///        passes to the second; invalid
+///        when the slot it lands on is fallow, or there is no rotation.
+///
+/// THE SLOTS ARE SHIFTED AT EVERY YEAR'S TURN (production_system.cpp), so
+/// the slot is chosen by the field's state and never by the year's number —
+/// the seed alarm indexed `(year + 1) % 3` over shifted slots and named the
+/// wrong crop two years in three (static review, 2026-09-24).
+CropId NextSowingCrop(const FieldRow& field, SimDay today);
+
+/// @brief The plan rung of one resource before any unsealing: what is still
+///        owed (`plan.due` less `plan.delivered`, never below nought), as far
+///        as this year's reaping covers it.
+/// @param index A ResourceId value; past the plan's end the rung is 0.
+Grams PlanRungGrams(const WorldState& world, std::size_t index);
+
 /// @brief Grams of each resource held by the seed fund and the plan reserve
 ///        together, less whatever the chairman has unsealed.
 ///
@@ -55,8 +79,9 @@ struct SeedNorm {
 /// that winter crop is in the ground. Skipped entirely when
 /// `reserve_seed_fund` is false.
 ///
-/// PLAN: as much of `plan.due` as this year's reaping has covered so far, and
-/// no more (boss, 2026-09-12: in April there is nothing yet to set aside, and
+/// PLAN: as much of what is still owed of `plan.due` as this year's reaping
+/// has covered so far (PlanRungGrams), and no more (boss, 2026-09-12:
+/// in April there is nothing yet to set aside, and
 /// reserving the whole norm from January starves the spring beside grain it
 /// may not touch).
 ///

@@ -375,6 +375,17 @@ enum class AlarmKind : std::uint8_t {
   /// the stores lack room for.
   kSlaughterWaitsForRoom,
 
+  /// A PLANTING ZONE NOBODY CAN WALK TO (alarms.csv `planting_unreachable`;
+  /// boss seq 21): a zone ordered by kPlantForest and not yet planted whose
+  /// walk from the nearest lived-in house is past the accountant's road rule
+  /// — longer than travel_limit_hours, or leaving less than min_usable_hours
+  /// of the daylight after the walk there and back. The planters go on foot
+  /// (labor_state.h, RidesOut), so the test is kFellingUnreachable's at
+  /// walking speed. A warning and not a refusal at the order, for the same
+  /// reason: a zone out of reach in December is within it in June. Subject:
+  /// `stand`; `amount` = the hours of the walk, one way, in game hours.
+  kPlantingUnreachable,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

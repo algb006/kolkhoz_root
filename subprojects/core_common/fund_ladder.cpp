@@ -49,6 +49,64 @@ void AddSowing(std::span<const SeedNorm> seed_norms_by_crop,
 
 }  // namespace
 
+Grams PlanRungGrams(const WorldState& world, std::size_t index) {
+  if (index >= world.plan.due.size()) {
+    return 0;
+  }
+  // THE PLAN RESERVE IS FILLED BY THE HARVEST, NOT BY THE CALENDAR.
+  const ResourceAmounts& reaped = world.ledger.current.harvest;
+  const Grams owed = world.plan.due[index];
+  const Grams gathered = index < reaped.size() ? reaped[index] : 0;
+  // AND EMPTIED BY THE DELIVERY (boss seq 25, item 3). What went to the
+  // district early (kDeliverPlan) is no longer the kolkhoz's to hold: until
+  // 0.34.38 the rung stayed at min(due, gathered) to the year's turn, and
+  // the rye shipped in August held the issue and the theft all autumn.
+  // What is STILL OWED against this year's reaping — not the reaping's cover
+  // less the shipments: rye shipped in June out of last year's bin is off
+  // the debt, not off this year's crop, and min(due, gathered) − sent held
+  // nothing of 500 kg reaped against 400 kg still owed (static review).
+  const Grams sent = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
+  const Grams still_owed = owed > sent ? owed - sent : 0;
+  return still_owed < gathered ? still_owed : gathered;
+}
+
+CropId NextSowingCrop(const FieldRow& field, SimDay today) {
+  const bool in_ground = field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
+  const bool reaped_this_year = field.reaped_day != kNeverReapedDay &&
+                                field.reaped_day / kDaysPerYear == today / kDaysPerYear;
+  const bool crop_named = field.crop.value != kInvalidDefIdValue;
+  // The second slot's crop already in: a winter crop sown this autumn — told
+  // from this year's own crop by the slot it names, or, where both slots
+  // name the same crop, by this year's reaping having come first.
+  if (in_ground && crop_named && field.crop.value == field.rotation_year1.value &&
+      (field.crop.value != field.rotation_year0.value || reaped_this_year)) {
+    return field.rotation_year2;
+  }
+  // Worked for the second slot's crop: the first slot gave up its window.
+  // Where both slots name one crop the work is the first slot's own.
+  const bool preparing_second_slot = !in_ground && crop_named &&
+                                     field.crop.value == field.rotation_year1.value &&
+                                     field.crop.value != field.rotation_year0.value;
+  // A CHAIN NAMED AFTER THIS YEAR'S SOWING STANDS STILL AT THE TURN
+  // (land_state.h, rotation_skips_turn): the first slot the chairman named is
+  // the one sown next, whatever this year's reaping or standing crop says.
+  // WHAT IT DOES NOT SEE: a chain named in August as (oats, winter rye) sows
+  // the rye first (land_state.h). Until the rye's ploughing opens — the first
+  // tick of its window — this names the oats; from then on the branch above
+  // names the rye. The month is not asked instead: the mark's own history
+  // is three holes found in exactly that proxy.
+  if (field.rotation_skips_turn != 0 && !preparing_second_slot) {
+    return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
+                                                            : field.rotation_year1;
+  }
+  // A fallow first slot sows nothing: the next sowing is the second slot's.
+  if (!in_ground && !reaped_this_year && !preparing_second_slot &&
+      field.rotation_year0.value != kInvalidDefIdValue) {
+    return field.rotation_year0;
+  }
+  return field.rotation_year1;
+}
+
 ResourceAmounts HeldAboveFodder(const WorldState& world,
                                 std::span<const SeedNorm> seed_norms_by_crop,
                                 std::size_t resource_count,
@@ -73,9 +131,12 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
       // second slot's winter crop (TrySow hands it to TrySowWinter): the
       // first slot will not be sown this year, and its seed is owed nobody
       // (static review of the change, 2026-09-24). Where both slots name one
-      // crop it is the same seed either way, owed once, below.
+      // crop the work is the first slot's own, and it stays owed above — a
+      // spring crop in both slots is not owed below at all, which is how
+      // 0.34.36, without this test, held no oats through their own ploughing.
       const bool preparing_second_slot = !already_sown && field.crop.value != kInvalidDefIdValue &&
-                                         field.crop.value == field.rotation_year1.value;
+                                         field.crop.value == field.rotation_year1.value &&
+                                         field.crop.value != field.rotation_year0.value;
       if (!already_sown && !reaped_this_year && !preparing_second_slot) {
         AddSowing(seed_norms_by_crop, field.rotation_year0, field.area_ga, false, seed);
       }
@@ -97,16 +158,9 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
       }
     }
   }
-  // THE PLAN RESERVE IS FILLED BY THE HARVEST, NOT BY THE CALENDAR.
-  const ResourceAmounts& reaped = world.ledger.current.harvest;
   ResourceAmounts held(resource_count, 0);
   for (std::size_t index = 0; index < resource_count; ++index) {
-    Grams plan = 0;
-    if (index < world.plan.due.size()) {
-      const Grams owed = world.plan.due[index];
-      const Grams gathered = index < reaped.size() ? reaped[index] : 0;
-      plan = owed < gathered ? owed : gathered;
-    }
+    const Grams plan = PlanRungGrams(world, index);
     // EACH FUND OPENS ITS OWN RUNG (boss, boss-core-epoch1-resume seq 14,
     // answer 3). Until 0.34.17 every release came off one total of both
     // rungs — "which fund was opened is which risk was taken, not which share

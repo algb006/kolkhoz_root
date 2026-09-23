@@ -93,14 +93,14 @@ void GrowOldForest(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-float NearestHomeRideHours(const ProductionConfig& config, const WorldState& world, Vec2 place) {
-  if (!(config.harness_speed_kmh > 0.0F)) {
+float NearestHomeTravelHours(const WorldState& world, Vec2 place, float speed_kmh) {
+  if (!(speed_kmh > 0.0F)) {
     return -1.0F;
   }
   // The labour model's own chronometer (labor_day.cpp, HoursPerKm): real
   // km/h divided by the clock's scale, so one number means one road for the
   // assignment and for this alarm.
-  const float hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  const float hours_per_km = static_cast<float>(kClockScale) / speed_kmh;
   float best = -1.0F;
   for (const UnitRow& unit : world.units.rows) {
     // A LIVED-IN house: the brigade sets out from where people sleep, and an
@@ -121,22 +121,30 @@ void CollectTimberAlarms(const ProductionConfig& config,
                          std::vector<Alarm>& alarms) {
   for (std::uint32_t row = 0; row < world.stands.rows.size(); ++row) {
     const TimberStandRow& stand = world.stands.rows[row];
-    if (!(stand.marked_m3 > 0.0F) || !(stand.work_days_remaining > 0.0F)) {
-      continue;  // nothing asked of the brigade here
+    // THE FELLING RIDES, THE PLANTING WALKS (labor_state.h, RidesOut): the
+    // planters carry spades and saplings, not logs, and go on foot. A zone
+    // beyond the walking road got its job and nobody to take it, and the
+    // chairman was not told (named at 0.34.35; boss seq 21: «да»).
+    const bool felling = stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F;
+    const bool planting = stand.kind == TimberStandKind::kPlanted &&
+                          stand.planted_day == kNeverPlanted && stand.work_days_remaining > 0.0F;
+    if (!felling && !planting) {
+      continue;  // nothing asked of anybody here
     }
-    const float ride = NearestHomeRideHours(config, world, stand.position);
-    if (ride < 0.0F) {
+    const float speed = felling ? config.harness_speed_kmh : config.walk_speed_kmh;
+    const float road = NearestHomeTravelHours(world, stand.position, speed);
+    if (road < 0.0F) {
       continue;  // nobody lives anywhere: every alarm of the village says so already
     }
     // THE ACCOUNTANT'S QUESTION, as kSiteUnreachable asks it (construction):
     // too long a road for him, or too little of the day left after it.
-    const bool too_long = ride > config.travel_limit_hours;
-    const bool no_day_left = world.weather.daylight_hours - (2.0F * ride) < config.min_usable_hours;
+    const bool too_long = road > config.travel_limit_hours;
+    const bool no_day_left = world.weather.daylight_hours - (2.0F * road) < config.min_usable_hours;
     if (too_long || no_day_left) {
       Alarm alarm;
-      alarm.kind = AlarmKind::kFellingUnreachable;
+      alarm.kind = felling ? AlarmKind::kFellingUnreachable : AlarmKind::kPlantingUnreachable;
       alarm.stand = world.stands.row_ids[row];
-      alarm.amount = static_cast<std::int64_t>(ride);
+      alarm.amount = static_cast<std::int64_t>(road);
       alarms.push_back(alarm);
     }
   }

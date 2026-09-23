@@ -46,17 +46,19 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current);
 ///        gone (timber design §8a).
 void GrowOldForest(const ProductionConfig& config, WorldState& current);
 
-/// @brief Hours of the felling brigade's ride, one way, from the nearest
-///        lived-in house to `place`, at harness speed (felling rides:
-///        labor_state.h, RidesOut); negative when nobody lives anywhere.
-float NearestHomeRideHours(const ProductionConfig& config, const WorldState& world, Vec2 place);
+/// @brief Game hours of the road, one way, from the nearest lived-in house
+///        to `place` at `speed_kmh` — harness speed for the felling brigade
+///        (labor_state.h, RidesOut), walking speed for the planters; negative
+///        when nobody lives anywhere or the speed is not positive.
+float NearestHomeTravelHours(const WorldState& world, Vec2 place, float speed_kmh);
 
 /// @brief Appends kFellingUnreachable for every stand marked for felling with
 ///        work left whose ride from the nearest lived-in house is past the
 ///        accountant's road rule: longer than travel_limit_hours, or leaving
 ///        less than min_usable_hours of the daylight after the ride there and
-///        back (the same test as kSiteUnreachable). Each stand at most once,
-///        in row order. A pure read.
+///        back (the same test as kSiteUnreachable) — and kPlantingUnreachable,
+///        the same test at walking speed, for every planting zone not yet
+///        planted. Each stand at most once, in row order. A pure read.
 /// @param alarms Appended to; never cleared.
 void CollectTimberAlarms(const ProductionConfig& config,
                          const WorldState& world,

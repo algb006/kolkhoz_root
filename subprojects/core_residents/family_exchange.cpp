@@ -184,10 +184,10 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // (spoilage.h), so to deliver `plan` in n days it must hold plan * (d/(d-1))^n
   // today; the delivery is at the year's turn.
   const std::uint32_t days_left = kDaysPerYear - (world.calendar.day % kDaysPerYear);
-  const ResourceAmounts& reaped = world.ledger.current.harvest;
   for (std::uint32_t index = 0; index < world.plan.due.size() && index < reserve.size(); ++index) {
-    const Grams gathered = index < reaped.size() ? reaped[index] : 0;
-    const Grams plan = world.plan.due[index] < gathered ? world.plan.due[index] : gathered;
+    // The rung's own figure, what is delivered already off it (0.34.38): the
+    // margin covers the rot of what still waits for the turn, and no more.
+    const Grams plan = PlanRungGrams(world, index);
     const float days =
         index < config.spoil_days.size() ? config.spoil_days[index] * config.keeping_factor : 0.0F;
     if (plan <= 0 || !(days > 1.0F)) {
@@ -566,7 +566,21 @@ std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world
   if (config.resources.empty()) {
     return {};
   }
-  return IssueReserve(config, world);
+  std::vector<Grams> sealed = IssueReserve(config, world);
+  // AND A PLANNED CROP WHOLE, TO WHAT THE CHAIRMAN UNSEALED (boss seq 25,
+  // answer 2: «что держит выдача, то опечатано и для вора»). The distribution
+  // gives a planned crop no more than min(free, unsealed); the same cap as a
+  // sealed amount is the stock less the unsealed, where that is larger.
+  for (std::uint32_t index = 0; index < sealed.size(); ++index) {
+    if (!PlanHoldsIt(config, world, index)) {
+      continue;
+    }
+    const Grams stock = VillageStock(world, DefIdFromIndex<ResourceIdTag>(index));
+    const Grams unsealed = PlanUnsealed(world, index);
+    const Grams whole = stock > unsealed ? stock - unsealed : 0;
+    sealed[index] = std::max(sealed[index], whole);
+  }
+  return sealed;
 }
 
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current) {

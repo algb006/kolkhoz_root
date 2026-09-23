@@ -1714,6 +1714,7 @@ int CheckSeedLightAsksAboutTheNearestCampaign() {
   core::ProductionConfig config = MakeHerdConfig();
   config.crops.resize(2);
   config.crops[0].resource = core::ResourceId{0};  // winter rye, sown in month 8
+  config.crops[0].is_winter = true;                // said, not only commented (0.34.38)
   config.crops[0].sowing_norm_kg_per_ha = 10.0F;
   config.crops[0].sow_from_month = 8;
   config.crops[0].sow_to_month = 8;
@@ -1728,12 +1729,19 @@ int CheckSeedLightAsksAboutTheNearestCampaign() {
   // one winter field, standing AND of the other campaign — and both
   // mutations passed in silence.
   core::WorldState world = MakeHerdWorld(0.0F);
+  // The same crop in both slots, and a standing field carries it as its crop:
+  // then only OCCUPIED can exclude the standing one, since its next sowing
+  // (fund_ladder.h, NextSowingCrop) is a real crop of this campaign.
   const auto add_field = [&world](std::uint16_t crop, core::FieldPhase phase) {
     core::FieldRow field;
     field.kind = core::LandKind::kArable;
     field.area_ga = 1.0F;
     field.rotation_year0 = core::CropId{crop};
+    field.rotation_year1 = core::CropId{crop};
     field.phase = phase;
+    if (phase == core::FieldPhase::kGrowing) {
+      field.crop = core::CropId{crop};
+    }
     core::AppendRow(world.fields, field);
   };
   add_field(1, core::FieldPhase::kIdle);     // spring, free: the campaign's own
@@ -1758,6 +1766,84 @@ int CheckSeedLightAsksAboutTheNearestCampaign() {
   failures += Expect(autumn.coverage > 9.9F && autumn.coverage < 10.1F,
                      "exactly one hectare is waiting to be sown, and it is covered ten times "
                      "over — the standing field and the other campaign are both out");
+
+  // THE REAPED FIELD'S RYE IS THE WINTER CAMPAIGN'S (0.34.38; boss seq 23).
+  // July: the nearest campaign is the winter one. A field reaped of its oats
+  // this summer has rye in its SECOND slot, and the light read only the
+  // first — the oats just gathered — so it counted no rye and stood green
+  // over an empty bin. Two hectares want 20 kg of rye; 5 kg stand there.
+  {
+    core::WorldState july = world;
+    july.fields = core::FieldTable{};
+    july.calendar.tick = 6 * core::kDaysPerMonth * core::kTicksPerDay;
+    core::RefreshCalendarCaches(july.calendar);
+    core::FieldRow reaped;
+    reaped.kind = core::LandKind::kArable;
+    reaped.area_ga = 2.0F;
+    reaped.rotation_year0 = core::CropId{1};
+    reaped.rotation_year1 = core::CropId{0};
+    reaped.phase = core::FieldPhase::kIdle;
+    reaped.reaped_day = july.calendar.day - 1;
+    core::AppendRow(july.fields, reaped);
+    july.units.rows[0].stock[0] = 5 * core::kGramsPerKilogram;
+    const core::StockForecast summer = core::SeedLight(config, july);
+    failures += Expect(summer.coverage > 0.24F && summer.coverage < 0.26F,
+                       "a field reaped this summer is counted for the rye of its second slot");
+    // A BLACK FALLOW "grows" nothing: it stands in kGrowing with no crop and
+    // waits for the same campaign's rye. One hectare more: 30 kg wanted.
+    core::WorldState fallow = july;
+    core::FieldRow black;
+    black.kind = core::LandKind::kArable;
+    black.area_ga = 1.0F;
+    black.rotation_year1 = core::CropId{0};
+    black.phase = core::FieldPhase::kGrowing;
+    core::AppendRow(fallow.fields, black);
+    const float fallow_cover = core::SeedLight(config, fallow).coverage;
+    failures += Expect(fallow_cover > 0.16F && fallow_cover < 0.17F,
+                       "a black fallow is counted for the rye that follows it");
+
+    // BUT NOT FOR NEXT YEAR'S OATS IN THIS SPRING (static review of
+    // 0.34.38): February, the spring campaign ahead, a fallow year before the
+    // oats. The field sows oats only after the turn, so this spring asks
+    // nothing of it — the light is green with nothing to cover, not a ten.
+    core::WorldState february = world;
+    february.fields = core::FieldTable{};
+    february.calendar.tick = 1 * core::kDaysPerMonth * core::kTicksPerDay;
+    core::RefreshCalendarCaches(february.calendar);
+    core::FieldRow resting;
+    resting.kind = core::LandKind::kArable;
+    resting.area_ga = 1.0F;
+    resting.rotation_year1 = core::CropId{1};
+    resting.phase = core::FieldPhase::kIdle;
+    core::AppendRow(february.fields, resting);
+    const core::StockForecast spring = core::SeedLight(config, february);
+    failures += Expect(spring.coverage > 0.99F && spring.coverage < 1.01F,
+                       "a fallow year's oats of the next spring are not this spring's to sow");
+
+    // AND THE ALARM NAMES THE RYE, in every year — it read the slot
+    // `(year + 1) % 3` of slots the year's turn shifts, which is this field's
+    // rye only in a year whose number leaves 1 (static review, 2026-09-24).
+    // The whole ring of three years: the old reading hit the rye in one of
+    // them and missed it in two (the fault test first tried two years and
+    // one of them fell on the rye — the calendar's years do not start at 0).
+    for (const std::uint32_t year : {0U, 1U, 2U}) {
+      core::WorldState later = july;
+      later.calendar.tick +=
+          static_cast<core::Tick>(year) * core::kDaysPerYear * core::kTicksPerDay;
+      core::RefreshCalendarCaches(later.calendar);
+      later.fields.rows[0].reaped_day = later.calendar.day - 1;
+      std::vector<core::Alarm> alarms;
+      core::CollectFieldAlarms(config, later, alarms);
+      core::Grams rye_short = 0;
+      for (const core::Alarm& alarm : alarms) {
+        if (alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0) {
+          rye_short += alarm.amount;
+        }
+      }
+      failures += Expect(rye_short == 15 * core::kGramsPerKilogram,
+                         "the seed alarm names the reaped field's rye, 15 kg short, in any year");
+    }
+  }
   return failures;
 }
 
@@ -4804,6 +4890,40 @@ int CheckFellingUnreachable() {
   failures += Expect(named(winter, edge) == 3 && named(winter, near) < 0,
                      "felling out of reach: in a 7-hour winter day 3.5 hours there and back "
                      "leave nothing, and the stand is named; the near one is not");
+
+  // THE PLANTING WALKS (kPlantingUnreachable; boss seq 21): 2.4 game hours a
+  // kilometre on foot. A zone 2 km out is 4.8 hours — past the road limit —
+  // where the felling brigade rides the same 2 km in 2; a zone 1 km out is
+  // 2.4 hours and fits; a zone already planted asks nobody.
+  config.walk_speed_kmh = 5.0F;
+  world.weather.daylight_hours = 12.0F;
+  const auto zone_at = [&world](float x, bool planted) {
+    core::TimberStandRow zone;
+    zone.kind = core::TimberStandKind::kPlanted;
+    zone.position = core::Vec2{.x = x, .y = 0.0F};
+    zone.work_days_remaining = planted ? 0.0F : 1.0F;
+    zone.planted_day = planted ? 10U : core::kNeverPlanted;
+    return core::AppendRow(world.stands, zone);
+  };
+  const core::TimberStandId walk_far = zone_at(2000.0F, false);
+  const core::TimberStandId walk_near = zone_at(1000.0F, false);
+  const core::TimberStandId walk_done = zone_at(2100.0F, true);
+  std::vector<core::Alarm> planting;
+  core::CollectTimberAlarms(config, world, planting);
+  const auto walk_named = [&planting](core::TimberStandId stand) {
+    std::int64_t hours = -1;
+    for (const core::Alarm& alarm : planting) {
+      if (alarm.kind == core::AlarmKind::kPlantingUnreachable && alarm.stand.value == stand.value) {
+        hours = alarm.amount;
+      }
+    }
+    return hours;
+  };
+  failures += Expect(walk_named(walk_far) == 4 && named(planting, near) < 0,
+                     "planting out of reach: the zone 2 km out is 4.8 hours on foot and named, "
+                     "the stand the brigade rides 2 km to is not");
+  failures += Expect(walk_named(walk_near) < 0 && walk_named(walk_done) < 0,
+                     "planting out of reach: 1 km on foot fits, and a planted zone asks nobody");
   return failures;
 }
 

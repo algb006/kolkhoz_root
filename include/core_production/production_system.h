@@ -105,7 +105,9 @@ class IProductionSystem {
   /// horse team, while the yard has not reached its second step;
   /// kFellingUnreachable for every stand marked for felling, with work left,
   /// that the brigade's ride from the nearest lived-in house does not reach
-  /// by the accountant's road rule (harness speed; parcel 308).
+  /// by the accountant's road rule (harness speed; parcel 308);
+  /// kPlantingUnreachable for every planting zone not yet planted that the
+  /// planters' walk does not reach by the same rule (walking speed).
   /// Each subject at most once. Within a kind the order is the walk's own —
   /// row order for the store, herd and seed kinds, HARVEST ORDER for the
   /// two harvest kinds, because the room is spent in the order the fields

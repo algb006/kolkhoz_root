@@ -13,6 +13,7 @@
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -52,15 +53,15 @@ Grams FreeRoomOfStores(const ProductionConfig& config, const WorldState& world) 
   return room;
 }
 
-/// The crop the field's rotation sows next: the slot of the coming year,
-/// which is what the player has just assigned and what the alarm is about
-/// ("an alarm at assignment, not in spring" — farming design §7).
+/// The crop the field's rotation sows next — what the player has assigned
+/// and what the alarm is about ("an alarm at assignment, not in spring" —
+/// farming design §7). Until 0.34.38 this was the slot `(year + 1) % 3`,
+/// over slots the year's turn SHIFTS, so it named the wrong crop two years
+/// in three; the one rule of "next sowing" is fund_ladder.h's.
 CropId NextSownCrop(const ProductionConfig& config,
                     const WorldState& world,
                     const FieldRow& field) {
-  const std::uint32_t year = world.calendar.date.year;
-  const CropId slots[3] = {field.rotation_year0, field.rotation_year1, field.rotation_year2};
-  const CropId next = slots[(year + 1) % 3];
+  const CropId next = NextSowingCrop(field, world.calendar.day);
   return next.value < config.crops.size() ? next : CropId{};
 }
 

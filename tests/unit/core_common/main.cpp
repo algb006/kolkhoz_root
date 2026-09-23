@@ -1130,6 +1130,56 @@ int TestDefIdFromRow() {
   return failures;
 }
 
+/// The field's next sowing (fund_ladder.h, NextSowingCrop): by the field's
+/// state, never by the year's number. Oats 0, rye 1, clover 2 in the slots.
+int CheckNextSowingCrop() {
+  int failures = 0;
+  constexpr core::SimDay kToday = core::kDaysPerYear + 30;
+  core::FieldRow field;
+  field.rotation_year0 = core::CropId{0};
+  field.rotation_year1 = core::CropId{1};
+  field.rotation_year2 = core::CropId{2};
+  field.phase = core::FieldPhase::kIdle;
+  const auto next = [&field]() { return core::NextSowingCrop(field, kToday).value; };
+  failures += Expect(next() == 0, "next sowing: an idle field waits for its first slot");
+  field.phase = core::FieldPhase::kGrowing;
+  field.crop = core::CropId{0};
+  failures += Expect(next() == 1, "next sowing: the first slot standing, the second is next");
+  field.phase = core::FieldPhase::kIdle;
+  field.crop = core::CropId{};
+  field.reaped_day = kToday - 5;
+  failures += Expect(next() == 1, "next sowing: reaped this year, the second slot is next");
+  field.reaped_day = 5;  // last year: this year's first slot is owed again
+  failures += Expect(next() == 0, "next sowing: reaped LAST year, the first slot again");
+  field.phase = core::FieldPhase::kHarrowing;
+  field.crop = core::CropId{1};
+  failures += Expect(next() == 1, "next sowing: a missed first slot worked for the rye");
+  field.phase = core::FieldPhase::kGrowing;
+  field.reaped_day = kToday - 5;
+  failures += Expect(next() == 2, "next sowing: the autumn's rye in, the third slot is next");
+  field.rotation_year0 = core::CropId{};
+  field.phase = core::FieldPhase::kIdle;
+  field.crop = core::CropId{};
+  field.reaped_day = core::kNeverReapedDay;
+  failures += Expect(next() == 1, "next sowing: a fallow first slot passes to the second");
+  // Rye in both slots: this year's rye standing, unreaped, is the FIRST slot's.
+  field.rotation_year0 = core::CropId{1};
+  field.phase = core::FieldPhase::kGrowing;
+  field.crop = core::CropId{1};
+  failures += Expect(next() == 1, "next sowing: rye in both slots, this year's standing");
+  field.reaped_day = kToday - 5;
+  failures += Expect(next() == 2, "next sowing: rye in both slots, next year's sown after");
+  // A CHAIN NAMED AFTER THIS YEAR'S SOWING (rotation_skips_turn): the turn
+  // holds it still, and its first named crop is sown next — not the second
+  // slot a reaped field would otherwise name (static review of 0.34.38).
+  field.rotation_year0 = core::CropId{0};
+  field.phase = core::FieldPhase::kIdle;
+  field.crop = core::CropId{};
+  field.rotation_skips_turn = 1;
+  failures += Expect(next() == 0, "next sowing: a chain the turn holds still sows its first");
+  return failures;
+}
+
 /// The top two rungs of the ladder of funds (fund_ladder.h): seed for a field
 /// not yet sown, the plan reserve only as far as this year's reaping covers
 /// it, and each unsealing off its own rung (0.34.17).
@@ -1157,6 +1207,22 @@ int CheckTheTopOfTheLadder() {
                      "ladder: seed for the unsown field only, plan only as far as reaped");
   failures += Expect(core::HeldAboveFodder(world, norms, 3, false)[2] == 300'000,
                      "ladder: the seed rung can be switched off, the plan rung cannot");
+  // WHAT WENT TO THE DISTRICT EARLY IS NOT HELD (boss seq 25, item 3): the
+  // rung is what is STILL OWED, as far as the reaping covers it. Due 500 000,
+  // reaped 300 000.
+  {
+    core::WorldState shipped = world;
+    shipped.plan.delivered = {0, 0, 100'000};
+    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 300'000,
+                       "ladder: 100 000 shipped out of old stock, 400 000 still owed, the "
+                       "300 000 reaped all held (the review's June case)");
+    shipped.plan.delivered = {0, 0, 400'000};
+    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 100'000,
+                       "ladder: 400 000 shipped, 100 000 still owed and held");
+    shipped.plan.delivered = {0, 0, 600'000};
+    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 0,
+                       "ladder: shipped past the due, the plan rung is empty");
+  }
 
   // A FIELD REAPED THIS YEAR OWES THIS YEAR NO SEED (boss, parcel 421): idle
   // again and still naming its crop until the turn, it held seed for a crop
@@ -1233,6 +1299,16 @@ int CheckTheTopOfTheLadder() {
     autumn.fields.rows[0].rotation_year0 = core::CropId{1};
     failures += Expect(winter_seed(autumn) == 100'000,
                        "ladder: rye in both slots, the rye's seed held once and not twice");
+    // And a SPRING crop in both slots under its own plough: its seed is the
+    // first slot's and held (0.34.36 held none — static review of 0.34.38).
+    {
+      core::WorldState oats = autumn;
+      oats.fields.rows[0].rotation_year0 = core::CropId{0};
+      oats.fields.rows[0].rotation_year1 = core::CropId{0};
+      oats.fields.rows[0].crop = core::CropId{0};
+      failures += Expect(core::HeldAboveFodder(oats, norms, 3, true)[2] == 200'000,
+                         "ladder: oats in both slots, ploughed for, hold their seed");
+    }
     autumn.fields.rows[0].phase = core::FieldPhase::kIdle;
     autumn.fields.rows[0].crop = core::CropId{};
     autumn.fields.rows[0].rotation_year0 = core::CropId{0};
@@ -1455,6 +1531,7 @@ int main() {
   failures += TestDaylightCurve();
   failures += TestRainStopsWork();
   failures += CheckTheTopOfTheLadder();
+  failures += CheckNextSowingCrop();
   failures += CheckTheFigureRule();
   failures += CheckAlarmSubjectValue();
   failures += TestDefIdFromRow();

@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/fund_ladder.h"
+#include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "herd_system.h"
@@ -234,17 +236,37 @@ StockForecast SeedLight(const ProductionConfig& config, const WorldState& world)
   // crop would count the same grain twice.
   std::vector<float> need_kg(config.feed_values.size(), 0.0F);
   for (const FieldRow& field : world.fields.rows) {
-    if (field.kind != LandKind::kArable || field.rotation_year0.value >= config.crops.size()) {
+    // THE FIELD'S NEXT SOWING, not its first slot (0.34.38; boss seq 23). The
+    // first slot of a field reaped this summer is the crop just gathered,
+    // and the winter campaign's rye stands in the SECOND — so the light
+    // counted no autumn rye on any reaped field, the same gap the seed fund
+    // had (fund_ladder.h).
+    const CropId next = NextSowingCrop(field, world.calendar.day);
+    if (field.kind != LandKind::kArable || next.value >= config.crops.size()) {
       continue;
     }
     // A FIELD THAT IS OCCUPIED IS NOT IN THIS CAMPAIGN. Standing corn is not
-    // waiting to be sown, whatever the rotation says about it.
-    if (field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest) {
+    // waiting to be sown: this spring's rye would charge next spring's oats
+    // to this spring's campaign. A black fallow "grows" nothing and is
+    // waiting for its rye.
+    if ((field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest) &&
+        field.crop.value != kInvalidDefIdValue) {
       continue;
     }
-    const CropDef& crop = config.crops[field.rotation_year0.value];
+    const CropDef& crop = config.crops[next.value];
     if (crop.sow_from_month != campaign_month || !(crop.sowing_norm_kg_per_ha > 0.0F)) {
       continue;  // this field is sown in some other campaign
+    }
+    // A SPRING CROP OF THE SECOND SLOT IS SOWN AFTER THE TURN (static review
+    // of 0.34.38): a fallow field's oats of next year are not this spring's.
+    // Counted only when the campaign's month comes round again after the
+    // turn — in the autumn, once this year's spring is behind.
+    const bool second_slot =
+        next.value == field.rotation_year1.value && next.value != field.rotation_year0.value;
+    if (second_slot && !crop.is_winter &&
+        static_cast<std::uint32_t>(campaign_month) >=
+            static_cast<std::uint32_t>(world.calendar.date.month)) {
+      continue;
     }
     if (crop.resource.value < need_kg.size()) {
       need_kg[crop.resource.value] += crop.sowing_norm_kg_per_ha * field.area_ga;

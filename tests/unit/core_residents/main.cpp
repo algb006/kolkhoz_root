@@ -826,6 +826,36 @@ int CheckFoodConfigDefaults(const core::ITableSet& tables) {
   return failures;
 }
 
+/// WHAT THE ISSUE HOLDS IS SEALED FOR THE THIEF TOO (boss seq 25, answer 2):
+/// a crop the plan names is held whole down to what the chairman unsealed,
+/// before any of this year's reaping has filled the plan rung.
+int CheckSealedFundsHoldThePlannedCropWhole() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::FoodConfig config;
+  config.resources.resize(2);
+  core::WorldState world;
+  core::UnitRow store;
+  store.level = 1;
+  store.stock = {100 * kKilo, 300 * kKilo};
+  AppendRow(world.units, store);
+  world.plan.announced = 1;
+  world.plan.due = {0, 500 * kKilo};  // resource 1 is planned, 0 is not
+  const std::vector<core::Grams> sealed = core::SealedFunds(config, world);
+  failures += Expect(sealed.size() == 2 && sealed[0] == 0 && sealed[1] == 300 * kKilo,
+                     "sealed: January's planned rye is sealed whole, the unplanned crop not");
+  world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {0, 50 * kKilo};
+  failures += Expect(core::SealedFunds(config, world)[1] == 250 * kKilo,
+                     "sealed: 50 kg unsealed of the plan's crop leaves 250 kg sealed");
+  // The plan rung the larger (the reaping covers 400 kg of the due, less the
+  // 50 unsealed: 350): the seal is the larger of the two, never their sum
+  // (600) and never the smaller (250).
+  world.ledger.current.harvest = {0, 400 * kKilo};
+  failures += Expect(core::SealedFunds(config, world)[1] == 350 * kKilo,
+                     "sealed: the reaping's rung of 350 kg outweighs the 250 kg whole-crop seal");
+  return failures;
+}
+
 /// The seed fund reads crops.csv `is_winter`: without it the autumn's rye is
 /// a spring crop to the ladder and its seed is held by nobody (boss seq 18).
 int CheckSeedNormsReadWinter() {
@@ -3485,6 +3515,7 @@ int main() {
 
   failures += CheckFoodConfigDefaults(tables);
   failures += CheckSeedNormsReadWinter();
+  failures += CheckSealedFundsHoldThePlannedCropWhole();
   failures += CheckEmptiedYard(*system);
   failures += CheckVacatedPostIsAnnounced(*system);
   failures += CheckMeal();
