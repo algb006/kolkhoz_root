@@ -567,6 +567,10 @@ core::WorldState MakeWorld() {
   // What the district asked (save 58, M12): not empty, or a codec that forgot
   // to read the column would round-trip it perfectly.
   world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
+  // What went against the position (save 83): not empty either — in BOTH
+  // books, or a codec that swapped them would still round-trip.
+  world.ledger.closed.plan_delivered = Amounts({11'800'000, 0, 0});
+  world.ledger.current.plan_delivered = Amounts({5'000});
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // The standing crop the snow took (save 61): host's 150 t of potato.
@@ -1274,7 +1278,12 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // a key another check removes, and the second prediction, +56, held too.
     // Save 82: +8 — the year's work-day arrays run by WorkKind, and
     // kPlanting lengthened them. NOT predicted (a miss, named).
-    {"ledger", 868, 0xd413190a61fc53e7ULL},
+    // Save 83: +28 — plan_delivered, the current book's empty column (2) and
+    // the closed book's three positions (2 + 3 x 8); predicted before the
+    // build, and held. Then +8 more: the current book's column given one cell
+    // (2 + 8), so a codec swapping the books cannot round-trip — predicted
+    // 904 before the build. The hash is recorded after it.
+    {"ledger", 904, 0x11853e4263a0c21bULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1552,6 +1561,11 @@ int main() {
   failures += Expect(
       loaded.ledger.closed.plan_due.size() == 3 && loaded.ledger.closed.plan_due[0] == 12'000'000,
       "what the district asked comes back in the closed book (save 58)");
+  failures += Expect(loaded.ledger.closed.plan_delivered.size() == 3 &&
+                         loaded.ledger.closed.plan_delivered[0] == 11'800'000 &&
+                         loaded.ledger.current.plan_delivered.size() == 1 &&
+                         loaded.ledger.current.plan_delivered[0] == 5'000,
+                     "what went against the position comes back in the closed book (save 83)");
   // Filled since save 60 and read by nothing until save 61 was written: a
   // codec that forgot to READ samogon_paid would have passed this file.
   failures += Expect(AmountAt(loaded.ledger.closed.samogon_paid, 0) == 3'000 &&

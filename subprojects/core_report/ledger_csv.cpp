@@ -340,6 +340,10 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // What the district asked by position (M12): beside `delivered`, the
   // year's lost_no_room and issued, a failed position names its cause.
   EmitResourceBlock(out, resources, "plan_due", book.plan_due);
+  // What went against the position is NOT a block of the book here: the row
+  // is written at the turn, while plan.delivered still holds the year's
+  // shipments by position, and `plan_delivered` below prints exactly that
+  // (the book's own plan_delivered, save 83, is for the rest of the year).
   EmitResourceBlock(out, resources, "herd_produce", book.herd_produce);
   EmitResourceBlock(out, resources, "feed", book.feed);
   EmitResourceBlock(out, resources, "issued", book.issued);

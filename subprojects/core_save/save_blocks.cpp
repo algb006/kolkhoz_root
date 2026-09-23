@@ -63,9 +63,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // twenty-third column and a sixty-seventh field, predicted before the build.
 // Save 82: WorkKind::kPlanting lengthened work_days_by_kind by one entry — the
 // struct's size and arity stay, the section grows 8 bytes; not predicted.
-static_assert(sizeof(YearLedger) == 224 + (23 * kAmountsSize),
+// Save 83: plan_delivered, what went against each position at the turn (boss
+// seq 18, item 3) — a twenty-fourth column and a sixty-eighth field.
+static_assert(sizeof(YearLedger) == 224 + (24 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 67,
+static_assert(AggregateArity<YearLedger>() == 68,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -314,6 +316,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.delivered);
   // What the district asked, by position (save 58, M12).
   sink.WriteAmounts(DefKind::kResource, book.plan_due);
+  // What went against each position (save 83).
+  sink.WriteAmounts(DefKind::kResource, book.plan_delivered);
 
   WriteFloatArray(out, book.work_days_by_kind);
   out.WriteI32(book.trudodni_accrued);
@@ -396,6 +400,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
 
   book.delivered = source.ReadAmounts(DefKind::kResource);
   book.plan_due = source.ReadAmounts(DefKind::kResource);
+  book.plan_delivered = source.ReadAmounts(DefKind::kResource);
 
   ReadFloatArray(in, book.work_days_by_kind);
   book.trudodni_accrued = in.ReadI32();

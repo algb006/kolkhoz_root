@@ -558,6 +558,9 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   // two took the grain. The book is still the closing year's here — the
   // rotation that closes it runs later in this very tick (world.cpp).
   current.ledger.current.plan_due = current.plan.due;
+  // And what went against each position, which the judge above read: the
+  // book's `delivered` counts the winter's milk outside any (save 83).
+  current.ledger.current.plan_delivered = current.plan.delivered;
   current.plan.due.assign(current.plan.due.size(), 0);
   current.plan.announced = 0;
   // And the milk cart's share goes with the figure it was a share of: the

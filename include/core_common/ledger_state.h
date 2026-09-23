@@ -277,6 +277,14 @@ struct YearLedger {
   /// owed: the figure was cleared at the turn that judged it.
   ResourceAmounts plan_due;
 
+  /// WHAT WAS DELIVERED AGAINST A POSITION, by resource — `plan.delivered`
+  /// at the turn, beside `plan_due` (boss seq 18, item 3; save 83). The
+  /// `delivered` column above is EVERYTHING shipped, the winter's milk that
+  /// had no position included, so a milk position failed at 98.5 % read 110 %
+  /// there (1932/17, host's trace). This column is the position's own, and
+  /// `plan_delivered / plan_due` is the per cent the district judged by.
+  ResourceAmounts plan_delivered;
+
   /// What went bad in a store or a larder over the year, by resource
   /// (task A4; transport design §10). A separate column from `lost_no_room`
   /// because they are different failures with different cures: lost_no_room is
