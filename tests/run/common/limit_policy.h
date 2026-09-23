@@ -71,8 +71,8 @@ class LimitPolicy {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman BUYS on the "
                  "district's limit the cheapest goods lot carrying a material a building site "
-                 "waits for and the stores cannot cover, logs and boards excepted unless the "
-                 "run turns on the emergency (a site waiting a quarter of the year; timber §2), "
+                 "waits for and the stores cannot cover — logs and boards only for a site that "
+                 "has waited a quarter of the year, the design's emergency (timber §2) — "
                  "when the year's points cover it and no cart with that material is on the road "
                  "(district design §1; boss, 2026-09-13 and 2026-09-24)\n";
   }
@@ -81,11 +81,11 @@ class LimitPolicy {
   void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 
   /// @brief Lets a site that has waited a quarter of the year have its logs
-  /// and boards bought on the limit (the design's emergency). OFF by default
-  /// and said out loud where on: thirty_years with it failed the plan in 16
-  /// years on 8 seeds of 9 against 1 — the timber grows a village of 700 the
-  /// grain does not carry — and whether the floor run should buy timber is
-  /// boss's question (boss-core-epoch1-3, 2026-09-24).
+  /// and boards bought on the limit (the design's emergency). ON in every
+  /// run by default (boss, boss-core-epoch1-3 seq 12: the rule of diverging
+  /// run worlds); a run that turns it off says so. thirty_years with it
+  /// fails the plan in 16 years on 8 seeds of 9 against 1 — a known gap
+  /// there, econ's to read.
   void BuyTimberInEmergency(bool buy) { timber_emergency_ = buy; }
 
   /// @brief One day of the chairman's attention. Call once a day.
@@ -145,7 +145,7 @@ class LimitPolicy {
 
   std::unordered_map<std::uint32_t, std::uint32_t> waited_days_;
 
-  bool timber_emergency_ = false;
+  bool timber_emergency_ = true;
 
   /// Adult draught head the run buys back up to, and no further: a pair, the
   /// design's own condition for a foal.

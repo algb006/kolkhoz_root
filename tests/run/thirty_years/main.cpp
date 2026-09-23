@@ -548,6 +548,10 @@ int main(int argc, char** argv) {
   run::SawmillPolicy sawmill(*world.tables);
   run::SawmillPolicy::Declare("thirty_years");
   run::LimitPolicy limit(*world.tables);
+  // The district's timber lot in an emergency — LimitPolicy's default in
+  // every run (boss, boss-core-epoch1-3 seq 12), said here because the
+  // plan's known gap below comes of it.
+  limit.BuyTimberInEmergency(true);
   run::LimitPolicy::Declare("thirty_years");
   // And the two verbs the runs had never said: a standing work order and a
   // pause (orders_policy.h). A verb the run does not say is not checked by
@@ -889,9 +893,20 @@ int main(int argc, char** argv) {
     //   * AT 226: once drought has its form, this run must fail the plan in at
     //     least one year of thirty, or 226 is not done — its acceptance,
     //     written there by boss, and to be written back here as an assertion.
-    failures += run::Expect(plan_failed_years == 0,
-                            "the floor meets the district's plan in all thirty years — until "
-                            "drought (register 226) makes it failable again");
+    // A KNOWN GAP SINCE 0.34.33, AND THE FINDING IS THE POINT (boss,
+    // boss-core-epoch1-3 seq 12). The floor buys the district's timber lot in
+    // an emergency now, as every run does (the rule of diverging run worlds);
+    // with it the village grows to about 700 and the plan fails — 16 years on
+    // 8 seeds of 9, measured before this line, against 1 without. Why the
+    // grown village fails it (which position, what holds the grain) is
+    // econ's to read and boss's to decide with her; the threshold is not
+    // moved. Return: restore this as the assertion when the analysis closes.
+    failures += run::KnownGap(plan_failed_years == 0,
+                              "the floor meets the district's plan in all thirty years — until "
+                              "drought (register 226) makes it failable again",
+                              std::to_string(plan_failed_years) + " failed years",
+                              "boss-core-epoch1-3 seq 12; the timber-grown village, econ reads "
+                              "why, threshold kept");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";

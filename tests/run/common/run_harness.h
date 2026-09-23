@@ -55,14 +55,17 @@ inline int Expect(bool condition, const char* label) {
 /// until the building chain is tuned to close it, not in a band moved down to
 /// meet the model.
 /// @return 0, always.
-inline int KnownGap(bool holds, const char* label, const std::string& now) {
+inline int KnownGap(bool holds, const char* label, const std::string& now, const char* provenance) {
   if (holds) {
     std::cout << "KNOWN GAP CLOSED — restore the assertion: " << label << " (" << now << ")\n";
   } else {
-    std::cout << "KNOWN GAP (boss, parcel 301; canon kept, building chain to be tuned): " << label
-              << " — now " << now << '\n';
+    std::cout << "KNOWN GAP (" << provenance << "): " << label << " — now " << now << '\n';
   }
   return 0;
+}
+
+inline int KnownGap(bool holds, const char* label, const std::string& now) {
+  return KnownGap(holds, label, now, "boss, parcel 301; canon kept, building chain to be tuned");
 }
 
 /// @brief A loaded table set and the simulation built over it, in one owner.

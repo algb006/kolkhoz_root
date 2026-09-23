@@ -77,12 +77,10 @@ class BuildingChairman {
     // were boards.
     sawmill.KeepBoardReserve(true);
     // AND BUYS THE DISTRICT'S TIMBER LOT IN AN EMERGENCY (boss,
-    // boss-core-epoch1-3 seq 9): the groves are felled to nothing by year
-    // twenty, and the design's channel after them is the limit. Measured on
-    // population_curve: Epoch II in 9 villages of 9 with it (3 without).
-    // thirty_years, which does not use this chairman, keeps it OFF — the
-    // world diverges here on purpose, and boss decides whether the floor
-    // run buys timber too (LimitPolicy::BuyTimberInEmergency).
+    // boss-core-epoch1-3 seq 9 and 12): the groves are felled to nothing by
+    // year twenty, and the design's channel after them is the limit. It is
+    // LimitPolicy's default in every run; said here because this chairman's
+    // Epoch II turns on it — 9 villages of 9 with it, 3 without.
     limit.BuyTimberInEmergency(true);
   }
 
