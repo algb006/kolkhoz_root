@@ -4,8 +4,15 @@
 /// «Скорая помощь из района», register 236; crime §10 «Машина милиции ждёт
 /// повода», register 237; boss seq 210).
 /// @threading SINGLE_THREADED
-/// Written by the production sub-step of the decisions slot (phase 3) on the
-/// sim thread; read by the presentation through the completed world.
+/// To be written by the production sub-step of the decisions slot (phase 3)
+/// on the sim thread; read by the presentation through the completed world.
+///
+/// STUB — A CONTRACT WITHOUT ITS IMPLEMENTATION. The table and the
+/// resident's `away_*` fields were laid down and saved (save 79, 954699c),
+/// and the implementation was withdrawn by the Epoch I stop of 19 September.
+/// NOTHING WRITES THEM TODAY: the table stays empty and every resident reads
+/// as home. Everything below describes the mechanics the implementation will
+/// bring, not what the core does now (static loop of 23 September).
 ///
 /// NO CALL, AND THAT IS THE DESIGN'S CONVENTION (the human's word of
 /// 2026-09-19: «Механику вызова машины милиции и скорой помощи не делаем…

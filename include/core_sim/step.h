@@ -407,8 +407,11 @@ struct StepTiming {
 /// pays one branch — which is itself measured rather than called negligible.
 ///
 /// @note Process-wide on purpose: it is a door for a run that drives one
-/// simulation, not per-engine state. Enabling it while two engines are
-/// stepping makes LastStepTiming say whichever stepped last.
+/// simulation, not per-engine state. Two engines stepped one after the other
+/// with the clock on make LastStepTiming say whichever stepped last; two
+/// engines stepped AT ONCE on two threads with the clock on race on it — a
+/// data race, not a stale reading. No caller does either today: the runs
+/// that enable it drive one simulation.
 void EnableStepTiming(bool enabled);
 
 /// @brief Whether the step clock is on. A measure that never ran is under

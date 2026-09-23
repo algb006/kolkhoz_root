@@ -597,6 +597,31 @@ struct FarmingConfig {
   /// every hand the village has — the player can still make it.
   float gather_alarm_horizon_days = 4.0F;
 
+  /// world_params.csv `gather_alarm_snow_day` — STUB 40, a day of the year:
+  /// the harvest-will-not-be-gathered alarm counts the days to THIS snow and
+  /// not to the climate's mean edge (growing_season_last_day), whichever is
+  /// earlier. «Тревога Эпохи I считает до РАННЕГО снега» (econ, no-forecast
+  /// proposal §3; boss, boss-core-epoch1-resume): the real snow is a coin
+  /// against −1, and with no three-day forecast to warn him the chairman
+  /// needs the early edge. THE NUMBER IS A MEASUREMENT: econ's P10 of the
+  /// first snow in the reaping season from host's 2000-year probe — snow
+  /// already down by day 40 in 17.1 % of years, never before day 38; the
+  /// mean's edge, day 41, in 28.4 %. Counting to 40 the alarm is late by at
+  /// most two days in a few per cent of years, instead of crying three days
+  /// early in nearly all of them. WHEN THE STUB COMES OFF: when the climate
+  /// table moves, this is re-read off the same probe, not guessed.
+  ///
+  /// READ AS THE LAST DAY THAT STILL COUNTS, inclusive, exactly as
+  /// growing_season_last_day is read — and that is a reading, not a fact of
+  /// the probe. If econ's day 40 is the day the snow is already DOWN, the
+  /// last working day is 39 and this edge is a day late; asked of econ and
+  /// boss with the delivery (static loop of 23 September).
+  ///
+  /// ONLY THE ALARM. The queue's last days before the snow keep the mean's
+  /// edge: the alarm is a warning to the chairman, the queue is the
+  /// accountant's order of work, and econ asked for the first.
+  float gather_alarm_snow_day = 40.0F;
+
   /// world_params.csv `field_heap_keeping_factor` — 0.33, econ's number
   /// accepted by boss (econ-boss-field-heap-2026-09-19): a reaped heap waiting
   /// on its field for a cart keeps a third as long as the same produce in a

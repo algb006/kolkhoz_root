@@ -15,6 +15,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
@@ -837,6 +838,13 @@ void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, F
       // at all (SowingMayOpen).
       break;
     case FieldPhase::kSowing:
+      // THE SEED DOES NOT GO IN IN THE RAIN (core_common/rain_stops_work.h),
+      // whoever drained the work: a crew cannot, the accountant sends none,
+      // but the MTS column finishes a field's work in one budget, and its
+      // sowing waits here, owed nothing, for the first dry hour.
+      if (RainStopsWork(current.weather.precipitation, WorkKind::kSowing)) {
+        break;
+      }
       FinishSowing(config, current, field);
       break;
     case FieldPhase::kHarvest:

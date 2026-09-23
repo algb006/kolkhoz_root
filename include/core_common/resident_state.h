@@ -319,7 +319,9 @@ struct ResidentRow {
   /// the tick; the last `away_walk_hours` of it he walks in from the border
   /// (0 when he comes with the milk cart). While away he is nobody's worker,
   /// eats nothing from the larder and is not judged by the village's
-  /// metrics; his family still counts him. A SimDay and an hour spelt out, so
+  /// metrics; his family still counts him. STUB: that is the contract — no
+  /// code writes or reads these four fields yet, so every resident is home
+  /// (district_car_state.h says why). A SimDay and an hour spelt out, so
   /// this header does not take in the calendar and the row keeps its
   /// four-byte alignment.
   std::uint32_t away_until_day = 0;

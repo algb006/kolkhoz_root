@@ -131,25 +131,26 @@ void FinishColumnField(const ProductionConfig& config,
                        WorldState& current,
                        FieldRow& field,
                        bool spring) {
-  // The column's seed drill stops in the rain like a sower (rain_stops_work.h):
-  // the chain halts at the sowing, which then goes in by hand, as it does
-  // when the sowing term has not opened (the STUB below).
-  bool rained_out = false;
+  // THE DRILL IN THE RAIN is not stopped here but where every sowing ends
+  // (AdvanceFinishedField): the column finishes the field's work and the seed
+  // waits at its sowing, owed nothing, until a dry hour puts it in. Until the
+  // static loop of 23 September the chain was halted HERE and the sowing left
+  // owed — and the column's queue, which takes any field still owed work,
+  // came back the next dry day and booked the field's hectares a second time.
   for (int step = 0; step < kSpringChainSteps && InSeasonChain(field, spring); ++step) {
-    if (RainStopsWork(current.weather.precipitation, KindOfPhase(field.phase))) {
-      rained_out = true;
-      break;
-    }
     const FieldPhase before = field.phase;
     field.work_days_remaining = 0.0F;
     AdvanceFinishedField(config, current, field);
     if (field.phase == before) {
-      // A harrowed field before its sowing term waits, as a crew's would; the
-      // seed then goes in by hand (STUB: the column's sowing is not banked).
+      // Two reasons stop the chain here. A harrowed field before its sowing
+      // term waits, as a crew's would, and the seed then goes in by hand
+      // (STUB: the column's sowing is not banked). And a sowing finished in
+      // the rain waits in kSowing owed nothing, for the first dry hour's
+      // AdvanceFinishedField to put the seed in (rain_stops_work.h).
       break;
     }
   }
-  if (InSeasonChain(field, spring) && !rained_out) {
+  if (InSeasonChain(field, spring)) {
     field.work_days_remaining = 0.0F;  // whatever opened last, the column did
   }
   if (!spring) {

@@ -32,9 +32,11 @@ namespace {
 /// some other thread may read this while a step runs.
 ///
 /// It lives behind a function rather than at namespace scope so that the
-/// door costs a constant-initialized local static — no guard, no global
-/// mutable state for the analysis to flag, and one place that owns both
-/// halves of the clock.
+/// door costs a constant-initialized local static — no guard, and one place
+/// that owns both halves of the clock. It IS global mutable state, only
+/// hidden from the namespace-scope check (static loop of 23 September): two
+/// engines stepped at once on two threads with the clock on would race on it
+/// (step.h, EnableStepTiming, says so where a caller reads).
 struct StepClock {
   bool enabled = false;
 

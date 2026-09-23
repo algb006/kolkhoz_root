@@ -750,7 +750,13 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // TODAY IS NOT A FORECAST: its sky is written, and its share is 0 or 1.
   RainDayShares ahead = config.rain_day_shares;
   ahead[day_of_year] = RainStopsWork(world.weather.precipitation, WorkKind::kHarvest) ? 1.0F : 0.0F;
-  const auto snow = static_cast<double>(config.growing_season_last_day);
+  // TO THE EARLY SNOW (production_config.h, gather_alarm_snow_day): whichever
+  // comes first of the probe's P10 and the climate's mean edge. Which fields
+  // are judged at all still asks the mean edge (AnnualsToGather): a crop that
+  // cannot open before it is the sowing's loss, and one that opens between
+  // the two edges is exactly the one to warn about.
+  const auto snow = std::min(static_cast<double>(config.growing_season_last_day),
+                             static_cast<double>(config.farming.gather_alarm_snow_day));
   double clock = static_cast<double>(day_of_year);
   for (const GatherClaim& claim : claims) {
     const double start = std::max(clock, static_cast<double>(claim.open_day));

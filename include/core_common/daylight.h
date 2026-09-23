@@ -95,9 +95,12 @@ constexpr std::uint32_t SecondDayOfMonth(Month month) {
 /// day out of four.
 ///
 /// A month does not have one daylight. Light moves inside it, and inside
-/// September it moves by 1.20 game hours from the first day to the fourth —
-/// so this answer is up to 1.2 hours of daylight away from what the month's
-/// own edges have, which is 0.6 hours on the sunrise and 0.6 on the sunset.
+/// September it moves by 1.80 game hours from the first day to the fourth
+/// (13.51 to 11.71) — so this answer, taken on the second day, is up to 1.2
+/// hours of daylight away from the month's far edge, which is 0.6 hours on
+/// the sunrise and 0.6 on the sunset. (Until 23 September this said 1.20
+/// for the whole month: the second day's distance to the fourth, read as the
+/// month's span.)
 /// Whoever needs the day right takes DaylightHoursOfDay instead; this form
 /// exists for a caller who is showing "December" rather than a date, and it
 /// names its own day in its name so that no caller has to guess which one it

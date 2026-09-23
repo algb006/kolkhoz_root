@@ -2566,6 +2566,21 @@ int CheckTheHarvestWillNotBeGathered() {
   failures += Expect(warned() == 10'000'000, "gather: a rained-out today counts no day at all");
   world.weather.precipitation = core::Precipitation::kNone;
   config.rain_day_shares.fill(0.0F);
+  // TO THE EARLY SNOW (gather_alarm_snow_day): the same twelve, the potato's
+  // 4.17 days from day 32. Counted to day 36 they fit in five; to day 35 in
+  // four they do not — and the mean edge, 40, has not moved. The pair is the
+  // proof the early edge is read and that it is the EARLIER of the two.
+  config.farming.gather_alarm_snow_day = 36.0F;
+  failures += Expect(warned() == 0, "gather: to an early snow on day 36 the potato still fits");
+  config.farming.gather_alarm_snow_day = 35.0F;
+  failures += Expect(warned() == 10'000'000,
+                     "gather: to an early snow on day 35 it does not, whatever the mean edge says");
+  config.farming.gather_alarm_snow_day = 45.0F;
+  config.growing_season_last_day = 35;
+  failures += Expect(warned() == 10'000'000,
+                     "gather: an early edge past the mean one yields to the mean one");
+  config.growing_season_last_day = 40;
+  config.farming.gather_alarm_snow_day = 40.0F;
   // THE SAME TWELVE UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour
   // day, read on a 7.6-hour one, they are six — and the potato is lost again.
   world.ledger.current.reaping_last_day_daylight = 15.2F;
@@ -6785,6 +6800,62 @@ int CheckTheMtsColumn() {
   return failures;
 }
 
+/// THE DRILL IN THE RAIN (rain_stops_work.h): the column ploughs and harrows
+/// a field through on a rainy day, and the seed does not go in until a dry
+/// one — WITHOUT the column coming back to spend the field's hectares a second
+/// time against its limit. The static loop of 23 September found the first
+/// shape of this rule doing exactly that: 10 ha worked, 20 ha booked.
+int CheckTheColumnDrillInTheRain() {
+  int failures = 0;
+  core::ProductionConfig config = MakeColumnConfig();
+  config.limit.mts_column_ha_limit = 100.0F;
+  core::WorldState world = MakeColumnWorld(4);
+  core::OrderRow buy;
+  buy.kind = core::OrderKind::kOrderLimitLot;
+  buy.lot = core::LimitLotId{0};
+  core::OrderLimitLot(config, world, buy);
+  core::UnitRow camp;
+  camp.type = core::UnitTypeId{1};
+  camp.level = 1;
+  core::AppendRow(world.units, camp);
+  // A CROP IN IT: a field without one is fallow and is "sown" by nobody the
+  // moment it is harrowed (AdvanceFinishedField), which the first draft of
+  // this check used and so tested no sowing at all.
+  core::FieldRow ploughed = ColumnField(100.0F, 10.0F, core::FieldPhase::kPlowing, 10.0F);
+  ploughed.crop = core::CropId{0};
+  const core::FieldId id = core::AppendRow(world.fields, ploughed);
+  world.weather.air_temperature_celsius = 10.0F;
+  EndColumnDay(config, world, 8);  // in its window with a camp: it arrives
+  const auto next_working_day = [&world](core::SimDay day) {
+    while (core::IsRestDay(day, world.calendar.day_zero_weekday, world.epoch)) {
+      ++day;
+    }
+    return day;
+  };
+  const auto field = [&world, id]() -> core::FieldRow& {
+    return world.fields.rows[core::FindRow(world.fields, id)];
+  };
+  const core::SimDay rainy = next_working_day(9);
+  world.weather.precipitation = core::Precipitation::kRain;
+  EndColumnDay(config, world, rainy);
+  core::AdvanceFinishedField(config, world, field());  // the next tick's pick-up, still raining
+  failures +=
+      Expect(field().phase == core::FieldPhase::kSowing && world.mts_column.worked_ha == 10.0F,
+             "mts: in the rain the field is ploughed and harrowed, and waits at its sowing");
+  world.weather.precipitation = core::Precipitation::kNone;
+  const core::SimDay dry = next_working_day(rainy + 1U);
+  world.calendar.tick = static_cast<core::Tick>(dry) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::AdvanceFinishedField(config, world, field());  // production's hour: phases first
+  EndColumnDay(config, world, dry);
+  std::cout << "mts drill in the rain: phase " << static_cast<int>(field().phase) << ", worked "
+            << world.mts_column.worked_ha << " ha of the field's 10\n";
+  failures +=
+      Expect(field().phase == core::FieldPhase::kGrowing && world.mts_column.worked_ha == 10.0F,
+             "mts: dry again, the seed goes in and the field is not worked twice");
+  return failures;
+}
+
 int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
   int failures = 0;
   core::WorldState world;
@@ -7131,6 +7202,7 @@ int main() {
   failures += CheckTheAccumulationLimit();
   failures += CheckTheLimitKeepsTheTeamsOats();
   failures += CheckTheMtsColumn();
+  failures += CheckTheColumnDrillInTheRain();
   failures += CheckDistrictVisits();
   failures += CheckStubTablesMustBeDeclared();
   failures += CheckStoreCeilingAndAlarms();
