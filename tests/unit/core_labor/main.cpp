@@ -496,6 +496,85 @@ int TestBarnRunsOnTheDayOff() {
   return failures;
 }
 
+/// RAIN STOPS THE SOWING AND THE REAPING (farming design §5; core_common/
+/// rain_stops_work.h), for the accountant and for the chairman's standing
+/// order alike — and it stops them as a day off does, not by leaving a crew
+/// on a field it cannot drain. Each claim is asked under a dry sky too, so
+/// that it is the rain that parts them and not the fixture.
+int TestRainStopsTheSowingAndTheReaping() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  // The hours of one day, from `first` to `last` inclusive. A day is asked
+  // at noon for who stands where (the assignments are wiped at the day's
+  // close) and at its end for what was drained.
+  const auto run_hours =
+      [&labor](DayWorld& day, std::uint32_t sim_day, std::uint32_t first, std::uint32_t last) {
+        for (std::uint32_t hour = first; hour <= last; ++hour) {
+          day.world.calendar.tick = (static_cast<core::Tick>(sim_day) * core::kTicksPerDay) + hour;
+          core::RefreshCalendarCaches(day.world.calendar);
+          const core::WorldState previous = day.world;
+          labor->RunAssignmentDecisions(previous, day.world);
+        }
+      };
+  // One field a world, so that the reaping's rank does not take the hands
+  // the sowing would have had.
+  for (const core::FieldPhase phase : {core::FieldPhase::kHarvest, core::FieldPhase::kSowing}) {
+    const core::WorkKind kind =
+        phase == core::FieldPhase::kHarvest ? core::WorkKind::kHarvest : core::WorkKind::kSowing;
+    const char* const name = phase == core::FieldPhase::kHarvest ? "reaping" : "sowing";
+    for (const bool rain : {false, true}) {
+      DayWorld day(3);
+      day.AddField(phase, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+      day.world.weather.precipitation =
+          rain ? core::Precipitation::kRain : core::Precipitation::kNone;
+      run_hours(day, 1, 0, 12);  // a Tuesday from a Monday: a working day
+      bool on_the_field = false;
+      for (const core::ResidentRow& resident : day.world.residents.rows) {
+        on_the_field = on_the_field || resident.work.kind == kind;
+      }
+      run_hours(day, 1, 13, core::kTicksPerDay - 1);
+      const bool worked = day.world.fields.rows[0].work_days_remaining < 5.0F;
+      std::cout << "rain stops work: " << name << (rain ? ", rain: " : ", dry: ")
+                << (on_the_field ? "crew out" : "no crew") << ", "
+                << day.world.fields.rows[0].work_days_remaining << " of 5 norm-days left\n";
+      failures += Expect(on_the_field != rain && worked != rain,
+                         rain ? "rain: no crew goes out and the field is not worked"
+                              : "dry: the crew goes out and works the field");
+    }
+  }
+
+  // THE STANDING ORDER YIELDS TO THE RAIN AND OUTLIVES IT: read on day 0,
+  // skipped on the rainy day 1, obeyed again on the dry day 2.
+  DayWorld day(2);
+  const core::FieldId field =
+      day.AddField(core::FieldPhase::kHarvest, 400.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+  core::OrderRow to_field;
+  to_field.kind = core::OrderKind::kAssignWork;
+  to_field.status = core::OrderStatus::kPending;
+  to_field.resident = day.world.residents.row_ids[1];
+  to_field.work = core::WorkKind::kHarvest;
+  to_field.field = field;
+  core::AppendRow(day.world.orders, to_field);
+  day.RunDay(*labor, 0);
+  day.world.weather.precipitation = core::Precipitation::kRain;
+  run_hours(day, 1, 0, 12);
+  failures += Expect(day.world.residents.rows[1].work.field.value != field.value,
+                     "rain: the ordered reaper does not go to the field");
+  failures += Expect(day.world.orders.rows[0].status == core::OrderStatus::kAccepted,
+                     "rain: and his order still stands");
+  run_hours(day, 1, 13, core::kTicksPerDay - 1);
+  day.world.weather.precipitation = core::Precipitation::kNone;
+  run_hours(day, 2, 0, 12);
+  failures += Expect(day.world.residents.rows[1].work.kind == core::WorkKind::kHarvest &&
+                         day.world.residents.rows[1].work.field.value == field.value,
+                     "dry again: the order puts him back on the field");
+  return failures;
+}
+
 }  // namespace
 
 /// The factory's contract on tables: a missing one keeps the canonical
@@ -2928,6 +3007,7 @@ int main() {
   failures += TestWholeWorkingDay();
   failures += TestWalkOffPaysAndStops();
   failures += TestBarnRunsOnTheDayOff();
+  failures += TestRainStopsTheSowingAndTheReaping();
   failures += TestLaborTableParsing();
   {
     // EVERY WORK KIND BUT NONE HAS A COMPILED RATE. The rates' brace

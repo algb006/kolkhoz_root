@@ -100,6 +100,9 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current);
 /// @param day_off True on a rest day, when only herd care is worked — the
 ///        same line CollectJobs draws, and drawn here from the same rule
 ///        rather than from an empty job list (task A8 delivery cycle).
+/// @note A sowing or reaping order on a day of rain is skipped the same way
+///       (core_common/rain_stops_work.h): its man keeps the accountant's
+///       placement for the day, and the order stands for the next.
 void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_off);
 
 }  // namespace core

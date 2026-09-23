@@ -10,7 +10,9 @@
 #include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "district_limit.h"
 #include "field_haul.h"
 #include "field_work.h"
@@ -129,7 +131,15 @@ void FinishColumnField(const ProductionConfig& config,
                        WorldState& current,
                        FieldRow& field,
                        bool spring) {
+  // The column's seed drill stops in the rain like a sower (rain_stops_work.h):
+  // the chain halts at the sowing, which then goes in by hand, as it does
+  // when the sowing term has not opened (the STUB below).
+  bool rained_out = false;
   for (int step = 0; step < kSpringChainSteps && InSeasonChain(field, spring); ++step) {
+    if (RainStopsWork(current.weather.precipitation, KindOfPhase(field.phase))) {
+      rained_out = true;
+      break;
+    }
     const FieldPhase before = field.phase;
     field.work_days_remaining = 0.0F;
     AdvanceFinishedField(config, current, field);
@@ -139,7 +149,7 @@ void FinishColumnField(const ProductionConfig& config,
       break;
     }
   }
-  if (InSeasonChain(field, spring)) {
+  if (InSeasonChain(field, spring) && !rained_out) {
     field.work_days_remaining = 0.0F;  // whatever opened last, the column did
   }
   if (!spring) {
@@ -195,6 +205,16 @@ void WorkColumnDay(const ProductionConfig& config, WorldState& current) {
       column.field_ha = 0.0F;
     }
     FieldRow& field = current.fields.rows[row];
+    // RAIN STOPS THE COMBINE AND THE DRILL (farming design §5, «Дождь
+    // останавливает комбайн, как и косца»; rain_stops_work.h), and the
+    // column's day ends at the first field whose work the rain stops. Not
+    // "skip it and take the next": the next field is chosen by the same
+    // queue and would be this one again, with its hectares counted from
+    // nought. The ploughs of the spring lose the rest of that day with it —
+    // a named simplification, the column's day being one budget.
+    if (RainStopsWork(current.weather.precipitation, KindOfPhase(field.phase))) {
+      return;
+    }
     const float hectares = std::min(budget, field.area_ga - column.field_ha);
     column.field_ha += hectares;
     column.worked_ha += hectares;

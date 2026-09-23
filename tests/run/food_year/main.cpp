@@ -1166,11 +1166,26 @@ int main(int argc, char** argv) {
   //
   // Seed 1931 is the low outlier here as it was before it, at 7.11 against
   // 9.22 — the same seed, the same shape, three quarters of the fall.
+  //
+  // AND WITH RAIN STOPPING THE SOWING AND THE REAPING (boss-core-epoch1-
+  // resume seq 3): 34.88, 40.13, 41.35, 41.38, 41.70 (median), 42.85, 43.87,
+  // 44.21, 47.23 (seed 1931, now the TOP of the band).
+  //
+  // THE BAND HAD GONE STALE BEFORE THE RAIN, and the rain's red is what
+  // showed it. The same nine seeds on the tree just before it (2a63bf9, the
+  // rain's contract, which stops nothing): 35.28, 36.11, 37.53 (seed 1931),
+  // 39.41, 40.81 (median), 42.42, 43.41, 47.63, 47.64 — three of nine outside
+  // 7.11-43.09 already, and the canonical seed, the only one this run binds,
+  // inside by luck at 37.53 and no longer the low outlier the paragraph above
+  // describes. The rain itself moved the median by less than a point; it moved
+  // seed 1931 from the middle of the band to its top.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 7.11-43.09, median 38.27)\n";
+            << " (nine seeds: 34.88-47.23, median 41.70)\n";
+  // The edges are the measured 34.8755 and 47.2311 rounded OUTWARD, so that
+  // the seeds that set them stay inside it.
   failures +=
-      ExpectBand(issue_gap >= 7.11F && issue_gap <= 43.09F,
+      ExpectBand(issue_gap >= 34.87F && issue_gap <= 47.24F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

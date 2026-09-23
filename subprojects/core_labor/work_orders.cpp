@@ -6,6 +6,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "labor_day.h"
@@ -338,6 +339,14 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     // accountant's pool every Sunday, while the groom on his post beside
     // him keeps his yard.
     if (day_off && order.work != WorkKind::kHerdCare) {
+      continue;
+    }
+    // AND THE RAIN STOPS THE SAME WORK IT STOPS FOR EVERYONE ELSE, for the
+    // rest day's reason: CollectJobs does not offer a rained-out sowing or
+    // reaping (core_common/rain_stops_work.h), so the chairman's man is left
+    // where the accountant put him for the day — he planned him as his own —
+    // and the order stands for tomorrow. Nothing is revoked.
+    if (RainStopsWork(world.weather.precipitation, order.work)) {
       continue;
     }
     const std::uint32_t resident_row = FindRow(current.residents, order.resident);

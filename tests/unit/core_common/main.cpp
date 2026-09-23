@@ -22,6 +22,7 @@
 #include "core_common/plot.h"
 #include "core_common/post_shift.h"
 #include "core_common/quantities.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/random.h"
 #include "core_common/resident_activity.h"
 #include "core_common/state_table.h"
@@ -240,6 +241,59 @@ int TestRandom() {
 /// simulation to that day. What is checked here is the door's own shape; that
 /// its answer equals the one the simulation writes is checked over all 48
 /// days in tests/unit/core_time, where the weather of a day is built.
+/// Rain stops the sowing and the reaping and nothing else, and the two
+/// conversions between dry days and calendar days are each other's inverse.
+int TestRainStopsWork() {
+  int failures = 0;
+  using core::Precipitation;
+  using core::WorkKind;
+  failures += Expect(core::RainStopsWork(Precipitation::kRain, WorkKind::kSowing) &&
+                         core::RainStopsWork(Precipitation::kRain, WorkKind::kHarvest),
+                     "rain: stops the sowing and the reaping");
+  failures += Expect(!core::RainStopsWork(Precipitation::kRain, WorkKind::kPlowing) &&
+                         !core::RainStopsWork(Precipitation::kRain, WorkKind::kHarrowing) &&
+                         !core::RainStopsWork(Precipitation::kRain, WorkKind::kHauling) &&
+                         !core::RainStopsWork(Precipitation::kRain, WorkKind::kHerdCare),
+                     "rain: and not the plough, the harrow, the cart or the barn");
+  failures += Expect(!core::RainStopsWork(Precipitation::kSnow, WorkKind::kHarvest) &&
+                         !core::RainStopsWork(Precipitation::kNone, WorkKind::kHarvest),
+                     "rain: snow and a dry day stop nothing here (the snow has its own rule)");
+
+  core::RainDayShares dry{};
+  failures += Expect(std::fabs(core::DryDaysBetween(dry, 3.5, 7.25) - 3.75) < 1e-9,
+                     "dry days: with no rain a span is its own length, parts of days included");
+  failures += Expect(
+      core::DryDaysBetween(dry, 7.0, 7.0) == 0.0 && core::DryDaysBetween(dry, 8.0, 7.0) == 0.0,
+      "dry days: an empty or backward span holds none");
+  core::RainDayShares half{};
+  half.fill(0.5F);
+  failures += Expect(std::fabs(core::DryDaysBetween(half, 10.0, 14.0) - 2.0) < 1e-9,
+                     "dry days: at half the days rained out, four days hold two");
+  // THE YEAR WRAPS: day 47 always rains, and days 48 and 49 are days 0 and 1.
+  core::RainDayShares last_wet{};
+  last_wet[core::kDaysPerYear - 1] = 1.0F;
+  failures += Expect(std::fabs(core::DryDaysBetween(last_wet, 46.0, 50.0) - 3.0) < 1e-9,
+                     "dry days: the span wraps into next year's shares");
+
+  failures += Expect(core::CalendarPointAfterDryDays(half, 10.0, 0.0) == 10.0,
+                     "calendar point: no dry days owed, no time passes");
+  failures += Expect(std::fabs(core::CalendarPointAfterDryDays(dry, 10.25, 3.0) - 13.25) < 1e-9,
+                     "calendar point: with no rain a dry day is a calendar day");
+  failures += Expect(std::fabs(core::CalendarPointAfterDryDays(half, 10.0, 2.0) - 14.0) < 1e-9,
+                     "calendar point: at half rain two dry days take four");
+  const double point = core::CalendarPointAfterDryDays(last_wet, 45.5, 2.0);
+  failures += Expect(std::fabs(point - 48.5) < 1e-9 &&
+                         std::fabs(core::DryDaysBetween(last_wet, 45.5, point) - 2.0) < 1e-9,
+                     "calendar point: walks over the rained-out day and is the inverse");
+  core::RainDayShares always_wet{};
+  always_wet.fill(1.0F);
+  failures += Expect(std::isinf(core::CalendarPointAfterDryDays(always_wet, 0.0, 1.0)) &&
+                         std::isinf(core::CalendarPointAfterDryDays(
+                             half, 0.0, std::numeric_limits<double>::infinity())),
+                     "calendar point: never, when it always rains or nothing is ever done");
+  return failures;
+}
+
 int TestDaylightCurve() {
   int failures = 0;
 
@@ -1273,6 +1327,7 @@ int main() {
                        "holiday: a holiday is a day of rest, the day after it is not");
   }
   failures += TestDaylightCurve();
+  failures += TestRainStopsWork();
   failures += CheckTheTopOfTheLadder();
   failures += CheckTheFigureRule();
   failures += CheckAlarmSubjectValue();

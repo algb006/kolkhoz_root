@@ -13,6 +13,7 @@
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/reaping_pace.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
@@ -742,14 +743,21 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // labor's last days (core_common/reaping_pace.h).
   const double pace = ReapingPacePerDay(
       world.ledger.current, world.weather.daylight_hours, HandsOfTheVillage(config, world));
+  //
+  // A DAY OF PACE IS A DRY DAY (core_common/rain_stops_work.h): rain stops
+  // the reaping, so the days to the snow are counted by the climate's dry
+  // share, and the clock walks forward over the rain as well as the work.
+  // TODAY IS NOT A FORECAST: its sky is written, and its share is 0 or 1.
+  RainDayShares ahead = config.rain_day_shares;
+  ahead[day_of_year] = RainStopsWork(world.weather.precipitation, WorkKind::kHarvest) ? 1.0F : 0.0F;
   const auto snow = static_cast<double>(config.growing_season_last_day);
   double clock = static_cast<double>(day_of_year);
   for (const GatherClaim& claim : claims) {
     const double start = std::max(clock, static_cast<double>(claim.open_day));
-    const double available = snow - start + 1.0;
+    const double available = DryDaysBetween(ahead, start, snow + 1.0);
     const double needed = pace > 0.0 ? static_cast<double>(claim.owed_days) / pace
                                      : std::numeric_limits<double>::infinity();
-    clock = start + needed;
+    clock = CalendarPointAfterDryDays(ahead, start, needed);
     if (needed <= available) {
       continue;
     }

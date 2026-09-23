@@ -16,6 +16,7 @@ kolkhoz_add_module(core_common
     plot.cpp
     spoilage.cpp
     quantities.cpp
+    rain_stops_work.cpp
     stock_forecast.cpp
     resident_activity.cpp
     version_pin.cpp

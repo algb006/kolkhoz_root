@@ -59,6 +59,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 
@@ -135,11 +136,17 @@ class ILaborSystem {
 ///        standing crop — IProductionSystem::StandingCropGrams, bound by the
 ///        assembly. Empty: every field weighs nought, and the last days
 ///        before the snow keep the queue's own order.
+/// @param rain_day_shares The climate's share of rain days per day of the
+///        year (ITimeSystem::ClimateRainDayShares): the last days before the
+///        snow count a day by its dry share, because rain stops the reaping
+///        (core_common/rain_stops_work.h). The default, all zeros, counts
+///        every working day whole, as before.
 std::unique_ptr<ILaborSystem> CreateLaborSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
-    std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams = {});
+    std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams = {},
+    const RainDayShares& rain_day_shares = RainDayShares{});
 
 }  // namespace core
 

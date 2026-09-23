@@ -45,6 +45,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/module_rules.h"
 #include "core_common/quantities.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/reaping_pace.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
@@ -641,6 +642,16 @@ class LaborSystem final : public ILaborSystem {
         if (kind == WorkKind::kNone || field.work_days_remaining <= 0.0F) {
           continue;
         }
+        // RAIN STOPS THE SOWING AND THE REAPING (farming design §5, «Погода
+        // останавливает работу, а не портит её»; core_common/
+        // rain_stops_work.h). The job is not offered at all, rather than
+        // offered and left undrainable: a crew sent to a rained-out field
+        // would read as men with nothing to work with (kBlocked) all day,
+        // and it is the weather, not a shortage the chairman can mend. The
+        // hands go to what rain does not stop — the carting above all.
+        if (RainStopsWork(current.weather.precipitation, kind)) {
+          continue;
+        }
         AssignmentJob job;
         job.kind = kind;
         job.field = current.fields.row_ids[row];
@@ -868,14 +879,27 @@ class LaborSystem final : public ILaborSystem {
       hands += Employable(current, resident) ? 1U : 0U;
     }
     const auto today = static_cast<std::uint32_t>(current.calendar.day % kDaysPerYear);
-    std::uint32_t working_days = 0;
+    // A WORKING DAY COUNTS BY ITS DRY SHARE: rain stops the reaping
+    // (core_common/rain_stops_work.h), and the climate's share of rain days
+    // is what can be known of the days ahead. TODAY IS NOT AHEAD: its sky is
+    // written, and a rained-out today is no working day at all.
+    double working_days = 0.0;
     for (std::uint32_t day = today; day <= config_.growing_season_last_day; ++day) {
       const SimDay sim_day = current.calendar.day - today + day;
-      working_days += IsDayOffIn(current, sim_day) ? 0U : 1U;
+      if (IsDayOffIn(current, sim_day)) {
+        continue;
+      }
+      if (day == today) {
+        working_days +=
+            RainStopsWork(current.weather.precipitation, WorkKind::kHarvest) ? 0.0 : 1.0;
+      } else {
+        working_days += DryDaysBetween(
+            config_.rain_day_shares, static_cast<double>(day), static_cast<double>(day) + 1.0);
+      }
     }
     double capacity =
         ReapingPacePerDay(current.ledger.current, current.weather.daylight_hours, hands) *
-        static_cast<double>(working_days);
+        working_days;
     for (const std::uint32_t index : reapings) {
       AssignmentJob& job = jobs[index];
       if (static_cast<double>(job.work_days_remaining) <= capacity) {
@@ -1342,7 +1366,8 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day,
-    std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams) {
+    std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams,
+    const RainDayShares& rain_day_shares) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1375,6 +1400,7 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
   }
   config.growing_season_last_day = growing_season_last_day;
   config.standing_crop_grams = std::move(standing_crop_grams);
+  config.rain_day_shares = rain_day_shares;
   return std::make_unique<LaborSystem>(std::move(config));
 }
 

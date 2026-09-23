@@ -30,6 +30,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
+#include "core_common/rain_stops_work.h"
 
 namespace core {
 
@@ -651,6 +652,12 @@ struct ProductionConfig {
   /// row of its own would be a second home that goes stale the day the climate
   /// moves. The default changes nothing.
   std::uint32_t growing_season_last_day = kDaysPerYear - 1U;
+
+  /// The climate's share of rain days per day of the year, handed in by the
+  /// assembly from ITimeSystem::ClimateRainDayShares on the season edge's
+  /// terms: derived, not parsed, and all zeros by default — rain stopping
+  /// nothing ahead of the clock, the alarm as it was.
+  RainDayShares rain_day_shares{};
 
   std::vector<CropDef> crops;  ///< Indexed by CropId row.
 

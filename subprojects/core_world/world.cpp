@@ -711,7 +711,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // for the fields and another for the queue.
   const std::uint32_t season_last_day =
       time == nullptr ? kDaysPerYear - 1U : time->GrowingSeasonLastDay();
-  auto production = CreateProductionSystem(*config.tables, config.stub_tables, season_last_day);
+  // The rain days travel the same road and for the same reason: what a rain
+  // day is belongs to core_time's generator, and both the gathering alarm and
+  // labor's last days before the snow discount the days ahead by it — one
+  // count, handed to both (core_common/rain_stops_work.h).
+  const RainDayShares rain_days = time == nullptr ? RainDayShares{} : time->ClimateRainDayShares();
+  auto production =
+      CreateProductionSystem(*config.tables, config.stub_tables, season_last_day, rain_days);
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both
@@ -723,7 +729,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       season_last_day,
       [estimate](const WorldState& world, const FieldRow& field) -> Grams {
         return estimate == nullptr ? 0 : estimate->StandingCropGrams(world, field);
-      });
+      },
+      rain_days);
   auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).

@@ -2546,6 +2546,26 @@ int CheckTheHarvestWillNotBeGathered() {
                      "said before the potato is ripe — the whole field, which the snow takes");
   world.ledger.current.reaping_last_day = 12.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
+  // RAIN STOPS THE REAPING (core_common/rain_stops_work.h): the same twelve,
+  // with six days in ten ahead rained out. Today (day 30) is dry and counts
+  // whole; the oat's 1.67 days then run to day 32.67, and the potato's 4.17
+  // dry days need more than the 3.33 left before the snow — lost. At four in
+  // ten the oat is done by 32.11 and 5.33 dry days remain: both in time. The
+  // pair is what shows the share is read, and read in the right direction.
+  config.rain_day_shares.fill(0.6F);
+  failures += Expect(warned() == 10'000'000,
+                     "gather: six rain days in ten ahead leave the potato to the snow");
+  config.rain_day_shares.fill(0.4F);
+  failures += Expect(warned() == 0, "gather: four in ten still leave both reaped in time");
+  // And today is not a forecast. At 45 in a hundred ahead a dry today leaves
+  // the potato 4.83 dry days, enough; a rained-out today gives nothing, the
+  // oat runs to day 34.03 and 3.83 are left — lost. Only today's sky differs.
+  config.rain_day_shares.fill(0.45F);
+  failures += Expect(warned() == 0, "gather: at 45 in 100 with a dry today, both in time");
+  world.weather.precipitation = core::Precipitation::kRain;
+  failures += Expect(warned() == 10'000'000, "gather: a rained-out today counts no day at all");
+  world.weather.precipitation = core::Precipitation::kNone;
+  config.rain_day_shares.fill(0.0F);
   // THE SAME TWELVE UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour
   // day, read on a 7.6-hour one, they are six — and the potato is lost again.
   world.ledger.current.reaping_last_day_daylight = 15.2F;
@@ -6741,6 +6761,18 @@ int CheckTheMtsColumn() {
   core::AppendRow(autumn.fields, rye);
   EndColumnDay(config, autumn, 30);
   core::SimDay day = 31;
+  while (core::IsRestDay(day, autumn.calendar.day_zero_weekday, autumn.epoch)) {
+    ++day;
+  }
+  // RAIN STOPS THE COMBINE «как и косца» (core_common/rain_stops_work.h): a
+  // working day of rain, and the column's day is lost whole.
+  autumn.weather.precipitation = core::Precipitation::kRain;
+  EndColumnDay(config, autumn, day);
+  failures += Expect(autumn.fields.rows[0].phase == core::FieldPhase::kHarvest &&
+                         autumn.mts_column.worked_ha == 0.0F,
+                     "mts: on a day of rain the column reaps nothing");
+  autumn.weather.precipitation = core::Precipitation::kNone;
+  ++day;
   while (core::IsRestDay(day, autumn.calendar.day_zero_weekday, autumn.epoch)) {
     ++day;
   }

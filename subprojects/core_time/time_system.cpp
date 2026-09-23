@@ -130,10 +130,35 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
   std::uint8_t leaf_fall_month_ = kDefaultLeafFallMonth;
 };
 
+/// Campaigns the climate's rain share is counted over: each day of the year
+/// is drawn once per campaign seed, 1..kClimateSampleSeeds. At a share near
+/// a third, 400 draws put the count within about 2.4 points of the truth
+/// (one standard error), and the gathering alarm sums a dozen such days, so
+/// its error is smaller still. About twenty thousand draws, once per
+/// assembled world.
+constexpr std::uint64_t kClimateSampleSeeds = 400;
+
+/// The generator's own rain days, counted: the share of campaigns in which
+/// each day of the year is a Precipitation::kRain day (ITimeSystem::
+/// ClimateRainDayShares says why it is counted and not derived).
+RainDayShares CountRainDays(const SeasonTable& seasons) {
+  RainDayShares shares{};
+  for (std::uint32_t day = 0; day < kDaysPerYear; ++day) {
+    std::uint32_t rainy = 0;
+    for (std::uint64_t seed = 1; seed <= kClimateSampleSeeds; ++seed) {
+      rainy += WeatherOfDay(seasons, seed, day).precipitation == Precipitation::kRain ? 1U : 0U;
+    }
+    shares[day] = static_cast<float>(rainy) / static_cast<float>(kClimateSampleSeeds);
+  }
+  return shares;
+}
+
 class TimeSystem final : public ITimeSystem {
  public:
   TimeSystem(const SeasonTable& seasons, std::uint8_t leaf_fall_month)
-      : seasons_(seasons), phase_(seasons, leaf_fall_month) {}
+      : seasons_(seasons),
+        rain_day_shares_(CountRainDays(seasons)),
+        phase_(seasons, leaf_fall_month) {}
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
 
@@ -159,13 +184,11 @@ class TimeSystem final : public ITimeSystem {
     return kDaysPerYear - 1U;
   }
 
-  // STUB: no rain is counted yet, so rain stops nothing ahead of the clock —
-  // exactly what every consumer did before the rule existed. The count off
-  // the generator comes with the implementation.
-  RainDayShares ClimateRainDayShares() const override { return RainDayShares{}; }
+  RainDayShares ClimateRainDayShares() const override { return rain_day_shares_; }
 
  private:
   SeasonTable seasons_;
+  RainDayShares rain_day_shares_;
   TimeAndWeatherSlot phase_;
 };
 

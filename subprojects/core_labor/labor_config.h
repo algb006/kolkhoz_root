@@ -40,6 +40,7 @@
 #include "core_common/land_state.h"
 #include "core_common/post_shift.h"
 #include "core_common/quantities.h"
+#include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
 
 namespace core {
@@ -247,6 +248,12 @@ struct LaborConfig {
   /// sowing's end does not use it yet — see FieldWindow. The default, the
   /// year's last day, changes nothing.
   std::uint32_t growing_season_last_day = kDaysPerYear - 1U;
+
+  /// The climate's share of rain days per day of the year
+  /// (ITimeSystem::ClimateRainDayShares, passed in by the assembly as it is
+  /// to production): the last days before the snow count a working day by
+  /// its dry share. All zeros by default — every day whole, as before.
+  RainDayShares rain_day_shares{};
 
   /// THE LAST DAYS BEFORE THE SNOW (boss seq 95, register 235; labor.csv
   /// `harvest_snow_last_days`, STUB 3): when an annual's reaping has this

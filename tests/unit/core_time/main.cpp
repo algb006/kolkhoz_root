@@ -225,6 +225,27 @@ int main() {
 
   const auto time_system = core::CreateTimeSystem(*tables, core::StubTables::kAllowed);
   failures += Expect(time_system != nullptr, "the factory accepts a good weather table");
+  if (time_system != nullptr) {
+    // THE CLIMATE'S RAIN DAYS (ITimeSystem::ClimateRainDayShares), counted off
+    // the generator. A winter at −10 with a spread of 2 never reaches the
+    // rain's −1..+1, so its days must read nought: a count that said rain
+    // there would be counting wet days, not rain. A summer at +19 rains on
+    // its wet days, so its middle must read above nought. And it is counted,
+    // not drawn: the same tables give the same shares.
+    const core::RainDayShares shares = time_system->ClimateRainDayShares();
+    bool in_range = true;
+    for (const float share : shares) {
+      in_range = in_range && share >= 0.0F && share <= 1.0F;
+    }
+    failures += Expect(in_range, "rain days: every share is between 0 and 1");
+    failures += Expect(shares[1] == 0.0F, "rain days: a winter at -10 has none");
+    failures += Expect(shares[24] > 0.0F, "rain days: a summer at +19 has some");
+    const auto again = core::CreateTimeSystem(*tables, core::StubTables::kAllowed);
+    failures += Expect(again != nullptr && again->ClimateRainDayShares() == shares,
+                       "rain days: the same tables give the same shares");
+    std::cout << "rain days: winter day 1 " << shares[1] << ", summer day 24 " << shares[24]
+              << ", autumn day 36 " << shares[36] << '\n';
+  }
   {
     // A season that swings past the scale is refused: +30 is the hottest
     // afternoon and a mean of 26 with spread 5 and amplitude 6 would read 37.

@@ -58,6 +58,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
+#include "core_common/rain_stops_work.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
 
@@ -179,10 +180,16 @@ class IProductionSystem {
 ///        drift this project keeps finding. The default is the last day of the
 ///        year — the value that changes nothing — so a caller with no time
 ///        system (unit fixtures) behaves exactly as before.
+/// @param rain_day_shares The climate's share of rain days per day of the
+///        year (ITimeSystem::ClimateRainDayShares), by which the gathering
+///        alarm discounts the days to the snow: rain stops the reaping
+///        (core_common/rain_stops_work.h). Passed in for the season edge's
+///        reason. The default, all zeros, is the alarm as it was.
 std::unique_ptr<IProductionSystem> CreateProductionSystem(
     const ITableSet& tables,
     StubTables stubs,
-    std::uint32_t growing_season_last_day = kDaysPerYear - 1U);
+    std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
+    const RainDayShares& rain_day_shares = RainDayShares{});
 
 /// @brief The world_params.csv keys this module reads, for the assembly's
 /// declared-readers check (core_world/world.cpp).
