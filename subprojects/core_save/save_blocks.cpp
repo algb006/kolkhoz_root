@@ -90,8 +90,10 @@ static_assert(AggregateArity<WeatherState>() == 13,
 // Save 77: the trip to the district — two ticks (eight-aligned, so 36 pads to
 // 40), three days, a year, two bytes: 36 -> 72, nineteen fields; 32 bytes in
 // the codec. Predicted before the fields were added.
-static_assert(sizeof(ChairmanState) == 72, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 19,
+// Save 81: the pencil's deferred summons, a byte at offset 72: 72 -> 80,
+// twenty fields; the size was predicted, the arity was not named (a miss).
+static_assert(sizeof(ChairmanState) == 80, "ChairmanState changed — update the codec");
+static_assert(AggregateArity<ChairmanState>() == 20,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -581,6 +583,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.chairman.plan_traded_year);
   out.WriteU8(world.chairman.summon_cause);
   out.WriteU8(world.chairman.away_summoned);
+  // The pencil's deferred summons (save 81).
+  out.WriteU8(world.chairman.pencil_pending);
 
   out.WriteFloat(world.traction_ration);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
@@ -722,6 +726,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<std::uint8_t>(static_cast<std::uint8_t>(SummonCause::kSummonCauseCount) - 1),
       "the summons' cause");
   world->chairman.away_summoned = source.ReadEnumValue(0, 1, "the summons' mark");
+  world->chairman.pencil_pending = source.ReadEnumValue(0, 1, "the pencil's deferred summons");
 
   world->traction_ration = in.ReadFloat();
   world->issue_norms = source.ReadAmounts(DefKind::kResource);

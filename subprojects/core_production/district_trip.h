@@ -49,7 +49,9 @@ void SummonIfTheYearFailed(const ProductionConfig& config, WorldState& current);
 /// calls him. Call EVERY TICK, after every writer of the reputation in the
 /// decisions slot (verdict, plan trade, seizure): `previous` is one tick old,
 /// so a crossing not compared on its own tick is never compared. A crossing
-/// while another summons stands is lost (SummonChairman, one at a time).
+/// while another summons stands marks ChairmanState::pencil_pending, and the
+/// return from that summons calls him once if he is still on the pencil
+/// (boss seq 8); a pencil summons already standing needs no mark.
 void SummonOnThePencil(const ProductionConfig& config,
                        const WorldState& previous,
                        WorldState& current);

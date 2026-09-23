@@ -54,6 +54,10 @@ struct Outcome {
   float worst_year_satiety = 100.0F;
   float last_year_satiety = 0.0F;
 
+  /// How many FINISHED years the two figures above are over — 0 means
+  /// neither was measured, and the report says so instead of a number.
+  std::uint32_t years_measured = 0;
+
   /// The leanest day the settlement saw, and the most people it ever had
   /// under the health threshold at once. THESE are what the criterion is
   /// measured on: a peasant year is not level, and its average describes
@@ -584,11 +588,24 @@ Outcome RunYears(const std::filesystem::path& tables_root,
       outcome.most_hungry_at_once =
           today_hungry > outcome.most_hungry_at_once ? today_hungry : outcome.most_hungry_at_once;
     }
-    for (const float year_mean : day.vitals.satiety_year_means) {
+    // FINISHED YEARS ONLY (boss seq 27: «food_year упёрся в потолок 70»).
+    // The window starts as three neutral 70s — the nutrition factor's prior,
+    // not a year anybody lived — and the minimum over the whole window read
+    // them: "worst year 70" on every arm whose real years were all above it,
+    // a number that could not move. A year is in the window once its turn
+    // has folded it in; the date's year is 1-based.
+    const std::size_t window = day.vitals.satiety_year_means.size();
+    const std::size_t finished = std::min<std::size_t>(
+        day.calendar.date.year > 0 ? day.calendar.date.year - 1U : 0U, window);
+    for (std::size_t index = window - finished; index < window; ++index) {
+      const float year_mean = day.vitals.satiety_year_means[index];
       outcome.worst_year_satiety =
           year_mean < outcome.worst_year_satiety ? year_mean : outcome.worst_year_satiety;
     }
-    outcome.last_year_satiety = day.vitals.satiety_year_means.back();
+    outcome.years_measured = static_cast<std::uint32_t>(finished);
+    if (finished > 0) {
+      outcome.last_year_satiety = day.vitals.satiety_year_means.back();
+    }
   }
   const core::WorldState& state = simulation->CompletedState();
   float satiety_total = 0.0F;
@@ -615,9 +632,14 @@ Outcome RunYears(const std::filesystem::path& tables_root,
 
 void Report(const char* label, const Outcome& outcome) {
   std::cout << "food_year: " << label << " — " << outcome.people << " residents, mean satiety "
-            << outcome.mean_satiety << ", mean health " << outcome.mean_health << ", worst year "
-            << outcome.worst_year_satiety << ", last year " << outcome.last_year_satiety
-            << ", worst year with " << outcome.worst_year_below_health_line
+            << outcome.mean_satiety << ", mean health " << outcome.mean_health;
+  if (outcome.years_measured == 0) {
+    std::cout << ", worst year NOT MEASURED (no year finished)";
+  } else {
+    std::cout << ", worst year " << outcome.worst_year_satiety << " of " << outcome.years_measured
+              << " finished, last year " << outcome.last_year_satiety;
+  }
+  std::cout << ", worst year with " << outcome.worst_year_below_health_line
             << " under the health line all year"
             << ", life expectancy " << outcome.life_expectancy << ", leanest day "
             << outcome.leanest_day_satiety << ", worst " << outcome.most_hungry_at_once
@@ -976,9 +998,13 @@ int main(int argc, char** argv) {
   // a real argument about harm — but 40 is a threshold on ONE resident, and
   // carrying it onto an aggregate changes the claim without changing the
   // number (architecture §8бо).
-  std::cout << "food_year: worst year " << good.worst_year_satiety
-            << " — printed, not asserted: the old floor of 45 has no ground, and its "
+  std::cout << "food_year: worst year " << good.worst_year_satiety << " of " << good.years_measured
+            << " finished — printed, not asserted: the old floor of 45 has no ground, and its "
                "replacement waits on what the aggregate should be measured against\n";
+  // A PROBE THAT GOT NOTHING SAYS SO: the year figures are over finished
+  // years only, and a run that finished none has no year to compare.
+  failures +=
+      run::Expect(good.years_measured > 0U, "the year figures are over at least one finished year");
   failures += ExpectBand(good.last_year_satiety > good.worst_year_satiety - 5.0F,
                          "and the settlement is not sliding year on year");
   // BAND WITHDRAWN, REGRESSION KEPT. The stage-6 criterion asked for 25 on

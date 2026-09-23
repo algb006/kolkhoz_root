@@ -493,6 +493,14 @@ struct ChairmanState {
 
   /// 0/1: the trip under way is a summons — it does not count as his own.
   std::uint8_t away_summoned = 0;
+
+  /// 0/1: «НА КАРАНДАШЕ» WAITS (boss, boss-core-epoch1-2 seq 8). The
+  /// reputation crossed the pencil line while another summons stood, and a
+  /// summons is one at a time. On his return from that trip the pencil calls
+  /// him once if the reputation is still at or below the line; risen above
+  /// it, the mark goes silently. One deferred summons, never a repeat
+  /// without a new crossing. Save 81.
+  std::uint8_t pencil_pending = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

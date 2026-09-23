@@ -113,15 +113,27 @@ void Depart(const ProductionConfig& config, WorldState& current) {
       static_cast<std::int64_t>(chairman.away_until_tick);
 }
 
-void Return(WorldState& current) {
+void Return(const ProductionConfig& config, WorldState& current) {
   ChairmanState& chairman = current.chairman;
-  if (chairman.away_summoned != 0) {
+  const bool summons_ended = chairman.away_summoned != 0;
+  if (summons_ended) {
     chairman.summon_letter_day = 0;
     chairman.summon_day = 0;
     chairman.summon_cause = static_cast<std::uint8_t>(SummonCause::kNone);
   }
   ClearTrip(chairman);
   EmitEvent(current, EventKind::kTripReturned, EventSeverity::kNotable);
+  // THE PENCIL THAT WAITED (boss, boss-core-epoch1-2 seq 8): once the
+  // summons that stood is over, the deferred one calls him if he is still
+  // on the pencil; risen above the line, the mark goes silently. Only a
+  // summons ends here — a trip of his own clears no summons, so a pending
+  // mark waits for the summons' own return.
+  if (summons_ended && chairman.pencil_pending != 0) {
+    chairman.pencil_pending = 0;
+    if (chairman.raikom_reputation <= config.district_trip.plan_trade_min_reputation) {
+      SummonChairman(config, current, SummonCause::kOnThePencil);
+    }
+  }
 }
 
 }  // namespace
@@ -206,7 +218,7 @@ void RunDistrictTrip(const ProductionConfig& config, WorldState& current) {
     Depart(config, current);
   } else if (chairman.away_until_tick != 0 && now == chairman.away_until_tick &&
              now > chairman.away_from_tick) {
-    Return(current);
+    Return(config, current);
   }
 }
 
@@ -232,6 +244,16 @@ void SummonOnThePencil(const ProductionConfig& config,
                        WorldState& current) {
   const float line = config.district_trip.plan_trade_min_reputation;
   if (previous.chairman.raikom_reputation > line && current.chairman.raikom_reputation <= line) {
+    // Another summons standing: the crossing waits for its return (Return),
+    // once — a summons is one at a time (boss seq 8). A PENCIL summons
+    // standing already answers it: a plan bargained on the return tick, after
+    // Return fired the old mark, would otherwise mark a second in a row.
+    if (current.chairman.summon_day != 0) {
+      if (current.chairman.summon_cause != static_cast<std::uint8_t>(SummonCause::kOnThePencil)) {
+        current.chairman.pencil_pending = 1;
+      }
+      return;
+    }
     SummonChairman(config, current, SummonCause::kOnThePencil);
   }
 }

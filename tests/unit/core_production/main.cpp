@@ -6303,6 +6303,48 @@ int CheckDistrictTrip() {
   failures += Expect(
       after.chairman.summon_cause == static_cast<std::uint8_t>(core::SummonCause::kOnThePencil),
       "summons: the reputation crossing twenty calls him");
+  // ONE DEFERRED SUMMONS (boss, boss-core-epoch1-2 seq 8): crossed while the
+  // audit's summons stands, the pencil waits for that trip's return.
+  {
+    core::WorldState standing = before;
+    standing.chairman.summon_day = 5;
+    standing.chairman.summon_cause =
+        static_cast<std::uint8_t>(core::SummonCause::kAuditDiscrepancy);
+    core::WorldState crossed = standing;
+    crossed.chairman.raikom_reputation = 18.0F;
+    core::SummonOnThePencil(config, standing, crossed);
+    failures += Expect(crossed.chairman.pencil_pending == 1 &&
+                           crossed.chairman.summon_cause ==
+                               static_cast<std::uint8_t>(core::SummonCause::kAuditDiscrepancy),
+                       "summons: crossing under another summons marks the pencil as waiting");
+    const auto back_from_summons = [&](float reputation) {
+      core::WorldState trip = crossed;
+      trip.chairman.raikom_reputation = reputation;
+      trip.chairman.away_summoned = 1;
+      at(trip, 5, 20);
+      trip.chairman.away_from_tick = trip.calendar.tick - 12;
+      trip.chairman.away_until_tick = trip.calendar.tick;
+      core::RunDistrictTrip(config, trip);
+      return trip.chairman;
+    };
+    const core::ChairmanState still_low = back_from_summons(18.0F);
+    failures += Expect(
+        still_low.pencil_pending == 0 && still_low.summon_day != 0 &&
+            still_low.summon_cause == static_cast<std::uint8_t>(core::SummonCause::kOnThePencil),
+        "summons: back and still on the pencil, it calls him once");
+    // A pencil summons already standing answers a new crossing: no mark, so
+    // no second pencil summons in a row (the static loop of 23 September).
+    core::WorldState on_pencil = standing;
+    on_pencil.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
+    core::WorldState pencil_crossed = on_pencil;
+    pencil_crossed.chairman.raikom_reputation = 18.0F;
+    core::SummonOnThePencil(config, on_pencil, pencil_crossed);
+    failures += Expect(pencil_crossed.chairman.pencil_pending == 0,
+                       "summons: under a pencil summons, a new crossing marks nothing");
+    const core::ChairmanState risen = back_from_summons(25.0F);
+    failures += Expect(risen.pencil_pending == 0 && risen.summon_day == 0,
+                       "summons: back and risen above the line, the mark goes silently");
+  }
 
   // -- a visit waits for him (boss seq 206, 6) -------------------------------------
   const auto visit_day = [&](bool away,

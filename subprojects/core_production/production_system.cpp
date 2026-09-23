@@ -192,7 +192,8 @@ class ProductionSystem final : public IProductionSystem {
     // at the day's turn only, and by then `previous` had crossed too. The
     // other two writers summon him on their own cause first — a seizure
     // comes only with the audit's summons, a failed year with its own — so
-    // for them the pencil adds no second summons (one at a time).
+    // their crossing is the deferred one: back from that trip and still on
+    // the pencil, he is called again (boss seq 8, pencil_pending).
     SummonOnThePencil(config_, previous, current);
   }
 

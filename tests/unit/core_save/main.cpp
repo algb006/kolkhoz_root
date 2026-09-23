@@ -155,6 +155,7 @@ core::WorldState MakeWorld() {
   world.chairman.plan_traded_year = 2;
   world.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
   world.chairman.away_summoned = 1;
+  world.chairman.pencil_pending = 1;  // save 81: the top, not the default
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   // The accumulation limit (save 62): not empty, or a codec that forgot it
@@ -792,6 +793,7 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.plan_traded_year = 2;
   witness.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
   witness.chairman.away_summoned = 1;
+  witness.chairman.pencil_pending = 1;
 
   witness.traction_ration = 0.75F;
   // The chairman's issue norms (save 57): NOT empty, since empty is what a
@@ -899,6 +901,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.plan_traded_year", U16(world.chairman.plan_traded_year)});
   chunks.push_back({"chairman.summon_cause", U8(world.chairman.summon_cause)});
   chunks.push_back({"chairman.away_summoned", U8(world.chairman.away_summoned)});
+  chunks.push_back({"chairman.pencil_pending", U8(world.chairman.pencil_pending)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
@@ -1134,7 +1137,11 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // the field was added, and held.
     // 2026-09-19, save 72: +1 — РАСПУТИЦА (WeatherState::mud), predicted
     // before the build together with the seventeen sections that did not move.
-    {"world", 500, 0x528da5bf9769afaULL},
+    // 2026-09-23, save 81: +1 — the pencil's deferred summons (boss seq 8),
+    // predicted 500 -> 501 with the eighteen other sections unmoved before
+    // the build; held. The arity tripwire (19 -> 20) was not named with it
+    // — a miss in the prediction's inventory, caught by the tripwire.
+    {"world", 501, 0xcec026324c309545ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
