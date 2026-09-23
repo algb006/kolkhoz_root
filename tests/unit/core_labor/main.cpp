@@ -2770,6 +2770,80 @@ int TestDiggersGoToAMarkedSite() {
   return failures;
 }
 
+/// «УЧАСТОК СНИМАЕТСЯ» (boss, boss-core-epoch1-2 seq 1 and 10): a standing
+/// digging order on a worked-out site is taken off with kSiteExhausted — the
+/// man stood idle there every day. The pair: the same order on a site still
+/// holding clay stands.
+int TestAWorkedOutSiteTakesItsOrderOff() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_worked_out";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,kg_per_unit\ntool,3\nclay,1000\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "worked out: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  DayWorld day(4);
+  core::ExtractionSiteRow dug_out;
+  dug_out.resource = core::ResourceId{1};
+  dug_out.exhausted = 1;
+  core::ExtractionSiteRow still_clay = dug_out;
+  still_clay.exhausted = 0;
+  still_clay.stock_grams = 100'000'000;
+  const core::ExtractionSiteId dug_out_id = core::AppendRow(day.world.extraction_sites, dug_out);
+  const core::ExtractionSiteId clay_id = core::AppendRow(day.world.extraction_sites, still_clay);
+  const auto standing = [&day](std::uint32_t resident_row, core::ExtractionSiteId site) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kAssignWork;
+    order.status = core::OrderStatus::kAccepted;
+    order.work = core::WorkKind::kExtraction;
+    order.resident = day.world.residents.row_ids[resident_row];
+    order.extraction_site = site;
+    core::AppendRow(day.world.orders, order);
+  };
+  standing(0, dug_out_id);
+  standing(1, clay_id);
+  // Carting from worked-out sites: one with its last load still lying, one
+  // carted bare.
+  core::ExtractionSiteRow load_left = dug_out;
+  load_left.load_grams = 5'000'000;
+  const core::ExtractionSiteId load_left_id =
+      core::AppendRow(day.world.extraction_sites, load_left);
+  const auto carting = [&day](std::uint32_t resident_row, core::ExtractionSiteId site) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kAssignWork;
+    order.status = core::OrderStatus::kAccepted;
+    order.work = core::WorkKind::kHauling;
+    order.resident = day.world.residents.row_ids[resident_row];
+    order.extraction_site = site;
+    core::AppendRow(day.world.orders, order);
+  };
+  carting(2, dug_out_id);
+  carting(3, load_left_id);
+  day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + 8U;
+  core::RefreshCalendarCaches(day.world.calendar);
+  const core::WorldState previous = day.world;
+  labor->RunAssignmentDecisions(previous, day.world);
+  failures += Expect(day.world.orders.rows[0].status == core::OrderStatus::kRefused &&
+                         day.world.orders.rows[0].refusal == core::OrderRefusal::kSiteExhausted,
+                     "worked out: the digging order on a worked-out site is taken off");
+  failures += Expect(day.world.orders.rows[1].status == core::OrderStatus::kAccepted,
+                     "worked out: and on a site still holding clay it stands");
+  failures += Expect(day.world.orders.rows[2].status == core::OrderStatus::kRefused &&
+                         day.world.orders.rows[2].refusal == core::OrderRefusal::kSiteExhausted,
+                     "worked out: carting from a worked-out site carted bare is taken off");
+  failures += Expect(day.world.orders.rows[3].status == core::OrderStatus::kAccepted,
+                     "worked out: and while its last load still lies there it stands");
+  return failures;
+}
+
 /// THE FELLING BRIGADE RIDES (time design §7, timber design §8a; boss, parcel
 /// 308): a stand 3 km out is 7.2 hours on foot, past the 4-hour road limit,
 /// and 3 hours on the carts. The fellers are sent there, AND their working day
@@ -3108,6 +3182,7 @@ int main() {
   failures += TestTheStoreBeingEmptiedGetsItsCarrier();
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestDiggersGoToAMarkedSite();
+  failures += TestAWorkedOutSiteTakesItsOrderOff();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();
   failures += TestMeadowCutRidesAndTakesOneHorse();

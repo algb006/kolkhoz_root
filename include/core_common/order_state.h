@@ -1088,6 +1088,14 @@ enum class OrderRefusal : std::uint8_t {
   /// карандаше» the district does not bargain.
   kReputationTooLow,
 
+  /// A standing kAssignWork digging order (WorkKind::kExtraction) on a site
+  /// that is worked out (ExtractionSiteRow::exhausted): «участок снимается»,
+  /// and the man with it — he stood idle there every day until 0.34.23, a
+  /// break no instrument saw (boss, boss-core-epoch1-2 seq 1). Seam key
+  /// `site_exhausted`. A carting order on the same site stands while a load
+  /// still lies there, and goes with this word once the last is carted.
+  kSiteExhausted,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a

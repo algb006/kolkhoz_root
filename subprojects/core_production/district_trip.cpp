@@ -248,8 +248,18 @@ void SummonOnThePencil(const ProductionConfig& config,
     // once — a summons is one at a time (boss seq 8). A PENCIL summons
     // standing already answers it: a plan bargained on the return tick, after
     // Return fired the old mark, would otherwise mark a second in a row.
+    // AND ONLY UNDER A SUMMONS THAT STOOD BEFORE THIS TICK (boss seq 10): a
+    // summons born this tick was born of the same event that crossed — the
+    // seizure with its audit, the verdict with its failed year — and that
+    // event is already asked by its own summons.
     if (current.chairman.summon_day != 0) {
-      if (current.chairman.summon_cause != static_cast<std::uint8_t>(SummonCause::kOnThePencil)) {
+      // THE SAME summons as a tick ago — not merely some summons: a return
+      // that cleared one and an audit that opened another in one tick
+      // would otherwise pass for "stood before" (the static loop).
+      const bool stood_before = previous.chairman.summon_day == current.chairman.summon_day &&
+                                previous.chairman.summon_cause == current.chairman.summon_cause;
+      if (stood_before &&
+          current.chairman.summon_cause != static_cast<std::uint8_t>(SummonCause::kOnThePencil)) {
         current.chairman.pencil_pending = 1;
       }
       return;

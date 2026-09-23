@@ -6332,6 +6332,24 @@ int CheckDistrictTrip() {
         still_low.pencil_pending == 0 && still_low.summon_day != 0 &&
             still_low.summon_cause == static_cast<std::uint8_t>(core::SummonCause::kOnThePencil),
         "summons: back and still on the pencil, it calls him once");
+    // THE SAME EVENT (boss seq 10): the seizure that crossed the line summoned
+    // him on the audit in this very tick — no mark, no second summons.
+    core::WorldState seized = before;
+    seized.chairman.raikom_reputation = 18.0F;
+    seized.chairman.summon_day = 5;
+    seized.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kAuditDiscrepancy);
+    core::SummonOnThePencil(config, before, seized);
+    failures += Expect(seized.chairman.pencil_pending == 0,
+                       "summons: a crossing by the event that summoned him marks nothing");
+    // A summons that ENDED this tick and a new one opened in it are not one
+    // that stood: the return cleared day 5, the audit opened day 9.
+    core::WorldState reopened = seized;
+    reopened.chairman.summon_day = 9;
+    core::WorldState was_standing = standing;
+    was_standing.chairman.raikom_reputation = 25.0F;
+    core::SummonOnThePencil(config, was_standing, reopened);
+    failures += Expect(reopened.chairman.pencil_pending == 0,
+                       "summons: a summons reopened in the same tick is not one that stood");
     // A pencil summons already standing answers a new crossing: no mark, so
     // no second pencil summons in a row (the static loop of 23 September).
     core::WorldState on_pencil = standing;

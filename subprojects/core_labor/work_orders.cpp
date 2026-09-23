@@ -73,6 +73,28 @@ void CloseOrphanedWork(WorldState& current) {
       order.refusal = OrderRefusal::kNoSuchSubject;
       continue;
     }
+    // A WORKED-OUT SITE IS TAKEN OFF (boss, boss-core-epoch1-2 seq 1:
+    // «участок снимается», with its own word). The row stays — the load dug
+    // last may still lie there for the carts — so TargetExists says yes, and
+    // until 0.34.23 a digging order stood on nothing to dig: on host's driven
+    // village twelve diggers idle from the 17th day to the 80th.
+    // AND ITS KIN, the carting order on the same site once the last load is
+    // carted: nothing will ever lie there again (the same loop's question
+    // put to the tree).
+    const bool digs = order.work == WorkKind::kExtraction;
+    const bool carts_from_site =
+        order.work == WorkKind::kHauling && order.extraction_site.value != kInvalidEntityIdValue;
+    if (digs || carts_from_site) {
+      const std::uint32_t site_row = FindRow(current.extraction_sites, order.extraction_site);
+      const bool worked_out = site_row != kNoRow &&
+                              current.extraction_sites.rows[site_row].exhausted != 0 &&
+                              (digs || current.extraction_sites.rows[site_row].load_grams <= 0);
+      if (worked_out) {
+        order.status = OrderStatus::kRefused;
+        order.refusal = OrderRefusal::kSiteExhausted;
+        continue;
+      }
+    }
     // AND THE ONE ANSWER IS CHECKED HERE, EVERY TICK, not only at admission.
     //
     // A work order is let past a held post when the same batch carries the

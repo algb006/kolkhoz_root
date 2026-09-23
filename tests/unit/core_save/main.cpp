@@ -1207,7 +1207,10 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // with nowhere to store: same 494 bytes, predicted.
     // Save 74: kAnswerLeaveRequest became the top OrderKind — same 494 bytes,
     // the hash moved, predicted.
-    {"orders", 494, 0x1ff4157a231b0f3ULL},
+    // 2026-09-23: the hash again at the same 494 bytes, when kSiteExhausted
+    // became the last OrderRefusal — the top of the enum the fixture carries.
+    // Not written down before the build (a miss); VERSION_SAVE stays 81.
+    {"orders", 494, 0xac05130466c3a912ULL},
     {"stands", 8, 0x89cd31291d2aefa4ULL},
     {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
