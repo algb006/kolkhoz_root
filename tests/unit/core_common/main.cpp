@@ -1137,7 +1137,9 @@ int CheckTheTopOfTheLadder() {
   int failures = 0;
   core::WorldState world;
   const std::vector<core::SeedNorm> norms = {
-      {.resource = core::ResourceId{2}, .sowing_norm_kg_per_ha = 100.0F}};
+      {.resource = core::ResourceId{2}, .sowing_norm_kg_per_ha = 100.0F},
+      {.resource = core::ResourceId{1}, .sowing_norm_kg_per_ha = 50.0F, .is_winter = true},
+      {.resource = core::ResourceId{0}, .sowing_norm_kg_per_ha = 80.0F}};
   core::FieldRow waiting;
   waiting.area_ga = 2.0F;
   waiting.rotation_year0 = core::CropId{0};
@@ -1173,6 +1175,71 @@ int CheckTheTopOfTheLadder() {
     autumn.fields.rows[0].reaped_day = 38;  // reaped in the October of year 1
     failures += Expect(core::HeldAboveFodder(autumn, norms, 3, true)[2] == 200'000 + 300'000,
                        "ladder: a field reaped last year holds this year's seed again");
+  }
+
+  // THE AUTUMN'S WINTER CROP IS NEXT YEAR'S SOWING (boss seq 18, econ
+  // plan-700): from the reaping, or through a fallow year, until the rye is
+  // in the ground. 2 ha x 50 kg = 100 000 g of resource 1.
+  {
+    core::WorldState autumn;
+    autumn.calendar.day = core::kDaysPerYear + 40;
+    core::FieldRow field;
+    field.area_ga = 2.0F;
+    field.rotation_year0 = core::CropId{0};
+    field.rotation_year1 = core::CropId{1};
+    field.phase = core::FieldPhase::kIdle;
+    field.reaped_day = core::kDaysPerYear + 30;
+    core::AppendRow(autumn.fields, field);
+    const auto winter_seed = [&norms](const core::WorldState& state) {
+      return core::HeldAboveFodder(state, norms, 3, true)[1];
+    };
+    failures += Expect(winter_seed(autumn) == 100'000,
+                       "ladder: a reaped field holds the seed of the winter crop it sows next");
+    autumn.fields.rows[0].rotation_year0 = core::CropId{};
+    autumn.fields.rows[0].reaped_day = core::kNeverReapedDay;
+    failures += Expect(winter_seed(autumn) == 100'000,
+                       "ladder: a fallow year holds the seed of the winter crop after it");
+    autumn.fields.rows[0].rotation_year0 = core::CropId{0};
+    autumn.fields.rows[0].phase = core::FieldPhase::kHarrowing;
+    failures += Expect(winter_seed(autumn) == 0,
+                       "ladder: a field still owing its first slot holds no winter seed yet");
+    autumn.fields.rows[0].phase = core::FieldPhase::kGrowing;
+    autumn.fields.rows[0].crop = core::CropId{1};
+    autumn.fields.rows[0].reaped_day = core::kDaysPerYear + 30;
+    failures += Expect(winter_seed(autumn) == 0,
+                       "ladder: the winter crop in the ground holds its seed no longer");
+    // Being worked for the rye is not being sown with it: on the reaped field
+    // under the plough, and on the black fallow standing "growing" with no
+    // crop (static review, 2026-09-24: either half of winter_sown alone
+    // passed every line above).
+    autumn.fields.rows[0].phase = core::FieldPhase::kPlowing;
+    failures += Expect(winter_seed(autumn) == 100'000,
+                       "ladder: ploughing for the winter crop still holds its seed");
+    autumn.fields.rows[0].phase = core::FieldPhase::kGrowing;
+    autumn.fields.rows[0].crop = core::CropId{};
+    autumn.fields.rows[0].rotation_year0 = core::CropId{};
+    failures += Expect(winter_seed(autumn) == 100'000,
+                       "ladder: a black fallow with nothing in it still holds the rye's seed");
+    // A FIRST SLOT THAT MISSED ITS WINDOW (TrySow -> TrySowWinter): the oats
+    // will not be sown, the rye will — hold the rye and not the oats.
+    autumn.fields.rows[0].rotation_year0 = core::CropId{0};
+    autumn.fields.rows[0].reaped_day = core::kNeverReapedDay;
+    autumn.fields.rows[0].phase = core::FieldPhase::kHarrowing;
+    autumn.fields.rows[0].crop = core::CropId{1};
+    const core::ResourceAmounts missed = core::HeldAboveFodder(autumn, norms, 3, true);
+    failures += Expect(missed[1] == 100'000 && missed[2] == 0,
+                       "ladder: a missed first slot worked for rye holds the rye, not the oats");
+    // One crop in both slots: the work is the first slot's, held once.
+    autumn.fields.rows[0].rotation_year0 = core::CropId{1};
+    failures += Expect(winter_seed(autumn) == 100'000,
+                       "ladder: rye in both slots, the rye's seed held once and not twice");
+    autumn.fields.rows[0].phase = core::FieldPhase::kIdle;
+    autumn.fields.rows[0].crop = core::CropId{};
+    autumn.fields.rows[0].rotation_year0 = core::CropId{0};
+    autumn.fields.rows[0].reaped_day = core::kDaysPerYear + 30;
+    autumn.fields.rows[0].rotation_year1 = core::CropId{2};
+    failures += Expect(core::HeldAboveFodder(autumn, norms, 3, true)[0] == 0,
+                       "ladder: a SPRING crop of the second slot is not owed in the autumn");
   }
 
   // EACH FUND OPENS ITS OWN RUNG (boss, boss-core-epoch1-resume seq 14,

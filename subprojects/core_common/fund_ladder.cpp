@@ -29,6 +29,24 @@ Grams RungLeft(Grams held, Grams unsealed) {
   return held > unsealed ? held - unsealed : 0;
 }
 
+/// Adds one field's sowing of `crop` to `seed`; a crop past the norms' end,
+/// one that needs no seed, or — when `winter_only` — a spring crop adds none.
+void AddSowing(std::span<const SeedNorm> seed_norms_by_crop,
+               CropId crop,
+               float area_ha,
+               bool winter_only,
+               ResourceAmounts& seed) {
+  if (crop.value >= seed_norms_by_crop.size()) {
+    return;
+  }
+  const SeedNorm& norm = seed_norms_by_crop[crop.value];
+  if ((winter_only && !norm.is_winter) || norm.resource.value >= seed.size() ||
+      norm.sowing_norm_kg_per_ha <= 0.0F) {
+    return;
+  }
+  seed[norm.resource.value] += GramsFromKilograms(norm.sowing_norm_kg_per_ha * area_ha);
+}
+
 }  // namespace
 
 ResourceAmounts HeldAboveFodder(const WorldState& world,
@@ -51,15 +69,32 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
       const bool reaped_this_year =
           field.reaped_day != kNeverReapedDay &&
           field.reaped_day / kDaysPerYear == world.calendar.day / kDaysPerYear;
-      if (already_sown || reaped_this_year ||
-          field.rotation_year0.value >= seed_norms_by_crop.size()) {
-        continue;
+      // A FIELD WHOSE FIRST SLOT MISSED ITS WINDOW and is being worked for the
+      // second slot's winter crop (TrySow hands it to TrySowWinter): the
+      // first slot will not be sown this year, and its seed is owed nobody
+      // (static review of the change, 2026-09-24). Where both slots name one
+      // crop it is the same seed either way, owed once, below.
+      const bool preparing_second_slot = !already_sown && field.crop.value != kInvalidDefIdValue &&
+                                         field.crop.value == field.rotation_year1.value;
+      if (!already_sown && !reaped_this_year && !preparing_second_slot) {
+        AddSowing(seed_norms_by_crop, field.rotation_year0, field.area_ga, false, seed);
       }
-      const SeedNorm& norm = seed_norms_by_crop[field.rotation_year0.value];
-      if (norm.resource.value >= seed.size() || norm.sowing_norm_kg_per_ha <= 0.0F) {
-        continue;
+      // AND THE AUTUMN'S WINTER CROP IS NEXT YEAR'S SOWING TOO (boss seq 18,
+      // econ plan-700 §3). The rye sown in September is the seed fund's own
+      // "сев следующего года" (resources design §6), but the rung above
+      // read only the first slot and let the reaped field go — so from the
+      // reaping to the sowing nothing held that seed, the ration ate it, and
+      // the sowing took its 1.89 t out of the plan's rye (seed 1934, year 23).
+      // Owed once the first slot is done with — reaped this year, a fallow
+      // year, or given up past its window for the winter crop — and until the
+      // winter crop is in the ground.
+      const bool first_slot_done = reaped_this_year ||
+                                   field.rotation_year0.value == kInvalidDefIdValue ||
+                                   preparing_second_slot;
+      const bool winter_sown = already_sown && field.crop.value == field.rotation_year1.value;
+      if (first_slot_done && !winter_sown) {
+        AddSowing(seed_norms_by_crop, field.rotation_year1, field.area_ga, true, seed);
       }
-      seed[norm.resource.value] += GramsFromKilograms(norm.sowing_norm_kg_per_ha * field.area_ga);
     }
   }
   // THE PLAN RESERVE IS FILLED BY THE HARVEST, NOT BY THE CALENDAR.

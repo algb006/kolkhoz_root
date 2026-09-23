@@ -71,7 +71,9 @@ double Tonnes(core::Grams grams) {
 /// core walks the same fields in family_exchange.cpp (IssueReserve) by the
 /// same rule — a field that is IDLE and carries this crop in its coming slot
 /// reserves its sowing norm — and a disagreement between the two would be
-/// the finding.
+/// the finding. It mirrors the FIRST SLOT only: since 0.34.36 the core also
+/// holds the second slot's WINTER crop in the autumn (fund_ladder.h), which
+/// oats never are, so for the crop this run tallies the two still agree.
 core::Grams SeedDemand(const core::WorldState& world,
                        core::CropId crop,
                        float sowing_norm_kg_per_ha) {

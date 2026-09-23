@@ -826,6 +826,30 @@ int CheckFoodConfigDefaults(const core::ITableSet& tables) {
   return failures;
 }
 
+/// The seed fund reads crops.csv `is_winter`: without it the autumn's rye is
+/// a spring crop to the ladder and its seed is held by nobody (boss seq 18).
+int CheckSeedNormsReadWinter() {
+  int failures = 0;
+  const test::FakeTable crops({"key", "sowing_norm_kg_per_ha", "is_winter"},
+                              {{"rye_winter", "220", "1"}, {"oat", "200", "0"}, {"hay", "", ""}});
+  const test::FakeTableSet set({{"crops", &crops}});
+  std::string error;
+  const core::FoodConfig config = core::ParseFoodConfig(set, &error);
+  failures +=
+      Expect(error.empty() && config.seed_norms.size() == 3, "crops: three seed norms read");
+  if (config.seed_norms.size() == 3) {
+    failures += Expect(config.seed_norms[0].is_winter && !config.seed_norms[1].is_winter &&
+                           !config.seed_norms[2].is_winter,
+                       "crops: is_winter read per row, a blank cell a spring crop");
+  }
+  const test::FakeTable wrong({"key", "is_winter"}, {{"rye_winter", "2"}});
+  const test::FakeTableSet wrong_set({{"crops", &wrong}});
+  core::ParseFoodConfig(wrong_set, &error);
+  failures += Expect(error.find("is_winter") != std::string::npos,
+                     "crops: an is_winter past 1 is refused by name");
+  return failures;
+}
+
 }  // namespace
 
 core::UnitId AddHouse(core::WorldState& world, core::FamilyId family, core::Vec2 at);
@@ -3400,6 +3424,7 @@ int main() {
   }
 
   failures += CheckFoodConfigDefaults(tables);
+  failures += CheckSeedNormsReadWinter();
   failures += CheckEmptiedYard(*system);
   failures += CheckVacatedPostIsAnnounced(*system);
   failures += CheckMeal();

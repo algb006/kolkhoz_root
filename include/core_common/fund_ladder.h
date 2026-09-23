@@ -38,6 +38,10 @@ struct SeedNorm {
   ResourceId resource;  ///< What the seed of this crop is.
 
   float sowing_norm_kg_per_ha = 0.0F;  ///< 0 = the crop needs no seed stock.
+
+  /// Sown in the autumn before the year it is reaped (crops.csv `is_winter`):
+  /// its seed is owed from the autumn of the year BEFORE its slot.
+  bool is_winter = false;
 };
 
 /// @brief Grams of each resource held by the seed fund and the plan reserve
@@ -45,7 +49,11 @@ struct SeedNorm {
 ///
 /// SEED: the sowing norm of every field that has yet to be sown this year's
 /// first slot — idle, ploughing, harrowing or sowing, and not yet growing or
-/// being reaped. Skipped entirely when `reserve_seed_fund` is false.
+/// being reaped. AND the autumn's winter crop of the second slot, on a field
+/// whose first slot is done with — reaped this year, a fallow year, or given
+/// up past its window and worked for the winter crop instead — until
+/// that winter crop is in the ground. Skipped entirely when
+/// `reserve_seed_fund` is false.
 ///
 /// PLAN: as much of `plan.due` as this year's reaping has covered so far, and
 /// no more (boss, 2026-09-12: in April there is nothing yet to set aside, and

@@ -351,7 +351,17 @@ bool ParseSeedNorms(const ITable& crops,
   config.seed_norms.assign(crops.RowCount(), SeedNormDef{});
   const std::uint32_t resource_column = crops.FindColumn("resource");
   const std::uint32_t norm_column = crops.FindColumn("sowing_norm_kg_per_ha");
+  const std::uint32_t winter_column = crops.FindColumn("is_winter");
   for (std::uint32_t row = 0; row < crops.RowCount(); ++row) {
+    // A winter crop's seed is owed from the autumn before its slot
+    // (fund_ladder.h); blank or absent is a spring crop.
+    float winter = 0.0F;
+    if (!OptionalCell(crops, row, winter_column, Range{.low = 0.0F, .high = 1.0F}, winter, error)) {
+      PrefixError("crops", "is_winter", error);
+      return false;
+    }
+    // Read as production reads it (production_config.cpp): any non-zero.
+    config.seed_norms[row].is_winter = winter != 0.0F;
     if (!OptionalCell(crops,
                       row,
                       norm_column,
