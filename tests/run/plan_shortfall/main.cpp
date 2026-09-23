@@ -41,6 +41,7 @@
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/limit_policy.h"
+#include "../common/planting_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
@@ -636,6 +637,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);
+  run::PlantingPolicy planting(*started.tables);  // 0.34.41: every run plants
   run::SawmillPolicy sawmill(*started.tables);
   run::LimitPolicy limit(*started.tables);
   run::RepairPolicy repairs(*started.tables);
@@ -672,6 +674,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
+      planting.RunDay(*started.simulation);
       sawmill.RunDay(*started.simulation);
       limit.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
@@ -785,6 +788,7 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   // half an answer until it says whether anybody built one.
   fixture.Report(started.State());
   felling.Report("plan_shortfall", started.State());
+  planting.Report("plan_shortfall", started.State());
   sawmill.Report("plan_shortfall");
   limit.Report("plan_shortfall");
   sawmill.ReportState("plan_shortfall", started.State());
@@ -821,6 +825,7 @@ int main(int argc, char** argv) {
       argc > 3 ? static_cast<std::uint32_t>(std::strtoul(argv[3], nullptr, 10)) : kYears;
 
   run::FellingPolicy::Declare("plan_shortfall");
+  run::PlantingPolicy::Declare("plan_shortfall");
   run::SawmillPolicy::Declare("plan_shortfall");
   run::LimitPolicy::Declare("plan_shortfall");
   int failures = WalkOneSeed(suspect, "THE LAYOUT UNDER QUESTION", trace_year);

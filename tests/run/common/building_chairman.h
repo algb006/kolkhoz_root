@@ -31,6 +31,7 @@
 #include "limit_policy.h"
 #include "night_pasture_policy.h"
 #include "office_policy.h"
+#include "planting_policy.h"
 #include "repair_policy.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
@@ -49,6 +50,7 @@ class BuildingChairman {
       : yard(tables),
         fixture(tables),
         felling(tables),
+        planting(tables),
         sawmill(tables),
         limit(tables),
         repairs(tables),
@@ -155,6 +157,7 @@ class BuildingChairman {
   static void Declare(const std::string& run_name) {
     FixturePolicy::Declare();
     FellingPolicy::Declare(run_name.c_str());
+    PlantingPolicy::Declare(run_name);
     SawmillPolicy::Declare(run_name.c_str());
     LimitPolicy::Declare(run_name.c_str());
     RepairPolicy::Declare();
@@ -184,6 +187,9 @@ class BuildingChairman {
     transition.RunDay(simulation);
     fixture.RunDay(simulation);
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));
+    // The forest after the felling: a zone a year, from the first spring
+    // (boss, boss-core-epoch1-3 seq 18 and 25).
+    planting.RunDay(simulation);
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
@@ -251,6 +257,7 @@ class BuildingChairman {
   YardPolicy yard;
   FixturePolicy fixture;
   FellingPolicy felling;
+  PlantingPolicy planting;
   SawmillPolicy sawmill;
   LimitPolicy limit;
   NightPasturePolicy night_pasture;

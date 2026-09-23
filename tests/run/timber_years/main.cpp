@@ -31,6 +31,7 @@
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/limit_policy.h"
+#include "../common/planting_policy.h"
 #include "../common/repair_policy.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
@@ -121,11 +122,13 @@ int main(int argc, char** argv) {
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);
+  run::PlantingPolicy planting(*started.tables);  // 0.34.41: every run plants
   run::RepairPolicy repairs(*started.tables);
   run::SawmillPolicy sawmill(*started.tables);
   run::LimitPolicy limit(*started.tables);
   run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
   run::FellingPolicy::Declare("timber_years");
+  run::PlantingPolicy::Declare("timber_years");
   run::SawmillPolicy::Declare("timber_years");
   run::LimitPolicy::Declare("timber_years");
 
@@ -196,6 +199,7 @@ int main(int argc, char** argv) {
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
+      planting.RunDay(*started.simulation);
       sawmill.RunDay(*started.simulation);
       limit.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
@@ -332,6 +336,7 @@ int main(int argc, char** argv) {
             << " days while a site lacked logs; boards lay " << boards_idle_total
             << " days with no site needing any\n";
   felling.Report("timber_years", started.State());
+  planting.Report("timber_years", started.State());
   sawmill.Report("timber_years");
   limit.Report("timber_years");
   sawmill.ReportState("timber_years", started.State());

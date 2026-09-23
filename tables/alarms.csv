@@ -25,3 +25,4 @@ plan_position_uncovered,resource,17
 felling_unreachable,stand,18
 processing_stopped,unit,19
 demolition_stock_waiting,unit,20
+planting_unreachable,stand,21

@@ -282,13 +282,21 @@ class FellingPolicy {
     float best_volume = 0.0F;
     for (std::uint32_t row = 0; row < world.stands.rows.size(); ++row) {
       const core::TimberStandRow& stand = world.stands.rows[row];
-      if (stand.table_row >= catalog_.stands.size()) {
-        continue;
+      // A GROWN PLANTING IS FELLED TOO, at its species' log share
+      // (timber_planting.h, PlantedStandDef). It has no row of the stands
+      // table, and until the planting policy this loop skipped every stand
+      // without one — a zone grown in the run would have stood uncut for ever.
+      float share = 0.0F;
+      if (stand.kind == core::TimberStandKind::kPlanted) {
+        share = stand.species.value < catalog_.species.size()
+                    ? catalog_.species[stand.species.value].log_share
+                    : 0.0F;
+      } else if (stand.table_row < catalog_.stands.size()) {
+        const core::TimberStandDef& def = catalog_.stands[stand.table_row];
+        share = stand.kind == core::TimberStandKind::kForestOld
+                    ? def.log_share * catalog_.old_log_share_factor
+                    : def.log_share;
       }
-      const core::TimberStandDef& def = catalog_.stands[stand.table_row];
-      const float share = stand.kind == core::TimberStandKind::kForestOld
-                              ? def.log_share * catalog_.old_log_share_factor
-                              : def.log_share;
       if (!(share > 0.0F) || !(stand.stock_m3 > 0.0F)) {
         continue;
       }

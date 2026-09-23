@@ -545,6 +545,10 @@ int main(int argc, char** argv) {
   run::FixturePolicy::Declare();
   run::FellingPolicy felling(*world.tables);
   run::FellingPolicy::Declare("thirty_years");
+  // The forest planted again, as every building chairman does (0.34.41):
+  // one new capability, every run at once.
+  run::PlantingPolicy planting(*world.tables);
+  run::PlantingPolicy::Declare("thirty_years");
   run::SawmillPolicy sawmill(*world.tables);
   run::SawmillPolicy::Declare("thirty_years");
   run::LimitPolicy limit(*world.tables);
@@ -644,6 +648,7 @@ int main(int argc, char** argv) {
       yard.RunDay(*world.simulation);
       fixture.RunDay(*world.simulation);
       felling.RunDay(*world.simulation, sawmill.LogsForMissingBoards(world.State()));
+      planting.RunDay(*world.simulation);
       sawmill.RunDay(*world.simulation);
       limit.RunDay(*world.simulation);
       orders.RunDay(*world.simulation);
@@ -1008,6 +1013,7 @@ int main(int argc, char** argv) {
             << harvest_waited_days << " days over " << g_years << " years, worst year "
             << harvest_waited_worst << " days\n";
   felling.Report("thirty_years", state);
+  planting.Report("thirty_years", state);
   sawmill.Report("thirty_years");
   limit.Report("thirty_years");
   sawmill.ReportState("thirty_years", state);

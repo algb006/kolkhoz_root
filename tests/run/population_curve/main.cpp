@@ -196,6 +196,11 @@ struct Trajectory {
   std::vector<std::string> social_keys;
   /// Where the logs went, year by year (timber_flow_tally.h).
   std::vector<run::TimberFlowTally::Year> timber;
+
+  /// The run's planting at the turn of year 20 and at the end
+  /// (planting_policy.h).
+  run::PlantingPolicy::Summary planting20;
+  run::PlantingPolicy::Summary planting_end;
   std::int64_t first_sawmill_day = -1;
   /// The standing kolkhoz buildings by the era their SECOND rung opens in:
   /// Epoch I, a later era, or no second rung at all. Three counts that must
@@ -328,6 +333,15 @@ void LiveOneDay(core::ISimulation& simulation,
 ///                    only, because nine times thirty-three lines of flows
 ///                    is a wall nobody reads.
 /// @return false if the world would not start at all.
+/// `--no-planting`: the control arm of the planting measurement (0.34.41) —
+/// the building chairman without the one policy under test.
+bool g_no_planting = false;
+
+/// `--seed-offset=N`: every seed of kSeeds moved by N — a SECOND sample of
+/// nine villages for a comparison, not the canonical curve (its bands are
+/// read on kSeeds; a verdict on another sample is printed, not trusted).
+std::uint64_t g_seed_offset = 0;
+
 bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   const run::Simulation world = run::Start(seed);
   if (!world) {
@@ -345,6 +359,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   // parcel 257), and a curve measured without anybody building is a curve of
   // a village leaving in its first winters — 36 at year 7, nobody at 14.
   run::BuildingChairman builder(*world.tables);
+  if (g_no_planting) {
+    builder.planting.Disable();
+  }
   run::TimberFlowTally timber(*world.tables);
   if (const core::ITable* const resources = world.tables->FindTable("resources")) {
     const std::uint32_t key_column = resources->FindColumn("key");
@@ -374,6 +391,12 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     }
     if (year == 14) {
       out.year14 = population;
+    }
+    // THE PLANTING AT THE TURN OF YEAR 20 (boss, boss-core-epoch1-3 seq 18):
+    // the groves are felled to nothing by about then, and this is the year
+    // the planted zones have to be carrying the timber.
+    if (year == 20) {
+      out.planting20 = builder.planting.Summarize(state);
     }
     // THE RUN IS TAKEN AS IT PASSES, not read off the final state. It is
     // reset to nought by the first year that falls short, so a village that
@@ -528,6 +551,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
   out.timber = timber.years();
   out.first_sawmill_day = timber.first_sawmill_day();
+  out.planting_end = builder.planting.Summarize(final_state);
   out.transition_calendar_year = builder.transition.YearTaken();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
@@ -583,15 +607,40 @@ Number Median(std::vector<Number> values) {
 int main(int argc, char** argv) {
   int failures = 0;
   run::BuildingChairman::Declare("population_curve");
+  std::uint64_t probe_seed = 0;
+  for (int index = 1; index < argc; ++index) {
+    const std::string_view argument(argv[index]);
+    if (argument == "--no-planting") {
+      g_no_planting = true;
+    } else if (argument.starts_with("--seed-offset=")) {
+      g_seed_offset = std::strtoull(
+          std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
+          nullptr,
+          10);
+    } else {
+      probe_seed = std::strtoull(argv[index], nullptr, 10);
+    }
+  }
+  if (g_no_planting) {
+    std::cout << "population_curve: CONTROL ARM — --no-planting: the building chairman "
+                 "plants nothing (the declaration above does not hold)\n";
+  }
+  if (g_seed_offset != 0) {
+    std::cout << "population_curve: NOT THE CANONICAL SAMPLE — --seed-offset=" << g_seed_offset
+              << ": seeds " << kSeeds.front() + g_seed_offset << ".."
+              << kSeeds.back() + g_seed_offset
+              << "; the bands are read on the canonical nine, so their verdict here is printed, "
+                 "not trusted\n";
+  }
 
   // ONE SEED ON THE COMMAND LINE IS A PROBE, NOT A VERDICT: it prints the
   // year-by-year flows of a village nobody has looked at and judges nothing.
   // A band read on the median of nine cannot be applied to a sample of one,
   // and a run that pretended otherwise would hand back a red on a question it
   // never asked.
-  if (argc > 1) {
+  if (probe_seed != 0) {
     Trajectory one;
-    if (!Walk(std::strtoull(argv[1], nullptr, 10), true, one)) {
+    if (!Walk(probe_seed, true, one)) {
       return 1;
     }
     std::cout << "population_curve: PROBE seed " << one.seed << " — year 7 = " << one.year7
@@ -602,9 +651,10 @@ int main(int argc, char** argv) {
   }
 
   std::vector<Trajectory> walks;
-  for (const std::uint64_t seed : kSeeds) {
+  for (const std::uint64_t canonical : kSeeds) {
+    const std::uint64_t seed = canonical + g_seed_offset;
     Trajectory walk;
-    if (!Walk(seed, seed == kSeeds.front(), walk)) {
+    if (!Walk(seed, canonical == kSeeds.front(), walk)) {
       return 1;
     }
     std::cout << "population_curve: seed " << walk.seed << " — year 7 = " << walk.year7
@@ -990,6 +1040,25 @@ int main(int argc, char** argv) {
       }
     }
     std::cout << '\n';
+    // THE PLANTING, by village (planting_policy.h): zones accepted by the
+    // core / planted / grown, the timber the grown ones held at maturity and
+    // what stands in plantings now — at the turn of year 20 and at the end.
+    // Refusals, years held back by a waiting zone and years with no place
+    // left are printed beside, so a zero reads as what it is.
+    for (const auto& [label, pick] : {std::pair{"year 20", &Trajectory::planting20},
+                                      std::pair{"the end", &Trajectory::planting_end}}) {
+      std::cout << "population_curve: planting at " << label
+                << " — ordered, EVER planted/grown/m3 felled out of them; rows NOW "
+                   "planted/grown, m3 standing; refused, held back, no place — by village:";
+      for (const Trajectory& walk : walks) {
+        const run::PlantingPolicy::Summary& s = walk.*pick;
+        std::cout << " | " << s.ordered << ", " << s.planted_ever << '/' << s.grown_ever << '/'
+                  << std::lround(s.felled_ever_m3) << "; " << s.planted << '/' << s.grown << ' '
+                  << std::lround(s.standing_m3) << "; " << s.refused << ' ' << s.held_back << ' '
+                  << s.no_place;
+      }
+      std::cout << '\n';
+    }
     std::cout << "population_curve: the first sawmill standing, campaign year per village:";
     for (const Trajectory& walk : walks) {
       if (walk.first_sawmill_day < 0) {
