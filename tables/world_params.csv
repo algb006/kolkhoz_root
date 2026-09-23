@@ -231,3 +231,4 @@ hospital_days,8,core
 hospital_return_health,60,core
 ambulance_arrive_hour,8,core
 walk_home_hours,4,core
+calving_fed_share_floor,0.75,core
