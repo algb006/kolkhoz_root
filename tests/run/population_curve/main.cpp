@@ -32,6 +32,7 @@
 
 #include "../common/building_chairman.h"
 #include "../common/run_harness.h"
+#include "../common/timber_flow_tally.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -187,6 +188,8 @@ struct Trajectory {
       upgrade_refusals = {};
   /// What held the social objects' marking (social_objects_policy.h, Held).
   run::SocialObjectsPolicy::Held social_held;
+  /// Where the logs went, year by year (timber_flow_tally.h).
+  std::vector<run::TimberFlowTally::Year> timber;
   /// The standing kolkhoz buildings by the era their SECOND rung opens in:
   /// Epoch I, a later era, or no second rung at all. Three counts that must
   /// sum to `units_standing`, printed beside it.
@@ -331,6 +334,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   // parcel 257), and a curve measured without anybody building is a curve of
   // a village leaving in its first winters — 36 at year 7, nobody at 14.
   run::BuildingChairman builder(*world.tables);
+  run::TimberFlowTally timber(*world.tables);
 
   for (std::uint32_t year = 1; year <= kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
@@ -342,6 +346,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // the day is untouched, and the bands below are the proof.
       LiveOneDay(*simulation, builder.upgrades, out);
       builder.RunDay(*simulation);
+      timber.CountDay(simulation->CompletedState());
     }
     const core::WorldState& state = simulation->CompletedState();
     const auto population = static_cast<std::uint32_t>(state.residents.rows.size());
@@ -493,6 +498,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.upgrades_ordered = builder.upgrades.ordered();
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
   out.social_held = builder.social.held();
+  out.timber = timber.years();
   out.transition_calendar_year = builder.transition.YearTaken();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
   out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
@@ -830,6 +836,39 @@ int main(int argc, char** argv) {
             << (going_up / villages) << ", the farm first " << (farm_first / villages)
             << ", a house waits " << (house_waits / villages)
             << " (days before the farm stood are not counted)\n";
+  // WHERE THE LOGS WENT (boss seq 25): the lead village year by year, then
+  // the nine villages' thirty-three-year totals, means of nine.
+  if (!walks.empty()) {
+    run::TimberFlowTally::PrintYears(
+        "population_curve (seed " + std::to_string(walks[0].seed) + ")", walks[0].timber);
+    run::TimberFlowTally::Year total;
+    std::size_t years_seen = 0;
+    for (const Trajectory& walk : walks) {
+      years_seen += walk.timber.size();
+      for (const run::TimberFlowTally::Year& y : walk.timber) {
+        total.felled += y.felled;
+        total.to_houses += y.to_houses;
+        total.to_social += y.to_social;
+        total.to_upgrades += y.to_upgrades;
+        total.to_other += y.to_other;
+        total.spoiled += y.spoiled;
+        total.lying_on_stands += y.lying_on_stands;
+        total.in_stores += y.in_stores;
+      }
+    }
+    const double nine = static_cast<double>(walks.size());
+    std::cout << "population_curve: logs over 33 years, tonnes, means of " << walks.size() << " ("
+              << years_seen << " village-years closed) — felled (a floor) " << total.felled / nine
+              << ", to houses " << total.to_houses / nine << ", to social objects "
+              << total.to_social / nine << ", to upgrades " << total.to_upgrades / nine
+              << ", to the farm's other sites " << total.to_other / nine << ", spoiled "
+              << total.spoiled / nine
+              << ", sawn NOT MEASURED; at the year's turn, mean over the village-years: "
+              << "lying on the stands "
+              << (years_seen > 0 ? total.lying_on_stands / static_cast<double>(years_seen) : 0.0)
+              << ", in the stores "
+              << (years_seen > 0 ? total.in_stores / static_cast<double>(years_seen) : 0.0) << '\n';
+  }
   // THE DENOMINATOR BESIDE THE ANSWER. "Nought years open" says nothing about
   // whether the shortfall is one stubborn type or the whole farm, and the two
   // have different repairs.
