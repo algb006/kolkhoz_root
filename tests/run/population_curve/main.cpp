@@ -192,6 +192,8 @@ struct Trajectory {
   std::vector<std::string> resource_keys;
   /// What held the social objects' marking (social_objects_policy.h, Held).
   run::SocialObjectsPolicy::Held social_held;
+  std::vector<run::SocialObjectsPolicy::Fate> social_fates;
+  std::vector<std::string> social_keys;
   /// Where the logs went, year by year (timber_flow_tally.h).
   std::vector<run::TimberFlowTally::Year> timber;
   std::int64_t first_sawmill_day = -1;
@@ -515,6 +517,15 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.upgrades_ordered = builder.upgrades.ordered();
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
   out.social_held = builder.social.held();
+  out.social_fates = builder.social.fates();
+  if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
+    const std::uint32_t key_column = types->FindColumn("key");
+    for (const core::UnitTypeId id : builder.social.wanted()) {
+      out.social_keys.emplace_back(key_column == core::kNoTableColumn
+                                       ? std::to_string(id.value)
+                                       : std::string(types->CellText(id.value, key_column)));
+    }
+  }
   out.timber = timber.years();
   out.first_sawmill_day = timber.first_sawmill_day();
   out.transition_calendar_year = builder.transition.YearTaken();
@@ -849,6 +860,49 @@ int main(int argc, char** argv) {
     farm_first += static_cast<float>(walk.social_held.farm_first);
     house_waits += static_cast<float>(walk.social_held.a_house_waits);
   }
+  // THE SIX BY TYPE (boss, boss-core-epoch1-3 seq 7): per village, for each
+  // wanted type, the campaign year it was first a site and first stood
+  // ("-" never), its site-days, and of those the marked days short of recipe.
+  if (!walks.empty()) {
+    const std::vector<std::string>& keys = walks.front().social_keys;
+    for (std::size_t type = 0; type < keys.size(); ++type) {
+      std::cout << "population_curve: social " << keys[type] << " — site/built year by village:";
+      std::uint64_t site_days = 0;
+      std::uint64_t short_days = 0;
+      std::uint32_t built_in = 0;
+      for (const Trajectory& walk : walks) {
+        if (type >= walk.social_fates.size()) {
+          std::cout << " ?";
+          continue;
+        }
+        const run::SocialObjectsPolicy::Fate& fate = walk.social_fates[type];
+        const auto year = [](std::int64_t day) {
+          return day < 0 ? std::string("-") : std::to_string(day / core::kDaysPerYear + 1);
+        };
+        std::cout << ' ' << year(fate.first_site_day) << '/' << year(fate.built_day);
+        site_days += fate.site_days;
+        short_days += fate.materials_short_days;
+        built_in += fate.built_day >= 0 ? 1U : 0U;
+      }
+      std::cout << " — built in " << built_in << " of " << walks.size() << ", site-days "
+                << site_days << ", of them short of recipe " << short_days;
+      std::map<std::uint16_t, std::uint64_t> first_short;
+      for (const Trajectory& walk : walks) {
+        if (type < walk.social_fates.size()) {
+          for (const auto& [resource, days] : walk.social_fates[type].short_by_resource) {
+            first_short[resource] += days;
+          }
+        }
+      }
+      std::cout << ", first short:";
+      for (const auto& [resource, days] : first_short) {
+        const std::vector<std::string>& names = walks.front().resource_keys;
+        std::cout << ' ' << (resource < names.size() ? names[resource] : std::to_string(resource))
+                  << " x" << days;
+      }
+      std::cout << '\n';
+    }
+  }
   std::cout << "population_curve: social marking held, days of " << 33U * core::kDaysPerYear
             << " — every object stands " << (nothing_left / villages) << ", one still going up "
             << (going_up / villages) << ", the farm first " << (farm_first / villages)
@@ -921,6 +975,19 @@ int main(int argc, char** argv) {
               << " — dead " << static_cast<double>(total.sawmill_dead_days) / nine
               << ", a site at level 0 " << static_cast<double>(total.sawmill_unbuilt_days) / nine
               << ", paused " << static_cast<double>(total.sawmill_paused_days) / nine << '\n';
+    std::cout << "population_curve: forest standing on the stands at the turns of years 1, 5, 10, "
+                 "20, 33, m3 (marked), by village:";
+    for (const Trajectory& walk : walks) {
+      std::cout << " |";
+      for (const std::size_t year : {1U, 5U, 10U, 20U, 33U}) {
+        if (year <= walk.timber.size()) {
+          const run::TimberFlowTally::Year& y = walk.timber[year - 1];
+          std::cout << ' ' << static_cast<long>(y.standing_m3) << '('
+                    << static_cast<long>(y.marked_m3) << ')';
+        }
+      }
+    }
+    std::cout << '\n';
     std::cout << "population_curve: the first sawmill standing, campaign year per village:";
     for (const Trajectory& walk : walks) {
       if (walk.first_sawmill_day < 0) {

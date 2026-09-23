@@ -39,6 +39,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <span>
 #include <string>
 #include <string_view>
@@ -66,6 +67,7 @@ class SocialObjectsPolicy {
   explicit SocialObjectsPolicy(const core::ITableSet& tables) {
     const core::ReadinessCatalog catalog = core::ReadReadinessCatalog(tables, core::Epoch::kOne);
     wanted_ = catalog.social_objects;
+    fates_.assign(wanted_.size(), Fate{});
     school_ = TypeByKey(tables, "school");
     house_ = TypeByKey(tables, "wooden_house");
     std::string error;
@@ -96,6 +98,35 @@ class SocialObjectsPolicy {
       a_house_waits = a_house_waits || family.house.value == core::kInvalidEntityIdValue;
     }
     bool one_is_going_up = false;
+    // BY TYPE (the six-types measure, boss-core-epoch1-3 seq 7): the first
+    // day each wanted type was a site, the first it stood, and its site-days.
+    for (std::size_t index = 0; index < wanted_.size(); ++index) {
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        const core::UnitRow& unit = world.units.rows[row];
+        if (unit.type.value != wanted_[index].value || unit.dead != 0) {
+          continue;
+        }
+        Fate& fate = fates_[index];
+        const auto day = static_cast<std::int64_t>(world.calendar.day);
+        if (fate.first_site_day < 0) {
+          fate.first_site_day = day;
+        }
+        if (unit.level == 0) {
+          ++fate.site_days;
+          const bool marked = unit.construction.phase == core::ConstructionPhase::kMarked;
+          if (marked) {
+            const std::vector<core::MaterialShortfall> short_lines =
+                simulation.MaterialsShortFor(world.units.row_ids[row]);
+            if (!short_lines.empty()) {
+              ++fate.materials_short_days;
+              ++fate.short_by_resource[short_lines.front().resource.value];
+            }
+          }
+        } else if (fate.built_day < 0) {
+          fate.built_day = day;
+        }
+      }
+    }
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.type.value == house_.value && unit.level == 0) {
@@ -181,6 +212,22 @@ class SocialObjectsPolicy {
 
   const Held& held() const { return held_; }
 
+  /// One wanted type's life in the run: the first day it was a site (or
+  /// stood), the first day it stood built, its days as a site, and of those
+  /// the marked days its recipe was short. -1 = never.
+  struct Fate {
+    std::int64_t first_site_day = -1;
+    std::int64_t built_day = -1;
+    std::uint32_t site_days = 0;
+    std::uint32_t materials_short_days = 0;
+    /// The first short line of the recipe on those days, by resource row.
+    std::map<std::uint16_t, std::uint32_t> short_by_resource;
+  };
+
+  const std::vector<Fate>& fates() const { return fates_; }
+
+  const std::vector<core::UnitTypeId>& wanted() const { return wanted_; }
+
  private:
   bool Wanted(core::UnitTypeId type) const {
     for (const core::UnitTypeId id : wanted_) {
@@ -235,6 +282,8 @@ class SocialObjectsPolicy {
   std::uint32_t started_ = 0;
 
   Held held_;
+
+  std::vector<Fate> fates_;
 };
 
 }  // namespace run

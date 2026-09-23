@@ -97,6 +97,10 @@ class TimberFlowTally {
     double boards_to_sites = 0.0;
     double boards_to_upgrades = 0.0;
     double boards_in_stores = 0.0;
+    /// The forest at the turn: timber still standing on the stands, and of
+    /// it marked for felling, cubic metres.
+    double standing_m3 = 0.0;
+    double marked_m3 = 0.0;
   };
 
   explicit TimberFlowTally(const core::ITableSet& tables) {
@@ -221,6 +225,8 @@ class TimberFlowTally {
       current_.spoiled = Tonnes(At(world.ledger.closed.spoiled));
       for (const core::TimberStandRow& stand : world.stands.rows) {
         current_.lying_on_stands += Tonnes(stand.load_grams);
+        current_.standing_m3 += static_cast<double>(stand.stock_m3);
+        current_.marked_m3 += static_cast<double>(stand.marked_m3);
       }
       for (const core::UnitRow& unit : world.units.rows) {
         const core::Grams logs = log_ < unit.stock.size() ? unit.stock[log_] : 0;
