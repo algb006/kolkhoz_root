@@ -4149,11 +4149,13 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
 
   // -- a weather year stands outside the run (boss seq 26) --------------------
   //
-  // As a PAIR, one shortfall under two snows: 600 kg short with 700 kg of
-  // standing wheat under the snow is the weather's year; the same 600 kg
-  // short with only 500 kg under it is the chairman's. Only the amount
+  // As a PAIR, one shortfall under different snows. 600 kg short with 700 kg
+  // of standing wheat under the snow is the weather's year, and so is 300 kg
+  // under it: the snow's share has been half the shortfall since boss seq 5,
+  // item 7 (STUB 0.5), and the boundary belongs to the weather. The same
+  // 600 kg short with only 250 kg under it is the chairman's. Only the amount
   // differs, so an implementation that asked "was there snow at all" passes
-  // the first and fails the second.
+  // the first and fails the last.
   {
     const auto trials_in = [](const core::WorldState& world) {
       std::uint32_t raised = 0;
@@ -4172,9 +4174,15 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
                        "but the run of failed years neither grows nor breaks on it");
     failures += Expect(trials_in(weather) == 0, "and it does not bring the trial on");
 
-    const core::WorldState chairmans = turn(1'000'000, 400'000, carried, 500'000);
+    const core::WorldState half = turn(1'000'000, 400'000, carried, 300'000);
+    failures += Expect(half.plan.failed_years_in_a_row == 2,
+                       "a snow that took exactly half the shortfall still makes the weather's "
+                       "year");
+
+    const core::WorldState chairmans = turn(1'000'000, 400'000, carried, 250'000);
     failures += Expect(chairmans.plan.failed_years_in_a_row == 3,
-                       "a shortfall larger than the snow took is the chairman's: the run grows");
+                       "a shortfall the snow took less than half of is the chairman's: the run "
+                       "grows");
     failures += Expect(trials_in(chairmans) == 1, "and the third such year brings the trial on");
 
     // A run already standing at the threshold: the weather year leaves it

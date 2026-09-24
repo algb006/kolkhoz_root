@@ -72,8 +72,9 @@ bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivere
 
 /// @brief Whether the year failed ONLY BY THE WEATHER (boss seq 26, econ's
 /// forgiving start): at least one position was not delivered, and every one
-/// that was not falls short by no more than the ledger's `lost_to_snow` of
-/// that same resource this year. Such a year is kept out of the trial's
+/// that was not had at least `weather_year_snow_share` of its shortfall taken
+/// by the snow — the ledger's `lost_to_snow` of that same resource this year
+/// (by share since boss seq 5, item 7). Such a year is kept out of the trial's
 /// "three in a row" — the series neither grows nor breaks (JudgePlan).
 /// @pre `current.ledger.current` is still the closing year's book — true at
 /// the year start, before the ledger turns (world.cpp, RotateLedger).

@@ -160,9 +160,9 @@ bool PlanFullyDelivered(const ProductionConfig& config, const WorldState& curren
 bool FailedOnlyBySnow(const ProductionConfig& config, const WorldState& current) {
   // THE STANDING CROP THE SNOW TOOK, and nothing else: a heap the lying snow
   // took went there because nobody carted it — a decision, not the weather
-  // (lost_no_room is not read). A position failed by more than its crop's
-  // lost_to_snow, or failed with no snow on its crop at all, makes the year
-  // the chairman's.
+  // (lost_no_room is not read). A position whose shortfall the snow took
+  // less than weather_year_snow_share of, or which failed with no snow on
+  // its crop at all, makes the year the chairman's.
   bool any_failed = false;
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const Grams due = current.plan.due[index];
@@ -174,7 +174,12 @@ bool FailedOnlyBySnow(const ProductionConfig& config, const WorldState& current)
     any_failed = true;
     const Grams snowed =
         AmountOf(current.ledger.current.lost_to_snow, DefIdFromIndex<ResourceIdTag>(index));
-    if (snowed <= 0 || due - delivered > snowed) {
+    // BY SHARE AND NOT BY SIGN (boss seq 5, item 7): the snow took at least
+    // weather_year_snow_share of the shortfall. The whole of it was asked on
+    // 0.34.45, and a field half dug before the snow read as the chairman's.
+    const double shortfall = static_cast<double>(due - delivered);
+    if (snowed <= 0 || static_cast<double>(snowed) <
+                           shortfall * static_cast<double>(config.weather_year_snow_share)) {
       return false;
     }
   }

@@ -950,6 +950,15 @@ struct ProductionConfig {
   /// design §8: "три сорванных плана подряд"). campaign.csv.
   std::uint8_t plan_failed_years_to_trial = 3;
 
+  /// THE WEATHER YEAR'S SHARE (boss, boss-core-epoch1-5 seq 5, item 7; econ's
+  /// forgiving-start.md §5а): a failed position is the weather's when the
+  /// standing crop the snow took (ledger lost_to_snow) is at least this share
+  /// of its shortfall. A year whose every failed position is the weather's
+  /// stays out of the trial's "three in a row" (FailedOnlyBySnow). STUB 0.5,
+  /// boss's — no table key yet. It was 1.0 in effect on 0.34.45: the snow had
+  /// to cover the whole shortfall.
+  float weather_year_snow_share = 0.5F;
+
   /// What a met and a failed year do to the chairman's raikom reputation,
   /// in points of its 0..100 scale (campaign.csv). District design §5 gives
   /// the DIRECTIONS — "растёт: выполнение и перевыполнение плана", "падает:
