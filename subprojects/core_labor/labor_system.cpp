@@ -395,7 +395,10 @@ class LaborSystem final : public ILaborSystem {
     // list was not empty, the return did not happen, and the chairman's man
     // worked every Sunday of his life. One rule must not depend on whether
     // an unrelated one had anything to say.
-    ApplyStandingWork(current, current, IsDayOffIn(current, current.calendar.day));
+    ApplyStandingWork(current,
+                      current,
+                      IsDayOffIn(current, current.calendar.day),
+                      config_.rest_walkoff_threshold);
   }
 
   /// THE WORK THAT OPENED AFTER THE MORNING (boss seq 93/95, option а). The
@@ -1201,6 +1204,17 @@ class LaborSystem final : public ILaborSystem {
       const ResidentRow& resident = current.residents.rows[row];
       Vec2 home;
       if (!Employable(current, resident) || !HomePosition(current, resident.family, home)) {
+        continue;
+      }
+      // PAST HIS LIMIT HE STAYS HOME (units rules §8: "Решает сам работник —
+      // не игрок и не учётчик", "Возвращается на следующий день, отдохнув").
+      // Placed anyway until 0.35.11, he walked off in his first working hour,
+      // his crew stood "crewed" for the top-up, and his day counted as worked,
+      // so he never rested back: thirty_years year 19, the same five harrowers
+      // at rest 0-9 sent to the oat fields three mornings running while 707
+      // rested men idled, and the oats missed their window. EMPLOYABLE STILL
+      // SAYS YES — he is not away and not a child; he is resting today.
+      if (resident.rest <= config_.rest_walkoff_threshold) {
         continue;
       }
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);

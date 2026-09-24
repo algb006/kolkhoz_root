@@ -536,6 +536,61 @@ int TestWalkOffPaysAndStops() {
   return failures;
 }
 
+/// PAST HIS LIMIT HE STAYS HOME (units rules §8: "Решает сам работник — не
+/// игрок и не учётчик"; 0.35.11). Placed anyway, he walked off in his first
+/// hour and his crew counted as crewed: thirty_years year 19, five harrowers
+/// at rest 0-9 on the oat fields three mornings running, 707 rested men idle.
+/// A pair: the spent man is not placed, the rested man beside him is; and a
+/// standing order does not send the spent man either, until he has rested.
+int TestASpentManIsNotSent() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  const auto run_morning = [&labor](DayWorld& day, std::uint32_t at_day) {
+    for (std::uint32_t hour = 0; hour <= 2; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(at_day) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+  };
+  {
+    DayWorld day(2);
+    day.world.residents.rows[0].rest = 5.0F;  // past the limit of 10
+    day.AddField(core::FieldPhase::kHarvest, 50.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+    run_morning(day, 1);
+    failures += Expect(day.world.residents.rows[0].work.kind == core::WorkKind::kNone,
+                       "a man past his limit is not placed: he rests at home today");
+    failures += Expect(day.world.residents.rows[1].work.kind == core::WorkKind::kHarvest,
+                       "and the rested man beside him is placed on the same work");
+  }
+  {
+    DayWorld day(1);
+    const core::FieldId field =
+        day.AddField(core::FieldPhase::kHarvest, 400.0F, core::Vec2{.x = 20.0F, .y = 0.0F});
+    core::OrderRow assign;
+    assign.kind = core::OrderKind::kAssignWork;
+    assign.status = core::OrderStatus::kPending;
+    assign.resident = day.world.residents.row_ids[0];
+    assign.work = core::WorkKind::kHarvest;
+    assign.field = field;
+    core::AppendRow(day.world.orders, assign);
+    day.RunDay(*labor, 0);  // the order is read on day 0 and stands from day 1
+    day.world.residents.rows[0].rest = 5.0F;
+    run_morning(day, 1);
+    failures += Expect(day.world.residents.rows[0].work.kind == core::WorkKind::kNone,
+                       "the chairman's standing order does not send a man past his limit");
+    day.world.residents.rows[0].rest = 70.0F;
+    run_morning(day, 2);
+    failures += Expect(day.world.residents.rows[0].work.field.value == field.value,
+                       "and the order sends him again once he has rested");
+  }
+  return failures;
+}
+
 int TestBarnRunsOnTheDayOff() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -3460,6 +3515,7 @@ int main() {
   failures += TestReferenceWorkerDeliversOneNorm();
   failures += TestWholeWorkingDay();
   failures += TestWalkOffPaysAndStops();
+  failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();
   failures += TestWinterStandsTheBrickSite();

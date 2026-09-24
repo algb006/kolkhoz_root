@@ -105,7 +105,13 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current);
 ///       placement for the day, and the order stands for the next. A building
 ///       order on a site whose class stands in winter (WinterStopsSite) is
 ///       skipped the same way through the winter season.
-void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_off);
+/// @param walkoff_rest Labour config `rest_walkoff_threshold`: a man at or
+///        below it is not sent — he rests, and the order stands for the day
+///        he is back (units rules §8).
+void ApplyStandingWork(const WorldState& world,
+                       WorldState& current,
+                       bool day_off,
+                       float walkoff_rest);
 
 }  // namespace core
 

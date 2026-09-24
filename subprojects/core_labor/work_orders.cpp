@@ -361,7 +361,10 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current) {
   CloseOrphanedWork(current);
 }
 
-void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_off) {
+void ApplyStandingWork(const WorldState& world,
+                       WorldState& current,
+                       bool day_off,
+                       float walkoff_rest) {
   for (const OrderRow& order : world.orders.rows) {
     if (order.kind != OrderKind::kAssignWork || order.status != OrderStatus::kAccepted) {
       continue;
@@ -400,6 +403,12 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
     // AWAY IN THE DISTRICT (away_in_district.h): the order stands for the
     // day he is back, and nobody is sent to work in his name meanwhile.
     if (OffWork(current.residents.rows[resident_row], current.calendar.tick)) {
+      continue;
+    }
+    // PAST HIS LIMIT, NOT EVEN THE CHAIRMAN SENDS HIM (units rules §8: "не
+    // игрок и не учётчик"; 0.35.11, the accountant's door the same). The
+    // order stands for the day he has rested.
+    if (current.residents.rows[resident_row].rest <= walkoff_rest) {
       continue;
     }
     WorkAssignment& work = current.residents.rows[resident_row].work;
