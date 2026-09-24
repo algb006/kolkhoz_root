@@ -175,7 +175,10 @@ struct DistributionConfig {
   std::uint32_t period_days = kDaysPerMonth;
 
   /// Family satiety at or below which the ration triggers.
-  float ration_satiety_threshold = 25.0F;  ///< ASSUMPTION.
+  /// The health line (labor-payment §5; boss, boss-core-epoch1-4 seq 13):
+  /// 25 until 0.34.42, when two thirds of the hungry stood between 25 and 40
+  /// with no right to the ration.
+  float ration_satiety_threshold = 40.0F;
 
   /// 0/1: the distribution never dips into next sowing's seed. The guard
   /// reserves, per grain resource, the seed the planned sowing needs
@@ -296,12 +299,6 @@ struct FoodConfig {
   /// (SealedFunds, 0.34.37). A parallel
   /// phase that called it would run production's read on a worker thread.
   std::function<ResourceAmounts(const WorldState&)> fodder_fund;
-
-  /// 1 for a resource the district's plan names (campaign.csv plan_positions,
-  /// by the crops they grow), dense by ResourceId; empty without a campaign.
-  /// "First the plan" holds these before the spring names this year's figure,
-  /// whatever last year delivered of them (boss, parcel 440).
-  std::vector<std::uint8_t> plan_position;
 
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT

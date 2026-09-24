@@ -153,6 +153,29 @@ std::uint32_t EaterCount(const FoodConfig& config,
 ///     first year there is no closed book and nothing is held back — which
 ///     is right, because the first year's fodder is the start stock, and
 ///     that was measured from the first cut for exactly this reason.
+/// Days until held seed of resource `index` is sown at the latest: to the end
+/// of the last sowing month of the crops it seeds, capped at `days_left` to
+/// the turn; the cap itself when no crop of it names a month.
+std::uint32_t SeedHorizonDays(const FoodConfig& config,
+                              const WorldState& world,
+                              std::uint32_t index,
+                              std::uint32_t days_left) {
+  const auto today = static_cast<std::uint32_t>(world.calendar.date.month);
+  std::uint32_t latest = 0;
+  bool any = false;
+  for (const SeedNormDef& norm : config.seed_norms) {
+    if (norm.resource.value != index || norm.sow_to_month == kNoSowingMonth) {
+      continue;
+    }
+    // To the END of the window's last month: this month counts whole.
+    const std::uint32_t months =
+        ((norm.sow_to_month + kMonthsPerYear - today) % kMonthsPerYear) + 1U;
+    latest = std::max(latest, months * kDaysPerMonth);
+    any = true;
+  }
+  return any ? std::min(latest, days_left) : days_left;
+}
+
 std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
   // THE SEED FUND AND THE PLAN RESERVE, AND THE UNSEALINGS OFF BOTH, live in
   // core_common/fund_ladder.h since 2026-09-13, because the herds must stay
@@ -164,7 +187,15 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   std::vector<Grams> reserve = HeldAboveFodder(world,
                                                config.seed_norms,
                                                config.resources.size(),
-                                               config.distribution.reserve_seed_fund != 0);
+                                               config.distribution.reserve_seed_fund != 0,
+                                               config.carted_daily);
+  // The top two rungs as they stand, before the fodder, and the seed's part
+  // of them: what the rot margin below is taken on, each to its own day.
+  const std::vector<Grams> seed_and_plan = reserve;
+  const ResourceAmounts seed_part =
+      config.distribution.reserve_seed_fund != 0
+          ? SeedRungLeft(world, config.seed_norms, config.resources.size())
+          : ResourceAmounts(config.resources.size(), 0);
   // RUNG 3: THE FODDER CLAIM, AND INSIDE IT THE FODDER FUND (resources
   // design §6; boss, boss-core-epoch1-resume seq 17). Last year's feed of the
   // kolkhoz's herds is held as it was — a cow's oats do not go to the table —
@@ -183,59 +214,42 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // plan met only in full was failed. A store loses held/days a day
   // (spoilage.h), so to deliver `plan` in n days it must hold plan * (d/(d-1))^n
   // today; the delivery is at the year's turn.
+  //
+  // AND WHAT THE SEED RUNG HOLDS ROTS TOO (0.34.42). The margin was taken on
+  // the plan alone, so the seed held for the autumn's rye rotted out of the
+  // plan's margin and then out of the plan: on seed 1937, year 14, the store
+  // stood at the ladder's 3006 kg before the sowing, the sowing took its full
+  // 1890, the rest rotted from 1115 to 1096 by the turn, and 1116 were owed
+  // — 98 % delivered. It showed once the ration from 40 drew the stores down
+  // to the reserve itself. The margin is now taken on both rungs, EACH TO ITS
+  // OWN DAY: the plan to the turn, the seed to its sowing (crops.csv
+  // sow_from_month). Taken to the turn, the seed potatoes held from January
+  // to a May sowing carried half again of themselves — some 30 % of the seed
+  // over-held against the lean season (static review of 0.34.42).
   const std::uint32_t days_left = kDaysPerYear - (world.calendar.day % kDaysPerYear);
-  for (std::uint32_t index = 0; index < world.plan.due.size() && index < reserve.size(); ++index) {
-    // The rung's own figure, what is delivered already off it (0.34.38): the
-    // margin covers the rot of what still waits for the turn, and no more.
-    const Grams plan = PlanRungGrams(world, index);
+  const auto margin = [](Grams held, float days, std::uint32_t horizon) {
+    const double kept_share =
+        std::pow(1.0 - (1.0 / static_cast<double>(days)), static_cast<double>(horizon));
+    return GramsFromFloat(
+        static_cast<float>(static_cast<double>(held) / kept_share - static_cast<double>(held)));
+  };
+  for (std::uint32_t index = 0; index < seed_and_plan.size() && index < reserve.size(); ++index) {
     const float days =
         index < config.spoil_days.size() ? config.spoil_days[index] * config.keeping_factor : 0.0F;
-    if (plan <= 0 || !(days > 1.0F)) {
+    if (!(days > 1.0F)) {
       continue;
     }
-    const double kept_share =
-        std::pow(1.0 - (1.0 / static_cast<double>(days)), static_cast<double>(days_left));
-    reserve[index] += GramsFromFloat(
-        static_cast<float>(static_cast<double>(plan) / kept_share - static_cast<double>(plan)));
+    const Grams seed =
+        index < seed_part.size() ? std::min(seed_part[index], seed_and_plan[index]) : 0;
+    const Grams plan = seed_and_plan[index] - seed;
+    if (plan > 0) {
+      reserve[index] += margin(plan, days, days_left);
+    }
+    if (seed > 0) {
+      reserve[index] += margin(seed, days, SeedHorizonDays(config, world, index, days_left));
+    }
   }
   return reserve;
-}
-
-/// @brief Whether a resource is a position of the plan the settlement still
-/// owes: this year's, once the district has named it, and before that the
-/// district's positions.
-///
-/// FIRST THE PLAN, THEN THE ISSUE (labor-payment §7; boss, parcel 438): the
-/// automatic distribution hands out none of a crop the plan asks for until
-/// the plan is delivered — the whole of it, carried over included, and not
-/// only the reserve of this year's reaping. The delivery is at the year's
-/// turn, so a planned crop goes out on trudodni only on what the chairman
-/// unseals; the ration (§5) is not held, hunger ranks above the plan.
-///
-/// BEFORE THE SPRING, BY THE LIST AND NOT BY THE TONNES (boss, parcel 440).
-/// The first draft held last year's positions by what was DELIVERED of them,
-/// so a position failed outright was not held, and a failed plan opened the
-/// issue and prepared the next failure.
-bool PlanHoldsIt(const FoodConfig& config, const WorldState& world, std::uint32_t index) {
-  // The cart's position is never sealed: its share left at the milking
-  // (food_config.h, carted_daily; boss seq 113).
-  if (index == config.carted_daily.value) {
-    return false;
-  }
-  if (world.plan.announced != 0) {
-    return index < world.plan.due.size() && world.plan.due[index] > 0;
-  }
-  return index < config.plan_position.size() && config.plan_position[index] != 0;
-}
-
-/// @brief What the chairman has unsealed of the plan reserve for a resource.
-Grams PlanUnsealed(const WorldState& world, std::uint32_t index) {
-  const auto fund = static_cast<std::size_t>(FundKind::kPlanReserve);
-  if (fund >= world.unsealed.by_fund.size()) {
-    return 0;
-  }
-  const ResourceAmounts& opened = world.unsealed.by_fund[fund];
-  return index < opened.size() ? opened[index] : 0;
 }
 
 /// The issue norm of one position, kilograms per trudoden: the chairman's
@@ -351,12 +365,17 @@ BundleCover CoverBundle(const FoodConfig& config,
     // sees the full free stock, because holding milk back from a starving
     // household would be the very "full barn beside a hungry village" this
     // rule exists to forbid.
+    // FIRST THE PLAN, THEN THE ISSUE — BY THE RESERVE, NOT THE WHOLE CROP
+    // (labor-payment §7; boss, boss-core-epoch1-4 seq 9 and 10). Until
+    // 0.34.42 a crop the plan names went out on nothing but what the chairman
+    // unsealed, carry-over included (PlanHoldsIt; boss, parcels 438 and 440):
+    // on 0.34.40 that was hunger beside full barns, 258 hungry episodes, the
+    // first day of hunger with 37 days of the village's need in planned crops
+    // in the stores. The plan rung now holds what is owed, carry-over and
+    // reaping alike, from the turn (fund_ladder.h, PlanRungGrams); everything
+    // above the reserve goes out on trudodni.
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    Grams free_stock = FreeStock(current, reserve, resource);
-    if (PlanHoldsIt(config, current, index)) {
-      const Grams unsealed = PlanUnsealed(current, index);
-      free_stock = free_stock < unsealed ? free_stock : unsealed;
-    }
+    const Grams free_stock = FreeStock(current, reserve, resource);
     const float pool = static_cast<float>(free_stock) * food.issue_share_of_stock;
     const float given = asked > 0.0F ? std::min(pool, asked) : 0.0F;
     cover.coverage[index] = given / static_cast<float>(wanted[index]);
@@ -568,7 +587,8 @@ std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world
   }
   // THE FUNDS, AND NOT THE PLANNED CROP WHOLE (boss, boss-core-epoch1-4 seq
   // 2). 0.34.39 sealed a crop the plan names whole down to the unsealed, as
-  // the distribution holds it (PlanHoldsIt), and the distiller took not one
+  // the distribution then held it (PlanHoldsIt, gone in 0.34.42), and the
+  // distiller took not one
   // kilogram of rye, oats or potatoes in 270 village-years — the samogon, a
   // live trouble of the village, switched off. Holding the planned crop
   // whole is a promise to the FAMILIES, not a lock against the thief.

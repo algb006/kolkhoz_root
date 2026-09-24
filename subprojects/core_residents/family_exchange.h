@@ -43,9 +43,10 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
 /// fodder claim, less the chairman's unsealings (resources design §6) — the
 /// reserve the distribution, the ration and the ration alarm stay above, and
 /// the night theft too (boss seq 18: «опечатанное не крадётся»). NOT the
-/// planned crop whole: the distribution also holds that until unsealed
-/// (PlanHoldsIt), a promise to the families and not a lock against the thief
-/// (boss, boss-core-epoch1-4 seq 2, withdrawing 0.34.39's reading).
+/// planned crop whole: 0.34.39 sealed that against the thief too and was
+/// withdrawn (boss, boss-core-epoch1-4 seq 2), and since 0.34.42 the
+/// distribution does not hold it either — the plan rung holds what is owed,
+/// carry-over included (seq 9 and 10).
 /// @return Sized to the resource roster; empty when there is none.
 std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world);
 

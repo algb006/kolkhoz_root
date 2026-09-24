@@ -352,7 +352,20 @@ bool ParseSeedNorms(const ITable& crops,
   const std::uint32_t resource_column = crops.FindColumn("resource");
   const std::uint32_t norm_column = crops.FindColumn("sowing_norm_kg_per_ha");
   const std::uint32_t winter_column = crops.FindColumn("is_winter");
+  const std::uint32_t sow_column = crops.FindColumn("sow_to_month");
   for (std::uint32_t row = 0; row < crops.RowCount(); ++row) {
+    // The latest the held seed is sown: the horizon of its rot margin
+    // (0.34.42). 1-based in the table as production reads it
+    // (production_config.cpp); blank, absent or 0 is "not known", and the
+    // margin then runs to the turn.
+    float sow_month = 0.0F;
+    if (!OptionalCell(
+            crops, row, sow_column, Range{.low = 0.0F, .high = 12.0F}, sow_month, error)) {
+      PrefixError("crops", "sow_to_month", error);
+      return false;
+    }
+    config.seed_norms[row].sow_to_month =
+        sow_month >= 1.0F ? static_cast<std::uint8_t>(sow_month - 1.0F) : kNoSowingMonth;
     // A winter crop's seed is owed from the autumn before its slot
     // (fund_ladder.h); blank or absent is a spring crop.
     float winter = 0.0F;
@@ -435,40 +448,17 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
       return FoodConfig{};
     }
   }
-  // THE DISTRICT'S POSITIONS, as resources: what "first the plan" holds before
-  // the spring names this year's figure (family_exchange.cpp). The list is
-  // core_production's to validate and warn about; here it is only read.
+  // THE CART'S POSITION, the milk: never held by the plan rung, its share
+  // leaves at the milking (fund_ladder.h, PlanRungGrams).
   if (resources != nullptr) {
     const std::uint32_t milk_row = resources->FindRowByKey("milk");
     if (milk_row != kNoTableRow) {
       config.carted_daily = DefIdFromRow<ResourceIdTag>(milk_row);
     }
   }
-  const ITable* const campaign = tables.FindTable("campaign");
-  const ITable* const plan_crops = tables.FindTable("crops");
-  if (campaign != nullptr && plan_crops != nullptr && resources != nullptr) {
-    config.plan_position.assign(resources->RowCount(), 0);
-    const std::uint32_t positions_row = campaign->FindRowByKey("plan_positions");
-    const std::uint32_t value_col = campaign->FindColumn("value");
-    const std::uint32_t resource_col = plan_crops->FindColumn("resource");
-    const std::string list(positions_row == kNoTableRow || value_col == kNoTableColumn
-                               ? std::string()
-                               : std::string(campaign->CellText(positions_row, value_col)));
-    std::size_t start = 0;
-    while (start < list.size()) {
-      const std::size_t end = std::min(list.find(' ', start), list.size());
-      const std::string token = list.substr(start, end - start);
-      const std::uint32_t crop = plan_crops->FindRowByKey(token.substr(0, token.find('=')));
-      if (crop != kNoTableRow && resource_col != kNoTableColumn) {
-        const std::uint32_t resource =
-            resources->FindRowByKey(plan_crops->CellText(crop, resource_col));
-        if (resource < config.plan_position.size()) {
-          config.plan_position[resource] = 1;
-        }
-      }
-      start = end + 1;
-    }
-  }
+  // campaign.csv's plan positions are no longer read here: "first the plan"
+  // held them whole before the spring (boss, parcel 440) until 0.34.42, and
+  // the plan rung holds this year's debt out of the carry-over since.
   // Sleep is labor's number, read where it lives rather than copied into a
   // second table (the labor precedent: labor reads life.csv the same way).
   if (const ITable* labor = tables.FindTable("labor")) {

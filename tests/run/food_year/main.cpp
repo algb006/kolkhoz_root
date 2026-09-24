@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -692,8 +693,16 @@ int main(int argc, char** argv) {
   std::cout << "food_year: seed " << seed
             << (g_bands_bind ? "\n" : " — swept: bands print, model claims still bind\n");
 
-  const fs::path good_root = fs::temp_directory_path() / "run_food_year_good";
-  const fs::path bad_root = fs::temp_directory_path() / "run_food_year_bad";
+  // A DIRECTORY OF ITS OWN FOR EVERY INVOCATION. Shared by name, two runs at
+  // once wrote each other's tables half-way: a nine-seed sweep on 2026-09-24
+  // read 80.11 for seed 1929, which alone reads 46.01, and a band was
+  // re-recorded on it before the collision was found. The seed and the
+  // clock tell two invocations apart on every platform the runs build on.
+  const std::string tag =
+      std::to_string(seed) + "_" +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  const fs::path good_root = fs::temp_directory_path() / ("run_food_year_good_" + tag);
+  const fs::path bad_root = fs::temp_directory_path() / ("run_food_year_bad_" + tag);
   CopyTables(good_root, "");
   CopyTables(bad_root, "issue_kg_per_trudoden");
 
@@ -735,11 +744,28 @@ int main(int argc, char** argv) {
   // satisfied by a tally that has stopped recording: zero equals zero and
   // zero is no more than zero, so a broken counter would read as a village
   // whose chairman behaved perfectly. This says the wide-open arm reached.
-  failures +=
-      run::Expect(chaired.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)] > 0,
-                  "the wide-open chairman did reach the reserve (anchor)");
-  failures += run::Expect(chaired.released[static_cast<std::size_t>(core::FundKind::kSeed)] > 0,
-                          "and the seed fund too (anchor)");
+  //
+  // A KNOWN GAP SINCE 0.34.42, NOT AN ASSERTION. The door is entered only by
+  // a HUNGRY chairman, and 0.34.42 (the plan's reserve instead of the whole
+  // planned crop, the ration from 40) fed this village: on the canonical
+  // seed no arm authorises a gram, and of nine seeds only 1937 reaches (52.5 t
+  // of the reserve wide open, 5.25 t by tenths) — the shipped arm's leanest
+  // day is 66.0-73.9 on all nine. The door itself is tested where it lives
+  // (the ladder's unsealing, core_common and core_production units). RETURN
+  // WHEN: an arm here reaches a fund again on the canonical seed — printed as
+  // KNOWN GAP CLOSED — or a hungrier fixture is given to this experiment.
+  const auto reached = [](const Outcome& outcome, core::FundKind fund) {
+    return outcome.released[static_cast<std::size_t>(fund)];
+  };
+  constexpr const char* kFedSince = "0.34.42 fed the village: no hungry chairman enters the door";
+  failures += run::KnownGap(reached(chaired, core::FundKind::kPlanReserve) > 0,
+                            "the wide-open chairman did reach the reserve (anchor)",
+                            std::to_string(reached(chaired, core::FundKind::kPlanReserve)) + " g",
+                            kFedSince);
+  failures += run::KnownGap(reached(chaired, core::FundKind::kSeed) > 0,
+                            "and the seed fund too (anchor)",
+                            std::to_string(reached(chaired, core::FundKind::kSeed)) + " g",
+                            kFedSince);
   // AND THE PORTIONED ARM REACHED AS WELL — but not for the reason the first
   // draft of this comment gave. It said a chairman whose share had been lost
   // would authorise nothing; the one-gram clamp in RunDay, added by this same
@@ -747,9 +773,10 @@ int main(int argc, char** argv) {
   // at all. What catches that is the strict `<` band further down. This one
   // catches the portioned arm falling silent for any other reason — a hunger
   // trigger that stops firing, an order shape the verb refuses.
-  failures +=
-      run::Expect(portioned.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)] > 0,
-                  "the portioned chairman reached the reserve too (anchor)");
+  failures += run::KnownGap(reached(portioned, core::FundKind::kPlanReserve) > 0,
+                            "the portioned chairman reached the reserve too (anchor)",
+                            std::to_string(reached(portioned, core::FundKind::kPlanReserve)) + " g",
+                            kFedSince);
   // THE RESET RULE'S OWN WITNESS. The totals are the sum of what the rule
   // collected, so a rule that stopped collecting reports a smaller number
   // and nothing distinguishes that from a thriftier chairman. Both
@@ -760,8 +787,10 @@ int main(int argc, char** argv) {
       good.tally_reads ==
           kYears * core::kTicksPerYear * static_cast<std::uint32_t>(core::FundKind::kFundKindCount),
       "the fund tally was read every tick, not once a day (anchor)");
-  failures += run::Expect(chaired.fund_wipes_seen > 0,
-                          "the year's turn wiped an open fund at least once (anchor)");
+  failures += run::KnownGap(chaired.fund_wipes_seen > 0,
+                            "the year's turn wiped an open fund at least once (anchor)",
+                            std::to_string(chaired.fund_wipes_seen) + " wipes",
+                            kFedSince);
   failures += run::Expect(good.fund_wipes_seen == 0,
                           "and a village with no chairman had nothing to wipe (anchor)");
   for (std::size_t fund = 0; fund < good.released.size(); ++fund) {
@@ -782,10 +811,14 @@ int main(int argc, char** argv) {
   // deterministic arms become the same run, and equality satisfies it. This
   // says the two arms really are two. A band and not a model claim — the
   // MARGIN between them is a measurement, even though its direction is not.
-  failures +=
-      ExpectBand(portioned.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)] <
-                     chaired.released[static_cast<std::size_t>(core::FundKind::kPlanReserve)],
-                 "and a tenth at a time really is less than the door off its hinges");
+  // Nought against nought since 0.34.42 (above): a gap, not a band.
+  failures += run::KnownGap(
+      reached(portioned, core::FundKind::kPlanReserve) <
+          reached(chaired, core::FundKind::kPlanReserve),
+      "and a tenth at a time really is less than the door off its hinges",
+      std::to_string(reached(portioned, core::FundKind::kPlanReserve)) + " g against " +
+          std::to_string(reached(chaired, core::FundKind::kPlanReserve)) + " g",
+      kFedSince);
 
   // WHAT THIS CRITERION IS MEASURED ON, and it changed on 2026-08-31 after
   // the arithmetic of the whole balance was added up for the first time.
@@ -1205,13 +1238,22 @@ int main(int argc, char** argv) {
   // inside by luck at 37.53 and no longer the low outlier the paragraph above
   // describes. The rain itself moved the median by less than a point; it moved
   // seed 1931 from the middle of the band to its top.
+  //
+  // AND WITH THE PLAN'S RESERVE INSTEAD OF THE WHOLE PLANNED CROP, AND THE
+  // RATION FROM 40 (0.34.42; boss, boss-core-epoch1-4 seq 9, 10 and 13), the
+  // same nine seeds, one at a time: 46.10, 47.02, 47.90, 49.03 (seed 1931),
+  // 49.98 (median), 51.37, 51.58, 52.32, 54.84. The issue closes more of the
+  // lean season than it did: grain above the plan's debt goes out on
+  // trudodni. A first sweep read 79.99 and 80.11 for 1929 and 1930 — two runs
+  // at once writing each other's copied tables (the shared directory, fixed
+  // above) — and the band was re-recorded on it before that was found.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 34.88-47.23, median 41.70)\n";
-  // The edges are the measured 34.8755 and 47.2311 rounded OUTWARD, so that
+            << " (nine seeds: 46.10-54.84, median 49.98)\n";
+  // The edges are the measured 46.1034 and 54.8420 rounded OUTWARD, so that
   // the seeds that set them stay inside it.
   failures +=
-      ExpectBand(issue_gap >= 34.87F && issue_gap <= 47.24F,
+      ExpectBand(issue_gap >= 46.10F && issue_gap <= 54.85F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

@@ -681,9 +681,9 @@ struct PlanState {
   /// a stale comment: a reader deciding whether a field can be trusted asks
   /// the note, not the tree. Set at the spring announcement even when the
   /// figure is zero (district_plan.cpp, AnnouncePlan), cleared beside the
-  /// figure it describes both there and at the year's turn. Read by
-  /// `PlanHoldsIt` (core_residents/family_exchange.cpp), which holds last
-  /// year's positions by the LIST rather than by the tonnes.
+  /// figure it describes both there and at the year's turn. Read by the
+  /// plan's judge and the milk cart; `PlanHoldsIt`, which held last year's
+  /// positions by the LIST, went in 0.34.42 (the plan rung holds the debt).
   ///
   /// What it still does not do is answer at the other three doors: kNoPlanYet,
   /// the reserve door and the verdict key off the tonnage to this day, and

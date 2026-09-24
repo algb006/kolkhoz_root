@@ -123,13 +123,26 @@ Grams TakeFeed(WorldState& world,
 /// slower — while the plan rung alone left the floor unchanged on every seed.
 /// Whether the herds should stay below the seed fund is put to boss with those
 /// numbers; until he says, they stay below the plan only.
+///
+/// THAT "UNCHANGED" WAS MEASURED ON A RUNG THAT WAS NOUGHT UNTIL THE REAPING.
+/// Since 0.34.42 the plan rung holds the debt out of the carry-over from the
+/// January letter (fund_ladder.h, PlanRungGrams), so the horses are kept off
+/// the owed oats all spring — the very mechanism the seed-rung trial above
+/// measured at 7 -> 15. Re-measured with it: econ's plan700 on nine seeds, 1
+/// failed plan year on 1 seed against 2 on 2 on 0.34.40; thirty_years' own
+/// verdict the same, 1 on 1.
 ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& world) {
-  ResourceAmounts allowance =
-      HeldAboveFodder(world, std::span<const SeedNorm>{}, config.feed_values.size(), false);
+  ResourceAmounts allowance = HeldAboveFodder(
+      world, std::span<const SeedNorm>{}, config.feed_values.size(), false, config.milk_resource);
   for (std::size_t index = 0; index < allowance.size(); ++index) {
+    // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
+    // counted gross, a construction's reserve R of a planned crop came out as
+    // an allowance of R the feeding could not take anyway, and the herd then
+    // ate R out of the plan's grain (static review of 0.34.42).
     Grams stock = 0;
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     for (const UnitRow& unit : world.units.rows) {
-      stock += index < unit.stock.size() ? unit.stock[index] : 0;
+      stock += UnreservedOf(unit, resource);
     }
     allowance[index] = stock > allowance[index] ? stock - allowance[index] : 0;
   }

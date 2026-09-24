@@ -24,6 +24,7 @@
 #define CORE_COMMON_FUND_LADDER_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 #include "core_common/calendar.h"
@@ -35,6 +36,9 @@ namespace core {
 struct FieldRow;
 struct WorldState;
 
+/// @brief SeedNorm::sow_from_month of a crop whose sowing month is not known.
+inline constexpr std::uint8_t kNoSowingMonth = 0xFF;
+
 /// @brief What one crop's sowing takes out of the stores.
 struct SeedNorm {
   ResourceId resource;  ///< What the seed of this crop is.
@@ -44,6 +48,13 @@ struct SeedNorm {
   /// Sown in the autumn before the year it is reaped (crops.csv `is_winter`):
   /// its seed is owed from the autumn of the year BEFORE its slot.
   bool is_winter = false;
+
+  /// The LAST month of its sowing window (crops.csv `sow_to_month`, 0-based),
+  /// or kNoSowingMonth: the latest the sowing takes held seed — the horizon
+  /// of its rot margin (family_exchange.cpp). Not the window's first month:
+  /// inside the window that horizon is nought while the seed waits weeks for
+  /// the crew (plan700, seed 1937 year 14, 0.34.42's first draft).
+  std::uint8_t sow_to_month = kNoSowingMonth;
 };
 
 /// @brief The crop a field's NEXT sowing puts in, read off its rotation and
@@ -62,11 +73,29 @@ struct SeedNorm {
 /// wrong crop two years in three (static review, 2026-09-24).
 CropId NextSowingCrop(const FieldRow& field, SimDay today);
 
-/// @brief The plan rung of one resource before any unsealing: what is still
-///        owed (`plan.due` less `plan.delivered`, never below nought), as far
-///        as this year's reaping covers it.
+/// @brief The plan rung of one resource before any unsealing: what is owed —
+///        `plan.due` less `plan.delivered` — as far as the crop lies
+///        unreserved in the stores ABOVE what the rungs over it hold
+///        (`held_above`: the seed fund's grams of the same resource, which
+///        come first), carry-over and this year's reaping alike. Never below
+///        nought.
+/// @param held_above Grams of the resource the seed rung holds, after its own
+///        unsealing; 0 when asked alone.
 /// @param index A ResourceId value; past the plan's end the rung is 0.
-Grams PlanRungGrams(const WorldState& world, std::size_t index);
+/// @param carted_daily The position the milk cart carries daily: never held,
+///        its share leaves at the milking. Invalid when there is none.
+Grams PlanRungGrams(const WorldState& world,
+                    std::size_t index,
+                    ResourceId carted_daily = ResourceId{},
+                    Grams held_above = 0);
+
+/// @brief Rung 1 alone: grams of each resource the seed fund holds for the
+///        sowings still to come (see HeldAboveFodder, SEED), less what the
+///        chairman has unsealed of the SEED fund, never below nought.
+/// @return Dense by ResourceId, sized `resource_count`.
+ResourceAmounts SeedRungLeft(const WorldState& world,
+                             std::span<const SeedNorm> seed_norms_by_crop,
+                             std::size_t resource_count);
 
 /// @brief Grams of each resource held by the seed fund and the plan reserve
 ///        together, less whatever the chairman has unsealed.
@@ -79,9 +108,10 @@ Grams PlanRungGrams(const WorldState& world, std::size_t index);
 /// that winter crop is in the ground. Skipped entirely when
 /// `reserve_seed_fund` is false.
 ///
-/// PLAN: as much of what is still owed of `plan.due` as this year's reaping
-/// has covered so far (PlanRungGrams), and no more (boss, 2026-09-12:
-/// in April there is nothing yet to set aside, and
+/// PLAN: what is owed, as far as the crop lies in the stores (PlanRungGrams;
+/// boss, boss-core-epoch1-4 seq 10). It replaced, on 0.34.42, "as much as
+/// this year's reaping has covered" (boss, 2026-09-12: in April there is
+/// nothing yet to set aside, and
 /// reserving the whole norm from January starves the spring beside grain it
 /// may not touch).
 ///
@@ -97,7 +127,8 @@ Grams PlanRungGrams(const WorldState& world, std::size_t index);
 ResourceAmounts HeldAboveFodder(const WorldState& world,
                                 std::span<const SeedNorm> seed_norms_by_crop,
                                 std::size_t resource_count,
-                                bool reserve_seed_fund);
+                                bool reserve_seed_fund,
+                                ResourceId carted_daily = ResourceId{});
 
 /// @brief Rung 3 as the people's issue must stay below it: THE FODDER CLAIM,
 ///        AND INSIDE IT THE FODDER FUND (resources design §6; boss seq 17) —

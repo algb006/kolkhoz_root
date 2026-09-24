@@ -274,14 +274,27 @@ int CheckTheHerdDoesNotEatThePlan() {
     failures += Expect(world.herds.rows[0].unfed_days == 1.0F,
                        "and goes hungry rather than into the district's grain");
   }
+  // BEFORE THE REAPING THE CARRY-OVER HOLDS THE DEBT (boss, boss-core-epoch1-4
+  // seq 10; 0.34.42). Until then the rung was nought before the reaping and
+  // the herd ate the plan's carried grain in full; now the same 98 kg owed
+  // out of the 100 carried over are held, and the herd eats the two above.
   {
     core::WorldState world = MakeHerdWorld(100.0F);
     world.plan.due.assign(1, 98 * kKilo);
-    world.ledger.current.harvest.assign(1, 0);  // nothing reaped: nothing set aside yet
+    world.ledger.current.harvest.assign(1, 0);  // nothing reaped: all of it carried over
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    failures += Expect(StoreOf(world, 0) == 98 * kKilo,
+                       "before the reaping the carry-over holds the debt, the herd eats above it");
+  }
+  // And with more carried over than owed, the herd eats in full above it.
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.plan.due.assign(1, 50 * kKilo);
     AddHerd(world, 0, 4, 2, true);
     core::RunHerdDay(config, world);
     failures += Expect(StoreOf(world, 0) == 96 * kKilo,
-                       "before the reaping the reserve holds nothing and the herd eats in full");
+                       "50 kg owed of 100 carried over: the herd eats its 4 kg in full");
   }
   return failures;
 }

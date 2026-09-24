@@ -243,66 +243,111 @@ int CheckExchange() {
     rotting.spoil_days.assign(4, 0.0F);
     rotting.spoil_days[0] = 480.0F;
     core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    world.plan.announced = 1;
     world.plan.due = {90 * kKilo, 0, 0, 0};
     world.ledger.current.harvest = {90 * kKilo, 0, 0, 0};
     core::RunFamilyExchange(rotting, 4.0F, world);
     failures += Expect(PantryOf(world, 0) > 0 && PantryOf(world, 0) < kKilo,
                        "the plan reserve holds what will rot before the delivery, and only what "
                        "lies above that is handed out");
+
+    // AND THE SEED RUNG'S ROT (0.34.42): 0.5 ha waiting for its 180 kg/ha is
+    // 90 kg of seed held, the same margin — 99.5 kg — and the same half
+    // kilogram free. Taken on the plan alone, the seed's rot came out of the
+    // plan (seed 1937, year 14: 98 % delivered).
+    core::WorldState sowing = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    core::FieldRow waiting;
+    waiting.area_ga = 0.5F;
+    waiting.phase = core::FieldPhase::kIdle;
+    waiting.rotation_year0 = core::CropId{0};
+    AppendRow(sowing.fields, waiting);
+    core::RunFamilyExchange(rotting, 4.0F, sowing);
+    failures += Expect(PantryOf(sowing, 0) > 0 && PantryOf(sowing, 0) < kKilo,
+                       "the seed rung holds what will rot before the sowing too");
+
+    // ...TO THE SOWING, NOT TO THE TURN (static review of 0.34.42): a window
+    // that closes at this month's end holds the seed four days, not
+    // forty-eight — a margin of under a kilogram, the rest of the 10 kg above
+    // the seed free, and the whole 2 kg basket goes out.
+    core::FoodConfig sown_now = rotting;
+    sown_now.seed_norms[0].sow_to_month = 0;  // the window ends with January
+    core::WorldState now_world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    AppendRow(now_world.fields, waiting);
+    core::RunFamilyExchange(sown_now, 4.0F, now_world);
+    failures += Expect(PantryOf(now_world, 0) == 2 * kKilo,
+                       "seed sown by this month's end carries four days of rot, not the year's: "
+                       "the basket goes out whole");
   }
 
-  // FIRST THE PLAN, THEN THE ISSUE (labor-payment §7; boss, parcel 438): a
-  // crop of this year's plan is not handed out on trudodni before the
-  // delivery — not only the reserve of this year's reaping, all of it —
-  // except what the chairman has unsealed; the ration is not held.
+  // FIRST THE PLAN, THEN THE ISSUE — BY THE RESERVE (labor-payment §7; boss,
+  // boss-core-epoch1-4 seq 9 and 10): of a planned crop the issue holds what
+  // is OWED, out of the carry-over before any reaping, and hands out the
+  // rest. 100 kg of grain lie; nothing of it reaped this year.
   {
-    core::WorldState world = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
-    world.plan.announced = 1;
-    world.plan.due = {50 * kKilo, 0, 0, 0};  // the grain is planned, none of it reaped yet
-    core::RunFamilyExchange(config, 4.0F, world);
-    failures += Expect(PantryOf(world, 0) == 0 && PantryOf(world, 1) == 4 * kKilo,
-                       "a planned crop is not handed out on trudodni before the delivery, and a "
-                       "crop the plan does not ask for is");
+    const auto grain_after = [&config](core::WorldState world) {
+      core::RunFamilyExchange(config, 4.0F, world);
+      return PantryOf(world, 0);
+    };
+    core::WorldState owed_half = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
+    owed_half.plan.announced = 1;
+    owed_half.plan.due = {50 * kKilo, 0, 0, 0};
+    failures += Expect(grain_after(owed_half) == 2 * kKilo,
+                       "50 kg owed of 100 lying: the grain above the debt goes out on trudodni, "
+                       "the whole 2 kg basket (0.34.41 held all of it — hunger beside full "
+                       "barns)");
+    core::WorldState owed_most = owed_half;
+    owed_most.plan.due = {99 * kKilo, 0, 0, 0};
+    const core::Grams most = grain_after(owed_most);
+    failures += Expect(most > 0 && most <= 1 * kKilo,
+                       "99 kg owed of 100 lying, nothing reaped yet: the CARRY-OVER holds the "
+                       "debt, and only the kilogram above it goes out");
 
-    core::WorldState opened = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
-    opened.plan.announced = 1;
-    opened.plan.due = {50 * kKilo, 0, 0, 0};
+    core::WorldState opened = owed_half;
+    opened.plan.due = {100 * kKilo, 0, 0, 0};
     opened.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {
         1 * kKilo, 0, 0, 0};
-    core::RunFamilyExchange(config, 4.0F, opened);
-    failures += Expect(PantryOf(opened, 0) == 1 * kKilo,
-                       "and what the chairman unsealed of it is handed out, no more");
+    failures += Expect(grain_after(opened) == 1 * kKilo,
+                       "the whole 100 kg owed, 1 kg of it unsealed: that kilogram goes out, no "
+                       "more");
 
-    // Before the spring names a figure the district's positions are held BY
-    // THE LIST (boss, parcel 440): a position that delivered nothing last
-    // year is held all the same, or a failed plan opens the issue.
-    core::FoodConfig planned = config;
-    planned.plan_position = {1, 0, 0, 0};
-    core::WorldState before_spring = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
-    before_spring.plan.delivered = {0, 0, 0, 0};  // the position failed outright last year
-    core::RunFamilyExchange(planned, 4.0F, before_spring);
-    failures += Expect(PantryOf(before_spring, 0) == 0,
-                       "before the spring names a plan, the district's positions are held, a "
-                       "position that delivered nothing included");
+    // NO "BEFORE THE SPRING" CASE: the letter comes in the turn's own tick,
+    // and a rule for the window between them could never fire (fund_ladder
+    // cpp, PlanRungGrams; static review of 0.34.42).
 
     // THE CART'S POSITION IS NOT SEALED (district §9; boss seq 113): its
     // share of the day left at the milking, so the issue takes from the rest.
-    // The same announced plan that holds resource 0 above hands it out here.
     core::FoodConfig carted = config;
     carted.carted_daily = core::ResourceId{0};
-    core::WorldState milk_day = MakeExchangeWorld(100.0F, 100.0F, 200, 70.0F);
-    milk_day.plan.announced = 1;
-    milk_day.plan.due = {50 * kKilo, 0, 0, 0};
+    core::WorldState milk_day = opened;
+    milk_day.unsealed = {};
     core::RunFamilyExchange(carted, 4.0F, milk_day);
-    failures += Expect(PantryOf(milk_day, 0) > 0,
-                       "the district cart's position is not sealed from the issue");
+    failures += Expect(PantryOf(milk_day, 0) == 2 * kKilo,
+                       "the district cart's position is not held: its whole 100 kg owed, the "
+                       "basket goes out");
 
+    // THE RATION STAYS ABOVE THE FUNDS, AS IT ALWAYS DID — and the plan rung
+    // is a fund. What it is not held by is the whole planned crop.
     core::WorldState hungry = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
     hungry.plan.announced = 1;
     hungry.plan.due = {50 * kKilo, 0, 0, 0};
     core::RunFamilyExchange(config, 4.0F, hungry);
     failures += Expect(PantryOf(hungry, 0) > 0,
-                       "and the ration to a hungry family is not held by the plan");
+                       "the ration to a hungry family takes the grain above the plan's debt");
+    // AND WHERE THE DEBT TAKES ALL OF IT, the ration gets none of it and the
+    // alarm says the food is locked in the funds (kReserveFullNothingToEat,
+    // LockedRationFood): the way out is the chairman's unsealing. Since
+    // 0.34.42 the rung holds the carry-over before the reaping too, so this
+    // is reached more often than before — the price the acceptance counts.
+    core::WorldState locked = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+    locked.plan.announced = 1;
+    locked.plan.due = {100 * kKilo, 0, 0, 0};
+    const auto locked_food = core::LockedRationFood(config, locked);
+    core::RunFamilyExchange(config, 4.0F, locked);
+    const bool grain_named =
+        std::ranges::any_of(locked_food, [](const auto& line) { return line.first.value == 0; });
+    failures += Expect(PantryOf(locked, 0) == 0 && grain_named,
+                       "the whole 100 kg owed: the ration gets no grain, and the alarm names "
+                       "the grain locked in the funds");
   }
 
   // The hungry family gets the ration past its (empty) trudodni account.
@@ -841,20 +886,21 @@ int CheckSealedFundsAreTheFundsNotThePlannedCrop() {
   AppendRow(world.units, store);
   world.plan.announced = 1;
   world.plan.due = {0, 500 * kKilo};  // resource 1 is planned, 0 is not
-  // January: the plan names the rye, nothing of it is reaped yet. The issue
-  // holds it whole (PlanHoldsIt); the FUNDS hold none, and the thief may
-  // reach it (boss, boss-core-epoch1-4 seq 2 — 0.34.39 sealed it whole and
-  // the distiller took not one kilogram in 270 village-years).
+  // Spring: the plan asks 500 kg of rye, nothing reaped yet, 300 kg carried
+  // over. The FUND holds the debt out of the carry-over (boss,
+  // boss-core-epoch1-4 seq 10) — all 300 kg — and the thief stays above it;
+  // the unplanned crop is held by nothing. Not the planned crop "whole":
+  // with 800 kg lying only the 500 owed would be sealed.
   const std::vector<core::Grams> sealed = core::SealedFunds(config, world);
-  failures += Expect(sealed.size() == 2 && sealed[0] == 0 && sealed[1] == 0,
-                     "sealed: the planned rye before its reaping is the issue's promise, not a "
-                     "fund — nothing sealed against the thief");
-  // Reaped 400 kg against the 500 due, 50 of it unsealed: the plan rung holds
-  // 350, and that is sealed.
-  world.ledger.current.harvest = {0, 400 * kKilo};
+  failures += Expect(sealed.size() == 2 && sealed[0] == 0 && sealed[1] == 300 * kKilo,
+                     "sealed: the carry-over holds the plan's debt, the unplanned crop nothing");
+  world.units.rows[0].stock[1] = 800 * kKilo;
+  failures += Expect(core::SealedFunds(config, world)[1] == 500 * kKilo,
+                     "sealed: 800 kg lying, only the 500 owed is sealed — not the crop whole");
+  // 50 kg of the plan reserve unsealed: 450 sealed.
   world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {0, 50 * kKilo};
-  failures += Expect(core::SealedFunds(config, world)[1] == 350 * kKilo,
-                     "sealed: the reaping's plan rung, less the unsealed, is sealed — 350 kg");
+  failures += Expect(core::SealedFunds(config, world)[1] == 450 * kKilo,
+                     "sealed: the plan rung less the 50 kg unsealed — 450 kg");
   return failures;
 }
 
@@ -1546,9 +1592,9 @@ int CheckBarrack() {
 }
 
 /// The hunger alarm's memory (boss, core-host-l1 seq 45): lit at the
-/// threshold (25), out only above it by the margin (10) — a family the ration
-/// holds at 22 ↔ 26 keeps its alarm lit instead of lighting it every other
-/// day (host seq 44).
+/// threshold (40 since 0.34.42, the health line; 25 before), out only above
+/// it by the margin (10) — a family the ration holds at 37 ↔ 41 keeps its
+/// alarm lit instead of lighting it every other day (host seq 44).
 int CheckHungerAlarmHysteresis() {
   int failures = 0;
   const HousingTables tables;
@@ -1572,13 +1618,13 @@ int CheckHungerAlarmHysteresis() {
     }
     return false;
   };
-  failures += Expect(lit_after(22.0F), "hunger: at 22, under the threshold, the alarm is lit");
-  failures += Expect(lit_after(26.0F),
-                     "at 26 — over the threshold, under its margin — it stays lit: the ration's "
+  failures += Expect(lit_after(37.0F), "hunger: at 37, under the threshold, the alarm is lit");
+  failures += Expect(lit_after(41.0F),
+                     "at 41 — over the threshold, under its margin — it stays lit: the ration's "
                      "swing no longer blinks it");
-  failures += Expect(!lit_after(36.0F), "at 36, above threshold and margin, it goes out");
+  failures += Expect(!lit_after(51.0F), "at 51, above threshold and margin, it goes out");
   failures +=
-      Expect(!lit_after(30.0F), "and at 30 it does not light again: only the threshold does");
+      Expect(!lit_after(45.0F), "and at 45 it does not light again: only the threshold does");
   return failures;
 }
 

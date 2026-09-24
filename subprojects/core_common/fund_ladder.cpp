@@ -8,6 +8,7 @@
 
 #include "core_common/land_state.h"
 #include "core_common/order_state.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -49,25 +50,56 @@ void AddSowing(std::span<const SeedNorm> seed_norms_by_crop,
 
 }  // namespace
 
-Grams PlanRungGrams(const WorldState& world, std::size_t index) {
-  if (index >= world.plan.due.size()) {
+Grams PlanRungGrams(const WorldState& world,
+                    std::size_t index,
+                    ResourceId carted_daily,
+                    Grams held_above) {
+  // THE CART'S POSITION IS NEVER SEALED: its share leaves at the milking
+  // (the milk cart; boss seq 113). Under the old rung milk was held by
+  // nothing only because no reaping books milk — a rule by accident; under
+  // the stores' own rule it would be held in the dairy, from the issue.
+  if (carted_daily.value != kInvalidDefIdValue && index == carted_daily.value) {
     return 0;
   }
-  // THE PLAN RESERVE IS FILLED BY THE HARVEST, NOT BY THE CALENDAR.
-  const ResourceAmounts& reaped = world.ledger.current.harvest;
-  const Grams owed = world.plan.due[index];
-  const Grams gathered = index < reaped.size() ? reaped[index] : 0;
-  // AND EMPTIED BY THE DELIVERY (boss seq 25, item 3). What went to the
-  // district early (kDeliverPlan) is no longer the kolkhoz's to hold: until
-  // 0.34.38 the rung stayed at min(due, gathered) to the year's turn, and
-  // the rye shipped in August held the issue and the theft all autumn.
-  // What is STILL OWED against this year's reaping — not the reaping's cover
-  // less the shipments: rye shipped in June out of last year's bin is off
-  // the debt, not off this year's crop, and min(due, gathered) − sent held
-  // nothing of 500 kg reaped against 400 kg still owed (static review).
+  // WHAT IS OWED: this year's due, less what went to the district early
+  // (kDeliverPlan, boss seq 25 item 3 — rye shipped in August no longer
+  // holds the issue and the theft all autumn).
+  //
+  // NO WINDOW "BEFORE THE ANNOUNCEMENT". The first draft of 0.34.42 held last
+  // year's due from the turn to the spring's figure (labor payment §7, «до
+  // объявления плана»), and the static review found it could never run: the
+  // district's letter comes in January, in the same tick as the judge that
+  // clears the old figure (production_system.cpp), and no reader of the
+  // ladder stands between them. A rule that cannot fire is a stub; it went.
+  const Grams due = index < world.plan.due.size() ? world.plan.due[index] : 0;
   const Grams sent = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
-  const Grams still_owed = owed > sent ? owed - sent : 0;
-  return still_owed < gathered ? still_owed : gathered;
+  const Grams owed = due > sent ? due - sent : 0;
+  if (owed <= 0) {
+    return 0;
+  }
+  // AS FAR AS THE CROP LIES IN THE STORES — the carry-over and this year's
+  // reaping alike (boss, boss-core-epoch1-4 seq 9 and 10). Until 0.34.42
+  // the rung was min(owed, gathered THIS year): nought from the turn to the
+  // first reaping whatever was carried over, so the plan's crop was held
+  // from the issue by PlanHoldsIt alone, whole — hunger beside full barns
+  // (258 hungry episodes on 0.34.40, econ and host). Boss's formula kept the
+  // reaping after it ("после жатвы — по собранному"); one rule for the whole
+  // year is taken instead, because that one lets the carry-over go on the
+  // bad year's first reaping — 500 kg reaped against 1000 owed and 800
+  // carried would hold 500 and hand 300 of the plan's grain out.
+  //
+  // AND BELOW THE RUNGS ABOVE IT (resources design §6: the seed fund is rung
+  // 1, the plan rung 2, «при нехватке первым страдает нижний»). Capped at all
+  // that lies, the plan and the seed counted the same grain twice: 1000 kg
+  // lying, 400 of winter seed, 1000 owed held 1400 — and unsealing 300 of the
+  // plan freed nothing (static review of 0.34.42).
+  const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+  Grams lying = 0;
+  for (const UnitRow& unit : world.units.rows) {
+    lying += UnreservedOf(unit, resource);
+  }
+  const Grams below_the_seed = lying > held_above ? lying - held_above : 0;
+  return owed < below_the_seed ? owed : below_the_seed;
 }
 
 CropId NextSowingCrop(const FieldRow& field, SimDay today) {
@@ -107,12 +139,11 @@ CropId NextSowingCrop(const FieldRow& field, SimDay today) {
   return field.rotation_year1;
 }
 
-ResourceAmounts HeldAboveFodder(const WorldState& world,
-                                std::span<const SeedNorm> seed_norms_by_crop,
-                                std::size_t resource_count,
-                                bool reserve_seed_fund) {
+ResourceAmounts SeedRungLeft(const WorldState& world,
+                             std::span<const SeedNorm> seed_norms_by_crop,
+                             std::size_t resource_count) {
   ResourceAmounts seed(resource_count, 0);
-  if (reserve_seed_fund) {
+  {
     for (const FieldRow& field : world.fields.rows) {
       // UNTIL THE SOWING TAKES IT, not until the ploughing starts: a field is
       // done needing seed once the crop is in the ground (69-reconciliation.md
@@ -158,9 +189,24 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
       }
     }
   }
+  for (std::size_t index = 0; index < resource_count; ++index) {
+    seed[index] = RungLeft(seed[index], Unsealed(world, FundKind::kSeed, index));
+  }
+  return seed;
+}
+
+ResourceAmounts HeldAboveFodder(const WorldState& world,
+                                std::span<const SeedNorm> seed_norms_by_crop,
+                                std::size_t resource_count,
+                                bool reserve_seed_fund,
+                                ResourceId carted_daily) {
+  const ResourceAmounts seed = reserve_seed_fund
+                                   ? SeedRungLeft(world, seed_norms_by_crop, resource_count)
+                                   : ResourceAmounts(resource_count, 0);
   ResourceAmounts held(resource_count, 0);
   for (std::size_t index = 0; index < resource_count; ++index) {
-    const Grams plan = PlanRungGrams(world, index);
+    const Grams seed_left = seed[index];
+    const Grams plan = PlanRungGrams(world, index, carted_daily, seed_left);
     // EACH FUND OPENS ITS OWN RUNG (boss, boss-core-epoch1-resume seq 14,
     // answer 3). Until 0.34.17 every release came off one total of both
     // rungs — "which fund was opened is which risk was taken, not which share
@@ -168,8 +214,7 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
     // FODDER fund opened the plan's oats (host, econ-host-fodder-and-winter
     // seq 2): the fodder had no rung here to come off, so it came off the
     // plan's. A release now empties only the rung it names.
-    held[index] = RungLeft(seed[index], Unsealed(world, FundKind::kSeed, index)) +
-                  RungLeft(plan, Unsealed(world, FundKind::kPlanReserve, index));
+    held[index] = seed_left + RungLeft(plan, Unsealed(world, FundKind::kPlanReserve, index));
   }
   return held;
 }

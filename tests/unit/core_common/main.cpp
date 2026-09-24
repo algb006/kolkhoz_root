@@ -1181,8 +1181,8 @@ int CheckNextSowingCrop() {
 }
 
 /// The top two rungs of the ladder of funds (fund_ladder.h): seed for a field
-/// not yet sown, the plan reserve only as far as this year's reaping covers
-/// it, and each unsealing off its own rung (0.34.17).
+/// not yet sown, the plan reserve — what is owed, as far as the crop lies
+/// below the seed (0.34.42) — and each unsealing off its own rung (0.34.17).
 int CheckTheTopOfTheLadder() {
   int failures = 0;
   core::WorldState world;
@@ -1199,29 +1199,48 @@ int CheckTheTopOfTheLadder() {
   sown.phase = core::FieldPhase::kGrowing;
   core::AppendRow(world.fields, sown);
 
-  world.plan.due = {0, 0, 500'000};
-  world.ledger.current.harvest = {0, 0, 300'000};
+  // 300 000 owed; the barn holds 500 000 — the 200 000 of seed and the debt.
+  // Since 0.34.42 the plan rung holds what is owed as far as the crop LIES
+  // below the seed (fund_ladder.h, PlanRungGrams), not as far as the book
+  // says it was reaped.
+  world.plan.due = {0, 0, 300'000};
+  core::UnitRow barn;
+  barn.level = 1;
+  barn.stock = {0, 0, 500'000};
+  core::AppendRow(world.units, barn);
 
   const core::ResourceAmounts held = core::HeldAboveFodder(world, norms, 3, true);
   failures += Expect(held.size() == 3 && held[2] == 200'000 + 300'000,
-                     "ladder: seed for the unsown field only, plan only as far as reaped");
+                     "ladder: seed for the unsown field only, and the plan's debt");
   failures += Expect(core::HeldAboveFodder(world, norms, 3, false)[2] == 300'000,
                      "ladder: the seed rung can be switched off, the plan rung cannot");
   // WHAT WENT TO THE DISTRICT EARLY IS NOT HELD (boss seq 25, item 3): the
-  // rung is what is STILL OWED, as far as the reaping covers it. Due 500 000,
-  // reaped 300 000.
+  // rung is what is STILL OWED.
   {
     core::WorldState shipped = world;
     shipped.plan.delivered = {0, 0, 100'000};
-    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 300'000,
-                       "ladder: 100 000 shipped out of old stock, 400 000 still owed, the "
-                       "300 000 reaped all held (the review's June case)");
+    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 200'000,
+                       "ladder: 100 000 shipped, 200 000 still owed and held");
+    shipped.plan.delivered = {0, 0, 250'000};
+    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 50'000,
+                       "ladder: 250 000 shipped, 50 000 still owed and held");
     shipped.plan.delivered = {0, 0, 400'000};
-    failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 100'000,
-                       "ladder: 400 000 shipped, 100 000 still owed and held");
-    shipped.plan.delivered = {0, 0, 600'000};
     failures += Expect(core::HeldAboveFodder(shipped, norms, 3, false)[2] == 0,
                        "ladder: shipped past the due, the plan rung is empty");
+  }
+  // THE SEED FIRST, THE PLAN BELOW IT (resources design §6; static review of
+  // 0.34.42): 400 000 lie, 200 000 of seed, 300 000 owed. Capped at all that
+  // lies, the two rungs held 500 000 of 400 000 — and unsealing 100 000 of
+  // the plan freed nothing. Now the plan holds the 200 000 below the seed,
+  // and the unsealing frees its 100 000.
+  {
+    core::WorldState thin = world;
+    thin.units.rows[0].stock = {0, 0, 400'000};
+    failures += Expect(core::HeldAboveFodder(thin, norms, 3, true)[2] == 400'000,
+                       "ladder: seed and plan never hold more than lies — the plan below the seed");
+    thin.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {0, 0, 100'000};
+    failures += Expect(core::HeldAboveFodder(thin, norms, 3, true)[2] == 300'000,
+                       "ladder: and unsealing 100 000 of the plan frees 100 000");
   }
 
   // A FIELD REAPED THIS YEAR OWES THIS YEAR NO SEED (boss, parcel 421): idle
