@@ -1,6 +1,7 @@
 // Unit test of core_time: the solar daylight curve, table-driven weather,
 // determinism of the daily draws, and factory validation.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "../../common/fake_tables.h"
 #include "core_common/calendar.h"
@@ -139,6 +141,77 @@ int CheckMonthClimate(const core::ITableSet& tables, core::ISequentialPhase& pha
   failures += Expect(all_near,
                      "month climate: the door's mean and afternoon are what the phase writes, "
                      "month by month");
+
+  // THE SNOW AND THE TYPICAL SKY (0.35.18), EXACTLY: the phase stepped on the
+  // door's own seed and years must give the same share, median, majority and
+  // mode, to the unit — one set of rules, walked twice.
+  std::array<std::vector<std::uint16_t>, core::kMonthsPerYear> covers{};
+  std::array<std::uint32_t, core::kMonthsPerYear> since{};
+  std::array<std::array<std::uint32_t, 256>, core::kMonthsPerYear> phenomena{};
+  std::array<std::array<std::uint32_t, 256>, core::kMonthsPerYear> winds{};
+  previous = core::WorldState{};
+  previous.world_seed = core::kMonthClimateSeed;
+  counted = 0xFFFFFFFFU;
+  const auto last_day = (core::kMonthClimateYears + 1U) * core::kDaysPerYear;
+  while (previous.calendar.day < last_day) {
+    current = previous;
+    phase.RunSequential(previous, current);
+    std::swap(previous, current);
+    const core::SimDay day = previous.calendar.day;
+    if (day == counted || day >= last_day) {
+      continue;
+    }
+    counted = day;
+    const std::uint32_t day_of_year = day % core::kDaysPerYear;
+    if (day < core::kDaysPerYear || day_of_year % core::kDaysPerMonth != 1U) {
+      continue;
+    }
+    const std::uint32_t month = day_of_year / core::kDaysPerMonth;
+    covers[month].push_back(previous.weather.snow_cover_days);
+    since[month] += previous.weather.cover_since_leaf_fall ? 1U : 0U;
+    ++phenomena[month][static_cast<std::uint8_t>(previous.weather.phenomenon)];
+    ++winds[month][static_cast<std::uint8_t>(previous.weather.wind)];
+  }
+  const auto modal = [](const std::array<std::uint32_t, 256>& counts) {
+    std::uint32_t best = 0;
+    for (std::uint32_t value = 1; value < counts.size(); ++value) {
+      best = counts[value] > counts[best] ? value : best;
+    }
+    return best;
+  };
+  bool all_same = true;
+  std::uint32_t snowy_months = 0;
+  for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+    core::MonthClimate climate;
+    std::string error;
+    core::MonthClimateOfTables(tables, static_cast<core::Month>(month), climate, error);
+    std::vector<std::uint16_t>& days = covers[month];
+    const auto years = static_cast<std::uint32_t>(days.size());
+    std::uint32_t covered = 0;
+    for (const std::uint16_t cover : days) {
+      covered += cover > 0 ? 1U : 0U;
+    }
+    std::sort(days.begin(), days.end());
+    const std::uint16_t median = years > 0 ? days[(years - 1U) / 2U] : 0;
+    const float share = years > 0 ? static_cast<float>(covered) / static_cast<float>(years) : 0.0F;
+    std::cout << "month snow " << month + 1 << ": door " << climate.snow_cover_share << " / "
+              << climate.snow_cover_days << " d / leaf " << climate.cover_since_leaf_fall
+              << " / sky " << static_cast<int>(climate.phenomenon) << " wind "
+              << static_cast<int>(climate.wind) << "; phase " << share << " / " << median
+              << " d over " << years << " years\n";
+    snowy_months += climate.snow_cover_days > 0 ? 1U : 0U;
+    all_same = all_same && years == core::kMonthClimateYears && climate.snow_cover_share == share &&
+               climate.snow_cover_days == median &&
+               climate.cover_since_leaf_fall == (since[month] * 2U > years) &&
+               static_cast<std::uint32_t>(climate.phenomenon) == modal(phenomena[month]) &&
+               static_cast<std::uint32_t>(climate.wind) == modal(winds[month]);
+  }
+  failures +=
+      Expect(all_same, "month snow: the door's cover, leaf word, sky and wind are the phase's own");
+  // AND THE WORLD HAS A WINTER: a door that answered nought everywhere would
+  // agree with a phase that never snowed — the fixture's winter is -10.
+  failures += Expect(snowy_months >= 2 && snowy_months <= 6,
+                     "month snow: the typical day lies under snow in winter, not in summer");
   return failures;
 }
 

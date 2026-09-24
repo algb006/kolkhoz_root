@@ -10,6 +10,7 @@
 
 #include "core_time/time_system.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -42,6 +43,34 @@ constexpr std::uint8_t kDefaultLeafFallMonth = 9;
 /// How far the sky's five shares may miss a hundred and still be a hundred:
 /// the table is written in whole or half per cent by a person.
 constexpr float kShareSumTolerance = 0.5F;
+
+/// WeatherState::cover_since_leaf_fall of `day` from yesterday's word and
+/// today's cover. ONE HOME for the time phase and the month's climate door
+/// (0.35.18).
+///
+/// THE RESET IS AN EVENT, NOT A DATE ON A CALENDAR I PICKED. It falls on
+/// the first day of the leaf-fall month, and that month arrives as a row
+/// (world_params.csv) precisely so that nobody has to guess it here. "This
+/// winter" was the first shape asked for and it needed a winter boundary;
+/// by this core's own weather the snow can lay in March, in which year the
+/// leaf must lie until March — a December window would cut it short and
+/// say nothing.
+///
+/// THE RESET CLEARS YESTERDAY, NOT TODAY. Written first as
+/// `!new_leaf_fall && (carried || cover)`, which also threw away a cover
+/// lying on the reset day itself: the leaf falls that morning and snow on
+/// it that same evening rots it, so the day would have read false and
+/// corrected itself only tomorrow. One wrong day a year, in the one field
+/// whose whole purpose is telling two days apart.
+bool CoverSinceLeafFallAfter(bool carried,
+                             std::uint16_t cover_today,
+                             SimDay day,
+                             std::uint8_t leaf_fall_month) {
+  const Date date = DateFromDay(day);
+  const bool new_leaf_fall =
+      static_cast<std::uint8_t>(date.month) == leaf_fall_month && date.day_in_month == 0;
+  return (!new_leaf_fall && carried) || cover_today > 0;
+}
 
 /// Phase 1 slot: clock, calendar caches, the day's weather.
 class TimeAndWeatherSlot final : public ISequentialPhase {
@@ -83,28 +112,12 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     // AND THE WORD THAT SEPARATES THE COUNT'S TWO ZEROS. It rises the first
     // day a cover lies and does not fall when the cover melts — that is the
     // whole point of it: the leaf rotted under the snow, so a thaw brings
-    // nothing back (world_state.h).
-    //
-    // THE RESET IS AN EVENT, NOT A DATE ON A CALENDAR I PICKED. It falls on
-    // the first day of the leaf-fall month, and that month arrives as a row
-    // (world_params.csv) precisely so that nobody has to guess it here. "This
-    // winter" was the first shape asked for and it needed a winter boundary;
-    // by this core's own weather the snow can lay in March, in which year the
-    // leaf must lie until March — a December window would cut it short and
-    // say nothing.
-    const Date date = DateFromDay(current.calendar.day);
-    const bool new_leaf_fall =
-        static_cast<std::uint8_t>(date.month) == leaf_fall_month_ && date.day_in_month == 0;
-    //
-    // THE RESET CLEARS YESTERDAY, NOT TODAY. Written first as
-    // `!new_leaf_fall && (carried || cover)`, which also threw away a cover
-    // lying on the reset day itself: the leaf falls that morning and snow on
-    // it that same evening rots it, so the day would have read false and
-    // corrected itself only tomorrow. One wrong day a year, in the one field
-    // whose whole purpose is telling two days apart.
+    // nothing back (world_state.h). The reset's rule: CoverSinceLeafFallAfter.
     current.weather.cover_since_leaf_fall =
-        (!new_leaf_fall && previous.weather.cover_since_leaf_fall) ||
-        current.weather.snow_cover_days > 0;
+        CoverSinceLeafFallAfter(previous.weather.cover_since_leaf_fall,
+                                current.weather.snow_cover_days,
+                                current.calendar.day,
+                                leaf_fall_month_);
     // РАСПУТИЦА, once a day like the cover: a function of the day, but one
     // that walks the autumn back to 1 September, so it is not re-walked every
     // tick of the same day (world_state.h, WeatherState::mud).
@@ -510,6 +523,55 @@ bool MonthClimateOfTables(const ITableSet& tables,
   // amplitude (camera design §4, «День = среднее + размах»).
   climate.day_celsius = climate.mean_celsius + season.temperature_amplitude_celsius;
   climate.night_celsius = climate.mean_celsius - season.temperature_amplitude_celsius;
+
+  // THE SNOW AND THE TYPICAL SKY, walked by the time phase's own rules (the
+  // cover is history: SnowCoverAfter, CoverSinceLeafFallAfter), one warm-up
+  // year and then kMonthClimateYears of this month's second day.
+  std::uint8_t leaf_fall_month = kDefaultLeafFallMonth;
+  if (const ITable* world = tables.FindTable("world_params")) {
+    if (!ParseWorldParams(*world, leaf_fall_month, error)) {
+      return false;
+    }
+  }
+  std::vector<std::uint16_t> covers;
+  covers.reserve(kMonthClimateYears);
+  std::uint32_t covered = 0;
+  std::uint32_t since_leaf_fall = 0;
+  std::array<std::uint32_t, 256> phenomena{};
+  std::array<std::uint32_t, 256> winds{};
+  WeatherState yesterday;
+  const auto last_day = static_cast<SimDay>((kMonthClimateYears + 1U) * kDaysPerYear);
+  for (SimDay day = 0; day < last_day; ++day) {
+    WeatherState today = WeatherOfDay(seasons, kMonthClimateSeed, day);
+    today.snow_cover_days = SnowCoverAfter(seasons, yesterday, today, day);
+    today.cover_since_leaf_fall = CoverSinceLeafFallAfter(
+        yesterday.cover_since_leaf_fall, today.snow_cover_days, day, leaf_fall_month);
+    if (day >= kDaysPerYear && day % kDaysPerYear == day_of_year) {
+      covers.push_back(today.snow_cover_days);
+      covered += today.snow_cover_days > 0 ? 1U : 0U;
+      since_leaf_fall += today.cover_since_leaf_fall ? 1U : 0U;
+      ++phenomena[static_cast<std::uint8_t>(today.phenomenon)];
+      ++winds[static_cast<std::uint8_t>(today.wind)];
+    }
+    yesterday = today;
+  }
+  const auto years = static_cast<std::uint32_t>(covers.size());
+  climate.snow_cover_share =
+      years > 0 ? static_cast<float>(covered) / static_cast<float>(years) : 0.0F;
+  // THE MEDIAN, the typical day: the lower middle of an even count, so a
+  // month covered in exactly half its years reads the uncovered half's 0.
+  std::ranges::sort(covers);
+  climate.snow_cover_days = years > 0 ? covers[(years - 1U) / 2U] : 0;
+  climate.cover_since_leaf_fall = since_leaf_fall * 2U > years;
+  const auto modal = [](const std::array<std::uint32_t, 256>& counts) {
+    std::uint32_t best = 0;
+    for (std::uint32_t value = 1; value < counts.size(); ++value) {
+      best = counts[value] > counts[best] ? value : best;  // ties keep the lower value
+    }
+    return static_cast<std::uint8_t>(best);
+  };
+  climate.phenomenon = static_cast<WeatherPhenomenon>(modal(phenomena));
+  climate.wind = static_cast<WindBand>(modal(winds));
   return true;
 }
 

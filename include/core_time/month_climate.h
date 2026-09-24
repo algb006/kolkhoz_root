@@ -24,9 +24,11 @@
 #ifndef CORE_TIME_MONTH_CLIMATE_H_
 #define CORE_TIME_MONTH_CLIMATE_H_
 
+#include <cstdint>
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/world_state.h"
 
 namespace core {
 
@@ -47,7 +49,41 @@ struct MonthClimate {
 
   /// The mean night: mean − the season's half-swing, on the same terms.
   float night_celsius = 0.0F;
+
+  // -- the snow, and the typical sky (boss, same thread [5]; 0.35.18) ----------
+  //
+  // THE SNOW IS HISTORY, not a function of the day: a cover lies because it
+  // fell and has not melted (SnowCoverAfter). So these are read off the same
+  // rules the time phase runs — WeatherOfDay, SnowCoverAfter, the leaf-fall
+  // reset — walked day by day over kMonthClimateYears years of one seed,
+  // taking the month's SECOND day of each year after the first (a cover
+  // cannot be inherited by the first January). No world, no second table.
+
+  /// Share of those years in which the day lies under a snow cover, 0..1.
+  float snow_cover_share = 0.0F;
+
+  /// The typical day's cover in DAYS lying — the median over all those
+  /// years, so 0 when fewer than half are covered. The core knows days of
+  /// cover, not a depth, and derives none.
+  std::uint16_t snow_cover_days = 0;
+
+  /// Whether a cover has lain since the leaf fall, in most of those years
+  /// (WeatherState::cover_since_leaf_fall: the fallen leaf has rotted).
+  bool cover_since_leaf_fall = false;
+
+  /// The day's most frequent phenomenon and wind over those years — the
+  /// typical, not any one day's.
+  WeatherPhenomenon phenomenon = WeatherPhenomenon::kNone;
+  WindBand wind = WindBand::kCalm;
 };
+
+/// @brief Years the snow and the typical sky are read over, after one year
+///        of warm-up.
+inline constexpr std::uint32_t kMonthClimateYears = 200;
+
+/// @brief The seed those years are drawn from: fixed, so the door answers
+///        the same for the same tables.
+inline constexpr std::uint64_t kMonthClimateSeed = 1;
 
 /// @brief The air temperature of `month`, from the weather tables of `tables`.
 /// @param climate Written on success, untouched on failure.
