@@ -21,11 +21,13 @@
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
+#include "core_common/daylight.h"
 #include "core_common/emit_event.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
+#include "core_time/month_climate.h"
 #include "weather_of_day.h"
 
 namespace core {
@@ -465,8 +467,54 @@ std::span<const std::string_view> TimeWorldParamKeys() {
   return kTimeWorldParamKeys;
 }
 
+namespace {
+
+/// The season table out of the set: the stub seasons, then `weather` and
+/// `weather_params` over them where present. ONE READING for the time phase
+/// and the month's climate door, so the two cannot read two climates.
+bool ReadSeasonTable(const ITableSet& tables, SeasonTable& seasons, std::string& error) {
+  seasons = DefaultSeasonTable();
+  if (const ITable* weather = tables.FindTable("weather")) {
+    if (!ParseWeatherTable(*weather, seasons, error)) {
+      return false;
+    }
+  }
+  if (const ITable* params = tables.FindTable("weather_params")) {
+    if (!ParseWeatherParams(*params, seasons, error)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+bool MonthClimateOfTables(const ITableSet& tables,
+                          Month month,
+                          MonthClimate& climate,
+                          std::string& error) {
+  SeasonTable seasons;
+  if (tables.FindTable("weather") == nullptr) {
+    error = "month climate: the table set has no weather table";
+    return false;
+  }
+  if (!ReadSeasonTable(tables, seasons, error)) {
+    return false;
+  }
+  const std::uint32_t day_of_year = SecondDayOfMonth(month) % kDaysPerYear;
+  const SeasonWeather& season = SeasonOfDayOfYear(seasons, day_of_year);
+  climate.mean_celsius = SeasonalMeanTemperature(seasons, day_of_year);
+  // THE SEASON'S SWING, NOT A DAY'S: the sky's multiplier averages to one over
+  // the season by construction (SkySwingMultiplier), so the mean day and the
+  // mean night of the month are the mean plus and minus the season's
+  // amplitude (camera design §4, «День = среднее + размах»).
+  climate.day_celsius = climate.mean_celsius + season.temperature_amplitude_celsius;
+  climate.night_celsius = climate.mean_celsius - season.temperature_amplitude_celsius;
+  return true;
+}
+
 std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTables stubs) {
-  SeasonTable seasons = DefaultSeasonTable();
+  SeasonTable seasons;
   std::string error;
   // THE STATE IS LEGITIMATE AND THE SILENCE WAS NOT. Building on the stub
   // seasons is what a table-less unit test wants; it is never what a game
@@ -475,17 +523,9 @@ std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTable
           tables, stubs, "time", {"weather", "weather_params", "world_params"}, nullptr)) {
     return nullptr;
   }
-  if (const ITable* weather = tables.FindTable("weather")) {
-    if (!ParseWeatherTable(*weather, seasons, error)) {
-      LogError(error);
-      return nullptr;
-    }
-  }
-  if (const ITable* params = tables.FindTable("weather_params")) {
-    if (!ParseWeatherParams(*params, seasons, error)) {
-      LogError(error);
-      return nullptr;
-    }
+  if (!ReadSeasonTable(tables, seasons, error)) {
+    LogError(error);
+    return nullptr;
   }
   // The month of leaf fall, which is not weather and so has a table of its
   // own. It comes here because the flag it clears lives in the weather block

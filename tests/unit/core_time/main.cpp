@@ -17,6 +17,7 @@
 #include "core_common/daylight.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
+#include "core_time/month_climate.h"
 #include "core_time/time_system.h"
 #include "weather_of_day.h"
 
@@ -79,6 +80,66 @@ std::uint32_t CoveredDaysInAYear(core::ISequentialPhase& phase) {
     }
   }
   return covered;
+}
+
+/// THE MONTH'S CLIMATE DOOR (core_time/month_climate.h; boss,
+/// boss-core-month-temperature-2026-09-25): for every month, the door's mean
+/// and mean afternoon against what the time phase itself writes on that
+/// month's second day, averaged over 400 years of one seed — the phase's
+/// own door, not a second reading of the table. The day's noise averages to
+/// nought (se ~0.35 at the widest spread of 7); tolerance 1.2 degrees. The
+/// neighbouring months differ by 4-5 degrees in spring and autumn, so a door
+/// that answered for the wrong month is caught.
+int CheckMonthClimate(const core::ITableSet& tables, core::ISequentialPhase& phase) {
+  int failures = 0;
+  constexpr std::uint32_t kYears = 400;
+  std::array<double, core::kMonthsPerYear> mean_sum{};
+  std::array<double, core::kMonthsPerYear> day_sum{};
+  std::array<std::uint32_t, core::kMonthsPerYear> samples{};
+  core::WorldState previous;
+  previous.world_seed = 12;
+  core::WorldState current;
+  core::SimDay counted = 0xFFFFFFFFU;
+  while (previous.calendar.day < kYears * core::kDaysPerYear) {
+    current = previous;
+    phase.RunSequential(previous, current);
+    std::swap(previous, current);
+    const core::SimDay day = previous.calendar.day;
+    if (day == counted) {
+      continue;
+    }
+    counted = day;
+    const std::uint32_t day_of_year = day % core::kDaysPerYear;
+    if (day_of_year % core::kDaysPerMonth != 1U) {
+      continue;  // the door answers for the month's SECOND day
+    }
+    const std::uint32_t month = day_of_year / core::kDaysPerMonth;
+    mean_sum[month] += static_cast<double>(previous.weather.air_temperature_celsius);
+    day_sum[month] += static_cast<double>(previous.weather.air_temperature_celsius +
+                                          previous.weather.temperature_swing_celsius);
+    ++samples[month];
+  }
+  bool all_near = true;
+  for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+    core::MonthClimate climate;
+    std::string error;
+    const bool read =
+        core::MonthClimateOfTables(tables, static_cast<core::Month>(month), climate, error);
+    const double phase_mean = samples[month] > 0 ? mean_sum[month] / samples[month] : 1.0e9;
+    const double phase_day = samples[month] > 0 ? day_sum[month] / samples[month] : 1.0e9;
+    std::cout << "month climate " << month + 1 << ": door " << climate.mean_celsius << " / "
+              << climate.day_celsius << " / " << climate.night_celsius << ", phase " << phase_mean
+              << " / " << phase_day << " (" << samples[month] << " days)\n";
+    all_near = all_near && read && samples[month] == kYears &&
+               std::abs(static_cast<double>(climate.mean_celsius) - phase_mean) < 1.2 &&
+               std::abs(static_cast<double>(climate.day_celsius) - phase_day) < 1.2 &&
+               std::abs((climate.day_celsius - climate.mean_celsius) -
+                        (climate.mean_celsius - climate.night_celsius)) < 1.0e-4F;
+  }
+  failures += Expect(all_near,
+                     "month climate: the door's mean and afternoon are what the phase writes, "
+                     "month by month");
+  return failures;
 }
 
 }  // namespace
@@ -226,6 +287,16 @@ int main() {
   const auto time_system = core::CreateTimeSystem(*tables, core::StubTables::kAllowed);
   failures += Expect(time_system != nullptr, "the factory accepts a good weather table");
   if (time_system != nullptr) {
+    failures += CheckMonthClimate(*tables, time_system->TimeAndWeatherPhase());
+    {
+      // No weather table: the door says so, rather than answer the stub's.
+      const auto bare = core::LoadTableSet((root / "no_weather").string(), &error);
+      core::MonthClimate climate;
+      std::string why;
+      failures += Expect(
+          bare == nullptr || !core::MonthClimateOfTables(*bare, core::Month::kJuly, climate, why),
+          "month climate: without a weather table the door refuses");
+    }
     // THE CLIMATE'S RAIN DAYS (ITimeSystem::ClimateRainDayShares), counted off
     // the generator. A winter at −10 with a spread of 2 never reaches the
     // rain's −1..+1, so its days must read nought: a count that said rain
