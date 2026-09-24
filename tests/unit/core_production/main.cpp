@@ -534,6 +534,33 @@ int CheckTheMalesCullIsSaid() {
   return failures;
 }
 
+/// A FEW SOWS, NOT ONE (boss, boss-core-epoch1-5 seq 45, option б; 0.35.5):
+/// six adults with one boar, a sow share of 0.25 — the share alone keeps one
+/// sow and the boar. With sow_keep_min 3 the slaughter leaves three females
+/// and the boar; with 0 it leaves the share's one.
+int CheckTheAutumnKeepsAFewSows() {
+  int failures = 0;
+  const auto kept = [](float least) {
+    core::ProductionConfig config = MakeHerdConfig();
+    config.farming.sow_keep_share = 0.25F;
+    config.farming.sow_keep_min = least;
+    core::WorldState world = MakeHerdWorld(1000.0F);  // room for the meat
+    AddHerd(world, 1, 6, 1, true);
+    world.calendar.tick = static_cast<core::Tick>(9U * core::kDaysPerMonth) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::RunHerdDay(config, world);
+    const core::HerdRow& herd = world.herds.rows[0];
+    return std::pair<std::uint16_t, std::uint16_t>{herd.adult_count, herd.adult_male_count};
+  };
+  const auto [with_floor, boars] = kept(3.0F);
+  const auto [by_share, boars_share] = kept(0.0F);
+  failures += Expect(with_floor == 4 && boars == 1,
+                     "sows: six adults and a boar keep three sows and the boar through the winter");
+  failures += Expect(by_share == 2 && boars_share == 1,
+                     "sows: with no floor the share keeps one sow and the boar, as before");
+  return failures;
+}
+
 int CheckAutumnPigs() {
   int failures = 0;
   const core::ProductionConfig config = MakeHerdConfig();
@@ -8946,6 +8973,7 @@ int main() {
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();
   failures += CheckTheMalesCullIsSaid();
+  failures += CheckTheAutumnKeepsAFewSows();
   failures += CheckSelfFedYard();
   failures += CheckWorkOnlyFeed();
   failures += CheckMangerReach();

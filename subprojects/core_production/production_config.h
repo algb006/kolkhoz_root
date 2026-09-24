@@ -682,6 +682,13 @@ struct FarmingConfig {
   /// one knob the rule needs. ASSUMPTION until the balance run.
   float sow_keep_share = 0.25F;
 
+  /// THE FEWEST SOWS THE AUTUMN KEEPS (boss, boss-core-epoch1-5 seq 45, option
+  /// б; STUB 3): the slaughter takes no female while the herd has fewer than
+  /// this; sow_keep_share keeps its share above it. The design names «a few
+  /// sows» and leaves the number to polish; the share alone kept one sow of
+  /// six adults, which is not a few.
+  float sow_keep_min = 3.0F;
+
   /// The calving season, 0-based months inclusive. Births are once a game
   /// year in their own season (canon of the yearly cycle); livestock.csv
   /// gives the yearly rate but names no month, so the band is ASSUMPTION and

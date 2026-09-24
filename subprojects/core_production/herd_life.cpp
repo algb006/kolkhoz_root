@@ -543,11 +543,24 @@ void RunHungerDeaths(const ProductionConfig& config,
 /// and the sire goes to meat. How many sows the herd keeps is the one number
 /// the design does not name, so it is a table knob — ASSUMPTION, and the
 /// balance run is what will move it.
+/// The sows the autumn keeps: the share of the adults, and never fewer than
+/// sow_keep_min while the herd has that many females (boss, boss-core-epoch1-5
+/// seq 45, option б; 0.35.5). ONE HOME for the slaughter and for the meat it
+/// is sized by (AutumnSlaughterMeatShort), which used to compute it twice.
+std::uint16_t SowsKept(const ProductionConfig& config, const HerdRow& herd) {
+  const std::uint16_t by_share =
+      AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
+  const std::uint16_t females =
+      herd.adult_count > herd.adult_male_count ? herd.adult_count - herd.adult_male_count : 0;
+  const std::uint16_t floor = AsHeads(config.farming.sow_keep_min);
+  const std::uint16_t least = females < floor ? females : floor;
+  return by_share > least ? by_share : least;
+}
+
 std::uint16_t AutumnSlaughterHeads(const ProductionConfig& config,
                                    const LivestockDef& kind,
                                    const HerdRow& herd) {
-  const std::uint16_t sows =
-      AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
+  const std::uint16_t sows = SowsKept(config, herd);
   const std::uint16_t keep = static_cast<std::uint16_t>(sows + TargetMales(kind, herd.adult_count));
   const std::uint16_t adults = herd.adult_count > keep ? herd.adult_count - keep : 0;
   return static_cast<std::uint16_t>(herd.juvenile_count + adults);
@@ -598,8 +611,7 @@ void RunAutumnSlaughter(const ProductionConfig& config,
     return;
   }
   herd.autumn_slaughter_done = 1;
-  const std::uint16_t sows =
-      AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
+  const std::uint16_t sows = SowsKept(config, herd);
   const std::uint16_t males = TargetMales(kind, herd.adult_count);
   const auto keep = static_cast<std::uint16_t>(sows + males);
   std::uint16_t gone = TakeHeads(herd.juvenile_count, herd.juvenile_count);
