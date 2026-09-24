@@ -12,7 +12,7 @@ build_yard,spare_part,20,5
 build_yard,tool,120,3
 church_store,rye,8,1000
 church_store,wheat,2.5,1000
-church_store,oat,5,1000
+church_store,oat,8.75,1000
 church_store,barley,3.5,1000
 church_store,potato,35,1000
 church_store,barrel,150,15

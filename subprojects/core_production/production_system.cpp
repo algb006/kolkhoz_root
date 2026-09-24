@@ -53,6 +53,7 @@
 #include "field_haul.h"
 #include "field_removal.h"
 #include "field_work.h"
+#include "goods_loan.h"
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -403,6 +404,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectFieldAlarms(config_, completed, alarms);
     CollectSeedRoomAlarms(config_, completed, alarms);
     CollectMilkDebtAlarms(config_, completed, alarms);
+    CollectGoodsLoanAlarms(completed, alarms);
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);
@@ -429,6 +431,8 @@ class ProductionSystem final : public IProductionSystem {
     // The barrels' year (register 240), booked in the book that closes.
     WearBarrels(config_, current);
     DeliverPlan(config_, current);
+    // The goods loan after the plan, in the book that closes (goods_loan.h).
+    RepayGoodsLoans(config_, current);
     // Read before JudgePlan hands the next year's plan down over this one.
     const bool plan_fully_met = PlanFullyDelivered(config_, current);
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);

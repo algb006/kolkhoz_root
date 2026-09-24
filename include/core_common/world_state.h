@@ -659,6 +659,21 @@ struct PlanState {
   /// position short. Cleared at the turn, after the year is scored.
   ResourceAmounts delivered_outside;
 
+  /// THE DISTRICT'S GOODS LOAN OWED, by resource (wage design §6; district
+  /// design, «Товарный заём»; boss, boss-core-epoch1-5 seq 15; save 89),
+  /// grams, the markup included: a loan taken books its grams × (1 +
+  /// goods_loan_markup) here. Paid at the year's turn after the plan, in kind,
+  /// from what the plan could take above the held seed (DeliverableAboveSeed);
+  /// what is left carries on and takes the markup again. NOT cleared at the
+  /// turn and with no ceiling: «если и следующий год плохой — долг
+  /// накапливается и душит». kGoodsLoanOwed stands while any is owed.
+  ResourceAmounts goods_loan_owed;
+
+  /// The loan TAKEN this year, by resource, grams as borrowed (no markup):
+  /// one loan a resource a year, and this is what says a year has had it.
+  /// Cleared at the turn.
+  ResourceAmounts goods_loan_taken;
+
   /// The verdict on the year that closed last. kNone until the first one
   /// closes.
   PlanVerdict last_verdict = PlanVerdict::kNone;

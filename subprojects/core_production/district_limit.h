@@ -74,6 +74,17 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
 ///        term, so a column ordered in the March mud can be refused as late.
 std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The day the district's cart reaches the village for an order given
+///        today: LimitBaseDeliveryDays plus a delay of
+///        0..limit_delivery_delay_days_max drawn from the world's generator
+///        state and the order's tick. One home for a lot's cart and the goods
+///        loan's (boss, boss-core-epoch1-5 seq 15: «как у лота района»).
+/// @note Reads the generator state; draws from a copy, so the world's stream
+///       does not move.
+std::uint32_t LimitCartArriveDay(const ProductionConfig& config,
+                                 const WorldState& current,
+                                 const OrderRow& order);
+
 /// @brief Reads a kOrderLimitLot: checks the lot and the balance, takes the
 ///        points, and puts the lot's goods on a cart due on the day given by
 ///        LimitBaseDeliveryDays plus a delay drawn from the world's random

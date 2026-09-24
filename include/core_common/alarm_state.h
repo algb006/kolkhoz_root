@@ -410,6 +410,14 @@ enum class AlarmKind : std::uint8_t {
   /// `amount` = GRAMS of the debt.
   kMilkAllToDebt,
 
+  /// THE DISTRICT'S GOODS LOAN IS OWED (alarms.csv `goods_loan_owed`, rank
+  /// 24; boss, boss-core-epoch1-5 seq 15 and 30): PlanState::goods_loan_owed
+  /// stands above nought for the resource. It is paid at the year's turn after
+  /// the plan, and what the turn cannot pay carries on with the markup again,
+  /// so this line is how the player sees a debt that grows. Subject:
+  /// `resource`; `amount` = GRAMS owed, the markup included.
+  kGoodsLoanOwed,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

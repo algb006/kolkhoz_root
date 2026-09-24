@@ -17,6 +17,7 @@
 #include "district_trip.h"
 #include "extraction_digging.h"
 #include "field_removal.h"
+#include "goods_loan.h"
 #include "herd_system.h"
 #include "night_pasture.h"
 #include "stock_ops.h"
@@ -478,6 +479,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kPlantForest:
         Settle(order, OrderPlantForest(config, current, order));
+        break;
+      case OrderKind::kTakeGoodsLoan:
+        Settle(order, TakeGoodsLoan(config, current, order));
         break;
       case OrderKind::kMarkExtraction:
         Settle(order, MarkExtraction(config, current, order));

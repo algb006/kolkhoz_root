@@ -960,6 +960,12 @@ struct ProductionConfig {
   /// shortfall.
   float weather_year_snow_share = 0.5F;
 
+  /// THE GOODS LOAN'S MARKUP (wage design §6; boss, boss-core-epoch1-5 seq 15
+  /// and 30): a loan is owed back × (1 + this), and what a turn cannot pay
+  /// takes it again. world_params.csv `goods_loan_markup`, STUB 0.2, boss's.
+  /// «Lower with a good reputation» is later, not this stage.
+  float goods_loan_markup = 0.2F;
+
   /// What a met and a failed year do to the chairman's raikom reputation,
   /// in points of its 0..100 scale (campaign.csv). District design §5 gives
   /// the DIRECTIONS — "растёт: выполнение и перевыполнение плана", "падает:

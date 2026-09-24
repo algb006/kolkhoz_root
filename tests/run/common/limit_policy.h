@@ -25,6 +25,7 @@
 #ifndef TESTS_RUN_COMMON_LIMIT_POLICY_H_
 #define TESTS_RUN_COMMON_LIMIT_POLICY_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -36,7 +37,11 @@
 #include <vector>
 
 #include "core_catalog/limit_catalog.h"
+#include "core_common/alarm_state.h"
+#include "core_common/calendar.h"
 #include "core_common/order_state.h"
+#include "core_common/quantities.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -64,6 +69,7 @@ class LimitPolicy {
     if (const core::ITable* const lots = tables.FindTable("limit_catalog")) {
       horse_lot_ = lots->FindRowByKey("horse_head");
     }
+    ReadSowingWindows(tables);
   }
 
   /// @brief The fixture difference, in words, before anything is measured.
@@ -74,7 +80,9 @@ class LimitPolicy {
                  "waits for and the stores cannot cover — logs and boards only for a site that "
                  "has waited a quarter of the year, the design's emergency (timber §2) — "
                  "when the year's points cover it and no cart with that material is on the road "
-                 "(district design §1; boss, 2026-09-13 and 2026-09-24)\n";
+                 "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
+                 "DISTRICT'S SEED LOAN for the shortfall seed_short names, seven days before the "
+                 "seed's sowing window, once a resource a year (boss, boss-core-epoch1-5 seq 15)\n";
   }
 
   /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
@@ -93,6 +101,8 @@ class LimitPolicy {
     const core::WorldState& world = simulation.CompletedState();
     Book(world);
     CountWaits(world);
+    // The loan needs no catalogue and no points: before the lots' gate.
+    StageSeedLoans(simulation, world);
     if (!ready_) {
       return;
     }
@@ -111,7 +121,8 @@ class LimitPolicy {
 
   /// @brief The points of every closed year, and what the policy bought.
   void Report(const char* run) const {
-    std::cout << run << ": the run's chairman bought " << bought_ << " limit lots\n";
+    std::cout << run << ": the run's chairman bought " << bought_ << " limit lots and asked for "
+              << loans_ << " seed loans (a refused ask is asked again the next day)\n";
     for (const Year& year : years_) {
       std::cout << run << ":   limit year " << year.year << " — granted " << year.granted
                 << ", spent " << year.spent << ", burnt " << year.burned << "\n";
@@ -120,6 +131,93 @@ class LimitPolicy {
 
  private:
   static constexpr std::uint32_t kCooldownDays = 1;
+
+  /// Days before a seed's sowing window the chairman takes the loan (boss,
+  /// boss-core-epoch1-5 seq 15: «за 7 суток до окна сева»).
+  static constexpr std::uint32_t kLoanLeadDays = 7;
+
+  /// Each crop's seed resource (a resources.csv row, or kNoTableRow) and the
+  /// first month of its sowing window, 0-based.
+  void ReadSowingWindows(const core::ITableSet& tables) {
+    const core::ITable* const crops = tables.FindTable("crops");
+    const core::ITable* const resources = tables.FindTable("resources");
+    if (crops == nullptr || resources == nullptr) {
+      return;
+    }
+    const std::uint32_t resource_column = crops->FindColumn("resource");
+    const std::uint32_t from_column = crops->FindColumn("sow_from_month");
+    for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+      crop_seed_.push_back(resources->FindRowByKey(crops->CellText(row, resource_column)));
+      const std::optional<float> from = crops->CellReal(row, from_column);
+      // crops.csv months are human 1..12 (the parser converts; so does this).
+      crop_sow_from_.push_back(from && *from >= 1.0F ? static_cast<std::uint32_t>(*from) - 1U : 0U);
+    }
+  }
+
+  /// THE SEED LOAN (boss, boss-core-epoch1-5 seq 15): seven days before a
+  /// seed's sowing window, if seed_short stands for it, the shortfall the
+  /// alarms name is borrowed — once a resource a year, and only what is
+  /// short: the core lends up to the whole need, and the markup is paid on
+  /// every gram taken.
+  void StageSeedLoans(core::ISimulation& simulation, const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    simulation.CollectAlarms(alarms);
+    std::unordered_map<std::uint32_t, core::Grams> short_by_resource;
+    const std::uint32_t today = world.calendar.day % core::kDaysPerYear;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind != core::AlarmKind::kSeedShort || alarm.amount <= 0) {
+        continue;
+      }
+      const std::uint32_t field_row = core::FindRow(world.fields, alarm.field);
+      if (field_row == core::kNoRow) {
+        continue;
+      }
+      // The crop this field sows next with this seed: this year's slot, or a
+      // winter crop from the next one.
+      const core::FieldRow& field = world.fields.rows[field_row];
+      std::uint32_t crop = core::kNoTableRow;
+      for (const core::CropId slot : {field.rotation_year0, field.rotation_year1}) {
+        if (slot.value < crop_seed_.size() && crop_seed_[slot.value] == alarm.resource.value) {
+          crop = slot.value;
+          break;
+        }
+      }
+      if (crop == core::kNoTableRow) {
+        continue;
+      }
+      const std::uint32_t window = crop_sow_from_[crop] * core::kDaysPerMonth;
+      const std::uint32_t days_to =
+          window >= today ? window - today : window + core::kDaysPerYear - today;
+      if (days_to <= kLoanLeadDays) {
+        short_by_resource[alarm.resource.value] += alarm.amount;
+      }
+    }
+    std::vector<core::OrderRow> orders;
+    for (const auto& [resource, grams] : short_by_resource) {
+      const core::ResourceId id{static_cast<std::uint16_t>(resource)};
+      if (core::AmountOf(world.plan.goods_loan_taken, id) > 0) {
+        continue;  // one a resource a year
+      }
+      core::OrderRow order;
+      order.kind = core::OrderKind::kTakeGoodsLoan;
+      order.resource = id;
+      order.amount = grams;
+      orders.push_back(order);
+    }
+    // In resource order: the map's order is no order, and the run is
+    // deterministic.
+    std::ranges::sort(orders, [](const core::OrderRow& a, const core::OrderRow& b) {
+      return a.resource.value < b.resource.value;
+    });
+    if (!orders.empty()) {
+      simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
+      loans_ += static_cast<std::uint32_t>(orders.size());
+    }
+  }
+
+  std::vector<std::uint32_t> crop_seed_;
+  std::vector<std::uint32_t> crop_sow_from_;
+  std::uint32_t loans_ = 0;
 
   /// Game days a site waits in the queue before its logs and boards may be
   /// bought on the limit: a quarter of the year. The run's number, not the

@@ -343,6 +343,10 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // What the milk position still owed at the turn (save 86; boss seq 7 of
   // epoch1-5), grams — the milk debt the verdict judged short.
   out.Integer("milk_debt", static_cast<std::uint64_t>(book.milk_debt));
+  // The district's goods loan (save 89): taken this year, and paid at the
+  // turn. What is still owed is the plan's (PlanState::goods_loan_owed).
+  EmitResourceBlock(out, resources, "goods_loan_taken", book.goods_loan_taken);
+  EmitResourceBlock(out, resources, "goods_loan_repaid", book.goods_loan_repaid);
   // What went against the position is NOT a block of the book here: the row
   // is written at the turn, while plan.delivered still holds the year's
   // shipments by position, and `plan_delivered` below prints exactly that

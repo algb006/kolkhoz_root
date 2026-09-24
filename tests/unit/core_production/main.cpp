@@ -41,6 +41,7 @@
 #include "extraction_digging.h"
 #include "field_haul.h"
 #include "field_work.h"
+#include "goods_loan.h"
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -8032,6 +8033,135 @@ int CheckTheColumnDrillInTheRain() {
 /// RescaleHorseWorkForRation; host, econ-host-fodder-and-winter seq 2): a
 /// phase priced on last autumn's hungry ration is re-priced when the herd
 /// day writes a full one — and only the horse work, only on the arable.
+/// THE DISTRICT'S GOODS LOAN (goods_loan.h; boss, boss-core-epoch1-5 seq 15
+/// and 30): up to the next sowing's seed need, on the district's cart, owed
+/// × 1.2; paid at the turn from above the held seed, the rest carrying on
+/// with the markup again; one loan a resource a year; the alarm while owed.
+int CheckTheGoodsLoan() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.goods_loan_markup = 0.2F;
+  config.feed_values = {0.0F, 0.0F};  // two resources: the seed need is sized by it
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{0};
+  config.crops[0].sowing_norm_kg_per_ha = 1000.0F;
+  config.crops[0].sow_from_month = 3;
+  config.crops[0].sow_to_month = 4;
+  config.crops[0].harvest_from_month = 8;  // sown in May, before its own harvest
+  config.unit_types.resize(1);
+  SetStorageKg(config.unit_types[0], 100000.0F);
+  // Ten hectares sow resource 0 next at a tonne a hectare: 10 t of seed.
+  const auto make_world = [](core::Grams in_barn) {
+    core::WorldState world;
+    world.calendar.tick = 1;  // hour 1 of day 0: past the year's turning hour
+    core::UnitRow barn;
+    barn.level = 1;
+    barn.type = core::UnitTypeId{0};
+    barn.stock = {in_barn, 0};
+    core::AppendRow(world.units, barn);
+    core::FieldRow to_sow;
+    to_sow.kind = core::LandKind::kArable;
+    to_sow.area_ga = 10.0F;
+    to_sow.rotation_year0 = core::CropId{0};
+    core::AppendRow(world.fields, to_sow);
+    return world;
+  };
+  const auto loan = [](core::ResourceId resource, core::Grams amount) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kTakeGoodsLoan;
+    order.resource = resource;
+    order.amount = amount;
+    return order;
+  };
+
+  // -- taking: the whole ceiling, on the cart, owed with the markup ---------
+  core::WorldState world = make_world(2 * kTonne);
+  failures += Expect(core::GoodsLoanCeiling(config, world, core::ResourceId{0}) == 10 * kTonne,
+                     "loan: the ceiling is the next sowing's seed need, 10 t");
+  failures += Expect(
+      core::TakeGoodsLoan(config, world, loan(core::ResourceId{0}, 0)) == core::OrderRefusal::kNone,
+      "loan: taken");
+  failures += Expect(
+      world.limit_deliveries.rows.size() == 1 &&
+          world.limit_deliveries.rows[0].lot.value == core::kInvalidDefIdValue &&
+          core::AmountOf(world.limit_deliveries.rows[0].goods, core::ResourceId{0}) == 10 * kTonne,
+      "loan: 10 t on the district's cart, a cart with no lot");
+  failures += Expect(
+      core::AmountOf(world.plan.goods_loan_owed, core::ResourceId{0}) == 12 * kTonne &&
+          core::AmountOf(world.plan.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne &&
+          core::AmountOf(world.ledger.current.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne,
+      "loan: owed 12 t with the markup, taken and booked 10 t");
+  failures += Expect(core::TakeGoodsLoan(config, world, loan(core::ResourceId{0}, kTonne)) ==
+                         core::OrderRefusal::kRuleForbids,
+                     "loan: one a resource a year — the second is refused");
+  failures += Expect(core::TakeGoodsLoan(config, world, loan(core::ResourceId{1}, kTonne)) ==
+                         core::OrderRefusal::kRuleForbids,
+                     "loan: a resource that is no crop's seed is refused");
+  core::WorldState capped = make_world(0);
+  core::TakeGoodsLoan(config, capped, loan(core::ResourceId{0}, 25 * kTonne));
+  failures +=
+      Expect(core::AmountOf(capped.plan.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne,
+             "loan: an amount above the ceiling is lent up to the ceiling");
+  std::vector<core::Alarm> alarms;
+  core::CollectGoodsLoanAlarms(world, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kGoodsLoanOwed &&
+                         alarms[0].amount == 12 * kTonne,
+                     "loan: the alarm stands with the 12 t owed");
+
+  // -- repaying at the turn: above the seed only, the rest with the markup ---
+  // 30 t in the barn, 10 t held for the sowing: 20 t may go, the 12 t owed
+  // go whole.
+  core::WorldState rich = make_world(30 * kTonne);
+  rich.plan.goods_loan_owed = {12 * kTonne};
+  rich.plan.goods_loan_taken = {10 * kTonne};
+  core::RepayGoodsLoans(config, rich);
+  failures += Expect(core::AmountOf(rich.plan.goods_loan_owed, core::ResourceId{0}) == 0 &&
+                         rich.units.rows[0].stock[0] == 18 * kTonne &&
+                         core::AmountOf(rich.ledger.current.goods_loan_repaid,
+                                        core::ResourceId{0}) == 12 * kTonne &&
+                         core::AmountOf(rich.plan.goods_loan_taken, core::ResourceId{0}) == 0,
+                     "repay: 12 t paid from above the seed, nothing owed, the year's mark cleared");
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(rich, alarms);
+  failures += Expect(alarms.empty(), "repay: paid off, no alarm");
+  // 15 t in the barn, 10 t held: 5 t go, 7 t left, owed 7 x 1.2 = 8.4 t.
+  core::WorldState poor = make_world(15 * kTonne);
+  poor.plan.goods_loan_owed = {12 * kTonne};
+  core::RepayGoodsLoans(config, poor);
+  failures += Expect(core::AmountOf(poor.plan.goods_loan_owed, core::ResourceId{0}) == 8'400'000 &&
+                         poor.units.rows[0].stock[0] == 10 * kTonne,
+                     "repay: 5 t paid, the seed's 10 t stay, the 7 t left owe 8.4 t");
+  // A HEAP LYING IN THE FIELD does not pay from the barn (static review of
+  // 0.35.0): 10 t in the barn, all of it the sowing's seed, and 5 t lying in
+  // a heap. Above the seed stands 5 t, and all of it is the heap's — the
+  // barn gives nothing.
+  core::WorldState heaped = make_world(10 * kTonne);
+  core::FieldRow heap;
+  heap.kind = core::LandKind::kArable;
+  heap.reaped_resource = core::ResourceId{0};
+  heap.reaped_grams = 5 * kTonne;
+  core::AppendRow(heaped.fields, heap);
+  heaped.plan.goods_loan_owed = {12 * kTonne};
+  core::RepayGoodsLoans(config, heaped);
+  failures +=
+      Expect(heaped.units.rows[0].stock[0] == 10 * kTonne &&
+                 core::AmountOf(heaped.ledger.current.goods_loan_repaid, core::ResourceId{0}) == 0,
+             "repay: the heap's grams are not the barn's — the seed in the barn stays");
+  // NOT IN THE TURN'S OWN HOUR: the year closes later in that very call.
+  core::WorldState turning = make_world(0);
+  turning.calendar.day = core::kDaysPerYear;
+  turning.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  failures += Expect(core::TakeGoodsLoan(config, turning, loan(core::ResourceId{0}, 0)) ==
+                         core::OrderRefusal::kRuleForbids,
+                     "loan: refused in the year's turning hour");
+  turning.calendar.tick += 1;
+  failures += Expect(core::TakeGoodsLoan(config, turning, loan(core::ResourceId{0}, 0)) ==
+                         core::OrderRefusal::kNone,
+                     "loan: an hour later it is lent");
+  return failures;
+}
+
 int CheckTheRationRepricesTheHorseWork() {
   int failures = 0;
   core::ProductionConfig config;
@@ -8562,6 +8692,7 @@ int main() {
   failures += CheckTheMtsColumn();
   failures += CheckTheColumnDrillInTheRain();
   failures += CheckTheRationRepricesTheHorseWork();
+  failures += CheckTheGoodsLoan();
   failures += CheckTheFodderRungIsTheTeamsRationToTheNextOats();
   failures += CheckTheAmbulance();
   failures += CheckDistrictVisits();

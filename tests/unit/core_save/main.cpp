@@ -169,6 +169,9 @@ core::WorldState MakeWorld() {
   world.plan.milk_daily_share = 250'000;
   world.plan.milk_debt = 37'000;  // save 85, away from its default and from the share
   world.plan.delivered_outside = Amounts({0, 0, 3'000'000});
+  // Save 89: the goods loan owed (the markup in it) and taken this year.
+  world.plan.goods_loan_owed = Amounts({0, 1'500'000});
+  world.plan.goods_loan_taken = Amounts({0, 1'250'000});
   // The district's verdict on the year and the two runs it keeps. Set to
   // three DIFFERENT values on purpose: equal ones would survive a codec that
   // wrote the same field three times.
@@ -587,6 +590,8 @@ core::WorldState MakeWorld() {
   // that swapped the books could not round-trip them.
   world.ledger.closed.milk_debt = 200'000;
   world.ledger.current.milk_debt = 7'000;
+  // Save 89: a closed year that paid its loan back; the rest stay empty.
+  world.ledger.closed.goods_loan_repaid = Amounts({0, 0, 900'000});
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // The standing crop the snow took (save 61): host's 150 t of potato.
@@ -841,6 +846,8 @@ core::WorldState MakeWitnessWorld() {
   witness.plan.milk_daily_share = 180'000;
   witness.plan.milk_debt = 9'000;
   witness.plan.delivered_outside = Amounts({0, 500'000});
+  witness.plan.goods_loan_owed = Amounts({0, 0, 60'000});
+  witness.plan.goods_loan_taken = Amounts({50'000});
   witness.plan.last_verdict = core::PlanVerdict::kFailed;
   witness.plan.failed_years_in_a_row = 2;
   witness.plan.met_years_in_a_row = 5;
@@ -950,6 +957,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
   chunks.push_back({"plan.milk_debt", U64(static_cast<std::uint64_t>(world.plan.milk_debt))});
   AppendAmounts(chunks, "plan.delivered_outside", world.plan.delivered_outside);
+  AppendAmounts(chunks, "plan.goods_loan_owed", world.plan.goods_loan_owed);    // save 89
+  AppendAmounts(chunks, "plan.goods_loan_taken", world.plan.goods_loan_taken);  // save 89
   chunks.push_back({"plan.last_verdict", Enum8(world.plan.last_verdict)});
   chunks.push_back({"plan.failed_years_in_a_row", U8(world.plan.failed_years_in_a_row)});
   chunks.push_back({"plan.met_years_in_a_row", U8(world.plan.met_years_in_a_row)});
@@ -1181,7 +1190,9 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // predicted 500 -> 501 with the eighteen other sections unmoved before
     // the build; held. The arity tripwire (19 -> 20) was not named with it
     // — a miss in the prediction's inventory, caught by the tripwire.
-    {"world", 509, 0x74575ed5ba09ec3dULL},
+    // Save 89: +36 — the goods loan owed and taken, two amounts of two
+    // resources (2 + 16 each); predicted 509 -> 545 before the build, held.
+    {"world", 545, 0x7b51f038030187ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1260,7 +1271,10 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // Not written down before the build (a miss); VERSION_SAVE stays 81.
     // Save 82: +36 — a planting's hectares (4) and species (2) on each of
     // the six orders; predicted, held.
-    {"orders", 530, 0xd68c60b5832c9e27ULL},
+    // Save 89: kTakeGoodsLoan became the top OrderKind — same 530 bytes, the
+    // hash moved. NOT predicted: the prediction named world and ledger and
+    // left this one out, the fifth time the top of the enum has moved here.
+    {"orders", 530, 0x1e7fbae9a9b126e8ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -1311,7 +1325,10 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // 904 before the build. The hash is recorded after it.
     // Save 86: +16 — milk_debt, eight bytes in each of the two books;
     // predicted 920 before the build, and held.
-    {"ledger", 920, 0x735fa3f944040262ULL},
+    // Save 89: +32 — the goods loan taken and repaid in each of the two books:
+    // three empty (2 each) and the closed book's repayment of three
+    // resources (2 + 24); predicted 920 -> 952 before the build, held.
+    {"ledger", 952, 0x68ba271d5f56f70bULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1503,6 +1520,18 @@ int main() {
         "while a debt of nothing goes through");
   }
 
+  // A NEGATIVE GOODS LOAN OWED is no state the simulation makes (save 89):
+  // paid down to nought and no further. The control is the fixture itself.
+  {
+    core::WorldState owing = MakeWorld();
+    owing.plan.goods_loan_owed = Amounts({0, -1});
+    core::WorldState refused;
+    std::string owing_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(owing, *tables), *tables, &refused, &owing_error),
+        "a save owing a negative goods loan is refused");
+  }
+
   // -- the round trip ------------------------------------------------------
   core::WorldState loaded;
   loaded.epoch = core::Epoch::kThree;  // a marker, to catch a partial write
@@ -1658,6 +1687,10 @@ int main() {
                          AmountAt(loaded.plan.delivered_outside, 2) == 3'000'000,
                      "the milk cart's share and the winter's milk come back (save 66)");
   failures += Expect(loaded.plan.milk_debt == 37'000, "and the milk debt comes back (save 85)");
+  failures += Expect(AmountAt(loaded.plan.goods_loan_owed, 1) == 1'500'000 &&
+                         AmountAt(loaded.plan.goods_loan_taken, 1) == 1'250'000 &&
+                         AmountAt(loaded.ledger.closed.goods_loan_repaid, 2) == 900'000,
+                     "the goods loan owed and taken come back, and the book's repayment (save 89)");
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");

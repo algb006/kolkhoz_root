@@ -236,3 +236,4 @@ timber_planting_days_per_ha,1,core
 timber_planting_max_ha,5,core
 player_entry_day,12,both
 weather_year_snow_share,0.5,core
+goods_loan_markup,0.2,core

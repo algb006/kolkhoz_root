@@ -144,6 +144,12 @@ bool ShapeIsValid(const OrderRow& order) {
       // stand is a felled grove or the ground is free is its verdict.
       return order.area_ha > 0.0F && order.species.value != kInvalidDefIdValue && !has_resident &&
              !has_unit && !has_field && !has_herd && !has_site;
+    case OrderKind::kTakeGoodsLoan:
+      // A resource and grams, 0 for the whole ceiling; no other subject.
+      // Whether the resource is a seed, the ceiling and the year's one loan
+      // are the consumer's (order_state.h).
+      return order.resource.value != kInvalidDefIdValue && order.amount >= 0 && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kRemoveField:
       // kRemoveField names the field alone: whether it still holds bread, and
       // whether it is arable at all, change with the season — the consumer's

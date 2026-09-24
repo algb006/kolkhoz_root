@@ -969,7 +969,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 18> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 19> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -987,7 +987,8 @@ constexpr std::array<std::string_view, 18> kProductionWorldParamKeys = {
     "ambulance_arrive_hour",
     "walk_home_hours",
     "calving_fed_share_floor",
-    "weather_year_snow_share"};
+    "weather_year_snow_share",
+    "goods_loan_markup"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1002,6 +1003,7 @@ bool ParseProductionWorldParams(const ITable& world,
                                 FarmingConfig& farming,
                                 DistrictCarConfig& car,
                                 float& weather_year_snow_share,
+                                float& goods_loan_markup,
                                 std::string& error) {
   float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
@@ -1072,6 +1074,11 @@ bool ParseProductionWorldParams(const ITable& world,
       // The weather year's share, the plan's (boss, boss-core-epoch1-5 seq 11).
       ScalarKnob{.key = kProductionWorldParamKeys[17],
                  .value = &weather_year_snow_share,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      // The goods loan's markup (boss, boss-core-epoch1-5 seq 15 and 30). Up
+      // to doubling: a markup above that is a typo, not a district.
+      ScalarKnob{.key = kProductionWorldParamKeys[18],
+                 .value = &goods_loan_markup,
                  .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
@@ -1087,8 +1094,12 @@ std::span<const std::string_view> ProductionWorldParamKeys() {
 
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
   if (const ITable* const world = tables.FindTable("world_params")) {
-    if (!ParseProductionWorldParams(
-            *world, config.farming, config.district_car, config.weather_year_snow_share, error)) {
+    if (!ParseProductionWorldParams(*world,
+                                    config.farming,
+                                    config.district_car,
+                                    config.weather_year_snow_share,
+                                    config.goods_loan_markup,
+                                    error)) {
       return false;
     }
   }

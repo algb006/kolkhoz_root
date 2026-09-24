@@ -67,9 +67,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // seq 18, item 3) — a twenty-fourth column and a sixty-eighth field.
 // Save 86: milk_debt, the debt standing (boss seq 7 of epoch1-5) — 8 bytes
 // and a sixty-ninth field, predicted before the build.
-static_assert(sizeof(YearLedger) == 232 + (24 * kAmountsSize),
+// Save 89: the goods loan taken and repaid — a twenty-sixth column and a
+// seventy-first field, predicted before the build.
+static_assert(sizeof(YearLedger) == 232 + (26 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 69,
+static_assert(AggregateArity<YearLedger>() == 71,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -121,9 +123,11 @@ static_assert(AggregateArity<ChairmanState>() == 20,
 // deliveries, a fourth amounts vector — measured 4 x amounts + 24, 11 fields.
 // 2026-09-24, save 85: the milk debt, 8 bytes and a twelfth field, predicted
 // before the build.
-static_assert(sizeof(PlanState) == (4 * kAmountsSize) + 32,
+// Save 89: the goods loan owed and taken, two amounts vectors — 6 x amounts
+// + 32 and 14 fields, predicted before the build.
+static_assert(sizeof(PlanState) == (6 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 12,
+static_assert(AggregateArity<PlanState>() == 14,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -322,7 +326,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.plan_due);
   // What went against each position (save 83).
   sink.WriteAmounts(DefKind::kResource, book.plan_delivered);
-  out.WriteI64(book.milk_debt);  // save 86
+  out.WriteI64(book.milk_debt);                                   // save 86
+  sink.WriteAmounts(DefKind::kResource, book.goods_loan_taken);   // save 89
+  sink.WriteAmounts(DefKind::kResource, book.goods_loan_repaid);  // save 89
 
   WriteFloatArray(out, book.work_days_by_kind);
   out.WriteI32(book.trudodni_accrued);
@@ -409,6 +415,15 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.milk_debt = in.ReadI64();
   if (book.milk_debt < 0) {
     source.Fail("the book's milk debt is negative");
+  }
+  book.goods_loan_taken = source.ReadAmounts(DefKind::kResource);   // save 89
+  book.goods_loan_repaid = source.ReadAmounts(DefKind::kResource);  // save 89
+  for (const ResourceAmounts* column : {&book.goods_loan_taken, &book.goods_loan_repaid}) {
+    for (const Grams grams : *column) {
+      if (grams < 0) {
+        source.Fail("the book's goods loan column is negative");
+      }
+    }
   }
 
   ReadFloatArray(in, book.work_days_by_kind);
@@ -614,6 +629,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteI64(world.plan.milk_daily_share);
   out.WriteI64(world.plan.milk_debt);  // save 85: the milk with debt
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered_outside);
+  sink.WriteAmounts(DefKind::kResource, world.plan.goods_loan_owed);   // save 89
+  sink.WriteAmounts(DefKind::kResource, world.plan.goods_loan_taken);  // save 89
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
   out.WriteU8(world.plan.failed_years_in_a_row);
   out.WriteU8(world.plan.met_years_in_a_row);
@@ -759,6 +776,20 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
     source.Fail("the milk cart's share or debt is negative");
   }
   world->plan.delivered_outside = source.ReadAmounts(DefKind::kResource);
+  world->plan.goods_loan_owed = source.ReadAmounts(DefKind::kResource);   // save 89
+  world->plan.goods_loan_taken = source.ReadAmounts(DefKind::kResource);  // save 89
+  // A NEGATIVE LOAN IS NO STATE the simulation makes: owed is paid down to
+  // nought and no further, and taken only grows within a year.
+  for (std::size_t resource = 0; resource < world->plan.goods_loan_owed.size(); ++resource) {
+    if (world->plan.goods_loan_owed[resource] < 0) {
+      source.Fail("the goods loan owed is negative");
+    }
+  }
+  for (std::size_t resource = 0; resource < world->plan.goods_loan_taken.size(); ++resource) {
+    if (world->plan.goods_loan_taken[resource] < 0) {
+      source.Fail("the goods loan taken is negative");
+    }
+  }
   world->plan.last_verdict =
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));
   world->plan.failed_years_in_a_row = in.ReadU8();

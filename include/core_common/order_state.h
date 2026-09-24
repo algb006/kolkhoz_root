@@ -755,6 +755,19 @@ enum class OrderKind : std::uint8_t {
   /// Seam key `plant_forest`. Consumer: core_production.
   kPlantForest,
 
+  /// Take the district's goods loan (wage design §6; district design, «Товарный
+  /// заём»; boss, boss-core-epoch1-5 seq 15): `amount` grams of `resource`,
+  /// 0 for the whole ceiling. It comes on the district's cart, the same road
+  /// and days as a limit lot (LimitDeliveryRow with no lot), and the village
+  /// owes it back × (1 + world_params goods_loan_markup, STUB) at the year's
+  /// turn, after the plan, in kind; what it cannot pay carries on and takes
+  /// the markup again (WorldState::goods_loan). The ceiling is the seed need
+  /// of the resource's next sowing (SeedNeedByResource); one loan a resource
+  /// a year. Refusals: kRuleForbids (not the seed of any crop — other goods
+  /// are a STUB — or taken this year already, or a ceiling of nought).
+  /// Seam key `take_goods_loan` (boss). Consumer: core_production.
+  kTakeGoodsLoan,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

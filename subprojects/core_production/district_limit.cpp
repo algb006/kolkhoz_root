@@ -103,6 +103,24 @@ std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldS
   return static_cast<std::uint32_t>(std::lround(static_cast<float>(dry) / factor));
 }
 
+std::uint32_t LimitCartArriveDay(const ProductionConfig& config,
+                                 const WorldState& current,
+                                 const OrderRow& order) {
+  // THE DELAY IS DETERMINED BY THE WORLD, NOT RANDOM: the world's generator
+  // state at this moment and the order's own tick pick it, so the same
+  // campaign delivers the same lot on the same day on one worker and on many
+  // (determinism, CLAUDE.md §10). It is the CURRENT state, not the campaign's
+  // seed: any system that draws more or fewer numbers earlier in the tick
+  // moves the day a later order's cart arrives. That is deterministic and is
+  // not a promise that an unrelated change keeps the day (delivery analysis,
+  // RACE-001 / UB-002, 2026-09-14).
+  const std::uint32_t spread = config.limit.delivery_delay_days_max + 1U;
+  RngState rng = SeedRngState(current.rng.state ^ order.issued_tick, kDeliveryDelayStream);
+  const std::uint32_t delay = NextRandomBelow(rng, spread);
+  return static_cast<std::uint32_t>(current.calendar.day) + LimitBaseDeliveryDays(config, current) +
+         delay;
+}
+
 OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epoch) {
   if (lot.value == kInvalidDefIdValue || lot.value >= catalog.lots.size()) {
     return OrderRefusal::kNoSuchSubject;
@@ -222,20 +240,7 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   current.limit.points -= def.points;
   current.ledger.current.limit_points_spent += def.points;
 
-  // THE DELAY IS DETERMINED BY THE WORLD, NOT RANDOM: the world's generator
-  // state at this moment and the order's own tick pick it, so the same
-  // campaign delivers the same lot on the same day on one worker and on many
-  // (determinism, CLAUDE.md §10). It is the CURRENT state, not the campaign's
-  // seed: any system that draws more or fewer numbers earlier in the tick
-  // moves the day a later order's cart arrives. That is deterministic and is
-  // not a promise that an unrelated change keeps the day (delivery analysis,
-  // RACE-001 / UB-002, 2026-09-14).
-  const std::uint32_t spread = config.limit.delivery_delay_days_max + 1U;
-  RngState rng = SeedRngState(current.rng.state ^ order.issued_tick, kDeliveryDelayStream);
-  const std::uint32_t delay = NextRandomBelow(rng, spread);
-
-  const std::uint32_t arrive_day = static_cast<std::uint32_t>(current.calendar.day) +
-                                   LimitBaseDeliveryDays(config, current) + delay;
+  const std::uint32_t arrive_day = LimitCartArriveDay(config, current, order);
 
   // STOCK TRAVELS ON NOTHING, and the same days it would have taken on a
   // cart: «голова появляется в закрытом помещении через несколько суток

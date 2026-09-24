@@ -131,11 +131,14 @@ class BookBalance {
   static double NetFlow(const core::YearLedger& book, std::size_t r) {
     const double in = At(book.harvest, r) + At(book.plot_harvest, r) + At(book.yard_produce, r) +
                       At(book.nets, r) + At(book.night_catch, r) + At(book.herd_produce, r) +
-                      At(book.made, r);
+                      At(book.made, r) +
+                      // The district's goods loan comes in when taken — it is
+                      // on the cart then, and the census counts the carts.
+                      At(book.goods_loan_taken, r);
     const double out = At(book.eaten, r) + At(book.spoiled, r) + At(book.lost_no_room, r) +
                        At(book.seed, r) + At(book.feed, r) + At(book.yard_feed, r) +
                        At(book.delivered, r) + At(book.seized, r) + At(book.stolen, r) +
-                       At(book.built_in, r) + At(book.processed, r);
+                       At(book.built_in, r) + At(book.processed, r) + At(book.goods_loan_repaid, r);
     return in - out;
   }
 

@@ -294,6 +294,15 @@ struct YearLedger {
   /// yards' morning issue had no milk (kMilkAllToDebt).
   Grams milk_debt = 0;
 
+  /// The district's goods loan TAKEN this year, by resource, grams as
+  /// borrowed (PlanState::goods_loan_taken; boss, boss-core-epoch1-5 seq 15;
+  /// save 89). Booked on the order, not on the cart's arrival.
+  ResourceAmounts goods_loan_taken;
+
+  /// The goods loan PAID BACK at this year's turn, by resource, grams (save
+  /// 89). What stays owed is PlanState::goods_loan_owed, which carries on.
+  ResourceAmounts goods_loan_repaid;
+
   /// What went bad in a store or a larder over the year, by resource
   /// (task A4; transport design §10). A separate column from `lost_no_room`
   /// because they are different failures with different cures: lost_no_room is

@@ -28,3 +28,4 @@ felling_unreachable,stand,20
 processing_stopped,unit,21
 demolition_stock_waiting,unit,22
 planting_unreachable,stand,23
+goods_loan_owed,resource,24
