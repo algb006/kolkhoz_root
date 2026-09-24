@@ -76,12 +76,16 @@ Grams SeedShortfall(const ProductionConfig& config,
   if (wanted <= 0 || resource.value >= need_by_resource.size()) {
     return 0;
   }
-  const Grams need = need_by_resource[resource.value];
+  const Grams bare = need_by_resource[resource.value];
+  // THE NORM AND ITS ROT TO THE SOWING, the booking's own rule (0.35.13): the
+  // seed loan is sized by this alarm, and sized on the bare norm it arrived a
+  // week before the window and the rot took the difference back.
+  const Grams need = SeedNeedWithRot(config, world, resource, bare);
   const Grams have = HeldEverywhere(world, resource);
   if (have >= need) {
     return 0;
   }
-  const double share = static_cast<double>(wanted) / static_cast<double>(need);
+  const double share = static_cast<double>(wanted) / static_cast<double>(bare);
   return std::max<Grams>(1, std::llround(static_cast<double>(need - have) * share));
 }
 

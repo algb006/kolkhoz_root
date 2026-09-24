@@ -204,6 +204,20 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config, const WorldS
   return held;
 }
 
+Grams SeedNeedWithRot(const ProductionConfig& config,
+                      const WorldState& world,
+                      ResourceId seed,
+                      Grams need) {
+  if (need <= 0) {
+    return need;
+  }
+  // The store's keeping factor is 1 everywhere (spoilage.h, STUB), so the
+  // table's shelf life is the one.
+  const float spoil_days =
+      seed.value < config.spoil_days.size() ? config.spoil_days[seed.value] : 0.0F;
+  return need + RotMarginGrams(need, spoil_days, DaysToSowingEnd(config, world, seed));
+}
+
 std::vector<Grams> SeedRoomBooked(const ProductionConfig& config, const WorldState& world) {
   std::vector<Grams> booked = SeedNeedByResource(config, world);
   for (std::uint32_t index = 0; index < booked.size(); ++index) {
@@ -213,11 +227,8 @@ std::vector<Grams> SeedRoomBooked(const ProductionConfig& config, const WorldSta
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     // THE NORM AND ITS ROT to the end of the seed's sowing window: the bare
     // norm lay in the church on seed 1939 and was 2-3 t short by 1 March,
-    // all of it rot (seq 26 acceptance). The store's keeping factor is 1
-    // everywhere (spoilage.h, STUB), so the table's shelf life is the one.
-    const float spoil_days = index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;
-    booked[index] +=
-        RotMarginGrams(booked[index], spoil_days, DaysToSowingEnd(config, world, resource));
+    // all of it rot (seq 26 acceptance).
+    booked[index] = SeedNeedWithRot(config, world, resource, booked[index]);
     const Grams held = HeldEverywhere(world, resource);
     Grams missing = booked[index] > held ? booked[index] - held : 0;
     // Nothing standing: the booking is no larger than what can still come in.

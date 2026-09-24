@@ -1986,6 +1986,27 @@ int CheckSeedLightAsksAboutTheNearestCampaign() {
                        "two fields of rye that one store cannot both sow are both alarmed");
     failures += Expect(rye_short == 10 * core::kGramsPerKilogram,
                        "and their shares sum to the rye's shortfall, 10 kg, not to a multiple");
+
+    // AND THE ROT TO THE SOWING IS SHORT TOO (0.35.13; the booking's rule,
+    // SeedNeedWithRot): the seed loan is sized by this alarm, and sized on
+    // the bare norm the rot between the cart and the sowing took the
+    // difference back — branch E3, seed 1939, 2460 kg of 2520 sown.
+    core::ProductionConfig rotting = config;
+    rotting.spoil_days.resize(std::max<std::size_t>(rotting.spoil_days.size(), 1), 0.0F);
+    rotting.spoil_days[0] = 300.0F;
+    std::vector<core::Alarm> rot_alarms;
+    core::CollectFieldAlarms(rotting, two_fields, rot_alarms);
+    core::Grams rye_short_rot = 0;
+    for (const core::Alarm& alarm : rot_alarms) {
+      if (alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0) {
+        rye_short_rot += alarm.amount;
+      }
+    }
+    std::cout << "seed alarm: rye short " << rye_short << " g keeping, " << rye_short_rot
+              << " g rotting\n";
+    failures += Expect(rye_short_rot > 10 * core::kGramsPerKilogram &&
+                           rye_short_rot < 13 * core::kGramsPerKilogram,
+                       "with the rye rotting, the shortfall carries its rot to the sowing");
   }
   return failures;
 }

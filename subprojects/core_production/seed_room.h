@@ -47,6 +47,19 @@ Grams FieldSeedNeed(const ProductionConfig& config,
 /// @return Dense by ResourceId, sized `config.feed_values.size()`.
 std::vector<Grams> SeedNeedByResource(const ProductionConfig& config, const WorldState& world);
 
+/// @brief `need` grams of `seed` and what the stores' rot takes of them by
+/// the end of the seed's sowing window (RotMarginGrams to DaysToSowingEnd):
+/// what must lie in the stores TODAY for `need` to be there at the sowing.
+/// ONE RULE for the room's booking (SeedRoomBooked) and the seed alarm's
+/// shortfall (kSeedShort, which the chairman's seed loan is sized by): the
+/// loan was sized on the bare norm and the rot between the cart and the
+/// sowing took the difference back — branch E3, seed 1939, the spring wheat
+/// sown on 2460 kg of 2520 after a 411 kg loan (0.35.13).
+Grams SeedNeedWithRot(const ProductionConfig& config,
+                      const WorldState& world,
+                      ResourceId seed,
+                      Grams need);
+
 /// @brief The seed the stores must keep TODAY for the next sowing: the need
 /// of SeedNeedByResource, but only for a seed whose next sowing ends before
 /// its next harvest begins. A seed the harvest brings first (the winter rye,
