@@ -413,6 +413,7 @@ class LaborSystem final : public ILaborSystem {
   /// production reads the morning's placement in that same hour-0 block (the
   /// team's working share, herd_system.cpp).
   void TopUpDay(WorldState& current) const {
+    ReleaseHorselessWork(current);
     std::vector<AssignmentJob> jobs = CollectJobs(current);
     const auto crewed = [&current](const AssignmentJob& job) {
       return std::ranges::any_of(current.residents.rows, [&job](const ResidentRow& person) {
@@ -459,6 +460,35 @@ class LaborSystem final : public ILaborSystem {
       work.unit = job.unit;
       work.stand = job.stand;
       work.extraction_site = job.extraction_site;
+    }
+  }
+
+  /// @brief Takes off the morning's work the men whose horse is gone: the
+  ///        herd day runs after the placement in hour 0 (core_world/world.cpp,
+  ///        labour before production), and a horse that died there left its
+  ///        ploughman in the furrow all day with nothing to pull the plough.
+  ///        Measured on the canon, seed 1931, day 17: sixteen horses at the
+  ///        placement, fifteen at hour 1, sixteen ploughmen (host's 18
+  ///        mornings of 3240; boss, boss-core-epoch1-5 seq 24).
+  /// @post The horse holders number no more than the herd. They are released
+  ///       from the last row up, a ploughman, a harrower or a carter on his
+  ///       horse alike: a carter is released rather than set walking, because
+  ///       his reach was judged by the ride. The released stand idle for the
+  ///       top-up, which may still send them to work that needs no horse;
+  ///       before sunrise they have worked nothing to be paid for.
+  void ReleaseHorselessWork(WorldState& current) const {
+    const std::uint32_t herd = DraughtHorses(current);
+    std::uint32_t in_traces = HorsesInTraces(current);
+    for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
+         row > 0 && in_traces > herd;
+         --row) {
+      WorkAssignment& work = current.residents.rows[row - 1].work;
+      const bool carter_on_horse = work.kind == WorkKind::kHauling && work.rides_horse != 0;
+      if (!carter_on_horse && !IsHorseWork(work.kind)) {
+        continue;
+      }
+      work = WorkAssignment{};
+      --in_traces;
     }
   }
 

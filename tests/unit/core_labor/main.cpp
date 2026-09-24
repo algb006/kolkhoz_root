@@ -2465,6 +2465,69 @@ int TestTheWorkOpenedAfterTheMorningIsCrewed() {
 /// after the morning took a horse already in the traces — a spring ploughing
 /// faster than the herd. The pair: one horse, out on the morning's ploughing,
 /// leaves the late ploughing without a man; two horses leave it one.
+/// A HORSE THAT DIED AFTER THE PLACEMENT TAKES ITS PLOUGHMAN OFF THE FIELD
+/// (boss, boss-core-epoch1-5 seq 24; seed 1931, day 17: sixteen horses at
+/// hour 0, fifteen at hour 1, sixteen ploughmen). The pair: two ploughmen on
+/// two horses; one horse gone before hour 1 leaves one ploughman, none gone
+/// leaves both.
+int TestAPloughmanWhoseHorseDiedIsReleased() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_dead_horse";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "oat,5,9,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "dead horse: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  constexpr std::uint32_t kWorkingDay = 30;  // a Wednesday
+  const auto ploughmen = [&labor](bool a_horse_dies, std::uint32_t& morning) {
+    DayWorld day(3);
+    const core::HerdId team = day.AddUnitHerd(2, 50.0F);
+    core::HerdRow& horses = day.world.herds.rows[core::FindRow(day.world.herds, team)];
+    horses.kind = core::LivestockKindId{0};  // AddUnitHerd leaves the kind unset
+    day.AddField(core::FieldPhase::kPlowing, 5.0F, core::Vec2{.x = 0.0F, .y = 20.0F});
+    const auto run_hour = [&labor, &day](std::uint32_t hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    };
+    const auto count = [&day]() {
+      std::uint32_t men = 0;
+      for (const core::ResidentRow& person : day.world.residents.rows) {
+        men += person.work.kind == core::WorkKind::kPlowing ? 1U : 0U;
+      }
+      return men;
+    };
+    run_hour(0);
+    morning = count();
+    if (a_horse_dies) {
+      // Production's herd day, after the placement in the same hour.
+      day.world.herds.rows[core::FindRow(day.world.herds, team)].adult_count = 1;
+    }
+    run_hour(1);
+    return count();
+  };
+  std::uint32_t morning_dies = 0;
+  std::uint32_t morning_lives = 0;
+  const std::uint32_t after_death = ploughmen(true, morning_dies);
+  const std::uint32_t no_death = ploughmen(false, morning_lives);
+  failures += Expect(morning_dies == 2 && morning_lives == 2,
+                     "dead horse: two horses put two ploughmen in the morning");
+  failures += Expect(after_death == 1,
+                     "dead horse: the horse died after the placement, its ploughman is released");
+  failures += Expect(no_death == 2, "dead horse: with both horses alive both men plough on");
+  return failures;
+}
+
 int TestTheTopUpHasOnlyTheHorsesTheMorningLeft() {
   int failures = 0;
   const std::filesystem::path root =
@@ -3402,6 +3465,7 @@ int main() {
   failures += TestTheStoreBeingEmptiedGetsItsCarrier();
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
   failures += TestTheTopUpHasOnlyTheHorsesTheMorningLeft();
+  failures += TestAPloughmanWhoseHorseDiedIsReleased();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAWorkedOutSiteTakesItsOrderOff();
   failures += TestLogCartingRidesWithAHorse();
