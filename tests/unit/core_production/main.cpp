@@ -4285,7 +4285,19 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     worked.kind = core::LandKind::kArable;
     worked.area_ga = 12.0F;
     worked.rotation_assigned = 1;  // a chain was given: this is worked land
+    // AND IT WAS SOWN IN THE CLOSING YEAR (0.35.8): land enters the plan by its
+    // first sowing. Day 20 of year 0, growing oats since.
+    worked.crop = core::CropId{0};
+    worked.phase = core::FieldPhase::kGrowing;
+    worked.sown_day = 20;
     core::AppendRow(previous.fields, worked);
+    // RAISED AND NEVER SOWN: a chain was given and nothing went in. It does
+    // not enter the norm (boss, boss-core-epoch1-5 seq 46).
+    core::FieldRow raised = worked;
+    raised.crop = core::CropId{};
+    raised.phase = core::FieldPhase::kHarrowing;
+    raised.sown_day = core::kNeverSownDay;
+    core::AppendRow(previous.fields, raised);
     core::FieldRow untold = worked;
     untold.rotation_assigned = 0;  // nobody has told this ground anything
     core::AppendRow(previous.fields, untold);
@@ -4298,8 +4310,9 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     system->RunProductionDecisions(previous, current);
     failures +=
         Expect(current.plan.worked_ha_last_year > 11.9F && current.plan.worked_ha_last_year < 12.1F,
-               "the year's turn writes down the arable that was WORKED — twelve "
-               "hectares, not the thirty-six that count ground nobody told and a meadow");
+               "the year's turn writes down the arable that was SOWN — twelve hectares, not "
+               "the forty-eight that count raised ground never sown, ground nobody told and a "
+               "meadow");
 
     // -- AND A RELEASE ON THE TURN'S OWN TICK CANNOT EMPTY IT --------------
     //

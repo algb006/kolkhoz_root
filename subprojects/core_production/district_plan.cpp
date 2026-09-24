@@ -519,10 +519,27 @@ void NameAccumulationLimit(const ProductionConfig& config, WorldState& current, 
 /// fertility walks. Read at the TURN rather than in spring, so that what
 /// the chairman does between January and the announcement cannot move the
 /// figure — which is exactly what the old reading allowed.
-float WorkedArableHa(const WorldState& current) {
+float WorkedArableHa(const WorldState& current, SimDay year_start) {
+  // LAND ENTERS THE PLAN BY ITS FIRST SOWING (boss, boss-core-epoch1-5 seq 46;
+  // district design, «В оборот земля входит первым севом»; 0.35.8). Until
+  // then every field with a chain counted, sown or not, and ground raised
+  // and never sown entered the norm: econ's forgiving re-measure on 0.35.1
+  // found branches owing a plan off land they could not sow. A field counts
+  // when it was sown this calendar year, or when it carries a crop the core
+  // never saw sown — genesis hands the village its fields already in the
+  // ground. Undersowing still cannot shrink the plan: the base only grows
+  // (production_system.cpp, RunYearStart).
   float worked_ha = 0.0F;
   for (const FieldRow& field : current.fields.rows) {
-    if (field.kind == LandKind::kArable && HasRotation(field)) {
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const bool sown_this_year = field.sown_day != kNeverSownDay && field.sown_day >= year_start &&
+                                field.sown_day < year_start + kDaysPerYear;
+    const bool standing_from_genesis =
+        field.sown_day == kNeverSownDay && field.crop.value != kInvalidDefIdValue &&
+        (field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest);
+    if (sown_this_year || standing_from_genesis) {
       worked_ha += field.area_ga;
     }
   }

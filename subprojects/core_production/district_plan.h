@@ -135,8 +135,14 @@ void NameAccumulationLimit(const ProductionConfig& config, WorldState& current, 
 /// @return false with `error` naming the table for a value out of range.
 bool ParseFirstPlan(const ITableSet& tables, ProductionConfig& config, std::string& error);
 
-/// @brief The arable worked this year (fields with a chain), in hectares.
-float WorkedArableHa(const WorldState& current);
+/// @brief The arable in the plan's circulation for the year beginning on
+///        `year_start`, in hectares: fields with a chain that were sown in
+///        that year, or that carry a crop the core never saw sown (genesis).
+///        Land enters the plan by its first sowing (district design, «В
+///        оборот земля входит первым севом»; 0.35.8).
+/// @param year_start The year's first campaign day: today's year for the
+///        daily running maximum, the closing year at its turn.
+float WorkedArableHa(const WorldState& current, SimDay year_start);
 
 /// @brief The district's verdict on the year just shipped: the counters, the
 /// reputation step, kPlanMet or kPlanFailed, kPlanTrialDue on the day the

@@ -327,7 +327,9 @@ class ProductionSystem final : public IProductionSystem {
     // THE YEAR'S HIGH-WATER MARK OF WORKED LAND, raised once a day. The
     // district's next norm comes off it (world_state.h), and it is a MAXIMUM
     // so that no single day's order can decide a year's figure.
-    const float worked_today = WorkedArableHa(current);
+    const SimDay this_year =
+        static_cast<SimDay>(current.calendar.day / kDaysPerYear) * kDaysPerYear;
+    const float worked_today = WorkedArableHa(current, this_year);
     current.plan.worked_ha_this_year = worked_today > current.plan.worked_ha_this_year
                                            ? worked_today
                                            : current.plan.worked_ha_this_year;
@@ -458,10 +460,15 @@ class ProductionSystem final : public IProductionSystem {
     // — способ провалить план, а не уменьшить его». A removed field does not
     // lower it either; only the district writes arable off, and Epoch I has
     // no such verb.
-    const float worked_today = WorkedArableHa(current);
-    const float year_max = std::max(worked_today, current.plan.worked_ha_this_year);
+    // THE CLOSING YEAR'S SOWN LAND, asked of that year and not of the day: on
+    // the turn's own tick «this year» is already the new one, and a field sown
+    // last May would fall out of the figure it was sown into (0.35.8).
+    const SimDay new_year = static_cast<SimDay>(current.calendar.day / kDaysPerYear) * kDaysPerYear;
+    const SimDay closing_year = new_year >= kDaysPerYear ? new_year - kDaysPerYear : new_year;
+    const float worked_closing = WorkedArableHa(current, closing_year);
+    const float year_max = std::max(worked_closing, current.plan.worked_ha_this_year);
     current.plan.worked_ha_last_year = std::max(current.plan.worked_ha_last_year, year_max);
-    current.plan.worked_ha_this_year = worked_today;
+    current.plan.worked_ha_this_year = WorkedArableHa(current, new_year);
     for (FieldRow& field : current.fields.rows) {
       if (field.kind != LandKind::kArable) {
         continue;  // a meadow has no rotation to shift and no fallow to pay out
