@@ -804,6 +804,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   nothing consults, because a knob with a reader that ignores it
       //   is worse than a knob with none: it looks answered.
       known.emplace_back("road_access_m");
+      //   `player_entry_day` (2026-09-24, boss-core-epoch1-4 seq 12 and 21) —
+      //   the day of the year the player enters, 12 (1 April); the campaign
+      //   still starts on 1 January. ITS DOOR IS THE STANDING WORK ORDERS:
+      //   before that day they open no ploughing, sowing or other field work
+      //   (start conditions §9). Waits for host's measure of whether the
+      //   village ploughs and sows in the days left.
+      known.emplace_back("player_entry_day");
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);
