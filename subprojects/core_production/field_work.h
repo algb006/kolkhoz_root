@@ -100,6 +100,24 @@ float PhaseWorkDays(const ProductionConfig& config,
                     const FieldRow& field,
                     FieldPhase phase);
 
+/// @brief The late sowing's yield factor for a crop sown on `sown_day`: 1
+///        inside its window, in the first spring and for winter crops and
+///        perennials; past the window it falls by
+///        late_sowing_yield_loss_per_day a day to late_sowing_yield_floor.
+///        One home for the yield (FieldYieldGrams) and the sowing's gate.
+float LateFactorOnDay(const ProductionConfig& config, const CropDef& def, SimDay sown_day);
+
+/// @brief Whether a sowing opened TODAY would give back at least its seed:
+///        the norm's yield a hectare × the field's fertility factor × the
+///        late factor of today against the sowing norm a hectare (boss,
+///        boss-core-epoch1-5 seq 53; fields design, «Три области»). The
+///        weather to come is not in it: nobody can know it at the sowing.
+/// @return true for a crop that takes no seed or is unknown.
+bool LateSowingReturnsItsSeed(const ProductionConfig& config,
+                              const FieldRow& field,
+                              CropId crop_id,
+                              SimDay today);
+
 /// @brief How much of a fed horse's pull a horse on this traction ration
 /// has, 0..1 — the divisor PhaseWorkDays lengthens horse work by. One home,
 /// because the rescale below must undo exactly what the opening priced.

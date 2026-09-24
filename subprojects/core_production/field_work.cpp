@@ -97,7 +97,12 @@ float LateSowingFactor(const ProductionConfig& config, const FieldRow& field) {
   if (field.sown_day == kNeverSownDay || field.crop.value >= config.crops.size()) {
     return 1.0F;
   }
-  const CropDef& def = config.crops[field.crop.value];
+  return LateFactorOnDay(config, config.crops[field.crop.value], field.sown_day);
+}
+
+}  // namespace
+
+float LateFactorOnDay(const ProductionConfig& config, const CropDef& def, SimDay sown_day) {
   if (def.is_winter || def.is_perennial) {
     return 1.0F;  // sown in another year's reckoning; its window is not this one
   }
@@ -115,10 +120,10 @@ float LateSowingFactor(const ProductionConfig& config, const FieldRow& field) {
   // him, not chosen — so a late sowing is not his mistake, and charging the
   // full price for a band nobody entered is the trap this whole rule exists to
   // remove. From the second spring on it is his.
-  if (field.sown_day < kDaysPerYear) {
+  if (sown_day < kDaysPerYear) {
     return 1.0F;
   }
-  const auto sown_on = static_cast<std::int32_t>(field.sown_day % kDaysPerYear);
+  const auto sown_on = static_cast<std::int32_t>(sown_day % kDaysPerYear);
   const std::int32_t late_days = sown_on - last_sowing;
   if (late_days <= 0) {
     return 1.0F;
@@ -129,7 +134,21 @@ float LateSowingFactor(const ProductionConfig& config, const FieldRow& field) {
                                                          : factor;
 }
 
-}  // namespace
+bool LateSowingReturnsItsSeed(const ProductionConfig& config,
+                              const FieldRow& field,
+                              CropId crop_id,
+                              SimDay today) {
+  if (crop_id.value >= config.crops.size()) {
+    return true;
+  }
+  const CropDef& crop = config.crops[crop_id.value];
+  if (!(crop.sowing_norm_kg_per_ha > 0.0F)) {
+    return true;  // nothing goes into the ground to lose
+  }
+  const float soil_factor = field.fertility / config.farming.fertility_neutral;
+  const float expected = crop.yield_kg_per_ha * soil_factor * LateFactorOnDay(config, crop, today);
+  return expected >= crop.sowing_norm_kg_per_ha;
+}
 
 Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop) {
   const float soil_factor = field.fertility / config.farming.fertility_neutral;
@@ -893,7 +912,15 @@ void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, F
     case FieldPhase::kHarrowing:
       if (field.crop.value == kInvalidDefIdValue) {
         FinishSowing(config, current, field);  // bare fallow: nothing to sow
-      } else if (SowingMayOpen(config, field.crop, month, day_of_year, temperature)) {
+      } else if (SowingMayOpen(config, field.crop, month, day_of_year, temperature) &&
+                 LateSowingReturnsItsSeed(config, field, field.crop, current.calendar.day)) {
+        // AND NOT FOR LESS THAN ITS SEED (boss, boss-core-epoch1-5 seq 53;
+        // fields design, «Три области», 0.35.6): the snow's rule let a
+        // potato ploughed in August be sown on day 32 of seed 1939's third
+        // year, and at the late factor's floor its 35 t of seed gave 8.8 t
+        // back — the farm lost its seed for a crop it could not repay, and
+        // with it the next four years. Such a field stays harrowed, the seed
+        // stays in the fund, and the year's turn lets it go (TrySow).
         OpenPhase(config, current, field, FieldPhase::kSowing);
       }
       // THE SOWING MAY NOT START EARLY, AND MAY STILL FINISH LATE — and

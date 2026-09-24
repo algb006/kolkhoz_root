@@ -2088,6 +2088,61 @@ int CheckSeedLightDoesNotNetCropsOff() {
 /// seq 16 — a defect until 0.34.50, when a short seed sowed the whole field
 /// and the yield never read the seed taken). As a pair: half the seed sows half
 /// the field and grows half the crop; the full seed sows it all.
+/// NOT SOWN FOR LESS THAN ITS SEED (boss, boss-core-epoch1-5 seq 53; 0.35.6):
+/// a potato of 9 t a hectare at a 2.5 t norm, its window to day 19, the late
+/// factor falling 0.21 a day to a floor of 0.2, in a second year. Harrowed
+/// one day late (0.79: 7.1 t a hectare) the sowing opens; eleven days late
+/// (the floor: 1.8 t) it does not, and the store's seed is untouched.
+int CheckTheLateSowingMustReturnItsSeed() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.crops.resize(1);
+  core::CropDef& potato = config.crops[0];
+  potato.resource = core::ResourceId{0};
+  potato.yield_kg_per_ha = 9000.0F;
+  potato.sowing_norm_kg_per_ha = 2500.0F;
+  potato.sow_from_month = 3;
+  potato.sow_to_month = 4;
+  potato.harvest_from_month = 8;
+  config.farming.fertility_neutral = 50.0F;
+  config.farming.late_sowing_yield_loss_per_day = 0.21F;
+  config.farming.late_sowing_yield_floor = 0.2F;
+  config.growing_season_last_day = 44;  // day 30 + 13 to ripen still fits
+  config.unit_types.resize(1);
+  SetStorageKg(config.unit_types[0], 100000.0F);
+  const auto harrowed_on = [&config](std::uint32_t day_of_year) {
+    core::WorldState world;
+    world.calendar.tick =
+        static_cast<core::Tick>(core::kDaysPerYear + day_of_year) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.weather.air_temperature_celsius = 15.0F;
+    core::UnitRow barn;
+    barn.type = core::UnitTypeId{0};
+    barn.level = 1;
+    barn.stock = {30'000'000};  // 30 t of seed potato
+    core::AppendRow(world.units, barn);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.fertility = 50.0F;
+    field.crop = core::CropId{0};
+    field.phase = core::FieldPhase::kHarrowing;
+    field.work_days_remaining = 0.0F;
+    core::AppendRow(world.fields, field);
+    core::AdvanceFinishedField(config, world, world.fields.rows[0]);
+    return std::pair<core::FieldPhase, core::Grams>{world.fields.rows[0].phase,
+                                                    world.units.rows[0].stock[0]};
+  };
+  const auto [one_day_late, store_early] = harrowed_on(20);
+  const auto [eleven_days_late, store_late] = harrowed_on(30);
+  failures += Expect(one_day_late == core::FieldPhase::kSowing,
+                     "late sowing: a day late, 7.1 t a hectare repays 2.5 t of seed — it opens");
+  failures += Expect(eleven_days_late == core::FieldPhase::kHarrowing && store_late == 30'000'000,
+                     "late sowing: at the floor, 1.8 t a hectare does not — no sowing, the seed "
+                     "stays in the store");
+  return failures;
+}
+
 int CheckTheSeedSowsItsShare() {
   int failures = 0;
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
@@ -8968,6 +9023,7 @@ int main() {
   failures += CheckTheSeedIsBookedItsRoom();
   failures += CheckTheWeatherShareIsRead();
   failures += CheckTheSeedSowsItsShare();
+  failures += CheckTheLateSowingMustReturnItsSeed();
   failures += CheckHaulingIsNotFree();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
