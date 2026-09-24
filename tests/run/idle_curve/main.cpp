@@ -1210,7 +1210,16 @@ int main(int argc, char** argv) {
     failures += run::Expect(adults > 0,
                             "a played village that lost its team gets one back: the district's "
                             "horse_head lot is the design's own «страховка от тупика»");
-    failures += run::Expect(last.ledger.closed.area_sown_ha > 0.0F,
+    // THE PLOUGH, ASKED BY ITS OWN DAYS AND NOT BY THE SOWN HECTARES (0.35.9).
+    // The sown area was the proxy, and it also asks for seed: with the loan
+    // withheld from a debtor who already owes a sowing (boss, boss-core-epoch1-5
+    // seq 46), this arm ploughs in its twelfth year and sows 0 ha against
+    // 3.5 ha on 0.35.8 — the seed is what is missing, not the plough. The claim
+    // here is the circle horse -> plough, so it is asked of the ploughing.
+    const float ploughed =
+        last.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)];
+    std::cout << "idle_curve: на двенадцатом году вспашки " << ploughed << " чел-дн\n";
+    failures += run::Expect(ploughed > 0.0F,
                             "and the plough goes out again: no horse, no ploughing, and the arable "
                             "is where the circle closes");
     // AND THE RESCUE COSTS A SEASON, NOT THE CAMPAIGN. The chairman buys his

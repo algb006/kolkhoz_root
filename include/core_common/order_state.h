@@ -764,7 +764,8 @@ enum class OrderKind : std::uint8_t {
   /// the markup again (WorldState::goods_loan). The ceiling is the seed need
   /// of the resource's next sowing (SeedNeedByResource); one loan a resource
   /// a year. Refusals: kRuleForbids (not the seed of any crop — other goods
-  /// are a STUB — or taken this year already, or a ceiling of nought).
+  /// are a STUB — or taken this year already, or a ceiling of nought, or a
+  /// debt of the resource already as large as the ceiling, 0.35.9).
   /// Seam key `take_goods_loan` (boss). Consumer: core_production.
   kTakeGoodsLoan,
 

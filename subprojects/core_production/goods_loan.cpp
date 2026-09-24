@@ -71,6 +71,14 @@ OrderRefusal TakeGoodsLoan(const ProductionConfig& config,
   if (AmountOf(current.plan.goods_loan_taken, resource) > 0) {
     return OrderRefusal::kRuleForbids;
   }
+  // NOT TO A DEBTOR WHO OWES A SOWING ALREADY (boss, boss-core-epoch1-5 seq
+  // 46, item 2; wage design §6; 0.35.9): a new loan of the resource only while
+  // what is owed of it is less than one sowing's ceiling. econ's re-measure
+  // found branches borrowing every year while the markup compounded, and the
+  // debt ran past 70 t by year 20 with no brake at all.
+  if (AmountOf(current.plan.goods_loan_owed, resource) >= ceiling) {
+    return OrderRefusal::kRuleForbids;
+  }
   // THE STORE BEFORE THE LOAN, as before a lot's points (boss seq 156): seed
   // no store takes would stand at the gate and be owed all the same.
   if (!SomeStoreAccepts(current, config, resource)) {

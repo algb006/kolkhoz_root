@@ -41,8 +41,9 @@ Grams GoodsLoanCeiling(const ProductionConfig& config,
 ///        gains the grams × (1 + goods_loan_markup), goods_loan_taken and the
 ///        year's book the grams.
 /// @return kRuleForbids for a ceiling of nought (not a seed, or no sowing to
-///         come), a loan of this resource taken this year already, or an
-///         order read in the year's turning hour (the books are closing);
+///         come), a loan of this resource taken this year already, a debt of
+///         it already as large as the ceiling (0.35.9), or an order read in
+///         the year's turning hour (the books are closing);
 ///         kNowhereToStore when no store of the village takes the resource;
 ///         kNone when lent.
 OrderRefusal TakeGoodsLoan(const ProductionConfig& config,

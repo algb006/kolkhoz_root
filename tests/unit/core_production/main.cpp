@@ -8405,6 +8405,17 @@ int CheckTheGoodsLoan() {
   failures += Expect(core::TakeGoodsLoan(config, world, loan(core::ResourceId{1}, kTonne)) ==
                          core::OrderRefusal::kRuleForbids,
                      "loan: a resource that is no crop's seed is refused");
+  // NOT TO A DEBTOR WHO OWES A SOWING ALREADY (0.35.9): a new year, a debt of
+  // 9 t carried against a ceiling of 10 t lends; a debt of 10 t does not.
+  const auto debtor = [&make_world, &config, &loan](core::Grams owed) {
+    core::WorldState in_debt = make_world(0);
+    in_debt.plan.goods_loan_owed = {owed};
+    return core::TakeGoodsLoan(config, in_debt, loan(core::ResourceId{0}, 0));
+  };
+  failures += Expect(debtor(9 * kTonne) == core::OrderRefusal::kNone,
+                     "loan: a debt below one sowing's ceiling may borrow again");
+  failures += Expect(debtor(10 * kTonne) == core::OrderRefusal::kRuleForbids,
+                     "loan: a debt as large as the ceiling may not");
   core::WorldState capped = make_world(0);
   core::TakeGoodsLoan(config, capped, loan(core::ResourceId{0}, 25 * kTonne));
   failures +=
