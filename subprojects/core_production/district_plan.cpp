@@ -602,6 +602,9 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   // And the milk cart's share goes with the figure it was a share of: the
   // winter's milk has no position until the spring names one (boss seq 113).
   current.plan.milk_daily_share = 0;
+  // And its debt: whatever was still owed was short in the verdict above,
+  // and the debt does not carry over the turn (the human's «вариант с долгом»).
+  current.plan.milk_debt = 0;
   // The unsealings go with the year they were an emergency of. Carried
   // over, they would quietly become a lower fund instead of a decision
   // somebody took on a particular hungry winter.

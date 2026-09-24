@@ -39,15 +39,17 @@ std::uint32_t MilkSeasonFirstDay();
 bool MilkPositionStands(const ProductionConfig& config, const WorldState& current);
 
 /// @brief Before the day's milking: every gram of milk the stores still hold
-/// — what the morning issue left — leaves for the district. Against the
-/// position while a plan stands (PlanState::delivered), outside any position
-/// before the spring's figure (PlanState::delivered_outside). Booked in the
-/// ledger's delivered either way.
+/// — what the morning issue left — leaves for the district OVER THE PLAN
+/// (PlanState::delivered_outside), with a position standing or not: it pays
+/// no debt and makes up no short day (the milk with debt, 0.34.46). Booked in
+/// the ledger's delivered.
 void ShipMilkLeftover(const ProductionConfig& config, WorldState& current);
 
 /// @brief After the day's milking: the position's share of the day
-/// (PlanState::milk_daily_share), or as much of it as the stores hold,
-/// leaves against the milk position. Nothing before the spring's figure.
+/// (PlanState::milk_daily_share) plus the debt of earlier short days
+/// (PlanState::milk_debt) leaves against the milk position, or as much of it
+/// as the stores hold. What they cannot give becomes the new debt. Nothing
+/// before the spring's figure.
 void ShipMilkShare(const ProductionConfig& config, WorldState& current);
 
 }  // namespace core

@@ -44,7 +44,13 @@ void ShipMilkLeftover(const ProductionConfig& config, WorldState& current) {
   }
   const Grams left = TakeableGrams(current, config, config.milk_resource);
   const Grams taken = TakeFromStorage(current, config, config.milk_resource, left);
-  BookDelivered(config, current, taken, MilkPositionStands(config, current));
+  // OVER THE PLAN, ALWAYS (the milk with debt, boss seq 26/28). What the
+  // issue left used to go against the position while one stood. That
+  // quietly made up the short days, so the position read met while the
+  // cart's own days were short, and the book and the verdict read milk
+  // through two different doors. Only the cart's share and its debt
+  // (ShipMilkShare) count against the position now.
+  BookDelivered(config, current, taken, false);
 }
 
 void ShipMilkShare(const ProductionConfig& config, WorldState& current) {
@@ -52,9 +58,13 @@ void ShipMilkShare(const ProductionConfig& config, WorldState& current) {
       !MilkPositionStands(config, current)) {
     return;
   }
-  const Grams taken =
-      TakeFromStorage(current, config, config.milk_resource, current.plan.milk_daily_share);
+  // THE SHARE AND THE DEBT (PlanState::milk_debt): the day's share plus
+  // what earlier short days still owe, the debt first because it is older.
+  // A short day's difference joins the debt.
+  const Grams wanted = current.plan.milk_daily_share + current.plan.milk_debt;
+  const Grams taken = TakeFromStorage(current, config, config.milk_resource, wanted);
   BookDelivered(config, current, taken, true);
+  current.plan.milk_debt = wanted - taken;
 }
 
 }  // namespace core

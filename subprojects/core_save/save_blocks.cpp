@@ -117,9 +117,11 @@ static_assert(AggregateArity<ChairmanState>() == 20,
 // 2026-09-18, save 62: the accumulation limit, a third amounts vector.
 // 2026-09-19, save 66: the milk cart's daily share (8 bytes) and the outside
 // deliveries, a fourth amounts vector — measured 4 x amounts + 24, 11 fields.
-static_assert(sizeof(PlanState) == (4 * kAmountsSize) + 24,
+// 2026-09-24, save 85: the milk debt, 8 bytes and a twelfth field, predicted
+// before the build.
+static_assert(sizeof(PlanState) == (4 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 11,
+static_assert(AggregateArity<PlanState>() == 12,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -603,6 +605,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);  // save 62
   // The milk cart's daily share and what went with no position (save 66).
   out.WriteI64(world.plan.milk_daily_share);
+  out.WriteI64(world.plan.milk_debt);  // save 85: the milk with debt
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered_outside);
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
   out.WriteU8(world.plan.failed_years_in_a_row);
@@ -741,6 +744,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
   world->plan.milk_daily_share = in.ReadI64();
+  world->plan.milk_debt = in.ReadI64();
   world->plan.delivered_outside = source.ReadAmounts(DefKind::kResource);
   world->plan.last_verdict =
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));

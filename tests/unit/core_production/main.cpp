@@ -6345,12 +6345,39 @@ int CheckTheMilkCart() {
   failures += Expect(
       core::AmountOf(world.plan.delivered, milk) == 40 * kKilo && StoreOf(world, 1) == 10 * kKilo,
       "milk: the cart takes the day's share at the milking");
-  // What the issue left goes before the next milking, against the position.
+  // What the issue left goes before the next milking, OVER THE PLAN (the
+  // milk with debt, 0.34.46): it counted against the position until then and
+  // made up the short days the verdict should have seen.
   core::ShipMilkLeftover(config, world);
-  failures +=
-      Expect(core::AmountOf(world.plan.delivered, milk) == 50 * kKilo && StoreOf(world, 1) == 0,
-             "milk: and what the issue left goes before the next milking — nothing "
-             "stays overnight");
+  failures += Expect(core::AmountOf(world.plan.delivered, milk) == 40 * kKilo &&
+                         core::AmountOf(world.plan.delivered_outside, milk) == 10 * kKilo &&
+                         StoreOf(world, 1) == 0,
+                     "milk: what the issue left goes before the next milking, over the plan — "
+                     "nothing stays overnight");
+
+  // THE DEBT (the human's «Молоко - вариант с долгом»). A short day, 25 kg
+  // against a 40 kg share, owes 15 kg. The next day's 60 kg pays the share
+  // and the debt, 55 kg, and only the 5 kg left over go over the plan.
+  world.units.rows[0].stock[1] = 25 * kKilo;
+  core::ShipMilkShare(config, world);
+  failures += Expect(core::AmountOf(world.plan.delivered, milk) == 65 * kKilo &&
+                         world.plan.milk_debt == 15 * kKilo,
+                     "milk: a short day owes its difference");
+  world.units.rows[0].stock[1] = 60 * kKilo;
+  core::ShipMilkShare(config, world);
+  failures += Expect(core::AmountOf(world.plan.delivered, milk) == 120 * kKilo &&
+                         world.plan.milk_debt == 0 && StoreOf(world, 1) == 5 * kKilo,
+                     "milk: the next milking pays the share and the debt before the issue");
+  core::ShipMilkLeftover(config, world);
+  failures += Expect(core::AmountOf(world.plan.delivered_outside, milk) == 15 * kKilo,
+                     "milk: and only what is left after both goes over the plan");
+
+  // THE TURN: whatever is still owed stays short in the verdict and does not
+  // carry over. JudgePlan clears it with the share it was owed against.
+  world.plan.milk_debt = 12 * kKilo;
+  core::JudgePlan(config, world);
+  failures += Expect(world.plan.milk_debt == 0 && world.plan.milk_daily_share == 0,
+                     "milk: the turn clears the debt with the share");
 
   // THE WINTER, before the spring names a figure: the cart runs all the
   // same, and what it takes is outside any position.
@@ -6360,10 +6387,9 @@ int CheckTheMilkCart() {
   core::ShipMilkShare(config, world);
   failures += Expect(StoreOf(world, 1) == 7 * kKilo, "milk: no share is taken with no position");
   core::ShipMilkLeftover(config, world);
-  failures += Expect(core::AmountOf(world.plan.delivered, milk) == 50 * kKilo &&
-                         core::AmountOf(world.plan.delivered_outside, milk) == 7 * kKilo &&
-                         StoreOf(world, 1) == 0,
-                     "milk: the winter's milk goes outside any position");
+  failures += Expect(
+      core::AmountOf(world.plan.delivered_outside, milk) == 22 * kKilo && StoreOf(world, 1) == 0,
+      "milk: the winter's milk goes outside any position");
 
   // THE LETTER IN JANUARY (boss seq 210, 213): named on day 0, the milk
   // still counts from the first day of spring (day 8) — 40 days, not 48 —

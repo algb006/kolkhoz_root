@@ -636,10 +636,20 @@ struct PlanState {
   /// THE MILK CART'S SHARE OF A DAY (district §9 «Молоко — в плане с
   /// первого года»; register 231; boss seq 98 and 113; save 66), grams: the
   /// milk position ÷ the milking days from the spring's announcement to the
-  /// turn. Named once with the figure, so a day the herd gives less stays a
-  /// day short of the position and is not taken back from tomorrow's issue.
-  /// 0 before the announcement and after the turn.
+  /// turn. Named once with the figure. A day the herd gives less is not
+  /// forgotten: its shortfall goes to milk_debt below. 0 before the
+  /// announcement and after the turn.
   Grams milk_daily_share = 0;
+
+  /// THE MILK OWED FROM SHORT DAYS (district §9, «Молоко — в плане с первого
+  /// года»; the human's word «Молоко - вариант с долгом»; boss seq 26/28;
+  /// save 85), grams. When the cart takes less than the day's share plus
+  /// this debt, the difference stays here. When there is more milk, the cart
+  /// takes the debt first, before the next morning's issue. Milk left after
+  /// the issue goes over the plan and never pays the debt. Whatever is still
+  /// owed at the turn is simply short in the verdict; the debt does not carry
+  /// over the turn and is cleared with the share.
+  Grams milk_debt = 0;
 
   /// WHAT WENT TO THE DISTRICT WITH NO POSITION TO GO AGAINST, by resource
   /// (district §1; boss seq 113; save 66): the winter's milk, from the turn
