@@ -293,10 +293,15 @@ namespace {
 /// at each herd's factor TODAY × plan_milk_share; the position is that share
 /// × the days from today to the turn, so the cart that takes the share each
 /// day brings exactly the position in a year of steady milking. The share is
-/// named once and kept (PlanState::milk_daily_share): a day the herd gives
-/// less stays short, it is not taken back from tomorrow's issue.
+/// named once and kept (PlanState::milk_daily_share). A day the herd gives
+/// less goes into the debt (PlanState::milk_debt), and the next milkings pay
+/// it before the issue (the milk with debt, 0.34.46).
 void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   current.plan.milk_daily_share = 0;
+  // A new figure starts with nothing owed. The turn has cleared the debt
+  // already whenever this runs today; this line keeps that true for any
+  // announcement added later.
+  current.plan.milk_debt = 0;
   if (config.milk_resource.value == kInvalidDefIdValue || !(config.plan_milk_share > 0.0F)) {
     return;
   }

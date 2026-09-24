@@ -6372,6 +6372,18 @@ int CheckTheMilkCart() {
   failures += Expect(core::AmountOf(world.plan.delivered_outside, milk) == 15 * kKilo,
                      "milk: and only what is left after both goes over the plan");
 
+  // A DAY THAT PAYS PART OF IT, and one with no milk at all: 50 kg against
+  // the 40 kg share and a 15 kg debt pays 50 kg and still owes 5. A day with
+  // nothing in the stores then owes a whole share more.
+  world.plan.milk_debt = 15 * kKilo;
+  world.units.rows[0].stock[1] = 50 * kKilo;
+  core::ShipMilkShare(config, world);
+  failures += Expect(world.plan.milk_debt == 5 * kKilo && StoreOf(world, 1) == 0,
+                     "milk: a day that pays part of the debt owes the rest");
+  core::ShipMilkShare(config, world);
+  failures += Expect(world.plan.milk_debt == 45 * kKilo,
+                     "milk: a day with no milk owes a whole share more");
+
   // THE TURN: whatever is still owed stays short in the verdict and does not
   // carry over. JudgePlan clears it with the share it was owed against.
   world.plan.milk_debt = 12 * kKilo;

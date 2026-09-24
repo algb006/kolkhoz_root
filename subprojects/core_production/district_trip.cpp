@@ -58,6 +58,9 @@ void MovePosition(const ProductionConfig& config,
   if (position.value == config.milk_resource.value) {
     current.plan.milk_daily_share = static_cast<Grams>(
         std::llround(static_cast<double>(current.plan.milk_daily_share) * factor));
+    // THE DEBT IS NOT RESCALED, and that is a choice: it is owed for days
+    // already past, at the share those days had. The bargain moves the days
+    // to come (the share) and the figure they add up to.
   }
 }
 

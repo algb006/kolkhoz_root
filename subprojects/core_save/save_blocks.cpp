@@ -745,6 +745,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
   world->plan.milk_daily_share = in.ReadI64();
   world->plan.milk_debt = in.ReadI64();
+  // A NEGATIVE SHARE OR DEBT IS NO STATE the simulation makes (the debt is
+  // wanted - taken, never below nought). Taken as it stands, it would ask the
+  // stores for a negative amount at the next milking, so the load refuses it.
+  if (world->plan.milk_daily_share < 0 || world->plan.milk_debt < 0) {
+    source.Fail("the milk cart's share or debt is negative");
+  }
   world->plan.delivered_outside = source.ReadAmounts(DefKind::kResource);
   world->plan.last_verdict =
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));

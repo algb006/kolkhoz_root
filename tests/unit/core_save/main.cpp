@@ -1465,6 +1465,26 @@ int main() {
                        "and arrives unchanged — the bound refuses, it does not clamp");
   }
 
+  // A NEGATIVE MILK DEBT is no state the simulation makes, and taken as it
+  // stands it would ask the stores for a negative amount (save 85). The
+  // control is the same world with no debt, which loads.
+  {
+    core::WorldState owing = MakeWorld();
+    owing.plan.milk_debt = -1;
+    core::WorldState refused;
+    std::string owing_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(owing, *tables), *tables, &refused, &owing_error),
+        "a save carrying a negative milk debt is refused");
+    core::WorldState clear = MakeWorld();
+    clear.plan.milk_debt = 0;
+    core::WorldState restored;
+    std::string clear_error;
+    failures += Expect(
+        core::DecodeWorld(core::EncodeWorld(clear, *tables), *tables, &restored, &clear_error),
+        "while a debt of nothing goes through");
+  }
+
   // -- the round trip ------------------------------------------------------
   core::WorldState loaded;
   loaded.epoch = core::Epoch::kThree;  // a marker, to catch a partial write
