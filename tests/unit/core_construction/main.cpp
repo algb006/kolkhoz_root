@@ -2138,6 +2138,32 @@ int TestTheShippedStartHasNoHouseInAStinkZone() {
       core::CreateStartWorld(*tables, core::StubTables::kAllowed, system.get(), 12345, nullptr);
 
   const core::ITable* const unit_types = tables->FindTable("unit_types");
+  // THE FIRST FRACTIONAL COST BELOW ONE (boss, boss-core-epoch1-5 seq 8): the
+  // beach's first rung costs 0.075 m3 of boards, 45 kg at 600 kg the cubic
+  // metre. Boards had only whole costs until then, so a parse that rounded
+  // would have built the beach out of nothing or out of 600 kg. Asked of the
+  // door a site in an empty village answers with.
+  {
+    const std::uint32_t beach_row = unit_types->FindRowByKey("beach");
+    const std::uint32_t board_row = tables->FindTable("resources")->FindRowByKey("board");
+    failures += Expect(beach_row != core::kNoTableRow && board_row != core::kNoTableRow,
+                       "the shipped tables name the beach and the boards");
+    core::WorldState empty;
+    core::UnitRow site;
+    site.type = core::UnitTypeId{static_cast<std::uint16_t>(beach_row)};
+    site.level = 0;
+    site.construction.phase = core::ConstructionPhase::kMarked;
+    site.construction.target_level = 1;
+    const core::UnitId site_id = core::AppendRow(empty.units, site);
+    core::Grams boards = -1;
+    for (const core::MaterialShortfall& line : system->MaterialsShortFor(empty, site_id)) {
+      if (line.resource.value == board_row) {
+        boards = line.needed;
+      }
+    }
+    failures += Expect(boards == 45 * core::kGramsPerKilogram,
+                       "the beach's first rung asks 0.075 m3 of boards — 45 kg, not 0 and not 600");
+  }
   // ONE DOOR TO THE LADDER (boss, 2026-09-06). genesis measured the start
   // stock against unit_levels.csv it parsed itself; this module parses the
   // same table with declared ranges and refuses a set whose steps disagree.

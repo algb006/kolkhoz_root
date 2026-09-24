@@ -530,9 +530,10 @@ kolkhoz_market,1,glass,25
 kolkhoz_market,1,cement,5
 kolkhoz_market,1,insulation,8
 kolkhoz_market,1,spare_part,6
-stadium,1,log,4
+stadium,1,board,0.075
+stadium,1,pole_and_chip,6
 stadium,2,straw,2
-stadium,2,log,25
+stadium,2,log,29
 stadium,3,straw,4
 stadium,3,log,60
 stadium,3,board,8
@@ -868,5 +869,5 @@ water_intake,1,stone,10
 water_intake,1,sand,20
 water_intake,1,cement,6
 water_intake,1,industrial_equipment,2
-beach,1,board,1
+beach,1,board,0.075
 clamp,1,straw,2
