@@ -905,13 +905,16 @@ int main(int argc, char** argv) {
     // 8 seeds of 9, measured before this line, against 1 without. Why the
     // grown village fails it (which position, what holds the grain) is
     // econ's to read and boss's to decide with her; the threshold is not
-    // moved. Return: restore this as the assertion when the analysis closes.
-    failures += run::KnownGap(plan_failed_years == 0,
-                              "the floor meets the district's plan in all thirty years — until "
-                              "drought (register 226) makes it failable again",
-                              std::to_string(plan_failed_years) + " failed years",
-                              "boss-core-epoch1-3 seq 12; the timber-grown village, econ reads "
-                              "why, threshold kept");
+    // moved.
+    //
+    // RESTORED TO AN ASSERTION on 0.34.45 (boss, boss-core-epoch1-5 seq 2).
+    // The gap had closed, and the harness had been printing "KNOWN GAP CLOSED"
+    // on every run. Measured before restoring, on the base 0.34.44 and on
+    // 0.34.45 alike: 0 failed years of 30. A gap left standing after it closes
+    // is a guard that cannot redden.
+    failures += run::Expect(plan_failed_years == 0,
+                            "the floor meets the district's plan in all thirty years — until "
+                            "drought (register 226) makes it failable again");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";

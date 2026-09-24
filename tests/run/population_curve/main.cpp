@@ -722,9 +722,12 @@ int main(int argc, char** argv) {
   // cannot redden — it stops being able to report the day it reopens.
   failures += run::Expect(median_year7 >= 150, "the settlement is growing by year 7, not stalled");
   failures += run::Expect(median_year7 <= 320, "and not exploding by year 7");
-  failures += run::KnownGap(median_year14 >= 380,
-                            "and is past the Epoch II mark by year 14",
-                            std::to_string(median_year14) + " against 380");
+  // RESTORED TO AN ASSERTION on 0.34.45 (boss, boss-core-epoch1-5 seq 2): the
+  // harness had printed "KNOWN GAP CLOSED" since at least 0.34.41. The claim
+  // is the MEDIAN, and it holds with room: 441 on 0.34.41, 431 on 0.34.44 and
+  // 430 on 0.34.45, against 380. The weakest seed does not hold it (338 on
+  // 0.34.45, seed 1937), and nothing here says it should.
+  failures += run::Expect(median_year14 >= 380, "and is past the Epoch II mark by year 14");
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
@@ -741,9 +744,13 @@ int main(int argc, char** argv) {
   // What survives is the claim that matters — the settlement reaches Epoch II
   // on the way, not that it does so in a particular year of a stubbed rule.
   // The epochs follow the population threshold, so they are the same gap.
-  failures += run::KnownGap(walks.front().epoch >= core::Epoch::kTwo,
-                            "Epoch II is reached on the way",
-                            "epoch " + std::to_string(static_cast<int>(walks.front().epoch)));
+  // RESTORED TO AN ASSERTION on 0.34.45 (boss, boss-core-epoch1-5 seq 2). Since
+  // 2026-09-18 the era moves by the chairman's order and not by population, so
+  // the comment above describes a rule that is gone. The claim is still about
+  // the first seed, 1931, and it opens in year 5 on 0.34.41, 0.34.44 and
+  // 0.34.45 alike (8 villages of 9 on 0.34.45).
+  failures +=
+      run::Expect(walks.front().epoch >= core::Epoch::kTwo, "Epoch II is reached on the way");
   failures += run::KnownGap(walks.front().epoch == core::Epoch::kThree,
                             "Epoch III has come by year 33",
                             "epoch " + std::to_string(static_cast<int>(walks.front().epoch)));
