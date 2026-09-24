@@ -33,7 +33,7 @@ build_yard,2,2,600,brick_mid,16,,,90,60,1,,0
 manure_pile,1,1,30,earthwork,8,,,60,40,1,,0
 dryer,1,2,300,brick_small,10,,,80,55,1,,0
 water_mill,1,1,,wood_large,12,,,55,32,1,,1
-utility_yard,1,1,0,plot,,,,,,1,,1
+utility_yard,1,1,0,plot,,30,,,,1,,1
 goods_store,1,1,120,wood_small,8,80,,50,30,1.1,,1
 workshops,1,1,120,wood_small,8,,,50,30,1.1,,1
 sawmill,1,1,60,gear,4,,,30,14,1,,1
@@ -84,7 +84,7 @@ feldsher_post,1,2,300,brick_small,10,,,80,55,1,,0
 hospital,1,3,600,brick_mid,16,,,90,60,1,,0
 kindergarten,1,2,600,brick_mid,16,,,90,60,1,,0
 kindergarten,2,2,300,brick_mid_ext,12,,,90,60,1,,0
-selpo,1,1,120,wood_small,8,,,50,30,1.1,,1
+selpo,1,1,120,wood_small,8,5,,50,30,1.1,,1
 canteen,1,2,600,brick_mid,16,,,90,60,1,,0
 canteen,2,3,900,brick_large,20,,,100,65,1,,0
 buffet,1,2,300,brick_small,10,,,80,55,1,,0
