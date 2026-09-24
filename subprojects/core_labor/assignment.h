@@ -81,6 +81,15 @@ struct AssignmentJob {
   /// potato harvest and sent potatoes under the snow.
   bool prepares_winter_crop = false;
 
+  /// True for ploughing and harrowing of a field whose crop carries a position
+  /// of this year's plan (plan.due above nought for its resource). Inside one
+  /// tier and one kind of window such a field is worked before the others,
+  /// then the window's days decide (boss, boss-core-epoch1-5 seq 50; transport
+  /// design §1, «Плуг — сначала на поле с позицией плана»): the potato, last
+  /// in the queue by its window, stood unploughed to August on a team of
+  /// seven while the barley was ploughed.
+  bool plan_position = false;
+
   /// THIS JOB'S CALENDAR WINDOW, as a PAIR — the kind of answer and, where
   /// there is one, the number (core_common/deadline.h).
   ///

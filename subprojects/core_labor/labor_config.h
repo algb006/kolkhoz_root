@@ -80,6 +80,12 @@ struct CropWindows {
   /// arithmetic the sowing gate asks); 0 for a winter crop or a perennial,
   /// whose reaping keeps its window to the end (FieldWindow).
   std::int32_t ripen_days = 0;
+
+  /// What the crop yields (crops.csv `resource`, a resources.csv row): read so
+  /// the plough can ask whether the field carries a position of the plan
+  /// (boss, boss-core-epoch1-5 seq 50; transport design §1). Invalid when the
+  /// table set has no resources.
+  ResourceId resource;
 };
 
 /// Shape of the worker-efficiency product (manual/65-labor-model.md §5).

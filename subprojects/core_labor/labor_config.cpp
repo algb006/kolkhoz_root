@@ -456,7 +456,11 @@ bool ParseUnitStaff(const ITable& table,
   return true;
 }
 
-bool ParseCropWindows(const ITable& table, LaborConfig& config, std::string& error) {
+bool ParseCropWindows(const ITable& table,
+                      const ITable* resources,
+                      LaborConfig& config,
+                      std::string& error) {
+  const std::uint32_t resource_column = table.FindColumn("resource");
   const std::uint32_t sow_column = table.FindColumn("sow_to_month");
   const std::uint32_t harvest_column = table.FindColumn("harvest_to_month");
   const std::uint32_t winter_column = table.FindColumn("is_winter");
@@ -486,6 +490,12 @@ bool ParseCropWindows(const ITable& table, LaborConfig& config, std::string& err
     windows.ripen_days = RipenGapDays(windows.sow_to_month,
                                       static_cast<std::uint8_t>(reap_from - 1.0F),
                                       winter > 0.5F || perennial > 0.5F);
+    if (resources != nullptr && resource_column != kNoTableColumn) {
+      const std::uint32_t found = resources->FindRowByKey(table.CellText(row, resource_column));
+      if (found != kNoTableRow) {
+        windows.resource = DefIdFromRow<ResourceIdTag>(found);
+      }
+    }
   }
   return true;
 }
@@ -524,7 +534,7 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
     }
   }
   if (const ITable* crops = tables.FindTable("crops")) {
-    if (!ParseCropWindows(*crops, config, error)) {
+    if (!ParseCropWindows(*crops, tables.FindTable("resources"), config, error)) {
       return false;
     }
   }

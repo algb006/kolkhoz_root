@@ -221,6 +221,27 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     if (window_rank(a) != window_rank(b)) {
       return window_rank(a) < window_rank(b);
     }
+    // THE PLOUGH GOES TO THE PLAN'S FIELDS FIRST (boss, boss-core-epoch1-5 seq
+    // 50; transport design §1): inside one tier and one kind of window, horse
+    // work on a field whose crop carries a plan position goes before the
+    // rest. On seed 1939 the potato — last by its window — stood unploughed
+    // to August on a team of seven, three years running, to the trial.
+    //
+    // A KEY FOR EVERY JOB, not a rule between two ploughs: asked only when both
+    // sides are horse work, it would rank a plan plough of day 10 before a
+    // plain one of day 2, that one before a sowing of day 5, and the sowing
+    // before the first — a cycle, UB-001's shape again. And the key LIFTS the
+    // plan's ploughs rather than holding the others back: the first draft held
+    // every plain plough behind every other job of its tier, and the carts took
+    // the horses before it (three assertions red at once). Lifted, the plan's
+    // ploughs go ahead of everything in their tier and window, and everything
+    // else keeps the order it had.
+    const auto plan_plough = [](const AssignmentJob& job) {
+      return IsHorseWork(job.kind) && job.plan_position ? 0 : 1;
+    };
+    if (plan_plough(a) != plan_plough(b)) {
+      return plan_plough(a) < plan_plough(b);
+    }
     if (a.window.kind == DeadlineKind::kDays && b.window.kind == DeadlineKind::kDays &&
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;

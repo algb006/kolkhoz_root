@@ -167,6 +167,31 @@ int TestACarterRidesOnlyAFreeHorse() {
   return failures;
 }
 
+/// THE PLOUGH GOES TO THE PLAN'S FIELD FIRST (boss, boss-core-epoch1-5 seq
+/// 50; 0.35.6). One horse, two ploughings of one tier: a barley field due in
+/// 2 days and a potato field of the plan due in 8. The horse goes to the
+/// potato; with no plan position on it, to the barley by its window.
+int TestThePloughGoesToThePlansFieldFirst() {
+  int failures = 0;
+  std::vector<core::AssignmentJob> jobs = {
+      FieldJob(core::WorkKind::kPlowing, 1, {0.0F, 0.0F}, 5.0F, 2),
+      FieldJob(core::WorkKind::kPlowing, 2, {0.0F, 0.0F}, 5.0F, 8),
+  };
+  const std::vector<core::AssignmentCandidate> candidates = {Worker(0, {0.0F, 0.0F})};
+  core::AssignmentParams params = DayParams();
+  params.draught_horses = 1;
+  const auto ploughs = [&jobs, &candidates, &params](bool potato_in_the_plan) {
+    jobs[1].plan_position = potato_in_the_plan;
+    return core::PlanDayAssignments(jobs, candidates, params)[0];
+  };
+  failures += Expect(ploughs(true) == 1,
+                     "plan: one horse, and it ploughs the plan's potato before the earlier barley");
+  failures +=
+      Expect(ploughs(false) == 0,
+             "plan: with no position on the potato the horse goes by the window, to barley");
+  return failures;
+}
+
 int TestHorsePoolAndLock() {
   int failures = 0;
   // Plowing wants ~4 workers, but two horses cap the crew at two; the
@@ -3426,6 +3451,7 @@ int main() {
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();
   failures += TestACarterRidesOnlyAFreeHorse();
+  failures += TestThePloughGoesToThePlansFieldFirst();
   failures += TestWindowUrgency();
   failures += TestPlacementLevels();
   failures += TestBoundarySystemStub();

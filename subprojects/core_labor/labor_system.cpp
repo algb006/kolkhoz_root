@@ -740,6 +740,7 @@ class LaborSystem final : public ILaborSystem {
           job.grams_at_risk = config_.standing_crop_grams(current, field);
         }
         job.prepares_winter_crop = PreparesWinterCrop(field, kind);
+        job.plan_position = IsHorseWork(kind) && CarriesPlanPosition(current, field, kind);
         // THE THIRD TIER IS NOT WIRED, AND THE REASON IS MEASURED. The rule
         // asked for is "an overdue sowing is not offered at all" — seed put
         // in after the window does not ripen (boss, 2026-09-12). Written as
@@ -1090,6 +1091,23 @@ class LaborSystem final : public ILaborSystem {
     const auto snow = static_cast<std::int32_t>(config_.growing_season_last_day);
     const std::int32_t to_snow = snow - day_of_year;
     return to_snow >= 0 && to_snow <= static_cast<std::int32_t>(config_.harvest_snow_last_days);
+  }
+
+  /// @brief Whether the crop this field's work is for carries a position of
+  ///        this year's plan: plan.due above nought for its resource (boss,
+  ///        boss-core-epoch1-5 seq 50). The crop is the one FieldWindow asks
+  ///        of — the field's own, else its slot's, else the winter crop a
+  ///        fallow is prepared for.
+  bool CarriesPlanPosition(const WorldState& current, const FieldRow& field, WorkKind kind) const {
+    CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
+    if (PreparesWinterCrop(field, kind)) {
+      crop = JobCrop(field);
+    }
+    if (crop.value >= config_.crops.size()) {
+      return false;
+    }
+    const ResourceId resource = config_.crops[crop.value].resource;
+    return resource.value < current.plan.due.size() && current.plan.due[resource.value] > 0;
   }
 
   Deadline FieldWindow(const CalendarState& calendar, const FieldRow& field, WorkKind kind) const {
