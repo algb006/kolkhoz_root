@@ -620,12 +620,14 @@ void PlaceSurplusHead(const ProductionConfig& config,
                       GiftQueues& queues,
                       std::vector<HerdRow>& pending,
                       HerdRow& herd,
+                      HerdId herd_id,
                       WorldState& world) {
   if (!(kind.household_cap_heads > 0.0F)) {
     return;
   }
   const auto cap = static_cast<std::uint16_t>(kind.household_cap_heads);
   const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
+  std::uint32_t slaughtered = 0;
   while (TotalHeads(herd) > cap) {
     bool grown = false;
     float age = 0.0F;
@@ -653,12 +655,21 @@ void PlaceSurplusHead(const ProductionConfig& config,
     // free; and if there is no such yard, it is meat.
     if (!GiveToNeighbour(queues, pending, herd, kind, grown, age)) {
       world.ledger.current.herd_culled += 1;
+      ++slaughtered;
       if (grown) {
         Slaughter(config, kind, place, 1, world);
       }
     }
   }
   herd.adult_male_count = TargetMales(kind, herd.adult_count);
+  // SAID, AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45; 0.35.3):
+  // the heads the knife took here wrote herd_culled alone and said nothing.
+  if (slaughtered > 0) {
+    AddLedgerHeads(world.ledger.current.herd_surplus_slaughtered, herd.kind, slaughtered);
+    SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);
+    event.herd = herd_id;
+    event.amount = static_cast<std::int64_t>(slaughtered);
+  }
 }
 
 }  // namespace
@@ -782,11 +793,11 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
       current.ledger.current.herd_hungry_head_days += static_cast<float>(TotalHeads(herd));
     }
     RunProduce(config, kind, herd, place, current);
-    RunMaturation(config, kind, place, herd, current);
-    if (herd.household_owned != 0) {
-      PlaceSurplusHead(config, kind, place, queues, gifts, herd, current);
-    }
     const HerdId herd_id = current.herds.row_ids[row];
+    RunMaturation(config, kind, place, herd, herd_id, current);
+    if (herd.household_owned != 0) {
+      PlaceSurplusHead(config, kind, place, queues, gifts, herd, herd_id, current);
+    }
     // The calving band is the WALK's to read: it owns the calendar, and
     // herd_life.h owns the animal. Handed down as a bare bool, exactly as
     // `stable_built` above it already is.
@@ -803,7 +814,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
               current.ledger.current);
     RunAgeDeaths(kind, herd, herd_id, current);
     RunHungerDeaths(config, kind, herd, herd_id, current, current.ledger.current);
-    RunAutumnSlaughter(config, kind, herd.kind, place, herd, current, current.calendar);
+    RunAutumnSlaughter(config, kind, herd.kind, place, herd, herd_id, current, current.calendar);
   }
   // THE TRACTION RATION of the day (world_state.h): how much of what the
   // work-only feeds COULD have covered they actually did. Taken after the

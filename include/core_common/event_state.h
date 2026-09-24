@@ -523,6 +523,25 @@ enum class EventKind : std::uint8_t {
   /// `planting_matured`.
   kPlantingMatured,
 
+  // -- the three ways a head is taken off, each said (boss, boss-core-epoch1-5
+  //    seq 43 and 45; 0.35.3). They wrote one herd_culled and said nothing,
+  //    and a probe could not tell a cull from a slaughter from a death.
+
+  /// Young males over the herd's one sire went to meat as they matured
+  /// (herd_life.cpp, RunMaturation). herd; amount = heads. kRoutine. Seam
+  /// key `herd_males_culled`.
+  kHerdMalesCulled,
+
+  /// A yard held more of a group than its cap and no neighbour took the rest:
+  /// it went to meat (herd_system.cpp). herd; amount = heads. kRoutine. Seam
+  /// key `herd_surplus_slaughtered`.
+  kHerdSurplusSlaughtered,
+
+  /// The autumn pig slaughter took all but the sows and the sire
+  /// (herd_life.cpp, RunAutumnSlaughter). herd; amount = heads. kNotable.
+  /// Seam key `herd_autumn_slaughter`.
+  kHerdAutumnSlaughter,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

@@ -592,6 +592,9 @@ core::WorldState MakeWorld() {
   world.ledger.current.milk_debt = 7'000;
   // Save 89: a closed year that paid its loan back; the rest stay empty.
   world.ledger.closed.goods_loan_repaid = Amounts({0, 0, 900'000});
+  // Save 90: the autumn slaughter of the closed year, by kind — kind 1 of the
+  // fixture's livestock; the other two removal columns empty.
+  world.ledger.closed.herd_autumn_slaughtered = Amounts({0, 4});
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // The standing crop the snow took (save 61): host's 150 t of potato.
@@ -1328,7 +1331,13 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // Save 89: +32 — the goods loan taken and repaid in each of the two books:
     // three empty (2 each) and the closed book's repayment of three
     // resources (2 + 24); predicted 920 -> 952 before the build, held.
-    {"ledger", 952, 0x68ba271d5f56f70bULL},
+    // Save 90: +28 — the removals by cause and by kind, three columns in
+    // each book: five empty (2 each) and the closed book's autumn slaughter
+    // of two kinds (2 + 16). Predicted 964 with all six empty, held; then
+    // 980 with the fixture's value, held. The first value was sized at
+    // three kinds against a fixture of two — refused by the dictionary's
+    // count, a miss of the fixture's reading, not of the size.
+    {"ledger", 980, 0x5a57a2a4b5c74385ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1691,6 +1700,8 @@ int main() {
                          AmountAt(loaded.plan.goods_loan_taken, 1) == 1'250'000 &&
                          AmountAt(loaded.ledger.closed.goods_loan_repaid, 2) == 900'000,
                      "the goods loan owed and taken come back, and the book's repayment (save 89)");
+  failures += Expect(AmountAt(loaded.ledger.closed.herd_autumn_slaughtered, 1) == 4,
+                     "the book's autumn slaughter by kind comes back (save 90)");
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");

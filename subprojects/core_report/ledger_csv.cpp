@@ -399,6 +399,14 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
     out.Integer(prefix + "_newborn", heads[kind].newborn);
     out.Integer(prefix + "_billeted", heads[kind].billeted);
     out.Integer("yard_" + livestock[kind] + "_head", heads[kind].yard);
+    // The year's removals of the kind by cause (save 90): the book's by-kind
+    // heads, where herd_culled above is their sum over every kind.
+    out.Integer(prefix + "_males_culled",
+                static_cast<std::uint64_t>(AmountAt(book.herd_males_culled, kind)));
+    out.Integer(prefix + "_surplus_slaughtered",
+                static_cast<std::uint64_t>(AmountAt(book.herd_surplus_slaughtered, kind)));
+    out.Integer(prefix + "_autumn_slaughtered",
+                static_cast<std::uint64_t>(AmountAt(book.herd_autumn_slaughtered, kind)));
   }
 }
 

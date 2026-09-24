@@ -69,9 +69,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // and a sixty-ninth field, predicted before the build.
 // Save 89: the goods loan taken and repaid — a twenty-sixth column and a
 // seventy-first field, predicted before the build.
-static_assert(sizeof(YearLedger) == 232 + (26 * kAmountsSize),
+// Save 90: the removals by cause and by kind — three columns, 29 x amounts
+// and 74 fields, predicted before the build.
+static_assert(sizeof(YearLedger) == 232 + (29 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 71,
+static_assert(AggregateArity<YearLedger>() == 74,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -319,6 +321,11 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.herd_deaths_age);
   out.WriteU32(book.herd_deaths_hunger);
   out.WriteU32(book.herd_culled);
+  // The same removals by cause and by kind (save 90), against the livestock
+  // dictionary: a reordered livestock.csv reads back by key.
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_males_culled);
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_surplus_slaughtered);
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_autumn_slaughtered);
   out.WriteFloat(book.herd_hungry_head_days);
 
   sink.WriteAmounts(DefKind::kResource, book.delivered);
@@ -407,6 +414,17 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_deaths_age = in.ReadU32();
   book.herd_deaths_hunger = in.ReadU32();
   book.herd_culled = in.ReadU32();
+  book.herd_males_culled = source.ReadAmounts(DefKind::kLivestock);         // save 90
+  book.herd_surplus_slaughtered = source.ReadAmounts(DefKind::kLivestock);  // save 90
+  book.herd_autumn_slaughtered = source.ReadAmounts(DefKind::kLivestock);   // save 90
+  for (const ResourceAmounts* column :
+       {&book.herd_males_culled, &book.herd_surplus_slaughtered, &book.herd_autumn_slaughtered}) {
+    for (const Grams heads : *column) {
+      if (heads < 0) {
+        source.Fail("the book's removals by kind are negative");
+      }
+    }
+  }
   book.herd_hungry_head_days = in.ReadFloat();
 
   book.delivered = source.ReadAmounts(DefKind::kResource);

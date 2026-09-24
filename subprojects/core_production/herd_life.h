@@ -135,11 +135,13 @@ void Slaughter(const ProductionConfig& config,
                WorldState& world);
 
 /// @brief Newborn -> juvenile -> adult for one day, plus the structural cull
-/// of males beyond the herd's share of sires.
+/// of males beyond the herd's share of sires — booked in herd_males_culled by
+/// kind and said as kHerdMalesCulled of `herd_id`.
 void RunMaturation(const ProductionConfig& config,
                    const LivestockDef& kind,
                    const HerdPlace& place,
                    HerdRow& herd,
+                   HerdId herd_id,
                    WorldState& world);
 
 /// @brief One day's offspring, drawn as a fractional stream inside the
@@ -217,12 +219,15 @@ Grams AutumnSlaughterMeatShort(const ProductionConfig& config,
 /// @brief The autumn cull: the heads the kolkhoz does not carry through the
 /// winter go under the knife in the season's month — on its first day with
 /// room in the stores for the meat, or on its last day whatever the room
-/// (boss, host-econ-shops seq 26). A household herd's first day.
+/// (boss, host-econ-shops seq 26). A household herd's first day. Booked in
+/// herd_autumn_slaughtered by kind and said as kHerdAutumnSlaughter of
+/// `herd_id`.
 void RunAutumnSlaughter(const ProductionConfig& config,
                         const LivestockDef& kind,
                         LivestockKindId kind_id,
                         const HerdPlace& place,
                         HerdRow& herd,
+                        HerdId herd_id,
                         WorldState& world,
                         const CalendarState& calendar);
 

@@ -202,7 +202,9 @@ int main() {
   const std::vector<std::string> lean_row = Split(core::LedgerCsvRow(state, *lean_tables));
   failures += Expect(lean_header.size() == lean_row.size(),
                      "a table-less sheet still lines its header up with its row");
-  failures += Expect(lean_header.size() == header.size() - (std::size_t{2} * 6U),
+  // Nine columns a kind since save 90: the six rungs and the three removals
+  // by cause (males culled, surplus slaughtered, autumn slaughtered).
+  failures += Expect(lean_header.size() == header.size() - (std::size_t{2} * 9U),
                      "and it is exactly the livestock group narrower");
   failures += Expect(IndexOf(lean_header, "herd_cow_adult") == lean_header.size(),
                      "the dropped group leaves no column behind");

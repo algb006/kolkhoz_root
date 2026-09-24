@@ -263,6 +263,14 @@ struct YearLedger {
   /// Deliberate removals: surplus males and the autumn pigs.
   std::uint32_t herd_culled = 0;
 
+  /// THE SAME REMOVALS BY CAUSE AND BY KIND (boss, boss-core-epoch1-5 seq 43
+  /// and 45; save 90): heads, dense by LivestockKindId — a ResourceAmounts
+  /// only for its dense int64 shape, saved against the livestock dictionary.
+  /// herd_culled above stays their sum.
+  ResourceAmounts herd_males_culled;         ///< Young males over the sire, at maturing.
+  ResourceAmounts herd_surplus_slaughtered;  ///< Over a yard's cap, no neighbour to take them.
+  ResourceAmounts herd_autumn_slaughtered;   ///< The autumn pig slaughter.
+
   /// Underfed heads times days: the year's hunger, in one number.
   float herd_hungry_head_days = 0.0F;
 
@@ -613,6 +621,18 @@ inline void AddLedgerAmount(ResourceAmounts& column, ResourceId resource, Grams 
     column.resize(static_cast<std::size_t>(resource.value) + 1U, 0);
   }
   column[resource.value] += amount;
+}
+
+/// @brief Adds heads under `kind` to a by-kind column of the book, growing
+/// the dense vector as it goes (herd_males_culled and its siblings).
+inline void AddLedgerHeads(ResourceAmounts& column, LivestockKindId kind, std::uint32_t heads) {
+  if (kind.value == kInvalidDefIdValue || heads == 0) {
+    return;
+  }
+  if (column.size() <= kind.value) {
+    column.resize(static_cast<std::size_t>(kind.value) + 1U, 0);
+  }
+  column[kind.value] += static_cast<Grams>(heads);
 }
 
 }  // namespace core

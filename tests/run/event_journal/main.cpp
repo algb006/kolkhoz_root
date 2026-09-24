@@ -194,6 +194,12 @@ const char* KindName(core::EventKind kind) {
       return "planting_matured";
     case core::EventKind::kTwinsBorn:
       return "twins_born";
+    case core::EventKind::kHerdMalesCulled:
+      return "herd_males_culled";
+    case core::EventKind::kHerdSurplusSlaughtered:
+      return "herd_surplus_slaughtered";
+    case core::EventKind::kHerdAutumnSlaughter:
+      return "herd_autumn_slaughter";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

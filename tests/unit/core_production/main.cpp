@@ -501,6 +501,38 @@ int CheckCohortFlows() {
   return failures;
 }
 
+/// THE MALES' CULL IS SAID AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq
+/// 43 and 45; 0.35.3): a pig herd of one sire and a dozen young, walked a
+/// quarter. The heads the cull takes are the kHerdMalesCulled events' sum, the
+/// by-kind column, and — no other removal running — herd_culled itself.
+int CheckTheMalesCullIsSaid() {
+  int failures = 0;
+  const core::ProductionConfig config = MakeHerdConfig();
+  core::WorldState world = MakeHerdWorld(1.0e5F);
+  // The pig (kind 1, a sire share of 0.1): the cow's 0.5 leaves room for
+  // every young male and culls none, which is what the first draft measured.
+  const core::HerdId id = AddHerd(world, 1, 2, 1, true);
+  world.herds.rows[FindRow(world.herds, id)].juvenile_count = 12;
+  std::int64_t said = 0;
+  for (std::uint32_t day = 1; day <= 12; ++day) {  // January to March: no autumn
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.step_events.clear();
+    core::RunHerdDay(config, world);
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kHerdMalesCulled && event.herd.value == id.value) {
+        said += event.amount;
+      }
+    }
+  }
+  const core::Grams booked =
+      core::AmountOf(world.ledger.current.herd_males_culled, core::ResourceId{1});
+  failures += Expect(said > 0 && booked == said &&
+                         static_cast<core::Grams>(world.ledger.current.herd_culled) == said,
+                     "the males' cull is said, booked by kind, and is all of herd_culled");
+  return failures;
+}
+
 int CheckAutumnPigs() {
   int failures = 0;
   const core::ProductionConfig config = MakeHerdConfig();
@@ -515,6 +547,18 @@ int CheckAutumnPigs() {
   failures += Expect(herd.juvenile_count == 0, "the autumn takes the whole fattening stock");
   failures += Expect(herd.adult_count == 5, "and leaves the sows and the boar");
   failures += Expect(StoreOf(world, 2) > 0, "the slaughter pays out in meat");
+  // SAID AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45; 0.35.3):
+  // six fattening pigs and three adults, nine heads, kind 1.
+  std::vector<core::SimEvent> slaughter;
+  for (const core::SimEvent& event : world.step_events) {
+    if (event.kind == core::EventKind::kHerdAutumnSlaughter) {
+      slaughter.push_back(event);
+    }
+  }
+  failures += Expect(
+      slaughter.size() == 1 && slaughter[0].herd.value == id.value && slaughter[0].amount == 9 &&
+          core::AmountOf(world.ledger.current.herd_autumn_slaughtered, core::ResourceId{1}) == 9,
+      "the autumn slaughter is said with its nine heads and booked by kind");
 
   // THE SLAUGHTER WAITS FOR ROOM (boss, host-econ-shops seq 26). The same
   // herd: nine heads to go, 450 kg of meat; the store has 100 kg of room.
@@ -8817,6 +8861,7 @@ int main() {
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();
+  failures += CheckTheMalesCullIsSaid();
   failures += CheckSelfFedYard();
   failures += CheckWorkOnlyFeed();
   failures += CheckMangerReach();

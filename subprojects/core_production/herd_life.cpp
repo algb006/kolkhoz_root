@@ -219,6 +219,7 @@ void RunMaturation(const ProductionConfig& config,
                    const LivestockDef& kind,
                    const HerdPlace& place,
                    HerdRow& herd,
+                   HerdId herd_id,
                    WorldState& world) {
   const auto month_days = static_cast<float>(kDaysPerMonth);
   const float newborn_days = kind.newborn_game_months * month_days;
@@ -272,6 +273,12 @@ void RunMaturation(const ProductionConfig& config,
     herd.adult_age_game_years_total -=
         static_cast<float>(gone) * kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
     world.ledger.current.herd_culled += gone;
+    // SAID, AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45;
+    // 0.35.3): until then the cull wrote herd_culled alone and said nothing.
+    AddLedgerHeads(world.ledger.current.herd_males_culled, herd.kind, gone);
+    SimEvent& event = EmitEvent(world, EventKind::kHerdMalesCulled);
+    event.herd = herd_id;
+    event.amount = static_cast<std::int64_t>(gone);
     Slaughter(config, kind, place, gone, world);
   }
 }
@@ -567,6 +574,7 @@ void RunAutumnSlaughter(const ProductionConfig& config,
                         LivestockKindId kind_id,
                         const HerdPlace& place,
                         HerdRow& herd,
+                        HerdId herd_id,
                         WorldState& world,
                         const CalendarState& calendar) {
   const auto month = static_cast<std::uint8_t>(calendar.date.month);
@@ -606,6 +614,12 @@ void RunAutumnSlaughter(const ProductionConfig& config,
     herd.adult_male_count = std::min(males, herd.adult_count);
   }
   world.ledger.current.herd_culled += gone;
+  if (gone > 0) {
+    AddLedgerHeads(world.ledger.current.herd_autumn_slaughtered, herd.kind, gone);
+    SimEvent& event = EmitEvent(world, EventKind::kHerdAutumnSlaughter, EventSeverity::kNotable);
+    event.herd = herd_id;
+    event.amount = static_cast<std::int64_t>(gone);
+  }
   Slaughter(config, kind, place, gone, world);
 }
 }  // namespace core
