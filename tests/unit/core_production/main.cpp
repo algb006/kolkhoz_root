@@ -1976,6 +1976,53 @@ int CheckSeedLightDoesNotNetCropsOff() {
   return failures;
 }
 
+/// SOWN AS FAR AS THE SEED GOES (farming design §7; boss, boss-core-epoch1-5
+/// seq 16 — a defect until 0.34.50, when a short seed sowed the whole field
+/// and the yield never read the seed taken). As a pair: half the seed sows half
+/// the field and grows half the crop; the full seed sows it all.
+int CheckTheSeedSowsItsShare() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{0};
+  config.crops[0].sowing_norm_kg_per_ha = 100.0F;
+  config.crops[0].yield_kg_per_ha = 2000.0F;
+  config.farming.fertility_neutral = 50.0F;
+  config.farming.stress_cap = 0.3F;
+  const auto sown = [&config](core::Grams seed_in_store) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    world.units.rows[0].level = 1;
+    world.units.rows[0].stock[0] = seed_in_store;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;  // 1000 kg of seed for the whole field
+    field.fertility = 50.0F;
+    field.crop = core::CropId{0};
+    field.phase = core::FieldPhase::kSowing;
+    core::AppendRow(world.fields, field);
+    core::FinishSowing(config, world, world.fields.rows[0]);
+    return world;
+  };
+  const core::WorldState half = sown(500 * kKilo);
+  const core::FieldRow& half_field = half.fields.rows[0];
+  failures += Expect(half_field.sown_share == 0.5F && half.ledger.current.area_sown_ha > 4.99F &&
+                         half.ledger.current.area_sown_ha < 5.01F,
+                     "sowing: half the seed sows half the field");
+  failures += Expect(core::FieldYieldGrams(config, half_field, config.crops[0]) == 10'000 * kKilo,
+                     "and grows half the crop: 10 t of the field's 20");
+  const core::WorldState full = sown(2000 * kKilo);
+  failures += Expect(
+      full.fields.rows[0].sown_share == 1.0F &&
+          core::FieldYieldGrams(config, full.fields.rows[0], config.crops[0]) == 20'000 * kKilo,
+      "sowing: the full seed sows the whole field and grows the whole crop");
+  const core::WorldState none = sown(0);
+  failures += Expect(none.fields.rows[0].sown_share == 0.0F &&
+                         core::FieldYieldGrams(config, none.fields.rows[0], config.crops[0]) == 0,
+                     "sowing: no seed sows nothing and grows nothing");
+  return failures;
+}
+
 /// THE WEATHER YEAR'S SHARE IS READ FROM world_params (boss, boss-core-epoch1-5
 /// seq 11). As a pair: a table naming 0.25 gives 0.25, and a table without the
 /// key keeps the STUB 0.5 — so a reader that ignored the row passes the second
@@ -8504,6 +8551,7 @@ int main() {
   failures += CheckSeedLightDoesNotNetCropsOff();
   failures += CheckTheSeedIsBookedItsRoom();
   failures += CheckTheWeatherShareIsRead();
+  failures += CheckTheSeedSowsItsShare();
   failures += CheckHaulingIsNotFree();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();

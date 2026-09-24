@@ -300,7 +300,10 @@ void TrySow(const ProductionConfig& config,
 /// @brief Closes a worked-through sowing phase: the seed is in the ground
 ///        and the field starts growing.
 ///
-/// The seed goes into the ground when the sowing phase is worked through.
+/// The seed goes into the ground when the sowing phase is worked through,
+/// AS FAR AS IT GOES (farming design §7; 0.34.50): FieldRow::sown_share is the
+/// seed taken over the whole field's norm, and the crop grows on that share
+/// (FieldYieldGrams). A crop that takes no seed sows the whole field.
 void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 /// @brief Closes a worked-through harvest phase: arable lays the last of

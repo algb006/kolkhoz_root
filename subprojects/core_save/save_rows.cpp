@@ -136,8 +136,13 @@ static_assert(AggregateArity<FamilyRow>() == 27,
 // padding — 96 stays 96 (measured), 33 fields: the count caught it alone.
 // Save 84: the harvest by parts' laid share (float) and grams (i64) —
 // predicted 96 -> 112 before the build, 35 fields.
-static_assert(sizeof(FieldRow) == 112, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 35,
+// Save 87: the sown share (float) beside the laid share. Predicted "112
+// stays", on the belief that a padding hole stood between the laid share and
+// the laid grams. A MISS, named: the laid share sits at offset 76, so there
+// was no hole, and the float opened one of its own before the grams. Measured
+// 120 (offsetof: laid share 76, sown share 80, laid grams 88), 36 fields.
+static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 36,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -677,6 +682,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The harvest by parts (save 84): the share of this reaping already laid
   // into the heap, and its grams.
   out.WriteFloat(row.harvest_laid_share);
+  out.WriteFloat(row.sown_share);  // save 87
   out.WriteI64(row.harvest_laid_grams);
   // The day this meadow was last mown (2026-09-06). History the simulation
   // cannot rederive: from today alone there is no telling a meadow standing
@@ -760,6 +766,12 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   row.harvest_laid_share = in.ReadFloat();
+  row.sown_share = in.ReadFloat();
+  // A share, and the yield is multiplied by it: outside 0..1 a loaded field
+  // would grow a crop nobody sowed, or less than none.
+  if (!(row.sown_share >= 0.0F && row.sown_share <= 1.0F)) {
+    source.Fail("a field's sown share is outside 0..1");
+  }
   row.harvest_laid_grams = in.ReadI64();
   row.last_mown_day = in.ReadU32();
   row.sown_day = in.ReadU32();

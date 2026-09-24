@@ -154,7 +154,9 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   }
   const CropDef& crop = config.crops[field.crop.value];
   const float soil = field.fertility / config.farming.fertility_neutral;
-  const Grams expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
+  // On the sown share, as the harvest itself (FieldYieldGrams, 0.34.50).
+  const Grams expected =
+      GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * field.sown_share * soil);
   // Grain and straw travel together, so the standing crop claims both.
   const float with_straw = 1.0F + (crop.straw_ratio > 0.0F ? crop.straw_ratio : 0.0F);
   // THE STANDING SHARE — AND ONLY NOW IS THAT RIGHT (the harvest by parts,

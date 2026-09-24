@@ -138,8 +138,10 @@ Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, con
   const float capped =
       stress_total > config.farming.stress_cap ? config.farming.stress_cap : stress_total;
   const float weather_factor = 1.0F - capped;
-  return GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil_factor * weather_factor *
-                            LateSowingFactor(config, field));
+  // ON THE SOWN SHARE (FieldRow::sown_share): the part the seed did not
+  // cover grows nothing.
+  return GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * field.sown_share * soil_factor *
+                            weather_factor * LateSowingFactor(config, field));
 }
 
 Grams StandingYieldGrams(const ProductionConfig& config,
@@ -847,22 +849,29 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
     field.work_days_remaining = 0.0F;
     return;
   }
+  // SOWN AS FAR AS THE SEED GOES (farming design §7, «Сеется столько, на
+  // сколько хватило семян», decided 5 September 2026; boss seq 16). Until
+  // 0.34.50 a short seed sowed the whole field anyway, even with none, and
+  // the yield did not depend on the seed taken — so the seed fund's door
+  // (0.34.49) held a number the harvest never read. Now the sown share is
+  // what the seed covered, and the crop grows and is reaped on it
+  // (FieldYieldGrams); the rest of the field stands unsown and says so.
+  field.sown_share = 1.0F;
   if (crop_id.value < config.crops.size()) {
     const CropDef& crop = config.crops[crop_id.value];
-    // Sowing consumes ordinary produce of the same crop (§7); partial
-    // seed sows the whole field anyway — the shortfall alarm is a UI
-    // concern.
     if (crop.sowing_norm_kg_per_ha > 0.0F) {
       const auto need = GramsFromKilograms(crop.sowing_norm_kg_per_ha * field.area_ga);
       const Grams got = TakeFromStorage(current, config, crop.resource, need);
       AddLedgerAmount(current.ledger.current.seed, crop.resource, got);
-      // Short seed sows the whole field anyway, and the player is told by
-      // kSeedShort — standing from the day the rotation is set, not on the
-      // morning of the sowing (task A3; farming design §7). Phase code does
-      // not log (DEADLOCK-001).
+      field.sown_share =
+          need > 0 ? static_cast<float>(static_cast<double>(got) / static_cast<double>(need))
+                   : 1.0F;
+      // The player is told before the morning of the sowing: kSeedShort stands
+      // from the day the rotation is set (task A3; farming design §7). Phase
+      // code does not log (DEADLOCK-001).
     }
   }
-  current.ledger.current.area_sown_ha += field.area_ga;
+  current.ledger.current.area_sown_ha += field.area_ga * field.sown_share;
   field.crop = crop_id;
   MoveFieldPhase(current, field, FieldPhase::kGrowing);
   field.work_days_remaining = 0.0F;

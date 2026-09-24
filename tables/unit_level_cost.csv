@@ -680,6 +680,8 @@ farm_stop,1,board,8
 farm_stop,1,stone,5
 farm_stop,1,clay,3
 farm_stop,1,glass,6
+well,1,log,4
+well,2,cement,0.5
 substation,1,board,15
 substation,1,sand,12
 substation,1,brick,5000
@@ -865,9 +867,5 @@ cemetery,3,board,8
 cemetery,3,stone,5
 cemetery,3,clay,3
 cemetery,3,glass,6
-water_intake,1,stone,10
-water_intake,1,sand,20
-water_intake,1,cement,6
-water_intake,1,industrial_equipment,2
 beach,1,board,0.075
 clamp,1,straw,2

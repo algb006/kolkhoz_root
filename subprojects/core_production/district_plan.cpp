@@ -24,10 +24,6 @@
 
 namespace core {
 
-/// The year's delivery: what the plan asked for leaves the stores and is
-/// recorded as delivered. A shortfall is a shortfall now — it used to be
-/// "simply a smaller delivery" because the district had no mechanics, and
-/// JudgePlan below is those mechanics arriving.
 /// THE SEED STAYS: what the next sowing needs, as seed_short and the seed
 /// room count it (SeedHeldToSowing).
 ///
@@ -64,6 +60,10 @@ Grams DeliverableAboveSeed(const ProductionConfig& config,
   return available > held_for_seed ? available - held_for_seed : 0;
 }
 
+/// The year's delivery: what the plan asked for leaves the stores and is
+/// recorded as delivered. A shortfall is a shortfall now — it used to be
+/// "simply a smaller delivery" because the district had no mechanics, and
+/// JudgePlan below is those mechanics arriving.
 void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   // THE TURN SHIPS WHAT IS STILL OWED, not the whole figure again: whatever
   // the chairman shipped earlier by order (kDeliverPlan) is already in

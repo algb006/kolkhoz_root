@@ -275,6 +275,9 @@ core::WorldState MakeWorld() {
   // the wrong member would round-trip the zeros perfectly.
   field.harvest_laid_share = 0.375F;
   field.harvest_laid_grams = 1'234'567;
+  // The sown share (save 87), away from its default of 1 and from the laid
+  // share beside it.
+  field.sown_share = 0.625F;
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -1197,7 +1200,9 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
-    {"fields", 305, 0x1d8085039b4e1998ULL},
+    // Save 87: +12 — the sown share, a float a row, three rows; predicted 317
+    // before the build and held (the struct's size was the miss, not this).
+    {"fields", 317, 0xad9f9678a2051685ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1663,6 +1668,8 @@ int main() {
                          loaded.fields.rows[0].harvest_laid_grams == 1'234'567 &&
                          loaded.fields.rows[2].harvest_laid_grams == 0,
                      "the harvest by parts' laid share and grams come back (save 84)");
+  failures +=
+      Expect(loaded.fields.rows[0].sown_share == 0.625F, "and the sown share comes back (save 87)");
   failures += Expect(loaded.fields.rows[2].overgrown == 1,
                      "the weeds on the unworked ground survive the round trip");
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three

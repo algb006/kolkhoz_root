@@ -401,6 +401,15 @@ struct FieldRow {
   /// (field_work.h, LayReapedShare); the snow takes only what is still
   /// standing. Both are nought outside a reaping.
   float harvest_laid_share = 0.0F;
+
+  /// THE SHARE OF THE FIELD SOWN (farming design §7, «Сеется столько, на
+  /// сколько хватило семян»; boss, boss-core-epoch1-5 seq 16; save 87):
+  /// min(1, seed taken / the sowing norm of the whole field), set when the
+  /// sowing closes (FinishSowing). The crop grows and is reaped on this
+  /// share of the area; the rest stands unsown until the next sowing. 1 for
+  /// a crop that takes no seed, and for every field until its first sowing.
+  float sown_share = 1.0F;
+
   Grams harvest_laid_grams = 0;
 
   /// THE AVRAL ON THIS FIELD'S WORK (kDeclareRush; unit rules §7; save 65):
