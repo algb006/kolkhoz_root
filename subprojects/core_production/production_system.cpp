@@ -402,6 +402,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectStoreAlarms(config_, completed, alarms);
     CollectFieldAlarms(config_, completed, alarms);
     CollectSeedRoomAlarms(config_, completed, alarms);
+    CollectMilkDebtAlarms(config_, completed, alarms);
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);

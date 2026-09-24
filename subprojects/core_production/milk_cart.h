@@ -21,6 +21,9 @@
 #ifndef CORE_PRODUCTION_MILK_CART_H_
 #define CORE_PRODUCTION_MILK_CART_H_
 
+#include <vector>
+
+#include "core_common/alarm_state.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
 
@@ -51,6 +54,13 @@ void ShipMilkLeftover(const ProductionConfig& config, WorldState& current);
 /// as the stores hold. What they cannot give becomes the new debt. Nothing
 /// before the spring's figure.
 void ShipMilkShare(const ProductionConfig& config, WorldState& current);
+
+/// @brief kMilkAllToDebt while the milk debt stands and the position with it:
+/// the cart took every litre at the last milking and the yards' morning
+/// issue has no milk (boss, boss-core-epoch1-5 seq 7). A pure read.
+void CollectMilkDebtAlarms(const ProductionConfig& config,
+                           const WorldState& world,
+                           std::vector<Alarm>& alarms);
 
 }  // namespace core
 

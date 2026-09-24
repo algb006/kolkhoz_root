@@ -65,6 +65,25 @@ void ShipMilkShare(const ProductionConfig& config, WorldState& current) {
   const Grams taken = TakeFromStorage(current, config, config.milk_resource, wanted);
   BookDelivered(config, current, taken, true);
   current.plan.milk_debt = wanted - taken;
+  // THE BOOK SEES IT (boss seq 7 of epoch1-5): the debt of today, and at the
+  // turn what was left unpaid (YearLedger::milk_debt).
+  current.ledger.current.milk_debt = current.plan.milk_debt;
+}
+
+void CollectMilkDebtAlarms(const ProductionConfig& config,
+                           const WorldState& world,
+                           std::vector<Alarm>& alarms) {
+  if (world.plan.milk_debt <= 0 || !MilkPositionStands(config, world)) {
+    return;
+  }
+  // A DEBT STANDING MEANS THE CART TOOK EVERY LITRE: it is what the stores
+  // could not give at the last milking, so nothing was left for the yards'
+  // morning issue.
+  Alarm alarm;
+  alarm.kind = AlarmKind::kMilkAllToDebt;
+  alarm.resource = config.milk_resource;
+  alarm.amount = world.plan.milk_debt;
+  alarms.push_back(alarm);
 }
 
 }  // namespace core

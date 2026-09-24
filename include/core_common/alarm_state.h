@@ -400,6 +400,16 @@ enum class AlarmKind : std::uint8_t {
   /// `resource` = the seed; `amount` = GRAMS of room booked for it.
   kSeedHasNoRoom,
 
+  /// ALL THE MILK WENT TO THE DEBT (alarms.csv `milk_all_to_debt`, words
+  /// STUB; boss, boss-core-epoch1-5 seq 7): the milk position's debt stands
+  /// (PlanState::milk_debt > 0), so the cart took every litre at the last
+  /// milking and the yards' morning issue had no milk. It happens when the
+  /// herd gives less than the share — a cull, a disease, a sale. The design
+  /// orders the debt paid before the issue (district §9), and this line is
+  /// what lets the player see that fork. Subject: `resource` = the milk;
+  /// `amount` = GRAMS of the debt.
+  kMilkAllToDebt,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

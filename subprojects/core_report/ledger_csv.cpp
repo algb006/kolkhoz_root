@@ -340,6 +340,9 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // What the district asked by position (M12): beside `delivered`, the
   // year's lost_no_room and issued, a failed position names its cause.
   EmitResourceBlock(out, resources, "plan_due", book.plan_due);
+  // What the milk position still owed at the turn (save 86; boss seq 7 of
+  // epoch1-5), grams — the milk debt the verdict judged short.
+  out.Integer("milk_debt", static_cast<std::uint64_t>(book.milk_debt));
   // What went against the position is NOT a block of the book here: the row
   // is written at the turn, while plan.delivered still holds the year's
   // shipments by position, and `plan_delivered` below prints exactly that

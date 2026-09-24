@@ -576,6 +576,10 @@ core::WorldState MakeWorld() {
   // books, or a codec that swapped them would still round-trip.
   world.ledger.closed.plan_delivered = Amounts({11'800'000, 0, 0});
   world.ledger.current.plan_delivered = Amounts({5'000});
+  // Save 86: the milk debt of each book, two different values, so a codec
+  // that swapped the books could not round-trip them.
+  world.ledger.closed.milk_debt = 200'000;
+  world.ledger.current.milk_debt = 7'000;
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // The standing crop the snow took (save 61): host's 150 t of potato.
@@ -1293,7 +1297,9 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // build, and held. Then +8 more: the current book's column given one cell
     // (2 + 8), so a codec swapping the books cannot round-trip — predicted
     // 904 before the build. The hash is recorded after it.
-    {"ledger", 904, 0x11853e4263a0c21bULL},
+    // Save 86: +16 — milk_debt, eight bytes in each of the two books;
+    // predicted 920 before the build, and held.
+    {"ledger", 920, 0x735fa3f944040262ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1596,6 +1602,9 @@ int main() {
                          loaded.ledger.current.plan_delivered.size() == 1 &&
                          loaded.ledger.current.plan_delivered[0] == 5'000,
                      "what went against the position comes back in the closed book (save 83)");
+  failures +=
+      Expect(loaded.ledger.closed.milk_debt == 200'000 && loaded.ledger.current.milk_debt == 7'000,
+             "and the milk debt of each book comes back (save 86)");
   // Filled since save 60 and read by nothing until save 61 was written: a
   // codec that forgot to READ samogon_paid would have passed this file.
   failures += Expect(AmountAt(loaded.ledger.closed.samogon_paid, 0) == 3'000 &&

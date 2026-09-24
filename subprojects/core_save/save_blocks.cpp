@@ -65,9 +65,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // struct's size and arity stay, the section grows 8 bytes; not predicted.
 // Save 83: plan_delivered, what went against each position at the turn (boss
 // seq 18, item 3) — a twenty-fourth column and a sixty-eighth field.
-static_assert(sizeof(YearLedger) == 224 + (24 * kAmountsSize),
+// Save 86: milk_debt, the debt standing (boss seq 7 of epoch1-5) — 8 bytes
+// and a sixty-ninth field, predicted before the build.
+static_assert(sizeof(YearLedger) == 232 + (24 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 68,
+static_assert(AggregateArity<YearLedger>() == 69,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -320,6 +322,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.plan_due);
   // What went against each position (save 83).
   sink.WriteAmounts(DefKind::kResource, book.plan_delivered);
+  out.WriteI64(book.milk_debt);  // save 86
 
   WriteFloatArray(out, book.work_days_by_kind);
   out.WriteI32(book.trudodni_accrued);
@@ -403,6 +406,10 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.delivered = source.ReadAmounts(DefKind::kResource);
   book.plan_due = source.ReadAmounts(DefKind::kResource);
   book.plan_delivered = source.ReadAmounts(DefKind::kResource);
+  book.milk_debt = in.ReadI64();
+  if (book.milk_debt < 0) {
+    source.Fail("the book's milk debt is negative");
+  }
 
   ReadFloatArray(in, book.work_days_by_kind);
   book.trudodni_accrued = in.ReadI32();

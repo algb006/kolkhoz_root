@@ -286,6 +286,14 @@ struct YearLedger {
   /// `plan_delivered / plan_due` is the per cent the district judged by.
   ResourceAmounts plan_delivered;
 
+  /// THE MILK DEBT STANDING (PlanState::milk_debt; boss, boss-core-epoch1-5
+  /// seq 7; save 86), grams. The cart writes it at every milking, so during the
+  /// year it is the debt of today, and in a closed book it is what the turn
+  /// found unpaid — the milk position's shortfall that the verdict judged.
+  /// While it stands above nought the cart has taken every litre and the
+  /// yards' morning issue had no milk (kMilkAllToDebt).
+  Grams milk_debt = 0;
+
   /// What went bad in a store or a larder over the year, by resource
   /// (task A4; transport design §10). A separate column from `lost_no_room`
   /// because they are different failures with different cures: lost_no_room is

@@ -1976,6 +1976,32 @@ int CheckSeedLightDoesNotNetCropsOff() {
   return failures;
 }
 
+/// THE WEATHER YEAR'S SHARE IS READ FROM world_params (boss, boss-core-epoch1-5
+/// seq 11). As a pair: a table naming 0.25 gives 0.25, and a table without the
+/// key keeps the STUB 0.5 — so a reader that ignored the row passes the second
+/// and fails the first.
+int CheckTheWeatherShareIsRead() {
+  int failures = 0;
+  namespace fs = std::filesystem;
+  const auto parsed = [](std::string_view rows) {
+    const fs::path root = fs::temp_directory_path() / "unit_core_production_weather_share";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    std::ofstream(root / "world_params.csv") << "key,value,reader\n" << rows;
+    std::string error;
+    const auto tables = core::LoadTableSet(root.string(), &error);
+    core::ProductionConfig config;
+    const bool ok = tables != nullptr && core::ParseProductionConfig(*tables, config, error);
+    fs::remove_all(root);
+    return ok ? config.weather_year_snow_share : -1.0F;
+  };
+  failures += Expect(parsed("weather_year_snow_share,0.25,core\n") == 0.25F,
+                     "the weather year's share is read from world_params");
+  failures += Expect(parsed("mud_speed_factor,0.5,core\n") == 0.5F,
+                     "and without the row it keeps its STUB 0.5");
+  return failures;
+}
+
 /// THE SEED LIES IN FIRST (seed_room.h; boss seq 26, 33, 34). A church takes
 /// oats and potatoes, a granary oats alone, ten tonnes of room each. The
 /// potato's next sowing wants 5 t and the stores hold none; 3 t of potato lie
@@ -6371,11 +6397,27 @@ int CheckTheMilkCart() {
   failures += Expect(core::AmountOf(world.plan.delivered, milk) == 65 * kKilo &&
                          world.plan.milk_debt == 15 * kKilo,
                      "milk: a short day owes its difference");
+  // AND IT IS SEEN (boss, boss-core-epoch1-5 seq 7): the book carries the
+  // debt, and the alarm says the yards' morning issue got no milk.
+  {
+    std::vector<core::Alarm> owing;
+    core::CollectMilkDebtAlarms(config, world, owing);
+    failures += Expect(world.ledger.current.milk_debt == 15 * kKilo && owing.size() == 1 &&
+                           owing[0].kind == core::AlarmKind::kMilkAllToDebt &&
+                           owing[0].resource == milk && owing[0].amount == 15 * kKilo,
+                       "milk: the book writes the debt and the alarm names it");
+  }
   world.units.rows[0].stock[1] = 60 * kKilo;
   core::ShipMilkShare(config, world);
   failures += Expect(core::AmountOf(world.plan.delivered, milk) == 120 * kKilo &&
                          world.plan.milk_debt == 0 && StoreOf(world, 1) == 5 * kKilo,
                      "milk: the next milking pays the share and the debt before the issue");
+  {
+    std::vector<core::Alarm> paid;
+    core::CollectMilkDebtAlarms(config, world, paid);
+    failures += Expect(paid.empty() && world.ledger.current.milk_debt == 0,
+                       "milk: with the debt paid the book reads nothing and the alarm is quiet");
+  }
   core::ShipMilkLeftover(config, world);
   failures += Expect(core::AmountOf(world.plan.delivered_outside, milk) == 15 * kKilo,
                      "milk: and only what is left after both goes over the plan");
@@ -8396,6 +8438,7 @@ int main() {
   failures += CheckFeedLightKeepsTheKindsApart();
   failures += CheckSeedLightDoesNotNetCropsOff();
   failures += CheckTheSeedIsBookedItsRoom();
+  failures += CheckTheWeatherShareIsRead();
   failures += CheckHaulingIsNotFree();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();

@@ -954,9 +954,10 @@ struct ProductionConfig {
   /// forgiving-start.md §5а): a failed position is the weather's when the
   /// standing crop the snow took (ledger lost_to_snow) is at least this share
   /// of its shortfall. A year whose every failed position is the weather's
-  /// stays out of the trial's "three in a row" (FailedOnlyBySnow). STUB 0.5,
-  /// boss's — no table key yet. It was 1.0 in effect on 0.34.45: the snow had
-  /// to cover the whole shortfall.
+  /// stays out of the trial's "three in a row" (FailedOnlyBySnow).
+  /// world_params.csv `weather_year_snow_share`, STUB 0.5, boss's (seq 11).
+  /// It was 1.0 in effect on 0.34.45: the snow had to cover the whole
+  /// shortfall.
   float weather_year_snow_share = 0.5F;
 
   /// What a met and a failed year do to the chairman's raikom reputation,

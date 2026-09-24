@@ -40,6 +40,7 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kReserveFullNothingToEat:
     case AlarmKind::kPlanPositionShort:
     case AlarmKind::kSeedHasNoRoom:
+    case AlarmKind::kMilkAllToDebt:
       return alarm.resource.value;
     case AlarmKind::kFamilyGoingHungry:
       return alarm.family.value;
