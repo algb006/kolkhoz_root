@@ -1438,7 +1438,14 @@ class LaborSystem final : public ILaborSystem {
       if (worked && resident.days_worked_this_month < UINT8_MAX) {
         ++resident.days_worked_this_month;
       }
-      if (!worked) {
+      // A WALK-OFF IS A DAY AT HOME (leisure design, the day's table: «День
+      // дома без наряда | +4 | Декрет, болезнь, ушёл за предел»; 0.35.14). It
+      // counted as worked until then — he was out an hour — and a man who
+      // walked off in his first hour never rested back. The walk-off leaves
+      // him at or under the limit, and nobody else ends a day there: since
+      // 0.35.11 a man past his limit is not sent at all.
+      const bool walked_off = worked && resident.rest <= config_.rest_walkoff_threshold;
+      if (!worked || walked_off) {
         resident.rest += day_off ? config_.rest_recovery_day_off : config_.rest_recovery_idle_day;
         resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
       }

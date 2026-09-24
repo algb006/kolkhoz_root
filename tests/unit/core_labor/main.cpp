@@ -522,9 +522,13 @@ int TestWalkOffPaysAndStops() {
     return Expect(false, "factory yields a system");
   }
   DayWorld day(1);
-  day.world.residents.rows[0].rest = 16.0F;  // an hour of work from the limit
+  // An hour or two of work from the limit. It was 16 until 0.35.14, and at
+  // 16 nobody walked off at all — a day's reaping drains about four — so
+  // every line below passed on a man who worked his day through.
+  day.world.residents.rows[0].rest = 11.0F;
   day.AddField(core::FieldPhase::kHarvest, 50.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
   day.RunDay(*labor, 1);
+  failures += Expect(day.world.ledger.current.walk_offs == 1, "he did walk off, once");
   const core::FamilyRow& household =
       day.world.families.rows[core::FindRow(day.world.families, day.family)];
   failures += Expect(day.world.residents.rows[0].rest < 40.0F,
@@ -533,6 +537,28 @@ int TestWalkOffPaysAndStops() {
       Expect(household.trudodni_account > 0, "he is paid for the part of the day he did work");
   failures += Expect(day.world.fields.rows[0].work_days_remaining > 40.0F,
                      "and the work he walked away from is still waiting");
+
+  // AND HIS DAY IS A DAY AT HOME (leisure design: "ушёл за предел", +4;
+  // 0.35.14). The walk-off leaves him at or under the limit of 10; the
+  // day's close lifts him over it. The pair: a man who worked the day
+  // through gets nothing back, and ends lower than he began.
+  const core::LaborConfig config;
+  std::cout << "walk-off: " << day.world.ledger.current.walk_offs << " walk-offs, rest at close "
+            << day.world.residents.rows[0].rest << '\n';
+  failures += Expect(day.world.residents.rows[0].rest > config.rest_walkoff_threshold,
+                     "a walk-off rests at home the rest of the day: +4 lifts him past the limit");
+  DayWorld through(1);
+  through.AddField(core::FieldPhase::kHarvest, 50.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+  through.RunDay(*labor, 1);
+  const core::ResidentRow& worker = through.world.residents.rows[0];
+  const auto harvest = static_cast<std::size_t>(core::WorkKind::kHarvest);
+  const float delivered = through.world.ledger.current.work_days_by_kind[harvest];
+  const float expected =
+      70.0F - core::RestDrain(config, worker, core::WorkKind::kHarvest, delivered);
+  std::cout << "worked through: delivered " << delivered << ", rest " << worker.rest << " against "
+            << expected << '\n';
+  failures += Expect(delivered > 0.5F && std::abs(worker.rest - expected) < 0.05F,
+                     "a man who worked his day through ends at 70 less his drain, nothing back");
   return failures;
 }
 
