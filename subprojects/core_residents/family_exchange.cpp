@@ -122,37 +122,6 @@ std::uint32_t EaterCount(const FoodConfig& config,
   return eaters;
 }
 
-/// @brief Grams of each resource the automatic issue may not touch, dense by
-/// ResourceId: the two FUNDS the design names outright plus the fodder.
-///
-/// "The plan reserve and the seed fund are not touched by the automatic
-/// issue; eating them takes a deliberate decision to break the fund open"
-/// (labor-payment design §4, resources design §2). To that, boss's answer to
-/// question Q4 adds the feed: what the bundle may carry is what is left over
-/// PLAN, SEED FUND AND FODDER.
-///
-/// Three sources, one vector:
-///   * seed — the sowing still to come. Only fields that have yet to be sown
-///     count: a field already in the ground took its seed when its sowing
-///     phase closed, and reserving for it twice would freeze grain the
-///     settlement has already spent. "Yet to be sown" is the CROP's state
-///     and not the field's phase — see the loop.
-///   * plan — as much of WorldState::plan.due as THIS YEAR'S REAPING has
-///     covered so far, and no more. The norm itself is announced in the
-///     spring off the land worked last year, but the ladder of funds is a
-///     distribution of the HARVEST (resources design §6), so in April there
-///     is nothing yet to set aside and the granary of last year is free.
-///     Reserving the whole norm from January instead locks that granary
-///     against a plan that will be met out of a crop still in the ground,
-///     and the settlement starves in the spring beside grain it may not
-///     touch — measured, on 2026-09-12, as a leanest day of 20 against 38.
-///     Less whatever the chairman has unsealed (kUnsealFund).
-///   * fodder — what the kolkhoz herds ATE LAST YEAR, straight off the
-///     closed book. It needs no forecast and no second copy of the feeding
-///     order, and it corrects itself as the herd grows or shrinks. In the
-///     first year there is no closed book and nothing is held back — which
-///     is right, because the first year's fodder is the start stock, and
-///     that was measured from the first cut for exactly this reason.
 /// Days until held seed of resource `index` is sown at the latest: to the end
 /// of the last sowing month of the crops it seeds, capped at `days_left` to
 /// the turn; the cap itself when no crop of it names a month.
@@ -176,6 +145,34 @@ std::uint32_t SeedHorizonDays(const FoodConfig& config,
   return any ? std::min(latest, days_left) : days_left;
 }
 
+/// @brief Grams of each resource the automatic issue may not touch, dense by
+/// ResourceId: the two FUNDS the design names outright plus the fodder.
+///
+/// "The plan reserve and the seed fund are not touched by the automatic
+/// issue; eating them takes a deliberate decision to break the fund open"
+/// (labor-payment design §4, resources design §2). To that, boss's answer to
+/// question Q4 adds the feed: what the bundle may carry is what is left over
+/// PLAN, SEED FUND AND FODDER.
+///
+/// Three sources, one vector:
+///   * seed — the sowing still to come. Only fields that have yet to be sown
+///     count: a field already in the ground took its seed when its sowing
+///     phase closed, and reserving for it twice would freeze grain the
+///     settlement has already spent. "Yet to be sown" is the CROP's state
+///     and not the field's phase — see the loop.
+///   * plan — what is still owed, as far as the crop lies below the seed,
+///     carry-over and reaping alike, from the January letter (fund_ladder.h,
+///     PlanRungGrams; boss, boss-core-epoch1-4 seq 9 and 10). Until 0.34.42
+///     it was as much as THIS YEAR'S REAPING had covered — nought until the
+///     reaping, so the whole planned crop was held instead (PlanHoldsIt),
+///     and that was hunger beside full barns. Less whatever the chairman has
+///     unsealed (kUnsealFund).
+///   * fodder — what the kolkhoz herds ATE LAST YEAR, straight off the
+///     closed book. It needs no forecast and no second copy of the feeding
+///     order, and it corrects itself as the herd grows or shrinks. In the
+///     first year there is no closed book and nothing is held back — which
+///     is right, because the first year's fodder is the start stock, and
+///     that was measured from the first cut for exactly this reason.
 std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
   // THE SEED FUND AND THE PLAN RESERVE, AND THE UNSEALINGS OFF BOTH, live in
   // core_common/fund_ladder.h since 2026-09-13, because the herds must stay
