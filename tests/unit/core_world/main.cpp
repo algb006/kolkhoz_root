@@ -510,6 +510,34 @@ int main() {
   failures +=
       Expect(other_seed.rng.state != world.rng.state, "different seed — different world RNG");
 
+  // THE START TEAM IS YOUNG (boss, boss-core-epoch1-5 seq 49; 0.35.10): the
+  // sixteen horses are drawn from adulthood (one year) to two years short of
+  // old age (6 - 2 = 4). Drawn up to the lifespan's top, eight, one in three
+  // died of age in the first year. Sixteen draws over 1..8 would put one past
+  // four all but surely, so the band is a real check.
+  {
+    const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+    const core::WorldState start =
+        shipped == nullptr
+            ? core::WorldState{}
+            : core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+    const std::uint32_t horse = shipped == nullptr
+                                    ? core::kNoTableRow
+                                    : shipped->FindTable("livestock")->FindRowByKey("horse");
+    std::uint32_t horses = 0;
+    bool young = true;
+    for (const core::HerdRow& herd : start.herds.rows) {
+      if (herd.kind.value != horse || herd.household_owned != 0 || herd.adult_count == 0) {
+        continue;
+      }
+      horses += herd.adult_count;
+      const float age = herd.adult_age_game_years_total / static_cast<float>(herd.adult_count);
+      young = young && age >= 1.0F && age <= 4.0F;
+    }
+    failures += Expect(horses == 16 && young,
+                       "the start's sixteen horses are between one and four years old");
+  }
+
   // THE DRINKING VILLAGE (start §13; register 223; boss seq 121): the men
   // start inside their classes' bands, 15..55; women and children at nought;
   // the village about thirty, and somebody over forty from the first day.

@@ -40,6 +40,12 @@ namespace {
 /// Stream id of the world's sequential RNG (world.cpp uses the same).
 constexpr std::uint64_t kWorldRngStream = 0;
 
+/// THE START TEAM'S AGES STOP THIS MANY GAME YEARS SHORT OF OLD AGE
+/// (livestock.csv life_game_years_min): 6 - 2, so the sixteen horses are
+/// drawn between one and four years old (boss, boss-core-epoch1-5 seq 49;
+/// livestock design, the start's team). A number of the design, not a knob.
+constexpr float kStartTeamYearsShortOfOldAge = 2.0F;
+
 /// Start pyramid shares, the reference run's distribution (demography.py).
 constexpr float kShareUnderSeven = 0.152F;
 constexpr float kShareSchool = 0.220F;
@@ -616,7 +622,8 @@ void AddHerd(WorldState& world,
              std::uint16_t males,
              UnitId unit,
              FamilyId household,
-             bool household_owned) {
+             bool household_owned,
+             float years_short_of_old_age = -1.0F) {
   const std::uint32_t row = livestock.FindRowByKey(key);
   if (row == kNoTableRow) {
     return;  // a table set without this kind simply has none of it
@@ -630,7 +637,18 @@ void AddHerd(WorldState& world,
   herd.adult_male_count = males;
   const float adult_from_years = LivestockValue(livestock, row, "adult_from_game_months", 0.0F) /
                                  static_cast<float>(kMonthsPerYear);
-  const float oldest = LivestockValue(livestock, row, "life_game_years_max", adult_from_years);
+  float oldest = LivestockValue(livestock, row, "life_game_years_max", adult_from_years);
+  // A HERD WHOSE AGES STOP SHORT OF OLD AGE (boss, boss-core-epoch1-5 seq 49;
+  // livestock design, the start's team; 0.35.10): the team's ages were drawn
+  // up to the top of its lifespan, eight years, while age deaths start at
+  // six — about 30 % of the team died in the first year on every seed, and
+  // seed 1939 had seven or eight working horses by year 3. Drawn instead
+  // from adulthood to `years_short_of_old_age` below life_game_years_min.
+  if (years_short_of_old_age >= 0.0F) {
+    const float old_age = LivestockValue(livestock, row, "life_game_years_min", oldest);
+    const float cap = old_age - years_short_of_old_age;
+    oldest = cap < oldest ? cap : oldest;
+  }
   const float youngest = adult_from_years < oldest ? adult_from_years : oldest;
   for (std::uint16_t head = 0; head < adults; ++head) {
     herd.adult_age_game_years_total += DrawInRange(rng, youngest, oldest);
@@ -711,7 +729,16 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
   const auto yards = static_cast<std::uint32_t>(world.families.rows.size());
   const std::uint32_t horse_yards = yards < 16 ? yards : 16U;
   for (std::uint32_t yard = 0; yard < horse_yards; ++yard) {
-    AddHerd(world, *livestock, rng, "horse", 1, 0, UnitId{}, world.families.row_ids[yard], false);
+    AddHerd(world,
+            *livestock,
+            rng,
+            "horse",
+            1,
+            0,
+            UnitId{},
+            world.families.row_ids[yard],
+            false,
+            kStartTeamYearsShortOfOldAge);
   }
   for (std::uint32_t yard = 0; yard < yards; ++yard) {
     const FamilyId home = world.families.row_ids[yard];

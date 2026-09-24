@@ -1252,16 +1252,13 @@ int main(int argc, char** argv) {
             << " (nine seeds: 46.10-54.84, median 49.98)\n";
   // The edges are the measured 46.1034 and 54.8420 rounded OUTWARD, so that
   // the seeds that set them stay inside it.
-  // A KNOWN GAP SINCE 0.34.51 (boss, boss-core-topup-horses seq 4): the nine
-  // seeds' band was measured in a world that handed the horses out twice;
-  // with them counted once the gap fell from 46.5 (0.34.50) to 40.8. The band
-  // is not moved.
-  failures += run::KnownGap(
-      issue_gap >= 46.10F && issue_gap <= 54.85F,
-      "the gap the issue makes at the lean season stays in the nine seeds' band",
-      std::to_string(issue_gap) + " (0.34.50: 46.5)",
-      "boss, boss-core-topup-horses seq 4; the band was measured in the world that handed the "
-      "horses out twice");
+  // A KNOWN GAP FROM 0.34.51 TO 0.35.10, RESTORED: with the horses counted
+  // once the gap fell from 46.5 (0.34.50) to 40.8, out of the band. The
+  // spring's repairs of 0.35.1-0.35.8 and the young start team of 0.35.10
+  // brought it back to 48.5, and the gap printed CLOSED.
+  failures +=
+      ExpectBand(issue_gap >= 46.10F && issue_gap <= 54.85F,
+                 "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
   // a thin ration and many are slightly short; hand it nothing and the
