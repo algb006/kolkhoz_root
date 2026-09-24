@@ -58,6 +58,19 @@ namespace core {
 /// @return Grams lost today, never more than `held`.
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor);
 
+/// @brief The ROT MARGIN: grams to hold beyond `held` so that `held` is
+/// still there after `days` of SpoiledToday's daily share —
+/// held / (1 − 1/spoil_days)^days − held.
+///
+/// ONE HOME for the seed fund's margin (core_residents, family_exchange) and
+/// the room booked for missing seed (core_production, seed_room): the
+/// booking held the bare norm, and seed 1939 lay at exactly its rung on the
+/// snow and 2-3 t below it on 1 March, every gram of the difference rot.
+/// @param spoil_days Effective shelf life (spoil_days × keeping factor);
+///        1 or less keeps nothing apart and returns 0.
+/// @return Grams, 0 or more.
+Grams RotMarginGrams(Grams held, float spoil_days, std::uint32_t days);
+
 /// @brief Rots a whole store or larder in place and adds what was lost to
 /// `lost`, position by position, so the caller can book it.
 /// @param amounts The pile, dense by ResourceId; shortened vectors are fine.

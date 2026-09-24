@@ -1323,6 +1323,61 @@ int main() {
     fs::remove_all(overfilled);
   }
 
+  // THE LEVEL'S STOCK SCALE (difficulty §4, boss seq 26), read from the
+  // normal row genesis builds. Halved rather than raised, so the church
+  // store cannot overfill and nothing but the scale moves the numbers. As a
+  // PAIR: the potato halves and the hay does not — fodder is sized in weeks
+  // against the first cut, not by the multiplier.
+  {
+    const fs::path halved = fs::temp_directory_path() / "unit_core_world_stock_scale";
+    fs::remove_all(halved);
+    fs::copy(fs::path(KOLKHOZ_TABLES_DIR), halved, fs::copy_options::recursive);
+    {
+      std::ifstream source(halved / "difficulty.csv");
+      std::string rows;
+      std::string level_line;
+      bool found = false;
+      while (std::getline(source, level_line)) {
+        if (level_line.rfind("normal,", 0) == 0) {
+          rows += "normal,Нормальная,0.5,0\n";
+          found = true;
+          continue;
+        }
+        rows += level_line + "\n";
+      }
+      source.close();
+      failures += Expect(found, "the normal level's row was found");
+      std::ofstream(halved / "difficulty.csv", std::ios::trunc) << rows;
+    }
+    std::string canon_error;
+    std::string halved_error;
+    const auto canon_tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &canon_error);
+    const auto halved_tables = core::LoadTableSet(halved.string(), &halved_error);
+    failures += Expect(canon_tables != nullptr && halved_tables != nullptr, "both table sets load");
+    if (canon_tables != nullptr && halved_tables != nullptr) {
+      const core::WorldState canon =
+          core::CreateStartWorld(*canon_tables, core::StubTables::kAllowed, nullptr, 999, nullptr);
+      const core::WorldState scaled =
+          core::CreateStartWorld(*halved_tables, core::StubTables::kAllowed, nullptr, 999, nullptr);
+      const core::ITable* const resources = canon_tables->FindTable("resources");
+      const auto held = [&](const core::WorldState& world, std::string_view key) {
+        const std::uint32_t index = resources->FindRowByKey(key);
+        core::Grams sum = 0;
+        for (const core::UnitRow& unit : world.units.rows) {
+          sum += index < unit.stock.size() ? unit.stock[index] : 0;
+        }
+        return sum;
+      };
+      const core::Grams potato = held(canon, "potato");
+      failures += Expect(potato > 0 && held(scaled, "potato") * 2 == potato,
+                         "a stock_scale of 0.5 lays half the church's potato");
+      const core::Grams hay = held(canon, "hay");
+      failures += Expect(hay > 0 && held(scaled, "hay") == hay,
+                         "and not half the hay: fodder is not scaled by the level");
+    }
+    fs::remove_all(halved);
+  }
+
   // EVERY TABLE OF THE SHIPPED SET, TAKEN OUT ONE AT A TIME. The order this
   // answers (boss, 2026-09-07) came from `host`, who removed alarms.csv to
   // test an instrument of his own and found that the run did not refuse —
@@ -1338,9 +1393,9 @@ int main() {
   {
     // Read by the host, the layer, or nobody yet — the core never asks for
     // them, so their absence cannot change a single number it computes.
-    // tree_species LEFT this list at save 82: the planting reads it.
-    const std::array<std::string_view, 9> not_read_by_the_core = {"alarms",
-                                                                  "difficulty",
+    // tree_species LEFT this list at save 82: the planting reads it;
+    // difficulty at 0.34.45: genesis scales the start stock by it.
+    const std::array<std::string_view, 8> not_read_by_the_core = {"alarms",
                                                                   "diseases",
                                                                   "disease_severity",
                                                                   "event_sites",

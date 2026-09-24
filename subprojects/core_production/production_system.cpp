@@ -60,6 +60,7 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
@@ -400,6 +401,7 @@ class ProductionSystem final : public IProductionSystem {
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     CollectStoreAlarms(config_, completed, alarms);
     CollectFieldAlarms(config_, completed, alarms);
+    CollectSeedRoomAlarms(config_, completed, alarms);
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);

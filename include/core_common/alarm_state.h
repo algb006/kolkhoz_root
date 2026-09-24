@@ -111,8 +111,12 @@ enum class AlarmKind : std::uint8_t {
   /// hold — grain or potato of the crop it sows next (farming design §7:
   /// "an alarm at assignment, not in spring"). Stands from the day the
   /// rotation is set until the stores cover the norm, and again after a
-  /// sowing that went short. Subject: `field`; `resource` = the seed;
-  /// `amount` = the shortfall in grams.
+  /// sowing that went short. The need is summed over every field of the
+  /// same seed and set against the store once (0.34.45). Subject: `field`;
+  /// `resource` = the seed; `amount` = the field's share of that seed's
+  /// shortfall, in grams, by its need — one seed's alarms sum to its
+  /// shortfall within a gram per field (each share is rounded, and never
+  /// below one gram).
   kSeedShort,
 
   /// A kolkhoz herd went underfed today and is still underfed
@@ -386,6 +390,15 @@ enum class AlarmKind : std::uint8_t {
   /// reason: a zone out of reach in December is within it in June. Subject:
   /// `stand`; `amount` = the hours of the walk, one way, in game hours.
   kPlantingUnreachable,
+
+  /// SEED WITH NOWHERE TO LIE (alarms.csv `seed_has_no_room`, words STUB;
+  /// boss, boss-core-epoch1-4 seq 34): the room a crop's missing seed needs
+  /// is booked while its harvest is out (seed_room.h), and today the booking
+  /// is holding another crop's heap on its field — the stores cannot take
+  /// both, and the seed goes in first. The player's answer is a store. Without
+  /// this line the booking would take his grain in silence. Subject:
+  /// `resource` = the seed; `amount` = GRAMS of room booked for it.
+  kSeedHasNoRoom,
 
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not

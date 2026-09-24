@@ -48,6 +48,7 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
@@ -1856,6 +1857,27 @@ int CheckSeedLightAsksAboutTheNearestCampaign() {
       failures += Expect(rye_short == 15 * core::kGramsPerKilogram,
                          "the seed alarm names the reaped field's rye, 15 kg short, in any year");
     }
+
+    // THE NEED IS SUMMED BY SEED (farming design §7, boss seq 26). The
+    // reaped field wants 20 kg of rye and the black fallow 10; 20 kg in the
+    // barn covers either field alone and not both. Asked field by field
+    // against the whole store, neither was short and the alarm was silent.
+    core::WorldState two_fields = fallow;
+    two_fields.units.rows[0].stock[0] = 20 * core::kGramsPerKilogram;
+    std::vector<core::Alarm> alarms;
+    core::CollectFieldAlarms(config, two_fields, alarms);
+    core::Grams rye_short = 0;
+    std::uint32_t rye_alarms = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0) {
+        rye_short += alarm.amount;
+        ++rye_alarms;
+      }
+    }
+    failures += Expect(rye_alarms == 2,
+                       "two fields of rye that one store cannot both sow are both alarmed");
+    failures += Expect(rye_short == 10 * core::kGramsPerKilogram,
+                       "and their shares sum to the rye's shortfall, 10 kg, not to a multiple");
   }
   return failures;
 }
@@ -1951,6 +1973,152 @@ int CheckSeedLightDoesNotNetCropsOff() {
   failures += Expect(tight.coverage > 3.9F && tight.coverage < 4.1F,
                      "the crop with the thinnest cover is the one that counts, not the fat one "
                      "beside it");
+  return failures;
+}
+
+/// THE SEED LIES IN FIRST (seed_room.h; boss seq 26, 33, 34). A church takes
+/// oats and potatoes, a granary oats alone, ten tonnes of room each. The
+/// potato's next sowing wants 5 t and the stores hold none; 3 t of potato lie
+/// dug and nothing of it stands, so it books 3 t. An oat heap of 30 t may use
+/// 17 t, must fill the granary before the church, and the 3 t of potato then
+/// fit. Measured on seed 1939 before it: the grain came first, the church
+/// was full, and the lying snow took 97 t of potato with the spring's seed.
+int CheckTheSeedIsBookedItsRoom() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  constexpr core::Grams kTonne = 1000 * kKilo;
+  const core::ResourceId oat{0};
+  const core::ResourceId potato{1};
+  core::ProductionConfig config = MakeHerdConfig();
+  config.resource_stores_read = 1;
+  config.unit_types.resize(2);
+  SetStorageKg(config.unit_types[0], 10000.0F);
+  SetStorageKg(config.unit_types[1], 10000.0F);
+  config.unit_types[0].home_of = {oat, potato};  // the church
+  config.unit_types[1].home_of = {oat};          // the granary
+  config.crops.resize(2);
+  config.crops[0].resource = oat;  // oats sow with no seed here, to keep one booking
+  config.crops[1].resource = potato;
+  config.crops[1].sowing_norm_kg_per_ha = 1000.0F;
+  config.crops[1].sow_from_month = 4;
+  config.crops[1].sow_to_month = 5;
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].level = 1;
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{1};
+  granary.level = 1;
+  granary.stock.assign(3, 0);
+  core::AppendRow(world.units, granary);
+  core::FieldRow to_sow;
+  to_sow.kind = core::LandKind::kArable;
+  to_sow.area_ga = 5.0F;
+  to_sow.rotation_year0 = core::CropId{1};  // idle, the potato next: 5 t of seed
+  core::AppendRow(world.fields, to_sow);
+  core::FieldRow dug;
+  dug.kind = core::LandKind::kArable;
+  dug.reaped_resource = potato;
+  dug.reaped_grams = 3 * kTonne;
+  core::AppendRow(world.fields, dug);
+  core::FieldRow oats;
+  oats.kind = core::LandKind::kArable;
+  oats.reaped_resource = oat;
+  oats.reaped_grams = 30 * kTonne;
+  core::AppendRow(world.fields, oats);
+
+  const core::WorldState fresh = world;
+  const std::vector<core::Grams> booked = core::SeedRoomBooked(config, world);
+  failures += Expect(booked.size() > 1 && booked[1] == 3 * kTonne,
+                     "the potato books its shortfall, no more than lies dug: 3 t of 5");
+  failures += Expect(core::HeapRoom(config, world, oat, booked) == 17 * kTonne,
+                     "an oat heap sees the stores' 20 t less the 3 t the potato cannot lay "
+                     "elsewhere");
+  failures += Expect(core::HeapRoom(config, world, potato, booked) == 10 * kTonne,
+                     "and the potato's own heap is not held back by its own booking");
+
+  std::vector<core::Alarm> alarms;
+  core::CollectSeedRoomAlarms(config, world, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kSeedHasNoRoom &&
+                         alarms[0].resource == potato && alarms[0].amount == 3 * kTonne,
+                     "the player is told: the potato's 3 t hold an oat heap on its field");
+
+  const core::Grams oats_in = core::DeliverHeapToStores(world, config, oat, 17 * kTonne, booked);
+  failures += Expect(oats_in == 17 * kTonne && world.units.rows[1].stock[0] == 10 * kTonne,
+                     "the oats fill the granary first, where no seed can go");
+  failures += Expect(core::DeliverToStores(world, config, potato, 3 * kTonne) == 3 * kTonne,
+                     "and the potato's 3 t still find their room in the church");
+
+  // THE NEIGHBOUR: the same stores, and a potato covered — nothing is booked,
+  // the oats see all the room, and nobody is alarmed.
+  core::WorldState covered = world;
+  covered.fields.rows[1].reaped_grams = 0;
+  covered.fields.rows[1].reaped_resource = core::ResourceId{};
+  covered.units.rows[0].stock[1] = 5 * kTonne;
+  const std::vector<core::Grams> none = core::SeedRoomBooked(config, covered);
+  failures += Expect(none.size() > 1 && none[1] == 0, "a covered seed books nothing");
+  std::vector<core::Alarm> quiet;
+  core::CollectSeedRoomAlarms(config, covered, quiet);
+  failures += Expect(quiet.empty(), "and raises no alarm");
+
+  // THE STATIC REVIEW'S THREE (H1-H3), each on the fresh world.
+  // H1: the church is full, the granary empty. The potato cannot enter the
+  // granary, so nothing of it is held for the potato: the oats see 10 t.
+  core::WorldState church_full = fresh;
+  church_full.units.rows[0].stock[0] = 10 * kTonne;
+  const std::vector<core::Grams> full_booked = core::SeedRoomBooked(config, church_full);
+  failures += Expect(core::HeapRoom(config, church_full, oat, full_booked) == 10 * kTonne,
+                     "a booking holds only room the seed could use: an empty granary stays "
+                     "open to the oats while the church is full");
+  // H2: the oats are short of seed too — 30 ha to sow at a tonne, none held,
+  // 30 t lying. Both bookings reach into the one church; the potato's own
+  // 3 t still go through instead of each seed holding the other's heap.
+  core::ProductionConfig both_short = config;
+  both_short.crops[0].sowing_norm_kg_per_ha = 1000.0F;
+  both_short.crops[0].sow_from_month = 3;
+  both_short.crops[0].sow_to_month = 4;
+  core::WorldState two_seeds = fresh;
+  core::FieldRow oat_to_sow = to_sow;
+  oat_to_sow.area_ga = 30.0F;
+  oat_to_sow.rotation_year0 = core::CropId{0};
+  core::AppendRow(two_seeds.fields, oat_to_sow);
+  const std::vector<core::Grams> two_booked = core::SeedRoomBooked(both_short, two_seeds);
+  failures +=
+      Expect(two_booked.size() > 1 && two_booked[0] == 30 * kTonne, "(the oats book their 30 t)");
+  failures += Expect(core::HeapRoom(both_short, two_seeds, potato, two_booked) == 3 * kTonne,
+                     "two short seeds in one church do not hold each other: the potato's own "
+                     "3 t still go in");
+  // H3: a potato still growing books its whole shortfall while its reaping
+  // is ahead this year (July) and not once its window has closed (October).
+  config.crops[1].harvest_to_month = 8;
+  core::WorldState growing = fresh;
+  core::FieldRow standing;
+  standing.kind = core::LandKind::kArable;
+  standing.area_ga = 1.0F;
+  standing.crop = core::CropId{1};
+  standing.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(growing.fields, standing);
+  growing.calendar.tick = 6 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(growing.calendar);
+  const std::vector<core::Grams> july = core::SeedRoomBooked(config, growing);
+  failures += Expect(july.size() > 1 && july[1] == 5 * kTonne,
+                     "in July the potato still to be dug books the whole 5 t");
+  // AND ITS ROT to the end of the sowing window, the seed fund's margin: in
+  // July that is twelve months to the end of June, 48 days of a potato that
+  // keeps 120. Measured before it: seed 1939 lay at its bare rung on the snow
+  // and 2-3 t below it on 1 March, all of it rot.
+  core::ProductionConfig rotting = config;
+  rotting.spoil_days = {0.0F, 120.0F, 0.0F};
+  const std::vector<core::Grams> with_rot = core::SeedRoomBooked(rotting, growing);
+  failures += Expect(with_rot.size() > 1 &&
+                         with_rot[1] == 5 * kTonne + core::RotMarginGrams(5 * kTonne, 120.0F, 48) &&
+                         with_rot[1] > 5 * kTonne,
+                     "a seed that rots books its norm and the rot to its sowing");
+  growing.calendar.tick = 9 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(growing.calendar);
+  const std::vector<core::Grams> october = core::SeedRoomBooked(config, growing);
+  failures += Expect(october.size() > 1 && october[1] == 3 * kTonne,
+                     "in October a crop still growing is next year's, and books only what "
+                     "lies dug");
   return failures;
 }
 
@@ -3791,28 +3959,35 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
 
   // One year turn, driven at the tick that crosses it. `stocked` is what lies
   // in the granary when the collector comes.
-  const auto turn = [&](core::Grams due, core::Grams stocked, core::PlanState before) {
-    core::WorldState previous;
-    previous.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1;
-    core::RefreshCalendarCaches(previous.calendar);
-    previous.plan = before;
-    if (due > 0) {
-      previous.plan.due.assign(static_cast<std::size_t>(wheat.value) + 1U, 0);
-      previous.plan.due[wheat.value] = due;
-    }
-    core::UnitRow barn;
-    barn.type = granary;
-    barn.level = 1;
-    barn.stock.assign(static_cast<std::size_t>(wheat.value) + 1U, 0);
-    barn.stock[wheat.value] = stocked;
-    core::AppendRow(previous.units, barn);
+  const auto turn =
+      [&](core::Grams due, core::Grams stocked, core::PlanState before, core::Grams snowed = 0) {
+        core::WorldState previous;
+        previous.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1;
+        core::RefreshCalendarCaches(previous.calendar);
+        previous.plan = before;
+        // The standing wheat the snow took this year, in the closing year's book.
+        if (snowed > 0) {
+          previous.ledger.current.lost_to_snow.assign(static_cast<std::size_t>(wheat.value) + 1U,
+                                                      0);
+          previous.ledger.current.lost_to_snow[wheat.value] = snowed;
+        }
+        if (due > 0) {
+          previous.plan.due.assign(static_cast<std::size_t>(wheat.value) + 1U, 0);
+          previous.plan.due[wheat.value] = due;
+        }
+        core::UnitRow barn;
+        barn.type = granary;
+        barn.level = 1;
+        barn.stock.assign(static_cast<std::size_t>(wheat.value) + 1U, 0);
+        barn.stock[wheat.value] = stocked;
+        core::AppendRow(previous.units, barn);
 
-    core::WorldState current = previous;
-    current.calendar.tick += 1;
-    core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
-    return current;
-  };
+        core::WorldState current = previous;
+        current.calendar.tick += 1;
+        core::RefreshCalendarCaches(current.calendar);
+        system->RunProductionDecisions(previous, current);
+        return current;
+      };
 
   // -- THE TURN WRITES DOWN THE WORKED ARABLE, and next spring reads it -----
   //
@@ -3970,6 +4145,46 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     failures += Expect(again == 0,
                        "and a fourth failed year does not raise it a second time: a condition "
                        "that re-announces itself yearly is an alarm, not an event");
+  }
+
+  // -- a weather year stands outside the run (boss seq 26) --------------------
+  //
+  // As a PAIR, one shortfall under two snows: 600 kg short with 700 kg of
+  // standing wheat under the snow is the weather's year; the same 600 kg
+  // short with only 500 kg under it is the chairman's. Only the amount
+  // differs, so an implementation that asked "was there snow at all" passes
+  // the first and fails the second.
+  {
+    const auto trials_in = [](const core::WorldState& world) {
+      std::uint32_t raised = 0;
+      for (const core::SimEvent& event : world.step_events) {
+        raised += event.kind == core::EventKind::kPlanTrialDue ? 1U : 0U;
+      }
+      return raised;
+    };
+    core::PlanState carried;
+    carried.last_verdict = core::PlanVerdict::kFailed;
+    carried.failed_years_in_a_row = 2;
+    const core::WorldState weather = turn(1'000'000, 400'000, carried, 700'000);
+    failures += Expect(weather.plan.last_verdict == core::PlanVerdict::kFailed,
+                       "a year the snow failed is still a failed year to the district");
+    failures += Expect(weather.plan.failed_years_in_a_row == 2,
+                       "but the run of failed years neither grows nor breaks on it");
+    failures += Expect(trials_in(weather) == 0, "and it does not bring the trial on");
+
+    const core::WorldState chairmans = turn(1'000'000, 400'000, carried, 500'000);
+    failures += Expect(chairmans.plan.failed_years_in_a_row == 3,
+                       "a shortfall larger than the snow took is the chairman's: the run grows");
+    failures += Expect(trials_in(chairmans) == 1, "and the third such year brings the trial on");
+
+    // A run already standing at the threshold: the weather year leaves it
+    // there, and the court was announced the year it was reached.
+    carried.failed_years_in_a_row = 3;
+    const core::WorldState at_threshold = turn(1'000'000, 400'000, carried, 700'000);
+    failures += Expect(at_threshold.plan.failed_years_in_a_row == 3,
+                       "a weather year leaves a run at the threshold standing");
+    failures +=
+        Expect(trials_in(at_threshold) == 0, "and does not announce the trial a second time");
   }
 
   // -- a district that asked for nothing judges nothing ---------------------
@@ -8134,6 +8349,7 @@ int main() {
   failures += CheckSeedLightAsksAboutTheNearestCampaign();
   failures += CheckFeedLightKeepsTheKindsApart();
   failures += CheckSeedLightDoesNotNetCropsOff();
+  failures += CheckTheSeedIsBookedItsRoom();
   failures += CheckHaulingIsNotFree();
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();

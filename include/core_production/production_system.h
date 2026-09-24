@@ -96,8 +96,9 @@ class IProductionSystem {
   /// claim on the shared room — this subsystem's own estimate of everything
   /// that will still arrive from it, straw included — exceeds what is LEFT
   /// of the free room after the fields that will be HARVESTED EARLIER have
-  /// spent theirs; kSeedShort for every field whose next sowing the stores
-  /// cannot seed to the norm; kSowingWillNotFit for every spring field in
+  /// spent theirs; kSeedShort for every field whose next sowing's seed the
+  /// stores cannot cover, summed with every other field of that seed;
+  /// kSowingWillNotFit for every spring field in
   /// the plough whose harnessed work the horses cannot finish by the last
   /// day its crop can be sown and still ripen before the snow, the days
   /// spent in the order the fields must be sown; kHerdStarving for every kolkhoz herd with

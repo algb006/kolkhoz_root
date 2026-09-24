@@ -70,6 +70,15 @@ bool PlanFullyDelivered(const ProductionConfig& config, const WorldState& curren
 /// the +150 premium (PlanFullyDelivered, since boss seq 103) ask.
 bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivered);
 
+/// @brief Whether the year failed ONLY BY THE WEATHER (boss seq 26, econ's
+/// forgiving start): at least one position was not delivered, and every one
+/// that was not falls short by no more than the ledger's `lost_to_snow` of
+/// that same resource this year. Such a year is kept out of the trial's
+/// "three in a row" — the series neither grows nor breaks (JudgePlan).
+/// @pre `current.ledger.current` is still the closing year's book — true at
+/// the year start, before the ledger turns (world.cpp, RotateLedger).
+bool FailedOnlyBySnow(const ProductionConfig& config, const WorldState& current);
+
 /// @brief The year's overfulfilment, in TONNES OF GRAIN EQUIVALENT (district
 /// §1, «За перевыполнение»; boss seq 70, 2026-09-18): every position's
 /// delivery over its due, each tonne weighed by its food.csv kcal_per_gram

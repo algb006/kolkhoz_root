@@ -16,6 +16,7 @@
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
+#include "seed_room.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -140,14 +141,24 @@ HaulRate RateToward(const ProductionConfig& config,
 /// The body SettleHauling had for a field, over any holder of a load — a
 /// field or a timber stand (2026-09-13, "the carting is a mechanism, not a
 /// row"). Every rule of it is written at its first home, SettleHauling below.
+///
+/// `booked`: a field's heap passes the room booked for missing seed
+/// (seed_room.h) and is carted within HeapRoom, through the heap's door; a
+/// stand's logs and a site's dig pass nullptr — no seed is ever short of
+/// room to them, and their homes are outlines of their own.
 void SettleLoad(const ProductionConfig& config,
                 WorldState& current,
                 const HaulRate& rate,
                 ResourceId resource,
                 Grams& load,
                 float& haul_days_remaining,
-                float& haul_days_written) {
-  const Grams receivable = ReceivableRoom(config, current, resource);
+                float& haul_days_written,
+                const std::vector<Grams>* booked = nullptr) {
+  const auto room_now = [&config, &current, resource, booked]() {
+    return booked == nullptr ? ReceivableRoom(config, current, resource)
+                             : HeapRoom(config, current, resource, *booked);
+  };
+  const Grams receivable = room_now();
   const Grams haulable = receivable < load ? receivable : load;
   const float done =
       haul_days_written > haul_days_remaining ? haul_days_written - haul_days_remaining : 0.0F;
@@ -157,10 +168,12 @@ void SettleLoad(const ProductionConfig& config,
     const Grams carried =
         GramsFromFloat(static_cast<float>(haulable) * (share > 1.0F ? 1.0F : share));
     const Grams offered = carried < load ? carried : load;
-    const Grams moved = DeliverToStores(current, config, resource, offered);
+    const Grams moved = booked == nullptr
+                            ? DeliverToStores(current, config, resource, offered)
+                            : DeliverHeapToStores(current, config, resource, offered, *booked);
     load -= moved;
   }
-  const Grams left = ReceivableRoom(config, current, resource);
+  const Grams left = room_now();
   haul_days_remaining =
       load > 0 ? HaulDaysFor(left < load ? left : load, rate, config.standard_day_hours) : 0.0F;
   haul_days_written = haul_days_remaining;
@@ -329,13 +342,20 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     // THE ARITHMETIC LIVES IN SettleLoad since 2026-09-13, shared with the
     // logs lying on a timber stand; the reasons stay here, at their first
     // home.
+    //
+    // SEED FIRST (seed_room.h; boss seq 34): the room a crop's missing seed
+    // needs is booked while its harvest is out, and this heap sees the rest.
+    // Asked afresh for every field: a heap carted a line earlier may have
+    // closed a booking.
+    const std::vector<Grams> booked = SeedRoomBooked(config, current);
     SettleLoad(config,
                current,
                rate,
                field.reaped_resource,
                field.reaped_grams,
                field.haul_days_remaining,
-               field.haul_days_written);
+               field.haul_days_written,
+               &booked);
     if (field.reaped_grams == 0) {
       field.reaped_resource = ResourceId{};
     }

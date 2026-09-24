@@ -2,9 +2,22 @@
 
 #include "core_common/spoilage.h"
 
+#include <cmath>
 #include <cstddef>
 
 namespace core {
+
+Grams RotMarginGrams(Grams held, float spoil_days, std::uint32_t days) {
+  if (held <= 0 || !(spoil_days > 1.0F)) {
+    return 0;
+  }
+  // The arithmetic the seed fund's margin had in family_exchange.cpp, moved
+  // here unchanged: double for the power, float for the grams.
+  const double kept_share =
+      std::pow(1.0 - (1.0 / static_cast<double>(spoil_days)), static_cast<double>(days));
+  return GramsFromFloat(
+      static_cast<float>(static_cast<double>(held) / kept_share - static_cast<double>(held)));
+}
 
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor) {
   if (held <= 0) {

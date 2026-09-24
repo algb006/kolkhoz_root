@@ -24,6 +24,7 @@
 #include "field_work.h"
 #include "herd_life.h"
 #include "herd_system.h"
+#include "seed_room.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -53,38 +54,35 @@ Grams FreeRoomOfStores(const ProductionConfig& config, const WorldState& world) 
   return room;
 }
 
-/// The crop the field's rotation sows next — what the player has assigned
-/// and what the alarm is about ("an alarm at assignment, not in spring" —
-/// farming design §7). Until 0.34.38 this was the slot `(year + 1) % 3`,
-/// over slots the year's turn SHIFTS, so it named the wrong crop two years
-/// in three; the one rule of "next sowing" is fund_ladder.h's.
-CropId NextSownCrop(const ProductionConfig& config,
-                    const WorldState& world,
-                    const FieldRow& field) {
-  const CropId next = NextSowingCrop(field, world.calendar.day);
-  return next.value < config.crops.size() ? next : CropId{};
-}
-
-/// Grams of seed the next sowing is short of, 0 when it is covered or
-/// when there is nothing to sow. Sowing takes ORDINARY produce of the
-/// crop out of the stores (§7), so the question is what the stores hold.
+/// Grams of seed the field's next sowing is short of: its SHARE of its
+/// resource's shortfall, in proportion to its need — so the alarms of one
+/// crop sum to that crop's shortfall and not to a multiple of it. 0 when the
+/// stores cover the crop or there is nothing to sow. Sowing takes ORDINARY
+/// produce of the crop out of the stores (§7), so the question is what the
+/// stores hold.
+///
+/// THE NEED IS SUMMED BY RESOURCE (SeedNeedByResource, seed_room.h). Field by
+/// field against the whole store was the defect (boss seq 26): two fields of
+/// one crop each passed against a store that sows only one of them, and the
+/// alarm stayed silent over a rotation that could not be sown.
 Grams SeedShortfall(const ProductionConfig& config,
                     const WorldState& world,
-                    const FieldRow& field) {
-  if (field.kind != LandKind::kArable) {
+                    const std::vector<Grams>& need_by_resource,
+                    const FieldRow& field,
+                    ResourceId& resource) {
+  // One rule of a field's seed need with the booking (seed_room.h; static
+  // review, M4): the share's numerator and the sum it is divided by.
+  const Grams wanted = FieldSeedNeed(config, world, field, resource);
+  if (wanted <= 0 || resource.value >= need_by_resource.size()) {
     return 0;
   }
-  const CropId next = NextSownCrop(config, world, field);
-  if (next.value >= config.crops.size()) {
+  const Grams need = need_by_resource[resource.value];
+  const Grams have = HeldEverywhere(world, resource);
+  if (have >= need) {
     return 0;
   }
-  const CropDef& crop = config.crops[next.value];
-  if (crop.sowing_norm_kg_per_ha <= 0.0F) {
-    return 0;
-  }
-  const auto need = GramsFromKilograms(crop.sowing_norm_kg_per_ha * field.area_ga);
-  const Grams have = HeldEverywhere(world, crop.resource);
-  return have >= need ? 0 : need - have;
+  const double share = static_cast<double>(wanted) / static_cast<double>(need);
+  return std::max<Grams>(1, std::llround(static_cast<double>(need - have) * share));
 }
 
 /// @brief What this field will still put into a store this season, in
@@ -354,6 +352,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
   //
   // The alarm may keep silent about a field. The arithmetic may not.
   Grams room_left = FreeRoomOfStores(config, world);
+  const std::vector<Grams> seed_need = SeedNeedByResource(config, world);
   for (const std::uint32_t row : FieldsInHarvestOrder(config, world)) {
     const FieldRow& field = world.fields.rows[row];
     const Grams claim = RoomClaimOf(config, field);
@@ -410,12 +409,13 @@ void CollectFieldAlarms(const ProductionConfig& config,
       alarm.amount = field.reaped_grams;
       alarms.push_back(alarm);
     }
-    const Grams short_of = SeedShortfall(config, world, field);
+    ResourceId seed;
+    const Grams short_of = SeedShortfall(config, world, seed_need, field, seed);
     if (short_of > 0) {
       Alarm alarm;
       alarm.kind = AlarmKind::kSeedShort;
       alarm.field = world.fields.row_ids[row];
-      alarm.resource = config.crops[NextSownCrop(config, world, field).value].resource;
+      alarm.resource = seed;
       alarm.amount = short_of;
       alarms.push_back(alarm);
     }

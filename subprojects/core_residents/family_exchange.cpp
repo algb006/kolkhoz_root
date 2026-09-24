@@ -225,10 +225,7 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // over-held against the lean season (static review of 0.34.42).
   const std::uint32_t days_left = kDaysPerYear - (world.calendar.day % kDaysPerYear);
   const auto margin = [](Grams held, float days, std::uint32_t horizon) {
-    const double kept_share =
-        std::pow(1.0 - (1.0 / static_cast<double>(days)), static_cast<double>(horizon));
-    return GramsFromFloat(
-        static_cast<float>(static_cast<double>(held) / kept_share - static_cast<double>(held)));
+    return RotMarginGrams(held, days, horizon);  // one home with the seed room
   };
   for (std::uint32_t index = 0; index < seed_and_plan.size() && index < reserve.size(); ++index) {
     const float days =

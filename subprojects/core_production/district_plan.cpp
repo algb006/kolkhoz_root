@@ -157,6 +157,30 @@ bool PlanFullyDelivered(const ProductionConfig& config, const WorldState& curren
   return asked;
 }
 
+bool FailedOnlyBySnow(const ProductionConfig& config, const WorldState& current) {
+  // THE STANDING CROP THE SNOW TOOK, and nothing else: a heap the lying snow
+  // took went there because nobody carted it — a decision, not the weather
+  // (lost_no_room is not read). A position failed by more than its crop's
+  // lost_to_snow, or failed with no snow on its crop at all, makes the year
+  // the chairman's.
+  bool any_failed = false;
+  for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    const Grams due = current.plan.due[index];
+    const Grams delivered =
+        index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+    if (PositionDelivered(config, due, delivered)) {
+      continue;
+    }
+    any_failed = true;
+    const Grams snowed =
+        AmountOf(current.ledger.current.lost_to_snow, DefIdFromIndex<ResourceIdTag>(index));
+    if (snowed <= 0 || due - delivered > snowed) {
+      return false;
+    }
+  }
+  return any_failed;
+}
+
 bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivered) {
   if (due <= 0) {
     return true;
@@ -506,8 +530,16 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   if (asked) {
     const bool met = PlanWasMet(config, current);
     current.plan.last_verdict = met ? PlanVerdict::kMet : PlanVerdict::kFailed;
-    current.plan.failed_years_in_a_row =
-        met ? 0U : static_cast<std::uint8_t>(current.plan.failed_years_in_a_row + 1U);
+    // A WEATHER YEAR IS NOT IN "THREE IN A ROW" (difficulty §4, boss seq 26,
+    // econ forgiving-start.md): a year failed only because the fields went
+    // under the snow neither grows the series to the court nor breaks it.
+    const bool weather = !met && FailedOnlyBySnow(config, current);
+    const std::uint8_t series_before = current.plan.failed_years_in_a_row;
+    if (met) {
+      current.plan.failed_years_in_a_row = 0U;
+    } else if (!weather) {
+      current.plan.failed_years_in_a_row = static_cast<std::uint8_t>(series_before + 1U);
+    }
     current.plan.met_years_in_a_row =
         met ? static_cast<std::uint8_t>(current.plan.met_years_in_a_row + 1U) : 0U;
     const float step = met ? config.plan_met_reputation : config.plan_failed_reputation;
@@ -526,7 +558,11 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
     // equality rather than >= is what keeps a fourth failed year from
     // announcing the same news again. A condition that re-announces
     // itself every year is an alarm, and this is an event.
-    if (current.plan.failed_years_in_a_row == config.plan_failed_years_to_trial) {
+    // And only in the year the series GREW to it: a weather year leaves the
+    // series standing, and a series already at the threshold must not
+    // announce the court a second time.
+    if (current.plan.failed_years_in_a_row == config.plan_failed_years_to_trial &&
+        current.plan.failed_years_in_a_row != series_before) {
       // kInterrupting, and it is the only one of the three: a met year and
       // a failed year are news the player reads in his own time, while
       // the district deciding to take him to court is the thing a

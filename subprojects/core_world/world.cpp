@@ -698,6 +698,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                      {"campaign",
                       "construction",
                       "crops",
+                      "difficulty",
                       "life",
                       "livestock",
                       "resources",

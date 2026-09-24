@@ -955,15 +955,62 @@ void PlowLastAutumn(WorldState& world, const ITable* crops, float share) {
   }
 }
 
+/// THE LEVEL WHOSE START STOCK IS BUILT. STUB: the layer has no seam yet to
+/// pass the player's choice, so the core builds the normal level — the one
+/// start_stock.csv is written for and every balance run counts by.
+constexpr std::string_view kStartDifficultyLevel = "normal";
+
+/// @brief The start stock's multiplier for kStartDifficultyLevel
+/// (difficulty.csv `stock_scale`; difficulty design §4, boss seq 26).
+/// @return 1 when there is no difficulty table (a unit test's world, a tool),
+///         and 1 with a warning when the level's row or cell is missing or
+///         blank: the table's own rule is "fall back to normal and say so",
+///         never read a blank as a level.
+float StartStockScale(const ITable* difficulty) {
+  if (difficulty == nullptr) {
+    return 1.0F;
+  }
+  const std::uint32_t row = difficulty->FindRowByKey(kStartDifficultyLevel);
+  const std::uint32_t column = difficulty->FindColumn("stock_scale");
+  if (row == kNoTableRow || column == kNoTableColumn || difficulty->CellText(row, column).empty()) {
+    LogWarning("genesis: difficulty '" + std::string(kStartDifficultyLevel) +
+               "' names no stock_scale — the start stock is laid at the normal amounts");
+    return 1.0F;
+  }
+  return TableNumber(
+      *difficulty, "difficulty", "stock_scale", row, column, Range::NonNegative(), 1.0F);
+}
+
+/// @brief Whether a resource is FODDER AND NOTHING ELSE — a feed value and no
+/// food value (hay, straw, silage). Those are not scaled by the level: the
+/// design sizes fodder from the date of the first cut, in weeks
+/// (difficulty §4, «Корма — не множитель»; `fodder_weeks`, which nothing
+/// reads yet). A resource that is food as well — grain, potato — is scaled:
+/// it is the church's store the level is about.
+bool IsFodderOnly(const ITable* resources, ResourceId resource) {
+  if (resources == nullptr || resource.value == kInvalidDefIdValue) {
+    return false;
+  }
+  const std::uint32_t feed_col = resources->FindColumn("feed_value");
+  const std::uint32_t food_col = resources->FindColumn("kcal_per_gram");
+  if (feed_col == kNoTableColumn || food_col == kNoTableColumn) {
+    return false;
+  }
+  return !resources->CellText(resource.value, feed_col).empty() &&
+         resources->CellText(resource.value, food_col).empty();
+}
+
 /// @brief Puts the start stock where the layout says it lies (start_stock.csv,
 /// boss numbers of 2026-08-31). Amounts are in each resource's own measure
 /// and the row carries the mass of one, so the conversion to grams needs no
-/// second table — the same one rule the recipes use.
+/// second table — the same one rule the recipes use. Every amount but the
+/// fodder's is multiplied by `stock_scale` (StartStockScale, IsFodderOnly).
 void PlaceStartStock(WorldState& world,
                      const ITable& stock,
                      const ITable* resources,
                      const IConstructionSystem* capacities,
-                     const std::vector<std::pair<std::string_view, UnitId>>& placed) {
+                     const std::vector<std::pair<std::string_view, UnitId>>& placed,
+                     float stock_scale) {
   const std::uint32_t place_col = stock.FindColumn("place");
   const std::uint32_t resource_col = stock.FindColumn("resource");
   const std::uint32_t amount_col = stock.FindColumn("amount");
@@ -986,9 +1033,12 @@ void PlaceStartStock(WorldState& world,
       continue;
     }
     UnitRow& place = world.units.rows[unit_row];
+    const float scale = IsFodderOnly(resources, resource) ? 1.0F : stock_scale;
     const float kilograms =
         TableNumber(stock, "start_stock", "amount", row, amount_col, Range::NonNegative(), 0.0F) *
-        TableNumber(stock, "start_stock", "kg_per_unit", row, mass_col, Range::NonNegative(), 0.0F);
+        TableNumber(
+            stock, "start_stock", "kg_per_unit", row, mass_col, Range::NonNegative(), 0.0F) *
+        scale;
     PutStock(place, resource, kilograms);
     // The start set must FIT where the canon puts it ("capacity — exactly
     // the start set, no more", start design §5). A row that overfills its
@@ -1242,7 +1292,12 @@ bool BuildStartEconomy(WorldState& world,
   // eats 7.3 t a game day and the scythes go out on day 22.
   const ITable* const start_stock = tables.FindTable("start_stock");
   if (start_stock != nullptr) {
-    PlaceStartStock(world, *start_stock, resources, capacities, placed);
+    PlaceStartStock(world,
+                    *start_stock,
+                    resources,
+                    capacities,
+                    placed,
+                    StartStockScale(tables.FindTable("difficulty")));
   }
 
   // What the households still have of their own. The village was living
