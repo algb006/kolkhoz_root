@@ -259,6 +259,40 @@ int CheckTheHerdsMilkGoesToItsHome() {
   return failures;
 }
 
+/// THE HERDS STAY BELOW THE SEED FUND TOO (resources design §6; boss,
+/// boss-core-epoch1-5 seq 31, since 0.35.1): a field still to sow holds its
+/// seed out of the herd's reach. The pair: ten hectares at 9.8 kg a hectare
+/// hold 98 kg of the store's 100, and the herd eats two; with no field to sow
+/// the herd eats its fill.
+int CheckTheHerdDoesNotEatTheSeed() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{0};
+  config.crops[0].sowing_norm_kg_per_ha = 9.8F;
+  config.crops[0].sow_to_month = 4;
+  const auto store_left = [&config](bool field_to_sow) {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    if (field_to_sow) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.area_ga = 10.0F;
+      field.rotation_year0 = core::CropId{0};
+      core::AppendRow(world.fields, field);
+    }
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    return StoreOf(world, 0);
+  };
+  const core::Grams held = store_left(true);
+  const core::Grams free = store_left(false);
+  failures += Expect(held == 98 * kKilo,
+                     "seed: a herd eats only the two kilograms above the sowing's seed");
+  failures += Expect(free < 98 * kKilo, "seed: with nothing to sow the herd eats past it");
+  return failures;
+}
+
 /// THE HERDS STAY BELOW THE PLAN RESERVE (resources design §6; boss,
 /// 2026-09-13): grain this year's reaping has set aside for the district is
 /// not fodder, and a herd that finds only that grain goes hungry.
@@ -8715,6 +8749,7 @@ int main() {
   failures += CheckFeeding();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();
+  failures += CheckTheHerdDoesNotEatTheSeed();
   failures += CheckFeedCaps();
   failures += CheckFeedLightCountsTheWinter();
   failures += CheckFeedLightRespectsTheCeiling();

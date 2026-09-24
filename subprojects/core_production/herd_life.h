@@ -65,11 +65,11 @@ struct HerdPlace {
   bool at_unit = false;
 
   /// What the kolkhoz's stores may still give the herds today, by resource:
-  /// the stock above the plan reserve, and above nothing else (boss,
-  /// 2026-09-13). The seed fund is deliberately NOT held back from the herds:
-  /// holding it too was measured and more than doubled the floor's failed
-  /// plan years on two seeds (herd_system.cpp, FeedAllowance, has the
-  /// numbers). Spent by every take out of a unit, the herd's own barn
+  /// the stock above the seed fund and the plan reserve (boss, boss-core-
+  /// epoch1-5 seq 31, since 0.35.1). From 2026-09-13 to 0.35.1 it was above
+  /// the plan alone, on a measurement taken in the world that handed the
+  /// horses out twice (herd_system.cpp, FeedAllowance, has the numbers of
+  /// both). Spent by every take out of a unit, the herd's own barn
   /// included. Null means no limit, for a caller that has no ladder to
   /// respect. It points at a vector the CALLER owns (RunHerdDay builds it on
   /// its own stack for one day's walk), so it lives by that caller's scope,

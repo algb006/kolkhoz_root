@@ -131,9 +131,29 @@ Grams TakeFeed(WorldState& world,
 /// measured at 7 -> 15. Re-measured with it: econ's plan700 on nine seeds, 1
 /// failed plan year on 1 seed against 2 on 2 on 0.34.40; thirty_years' own
 /// verdict the same, 1 on 1.
+///
+/// AND THE SEED RUNG TOO SINCE 0.35.1 (boss, boss-core-epoch1-5 seq 31;
+/// econ's first-harvest-restore.md, lever Д). The decision of 2026-09-13
+/// («only the plan») stood on the measurement above, and that measurement was
+/// taken in the world that handed the horses out twice (0.34.51): the
+/// spring's ploughing was faster than its herd, so holding the horses off
+/// the oat seed cost them a pace the model was giving away anyway. Measured
+/// by econ in the corrected world: the first harvest's grain peak 24.7 t ->
+/// 43.1 t (median of nine), below the floor on 1 seed of 9 instead of 6. The
+/// price is the pace — the work ration at nought on 72 of 108 spring
+/// seed-days, the ploughing at 1/0.7 — and it is the ladder as the design
+/// writes it (resources design §6): the seed above the fodder.
 ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& world) {
-  ResourceAmounts allowance = HeldAboveFodder(
-      world, std::span<const SeedNorm>{}, config.feed_values.size(), false, config.milk_resource);
+  std::vector<SeedNorm> seed_norms;
+  seed_norms.reserve(config.crops.size());
+  for (const CropDef& crop : config.crops) {
+    seed_norms.push_back(SeedNorm{.resource = crop.resource,
+                                  .sowing_norm_kg_per_ha = crop.sowing_norm_kg_per_ha,
+                                  .is_winter = crop.is_winter,
+                                  .sow_to_month = crop.sow_to_month});
+  }
+  ResourceAmounts allowance =
+      HeldAboveFodder(world, seed_norms, config.feed_values.size(), true, config.milk_resource);
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
     // counted gross, a construction's reserve R of a planned crop came out as

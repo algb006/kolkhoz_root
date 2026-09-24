@@ -176,8 +176,8 @@ std::uint32_t SeedHorizonDays(const FoodConfig& config,
 std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
   // THE SEED FUND AND THE PLAN RESERVE, AND THE UNSEALINGS OFF BOTH, live in
   // core_common/fund_ladder.h since 2026-09-13, because the herds must stay
-  // below the plan rung of the same ladder (only that rung: the herd_system
-  // caller passes no seed norms) and a rule with two homes grows two answers. The
+  // below the same ladder (both rungs since 0.35.1: the herd_system caller
+  // passes the crops' seed norms too) and a rule with two homes grows two answers. The
   // reasons each half is computed the way it is — seed until the SOWING takes
   // it, plan filled by the HARVEST and not by the calendar, one total the
   // releases come off — are written there beside the arithmetic.

@@ -912,9 +912,17 @@ int main(int argc, char** argv) {
     // on every run. Measured before restoring, on the base 0.34.44 and on
     // 0.34.45 alike: 0 failed years of 30. A gap left standing after it closes
     // is a guard that cannot redden.
-    failures += run::Expect(plan_failed_years == 0,
-                            "the floor meets the district's plan in all thirty years — until "
-                            "drought (register 226) makes it failable again");
+    //
+    // A KNOWN GAP AGAIN SINCE 0.35.1 (boss, boss-core-epoch1-5 seq 31): the
+    // herds stay below the seed fund now, the working ration goes short in
+    // the spring and the ploughing runs at up to 1/0.7 — the price econ
+    // named for the seed that is sown. 0.35.0: 0 failed years of 30; 0.35.1:
+    // 1, in year 17. The floor is not moved.
+    failures += run::KnownGap(plan_failed_years == 0,
+                              "the floor meets the district's plan in all thirty years — until "
+                              "drought (register 226) makes it failable again",
+                              std::to_string(plan_failed_years) + " failed (0.35.0: 0)",
+                              "boss, boss-core-epoch1-5 seq 31; the herds below the seed fund");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";
