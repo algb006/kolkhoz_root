@@ -2115,16 +2115,16 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
   // at 22.63 t through d29, went dark for d30 alone, and 11.46 t landed on
   // d31. Silence for exactly the day it mattered.
   //
-  // The claim used to count only the part still STANDING, on the stated
-  // ground that the cut part was already a heap. It is not: Harvest() runs
-  // ONCE, when the phase finishes, so while a field is being reaped nothing
-  // has been placed, reaped_grams is zero and no straw has left. The cut
-  // part was in neither place, and the gap grew as the reaping went on —
-  // widest on its last day.
+  // The claim once counted only the part still STANDING while nothing had
+  // been laid (the one-shot harvest): the cut part was in neither place,
+  // and the gap grew as the reaping went on — widest on its last day. Under
+  // the harvest by parts (0.34.44) the cut part IS laid, into the heap at
+  // the edge, each day: here each sample carries the heap the lay leaves at
+  // that stage, 50 t times the share cut, and the share with it.
   //
   // The guard walks the labour down instead of asserting one point, because
   // the defect was a SLOPE: a single sample at half-cut would have passed on
-  // the old code too, at half the amount. Nothing is delivered between these
+  // the old code too, at half the amount. Nothing is carried between these
   // samples, so the right answer is the same number every time.
   {
     core::WorldState reaping = world;
@@ -2135,6 +2135,10 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
       reaping.fields.rows[2].phase = core::FieldPhase::kHarvest;
       // The phase norm is harvest_days_per_ha (8) times the fifty hectares.
       reaping.fields.rows[2].work_days_remaining = left * 8.0F * 50.0F;
+      reaping.fields.rows[2].harvest_laid_share = 1.0F - left;
+      reaping.fields.rows[2].reaped_grams = static_cast<core::Grams>(
+          std::llround((1.0 - static_cast<double>(left)) * 50'000.0 * core::kGramsPerKilogram));
+      reaping.fields.rows[2].reaped_resource = core::ResourceId{0};  // rye, no straw here
       std::vector<core::Alarm> alarms;
       system->CollectAlarms(reaping, alarms);
       core::Grams over = 0;
@@ -2152,7 +2156,7 @@ int CheckTheHarvestWarningComesBeforeTheHarvest() {
                        "below would agree at zero");
     failures += Expect(every_sample_matches,
                        "and a field being reaped claims exactly what it claimed standing, at "
-                       "every stage of the cut: nothing has been delivered yet");
+                       "every stage of the cut: heap and stalk together, nothing carried yet");
     failures += Expect(smallest > 0,
                        "in particular it never falls to nothing on the last day of reaping — the "
                        "day the whole load lands tomorrow");
@@ -2261,26 +2265,27 @@ int CheckAReapedFieldStillSpendsTheRoom() {
     return total;
   };
 
-  // THE HALF-CUT HEAP IS UNREACHABLE BY DESIGN, NOT BY OMISSION (boss,
-  // 2026-09-06). A field does not accumulate this year's crop while it is
-  // being reaped, and it never will: the intermediate state changes no
-  // decision the player makes — the carting happens on its own, nobody
-  // assigns it — and the one thing it was wanted for, the room warning, is
-  // answered by the whole field claiming its whole yield. A model that
-  // yields no decision is not modelled (design limits §1). The design line
-  // that made it look intended — "everything still on this field, standing,
-  // in swaths, in stooks, in heaps at the edge" — is a PICTURE: the layer
-  // draws swaths and stooks from the share of labour done, which it already
-  // has, without the core counting them.
+  // THE HALF-CUT HEAP IS REAL NOW (the harvest by parts, farming design §6,
+  // 24 September 2026; it was unreachable by design from 2026-09-06). The
+  // day's cut is laid into the heap that day (field_work.h, LayReapedShare),
+  // so a field dug to half holds half its yield at its edge and half on the
+  // stalk — and the room warning must count the two once each. Here the
+  // state LayReapedShare leaves: 25 t of THIS year's rye in the heap, half
+  // the share laid. (The lay itself is checked in
+  // CheckTheSnowBooksWhatItTakes.)
+  world.fields.rows[0].reaped_grams = 25'000 * core::kGramsPerKilogram;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  world.fields.rows[0].harvest_laid_share = 0.5F;
   // Sixty tonnes of room and a field being reaped that is still going to
-  // deliver all fifty of itself: ten left, and the growing fifty overruns by
-  // forty. Under the OLDEST rule the reaped field claimed nothing at all;
-  // under the one this replaces it claimed only the half still on the stalk,
-  // which is a smaller lie with the same shape — nothing has left the field
-  // until its phase ends, so half of it was in neither place.
+  // deliver all fifty of itself — twenty-five from its heap, twenty-five
+  // from the stalk: ten left, and the growing fifty overruns by forty.
+  // Under the OLDEST rule the reaped field claimed nothing at all; under the
+  // one-shot harvest it claimed the whole yield from the stalk because
+  // nothing was laid. Both cut parts are counted once now, and the number is
+  // the same by construction, not by coincidence.
   failures += Expect(warned(ahead) == 40'000 * core::kGramsPerKilogram,
-                     "a field being reaped is taken out of the room whole, not by the part still "
-                     "standing");
+                     "a field being reaped is taken out of the room whole: its heap and its "
+                     "standing half, each once");
   // The field being reaped is silent because its twenty-five tonnes FIT in
   // the sixty, not because it is being reaped: it spends the room first and
   // finds enough. A field being reaped that does NOT fit says so — that is
@@ -2288,23 +2293,17 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   failures +=
       Expect(warned(cut) == 0, "the field being reaped fits into the room and says nothing");
 
-  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
-  // model that yields no decision is not modelled.)
-  // A load already CUT and lying on the field claims its own weight ON TOP,
-  // and here that is LAST year's heap, which is the only heap a field can
-  // hold while this year's crop is still being reaped. It is not in a store,
-  // so it has not touched today's free room, and it goes in the moment there
-  // is anywhere to put it. Twenty lying plus the fifty still to come spends
-  // the sixty and leaves nothing, so the growing fifty overruns by all of
-  // itself.
-  world.fields.rows[0].reaped_grams = 20'000 * core::kGramsPerKilogram;
-  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  // A load LYING on the field that is not this reaping's claims its own
+  // weight ON TOP — last year's, say, not yet carried: here 10 t more in the
+  // heap beside this year's 25. It is not in a store, so it has not touched
+  // today's free room. Thirty-five lying plus the twenty-five still standing
+  // spends the sixty and leaves nothing, so the growing fifty overruns by
+  // all of itself.
+  world.fields.rows[0].reaped_grams = 35'000 * core::kGramsPerKilogram;
   failures += Expect(warned(ahead) == 50'000 * core::kGramsPerKilogram,
                      "a load already cut and lying on a field claims room as well, on top of the "
                      "crop still coming off it");
 
-  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
-  // model that yields no decision is not modelled.)
   // And when it is all cut and carried away, the field claims nothing and
   // the growing fifty fits into the sixty again — or the check above would
   // only be proving that something always overruns.
@@ -2319,9 +2318,81 @@ int CheckAReapedFieldStillSpendsTheRoom() {
   world.fields.rows[0].phase = core::FieldPhase::kIdle;
   world.fields.rows[0].reaped_grams = 0;
   world.fields.rows[0].work_days_remaining = 0.0F;
+  world.fields.rows[0].harvest_laid_share = 0.0F;
   failures += Expect(warned(ahead) == 0,
                      "a field with nothing left to give claims nothing, and the room is free");
 
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+/// THE LAY PRICES ONLY THE ROOM THE OLD HEAP HAS NOT SPOKEN FOR (the harvest
+/// by parts, static review of 0.34.44): the carting's price standing is the
+/// old heap's, capped at the room; a day's lay adds the price of what the
+/// room can still take, not of the room again.
+int CheckTheLayPricesOnlyTheRoomLeft() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_lay_price";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\nbarn,0\n";
+  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\nbarn,1,60\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "the lay-price table set parses") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  // 50 ha of rye, 50 t; 20 t already lie at the edge, priced; today's lay
+  // is 0.2 of the field, 10 t more.
+  const auto lay_growth = [&config](core::Grams in_barn) {
+    core::WorldState world;
+    core::RefreshCalendarCaches(world.calendar);
+    core::UnitRow barn;
+    barn.type = core::UnitTypeId{0};
+    barn.level = 1;
+    barn.stock = {in_barn};
+    core::AppendRow(world.units, barn);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 50.0F;
+    field.fertility = 50.0F;
+    field.phase = core::FieldPhase::kHarvest;
+    field.crop = core::CropId{0};
+    field.reaped_grams = 20'000 * kKilo;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_written = 1.0F;
+    field.haul_days_remaining = 1.0F;
+    field.work_days_remaining =
+        0.8F * core::PhaseWorkDays(config, world, field, core::FieldPhase::kHarvest);
+    core::AppendRow(world.fields, field);
+    core::LayReapedShare(config, world, world.fields.rows[0]);
+    const core::FieldRow& after = world.fields.rows[0];
+    const bool laid = after.reaped_grams > 29'990 * kKilo && after.reaped_grams < 30'010 * kKilo;
+    return laid ? after.haul_days_written - 1.0F : -1.0F;
+  };
+  // The barn holds 50 of its 60: 10 t of room, and the 20 t already lying
+  // have spoken for all of it — the new 10 t add no carting today.
+  failures += Expect(lay_growth(50'000 * kKilo) == 0.0F,
+                     "lay price: the room the old heap spoke for is not priced again");
+  // An empty barn, 60 t of room: 20 spoken for, 40 left, the 10 t are priced.
+  failures += Expect(lay_growth(0) > 0.0F, "lay price: with room left, the day's lay is priced");
   std::filesystem::remove_all(root);
   return failures;
 }
@@ -2408,24 +2479,26 @@ int CheckTheStrawClaimsRoomToo() {
                      "a rye field claims its straw as well: fifty of grain is a hundred and "
                      "twenty-five with it");
 
-  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
-  // model that yields no decision is not modelled.)
-  // HALF REAPED, AND THE CLAIM DOES NOT MOVE. This block used to say the
-  // opposite — that the cut half had already had its straw placed, so only
-  // the standing half still claimed any. THAT STATE DOES NOT EXIST in this
-  // core: Harvest() runs once, when the phase finishes, and until then not a
-  // gram of grain or straw has left the field. A heap standing during kHarvest
-  // is LAST year's, not this year's half.
-  //
-  // Which is why the number below is the same as the one above: nothing has
-  // been delivered, so nothing has stopped claiming room. The defect this
-  // replaces was measured before it was explained — host, 0.17.58, one day
-  // of silence on the last day of reaping.
+  // HALF REAPED, AND THE CLAIM DOES NOT MOVE — NOW BY CONSTRUCTION (the
+  // harvest by parts, 0.34.44). The cut half is laid: 25 t of grain in the
+  // heap at the edge (undelivered, claims its room) and its 37.5 t of straw
+  // already IN the barn (its room taken). The standing half claims its 25 of
+  // grain and 37.5 of straw. 25 + 62.5 against the 22.5 left free: 65 over,
+  // the number above. Under the one-shot harvest the same 65 came from the
+  // whole field on the stalk and nothing laid; it was right then for the
+  // reason stated then (host, 0.17.58, one day of silence on the last day of
+  // reaping), and it is right now for this one.
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
   world.fields.rows[0].phase = core::FieldPhase::kHarvest;
   world.fields.rows[0].work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
-  failures += Expect(warned() == 65'000 * core::kGramsPerKilogram,
-                     "half reaped, the field still claims grain and straw alike: neither has "
-                     "left it yet");
+  world.fields.rows[0].reaped_grams = 25'000 * kKilo;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  world.fields.rows[0].harvest_laid_share = 0.5F;
+  world.units.rows[0].stock.assign(2, 0);
+  world.units.rows[0].stock[1] = 37'500 * kKilo;  // the laid half's straw
+  failures += Expect(warned() == 65'000 * kKilo,
+                     "half reaped, the laid half in the heap and its straw in the barn, the other "
+                     "half standing: the same 65 t over, each gram counted once");
 
   std::filesystem::remove_all(root);
   return failures;
@@ -2511,22 +2584,24 @@ int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
   failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
                      "growing and too big for the room: the warning stands");
 
-  // (The half-cut heap is unreachable BY DESIGN — see the note above; a
-  // model that yields no decision is not modelled.)
-  // Being reaped: the whole fifty is still coming, because nothing leaves a
-  // field until its harvest phase finishes. Forty of them still have nowhere
-  // to go, exactly as while it stood. THE OLD RULE WENT SILENT HERE, and it
-  // went silent for a second reason nobody had named: it counted only what
-  // was still on the stalk, so the closer the reaping came to done, the less
-  // the field appeared to need.
+  // Being reaped by parts (0.34.44): half laid in the heap at the edge, half
+  // on the stalk — the whole fifty still to be delivered, forty of it with
+  // nowhere to go, exactly as while it stood. THE OLD RULE WENT SILENT HERE
+  // under the one-shot harvest: it counted only what was on the stalk while
+  // nothing had been laid, so the closer the reaping came to done, the less
+  // the field appeared to need. The heap now carries what the stalk lost.
   world.fields.rows[0].phase = core::FieldPhase::kHarvest;
   world.fields.rows[0].work_days_remaining = 0.5F * (8.0F / core::kRealDaysPerGameDay) * 50.0F;
+  world.fields.rows[0].reaped_grams = 25'000 * core::kGramsPerKilogram;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  world.fields.rows[0].harvest_laid_share = 0.5F;
   failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
                      "being reaped and still too big: the warning does not go out");
 
   // All cut, nothing standing, the whole fifty in a heap on the ground.
   world.fields.rows[0].phase = core::FieldPhase::kIdle;
   world.fields.rows[0].work_days_remaining = 0.0F;
+  world.fields.rows[0].harvest_laid_share = 0.0F;
   world.fields.rows[0].reaped_grams = 50'000 * core::kGramsPerKilogram;
   failures += Expect(warned() == 40'000 * core::kGramsPerKilogram,
                      "lying in a heap with nowhere to put it: the warning still stands");
@@ -2554,11 +2629,12 @@ int CheckTheWarningBurnsUntilTheHarvestIsResolved() {
 /// spent in the order the fields must be sown, a field is named for the
 /// square metres it cannot get, no horses means nothing harnessed gets done,
 /// and a winter crop and a field already at the (hand) sowing are not asked.
-/// THE SNOW TAKES A STANDING FIELD, AND THE BOOK SAYS HOW MUCH (farming
-/// design §6; host, econ-host-lever-pass3 seq 35): the standing crop at the
-/// harvest's own estimate goes to lost_to_snow, the heap lying there to
-/// lost_no_room under ITS resource, the hectares to area_lost_ha, and
-/// kFieldLost carries the resource and the grams — it carried nought.
+/// THE SNOW TAKES WHAT STILL STANDS, AND THE BOOK SAYS HOW MUCH (farming
+/// design §6, the harvest by parts of 24 September 2026; host,
+/// econ-host-lever-pass3 seq 35): the reaping's cut is laid into the heap
+/// first, the share still standing goes to lost_to_snow, its hectares to
+/// area_lost_ha, and kFieldLost carries the resource and the grams. The heap
+/// is LYING SNOW's to take, not the first snowfall's.
 int CheckTheSnowBooksWhatItTakes() {
   int failures = 0;
   constexpr core::Grams kTonne = core::kGramsPerTonne;
@@ -2566,27 +2642,42 @@ int CheckTheSnowBooksWhatItTakes() {
   core::CropDef potato;
   potato.resource = core::ResourceId{1};
   potato.yield_kg_per_ha = 1000.0F;
+  potato.harvest_days_per_ha = 1.0F;
   config.crops = {potato};
   core::WorldState world;
   core::FieldRow standing;
   standing.kind = core::LandKind::kArable;
   standing.area_ga = 10.0F;
-  standing.fertility = 50.0F;  // neutral: the yield is the table's
+  standing.fertility = 50.0F;  // neutral: the yield is the table's, 10 t
   standing.phase = core::FieldPhase::kHarvest;
   standing.crop = core::CropId{0};
   standing.reaped_grams = 2 * kTonne;  // last year's heap, of another crop
   standing.reaped_resource = core::ResourceId{0};
+  const float phase_days = core::PhaseWorkDays(config, world, standing, core::FieldPhase::kHarvest);
+  standing.work_days_remaining = 0.3F * phase_days;  // dug to 70 %
   const core::FieldId id = core::AppendRow(world.fields, standing);
+  // And a field the reaping never touched, beside it.
+  core::FieldRow untouched = standing;
+  untouched.work_days_remaining = phase_days;
+  const core::FieldId whole_id = core::AppendRow(world.fields, untouched);
 
   core::FieldRow& field = world.fields.rows[core::FindRow(world.fields, id)];
   core::LoseFieldToSnow(config, world, field, config.crops[0]);
 
   const core::YearLedger& book = world.ledger.current;
-  failures += Expect(book.lost_to_snow.size() > 1 && book.lost_to_snow[1] == 10 * kTonne,
-                     "snow: the standing crop is booked at what the harvest would have given");
+  const auto near = [](core::Grams got, core::Grams want) {
+    return got >= want - 1000 && got <= want + 1000;  // within a kilogram
+  };
+  failures += Expect(book.lost_to_snow.size() > 1 && near(book.lost_to_snow[1], 3 * kTonne),
+                     "snow: of 10 t dug to 70 %, the 3 t still standing are lost");
+  failures += Expect(book.harvest.size() > 1 && near(book.harvest[1], 7 * kTonne) &&
+                         near(field.reaped_grams, 7 * kTonne) && field.reaped_resource.value == 1,
+                     "snow: the 7 t dug were laid in the heap and the book first");
   failures += Expect(book.lost_no_room.size() > 0 && book.lost_no_room[0] == 2 * kTonne &&
-                         book.area_lost_ha == 10.0F,
-                     "snow: the heap under its own resource, and the hectares");
+                         book.area_lost_ha > 2.99F && book.area_lost_ha < 3.01F &&
+                         book.area_harvested_ha > 6.99F && book.area_harvested_ha < 7.01F,
+                     "snow: last year's heap of another crop written off under its own "
+                     "resource by the lay; 3 ha lost, 7 ha harvested");
   std::int64_t said = -1;
   core::ResourceId said_of;
   for (const core::SimEvent& event : world.step_events) {
@@ -2595,11 +2686,17 @@ int CheckTheSnowBooksWhatItTakes() {
       said_of = event.resource;
     }
   }
-  failures += Expect(said == 10 * kTonne && said_of.value == 1,
-                     "snow: kFieldLost says what and how much, not nought");
+  failures += Expect(near(said, 3 * kTonne) && said_of.value == 1,
+                     "snow: kFieldLost says what and how much the snow took, not nought");
   failures += Expect(field.crop.value == core::kInvalidDefIdValue &&
-                         field.phase == core::FieldPhase::kIdle && field.reaped_grams == 0,
-                     "snow: the field is left idle, its crop and its heap gone");
+                         field.phase == core::FieldPhase::kIdle && field.harvest_laid_share == 0.0F,
+                     "snow: the field is left idle, its crop cleared, its heap left to lying snow");
+
+  core::FieldRow& whole = world.fields.rows[core::FindRow(world.fields, whole_id)];
+  core::LoseFieldToSnow(config, world, whole, config.crops[0]);
+  failures += Expect(near(book.lost_to_snow[1], 13 * kTonne) && whole.reaped_grams == 2 * kTonne,
+                     "snow: a field the reaping never touched loses all 10 t, and last year's "
+                     "heap on it is left to the lying snow");
   return failures;
 }
 
@@ -8061,6 +8158,7 @@ int main() {
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckTheStrawClaimsRoomToo();
+  failures += CheckTheLayPricesOnlyTheRoomLeft();
   failures += CheckCapacityWithoutALadderIsRefused();
   failures += CheckTheTeamWithoutARoofSaysSo();
   failures += CheckAHeapIsAStore();

@@ -331,8 +331,10 @@ class ProductionSystem final : public IProductionSystem {
                                            : current.plan.worked_ha_this_year;
     // The district's cart takes the plan's debt off the heaps first (register
     // 242): RunFields' settled snow takes them whole the same morning. The
-    // snow has a second door it does not guard — LoseFieldToSnow on a field
-    // still standing, on the first snowy day (OPEN_ITEMS, MEM-X01).
+    // first snowy day no longer takes a heap (LoseFieldToSnow takes only the
+    // standing part since the harvest by parts, 0.34.44), so the settled
+    // cover is the one door, and this guards it (OPEN_ITEMS, MEM-X01: the
+    // second door it named is closed).
     if (current.weather.snow_cover_days >= kSettledSnowCoverDays) {
       TakePlanDebtFromFields(current);
     }
@@ -376,7 +378,9 @@ class ProductionSystem final : public IProductionSystem {
     if (field.crop.value >= config_.crops.size()) {
       return 0;
     }
-    return FieldYieldGrams(config_, field, config_.crops[field.crop.value]);
+    // What still STANDS: the share the reaping has laid is in the heap, and
+    // the snow the crew races is not coming for it (the harvest by parts).
+    return StandingYieldGrams(config_, field, config_.crops[field.crop.value]);
   }
 
   ResourceAmounts FodderFund(const WorldState& world) const override {
@@ -523,6 +527,10 @@ class ProductionSystem final : public IProductionSystem {
     // a dusting reach it (world_state.h, snow_cover_days).
     const bool cover_settled = current.weather.snow_cover_days >= kSettledSnowCoverDays;
     for (FieldRow& field : current.fields.rows) {
+      // THE DAY'S CUT INTO THE HEAP FIRST (the harvest by parts, farming
+      // design §6, 24 September 2026): whatever the snow does below, it does
+      // to a field whose reaped share already lies at its edge.
+      LayReapedShare(config_, current, field);
       // Until 2026-09-15 a reaped load that no cart had taken lay out through
       // the winter and into the next year, booked as lost only when a second
       // harvest came to take its place — and a loaded field stood as the

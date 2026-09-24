@@ -91,17 +91,18 @@ enum class AlarmKind : std::uint8_t {
   /// on the last state he was shown.
   ///
   /// THE ESTIMATE IS STILL THE GROWING FIELD'S. On the other two states the
-  /// quantity is known better rather than worse — the part still standing,
-  /// measured by the labour left, and the weight of the heap — so there is
+  /// quantity is known better rather than worse — the part still standing
+  /// (FieldRow::harvest_laid_share, the harvest by parts), and the weight of
+  /// the heap — so there is
   /// something honest to burn on. Two questions that `phase == kGrowing`
   /// used to answer with one word: can this be estimated, and should this
   /// go on warning.
   kHarvestWillNotFit,
 
-  /// A field is holding produce already reaped, because the stores had no
-  /// room for it at payout (FieldRow::reaped_grams > 0). The trouble has
-  /// happened: the load is off the crop and in nobody's store, and the
-  /// field retries the delivery every day until something is taken out.
+  /// A field is holding produce already reaped and not yet carted
+  /// (FieldRow::reaped_grams > 0): off the crop and in nobody's store. Since
+  /// the harvest by parts (0.34.44) it stands from the first day of a reaping
+  /// too, while the day's cut waits for the carts.
   /// Subject: `field`; `resource` = the produce; `amount` = the grams
   /// waiting.
   kHarvestWaitingOnField,

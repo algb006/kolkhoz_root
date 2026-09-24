@@ -126,14 +126,13 @@ Grams SeedShortfall(const ProductionConfig& config,
 ///
 ///    And the straw is the sharper half: it HAS NO BUFFER. Grain that does
 ///    not fit waits on the field; straw that does not fit is written off
-///    the same tick (Harvest, lost_no_room). Only the standing part of the
-///    crop brings straw — what is already cut has already had its straw
-///    placed or lost.
+///    the same tick it is cut (LayReapedShare, lost_no_room). Only the
+///    standing part of the crop brings straw — what is already cut has
+///    already had its straw placed or lost.
 ///
-/// The standing part is measured by the labour left against the labour the
-/// phase started with (harvest_days_per_ha x hectares), because that is
-/// the only measure of "how much of this field is still uncut" the state
-/// carries. It is a share of the estimate, not a second estimate.
+/// The standing part is the share the reaping has NOT laid into the heap
+/// (FieldRow::harvest_laid_share, the harvest by parts of 0.34.44) — a share
+/// of the estimate, not a second estimate.
 Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   // A CLAIM IS ROOM FOR WHAT HAS NOT BEEN DELIVERED. That one sentence
   // settles a fork this code spent a day inside (boss, 2026-09-06): "what
@@ -144,10 +143,8 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   // does, on the stalk or in a heap alike.
   //
   // The heap on the field is UNDELIVERED, so it adds rather than
-  // subtracts. While this year's crop is being reaped the only heap a
-  // field can hold is LAST year's (the half-cut heap is unreachable by
-  // design — a state that changes no decision is not modelled), and last
-  // year's load has not touched today's free room either.
+  // subtracts — this year's parts already laid (the harvest by parts,
+  // 0.34.44) and last year's load alike.
   Grams claim = field.reaped_grams > 0 ? field.reaped_grams : 0;
   if (field.kind != LandKind::kArable || field.crop.value >= config.crops.size()) {
     return claim;
@@ -162,39 +159,28 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   const Grams expected = GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil);
   // Grain and straw travel together, so the standing crop claims both.
   const float with_straw = 1.0F + (crop.straw_ratio > 0.0F ? crop.straw_ratio : 0.0F);
-  // A FIELD BEING REAPED CLAIMS ALL OF IT, exactly as a standing one does,
-  // and the share of labour left has no part in the answer.
+  // THE STANDING SHARE — AND ONLY NOW IS THAT RIGHT (the harvest by parts,
+  // 0.34.44). Each day's cut is laid into the heap that day, so what the
+  // reaping has cut is either in the heap (counted above, undelivered) or
+  // carried to a store (its room already taken), and its straw went to the
+  // stores as it was cut. What still claims room from the stalk is the
+  // share not laid: FieldRow::harvest_laid_share.
   //
-  // It used to claim only the STANDING share, on the stated ground that
-  // "the cut part is already accounted as reaped_grams". THAT PREMISE IS
-  // FALSE IN THIS CODE: nothing is placed while a field is being reaped —
-  // Harvest() runs once, when the phase FINISHES, and until that moment
-  // reaped_grams is zero and no straw has been delivered. So the cut part
-  // was accounted in neither place: gone from the standing share, not yet
-  // a heap. The hole is widest on the last day of reaping, when almost
-  // nothing is standing and the whole yield lands tomorrow.
-  //
-  // host measured it before it was explained (0.17.58, seed 53, oat f7,
-  // 10.5 ha): the warning stood at 22.63 t through d29, went dark for d30
-  // alone, and 11.46 t landed on d31. One day of silence, in the one day
-  // that mattered — and a signal that goes out just before the trouble
-  // does not read as silence, it reads as "it turned out fine".
-  //
-  // Two diagnoses were offered for it first and both were wrong: the
-  // forecast counting grain without straw (fixed in 0.17.36) and the claim
-  // HALVING at the cut (there is no halving — there is a drop to nothing
-  // and back). The measurement outlived both explanations, which is the
-  // argument for keeping it.
-  // THE SUBTRACTION STANDS HERE EXPLICITLY, and its term is zero by the
-  // model rather than by omission: Harvest() runs ONCE, when the phase
-  // finishes, so not a gram of THIS year's crop reaches a store while the
-  // field is growing or being reaped. The day the harvest becomes gradual,
-  // this is the one place that has to learn what has gone — and it will
-  // read a number instead of an assumption, because the assumption is
-  // written down here as a number.
-  const Grams delivered_this_year = 0;
-  const auto standing_and_cut = static_cast<Grams>(static_cast<float>(expected) * with_straw);
-  return claim + (standing_and_cut - delivered_this_year);
+  // IT WAS WRONG ONCE, under the one-shot harvest, and the case is kept for
+  // what it teaches: the claim was the standing share on the ground that
+  // "the cut part is already accounted as reaped_grams" while nothing was
+  // placed until the phase finished — the cut part in neither place. host
+  // measured it before it was explained (0.17.58, seed 53, oat f7, 10.5 ha):
+  // the warning stood at 22.63 t through d29, went dark for d30 alone, and
+  // 11.46 t landed on d31. The premise is true now; the subtraction reads
+  // the number the lay writes, not an assumption about it.
+  // In double and rounded: a float carries grams of 50 t to a few grams
+  // only, and the heap beside this share is laid in whole grams.
+  const double standing = 1.0 - static_cast<double>(field.harvest_laid_share);
+  const auto standing_claim = static_cast<Grams>(
+      std::llround(static_cast<double>(expected) * static_cast<double>(with_straw) *
+                   (standing > 0.0 ? standing : 0.0)));
+  return claim + standing_claim;
 }
 
 /// @brief Field rows ordered by when their crop is reaped, then by row.
@@ -798,11 +784,12 @@ void CollectGatherAlarms(const ProductionConfig& config,
     alarm.kind = AlarmKind::kHarvestWillNotBeGathered;
     alarm.field = world.fields.row_ids[claim.row];
     alarm.resource = crop.resource;
-    // THE WHOLE FIELD, and not the share left unreaped (boss seq 176): the
-    // crop is gathered only when its reaping finishes, and the snow on a field
-    // still being reaped takes all of it (LoseFieldToSnow). Until 2026-09-19
-    // this named the missing share — less than the snow takes.
-    alarm.amount = static_cast<std::int64_t>(FieldYieldGrams(config, field, crop));
+    // WHAT THE SNOW WOULD TAKE: the share still standing (the harvest by
+    // parts, 0.34.44 — each day's cut is in the heap and the first snowfall
+    // takes only the stalk, LoseFieldToSnow). From 2026-09-19 to 0.34.44 it
+    // was the whole field, because the one-shot harvest let the snow take it
+    // all (boss seq 176).
+    alarm.amount = static_cast<std::int64_t>(StandingYieldGrams(config, field, crop));
     alarms.push_back(alarm);
   }
 }

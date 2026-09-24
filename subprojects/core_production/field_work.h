@@ -176,11 +176,31 @@ std::int32_t RipenDays(const ProductionConfig& config, CropId crop);
 /// would be a loss the harvest could not have given.
 Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop);
 
-/// @brief The snow takes an unreaped annual whole (farming design §6): the
-/// heap lying on the field goes to lost_no_room, the standing crop —
-/// FieldYieldGrams, the harvest's own estimate — to lost_to_snow, the
-/// hectares to area_lost_ha; the field is left idle with its crop cleared,
-/// and kFieldLost says field, resource and grams.
+/// @brief The part of the field's yield still on the stalk: FieldYieldGrams
+///        less the share this reaping has already laid into the heap
+///        (FieldRow::harvest_laid_share). The whole yield before the reaping.
+Grams StandingYieldGrams(const ProductionConfig& config,
+                         const FieldRow& field,
+                         const CropDef& crop);
+
+/// @brief THE HARVEST BY PARTS (farming design §6, 24 September 2026): lays
+///        into the heap at the field's edge the share of the yield the
+///        reaping's labour has cut since the last lay —
+///        `yield × (1 − work left / phase work − laid share)` — with its book
+///        (ledger harvest, area_harvested_ha by the share), its straw into
+///        the stores, and the carting's price grown by the same load. Does
+///        nothing on a field not being reaped, a meadow, or a share already
+///        laid. Called at the day's turn and before a reaping closes or is
+///        lost, so whoever drained the work — crew, column, avral — is paid.
+void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
+
+/// @brief The snow takes what still STANDS of an unreaped annual (farming
+/// design §6): the share the reaping has cut is laid into the heap first
+/// (LayReapedShare), the rest — StandingYieldGrams — goes to lost_to_snow,
+/// its hectares to area_lost_ha; the field is left idle with its crop
+/// cleared, and kFieldLost says field, resource and grams. The HEAP IS NOT
+/// TOUCHED: lying snow takes it, the first snowfall does not (the two
+/// thresholds, production_system.cpp).
 /// @pre The caller has decided it is snowing in `crop`'s reaping season and
 ///      the crop is neither a winter crop nor a perennial.
 void LoseFieldToSnow(const ProductionConfig& config,
@@ -283,10 +303,10 @@ void TrySow(const ProductionConfig& config,
 /// The seed goes into the ground when the sowing phase is worked through.
 void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
-/// @brief Closes a worked-through harvest phase: arable pays into the
-///        field buffer, a meadow into the manger and the stores.
-///
-/// The reaped field pays out and leaves the harvest phase.
+/// @brief Closes a worked-through harvest phase: arable lays the last of
+///        its share into the field buffer (LayReapedShare) and closes its
+///        books — fertility, rotation, kFieldHarvested for the whole reaping
+///        — a meadow pays into the manger and the stores.
 void FinishHarvest(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 /// @brief A field whose working phase is drained moves on: ploughing opens

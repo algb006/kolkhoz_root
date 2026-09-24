@@ -64,11 +64,20 @@ class HaulTally {
       Load& load = lying_[row];
       const core::Grams before = load.grams;
       const core::Grams now = field.reaped_grams;
+      // THE DAY'S LAY IS ADDED BEFORE ANYTHING IS CARRIED (the harvest by
+      // parts, 0.34.44): a heap that grew by the lay and shrank by the carts
+      // can end the day above yesterday's and still have been carted. Read
+      // off the field's laid grams; the day a reaping closes, its last lay and
+      // the reset land in one step and are not seen — that day falls back to
+      // "the heap shrank".
+      const core::Grams laid_now = field.harvest_laid_grams;
+      const core::Grams laid_today = laid_now > load.laid_seen ? laid_now - load.laid_seen : 0;
+      load.laid_seen = laid_now;
       if (before > 0) {
         Reason reason = Reason::kNoHands;
         if (now < before && now == 0 && Snowed(world, load)) {
           reason = Reason::kSnow;
-        } else if (now < before) {
+        } else if (now < before + laid_today) {
           reason = Reason::kCarried;
         } else if (!(load.demand_days > 0.0F)) {
           reason = Reason::kNoRoom;
@@ -184,6 +193,8 @@ class HaulTally {
     core::ResourceId resource;
     float demand_days = 0.0F;
     core::SimDay first_day = 0;
+    /// FieldRow::harvest_laid_grams as last seen: what the day's lay added.
+    core::Grams laid_seen = 0;
   };
 
   struct Year {

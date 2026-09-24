@@ -134,8 +134,10 @@ static_assert(AggregateArity<FamilyRow>() == 27,
 // its own: 88 -> 96, measured, and the field count went to 31.
 // 2026-09-19, save 65: the avral's step and phase, two bytes into the tail
 // padding — 96 stays 96 (measured), 33 fields: the count caught it alone.
-static_assert(sizeof(FieldRow) == 96, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 33,
+// Save 84: the harvest by parts' laid share (float) and grams (i64) —
+// predicted 96 -> 112 before the build, 35 fields.
+static_assert(sizeof(FieldRow) == 112, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 35,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -672,6 +674,10 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteFloat(row.haul_days_written);
   out.WriteI64(row.reaped_grams);
   sink.WriteDefId(DefKind::kResource, row.reaped_resource.value);
+  // The harvest by parts (save 84): the share of this reaping already laid
+  // into the heap, and its grams.
+  out.WriteFloat(row.harvest_laid_share);
+  out.WriteI64(row.harvest_laid_grams);
   // The day this meadow was last mown (2026-09-06). History the simulation
   // cannot rederive: from today alone there is no telling a meadow standing
   // since spring from one cut a week ago, and the flowering the layer paints
@@ -753,6 +759,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.haul_days_written = in.ReadFloat();
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.harvest_laid_share = in.ReadFloat();
+  row.harvest_laid_grams = in.ReadI64();
   row.last_mown_day = in.ReadU32();
   row.sown_day = in.ReadU32();
   row.autumn_plowed = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "autumn ploughed"));

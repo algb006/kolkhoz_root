@@ -142,27 +142,117 @@ Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, con
                             LateSowingFactor(config, field));
 }
 
+Grams StandingYieldGrams(const ProductionConfig& config,
+                         const FieldRow& field,
+                         const CropDef& crop) {
+  const float standing = 1.0F - field.harvest_laid_share;
+  return standing > 0.0F
+             ? GramsFromFloat(static_cast<float>(FieldYieldGrams(config, field, crop)) * standing)
+             : 0;
+}
+
+void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  if (field.kind != LandKind::kArable || field.phase != FieldPhase::kHarvest ||
+      field.crop.value >= config.crops.size()) {
+    return;
+  }
+  const CropDef& crop = config.crops[field.crop.value];
+  // THE SHARE CUT, off the labour: what is left against what the phase
+  // costs (PhaseWorkDays, the number OpenPhase wrote). One measure for every
+  // hand that drains it — the crew, the MTS column, the avral.
+  const float phase_days = PhaseWorkDays(config, current, field, FieldPhase::kHarvest);
+  float cut = phase_days > 0.0F ? 1.0F - (field.work_days_remaining / phase_days) : 1.0F;
+  cut = cut < 0.0F ? 0.0F : (cut > 1.0F ? 1.0F : cut);
+  if (field.work_days_remaining <= 0.0F) {
+    cut = 1.0F;  // worked through: the last of it, whatever the arithmetic says
+  }
+  const float share = cut - field.harvest_laid_share;
+  if (!(share > 0.0F)) {
+    return;
+  }
+  const Grams yield_grams = FieldYieldGrams(config, field, crop);
+  // The last lay takes exactly what is left of the whole, so the reaping
+  // lays its yield to the gram however the days divided it.
+  const Grams laid =
+      cut >= 1.0F
+          ? (yield_grams > field.harvest_laid_grams ? yield_grams - field.harvest_laid_grams : 0)
+          : GramsFromFloat(static_cast<float>(yield_grams) * share);
+  field.harvest_laid_share = cut;
+  field.harvest_laid_grams += laid;
+  current.ledger.current.area_harvested_ha += field.area_ga * share;
+  if (laid <= 0) {
+    return;
+  }
+  // THE REAPED CROP STAYS ON THE FIELD — the field brigade's buffer of the
+  // transport design §9 (task A4), emptied by whoever comes for it with a
+  // back or a cart (SettleHauling). A buffer already holding LAST year's
+  // produce of another crop cannot hold this one too — one number names one
+  // resource — so the old load, a full season old, is written off loudly.
+  if (field.reaped_grams > 0 && field.reaped_resource.value != crop.resource.value) {
+    AddLedgerAmount(current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
+    field.reaped_grams = 0;
+    field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
+    // And its carting's price goes with it (static review of 0.34.44): the
+    // old load is gone, and its price standing beside the new one was
+    // demand for a heap that no longer lies there.
+    field.haul_days_remaining = 0.0F;
+    field.haul_days_written = 0.0F;
+  }
+  const Grams heap_before = field.reaped_grams;
+  field.reaped_grams += laid;
+  field.reaped_resource = crop.resource;
+  // Booked whether or not a store took it in: what the field gave is what
+  // the reconciliation compares against the yield tables.
+  AddLedgerAmount(current.ledger.current.harvest, crop.resource, laid);
+  // Straw is what the cut leaves behind, a feed of its own (design db
+  // crop.straw_ratio). It has no buffer — it is not why a field waits — so
+  // what does not fit is gone, with a line in the book.
+  if (crop.straw_ratio > 0.0F) {
+    const auto straw = GramsFromFloat(static_cast<float>(laid) * crop.straw_ratio);
+    const Grams straw_placed = DeliverToStores(current, config, config.straw_resource, straw);
+    AddLedgerAmount(current.ledger.current.harvest, config.straw_resource, straw);
+    AddLedgerAmount(
+        current.ledger.current.lost_no_room, config.straw_resource, straw - straw_placed);
+  }
+  // THE CARTING'S PRICE GROWS BY THE SAME LOAD, in both its numbers. The
+  // evening settlement reads what was carried as written less remaining
+  // (field_haul.cpp, SettleLoad), so a load added to one and not the other
+  // would read as carted, or as a day's work nobody did.
+  //
+  // AND ONLY BY THE ROOM THE OLD HEAP HAS NOT SPOKEN FOR (static review of
+  // 0.34.44). The price standing already is the old heap's, capped at the
+  // room; pricing the new part against the whole room again sent carters for
+  // up to twice what the stores could take, and the evening credited only
+  // the room — half the carting into a closed door, every reaping day.
+  const Grams room = ReceivableRoom(config, current, field.reaped_resource);
+  const Grams spoken_for = heap_before < room ? heap_before : room;
+  const Grams room_left = room - spoken_for;
+  const Grams priced = room_left < laid ? room_left : laid;
+  if (priced > 0) {
+    const float more =
+        HaulDaysFor(priced, FieldHaulRate(config, current, field), config.standard_day_hours);
+    field.haul_days_remaining += more;
+    field.haul_days_written += more;
+  }
+}
+
 void LoseFieldToSnow(const ProductionConfig& config,
                      WorldState& current,
                      FieldRow& field,
                      const CropDef& crop) {
-  // What was already reaped and still waiting for a cart goes with the
-  // standing crop, and it is booked as lost room rather than vanishing
-  // (task A3, STUB with a named term: this bounds free storage, it does
-  // not model spoilage — manual/72-storage-and-alarms.md §2).
-  if (field.reaped_grams > 0) {
-    // What LIES there, not what stands there: after a season without a
-    // cart the buffer can hold the previous crop, and booking it under
-    // this year's resource would put the loss in the wrong column.
-    AddLedgerAmount(current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
-    field.reaped_grams = 0;
-    field.reaped_resource = ResourceId{};
-  }
+  // WHAT THE REAPING CUT IS LAID FIRST (the harvest by parts, farming design
+  // §6, 24 September 2026): the snow takes what still stands, not the day's
+  // work. And the HEAP IS NOT TOUCHED here — lying snow takes it, a day on
+  // (production_system.cpp, RunFields); the first flake took it until
+  // 0.34.44, against the design's own two thresholds.
+  LayReapedShare(config, current, field);
   // THE STANDING CROP, BOOKED. Only the hectares and the heap were written
   // until 2026-09-18, and host found a seed's 150 t of potato in no column
   // (econ-host-lever-pass3 seq 35): nothing vanishes without a line. The
-  // harvest's own estimate, taken before the crop is cleared.
-  const Grams crop_lost = FieldYieldGrams(config, field, crop);
+  // harvest's own estimate of what still stands, taken before the crop is
+  // cleared.
+  const Grams crop_lost = StandingYieldGrams(config, field, crop);
+  const float area_lost = field.area_ga * (1.0F - field.harvest_laid_share);
   AddLedgerAmount(current.ledger.current.lost_to_snow, crop.resource, crop_lost);
   field.last_crop = field.crop;
   field.repeat_years = 0;
@@ -171,7 +261,18 @@ void LoseFieldToSnow(const ProductionConfig& config,
   field.work_days_remaining = 0.0F;
   ClearFieldWeather(field);
   field.manure_applied = 0;
-  current.ledger.current.area_lost_ha += field.area_ga;
+  current.ledger.current.area_lost_ha += area_lost;
+  // THE PART DUG IS SAID TOO (static review of 0.34.44): a field reaped to
+  // 70 % and then snowed on gave 7 t to the heap and the book, and the
+  // journal knew only the 3 t it lost.
+  if (field.harvest_laid_grams > 0) {
+    SimEvent& reaped = EmitEvent(current, EventKind::kFieldHarvested);
+    reaped.field = FieldIdOf(current, field);
+    reaped.resource = crop.resource;
+    reaped.amount = static_cast<std::int64_t>(field.harvest_laid_grams);
+  }
+  field.harvest_laid_share = 0.0F;
+  field.harvest_laid_grams = 0;
   // AND HERE IT IS SAID. A comment that once stood where this was called
   // claimed the loss "is an event already — kFieldLost, emitted where the
   // events slot folds it". It was not: the kind had no emitter anywhere in
@@ -194,55 +295,25 @@ void Harvest(const ProductionConfig& config,
              WorldState& current,
              FieldRow& field,
              const CropDef& crop) {
-  const Grams yield_grams = FieldYieldGrams(config, field, crop);
-  // THE REAPED CROP STAYS ON THE FIELD. Until task A4 it went into the
-  // stores in the same tick it was cut — the instant-delivery stub — and
-  // only the remainder that would not fit stayed out. It all stays out
-  // now: the field brigade's buffer of the transport design §9, and it
-  // empties when somebody comes for it with a back or a cart
-  // (SettleHauling). Nothing is lost here and nothing is forced in above
-  // a ceiling; what the field gave is booked below either way.
-  const Grams unplaced = yield_grams;
-  if (unplaced > 0) {
-    // A buffer already holding LAST year's produce of another crop cannot
-    // hold this one too — one number names one resource. The old load has
-    // stood a full season by now, so it is written off, loudly, rather
-    // than silently relabelled as this year's.
-    if (field.reaped_grams > 0 && field.reaped_resource.value != crop.resource.value) {
-      AddLedgerAmount(
-          current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
-      field.reaped_grams = 0;
-      field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
-    }
-    field.reaped_grams += unplaced;
-    field.reaped_resource = crop.resource;
-  }
-  // Booked whether or not a store took it in: what the field gave is what
-  // the reconciliation compares against the yield tables, and a settlement
-  // with nowhere to put its grain is a different finding entirely.
-  AddLedgerAmount(current.ledger.current.harvest, crop.resource, yield_grams);
-  current.ledger.current.area_harvested_ha += field.area_ga;
+  // THE LAST OF THE REAPING, LAID (the harvest by parts, farming design §6,
+  // 24 September 2026). Until 0.34.44 the whole yield was laid HERE, once,
+  // when the phase finished: every day's cut stood uncounted until the last,
+  // and a field dug to 96 % lay under the snow whole — seed 1939, 148 t of
+  // potato under the snow and none in the barn. The heap, the book, the
+  // straw and the carting's price are laid day by day (LayReapedShare); what
+  // is left of them is laid now.
+  LayReapedShare(config, current, field);
   // What this field gave, and of what: the three fields the kind's
-  // contract names (event_state.h). Routine — a harvest is the year
-  // working, not news — but the panel and the story layer both read the
-  // journal, and a year of harvests that left no trace in it is a year
-  // they cannot describe.
+  // contract names (event_state.h) — for the whole reaping, once. Routine —
+  // a harvest is the year working, not news — but the panel and the story
+  // layer both read the journal, and a year of harvests that left no trace
+  // in it is a year they cannot describe.
   SimEvent& reaped = EmitEvent(current, EventKind::kFieldHarvested);
   reaped.field = FieldIdOf(current, field);
   reaped.resource = crop.resource;
-  reaped.amount = static_cast<std::int64_t>(yield_grams);
-  // Straw is what the field leaves behind, and it is a feed of its own —
-  // own and free, a reserve ration with a lowered effect but plainly there
-  // in a winter manger (design db crop.straw_ratio).
-  if (crop.straw_ratio > 0.0F) {
-    const auto straw = GramsFromFloat(static_cast<float>(yield_grams) * crop.straw_ratio);
-    const Grams straw_placed = DeliverToStores(current, config, config.straw_resource, straw);
-    AddLedgerAmount(current.ledger.current.harvest, config.straw_resource, straw);
-    // Straw has no buffer of its own — it is not why a field waits — so
-    // what did not fit is gone, and gone with a line in the book.
-    AddLedgerAmount(
-        current.ledger.current.lost_no_room, config.straw_resource, straw - straw_placed);
-  }
+  reaped.amount = static_cast<std::int64_t>(field.harvest_laid_grams);
+  field.harvest_laid_share = 0.0F;
+  field.harvest_laid_grams = 0;
   // THE PLAN NO LONGER ACCRUES HERE, and its absence is the point of the
   // 2026-09-12 pass. A share of the reaping made the plan a function of the
   // harvest: a poor year asked for less, so every year was met and the
@@ -282,26 +353,10 @@ void Harvest(const ProductionConfig& config,
   // what happened for one measured run when this line was swallowed by an
   // edit to the lines around it.
   field.work_days_remaining = 0.0F;
-  // The load names the price of CARRYING it at once, in its own seam. It
-  // has to be named here and not left to the evening: the first settlement
-  // works out what was carried from what is missing from this number, and
-  // a number nobody set reads as a full day's work — the instant-delivery
-  // stub coming back in through the accounting, which is exactly what an
-  // instrumented run caught it doing.
-  if (field.reaped_grams > 0) {
-    const Grams room = ReceivableRoom(config, current, field.reaped_resource);
-    field.haul_days_remaining = HaulDaysFor(room < field.reaped_grams ? room : field.reaped_grams,
-                                            FieldHaulRate(config, current, field),
-                                            config.standard_day_hours);
-  } else {
-    field.haul_days_remaining = 0.0F;
-  }
-  // And the settlement's baseline with it. The guard above stopped the
-  // FIRST evening from reading an unset number as a day's work; the same
-  // reading came back through the other door, because the evening measured
-  // today's demand against yesterday's leftover and the room grows every
-  // day as the village eats (seventh reconciliation pass).
-  field.haul_days_written = field.haul_days_remaining;
+  // THE CARTING'S PRICE is named as each part is laid (LayReapedShare), in
+  // both its numbers — the written and the remaining — so the evening's
+  // settlement never reads a load nobody priced as a day's work (seventh
+  // reconciliation pass). It is not re-priced here.
   if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
     MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the stand yields again
     return;

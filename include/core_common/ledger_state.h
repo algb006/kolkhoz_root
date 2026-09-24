@@ -195,8 +195,9 @@ struct YearLedger {
   ResourceAmounts lost_no_room;
 
   /// THE STANDING CROP THE SNOW TOOK (farming design §6, the one total loss
-  /// of a harvest): what the field would have given had it been reaped —
-  /// the harvest's own yield, fertility, weather and late sowing in it —
+  /// of a harvest): what STILL STOOD of the field's yield — the harvest's own
+  /// estimate, fertility, weather and late sowing in it, less the share the
+  /// reaping had laid into the heap (the harvest by parts, 0.34.44) —
   /// booked on the day the snow takes it. Save 61. Until then only the
   /// hectares were written (area_lost_ha) and the reaped heap lying there
   /// (lost_no_room), and host found 150 t of potato a seed in no column at

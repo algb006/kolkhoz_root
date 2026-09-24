@@ -372,21 +372,18 @@ struct FieldRow {
   /// written minus left, and nothing else can move it.
   float haul_days_written = 0.0F;
 
-  /// Produce of `crop` reaped and NOT YET IN A STORE, in grams: the field
-  /// brigade's buffer of the transport design (§9, "what accumulates: the
-  /// harvest off the field"), in its smallest form — one resource, one
-  /// number. Non-zero only while the stores had no room for the whole
-  /// yield at payout (manual/72-storage-and-alarms.md §2): the field stays
-  /// in kHarvest with no work left, production retries the delivery every
-  /// day and empties this first, and kHarvestWaitingOnField stands meanwhile.
-  /// STUB, with the term named (boss, 2026-09-03): the first settled snow
-  /// takes what is still lying there, which BOUNDS the free storage rather
-  /// than modelling spoilage. Real weathering of swaths — how many days of
-  /// rain cost how much — is polish, and the design owes the number.
-  /// Snow that ends the season loses it (kFieldLost) and books it to the
-  /// ledger's lost_no_room — never silently. Task A4's logistics will move it
-  /// instead of the instant stub; the buffer is the same. SAVED: history
-  /// the simulation cannot rederive (VERSION_SAVE 4 → 5, the human's call).
+  /// Produce reaped and NOT YET IN A STORE, in grams: the field brigade's
+  /// buffer of the transport design (§9, "what accumulates: the harvest off
+  /// the field"), in its smallest form — one resource, one number. Laid
+  /// into day by day as the reaping cuts (the harvest by parts, 0.34.44:
+  /// LayReapedShare) and emptied by the carting (SettleHauling);
+  /// kHarvestWaitingOnField stands while it holds anything. The first
+  /// SETTLED snow takes what is still lying there — the first snowfall does
+  /// not (farming design §6, the two thresholds) — booked to the ledger's
+  /// lost_no_room, never silently. STUB, with the term named (boss,
+  /// 2026-09-03): that bounds the free storage rather than modelling the
+  /// weathering of swaths, which is polish the design owes a number for.
+  /// SAVED: history the simulation cannot rederive (VERSION_SAVE 4 → 5).
   Grams reaped_grams = 0;
 
   /// What the waiting load IS. The buffer has to name its own resource: the
@@ -396,6 +393,15 @@ struct FieldRow {
   /// (Added during implementation of task A3; the design named only the
   /// number and that was one field short — manual/72-storage-and-alarms.md §5.)
   ResourceId reaped_resource;
+
+  /// THE HARVEST BY PARTS (farming design §6, «ОТМЕНЕНО 24 сентября 2026 —
+  /// уборка ПО ЧАСТЯМ»; save 84): the share of THIS reaping already laid
+  /// into the heap at the field's edge, 0..1, and the grams it laid. Every
+  /// day the share the labour has cut since goes into the heap
+  /// (field_work.h, LayReapedShare); the snow takes only what is still
+  /// standing. Both are nought outside a reaping.
+  float harvest_laid_share = 0.0F;
+  Grams harvest_laid_grams = 0;
 
   /// THE AVRAL ON THIS FIELD'S WORK (kDeclareRush; unit rules §7; save 65):
   /// 0 none, 1..kMaxRushStep steps of `rush_step_percent`. It stands on the

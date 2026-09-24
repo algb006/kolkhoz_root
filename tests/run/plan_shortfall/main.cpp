@@ -416,8 +416,8 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
             << " t, waiting on the fields " << Tonnes(sample.waiting_on_fields) << " t, "
             << sample.horses << " horses; sown " << sample.area_sown_ha << " ha, reaped "
             << sample.area_harvested_ha << " ha, lost to snow " << sample.area_lost_ha
-            << " ha, of it already dug " << std::lround(sample.dug_lost_tonnes)
-            << " t (estimate)\n";
+            << " ha; dug and lost with its heap to lying snow "
+            << std::lround(sample.dug_lost_tonnes) << " t (measured: heaps the cover took)\n";
   std::cout << "plan_shortfall:     man-days — plough " << sample.work_days[1] << ", harrow "
             << sample.work_days[2] << ", sow " << sample.work_days[3] << ", reap "
             << sample.work_days[4] << ", barn " << sample.work_days[5] << ", haul "
@@ -558,66 +558,60 @@ void TraceCropDay(const core::WorldState& world, core::CropId crop) {
 /// parcel 172: the two thirds of a potato field dug and lost on seed 1935 read
 /// to the player as a trap, and he decides by the number).
 ///
-/// AN ESTIMATE, AND IT SAYS WHICH. The core books a harvest once, when its
-/// phase ends (farming design §6, "жатва разовая"), so a field lost mid-reaping
-/// never carries a dug tonnage. The watch keeps yesterday's field and the work
-/// the reaping began with; when a field that was being reaped is found idle,
-/// empty and with nothing lying on it, the dug share is 1 − left/started and
-/// the tonnage is that share of the table yield × area × fertility / neutral —
-/// the same expected crop the store alarm claims room for
-/// (production_alarms.cpp, RoomClaimOf), weather stress NOT applied.
+/// A MEASURE, NOT AN ESTIMATE, SINCE 0.34.44. Under the one-shot harvest
+/// ("жатва разовая") a field lost mid-reaping never carried a dug tonnage,
+/// and this watch estimated it off the labour. The harvest by parts lays the
+/// dug share into the heap at the edge the same day (farming design §6, 24
+/// September 2026): what is dug is IN the heap, and the only thing that can
+/// take it is the lying snow. So the watch reads exactly that — a heap that
+/// stood yesterday and is gone today under a settled cover — and the
+/// standing part the first snowfall took is the book's lost_to_snow, not
+/// this. `tables` is no longer read; kept for the callers' shape.
 class DugLossWatch {
  public:
-  explicit DugLossWatch(const core::ITableSet& tables) {
-    const core::ITable* const crops = tables.FindTable("crops");
-    if (crops != nullptr) {
-      const std::uint32_t column = crops->FindColumn("yield_kg_per_ha");
-      for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
-        yield_kg_per_ha_.push_back(crops->CellReal(row, column).value_or(0.0F));
-      }
-    }
-    if (const core::ITable* const farming = tables.FindTable("farming")) {
-      fertility_neutral_ =
-          farming
-              ->CellReal(farming->FindRowByKey("fertility_neutral"), farming->FindColumn("value"))
-              .value_or(fertility_neutral_);
-    }
-  }
+  explicit DugLossWatch(const core::ITableSet& /*tables*/) {}
 
-  /// @brief Call once a day after the day ran; returns the tonnes dug and lost
-  /// since yesterday.
+  /// @brief Call once a day after the day ran; returns the tonnes dug (lying
+  /// in a heap at a field's edge) that the lying snow took since yesterday.
   double Observe(const core::WorldState& world) {
     double lost = 0.0;
-    yesterday_.resize(world.fields.rows.size());
-    started_work_.resize(world.fields.rows.size(), 0.0F);
+    heap_.resize(world.fields.rows.size(), 0);
+    heap_of_.resize(world.fields.rows.size());
+    // WHAT THE BOOK WROTE OFF TODAY, by resource: a heap gone under a settled
+    // cover may also have gone to the district (district_plan.cpp,
+    // TakePlanDebtFromFields), which is a delivery and not a loss — so a
+    // vanished heap counts only as far as lost_no_room grew for its resource.
+    const core::ResourceAmounts& written = world.ledger.current.lost_no_room;
+    core::ResourceAmounts written_today(written.size(), 0);
+    for (std::size_t index = 0; index < written.size(); ++index) {
+      const core::Grams before = index < written_seen_.size() ? written_seen_[index] : 0;
+      // The book rotates at the year's turn: a smaller figure is a new year.
+      written_today[index] = written[index] >= before ? written[index] - before : written[index];
+    }
+    written_seen_ = written;
+    // The core's own threshold, mirrored (production_system.cpp,
+    // kSettledSnowCoverDays): a cover on its second day is settled.
+    constexpr std::uint16_t kSettledCoverDays = 2;
+    const bool settled = world.weather.snow_cover_days >= kSettledCoverDays;
     for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
-      const core::FieldRow& today = world.fields.rows[row];
-      const core::FieldRow& before = yesterday_[row];
-      const bool was_reaping = before.phase == core::FieldPhase::kHarvest;
-      const bool lost_today = was_reaping && today.phase == core::FieldPhase::kIdle &&
-                              today.crop.value == core::kInvalidDefIdValue &&
-                              today.reaped_grams == 0;
-      if (lost_today && started_work_[row] > 0.0F && before.crop.value < yield_kg_per_ha_.size()) {
-        const float left = std::max(before.work_days_remaining, 0.0F);
-        const float dug_share = 1.0F - std::min(left / started_work_[row], 1.0F);
-        const float soil = before.fertility / fertility_neutral_;
-        lost += static_cast<double>(dug_share * yield_kg_per_ha_[before.crop.value] *
-                                    before.area_ga * soil) /
-                1000.0;
+      const core::FieldRow& field = world.fields.rows[row];
+      const core::ResourceId resource = heap_of_[row];
+      if (settled && heap_[row] > 0 && field.reaped_grams == 0 &&
+          resource.value < written_today.size()) {
+        const core::Grams taken = std::min(heap_[row], written_today[resource.value]);
+        written_today[resource.value] -= taken;
+        lost += static_cast<double>(taken) / 1.0e6;
       }
-      if (today.phase == core::FieldPhase::kHarvest && !was_reaping) {
-        started_work_[row] = today.work_days_remaining;
-      }
-      yesterday_[row] = today;
+      heap_[row] = field.reaped_grams;
+      heap_of_[row] = field.reaped_resource;
     }
     return lost;
   }
 
  private:
-  std::vector<float> yield_kg_per_ha_;
-  float fertility_neutral_ = 50.0F;
-  std::vector<core::FieldRow> yesterday_;
-  std::vector<float> started_work_;
+  std::vector<core::Grams> heap_;
+  std::vector<core::ResourceId> heap_of_;
+  core::ResourceAmounts written_seen_;
 };
 
 int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year) {
