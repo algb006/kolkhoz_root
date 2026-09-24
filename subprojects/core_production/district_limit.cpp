@@ -80,6 +80,15 @@ OrderRefusal OrderMtsColumn(const ProductionConfig& config,
   if (arrive_month > window_end) {
     return OrderRefusal::kRuleForbids;  // it would come after its season
   }
+  // NO STANDING FIELD CAMP, NO COLUMN — refused before the points (boss,
+  // boss-core-epoch1-5 seq 41-42). Until 0.35.2 the column was sold without
+  // one and waited at the district to its window's end: 120 points for no
+  // hectare, on every seed of econ's lot measurement, where no camp stands.
+  // A camp still being built is refused too: the column comes in days, and
+  // the order is given again when the camp stands.
+  if (StandingCamp(config, current).value == kInvalidEntityIdValue) {
+    return OrderRefusal::kRuleForbids;
+  }
   if (current.limit.points < points) {
     return OrderRefusal::kLimitShort;
   }

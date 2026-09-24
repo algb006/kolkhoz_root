@@ -19,6 +19,20 @@
 #include "stock_ops.h"
 
 namespace core {
+
+UnitId StandingCamp(const ProductionConfig& config, const WorldState& world) {
+  if (config.field_camp_type.value == kInvalidDefIdValue) {
+    return UnitId{};
+  }
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.type.value == config.field_camp_type.value && unit.level >= 1) {
+      return world.units.row_ids[row];
+    }
+  }
+  return UnitId{};
+}
+
 namespace {
 
 /// Below it a hectare's remainder is float dust, not land left to work.
@@ -46,20 +60,6 @@ bool InSeasonChain(const FieldRow& field, bool spring) {
 
 bool MonthInWindow(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
   return month >= from && month <= to;
-}
-
-/// The first standing field camp, in row order; invalid when none stands.
-UnitId StandingCamp(const ProductionConfig& config, const WorldState& world) {
-  if (config.field_camp_type.value == kInvalidDefIdValue) {
-    return UnitId{};
-  }
-  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    const UnitRow& unit = world.units.rows[row];
-    if (unit.type.value == config.field_camp_type.value && unit.level >= 1) {
-      return world.units.row_ids[row];
-    }
-  }
-  return UnitId{};
 }
 
 /// Carries `share` of the load lying on the field to the stores, and writes

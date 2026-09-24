@@ -7823,7 +7823,10 @@ core::ProductionConfig MakeColumnConfig() {
   return config;
 }
 
-core::WorldState MakeColumnWorld(core::SimDay day) {
+/// Unit row 0 is the store; row 1 the field camp at `camp_level` (1 stands, 0
+/// is a site), or none at all for -1. A column is sold only to a village whose
+/// camp stands (0.35.2), so the column's worlds have one unless they ask not.
+core::WorldState MakeColumnWorld(core::SimDay day, int camp_level = 1) {
   core::WorldState world;
   world.epoch = core::Epoch::kOne;
   world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
@@ -7834,6 +7837,12 @@ core::WorldState MakeColumnWorld(core::SimDay day) {
   store.level = 1;
   store.stock.assign(1, 0);
   core::AppendRow(world.units, store);
+  if (camp_level >= 0) {
+    core::UnitRow camp;
+    camp.type = core::UnitTypeId{1};
+    camp.level = static_cast<std::uint8_t>(camp_level);
+    core::AppendRow(world.units, camp);
+  }
   return world;
 }
 
@@ -7886,14 +7895,10 @@ int CheckTheMtsColumn() {
                          world.limit.points == 380,
                      "mts: a second column while one is out is refused and costs nothing");
   EndColumnDay(config, world, 6);
-  EndColumnDay(config, world, 8);
   failures += Expect(world.mts_column.phase == core::MtsColumnPhase::kOnTheRoad,
-                     "mts: before its window and with no camp in it, the column is still out");
+                     "mts: before its window the column is still out");
 
-  core::UnitRow camp;
-  camp.type = core::UnitTypeId{1};
-  camp.level = 1;
-  const core::UnitId camp_id = core::AppendRow(world.units, camp);
+  const core::UnitId camp_id = world.units.row_ids[1];
   const core::FieldId near =
       core::AppendRow(world.fields, ColumnField(100.0F, 25.0F, core::FieldPhase::kPlowing, 25.0F));
   const core::FieldId far =
@@ -7954,22 +7959,30 @@ int CheckTheMtsColumn() {
                          late.limit.points == 500,
                      "mts: a column that would come after its season is refused");
 
-  // Autumn with no camp: out until the window's end, then it never comes.
-  core::WorldState campless = MakeColumnWorld(26);
-  core::OrderLimitLot(config, campless, order(core::LimitLotId{1}));
-  EndColumnDay(config, campless, 39);
-  failures += Expect(campless.mts_column.phase == core::MtsColumnPhase::kOnTheRoad,
-                     "mts: in October with no camp the column still waits");
-  EndColumnDay(config, campless, 40);
-  failures += Expect(campless.mts_column.phase == core::MtsColumnPhase::kNotArrived &&
-                         EventsOf(campless, core::EventKind::kMtsColumnNotArrived).size() == 1 &&
-                         campless.limit.points == 350,
-                     "mts: past its window it never comes, and the points are not returned");
+  // NO STANDING CAMP, NO SALE (boss, boss-core-epoch1-5 seq 41-42; 0.35.2).
+  // Until then the column was sold, waited to its window's end and never came,
+  // and the 150 points were gone. The pair: no camp and a camp still a site
+  // are refused with the points untouched; a standing camp buys it.
+  core::WorldState campless = MakeColumnWorld(26, -1);
+  failures += Expect(core::OrderLimitLot(config, campless, order(core::LimitLotId{1})) ==
+                             core::OrderRefusal::kRuleForbids &&
+                         campless.limit.points == 500 &&
+                         campless.mts_column.phase == core::MtsColumnPhase::kNone,
+                     "mts: with no field camp the column is refused and costs nothing");
+  core::WorldState building = MakeColumnWorld(26, 0);
+  failures += Expect(core::OrderLimitLot(config, building, order(core::LimitLotId{1})) ==
+                             core::OrderRefusal::kRuleForbids &&
+                         building.limit.points == 500,
+                     "mts: a camp still being built is no camp, and costs nothing either");
+  core::WorldState standing = MakeColumnWorld(26);
+  failures += Expect(core::OrderLimitLot(config, standing, order(core::LimitLotId{1})) ==
+                             core::OrderRefusal::kNone &&
+                         standing.limit.points == 350,
+                     "mts: with its camp standing the column is sold");
 
   // Autumn at work: a 10 ha field reaped and carried in one day.
   core::WorldState autumn = MakeColumnWorld(28);
   core::OrderLimitLot(config, autumn, order(core::LimitLotId{1}));
-  core::AppendRow(autumn.units, camp);
   core::FieldRow rye = ColumnField(300.0F, 10.0F, core::FieldPhase::kHarvest, 20.0F);
   rye.crop = core::CropId{0};
   core::AppendRow(autumn.fields, rye);
@@ -8013,10 +8026,6 @@ int CheckTheColumnDrillInTheRain() {
   buy.kind = core::OrderKind::kOrderLimitLot;
   buy.lot = core::LimitLotId{0};
   core::OrderLimitLot(config, world, buy);
-  core::UnitRow camp;
-  camp.type = core::UnitTypeId{1};
-  camp.level = 1;
-  core::AppendRow(world.units, camp);
   // A CROP IN IT: a field without one is fallow and is "sown" by nobody the
   // moment it is harrowed (AdvanceFinishedField), which the first draft of
   // this check used and so tested no sowing at all.
@@ -8067,6 +8076,48 @@ int CheckTheColumnDrillInTheRain() {
 /// RescaleHorseWorkForRation; host, econ-host-fodder-and-winter seq 2): a
 /// phase priced on last autumn's hungry ration is re-priced when the herd
 /// day writes a full one — and only the horse work, only on the arable.
+/// A LOT THE DISTRICT HAS NOT PRICED IS NOT SOLD, READ FROM THE SHIPPED TABLES
+/// (boss, boss-core-epoch1-5 seq 40 (а)): kerosene, coal, consumer goods and
+/// lime with gravel have no consumer in Epoch I, so their `points` cell was
+/// emptied in the design base. The core must read the blank as «not written
+/// yet» and refuse before any point is spent. The pair: timber, priced, is
+/// bought.
+int CheckTheUnpricedLotsOfTheShippedTables() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::LimitCatalog catalog;
+  if (Expect(tables != nullptr && core::ParseLimitCatalog(*tables, catalog, error),
+             "shipped limit catalogue: loads") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ITable* const lots = tables->FindTable("limit_catalog");
+  const auto verdict = [&catalog, lots](const char* key, std::int32_t& points) {
+    const std::uint32_t row = lots->FindRowByKey(key);
+    if (row == core::kNoTableRow) {
+      points = 0;
+      return core::OrderRefusal::kNoSuchSubject;
+    }
+    points = catalog.lots[row].points;
+    return core::LotOrderable(
+        catalog, core::LimitLotId{static_cast<std::uint16_t>(row)}, core::Epoch::kOne);
+  };
+  for (const char* key : {"kerosene_lot", "coal_lot", "consumer_goods_lot", "lime_gravel_lot"}) {
+    std::int32_t points = 0;
+    const core::OrderRefusal refusal = verdict(key, points);
+    failures += Expect(points == -1 && refusal == core::OrderRefusal::kRuleForbids,
+                       (std::string("shipped limit catalogue: ") + key +
+                        " has no price and is not sold in Epoch I")
+                           .c_str());
+  }
+  std::int32_t timber_points = 0;
+  failures +=
+      Expect(verdict("timber_lot", timber_points) == core::OrderRefusal::kNone && timber_points > 0,
+             "shipped limit catalogue: timber, priced, is sold");
+  return failures;
+}
+
 /// THE DISTRICT'S GOODS LOAN (goods_loan.h; boss, boss-core-epoch1-5 seq 15
 /// and 30): up to the next sowing's seed need, on the district's cart, owed
 /// × 1.2; paid at the turn from above the held seed, the rest carrying on
@@ -8727,6 +8778,7 @@ int main() {
   failures += CheckTheColumnDrillInTheRain();
   failures += CheckTheRationRepricesTheHorseWork();
   failures += CheckTheGoodsLoan();
+  failures += CheckTheUnpricedLotsOfTheShippedTables();
   failures += CheckTheFodderRungIsTheTeamsRationToTheNextOats();
   failures += CheckTheAmbulance();
   failures += CheckDistrictVisits();

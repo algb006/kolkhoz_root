@@ -12,8 +12,8 @@ chick_lot,10,1,livestock
 seed_grain_lot,30,1,choice
 timber_lot,20,1,goods
 roofing_lot,25,1,goods
-consumer_goods_lot,20,1,goods
-kerosene_lot,15,1,goods
+consumer_goods_lot,,1,goods
+kerosene_lot,,1,goods
 hops_lot,25,2,goods
 steel_lot,15,1,goods
 spare_part_lot,35,1,goods
@@ -38,12 +38,12 @@ workshop_rig_unit,180,2,vehicle
 imported_machine_unit,700,3,vehicle
 grocery_lot,20,1,goods
 glass_container_lot,25,1,goods
-lime_gravel_lot,15,1,goods
+lime_gravel_lot,,1,goods
 tool_lot,20,1,goods
 insulation_lot,,2,goods
 paint_lot,,2,goods
 concrete_lot,,3,goods
-coal_lot,20,1,goods
+coal_lot,,1,goods
 textile_lot,25,2,goods
 mts_column_spring,120,1,service
 mts_column_autumn,150,1,service

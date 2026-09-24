@@ -201,6 +201,11 @@ void TurnLimitYear(const ProductionConfig& config,
 /// @pre The kOrderLimitLot of a `service` lot has put the column on the road.
 void RunMtsColumn(const ProductionConfig& config, WorldState& current);
 
+/// @brief The first STANDING field camp (level >= 1), in row order; invalid
+///        when none stands. A camp still being built is not one: the column
+///        has nowhere to stop at it (boss, boss-core-epoch1-5 seq 42).
+UnitId StandingCamp(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The first year's grant, on the campaign's first tick — the same
 ///        moment the first winter's manure plan is made, since genesis hands
 ///        over a world and no system has run: the base fund alone, as no plan
