@@ -228,10 +228,17 @@ class LimitPolicy {
   /// is no longer a site is forgotten.
   void CountWaits(const core::WorldState& world) {
     std::unordered_map<std::uint32_t, std::uint32_t> next;
+    // AND THE STEP THE CHAIRMAN'S YARD WAITS TO TAKE (rise_watch.h; boss,
+    // boss-core-epoch1-5 seq 51). It stands in kNone, not in the queue, so
+    // it counted nought days for ever: MissingMaterial asked it for boards
+    // and the emergency never came. On seed 1935 the stable waited two years
+    // for 12 t of boards, the team was never gathered, and the canon went to
+    // trial in year 6.
+    const std::uint32_t rising = rise_watch_ ? rise_watch_(world) : core::kNoRow;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::ConstructionPhase phase = world.units.rows[row].construction.phase;
       if (phase != core::ConstructionPhase::kMarked &&
-          phase != core::ConstructionPhase::kDelivering) {
+          phase != core::ConstructionPhase::kDelivering && row != rising) {
         continue;
       }
       const std::uint32_t id = world.units.row_ids[row].value;
