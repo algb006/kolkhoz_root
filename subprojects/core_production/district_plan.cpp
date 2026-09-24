@@ -7,16 +7,19 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
+#include "seed_room.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -25,6 +28,42 @@ namespace core {
 /// recorded as delivered. A shortfall is a shortfall now — it used to be
 /// "simply a smaller delivery" because the district had no mechanics, and
 /// JudgePlan below is those mechanics arriving.
+/// THE SEED STAYS: what the next sowing needs, as seed_short and the seed
+/// room count it (SeedHeldToSowing).
+///
+/// THE RULE, IN boss's WORDS (seq 15): a seed is held only if its sowing
+/// comes before its harvest. The potato is sown in May, before the autumn
+/// digging, so it is held from the digging on. The winter rye is sown in
+/// September out of July's rye, so none is held in January. The first draft
+/// held every next sowing and failed the canon's rye 17 years of 108.
+///
+/// AND ITS PRICE, measured and accepted (seq 15, option a): on branch E1
+/// seed 1939 the seed stops falling to nought, but the potato position then
+/// fails every year from year 6 and the trial comes in year 8 instead of 11.
+/// That is the branch's honest price, not the door's defect.
+///
+/// A DEFECT UNTIL 0.34.49, and it had three doors: the turn's delivery, the
+/// heaps' at the snow and the order's. None of them asked the seed fund, so
+/// the potato the village was to plant went to the district (boss,
+/// boss-core-epoch1-5 seq 5, item 8; econ forgiving-start.md §5a).
+Grams DeliverableAboveSeed(const ProductionConfig& config,
+                           const WorldState& current,
+                           ResourceId resource) {
+  const std::vector<Grams> need = SeedHeldToSowing(config, current);
+  const Grams seed_need = resource.value < need.size() ? need[resource.value] : 0;
+  const auto& unsealed = current.unsealed.by_fund[static_cast<std::size_t>(FundKind::kSeed)];
+  const Grams opened = AmountOf(unsealed, resource);
+  const Grams held_for_seed = seed_need > opened ? seed_need - opened : 0;
+  Grams lying = 0;
+  for (const FieldRow& field : current.fields.rows) {
+    if (field.reaped_resource.value == resource.value && field.reaped_grams > 0) {
+      lying += field.reaped_grams;
+    }
+  }
+  const Grams available = lying + TakeableGrams(current, config, resource);
+  return available > held_for_seed ? available - held_for_seed : 0;
+}
+
 void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   // THE TURN SHIPS WHAT IS STILL OWED, not the whole figure again: whatever
   // the chairman shipped earlier by order (kDeliverPlan) is already in
@@ -33,23 +72,24 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   // snow settles after the turn the snow's day never came, and seeds 1 and 23
   // failed the potato beside a 68 t heap. The cart comes on the snow's day or
   // at the turn, whichever is first; after the snow there is no heap to take.
-  TakePlanDebtFromFields(current);
+  TakePlanDebtFromFields(config, current);
   if (current.plan.delivered.size() < current.plan.due.size()) {
     current.plan.delivered.resize(current.plan.due.size(), 0);
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
-    const Grams owed = current.plan.due[index] - current.plan.delivered[index];
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams owed = std::min(current.plan.due[index] - current.plan.delivered[index],
+                                DeliverableAboveSeed(config, current, resource));
     if (owed <= 0) {
       continue;
     }
-    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     const Grams taken = TakeFromStorage(current, config, resource, owed);
     current.plan.delivered[index] += taken;
     AddLedgerAmount(current.ledger.current.delivered, resource, taken);
   }
 }
 
-void TakePlanDebtFromFields(WorldState& current) {
+void TakePlanDebtFromFields(const ProductionConfig& config, WorldState& current) {
   if (current.plan.announced == 0) {
     return;
   }
@@ -57,7 +97,9 @@ void TakePlanDebtFromFields(WorldState& current) {
     current.plan.delivered.resize(current.plan.due.size(), 0);
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
-    Grams owed = current.plan.due[index] - current.plan.delivered[index];
+    Grams owed =
+        std::min(current.plan.due[index] - current.plan.delivered[index],
+                 DeliverableAboveSeed(config, current, DefIdFromIndex<ResourceIdTag>(index)));
     if (owed <= 0) {
       continue;
     }
@@ -118,11 +160,13 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config,
       continue;
     }
     const Grams owed = current.plan.due[index] - current.plan.delivered[index];
-    const Grams wanted = amount > 0 ? amount : owed;
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    // Nor by order below the seed: the order ships, the unsealing opens.
+    const Grams wanted =
+        std::min(amount > 0 ? amount : owed, DeliverableAboveSeed(config, current, resource));
     if (wanted <= 0) {
       continue;
     }
-    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     const Grams taken = TakeFromStorage(current, config, resource, wanted);
     current.plan.delivered[index] += taken;
     AddLedgerAmount(current.ledger.current.delivered, resource, taken);

@@ -47,6 +47,15 @@ Grams FieldSeedNeed(const ProductionConfig& config,
 /// @return Dense by ResourceId, sized `config.feed_values.size()`.
 std::vector<Grams> SeedNeedByResource(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The seed the stores must keep TODAY for the next sowing: the need
+/// of SeedNeedByResource, but only for a seed whose next sowing ends before
+/// its next harvest begins. A seed the harvest brings first (the winter rye,
+/// reaped in July and sown in September) holds nothing today — the sowing
+/// takes it from that harvest. What the district's delivery may not take
+/// (DeliverableAboveSeed; boss seq 5, item 8).
+/// @return Dense by ResourceId, sized `config.feed_values.size()`.
+std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The room each resource books for its missing seed: the need of
 /// its next sowings less what the stores hold, and only while some of its
 /// harvest is still out — no more than the heaps hold once nothing of it

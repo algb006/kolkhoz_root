@@ -7127,13 +7127,16 @@ int CheckPlanDebtFromFields() {
 
   core::WorldState before_spring = make_world();
   before_spring.plan.announced = 0;
-  core::TakePlanDebtFromFields(before_spring);
+  // No crops in the config: no seed is owed, so the seed fund holds nothing
+  // back here (DeliverableAboveSeed is checked on its own below).
+  const core::ProductionConfig no_seed;
+  core::TakePlanDebtFromFields(no_seed, before_spring);
   failures += Expect(
       before_spring.fields.rows[0].reaped_grams == 4 * kTonne && before_spring.step_events.empty(),
       "before the spring's figure nothing is owed and no heap is touched");
 
   core::WorldState world = make_world();
-  core::TakePlanDebtFromFields(world);
+  core::TakePlanDebtFromFields(no_seed, world);
   const std::vector<core::FieldRow>& fields = world.fields.rows;
   failures +=
       Expect(world.plan.delivered[0] == 10 * kTonne && world.units.rows[0].stock[0] == 6 * kTonne,
@@ -7154,20 +7157,82 @@ int CheckPlanDebtFromFields() {
           world.step_events[1].resource.value == 1 && world.step_events[1].amount == 1 * kTonne,
       "one event per resource, with the grams taken");
 
-  core::TakePlanDebtFromFields(world);
+  core::TakePlanDebtFromFields(no_seed, world);
   failures += Expect(fields[2].reaped_grams == 3 * kTonne && world.step_events.size() == 2,
                      "a paid position takes nothing more off the field");
 
   // A SNOW THAT SETTLES AFTER THE TURN (host seq 42): the turn itself takes
   // the heaps first, and only then the stores.
-  const core::ProductionConfig config;
+  // THE BARN IS A STORE HERE (0.34.49): make_world's barn has no type, and a
+  // barn that is no store could not give a gram whatever the turn did, so
+  // "the barn keeps its six tonnes" held for any implementation.
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  SetStorageKg(config.unit_types[0], 100000.0F);
   core::WorldState late_snow = make_world();
+  late_snow.units.rows[0].type = core::UnitTypeId{0};
   core::DeliverPlan(config, late_snow);
   failures += Expect(late_snow.plan.delivered[0] == 10 * kTonne &&
                          late_snow.units.rows[0].stock[0] == 6 * kTonne &&
                          late_snow.fields.rows[2].reaped_grams == 3 * kTonne,
                      "no snow before the turn: the turn takes the debt off the heaps, "
                      "the barn keeps its six tonnes");
+
+  // THE SEED STAYS (resources design §6, the ladder fills the seed first;
+  // boss seq 5, item 8 — a defect until 0.34.49). Ten hectares sow resource 0
+  // next at a tonne a hectare: 10 t of seed. Heaps and barn hold 19 t, the
+  // debt is 10 t, so the district gets 9 and the seed's 10 stay. As a pair:
+  // the same world with the seed fund unsealed ships the whole 10.
+  core::ProductionConfig seeded;
+  seeded.feed_values = {0.0F, 0.0F};
+  seeded.crops.resize(1);
+  seeded.crops[0].resource = core::ResourceId{0};
+  seeded.crops[0].sowing_norm_kg_per_ha = 1000.0F;
+  seeded.crops[0].sow_from_month = 3;
+  seeded.crops[0].sow_to_month = 4;
+  seeded.crops[0].harvest_from_month = 8;  // sown in May before its September harvest
+  // The barn is a store here, so its 6 t count for the delivery and the seed.
+  seeded.unit_types.resize(1);
+  SetStorageKg(seeded.unit_types[0], 100000.0F);
+  const auto with_seed_field = [&make_world]() {
+    core::WorldState seeding = make_world();
+    seeding.units.rows[0].type = core::UnitTypeId{0};  // make_world's barn has no type
+    core::FieldRow to_sow;
+    to_sow.kind = core::LandKind::kArable;
+    to_sow.area_ga = 10.0F;
+    to_sow.rotation_year0 = core::CropId{0};
+    core::AppendRow(seeding.fields, to_sow);
+    return seeding;
+  };
+  const auto left_of_zero = [](const core::WorldState& seeding) {
+    core::Grams left = seeding.units.rows[0].stock[0];
+    for (const core::FieldRow& field : seeding.fields.rows) {
+      left += field.reaped_resource.value == 0 ? field.reaped_grams : 0;
+    }
+    return left;
+  };
+  core::WorldState held = with_seed_field();
+  failures += Expect(core::DeliverableAboveSeed(seeded, held, core::ResourceId{0}) == 9 * kTonne,
+                     "seed: the delivery may take 19 t less the 10 t of seed");
+  core::DeliverPlan(seeded, held);
+  failures += Expect(held.plan.delivered[0] == 9 * kTonne && left_of_zero(held) == 10 * kTonne,
+                     "seed: the turn ships 9 t and leaves the next sowing's 10 t");
+  core::WorldState opened = with_seed_field();
+  opened.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)] = {10 * kTonne};
+  core::DeliverPlan(seeded, opened);
+  failures += Expect(opened.plan.delivered[0] == 10 * kTonne,
+                     "seed: with the seed fund unsealed the whole debt goes");
+  // A SEED THE HARVEST BRINGS FIRST is not held (the winter rye: reaped in
+  // July, sown in September out of that very harvest). The same crop reaped
+  // from February and sown to May: the sowing takes its seed from February's
+  // harvest, and the whole debt goes today. The first draft held it, and
+  // failed the canon's rye 17 years of 108.
+  core::ProductionConfig reaped_first = seeded;
+  reaped_first.crops[0].harvest_from_month = 1;
+  core::WorldState rye_like = with_seed_field();
+  core::DeliverPlan(reaped_first, rye_like);
+  failures += Expect(rye_like.plan.delivered[0] == 10 * kTonne,
+                     "seed: a seed whose harvest comes before its sowing holds nothing today");
   return failures;
 }
 

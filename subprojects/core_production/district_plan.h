@@ -40,7 +40,17 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current);
 /// @pre The caller has seen the snow settle and has not yet let it take the
 ///      heaps; before the spring's figure (announced == 0) nothing is owed.
 /// @note kDeliverPlan does not come here: the chairman ships from the stores.
-void TakePlanDebtFromFields(WorldState& current);
+/// Never below the next sowing's seed, heaps and stores together
+/// (DeliverableAboveSeed) — the seed fund opens only to its unsealing.
+void TakePlanDebtFromFields(const ProductionConfig& config, WorldState& current);
+
+/// @brief Grams of `resource` the district's delivery may take from the heaps
+/// and the stores together, leaving the next sowing's seed (resources design
+/// §6, the ladder fills the seed first; boss seq 5, item 8). The seed fund
+/// opens only to the chairman's unsealing of it (FundKind::kSeed).
+Grams DeliverableAboveSeed(const ProductionConfig& config,
+                           const WorldState& current,
+                           ResourceId resource);
 
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —

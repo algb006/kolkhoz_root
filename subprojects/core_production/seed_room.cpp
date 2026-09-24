@@ -175,6 +175,35 @@ std::vector<Grams> SeedNeedByResource(const ProductionConfig& config, const Worl
   return need;
 }
 
+std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config, const WorldState& world) {
+  std::vector<Grams> held = SeedNeedByResource(config, world);
+  const auto today = static_cast<std::uint32_t>(world.calendar.date.month);
+  for (std::uint32_t index = 0; index < held.size(); ++index) {
+    if (held[index] <= 0) {
+      continue;
+    }
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    // THE NEXT HARVEST OF THE SAME SEED, from today, in days to its first
+    // month: when it comes before the sowing ends, the sowing takes its seed
+    // from that harvest, and nothing held today is its seed. The winter rye
+    // is sown in September out of July's rye; holding it from January
+    // failed the canon's rye 17 years of 108 (seq 5 item 8, first draft).
+    std::uint32_t harvest_in = kDaysPerYear;
+    for (const CropDef& crop : config.crops) {
+      if (crop.resource != resource) {
+        continue;
+      }
+      const std::uint32_t months =
+          (crop.harvest_from_month + kMonthsPerYear - today) % kMonthsPerYear;
+      harvest_in = std::min(harvest_in, months * kDaysPerMonth);
+    }
+    if (harvest_in < DaysToSowingEnd(config, world, resource)) {
+      held[index] = 0;
+    }
+  }
+  return held;
+}
+
 std::vector<Grams> SeedRoomBooked(const ProductionConfig& config, const WorldState& world) {
   std::vector<Grams> booked = SeedNeedByResource(config, world);
   for (std::uint32_t index = 0; index < booked.size(); ++index) {
