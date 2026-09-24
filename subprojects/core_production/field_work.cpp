@@ -150,6 +150,17 @@ bool LateSowingReturnsItsSeed(const ProductionConfig& config,
   return expected >= crop.sowing_norm_kg_per_ha;
 }
 
+bool SowingHasSeed(const ProductionConfig& config, const WorldState& world, CropId crop_id) {
+  if (crop_id.value >= config.crops.size()) {
+    return true;
+  }
+  const CropDef& crop = config.crops[crop_id.value];
+  if (!(crop.sowing_norm_kg_per_ha > 0.0F)) {
+    return true;  // sown by labour alone
+  }
+  return TakeableGrams(world, config, crop.resource) > 0;
+}
+
 Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop) {
   const float soil_factor = field.fertility / config.farming.fertility_neutral;
   // The sum of the two, capped exactly where the single number was.
@@ -913,7 +924,13 @@ void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, F
       if (field.crop.value == kInvalidDefIdValue) {
         FinishSowing(config, current, field);  // bare fallow: nothing to sow
       } else if (SowingMayOpen(config, field.crop, month, day_of_year, temperature) &&
-                 LateSowingReturnsItsSeed(config, field, field.crop, current.calendar.day)) {
+                 LateSowingReturnsItsSeed(config, field, field.crop, current.calendar.day) &&
+                 SowingHasSeed(config, current, field.crop)) {
+        // AND NOT WITH NO SEED AT ALL (farming design §7; boss, 2026-09-25,
+        // core's finding on 0.35.14): a pea field was opened and "sown" at
+        // share 0.000 with nothing in the stores, and the sowing crew's day
+        // went into bare ground. It waits harrowed, like the late sowing
+        // above, and opens the day a loan or an exchange brings its seed.
         // AND NOT FOR LESS THAN ITS SEED (boss, boss-core-epoch1-5 seq 53;
         // fields design, «Три области», 0.35.6): the snow's rule let a
         // potato ploughed in August be sown on day 32 of seed 1939's third

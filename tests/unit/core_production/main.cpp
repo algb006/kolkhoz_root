@@ -2131,7 +2131,7 @@ int CheckTheLateSowingMustReturnItsSeed() {
   config.growing_season_last_day = 44;  // day 30 + 13 to ripen still fits
   config.unit_types.resize(1);
   SetStorageKg(config.unit_types[0], 100000.0F);
-  const auto harrowed_on = [&config](std::uint32_t day_of_year) {
+  const auto harrowed_on = [&config](std::uint32_t day_of_year, core::Grams seed = 30'000'000) {
     core::WorldState world;
     world.calendar.tick =
         static_cast<core::Tick>(core::kDaysPerYear + day_of_year) * core::kTicksPerDay;
@@ -2140,7 +2140,7 @@ int CheckTheLateSowingMustReturnItsSeed() {
     core::UnitRow barn;
     barn.type = core::UnitTypeId{0};
     barn.level = 1;
-    barn.stock = {30'000'000};  // 30 t of seed potato
+    barn.stock = {seed};  // 30 t of seed potato unless asked otherwise
     core::AppendRow(world.units, barn);
     core::FieldRow field;
     field.kind = core::LandKind::kArable;
@@ -2161,6 +2161,16 @@ int CheckTheLateSowingMustReturnItsSeed() {
   failures += Expect(eleven_days_late == core::FieldPhase::kHarrowing && store_late == 30'000'000,
                      "late sowing: at the floor, 1.8 t a hectare does not — no sowing, the seed "
                      "stays in the store");
+  // AND NOT WITH NO SEED AT ALL (farming design §7, «При НУЛЕ семян сев не
+  // открывается»; boss, 2026-09-25; 0.35.15). The pair: an empty store keeps
+  // the field harrowed, its crew free; seed for half the field (12.5 t of
+  // the 25) opens the sowing as before, to sow the half.
+  const auto [empty_store, nothing] = harrowed_on(19, 0);
+  failures += Expect(empty_store == core::FieldPhase::kHarrowing && nothing == 0,
+                     "sowing: with no seed in the stores the sowing does not open");
+  const auto [half_store, half_seed] = harrowed_on(19, 12'500'000);
+  failures += Expect(half_store == core::FieldPhase::kSowing && half_seed == 12'500'000,
+                     "sowing: with seed for half the field it opens, to sow the half");
   return failures;
 }
 

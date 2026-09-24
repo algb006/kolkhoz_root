@@ -118,6 +118,15 @@ bool LateSowingReturnsItsSeed(const ProductionConfig& config,
                               CropId crop_id,
                               SimDay today);
 
+/// @brief Whether a sowing opened today would have ANY seed to put in: some
+///        grams of the crop's seed the sowing can take (TakeableGrams). Half
+///        the seed sows half the field; none sows nothing and is not opened
+///        (farming design §7, «При НУЛЕ семян сев не открывается»; boss,
+///        2026-09-25): the field stays harrowed, its crew free, kSeedShort
+///        burning, and the sowing opens the day seed comes in the window.
+/// @return true for a crop that takes no seed or is unknown.
+bool SowingHasSeed(const ProductionConfig& config, const WorldState& world, CropId crop_id);
+
 /// @brief How much of a fed horse's pull a horse on this traction ration
 /// has, 0..1 — the divisor PhaseWorkDays lengthens horse work by. One home,
 /// because the rescale below must undo exactly what the opening priced.
