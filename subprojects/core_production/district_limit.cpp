@@ -12,6 +12,7 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "herd_life.h"
+#include "livestock_homes.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -229,6 +230,17 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
       static_cast<float>(KolkhozHeads(current) + def.head_count) >
           PlacesForStock(config, current)) {
     return OrderRefusal::kNoRoomForStock;
+  }
+  // AND THE KIND'S OWN HOUSE (boss, boss-core-epoch1-5 seq 45-48; 0.35.4): a
+  // head with no place in its house stands billeted, and billeted it never
+  // breeds — fifteen piglets were sold to villages with no barn and none was
+  // ever born. A kind with no house (HomePlacesFree -1) keeps the old rule
+  // above alone.
+  if (def.kind == LimitLotKind::kLivestock) {
+    const float free = HomePlacesFree(config, current, def.livestock);
+    if (free >= 0.0F && free < static_cast<float>(def.head_count)) {
+      return OrderRefusal::kNoRoomForStock;
+    }
   }
   // THE STORE BEFORE THE POINTS too (boss seq 156): goods no store of the
   // village takes would stand at the gate for good, and the points with them.

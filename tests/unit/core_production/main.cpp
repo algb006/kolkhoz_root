@@ -43,6 +43,7 @@
 #include "field_work.h"
 #include "goods_loan.h"
 #include "herd_system.h"
+#include "livestock_homes.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
 #include "processing_shops.h"
@@ -8120,6 +8121,88 @@ int CheckTheColumnDrillInTheRain() {
 /// RescaleHorseWorkForRation; host, econ-host-fodder-and-winter seq 2): a
 /// phase priced on last autumn's hungry ration is re-priced when the herd
 /// day writes a full one — and only the horse work, only on the arable.
+/// THE KIND'S HOUSE (livestock_homes.h; boss, boss-core-epoch1-5 seq 45-48;
+/// 0.35.4). Pigs live in the barn (unit type 1, 20 places), horses in the horse
+/// yard (type 2). The pairs:
+///   (a) a pig lot with no barn is refused and costs nothing; with one, sold;
+///   (b, c) a kolkhoz pig herd under no roof moves into the barn when one
+///       stands, and stays billeted when none does;
+///   and a homeless horse herd is not moved: StableHorses is its door.
+int CheckTheKindsHouse() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.unit_types.resize(3);
+  SetLivestockHead(config.unit_types[1], 20.0F);
+  SetLivestockHead(config.unit_types[2], 20.0F);
+  config.livestock.resize(2);
+  config.livestock[0].home_unit = core::UnitTypeId{1};
+  config.livestock[1].home_unit = core::UnitTypeId{2};
+  config.horse_kind = core::LivestockKindId{1};
+  config.farming.billet_heads_per_yard = 2.0F;
+  core::LimitLotDef piglets;
+  piglets.points = 20;
+  piglets.era = 1;
+  piglets.kind = core::LimitLotKind::kLivestock;
+  piglets.livestock = core::LivestockKindId{0};
+  piglets.head_count = 15;
+  config.limit.lots = {piglets};
+  const auto make_world = [](bool barn) {
+    core::WorldState world;
+    world.epoch = core::Epoch::kOne;
+    world.limit.points = 100;
+    for (int family = 0; family < 10; ++family) {
+      core::AppendRow(world.families, core::FamilyRow{});  // 20 yard places
+    }
+    core::UnitRow yard;
+    yard.type = core::UnitTypeId{2};
+    yard.level = 1;
+    core::AppendRow(world.units, yard);
+    if (barn) {
+      core::UnitRow house;
+      house.type = core::UnitTypeId{1};
+      house.level = 1;
+      core::AppendRow(world.units, house);
+    }
+    return world;
+  };
+  core::OrderRow buy;
+  buy.kind = core::OrderKind::kOrderLimitLot;
+  buy.lot = core::LimitLotId{0};
+  core::WorldState barnless = make_world(false);
+  failures +=
+      Expect(core::OrderLimitLot(config, barnless, buy) == core::OrderRefusal::kNoRoomForStock &&
+                 barnless.limit.points == 100 && barnless.livestock_arrivals.rows.empty(),
+             "house: piglets with no barn are refused and cost nothing");
+  core::WorldState with_barn = make_world(true);
+  failures += Expect(core::OrderLimitLot(config, with_barn, buy) == core::OrderRefusal::kNone &&
+                         with_barn.limit.points == 80,
+                     "house: with a barn of 20 free places the fifteen piglets are sold");
+
+  const auto homeless = [](core::WorldState& world, std::uint16_t kind) {
+    core::HerdRow herd;
+    herd.kind = core::LivestockKindId{kind};
+    herd.adult_count = 5;
+    return core::AppendRow(world.herds, herd);
+  };
+  core::WorldState housed = make_world(true);
+  const core::HerdId pigs = homeless(housed, 0);
+  const core::HerdId horses = homeless(housed, 1);
+  core::HouseHomelessHerds(config, housed);
+  failures += Expect(housed.herds.rows[core::FindRow(housed.herds, pigs)].unit.value ==
+                         housed.units.row_ids[1].value,
+                     "house: the pigs under no roof move into the barn");
+  failures += Expect(housed.herds.rows[core::FindRow(housed.herds, horses)].unit.value ==
+                         core::kInvalidEntityIdValue,
+                     "house: the horses are not moved — StableHorses is their door");
+  core::WorldState unhoused = make_world(false);
+  const core::HerdId still = homeless(unhoused, 0);
+  core::HouseHomelessHerds(config, unhoused);
+  failures += Expect(unhoused.herds.rows[core::FindRow(unhoused.herds, still)].unit.value ==
+                         core::kInvalidEntityIdValue,
+                     "house: with no barn the pigs stay billeted");
+  return failures;
+}
+
 /// A LOT THE DISTRICT HAS NOT PRICED IS NOT SOLD, READ FROM THE SHIPPED TABLES
 /// (boss, boss-core-epoch1-5 seq 40 (а)): kerosene, coal, consumer goods and
 /// lime with gravel have no consumer in Epoch I, so their `points` cell was
@@ -8823,6 +8906,7 @@ int main() {
   failures += CheckTheRationRepricesTheHorseWork();
   failures += CheckTheGoodsLoan();
   failures += CheckTheUnpricedLotsOfTheShippedTables();
+  failures += CheckTheKindsHouse();
   failures += CheckTheFodderRungIsTheTeamsRationToTheNextOats();
   failures += CheckTheAmbulance();
   failures += CheckDistrictVisits();

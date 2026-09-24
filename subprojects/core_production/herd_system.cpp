@@ -20,6 +20,7 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "herd_life.h"
+#include "livestock_homes.h"
 #include "night_pasture.h"
 #include "stable_horses.h"
 #include "stock_ops.h"
@@ -710,6 +711,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     return;  // a table-less world keeps no animals
   }
   StableHorses(config, current);
+  // AND EVERY OTHER KIND INTO ITS HOUSE (livestock_homes.h; 0.35.4): a herd a
+  // limit lot founded stood billeted for good, and billeted it never bred.
+  HouseHomelessHerds(config, current);
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   std::vector<float> room = RoofRoom(current, config);
   float horse_backed_days = 0.0F;

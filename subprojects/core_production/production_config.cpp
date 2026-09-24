@@ -1138,6 +1138,28 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   if (unit_types != nullptr && !ParseUnitTypes(*unit_types, config.unit_types, error)) {
     return false;
   }
+  // THE KIND'S HOUSE, by key once both tables are in. An empty cell is a
+  // kind with no house (the goat); a key the unit types do not know refuses
+  // the load — a herd sent to a house that is not there would stand billeted
+  // for ever and say nothing.
+  if (livestock != nullptr && unit_types != nullptr) {
+    const std::uint32_t home_col = livestock->FindColumn("home_unit");
+    for (std::uint32_t row = 0;
+         home_col != kNoTableColumn && row < livestock->RowCount() && row < config.livestock.size();
+         ++row) {
+      const std::string_view key = livestock->CellText(row, home_col);
+      if (key.empty()) {
+        continue;
+      }
+      const std::uint32_t type = unit_types->FindRowByKey(key);
+      if (type == kNoTableRow) {
+        error = "livestock: row " + std::to_string(row) + " home_unit '" + std::string(key) +
+                "' is no unit type";
+        return false;
+      }
+      config.livestock[row].home_unit = DefIdFromRow<UnitTypeIdTag>(type);
+    }
+  }
   // The ladder is where every capacity lives, so a table set that has types
   // but no unit_levels.csv still has to be checked: a type naming a capacity
   // with no ladder behind it is exactly the silent zero this refuses.

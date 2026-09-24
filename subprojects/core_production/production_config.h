@@ -97,6 +97,14 @@ struct CropDef {
 ///     of the animal's life. Dividing them again would make her adult at
 ///     eight months of life and a horse at one year.
 struct LivestockDef {
+  /// THE KIND'S HOUSE (livestock.csv `home_unit`, a unit_types key; boss,
+  /// boss-core-epoch1-5 seq 47-48; livestock design, «Коровник и хлев — разные
+  /// постройки, свиньи с овцами в хлеву»): the type whose livestock places a
+  /// kolkhoz herd of this kind stands in. Invalid for a kind with no house (the
+  /// goat, a yard's animal). Two kinds may share one — the pig and the sheep
+  /// the barn — and then its places are shared by heads.
+  UnitTypeId home_unit;
+
   /// Manure per adult head per game year, kilograms.
   float manure_kg_per_year = 0.0F;
 

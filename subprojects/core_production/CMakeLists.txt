@@ -13,6 +13,7 @@ kolkhoz_add_module(core_production
     herd_system.cpp
     milk_cart.cpp
     goods_loan.cpp
+    livestock_homes.cpp
     stable_horses.cpp
     night_pasture.cpp
     production_alarms.cpp
