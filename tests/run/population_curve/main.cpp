@@ -749,8 +749,18 @@ int main(int argc, char** argv) {
   // the comment above describes a rule that is gone. The claim is still about
   // the first seed, 1931, and it opens in year 5 on 0.34.41, 0.34.44 and
   // 0.34.45 alike (8 villages of 9 on 0.34.45).
-  failures +=
-      run::Expect(walks.front().epoch >= core::Epoch::kTwo, "Epoch II is reached on the way");
+  // A KNOWN GAP AGAIN SINCE 0.34.51 (boss, boss-core-topup-horses seq 4):
+  // the era was reached in a world that handed the horses out twice. With
+  // them counted once the median village stands at 197 / 394 / 424 in years
+  // 7 / 14 / 33 against 257 / 516 / 345 on 0.34.50, and the first seed does
+  // not open Epoch II. The chairman's side is kept; what gives the first
+  // harvest back is a design question after the pause of Epoch I.
+  failures += run::KnownGap(walks.front().epoch >= core::Epoch::kTwo,
+                            "Epoch II is reached on the way",
+                            "epoch " + std::to_string(static_cast<int>(walks.front().epoch)) +
+                                " (0.34.50: Epoch II in year 5)",
+                            "boss, boss-core-topup-horses seq 4; reached in the world that "
+                            "handed the horses out twice");
   failures += run::KnownGap(walks.front().epoch == core::Epoch::kThree,
                             "Epoch III has come by year 33",
                             "epoch " + std::to_string(static_cast<int>(walks.front().epoch)));

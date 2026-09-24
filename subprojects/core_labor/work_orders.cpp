@@ -403,6 +403,14 @@ void ApplyStandingWork(const WorldState& world, WorldState& current, bool day_of
       continue;
     }
     WorkAssignment& work = current.residents.rows[resident_row].work;
+    // HIS HORSE GOES WITH HIM, and no other comes (0.34.51): the chairman
+    // takes one man off the accountant's plan, not a horse out of the pool.
+    // Ordered to cart, he rides on the horse the morning gave him — a
+    // ploughman's does — and walks if it gave him none. The plough and the
+    // harrow ride by their kind (RidesOut) whatever this says.
+    if (order.work != WorkKind::kHauling) {
+      work.rides_horse = IsHorseWork(order.work) ? 1U : 0U;
+    }
     work.kind = order.work;
     work.field = order.field;
     work.herd = order.herd;

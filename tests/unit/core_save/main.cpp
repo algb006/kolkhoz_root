@@ -215,6 +215,10 @@ core::WorldState MakeWorld() {
   // codec has to admit, and the site she digs at.
   second.work.kind = core::WorkKind::kExtraction;
   second.work.extraction_site = core::ExtractionSiteId{4};
+  // Save 88: the placement's horse mark, 1 away from its nought. On a digger
+  // it means nothing to the world (WorkRidesOut reads it for a carter only);
+  // here it is the byte the codec must carry.
+  second.work.rides_horse = 1;
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
@@ -1184,7 +1188,10 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     // the float did NOT land in padding, so 184 became 188.
     // 2026-09-18, save 59: distiller_supplied_month, 4 bytes by 2 residents.
     // Save 69: talk_until_day, 4 bytes by 2 residents; predicted, and held.
-    {"residents", 402, 0x7b93a74f44d77f4fULL},
+    // Save 88: +2 — the placement's horse mark, a byte for each of the two
+    // living residents; predicted 402 -> 404 with every other section
+    // unmoved before the build, and held.
+    {"residents", 404, 0xc4caec95d1ccf34cULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1595,8 +1602,9 @@ int main() {
                          loaded.stands.rows[0].matures_day == 337,
                      "a birch planting comes back birch, its hectares and both its days");
   failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
-                         loaded.residents.rows[1].work.extraction_site.value == 4,
-                     "a digger comes back at her pit");
+                         loaded.residents.rows[1].work.extraction_site.value == 4 &&
+                         loaded.residents.rows[1].work.rides_horse == 1,
+                     "a digger comes back at her pit, with the placement's horse mark");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
   failures += Expect(

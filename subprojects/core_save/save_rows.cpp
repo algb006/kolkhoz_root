@@ -196,7 +196,9 @@ static_assert(AggregateArity<OrderRow>() == 27,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(WorkAssignment) == 32,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorkAssignment>() == 8,
+// Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
+// fields; predicted before the build.
+static_assert(AggregateArity<WorkAssignment>() == 9,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
@@ -399,6 +401,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.mood);
 
   out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
+  out.WriteU8(row.work.rides_horse);  // save 88: the carter's horse (labor_state.h)
   WriteEntityId(out, row.work.field);
   WriteEntityId(out, row.work.herd);
   WriteEntityId(out, row.work.unit);
@@ -474,6 +477,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.mood = in.ReadFloat();
 
   row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));
+  row.work.rides_horse = source.ReadEnumValue(0, 1, "the carter's horse mark");
   row.work.field = ReadEntityId<FieldId>(in);
   row.work.herd = ReadEntityId<HerdId>(in);
   row.work.unit = ReadEntityId<UnitId>(in);

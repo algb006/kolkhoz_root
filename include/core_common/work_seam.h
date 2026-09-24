@@ -76,7 +76,8 @@ bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home);
 /// @brief Whether this assignment's road is measured at harness speed: its
 ///        kind rides out (labor_state.h, RidesOut), or it is the cut of a
 ///        meadow — the one harvest that rides, with a horse mower and hay
-///        carts (time design §7; farming design §5).
+///        carts (time design §7; farming design §5), or it is carting on
+///        the horse the day's placement gave (WorkAssignment::rides_horse).
 ///
 /// THE LABOUR HOUR AND THE RESIDENT'S ACTIVITY ASK THIS, and the assignment
 /// asks the same question of its job (AssignmentJob::harnessed). Until

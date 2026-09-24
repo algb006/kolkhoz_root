@@ -175,6 +175,15 @@ struct WorkforceCount {
 struct WorkAssignment {
   WorkKind kind = WorkKind::kNone;
 
+  /// 1 when the day's placement put a horse under him (save format 88): a
+  /// ploughman's or harrower's, always; a carter's, while one was left in the
+  /// pool. A carter with none walks, and the road, the day and the pace are
+  /// measured on foot (WorkRidesOut). STORED, not recomputed, and against the
+  /// law above for a reason: which carter got the last horse is the
+  /// placement's decision in its own order, and no reading of the state
+  /// afterwards can tell it (boss, boss-core-topup-horses seq 2).
+  std::uint8_t rides_horse = 0;
+
   FieldId field;  ///< Valid for the field kinds; invalid otherwise.
 
   HerdId herd;  ///< Valid for kHerdCare; invalid otherwise.

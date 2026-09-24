@@ -122,6 +122,51 @@ int TestRoadLimit() {
   return failures;
 }
 
+/// A CARTER RIDES ON A FREE HORSE AND WALKS WITHOUT ONE (boss,
+/// boss-core-topup-horses seq 2). The pair: a load 2.5 km out, a ploughing at
+/// home that takes one horse. With two horses the second goes to one carter,
+/// who rides there; the next carter finds none, is judged on foot and is out
+/// of reach. With one horse, in the plough, nobody carts at all — until
+/// 0.34.51 every carter was sent by the trot while the village had a horse.
+int TestACarterRidesOnlyAFreeHorse() {
+  int failures = 0;
+  const core::Vec2 origin{0.0F, 0.0F};
+  std::vector<core::AssignmentJob> jobs = {
+      FieldJob(core::WorkKind::kPlowing, 1, origin, 0.5F, 3),
+      FieldJob(core::WorkKind::kHauling, 2, {2500.0F, 0.0F}, 5.0F, 10),
+  };
+  jobs[1].harnessed = true;  // CollectJobs: the village has a horse
+  std::vector<core::AssignmentCandidate> candidates;
+  for (std::uint32_t row = 0; row < 3; ++row) {
+    candidates.push_back(Worker(row, origin));
+  }
+  core::AssignmentParams params = DayParams();
+  params.harness_hours_per_km = 0.1F;  // 2.5 km in a quarter hour; 7.75 h on foot
+  const auto carters = [&jobs, &candidates, &params](std::uint32_t horses, std::uint32_t& riding) {
+    params.draught_horses = horses;
+    std::vector<std::uint8_t> rides;
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params, &rides);
+    std::uint32_t placed = 0;
+    riding = 0;
+    for (std::uint32_t index = 0; index < plan.size(); ++index) {
+      if (plan[index] == 1) {
+        ++placed;
+        riding += rides[index];
+      }
+    }
+    return placed;
+  };
+  std::uint32_t riding_two = 0;
+  std::uint32_t riding_one = 0;
+  const std::uint32_t with_two = carters(2, riding_two);
+  const std::uint32_t with_one = carters(1, riding_one);
+  failures += Expect(with_two == 1 && riding_two == 1,
+                     "a free horse: one carter rides 2.5 km out, the next is out of reach on foot");
+  failures += Expect(with_one == 0,
+                     "every horse in the plough: the carter is judged on foot and nobody carts");
+  return failures;
+}
+
 int TestHorsePoolAndLock() {
   int failures = 0;
   // Plowing wants ~4 workers, but two horses cap the crew at two; the
@@ -2414,6 +2459,78 @@ int TestTheWorkOpenedAfterTheMorningIsCrewed() {
   return failures;
 }
 
+/// THE TOP-UP HANDS OUT ONLY THE HORSES THE MORNING LEFT (boss,
+/// boss-core-topup-horses seq 1; host's plan700 --horses): until 0.34.51 the
+/// hour-1 placement was given the whole herd again, and a ploughing opened
+/// after the morning took a horse already in the traces — a spring ploughing
+/// faster than the herd. The pair: one horse, out on the morning's ploughing,
+/// leaves the late ploughing without a man; two horses leave it one.
+int TestTheTopUpHasOnlyTheHorsesTheMorningLeft() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_top_up_horses";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "oat,5,9,0\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "top-up horses: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  // Day 30 is a Wednesday (four days a month, day 0 a Monday).
+  constexpr std::uint32_t kWorkingDay = 30;
+  // The late ploughing's crew at hour 1, and the morning's, with `horses`
+  // adult horses in the one herd.
+  const auto late_crew = [&labor](std::uint16_t horses, std::uint32_t& morning) {
+    DayWorld day(3);
+    const core::HerdId team = day.AddUnitHerd(horses, 50.0F);
+    // AddUnitHerd leaves the kind unset; row 0 is the horse of this livestock.csv.
+    day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+    // Half a man-day: one ploughman covers it, and takes one horse.
+    const core::FieldId early =
+        day.AddField(core::FieldPhase::kPlowing, 0.5F, core::Vec2{.x = 0.0F, .y = 20.0F});
+    const core::FieldId late =
+        day.AddField(core::FieldPhase::kIdle, 0.0F, core::Vec2{.x = 0.0F, .y = -20.0F});
+    const auto run_hour = [&labor, &day](std::uint32_t hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    };
+    const auto crew_of = [&day](core::FieldId field) {
+      std::uint32_t crew = 0;
+      for (const core::ResidentRow& person : day.world.residents.rows) {
+        crew += person.work.field.value == field.value ? 1U : 0U;
+      }
+      return crew;
+    };
+    run_hour(0);
+    morning = crew_of(early);
+    // Production opens the late field's ploughing after the placement.
+    core::FieldRow& opened = day.world.fields.rows[core::FindRow(day.world.fields, late)];
+    opened.phase = core::FieldPhase::kPlowing;
+    opened.work_days_remaining = 5.0F;
+    run_hour(1);
+    return crew_of(late);
+  };
+  std::uint32_t morning_one = 0;
+  std::uint32_t morning_two = 0;
+  const std::uint32_t one_horse = late_crew(1, morning_one);
+  const std::uint32_t two_horses = late_crew(2, morning_two);
+  failures += Expect(morning_one == 1 && morning_two == 1,
+                     "top-up horses: the morning ploughs the early field with one man and horse");
+  failures += Expect(one_horse == 0,
+                     "top-up horses: the one horse is in the traces, the late ploughing waits");
+  failures += Expect(two_horses == 1,
+                     "top-up horses: the second horse goes to the late ploughing at hour 1");
+  return failures;
+}
+
 /// THE REAPING PACE AND ITS SUN (boss seq 91 and 95; saves 63-64): the pay
 /// books the day's hand reaping on the arable with the day's daylight, and
 /// the morning rolls the best day over with the daylight IT was reaped under
@@ -3245,6 +3362,7 @@ int main() {
   failures += TestSurplusIdles();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();
+  failures += TestACarterRidesOnlyAFreeHorse();
   failures += TestWindowUrgency();
   failures += TestPlacementLevels();
   failures += TestBoundarySystemStub();
@@ -3283,6 +3401,7 @@ int main() {
   failures += TestTheAvralAndTheCancelledDayOff();
   failures += TestTheStoreBeingEmptiedGetsItsCarrier();
   failures += TestTheWorkOpenedAfterTheMorningIsCrewed();
+  failures += TestTheTopUpHasOnlyTheHorsesTheMorningLeft();
   failures += TestDiggersGoToAMarkedSite();
   failures += TestAWorkedOutSiteTakesItsOrderOff();
   failures += TestLogCartingRidesWithAHorse();

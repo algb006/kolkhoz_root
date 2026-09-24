@@ -359,14 +359,16 @@ class LaborSystem final : public ILaborSystem {
     if (!jobs.empty()) {
       const std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
       if (!candidates.empty()) {
+        std::vector<std::uint8_t> rides_horse;
         const std::vector<std::uint32_t> plan =
-            PlanDayAssignments(jobs, candidates, DayParams(current));
+            PlanDayAssignments(jobs, candidates, DayParams(current), &rides_horse);
         for (std::uint32_t index = 0; index < candidates.size(); ++index) {
           if (plan[index] == kNoJobAssigned) {
             continue;
           }
           const AssignmentJob& job = jobs[plan[index]];
           WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
+          work.rides_horse = rides_horse[index];
           work.kind = job.kind;
           work.field = job.field;
           work.herd = job.herd;
@@ -432,14 +434,25 @@ class LaborSystem final : public ILaborSystem {
     if (candidates.empty()) {
       return;
     }
+    // ONLY THE HORSES THE MORNING LEFT (boss, boss-core-topup-horses seq 1).
+    // Until 0.34.51 this handed the placement the whole herd again, and a
+    // ploughing opened after the morning took horses already in the traces:
+    // host measured spring ploughing and harrowing above the herd in a third
+    // of the canon's March and April seed-months.
+    AssignmentParams params = DayParams(current);
+    const std::uint32_t in_traces = HorsesInTraces(current);
+    params.draught_horses =
+        in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
+    std::vector<std::uint8_t> rides_horse;
     const std::vector<std::uint32_t> plan =
-        PlanDayAssignments(jobs, candidates, DayParams(current));
+        PlanDayAssignments(jobs, candidates, params, &rides_horse);
     for (std::uint32_t index = 0; index < candidates.size(); ++index) {
       if (plan[index] == kNoJobAssigned) {
         continue;
       }
       const AssignmentJob& job = jobs[plan[index]];
       WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
+      work.rides_horse = rides_horse[index];
       work.kind = job.kind;
       work.field = job.field;
       work.herd = job.herd;
@@ -447,6 +460,38 @@ class LaborSystem final : public ILaborSystem {
       work.stand = job.stand;
       work.extraction_site = job.extraction_site;
     }
+  }
+
+  /// @brief The horses the day's placements already hold, counted the way
+  ///        PlanDayAssignments hands them out: one a ploughman or harrower,
+  ///        one a carter the placement gave one (WorkAssignment::rides_horse),
+  ///        one a MEADOW for its mower (the brigade's, not the mower's).
+  /// @return The count, which may exceed the herd when the chairman's
+  ///         standing orders put more men on the plough than the accountant
+  ///         did. The pool left is nought then.
+  /// @note NOT EXACTLY the planner's arithmetic, and never on the dangerous
+  ///       side: PlanDayAssignments takes a meadow's horse before it fills the
+  ///       crew, so a meadow nobody could reach holds a horse that stands idle;
+  ///       nobody stands on it here, and the top-up may put that horse to work
+  ///       (static review of 0.34.51).
+  std::uint32_t HorsesInTraces(const WorldState& current) const {
+    std::uint32_t horses = 0;
+    std::vector<FieldId> meadows_mown;
+    for (const ResidentRow& person : current.residents.rows) {
+      const WorkAssignment& work = person.work;
+      if (IsHorseWork(work.kind) || (work.kind == WorkKind::kHauling && work.rides_horse != 0)) {
+        ++horses;
+        continue;
+      }
+      // The one harvest that rides is a meadow's cut (work_seam.h), and its
+      // horse is the brigade's: one a meadow, however many mow it.
+      const bool meadow_cut = work.kind == WorkKind::kHarvest && WorkRidesOut(current, work);
+      if (meadow_cut && std::ranges::find(meadows_mown, work.field) == meadows_mown.end()) {
+        meadows_mown.push_back(work.field);
+        ++horses;
+      }
+    }
+    return horses;
   }
 
   /// The holder's morning (manual/74-posts.md §4): he is out of the
@@ -1246,9 +1291,14 @@ class LaborSystem final : public ILaborSystem {
       // logs a carter-day, and the logs lay on the stands while every site
       // in the village waited for them (the Epoch II diagnosis; boss seq 27;
       // the meadow's same defect, parcel 312).
+      //
+      // AND ON THE HORSE HE WAS GIVEN, NOT ON THE HERD (0.34.51; boss,
+      // boss-core-topup-horses seq 2): "while the village has a horse" let a
+      // carter ride with every horse in the plough. The placement records who
+      // got one (WorkAssignment::rides_horse) and WorkRidesOut reads it, so
+      // the hour, the reach and the resident's activity ask one question.
       const WorkAssignment& work = current.residents.rows[row].work;
-      const bool rides = WorkRidesOut(current, work) ||
-                         (work.kind == WorkKind::kHauling && DraughtHorses(current) > 0);
+      const bool rides = WorkRidesOut(current, work);
       const WorkKind road_kind = rides ? WorkKind::kPlowing : WorkKind::kHarvest;
       const float travel = TravelHours(home, target, HoursPerKm(config_, road_kind));
       const float worked = HoursInside(hour, window.sunrise + travel, window.sunset - travel);

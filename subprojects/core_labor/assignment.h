@@ -216,6 +216,12 @@ inline constexpr std::uint32_t kNoJobAssigned = 0xFFFFFFFFU;
 /// @param candidates The workforce; order irrelevant likewise (ties break
 ///                   by resident_row, the stable identity).
 /// @param params     The day's parameters.
+/// @param rides_horse Optional, per candidate: 1 when his placement took a
+///                   horse out of the pool (a ploughman or harrower always;
+///                   a carter while one was left), else 0. A carter placed
+///                   after the pool ran dry was judged on foot — reach and
+///                   day's norm — and walks (WorkAssignment::rides_horse).
+///                   Resized to `candidates`; nullptr when not wanted.
 /// @return Per candidate (same order as `candidates`): the index into
 ///         `jobs` he works today, or kNoJobAssigned — surplus hands idle
 ///         and earn nothing (a trudoden is a work norm, not attendance).
@@ -224,7 +230,8 @@ inline constexpr std::uint32_t kNoJobAssigned = 0xFFFFFFFFU;
 ///       chance.
 std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& jobs,
                                               const std::vector<AssignmentCandidate>& candidates,
-                                              const AssignmentParams& params);
+                                              const AssignmentParams& params,
+                                              std::vector<std::uint8_t>* rides_horse = nullptr);
 
 }  // namespace core
 

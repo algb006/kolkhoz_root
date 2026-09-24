@@ -1264,11 +1264,18 @@ int main(int argc, char** argv) {
     std::cout << "idle_curve: первый год посеял " << first_year_sown_ha << " га из канона "
               << canon_sown_ha << " га (доля " << sown_share << ", полоса десяти зёрен "
               << kBandLowShare << "-" << kBandHighShare << ")\n";
-    failures += run::Expect(
+    // A KNOWN GAP SINCE 0.34.51 (boss, boss-core-topup-horses seq 4): the
+    // ten seeds' band was measured in a world that handed the horses out
+    // twice. With them counted once the first year sowed 10.4 ha (share
+    // 0.156) against 20.6 ha (0.310) on 0.34.50. The band is not moved.
+    failures += run::KnownGap(
         canon_sown_ha > 0.0F && sown_share >= kBandLowShare && sown_share <= kBandHighShare,
         "and the rescue costs the sowing window the head is bought in: the "
         "first year sows inside the ten seeds' band, two thirds of the "
-        "canon lost at the least");
+        "canon lost at the least",
+        std::to_string(sown_share) + " (0.34.50: 0.310)",
+        "boss, boss-core-topup-horses seq 4; the band was measured in the world that handed "
+        "the horses out twice");
     if (last_stalled_year > first_stalled_year) {
       std::cout << "idle_curve: и ещё один вставший год — " << last_stalled_year << ", через "
                 << (last_stalled_year - first_stalled_year)

@@ -422,9 +422,18 @@ int main() {
                "closes 31 %, so this floor is the one a settlement with all its land would "
                "need, and ours has ninety-three hectares it cannot raise (reconciliation "
                "§16.5)\n";
-  failures += run::Expect(grain_tonnes > floor_tonnes && grain_tonnes < 53.0,
-                          "the first harvest carries the village to the second, measured against "
-                          "a floor built on a design intent and not on this settlement");
+  // A KNOWN GAP SINCE 0.34.51 (boss, boss-core-topup-horses seq 4): the floor
+  // held on a world that handed the horses out twice, and the spring
+  // ploughed faster than its herd. With the horses counted once the first
+  // harvest fell from 29.3 t (0.34.50) to 25.2 t. What gives it back —
+  // horses at the start, the ploughing norm, sowing on the stubble — is a
+  // design question after the pause of Epoch I; the floor is not moved.
+  failures += run::KnownGap(grain_tonnes > floor_tonnes && grain_tonnes < 53.0,
+                            "the first harvest carries the village to the second, measured "
+                            "against a floor built on a design intent and not on this settlement",
+                            std::to_string(grain_tonnes) + " t (0.34.50: 29.3 t)",
+                            "boss, boss-core-topup-horses seq 4; the floor was measured in the "
+                            "world that handed the horses out twice");
 
   // And what the FIELDS gave, which is a different number and always was:
   // the peak above includes the start set's own eleven tonnes sitting in the

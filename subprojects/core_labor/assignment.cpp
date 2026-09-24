@@ -349,8 +349,12 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
 
 std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& jobs,
                                               const std::vector<AssignmentCandidate>& candidates,
-                                              const AssignmentParams& params) {
+                                              const AssignmentParams& params,
+                                              std::vector<std::uint8_t>* rides_horse) {
   std::vector<std::uint32_t> result(candidates.size(), kNoJobAssigned);
+  if (rides_horse != nullptr) {
+    rides_horse->assign(candidates.size(), 0U);
+  }
   std::uint32_t horses_left = params.draught_horses;
 
   for (const std::uint32_t job_index : OrderJobs(jobs)) {
@@ -405,15 +409,38 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       // harnessed job demanded an animal, the carts took all sixteen horses
       // every day — hauling always outranked ploughing — and the farm opened
       // its ploughing and then sent nobody to it, year after year.
+      bool took_horse = false;
+      float daily_norm = pick.daily_norm;
       if (horse_work) {
         if (horses_left > 0) {
           --horses_left;
+          took_horse = true;
         } else if (IsHorseWork(job.kind)) {
           break;  // no horse, no plough: this job cannot be done at all today
+        } else {
+          // A CARTER WITH NO HORSE IS JUDGED ON FOOT (boss, boss-core-topup-
+          // horses seq 2): he was ranked by the ride, and until 0.34.51 he
+          // was sent by it too — 2.5 km out at the trot with every horse in
+          // the plough. The walk decides whether he may go and what his day
+          // is worth; too far to walk, and the next in the queue is asked.
+          AssignmentJob on_foot = job;
+          on_foot.harnessed = false;
+          RankedPick walking;
+          if (!ConsiderCandidate(on_foot,
+                                 candidates[pick.candidate_index],
+                                 pick.candidate_index,
+                                 params,
+                                 walking)) {
+            continue;
+          }
+          daily_norm = walking.daily_norm;
         }
       }
       result[pick.candidate_index] = job_index;
-      expected_output += pick.daily_norm;
+      if (rides_horse != nullptr) {
+        (*rides_horse)[pick.candidate_index] = took_horse ? 1U : 0U;
+      }
+      expected_output += daily_norm;
       ++placed;
     }
   }

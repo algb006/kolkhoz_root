@@ -184,6 +184,14 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
   if (RidesOut(work.kind)) {
     return true;
   }
+  // A CARTER RIDES ON THE HORSE THE PLACEMENT GAVE HIM, and on no other
+  // (boss, boss-core-topup-horses seq 2). Until 0.34.51 the labour hour let
+  // every carter ride while the village had one horse anywhere, and this
+  // function let none: a carter 2.5 km out was sent by the trot with every
+  // horse in the plough, and his activity walked the road his pay rode.
+  if (work.kind == WorkKind::kHauling) {
+    return work.rides_horse != 0;
+  }
   if (work.kind != WorkKind::kHarvest) {
     return false;
   }
