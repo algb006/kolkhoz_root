@@ -18,6 +18,12 @@
 #include "herd_life.h"
 
 namespace core {
+namespace {
+
+/// The fewest heads a stabled team needs for one of them to be its stallion.
+constexpr std::uint16_t kLeastBreedingPair = 2;
+
+}  // namespace
 
 void StableHorses(const ProductionConfig& config, WorldState& current) {
   if (current.chairman.horses_stabled != 0 || config.groom_post.value == kInvalidDefIdValue ||
@@ -83,10 +89,24 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
   // founded takes its share of sires. That is the whole difference between
   // this call and the one that was deleted — founding a herd, not correcting
   // one every day.
+  //
+  // AND A TEAM OF TWO OR MORE ALWAYS HAS ITS STALLION (boss, boss-core-
+  // epoch1-5 seq 22, option б; livestock design, «Конюшня делает две
+  // вещи»: «в сведённом табуне жеребец выводится»). The share alone rounds
+  // to nought below eight heads (0.07 x 7 + 0.5 < 1), so a team stabled late
+  // came in as mares only and never foaled: seed 1939 with a year of
+  // inaction was stabled at four heads and was down to two in its sixth
+  // year. That step by head count was nowhere in the design and nothing
+  // showed it to the player. One head stays one head: a pair is the least
+  // that can breed.
   if (gathered != kNoRow) {
     HerdRow& team = current.herds.rows[gathered];
     if (team.kind.value < config.livestock.size()) {
-      team.adult_male_count = TargetMales(config.livestock[team.kind.value], team.adult_count);
+      const LivestockDef& kind = config.livestock[team.kind.value];
+      team.adult_male_count = TargetMales(kind, team.adult_count);
+      if (kind.sexed != 0 && team.adult_count >= kLeastBreedingPair && team.adult_male_count == 0) {
+        team.adult_male_count = 1;
+      }
     }
   }
   current.chairman.horses_stabled = 1;

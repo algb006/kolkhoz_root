@@ -49,6 +49,7 @@
 #include "production_config.h"
 #include "production_orders.h"
 #include "seed_room.h"
+#include "stable_horses.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
@@ -3371,6 +3372,48 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
         announced_twice || stabled.step_events[index].kind == core::EventKind::kHorsesStabled;
   }
   failures += Expect(!announced_twice, "the horses are gathered once in a campaign");
+  return failures;
+}
+
+/// A TEAM STABLED LATE STILL HAS ITS STALLION (boss, boss-core-epoch1-5 seq
+/// 22, option б): at the horse's share of 0.07 the rounding gave none below
+/// eight heads. The pair: four mares come in with a stallion; one head stays
+/// one head.
+int CheckAStabledTeamOfTwoOrMoreHasAStallion() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{0};  // "cow" plays the horse here
+  config.groom_post = core::ProfessionId{3};
+  config.livestock[0].males_share = 0.07F;  // the horse's share (livestock.csv)
+  const auto sires_after_stabling = [&config](std::uint16_t lone_heads) {
+    core::WorldState world;
+    core::UnitRow yard;
+    yard.level = 2;
+    const core::UnitId yard_id = core::AppendRow(world.units, yard);
+    core::FamilyRow household;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    // The start's team: lone heads billeted one a yard, none of them a sire.
+    for (std::uint16_t head = 0; head < lone_heads; ++head) {
+      core::HerdRow horse;
+      horse.kind = config.horse_kind;
+      horse.household = family;
+      horse.adult_count = 1;
+      horse.adult_age_game_years_total = 5.0F;
+      core::AppendRow(world.herds, horse);
+    }
+    core::ResidentRow groom;
+    groom.family = family;
+    groom.post.profession = config.groom_post;
+    groom.post.unit = yard_id;
+    core::AppendRow(world.residents, groom);
+    core::StableHorses(config, world);
+    return world.herds.rows.empty() ? 0xFFFFU : world.herds.rows[0].adult_male_count;
+  };
+  failures +=
+      Expect(sires_after_stabling(4) == 1, "four lone heads stabled: the team has its stallion");
+  failures += Expect(sires_after_stabling(1) == 0, "one head stabled: no pair, no stallion");
+  failures += Expect(sires_after_stabling(16) == 1,
+                     "sixteen heads: the share's own one, not a second on top");
   return failures;
 }
 
@@ -8568,6 +8611,7 @@ int main() {
   failures += CheckDroughtReadsTheAfternoon();
   failures += CheckABrokenPlanPositionsLineIsNamedNotFatal();
   failures += CheckHorsesComeInWhenAGroomIsAppointed();
+  failures += CheckAStabledTeamOfTwoOrMoreHasAStallion();
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckTheSowingWillNotFit();
