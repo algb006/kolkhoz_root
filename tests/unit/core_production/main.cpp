@@ -6449,18 +6449,32 @@ int CheckTheFodderRungIsTheTeamsRationToTheNextOats() {
     planned.ledger.current.harvest[oat.value] = 1'000'000'000;
     const core::Grams ration = core::FodderClaimGrams(config, planned, oat);
     const core::Grams half = ration / 2;
+    // With oats that keep: the herd's share is exactly the stock above the
+    // plan. With the shipped rot (0.35.11) the plan's rung ALSO holds what it
+    // will lose to rot by the turn, so the herd's share is smaller still —
+    // the plan here is 95 % of a 1000 t store, and its rot eats the half.
+    core::ProductionConfig keeps = config;
+    keeps.spoil_days.assign(keeps.spoil_days.size(), 0.0F);
     planned.plan.due[oat.value] = 1'000'000'000 - half;
+    const core::Grams oat_kept = core::FodderClaimGrams(keeps, planned, oat);
+    const core::Grams oat_rots = core::FodderClaimGrams(config, planned, oat);
     std::cout << "fodder rung: the plan holds the oats — ration "
               << static_cast<double>(ration) / 1.0e6 << " t, oat "
-              << static_cast<double>(core::FodderClaimGrams(config, planned, oat)) / 1.0e6
-              << " t, barley "
+              << static_cast<double>(oat_kept) / 1.0e6 << " t keeping, "
+              << static_cast<double>(oat_rots) / 1.0e6 << " t rotting, barley "
               << static_cast<double>(core::FodderClaimGrams(config, planned, barley)) / 1.0e6
               << " t\n";
-    failures += Expect(ration > may && core::FodderClaimGrams(config, planned, oat) == half,
+    failures += Expect(ration > may && oat_kept == half,
                        "fodder rung: the plan's oats do not cover the team");
-    failures += Expect(
-        barley_near(core::FodderClaimGrams(config, planned, barley), barley_for_rest(ration, half)),
-        "fodder rung: barley is held for what the plan's oats leave uncovered");
+    failures +=
+        Expect(oat_rots < half, "fodder rung: the plan's rot margin is held from the team too");
+    const core::Grams barley_kept = core::FodderClaimGrams(keeps, planned, barley);
+    failures += Expect(barley_near(barley_kept, barley_for_rest(ration, half)),
+                       "fodder rung: barley is held for what the plan's oats leave uncovered");
+    // The barley's own room (its max_share of the ration) is exactly that
+    // half here, so fewer oats cannot raise it — but never lower it.
+    failures += Expect(core::FodderClaimGrams(config, planned, barley) >= barley_kept,
+                       "fodder rung: the plan's rot margin never lowers the barley held");
   }
   {
     // The second May: last year's oats reaping brought in half the ration.

@@ -155,6 +155,15 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& 
   }
   ResourceAmounts allowance =
       HeldAboveFodder(world, seed_norms, config.feed_values.size(), true, config.milk_resource);
+  // AND WHAT THOSE RUNGS WILL LOSE TO ROT BEFORE THEY ARE USED (0.35.11;
+  // core_common/fund_ladder.h, AddRungRotMargins — one home with the people's
+  // issue). Held exactly, the herds ate down to the rung and the store's rot
+  // took the rest out of the seed: on branch E3 seed 1931 the spring wheat
+  // was sown on 2462 kg of its 2520.
+  const ResourceAmounts rungs = allowance;
+  const ResourceAmounts seed_part = SeedRungLeft(world, seed_norms, config.feed_values.size());
+  AddRungRotMargins(
+      world, seed_norms, rungs, seed_part, config.spoil_days, config.keeping_factor, allowance);
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
     // counted gross, a construction's reserve R of a planned crop came out as

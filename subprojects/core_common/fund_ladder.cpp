@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "core_common/calendar.h"
 #include "core_common/land_state.h"
 #include "core_common/order_state.h"
+#include "core_common/spoilage.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 
@@ -235,6 +237,59 @@ ResourceAmounts FodderRungLeft(const WorldState& world,
     left[index] = RungLeft(std::max(claim, fund), Unsealed(world, FundKind::kFodder, index));
   }
   return left;
+}
+
+namespace {
+
+/// Days from today to the end of the latest sowing window among the crops
+/// whose seed is `index`, never past `days_left` (the year's turn); the turn
+/// itself for a resource no crop sows. To the END of the window's last month:
+/// this month counts whole. Moved here from family_exchange.cpp (0.35.11).
+std::uint32_t SeedHorizonDays(std::span<const SeedNorm> seed_norms,
+                              const WorldState& world,
+                              std::uint32_t index,
+                              std::uint32_t days_left) {
+  const auto today = static_cast<std::uint32_t>(world.calendar.date.month);
+  std::uint32_t latest = 0;
+  bool any = false;
+  for (const SeedNorm& norm : seed_norms) {
+    if (norm.resource.value != index || norm.sow_to_month == kNoSowingMonth) {
+      continue;
+    }
+    const std::uint32_t months =
+        ((norm.sow_to_month + kMonthsPerYear - today) % kMonthsPerYear) + 1U;
+    latest = std::max(latest, months * kDaysPerMonth);
+    any = true;
+  }
+  return any ? std::min(latest, days_left) : days_left;
+}
+
+}  // namespace
+
+void AddRungRotMargins(const WorldState& world,
+                       std::span<const SeedNorm> seed_norms_by_crop,
+                       const ResourceAmounts& seed_and_plan,
+                       const ResourceAmounts& seed_part,
+                       std::span<const float> spoil_days,
+                       float keeping_factor,
+                       ResourceAmounts& reserve) {
+  const std::uint32_t days_left = kDaysPerYear - (world.calendar.day % kDaysPerYear);
+  for (std::uint32_t index = 0; index < seed_and_plan.size() && index < reserve.size(); ++index) {
+    const float days = index < spoil_days.size() ? spoil_days[index] * keeping_factor : 0.0F;
+    if (!(days > 1.0F)) {
+      continue;
+    }
+    const Grams seed =
+        index < seed_part.size() ? std::min(seed_part[index], seed_and_plan[index]) : 0;
+    const Grams plan = seed_and_plan[index] - seed;
+    if (plan > 0) {
+      reserve[index] += RotMarginGrams(plan, days, days_left);
+    }
+    if (seed > 0) {
+      reserve[index] +=
+          RotMarginGrams(seed, days, SeedHorizonDays(seed_norms_by_crop, world, index, days_left));
+    }
+  }
 }
 
 }  // namespace core

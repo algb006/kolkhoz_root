@@ -130,6 +130,32 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
                                 bool reserve_seed_fund,
                                 ResourceId carted_daily = ResourceId{});
 
+/// @brief Adds to `reserve` what the top two rungs will lose to rot before
+///        they are used, EACH TO ITS OWN DAY: the plan's part to the year's
+///        turn, the seed's part to the end of its crop's sowing window
+///        (SeedNorm::sow_to_month; the latest of the crops of one seed).
+///        spoilage.h's RotMarginGrams on each part, for a resource that
+///        keeps more than a day.
+///
+/// ONE HOME, since 0.35.11, for the people's issue (family_exchange.cpp,
+/// IssueReserve) and the herds' feed (herd_system.cpp, FeedAllowance). The
+/// herds held the rungs with no margin, ate down to them, and the store's
+/// rot took the rest out of the seed: seed 1931 on branch E3 sowed its
+/// spring wheat on 2462 kg of 2520 (econ-boss-first-harvest seq 16).
+/// @param seed_and_plan The two rungs as they stand, by ResourceId.
+/// @param seed_part The seed rung's part of them (SeedRungLeft).
+/// @param spoil_days Days each resource keeps, by ResourceId (resources.csv
+///        spoil_days); a missing or zero entry keeps.
+/// @param keeping_factor The stores' factor on spoil_days (spoilage.h).
+/// @param reserve Added to (`+=`), never cleared: what the caller holds back.
+void AddRungRotMargins(const WorldState& world,
+                       std::span<const SeedNorm> seed_norms_by_crop,
+                       const ResourceAmounts& seed_and_plan,
+                       const ResourceAmounts& seed_part,
+                       std::span<const float> spoil_days,
+                       float keeping_factor,
+                       ResourceAmounts& reserve);
+
 /// @brief Rung 3 as the people's issue must stay below it: THE FODDER CLAIM,
 ///        AND INSIDE IT THE FODDER FUND (resources design §6; boss seq 17) —
 ///        per resource the larger of last year's feed of the kolkhoz's herds

@@ -122,29 +122,6 @@ std::uint32_t EaterCount(const FoodConfig& config,
   return eaters;
 }
 
-/// Days until held seed of resource `index` is sown at the latest: to the end
-/// of the last sowing month of the crops it seeds, capped at `days_left` to
-/// the turn; the cap itself when no crop of it names a month.
-std::uint32_t SeedHorizonDays(const FoodConfig& config,
-                              const WorldState& world,
-                              std::uint32_t index,
-                              std::uint32_t days_left) {
-  const auto today = static_cast<std::uint32_t>(world.calendar.date.month);
-  std::uint32_t latest = 0;
-  bool any = false;
-  for (const SeedNormDef& norm : config.seed_norms) {
-    if (norm.resource.value != index || norm.sow_to_month == kNoSowingMonth) {
-      continue;
-    }
-    // To the END of the window's last month: this month counts whole.
-    const std::uint32_t months =
-        ((norm.sow_to_month + kMonthsPerYear - today) % kMonthsPerYear) + 1U;
-    latest = std::max(latest, months * kDaysPerMonth);
-    any = true;
-  }
-  return any ? std::min(latest, days_left) : days_left;
-}
-
 /// @brief Grams of each resource the automatic issue may not touch, dense by
 /// ResourceId: the two FUNDS the design names outright plus the fodder.
 ///
@@ -223,26 +200,16 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // sow_from_month). Taken to the turn, the seed potatoes held from January
   // to a May sowing carried half again of themselves — some 30 % of the seed
   // over-held against the lean season (static review of 0.34.42).
-  const std::uint32_t days_left = kDaysPerYear - (world.calendar.day % kDaysPerYear);
-  const auto margin = [](Grams held, float days, std::uint32_t horizon) {
-    return RotMarginGrams(held, days, horizon);  // one home with the seed room
-  };
-  for (std::uint32_t index = 0; index < seed_and_plan.size() && index < reserve.size(); ++index) {
-    const float days =
-        index < config.spoil_days.size() ? config.spoil_days[index] * config.keeping_factor : 0.0F;
-    if (!(days > 1.0F)) {
-      continue;
-    }
-    const Grams seed =
-        index < seed_part.size() ? std::min(seed_part[index], seed_and_plan[index]) : 0;
-    const Grams plan = seed_and_plan[index] - seed;
-    if (plan > 0) {
-      reserve[index] += margin(plan, days, days_left);
-    }
-    if (seed > 0) {
-      reserve[index] += margin(seed, days, SeedHorizonDays(config, world, index, days_left));
-    }
-  }
+  //
+  // ONE HOME SINCE 0.35.11 (core_common/fund_ladder.h, AddRungRotMargins):
+  // the herds hold the same margins now, and a copy here would drift.
+  AddRungRotMargins(world,
+                    config.seed_norms,
+                    seed_and_plan,
+                    seed_part,
+                    config.spoil_days,
+                    config.keeping_factor,
+                    reserve);
   return reserve;
 }
 
