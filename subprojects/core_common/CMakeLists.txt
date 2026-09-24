@@ -12,6 +12,7 @@ kolkhoz_add_module(core_common
     day_off.cpp
     district_visit_state.cpp
     fund_ladder.cpp
+    herd_age_band.cpp
     haul.cpp
     plot.cpp
     spoilage.cpp

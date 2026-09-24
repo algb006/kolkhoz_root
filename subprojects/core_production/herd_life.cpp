@@ -12,6 +12,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -65,8 +66,11 @@ std::uint16_t DrawFlow(float& accumulator, float rate) {
 /// of the spread below the band contributes nothing and the part above it
 /// contributes certainty, and neither is visible at the mean.
 ///
-/// @param mean_age  Mean adult age, game years.
-/// @param half_width Half the assumed spread, game years.
+/// Since 0.35.16 the spread is not assumed: it is the herd's own age band,
+/// youngest to oldest (core_common/herd_age_band.h).
+///
+/// @param mean_age  The band's middle, game years.
+/// @param half_width Half the band, game years.
 /// @return Deaths per adult per game year, 0..1.
 float AverageAgeHazard(float mean_age, float half_width, float low, float high) {
   const float band = high - low;
@@ -239,9 +243,10 @@ void RunMaturation(const ProductionConfig& config,
   if (grown == 0) {
     return;
   }
+  const float entry_age = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
+  WidenAdultAgeBand(herd, herd.adult_count, entry_age, entry_age);
   herd.adult_count = static_cast<std::uint16_t>(herd.adult_count + grown);
-  herd.adult_age_game_years_total +=
-      static_cast<float>(grown) * kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
+  herd.adult_age_game_years_total += static_cast<float>(grown) * entry_age;
   const std::uint16_t males_target = TargetMales(kind, herd.adult_count);
   if (kind.sexed == 0) {
     herd.adult_male_count = 0;
@@ -394,32 +399,20 @@ float MeanAdultAgeYears(const HerdRow& herd) {
              : herd.adult_age_game_years_total / static_cast<float>(herd.adult_count);
 }
 
-/// The assumed spread is the herd's, so it closes as the herd shrinks: a
-/// single head has an age, not a distribution, and reading a spread into it
-/// killed five-year-old horses at a fifth a year because part of the imagined
-/// spread lay past their lifespan.
-float AdultAgeHalfWidth(const LivestockDef& kind, std::uint16_t adults) {
-  if (adults == 0 || !(kind.life_game_years_max > 0.0F)) {
-    return 0.0F;
-  }
-  const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
-  const float crowd = 1.0F - (1.0F / static_cast<float>(adults));
-  return (kind.life_game_years_max - adult_from_years) * 0.5F * crowd;
-}
-
 std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uint16_t wanted) {
   if (wanted == 0 || herd.adult_count == 0) {
     return 0;
   }
   const std::uint16_t before = herd.adult_count;
-  const float mean_age = MeanAdultAgeYears(herd);
-  const float half_width = AdultAgeHalfWidth(kind, before);
   const std::uint16_t gone = TakeHeads(herd.adult_count, wanted);
   if (gone == 0) {
     return 0;
   }
-  // THE OLD ONES GO, not the average ones.
-  herd.adult_age_game_years_total -= static_cast<float>(gone) * (mean_age + half_width);
+  // THE OLD ONES GO, not the average ones: off the top of the herd's own age
+  // band (herd_age_band.h; 0.35.16). Until then off an ASSUMED spread around
+  // the mean, which lay past the lifespan for a herd that did not.
+  const float taken_age = CutOldestFromAdultAgeBand(herd, before, gone);
+  herd.adult_age_game_years_total -= static_cast<float>(gone) * taken_age;
   const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
   const float youngest_possible = static_cast<float>(herd.adult_count) * adult_from_years;
   herd.adult_age_game_years_total = herd.adult_age_game_years_total < youngest_possible
@@ -448,13 +441,19 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   }
   const auto adults = static_cast<float>(herd.adult_count);
   herd.adult_age_game_years_total += adults / static_cast<float>(kDaysPerYear);
+  AgeAdultAgeBand(herd, 1.0F / static_cast<float>(kDaysPerYear));
   if (!(kind.life_game_years_max > 0.0F)) {
     return;  // a kind whose lifespan the table does not name does not age out
   }
-  const float mean_age = MeanAdultAgeYears(herd);
-  const float half_width = AdultAgeHalfWidth(kind, herd.adult_count);
-  const float hazard_per_year =
-      AverageAgeHazard(mean_age, half_width, kind.life_game_years_min, kind.life_game_years_max);
+  // OVER THE AGES THE HERD HOLDS (herd_age_band.h; boss, core-boss-epoch1-6
+  // [3] line 1; 0.35.16): its youngest to its oldest head. No head dies of
+  // age before the oldest has reached the lifespan band — the mean and an
+  // assumed ±3.3 years killed one or two of the start's one-to-four-year-old
+  // horses in year 2 on five seeds of nine.
+  const float low = herd.adult_age_min_game_years;
+  const float high = herd.adult_age_max_game_years > low ? herd.adult_age_max_game_years : low;
+  const float hazard_per_year = AverageAgeHazard(
+      (low + high) * 0.5F, (high - low) * 0.5F, kind.life_game_years_min, kind.life_game_years_max);
   const float expected = adults * hazard_per_year / static_cast<float>(kDaysPerYear);
   auto dead = static_cast<std::uint16_t>(expected);
   if (NextRandomUnitFloat(world.rng) < expected - static_cast<float>(dead)) {

@@ -490,7 +490,10 @@ int CheckCohortFlows() {
     core::WorldState world = MakeHerdWorld(100000.0F);
     world.rng = core::SeedRngState(7, 0);
     const core::HerdId id = AddHerd(world, 0, 40, 20, true);
-    world.herds.rows[FindRow(world.herds, id)].adult_age_game_years_total = 40.0F * 3.0F;
+    core::HerdRow& aged = world.herds.rows[FindRow(world.herds, id)];
+    aged.adult_age_game_years_total = 40.0F * 3.0F;
+    aged.adult_age_min_game_years = 3.0F;  // every head three: the band (0.35.16)
+    aged.adult_age_max_game_years = 3.0F;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
       core::RefreshCalendarCaches(world.calendar);
@@ -1159,7 +1162,10 @@ int CheckNightPasture() {
   return failures;
 }
 
-/// The age hazard is read over the ages the herd HOLDS, not at its mean.
+/// The age hazard is read over the ages the herd HOLDS, not at its mean —
+/// and since 0.35.16 over its own band, youngest to oldest, not an assumed
+/// spread around the mean (core_common/herd_age_band.h; boss,
+/// core-boss-epoch1-6 [3] line 1).
 int CheckAgeSpread() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -1168,11 +1174,13 @@ int CheckAgeSpread() {
   config.livestock[0].life_game_years_max = 4.0F;
   config.livestock[0].births_per_game_year = 0.0F;  // ageing alone, no calves
 
-  const auto survivors_after = [&](float mean_age, std::uint32_t years) {
+  const auto survivors_after = [&](float youngest, float oldest, std::uint32_t years) {
     core::WorldState world = MakeHerdWorld(100000.0F);
     const core::HerdId id = AddHerd(world, 0, 40, 2, true);
     core::HerdRow& herd = world.herds.rows[FindRow(world.herds, id)];
-    herd.adult_age_game_years_total = 40.0F * mean_age;
+    herd.adult_age_game_years_total = 40.0F * (youngest + oldest) * 0.5F;
+    herd.adult_age_min_game_years = youngest;
+    herd.adult_age_max_game_years = oldest;
     for (std::uint32_t day = 0; day < years * core::kDaysPerYear; ++day) {
       world.calendar.tick += core::kTicksPerDay;
       core::RefreshCalendarCaches(world.calendar);
@@ -1181,18 +1189,43 @@ int CheckAgeSpread() {
     return world.herds.rows.empty() ? 0U
                                     : static_cast<std::uint32_t>(world.herds.rows[0].adult_count);
   };
+  // The oldest head's age after `years`, and how many stand.
+  const auto oldest_after = [&](float youngest, float oldest, std::uint32_t years) {
+    core::WorldState world = MakeHerdWorld(100000.0F);
+    const core::HerdId id = AddHerd(world, 0, 40, 2, true);
+    core::HerdRow& herd = world.herds.rows[FindRow(world.herds, id)];
+    herd.adult_age_game_years_total = 40.0F * (youngest + oldest) * 0.5F;
+    herd.adult_age_min_game_years = youngest;
+    herd.adult_age_max_game_years = oldest;
+    for (std::uint32_t day = 0; day < years * core::kDaysPerYear; ++day) {
+      world.calendar.tick += core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      core::RunHerdDay(config, world);
+    }
+    return world.herds.rows.empty() ? 0.0F : world.herds.rows[0].adult_age_max_game_years;
+  };
 
-  // A herd whose MEAN is below the band still loses heads, because part of
-  // it is past its years. At the mean alone this was exactly zero.
-  failures += Expect(survivors_after(1.5F, 1) < 40 && survivors_after(1.5F, 1) > 30,
+  // A herd whose MEAN is below the lifespan band still loses heads, because
+  // its eldest are past their years. At the mean alone this was exactly zero.
+  const std::uint32_t young = survivors_after(0.5F, 3.5F, 1);
+  failures += Expect(young < 40 && young > 30,
                      "a young herd buries a few of its eldest, not none and not many");
-  // And a herd inside the band does not lose half of itself in a year.
-  failures +=
-      Expect(survivors_after(3.5F, 1) > 20, "an old herd thins, it does not collapse in one year");
-  // The spiral: with the dead removed at the mean, the mean never fell and
-  // any herd that could not breed emptied itself. It must not.
-  failures +=
-      Expect(survivors_after(3.5F, 4) > 0, "and four years on there is still a herd to speak of");
+  // THE PAIR OF 0.35.16: a herd whose OLDEST head stays below the lifespan
+  // band all year loses nobody to age — the start's team of one to four
+  // years against an old age of six. The assumed spread of ±3.3 years
+  // around the mean killed one or two of them in year 2 on five seeds of 9.
+  failures += Expect(survivors_after(1.0F, 1.8F, 1) == 40,
+                     "no head dies of age before the oldest has reached the lifespan band");
+  // And a herd whose middle sits in the lifespan band does not lose half of
+  // itself in a year: its young half is not yet old.
+  failures += Expect(survivors_after(1.0F, 4.0F, 1) > 20,
+                     "a mixed herd thins, it does not collapse in one year");
+  // The spiral: with the dead removed at the mean, the mean never fell. The
+  // old go off the TOP of the band, so the herd grows younger by losing its
+  // elders: a year on, its oldest is below the 5 it would be untouched.
+  const float top = oldest_after(1.0F, 4.0F, 1);
+  failures += Expect(top > 1.0F && top < 4.9F,
+                     "the dead are the oldest: the band's top comes down as they go");
   return failures;
 }
 

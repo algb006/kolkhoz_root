@@ -9,6 +9,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "herd_life.h"
@@ -506,6 +507,7 @@ void ArriveLivestock(const ProductionConfig& config, WorldState& current) {
     if (arrival.stage == LivestockArrivalStage::kYoung) {
       herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count + arrival.head_count);
     } else {
+      const std::uint16_t adults_before = herd.adult_count;
       herd.adult_count = static_cast<std::uint16_t>(herd.adult_count + arrival.head_count);
       herd.adult_male_count = static_cast<std::uint16_t>(
           herd.adult_male_count + (arrival.male != 0 ? arrival.head_count : 0));
@@ -518,6 +520,7 @@ void ArriveLivestock(const ProductionConfig& config, WorldState& current) {
                                     static_cast<float>(kMonthsPerYear)
                               : 0.0F;
       herd.adult_age_game_years_total += entry * static_cast<float>(arrival.head_count);
+      WidenAdultAgeBand(herd, adults_before, entry, entry);
     }
     landed.push_back(current.livestock_arrivals.row_ids[row]);
   }

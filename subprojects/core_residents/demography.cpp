@@ -13,6 +13,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
 #include "core_common/random.h"
@@ -158,6 +159,7 @@ void DropFamilyIfEmpty(WorldState& current, FamilyId family) {
         continue;
       }
       HerdRow& flock = current.herds.rows[into];
+      MergeAdultAgeBand(flock, flock.adult_count, herd);
       flock.adult_count = static_cast<std::uint16_t>(flock.adult_count + herd.adult_count);
       flock.juvenile_count = static_cast<std::uint16_t>(flock.juvenile_count + herd.juvenile_count);
       flock.newborn_count = static_cast<std::uint16_t>(flock.newborn_count + herd.newborn_count);

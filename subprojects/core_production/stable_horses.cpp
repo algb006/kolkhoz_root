@@ -10,6 +10,7 @@
 
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/resident_state.h"
@@ -65,6 +66,7 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     HerdRow& team = current.herds.rows[gathered];
+    MergeAdultAgeBand(team, team.adult_count, herd);
     team.adult_count = static_cast<std::uint16_t>(team.adult_count + herd.adult_count);
     team.juvenile_count = static_cast<std::uint16_t>(team.juvenile_count + herd.juvenile_count);
     team.newborn_count = static_cast<std::uint16_t>(team.newborn_count + herd.newborn_count);

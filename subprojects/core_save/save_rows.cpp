@@ -173,9 +173,10 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
 // autumn_slaughter_done, a byte into the padding after disease_stage — 68
-// and twenty, predicted before.
-static_assert(sizeof(HerdRow) == 68, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 20,
+// and twenty, predicted before. Save 91: the adult age band, two floats after
+// the age total — 76 and twenty-two, predicted before the fields were added.
+static_assert(sizeof(HerdRow) == 76, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 22,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -902,6 +903,8 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteFloat(row.cull_progress);
   out.WriteFloat(row.hunger_progress);
   out.WriteFloat(row.adult_age_game_years_total);
+  out.WriteFloat(row.adult_age_min_game_years);  // save 91
+  out.WriteFloat(row.adult_age_max_game_years);  // save 91
 
   out.WriteU16(row.billeted_count);
   out.WriteFloat(row.unfed_days);
@@ -930,6 +933,8 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.cull_progress = in.ReadFloat();
   row.hunger_progress = in.ReadFloat();
   row.adult_age_game_years_total = in.ReadFloat();
+  row.adult_age_min_game_years = in.ReadFloat();
+  row.adult_age_max_game_years = in.ReadFloat();
 
   row.billeted_count = in.ReadU16();
   row.unfed_days = in.ReadFloat();

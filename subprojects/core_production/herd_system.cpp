@@ -14,6 +14,7 @@
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/fund_ladder.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -608,6 +609,7 @@ bool GiveToNeighbour(GiftQueues& queues,
       gift.adult_count = 1;
       gift.adult_male_count = TargetMales(kind, 1);
       gift.adult_age_game_years_total = age_years;
+      WidenAdultAgeBand(gift, 0, age_years, age_years);
     } else {
       gift.juvenile_count = 1;
     }
@@ -649,6 +651,7 @@ void PlaceSurplusHead(const ProductionConfig& config,
       const auto adults = static_cast<float>(herd.adult_count);
       const float mean = herd.adult_age_game_years_total / adults;
       age = kind.life_game_years_max > mean ? kind.life_game_years_max : mean;
+      CutOldestFromAdultAgeBand(herd, herd.adult_count, 1);  // the old one's end of the band
       herd.adult_count = static_cast<std::uint16_t>(herd.adult_count - 1);
       herd.adult_age_game_years_total -= age;
       const float youngest = static_cast<float>(herd.adult_count) * adult_from_years;

@@ -23,6 +23,7 @@
 #include "core_catalog/table_value.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/ledger_state.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
@@ -651,7 +652,9 @@ void AddHerd(WorldState& world,
   }
   const float youngest = adult_from_years < oldest ? adult_from_years : oldest;
   for (std::uint16_t head = 0; head < adults; ++head) {
-    herd.adult_age_game_years_total += DrawInRange(rng, youngest, oldest);
+    const float age = DrawInRange(rng, youngest, oldest);
+    herd.adult_age_game_years_total += age;
+    WidenAdultAgeBand(herd, head, age, age);  // the band of the ages drawn, not of the range
   }
   AppendRow(world.herds, herd);
 }

@@ -533,6 +533,17 @@ int main() {
       horses += herd.adult_count;
       const float age = herd.adult_age_game_years_total / static_cast<float>(herd.adult_count);
       young = young && age >= 1.0F && age <= 4.0F;
+      // AND THE BAND IS THE AGES DRAWN (0.35.16, herd_age_band.h): the age
+      // death reads it, not the mean. Inside 1..4, not a point (sixteen
+      // draws), and the mean inside it.
+      // The start's team stands one head a yard until it is stabled
+      // (stable_horses.cpp merges the bands): a one-head band is its age.
+      const bool point_only_if_one =
+          herd.adult_count == 1 || herd.adult_age_max_game_years > herd.adult_age_min_game_years;
+      young = young && herd.adult_age_min_game_years >= 1.0F &&
+              herd.adult_age_max_game_years <= 4.0F && point_only_if_one &&
+              age >= herd.adult_age_min_game_years - 1.0e-4F &&
+              age <= herd.adult_age_max_game_years + 1.0e-4F;
     }
     failures += Expect(horses == 16 && young,
                        "the start's sixteen horses are between one and four years old");

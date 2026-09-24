@@ -124,6 +124,13 @@ struct HerdRow {
   /// here may divide by it a second time (boss parcel 2026-08-30).
   float adult_age_game_years_total = 0.0F;
 
+  /// The youngest and the oldest adult head's age, GAME years: the band the
+  /// age death reads (core_common/herd_age_band.h; 0.35.16, save 91). Kept by
+  /// the flows that add, age and take adults; meaningless with no adults,
+  /// and set anew by the next head that comes in.
+  float adult_age_min_game_years = 0.0F;
+  float adult_age_max_game_years = 0.0F;
+
   /// Adult heads with no room under the roof, BILLETED at private yards
   /// (livestock design §6, boss answer 2026-08-30). They are not slaughtered
   /// and they stay kolkhoz property — the milk is the farm's, not the

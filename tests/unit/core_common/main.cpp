@@ -18,6 +18,8 @@
 #include "core_common/deadline.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/fund_ladder.h"
+#include "core_common/herd_age_band.h"
+#include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
 #include "core_common/post_shift.h"
@@ -1370,6 +1372,49 @@ int CheckTheTopOfTheLadder() {
   return failures;
 }
 
+/// THE HERD'S AGE BAND (herd_age_band.h; 0.35.16): set by the first heads,
+/// widened by more, folded when herds are gathered, aged, and cut from the
+/// top when the oldest go — the top of a uniform band, by the share gone.
+int TestHerdAgeBand() {
+  int failures = 0;
+  core::HerdRow herd;
+  core::WidenAdultAgeBand(herd, 0, 2.0F, 2.0F);
+  failures += Expect(herd.adult_age_min_game_years == 2.0F && herd.adult_age_max_game_years == 2.0F,
+                     "age band: the first head sets it, stale values or not");
+  core::WidenAdultAgeBand(herd, 1, 1.0F, 1.0F);
+  core::WidenAdultAgeBand(herd, 2, 4.0F, 4.0F);
+  failures += Expect(herd.adult_age_min_game_years == 1.0F && herd.adult_age_max_game_years == 4.0F,
+                     "age band: more heads widen it at both ends");
+  herd.adult_count = 4;
+  core::HerdRow other;
+  other.adult_count = 2;
+  other.adult_age_min_game_years = 0.5F;
+  other.adult_age_max_game_years = 3.0F;
+  core::HerdRow stale = herd;
+  stale.adult_age_min_game_years = 9.0F;  // a herd with no adults keeps stale numbers
+  stale.adult_age_max_game_years = 9.0F;
+  core::MergeAdultAgeBand(stale, 0, other);
+  failures +=
+      Expect(stale.adult_age_min_game_years == 0.5F && stale.adult_age_max_game_years == 3.0F,
+             "age band: gathered into a herd with no adults, the band is the newcomers'");
+  core::MergeAdultAgeBand(herd, 4, other);
+  failures += Expect(herd.adult_age_min_game_years == 0.5F && herd.adult_age_max_game_years == 4.0F,
+                     "age band: two herds gathered hold both bands");
+  core::AgeAdultAgeBand(herd, 0.5F);
+  failures += Expect(herd.adult_age_min_game_years == 1.0F && herd.adult_age_max_game_years == 4.5F,
+                     "age band: ageing moves both ends");
+  // Four of eight go from the top of 1.0..4.5: the band keeps 1.0..2.75, and
+  // the four were 2.75..4.5, a mean of 3.625.
+  const float taken = core::CutOldestFromAdultAgeBand(herd, 8, 4);
+  failures += Expect(std::abs(taken - 3.625F) < 1.0e-4F && herd.adult_age_min_game_years == 1.0F &&
+                         std::abs(herd.adult_age_max_game_years - 2.75F) < 1.0e-4F,
+                     "age band: the oldest half goes off the top, and the top comes down");
+  core::CutOldestFromAdultAgeBand(herd, 4, 4);
+  failures += Expect(herd.adult_age_min_game_years == 0.0F && herd.adult_age_max_game_years == 0.0F,
+                     "age band: with every adult gone it is empty");
+  return failures;
+}
+
 /// The visit's outcome crosses the seam packed into one amount: every field
 /// comes back, and an amount that is not a visit's is refused rather than read
 /// as a face that does not exist.
@@ -1488,6 +1533,7 @@ int CheckAlarmSubjectValue() {
 int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
+  failures += TestHerdAgeBand();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to
     // sunrise, off the day's list — and a word the base never wrote is still
