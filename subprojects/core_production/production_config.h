@@ -31,6 +31,7 @@
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
+#include "core_common/road_rules.h"
 
 namespace core {
 
@@ -663,8 +664,8 @@ struct FarmingConfig {
   /// this share of its speed, and a district lot ordered that day takes its
   /// base term divided by it. STUB until host's measure: with a clamp by the
   /// field the chairman must lose at most 8 % of any plan crop in the heaps,
-  /// or this rises to 0.7. STUB too: no exemption on gravel — the haul is
-  /// measured in a straight line and the core knows no route.
+  /// or this rises to 0.7. SINCE 0.36.8 the haul reads it as the muddy DIRT
+  /// bed's factor (road_rules.h, RoadBedFactor); gravel has its own.
   float mud_speed_factor = 0.5F;
   float life_speedup = 4.0F;
 
@@ -729,6 +730,10 @@ struct DistrictCarConfig {
 struct ProductionConfig {
   /// The district's ambulance (district_car.h).
   DistrictCarConfig district_car;
+
+  /// The roads' numbers (world_params.csv `road_`; road_rules.h): the haul's
+  /// speed by the bed's condition.
+  RoadRules roads;
 
   /// The last day of the year a standing crop is safe from the snow — the
   /// physical end of the growing season, handed in by the assembly from

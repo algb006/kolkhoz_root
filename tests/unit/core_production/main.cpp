@@ -7640,13 +7640,30 @@ int CheckMudSeason() {
   core::FieldRow field;
   field.center = core::Vec2{.x = 2000.0F, .y = 0.0F};
 
+  // THE HAUL READS THE DIRT BED since 0.36.8 (road_rules.h), not the word.
+  constexpr auto kDirt = static_cast<std::size_t>(core::RoadBed::kDirt);
   const core::HaulRate dry = core::FieldHaulRate(config, world, field);
-  world.weather.mud = true;
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kMud;
   const core::HaulRate muddy = core::FieldHaulRate(config, world, field);
   failures += Expect(dry.round_trip_hours > 0.0F &&
                          std::fabs(muddy.round_trip_hours - (2.0F * dry.round_trip_hours)) <
                              1e-3F * dry.round_trip_hours,
                      "in the mud a cart's round trip to the same store takes twice as long");
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kWet;
+  const core::HaulRate wet = core::FieldHaulRate(config, world, field);
+  failures += Expect(std::fabs(wet.round_trip_hours - (dry.round_trip_hours / 0.8F)) <
+                         1e-3F * dry.round_trip_hours,
+                     "on a wet bed after rain it takes 1 / 0.8 as long (road_wet_factor_dirt)");
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kFrozen;
+  const core::HaulRate frozen = core::FieldHaulRate(config, world, field);
+  failures += Expect(frozen.round_trip_hours < dry.round_trip_hours,
+                     "and on the frozen winter road it is faster than dry (roads design §1)");
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kSnow;
+  const core::HaulRate snowed = core::FieldHaulRate(config, world, field);
+  failures += Expect(snowed.round_trip_hours == dry.round_trip_hours,
+                     "in the snow the haul goes on runners at the dry pace (sleighs, STUB)");
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kDry;
+  world.weather.mud = true;
 
   config.limit.delivery_days = 2;
   world.weather.mud = false;
@@ -7659,14 +7676,16 @@ int CheckMudSeason() {
   failures += Expect(core::LimitBaseDeliveryDays(config, world) == 3,
                      "at 0.7 the term is 2 / 0.7 rounded: 3 days");
 
-  // THE DAWN THE WORD FLIPS: tonight's demand was priced with yesterday's mud.
+  // THE DAWN THE BED CHANGES: tonight's demand was priced with yesterday's.
   config.farming.mud_speed_factor = 0.5F;
   field.haul_days_remaining = 3.0F;
   field.haul_days_written = 4.0F;
   core::AppendRow(world.fields, field);
   core::FieldRow& heap = world.fields.rows.back();
-  world.weather.mud = true;
-  core::RescaleHaulForMud(config, false, world);
+  core::WeatherState yesterday = world.weather;
+  yesterday.road_beds.condition[kDirt] = core::RoadCondition::kDry;
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kMud;
+  core::RescaleHaulForBeds(config, yesterday, world);
   failures += Expect(heap.haul_days_remaining == 6.0F && heap.haul_days_written == 8.0F,
                      "the mud came overnight: yesterday's demand doubles, remaining and written "
                      "together");
@@ -7675,10 +7694,20 @@ int CheckMudSeason() {
   // 2026-09-19 — predicted 2 red, got 1).
   heap.haul_days_remaining = 6.0F;
   heap.haul_days_written = 8.0F;
-  world.weather.mud = false;
-  core::RescaleHaulForMud(config, true, world);
+  yesterday.road_beds.condition[kDirt] = core::RoadCondition::kMud;
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kDry;
+  core::RescaleHaulForBeds(config, yesterday, world);
   failures += Expect(heap.haul_days_remaining == 3.0F && heap.haul_days_written == 4.0F,
                      "and it went: halves back");
+  heap.haul_days_remaining = 4.0F;
+  heap.haul_days_written = 4.0F;
+  yesterday.road_beds.condition[kDirt] = core::RoadCondition::kDry;
+  world.weather.road_beds.condition[kDirt] = core::RoadCondition::kWet;
+  core::RescaleHaulForBeds(config, yesterday, world);
+  failures += Expect(std::fabs(heap.haul_days_remaining - 5.0F) < 1e-4F &&
+                         std::fabs(heap.haul_days_written - 5.0F) < 1e-4F,
+                     "rain overnight: the dry demand stretches by 1 / 0.8 — every condition, not "
+                     "only the mud");
   // No "no flip, no change" check: without a flip the ratio is one by
   // construction, so no implementation of this function could fail it.
   return failures;

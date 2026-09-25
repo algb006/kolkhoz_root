@@ -139,6 +139,70 @@ int CheckMonthIce(const std::filesystem::path& root) {
   return failures;
 }
 
+/// THE BEDS AS THE PHASE WRITES THEM (roads delivery 3): three years of one
+/// seed, day by day. Every condition the climate can make is met; the day
+/// after a warm rain with nothing over it, dirt is still wet and gravel is
+/// dry; a condition never changes inside a day.
+int CheckRoadBedsWalk(core::ISequentialPhase& phase) {
+  int failures = 0;
+  constexpr auto kDirt = static_cast<std::size_t>(core::RoadBed::kDirt);
+  constexpr auto kGravel = static_cast<std::size_t>(core::RoadBed::kGravel);
+  core::WorldState previous;
+  previous.world_seed = 12;
+  core::WorldState current;
+  std::array<std::uint32_t, static_cast<std::size_t>(core::RoadCondition::kRoadConditionCount)>
+      days{};
+  std::uint32_t day_after_rain = 0;
+  std::uint32_t day_after_rain_held = 0;
+  bool changed_inside_a_day = false;
+  core::WeatherState yesterday;
+  core::SimDay counted = 0;
+  while (previous.calendar.day < 3 * core::kDaysPerYear) {
+    current = previous;
+    phase.RunSequential(previous, current);
+    const bool new_day = current.calendar.day != previous.calendar.day;
+    if (!new_day && previous.calendar.tick > 0 &&
+        current.weather.road_beds.condition != previous.weather.road_beds.condition) {
+      changed_inside_a_day = true;
+    }
+    std::swap(previous, current);
+    if (previous.calendar.day == counted) {
+      continue;
+    }
+    counted = previous.calendar.day;
+    const core::WeatherState& today = previous.weather;
+    ++days[static_cast<std::size_t>(today.road_beds.condition[kDirt])];
+    const bool plain = today.precipitation == core::Precipitation::kNone && !today.mud &&
+                       today.snow_cover_days == 0 && today.air_temperature_celsius >= 5.0F;
+    if (yesterday.precipitation == core::Precipitation::kRain && plain) {
+      // THE RAIN DAY'S TEMPERATURE sets how long a bed dries (RoadBedsAfter):
+      // a cold rain gives every bed a day more, whatever the next day is.
+      // Found here, seed 12 day 108: rain at a mean of +0.3, then +8.5, and
+      // gravel still wet — the rule, not a fault; the warm case is asserted.
+      const bool cold_rain = yesterday.air_temperature_celsius < 5.0F;
+      const bool held = today.road_beds.condition[kDirt] == core::RoadCondition::kWet &&
+                        today.road_beds.condition[kGravel] ==
+                            (cold_rain ? core::RoadCondition::kWet : core::RoadCondition::kDry);
+      ++day_after_rain;
+      day_after_rain_held += held ? 1U : 0U;
+    }
+    yesterday = today;
+  }
+  std::cout << "road beds, dirt, 3 years of seed 12: dry " << days[0] << ", wet " << days[1]
+            << ", mud " << days[2] << ", frozen " << days[3] << ", snow " << days[4]
+            << "; the warm plain day after a rain: " << day_after_rain_held << " of "
+            << day_after_rain
+            << " wet on dirt, gravel dry after a warm rain and wet after a cold\n";
+  failures += Expect(days[0] > 0 && days[1] > 0 && days[2] > 0 && days[3] > 0 && days[4] > 0,
+                     "road beds: in three years the dirt bed is dry, wet, muddy, frozen and snowed "
+                     "— every condition has a day");
+  failures += Expect(day_after_rain > 0 && day_after_rain_held == day_after_rain,
+                     "road beds: every warm plain day after a rain, dirt is still wet; gravel has "
+                     "dried unless the rain was cold (and there are such days)");
+  failures += Expect(!changed_inside_a_day, "road beds: a bed's condition holds through its day");
+  return failures;
+}
+
 /// THE MONTH'S CLIMATE DOOR (core_time/month_climate.h; boss,
 /// boss-core-month-temperature-2026-09-25): for every month, the door's mean
 /// and mean afternoon against what the time phase itself writes on that
@@ -417,6 +481,7 @@ int main() {
   if (time_system != nullptr) {
     failures += CheckMonthClimate(*tables, time_system->TimeAndWeatherPhase());
     failures += CheckMonthIce(root);
+    failures += CheckRoadBedsWalk(time_system->TimeAndWeatherPhase());
     {
       // No weather table: the door says so, rather than answer the stub's.
       const auto bare = core::LoadTableSet((root / "no_weather").string(), &error);

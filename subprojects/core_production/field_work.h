@@ -142,7 +142,7 @@ float TractionFactor(const ProductionConfig& config, float traction_ration);
 /// (econ-host-fodder-and-winter seq 2): the base paid hungry ploughing, 114.29
 /// man-days against 80, in 6 seeds of 7 with a full oat store, and the
 /// winter's fodder decision never reached the spring's biggest work. The
-/// shape is RescaleHaulForMud's: priced at `was`, worked at `now`.
+/// shape is RescaleHaulForBeds's: priced at `was`, worked at `now`.
 /// @param traction_ration_was The ration before today's herd day wrote it.
 void RescaleHorseWorkForRation(const ProductionConfig& config,
                                float traction_ration_was,

@@ -204,10 +204,10 @@ class ProductionSystem final : public IProductionSystem {
   /// The slot's work for this tick; the pencil comparison is the caller's,
   /// after all of it, whichever early return this takes.
   void RunDecisionsOfTheHour(const WorldState& previous, WorldState& current) {
-    // Tonight's haul demand was priced with yesterday's mud; at the dawn the
-    // word flips, it is re-priced before anything today writes a new one.
+    // Tonight's haul demand was priced with yesterday's bed; at the dawn the
+    // bed changes, it is re-priced before anything today writes a new one.
     if (HourFromTick(current.calendar.tick) == 0U) {
-      RescaleHaulForMud(config_, previous.weather.mud, current);
+      RescaleHaulForBeds(config_, previous.weather, current);
     }
     // The order book first, and BEFORE the table-less early return below: a
     // world without crops still has units, and a pause is about a unit. An

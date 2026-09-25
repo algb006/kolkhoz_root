@@ -29,6 +29,7 @@
 #include "core_common/resident_activity.h"
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
+#include "core_common/road_rules.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -1539,6 +1540,64 @@ int TestRoadGraph() {
 /// weighs. A trunk (0,0)-(1000,0), a spur from its x = 400 up to (400,300), a
 /// PATH from its end (1000,0) up to (1000,500). Off-road weights: the default
 /// rules (walk 1.2, cart 2.5).
+/// The beds' condition (roads delivery 3; road_rules.h): wet on the rain
+/// day, dirt one day more and gravel none, longer in the cold; the mud on
+/// dirt and gravel, wet on asphalt; snow over all; frozen without snow.
+int TestRoadBeds() {
+  int failures = 0;
+  const core::RoadRules rules;
+  constexpr auto kDirt = static_cast<std::size_t>(core::RoadBed::kDirt);
+  constexpr auto kGravel = static_cast<std::size_t>(core::RoadBed::kGravel);
+  constexpr auto kAsphalt = static_cast<std::size_t>(core::RoadBed::kAsphalt);
+  using core::RoadCondition;
+  const core::RoadBeds dry{};
+  const core::RoadBeds rain = core::RoadBedsAfter(rules, dry, true, 12.0F, false, false);
+  failures += Expect(rain.condition[kDirt] == RoadCondition::kWet &&
+                         rain.condition[kGravel] == RoadCondition::kWet &&
+                         rain.condition[kAsphalt] == RoadCondition::kWet,
+                     "road beds: the rainy day wets every bed");
+  const core::RoadBeds after = core::RoadBedsAfter(rules, rain, false, 12.0F, false, false);
+  failures += Expect(after.condition[kDirt] == RoadCondition::kWet &&
+                         after.condition[kGravel] == RoadCondition::kDry &&
+                         after.condition[kAsphalt] == RoadCondition::kDry,
+                     "road beds: the day after, dirt is still wet and gravel has dried");
+  const core::RoadBeds second = core::RoadBedsAfter(rules, after, false, 12.0F, false, false);
+  failures += Expect(second.condition[kDirt] == RoadCondition::kDry,
+                     "road beds: and the second day dirt is dry again (road_dry_days_dirt 1)");
+  const core::RoadBeds cold_rain = core::RoadBedsAfter(rules, dry, true, 3.0F, false, false);
+  const core::RoadBeds cold_1 = core::RoadBedsAfter(rules, cold_rain, false, 3.0F, false, false);
+  const core::RoadBeds cold_2 = core::RoadBedsAfter(rules, cold_1, false, 3.0F, false, false);
+  const core::RoadBeds cold_3 = core::RoadBedsAfter(rules, cold_2, false, 3.0F, false, false);
+  failures += Expect(cold_2.condition[kDirt] == RoadCondition::kWet &&
+                         cold_2.condition[kGravel] == RoadCondition::kDry &&
+                         cold_3.condition[kDirt] == RoadCondition::kDry,
+                     "road beds: below +5 dirt stays wet one day longer, gravel too dries a day "
+                     "later — it is wet the day after, not the second");
+  const core::RoadBeds mud = core::RoadBedsAfter(rules, dry, false, 8.0F, true, false);
+  failures += Expect(mud.condition[kDirt] == RoadCondition::kMud &&
+                         mud.condition[kGravel] == RoadCondition::kMud &&
+                         mud.condition[kAsphalt] == RoadCondition::kWet,
+                     "road beds: the mud season muds dirt and gravel; asphalt only gets wet");
+  const core::RoadBeds snow = core::RoadBedsAfter(rules, rain, false, -5.0F, true, true);
+  const core::RoadBeds frost = core::RoadBedsAfter(rules, dry, false, -5.0F, false, false);
+  failures += Expect(snow.condition[kDirt] == RoadCondition::kSnow &&
+                         snow.condition[kAsphalt] == RoadCondition::kSnow &&
+                         frost.condition[kDirt] == RoadCondition::kFrozen,
+                     "road beds: snow lying covers every bed; frost without snow is the winter "
+                     "road");
+  failures += Expect(
+      core::RoadBedFactor(rules, 0.5F, RoadCondition::kMud, core::RoadBed::kDirt, true) == 0.5F &&
+          core::RoadBedFactor(rules, 0.5F, RoadCondition::kMud, core::RoadBed::kGravel, true) ==
+              0.95F &&
+          core::RoadBedFactor(rules, 0.5F, RoadCondition::kSnow, core::RoadBed::kDirt, false) ==
+              0.3F &&
+          core::RoadBedFactor(rules, 0.5F, RoadCondition::kSnow, core::RoadBed::kDirt, true) ==
+              1.0F,
+      "road beds: the mud's factor is mud_speed_factor on dirt and its own on gravel; the "
+      "snow slows a wheel and not a sleigh");
+  return failures;
+}
+
 int TestRoadIndex() {
   int failures = 0;
   const auto line = [](core::RoadKind kind, std::vector<core::Vec2> points) {
@@ -1766,6 +1825,7 @@ int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
+  failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadIndex();
   {

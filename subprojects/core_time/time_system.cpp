@@ -20,6 +20,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/daylight.h"
@@ -77,8 +78,10 @@ bool CoverSinceLeafFallAfter(bool carried,
 /// Phase 1 slot: clock, calendar caches, the day's weather.
 class TimeAndWeatherSlot final : public ISequentialPhase {
  public:
-  TimeAndWeatherSlot(const SeasonTable& seasons, std::uint8_t leaf_fall_month)
-      : seasons_(seasons), leaf_fall_month_(leaf_fall_month) {}
+  TimeAndWeatherSlot(const SeasonTable& seasons,
+                     std::uint8_t leaf_fall_month,
+                     const RoadRules& road_rules)
+      : seasons_(seasons), leaf_fall_month_(leaf_fall_month), road_rules_(road_rules) {}
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     current.calendar.tick = previous.calendar.tick + 1;
@@ -126,6 +129,16 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     current.weather.mud = first_tick_of_a_day
                               ? MudOnDay(seasons_, current.world_seed, current.calendar.day)
                               : previous.weather.mud;
+    // THE BEDS, once a day and from yesterday's, after the cover and the mud
+    // they read (roads design §1; road_rules.h, RoadBedsAfter).
+    current.weather.road_beds =
+        first_tick_of_a_day ? RoadBedsAfter(road_rules_,
+                                            previous.weather.road_beds,
+                                            current.weather.precipitation == Precipitation::kRain,
+                                            current.weather.air_temperature_celsius,
+                                            current.weather.mud,
+                                            current.weather.snow_cover_days > 0)
+                            : previous.weather.road_beds;
     // THE HEAT IS SAID ONCE A DAY, at its first tick, whatever the day is
     // called (boss, parcel 364): the afternoon — the mean plus the day's
     // swing — against +25. A rainy hot day is still a hot day.
@@ -145,6 +158,8 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
   SeasonTable seasons_;
 
   std::uint8_t leaf_fall_month_ = kDefaultLeafFallMonth;
+
+  RoadRules road_rules_;
 };
 
 /// Campaigns the climate's rain share is counted over: each day of the year
@@ -172,10 +187,10 @@ RainDayShares CountRainDays(const SeasonTable& seasons) {
 
 class TimeSystem final : public ITimeSystem {
  public:
-  TimeSystem(const SeasonTable& seasons, std::uint8_t leaf_fall_month)
+  TimeSystem(const SeasonTable& seasons, std::uint8_t leaf_fall_month, const RoadRules& road_rules)
       : seasons_(seasons),
         rain_day_shares_(CountRainDays(seasons)),
-        phase_(seasons, leaf_fall_month) {}
+        phase_(seasons, leaf_fall_month, road_rules) {}
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
 
@@ -596,7 +611,12 @@ std::unique_ptr<ITimeSystem> CreateTimeSystem(const ITableSet& tables, StubTable
       return nullptr;
     }
   }
-  return std::make_unique<TimeSystem>(seasons, leaf_fall_month);
+  RoadRules road_rules;
+  if (!ParseRoadRules(tables, road_rules, error)) {
+    LogError(error);
+    return nullptr;
+  }
+  return std::make_unique<TimeSystem>(seasons, leaf_fall_month, road_rules);
 }
 
 }  // namespace core

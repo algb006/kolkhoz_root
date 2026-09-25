@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
@@ -1104,6 +1105,9 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                                     error)) {
       return false;
     }
+  }
+  if (!ParseRoadRules(tables, config.roads, error)) {
+    return false;
   }
   // The life acceleration, from the same row core_labor reads it from: the
   // night pasture asks how old a child is, and a copy of the speedup here

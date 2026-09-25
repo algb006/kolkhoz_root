@@ -132,11 +132,13 @@ HaulRate RateToward(const ProductionConfig& config,
                     Vec2 destination,
                     TravelMode cart_mode = TravelMode::kCart) {
   const bool harnessed = DraughtHorsesFree(config, world);
-  // РАСПУТИЦА slows the cart and the carrier alike (WeatherState::mud); on
-  // every road still — the start's are all dirt, and the state of each road
-  // is delivery 3's (production_config.h, mud_speed_factor).
-  const float mud = world.weather.mud ? config.farming.mud_speed_factor : 1.0F;
-  const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * mud;
+  // THE BED'S CONDITION slows the cart and the carrier alike (0.36.8; roads
+  // design §1, §3) — wet after rain, muddy in the mud season, faster frozen.
+  // THE DIRT BED'S, for the whole way: the start's roads are all dirt and
+  // open ground is earth too. STUB until a gravel road is laid (delivery 7):
+  // then a way over two beds is still priced by dirt's.
+  const float bed = HaulBedFactor(config, world.weather);
+  const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * bed;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
   const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
   // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
@@ -462,14 +464,24 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-void RescaleHaulForMud(const ProductionConfig& config, bool mud_yesterday, WorldState& current) {
-  const float factor = config.farming.mud_speed_factor;
-  if (mud_yesterday == current.weather.mud || !(factor > 0.0F)) {
+float HaulBedFactor(const ProductionConfig& config, const WeatherState& weather) {
+  constexpr auto kDirt = static_cast<std::size_t>(RoadBed::kDirt);
+  return RoadBedFactor(config.roads,
+                       config.farming.mud_speed_factor,
+                       weather.road_beds.condition[kDirt],
+                       RoadBed::kDirt,
+                       /*on_runners=*/true);
+}
+
+void RescaleHaulForBeds(const ProductionConfig& config,
+                        const WeatherState& yesterday,
+                        WorldState& current) {
+  // Days go as one over the speed: priced at `was`, worked at `now`.
+  const float was = HaulBedFactor(config, yesterday);
+  const float now = HaulBedFactor(config, current.weather);
+  if (was == now || !(was > 0.0F) || !(now > 0.0F)) {
     return;
   }
-  // Days go as one over the speed: priced at `was`, worked at `now`.
-  const float was = mud_yesterday ? factor : 1.0F;
-  const float now = current.weather.mud ? factor : 1.0F;
   const float scale = was / now;
   const auto rescale = [scale](float& remaining, float& written) {
     remaining *= scale;

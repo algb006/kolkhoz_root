@@ -48,6 +48,7 @@
 #include "core_common/random.h"
 #include "core_common/readiness_state.h"
 #include "core_common/resident_state.h"
+#include "core_common/road_rules.h"
 #include "core_common/road_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
@@ -365,7 +366,16 @@ struct WeatherState {
   /// phase writes it. Saved
   /// anyway, for the reason the sky is: a loaded world answers before it has
   /// stepped once. Save 72.
+  ///
+  /// SINCE 0.36.8 THE HAUL READS the dirt bed's condition below instead,
+  /// which carries this word; the district's cart and lots still read it.
   bool mud = false;
+
+  /// What the weather has made of each bed today and how long each stays
+  /// wet (road_rules.h, RoadBedsAfter; roads design §1). Written once a day by
+  /// the weather phase from yesterday's beds — history, like the snow cover,
+  /// so saved. Save 95.
+  RoadBeds road_beds;
 };
 
 /// @brief The sports field's month (leisure §12, «Погода для уличных

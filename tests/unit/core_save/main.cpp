@@ -138,6 +138,11 @@ core::WorldState MakeWorld() {
   // field would still read back `false` and pass on a default-shaped world.
   world.weather.cover_since_leaf_fall = true;
   world.weather.mud = true;  // not the default, for the same reason
+  // The beds (save 95): every one off its default, and each different, so a
+  // codec that shifts one bed onto another cannot round-trip clean.
+  world.weather.road_beds.condition = {
+      core::RoadCondition::kMud, core::RoadCondition::kWet, core::RoadCondition::kFrozen};
+  world.weather.road_beds.wet_days_left = {1.5F, 0.25F, 2.0F};
   world.epoch = core::Epoch::kTwo;
   world.world_seed = 0x0BADC0FFEEULL;
   world.rng = core::SeedRngState(world.world_seed, 3);
@@ -826,6 +831,9 @@ core::WorldState MakeWitnessWorld() {
   witness.weather.snow_cover_days = 9;
   witness.weather.cover_since_leaf_fall = true;
   witness.weather.mud = true;
+  witness.weather.road_beds.condition = {
+      core::RoadCondition::kMud, core::RoadCondition::kWet, core::RoadCondition::kFrozen};
+  witness.weather.road_beds.wet_days_left = {1.5F, 0.25F, 2.0F};
 
   witness.epoch = core::Epoch::kTwo;
   witness.world_seed = 0x0BADC0FFEEULL;
@@ -938,6 +946,12 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back(
       {"weather.cover_since_leaf_fall", U8(world.weather.cover_since_leaf_fall ? 1U : 0U)});
   chunks.push_back({"weather.mud", U8(world.weather.mud ? 1U : 0U)});
+  for (std::size_t bed = 0; bed < core::kRoadBedCountValue; ++bed) {
+    chunks.push_back(
+        {"weather.road_beds.condition", Enum8(world.weather.road_beds.condition[bed])});
+    chunks.push_back(
+        {"weather.road_beds.wet_days_left", F32(world.weather.road_beds.wet_days_left[bed])});
+  }
 
   chunks.push_back({"epoch", Enum8(world.epoch)});
   chunks.push_back({"world_seed", U64(world.world_seed)});
@@ -1219,7 +1233,9 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // — a miss in the prediction's inventory, caught by the tripwire.
     // Save 89: +36 — the goods loan owed and taken, two amounts of two
     // resources (2 + 16 each); predicted 509 -> 545 before the build, held.
-    {"world", 545, 0x7b51f038030187ULL},
+    // Save 95: +15 — the road beds, a byte and a float for each of three;
+    // predicted 545 -> 560 with the nineteen other sections unmoved, held.
+    {"world", 560, 0x6f1115721e0c953eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1610,6 +1626,10 @@ int main() {
                      "and the word that separates the count's two zeros — a cover having lain "
                      "since the leaf fall — survives with it");
   failures += Expect(loaded.weather.mud, "and the mud season survives the round trip (save 72)");
+  failures +=
+      Expect(loaded.weather.road_beds.condition == world.weather.road_beds.condition &&
+                 loaded.weather.road_beds.wet_days_left == world.weather.road_beds.wet_days_left,
+             "and each bed's condition and wet days survive, bed by bed (save 95)");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.chairman.ration_auto == 0,

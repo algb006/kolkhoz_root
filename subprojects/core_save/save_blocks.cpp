@@ -88,9 +88,11 @@ static_assert(AggregateArity<CalendarState>() == 6,
 // tripwires fired, as predicted before the build.
 // 2026-09-19, save 72: РАСПУТИЦА, one byte — it sits in the tail padding, so
 // only the field count fired, as predicted before the build.
-static_assert(sizeof(WeatherState) == 32,
+// 0.36.8, save 95: the road beds, three conditions and three floats — 32 -> 48
+// and 13 -> 14, both predicted before the build and both held.
+static_assert(sizeof(WeatherState) == 48,
               "WeatherState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WeatherState>() == 13,
+static_assert(AggregateArity<WeatherState>() == 14,
               "WeatherState gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-17, save 49: the night pasture's standing order, its first night and
 // its camp took the block from 16 bytes to 24 and from four fields to seven.
@@ -616,6 +618,13 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // РАСПУТИЦА (save 72, boss seq 186). Recomputable from (seed, day) like the
   // sky, and saved for the sky's reason.
   out.WriteU8(world.weather.mud ? 1U : 0U);
+  // THE BEDS (save 95, roads delivery 3): each bed's condition and the days
+  // it stays wet. History like the cover — a bed is wet because it rained —
+  // so not recomputable from (seed, day), and lost for good if not saved.
+  for (std::size_t bed = 0; bed < kRoadBedCountValue; ++bed) {
+    out.WriteU8(static_cast<std::uint8_t>(world.weather.road_beds.condition[bed]));
+    out.WriteFloat(world.weather.road_beds.wet_days_left[bed]);
+  }
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -766,6 +775,14 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   // nor 1 is a corrupt save, not a truthy value.
   world->weather.cover_since_leaf_fall = source.ReadEnumValue(0, 1, "cover since leaf fall") != 0;
   world->weather.mud = source.ReadEnumValue(0, 1, "mud season") != 0;
+  for (std::size_t bed = 0; bed < kRoadBedCountValue; ++bed) {
+    world->weather.road_beds.condition[bed] = static_cast<RoadCondition>(source.ReadEnumValue(
+        0,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(RoadCondition::kRoadConditionCount) -
+                                  1U),
+        "road bed"));
+    world->weather.road_beds.wet_days_left[bed] = in.ReadFloat();
+  }
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

@@ -119,6 +119,51 @@ struct RoadRules {
   float strip_decay_pct_per_day = 0.08F;
 };
 
+/// @brief The beds' condition today, and how long each stays wet after the
+///        last rain (WeatherState::road_beds). History, like the snow cover:
+///        a bed is wet because it rained and has not dried, so it is carried
+///        from yesterday by the weather phase and saved.
+struct RoadBeds {
+  std::array<RoadCondition, kRoadBedCountValue> condition{};
+
+  /// Game days a bed will still be wet after today, by RoadBed; 0 when dry.
+  std::array<float, kRoadBedCountValue> wet_days_left{};
+};
+
+/// @brief What today's weather makes of each bed (roads design §1, §3).
+///
+/// A rainy day wets every bed and sets how long it stays wet: `dry_days` of
+/// its bed, and `dry_cold_extra_days` more below `dry_cold_below_celsius`.
+/// A dry day spends one of those days. On top, in this order: snow lying
+/// makes every bed snowed; the mud season makes dirt and gravel muddy (an
+/// asphalt bed stays wet — §3, «на асфальте почти нет»); a mean at or below
+/// freezing without snow is the frozen winter road; otherwise wet or dry.
+/// @param rules The roads' numbers.
+/// @param yesterday The beds as yesterday left them.
+/// @param rain_today Today's precipitation is rain.
+/// @param mean_celsius Today's mean air temperature.
+/// @param mud_season WeatherState::mud today.
+/// @param snow_lies WeatherState::snow_cover_days > 0 today.
+RoadBeds RoadBedsAfter(const RoadRules& rules,
+                       const RoadBeds& yesterday,
+                       bool rain_today,
+                       float mean_celsius,
+                       bool mud_season,
+                       bool snow_lies);
+
+/// @brief The speed multiplier of a bed in a condition.
+/// @param mud_speed_factor world_params.csv `mud_speed_factor` — the muddy
+///        DIRT bed's, kept under its own key (boss [36] item 2).
+/// @param on_runners A horse-drawn load on sleighs, or a person on foot: the
+///        snowed bed's wheel factor does not apply. STUB (boss [36] item 3):
+///        in the snow a horse-drawn haul goes at the dry pace — the sleigh
+///        replaces the cart, and the sleigh itself is not modelled yet.
+float RoadBedFactor(const RoadRules& rules,
+                    float mud_speed_factor,
+                    RoadCondition condition,
+                    RoadBed bed,
+                    bool on_runners);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_ROAD_RULES_H_
