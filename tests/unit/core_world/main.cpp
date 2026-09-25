@@ -531,27 +531,81 @@ int CheckStartRoads() {
                      "start roads: dirt and paths, the layout's wear on every stretch — the "
                      "street 65, the trunk 35, a path nothing");
   const core::RoadGraph graph = core::BuildRoadGraph(start.roads);
-  std::vector<std::uint32_t> degree(graph.nodes.size(), 0);
-  for (const core::RoadEdge& edge : graph.edges) {
-    ++degree[edge.from];
-    ++degree[edge.to];
-  }
+  // A DEAD-END ROAD IS A ROAD OF A DEAD-END BRANCH (roads design §4, boss
+  // ed0001e6): the branch leaves the network at ONE place and leads nowhere
+  // else — to no other part of the network, to no border. By the graph: some
+  // node, taken away, cuts every node of the road (other than itself) off
+  // from every way out. The whole branch counts, road_artel with
+  // road_north_forest. The village lanes are streets by boss's reading
+  // (driven every day) and are left out by name — no geometry says it.
+  const auto reaches_border_without = [&](core::RoadNodeIndex start_node,
+                                          core::RoadNodeIndex removed) {
+    std::vector<bool> seen(graph.nodes.size(), false);
+    std::vector<core::RoadNodeIndex> stack{start_node};
+    seen[start_node] = true;
+    seen[removed] = true;
+    while (!stack.empty()) {
+      const core::RoadNodeIndex node = stack.back();
+      stack.pop_back();
+      if (graph.nodes[node].border) {
+        return true;
+      }
+      for (const core::RoadEdgeIndex edge_index : graph.node_edges[node]) {
+        const core::RoadEdge& edge = graph.edges[edge_index];
+        if (edge.kind != core::RoadKind::kRoad) {
+          continue;  // a path is not a way for a cart
+        }
+        const core::RoadNodeIndex other = edge.from == node ? edge.to : edge.from;
+        if (!seen[other]) {
+          seen[other] = true;
+          stack.push_back(other);
+        }
+      }
+    }
+    return false;
+  };
   std::uint32_t dead_ends = 0;
   std::uint32_t borders = 0;
   std::string dead_names;
   for (std::size_t index = 0; index < start.roads.rows.size() && index < map_roads.size();
        ++index) {
     const core::RoadRow& road = start.roads.rows[index];
-    if (road.kind != core::RoadKind::kRoad) {
+    // THE VILLAGE'S STREETS are streets and not dead ends, whatever their
+    // ends do: boss's reading for the lanes («по ним ездят каждый день»)
+    // holds a fortiori for the main street, whose east end runs out past the
+    // last yard (0.36.0, named to boss).
+    if (road.kind != core::RoadKind::kRoad ||
+        map_roads[index].key.starts_with("road_village_lane") ||
+        map_roads[index].key == "road_village_street") {
       continue;
     }
-    bool dead = false;
+    // THE ROAD'S TWO ENDS: the node at chainage 0 and the one at its length.
+    // A road is a dead-end road when an END of it lies in a dead-end branch —
+    // one node, taken away, cuts that end off from every way out. Two of the
+    // nine are not dead end to end and are still the design's dead ends:
+    // road_hayfield crosses the trunk 1.2 km from its start and runs on 3 km
+    // to nothing, road_north_forest links the trunk and ford_track in its
+    // first 341 m and runs on 2.6 km to nothing. They lead nowhere, and that
+    // is what the count asks.
+    std::vector<core::RoadNodeIndex> ends;
     for (const core::RoadEdge& edge : graph.edges) {
       if (edge.road.value != start.roads.row_ids[index].value) {
         continue;
       }
-      for (const core::RoadNodeIndex node : {edge.from, edge.to}) {
-        dead = dead || (degree[node] == 1 && !graph.nodes[node].border);
+      if (edge.from_chainage_m == 0.0F) {
+        ends.push_back(edge.from);
+      }
+      if (std::abs(edge.to_chainage_m - core::RoadAxisLength(road.axis)) < 0.01F) {
+        ends.push_back(edge.to);
+      }
+    }
+    bool dead = false;
+    for (const core::RoadNodeIndex end : ends) {
+      if (graph.nodes[end].border) {
+        continue;
+      }
+      for (core::RoadNodeIndex cut = 0; cut < graph.nodes.size() && !dead; ++cut) {
+        dead = cut != end && !reaches_border_without(end, cut);
       }
     }
     if (dead) {
@@ -606,20 +660,16 @@ int CheckStartRoads() {
       }
     }
   }
-  // THE DESIGN'S NINE ARE NOT ITS DEFINITION'S, and the difference is named
-  // rather than fitted (0.36.0, to boss): by «один конец не выходит ни на
-  // другую дорогу, ни на границу карты» the graph finds TEN — the eight
-  // dead-end roads of the design's list, and the two village lanes, whose
-  // ends are free although boss reads them as streets; and road_artel is
-  // NOT one, its far end running on into road_north_forest, although the
-  // design lists it. So this asserts the definition's list, by name.
+  // THE DESIGN'S NINE, BY NAME (roads design §4, «Стартовая карта»). The
+  // first definition — a road with one free end — gave ten and not the
+  // design's list (the lanes in, road_artel out); named to boss on 0.36.0,
+  // and the design's definition was set to the branch (ed0001e6).
   const std::string expected_dead =
-      " road_cemetery road_east_pond road_hayfield road_lesnoy_spur road_new_village"
-      " road_north_forest road_pond_village road_resort_spur road_village_lane_e"
-      " road_village_lane_w";
-  failures += Expect(dead_names == expected_dead && borders == 4,
-                     "start roads: the graph's dead ends are the definition's ten, by name, and "
-                     "there are four ways out");
+      " road_artel road_cemetery road_east_pond road_hayfield road_lesnoy_spur"
+      " road_new_village road_north_forest road_pond_village road_resort_spur";
+  failures += Expect(dead_ends == 9 && dead_names == expected_dead && borders == 4,
+                     "start roads: the graph finds the design's nine dead-end roads, by name, and "
+                     "four ways out");
   // CONNECTIVITY (roads design §17): every ROAD in one network. A path may
   // stand alone — people reach it across open ground — and the backwater
   // shore path does, 1.4 km from the nearest road.
