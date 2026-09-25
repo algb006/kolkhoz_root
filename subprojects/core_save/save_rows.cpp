@@ -23,6 +23,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "core_common/aggregate_arity.h"
 #include "core_common/geometry.h"
@@ -245,7 +246,12 @@ static_assert(AggregateArity<NightOutingRow>() == 6,
 // Save 92: the road network. Predicted before the build: RoadRow 56 bytes
 // and eight fields (five bytes of words, the map road's two, a byte of
 // padding, two vectors), RoadPoint 12 and two, RoadStretch 4 and one.
-static_assert(sizeof(RoadRow) == 56, "RoadRow changed — update the codec and VERSION_SAVE");
+// THE TWO VECTORS BY THEIR OWN SIZE, as kAmountsSize does for the rest
+// (0.36.7): written as 56 — Clang's 24-byte vector — it held on the VM and
+// refused the host's MSVC Debug build, whose vector is larger. Found by the
+// first publish since the row was added (0.36.0 was never published).
+static_assert(sizeof(RoadRow) == 8 + (2 * sizeof(std::vector<RoadPoint>)),
+              "RoadRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadRow>() == 8,
               "RoadRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(RoadPoint) == 12, "RoadPoint changed — update the codec and VERSION_SAVE");
