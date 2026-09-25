@@ -4,6 +4,7 @@
 
 #include "core_catalog/map_roads.h"
 #include "core_common/road_graph.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 
@@ -56,6 +57,7 @@ bool PlaceMapRoads(const ITableSet& tables,
                           RoadStretch{.wear_pct = wear});
     AppendRow(world.roads, std::move(road));
   }
+  world.road_index = BuildRoadIndex(world.roads);
   return true;
 }
 

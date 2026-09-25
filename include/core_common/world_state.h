@@ -30,6 +30,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "core_common/calendar.h"
 #include "core_common/district_car_state.h"
@@ -54,6 +55,8 @@
 #include "core_common/wedding_state.h"
 
 namespace core {
+
+class RoadIndex;  // core_common/road_route.h — the network made queryable.
 
 // Epoch and kEpochCount live in core_common/calendar.h since 2026-09-15: the
 // day off is a pure function of the weekday and the epoch, and the host asked
@@ -918,6 +921,14 @@ struct WorldState {
   /// by stretch (roads design §13); SAVED (save 92) — a map road without its
   /// axis, which the loader puts back from tables/roads.csv. road_state.h.
   RoadTable roads;
+
+  /// The network made queryable (road_route.h): its graph, node-to-node
+  /// distances and a grid of its pieces. DERIVED and NOT SAVED — built from
+  /// `roads` at genesis and on load, and rebuilt by whatever changes the
+  /// network; immutable and shared by the copies of the world, so the double
+  /// buffer copies a pointer. Null in a world nobody indexed (RoadIndexOf
+  /// then builds one on the spot).
+  std::shared_ptr<const RoadIndex> road_index;
 
   /// The quiet trades out tonight (crime design §9); SAVED.
   /// night_trade_state.h.

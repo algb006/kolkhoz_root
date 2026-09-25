@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +21,7 @@
 #include "core_common/calendar.h"
 #include "core_common/herd_state.h"
 #include "core_common/road_graph.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
@@ -679,6 +682,86 @@ int CheckStartRoads() {
                                     components[edge.from] == components[graph.edges[0].from]);
   }
   failures += Expect(roads_joined, "start roads: every road of the start is one network");
+  // THE INDEX ON THE START MAP (road_route.h; 0.36.1): what it costs, and
+  // what a cart's way to the village weighs against the straight line from
+  // every standing unit. Printed with the base the ratio is read against.
+  {
+    const auto started = std::chrono::steady_clock::now();
+    const auto index = core::BuildRoadIndex(start.roads);
+    const auto built = std::chrono::steady_clock::now();
+    core::Vec2 centre{};
+    for (std::size_t row = 0; row < start.units.rows.size(); ++row) {
+      centre.x += start.units.rows[row].position.x / static_cast<float>(start.units.rows.size());
+      centre.y += start.units.rows[row].position.y / static_cast<float>(start.units.rows.size());
+    }
+    std::uint32_t without_road = 0;
+    float worst_ratio = 0.0F;
+    double ratio_sum = 0.0;
+    std::uint32_t measured = 0;
+    float checksum = 0.0F;
+    for (std::uint32_t round = 0; round < 50; ++round) {
+      for (const core::UnitRow& unit : start.units.rows) {
+        const core::Route way = index->Way(core::TravelMode::kCart, unit.position, centre);
+        checksum += way.effective_km;
+        if (round > 0) {
+          continue;
+        }
+        const float straight =
+            std::hypot(unit.position.x - centre.x, unit.position.y - centre.y) / 1000.0F;
+        without_road += way.cart_without_road ? 1U : 0U;
+        if (straight > 0.2F) {
+          const float ratio = way.effective_km / straight;
+          worst_ratio = std::max(worst_ratio, ratio);
+          ratio_sum += static_cast<double>(ratio);
+          ++measured;
+        }
+      }
+    }
+    const auto queried = std::chrono::steady_clock::now();
+    const auto micros = [](auto from, auto to) {
+      return std::chrono::duration_cast<std::chrono::microseconds>(to - from).count();
+    };
+    const std::size_t queries = 50 * start.units.rows.size();
+    std::cout << "start roads: index built in " << micros(started, built) << " us; " << queries
+              << " cart ways in " << micros(built, queried) << " us ("
+              << static_cast<double>(micros(built, queried)) / static_cast<double>(queries)
+              << " us each); from " << start.units.rows.size()
+              << " units to the village's centre the cart's effective km against the straight "
+                 "line: mean "
+              << (measured > 0 ? ratio_sum / measured : 0.0) << ", worst " << worst_ratio
+              << " (units farther than 200 m: " << measured << "); cart with no road "
+              << without_road << " (checksum " << checksum << ")\n";
+    failures += Expect(without_road == 0,
+                       "start roads: from every standing unit a cart finds a road to the village");
+    // BETWEEN FOUND PLACES (NetworkPlace): the same numbers, found once. The
+    // pair: every unit's answer the same both ways, and the cost printed.
+    const core::NetworkPlace hub = index->Locate(core::TravelMode::kCart, centre);
+    std::vector<core::NetworkPlace> found;
+    for (const core::UnitRow& unit : start.units.rows) {
+      found.push_back(index->Locate(core::TravelMode::kCart, unit.position));
+    }
+    bool same_both_ways = true;
+    for (std::size_t unit = 0; unit < found.size(); ++unit) {
+      same_both_ways =
+          same_both_ways &&
+          index->EffectiveKm(found[unit], hub) ==
+              index->EffectiveKm(core::TravelMode::kCart, start.units.rows[unit].position, centre);
+    }
+    const auto from_found = std::chrono::steady_clock::now();
+    float found_sum = 0.0F;
+    for (std::uint32_t round = 0; round < 50; ++round) {
+      for (const core::NetworkPlace& place : found) {
+        found_sum += index->EffectiveKm(place, hub);
+      }
+    }
+    const auto found_done = std::chrono::steady_clock::now();
+    std::cout << "start roads: " << queries << " ways between found places in "
+              << micros(from_found, found_done) << " us ("
+              << static_cast<double>(micros(from_found, found_done)) / static_cast<double>(queries)
+              << " us each; sum " << found_sum << ")\n";
+    failures += Expect(same_both_ways,
+                       "start roads: a way between found places weighs what the plain query does");
+  }
   // THE SAVE LEAVES A MAP ROAD'S AXIS OUT AND THE LOAD PUTS IT BACK (roads
   // design §2; save 92). The pair: the loaded axes and wears are the start's,
   // point for point — and the bytes are smaller than they would be with the

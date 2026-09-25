@@ -23,6 +23,7 @@
 #include "core_catalog/map_roads.h"
 #include "core_common/ids.h"
 #include "core_common/road_graph.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version.h"
@@ -569,6 +570,9 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       Refuse(error, std::string("section '") + kSectionRoads + "': " + road_error);
       return false;
     }
+    // The index is derived and never saved (world_state.h): built here from
+    // the roads just read, so a loaded world travels as the saved one did.
+    loaded.road_index = BuildRoadIndex(loaded.roads);
   }
 
   if (!OpenSection(in, kSectionLedger, &section_end, error)) {

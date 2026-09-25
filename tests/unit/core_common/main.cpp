@@ -28,6 +28,7 @@
 #include "core_common/random.h"
 #include "core_common/resident_activity.h"
 #include "core_common/road_graph.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -1534,6 +1535,74 @@ int TestRoadGraph() {
   return failures;
 }
 
+/// THE ROAD INDEX (road_route.h; 0.36.1): who goes where, and what the way
+/// weighs. A trunk (0,0)-(1000,0), a spur from its x = 400 up to (400,300), a
+/// PATH from its end (1000,0) up to (1000,500). Off-road weights: the default
+/// rules (walk 1.2, cart 2.5).
+int TestRoadIndex() {
+  int failures = 0;
+  const auto line = [](core::RoadKind kind, std::vector<core::Vec2> points) {
+    core::RoadRow row;
+    row.kind = kind;
+    for (const core::Vec2 point : points) {
+      row.axis.push_back(core::RoadPoint{.position = point});
+    }
+    return row;
+  };
+  core::RoadTable roads;
+  core::AppendRow(roads, line(core::RoadKind::kRoad, {{0.0F, 0.0F}, {1000.0F, 0.0F}}));
+  core::AppendRow(roads, line(core::RoadKind::kRoad, {{400.0F, 0.0F}, {400.0F, 300.0F}}));
+  core::AppendRow(roads, line(core::RoadKind::kPath, {{1000.0F, 0.0F}, {1000.0F, 500.0F}}));
+  const auto index = core::BuildRoadIndex(roads);
+  const auto near = [](float value, float expected) { return std::abs(value - expected) < 0.002F; };
+  // A walker 50 m off the trunk at each end (the far end BELOW the trunk,
+  // off the path — the test's first draft put it on the path, and the walker
+  // rightly took it for 1.11): the road (0.05 x 1.2 twice + 1.0 = 1.12)
+  // beats the straight line across (1.0 x 1.2 = 1.2).
+  const float walk = index->EffectiveKm(core::TravelMode::kWalk, {0.0F, 50.0F}, {1000.0F, -50.0F});
+  failures += Expect(near(walk, 1.12F),
+                     "road index: a walker takes the road when open ground "
+                     "weighs more (1.12 against 1.2)");
+  // A cart from beside the trunk's start to the spur's end: the trunk to 400,
+  // the spur up — 0.05 x 2.5 + 0.4 + 0.3.
+  const float cart = index->EffectiveKm(core::TravelMode::kCart, {0.0F, 50.0F}, {400.0F, 300.0F});
+  failures += Expect(near(cart, 0.825F), "road index: a cart goes by the roads (0.825)");
+  // The PATH is the walker's and not the cart's: to (1000,500) the walker
+  // walks the path (0.5), the cart comes the 500 m off the road's end at its
+  // off-road weight (1.25).
+  const float walk_path =
+      index->EffectiveKm(core::TravelMode::kWalk, {1000.0F, 0.0F}, {1000.0F, 500.0F});
+  const float cart_path =
+      index->EffectiveKm(core::TravelMode::kCart, {1000.0F, 0.0F}, {1000.0F, 500.0F});
+  failures += Expect(near(walk_path, 0.5F) && near(cart_path, 1.25F),
+                     "road index: a path carries a walker, not a cart (0.5 against 1.25)");
+  // A cart is never sent across the whole way: between two points 50 m off
+  // the trunk's two ends it goes by the road even when a log cart would not.
+  const core::Route cart_way =
+      index->Way(core::TravelMode::kCart, {0.0F, 300.0F}, {1000.0F, 300.0F});
+  bool legs_add_up = !cart_way.legs.empty();
+  float summed = 0.0F;
+  for (std::size_t leg = 0; leg < cart_way.legs.size(); ++leg) {
+    summed += cart_way.legs[leg].effective_km;
+  }
+  legs_add_up = legs_add_up && near(summed, cart_way.effective_km) && !cart_way.cart_without_road;
+  const float log_cart =
+      index->EffectiveKm(core::TravelMode::kLogCart, {0.0F, 300.0F}, {1000.0F, 300.0F});
+  failures += Expect(legs_add_up && log_cart <= cart_way.effective_km + 0.001F,
+                     "road index: a way's legs add up to its weight, and a log cart may go "
+                     "across where the grain cart may not");
+  // NO NETWORK AT ALL: every mode goes straight at its weight, and the cart
+  // says it had no road.
+  const auto bare = core::BuildRoadIndex(core::RoadTable{});
+  const core::Route lost = bare->Way(core::TravelMode::kCart, {0.0F, 0.0F}, {1000.0F, 0.0F});
+  failures += Expect(
+      lost.cart_without_road && near(lost.effective_km, 2.5F) &&
+          near(bare->EffectiveKm(core::TravelMode::kWalk, {0.0F, 0.0F}, {1000.0F, 0.0F}), 1.2F),
+      "road index: with no network a cart goes straight and says so, a walker "
+      "walks the line");
+  return failures;
+}
+
 /// THE HERD'S AGE BAND (herd_age_band.h; 0.35.16): set by the first heads,
 /// widened by more, folded when herds are gathered, aged, and cut from the
 /// top when the oldest go — the top of a uniform band, by the share gone.
@@ -1697,6 +1766,7 @@ int main() {
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
   failures += TestRoadGraph();
+  failures += TestRoadIndex();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to
     // sunrise, off the day's list — and a word the base never wrote is still

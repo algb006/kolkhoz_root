@@ -14,6 +14,7 @@ kolkhoz_add_module(core_common
     fund_ladder.cpp
     herd_age_band.cpp
     road_graph.cpp
+    road_route.cpp
     haul.cpp
     plot.cpp
     spoilage.cpp
