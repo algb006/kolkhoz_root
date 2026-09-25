@@ -121,6 +121,7 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
   const std::uint32_t wear_col = table.FindColumn("start_wear_pct");
   const std::uint32_t dead_col = table.FindColumn("start_dead");
   const std::uint32_t meadow_kind_col = table.FindColumn("meadow_kind");
+  const std::uint32_t traffic_col = table.FindColumn("traffic");
   const std::array<std::uint32_t, 3> rotation_cols = {table.FindColumn("rotation_year0"),
                                                       table.FindColumn("rotation_year1"),
                                                       table.FindColumn("rotation_year2")};
@@ -247,6 +248,35 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
     if (entry.kind != LayoutKind::kUnit && entry.start_dead) {
       error = Refuse(entry.key, row, "start_dead", "only a unit row can start dead");
       return false;
+    }
+    // HOW OFTEN THE ROAD IS DRIVEN (roads design §4, «Вторая ось — не износ, а
+    // ЕЗДЯТ ЛИ»; 0.36.0): the word every road carries and nothing else may
+    // (tools/db.py check says the same on the base side). Optional as a
+    // column, like the wear: a table from before it read as all regular.
+    if (traffic_col != kNoTableColumn) {
+      const std::string_view word = table.CellText(row, traffic_col);
+      if (entry.kind != LayoutKind::kRoad && !word.empty()) {
+        error = Refuse(entry.key, row, "traffic", "only a road row says how often it is driven");
+        return false;
+      }
+      if (entry.kind == LayoutKind::kRoad) {
+        if (word == "regular") {
+          entry.traffic = RoadTrafficWord::kRegular;
+        } else if (word == "rare") {
+          entry.traffic = RoadTrafficWord::kRare;
+        } else if (word == "almost_none") {
+          entry.traffic = RoadTrafficWord::kAlmostNone;
+        } else if (word == "none") {
+          entry.traffic = RoadTrafficWord::kNone;
+        } else {
+          error = Refuse(entry.key,
+                         row,
+                         "traffic",
+                         "'" + std::string(word) +
+                             "' is not a traffic word (regular, rare, almost_none, none)");
+          return false;
+        }
+      }
     }
 
     if (entry.kind == LayoutKind::kUnit) {

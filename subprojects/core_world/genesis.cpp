@@ -34,6 +34,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "start_layout.h"
+#include "start_roads.h"
 
 namespace core {
 namespace {
@@ -878,12 +879,8 @@ void PlaceStartLayout(WorldState& world,
       continue;
     }
     if (row.kind == LayoutKind::kRoad) {
-      // A ROAD PLACES NOTHING IN THE CORE, and the skip is deliberate rather
-      // than an omission (start_layout.h, LayoutKind::kRoad). The row exists so
-      // that the layer can read `start_wear_pct` — a road's wear IS its relief,
-      // the ruts and the puddles — and so that the table parses at all. There
-      // is no road entity, no traffic and no repair here yet; the day there is,
-      // this branch becomes a subsystem.
+      // A ROAD IS NOT A UNIT: it is laid by PlaceMapRoads (start_roads.h,
+      // 0.36.0) from roads.csv, and this row gives it its wear and its word.
       continue;
     }
     // Arable, and the reserve field held back for building on: both are
@@ -1193,6 +1190,15 @@ bool BuildStartEconomy(WorldState& world,
   }
   PlaceStartLayout(
       world, scene, unit_types, crops, kStartFertility, definitions.map_side_m, placed);
+  // THE ROADS, the map's network with the layout's wear on it (0.36.0).
+  std::string road_error;
+  if (!PlaceMapRoads(tables, scene, world, road_error)) {
+    LogError("genesis: " + road_error);
+    if (error != nullptr) {
+      *error = road_error;
+    }
+    return false;
+  }
   // The share of the worked arable the old chairman managed to plough last
   // autumn. A balance knob and not a constant: the figure is chosen by
   // measurement — the smallest share at which the first harvest still carries

@@ -494,6 +494,20 @@ core::WorldState MakeWorld() {
   car.arrive_tick = 1'234;
   car.leave_tick = 1'236;
   core::AppendRow(world.district_cars, car);
+  // Save 92: a road the player laid — its axis IS saved, unlike a map road's
+  // — gravel, rare, two stretches of differing wear, a bridge mark.
+  core::RoadRow road;
+  road.kind = core::RoadKind::kRoad;
+  road.surface = core::RoadSurface::kGravel;
+  road.origin = core::RoadOrigin::kPlayer;
+  road.removable = 1;
+  road.traffic_word = core::RoadTrafficWord::kRare;
+  road.axis = {
+      core::RoadPoint{.position = {.x = 10.0F, .y = 20.0F}},
+      core::RoadPoint{.position = {.x = 30.0F, .y = 20.0F}, .mark = core::RoadMark::kBridge},
+      core::RoadPoint{.position = {.x = 45.0F, .y = 25.0F}}};
+  road.stretches = {core::RoadStretch{.wear_pct = 12.5F}, core::RoadStretch{.wear_pct = 40.0F}};
+  core::AppendRow(world.roads, road);
   world.residents.rows[1].away_until_day = 91;
   world.residents.rows[1].away_until_hour = 14;
   world.residents.rows[1].away_walk_hours = 3;
@@ -1150,10 +1164,12 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
-    {"dictionaries", 158, 0x3aabc08a948e5793ULL},
+    // Save 92: +2 — the map roads' dictionary, empty in this fixture's
+    // tables (a u16 count). Predicted before the build, held.
+    {"dictionaries", 160, 0xefef7308b1995f8bULL},
     // 2026-09-17, save 49: +10 bytes — the night pasture's standing order,
     // its first night and the camp's two floats.
     // 2026-09-17, save 50: +5 — four bytes for every limit point ever
@@ -1296,6 +1312,11 @@ constexpr std::array<RecordedSection, 19> kRecordedPayload = {{
     {"district_visits", 19, 0x3785c4246ee3283bULL},
     {"night_outings", 31, 0xa7633d02f71169f5ULL},
     {"district_cars", 34, 0xaeab8ced44f30f22ULL},
+    // Save 92: the road network — one player road: 8 of table, 4 of id, 5 of
+    // words, 2 of the map-road id, 4 + 3 x 9 of axis, 4 + 2 x 4 of stretches.
+    // Predicted 62 before the build, with the dictionaries +2 (the new kind's
+    // empty count) and every other section unmoved.
+    {"roads", 62, 0x1b467446569a40b2ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -1686,6 +1707,16 @@ int main() {
                          loaded.residents.rows[1].away_reason ==
                              static_cast<std::uint8_t>(core::AwayReason::kHospital),
                      "the district's car and a resident away in the hospital come back (save 79)");
+  failures += Expect(loaded.roads.rows.size() == 1 &&
+                         loaded.roads.rows[0].origin == core::RoadOrigin::kPlayer &&
+                         loaded.roads.rows[0].surface == core::RoadSurface::kGravel &&
+                         loaded.roads.rows[0].traffic_word == core::RoadTrafficWord::kRare &&
+                         loaded.roads.rows[0].axis.size() == 3 &&
+                         loaded.roads.rows[0].axis[1].mark == core::RoadMark::kBridge &&
+                         loaded.roads.rows[0].axis[2].position.x == 45.0F &&
+                         loaded.roads.rows[0].stretches.size() == 2 &&
+                         loaded.roads.rows[0].stretches[1].wear_pct == 40.0F,
+                     "a player's road comes back with its axis and its stretches (save 92)");
   failures += Expect(loaded.residents.rows.size() >= 2 &&
                          loaded.residents.rows[0].twin.value == loaded.residents.row_ids[1].value &&
                          loaded.residents.rows[1].identical_twin == 1,
@@ -2144,8 +2175,17 @@ int main() {
     // written by hand is a length written by hand: it is right until the file
     // grows in the middle, and then it is quietly pointing at the neighbour.
     // And it did again on 2026-09-19 (save 79): the district's cars came
-    // before the ledger, and the staged batch moved to 18.
-    const std::size_t at = SectionAt(tampered, 18, length);  // the staged batch
+    // before the ledger, and the staged batch moved to 18. And a third time
+    // on 2026-09-25 (save 92, the roads) — so the index is no longer written
+    // by hand at all: it is the staged section's place in kRecordedPayload,
+    // the list that already names every section in order.
+    int staged_index = 0;
+    for (std::size_t index = 0; index < kRecordedPayload.size(); ++index) {
+      if (std::string_view(kRecordedPayload[index].name) == "staged") {
+        staged_index = static_cast<int>(index);
+      }
+    }
+    const std::size_t at = SectionAt(tampered, staged_index, length);  // the staged batch
     if (at != 0) {
       for (std::size_t index = 0; index < 4; ++index) {
         const std::uint32_t many = 1U << 24U;

@@ -47,6 +47,7 @@
 #include "core_common/random.h"
 #include "core_common/readiness_state.h"
 #include "core_common/resident_state.h"
+#include "core_common/road_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
@@ -912,6 +913,11 @@ struct WorldState {
   /// ambulance (register 236; boss seq 210); SAVED (save 79).
   /// district_car_state.h.
   DistrictCarTable district_cars;
+
+  /// The road network: one row a road or path, its axis and its condition
+  /// by stretch (roads design §13); SAVED (save 92) — a map road without its
+  /// axis, which the loader puts back from tables/roads.csv. road_state.h.
+  RoadTable roads;
 
   /// The quiet trades out tonight (crime design §9); SAVED.
   /// night_trade_state.h.

@@ -13,6 +13,7 @@ kolkhoz_add_module(core_common
     district_visit_state.cpp
     fund_ladder.cpp
     herd_age_band.cpp
+    road_graph.cpp
     haul.cpp
     plot.cpp
     spoilage.cpp

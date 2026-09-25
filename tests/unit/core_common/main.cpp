@@ -27,6 +27,7 @@
 #include "core_common/rain_stops_work.h"
 #include "core_common/random.h"
 #include "core_common/resident_activity.h"
+#include "core_common/road_graph.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -1372,6 +1373,167 @@ int CheckTheTopOfTheLadder() {
   return failures;
 }
 
+/// THE ROAD GRAPH (road_graph.h; 0.36.0): a trunk from (0,0) to (1000,0), a
+/// spur leaving it at x = 400 — its first point ON the trunk's axis, not at
+/// a vertex, as the map draws junctions — and a second spur from the
+/// trunk's end over a bridge. And one road far away, alone.
+int TestRoadGraph() {
+  int failures = 0;
+  const auto road = [](std::vector<core::RoadPoint> axis) {
+    core::RoadRow row;
+    row.axis = std::move(axis);
+    return row;
+  };
+  core::RoadTable roads;
+  core::AppendRow(
+      roads,
+      road({core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}, .mark = core::RoadMark::kBorder},
+            core::RoadPoint{.position = {.x = 500.0F, .y = 0.0F}},
+            core::RoadPoint{.position = {.x = 1000.0F, .y = 0.0F}}}));
+  core::AppendRow(roads,
+                  road({core::RoadPoint{.position = {.x = 400.0F, .y = 0.5F}},
+                        core::RoadPoint{.position = {.x = 400.0F, .y = 300.0F}}}));
+  core::AppendRow(
+      roads,
+      road({core::RoadPoint{.position = {.x = 1000.0F, .y = 0.0F}},
+            core::RoadPoint{.position = {.x = 1100.0F, .y = 0.0F}, .mark = core::RoadMark::kBridge},
+            core::RoadPoint{.position = {.x = 1200.0F, .y = 0.0F}}}));
+  core::AppendRow(roads,
+                  road({core::RoadPoint{.position = {.x = 5000.0F, .y = 5000.0F}},
+                        core::RoadPoint{.position = {.x = 5100.0F, .y = 5000.0F}}}));
+  const core::RoadGraph graph = core::BuildRoadGraph(roads);
+  // Nodes: trunk ends 2, the mouth of the first spur 1 (its first point),
+  // its far end 1, the second spur's far end 1 (its first point IS the
+  // trunk's end), the lone road's two ends 2: seven. Edges: the trunk cut
+  // in two at x = 400, the first spur, the second spur, the lone road: five.
+  failures += Expect(graph.nodes.size() == 7 && graph.edges.size() == 5,
+                     "road graph: seven nodes and five edges, the trunk cut at the mouth");
+  float trunk_pieces = 0.0F;
+  bool cut_at_400 = false;
+  for (const core::RoadEdge& edge : graph.edges) {
+    if (edge.road.value == roads.row_ids[0].value) {
+      trunk_pieces += edge.length_m;
+      cut_at_400 = cut_at_400 || std::abs(edge.to_chainage_m - 400.0F) < 0.01F;
+    }
+  }
+  failures += Expect(std::abs(trunk_pieces - 1000.0F) < 0.01F && cut_at_400,
+                     "road graph: the trunk's two pieces are its 1000 m, cut at 400");
+  const std::vector<std::uint32_t> components = core::RoadComponents(graph);
+  const std::uint32_t networks = *std::ranges::max_element(components) + 1U;
+  failures += Expect(networks == 2,
+                     "road graph: the trunk and its spurs are one network, the "
+                     "lone road another");
+  std::uint32_t borders = 0;
+  for (const core::RoadNode& node : graph.nodes) {
+    borders += node.border ? 1U : 0U;
+  }
+  std::uint32_t bridges = 0;
+  for (const core::RoadEdge& edge : graph.edges) {
+    bridges += edge.bridge ? 1U : 0U;
+  }
+  failures += Expect(borders == 1 && bridges == 1,
+                     "road graph: the border end is a way out, the bridge piece is marked");
+  // The pair to the join: a spur whose first point is 3 m off the trunk does
+  // not join it at the default tolerance of 2 m — and does at 5.
+  core::RoadTable apart;
+  core::AppendRow(apart, roads.rows[0]);
+  core::AppendRow(apart,
+                  road({core::RoadPoint{.position = {.x = 400.0F, .y = 3.0F}},
+                        core::RoadPoint{.position = {.x = 400.0F, .y = 300.0F}}}));
+  const core::RoadGraph loose = core::BuildRoadGraph(apart);
+  const core::RoadGraph joined = core::BuildRoadGraph(apart, 5.0F);
+  failures += Expect(loose.edges.size() == 2 && joined.edges.size() == 3,
+                     "road graph: an end 3 m off the axis joins at 5 m of tolerance, not at 2");
+  // THE CROSS (0.36.0: the village lanes cross the street in the middle):
+  // a road across the trunk at x = 700 is cut there, and cuts the trunk. The
+  // pair: the same road moved to stop 10 m short of the trunk joins nothing.
+  core::RoadTable crossing;
+  core::AppendRow(crossing, roads.rows[0]);
+  core::AppendRow(crossing,
+                  road({core::RoadPoint{.position = {.x = 700.0F, .y = -100.0F}},
+                        core::RoadPoint{.position = {.x = 700.0F, .y = 100.0F}}}));
+  const core::RoadGraph cross = core::BuildRoadGraph(crossing);
+  core::RoadTable short_of_it;
+  core::AppendRow(short_of_it, roads.rows[0]);
+  core::AppendRow(short_of_it,
+                  road({core::RoadPoint{.position = {.x = 700.0F, .y = 10.0F}},
+                        core::RoadPoint{.position = {.x = 700.0F, .y = 100.0F}}}));
+  const core::RoadGraph apart_road = core::BuildRoadGraph(short_of_it);
+  failures += Expect(cross.nodes.size() == 5 && cross.edges.size() == 4 &&
+                         apart_road.nodes.size() == 4 && apart_road.edges.size() == 2,
+                     "road graph: a road across the trunk is a crossing cut into both; one that "
+                     "stops short of it joins nothing");
+  // THREE CASES OF THE STATIC REVIEW OF 0.36.0, each with its pair.
+  // (a) A LOOP — a square lane leaving (0,0) and coming back to it — is one
+  //     node and one edge, not nothing.
+  core::RoadTable loop;
+  core::AppendRow(loop,
+                  road({core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}},
+                        core::RoadPoint{.position = {.x = 100.0F, .y = 0.0F}},
+                        core::RoadPoint{.position = {.x = 100.0F, .y = 100.0F}},
+                        core::RoadPoint{.position = {.x = 0.0F, .y = 100.0F}},
+                        core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}}}));
+  const core::RoadGraph ring = core::BuildRoadGraph(loop);
+  failures += Expect(ring.nodes.size() == 1 && ring.edges.size() == 1 &&
+                         std::abs(ring.edges[0].length_m - 400.0F) < 0.01F,
+                     "road graph: a loop is one node and its 400 m edge");
+  // (b) A SPUR ENDING 1.5 m off the trunk and 1.5 m short of its end — 2.1 m
+  //     from the trunk's end, too far for the ends to merge — still joins.
+  core::RoadTable near_end;
+  core::AppendRow(near_end, roads.rows[0]);
+  core::AppendRow(near_end,
+                  road({core::RoadPoint{.position = {.x = 998.5F, .y = 1.5F}},
+                        core::RoadPoint{.position = {.x = 998.5F, .y = 200.0F}}}));
+  const core::RoadGraph spur_near_end = core::BuildRoadGraph(near_end);
+  const std::vector<std::uint32_t> near_components = core::RoadComponents(spur_near_end);
+  failures +=
+      Expect(*std::ranges::max_element(near_components) == 0,
+             "road graph: a spur ending 2.1 m from the trunk's end is joined, not an island");
+  // (c) A DECK from x = 100 to 300, the road cut at x = 50, 150 and 250 by
+  //     crossings: 50-150, 150-250 and 250-400 overlap the deck and are
+  //     bridges, 0-50 is not. 150-250 lies WHOLLY inside the deck with no
+  //     bridge vertex in it — the one the old vertex rule missed (its first
+  //     draft cut at 50 and 200, where the old rule gave the same answer and
+  //     the fault did not redden: a miss, named).
+  core::RoadTable deck;
+  core::AppendRow(
+      deck,
+      road({core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}},
+            core::RoadPoint{.position = {.x = 100.0F, .y = 0.0F}, .mark = core::RoadMark::kBridge},
+            core::RoadPoint{.position = {.x = 300.0F, .y = 0.0F}, .mark = core::RoadMark::kBridge},
+            core::RoadPoint{.position = {.x = 400.0F, .y = 0.0F}}}));
+  for (const float x : {50.0F, 150.0F, 250.0F}) {
+    core::AppendRow(deck,
+                    road({core::RoadPoint{.position = {.x = x, .y = -50.0F}},
+                          core::RoadPoint{.position = {.x = x, .y = 50.0F}}}));
+  }
+  const core::RoadGraph decked = core::BuildRoadGraph(deck);
+  std::uint32_t deck_pieces = 0;
+  std::uint32_t road_pieces = 0;
+  for (const core::RoadEdge& edge : decked.edges) {
+    if (edge.road.value == deck.row_ids[0].value) {
+      ++road_pieces;
+      deck_pieces += edge.bridge ? 1U : 0U;
+    }
+  }
+  failures += Expect(road_pieces == 4 && deck_pieces == 3,
+                     "road graph: of four pieces, the three overlapping the deck are bridges");
+  // The helpers the graph stands on.
+  const core::AxisProjection foot =
+      core::ProjectOntoAxis(roads.rows[0].axis, core::Vec2{.x = 700.0F, .y = 40.0F});
+  failures += Expect(
+      std::abs(foot.chainage_m - 700.0F) < 0.01F && std::abs(foot.distance_m - 40.0F) < 0.01F,
+      "road graph: a point 40 m off the trunk at x = 700 projects there");
+  const core::Vec2 at = core::PointAtChainage(roads.rows[2].axis, 150.0F);
+  failures += Expect(std::abs(at.x - 1150.0F) < 0.01F && std::abs(at.y) < 0.01F,
+                     "road graph: 150 m along the second spur is x = 1150");
+  failures += Expect(core::StretchCountForLength(1000.0F) == 40 &&
+                         core::StretchCountForLength(1001.0F) == 41 &&
+                         core::StretchCountForLength(0.0F) == 1,
+                     "road graph: 25 m stretches, the last one shorter, at least one");
+  return failures;
+}
+
 /// THE HERD'S AGE BAND (herd_age_band.h; 0.35.16): set by the first heads,
 /// widened by more, folded when herds are gathered, aged, and cut from the
 /// top when the oldest go — the top of a uniform band, by the share gone.
@@ -1534,6 +1696,7 @@ int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
+  failures += TestRoadGraph();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to
     // sunrise, off the day's list — and a word the base never wrote is still

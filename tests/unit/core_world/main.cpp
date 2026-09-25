@@ -15,12 +15,15 @@
 
 #include "../../common/fake_tables.h"
 #include "core_catalog/extraction_catalog.h"
+#include "core_catalog/map_roads.h"
 #include "core_common/calendar.h"
 #include "core_common/herd_state.h"
+#include "core_common/road_graph.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_log/log.h"
+#include "core_save/save.h"
 #include "core_tables/tables.h"
 #include "core_world/era_readiness.h"
 #include "core_world/world.h"
@@ -476,10 +479,190 @@ int CheckTransitionOrder() {
   return failures;
 }
 
+/// THE START'S ROAD NETWORK (core_world/start_roads.h; roads design §4 and
+/// §13; 0.36.0), on the shipped tables. Every road of roads.csv is a row with
+/// its axis and its stretches; the layout's wear lies on every stretch of its
+/// road and a path wears nothing. And the GRAPH is measured against the one
+/// count the design gives of the start network — «так на старте ДЕВЯТЬ»
+/// dead-end roads (roads design §4, the start map's wear table): a dead end
+/// is a road one of whose ends meets no other road and no border. The joins
+/// are right exactly when that count comes out nine.
+int CheckStartRoads() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "start roads: the shipped tables load") != 0) {
+    return 1;
+  }
+  const core::WorldState start =
+      core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+  std::vector<core::MapRoadDef> map_roads;
+  std::string error;
+  const bool read = core::ReadMapRoads(*shipped, map_roads, error);
+  failures += Expect(read && start.roads.rows.size() == map_roads.size() && map_roads.size() >= 20,
+                     "start roads: every road of roads.csv is a road of the world");
+  bool worn_as_laid = true;
+  std::uint32_t paths = 0;
+  std::uint32_t stretches = 0;
+  for (std::size_t index = 0; index < start.roads.rows.size() && read; ++index) {
+    const core::RoadRow& road = start.roads.rows[index];
+    stretches += static_cast<std::uint32_t>(road.stretches.size());
+    const bool is_path = road.kind == core::RoadKind::kPath;
+    paths += is_path ? 1U : 0U;
+    worn_as_laid =
+        worn_as_laid && road.origin == core::RoadOrigin::kMap &&
+        road.surface == (is_path ? core::RoadSurface::kNone : core::RoadSurface::kDirt) &&
+        road.stretches.size() == core::StretchCountForLength(core::RoadAxisLength(road.axis));
+    for (const core::RoadStretch& stretch : road.stretches) {
+      worn_as_laid = worn_as_laid && (!is_path || stretch.wear_pct == 0.0F) &&
+                     stretch.wear_pct == road.stretches.front().wear_pct;
+    }
+  }
+  // The street and the trunk carry the design's numbers (roads design §4).
+  const auto wear_of = [&](std::string_view key) {
+    for (std::size_t index = 0; index < map_roads.size(); ++index) {
+      if (map_roads[index].key == key && index < start.roads.rows.size()) {
+        return start.roads.rows[index].stretches.front().wear_pct;
+      }
+    }
+    return -1.0F;
+  };
+  failures += Expect(worn_as_laid && paths == 2 && wear_of("road_village_street") == 65.0F &&
+                         wear_of("trunk_road") == 35.0F,
+                     "start roads: dirt and paths, the layout's wear on every stretch — the "
+                     "street 65, the trunk 35, a path nothing");
+  const core::RoadGraph graph = core::BuildRoadGraph(start.roads);
+  std::vector<std::uint32_t> degree(graph.nodes.size(), 0);
+  for (const core::RoadEdge& edge : graph.edges) {
+    ++degree[edge.from];
+    ++degree[edge.to];
+  }
+  std::uint32_t dead_ends = 0;
+  std::uint32_t borders = 0;
+  std::string dead_names;
+  for (std::size_t index = 0; index < start.roads.rows.size() && index < map_roads.size();
+       ++index) {
+    const core::RoadRow& road = start.roads.rows[index];
+    if (road.kind != core::RoadKind::kRoad) {
+      continue;
+    }
+    bool dead = false;
+    for (const core::RoadEdge& edge : graph.edges) {
+      if (edge.road.value != start.roads.row_ids[index].value) {
+        continue;
+      }
+      for (const core::RoadNodeIndex node : {edge.from, edge.to}) {
+        dead = dead || (degree[node] == 1 && !graph.nodes[node].border);
+      }
+    }
+    if (dead) {
+      ++dead_ends;
+      dead_names += " " + map_roads[index].key;
+    }
+  }
+  for (const core::RoadNode& node : graph.nodes) {
+    borders += node.border ? 1U : 0U;
+  }
+  std::uint32_t bridges = 0;
+  for (const core::RoadEdge& edge : graph.edges) {
+    bridges += edge.bridge ? 1U : 0U;
+  }
+  const std::vector<std::uint32_t> components = core::RoadComponents(graph);
+  const std::uint32_t networks =
+      components.empty() ? 0U : *std::ranges::max_element(components) + 1U;
+  std::cout << "start roads: " << start.roads.rows.size() << " roads (" << paths << " paths), "
+            << stretches << " stretches; graph " << graph.nodes.size() << " nodes, "
+            << graph.edges.size() << " edges, " << networks << " networks, " << borders
+            << " ways out, " << bridges << " bridge pieces; dead ends " << dead_ends << ":"
+            << dead_names << '\n';
+  for (std::uint32_t network = 0; network < networks; ++network) {
+    std::string members;
+    for (std::size_t row = 0; row < start.roads.rows.size() && row < map_roads.size(); ++row) {
+      for (const core::RoadEdge& edge : graph.edges) {
+        if (edge.road.value == start.roads.row_ids[row].value && components[edge.from] == network) {
+          members += " " + map_roads[row].key;
+          break;
+        }
+      }
+    }
+    std::cout << "  network " << network << ":" << members << '\n';
+  }
+  // Every road end's distance to the nearest OTHER axis — what the join
+  // tolerance was set against. Printed whole: the ones that join lie within
+  // it, and the gap to the next says how much room the tolerance has.
+  for (std::size_t row = 0; row < start.roads.rows.size() && row < map_roads.size(); ++row) {
+    const auto& axis = start.roads.rows[row].axis;
+    for (const bool first : {true, false}) {
+      const core::Vec2 end = first ? axis.front().position : axis.back().position;
+      float nearest = 1.0e9F;
+      for (std::size_t other = 0; other < start.roads.rows.size(); ++other) {
+        if (other != row) {
+          nearest = std::min(nearest,
+                             core::ProjectOntoAxis(start.roads.rows[other].axis, end).distance_m);
+        }
+      }
+      if (nearest < 50.0F || components[0] != 0 || networks > 1) {
+        std::cout << "  end " << map_roads[row].key << (first ? " first" : " last") << ": "
+                  << nearest << " m to the nearest other axis\n";
+      }
+    }
+  }
+  // THE DESIGN'S NINE ARE NOT ITS DEFINITION'S, and the difference is named
+  // rather than fitted (0.36.0, to boss): by «один конец не выходит ни на
+  // другую дорогу, ни на границу карты» the graph finds TEN — the eight
+  // dead-end roads of the design's list, and the two village lanes, whose
+  // ends are free although boss reads them as streets; and road_artel is
+  // NOT one, its far end running on into road_north_forest, although the
+  // design lists it. So this asserts the definition's list, by name.
+  const std::string expected_dead =
+      " road_cemetery road_east_pond road_hayfield road_lesnoy_spur road_new_village"
+      " road_north_forest road_pond_village road_resort_spur road_village_lane_e"
+      " road_village_lane_w";
+  failures += Expect(dead_names == expected_dead && borders == 4,
+                     "start roads: the graph's dead ends are the definition's ten, by name, and "
+                     "there are four ways out");
+  // CONNECTIVITY (roads design §17): every ROAD in one network. A path may
+  // stand alone — people reach it across open ground — and the backwater
+  // shore path does, 1.4 km from the nearest road.
+  bool roads_joined = true;
+  for (const core::RoadEdge& edge : graph.edges) {
+    roads_joined = roads_joined && (edge.kind != core::RoadKind::kRoad ||
+                                    components[edge.from] == components[graph.edges[0].from]);
+  }
+  failures += Expect(roads_joined, "start roads: every road of the start is one network");
+  // THE SAVE LEAVES A MAP ROAD'S AXIS OUT AND THE LOAD PUTS IT BACK (roads
+  // design §2; save 92). The pair: the loaded axes and wears are the start's,
+  // point for point — and the bytes are smaller than they would be with the
+  // axes in (every map road's 9 bytes a point, ~26 kB on this map).
+  const std::vector<std::byte> bytes = core::EncodeWorld(start, *shipped);
+  core::WorldState loaded;
+  std::string load_error;
+  const bool decoded = core::DecodeWorld(bytes, *shipped, &loaded, &load_error);
+  bool same = decoded && loaded.roads.rows.size() == start.roads.rows.size();
+  std::size_t axis_points = 0;
+  for (std::size_t row = 0; same && row < start.roads.rows.size(); ++row) {
+    const core::RoadRow& before = start.roads.rows[row];
+    const core::RoadRow& after = loaded.roads.rows[row];
+    axis_points += before.axis.size();
+    same = after.axis.size() == before.axis.size() &&
+           after.stretches.size() == before.stretches.size() &&
+           after.map_road.value == before.map_road.value &&
+           after.stretches.front().wear_pct == before.stretches.front().wear_pct &&
+           after.axis.back().position.x == before.axis.back().position.x &&
+           after.axis.back().mark == before.axis.back().mark;
+  }
+  std::cout << "start roads: the save " << bytes.size() << " bytes, " << axis_points
+            << " axis points left out of it" << (decoded ? "" : (" — " + load_error)) << '\n';
+  failures += Expect(same && axis_points > 2000,
+                     "start roads: a saved start comes back with every map road's axis put back "
+                     "from roads.csv and its wear kept");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
   failures += CheckReadinessShape();
+  failures += CheckStartRoads();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 
@@ -1450,12 +1633,11 @@ int main() {
     // reader is named and not built. Collapsing the two would make the day
     // the reader arrives invisible.
     //
-    // `roads` (2026-09-17): 2658 points, thirteen roads and two paths, the
-    // drawn line rather than the database's waypoints. Its reader is the road
-    // access check of unit rules §12, and that check waits on a channel for
-    // placing a LINEAR unit, which the core does not have — an order carries
-    // one position, a unit row holds one position, and a plot is a disc.
-    const std::array<std::string_view, 1> not_read_yet = {"roads"};
+    // `roads` was here until 0.36.0, unread for want of a linear unit; the
+    // core lays the network from it now (core_world/start_roads.h), and the
+    // world requires it. The list stays, empty, for the next table in that
+    // position.
+    const std::array<std::string_view, 0> not_read_yet = {};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {

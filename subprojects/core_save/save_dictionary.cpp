@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "core_catalog/map_roads.h"
 #include "core_common/ids.h"
 #include "core_tables/tables.h"
 
@@ -45,6 +46,8 @@ const char* DefTableName(DefKind kind) {
       return "limit_catalog";
     case DefKind::kTreeSpecies:
       return "tree_species";
+    case DefKind::kMapRoad:
+      return "roads";
   }
   return "unknown";
 }
@@ -53,6 +56,20 @@ DefDictionaries ReadLiveDictionaries(const ITableSet& tables) {
   DefDictionaries dictionaries;
   for (std::uint32_t index = 0; index < kDefKindCount; ++index) {
     const auto kind = static_cast<DefKind>(index);
+    // THE MAP'S ROADS ARE NOT ONE ROW A KEY: roads.csv is many rows a road,
+    // so their keys come from the one reader of that file, in its own order
+    // (core_catalog/map_roads.h). A malformed table gives an empty
+    // dictionary, fatal only if a saved road names one.
+    if (kind == DefKind::kMapRoad) {
+      std::vector<MapRoadDef> roads;
+      std::string ignored;
+      if (ReadMapRoads(tables, roads, ignored)) {
+        for (const MapRoadDef& road : roads) {
+          dictionaries.keys[index].push_back(road.key);
+        }
+      }
+      continue;
+    }
     const ITable* table = tables.FindTable(DefTableName(kind));
     if (table == nullptr) {
       continue;  // absent table: an empty dictionary, fatal only if used

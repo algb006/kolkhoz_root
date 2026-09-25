@@ -702,6 +702,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                       "life",
                       "livestock",
                       "resources",
+                      "roads",
                       "start_layout",
                       "start_stock",
                       "unit_types",

@@ -11,6 +11,7 @@ kolkhoz_add_module(core_world
     era_readiness.cpp
     genesis.cpp
     start_layout.cpp
+    start_roads.cpp
     world.cpp)
 
 target_link_libraries(core_world

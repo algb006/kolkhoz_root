@@ -238,6 +238,18 @@ static_assert(AggregateArity<NightOutingRow>() == 6,
               "NightOutingRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 79: the district's car — two bytes, an id, two ticks: 24 and five
 // fields, predicted before the row was written.
+// Save 92: the road network. Predicted before the build: RoadRow 56 bytes
+// and eight fields (five bytes of words, the map road's two, a byte of
+// padding, two vectors), RoadPoint 12 and two, RoadStretch 4 and one.
+static_assert(sizeof(RoadRow) == 56, "RoadRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RoadRow>() == 8,
+              "RoadRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(RoadPoint) == 12, "RoadPoint changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RoadPoint>() == 2,
+              "RoadPoint gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(RoadStretch) == 4, "RoadStretch changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RoadStretch>() == 1,
+              "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictCarRow) == 24,
               "DistrictCarRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<DistrictCarRow>() == 5,
@@ -318,6 +330,17 @@ constexpr std::uint8_t kMaxDistrictVisitKind =
     static_cast<std::uint8_t>(DistrictVisitKind::kDistrictVisitKindCount) - 1;
 static_assert(kMaxDistrictVisitKind <
               static_cast<std::uint8_t>(DistrictVisitKind::kDistrictVisitKindCount));
+constexpr std::uint8_t kMaxRoadKind = static_cast<std::uint8_t>(RoadKind::kRoadKindCount) - 1;
+constexpr std::uint8_t kMaxRoadSurface =
+    static_cast<std::uint8_t>(RoadSurface::kRoadSurfaceCount) - 1;
+constexpr std::uint8_t kMaxRoadOrigin = static_cast<std::uint8_t>(RoadOrigin::kRoadOriginCount) - 1;
+constexpr std::uint8_t kMaxRoadTrafficWord =
+    static_cast<std::uint8_t>(RoadTrafficWord::kRoadTrafficWordCount) - 1;
+constexpr std::uint8_t kMaxRoadMark = static_cast<std::uint8_t>(RoadMark::kRoadMarkCount) - 1;
+/// Bytes a saved axis point takes (two floats and a mark): what bounds a
+/// count read before the points, against the bytes left.
+constexpr std::size_t kSavedRoadPointBytes = 9;
+constexpr std::size_t kSavedRoadStretchBytes = 4;
 constexpr std::uint8_t kMaxDistrictCarKind =
     static_cast<std::uint8_t>(DistrictCarKind::kDistrictCarKindCount) - 1;
 constexpr std::uint8_t kMaxDistrictCarPhase =
@@ -1279,6 +1302,65 @@ void WriteDistrictCarRow(SaveSink& sink, const DistrictCarRow& row) {
   WriteEntityId(out, row.resident);
   out.WriteU64(row.arrive_tick);
   out.WriteU64(row.leave_tick);
+}
+
+void WriteRoadRow(SaveSink& sink, const RoadRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  out.WriteU8(static_cast<std::uint8_t>(row.surface));
+  out.WriteU8(static_cast<std::uint8_t>(row.origin));
+  out.WriteU8(row.removable);
+  out.WriteU8(static_cast<std::uint8_t>(row.traffic_word));
+  sink.WriteDefId(DefKind::kMapRoad, row.map_road.value);
+  // A MAP ROAD'S AXIS IS NOT WRITTEN: it is the map's, one for every
+  // campaign (roads design §2), and the loader takes it back from there.
+  if (row.origin == RoadOrigin::kPlayer) {
+    out.WriteU32(static_cast<std::uint32_t>(row.axis.size()));
+    for (const RoadPoint& point : row.axis) {
+      WriteVec2(out, point.position);
+      out.WriteU8(static_cast<std::uint8_t>(point.mark));
+    }
+  }
+  out.WriteU32(static_cast<std::uint32_t>(row.stretches.size()));
+  for (const RoadStretch& stretch : row.stretches) {
+    out.WriteFloat(stretch.wear_pct);
+  }
+}
+
+RoadRow ReadRoadRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  RoadRow row;
+  row.kind = static_cast<RoadKind>(source.ReadEnumValue(0, kMaxRoadKind, "road kind"));
+  row.surface = static_cast<RoadSurface>(source.ReadEnumValue(0, kMaxRoadSurface, "road surface"));
+  row.origin = static_cast<RoadOrigin>(source.ReadEnumValue(0, kMaxRoadOrigin, "road origin"));
+  row.removable = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "road removable"));
+  row.traffic_word = static_cast<RoadTrafficWord>(
+      source.ReadEnumValue(0, kMaxRoadTrafficWord, "road traffic word"));
+  row.map_road = MapRoadId{source.ReadDefId(DefKind::kMapRoad)};
+  if (row.origin == RoadOrigin::kPlayer) {
+    const std::uint32_t points = in.ReadU32();
+    if (static_cast<std::size_t>(points) * kSavedRoadPointBytes > in.Remaining()) {
+      source.Fail("a road's axis is longer than the bytes left");
+      return row;
+    }
+    row.axis.reserve(points);
+    for (std::uint32_t index = 0; index < points && source.Valid(); ++index) {
+      RoadPoint point;
+      point.position = ReadVec2(in);
+      point.mark = static_cast<RoadMark>(source.ReadEnumValue(0, kMaxRoadMark, "road mark"));
+      row.axis.push_back(point);
+    }
+  }
+  const std::uint32_t stretches = in.ReadU32();
+  if (static_cast<std::size_t>(stretches) * kSavedRoadStretchBytes > in.Remaining()) {
+    source.Fail("a road's stretches are longer than the bytes left");
+    return row;
+  }
+  row.stretches.reserve(stretches);
+  for (std::uint32_t index = 0; index < stretches && source.Valid(); ++index) {
+    row.stretches.push_back(RoadStretch{.wear_pct = in.ReadFloat()});
+  }
+  return row;
 }
 
 DistrictCarRow ReadDistrictCarRow(LoadSource& source) {

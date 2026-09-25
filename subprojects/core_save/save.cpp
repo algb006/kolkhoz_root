@@ -20,7 +20,9 @@
 #include <utility>
 #include <vector>
 
+#include "core_catalog/map_roads.h"
 #include "core_common/ids.h"
+#include "core_common/road_graph.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version.h"
@@ -68,6 +70,51 @@ constexpr const char* kSectionExtractionSites = "extraction_sites";
 constexpr const char* kSectionDistrictVisits = "district_visits";
 constexpr const char* kSectionNightOutings = "night_outings";
 constexpr const char* kSectionDistrictCars = "district_cars";
+constexpr const char* kSectionRoads = "roads";
+
+/// Puts every map road's axis back from tables/roads.csv after the section
+/// is read (a map road's axis is never saved; road_state.h), by the road's
+/// remapped key.
+///
+/// THE MAP'S LINE MAY HAVE MOVED SINCE THE SAVE — its smoothing is still
+/// being drawn (boss [21]: ~38 thousand rows instead of 2 900), and a road
+/// a few metres longer is cut into a different number of stretches. The
+/// condition is then carried over BY SHARE OF LENGTH, the stretch at the
+/// same fraction of the road giving its wear, rather than refusing a save
+/// over a map that only got smoother.
+bool RestoreMapRoadAxes(const ITableSet& tables, RoadTable& roads, std::string& error) {
+  std::vector<MapRoadDef> map_roads;
+  if (!ReadMapRoads(tables, map_roads, error)) {
+    return false;
+  }
+  for (RoadRow& road : roads.rows) {
+    if (road.origin != RoadOrigin::kMap) {
+      continue;
+    }
+    if (road.map_road.value >= map_roads.size()) {
+      error = "a map road of the save is not on roads.csv";
+      return false;
+    }
+    road.axis = map_roads[road.map_road.value].axis;
+    const std::uint32_t count = StretchCountForLength(RoadAxisLength(road.axis));
+    if (road.stretches.size() == count || road.stretches.empty()) {
+      if (road.stretches.empty()) {
+        road.stretches.assign(count, RoadStretch{});
+      }
+      continue;
+    }
+    std::vector<RoadStretch> resampled(count);
+    for (std::uint32_t index = 0; index < count; ++index) {
+      const double share = (static_cast<double>(index) + 0.5) / static_cast<double>(count);
+      auto source = static_cast<std::size_t>(share * static_cast<double>(road.stretches.size()));
+      source = source < road.stretches.size() ? source : road.stretches.size() - 1;
+      resampled[index] = road.stretches[source];
+    }
+    road.stretches = std::move(resampled);
+  }
+  return true;
+}
+
 constexpr const char* kSectionLedger = "ledger";
 constexpr const char* kSectionStaged = "staged";
 
@@ -374,6 +421,12 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.district_cars, WriteDistrictCarRow);
   CloseSection(out, length_offset);
 
+  // The road network (roads design §13, save format 92): a map road's axis
+  // stays out, the loader takes it back from roads.csv.
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.roads, WriteRoadRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -506,8 +559,16 @@ bool DecodeWorld(std::span<const std::byte> bytes,
           kSectionExtractionSites, &loaded.extraction_sites, ReadExtractionSiteRow) ||
       !read_table_section(kSectionDistrictVisits, &loaded.district_visits, ReadDistrictVisitRow) ||
       !read_table_section(kSectionNightOutings, &loaded.night_outings, ReadNightOutingRow) ||
-      !read_table_section(kSectionDistrictCars, &loaded.district_cars, ReadDistrictCarRow)) {
+      !read_table_section(kSectionDistrictCars, &loaded.district_cars, ReadDistrictCarRow) ||
+      !read_table_section(kSectionRoads, &loaded.roads, ReadRoadRow)) {
     return false;
+  }
+  {
+    std::string road_error;
+    if (!RestoreMapRoadAxes(tables, loaded.roads, road_error)) {
+      Refuse(error, std::string("section '") + kSectionRoads + "': " + road_error);
+      return false;
+    }
   }
 
   if (!OpenSection(in, kSectionLedger, &section_end, error)) {

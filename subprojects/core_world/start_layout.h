@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "core_common/geometry.h"
+#include "core_common/road_state.h"
 
 namespace core {
 
@@ -104,6 +105,10 @@ struct StartLayoutRow {
   /// works), so the wrecked mill of the first morning cannot be said with a
   /// number of it. Only the start layout sets this.
   bool start_dead = false;
+
+  /// A road row's `traffic` word (roads design §4); regular on every other
+  /// row and on a table without the column.
+  RoadTrafficWord traffic = RoadTrafficWord::kRegular;
 };
 
 /// @brief The whole hand-designed start scene, in table order.

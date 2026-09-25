@@ -27,6 +27,7 @@
 #include "core_common/night_trade_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
+#include "core_common/road_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
@@ -78,6 +79,11 @@ void WriteDistrictVisitRow(SaveSink& sink, const DistrictVisitRow& row);
 DistrictVisitRow ReadDistrictVisitRow(LoadSource& source);
 void WriteDistrictCarRow(SaveSink& sink, const DistrictCarRow& row);
 DistrictCarRow ReadDistrictCarRow(LoadSource& source);
+
+/// A MAP road's axis is not written (road_state.h): the loader puts it back
+/// from tables/roads.csv after the section is read (RestoreMapRoadAxes).
+void WriteRoadRow(SaveSink& sink, const RoadRow& row);
+RoadRow ReadRoadRow(LoadSource& source);
 
 }  // namespace core
 

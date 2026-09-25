@@ -142,6 +142,11 @@ struct DistrictCarIdTag {};
 /// (core_common/district_car_state.h).
 using DistrictCarId = EntityId<DistrictCarIdTag>;
 
+struct RoadIdTag {};
+
+/// @brief One road or path of the network (core_common/road_state.h).
+using RoadId = EntityId<RoadIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------
