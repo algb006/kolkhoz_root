@@ -294,7 +294,9 @@ bool ConsiderCandidate(const AssignmentJob& job,
                        const AssignmentCandidate& candidate,
                        std::uint32_t candidate_index,
                        const AssignmentParams& params,
-                       RankedPick& pick) {
+                       RankedPick& pick,
+                       bool& refused_by_road) {
+  refused_by_road = false;
   const bool horse_work = IsHorseWork(job.kind) || job.harnessed;
   if (candidate.horse_locked && !horse_work) {
     return false;  // The start-canon lock: only horse works may take him.
@@ -320,6 +322,7 @@ bool ConsiderCandidate(const AssignmentJob& job,
   // The road limit is a game rule, not accountant quality.
   if (!RoadLeavesAWorkingDay(
           travel, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
+    refused_by_road = true;
     return false;
   }
   const float usable_hours = params.window_hours - (2.0F * travel);
@@ -348,20 +351,25 @@ bool ConsiderCandidate(const AssignmentJob& job,
 }
 
 /// Everyone still free who may and can reach this job today, best first.
+/// `road_refused`: how many free workers the road rule alone turned away.
 std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
                                        std::uint32_t job_index,
                                        const std::vector<AssignmentCandidate>& candidates,
                                        const std::vector<std::uint32_t>& result,
-                                       const AssignmentParams& params) {
+                                       const AssignmentParams& params,
+                                       std::uint32_t& road_refused) {
   std::vector<RankedPick> picks;
+  road_refused = 0;
   for (std::uint32_t index = 0; index < candidates.size(); ++index) {
     if (result[index] != kNoJobAssigned) {
       continue;
     }
     RankedPick pick;
-    if (ConsiderCandidate(job, job_index, candidates[index], index, params, pick)) {
+    bool by_road = false;
+    if (ConsiderCandidate(job, job_index, candidates[index], index, params, pick, by_road)) {
       picks.push_back(pick);
     }
+    road_refused += by_road ? 1U : 0U;
   }
   // The rotated tiebreaker (assignment.h): row plus the day, modulo the
   // roster. Without it the queue is the birth order and never advances.
@@ -385,10 +393,14 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
 std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& jobs,
                                               const std::vector<AssignmentCandidate>& candidates,
                                               const AssignmentParams& params,
-                                              std::vector<std::uint8_t>* rides_horse) {
+                                              std::vector<std::uint8_t>* rides_horse,
+                                              std::vector<std::uint8_t>* road_blocked) {
   std::vector<std::uint32_t> result(candidates.size(), kNoJobAssigned);
   if (rides_horse != nullptr) {
     rides_horse->assign(candidates.size(), 0U);
+  }
+  if (road_blocked != nullptr) {
+    road_blocked->assign(jobs.size(), 0U);
   }
   std::uint32_t horses_left = params.draught_horses;
 
@@ -425,7 +437,18 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // §2.4: a trudoden is a work norm, not attendance).
     float expected_output = 0.0F;
     std::uint32_t placed = 0;
-    for (const RankedPick& pick : RankCandidates(job, job_index, candidates, result, params)) {
+    std::uint32_t road_refused = 0;
+    const std::vector<RankedPick> picks =
+        RankCandidates(job, job_index, candidates, result, params, road_refused);
+    // THE JOB THE ROAD STOPPED (econ, boss-econ-roads-balance [4] item 5б):
+    // work left, nobody fit to take it, and free hands turned away by the
+    // road rule alone. A job nobody free could take for other reasons —
+    // every hand already placed, a horse lock — is not the road's.
+    if (road_blocked != nullptr && picks.empty() && road_refused > 0 &&
+        job.work_days_remaining > 0.0F) {
+      (*road_blocked)[job_index] = 1U;
+    }
+    for (const RankedPick& pick : picks) {
       if (expected_output >= job.work_days_remaining) {
         break;
       }
@@ -461,12 +484,14 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
           AssignmentJob on_foot = job;
           on_foot.harnessed = false;
           RankedPick walking;
+          bool walk_refused_by_road = false;  // he was ranked: the job is not the road's
           if (!ConsiderCandidate(on_foot,
                                  job_index,
                                  candidates[pick.candidate_index],
                                  pick.candidate_index,
                                  params,
-                                 walking)) {
+                                 walking,
+                                 walk_refused_by_road)) {
             continue;
           }
           daily_norm = walking.daily_norm;

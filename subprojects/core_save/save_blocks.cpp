@@ -71,9 +71,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // seventy-first field, predicted before the build.
 // Save 90: the removals by cause and by kind — three columns, 29 x amounts
 // and 74 fields, predicted before the build.
-static_assert(sizeof(YearLedger) == 232 + (29 * kAmountsSize),
+// Save 94 (0.36.5, econ's instruments): hauled_to_stores and the road's
+// blocked job-days by kind — a thirtieth column and twelve u32, 76 fields;
+// predicted 232 + 29 A -> 280 + 30 A before the build.
+static_assert(sizeof(YearLedger) == 280 + (30 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 74,
+static_assert(AggregateArity<YearLedger>() == 76,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -303,6 +306,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.eaten);
 
   sink.WriteAmounts(DefKind::kResource, book.harvest);
+  sink.WriteAmounts(DefKind::kResource, book.hauled_to_stores);  // save 94
   sink.WriteAmounts(DefKind::kResource, book.lost_no_room);
   sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
   sink.WriteAmounts(DefKind::kResource, book.seized);        // save 62
@@ -341,6 +345,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.goods_loan_repaid);  // save 89
 
   WriteFloatArray(out, book.work_days_by_kind);
+  for (const std::uint32_t days : book.road_blocked_job_days) {  // save 94
+    out.WriteU32(days);
+  }
   out.WriteI32(book.trudodni_accrued);
   out.WriteI32(book.trudodni_burned);
   // The season's reaping pace (save 63; the best day's bytes carry the last
@@ -396,6 +403,12 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.eaten = source.ReadAmounts(DefKind::kResource);
 
   book.harvest = source.ReadAmounts(DefKind::kResource);
+  book.hauled_to_stores = source.ReadAmounts(DefKind::kResource);  // save 94
+  for (const Grams grams : book.hauled_to_stores) {
+    if (grams < 0) {
+      source.Fail("the book's hauled-in column is negative");
+    }
+  }
   book.lost_no_room = source.ReadAmounts(DefKind::kResource);
   book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
   book.seized = source.ReadAmounts(DefKind::kResource);
@@ -448,6 +461,9 @@ YearLedger ReadYearLedger(LoadSource& source) {
   }
 
   ReadFloatArray(in, book.work_days_by_kind);
+  for (std::uint32_t& days : book.road_blocked_job_days) {  // save 94
+    days = in.ReadU32();
+  }
   book.trudodni_accrued = in.ReadI32();
   book.trudodni_burned = in.ReadI32();
   book.reaping_today = in.ReadFloat();

@@ -182,6 +182,7 @@ void SettleLoad(const ProductionConfig& config,
                             ? DeliverToStores(current, config, resource, offered)
                             : DeliverHeapToStores(current, config, resource, offered, *booked);
     load -= moved;
+    AddLedgerAmount(current.ledger.current.hauled_to_stores, resource, moved);
   }
   const Grams left = room_now();
   haul_days_remaining =

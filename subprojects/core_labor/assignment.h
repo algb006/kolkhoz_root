@@ -247,6 +247,10 @@ inline constexpr std::uint32_t kNoJobAssigned = 0xFFFFFFFFU;
 ///                   after the pool ran dry was judged on foot — reach and
 ///                   day's norm — and walks (WorkAssignment::rides_horse).
 ///                   Resized to `candidates`; nullptr when not wanted.
+/// @param road_blocked Optional, per job: 1 when it had work left, nobody was
+///                   placed on it, and free workers were turned away by the
+///                   road rule alone (time design §7) — the job the road
+///                   stopped today. Resized to `jobs`; nullptr when not wanted.
 /// @return Per candidate (same order as `candidates`): the index into
 ///         `jobs` he works today, or kNoJobAssigned — surplus hands idle
 ///         and earn nothing (a trudoden is a work norm, not attendance).
@@ -256,7 +260,8 @@ inline constexpr std::uint32_t kNoJobAssigned = 0xFFFFFFFFU;
 std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& jobs,
                                               const std::vector<AssignmentCandidate>& candidates,
                                               const AssignmentParams& params,
-                                              std::vector<std::uint8_t>* rides_horse = nullptr);
+                                              std::vector<std::uint8_t>* rides_horse = nullptr,
+                                              std::vector<std::uint8_t>* road_blocked = nullptr);
 
 }  // namespace core
 

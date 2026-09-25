@@ -2470,6 +2470,17 @@ int CheckHaulingIsNotFree() {
   failures += Expect(world.fields.rows[0].reaped_grams == after_first,
                      "and the second evening carries nothing either, because nobody went: "
                      "room that grew overnight is not a day's work by somebody");
+
+  // WHAT A SETTLEMENT MOVES IN IS BOOKED (0.36.5; econ's instrument в): half
+  // the demand worked, and the book's hauled-in column holds exactly what
+  // left the heap — the heap's rot stays in lost_no_room.
+  world.fields.rows[0].haul_days_remaining = world.fields.rows[0].haul_days_written / 2.0F;
+  const core::Grams lying = world.fields.rows[0].reaped_grams;
+  core::SettleHauling(config, world);
+  const core::Grams moved = lying - world.fields.rows[0].reaped_grams;
+  failures += Expect(moved > 0 && core::AmountOf(world.ledger.current.hauled_to_stores,
+                                                 core::ResourceId{0}) == moved,
+                     "a worked haul books what it brought in, gram for gram, in hauled_to_stores");
   return failures;
 }
 

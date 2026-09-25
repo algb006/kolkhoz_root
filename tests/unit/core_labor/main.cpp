@@ -119,6 +119,21 @@ int TestRoadLimit() {
   const std::vector<core::AssignmentCandidate> near = {Worker(0, {500.0F, 0.0F})};
   const auto one = core::PlanDayAssignments(jobs, near, DayParams());
   failures += Expect(one[0] == 0, "the same job within the limit takes the worker");
+
+  // THE JOB THE ROAD STOPPED (0.36.5; econ's instrument б): marked when free
+  // hands were turned away by the road alone, and not when a hand took it or
+  // when nobody free was there to turn away.
+  std::vector<std::uint8_t> blocked;
+  core::PlanDayAssignments(jobs, far, DayParams(), nullptr, &blocked);
+  failures += Expect(blocked.size() == 1 && blocked[0] == 1U,
+                     "road instrument: the far job with a free hand turned away is the road's");
+  core::PlanDayAssignments(jobs, near, DayParams(), nullptr, &blocked);
+  failures += Expect(blocked.size() == 1 && blocked[0] == 0U,
+                     "road instrument: the job a hand took is not");
+  const std::vector<core::AssignmentCandidate> nobody;
+  core::PlanDayAssignments(jobs, nobody, DayParams(), nullptr, &blocked);
+  failures += Expect(blocked.size() == 1 && blocked[0] == 0U,
+                     "road instrument: nor the job with nobody free to turn away");
   return failures;
 }
 
@@ -511,6 +526,31 @@ int TestWholeWorkingDay() {
   }
   failures += Expect(days_counted >= 1 && at_most_one,
                      "the close of the day counts a worked day once for each who went out");
+  return failures;
+}
+
+/// econ's instrument б through the whole working day (0.36.5): the morning's
+/// plan books a job-day the road stopped, by kind, once a day — a field 20 km
+/// out is the road's; one 200 m out is not.
+int TestRoadBlockedIsBooked() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  constexpr auto kSowing = static_cast<std::size_t>(core::WorkKind::kSowing);
+  DayWorld far(2);
+  far.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 20000.0F, .y = 0.0F});
+  far.RunDay(*labor, 1);
+  failures += Expect(far.world.ledger.current.road_blocked_job_days[kSowing] == 1,
+                     "road instrument: a sowing 20 km out is one job-day the road stopped — "
+                     "booked once, not every hour");
+  DayWorld near(2);
+  near.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+  near.RunDay(*labor, 1);
+  failures += Expect(near.world.ledger.current.road_blocked_job_days[kSowing] == 0,
+                     "road instrument: one 200 m out is not the road's");
   return failures;
 }
 
@@ -3540,6 +3580,7 @@ int main() {
   failures += TestRoadByWhatHeTravelsOn();
   failures += TestReferenceWorkerDeliversOneNorm();
   failures += TestWholeWorkingDay();
+  failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();

@@ -631,6 +631,12 @@ core::WorldState MakeWorld() {
   world.ledger.closed.reaping_last_day_daylight = 15.5F;
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
+  // econ's instruments (save 94): what the carts brought in, and the jobs the
+  // road stopped — two kinds, so a shifted index cannot round-trip clean.
+  world.ledger.closed.hauled_to_stores = Amounts({0, 9'000'000});
+  world.ledger.closed.road_blocked_job_days[static_cast<std::size_t>(core::WorkKind::kHauling)] =
+      17;
+  world.ledger.closed.road_blocked_job_days[static_cast<std::size_t>(core::WorkKind::kHarvest)] = 3;
   world.ledger.closed.trudodni_burned = 4200;
   // The office wall (ledger_state.h, Chronicle): three years, so that the
   // round trip proves the LENGTH and the ORDER and not just that one row
@@ -1364,7 +1370,10 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // 980 with the fixture's value, held. The first value was sized at
     // three kinds against a fixture of two — refused by the dictionary's
     // count, a miss of the fixture's reading, not of the size.
-    {"ledger", 980, 0x5a57a2a4b5c74385ULL},
+    // Save 94: +116 — econ's instruments, in each book a hauled-in column and
+    // twelve u32 of the road's blocked job-days: predicted 1080 with both
+    // columns empty, held; then 1096 with the closed book's two entries.
+    {"ledger", 1096, 0x49d726861ed64a06ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1693,6 +1702,10 @@ int main() {
   failures += Expect(AmountAt(loaded.ledger.closed.processed, 2) == 400 &&
                          AmountAt(loaded.ledger.closed.made, 2) == 300,
                      "the shops' two lines survive the round trip (save 73)");
+  failures += Expect(
+      AmountAt(loaded.ledger.closed.hauled_to_stores, 1) == 9'000'000 &&
+          loaded.ledger.closed.road_blocked_job_days == world.ledger.closed.road_blocked_job_days,
+      "what the carts brought in and the jobs the road stopped survive, kind by kind (save 94)");
   failures += Expect(AmountAt(loaded.ledger.closed.built_in, 1) == 250 &&
                          AmountAt(loaded.ledger.closed.yard_feed, 2) == 300,
                      "what went into a building and what the yards' beasts ate come back in the "

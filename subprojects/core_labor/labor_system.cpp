@@ -361,10 +361,20 @@ class LaborSystem final : public ILaborSystem {
       std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
       if (!candidates.empty()) {
         std::vector<std::uint8_t> rides_horse;
+        std::vector<std::uint8_t> road_blocked;
         AssignmentParams params = DayParams(current);
         MeasureRoads(current, jobs, candidates, params);
         const std::vector<std::uint32_t> plan =
-            PlanDayAssignments(jobs, candidates, params, &rides_horse);
+            PlanDayAssignments(jobs, candidates, params, &rides_horse, &road_blocked);
+        // THE MORNING'S PLAN ONLY: the day's jobs the road stopped, by kind
+        // (YearLedger::road_blocked_job_days). The top-up re-plans the same
+        // day and would count it twice.
+        for (std::size_t index = 0; index < jobs.size(); ++index) {
+          const auto kind = static_cast<std::size_t>(jobs[index].kind);
+          if (road_blocked[index] != 0U && kind < book.road_blocked_job_days.size()) {
+            ++book.road_blocked_job_days[kind];
+          }
+        }
         for (std::uint32_t index = 0; index < candidates.size(); ++index) {
           if (plan[index] == kNoJobAssigned) {
             continue;

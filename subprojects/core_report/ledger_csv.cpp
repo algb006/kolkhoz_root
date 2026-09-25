@@ -310,6 +310,11 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   for (std::size_t kind = 1; kind < kWorkKindNames.size(); ++kind) {
     out.Number(std::string("work_") + kWorkKindNames[kind] + "_days", book.work_days_by_kind[kind]);
   }
+  // The jobs the road stopped (0.36.5), by kind: job-days, not man-days.
+  for (std::size_t kind = 1; kind < kWorkKindNames.size(); ++kind) {
+    out.Integer(std::string("road_blocked_") + kWorkKindNames[kind] + "_job_days",
+                book.road_blocked_job_days[kind]);
+  }
   // Trudodni are stored in hundredths and reported whole: the sheet speaks
   // the design's unit, not the state's storage.
   // The two halves of the mechanisation share, as figures rather than as a
@@ -325,6 +330,9 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
 
   // -- per resource --------------------------------------------------------
   EmitResourceBlock(out, resources, "harvest", book.harvest);
+  // What the carriers brought into the stores (0.36.5): beside the harvest,
+  // "brought in" apart from "rotted in the heap".
+  EmitResourceBlock(out, resources, "hauled_to_stores", book.hauled_to_stores);
   // What the stores had no room for and nobody could keep (task A3): the
   // first column that says what the missing storage cost, rather than
   // leaving the year's book to balance by silence.

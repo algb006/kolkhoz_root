@@ -167,9 +167,20 @@ struct YearLedger {
   ResourceAmounts eaten;  ///< What the families actually ate.
 
   // -- land (grams, hectares) ---------------------------------------------
-  /// What came off the fields into the stores: grain, potato, flax, the
-  /// meadows' hay, straw as the by-product.
+  /// WHAT THE FIELDS GAVE, booked when it is LAID, not when it is stored:
+  /// an arable crop as the reaping lays it into the field's heap (the carts
+  /// bring it in later — hauled_to_stores below), the meadows' hay and the
+  /// straw as they are cut, whether a store took them or not (what did not
+  /// fit is beside it in lost_no_room). Until 0.36.5 this said "into the
+  /// stores", and econ read it so (boss-econ-roads-balance [4] item 5а).
   ResourceAmounts harvest;
+
+  /// WHAT THE CARRIERS BROUGHT IN (0.36.5; econ, boss-econ-roads-balance [4]
+  /// item 5в): what the haul took off the field heaps, the timber stands and
+  /// the dig sites into the stores. Beside `harvest` it separates "brought
+  /// in" from "rotted in the heap" — the heap's rot is in lost_no_room.
+  /// Save 94.
+  ResourceAmounts hauled_to_stores;
 
   /// WHAT IS GONE FOR WANT OF ROOM — and the name carries the "gone",
   /// because the name is what a reader trusts.
@@ -347,6 +358,15 @@ struct YearLedger {
   // -- labor ---------------------------------------------------------------
   /// Game man-days delivered, by WorkKind (index = the enum value).
   std::array<float, kWorkKindCount> work_days_by_kind = {};
+
+  /// THE JOBS THE ROAD STOPPED (0.36.5; econ, boss-econ-roads-balance [4]
+  /// item 5б), by WorkKind: job-days of the morning's plan with work left and
+  /// nobody placed, while free workers were turned away by the road rule
+  /// alone (time design §7). A job-day, not a man-day: one stand the road
+  /// cut off counts one a day however many hands it turned away. A shop's
+  /// post whose holder stays home for the road is not in it — that one says
+  /// so by kProcessingStopped. Save 94.
+  std::array<std::uint32_t, kWorkKindCount> road_blocked_job_days = {};
 
   TrudodniHundredths trudodni_accrued = 0;
 
