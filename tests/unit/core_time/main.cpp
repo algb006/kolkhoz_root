@@ -20,6 +20,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_time/month_climate.h"
+#include "core_time/month_ice.h"
 #include "core_time/time_system.h"
 #include "weather_of_day.h"
 
@@ -82,6 +83,60 @@ std::uint32_t CoveredDaysInAYear(core::ISequentialPhase& phase) {
     }
   }
   return covered;
+}
+
+/// THE MONTH'S ICE DOOR (core_time/month_ice.h; boss core-boss-epoch1-6 [41]):
+/// on this test's climate (winter −10, spring +5, summer +19, autumn +6) no
+/// ice in summer; the water sets through the winter; it opens in spring and
+/// is gone by June. A fuller freeze sets LESS by December — the direction the
+/// parameter must move the answer; a full of nought is refused.
+int CheckMonthIce(const std::filesystem::path& root) {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  if (Expect(tables != nullptr, "month ice: the test tables load") != 0) {
+    return 1;
+  }
+  std::array<core::MonthIce, core::kMonthsPerYear> ice{};
+  bool all = true;
+  for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+    all =
+        all && core::MonthIceOfTables(*tables, static_cast<core::Month>(month), ice[month], error);
+    std::cout << "month ice " << (month + 1) << ": freeze " << ice[month].freeze << ", thaw "
+              << ice[month].thaw << '\n';
+  }
+  failures += Expect(all, "month ice: the door answers every month");
+  const auto at = [&ice](int human) { return ice[static_cast<std::size_t>(human - 1)]; };
+  failures += Expect(at(7).freeze == 0.0F && at(7).thaw == 0.0F,
+                     "month ice: July has no ice and nothing to open");
+  failures += Expect(at(12).freeze > 0.0F && at(1).freeze > at(12).freeze &&
+                         at(2).freeze >= at(1).freeze && at(2).freeze == 1.0F,
+                     "month ice: the water sets through the winter, all of it by February");
+  failures += Expect(at(2).thaw == 0.0F && at(4).thaw > 0.0F,
+                     "month ice: nothing opens under the winter's snow; April opens");
+  failures += Expect(at(4).freeze == 1.0F && at(4).thaw > 0.2F && at(4).thaw < 0.8F,
+                     "month ice: mid-April the water is part open — river and shore, not yet the "
+                     "middle of the reach (ice_thaw_full_degree_days 40)");
+  failures += Expect(at(6).freeze == 0.0F && at(6).thaw == 0.0F,
+                     "month ice: by June the ice is gone and the sums begin again");
+  // THE DIRECTION: twice the frost for the whole mask sets less by December.
+  WriteFile(root / "world_params.csv",
+            "key,value,reader\nice_freeze_full_degree_days,60,core\n"
+            "ice_thaw_full_degree_days,20,core\n");
+  const auto slower = core::LoadTableSet(root.string(), &error);
+  core::MonthIce december{};
+  failures += Expect(slower != nullptr &&
+                         core::MonthIceOfTables(*slower, core::Month::kDecember, december, error) &&
+                         december.freeze < at(12).freeze,
+                     "month ice: a fuller freeze (60 against 30) sets less by December");
+  WriteFile(root / "world_params.csv", "key,value,reader\nice_freeze_full_degree_days,0,core\n");
+  const auto broken = core::LoadTableSet(root.string(), &error);
+  core::MonthIce refused{};
+  failures += Expect(
+      broken != nullptr && !core::MonthIceOfTables(*broken, core::Month::kJanuary, refused, error),
+      "month ice: a full of nought degree-days is refused");
+  std::filesystem::remove(root / "world_params.csv");
+  return failures;
 }
 
 /// THE MONTH'S CLIMATE DOOR (core_time/month_climate.h; boss,
@@ -361,6 +416,7 @@ int main() {
   failures += Expect(time_system != nullptr, "the factory accepts a good weather table");
   if (time_system != nullptr) {
     failures += CheckMonthClimate(*tables, time_system->TimeAndWeatherPhase());
+    failures += CheckMonthIce(root);
     {
       // No weather table: the door says so, rather than answer the stub's.
       const auto bare = core::LoadTableSet((root / "no_weather").string(), &error);

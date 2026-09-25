@@ -3,6 +3,7 @@
 # PUBLIC because the module's boundary is that slot's interface.
 
 kolkhoz_add_module(core_time
+    month_ice.cpp
     time_system.cpp
     weather_of_day.cpp)
 

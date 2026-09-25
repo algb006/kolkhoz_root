@@ -138,6 +138,33 @@ int CheckBaseConventions() {
   return failures;
 }
 
+/// The ice's two rows as the design base will export them, reader `core`
+/// (boss core-boss-epoch1-6 [41]): the shipped set with them assembles — the
+/// core knows the keys before the export, not after it.
+int CheckIceRowsAssemble() {
+  namespace fs = std::filesystem;
+  const fs::path scene = fs::temp_directory_path() / "unit_core_world_ice";
+  fs::remove_all(scene);
+  fs::copy(fs::path(KOLKHOZ_TABLES_DIR), scene, fs::copy_options::recursive);
+  const fs::path world_params = scene / "world_params.csv";
+  for (const auto& [key, value] : std::array<std::pair<std::string_view, std::string_view>, 2>{
+           {{"ice_freeze_full_degree_days", "30"}, {"ice_thaw_full_degree_days", "40"}}}) {
+    if (!SetKeyValue(world_params, key, value)) {
+      std::ofstream out(world_params, std::ios::app);
+      out << key << ',' << value << ",core\n";
+    }
+  }
+  std::string error;
+  const auto tables = core::LoadTableSet(scene.string(), &error);
+  core::StandardSimulationConfig config;
+  config.tables = tables.get();
+  config.world_seed = 3;
+  const bool assembled = tables != nullptr && core::CreateStandardSimulation(config) != nullptr;
+  fs::remove_all(scene);
+  return Expect(assembled,
+                "ice rows: the shipped set with the two ice_ rows for the core assembles");
+}
+
 /// @brief Replaces every value of `column` in a CSV with `value`, keeping the
 /// file otherwise as it is. Named for the column and not for the table it
 /// was written against: it spoils a cell of any of them, and the livestock
@@ -885,6 +912,7 @@ int main() {
   int failures = 0;
   failures += CheckReadinessShape();
   failures += CheckBaseConventions();
+  failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();

@@ -39,6 +39,7 @@
 #include "core_residents/residents_system.h"
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
+#include "core_time/month_ice.h"
 #include "core_time/time_system.h"
 #include "core_world/era_readiness.h"
 
@@ -785,6 +786,10 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_conventions.begin(), from_conventions.end());
       const std::span<const std::string_view> from_roads = RoadWorldParamKeys();
       known.insert(known.end(), from_roads.begin(), from_roads.end());
+      // The ice's two fulls: read by the month's ice door (month_ice.h), not
+      // by the simulation — the door is the core's all the same.
+      const std::span<const std::string_view> from_ice = IceWorldParamKeys();
+      known.insert(known.end(), from_ice.begin(), from_ice.end());
       // DECLARED FOR THE CORE, READ BY NOBODY YET — each with the door that
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees

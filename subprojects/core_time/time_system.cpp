@@ -29,6 +29,8 @@
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 #include "core_time/month_climate.h"
+#include "core_time/month_ice.h"
+#include "season_tables.h"
 #include "weather_of_day.h"
 
 namespace core {
@@ -480,11 +482,8 @@ std::span<const std::string_view> TimeWorldParamKeys() {
   return kTimeWorldParamKeys;
 }
 
-namespace {
-
-/// The season table out of the set: the stub seasons, then `weather` and
-/// `weather_params` over them where present. ONE READING for the time phase
-/// and the month's climate door, so the two cannot read two climates.
+// ONE READING for the time phase, the month's climate door and the month's
+// ice door (season_tables.h), so none of them can read another climate.
 bool ReadSeasonTable(const ITableSet& tables, SeasonTable& seasons, std::string& error) {
   seasons = DefaultSeasonTable();
   if (const ITable* weather = tables.FindTable("weather")) {
@@ -499,8 +498,6 @@ bool ReadSeasonTable(const ITableSet& tables, SeasonTable& seasons, std::string&
   }
   return true;
 }
-
-}  // namespace
 
 bool MonthClimateOfTables(const ITableSet& tables,
                           Month month,
