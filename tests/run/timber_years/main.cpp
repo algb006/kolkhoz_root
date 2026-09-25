@@ -38,6 +38,7 @@
 #include "../common/sowing_policy.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/timber_catalog.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/timber_state.h"
@@ -114,11 +115,7 @@ int main(int argc, char** argv) {
     std::cout << "FAIL: timber catalogue: " << error << "\n";
     return 1;
   }
-  float life_speedup = 4.0F;
-  if (const core::ITable* const life = started.tables->FindTable("life")) {
-    life_speedup = life->CellReal(life->FindRowByKey("life_speedup"), life->FindColumn("value"))
-                       .value_or(4.0F);
-  }
+  const float life_speedup = core::LifeSpeedupOr(*started.tables, 4.0F);
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);

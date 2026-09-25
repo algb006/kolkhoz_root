@@ -76,6 +76,61 @@ bool SetKeyValue(const std::filesystem::path& path, std::string_view key, std::s
   return found;
 }
 
+/// The base conventions in world_params.csv (boss core-boss-epoch1-6 [32]):
+/// the seven rows as the design base will export them, reader `core`. The
+/// shipped set with them must assemble — otherwise the export stops every
+/// run — and a calendar that disagrees with the build, or a biology factor
+/// whose two homes disagree, must not.
+int CheckBaseConventions() {
+  namespace fs = std::filesystem;
+  int failures = 0;
+  const fs::path scene = fs::temp_directory_path() / "unit_core_world_conventions";
+  fs::remove_all(scene);
+  fs::copy(fs::path(KOLKHOZ_TABLES_DIR), scene, fs::copy_options::recursive);
+  const fs::path world_params = scene / "world_params.csv";
+  {
+    std::ofstream out(world_params, std::ios::app);
+    out << "clock_scale,12,core\n"
+        << "months_per_year,12,core\n"
+        << "days_per_month,4,core\n"
+        << "hours_per_day,24,core\n"
+        << "days_per_week,7,core\n"
+        << "real_minutes_per_day_x1,120,core\n"
+        << "life_speedup,4,core\n";
+  }
+  const auto assembles = [&scene] {
+    std::string error;
+    const auto tables = core::LoadTableSet(scene.string(), &error);
+    if (tables == nullptr) {
+      return false;
+    }
+    core::StandardSimulationConfig config;
+    config.tables = tables.get();
+    config.world_seed = 3;
+    return core::CreateStandardSimulation(config) != nullptr;
+  };
+  failures += Expect(assembles(),
+                     "base conventions: the shipped set with the seven rows declared for the core "
+                     "assembles");
+  failures += Expect(SetKeyValue(world_params, "days_per_month", "5") && !assembles(),
+                     "base conventions: five days a month against the build's four is refused");
+  failures += Expect(SetKeyValue(world_params, "days_per_month", "4") &&
+                         SetKeyValue(world_params, "real_minutes_per_day_x1", "60") && !assembles(),
+                     "base conventions: an hour of real time a day against the build's two is "
+                     "refused");
+  failures += Expect(SetKeyValue(world_params, "real_minutes_per_day_x1", "120") &&
+                         SetKeyValue(world_params, "life_speedup", "3") && !assembles(),
+                     "base conventions: a biology factor of 3 in world_params against life.csv's "
+                     "4 is refused — one factor, two homes (the factories refuse it first "
+                     "through the door; the assembly's own check is for the readers that fall "
+                     "back, and the door's test in core_catalog is the one that proves it)");
+  failures += Expect(SetKeyValue(world_params, "life_speedup", "4") && assembles(),
+                     "base conventions: and put back, the set assembles again — the refusals "
+                     "above were the spoiled rows, not the copy");
+  fs::remove_all(scene);
+  return failures;
+}
+
 /// @brief Replaces every value of `column` in a CSV with `value`, keeping the
 /// file otherwise as it is. Named for the column and not for the table it
 /// was written against: it spoils a cell of any of them, and the livestock
@@ -822,6 +877,7 @@ int main() {
   namespace fs = std::filesystem;
   int failures = 0;
   failures += CheckReadinessShape();
+  failures += CheckBaseConventions();
   failures += CheckStartRoads();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();

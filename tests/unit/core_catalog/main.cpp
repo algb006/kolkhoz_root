@@ -22,6 +22,7 @@
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
+#include "core_catalog/world_conventions.h"
 #include "core_tables/tables.h"
 
 namespace {
@@ -597,6 +598,56 @@ int TestLivestockLots() {
   return failures;
 }
 
+/// The biology factor's one door (core_catalog/world_conventions.h): read
+/// from whichever home carries it, refused when the two disagree or the
+/// value is out of range, empty when neither has the row.
+int TestLifeSpeedupDoor() {
+  int failures = 0;
+  const auto find = [](const char* in_world, const char* in_life, std::optional<float>& value) {
+    std::vector<std::vector<std::string>> world_rows = {{"leaf_fall_month", "10", "core"}};
+    if (in_world != nullptr) {
+      world_rows.push_back({"life_speedup", in_world, "core"});
+    }
+    std::vector<std::vector<std::string>> life_rows = {{"adult_age_years", "16"}};
+    if (in_life != nullptr) {
+      life_rows.push_back({"life_speedup", in_life});
+    }
+    const test::FakeTable world({"key", "value", "reader"}, world_rows);
+    const test::FakeTable life({"key", "value"}, life_rows);
+    const test::FakeTableSet set({{"world_params", &world}, {"life", &life}});
+    std::string error;
+    return core::FindLifeSpeedup(set, value, error);
+  };
+  std::optional<float> only_life;
+  std::optional<float> only_world;
+  std::optional<float> both;
+  std::optional<float> neither;
+  failures += Expect(find(nullptr, "4", only_life) && only_life == 4.0F,
+                     "life_speedup: life.csv alone still answers, until it becomes an export");
+  failures += Expect(find("6", nullptr, only_world) && only_world == 6.0F,
+                     "life_speedup: world_params alone answers — its new home");
+  failures +=
+      Expect(find("4", "4", both) && both == 4.0F, "life_speedup: both homes agreeing answer");
+  failures += Expect(find(nullptr, nullptr, neither) && !neither.has_value(),
+                     "life_speedup: neither home — no answer, and no error; the caller decides");
+  std::optional<float> disagree;
+  std::optional<float> zero;
+  failures += Expect(!find("3", "4", disagree) && !disagree.has_value(),
+                     "life_speedup: two homes that disagree are refused, not one of them chosen");
+  failures += Expect(!find("0", nullptr, zero) && !zero.has_value(),
+                     "life_speedup: a factor of zero is refused — the clock divides by it");
+  const test::FakeTable empty({"key", "value", "reader"}, {});
+  const test::FakeTableSet bare({{"world_params", &empty}});
+  failures += Expect(core::LifeSpeedupOr(bare, 2.5F) == 2.5F,
+                     "life_speedup: a reader that cannot report keeps its own fallback");
+  const test::FakeTable split_world({"key", "value", "reader"}, {{"life_speedup", "3", "core"}});
+  const test::FakeTable split_life({"key", "value"}, {{"life_speedup", "4"}});
+  const test::FakeTableSet split({{"world_params", &split_world}, {"life", &split_life}});
+  failures += Expect(core::LifeSpeedupOr(split, 2.5F) == 2.5F,
+                     "life_speedup: and on a refused set too — neither home's number is taken");
+  return failures;
+}
+
 /// The district's regular visits (boss, parcel 324): the three knobs read, and
 /// a month outside the year, a half month and a notice longer than a month
 /// refuse the catalogue.
@@ -630,6 +681,7 @@ int TestDistrictVisitKnobs() {
 
 int main() {
   int failures = 0;
+  failures += TestLifeSpeedupDoor();
   failures += TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
   failures += TestTheMtsColumnKnobs();

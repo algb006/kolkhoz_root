@@ -40,6 +40,7 @@
 #include "../common/building_chairman.h"
 #include "../common/orders_policy.h"
 #include "../common/run_harness.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
@@ -76,13 +77,7 @@ core::ActivityRules RulesOfRun(const core::ITableSet& tables) {
   };
   rules.walk_hours_per_km = rate("pedestrian", 2.4F);
   rules.harness_hours_per_km = rate("horse_trot", 1.0F);
-  const core::ITable* const life = tables.FindTable("life");
-  const std::uint32_t row =
-      life == nullptr ? core::kNoTableRow : life->FindRowByKey("life_speedup");
-  const std::uint32_t column = life == nullptr ? core::kNoTableColumn : life->FindColumn("value");
-  if (row != core::kNoTableRow && column != core::kNoTableColumn) {
-    rules.life_speedup = std::strtof(std::string(life->CellText(row, column)).c_str(), nullptr);
-  }
+  rules.life_speedup = core::LifeSpeedupOr(tables, rules.life_speedup);
   return rules;
 }
 

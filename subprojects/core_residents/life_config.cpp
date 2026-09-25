@@ -26,12 +26,13 @@
 #include <vector>
 
 #include "core_catalog/table_value.h"
+#include "core_catalog/world_conventions.h"
 #include "core_tables/tables.h"
 
 namespace core {
 namespace {
 
-/// @brief Reads the fifteen keys of life.csv into LifeConfig, each with its
+/// @brief Reads the twelve required keys of life.csv into LifeConfig, each with its
 /// range; a missing key is an error (see the file comment: the stage-3 keys
 /// are required).
 ///
@@ -56,13 +57,11 @@ bool ParseLifeTable(const ITable& table, LifeConfig& config, std::string& error)
   // campaign from the mistake.
   constexpr Range kAgeYears{.low = 1.0F, .high = 120.0F};
   constexpr Range kPercent{.low = 0.0F, .high = 100.0F};
+  //
+  // life_speedup left this list on 2026-09-25: its home is world_params.csv
+  // now, and ParseLifeConfig reads it through the one door
+  // (core_catalog/world_conventions.h) with the same requirement.
   const bool ok =
-      RequiredValue(table,
-                    "life",
-                    "life_speedup",
-                    Range{.low = 0.1F, .high = 100.0F},
-                    config.life_speedup,
-                    error) &&
       RequiredValue(table, "life", "adult_age_years", kAgeYears, config.adult_age_years, error) &&
       RequiredValue(
           table, "life", "marriage_age_years", kAgeYears, config.marriage_age_years, error) &&
@@ -474,6 +473,18 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     if (!ParseLifeTable(*life, config, error) || !ParseVitalsAndBirths(*life, config, error)) {
       return false;
     }
+  }
+  // Required as it was in life.csv: a set that carries the life table and
+  // lost the factor from both homes is broken, not old.
+  std::optional<float> speedup;
+  if (!FindLifeSpeedup(tables, speedup, error)) {
+    return false;
+  }
+  if (speedup.has_value()) {
+    config.life_speedup = *speedup;
+  } else if (tables.FindTable("life") != nullptr) {
+    error = "life_speedup: in neither world_params nor life";
+    return false;
   }
   if (const ITable* demography = tables.FindTable("demography")) {
     if (!ParseEpochRows(*demography, config, error)) {

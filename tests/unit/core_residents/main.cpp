@@ -3423,8 +3423,46 @@ int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
   return failures;
 }
 
+/// The biology factor's requirement moved with its home (2026-09-25): a set
+/// carrying the life table still needs it, now from world_params or life.
+int CheckLifeSpeedupHomes() {
+  int failures = 0;
+  const std::vector<std::vector<std::string>> required = {{"adult_age_years", "16"},
+                                                          {"marriage_age_years", "18"},
+                                                          {"fertility_from_years", "18"},
+                                                          {"fertility_to_years", "45"},
+                                                          {"mortality_age_mid_years", "40"},
+                                                          {"mortality_age_old_years", "60"},
+                                                          {"mortality_young_percent_per_year", "1"},
+                                                          {"mortality_mid_percent_per_year", "1"},
+                                                          {"mortality_old_percent_per_year", "5"},
+                                                          {"migration_per_year", "0"},
+                                                          {"marriage_chance_percent_per_day", "1"},
+                                                          {"sex_balance_gain", "1"}};
+  const test::FakeTable life({"key", "value"}, required);
+  const auto parse = [&life](const char* in_world, core::LifeConfig& config) {
+    std::vector<std::vector<std::string>> rows;
+    if (in_world != nullptr) {
+      rows.push_back({"life_speedup", in_world, "core"});
+    }
+    const test::FakeTable world({"key", "value", "reader"}, rows);
+    const test::FakeTableSet set({{"life", &life}, {"world_params", &world}});
+    std::string error;
+    return core::ParseLifeConfig(set, config, error);
+  };
+  core::LifeConfig from_world;
+  core::LifeConfig from_nowhere;
+  failures += Expect(parse("6", from_world) && from_world.life_speedup == 6.0F,
+                     "life_speedup: world_params alone feeds the residents, life.csv without it");
+  failures += Expect(!parse(nullptr, from_nowhere),
+                     "life_speedup: a set with the life table and the factor in neither home is "
+                     "refused, as a life.csv without it was");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckLifeSpeedupHomes();
   failures += CheckTheDistrictSendsSpecialists();
   failures += CheckHygiene();
   failures += CheckStubTablesMustBeDeclared();

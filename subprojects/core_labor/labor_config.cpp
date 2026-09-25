@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "core_catalog/table_value.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/crop_calendar.h"
 #include "core_tables/tables.h"
@@ -515,11 +516,13 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       return false;
     }
   }
+  std::optional<float> speedup;
+  if (!FindLifeSpeedup(tables, speedup, error)) {
+    return false;
+  }
+  config.life_speedup = speedup.value_or(config.life_speedup);
   if (const ITable* life = tables.FindTable("life")) {
-    const std::array<ScalarKnob, 2> knobs = {{
-        {.key = "life_speedup",
-         .value = &config.life_speedup,
-         .range = {.low = 0.1F, .high = 100.0F}},
+    const std::array<ScalarKnob, 1> knobs = {{
         {.key = "adult_age_years",
          .value = &config.adult_age_years,
          .range = {.low = 1.0F, .high = 100.0F}},

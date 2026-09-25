@@ -26,6 +26,7 @@
 #include <span>
 #include <string_view>
 
+#include "core_catalog/world_conventions.h"
 #include "core_common/order_state.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
@@ -46,7 +47,7 @@ class YardPolicy {
     yard_type_ = TypeByKey(tables, "unit_types", "horse_yard");
     groom_post_ = PostByKey(tables, "groom");
     adult_age_years_ = Knob(tables, "life", "adult_age_years", 16.0F);
-    life_speedup_ = Knob(tables, "life", "life_speedup", 4.0F);
+    life_speedup_ = core::LifeSpeedupOr(tables, 4.0F);
   }
 
   /// @brief Whether the policy has anything left to do. False once the team

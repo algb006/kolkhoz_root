@@ -431,7 +431,9 @@ struct SessionConfig {
   /// Balance tables; non-owning — the caller keeps them alive for the
   /// whole lifetime of the session, as it already does for the simulation
   /// (core_world/world.h). Read for the two knobs behind the derived
-  /// signals: tables/life.csv, keys `life_speedup` and `infant_age_months`.
+  /// signals: `life_speedup` (world_params.csv, or life.csv until it becomes
+  /// an export — core_catalog/world_conventions.h) and life.csv
+  /// `infant_age_months`.
   /// A table set without them keeps the canonical defaults (four times the
   /// calendar, eighteen months) ONLY when the field below says so; by
   /// default a set without life.csv refuses the session by name. A present

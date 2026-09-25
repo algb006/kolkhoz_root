@@ -14,6 +14,7 @@
 
 #include "core_catalog/definitions.h"
 #include "core_catalog/table_value.h"
+#include "core_catalog/world_conventions.h"
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
 
@@ -60,18 +61,16 @@ bool ParseBoundaryConfig(const ITableSet& tables,
       }
     }
   }
+  // The biology factor through its one door, which names the table and the
+  // key itself (core_catalog/world_conventions.h).
+  std::optional<float> speedup;
+  if (!FindLifeSpeedup(tables, speedup, error)) {
+    return false;
+  }
+  config.life_speedup = speedup.value_or(config.life_speedup);
   const ITable* const life = tables.FindTable("life");
   if (life == nullptr) {
     return true;  // no table: the defaults above are the canonical values
-  }
-  // The shared reader states the fault; naming the table and the key is the
-  // caller's job, because only the caller knows which table it was reading.
-  // That prefix was lost for one commit when this moved off the module's own
-  // copy of the reader — a message regression is still a regression.
-  if (!OptionalValue(
-          *life, "life_speedup", Range{.low = 0.1F, .high = 100.0F}, config.life_speedup, error)) {
-    PrefixError("life", "life_speedup", error);
-    return false;
   }
   // Stated in months by the design, so read in months and converted once.
   float infant_age_months = config.infant_age_bio_years * static_cast<float>(kMonthsPerBioYear);

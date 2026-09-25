@@ -47,6 +47,7 @@
 #include "../common/watchman_policy.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/definitions.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/ledger_state.h"
 #include "core_common/plot.h"
@@ -306,14 +307,7 @@ void PrintYear(const core::WorldState& state) {
 /// is fixed at, so the one number that says what the childhood gave. A
 /// separate line, so the year line the analysis scripts read keeps its shape.
 void PrintMembers(const core::WorldState& state, const core::ITableSet& tables) {
-  float life_speedup = 4.0F;
-  if (const core::ITable* const life = tables.FindTable("life")) {
-    const std::uint32_t row = life->FindRowByKey("life_speedup");
-    const std::uint32_t column = life->FindColumn("value");
-    if (row != core::kNoTableRow && column != core::kNoTableColumn) {
-      life_speedup = life->CellReal(row, column).value_or(life_speedup);
-    }
-  }
+  const float life_speedup = core::LifeSpeedupOr(tables, 4.0F);
   std::array<std::uint32_t, static_cast<std::size_t>(core::SocialStatus::kSocialStatusCount)>
       count{};
   float ideology_sum = 0.0F;

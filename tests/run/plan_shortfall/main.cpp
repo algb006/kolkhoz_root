@@ -47,6 +47,7 @@
 #include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
 #include "../common/yard_policy.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
@@ -620,14 +621,9 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
     return 1;
   }
   const core::ITable* const resources = started.tables->FindTable("resources");
-  // life.csv life_speedup, for telling a hand from a child on the days nobody
-  // carted. A missing table falls back to the canon's four.
-  float life_speedup = 4.0F;
-  if (const core::ITable* const life = started.tables->FindTable("life")) {
-    const std::optional<float> cell =
-        life->CellReal(life->FindRowByKey("life_speedup"), life->FindColumn("value"));
-    life_speedup = cell.has_value() ? *cell : life_speedup;
-  }
+  // The biology factor, for telling a hand from a child on the days nobody
+  // carted. A set without it falls back to the canon's four.
+  const float life_speedup = core::LifeSpeedupOr(*started.tables, 4.0F);
   run::YardPolicy yard(*started.tables);
   run::FixturePolicy fixture(*started.tables);
   run::FellingPolicy felling(*started.tables);

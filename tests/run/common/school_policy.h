@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
@@ -54,7 +55,7 @@ class SchoolPolicy {
     house_ = TypeByKey(tables, "wooden_house");
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
-    life_speedup_ = Knob(tables, "life", "life_speedup", life_speedup_);
+    life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
     age_from_years_ = Knob(tables, "world_params", "school_enroll_age_from_years", age_from_years_);
     age_to_years_ = Knob(tables, "world_params", "school_enroll_age_to_years", age_to_years_);
   }

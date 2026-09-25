@@ -42,6 +42,7 @@
 
 #include "core_catalog/definitions.h"
 #include "core_catalog/timber_catalog.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/order_state.h"
@@ -67,7 +68,7 @@ class SawmillPolicy {
     house_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "wooden_house");
     craftsman_post_ = RowId<core::ProfessionIdTag>(tables, "professions", "farm_craftsman");
     adult_age_years_ = Knob(tables, "life", "adult_age_years", 16.0F);
-    life_speedup_ = Knob(tables, "life", "life_speedup", 4.0F);
+    life_speedup_ = core::LifeSpeedupOr(tables, 4.0F);
     ReadCosts(tables);
     std::string definitions_error;
     const bool defined =

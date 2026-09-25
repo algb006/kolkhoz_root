@@ -352,8 +352,9 @@ constexpr void RefreshCalendarCaches(CalendarState& calendar) {
 
 /// @brief A person's age in BIOLOGICAL years — what the body has lived,
 /// not what the calendar has.
-/// @param life_speedup tables/life.csv `life_speedup`: game years per
-///        biological year (×4 by the canon). It belongs to the balance
+/// @param life_speedup world_params.csv `life_speedup` (life.csv until it
+///        becomes an export; core_catalog/world_conventions.h): game years
+///        per biological year (×4 by the canon). It belongs to the balance
 ///        tables, so it is a parameter and not a constant here.
 /// @param birth_day SIGNED on purpose. The starting generation was born
 ///        BEFORE day 0 (resident_state.h), so the subtraction has to happen

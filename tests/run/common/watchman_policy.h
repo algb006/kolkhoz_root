@@ -23,13 +23,13 @@
 
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <iostream>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
@@ -81,15 +81,7 @@ class WatchmanPolicy {
         raw_.push_back(core::ResourceId{static_cast<std::uint16_t>(row)});
       }
     }
-    const core::ITable* life = tables.FindTable("life");
-    if (life != nullptr) {
-      const std::uint32_t row = life->FindRowByKey("life_speedup");
-      const std::uint32_t column = life->FindColumn("value");
-      if (row != core::kNoTableRow && column != core::kNoTableColumn) {
-        const float value = std::strtof(std::string(life->CellText(row, column)).c_str(), nullptr);
-        life_speedup_ = value > 0.0F ? value : life_speedup_;
-      }
-    }
+    life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
   }
 
   /// @brief One day of the chairman's attention. Call once a day.

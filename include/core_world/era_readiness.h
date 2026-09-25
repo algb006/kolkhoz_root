@@ -86,7 +86,8 @@ std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog, UnitTypeId type,
 /// the food rules read, so the number keeps one home.
 float ReadFoodVarietyThreshold(const ITableSet& tables, Epoch era);
 
-/// @brief The biology factor, from the same `life` row core_residents reads.
+/// @brief The biology factor, through the same door core_residents reads it
+/// by (core_catalog/world_conventions.h); 1 for a set without it.
 float ReadLifeSpeedup(const ITableSet& tables);
 
 /// @brief Reads the catalogue once, out of unit_types.csv. Invalid ids and

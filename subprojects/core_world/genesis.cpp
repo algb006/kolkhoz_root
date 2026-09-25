@@ -21,6 +21,7 @@
 #include "campaign_tables.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/table_value.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/herd_age_band.h"
@@ -1444,12 +1445,18 @@ WorldState CreateStartWorld(const ITableSet& tables,
   }
   const auto population = static_cast<std::uint32_t>(population_value);
   const auto households = static_cast<std::uint32_t>(households_value);
-  float life_speedup = LifeSpeedupFromTables(tables);
-  // Positive test so that NaN falls back too, and a floor that keeps the
-  // age-to-day division from producing values no int32 can hold.
-  if (!(life_speedup >= 0.1F && life_speedup <= 1000.0F)) {
-    LogError("life: life_speedup out of range; using 4");
-    life_speedup = 4.0F;
+  // THE DOOR'S OWN REFUSAL, logged here and not only in the assembly:
+  // CreateStartWorld is public and called directly (tests, tools), past
+  // CheckWorldConventions. The range check that stood here went with the
+  // door (2026-09-25) — the door holds 0.1..100 and never answers outside it.
+  float life_speedup = 4.0F;
+  {
+    std::optional<float> found;
+    std::string refusal;
+    if (!FindLifeSpeedup(tables, found, refusal)) {
+      LogError(refusal + "; using 4");
+    }
+    life_speedup = found.value_or(life_speedup);
   }
   RngState& rng = world.rng;
   // The figure of the village. The keys it reads are declared by

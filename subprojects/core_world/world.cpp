@@ -21,6 +21,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
 #include "core_common/emit_event.h"
@@ -672,19 +673,6 @@ float CampaignValue(const ITableSet& tables, std::string_view key, float fallbac
   return *value;
 }
 
-float LifeSpeedupFromTables(const ITableSet& tables) {
-  const ITable* life = tables.FindTable("life");
-  if (life == nullptr) {
-    return 4.0F;
-  }
-  const std::uint32_t row = life->FindRowByKey("life_speedup");
-  const std::uint32_t value_column = life->FindColumn("value");
-  if (row == kNoTableRow || value_column == kNoTableColumn) {
-    return 4.0F;
-  }
-  return life->CellReal(row, value_column).value_or(4.0F);
-}
-
 std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationConfig& config) {
   assert(config.tables != nullptr);
   // THE ASSEMBLER'S OWN READ SET, refused before any subsystem is built
@@ -792,6 +780,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_time.begin(), from_time.end());
       known.insert(known.end(), from_genesis.begin(), from_genesis.end());
       known.insert(known.end(), from_life.begin(), from_life.end());
+      const std::span<const std::string_view> from_conventions = ConventionWorldParamKeys();
+      known.insert(known.end(), from_conventions.begin(), from_conventions.end());
       // DECLARED FOR THE CORE, READ BY NOBODY YET — each with the door that
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees
@@ -818,6 +808,14 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
         LogError(trouble);
         return nullptr;
       }
+    }
+    // The base conventions against the build, and the biology factor's two
+    // homes against each other (core_catalog/world_conventions.h) — here,
+    // because the readers of the factor that cannot report fall back quietly.
+    std::string disagreement;
+    if (!CheckWorldConventions(*config.tables, disagreement)) {
+      LogError(disagreement);
+      return nullptr;
     }
   }
 

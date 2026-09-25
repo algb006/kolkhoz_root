@@ -34,6 +34,7 @@
 #include "core_catalog/definitions.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_log/log.h"
@@ -1111,11 +1112,13 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   // harvest-will-not-be-gathered alarm counts the village's hands before the
   // season's first reaping, and the rule of who is a hand is labor's —
   // read here a second time, not copied.
+  std::optional<float> speedup;
+  if (!FindLifeSpeedup(tables, speedup, error)) {
+    return false;
+  }
+  config.farming.life_speedup = speedup.value_or(config.farming.life_speedup);
   if (const ITable* const life = tables.FindTable("life")) {
-    const std::array<ScalarKnob, 2> knobs = {
-        ScalarKnob{.key = "life_speedup",
-                   .value = &config.farming.life_speedup,
-                   .range = Range{.low = 0.1F, .high = 100.0F}},
+    const std::array<ScalarKnob, 1> knobs = {
         ScalarKnob{.key = "adult_age_years",
                    .value = &config.farming.adult_age_years,
                    .range = Range{.low = 1.0F, .high = 100.0F}}};

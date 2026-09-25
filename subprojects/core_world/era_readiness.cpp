@@ -7,6 +7,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_log/log.h"
 
@@ -177,20 +178,12 @@ float ReadFoodVarietyThreshold(const ITableSet& tables, Epoch era) {
 }
 
 float ReadLifeSpeedup(const ITableSet& tables) {
-  const ITable* life = tables.FindTable("life");
-  if (life == nullptr) {
-    return 1.0F;
-  }
-  const std::uint32_t row = life->FindRowByKey("life_speedup");
-  const std::uint32_t column = life->FindColumn("value");
-  if (row == kNoTableRow || column == kNoTableColumn) {
-    return 1.0F;
-  }
-  const std::optional<double> value = life->CellReal(row, column);
-  // The same row core_residents reads, never a copy of its number: a second
-  // home for the biology factor would age the readiness score against the
-  // rest of the world without a single test going red.
-  return value.has_value() && *value > 0.0 ? static_cast<float>(*value) : 1.0F;
+  // The same door core_residents reads it through, never a copy of its
+  // number: a second home for the biology factor would age the readiness
+  // score against the rest of the world without a single test going red.
+  // A refusal is the assembly's to report (CheckWorldConventions stops it
+  // first); here it falls back like a set without the row.
+  return LifeSpeedupOr(tables, 1.0F);
 }
 
 ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {

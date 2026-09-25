@@ -20,9 +20,6 @@ Weekday CampaignDayZeroWeekday(const ITableSet& tables);
 /// cell is present but not numeric.
 float CampaignValue(const ITableSet& tables, std::string_view key, float fallback);
 
-/// @brief life_speedup from tables/life.csv; 4 when absent.
-float LifeSpeedupFromTables(const ITableSet& tables);
-
 }  // namespace core
 
 #endif  // CORE_WORLD_CAMPAIGN_TABLES_H_
