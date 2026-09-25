@@ -55,7 +55,7 @@ class FellingPolicy {
     logs_by_type_ = FirstLevelLogs(tables);
     ride_hours_per_km_ = static_cast<float>(core::kClockScale) /
                          Cell(tables, "transport", "horse_trot", "speed_kmh", 12.0F);
-    ride_limit_hours_ = Cell(tables, "labor", "travel_limit_hours", "value", 4.0F);
+    ride_limit_hours_ = Cell(tables, "labor", "travel_limit_hours", "value", 6.0F);
   }
 
   /// @brief The fixture difference, in words, for the run to print BEFORE it
@@ -337,7 +337,11 @@ class FellingPolicy {
 
   float ride_hours_per_km_ = 1.0F;
 
-  float ride_limit_hours_ = 4.0F;
+  /// labor.csv travel_limit_hours: six hours BY THE NETWORK since 0.36.9
+  /// (decision 276), while this policy measures its stands by the straight
+  /// line (RideHours) — a stand inside by the line can be outside by the
+  /// road and refused by the core (named to boss with 0.36.9).
+  float ride_limit_hours_ = 6.0F;
 
   bool ready_ = false;
 

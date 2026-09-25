@@ -198,11 +198,12 @@ struct AssignmentParams {
   float harness_hours_per_km = 1.0F;
 
   /// One-way travel limit in game hours: a job farther than this from a
-  /// worker's home cannot take him at all. Four hours by decision 109, one
+  /// worker's home cannot take him at all. Six hours by the network since
+  /// decision 276 (four along the straight line by decision 109 before), one
   /// rule for a unit's staff and an open field alike (time design §7); the
   /// threshold and the day's output measure the SAME shoulder, which is why
   /// the two speeds above serve both (decision 103).
-  float travel_limit_hours = 4.0F;
+  float travel_limit_hours = 6.0F;
 
   /// Less daylight than this left after the road, and the job is not worth
   /// walking to at all. ASSUMPTION.

@@ -296,8 +296,9 @@ struct ConstructionConfig {
   float walk_hours_per_km = 2.4F;
 
   /// labor.csv `travel_limit_hours`: the longest one-way road, in game hours,
-  /// the accountant sends anybody down. The same number core_labor reads.
-  float travel_limit_hours = 4.0F;
+  /// the accountant sends anybody down. The same number core_labor reads:
+  /// six hours by the network since decision 276.
+  float travel_limit_hours = 6.0F;
 
   /// labor.csv `min_usable_hours`: the least working time that must be left
   /// of a day after the road there and back. The same number core_labor reads.

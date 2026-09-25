@@ -120,6 +120,20 @@ class RoadIndexImpl final : public RoadIndex {
         .km;
   }
 
+  RouteMeasure Measure(TravelMode mode, Vec2 from, Vec2 to) const override {
+    const std::vector<Access> starts = Accesses(mode, from);
+    const std::vector<Access> ends = Accesses(mode, to);
+    const Choice choice = Choose(mode, from, to, starts, ends);
+    RouteMeasure measure;
+    measure.effective_km = choice.km;
+    // THE SAME CHOICE Way unfolds: across open ground the whole line is off
+    // the road; on the network, the two pieces that join it.
+    measure.off_road_m = choice.kind == Choice::kStraight || choice.kind == Choice::kNoRoad
+                             ? Distance(from, to)
+                             : choice.start.distance_m + choice.end.distance_m;
+    return measure;
+  }
+
   Route Way(TravelMode mode, Vec2 from, Vec2 to) const override {
     const auto index = static_cast<std::size_t>(mode);
     const float weight = rules_.off_road_weight[index];
@@ -673,6 +687,10 @@ std::shared_ptr<const RoadIndex> RoadIndexOf(const WorldState& world) {
 
 float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
   return RoadIndexOf(world)->EffectiveKm(mode, from, to);
+}
+
+RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
+  return RoadIndexOf(world)->Measure(mode, from, to);
 }
 
 }  // namespace core

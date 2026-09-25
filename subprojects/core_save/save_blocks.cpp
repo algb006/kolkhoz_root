@@ -74,9 +74,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 94 (0.36.5, econ's instruments): hauled_to_stores and the road's
 // blocked job-days by kind — a thirtieth column and twelve u32, 76 fields;
 // predicted 232 + 29 A -> 280 + 30 A before the build.
-static_assert(sizeof(YearLedger) == 280 + (30 * kAmountsSize),
+// Save 96 (0.36.9, the produce cart off the road): four float and two gram
+// arrays of three sources — 280 -> 376 and 76 -> 82, predicted before the
+// build (the float arrays first, so the grams land 8-aligned: no padding).
+static_assert(sizeof(YearLedger) == 376 + (30 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 76,
+static_assert(AggregateArity<YearLedger>() == 82,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -350,6 +353,17 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   for (const std::uint32_t days : book.road_blocked_job_days) {  // save 94
     out.WriteU32(days);
   }
+  // The produce cart off the road (save 96), in the struct's order.
+  WriteFloatArray(out, book.cart_trips);
+  WriteFloatArray(out, book.cart_off_road_m);
+  WriteFloatArray(out, book.cart_off_road_worst_m);
+  WriteFloatArray(out, book.cart_trips_off_road);
+  for (const Grams grams : book.cart_grams) {
+    out.WriteI64(grams);
+  }
+  for (const Grams grams : book.cart_grams_off_road) {
+    out.WriteI64(grams);
+  }
   out.WriteI32(book.trudodni_accrued);
   out.WriteI32(book.trudodni_burned);
   // The season's reaping pace (save 63; the best day's bytes carry the last
@@ -465,6 +479,24 @@ YearLedger ReadYearLedger(LoadSource& source) {
   ReadFloatArray(in, book.work_days_by_kind);
   for (std::uint32_t& days : book.road_blocked_job_days) {  // save 94
     days = in.ReadU32();
+  }
+  ReadFloatArray(in, book.cart_trips);  // save 96
+  ReadFloatArray(in, book.cart_off_road_m);
+  ReadFloatArray(in, book.cart_off_road_worst_m);
+  ReadFloatArray(in, book.cart_trips_off_road);
+  for (Grams& grams : book.cart_grams) {
+    grams = in.ReadI64();
+  }
+  for (Grams& grams : book.cart_grams_off_road) {
+    grams = in.ReadI64();
+  }
+  for (std::size_t origin = 0; origin < kCartLoadSourceCountValue; ++origin) {
+    if (book.cart_grams[origin] < 0 || book.cart_grams_off_road[origin] < 0 ||
+        book.cart_grams_off_road[origin] > book.cart_grams[origin]) {
+      source.Fail(
+          "the book's produce cart column is negative or carries more beyond the road "
+          "than it carried");
+    }
   }
   book.trudodni_accrued = in.ReadI32();
   book.trudodni_burned = in.ReadI32();

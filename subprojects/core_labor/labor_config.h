@@ -348,22 +348,26 @@ struct LaborConfig {
   /// Hours of work behind one norm man-day.
   float standard_day_hours = 10.0F;
 
-  /// One-way commute limit in game hours: CANON since decision 109 — four
-  /// hours, one rule for a unit's staff and for an open field alike (time
-  /// design §7). The threshold and the day's output measure the same
-  /// shoulder, each order by what it travels on (decision 103), and both
-  /// use today's road: the mowers do not walk to the meadow in January.
-  float travel_limit_hours = 4.0F;
+  /// One-way commute limit in game hours, BY THE ROAD NETWORK: six hours
+  /// since decision 276 (2026-09-26, econ's fan) — decision 109's four were
+  /// measured along the straight line, and by the network the canon's
+  /// hayfield grew from 3.6 h to 5.4 h. One rule for a unit's staff and for
+  /// an open field alike (time design §7). The threshold and the day's
+  /// output measure the same shoulder, each order by what it travels on
+  /// (decision 103), and both use today's road: the mowers do not walk to
+  /// the meadow in January.
+  float travel_limit_hours = 6.0F;
 
   /// Below this much daylight left after the road, a job is not worth
   /// walking to at all. ASSUMPTION.
   float min_usable_hours = 1.0F;
 
-  /// Straight-line to path-distance factor. Roads are deferred in phase 1
-  /// and the canonical numbers are straight-line ones — the design's own
-  /// "~2 game hours is ~800 m on foot" only holds at 1.0, and the v9 start
-  /// map costs the road the same way — so phase 1 keeps 1.0 and the knob
-  /// waits for the roads system (polish P43ac2).
+  /// Straight-line to path-distance factor, from the years the roads were
+  /// deferred (polish P43ac2). SPENT SINCE 0.36.2: every trip it scales is
+  /// already measured along the road network (road_route.h), so anything
+  /// above 1.0 would count the road's bends twice. Kept at 1.0 and read
+  /// only because removing the row is a table change of its own (named to
+  /// boss with 0.36.9).
   float path_factor = 1.0F;
 
   /// Real walking speed, km/h (transport.csv pedestrian row); the game

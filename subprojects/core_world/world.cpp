@@ -794,16 +794,10 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees
       // rather than an absence (boss, parcel 277).
-      //   `road_access_m` (2026-09-17) — metres from a road's line to the
-      //   edge of a plot that count as "a road is laid to it" (unit rules
-      //   §12). ITS DOOR IS THE ROAD ACCESS CHECK, and that check waits on
-      //   something larger than itself: a road is a UNIT with a ROUTE, and
-      //   the core has no channel for placing a linear unit at all — an
-      //   order carries one position, a unit row holds one position, and a
-      //   plot is a disc. Named here rather than read into a config that
-      //   nothing consults, because a knob with a reader that ignores it
-      //   is worse than a knob with none: it looks answered.
-      known.emplace_back("road_access_m");
+      //   (`road_access_m` stood here from 2026-09-17 until 0.36.9, when the
+      //   produce cart's book became its first reader — core_production
+      //   declares it now. The road access check of a site, unit rules §12,
+      //   will be its second.)
       //   `player_entry_day` (2026-09-24, boss-core-epoch1-4 seq 12 and 21) —
       //   the day of the year the player enters, 12 (1 April); the campaign
       //   still starts on 1 January. ITS DOOR IS THE STANDING WORK ORDERS:

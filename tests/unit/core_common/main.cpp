@@ -1660,6 +1660,31 @@ int TestRoadIndex() {
           near(bare->EffectiveKm(core::TravelMode::kWalk, {0.0F, 0.0F}, {1000.0F, 0.0F}), 1.0F),
       "road index: with no network every mode walks the line at its pace, and a cart says it "
       "had no road");
+  // THE WAY'S METRES OFF THE ROAD (0.36.9, the produce cart's book): the
+  // same choice EffectiveKm makes, and the pieces that join the network.
+  const core::RouteMeasure cart_measure =
+      index->Measure(core::TravelMode::kCart, {0.0F, 50.0F}, {400.0F, 300.0F});
+  const core::RouteMeasure cart_path_measure =
+      index->Measure(core::TravelMode::kCart, {1000.0F, 0.0F}, {1000.0F, 500.0F});
+  const core::RouteMeasure walk_measure =
+      index->Measure(core::TravelMode::kWalk, {0.0F, 50.0F}, {1000.0F, -50.0F});
+  const core::RouteMeasure lost_measure =
+      bare->Measure(core::TravelMode::kCart, {0.0F, 0.0F}, {1000.0F, 0.0F});
+  std::cout << "road index, metres off the road: cart " << cart_measure.off_road_m
+            << ", cart past the path " << cart_path_measure.off_road_m << ", walker "
+            << walk_measure.off_road_m << ", cart with no network " << lost_measure.off_road_m
+            << '\n';
+  failures += Expect(near(cart_measure.effective_km, cart) &&
+                         near(cart_path_measure.effective_km, cart_path) &&
+                         near(walk_measure.effective_km, walk),
+                     "road index: Measure answers EffectiveKm's kilometres for the same way");
+  failures += Expect(std::abs(cart_measure.off_road_m - 50.0F) < 0.5F &&
+                         std::abs(cart_path_measure.off_road_m - 500.0F) < 0.5F &&
+                         std::abs(walk_measure.off_road_m - 100.0F) < 0.5F &&
+                         std::abs(lost_measure.off_road_m - 1000.0F) < 0.5F,
+                     "road index: the metres off the road are the pieces that join it — 50 to "
+                     "the trunk, the 500 past the path's end a cart may not use, 50 + 50 for the "
+                     "walker; with no network, the whole line");
   return failures;
 }
 

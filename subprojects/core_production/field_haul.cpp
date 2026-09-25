@@ -144,9 +144,45 @@ HaulRate RateToward(const ProductionConfig& config,
   // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
   // cart keeps to the network, the carrier walks roads, paths and open
   // ground as is shortest.
-  const float one_way_km =
-      RoadKm(world, harnessed ? cart_mode : TravelMode::kWalk, from, destination);
-  return RateOverKm(one_way_km, hours_per_km, load);
+  const TravelMode mode = harnessed ? cart_mode : TravelMode::kWalk;
+  if (mode != TravelMode::kCart) {
+    return RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, load);
+  }
+  // THE PRODUCE CART: the same way, and how much of it is off the road, for
+  // the year's book (YearLedger::cart_trips; question 268). One choice of
+  // way — Measure answers RoadKm's kilometres beside the metres.
+  const RouteMeasure way = RoadMeasure(world, mode, from, destination);
+  HaulRate rate = RateOverKm(way.effective_km, hours_per_km, load);
+  rate.produce_cart = true;
+  rate.off_road_m = way.off_road_m;
+  return rate;
+}
+
+/// @brief Books what a produce cart brought in today on the year's cart
+///        columns (YearLedger::cart_trips and its siblings): the trips are
+///        the grams over the cart's load, each one loaded way off the road
+///        by `rate`. Nothing for a carrier on foot or a log cart.
+void BookCartRun(const ProductionConfig& config,
+                 WorldState& current,
+                 CartLoadSource source,
+                 const HaulRate& rate,
+                 Grams moved) {
+  const auto at = static_cast<std::size_t>(source);
+  if (!rate.produce_cart || moved <= 0 || rate.load <= 0 || at >= kCartLoadSourceCountValue) {
+    return;
+  }
+  YearLedger& book = current.ledger.current;
+  const float trips = static_cast<float>(moved) / static_cast<float>(rate.load);
+  book.cart_trips[at] += trips;
+  book.cart_grams[at] += moved;
+  book.cart_off_road_m[at] += trips * rate.off_road_m;
+  if (rate.off_road_m > book.cart_off_road_worst_m[at]) {
+    book.cart_off_road_worst_m[at] = rate.off_road_m;
+  }
+  if (rate.off_road_m > config.road_access_m) {
+    book.cart_trips_off_road[at] += trips;
+    book.cart_grams_off_road[at] += moved;
+  }
 }
 
 /// @brief One load's day: what the carriers took in, and tomorrow's demand.
@@ -158,9 +194,13 @@ HaulRate RateToward(const ProductionConfig& config,
 /// (seed_room.h) and is carted within HeapRoom, through the heap's door; a
 /// stand's logs and a site's dig pass nullptr — no seed is ever short of
 /// room to them, and their homes are outlines of their own.
+///
+/// `source`: where the load lies, for the produce cart's columns
+/// (BookCartRun); a stand passes the terminator — logs are no produce cart.
 void SettleLoad(const ProductionConfig& config,
                 WorldState& current,
                 const HaulRate& rate,
+                CartLoadSource source,
                 ResourceId resource,
                 Grams& load,
                 float& haul_days_remaining,
@@ -185,6 +225,7 @@ void SettleLoad(const ProductionConfig& config,
                             : DeliverHeapToStores(current, config, resource, offered, *booked);
     load -= moved;
     AddLedgerAmount(current.ledger.current.hauled_to_stores, resource, moved);
+    BookCartRun(config, current, source, rate, moved);
   }
   const Grams left = room_now();
   haul_days_remaining =
@@ -252,6 +293,7 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
+               CartLoadSource::kCartLoadSourceCount,  // logs: no produce cart
                config.timber.log_resource,
                stand.load_grams,
                stand.haul_days_remaining,
@@ -293,6 +335,7 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
+               CartLoadSource::kSite,
                site.resource,
                site.load_grams,
                site.haul_days_remaining,
@@ -364,6 +407,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
+               CartLoadSource::kField,
                field.reaped_resource,
                field.reaped_grams,
                field.haul_days_remaining,
@@ -432,10 +476,33 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
     const float done = unit.haul_days_written > unit.haul_days_remaining
                            ? unit.haul_days_written - unit.haul_days_remaining
                            : 0.0F;
+    // The first store that takes the first of what lies here.
+    const auto destination_of = [&config, &current, &unit, &order]() {
+      Vec2 destination = unit.position;
+      for (const UnitRow& other : current.units.rows) {
+        if (!order.empty() && StoresGoods(other, config) &&
+            NumberedStoreTakes(other, config, DefIdFromIndex<ResourceIdTag>(order.front()))) {
+          destination = other.position;
+          break;
+        }
+      }
+      return destination;
+    };
     const bool carrying = unit.emptying == 1;  // 2: the carrying is paused
     if (carrying && done > 0.0F && unit.haul_days_written > 0.0F) {
       const float share = done / unit.haul_days_written;
       Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
+      // The way the carts took today, for the year's book — measured before
+      // they moved anything, as the day's other loads are (SettleLoad).
+      // NOT BOOKED WHEN NO NUMBERED STORE TAKES THE FIRST OF IT: the way then
+      // falls back to the unit itself while the door may still carry the load
+      // to its heap under the open sky (DeliverToStores, second pass), and a
+      // way from a store to itself is a way nobody drove (static review of
+      // 0.36.9). Tomorrow's demand keeps that fallback, as it did before.
+      const Vec2 destination = destination_of();
+      const bool way_known = destination.x != unit.position.x || destination.y != unit.position.y;
+      const HaulRate today = RateToward(config, current, unit.position, destination);
+      Grams carted = 0;
       for (const std::uint32_t index : order) {
         if (budget <= 0) {
           break;
@@ -445,20 +512,16 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
         const Grams moved = DeliverToStores(current, config, resource, wanted);
         AddToStock(unit.stock, resource, -moved);
         budget -= moved;
+        carted += moved;
+      }
+      if (way_known) {
+        BookCartRun(config, current, CartLoadSource::kStore, today, carted);
       }
     }
     // Tomorrow's demand: what is left that has somewhere to go, toward the
     // first store that takes the first of it.
     const Grams left = carrying ? movable() : 0;
-    Vec2 destination = unit.position;
-    for (const UnitRow& other : current.units.rows) {
-      if (!order.empty() && StoresGoods(other, config) &&
-          NumberedStoreTakes(other, config, DefIdFromIndex<ResourceIdTag>(order.front()))) {
-        destination = other.position;
-        break;
-      }
-    }
-    const HaulRate rate = RateToward(config, current, unit.position, destination);
+    const HaulRate rate = RateToward(config, current, unit.position, destination_of());
     unit.haul_days_remaining = left > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
     unit.haul_days_written = unit.haul_days_remaining;
   }

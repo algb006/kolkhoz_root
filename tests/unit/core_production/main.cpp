@@ -7627,6 +7627,121 @@ int CheckHaulByRoad() {
   return failures;
 }
 
+/// THE PRODUCE CART OFF THE ROAD (0.36.9; question 268): the store at the
+/// head of a straight road east, one field 5 m off the road and one 300 m
+/// off it. A harnessed cart with produce books its trips, the grams, the
+/// metres of one loaded way off the road and the worst of them; only the
+/// far field's are beyond road_access_m (10). A carrier on foot and a cart
+/// with logs book nothing: neither is a produce cart.
+int CheckProduceCartOffTheRoad() {
+  int failures = 0;
+  constexpr auto kField = static_cast<std::size_t>(core::CartLoadSource::kField);
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.harness_speed_kmh = 12.0F;
+  config.walk_speed_kmh = 5.0F;
+  config.cart_load_kg = 750.0F;
+  config.standard_day_hours = 10.0F;
+  config.horse_kind = core::LivestockKindId{0};
+  SetStorageKg(config.unit_types[0], 100000.0F);
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  AddHerd(world, 0, 2, 0, true);
+  core::RoadRow road;
+  road.axis.push_back(core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}});
+  road.axis.push_back(core::RoadPoint{.position = {.x = 2000.0F, .y = 0.0F}});
+  core::AppendRow(world.roads, road);
+  world.road_index = core::BuildRoadIndex(world.roads);
+
+  // One day's worked half of the demand on a field, as CheckHaulingIsNotFree
+  // works it: the first evening sizes the demand, the second carries half.
+  const auto haul_half = [&config, &world](core::Vec2 center) {
+    while (!world.fields.row_ids.empty()) {
+      core::RemoveRow(world.fields, world.fields.row_ids.back());
+    }
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.center = center;
+    field.reaped_grams = 6000 * kKilo;
+    field.reaped_resource = core::ResourceId{0};
+    core::AppendRow(world.fields, field);
+    world.ledger.current = core::YearLedger{};
+    core::SettleHauling(config, world);
+    world.fields.rows[0].haul_days_remaining = world.fields.rows[0].haul_days_written / 2.0F;
+    const core::Grams lying = world.fields.rows[0].reaped_grams;
+    core::SettleHauling(config, world);
+    return lying - world.fields.rows[0].reaped_grams;
+  };
+
+  core::FieldRow near_field;
+  near_field.center = core::Vec2{.x = 1000.0F, .y = 5.0F};
+  const core::HaulRate near_rate = core::FieldHaulRate(config, world, near_field);
+  failures += Expect(near_rate.produce_cart && std::fabs(near_rate.off_road_m - 5.0F) < 0.01F,
+                     "a harnessed cart with produce knows its way off the road: 5 m from the "
+                     "field to the road, none from the road to the store at its head");
+
+  const core::Grams near_moved = haul_half(near_field.center);
+  const core::YearLedger& near_book = world.ledger.current;
+  const float near_trips = static_cast<float>(near_moved) / static_cast<float>(750 * kKilo);
+  std::cout << "produce cart, near field: " << near_book.cart_trips[kField] << " trips, "
+            << near_book.cart_off_road_m[kField] << " m off the road, worst "
+            << near_book.cart_off_road_worst_m[kField] << ", beyond access "
+            << near_book.cart_trips_off_road[kField] << '\n';
+  failures +=
+      Expect(near_moved > 0 && near_book.cart_grams[kField] == near_moved &&
+                 std::fabs(near_book.cart_trips[kField] - near_trips) < 1e-4F &&
+                 std::fabs(near_book.cart_off_road_m[kField] - (near_trips * 5.0F)) < 1e-2F &&
+                 std::fabs(near_book.cart_off_road_worst_m[kField] - 5.0F) < 0.01F,
+             "the near field's haul books its trips as the grams over the cart's load, "
+             "the grams, and 5 m a trip off the road");
+  failures += Expect(
+      near_book.cart_trips_off_road[kField] == 0.0F && near_book.cart_grams_off_road[kField] == 0,
+      "and 5 m is within road_access_m: no trip of it is driving the field");
+
+  const core::Grams far_moved = haul_half(core::Vec2{.x = 1000.0F, .y = 300.0F});
+  const core::YearLedger& far_book = world.ledger.current;
+  const float far_trips = static_cast<float>(far_moved) / static_cast<float>(750 * kKilo);
+  failures +=
+      Expect(far_moved > 0 && std::fabs(far_book.cart_off_road_worst_m[kField] - 300.0F) < 0.01F &&
+                 std::fabs(far_book.cart_trips_off_road[kField] - far_trips) < 1e-4F &&
+                 far_book.cart_grams_off_road[kField] == far_moved,
+             "the field 300 m off the road: every trip of it is beyond road_access_m, "
+             "and all its grams are carted on the forbidden driving");
+  const auto other_sources_empty = [](const core::YearLedger& book) {
+    for (std::size_t source = 0; source < core::kCartLoadSourceCountValue; ++source) {
+      if (source != kField && (book.cart_trips[source] != 0.0F || book.cart_grams[source] != 0)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  failures += Expect(other_sources_empty(far_book),
+                     "and a field's haul is booked under the field, not the dig or the store");
+
+  // THE PAIR: the same field with no horse free, and a stand's logs.
+  config.road_access_m = 400.0F;
+  const core::Grams roomier = haul_half(core::Vec2{.x = 1000.0F, .y = 300.0F});
+  failures += Expect(roomier > 0 && world.ledger.current.cart_trips_off_road[kField] == 0.0F,
+                     "the line is world_params road_access_m: at 400 m the same 300 m is within "
+                     "it");
+  config.road_access_m = 10.0F;
+  while (!world.herds.row_ids.empty()) {
+    core::RemoveRow(world.herds, world.herds.row_ids.back());
+  }
+  const core::Grams on_foot = haul_half(core::Vec2{.x = 1000.0F, .y = 300.0F});
+  failures += Expect(on_foot > 0 && world.ledger.current.cart_trips[kField] == 0.0F &&
+                         world.ledger.current.cart_grams[kField] == 0,
+                     "carried on foot, the same load books no cart: a carrier is not a cart");
+  AddHerd(world, 0, 2, 0, true);
+  core::TimberStandRow stand;
+  stand.position = core::Vec2{.x = 1000.0F, .y = 300.0F};
+  const core::HaulRate logs = core::StandHaulRate(config, world, stand);
+  failures += Expect(!logs.produce_cart,
+                     "and a cart with logs is no produce cart: it may leave the road (§11)");
+  return failures;
+}
+
 /// РАСПУТИЦА (boss seq 182, 186): the cart's round trip and the district
 /// lot's base term both stretch by 1 / mud_speed_factor on a mud day.
 int CheckMudSeason() {
@@ -9156,6 +9271,7 @@ int main() {
   failures += CheckPlanDebtFromFields();
   failures += CheckMudSeason();
   failures += CheckHaulByRoad();
+  failures += CheckProduceCartOffTheRoad();
   failures += CheckProcessingShops();
   failures += CheckDemolitionStockWaits();
   failures += CheckDistrictTrip();

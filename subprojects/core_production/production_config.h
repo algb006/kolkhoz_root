@@ -871,8 +871,16 @@ struct ProductionConfig {
 
   /// labor.csv `travel_limit_hours` and `min_usable_hours`: the accountant's
   /// road rule, read here for kFellingUnreachable (timber_felling.h) so that
-  /// the alarm asks the assignment's own question (parcel 308).
-  float travel_limit_hours = 4.0F;
+  /// the alarm asks the assignment's own question (parcel 308). Six hours
+  /// by the network since decision 276, as core_labor's.
+  float travel_limit_hours = 6.0F;
+
+  /// world_params `road_access_m`: metres from a road's line that still
+  /// count as "a road is laid to it" (unit rules §12). Its FIRST reader is
+  /// the produce cart's book (0.36.9, YearLedger::cart_trips_off_road): a
+  /// loaded way off the road longer than this is driving the field, not the
+  /// last metres to a gate. The site's road access check will be its second.
+  float road_access_m = 10.0F;
 
   float min_usable_hours = 1.0F;
 

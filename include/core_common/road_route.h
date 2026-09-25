@@ -110,6 +110,18 @@ struct Route {
   bool cart_without_road = false;
 };
 
+/// @brief A way's two numbers, without its legs (RoadIndex::Measure).
+struct RouteMeasure {
+  /// What EffectiveKm answers for the same query.
+  float effective_km = 0.0F;
+
+  /// Metres of the way that lie OFF the network: the piece from the start
+  /// to the road and the piece from the road to the end, or the whole
+  /// straight line when the way is taken across open ground (or a cart
+  /// found no road at all). Plain metres, not weighed.
+  float off_road_m = 0.0F;
+};
+
 /// @brief Where a place meets a road piece a mode may use.
 struct RoadAccess {
   RoadEdgeIndex edge = 0;
@@ -155,6 +167,11 @@ class RoadIndex {
   /// @pre from.mode == to.mode; otherwise the answer is the from's mode's.
   virtual float EffectiveKm(const NetworkPlace& from, const NetworkPlace& to) const = 0;
 
+  /// @brief The same way as EffectiveKm, with how much of it is off the
+  ///        road (0.36.9, the produce cart's instrument) — one choice of way,
+  ///        arithmetic only; Way below builds the legs, this does not.
+  virtual RouteMeasure Measure(TravelMode mode, Vec2 from, Vec2 to) const = 0;
+
   /// @brief The same way, leg by leg (for the trodden paths of delivery 5,
   ///        and for whoever must show a route).
   virtual Route Way(TravelMode mode, Vec2 from, Vec2 to) const = 0;
@@ -181,6 +198,10 @@ std::shared_ptr<const RoadIndex> RoadIndexOf(const WorldState& world);
 /// @brief EffectiveKm through RoadIndexOf: the one call the travelling
 ///        places make.
 float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
+
+/// @brief Measure through RoadIndexOf: RoadKm's way with its metres off the
+///        road.
+RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 
 }  // namespace core
 

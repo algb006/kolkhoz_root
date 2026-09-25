@@ -51,6 +51,19 @@
 
 namespace core {
 
+/// @brief Where a produce cart's load came from (YearLedger::cart_trips and
+///        its siblings, index = the enum value): the three places the core
+///        carts produce from by TravelMode::kCart.
+enum class CartLoadSource : std::uint8_t {
+  kField = 0,  ///< A field's heap, to its store (field_haul SettleHauling).
+  kSite,       ///< An extraction site's dig, to its pile (SettleSiteHauling).
+  kStore,      ///< A store being emptied, to the stores that take it in.
+  kCartLoadSourceCount,
+};
+
+inline constexpr std::size_t kCartLoadSourceCountValue =
+    static_cast<std::size_t>(CartLoadSource::kCartLoadSourceCount);
+
 /// @brief One economic year of flows. Every ResourceAmounts is dense by
 /// ResourceId and may be shorter than the resource table (empty = nothing
 /// moved yet), exactly as a pantry is.
@@ -107,6 +120,8 @@ namespace core {
 ///                             exact; but a third writer would need the same
 ///                             argument made again, not assumed
 ///   year, the rotation ...... core_world, events slot
+///   the produce cart ........ core_production, the haul (field_haul.cpp),
+///                             production decisions — the only writer
 struct YearLedger {
   /// Campaign year these counters belong to, counted from 1. Written when
   /// the book is closed; 0 in `current` and in a `closed` book that was
@@ -367,6 +382,38 @@ struct YearLedger {
   /// post whose holder stays home for the road is not in it — that one says
   /// so by kProcessingStopped. Save 94.
   std::array<std::uint32_t, kWorkKindCount> road_blocked_job_days = {};
+
+  // THE PRODUCE CART OFF THE ROAD (0.36.9; boss, boss-core-epoch1-resume
+  // [4] and [11], question 268). The design forbids a cart with produce to
+  // leave the road (roads design §11: «с зерном нет»), and the core still
+  // lets it cover the way from its load to the nearest road and from the
+  // road to its store at the off-road weight. These count how much of the
+  // year's carting rests on that before the ban is written in: by where the
+  // load came from (CartLoadSource), for the harnessed cart with produce
+  // only (TravelMode::kCart) — the log cart may leave the road, and a
+  // carrier on foot is not a cart.
+  //
+  // A TRIP IS WHAT CAME IN OVER ONE CART'S LOAD: the haul is a pace, not a
+  // count of runs, so the trips are the grams moved over the cart's load,
+  // fractional. The metres are one LOADED way's (the empty return is not
+  // carting produce): the piece from the load to the network plus the
+  // piece from the network to the store, or the whole straight line when
+  // no road can be reached. Booked by core_production's haul (field_haul),
+  // with the way of the day's rate — the trips a day brings in were priced
+  // by that day's route.
+  /// Loaded trips, fractional.
+  std::array<float, kCartLoadSourceCountValue> cart_trips = {};
+  /// Metres off the road summed over the trips (trips x one way's metres).
+  std::array<float, kCartLoadSourceCountValue> cart_off_road_m = {};
+  /// The longest single loaded way off the road in the year, metres.
+  std::array<float, kCartLoadSourceCountValue> cart_off_road_worst_m = {};
+  /// Trips whose way off the road was longer than world_params
+  /// `road_access_m` — beyond the last metres to a gate, driving the field.
+  std::array<float, kCartLoadSourceCountValue> cart_trips_off_road = {};
+  /// The grams those trips carried, and all the grams carted: the share of
+  /// the haul that rests on the forbidden driving is a mass, not a count.
+  std::array<Grams, kCartLoadSourceCountValue> cart_grams = {};
+  std::array<Grams, kCartLoadSourceCountValue> cart_grams_off_road = {};
 
   TrudodniHundredths trudodni_accrued = 0;
 

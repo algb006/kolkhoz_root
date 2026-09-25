@@ -56,7 +56,7 @@ class PlantingPolicy {
     pine_ = core::TreeSpeciesId{static_cast<std::uint16_t>(ready_ ? pine : 0U)};
     walk_hours_per_km_ = static_cast<float>(core::kClockScale) /
                          Cell(tables, "transport", "pedestrian", "speed_kmh", 5.0F);
-    walk_limit_hours_ = Cell(tables, "labor", "travel_limit_hours", "value", 4.0F) / 2.0F;
+    walk_limit_hours_ = Cell(tables, "labor", "travel_limit_hours", "value", 6.0F) / 2.0F;
     map_side_m_ = MapSide(tables);
   }
 
@@ -378,8 +378,10 @@ class PlantingPolicy {
   float walk_hours_per_km_ = 2.4F;
 
   /// Half the accountant's road limit: a zone the planters reach with a
-  /// working day left, and not only barely.
-  float walk_limit_hours_ = 2.0F;
+  /// working day left, and not only barely. The limit is six hours by the
+  /// network since 0.36.9 (decision 276); this ring still measures the
+  /// straight line (WalkHours) — named to boss with 0.36.9.
+  float walk_limit_hours_ = 3.0F;
 
   float map_side_m_ = 0.0F;
 

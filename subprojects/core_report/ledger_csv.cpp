@@ -65,6 +65,22 @@ static_assert(
     }(),
     "every work kind carries a column name: appending a kind must name it here too");
 
+/// Where a produce cart's load came from (CartLoadSource), as the column
+/// names it. Its length is the enum's, and the same hole guard stands on it.
+constexpr std::array<const char*, kCartLoadSourceCountValue> kCartLoadSourceNames = {
+    "field", "site", "store"};
+
+static_assert(
+    [] {
+      for (const char* const name : kCartLoadSourceNames) {
+        if (name == nullptr || *name == '\0') {
+          return false;
+        }
+      }
+      return true;
+    }(),
+    "every cart load source carries a column name: appending one must name it here too");
+
 /// Grams as kilograms with three decimals — exact, and it reads back to the
 /// same gram. Written by hand rather than through a float, which would lose
 /// the last digits on a tonne.
@@ -314,6 +330,18 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   for (std::size_t kind = 1; kind < kWorkKindNames.size(); ++kind) {
     out.Integer(std::string("road_blocked_") + kWorkKindNames[kind] + "_job_days",
                 book.road_blocked_job_days[kind]);
+  }
+  // The produce cart off the road (0.36.9, question 268), by where the load
+  // came from: the trips and the mass beside each other, the forbidden
+  // driving (beyond world_params road_access_m) beside all of it.
+  for (std::size_t source = 0; source < kCartLoadSourceNames.size(); ++source) {
+    const std::string stem = std::string("cart_") + kCartLoadSourceNames[source];
+    out.Number(stem + "_trips", book.cart_trips[source]);
+    out.Mass(stem + "_carted", book.cart_grams[source]);
+    out.Number(stem + "_off_road_m", book.cart_off_road_m[source]);
+    out.Number(stem + "_off_road_worst_m", book.cart_off_road_worst_m[source]);
+    out.Number(stem + "_trips_beyond_access", book.cart_trips_off_road[source]);
+    out.Mass(stem + "_carted_beyond_access", book.cart_grams_off_road[source]);
   }
   // Trudodni are stored in hundredths and reported whole: the sheet speaks
   // the design's unit, not the state's storage.

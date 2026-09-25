@@ -38,6 +38,15 @@ struct HaulRate {
   /// is what makes a far field cost more than a near one at the same hands,
   /// which is the whole point of the shoulder.
   float round_trip_hours = 0.0F;
+
+  /// THE PRODUCE CART'S WAY OFF THE ROAD (0.36.9): true when the load goes
+  /// by a harnessed cart with produce (TravelMode::kCart) — the one carrier
+  /// the design keeps to the roads (roads design §11) — and then the metres
+  /// of ONE loaded way that lie off the network. Filled by the caller that
+  /// measured the way (field_haul); RateBetween and RateOverKm leave them
+  /// false and nought. Read only by the year's book (YearLedger::cart_trips).
+  bool produce_cart = false;
+  float off_road_m = 0.0F;
 };
 
 /// @brief The terms of a trip between two places.

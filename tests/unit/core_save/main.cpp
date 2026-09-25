@@ -642,6 +642,15 @@ core::WorldState MakeWorld() {
   world.ledger.closed.road_blocked_job_days[static_cast<std::size_t>(core::WorkKind::kHauling)] =
       17;
   world.ledger.closed.road_blocked_job_days[static_cast<std::size_t>(core::WorkKind::kHarvest)] = 3;
+  // The produce cart off the road (save 96): every source different and
+  // off its default, so a codec that shifts one column onto its neighbour,
+  // or one source onto the next, cannot round-trip clean.
+  world.ledger.closed.cart_trips = {12.5F, 0.25F, 3.0F};
+  world.ledger.closed.cart_off_road_m = {1500.0F, 20.0F, 90.0F};
+  world.ledger.closed.cart_off_road_worst_m = {220.0F, 80.0F, 30.0F};
+  world.ledger.closed.cart_trips_off_road = {6.0F, 0.25F, 2.0F};
+  world.ledger.closed.cart_grams = {9'375'000, 187'500, 2'250'000};
+  world.ledger.closed.cart_grams_off_road = {4'500'000, 187'500, 1'500'000};
   world.ledger.closed.trudodni_burned = 4200;
   // The office wall (ledger_state.h, Chronicle): three years, so that the
   // round trip proves the LENGTH and the ORDER and not just that one row
@@ -1389,7 +1398,11 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // Save 94: +116 — econ's instruments, in each book a hauled-in column and
     // twelve u32 of the road's blocked job-days: predicted 1080 with both
     // columns empty, held; then 1096 with the closed book's two entries.
-    {"ledger", 1096, 0x49d726861ed64a06ULL},
+    // Save 96: +192 — the produce cart off the road, in each book four float
+    // and two gram arrays of three sources (48 + 48); predicted 1096 -> 1288
+    // with the nineteen other sections unmoved, before the build; held (only
+    // the fingerprint moved, as it must with the fixture's new values).
+    {"ledger", 1288, 0x88d39f743371aabdULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1726,6 +1739,17 @@ int main() {
       AmountAt(loaded.ledger.closed.hauled_to_stores, 1) == 9'000'000 &&
           loaded.ledger.closed.road_blocked_job_days == world.ledger.closed.road_blocked_job_days,
       "what the carts brought in and the jobs the road stopped survive, kind by kind (save 94)");
+  {
+    const core::YearLedger& back = loaded.ledger.closed;
+    const core::YearLedger& sent = world.ledger.closed;
+    failures +=
+        Expect(back.cart_trips == sent.cart_trips && back.cart_off_road_m == sent.cart_off_road_m &&
+                   back.cart_off_road_worst_m == sent.cart_off_road_worst_m &&
+                   back.cart_trips_off_road == sent.cart_trips_off_road &&
+                   back.cart_grams == sent.cart_grams &&
+                   back.cart_grams_off_road == sent.cart_grams_off_road,
+               "the produce cart's six columns survive, source by source (save 96)");
+  }
   failures += Expect(AmountAt(loaded.ledger.closed.built_in, 1) == 250 &&
                          AmountAt(loaded.ledger.closed.yard_feed, 2) == 300,
                      "what went into a building and what the yards' beasts ate come back in the "

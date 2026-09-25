@@ -972,7 +972,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 19> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 20> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -991,7 +991,8 @@ constexpr std::array<std::string_view, 19> kProductionWorldParamKeys = {
     "walk_home_hours",
     "calving_fed_share_floor",
     "weather_year_snow_share",
-    "goods_loan_markup"};
+    "goods_loan_markup",
+    "road_access_m"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1007,6 +1008,7 @@ bool ParseProductionWorldParams(const ITable& world,
                                 DistrictCarConfig& car,
                                 float& weather_year_snow_share,
                                 float& goods_loan_markup,
+                                float& road_access_m,
                                 std::string& error) {
   float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
@@ -1082,7 +1084,13 @@ bool ParseProductionWorldParams(const ITable& world,
       // to doubling: a markup above that is a typo, not a district.
       ScalarKnob{.key = kProductionWorldParamKeys[18],
                  .value = &goods_loan_markup,
-                 .range = Range{.low = 0.0F, .high = 1.0F}}};
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      // Metres to a road that count as reached (unit rules §12): not nought,
+      // or the cart's last metre to a gate would read as driving the field;
+      // a road more than a few hundred metres off is not "laid to" anything.
+      ScalarKnob{.key = kProductionWorldParamKeys[19],
+                 .value = &road_access_m,
+                 .range = Range{.low = 1.0F, .high = 500.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
@@ -1102,6 +1110,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                                     config.district_car,
                                     config.weather_year_snow_share,
                                     config.goods_loan_markup,
+                                    config.road_access_m,
                                     error)) {
       return false;
     }
