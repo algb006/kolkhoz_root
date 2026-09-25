@@ -106,7 +106,7 @@ bus_stop,Автобусная остановка,infrastructure,3,0,1,era,,1,45,
 farm_stop,Остановка колхозного транспорта,infrastructure,1,0,1,era,,1,20,,,follows,1,,0,none,,0,,0
 well,Колодец,infrastructure,1,0,1,era,,0,,1.2,open,follows,0,,0,none,,0,,0
 substation,Трансформаторная подстанция,infrastructure,1,0,0,event,event_01,1,10,,,absorbed,1,,0,none,,0,,1
-power_line,Линии электропередачи,infrastructure,1,0,1,event,event_01,0,,,route,follows,0,,0,none,,0,,0
+power_line,Электросеть,infrastructure,1,0,1,event,event_01,0,,,route,follows,0,,0,none,,0,,0
 road,Дорога,infrastructure,1,0,1,era,,0,,,route,follows,0,,0,none,,0,,0
 bridge,Мост,infrastructure,1,0,1,era,,0,,,route,absorbed,1,,0,none,,0,,0
 phone_line,Телефонная линия и коммутатор,infrastructure,2,0,1,event,event_02,0,,,route,follows,0,,0,none,,0,,0
