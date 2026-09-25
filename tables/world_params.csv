@@ -273,3 +273,5 @@ road_wear_speed_from_76,0.8,core
 road_overgrow_pct_per_day,0.08,core
 road_overgrow_floor_pct,10,core
 road_strip_decay_pct_per_day,0.08,core
+ice_freeze_full_degree_days,30,core
+ice_thaw_full_degree_days,40,core
