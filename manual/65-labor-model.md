@@ -128,7 +128,7 @@
 
 | Таблица | Что добавляется |
 |---|---|
-| **`labor.csv`** (заведена) | Скаляры дня и отдыха (`standard_day_hours`, `travel_limit_hours`, `min_usable_hours`, `path_factor`, `sleep_hours`, пороги и темпы отдыха, `placement_level`), факторы эффективности (`efficiency_*`, `aging_from_years`, `age_decline_*`, `skill_*_weight`, `education_*`) и по строке на вид работ: `trudodni_rate`, `rest_drain_per_norm_day` |
+| **`labor.csv`** (заведена) | Скаляры дня и отдыха (`standard_day_hours`, `travel_limit_hours`, `min_usable_hours`, `sleep_hours`, пороги и темпы отдыха, `placement_level`), факторы эффективности (`efficiency_*`, `aging_from_years`, `age_decline_*`, `skill_*_weight`, `education_*`) и по строке на вид работ: `trudodni_rate`, `rest_drain_per_norm_day` |
 | `crops.csv` | Колонки `sow_days_per_ha`, `harvest_days_per_ha` — реальные чел-дни. **Читает производство** |
 | `farming.csv` | `plow_days_per_ha`, `harrow_days_per_ha` — норма одна на любую землю ([Поля §5](../../manual/design/economy/farming.md#5-фазы-работы-на-поле)). Тоже производство |
 | `livestock.csv` | `care_days_per_year` — реальные чел-дни на взрослую голову в год (корова 32) |

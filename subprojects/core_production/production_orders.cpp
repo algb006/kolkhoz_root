@@ -242,8 +242,10 @@ OrderRefusal UnsealFund(const ProductionConfig& config,
 /// So the slots go in exactly as ordered, FieldRow::rotation_skips_turn is
 /// set on every chain written here, and the FIELD spends it when work opens
 /// from the chain (OpenPlowing). The turn holds while it stands. A chain
-/// whose first season is used the same year — a spring order, or a winter
-/// crop named first in August — turns with everything else.
+/// whose first season is used the same year — a spring order — turns with
+/// everything else; a winter crop named first is used by its autumn
+/// ploughing and reaped the year after, and the turn holds once more while
+/// it stands (0.36.10, production_system.cpp).
 ///
 /// AN EMPTY SLOT IS A FALLOW YEAR, AND THREE OF THEM ARE THE CHAIRMAN
 /// TAKING HIS WORD BACK (boss, 2026-09-12). One or two empty slots in a

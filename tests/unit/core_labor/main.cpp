@@ -844,7 +844,7 @@ int TestLaborTableParsing() {
   failures += Expect(core::CreateLaborSystem(bad_text, core::StubTables::kAllowed) == nullptr,
                      "a cell that is not a number refuses the factory");
 
-  const test::FakeTable out_of_range({"key", "value"}, {{"path_factor", "99"}});
+  const test::FakeTable out_of_range({"key", "value"}, {{"sleep_hours", "99"}});
   const test::FakeTableSet bad_range("labor", out_of_range);
   failures += Expect(core::CreateLaborSystem(bad_range, core::StubTables::kAllowed) == nullptr,
                      "a value outside its range refuses the factory too");

@@ -297,13 +297,18 @@ struct FieldRow {
   /// the chairman's first crop away. THE MONTH WAS A PROXY FOR THE QUESTION,
   /// AND THE QUESTION IS ANSWERABLE DIRECTLY.
   ///
-  /// WHAT IT DOES NOT DO, said rather than left to be found: a winter crop
-  /// standing LATER in the chain is still sown in the autumn that precedes
-  /// its year, because that is what a winter crop in a rotation means — and
-  /// that sowing is a use of the chain, so it spends the mark. A chain named
-  /// in August as (oats, winter rye, …) puts the rye in the ground that
-  /// September, and the turn that follows moves the rye into year0, where
-  /// the repeat guard in TrySow keeps it from going in twice.
+  /// WHILE IT STANDS THE FIRST SLOT IS UNUSED, and so a winter crop LATER in
+  /// the chain waits for it (0.36.10; field_work.cpp, TrySow): a chain named
+  /// in August as (oats, winter rye, …) sows the oats the next spring and the
+  /// rye that autumn. Until 0.36.10 this paragraph said the opposite as a
+  /// design — the rye went in that September, ahead of the oats named first —
+  /// and it was the second half of the defect below.
+  ///
+  /// A WINTER CROP NAMED FIRST spends the mark with its autumn ploughing, and
+  /// its year is the one after that autumn: the turn then asks the ground,
+  /// not the mark, and holds the chain while year0's own winter crop stands
+  /// (production_system.cpp, RunYearStart). Until 0.36.10 it moved on, and a
+  /// chain (rye, oats, potatoes) named in February never sowed its oats.
   std::uint8_t rotation_skips_turn = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while

@@ -504,7 +504,24 @@ class ProductionSystem final : public IProductionSystem {
       // A field still waiting to sow last year's crop lets it go before the
       // chain moves on, or it sows that crop in the next slot's place.
       ReleaseUnsownPreparation(current, field);
-      if (field.rotation_skips_turn != 0) {
+      // THE FIRST SLOT'S OWN WINTER CROP STANDS IN THE GROUND (0.36.10; boss,
+      // boss-core-epoch1-resume [12], econ's fallow map): sown last autumn from
+      // year0 itself, not from year1 as a running chain sows its winter crop.
+      // That happens to a fresh chain that names a winter crop first, and to a
+      // winter crop that missed its autumn and went in a year late. Its year
+      // is the one beginning now, so the chain stands still once more — the
+      // mark was spent by its autumn ploughing, rightly, and that is exactly
+      // why the turn has to ask the ground. Until 0.36.10 the chain moved on
+      // with the rye still standing, and the crop named second met its one
+      // spring under the rye: the oats of a chain (rye, oats, potatoes) named
+      // in February were never sown at all. Where year0 and year1 name the
+      // same crop the standing one is taken for year1's, as a running chain's.
+      const bool own_winter_standing = field.phase == FieldPhase::kGrowing &&
+                                       field.crop.value < config_.crops.size() &&
+                                       config_.crops[field.crop.value].is_winter &&
+                                       field.crop.value == field.rotation_year0.value &&
+                                       field.crop.value != field.rotation_year1.value;
+      if (field.rotation_skips_turn != 0 || own_winter_standing) {
         // A CHAIN WHOSE FIRST SEASON HAS NOT BEEN USED STANDS STILL
         // (land_state.h, rotation_skips_turn). The mark is NOT spent here: it
         // is spent by the field, on the day work opens from the chain, and

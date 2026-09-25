@@ -124,11 +124,10 @@ CropId NextSowingCrop(const FieldRow& field, SimDay today) {
   // A CHAIN NAMED AFTER THIS YEAR'S SOWING STANDS STILL AT THE TURN
   // (land_state.h, rotation_skips_turn): the first slot the chairman named is
   // the one sown next, whatever this year's reaping or standing crop says.
-  // WHAT IT DOES NOT SEE: a chain named in August as (oats, winter rye) sows
-  // the rye first (land_state.h). Until the rye's ploughing opens — the first
-  // tick of its window — this names the oats; from then on the branch above
-  // names the rye. The month is not asked instead: the mark's own history
-  // is three holes found in exactly that proxy.
+  // A chain named in August as (oats, winter rye) sows the oats first since
+  // 0.36.10 (land_state.h): the field waits for them rather than work for the
+  // rye, so this names the oats and is right. Before, the rye went in that
+  // September and this answer was wrong from its ploughing to the turn.
   if (field.rotation_skips_turn != 0 && !preparing_second_slot) {
     return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
                                                             : field.rotation_year1;

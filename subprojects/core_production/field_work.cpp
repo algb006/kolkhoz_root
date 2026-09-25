@@ -839,7 +839,15 @@ void TrySow(const ProductionConfig& config,
     return;
   }
   const CropDef& crop = config.crops[field.rotation_year0.value];
-  if (crop.is_winter && field.last_crop.value == field.rotation_year0.value) {
+  // A FRESH CHAIN'S FIRST SLOT HAS NOT BEEN USED (land_state.h,
+  // rotation_skips_turn; 0.36.10): it is neither "already off this year" nor
+  // "given up past its window" — both readings below belong to a chain that
+  // has been running. It waits for its own season, and the year's turn holds
+  // the chain still until then. Until 0.36.10 a chain named in August as
+  // (oats, winter rye, …) read the oats' closed window as given up and put
+  // the rye in that September, ahead of the oats named first.
+  const bool fresh_chain = field.rotation_skips_turn != 0;
+  if (crop.is_winter && field.last_crop.value == field.rotation_year0.value && !fresh_chain) {
     // This year's winter crop was sown last autumn and is already off:
     // the field is idle because it was HARVESTED, not because the sowing
     // was missed. Sowing it again in August would put the same rye in two
@@ -855,7 +863,9 @@ void TrySow(const ProductionConfig& config,
   // `month < crop.sow_from_month` used to send the field away too, which made
   // the sowing window a gate on the ploughing (see the header).
   if (month > crop.sow_to_month) {
-    TrySowWinter(config, current, field, month, temperature);
+    if (!fresh_chain) {
+      TrySowWinter(config, current, field, month, temperature);
+    }
     return;
   }
   // AND THE GROUND'S OWN CONDITION IN ITS PLACE, which is the thaw and nothing

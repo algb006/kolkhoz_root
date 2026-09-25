@@ -63,7 +63,10 @@ float HoursPerKm(const LaborConfig& config, WorkKind kind) {
   if (!(game_speed_kmh > 0.0F)) {
     return 0.0F;  // A malformed speed cannot pass parsing; be harmless anyway.
   }
-  return config.path_factor / game_speed_kmh;
+  // The way itself is measured along the roads (road_route.h, since 0.36.2):
+  // this is the pace alone, with no allowance for bends (path_factor went in
+  // 0.36.10).
+  return 1.0F / game_speed_kmh;
 }
 
 float TravelHours(const Vec2& from, const Vec2& to, float hours_per_km) {

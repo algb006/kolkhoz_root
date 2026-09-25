@@ -362,13 +362,11 @@ struct LaborConfig {
   /// walking to at all. ASSUMPTION.
   float min_usable_hours = 1.0F;
 
-  /// Straight-line to path-distance factor, from the years the roads were
-  /// deferred (polish P43ac2). SPENT SINCE 0.36.2: every trip it scales is
-  /// already measured along the road network (road_route.h), so anything
-  /// above 1.0 would count the road's bends twice. Kept at 1.0 and read
-  /// only because removing the row is a table change of its own (named to
-  /// boss with 0.36.9).
-  float path_factor = 1.0F;
+  // (`path_factor`, the straight line's allowance for the road's bends, stood
+  // here until 0.36.10: since 0.36.2 every trip is measured along the network
+  // itself (road_route.h), and a factor above 1.0 would have counted the bends
+  // twice. Removed with its labor.csv row by boss's word,
+  // boss-core-epoch1-resume [14].)
 
   /// Real walking speed, km/h (transport.csv pedestrian row); the game
   /// speed is this / kClockScale.
