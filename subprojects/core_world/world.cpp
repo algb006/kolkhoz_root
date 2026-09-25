@@ -19,6 +19,7 @@
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/processing_catalog.h"
+#include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_catalog/world_conventions.h"
@@ -782,6 +783,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_life.begin(), from_life.end());
       const std::span<const std::string_view> from_conventions = ConventionWorldParamKeys();
       known.insert(known.end(), from_conventions.begin(), from_conventions.end());
+      const std::span<const std::string_view> from_roads = RoadWorldParamKeys();
+      known.insert(known.end(), from_roads.begin(), from_roads.end());
       // DECLARED FOR THE CORE, READ BY NOBODY YET — each with the door that
       // will read it. Named here so the export that carries the row does not
       // stop the assembly, and so the unread knob is a line somebody sees
@@ -814,6 +817,15 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     // because the readers of the factor that cannot report fall back quietly.
     std::string disagreement;
     if (!CheckWorldConventions(*config.tables, disagreement)) {
+      LogError(disagreement);
+      return nullptr;
+    }
+    // The roads' numbers (delivery 3 of the roads work): refused here when a
+    // row is out of its range. THEIR READERS ARRIVE WITH THE DELIVERY — the
+    // bed's condition, the traffic counter, wear and overgrowth; until then
+    // the rows are checked and not yet read.
+    RoadRules road_rules;
+    if (!ParseRoadRules(*config.tables, road_rules, disagreement)) {
       LogError(disagreement);
       return nullptr;
     }

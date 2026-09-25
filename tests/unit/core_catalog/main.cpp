@@ -20,6 +20,7 @@
 #include "../../common/fake_tables.h"
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/limit_catalog.h"
+#include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
@@ -648,6 +649,35 @@ int TestLifeSpeedupDoor() {
   return failures;
 }
 
+/// The roads' numbers (delivery 3): read into their fields, refused out of
+/// range, and the falling order of the traffic thresholds held.
+int TestRoadRules() {
+  int failures = 0;
+  const auto parse = [](std::vector<std::vector<std::string>> rows, core::RoadRules& rules) {
+    const test::FakeTable world({"key", "value", "reader"}, std::move(rows));
+    const test::FakeTableSet set({{"world_params", &world}});
+    std::string error;
+    return core::ParseRoadRules(set, rules, error);
+  };
+  core::RoadRules read;
+  failures += Expect(parse({{"road_dry_days_dirt", "2", "core"},
+                            {"road_wet_factor_gravel", "0.9", "core"},
+                            {"road_strip_decay_pct_per_day", "0.5", "core"}},
+                           read) &&
+                         read.dry_days[0] == 2.0F && read.wet_factor[1] == 0.9F &&
+                         read.strip_decay_pct_per_day == 0.5F && read.frozen_factor == 1.15F,
+                     "road rules: rows land in their fields; an absent row keeps the default");
+  core::RoadRules slow_frost;
+  core::RoadRules upside_down;
+  failures += Expect(!parse({{"road_frozen_factor", "0.9", "core"}}, slow_frost),
+                     "road rules: a frozen bed slower than a dry one is refused (min_ok 1)");
+  failures += Expect(!parse({{"road_traffic_rare_from", "5", "core"}}, upside_down),
+                     "road rules: a 'rarely' threshold above 'regularly' is refused");
+  failures += Expect(core::RoadWorldParamKeys().size() == 29,
+                     "road rules: the core knows all 29 road_ keys of the export");
+  return failures;
+}
+
 /// The district's regular visits (boss, parcel 324): the three knobs read, and
 /// a month outside the year, a half month and a notice longer than a month
 /// refuse the catalogue.
@@ -682,6 +712,7 @@ int TestDistrictVisitKnobs() {
 int main() {
   int failures = 0;
   failures += TestLifeSpeedupDoor();
+  failures += TestRoadRules();
   failures += TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
   failures += TestTheMtsColumnKnobs();

@@ -88,15 +88,22 @@ int CheckBaseConventions() {
   fs::remove_all(scene);
   fs::copy(fs::path(KOLKHOZ_TABLES_DIR), scene, fs::copy_options::recursive);
   const fs::path world_params = scene / "world_params.csv";
-  {
-    std::ofstream out(world_params, std::ios::app);
-    out << "clock_scale,12,core\n"
-        << "months_per_year,12,core\n"
-        << "days_per_month,4,core\n"
-        << "hours_per_day,24,core\n"
-        << "days_per_week,7,core\n"
-        << "real_minutes_per_day_x1,120,core\n"
-        << "life_speedup,4,core\n";
+  // The export of 25 September already carries them; a set that does not is
+  // given them, so the test holds on either side of an export.
+  constexpr std::array<std::pair<std::string_view, std::string_view>, 7> kRows = {{
+      {"clock_scale", "12"},
+      {"months_per_year", "12"},
+      {"days_per_month", "4"},
+      {"hours_per_day", "24"},
+      {"days_per_week", "7"},
+      {"real_minutes_per_day_x1", "120"},
+      {"life_speedup", "4"},
+  }};
+  for (const auto& [key, value] : kRows) {
+    if (!SetKeyValue(world_params, key, value)) {
+      std::ofstream out(world_params, std::ios::app);
+      out << key << ',' << value << ",core\n";
+    }
   }
   const auto assembles = [&scene] {
     std::string error;
