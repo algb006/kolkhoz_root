@@ -50,6 +50,11 @@ struct HaulRate {
 ///         would divide the day by nothing.
 HaulRate RateBetween(Vec2 from, Vec2 to, float hours_per_km, Grams load);
 
+/// @brief The same terms over a way already measured: `one_way_km` is the
+///        effective kilometres of the way (core_common/road_route.h,
+///        RoadKm) rather than a straight line (0.36.2).
+HaulRate RateOverKm(float one_way_km, float hours_per_km, Grams load);
+
 /// @brief Grams one worker moves in `hours` of hauling at this rate.
 /// Trips are NOT rounded down to whole ones: half a trip at the end of the
 /// day is a load half carried, and the next day finishes it. Rounding here

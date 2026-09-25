@@ -18,6 +18,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/geometry.h"
 #include "core_common/order_state.h"
+#include "core_common/road_route.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
 
@@ -49,8 +50,10 @@ void GrowOldForest(const ProductionConfig& config, WorldState& current);
 /// @brief Game hours of the road, one way, from the nearest lived-in house
 ///        to `place` at `speed_kmh` — harness speed for the felling brigade
 ///        (labor_state.h, RidesOut), walking speed for the planters; negative
-///        when nobody lives anywhere or the speed is not positive.
-float NearestHomeTravelHours(const WorldState& world, Vec2 place, float speed_kmh);
+///        when nobody lives anywhere or the speed is not positive. BY THE
+///        WAY `mode` travels (road_route.h; 0.36.2): the brigade as a team,
+///        the planters on foot.
+float NearestHomeTravelHours(const WorldState& world, Vec2 place, float speed_kmh, TravelMode mode);
 
 /// @brief Appends kFellingUnreachable for every stand marked for felling with
 ///        work left whose ride from the nearest lived-in house is past the

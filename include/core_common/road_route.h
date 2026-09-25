@@ -71,6 +71,12 @@ inline constexpr std::size_t kTravelModeCountValue =
 ///   - log cart 2.5: the same cart with logs, over the felling's ground.
 struct RoadTravelRules {
   std::array<float, kTravelModeCountValue> off_road_weight = {1.2F, 1.5F, 2.5F, 2.5F};
+
+  /// Find places through the precomputed near table (fast); false searches
+  /// the grid ring by ring every time. The answers are the same by
+  /// construction and the test proves it on a grid over the map; the switch
+  /// exists for that proof, not for play.
+  bool near_table = true;
 };
 
 /// @brief One piece of a way: on the network (a piece of one road between
@@ -159,9 +165,11 @@ class RoadIndex {
   virtual ~RoadIndex() = default;
 };
 
-/// @brief Builds the index of `roads` under `rules`. An empty table gives an
-///        index with no network: every mode goes the straight line at its
-///        off-road weight, and a cart says it had no road.
+/// @brief Builds the index of `roads` under `rules`. An EMPTY table gives an
+///        index with no network: every mode goes the straight line at its own
+///        pace — weight 1, the model before roads, since there is no road for
+///        open ground to be slower than — and a cart says it had no road.
+///        Only a hand-built world has no network; the game's has the map's.
 std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
                                                 const RoadTravelRules& rules = {});
 

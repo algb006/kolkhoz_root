@@ -22,6 +22,7 @@
 #include "core_labor/labor_system.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -357,11 +358,13 @@ class LaborSystem final : public ILaborSystem {
     // whose target has no work today leaves its man IDLE, not unassigned.
     const std::vector<AssignmentJob> jobs = CollectJobs(current);
     if (!jobs.empty()) {
-      const std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
+      std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
       if (!candidates.empty()) {
         std::vector<std::uint8_t> rides_horse;
+        AssignmentParams params = DayParams(current);
+        MeasureRoads(current, jobs, candidates, params);
         const std::vector<std::uint32_t> plan =
-            PlanDayAssignments(jobs, candidates, DayParams(current), &rides_horse);
+            PlanDayAssignments(jobs, candidates, params, &rides_horse);
         for (std::uint32_t index = 0; index < candidates.size(); ++index) {
           if (plan[index] == kNoJobAssigned) {
             continue;
@@ -375,6 +378,7 @@ class LaborSystem final : public ILaborSystem {
           work.unit = job.unit;
           work.stand = job.stand;
           work.extraction_site = job.extraction_site;
+          work.travel_hours = -1.0F;  // a new target: its road is measured anew
         }
       }
     }
@@ -447,6 +451,7 @@ class LaborSystem final : public ILaborSystem {
     const std::uint32_t in_traces = HorsesInTraces(current);
     params.draught_horses =
         in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
+    MeasureRoads(current, jobs, candidates, params);
     std::vector<std::uint8_t> rides_horse;
     const std::vector<std::uint32_t> plan =
         PlanDayAssignments(jobs, candidates, params, &rides_horse);
@@ -463,6 +468,57 @@ class LaborSystem final : public ILaborSystem {
       work.unit = job.unit;
       work.stand = job.stand;
       work.extraction_site = job.extraction_site;
+      work.travel_hours = -1.0F;  // a new target: its road is measured anew
+    }
+  }
+
+  /// @brief Fills AssignmentParams::road_km for these jobs and candidates, and
+  ///        each candidate's home slot (road_route.h; 0.36.2): every distinct
+  ///        home found on the network once a mode, every job once for walking
+  ///        and once for its riding mode, and the table read between them —
+  ///        a few hundred finds a morning, not candidates times jobs queries.
+  void MeasureRoads(const WorldState& current,
+                    const std::vector<AssignmentJob>& jobs,
+                    std::vector<AssignmentCandidate>& candidates,
+                    AssignmentParams& params) const {
+    const std::shared_ptr<const RoadIndex> index = RoadIndexOf(current);
+    std::vector<Vec2> homes;
+    for (AssignmentCandidate& candidate : candidates) {
+      std::uint32_t slot = 0;
+      while (slot < homes.size() &&
+             (homes[slot].x != candidate.home.x || homes[slot].y != candidate.home.y)) {
+        ++slot;
+      }
+      if (slot == homes.size()) {
+        homes.push_back(candidate.home);
+      }
+      candidate.home_slot = slot;
+    }
+    constexpr std::array<TravelMode, 4> kModes = {
+        TravelMode::kWalk, TravelMode::kTeam, TravelMode::kCart, TravelMode::kLogCart};
+    std::vector<std::array<NetworkPlace, 4>> found_homes(homes.size());
+    for (std::size_t slot = 0; slot < homes.size(); ++slot) {
+      for (std::size_t mode = 0; mode < kModes.size(); ++mode) {
+        found_homes[slot][mode] = index->Locate(kModes[mode], homes[slot]);
+      }
+    }
+    params.home_slots = static_cast<std::uint32_t>(homes.size());
+    params.road_km.assign(jobs.size() * homes.size() * 2U, 0.0F);
+    for (std::size_t job_index = 0; job_index < jobs.size(); ++job_index) {
+      const AssignmentJob& job = jobs[job_index];
+      // The job's riding mode: a cart with produce on the roads, a cart with
+      // logs off them (roads design §11), every other ride a team.
+      std::size_t ride_mode = 1;
+      if (job.kind == WorkKind::kHauling) {
+        ride_mode = job.stand.value != kInvalidEntityIdValue ? 3 : 2;
+      }
+      const NetworkPlace walk_place = index->Locate(TravelMode::kWalk, job.position);
+      const NetworkPlace ride_place = index->Locate(kModes[ride_mode], job.position);
+      for (std::size_t slot = 0; slot < homes.size(); ++slot) {
+        const std::size_t at = ((job_index * homes.size()) + slot) * 2U;
+        params.road_km[at] = index->EffectiveKm(found_homes[slot][0], walk_place);
+        params.road_km[at + 1] = index->EffectiveKm(found_homes[slot][ride_mode], ride_place);
+      }
     }
   }
 
@@ -563,6 +619,7 @@ class LaborSystem final : public ILaborSystem {
         }
         resident.work.kind = WorkKind::kHerdCare;
         resident.work.herd = current.herds.row_ids[row];
+        resident.work.travel_hours = -1.0F;
         break;
       }
       if (resident.work.kind != WorkKind::kNone || day_off) {
@@ -686,7 +743,9 @@ class LaborSystem final : public ILaborSystem {
     if (!HomePosition(current, resident.family, home) || !WorkPlace(current, work, place)) {
       return false;
     }
-    const float travel = TravelHours(home, place, HoursPerKm(config_, WorkKind::kHarvest));
+    // On foot, by the way there is (road_route.h; 0.36.2).
+    const float travel =
+        RoadKm(current, TravelMode::kWalk, home, place) * HoursPerKm(config_, WorkKind::kHarvest);
     return RoadLeavesAWorkingDay(travel,
                                  current.weather.daylight_hours,
                                  config_.travel_limit_hours,
@@ -1360,9 +1419,17 @@ class LaborSystem final : public ILaborSystem {
       // got one (WorkAssignment::rides_horse) and WorkRidesOut reads it, so
       // the hour, the reach and the resident's activity ask one question.
       const WorkAssignment& work = current.residents.rows[row].work;
-      const bool rides = WorkRidesOut(current, work);
-      const WorkKind road_kind = rides ? WorkKind::kPlowing : WorkKind::kHarvest;
-      const float travel = TravelHours(home, target, HoursPerKm(config_, road_kind));
+      // THE ROAD BY THE WAY THERE IS, MEASURED ONCE A TARGET (road_route.h;
+      // 0.36.2; WorkAssignment::travel_hours): a way by the network costs a
+      // query a straight line did not, and it is the same all day.
+      if (current.residents.rows[row].work.travel_hours < 0.0F) {
+        const bool rides = WorkRidesOut(current, work);
+        const WorkKind road_kind = rides ? WorkKind::kPlowing : WorkKind::kHarvest;
+        current.residents.rows[row].work.travel_hours =
+            RoadKm(current, WorkTravelMode(current, work), home, target) *
+            HoursPerKm(config_, road_kind);
+      }
+      const float travel = current.residents.rows[row].work.travel_hours;
       const float worked = HoursInside(hour, window.sunrise + travel, window.sunset - travel);
       if (worked <= 0.0F) {
         continue;
@@ -1501,6 +1568,7 @@ class LaborSystem final : public ILaborSystem {
     resident.work.field = FieldId{};
     resident.work.herd = HerdId{};
     resident.work.worked_norm_days_today = 0.0F;
+    resident.work.travel_hours = -1.0F;
   }
 
   // Household hours used to be settled here, as the bare remainder of the

@@ -201,6 +201,16 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
                            world.fields.rows[row].kind == LandKind::kFloodplainMeadow);
 }
 
+TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
+  if (!WorkRidesOut(world, work)) {
+    return TravelMode::kWalk;
+  }
+  if (work.kind == WorkKind::kHauling) {
+    return work.stand.value != kInvalidEntityIdValue ? TravelMode::kLogCart : TravelMode::kCart;
+  }
+  return TravelMode::kTeam;
+}
+
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {
   // One body, two constnesses: the const overload does the reasoning and
   // this one only gives the answer back writable. Two bodies would be two

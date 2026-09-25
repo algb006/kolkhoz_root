@@ -582,7 +582,19 @@ int main(int argc, char** argv) {
                          720.0,
                          "the year's labor matches the reference run plus what the hands can mow");
   std::cout << "labor_year: " << care_left << " game man-days of barn care left undone\n";
-  failures += ExpectBand(care_left, 0.0, 2.0, "the barn is served, day in and day out");
+  // WALKING BY THE ROADS (0.36.2; boss core-boss-epoch1-6 [30], option 1): in
+  // the winter's seven days of ~7 h of daylight (days 1-3 and 43-47) the start
+  // barn is short of hands — its carers walk 2.7 h one way (~1.1 effective km,
+  // open ground weighing 1.2, STUB), 14 of them reach it with 1.9 h of work
+  // each, and the rest do not pass "an hour of work after the road". The band
+  // was 0..2 on the straight line; it is the measured 6.5 now, with room —
+  // and its FLOOR IS 3 on purpose: the straight line gives 0..2 here, so
+  // the labour hour put back on the line reddens this band (the switch's
+  // guard in the one run on the start map).
+  // TAKEN AWAY BY DELIVERY 5: the start's trodden path to the cattle yard
+  // (people walked to it for years before the first morning), not a path in
+  // the map. When it lands, this band goes back to 0..2.
+  failures += ExpectBand(care_left, 3.0, 8.0, "the barn is served, day in and day out");
 
   // Trudodni are the same quantity seen from the pay side: the rate is 1.0
   // across Epoch-I hand work, so the accounts on the last evening of the year

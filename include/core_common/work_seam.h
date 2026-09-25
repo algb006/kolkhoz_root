@@ -21,6 +21,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
+#include "core_common/road_route.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -85,6 +86,15 @@ bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home);
 /// mowers were sent by the ride and then lost the ride's hours from their
 /// day (boss, parcel 312: "плечо и выработка меряются одной меркой").
 bool WorkRidesOut(const WorldState& world, const WorkAssignment& work);
+
+/// @brief By which way this assignment travels (road_route.h, TravelMode;
+///        0.36.2): on foot unless it rides out (WorkRidesOut); riding, a
+///        carter with logs off a stand as a log cart, any other carter as a
+///        cart with produce — roads only (roads design §11) — and the rest
+///        (the plough, the harrow, the mower, the fellers) as a team to its
+///        field work. ONE ANSWER for the labour hour and the resident's
+///        activity, as WorkRidesOut is.
+TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work);
 
 }  // namespace core
 

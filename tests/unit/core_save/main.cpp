@@ -1223,7 +1223,9 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // Save 88: +2 — the placement's horse mark, a byte for each of the two
     // living residents; predicted 402 -> 404 with every other section
     // unmoved before the build, and held.
-    {"residents", 404, 0xc4caec95d1ccf34cULL},
+    // Save 93: +8 — the assignment's travel_hours, four bytes by two
+    // residents; predicted 404 -> 412 before the build, held.
+    {"residents", 412, 0x9f42bc247dabc6fcULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's

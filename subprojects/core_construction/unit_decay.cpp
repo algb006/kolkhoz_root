@@ -9,6 +9,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 
 namespace core {
@@ -96,7 +97,9 @@ float NearestDwellingHours(const ConstructionConfig& config,
         config.definitions.units.is_housing[unit.type.value] == 0) {
       continue;
     }
-    const float hours = TravelHoursBetween(unit.position, place, config.walk_hours_per_km);
+    // On foot, by the way there is (road_route.h; 0.36.2).
+    const float hours =
+        RoadKm(completed, TravelMode::kWalk, unit.position, place) * config.walk_hours_per_km;
     if (best < 0.0F || hours < best) {
       best = hours;
     }

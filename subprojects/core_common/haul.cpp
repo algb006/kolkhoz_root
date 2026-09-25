@@ -19,7 +19,11 @@ HaulRate RateBetween(Vec2 from, Vec2 to, float hours_per_km, Grams load) {
   const float dx = to.x - from.x;
   const float dy = to.y - from.y;
   const float metres = std::sqrt((dx * dx) + (dy * dy));
-  const float one_way = metres / 1000.0F * hours_per_km;
+  return RateOverKm(metres / 1000.0F, hours_per_km, load);
+}
+
+HaulRate RateOverKm(float one_way_km, float hours_per_km, Grams load) {
+  const float one_way = one_way_km * hours_per_km;
   HaulRate rate;
   rate.load = load;
   rate.round_trip_hours = 2.0F * one_way;

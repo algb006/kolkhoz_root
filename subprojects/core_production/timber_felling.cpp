@@ -93,7 +93,10 @@ void GrowOldForest(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-float NearestHomeTravelHours(const WorldState& world, Vec2 place, float speed_kmh) {
+float NearestHomeTravelHours(const WorldState& world,
+                             Vec2 place,
+                             float speed_kmh,
+                             TravelMode mode) {
   if (!(speed_kmh > 0.0F)) {
     return -1.0F;
   }
@@ -108,9 +111,9 @@ float NearestHomeTravelHours(const WorldState& world, Vec2 place, float speed_km
     if (unit.level == 0 || unit.household.value == kInvalidEntityIdValue) {
       continue;
     }
-    const float dx_km = (unit.position.x - place.x) / 1000.0F;
-    const float dy_km = (unit.position.y - place.y) / 1000.0F;
-    const float hours = std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * hours_per_km;
+    // BY THE WAY THERE IS, not the crow's line (roads design §11-§13;
+    // 0.36.2).
+    const float hours = RoadKm(world, mode, unit.position, place) * hours_per_km;
     best = best < 0.0F || hours < best ? hours : best;
   }
   return best;
@@ -132,7 +135,8 @@ void CollectTimberAlarms(const ProductionConfig& config,
       continue;  // nothing asked of anybody here
     }
     const float speed = felling ? config.harness_speed_kmh : config.walk_speed_kmh;
-    const float road = NearestHomeTravelHours(world, stand.position, speed);
+    const float road = NearestHomeTravelHours(
+        world, stand.position, speed, felling ? TravelMode::kTeam : TravelMode::kWalk);
     if (road < 0.0F) {
       continue;  // nobody lives anywhere: every alarm of the village says so already
     }

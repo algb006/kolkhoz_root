@@ -211,6 +211,14 @@ struct WorkAssignment {
   /// which clears `kind` and with it the target the road could be recomputed
   /// from. Reset at day close together with the assignment.
   float hours_away_today = 0.0F;
+
+  /// Game hours of the road one way today, measured ONCE — at the first hour
+  /// the labour hour looks at this assignment — by the way the work travels
+  /// (road_route.h, work_seam.h WorkTravelMode; 0.36.2, save 93). Negative:
+  /// not measured yet today. The labour hour asked it every hour until then,
+  /// and a way by the network costs a query a straight line did not; the
+  /// resident's activity reads the same number, so the two cannot differ.
+  float travel_hours = -1.0F;
 };
 
 }  // namespace core

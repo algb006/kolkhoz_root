@@ -13,6 +13,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
+#include "core_common/road_route.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
@@ -122,19 +123,28 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
 
 namespace {
 
+/// @param cart_mode How the load goes when a horse is free: a cart with
+///        produce keeps to the roads (TravelMode::kCart), a cart with logs may
+///        cross the felling's ground (kLogCart; roads design §11).
 HaulRate RateToward(const ProductionConfig& config,
                     const WorldState& world,
                     Vec2 from,
-                    Vec2 destination) {
+                    Vec2 destination,
+                    TravelMode cart_mode = TravelMode::kCart) {
   const bool harnessed = DraughtHorsesFree(config, world);
   // РАСПУТИЦА slows the cart and the carrier alike (WeatherState::mud); on
-  // every road, because the haul is measured in a straight line and the core
-  // knows no gravel on it (production_config.h, mud_speed_factor).
+  // every road still — the start's are all dirt, and the state of each road
+  // is delivery 3's (production_config.h, mud_speed_factor).
   const float mud = world.weather.mud ? config.farming.mud_speed_factor : 1.0F;
   const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * mud;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
   const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
-  return RateBetween(from, destination, hours_per_km, load);
+  // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
+  // cart keeps to the network, the carrier walks roads, paths and open
+  // ground as is shortest.
+  const float one_way_km =
+      RoadKm(world, harnessed ? cart_mode : TravelMode::kWalk, from, destination);
+  return RateOverKm(one_way_km, hours_per_km, load);
 }
 
 /// @brief One load's day: what the carriers took in, and tomorrow's demand.
@@ -225,7 +235,7 @@ HaulRate StandHaulRate(const ProductionConfig& config,
   }
   const Vec2 destination =
       destination_row == kNoRow ? stand.position : world.units.rows[destination_row].position;
-  return RateToward(config, world, stand.position, destination);
+  return RateToward(config, world, stand.position, destination, TravelMode::kLogCart);
 }
 
 void SettleStandHauling(const ProductionConfig& config, WorldState& current) {

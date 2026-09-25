@@ -58,11 +58,38 @@ struct EdgeSegment {
 
 using Access = RoadAccess;
 
+/// How far beyond the network the near table reaches, metres: a place
+/// farther than this from every road falls back to the ring search.
+constexpr float kNearReach = 400.0F;
+
+/// Edges a near-table cell lists, nearest its centre first.
+constexpr std::uint8_t kNearEdges = 8;
+
+struct NearEntry {
+  RoadEdgeIndex edge = 0;
+  std::uint32_t segment = 0;
+  float distance_m = 0.0F;
+};
+
+struct NearCell {
+  std::array<NearEntry, kNearEdges> entries{};
+  std::uint8_t count = 0;
+};
+
 class RoadIndexImpl final : public RoadIndex {
  public:
   RoadIndexImpl(const RoadTable& roads, const RoadTravelRules& rules)
       : rules_(rules), graph_(BuildRoadGraph(roads)) {
     BuildSegments(roads);
+    // A WORLD WITH NO NETWORK AT ALL has no road for open ground to be slower
+    // than: it measures the straight line at the traveller's own pace, as
+    // every trip was measured before 0.36.2. Only a hand-built world is so —
+    // the game's always has the map's roads — and a cart there still says it
+    // had no road.
+    if (segments_.empty()) {
+      rules_.off_road_weight.fill(1.0F);
+    }
+    BuildNearTable();
     BuildDistances();
   }
 
@@ -303,11 +330,203 @@ class RoadIndexImpl final : public RoadIndex {
     }
   }
 
+  /// THE NEAR TABLE (0.36.2): every cell of a dense grid over the network,
+  /// out to kNearReach beyond it, holds the kNearEdges edges nearest its
+  /// centre and, for each, the segment nearest it — per usability class
+  /// (roads only; roads and paths). Built by letting every segment tell the
+  /// cells within reach about itself, so the cost is the segments' count
+  /// times a few dozen cells, once a network. A place then reads one cell and
+  /// walks each listed edge to its own nearest point: a few segments, not
+  /// the hundreds a ring search visits.
+  void BuildNearTable() {
+    if (segments_.empty()) {
+      return;
+    }
+    float low_x = segments_[0].from.x;
+    float low_y = segments_[0].from.y;
+    float high_x = low_x;
+    float high_y = low_y;
+    for (const EdgeSegment& segment : segments_) {
+      for (const Vec2 point : {segment.from, segment.to}) {
+        low_x = std::min(low_x, point.x);
+        low_y = std::min(low_y, point.y);
+        high_x = std::max(high_x, point.x);
+        high_y = std::max(high_y, point.y);
+      }
+    }
+    near_origin_ = Vec2{.x = low_x - kNearReach, .y = low_y - kNearReach};
+    near_columns_ =
+        static_cast<std::int32_t>(std::ceil((high_x - low_x + (2.0F * kNearReach)) / kGridCell)) +
+        1;
+    near_rows_ =
+        static_cast<std::int32_t>(std::ceil((high_y - low_y + (2.0F * kNearReach)) / kGridCell)) +
+        1;
+    const auto cells =
+        static_cast<std::size_t>(near_columns_) * static_cast<std::size_t>(near_rows_);
+    near_table_.assign(2 * cells, NearCell{});
+    const auto reach_cells = static_cast<std::int32_t>(std::ceil(kNearReach / kGridCell));
+    for (std::uint32_t id = 0; id < segments_.size(); ++id) {
+      const EdgeSegment& segment = segments_[id];
+      const bool is_road = graph_.edges[segment.edge].kind == RoadKind::kRoad;
+      const auto cell_of = [&](float value, float origin) {
+        return static_cast<std::int32_t>(std::floor((value - origin) / kGridCell));
+      };
+      const std::int32_t from_x = std::max(
+          0, cell_of(std::min(segment.from.x, segment.to.x), near_origin_.x) - reach_cells);
+      const std::int32_t to_x =
+          std::min(near_columns_ - 1,
+                   cell_of(std::max(segment.from.x, segment.to.x), near_origin_.x) + reach_cells);
+      const std::int32_t from_y = std::max(
+          0, cell_of(std::min(segment.from.y, segment.to.y), near_origin_.y) - reach_cells);
+      const std::int32_t to_y =
+          std::min(near_rows_ - 1,
+                   cell_of(std::max(segment.from.y, segment.to.y), near_origin_.y) + reach_cells);
+      for (std::int32_t cx = from_x; cx <= to_x; ++cx) {
+        for (std::int32_t cy = from_y; cy <= to_y; ++cy) {
+          const Vec2 centre{.x = near_origin_.x + ((static_cast<float>(cx) + 0.5F) * kGridCell),
+                            .y = near_origin_.y + ((static_cast<float>(cy) + 0.5F) * kGridCell)};
+          const float distance = SegmentDistance(segment, centre);
+          const std::size_t cell =
+              (static_cast<std::size_t>(cy) * static_cast<std::size_t>(near_columns_)) +
+              static_cast<std::size_t>(cx);
+          // Class 1 (roads and paths) hears every segment; class 0 roads only.
+          Offer(near_table_[cells + cell], segment.edge, id, distance);
+          if (is_road) {
+            Offer(near_table_[cell], segment.edge, id, distance);
+          }
+        }
+      }
+    }
+  }
+
+  /// Keeps a cell's nearest edges: one entry an edge, its nearest segment,
+  /// the kNearEdges nearest edges, ties by edge index.
+  static void Offer(NearCell& cell, RoadEdgeIndex edge, std::uint32_t segment, float distance) {
+    for (std::uint8_t slot = 0; slot < cell.count; ++slot) {
+      if (cell.entries[slot].edge == edge) {
+        if (distance < cell.entries[slot].distance_m) {
+          cell.entries[slot].segment = segment;
+          cell.entries[slot].distance_m = distance;
+        }
+        return;
+      }
+    }
+    NearEntry entry{.edge = edge, .segment = segment, .distance_m = distance};
+    if (cell.count < kNearEdges) {
+      cell.entries[cell.count] = entry;
+      ++cell.count;
+      return;
+    }
+    std::uint8_t worst = 0;
+    for (std::uint8_t slot = 1; slot < cell.count; ++slot) {
+      const NearEntry& a = cell.entries[slot];
+      const NearEntry& b = cell.entries[worst];
+      if (a.distance_m > b.distance_m || (a.distance_m == b.distance_m && a.edge > b.edge)) {
+        worst = slot;
+      }
+    }
+    const NearEntry& out = cell.entries[worst];
+    if (distance < out.distance_m || (distance == out.distance_m && edge < out.edge)) {
+      cell.entries[worst] = entry;
+    }
+  }
+
+  static float SegmentDistance(const EdgeSegment& segment, Vec2 place) {
+    return Distance(Foot(segment, place).first, place);
+  }
+
+  /// The nearest point of a segment to `place`, and its share along it.
+  static std::pair<Vec2, float> Foot(const EdgeSegment& segment, Vec2 place) {
+    const float sx = segment.to.x - segment.from.x;
+    const float sy = segment.to.y - segment.from.y;
+    const float length_sq = (sx * sx) + (sy * sy);
+    float share = 0.0F;
+    if (length_sq > 0.0F) {
+      share = std::clamp(
+          (((place.x - segment.from.x) * sx) + ((place.y - segment.from.y) * sy)) / length_sq,
+          0.0F,
+          1.0F);
+    }
+    return {Vec2{.x = segment.from.x + (sx * share), .y = segment.from.y + (sy * share)}, share};
+  }
+
+  Access AccessAt(std::uint32_t id, Vec2 place) const {
+    const EdgeSegment& segment = segments_[id];
+    const auto [foot, share] = Foot(segment, place);
+    return Access{.edge = segment.edge,
+                  .chainage_m = segment.from_chainage_m +
+                                ((segment.to_chainage_m - segment.from_chainage_m) * share),
+                  .point = foot,
+                  .distance_m = Distance(foot, place)};
+  }
+
+  /// From a listed segment, along its edge while the distance falls: the
+  /// edge's nearest point to `place` near the listed one.
+  Access DescendAlongEdge(std::uint32_t id, Vec2 place) const {
+    Access best = AccessAt(id, place);
+    const RoadEdgeIndex edge = segments_[id].edge;
+    for (const int step : {-1, 1}) {
+      std::int64_t at = static_cast<std::int64_t>(id) + step;
+      while (at >= 0 && at < static_cast<std::int64_t>(segments_.size()) &&
+             segments_[static_cast<std::size_t>(at)].edge == edge) {
+        const Access next = AccessAt(static_cast<std::uint32_t>(at), place);
+        if (!(next.distance_m < best.distance_m)) {
+          break;
+        }
+        best = next;
+        at += step;
+      }
+    }
+    return best;
+  }
+
   /// The road pieces a place may reach the network by, nearest first.
   std::vector<Access> Accesses(TravelMode mode, Vec2 place) const {
     std::vector<Access> found;
     if (segments_.empty()) {
       return found;
+    }
+    // THE NEAR TABLE FIRST; a place beyond its reach falls back to the ring
+    // search below.
+    const auto near_x =
+        static_cast<std::int32_t>(std::floor((place.x - near_origin_.x) / kGridCell));
+    const auto near_y =
+        static_cast<std::int32_t>(std::floor((place.y - near_origin_.y) / kGridCell));
+    if (rules_.near_table && near_x >= 0 && near_y >= 0 && near_x < near_columns_ &&
+        near_y < near_rows_) {
+      const std::size_t cells =
+          static_cast<std::size_t>(near_columns_) * static_cast<std::size_t>(near_rows_);
+      const std::size_t cell =
+          (static_cast<std::size_t>(near_y) * static_cast<std::size_t>(near_columns_)) +
+          static_cast<std::size_t>(near_x);
+      const NearCell& near = near_table_[(mode == TravelMode::kWalk ? cells : 0) + cell];
+      float nearest = kNoWay;
+      for (std::uint8_t slot = 0; slot < near.count; ++slot) {
+        const Access access = DescendAlongEdge(near.entries[slot].segment, place);
+        nearest = std::min(nearest, access.distance_m);
+        found.push_back(access);
+      }
+      // THE TABLE ANSWERS ONLY WITHIN ITS REACH: an edge within the slack of
+      // the nearest must be one the cell could have heard of — kNearReach
+      // less the cell's half-diagonal. A place farther out asks the rings
+      // (0.36.2: a unit 250 m from the nearest road took a way 23 % longer,
+      // the better road lying past the table's 300 m).
+      constexpr float kCellHalfDiagonal = kGridCell * 0.7072F;
+      if (!(nearest + kAccessSlack <= kNearReach - kCellHalfDiagonal)) {
+        found.clear();
+      } else {
+        std::erase_if(found, [&](const Access& access) {
+          return access.distance_m > nearest + kAccessSlack;
+        });
+        std::ranges::sort(found, [](const Access& left, const Access& right) {
+          return left.distance_m != right.distance_m ? left.distance_m < right.distance_m
+                                                     : left.edge < right.edge;
+        });
+        if (found.size() > kAccessCandidates) {
+          found.resize(kAccessCandidates);
+        }
+        return found;
+      }
     }
     const auto cx = static_cast<std::int32_t>(std::floor(place.x / kGridCell));
     const auto cy = static_cast<std::int32_t>(std::floor(place.y / kGridCell));
@@ -429,6 +648,11 @@ class RoadIndexImpl final : public RoadIndex {
   RoadGraph graph_;
   std::vector<EdgeSegment> segments_;
   std::map<std::pair<std::int32_t, std::int32_t>, std::vector<std::uint32_t>> grid_;
+  Vec2 near_origin_;
+  std::int32_t near_columns_ = 0;
+  std::int32_t near_rows_ = 0;
+  /// Two classes, roads only then roads and paths, each columns x rows.
+  std::vector<NearCell> near_table_;
   std::array<std::vector<float>, kTravelModeCountValue> distance_;
   std::array<std::vector<RoadEdgeIndex>, kTravelModeCountValue> arrival_;
 };

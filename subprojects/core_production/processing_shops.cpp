@@ -14,6 +14,7 @@
 #include "core_common/geometry.h"
 #include "core_common/ledger_state.h"
 #include "core_common/resident_state.h"
+#include "core_common/road_route.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
 #include "field_haul.h"
@@ -495,7 +496,8 @@ float NearestHolderRoadHours(const ProductionConfig& config,
         OffWork(person, world.calendar.tick)) {
       continue;
     }
-    const float hours = TravelHoursBetween(home, place, hours_per_km);
+    // On foot, by the way there is (road_route.h; 0.36.2).
+    const float hours = RoadKm(world, TravelMode::kWalk, home, place) * hours_per_km;
     best = best < 0.0F || hours < best ? hours : best;
   }
   return best;

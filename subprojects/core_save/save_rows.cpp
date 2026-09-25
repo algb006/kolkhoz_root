@@ -63,7 +63,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // into the padding after has_passport: 204, predicted before.
 // Save 79: away in the district — a day (+4) and three bytes beside the
 // passport, which push `traits` a word on (+4): 212, predicted before.
-static_assert(sizeof(ResidentRow) == 212,
+// Save 93: the assignment's travel_hours (+4): 216 — NOT predicted with the
+// WorkAssignment's own 32 -> 36, a miss in the inventory, named; caught here.
+static_assert(sizeof(ResidentRow) == 216,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -195,11 +197,13 @@ static_assert(sizeof(OrderRow) == 96, "OrderRow changed — update the codec and
 // the arity check was worth its line.
 static_assert(AggregateArity<OrderRow>() == 27,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(WorkAssignment) == 32,
+// Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
+// before the field was added.
+static_assert(sizeof(WorkAssignment) == 36,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
-static_assert(AggregateArity<WorkAssignment>() == 9,
+static_assert(AggregateArity<WorkAssignment>() == 10,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
@@ -433,6 +437,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.extraction_site);
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
+  out.WriteFloat(row.work.travel_hours);  // save 93
 
   // The post (task A7). Both halves or neither: a profession without a unit
   // names a groom of nowhere, a unit without a profession names a place
@@ -509,6 +514,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
+  row.work.travel_hours = in.ReadFloat();
 
   row.post.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
   row.post.unit = ReadEntityId<UnitId>(in);

@@ -426,6 +426,7 @@ void ApplyStandingWork(const WorldState& world,
     work.unit = order.unit;
     work.stand = order.stand;
     work.extraction_site = order.extraction_site;
+    work.travel_hours = -1.0F;  // the order's target: its road is measured anew
   }
 }
 

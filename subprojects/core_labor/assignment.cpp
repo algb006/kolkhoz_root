@@ -290,6 +290,7 @@ struct RankedPick {
 /// The accountant's eye on one worker for one job: nothing (still busy,
 /// barred or out of reach) or a ranked pick.
 bool ConsiderCandidate(const AssignmentJob& job,
+                       std::uint32_t job_index,
                        const AssignmentCandidate& candidate,
                        std::uint32_t candidate_index,
                        const AssignmentParams& params,
@@ -302,8 +303,20 @@ bool ConsiderCandidate(const AssignmentJob& job,
   // he may be sent at all and how much of his day is left to work. Felling
   // rides without being horse work (RidesOut; parcel 308).
   const bool rides = horse_work || RidesOut(job.kind);
-  const float travel = TravelHours(
-      candidate.home, job.position, rides ? params.harness_hours_per_km : params.walk_hours_per_km);
+  const float hours_per_km = rides ? params.harness_hours_per_km : params.walk_hours_per_km;
+  // BY THE ROADS WHEN THE CALLER MEASURED THEM (AssignmentParams::road_km;
+  // 0.36.2) — the way the labour hour will measure his day by; the straight
+  // line otherwise.
+  float travel = 0.0F;
+  if (!params.road_km.empty() && candidate.home_slot < params.home_slots) {
+    const std::size_t at =
+        ((((static_cast<std::size_t>(job_index) * params.home_slots) + candidate.home_slot) * 2U) +
+         (rides ? 1U : 0U));
+    travel = at < params.road_km.size() ? params.road_km[at] * hours_per_km
+                                        : TravelHours(candidate.home, job.position, hours_per_km);
+  } else {
+    travel = TravelHours(candidate.home, job.position, hours_per_km);
+  }
   // The road limit is a game rule, not accountant quality.
   if (!RoadLeavesAWorkingDay(
           travel, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
@@ -336,6 +349,7 @@ bool ConsiderCandidate(const AssignmentJob& job,
 
 /// Everyone still free who may and can reach this job today, best first.
 std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
+                                       std::uint32_t job_index,
                                        const std::vector<AssignmentCandidate>& candidates,
                                        const std::vector<std::uint32_t>& result,
                                        const AssignmentParams& params) {
@@ -345,7 +359,7 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
       continue;
     }
     RankedPick pick;
-    if (ConsiderCandidate(job, candidates[index], index, params, pick)) {
+    if (ConsiderCandidate(job, job_index, candidates[index], index, params, pick)) {
       picks.push_back(pick);
     }
   }
@@ -411,7 +425,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // §2.4: a trudoden is a work norm, not attendance).
     float expected_output = 0.0F;
     std::uint32_t placed = 0;
-    for (const RankedPick& pick : RankCandidates(job, candidates, result, params)) {
+    for (const RankedPick& pick : RankCandidates(job, job_index, candidates, result, params)) {
       if (expected_output >= job.work_days_remaining) {
         break;
       }
@@ -448,6 +462,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
           on_foot.harnessed = false;
           RankedPick walking;
           if (!ConsiderCandidate(on_foot,
+                                 job_index,
                                  candidates[pick.candidate_index],
                                  pick.candidate_index,
                                  params,

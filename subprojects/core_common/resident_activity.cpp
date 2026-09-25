@@ -86,9 +86,12 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   const float hours_per_km = harnessed ? rules.harness_hours_per_km : rules.walk_hours_per_km;
   float travel = 0.0F;
   if (assigned && has_home && has_target) {
-    const float dx = (target.x - home.x) / 1000.0F;
-    const float dy = (target.y - home.y) / 1000.0F;
-    travel = std::sqrt((dx * dx) + (dy * dy)) * hours_per_km;
+    // BY THE WAY THERE IS (road_route.h; 0.36.2) — the labour hour's own
+    // measure when it has taken it today (WorkAssignment::travel_hours), so
+    // the two cannot differ; measured here the same way when it has not.
+    travel = resident.work.travel_hours >= 0.0F
+                 ? resident.work.travel_hours
+                 : RoadKm(world, WorkTravelMode(world, resident.work), home, target) * hours_per_km;
   }
   const float leaves = window.sunrise;
   const float starts = window.sunrise + travel;

@@ -26,6 +26,7 @@
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
+#include "core_common/road_route.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -7579,6 +7580,42 @@ int CheckPlanDebtFromFields() {
   return failures;
 }
 
+/// THE HAUL GOES BY THE ROADS (road_route.h; 0.36.2). The store at (0,0),
+/// the field 2 km east; with no network the way is the straight line at the
+/// pace, and with a U-shaped road out to y = 500 and back (3 km) the load
+/// goes by it — a cart on it, a carrier by it or across at 1.2 — and the trip
+/// is longer than the line. The guard of the switch: put back the straight
+/// line and this reddens.
+int CheckHaulByRoad() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.harness_speed_kmh = 12.0F;
+  config.walk_speed_kmh = 5.0F;
+  SetStorageKg(config.unit_types[0], 10000.0F);
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  core::FieldRow field;
+  field.center = core::Vec2{.x = 2000.0F, .y = 0.0F};
+  const core::HaulRate straight = core::FieldHaulRate(config, world, field);
+  core::RoadRow road;
+  for (const core::Vec2 point : {core::Vec2{0.0F, 0.0F},
+                                 core::Vec2{0.0F, 500.0F},
+                                 core::Vec2{2000.0F, 500.0F},
+                                 core::Vec2{2000.0F, 0.0F}}) {
+    road.axis.push_back(core::RoadPoint{.position = point});
+  }
+  core::AppendRow(world.roads, road);
+  world.road_index = core::BuildRoadIndex(world.roads);
+  const core::HaulRate by_road = core::FieldHaulRate(config, world, field);
+  std::cout << "haul by road: " << straight.round_trip_hours << " h on the line, "
+            << by_road.round_trip_hours << " h with the U-shaped road\n";
+  failures += Expect(straight.round_trip_hours > 0.0F &&
+                         by_road.round_trip_hours > 1.15F * straight.round_trip_hours,
+                     "the haul goes by the roads: with a road the long way round, the trip is "
+                     "longer than the straight line");
+  return failures;
+}
+
 /// РАСПУТИЦА (boss seq 182, 186): the cart's round trip and the district
 /// lot's base term both stretch by 1 / mud_speed_factor on a mud day.
 int CheckMudSeason() {
@@ -9078,6 +9115,7 @@ int main() {
   failures += CheckDeliverPlanNow();
   failures += CheckPlanDebtFromFields();
   failures += CheckMudSeason();
+  failures += CheckHaulByRoad();
   failures += CheckProcessingShops();
   failures += CheckDemolitionStockWaits();
   failures += CheckDistrictTrip();

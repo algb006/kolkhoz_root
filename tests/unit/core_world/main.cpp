@@ -741,6 +741,33 @@ int CheckStartRoads() {
       found.push_back(index->Locate(core::TravelMode::kCart, unit.position));
     }
     bool same_both_ways = true;
+    // THE NEAR TABLE ANSWERS AS THE RING SEARCH DOES, on a 40 x 40 grid of
+    // points over the map, every mode to the village's centre (0.36.2: its
+    // first draft took a unit 250 m from the road 23 % the long way round).
+    core::RoadTravelRules rings;
+    rings.near_table = false;
+    const auto exact = core::BuildRoadIndex(start.roads, rings);
+    std::uint32_t differing = 0;
+    std::uint32_t compared = 0;
+    for (std::uint32_t gx = 0; gx < 40; ++gx) {
+      for (std::uint32_t gy = 0; gy < 40; ++gy) {
+        const core::Vec2 point{.x = 150.0F + (300.0F * static_cast<float>(gx)),
+                               .y = 150.0F + (300.0F * static_cast<float>(gy))};
+        for (const core::TravelMode mode : {core::TravelMode::kWalk,
+                                            core::TravelMode::kTeam,
+                                            core::TravelMode::kCart,
+                                            core::TravelMode::kLogCart}) {
+          ++compared;
+          const float fast = index->EffectiveKm(mode, point, centre);
+          const float slow = exact->EffectiveKm(mode, point, centre);
+          differing += std::abs(fast - slow) > 1.0e-4F ? 1U : 0U;
+        }
+      }
+    }
+    std::cout << "start roads: the near table against the rings — " << differing << " of "
+              << compared << " ways differ\n";
+    failures += Expect(compared == 6400 && differing == 0,
+                       "start roads: the near table finds every place's way as the rings do");
     for (std::size_t unit = 0; unit < found.size(); ++unit) {
       same_both_ways =
           same_both_ways &&

@@ -149,7 +149,14 @@ struct AssignmentCandidate {
   /// The start-canon lock (livestock design §5): hosts a kolkhoz horse, so
   /// only horse works may take him. IsHorseWork(kind) tells which.
   bool horse_locked = false;
+
+  /// Which home of AssignmentParams::road_km his day starts from;
+  /// kNoHomeSlot for a caller that gave no road table.
+  std::uint32_t home_slot = 0xFFFFFFFFU;
 };
+
+/// @brief AssignmentCandidate::home_slot of a candidate with no road table.
+inline constexpr std::uint32_t kNoHomeSlot = 0xFFFFFFFFU;
 
 /// @brief The day's placement parameters, from config and calendar.
 struct AssignmentParams {
@@ -213,6 +220,15 @@ struct AssignmentParams {
   /// there", 1 = skill and strength, 2 = plus road and fatigue, 3 = master
   /// (phase 1: as 2 — pair synergy is a STUB).
   std::uint8_t placement_level = 0;
+
+  /// THE WAY BY THE ROADS (road_route.h; 0.36.2): effective km from each
+  /// home slot to each job, walking and riding —
+  /// road_km[((job * home_slots) + slot) * 2 + (riding ? 1 : 0)], riding by
+  /// the job's own mode (a team, a cart, a log cart). The labour hour
+  /// measures the day by the same way, so the choice and the day cannot
+  /// differ. Empty: the straight line at the pace (a test with no world).
+  std::vector<float> road_km;
+  std::uint32_t home_slots = 0;
 };
 
 /// @brief Index value meaning "left idle today" in the result.

@@ -1591,15 +1591,16 @@ int TestRoadIndex() {
   failures += Expect(legs_add_up && log_cart <= cart_way.effective_km + 0.001F,
                      "road index: a way's legs add up to its weight, and a log cart may go "
                      "across where the grain cart may not");
-  // NO NETWORK AT ALL: every mode goes straight at its weight, and the cart
-  // says it had no road.
+  // NO NETWORK AT ALL (a hand-built world): every mode goes the straight line
+  // at its own pace, weight 1 — no road for open ground to be slower than —
+  // and the cart says it had no road.
   const auto bare = core::BuildRoadIndex(core::RoadTable{});
   const core::Route lost = bare->Way(core::TravelMode::kCart, {0.0F, 0.0F}, {1000.0F, 0.0F});
   failures += Expect(
-      lost.cart_without_road && near(lost.effective_km, 2.5F) &&
-          near(bare->EffectiveKm(core::TravelMode::kWalk, {0.0F, 0.0F}, {1000.0F, 0.0F}), 1.2F),
-      "road index: with no network a cart goes straight and says so, a walker "
-      "walks the line");
+      lost.cart_without_road && near(lost.effective_km, 1.0F) &&
+          near(bare->EffectiveKm(core::TravelMode::kWalk, {0.0F, 0.0F}, {1000.0F, 0.0F}), 1.0F),
+      "road index: with no network every mode walks the line at its pace, and a cart says it "
+      "had no road");
   return failures;
 }
 
