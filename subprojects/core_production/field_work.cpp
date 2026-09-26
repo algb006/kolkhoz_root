@@ -857,7 +857,30 @@ void TrySow(const ProductionConfig& config,
   // (oats, winter rye, …) read the oats' closed window as given up and put
   // the rye in that September, ahead of the oats named first.
   const bool fresh_chain = field.rotation_skips_turn != 0;
-  if (crop.is_winter && field.last_crop.value == field.rotation_year0.value && !fresh_chain) {
+  // A RUNNING CHAIN'S WINTER CROP THAT MISSED ITS AUTUMN IS LOST (fields design
+  // §7, «Озимая, не посеянная в своё окно, пропадает»; question 278, 0.36.13).
+  // The field is idle with this year's winter crop neither standing nor
+  // reaped — so it was not sown last autumn — and the slot lies FALLOW this
+  // year: ploughed as a fallow, and the next slot's winter crop goes into the
+  // bare ground in its own autumn (RunFields, TrySowWinter). Until 0.36.13 it
+  // was ploughed in the spring and sown the autumn after, a year late, and it
+  // stood through the next slot's only spring: the oats of a chain (potatoes,
+  // rye, oats) whose rye missed its window were lost under it. A FRESH chain's
+  // first slot is not this: it waits for its season (above, rotation_skips_turn).
+  if (WinterSlotLost(field, crop.is_winter, current.calendar.day)) {
+    if (month == config.farming.fallow_plow_month && temperature >= 0.0F) {
+      OpenPlowing(config, current, field, CropId{});
+      return;
+    }
+    // Not ploughed as a fallow (its month went by while the field was busy):
+    // the next slot's winter crop may still go into it in its own autumn.
+    TrySowWinter(config, current, field, month, temperature);
+    return;
+  }
+  // Not lost and not fresh, a winter crop of this year's slot at an idle field
+  // was reaped this year (WinterSlotLost says which) — no longer asked of
+  // `last_crop`, which cannot tell this year's reaping from an older one.
+  if (crop.is_winter && !fresh_chain) {
     // This year's winter crop was sown last autumn and is already off:
     // the field is idle because it was HARVESTED, not because the sowing
     // was missed. Sowing it again in August would put the same rye in two

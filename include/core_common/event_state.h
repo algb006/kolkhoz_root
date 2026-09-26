@@ -542,6 +542,15 @@ enum class EventKind : std::uint8_t {
   /// Seam key `herd_autumn_slaughter`.
   kHerdAutumnSlaughter,
 
+  /// field — the winter crop of the chain's slot for this year was not sown
+  /// in its autumn window, so the slot lies fallow this year (fields design
+  /// §7, «Озимая, не посеянная в своё окно, пропадает»; question 278,
+  /// 0.36.13). amount = the crop's id (CropId value). Raised at the year's
+  /// turn that brings the lost slot's year, once per field and year. kNotable.
+  /// Seam key `winter_sowing_lost`. The data for the layout's mark "the winter
+  /// crop was not sown — its window went"; showing it is the layer's.
+  kWinterSowingLost,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

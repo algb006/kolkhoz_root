@@ -811,7 +811,7 @@ class LaborSystem final : public ILaborSystem {
         if (config_.standing_crop_grams && InSnowLastDays(current.calendar, field, kind)) {
           job.grams_at_risk = config_.standing_crop_grams(current, field);
         }
-        job.prepares_winter_crop = PreparesWinterCrop(field, kind);
+        job.prepares_winter_crop = PreparesWinterCrop(field, kind, current.calendar.day);
         job.plan_position = IsHorseWork(kind) && CarriesPlanPosition(current, field, kind);
         // THE THIRD TIER IS NOT WIRED, AND THE REASON IS MEASURED. The rule
         // asked for is "an overdue sowing is not offered at all" — seed put
@@ -1116,12 +1116,23 @@ class LaborSystem final : public ILaborSystem {
 
   /// The crop a field job works toward: the one opened on the field, else
   /// this year's in the rotation, else — a fallow year — next year's.
-  static CropId JobCrop(const FieldRow& field) {
+  /// The crop a field's work is for when the field names none: this year's
+  /// slot — or NONE when that slot is a winter crop lost to its window
+  /// (question 278, WinterSlotLost): its year is a fallow's, and the fallow's
+  /// ploughing is not the lost rye's work (static review of 0.36.13: it took
+  /// the rye's window and its plan position).
+  CropId SlotCrop(const FieldRow& field, SimDay today) const {
     if (field.crop.value != kInvalidDefIdValue) {
       return field.crop;
     }
-    return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
-                                                            : field.rotation_year1;
+    const CropId year0 = field.rotation_year0;
+    const bool winter = year0.value < config_.crops.size() && config_.crops[year0.value].is_winter;
+    return WinterSlotLost(field, winter, today) ? CropId{} : year0;
+  }
+
+  CropId JobCrop(const FieldRow& field, SimDay today) const {
+    const CropId slot = SlotCrop(field, today);
+    return slot.value != kInvalidDefIdValue ? slot : field.rotation_year1;
   }
 
   /// Whether this field job — ploughing, harrowing or sowing — works toward a
@@ -1130,8 +1141,8 @@ class LaborSystem final : public ILaborSystem {
   /// crop's window and ranks below every job with a window of its own
   /// (assignment.h, prepares_winter_crop). A winter crop already of this
   /// year's slot is standing and only reaped, so it never qualifies.
-  bool PreparesWinterCrop(const FieldRow& field, WorkKind kind) const {
-    const CropId crop = JobCrop(field);
+  bool PreparesWinterCrop(const FieldRow& field, WorkKind kind, SimDay today) const {
+    const CropId crop = JobCrop(field, today);
     return kind != WorkKind::kHarvest && crop.value < config_.crops.size() &&
            config_.crops[crop.value].is_winter != 0 && crop.value != field.rotation_year0.value;
   }
@@ -1171,9 +1182,10 @@ class LaborSystem final : public ILaborSystem {
   ///        of — the field's own, else its slot's, else the winter crop a
   ///        fallow is prepared for.
   bool CarriesPlanPosition(const WorldState& current, const FieldRow& field, WorkKind kind) const {
-    CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
-    if (PreparesWinterCrop(field, kind)) {
-      crop = JobCrop(field);
+    const SimDay today = current.calendar.day;
+    CropId crop = SlotCrop(field, today);
+    if (PreparesWinterCrop(field, kind, today)) {
+      crop = JobCrop(field, today);
     }
     if (crop.value >= config_.crops.size()) {
       return false;
@@ -1194,9 +1206,9 @@ class LaborSystem final : public ILaborSystem {
     if (field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow) {
       return WindowOf(calendar, config_.meadow_cut_to_month);
     }
-    CropId crop = field.crop.value != kInvalidDefIdValue ? field.crop : field.rotation_year0;
-    if (PreparesWinterCrop(field, kind)) {
-      crop = JobCrop(field);
+    CropId crop = SlotCrop(field, calendar.day);
+    if (PreparesWinterCrop(field, kind, calendar.day)) {
+      crop = JobCrop(field, calendar.day);
     }
     if (crop.value >= config_.crops.size()) {
       // FALLOW, OR A CROP THIS BUILD DOES NOT KNOW: no window to miss, and
@@ -1234,7 +1246,7 @@ class LaborSystem final : public ILaborSystem {
     }
     const bool ploughed = kind == WorkKind::kHarrowing || kind == WorkKind::kSowing;
     if (windows.ripen_days > 0 && window.kind == DeadlineKind::kOverdue &&
-        (harvest || (ploughed && !PreparesWinterCrop(field, kind)))) {
+        (harvest || (ploughed && !PreparesWinterCrop(field, kind, calendar.day)))) {
       const auto snow = static_cast<std::int32_t>(config_.growing_season_last_day);
       return DueByDay(calendar, harvest ? snow : snow - windows.ripen_days);
     }

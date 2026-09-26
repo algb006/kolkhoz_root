@@ -30,7 +30,9 @@ CropId SeededNextCrop(const ProductionConfig& config,
   if (field.kind != LandKind::kArable) {
     return CropId{};
   }
-  const CropId next = NextSowingCrop(field, world.calendar.day);
+  const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
+                            config.crops[field.rotation_year0.value].is_winter;
+  const CropId next = NextSowingCrop(field, world.calendar.day, year0_winter);
   if (next.value >= config.crops.size() ||
       !(config.crops[next.value].sowing_norm_kg_per_ha > 0.0F)) {
     return CropId{};

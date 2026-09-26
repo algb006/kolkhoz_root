@@ -241,7 +241,9 @@ StockForecast SeedLight(const ProductionConfig& config, const WorldState& world)
     // and the winter campaign's rye stands in the SECOND — so the light
     // counted no autumn rye on any reaped field, the same gap the seed fund
     // had (fund_ladder.h).
-    const CropId next = NextSowingCrop(field, world.calendar.day);
+    const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
+                              config.crops[field.rotation_year0.value].is_winter;
+    const CropId next = NextSowingCrop(field, world.calendar.day, year0_winter);
     if (field.kind != LandKind::kArable || next.value >= config.crops.size()) {
       continue;
     }

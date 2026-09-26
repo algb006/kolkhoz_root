@@ -104,7 +104,7 @@ Grams PlanRungGrams(const WorldState& world,
   return owed < below_the_seed ? owed : below_the_seed;
 }
 
-CropId NextSowingCrop(const FieldRow& field, SimDay today) {
+CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter) {
   const bool in_ground = field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
   const bool reaped_this_year = field.reaped_day != kNeverReapedDay &&
                                 field.reaped_day / kDaysPerYear == today / kDaysPerYear;
@@ -137,8 +137,10 @@ CropId NextSowingCrop(const FieldRow& field, SimDay today) {
     return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
                                                             : field.rotation_year1;
   }
-  // A fallow first slot sows nothing: the next sowing is the second slot's.
-  if (!in_ground && !reaped_this_year && !preparing_second_slot &&
+  // A fallow first slot sows nothing: the next sowing is the second slot's —
+  // and so does a winter slot lost to its window (question 278; 0.36.13).
+  const bool first_slot_lost = WinterSlotLost(field, year0_is_winter, today);
+  if (!in_ground && !reaped_this_year && !preparing_second_slot && !first_slot_lost &&
       field.rotation_year0.value != kInvalidDefIdValue) {
     return field.rotation_year0;
   }
@@ -174,7 +176,13 @@ ResourceAmounts SeedRungLeft(const WorldState& world,
       const bool preparing_second_slot = !already_sown && field.crop.value != kInvalidDefIdValue &&
                                          field.crop.value == field.rotation_year1.value &&
                                          field.crop.value != field.rotation_year0.value;
-      if (!already_sown && !reaped_this_year && !preparing_second_slot) {
+      // A WINTER SLOT LOST TO ITS WINDOW owes nothing this year and passes
+      // to the second slot like a fallow (question 278; static review of
+      // 0.36.13: the fund held its rye from January to the fallow's harrow).
+      const bool year0_winter = field.rotation_year0.value < seed_norms_by_crop.size() &&
+                                seed_norms_by_crop[field.rotation_year0.value].is_winter;
+      const bool first_slot_lost = WinterSlotLost(field, year0_winter, world.calendar.day);
+      if (!already_sown && !reaped_this_year && !preparing_second_slot && !first_slot_lost) {
         AddSowing(seed_norms_by_crop, field.rotation_year0, field.area_ga, false, seed);
       }
       // AND THE AUTUMN'S WINTER CROP IS NEXT YEAR'S SOWING TOO (boss seq 18,
@@ -188,9 +196,20 @@ ResourceAmounts SeedRungLeft(const WorldState& world,
       // winter crop is in the ground.
       const bool first_slot_done = reaped_this_year ||
                                    field.rotation_year0.value == kInvalidDefIdValue ||
-                                   preparing_second_slot;
+                                   preparing_second_slot || first_slot_lost;
       const bool winter_sown = already_sown && field.crop.value == field.rotation_year1.value;
-      if (first_slot_done && !winter_sown) {
+      // AND NOT PAST ITS OWN WINDOW (question 278): an autumn whose window
+      // went by unsown loses that winter crop, and its seed is owed nobody
+      // from the window's end to the turn — unless its work had begun: a
+      // sowing opened in its window is finished by the crew after it
+      // (field_work.cpp, SowingMayOpen), and still takes its seed.
+      const bool working_year1 = !already_sown && field.crop.value == field.rotation_year1.value;
+      const bool window_gone =
+          !working_year1 && field.rotation_year1.value < seed_norms_by_crop.size() &&
+          seed_norms_by_crop[field.rotation_year1.value].sow_to_month != kNoSowingMonth &&
+          static_cast<std::uint8_t>(world.calendar.date.month) >
+              seed_norms_by_crop[field.rotation_year1.value].sow_to_month;
+      if (first_slot_done && !winter_sown && !window_gone) {
         AddSowing(seed_norms_by_crop, field.rotation_year1, field.area_ga, true, seed);
       }
     }

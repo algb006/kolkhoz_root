@@ -165,6 +165,26 @@ int main() {
   constexpr core::SimDay kAugustYear2 = core::kDaysPerYear + (7U * core::kDaysPerMonth);
   constexpr core::SimDay kEnd = 5U * core::kDaysPerYear;
 
+  // C. THE START'S OWN (timothy, timothy, rye) field (question 278 with boss's
+  // [27]): the stand's last year is cut in June and ended at the cut
+  // (field_work.cpp, Harvest), so the rye goes into its own autumn of
+  // year 2 and is reaped in year 3 — not a year late. Watched from the start.
+  const core::CropId timothy = crop("timothy");
+  Watch grass;
+  grass.label = "C (timothy, timothy, rye), the start's field_grass";
+  for (std::uint32_t row = 0; row < world.State().fields.rows.size(); ++row) {
+    const core::FieldRow& field = world.State().fields.rows[row];
+    if (field.rotation_year0.value == timothy.value &&
+        field.rotation_year1.value == timothy.value && field.rotation_year2.value == rye.value) {
+      grass.id = world.State().fields.row_ids[row];
+    }
+  }
+  if (run::Expect(grass.id.value != core::kInvalidEntityIdValue,
+                  "the start carries a (timothy, timothy, rye) field") != 0) {
+    return 1;
+  }
+  Begin(world.State(), grass);
+
   Watch first;
   first.label = "A (rye, oats, potatoes), named in February of year 2";
   Watch second;
@@ -193,6 +213,7 @@ int main() {
       Begin(world.State(), second);
     }
     world->AdvanceStep();
+    Observe(world.State(), grass);
     if (first.id.value != core::kInvalidEntityIdValue) {
       Observe(world.State(), first);
     }
@@ -211,9 +232,12 @@ int main() {
     if (value == potato.value) {
       return "potatoes";
     }
+    if (value == timothy.value) {
+      return "timothy";
+    }
     return "crop " + std::to_string(value);
   };
-  for (const Watch* watch : {&first, &second}) {
+  for (const Watch* watch : {&grass, &first, &second}) {
     std::cout << "rotation_chain: field " << watch->id.value << ", " << watch->label << ":";
     for (const Mark& mark : watch->marks) {
       std::cout << ' ' << (mark.sown ? "sown " : "reaped ") << name_of(mark.crop) << " y"
@@ -221,6 +245,14 @@ int main() {
     }
     std::cout << " (" << watch->marks.size() << " events)\n";
   }
+
+  // -- C: the rye after the grass, in its own autumn ---------------------------
+  const Mark c_rye_sown = First(grass, true, rye.value, 1);
+  const Mark c_rye_reaped = First(grass, false, rye.value, 1);
+  failures += run::Expect(c_rye_sown.year == 2 && c_rye_sown.month >= 7,
+                          "C: the grass cut in its last year ends at the cut, and the rye goes "
+                          "into the autumn of year 2");
+  failures += run::Expect(c_rye_reaped.year == 3, "C: and is reaped in year 3, not a year late");
 
   // -- A: the winter crop named first -----------------------------------------
   const Mark a_rye_sown = First(first, true, rye.value, 2);

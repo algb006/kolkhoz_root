@@ -310,8 +310,9 @@ struct FieldRow {
   /// year holds the chain once more and spends it (production_system.cpp,
   /// RunYearStart). Until 0.36.10 the ploughing spent it, the chain moved on
   /// with the rye standing, and a chain (rye, oats, potatoes) named in
-  /// February never sowed its oats. A RUNNING chain's winter crop that went
-  /// in a year late is not this case, and the turn moves it on as before.
+  /// February never sowed its oats. A RUNNING chain's winter crop that missed
+  /// its autumn is not this case: since 0.36.13 it is lost and its slot lies
+  /// fallow (question 278, WinterSlotLost below).
   std::uint8_t rotation_skips_turn = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
@@ -599,6 +600,36 @@ struct FieldRow {
 ///       being true.
 inline bool HasRotation(const FieldRow& field) {
   return field.rotation_assigned != 0;
+}
+
+/// @brief This year's slot is a winter crop that was NOT sown in its autumn
+///        window, so it lies fallow this year (fields design §7, «Озимая, не
+///        посеянная в своё окно, пропадает»; question 278, 0.36.13).
+///
+/// ONE HOME FOR THE QUESTION, asked by the sowing (TrySow), the year's turn
+/// (the event and the fallow's recovery), the seed fund and the next sowing
+/// (fund_ladder.cpp) and the labour's ranking of the fallow's ploughing
+/// (labor_system.cpp). Its first draft had a home in each, and they
+/// disagreed (static review of 0.36.13): `last_crop == year0` could not tell
+/// "reaped this year" from "reaped years ago", and a rye still being sown on
+/// the year's last day read as lost at the turn.
+///
+/// A running chain only: a fresh one (rotation_skips_turn) waits for its
+/// first slot's season instead. Not lost while the field is sowing, growing
+/// or reaping that crop, nor once it was reaped this calendar year.
+/// @param year0_is_winter Whether the crop in `rotation_year0` is a winter
+///        crop — the caller's crop table says; false for a fallow slot.
+/// @param today The calendar day the question is asked on.
+inline bool WinterSlotLost(const FieldRow& field, bool year0_is_winter, SimDay today) {
+  if (!year0_is_winter || field.rotation_skips_turn != 0 || !HasRotation(field)) {
+    return false;
+  }
+  const bool reaped_this_year = field.reaped_day != kNeverReapedDay &&
+                                field.reaped_day / kDaysPerYear == today / kDaysPerYear;
+  const bool in_hand = field.crop.value == field.rotation_year0.value &&
+                       (field.phase == FieldPhase::kSowing || field.phase == FieldPhase::kGrowing ||
+                        field.phase == FieldPhase::kHarvest);
+  return !reaped_this_year && !in_hand;
 }
 
 /// @brief Is this meadow in flower today?

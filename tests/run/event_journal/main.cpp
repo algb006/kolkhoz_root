@@ -200,6 +200,8 @@ const char* KindName(core::EventKind kind) {
       return "herd_surplus_slaughtered";
     case core::EventKind::kHerdAutumnSlaughter:
       return "herd_autumn_slaughter";
+    case core::EventKind::kWinterSowingLost:
+      return "winter_sowing_lost";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

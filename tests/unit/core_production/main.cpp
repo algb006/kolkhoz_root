@@ -5229,11 +5229,11 @@ int CheckTheChairmanSetsARotation() {
     before_turn.weather.air_temperature_celsius = -12.0F;
     // The rye is in and the mark still stands: the seed alarm's next sowing
     // is the oats, not the rye a second time (fund_ladder.cpp, 0.36.11).
-    failures +=
-        Expect(core::NextSowingCrop(before_turn.fields.rows[0], before_turn.calendar.day).value ==
-                   oat.value,
-               "with the rye named first already in the ground, the next sowing is the "
-               "crop named second");
+    failures += Expect(
+        core::NextSowingCrop(before_turn.fields.rows[0], before_turn.calendar.day, true).value ==
+            oat.value,
+        "with the rye named first already in the ground, the next sowing is the "
+        "crop named second");
     core::WorldState turned = before_turn;
     turned.calendar.tick = 48U * core::kTicksPerDay;
     core::RefreshCalendarCaches(turned.calendar);
@@ -5244,6 +5244,101 @@ int CheckTheChairmanSetsARotation() {
                        "the turn into the rye's year holds the chain on the rye and spends the "
                        "mark: the crop named second keeps its own spring");
   }
+  return failures;
+}
+
+/// A WINTER CROP THAT MISSED ITS WINDOW IS LOST (question 278; fields design
+/// §7). The known answer: a running chain (potatoes, rye, oats); the potatoes
+/// came off and the rye was NOT sown that autumn. The turn into year N+1
+/// says so (kWinterSowingLost, the rye); that spring the field is ploughed as
+/// a FALLOW, never for the rye; and in year N+2 the oats go in their own
+/// spring. Until 0.36.13 the field was ploughed for the rye that spring, the
+/// rye went in a year late and stood through the oats' only spring.
+int CheckLostWinterCropLiesFallow() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "lost winter crop: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+  const core::CropId potato{static_cast<std::uint16_t>(crops->FindRowByKey("potato"))};
+
+  // The last tick of year N: the potatoes are off, the rye's autumn is gone.
+  core::WorldState world;
+  world.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(world.calendar);
+  world.weather.air_temperature_celsius = -12.0F;
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 10.0F;
+  field.fertility = 65.0F;
+  field.rotation_year0 = potato;
+  field.rotation_year1 = rye;
+  field.rotation_year2 = oat;
+  field.rotation_assigned = 1;
+  field.last_crop = potato;
+  field.phase = core::FieldPhase::kIdle;
+  const core::FieldId id = core::AppendRow(world.fields, field);
+
+  // One step onto the next day's first tick, at `temperature`.
+  const auto next_day = [&system](core::WorldState& state, float temperature) {
+    core::WorldState next = state;
+    next.calendar.tick = ((state.calendar.tick / core::kTicksPerDay) + 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next.calendar);
+    next.weather.air_temperature_celsius = temperature;
+    next.step_events.clear();
+    system->RunProductionDecisions(state, next);
+    state = next;
+    state.calendar.tick += core::kTicksPerDay - 1U;  // the day's last tick, for the next step
+    core::RefreshCalendarCaches(state.calendar);
+  };
+
+  next_day(world, -12.0F);  // the turn into year N+1
+  bool said = false;
+  for (const core::SimEvent& event : world.step_events) {
+    said = said ||
+           (event.kind == core::EventKind::kWinterSowingLost && event.field.value == id.value &&
+            event.amount == static_cast<std::int64_t>(rye.value));
+  }
+  failures += Expect(said && world.fields.rows[0].rotation_year0.value == rye.value,
+                     "the turn into the rye's year says the rye was not sown in its window "
+                     "(kWinterSowingLost, the field, the rye)");
+
+  // Year N+1, January to July, thawed: the first work opened is a fallow's.
+  bool rye_ploughed = false;
+  bool fallow_ploughed = false;
+  for (std::uint32_t day = 0; day < 7U * core::kDaysPerMonth; ++day) {
+    next_day(world, 10.0F);
+    const core::FieldRow& now = world.fields.rows[0];
+    rye_ploughed = rye_ploughed || now.crop.value == rye.value;
+    fallow_ploughed = fallow_ploughed || (now.phase != core::FieldPhase::kIdle &&
+                                          now.crop.value == core::kInvalidDefIdValue);
+  }
+  failures += Expect(fallow_ploughed && !rye_ploughed,
+                     "that spring the field is ploughed as a fallow, and never for the lost rye");
+
+  // Year N+2: the chain moves on, and the oats go in their own spring.
+  core::FieldRow& fallow = world.fields.rows[0];
+  fallow.phase = core::FieldPhase::kGrowing;  // the bare fallow stood its year
+  fallow.crop = core::CropId{};
+  world.calendar.tick = (2U * core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(world.calendar);
+  next_day(world, -12.0F);  // the turn into year N+2
+  failures += Expect(world.fields.rows[0].rotation_year0.value == oat.value,
+                     "the turn into year N+2 brings the oats to the top");
+  bool oats_opened = false;
+  for (std::uint32_t day = 0; day < 5U * core::kDaysPerMonth && !oats_opened; ++day) {
+    next_day(world, 10.0F);
+    oats_opened = world.fields.rows[0].crop.value == oat.value;
+  }
+  failures +=
+      Expect(oats_opened, "and in the spring of year N+2 the oats are ploughed for, in time");
   return failures;
 }
 
@@ -9386,6 +9481,7 @@ int main() {
   failures += CheckThePlanIsJudgedAtTheYearsTurn();
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
+  failures += CheckLostWinterCropLiesFallow();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();

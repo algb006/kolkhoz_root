@@ -1145,7 +1145,10 @@ int CheckNextSowingCrop() {
   field.rotation_year1 = core::CropId{1};
   field.rotation_year2 = core::CropId{2};
   field.phase = core::FieldPhase::kIdle;
-  const auto next = [&field]() { return core::NextSowingCrop(field, kToday).value; };
+  // Crop 1 is the winter one (the ladder test's norms below say the same).
+  const auto next = [&field]() {
+    return core::NextSowingCrop(field, kToday, field.rotation_year0.value == 1).value;
+  };
   failures += Expect(next() == 0, "next sowing: an idle field waits for its first slot");
   field.phase = core::FieldPhase::kGrowing;
   field.crop = core::CropId{0};
@@ -1182,6 +1185,22 @@ int CheckNextSowingCrop() {
   field.crop = core::CropId{};
   field.rotation_skips_turn = 1;
   failures += Expect(next() == 0, "next sowing: a chain the turn holds still sows its first");
+  // A RUNNING chain whose winter first slot missed its autumn (question 278,
+  // 0.36.13): idle, the rye neither standing nor reaped this year — the slot
+  // lies fallow, and the next sowing is the second slot's, not the lost rye.
+  field.rotation_skips_turn = 0;
+  field.rotation_assigned = 1;
+  field.rotation_year0 = core::CropId{1};
+  field.rotation_year1 = core::CropId{0};
+  field.rotation_year2 = core::CropId{2};
+  field.phase = core::FieldPhase::kIdle;
+  field.crop = core::CropId{};
+  field.reaped_day = 5;  // last year's
+  failures += Expect(next() == 0,
+                     "next sowing: a winter slot lost to its window passes to the "
+                     "second slot, like a fallow");
+  field.reaped_day = kToday - 5;  // reaped this year: not lost, and the second is next anyway
+  failures += Expect(next() == 0, "next sowing: the winter slot reaped this year, the second next");
   return failures;
 }
 
@@ -1219,6 +1238,50 @@ int CheckTheTopOfTheLadder() {
                      "ladder: seed for the unsown field only, and the plan's debt");
   failures += Expect(core::HeldAboveFodder(world, norms, 3, false)[2] == 300'000,
                      "ladder: the seed rung can be switched off, the plan rung cannot");
+  // QUESTION 278 (0.36.13): a running chain's winter first slot LOST to its
+  // window owes no seed this year — the fund held its rye from January to the
+  // fallow's harrow (static review). And the next slot's winter crop is not
+  // owed past its own window when no work on it began.
+  {
+    core::WorldState lost = world;
+    lost.fields.rows.clear();
+    lost.fields.row_ids.clear();
+    lost.fields.row_by_id.clear();
+    lost.fields.next_id_value = 1;
+    core::FieldRow rye_first;
+    rye_first.area_ga = 2.0F;
+    rye_first.rotation_assigned = 1;
+    rye_first.rotation_year0 = core::CropId{1};  // the winter crop, lost
+    rye_first.rotation_year1 = core::CropId{2};
+    rye_first.rotation_year2 = core::CropId{0};
+    rye_first.phase = core::FieldPhase::kIdle;
+    rye_first.reaped_day = 5;  // last year's reaping
+    core::AppendRow(lost.fields, rye_first);
+    lost.calendar.tick = (core::kDaysPerYear + 4U) * core::kTicksPerDay;  // February, year 2
+    core::RefreshCalendarCaches(lost.calendar);
+    failures += Expect(core::SeedRungLeft(lost, norms, 3)[1] == 0,
+                       "ladder: a winter slot lost to its window owes no rye seed this year");
+    core::WorldState autumn = lost;
+    core::FieldRow& field = autumn.fields.rows[0];
+    field.rotation_year0 = core::CropId{2};
+    field.rotation_year1 = core::CropId{1};  // the autumn's rye
+    field.rotation_year2 = core::CropId{0};
+    field.reaped_day = core::kDaysPerYear + 30;  // year0 reaped this summer
+    std::vector<core::SeedNorm> windowed = norms;
+    windowed[1].sow_to_month = 8;                                            // September, 0-based
+    autumn.calendar.tick = (core::kDaysPerYear + 32U) * core::kTicksPerDay;  // September
+    core::RefreshCalendarCaches(autumn.calendar);
+    failures += Expect(core::SeedRungLeft(autumn, windowed, 3)[1] == 100'000,
+                       "ladder: in its window the autumn's rye is owed (2 ha x 50 kg)");
+    autumn.calendar.tick = (core::kDaysPerYear + 40U) * core::kTicksPerDay;  // November
+    core::RefreshCalendarCaches(autumn.calendar);
+    failures += Expect(core::SeedRungLeft(autumn, windowed, 3)[1] == 0,
+                       "ladder: past its window, unsown and unbegun, it is owed nobody");
+    field.crop = core::CropId{1};
+    field.phase = core::FieldPhase::kSowing;
+    failures += Expect(core::SeedRungLeft(autumn, windowed, 3)[1] == 100'000,
+                       "ladder: but a sowing begun in its window still takes its seed after it");
+  }
   // WHAT WENT TO THE DISTRICT EARLY IS NOT HELD (boss seq 25, item 3): the
   // rung is what is STILL OWED.
   {

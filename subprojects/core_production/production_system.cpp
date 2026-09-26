@@ -494,7 +494,15 @@ class ProductionSystem final : public IProductionSystem {
       // returning under a new name, and it would have handed a player who
       // raised the land a hundred-point field instead of the canon's sixty-
       // five.
-      if ((field.phase == FieldPhase::kIdle) && field.rotation_year0.value == kInvalidDefIdValue &&
+      // AND A LOST WINTER SLOT'S FALLOW RESTS LIKE ONE (question 278: «звено
+      // становится паром»): ploughed bare in its year and nothing sown, it
+      // recovers as a fallow does (static review of 0.36.13).
+      const bool lost_slot_fallow =
+          bare && field.rotation_year0.value < config_.crops.size() &&
+          WinterSlotLost(
+              field, config_.crops[field.rotation_year0.value].is_winter, current.calendar.day);
+      if ((field.phase == FieldPhase::kIdle) &&
+          (field.rotation_year0.value == kInvalidDefIdValue || lost_slot_fallow) &&
           HasRotation(field)) {
         field.fertility += config_.farming.fallow_recovery;
         field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
@@ -514,14 +522,15 @@ class ProductionSystem final : public IProductionSystem {
       // the rye: the oats of a chain (rye, oats, potatoes) named in February
       // were never sown at all.
       //
-      // ONLY A FRESH CHAIN'S. The first draft asked the ground alone — any
-      // winter crop of year0 standing — and so also held a RUNNING chain whose
-      // winter crop went in a year late. The canon has one by construction
-      // (field_grass: timothy, timothy, rye — the perennial stands until the
-      // turn, so the rye can never go in from year1): held, its rye moved to
-      // other years, and the canon's rye plan failed 8 -> 21 years of 180 on
-      // nine seeds. What a running chain should do with a late winter crop is
-      // a question of its own; this repair does not answer it.
+      // ONLY A FRESH CHAIN'S. The first draft (0.36.10) asked the ground alone
+      // — any winter crop of year0 standing — and so also held a RUNNING
+      // chain whose winter crop had gone in a year late, and the canon's rye
+      // plan failed 8 -> 21 years of 180 on nine seeds. (0.36.11's comment
+      // here blamed field_grass "by construction"; a watcher showed its rye
+      // sown on time, field_work.cpp, Harvest — the late ryes were the ones
+      // whose autumn the hands missed.) Since 0.36.13 a running chain's winter
+      // crop that missed its autumn is not sown late at all: it is lost, and
+      // the slot lies fallow (question 278, WinterSlotLost).
       const bool first_winter_standing =
           field.rotation_skips_turn != 0 && field.phase == FieldPhase::kGrowing &&
           field.crop.value < config_.crops.size() && config_.crops[field.crop.value].is_winter &&
@@ -544,7 +553,13 @@ class ProductionSystem final : public IProductionSystem {
         field.rotation_year1 = field.rotation_year2;
         field.rotation_year2 = shifted;
       }
-      // A perennial stand ends when the plan moves on (farming design §5).
+      // A perennial stand ends when the plan moves on (farming design §5) —
+      // HERE only when it was not cut this year: a stand whose next slot is
+      // something else is ended at its cut (field_work.cpp, Harvest), so
+      // the winter crop after grass goes into its own autumn. (Read alone,
+      // this line once passed for the whole rule — 0.36.13's parcel to boss
+      // said the rye after timothy could never be sown on time, and a watcher
+      // on the field showed it sown in October.)
       if (field.phase == FieldPhase::kGrowing && field.crop.value < config_.crops.size() &&
           config_.crops[field.crop.value].is_perennial &&
           field.rotation_year0.value != field.crop.value) {
@@ -552,6 +567,17 @@ class ProductionSystem final : public IProductionSystem {
         field.crop = CropId{};
         MoveFieldPhase(current, field, FieldPhase::kIdle);
         ClearFieldWeather(field);
+      }
+      // THE YEAR'S WINTER CROP IS NOT IN THE GROUND (question 278, 0.36.13):
+      // its autumn went by unsown, and the slot lies fallow this year
+      // (field_work.cpp, TrySow). Said once, here, for the layout's mark.
+      const CropId arriving = field.rotation_year0;
+      const bool arriving_winter =
+          arriving.value < config_.crops.size() && config_.crops[arriving.value].is_winter;
+      if (WinterSlotLost(field, arriving_winter, current.calendar.day)) {
+        SimEvent& lost = EmitEvent(current, EventKind::kWinterSowingLost, EventSeverity::kNotable);
+        lost.field = FieldIdOf(current, field);
+        lost.amount = static_cast<std::int64_t>(arriving.value);
       }
     }
     PlanManure(current);

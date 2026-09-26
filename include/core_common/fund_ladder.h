@@ -71,7 +71,12 @@ struct SeedNorm {
 /// the slot is chosen by the field's state and never by the year's number —
 /// the seed alarm indexed `(year + 1) % 3` over shifted slots and named the
 /// wrong crop two years in three (static review, 2026-09-24).
-CropId NextSowingCrop(const FieldRow& field, SimDay today);
+///
+/// A WINTER SLOT LOST TO ITS WINDOW (question 278, WinterSlotLost) is a
+/// fallow year: its next sowing is the second slot's (0.36.13).
+/// @param year0_is_winter Whether `rotation_year0` names a winter crop — the
+///        caller's crop table says. Required, so no caller forgets it.
+CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter);
 
 /// @brief The plan rung of one resource before any unsealing: what is owed —
 ///        `plan.due` less `plan.delivered` — as far as the crop lies
