@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -34,6 +35,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
@@ -247,18 +249,45 @@ class FellingPolicy {
   ///        village and its sites are short of when that is more.
   /// Hours of the ride, one way, from the nearest lived-in house, at the
   /// labour model's harness speed (felling rides; labor_state.h, RidesOut).
+  /// BY THE ROAD, as a team rides it (0.36.12): the core's own question for
+  /// kFellingUnreachable (timber_felling.cpp, NearestHomeTravelHours) — the
+  /// limit is by the network since 0.36.2, and until 0.36.12 this measured
+  /// the straight line, so the canon marked stands the core then refused.
+  /// THE HOUSES ARE FOUND ON THE NETWORK ONCE A STEP, the stand once a call:
+  /// finding is the costly half of a query (road_route.h, NetworkPlace), and
+  /// asking it anew for every house and every stand doubled timber_years'
+  /// time (5.6 s -> 11.7 s). The answer is the same by construction.
   float RideHours(const core::WorldState& world, core::Vec2 place) const {
-    float best = 1.0e9F;
-    for (const core::UnitRow& unit : world.units.rows) {
-      if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
-        continue;
+    const std::shared_ptr<const core::RoadIndex> index = core::RoadIndexOf(world);
+    if (homes_tick_ != world.calendar.tick || homes_index_ != index.get() ||
+        homes_units_ != world.units.rows.size()) {
+      homes_.clear();
+      for (const core::UnitRow& unit : world.units.rows) {
+        if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
+          continue;
+        }
+        homes_.push_back(index->Locate(core::TravelMode::kTeam, unit.position));
       }
-      const float dx_km = (unit.position.x - place.x) / 1000.0F;
-      const float dy_km = (unit.position.y - place.y) / 1000.0F;
-      best = std::min(best, std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * ride_hours_per_km_);
+      homes_tick_ = world.calendar.tick;
+      homes_index_ = index.get();
+      homes_units_ = world.units.rows.size();
+      homes_owner_ = index;
+    }
+    const core::NetworkPlace there = index->Locate(core::TravelMode::kTeam, place);
+    float best = 1.0e9F;
+    for (const core::NetworkPlace& home : homes_) {
+      best = std::min(best, index->EffectiveKm(home, there) * ride_hours_per_km_);
     }
     return best;
   }
+
+  mutable std::vector<core::NetworkPlace> homes_;
+  mutable std::uint64_t homes_tick_ = ~std::uint64_t{0};
+  mutable const core::RoadIndex* homes_index_ = nullptr;
+  mutable std::size_t homes_units_ = 0;
+  /// Keeps the index the cached places were found on alive (a hand-built
+  /// world's index is built on the spot).
+  mutable std::shared_ptr<const core::RoadIndex> homes_owner_;
 
   /// A cell of a key/value table, or `fallback`.
   static float Cell(const core::ITableSet& tables,
@@ -337,10 +366,8 @@ class FellingPolicy {
 
   float ride_hours_per_km_ = 1.0F;
 
-  /// labor.csv travel_limit_hours: six hours BY THE NETWORK since 0.36.9
-  /// (decision 276), while this policy measures its stands by the straight
-  /// line (RideHours) — a stand inside by the line can be outside by the
-  /// road and refused by the core (named to boss with 0.36.9).
+  /// labor.csv travel_limit_hours: six hours by the network since 0.36.9
+  /// (decision 276), measured by RideHours along the roads since 0.36.12.
   float ride_limit_hours_ = 6.0F;
 
   bool ready_ = false;

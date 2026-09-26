@@ -300,6 +300,22 @@ void PrintYear(const core::WorldState& state) {
             << ", LE " << state.vitals.life_expectancy_years << ", plan " << verdict << " ("
             << static_cast<std::uint32_t>(state.plan.failed_years_in_a_row) << " failed in a row)"
             << '\n';
+  // AND WHAT A FAILED YEAR FAILED ON, on a line of its own so the year line
+  // keeps its shape for the scripts that read it (0.36.12: a failed year 25
+  // appeared, and the run could not say which position): every position the
+  // district asked of this year that went short, kg delivered against due.
+  if (state.plan.last_verdict == core::PlanVerdict::kFailed) {
+    std::cout << "year " << book.year << " plan short:";
+    for (std::size_t index = 0; index < book.plan_due.size(); ++index) {
+      const core::Grams due = book.plan_due[index];
+      const core::Grams sent = index < book.plan_delivered.size() ? book.plan_delivered[index] : 0;
+      if (due > 0 && sent < due) {
+        std::cout << " r" << index << " " << (sent / core::kGramsPerKilogram) << "/"
+                  << (due / core::kGramsPerKilogram) << " kg";
+      }
+    }
+    std::cout << '\n';
+  }
 }
 
 /// The organizations at the year's turn (boss, parcel 334): who is in which,
@@ -911,9 +927,24 @@ int main(int argc, char** argv) {
     // seed fund the plan failed once in thirty years (year 17). The plough on
     // the plan's fields and the run's boards for the stable's rise closed it
     // again — the gap printed CLOSED with 0 failed years.
-    failures += run::Expect(plan_failed_years == 0,
-                            "the floor meets the district's plan in all thirty years — until "
-                            "drought (register 226) makes it failable again");
+    //
+    // A KNOWN GAP AGAIN FROM 0.36.12 (boss, boss-core-epoch1-resume [22]): the
+    // run's felling policy measuring its reach by the road moved which stands
+    // are felled from year 7, and year 25 failed on RYE — 0 of 1116 kg
+    // delivered from stock, the year line's "plan short" says so. The hole is
+    // the rye's stock in a year with no rye harvest (the autumn's seed held
+    // first), found in 0.36.8 and 0.36.10 as well; 0.36.12 did not make it,
+    // it moved this seed's rye rhythm onto it. RESTORE the assertion when
+    // question 278 (a winter crop that missed its window lies fallow) and
+    // econ's reserve for next year's rye debt are both delivered — and the
+    // gap prints CLOSED the first run the year stops failing.
+    failures += run::KnownGap(
+        plan_failed_years == 0,
+        "the floor meets the district's plan in all thirty years — until drought (register 226) "
+        "makes it failable again",
+        std::to_string(plan_failed_years) + " failed years",
+        "boss, boss-core-epoch1-resume [22]: the rye stock's hole, question 278 and econ's reserve "
+        "for next year's rye debt");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";

@@ -26,6 +26,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -36,6 +37,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
+#include "core_common/road_route.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
@@ -325,19 +327,42 @@ class PlantingPolicy {
     return count;
   }
 
-  /// Game hours on foot, one way, from the nearest lived-in house.
+  /// Game hours on foot, one way, from the nearest lived-in house — BY THE
+  /// WAY A WALKER TAKES (0.36.12): roads, paths and open ground, the core's
+  /// own question for kPlantingUnreachable (timber_felling.cpp,
+  /// NearestHomeTravelHours). Until 0.36.12 the straight line, while the
+  /// limit it is compared with is by the network since 0.36.2.
+  /// The houses are found on the network once a step (felling_policy.h,
+  /// RideHours, for why).
   float WalkHours(const core::WorldState& world, core::Vec2 place) const {
-    float best = 1.0e9F;
-    for (const core::UnitRow& unit : world.units.rows) {
-      if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
-        continue;
+    const std::shared_ptr<const core::RoadIndex> index = core::RoadIndexOf(world);
+    if (homes_tick_ != world.calendar.tick || homes_index_ != index.get() ||
+        homes_units_ != world.units.rows.size()) {
+      homes_.clear();
+      for (const core::UnitRow& unit : world.units.rows) {
+        if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
+          continue;
+        }
+        homes_.push_back(index->Locate(core::TravelMode::kWalk, unit.position));
       }
-      const float dx_km = (unit.position.x - place.x) / 1000.0F;
-      const float dy_km = (unit.position.y - place.y) / 1000.0F;
-      best = std::min(best, std::sqrt((dx_km * dx_km) + (dy_km * dy_km)) * walk_hours_per_km_);
+      homes_tick_ = world.calendar.tick;
+      homes_index_ = index.get();
+      homes_units_ = world.units.rows.size();
+      homes_owner_ = index;
+    }
+    const core::NetworkPlace there = index->Locate(core::TravelMode::kWalk, place);
+    float best = 1.0e9F;
+    for (const core::NetworkPlace& home : homes_) {
+      best = std::min(best, index->EffectiveKm(home, there) * walk_hours_per_km_);
     }
     return best;
   }
+
+  mutable std::vector<core::NetworkPlace> homes_;
+  mutable std::uint64_t homes_tick_ = ~std::uint64_t{0};
+  mutable const core::RoadIndex* homes_index_ = nullptr;
+  mutable std::size_t homes_units_ = 0;
+  mutable std::shared_ptr<const core::RoadIndex> homes_owner_;
 
   /// The village's centre, as the felling reckons it.
   static core::Vec2 Centre(const core::WorldState& world) {
@@ -379,8 +404,8 @@ class PlantingPolicy {
 
   /// Half the accountant's road limit: a zone the planters reach with a
   /// working day left, and not only barely. The limit is six hours by the
-  /// network since 0.36.9 (decision 276); this ring still measures the
-  /// straight line (WalkHours) — named to boss with 0.36.9.
+  /// network since 0.36.9 (decision 276), and WalkHours measures by the
+  /// network since 0.36.12.
   float walk_limit_hours_ = 3.0F;
 
   float map_side_m_ = 0.0F;

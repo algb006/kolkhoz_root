@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,8 +40,11 @@
 #include "../common/yard_policy.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_catalog/world_conventions.h"
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
+#include "core_common/road_route.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
 #include "core_common/world_state.h"
 
@@ -102,6 +106,41 @@ struct YearTally {
 };
 
 }  // namespace
+
+/// Hours one way from the nearest lived-in house to `place` by the road, at
+/// `speed_kmh` — the core's own question for kFellingUnreachable and
+/// kPlantingUnreachable (timber_felling.cpp, NearestHomeTravelHours); a
+/// negative when nobody lives anywhere.
+float NearestHomeRoadHours(const core::WorldState& world,
+                           core::Vec2 place,
+                           core::TravelMode mode,
+                           float speed_kmh) {
+  float best = -1.0F;
+  for (const core::UnitRow& unit : world.units.rows) {
+    if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
+      continue;
+    }
+    const float hours = core::RoadKm(world, mode, unit.position, place) *
+                        static_cast<float>(core::kClockScale) / speed_kmh;
+    best = best < 0.0F || hours < best ? hours : best;
+  }
+  return best;
+}
+
+/// A value cell of a key/value table, or `fallback`.
+float KeyValue(const core::ITableSet& tables,
+               const char* table_name,
+               const char* key,
+               const char* column,
+               float fallback) {
+  const core::ITable* const table = tables.FindTable(table_name);
+  const std::uint32_t row = table != nullptr ? table->FindRowByKey(key) : core::kNoTableRow;
+  if (row == core::kNoTableRow) {
+    return fallback;
+  }
+  const std::optional<float> value = table->CellReal(row, table->FindColumn(column));
+  return value.value_or(fallback);
+}
 
 int main(int argc, char** argv) {
   const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1929;
@@ -165,6 +204,20 @@ int main(int argc, char** argv) {
               << " logs of a grove\n";
   }
 
+  // THE POLICIES MARK AND PLANT NOTHING BEYOND THE ROAD LIMIT (0.36.12): the
+  // core refuses a stand past it (kFellingUnreachable, kPlantingUnreachable)
+  // by the road, and until 0.36.12 the policies measured the straight line —
+  // on seed 1929 a mark once stood from year 14 to the end with no feller.
+  // Counted here as alarm-days whose road, measured as the core measures it,
+  // is longer than labor.csv travel_limit_hours; the alarms that a short
+  // winter day raises within the limit are the day's, not the policy's.
+  const float limit_hours = KeyValue(*started.tables, "labor", "travel_limit_hours", "value", 6.0F);
+  const float ride_kmh = KeyValue(*started.tables, "transport", "horse_trot", "speed_kmh", 12.0F);
+  const float walk_kmh = KeyValue(*started.tables, "transport", "pedestrian", "speed_kmh", 5.0F);
+  std::uint32_t felling_beyond_days = 0;
+  std::uint32_t planting_beyond_days = 0;
+  std::uint32_t unreachable_alarm_days = 0;
+
   std::vector<YearTally> years(kYears);
   std::vector<core::TimberStandRow> yesterday = started.State().stands.rows;
   core::Grams held_at_year_start = LogsHeld(started.State(), catalog.log_resource);
@@ -202,6 +255,27 @@ int main(int argc, char** argv) {
       repairs.RunDay(*started.simulation);
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
+      {
+        std::vector<core::Alarm> alarms;
+        started->CollectAlarms(alarms);
+        for (const core::Alarm& alarm : alarms) {
+          const bool felling_alarm = alarm.kind == core::AlarmKind::kFellingUnreachable;
+          const bool planting_alarm = alarm.kind == core::AlarmKind::kPlantingUnreachable;
+          const std::uint32_t row = core::FindRow(world.stands, alarm.stand);
+          if ((!felling_alarm && !planting_alarm) || row == core::kNoRow) {
+            continue;
+          }
+          ++unreachable_alarm_days;
+          const float road = NearestHomeRoadHours(
+              world,
+              world.stands.rows[row].position,
+              felling_alarm ? core::TravelMode::kTeam : core::TravelMode::kWalk,
+              felling_alarm ? ride_kmh : walk_kmh);
+          if (road > limit_hours) {
+            ++(felling_alarm ? felling_beyond_days : planting_beyond_days);
+          }
+        }
+      }
       for (const core::TimberStandRow& stand : world.stands.rows) {
         tally.stand_days_marked += stand.marked_m3 > 0.0F ? 1U : 0U;
         tally.stand_days_load += stand.load_grams > 0 ? 1U : 0U;
@@ -363,6 +437,16 @@ int main(int argc, char** argv) {
   failures += run::Expect(grove_at[2] > 0.0,
                           "and the groves and belts still stand at year thirty — criterion 4's "
                           "own subject, floored at 'not nothing' and no higher");
+  // PRINTED, NOT ASSERTED: an assertion here could not go red. With the
+  // felling policy's reach test switched off altogether (every stand
+  // "reachable") seed 1929 still raised not one unreachable alarm in thirty
+  // years (0.36.12's fault run) — the policy takes the stand nearest the
+  // centre, and this village never needs one near the limit. A test that
+  // cannot fail is a stub; the count is kept so the day it moves is seen.
+  std::cout << "timber_years: unreachable felling/planting alarm-days " << unreachable_alarm_days
+            << ", of them beyond the road limit (" << limit_hours << " h by the road): felling "
+            << felling_beyond_days << ", planting " << planting_beyond_days
+            << " — printed, not asserted (0 even with the policy's reach test off)\n";
   if (failures > 0) {
     std::cout << "timber_years: FAILURES " << failures << "\n";
     return 1;
