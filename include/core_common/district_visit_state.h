@@ -19,8 +19,11 @@
 ///
 /// WHAT A VISIT FINDS (since 2026-09-18; district_visit.cpp, InspectVisit):
 /// kDiscrepancy when the stores hold more than the accumulation limit. A face
-/// that counts the stores then seizes the surplus (SeizeAboveLimit) and the
-/// chairman is summoned «на ковёр» (SummonCause::kAuditDiscrepancy). Until
+/// that counts the stores then takes the surplus (SeizeAboveLimit): the
+/// year's unmet position first, as delivered, the rest seized (0.36.21). When
+/// the debt took it all the finding is dropped to kNone — no summons, no
+/// senior; otherwise the chairman is summoned «на ковёр»
+/// (SummonCause::kAuditDiscrepancy). Until
 /// 0.34.29 this header said a finding was "always kNone", a week after it had
 /// stopped being so, and host wrote an audit on the word. The trial's
 /// shortfall trigger (epochs §8, a SHORTAGE of 20 % against the books) has no

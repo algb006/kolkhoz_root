@@ -237,8 +237,11 @@ struct YearLedger {
 
   /// WHAT THE DISTRICT SEIZED above the accumulation limit (district §9: «Не
   /// сдал и попался — изымает целиком»): a finance auditor's visit found it
-  /// standing over PlanState::accumulation_limit and took it all. Not a
-  /// delivery — it counts toward no plan and no overfulfilment. Save 62.
+  /// standing over PlanState::accumulation_limit and took it. SINCE 0.36.21
+  /// ONLY WHAT WAS LEFT after the year's unmet position of the same produce
+  /// was paid out of it (booked in `delivered`; district §9 amended, boss-
+  /// core-epoch1-resume [35]). Not a delivery — it counts toward no plan and
+  /// no overfulfilment. Save 62.
   ResourceAmounts seized;
 
   /// THE SEASON'S REAPING PACE (boss seq 91, 161 Б): norm-days of hand

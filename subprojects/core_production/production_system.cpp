@@ -343,7 +343,7 @@ class ProductionSystem final : public IProductionSystem {
     // cover is the one door, and this guards it (OPEN_ITEMS, MEM-X01: the
     // second door it named is closed).
     if (current.weather.snow_cover_days >= kSettledSnowCoverDays) {
-      TakePlanDebtFromFields(config_, current);
+      TakePlanDebtFromFields(config_, current, current.calendar.day);
     }
     RunFields(current);
     // BEFORE THE HERD DAY, because the herd day is what reads it: the feed

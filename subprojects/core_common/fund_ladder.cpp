@@ -105,6 +105,10 @@ Grams PlanRungGrams(const WorldState& world,
 }
 
 CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter) {
+  return NextSowingOf(field, today, year0_is_winter).crop;
+}
+
+NextSowing NextSowingOf(const FieldRow& field, SimDay today, bool year0_is_winter) {
   const bool in_ground = field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
   const bool reaped_this_year = field.reaped_day != kNeverReapedDay &&
                                 field.reaped_day / kDaysPerYear == today / kDaysPerYear;
@@ -114,7 +118,7 @@ CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter)
   // name the same crop, by this year's reaping having come first.
   if (in_ground && crop_named && field.crop.value == field.rotation_year1.value &&
       (field.crop.value != field.rotation_year0.value || reaped_this_year)) {
-    return field.rotation_year2;
+    return NextSowing{.crop = field.rotation_year2, .slot = 2};
   }
   // Worked for the second slot's crop: the first slot gave up its window.
   // Where both slots name one crop the work is the first slot's own.
@@ -133,18 +137,24 @@ CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter)
   // slot is sown, so the next sowing is the second slot's.
   const bool first_slot_in_ground =
       in_ground && crop_named && field.crop.value == field.rotation_year0.value;
+  // A HELD CHAIN SAYS SO (NextSowing::held_chain): its first slot is sown at
+  // the next window of its crop — this autumn for a fresh winter crop, next
+  // spring for a spring crop named after its window — and the slot's number
+  // does not date it (static review of 0.36.21: read as this year's, both
+  // lost their seed).
   if (field.rotation_skips_turn != 0 && !preparing_second_slot && !first_slot_in_ground) {
-    return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
-                                                            : field.rotation_year1;
+    return field.rotation_year0.value != kInvalidDefIdValue
+               ? NextSowing{.crop = field.rotation_year0, .slot = 0, .held_chain = true}
+               : NextSowing{.crop = field.rotation_year1, .slot = 1, .held_chain = true};
   }
   // A fallow first slot sows nothing: the next sowing is the second slot's —
   // and so does a winter slot lost to its window (question 278; 0.36.13).
   const bool first_slot_lost = WinterSlotLost(field, year0_is_winter, today);
   if (!in_ground && !reaped_this_year && !preparing_second_slot && !first_slot_lost &&
       field.rotation_year0.value != kInvalidDefIdValue) {
-    return field.rotation_year0;
+    return NextSowing{.crop = field.rotation_year0, .slot = 0};
   }
-  return field.rotation_year1;
+  return NextSowing{.crop = field.rotation_year1, .slot = 1};
 }
 
 ResourceAmounts SeedRungLeft(const WorldState& world,

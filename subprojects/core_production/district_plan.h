@@ -42,15 +42,28 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current);
 /// @note kDeliverPlan does not come here: the chairman ships from the stores.
 /// Never below the next sowing's seed, heaps and stores together
 /// (DeliverableAboveSeed) — the seed fund opens only to its unsealing.
-void TakePlanDebtFromFields(const ProductionConfig& config, WorldState& current);
+/// @param seed_as_of The day the seed is held as of (SeedHeldToSowing): today
+///        on the snow's day, SeedDayAtTheTurn at the turn.
+void TakePlanDebtFromFields(const ProductionConfig& config, WorldState& current, SimDay seed_as_of);
+
+/// @brief The day the seed is held as of AT THE YEAR'S TURN: the closing
+///        year's last day. The turn runs on the new year's first tick,
+///        BEFORE the rotation turns (production_system.cpp, RunYearStart), so
+///        the calendar says January while the slots still describe the year
+///        that closes; read as of January, a field that reaped its rye in July
+///        reads as a lost winter slot and this spring's potato seed is let go
+///        (static review of 0.36.21).
+SimDay SeedDayAtTheTurn(const WorldState& current);
 
 /// @brief Grams of `resource` the district's delivery may take from the heaps
 /// and the stores together, leaving the next sowing's seed (resources design
 /// §6, the ladder fills the seed first; boss seq 5, item 8). The seed fund
 /// opens only to the chairman's unsealing of it (FundKind::kSeed).
+/// @param seed_as_of See SeedHeldToSowing.
 Grams DeliverableAboveSeed(const ProductionConfig& config,
                            const WorldState& current,
-                           ResourceId resource);
+                           ResourceId resource,
+                           SimDay seed_as_of);
 
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —

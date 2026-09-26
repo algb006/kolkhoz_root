@@ -24,28 +24,38 @@
 
 namespace core {
 
-/// THE SEED STAYS: what the next sowing needs, as seed_short and the seed
-/// room count it (SeedHeldToSowing).
+/// THE SEED STAYS: what the next sowings need, field by field
+/// (SeedHeldToSowing). NOT what seed_short and the seed room count
+/// (SeedNeedByResource: every field's next sowing, next year's included) —
+/// the two differ since 0.36.21, named to boss.
 ///
 /// THE RULE, IN boss's WORDS (seq 15): a seed is held only if its sowing
-/// comes before its harvest. The potato is sown in May, before the autumn
-/// digging, so it is held from the digging on. The winter rye is sown in
-/// September out of July's rye, so none is held in January. The first draft
-/// held every next sowing and failed the canon's rye 17 years of 108.
+/// comes before its harvest. Asked FIELD BY FIELD since 0.36.21 (boss-core-
+/// epoch1-resume [35]): a field that sows potato this May holds its seed; a
+/// chain whose potato comes next year does not — this August's digging gives
+/// it. The winter rye is sown in September out of July's rye, so none is held
+/// in January. The first draft held every next sowing and failed the canon's
+/// rye 17 years of 108; asked of the seed as a whole, the rule held next
+/// year's potato and failed the position beside idle seed (econ's E2Bf).
 ///
-/// AND ITS PRICE, measured and accepted (seq 15, option a): on branch E1
-/// seed 1939 the seed stops falling to nought, but the potato position then
-/// fails every year from year 6 and the trial comes in year 8 instead of 11.
-/// That is the branch's honest price, not the door's defect.
+/// ITS PRICE AS FIRST MEASURED (seq 15, option a, the rule asked of the seed
+/// as a whole): on branch E1 seed 1939 the seed stopped falling to nought,
+/// and the potato position failed every year from year 6. Part of that price
+/// was the next year's seed held a year early — 0.36.21 took it back.
 ///
 /// A DEFECT UNTIL 0.34.49, and it had three doors: the turn's delivery, the
 /// heaps' at the snow and the order's. None of them asked the seed fund, so
 /// the potato the village was to plant went to the district (boss,
 /// boss-core-epoch1-5 seq 5, item 8; econ forgiving-start.md §5a).
+SimDay SeedDayAtTheTurn(const WorldState& current) {
+  return current.calendar.day > 0 ? current.calendar.day - 1 : 0;
+}
+
 Grams DeliverableAboveSeed(const ProductionConfig& config,
                            const WorldState& current,
-                           ResourceId resource) {
-  const std::vector<Grams> need = SeedHeldToSowing(config, current);
+                           ResourceId resource,
+                           SimDay seed_as_of) {
+  const std::vector<Grams> need = SeedHeldToSowing(config, current, seed_as_of);
   const Grams seed_need = resource.value < need.size() ? need[resource.value] : 0;
   const auto& unsealed = current.unsealed.by_fund[static_cast<std::size_t>(FundKind::kSeed)];
   const Grams opened = AmountOf(unsealed, resource);
@@ -72,14 +82,15 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   // snow settles after the turn the snow's day never came, and seeds 1 and 23
   // failed the potato beside a 68 t heap. The cart comes on the snow's day or
   // at the turn, whichever is first; after the snow there is no heap to take.
-  TakePlanDebtFromFields(config, current);
+  const SimDay seed_as_of = SeedDayAtTheTurn(current);
+  TakePlanDebtFromFields(config, current, seed_as_of);
   if (current.plan.delivered.size() < current.plan.due.size()) {
     current.plan.delivered.resize(current.plan.due.size(), 0);
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     const Grams owed = std::min(current.plan.due[index] - current.plan.delivered[index],
-                                DeliverableAboveSeed(config, current, resource));
+                                DeliverableAboveSeed(config, current, resource, seed_as_of));
     if (owed <= 0) {
       continue;
     }
@@ -89,7 +100,9 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-void TakePlanDebtFromFields(const ProductionConfig& config, WorldState& current) {
+void TakePlanDebtFromFields(const ProductionConfig& config,
+                            WorldState& current,
+                            SimDay seed_as_of) {
   if (current.plan.announced == 0) {
     return;
   }
@@ -97,9 +110,9 @@ void TakePlanDebtFromFields(const ProductionConfig& config, WorldState& current)
     current.plan.delivered.resize(current.plan.due.size(), 0);
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
-    Grams owed =
-        std::min(current.plan.due[index] - current.plan.delivered[index],
-                 DeliverableAboveSeed(config, current, DefIdFromIndex<ResourceIdTag>(index)));
+    Grams owed = std::min(
+        current.plan.due[index] - current.plan.delivered[index],
+        DeliverableAboveSeed(config, current, DefIdFromIndex<ResourceIdTag>(index), seed_as_of));
     if (owed <= 0) {
       continue;
     }
@@ -163,7 +176,8 @@ OrderRefusal DeliverPlanNow(const ProductionConfig& config,
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     // Nor by order below the seed: the order ships, the unsealing opens.
     const Grams wanted =
-        std::min(amount > 0 ? amount : owed, DeliverableAboveSeed(config, current, resource));
+        std::min(amount > 0 ? amount : owed,
+                 DeliverableAboveSeed(config, current, resource, current.calendar.day));
     if (wanted <= 0) {
       continue;
     }

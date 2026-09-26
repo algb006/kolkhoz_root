@@ -78,6 +78,28 @@ struct SeedNorm {
 ///        caller's crop table says. Required, so no caller forgets it.
 CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter);
 
+/// @brief NextSowingCrop's answer with the SLOT it came from: 0 this year's
+///        crop, 1 next year's, 2 the year after's — the slot names the year
+///        the crop is REAPED, so a winter crop of slot k is sown in the
+///        autumn of year k − 1 (0.36.21: the seed held for the plan counts a
+///        field's sowing by it, boss-core-epoch1-resume [35]).
+struct NextSowing {
+  CropId crop;
+  std::uint8_t slot = 0;
+
+  /// The answer came from a chain the turn will hold still
+  /// (FieldRow::rotation_skips_turn): its first slot is sown at the NEXT
+  /// window of its crop from today — this autumn for a fresh winter crop,
+  /// next spring for a spring crop named after its window — whatever `slot`
+  /// says (static review of 0.36.21).
+  bool held_chain = false;
+};
+
+/// @brief NextSowingCrop's answer with the slot it came from and whether a
+///        held chain gave it (NextSowing). The same reading of the field's
+///        state; NextSowingCrop returns its crop.
+NextSowing NextSowingOf(const FieldRow& field, SimDay today, bool year0_is_winter);
+
 /// @brief The plan rung of one resource before any unsealing: what is owed —
 ///        `plan.due` less `plan.delivered` — as far as the crop lies
 ///        unreserved in the stores ABOVE what the rungs over it hold

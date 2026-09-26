@@ -147,13 +147,36 @@ DistrictVisitOutcome InspectVisit(const WorldState& current, const DistrictVisit
 
 Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
   Grams seized = 0;
+  if (current.plan.delivered.size() < current.plan.due.size()) {
+    current.plan.delivered.resize(current.plan.due.size(), 0);
+  }
   for (std::uint32_t index = 0; index < current.plan.accumulation_limit.size(); ++index) {
     const Grams surplus = SurplusAboveLimit(current, index);
     if (surplus <= 0) {
       continue;
     }
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams taken = TakeFromStorage(current, config, resource, surplus);
+    // THE DEBT FIRST (district design §9, amended; boss-core-epoch1-resume
+    // [35]): what the auditor takes goes first into this year's position of
+    // the same produce, up to what is still owed — booked as delivered, no
+    // overfulfilment — and only the rest is a seizure. Until 0.36.21 the whole
+    // surplus was seized while the position stood short: econ's seed 1934,
+    // year 8 — 112 t of potato seized, the potato position 24 t short.
+    const Grams owed =
+        index < current.plan.due.size() && current.plan.announced != 0
+            ? std::max<Grams>(0, current.plan.due[index] - current.plan.delivered[index])
+            : 0;
+    const Grams to_debt = std::min(owed, surplus);
+    if (to_debt > 0) {
+      const Grams paid = TakeFromStorage(current, config, resource, to_debt);
+      current.plan.delivered[index] += paid;
+      AddLedgerAmount(current.ledger.current.delivered, resource, paid);
+    }
+    const Grams rest = surplus - to_debt;
+    if (rest <= 0) {
+      continue;
+    }
+    const Grams taken = TakeFromStorage(current, config, resource, rest);
     AddLedgerAmount(current.ledger.current.seized, resource, taken);
     seized += taken;
   }
@@ -193,13 +216,21 @@ void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
     }
     const DistrictVisitRow visit = current.district_visits.rows[row];
     RemoveRow(current.district_visits, id);
-    const DistrictVisitOutcome outcome = InspectVisit(current, visit);
+    DistrictVisitOutcome outcome = InspectVisit(current, visit);
     // «Не сдал и попался — изымает целиком» (district §9): the surplus the
     // auditor found goes on the day she finds it.
-    if (outcome.found == DistrictVisitFinding::kDiscrepancy && CountsTheStores(visit.face)) {
-      SeizeAboveLimit(config, current);
+    if (outcome.found == DistrictVisitFinding::kDiscrepancy) {
+      // THE DEBT FIRST, AND NOTHING CAUGHT WHEN IT TOOK IT ALL (0.36.21;
+      // boss-core-epoch1-resume [35]: «изъятие и наказание — только за остаток
+      // сверх долга»): a surplus that went whole into the year's unmet
+      // position was delivered, not caught — the visit then found nothing,
+      // and neither the summons «на ковёр» (district-trip.md §3) nor the
+      // senior's visit below follow. core's reading of "наказание": all three.
+      // (Only a face that counts the stores finds a discrepancy: InspectVisit.)
+      if (SeizeAboveLimit(config, current) <= 0) {
+        outcome.found = DistrictVisitFinding::kNone;
+      }
     }
-    // A discrepancy calls him «на ковёр» (district-trip.md §3).
     if (outcome.found == DistrictVisitFinding::kDiscrepancy) {
       SummonChairman(config, current, SummonCause::kAuditDiscrepancy);
     }

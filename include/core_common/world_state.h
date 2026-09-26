@@ -525,8 +525,10 @@ enum class SummonCause : std::uint8_t {
   kOnThePencil,  ///< raikom_reputation fell to 20 or below («на карандаше»).
 
   /// An auditor's visit found a discrepancy (DistrictVisitFinding::
-  /// kDiscrepancy). Appended the day after the contract: the estimate called
-  /// the audit a STUB, and the core has had it since 2026-09-15.
+  /// kDiscrepancy) and seized something beyond the year's unmet position
+  /// (0.36.21: a surplus the debt took whole is delivered, not caught).
+  /// Appended the day after the contract: the estimate called the audit a
+  /// STUB, and the core has had it since 2026-09-15.
   kAuditDiscrepancy,
 
   /// NOT A CAUSE: the count, for the mirrors.
@@ -643,7 +645,8 @@ struct PlanState {
   /// hold in its stores, named with the plan in the spring. Dense by
   /// ResourceId; 0 = no limit on it (the first year has none — the district
   /// has no book of a year gone to size it from). A finance auditor's visit
-  /// seizes whatever stands above it (district_visit.cpp). Save 62. The plan
+  /// takes whatever stands above it — into the year's unmet position first,
+  /// the rest seized (district_visit.cpp; 0.36.21). Save 62. The plan
   /// board shows it beside the stock, so the seizure can be foreseen.
   ResourceAmounts accumulation_limit;
 

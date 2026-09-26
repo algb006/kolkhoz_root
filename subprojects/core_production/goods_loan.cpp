@@ -116,7 +116,10 @@ void RepayGoodsLoans(const ProductionConfig& config, WorldState& current) {
         lying += field.reaped_grams;
       }
     }
-    const Grams above_seed = DeliverableAboveSeed(config, current, resource);
+    // At the turn (RepayGoodsLoans runs in RunYearStart, before the rotation
+    // turns): the seed as of the closing year's last day (SeedDayAtTheTurn).
+    const Grams above_seed =
+        DeliverableAboveSeed(config, current, resource, SeedDayAtTheTurn(current));
     const Grams can_pay = above_seed > lying ? above_seed - lying : 0;
     const Grams paid = TakeFromStorage(current, config, resource, owed < can_pay ? owed : can_pay);
     AddLedgerAmount(current.ledger.current.goods_loan_repaid, resource, paid);

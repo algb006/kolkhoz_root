@@ -1857,6 +1857,138 @@ int CheckSeedLightMeasuresCoverage() {
   return failures;
 }
 
+/// THE SEED HELD FROM THE PLAN IS COUNTED FIELD BY FIELD (0.36.21;
+/// boss-core-epoch1-resume [35]): a field's seed is held only when ITS sowing
+/// ends before the seed's next harvest. Known answers, a potato (sown by May,
+/// dug from August) and a winter rye:
+///   - January: field A sows potato THIS spring (25 t on 10 ha) — held; field
+///     B has rye in the ground and potato NEXT year (50 t on 20 ha) — not
+///     held, August's digging gives it. Held 25 t; the rule asked of the seed
+///     as a whole held 75 t.
+///   - November: field C dug its potato this year and sows potato again next
+///     spring — held (the next digging is nine months off, the sowing six).
+int CheckSeedHeldFieldByField() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config = MakeHerdConfig();
+  if (config.feed_values.size() < 2) {
+    config.feed_values.resize(2, 0.0F);
+  }
+  config.crops.resize(2);
+  core::CropDef& potato = config.crops[0];
+  potato.resource = core::ResourceId{0};
+  potato.sowing_norm_kg_per_ha = 2500.0F;
+  potato.sow_from_month = 3;
+  potato.sow_to_month = 4;
+  potato.harvest_from_month = 7;
+  potato.harvest_to_month = 8;
+  core::CropDef& rye = config.crops[1];
+  rye.resource = core::ResourceId{1};
+  rye.is_winter = true;
+  rye.sowing_norm_kg_per_ha = 200.0F;
+  rye.sow_from_month = 7;
+  rye.sow_to_month = 8;
+  rye.harvest_from_month = 6;
+  rye.harvest_to_month = 7;
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.calendar.tick = 0;  // January
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow a;
+  a.kind = core::LandKind::kArable;
+  a.area_ga = 10.0F;
+  a.rotation_year0 = core::CropId{0};
+  a.rotation_year1 = core::CropId{1};
+  a.phase = core::FieldPhase::kIdle;
+  core::AppendRow(world.fields, a);
+  core::FieldRow b = a;
+  b.area_ga = 20.0F;
+  b.rotation_year0 = core::CropId{1};
+  b.rotation_year1 = core::CropId{0};
+  b.crop = core::CropId{1};
+  b.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(world.fields, b);
+  const std::vector<core::Grams> january =
+      core::SeedHeldToSowing(config, world, world.calendar.day);
+  failures += Expect(january.size() > 1 && january[0] == 25 * kTonne && january[1] == 0,
+                     "seed held: in January only this spring's potato, 25 t — not next year's");
+
+  core::WorldState november = MakeHerdWorld(0.0F);
+  november.calendar.tick = 10 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(november.calendar);
+  core::FieldRow c = a;
+  c.rotation_year0 = core::CropId{0};
+  c.rotation_year1 = core::CropId{0};
+  c.reaped_day = november.calendar.day - 20;  // dug this year
+  core::AppendRow(november.fields, c);
+  const std::vector<core::Grams> held =
+      core::SeedHeldToSowing(config, november, november.calendar.day);
+  failures += Expect(held.size() > 0 && held[0] == 25 * kTonne,
+                     "seed held: in November next spring's potato is held — its sowing comes "
+                     "before the next digging");
+
+  // THE STATIC REVIEW'S CASES (0.36.21), known answers worked out first.
+  // B1 — no potato anywhere this year: January, field B alone (rye in the
+  // ground, potato next year). Nothing digs potato before B's sowing but B's
+  // own crop: held, 50 t on 20 ha. The crop table's August said "given".
+  core::WorldState only_next = MakeHerdWorld(0.0F);
+  only_next.calendar.tick = 0;
+  core::RefreshCalendarCaches(only_next.calendar);
+  core::AppendRow(only_next.fields, b);
+  const std::vector<core::Grams> none_this_year =
+      core::SeedHeldToSowing(config, only_next, only_next.calendar.day);
+  failures += Expect(none_this_year[0] == 50 * kTonne,
+                     "seed held: with no potato dug this year, next year's is held — no harvest "
+                     "gives it");
+  // B2 — a chain named in November (the turn's mark) with potato first: sown
+  // next May, dug in August: held, 25 t.
+  core::FieldRow named = a;
+  named.rotation_skips_turn = 1;
+  core::WorldState november_named = MakeHerdWorld(0.0F);
+  november_named.calendar = november.calendar;
+  core::AppendRow(november_named.fields, named);
+  failures += Expect(
+      core::SeedHeldToSowing(config, november_named, november_named.calendar.day)[0] == 25 * kTonne,
+      "seed held: a chain named in November sows its potato next May — held");
+  // B3 — a fresh chain named in August with winter rye first: sown this
+  // September, reaped next July, no rye standing: held, 200 kg a ha × 10 ha.
+  core::FieldRow fresh_rye = a;
+  fresh_rye.rotation_year0 = core::CropId{1};
+  fresh_rye.rotation_year1 = core::CropId{0};
+  fresh_rye.rotation_skips_turn = 1;
+  core::WorldState august = MakeHerdWorld(0.0F);
+  august.calendar.tick = 7 * core::kDaysPerMonth * core::kTicksPerDay;
+  core::RefreshCalendarCaches(august.calendar);
+  core::AppendRow(august.fields, fresh_rye);
+  failures += Expect(core::SeedHeldToSowing(config, august, august.calendar.day)[1] ==
+                         2 * core::kGramsPerKilogram * 1000,
+                     "seed held: a fresh chain's winter rye, named in August, is held for its "
+                     "September sowing");
+  // A1 — AT THE TURN, read as of the closing year's last day: day 48, the
+  // slots not yet turned. Field 1 reaped its rye in July of year 1 and sows
+  // potato next (slot 1, 10 ha); field 2 dug its potato in year 1 and sows
+  // oats next. As of day 47: 25 t held (field 1). As of day 48 the rye reads
+  // as a lost slot and the dug potato as this spring's: 10 t (field 2's 4 ha).
+  core::WorldState turn = MakeHerdWorld(0.0F);
+  turn.calendar.tick = 48 * static_cast<core::Tick>(core::kTicksPerDay);
+  core::RefreshCalendarCaches(turn.calendar);
+  core::FieldRow after_rye = a;
+  after_rye.rotation_year0 = core::CropId{1};
+  after_rye.rotation_year1 = core::CropId{0};
+  after_rye.reaped_day = 28;
+  core::AppendRow(turn.fields, after_rye);
+  core::FieldRow after_potato = a;
+  after_potato.area_ga = 4.0F;
+  after_potato.rotation_year0 = core::CropId{0};
+  after_potato.rotation_year1 = core::CropId{};  // a fallow next: no sowing
+  after_potato.reaped_day = 30;
+  core::AppendRow(turn.fields, after_potato);
+  failures +=
+      Expect(core::SeedHeldToSowing(config, turn, core::SeedDayAtTheTurn(turn))[0] == 25 * kTonne,
+             "seed held at the turn: as of the closing year's last day, next spring's 25 t");
+  return failures;
+}
+
 /// THE CAMPAIGN IS THE CALENDAR, NOT THE ROTATION INDEX, and an occupied
 /// field is not in it.
 ///
@@ -6642,6 +6774,73 @@ int CheckTheAccumulationLimit() {
                      "limit: a seizure costs the raikom's reputation");
   failures += Expect(world.plan.delivered.empty() || world.plan.delivered[0] == 0,
                      "limit: what is seized is not delivered and pays no overfulfilment");
+
+  // THE DEBT FIRST (0.36.21; district §9 amended, boss-core-epoch1-resume
+  // [35]): with the plan announced and 1 t of its 5 t delivered, 5 t over the
+  // limit pay the 4 t owed as delivered and only 1 t is seized — and the
+  // reputation falls once, for that 1 t. Then a surplus smaller than the
+  // debt (2 t over, 3 t owed) is delivered whole: nothing seized, no
+  // reputation lost.
+  world.plan.announced = 1;
+  world.plan.delivered = {1 * kTonne};
+  world.ledger.current.seized = {0};
+  world.units.rows[core::FindRow(world.units, barn_id)].stock = {20 * kTonne};
+  world.chairman.raikom_reputation = 50.0F;
+  const core::Grams beyond_debt = core::SeizeAboveLimit(config, world);
+  failures +=
+      Expect(beyond_debt == 1 * kTonne && world.plan.delivered[0] == 5 * kTonne &&
+                 world.ledger.current.seized[0] == 1 * kTonne &&
+                 world.units.rows[core::FindRow(world.units, barn_id)].stock[0] == 15 * kTonne,
+             "debt first: of 5 t over, 4 t pay the position as delivered, 1 t is seized");
+  failures += Expect(world.chairman.raikom_reputation == 40.0F,
+                     "debt first: the seizure of the rest costs the reputation once");
+  world.plan.delivered = {2 * kTonne};                                          // 3 t still owed
+  world.units.rows[core::FindRow(world.units, barn_id)].stock = {17 * kTonne};  // 2 t over
+  world.chairman.raikom_reputation = 50.0F;
+  const core::Grams none_beyond = core::SeizeAboveLimit(config, world);
+  failures += Expect(none_beyond == 0 && world.plan.delivered[0] == 4 * kTonne &&
+                         world.ledger.current.seized[0] == 1 * kTonne &&
+                         world.chairman.raikom_reputation == 50.0F,
+                     "debt first: 2 t over a 3 t debt are delivered whole — nothing seized, no "
+                     "reputation lost");
+
+  // AND THROUGH THE VISIT'S OWN DOOR (the static review of 0.36.21): when the
+  // debt took the whole surplus the visit found nothing — the event says so
+  // and no senior is called; when some was seized, the discrepancy stands and
+  // Zhernova is called for tomorrow. Known answers: 2 t over a 3 t debt, then
+  // 5 t over a 1 t debt.
+  const auto arrive_polushkina = [&world, &config, &visit_of]() {
+    world.step_events.clear();
+    world.district_visits = core::DistrictVisitTable{};
+    // Not day 0: AwayToday reads the default away_from_tick 0 as leaving
+    // today on day 0 (a sentinel its still_away half excludes and its
+    // leaves_today half does not — named to boss, not repaired here).
+    world.calendar.day = 10;
+    core::DistrictVisitRow visit = visit_of(core::DistrictFace::kPolushkina);
+    visit.arrive_day = world.calendar.day;
+    core::AppendRow(world.district_visits, visit);
+    core::ArriveDistrictVisits(config, world);
+    core::DistrictVisitOutcome outcome;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kDistrictVisit) {
+        core::UnpackDistrictVisit(event.amount, outcome);
+      }
+    }
+    return outcome.found;
+  };
+  world.plan.delivered = {2 * kTonne};
+  world.units.rows[core::FindRow(world.units, barn_id)].stock = {17 * kTonne};
+  failures += Expect(arrive_polushkina() == core::DistrictVisitFinding::kNone &&
+                         world.district_visits.rows.empty(),
+                     "debt first, the visit: the debt took the whole surplus — nothing found, no "
+                     "senior called");
+  world.plan.delivered = {4 * kTonne};
+  world.units.rows[core::FindRow(world.units, barn_id)].stock = {20 * kTonne};
+  failures += Expect(arrive_polushkina() == core::DistrictVisitFinding::kDiscrepancy &&
+                         world.district_visits.rows.size() == 1 &&
+                         world.district_visits.rows[0].face == core::DistrictFace::kZhernova,
+                     "debt first, the visit: 4 t seized beyond a 1 t debt — the discrepancy "
+                     "stands and Zhernova is called");
   return failures;
 }
 
@@ -7805,13 +8004,13 @@ int CheckPlanDebtFromFields() {
   // No crops in the config: no seed is owed, so the seed fund holds nothing
   // back here (DeliverableAboveSeed is checked on its own below).
   const core::ProductionConfig no_seed;
-  core::TakePlanDebtFromFields(no_seed, before_spring);
+  core::TakePlanDebtFromFields(no_seed, before_spring, before_spring.calendar.day);
   failures += Expect(
       before_spring.fields.rows[0].reaped_grams == 4 * kTonne && before_spring.step_events.empty(),
       "before the spring's figure nothing is owed and no heap is touched");
 
   core::WorldState world = make_world();
-  core::TakePlanDebtFromFields(no_seed, world);
+  core::TakePlanDebtFromFields(no_seed, world, world.calendar.day);
   const std::vector<core::FieldRow>& fields = world.fields.rows;
   failures +=
       Expect(world.plan.delivered[0] == 10 * kTonne && world.units.rows[0].stock[0] == 6 * kTonne,
@@ -7832,7 +8031,7 @@ int CheckPlanDebtFromFields() {
           world.step_events[1].resource.value == 1 && world.step_events[1].amount == 1 * kTonne,
       "one event per resource, with the grams taken");
 
-  core::TakePlanDebtFromFields(no_seed, world);
+  core::TakePlanDebtFromFields(no_seed, world, world.calendar.day);
   failures += Expect(fields[2].reaped_grams == 3 * kTonne && world.step_events.size() == 2,
                      "a paid position takes nothing more off the field");
 
@@ -7887,8 +8086,10 @@ int CheckPlanDebtFromFields() {
     return left;
   };
   core::WorldState held = with_seed_field();
-  failures += Expect(core::DeliverableAboveSeed(seeded, held, core::ResourceId{0}) == 9 * kTonne,
-                     "seed: the delivery may take 19 t less the 10 t of seed");
+  failures +=
+      Expect(core::DeliverableAboveSeed(
+                 seeded, held, core::ResourceId{0}, core::SeedDayAtTheTurn(held)) == 9 * kTonne,
+             "seed: the delivery may take 19 t less the 10 t of seed");
   core::DeliverPlan(seeded, held);
   failures += Expect(held.plan.delivered[0] == 9 * kTonne && left_of_zero(held) == 10 * kTonne,
                      "seed: the turn ships 9 t and leaves the next sowing's 10 t");
@@ -9649,6 +9850,7 @@ int main() {
   failures += CheckFeedLightRespectsTheCeiling();
   failures += CheckFeedLightNeverRunsOut();
   failures += CheckSeedLightMeasuresCoverage();
+  failures += CheckSeedHeldFieldByField();
   failures += CheckSeedLightAsksAboutTheNearestCampaign();
   failures += CheckFeedLightKeepsTheKindsApart();
   failures += CheckSeedLightDoesNotNetCropsOff();

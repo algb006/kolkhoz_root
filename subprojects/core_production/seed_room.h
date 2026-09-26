@@ -60,14 +60,25 @@ Grams SeedNeedWithRot(const ProductionConfig& config,
                       ResourceId seed,
                       Grams need);
 
-/// @brief The seed the stores must keep TODAY for the next sowing: the need
-/// of SeedNeedByResource, but only for a seed whose next sowing ends before
-/// its next harvest begins. A seed the harvest brings first (the winter rye,
-/// reaped in July and sown in September) holds nothing today — the sowing
-/// takes it from that harvest. What the district's delivery may not take
-/// (DeliverableAboveSeed; boss seq 5, item 8).
+/// @brief The seed the stores must keep TODAY for the next sowing: FIELD BY
+/// FIELD (0.36.21), the norm of each arable field whose own next sowing
+/// (NextSowingOf, by the slot it comes from) ends before the seed's next
+/// harvest begins. A sowing the harvest comes first to holds nothing today —
+/// the winter rye, reaped in July and sown in September, and a chain's potato
+/// of NEXT year, which this August's digging gives. What the district's
+/// delivery may not take (DeliverableAboveSeed; boss seq 5, item 8). Until
+/// 0.36.21 the rule was asked of the seed as a whole and held next year's
+/// potato out of this year's stores (boss-core-epoch1-resume [35]). The seed's
+/// next harvest is read off the FIELDS — a crop in the ground, a sowing to
+/// come — and a seed nothing will reap holds its sowings.
+/// @param as_of The day the rotation slots describe. At the year's turn the
+///        calendar is the new year's and the slots are still the old year's
+///        (the turn tick, before the rotation turns): the turn's callers pass
+///        the closing year's last day (district_plan.h, SeedDayAtTheTurn).
 /// @return Dense by ResourceId, sized `config.feed_values.size()`.
-std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config, const WorldState& world);
+std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
+                                    const WorldState& world,
+                                    SimDay as_of);
 
 /// @brief The room each resource books for its missing seed: the need of
 /// its next sowings less what the stores hold, and only while some of its

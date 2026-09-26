@@ -52,18 +52,26 @@ void CallPlanFailedVisit(WorldState& current);
 DistrictVisitOutcome InspectVisit(const WorldState& current, const DistrictVisitRow& visit);
 
 /// @brief «Не сдал и попался» (district §9): takes every gram standing above
-///        the accumulation limit out of the stores, books it in
-///        YearLedger::seized, and lowers the raikom's reputation by the
-///        catalog's seizure loss once if anything was taken.
-/// @return Grams seized, all produce together.
+///        the accumulation limit out of the stores. What the year's plan
+///        position of that produce still owes is taken FIRST and booked as
+///        delivered (district §9 amended; 0.36.21), up to the debt and no
+///        further; only the rest is booked in YearLedger::seized, and the
+///        raikom's reputation falls by the catalog's seizure loss once if any
+///        such rest was taken.
+/// @return Grams seized beyond the debt, all produce together — nought when
+///         the whole surplus went to the plan.
 Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current);
 
 /// @brief At the day's first tick: every visit whose day has come is
-///        inspected (InspectVisit), a finance face's finding is seized on the
-///        spot (SeizeAboveLimit), the visit is raised as kDistrictVisit —
-///        kInterrupting when extraordinary, kNotable otherwise — and leaves the
-///        table. A regular visit that found anything calls the senior of its
-///        channel for tomorrow on DistrictVisitCause::kJuniorSignal.
+///        inspected (InspectVisit), a finance face's finding is taken on the
+///        spot (SeizeAboveLimit) — and when the year's unmet position took
+///        the whole surplus, the finding is dropped to kNone (0.36.21): no
+///        summons, no senior. The visit is raised as kDistrictVisit —
+///        kInterrupting when extraordinary, kNotable otherwise — and leaves
+///        the table. A regular visit that still found anything calls the
+///        senior of its channel for tomorrow on
+///        DistrictVisitCause::kJuniorSignal, and a discrepancy summons the
+///        chairman «на ковёр».
 void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current);
 
 }  // namespace core

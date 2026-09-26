@@ -177,31 +177,96 @@ std::vector<Grams> SeedNeedByResource(const ProductionConfig& config, const Worl
   return need;
 }
 
-std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config, const WorldState& world) {
-  std::vector<Grams> held = SeedNeedByResource(config, world);
-  const auto today = static_cast<std::uint32_t>(world.calendar.date.month);
-  for (std::uint32_t index = 0; index < held.size(); ++index) {
-    if (held[index] <= 0) {
+std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
+                                    const WorldState& world,
+                                    SimDay as_of) {
+  std::vector<Grams> held(config.feed_values.size(), 0);
+  const auto month = static_cast<std::int32_t>((as_of % kDaysPerYear) / kDaysPerMonth);
+  constexpr auto kYear = static_cast<std::int32_t>(kMonthsPerYear);
+  constexpr std::int32_t kNever = std::numeric_limits<std::int32_t>::max();
+
+  // THE SOWINGS FIELD BY FIELD (0.36.21; boss-core-epoch1-resume [35]): each
+  // arable field's next sowing, in months from `as_of` to its window's end —
+  // by the slot it comes from (a winter crop of slot k is sown in the autumn
+  // of year k − 1), this month counting whole as DaysToSowingEnd counts it;
+  // a held chain at its crop's next window (NextSowing::held_chain). And the
+  // month that sowing is reaped, which is a harvest of its seed too.
+  struct Sowing {
+    const CropDef* crop = nullptr;
+    const FieldRow* field = nullptr;
+    std::int32_t sow_end = 0;  // months; <= 0 — its window gone
+  };
+
+  std::vector<Sowing> sowings;
+  // THE NEXT HARVEST OF EACH SEED, from `as_of`, in months — off the FIELDS,
+  // not off the crop table (static review of 0.36.21): a crop in the ground
+  // (nought while in its reaping months), and a sowing to come, reaped in its
+  // slot's year. A seed nothing will reap holds its sowings whatever the
+  // calendar says: in a year with no field of oats, next year's oat seed is
+  // not "given by August's oats".
+  std::vector<std::int32_t> harvest_in(held.size(), kNever);
+  const auto months_to = [month](std::uint8_t target) {
+    return (static_cast<std::int32_t>(target) - month + kYear) % kYear;
+  };
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable) {
       continue;
     }
-    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    // THE NEXT HARVEST OF THE SAME SEED, from today, in days to its first
-    // month: when it comes before the sowing ends, the sowing takes its seed
-    // from that harvest, and nothing held today is its seed. The winter rye
-    // is sown in September out of July's rye; holding it from January
-    // failed the canon's rye 17 years of 108 (seq 5 item 8, first draft).
-    std::uint32_t harvest_in = kDaysPerYear;
-    for (const CropDef& crop : config.crops) {
-      if (crop.resource != resource) {
-        continue;
+    const bool in_ground =
+        (field.phase == FieldPhase::kGrowing ||
+         (field.phase == FieldPhase::kHarvest && field.harvest_laid_share < 1.0F)) &&
+        field.crop.value < config.crops.size();
+    if (in_ground) {
+      const CropDef& standing = config.crops[field.crop.value];
+      if (standing.resource.value < held.size()) {
+        const bool reaping_now = month >= static_cast<std::int32_t>(standing.harvest_from_month) &&
+                                 month <= static_cast<std::int32_t>(standing.harvest_to_month);
+        const std::int32_t months = reaping_now ? 0 : months_to(standing.harvest_from_month);
+        harvest_in[standing.resource.value] = std::min(harvest_in[standing.resource.value], months);
       }
-      const std::uint32_t months =
-          (crop.harvest_from_month + kMonthsPerYear - today) % kMonthsPerYear;
-      harvest_in = std::min(harvest_in, months * kDaysPerMonth);
     }
-    if (harvest_in < DaysToSowingEnd(config, world, resource)) {
-      held[index] = 0;
+    const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
+                              config.crops[field.rotation_year0.value].is_winter;
+    const NextSowing next = NextSowingOf(field, as_of, year0_winter);
+    if (next.crop.value >= config.crops.size()) {
+      continue;
     }
+    const CropDef& crop = config.crops[next.crop.value];
+    if (!(crop.sowing_norm_kg_per_ha > 0.0F) || crop.resource.value >= held.size()) {
+      continue;
+    }
+    std::int32_t sow_end = 0;
+    std::int32_t reaped_in = 0;
+    if (next.held_chain) {
+      const std::int32_t sown = months_to(crop.sow_to_month);
+      const std::int32_t reaped = months_to(crop.harvest_from_month);
+      sow_end = sown + 1;
+      reaped_in = reaped > sown ? reaped : reaped + kYear;  // the first reaping after it
+    } else {
+      const std::int32_t sow_year = static_cast<std::int32_t>(next.slot) - (crop.is_winter ? 1 : 0);
+      sow_end = (sow_year * kYear) + static_cast<std::int32_t>(crop.sow_to_month) - month + 1;
+      reaped_in = (static_cast<std::int32_t>(next.slot) * kYear) +
+                  static_cast<std::int32_t>(crop.harvest_from_month) - month;
+    }
+    if (sow_end > 0 && reaped_in >= 0) {
+      harvest_in[crop.resource.value] = std::min(harvest_in[crop.resource.value], reaped_in);
+    }
+    sowings.push_back(Sowing{.crop = &crop, .field = &field, .sow_end = sow_end});
+  }
+  // A FIELD'S SEED IS HELD when its sowing ends before the seed's next
+  // harvest: otherwise that harvest gives it. The winter rye is sown in
+  // September out of July's rye; holding it from January failed the canon's
+  // rye 17 years of 108 (seq 5 item 8). Until 0.36.21 the rule was asked of
+  // the seed as a whole, and at the turn held the potato of every chain whose
+  // potato comes NEXT year out of this year's stores (econ's E2Bf, seed 1934,
+  // the turn of year 7: the position 10 t short beside the idle seed).
+  for (const Sowing& sowing : sowings) {
+    const auto resource = sowing.crop->resource.value;
+    if (sowing.sow_end <= 0 || harvest_in[resource] < sowing.sow_end) {
+      continue;  // its window gone, or a harvest comes first
+    }
+    held[resource] +=
+        GramsFromKilograms(sowing.crop->sowing_norm_kg_per_ha * sowing.field->area_ga);
   }
   return held;
 }
