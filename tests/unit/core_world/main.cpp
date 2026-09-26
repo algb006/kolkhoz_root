@@ -1886,9 +1886,12 @@ int main() {
     //
     // `roads` was here until 0.36.0, unread for want of a linear unit; the
     // core lays the network from it now (core_world/start_roads.h), and the
-    // world requires it. The list stays, empty, for the next table in that
-    // position.
-    const std::array<std::string_view, 0> not_read_yet = {};
+    // world requires it. The list stays for the next table in that position.
+    //
+    // map_areas and map_lines are there since boss's export of 26 September
+    // (163dc7d3; boss-core-epoch1-resume [55], [56]): what a player's road may
+    // not cross — the road tracer of delivery 7b is their reader.
+    const std::array<std::string_view, 2> not_read_yet = {"map_areas", "map_lines"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {
