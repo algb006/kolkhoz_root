@@ -304,11 +304,14 @@ struct FieldRow {
   /// design — the rye went in that September, ahead of the oats named first —
   /// and it was the second half of the defect below.
   ///
-  /// A WINTER CROP NAMED FIRST spends the mark with its autumn ploughing, and
-  /// its year is the one after that autumn: the turn then asks the ground,
-  /// not the mark, and holds the chain while year0's own winter crop stands
-  /// (production_system.cpp, RunYearStart). Until 0.36.10 it moved on, and a
-  /// chain (rye, oats, potatoes) named in February never sowed its oats.
+  /// A WINTER CROP NAMED FIRST does not spend the mark with its ploughing
+  /// (field_work.cpp, OpenPlowing): its year is the one after the autumn it
+  /// goes in, so the mark stands through that autumn, and the turn into its
+  /// year holds the chain once more and spends it (production_system.cpp,
+  /// RunYearStart). Until 0.36.10 the ploughing spent it, the chain moved on
+  /// with the rye standing, and a chain (rye, oats, potatoes) named in
+  /// February never sowed its oats. A RUNNING chain's winter crop that went
+  /// in a year late is not this case, and the turn moves it on as before.
   std::uint8_t rotation_skips_turn = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while

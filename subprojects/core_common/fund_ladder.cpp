@@ -128,7 +128,12 @@ CropId NextSowingCrop(const FieldRow& field, SimDay today) {
   // 0.36.10 (land_state.h): the field waits for them rather than work for the
   // rye, so this names the oats and is right. Before, the rye went in that
   // September and this answer was wrong from its ploughing to the turn.
-  if (field.rotation_skips_turn != 0 && !preparing_second_slot) {
+  // AND A FRESH CHAIN'S WINTER CROP NAMED FIRST, ALREADY IN THE GROUND, keeps
+  // the mark until the turn into its year (0.36.10, field_work.cpp): the first
+  // slot is sown, so the next sowing is the second slot's.
+  const bool first_slot_in_ground =
+      in_ground && crop_named && field.crop.value == field.rotation_year0.value;
+  if (field.rotation_skips_turn != 0 && !preparing_second_slot && !first_slot_in_ground) {
     return field.rotation_year0.value != kInvalidDefIdValue ? field.rotation_year0
                                                             : field.rotation_year1;
   }

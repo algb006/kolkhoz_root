@@ -422,7 +422,17 @@ void OpenPlowing(const ProductionConfig& config,
   // still (land_state.h, rotation_skips_turn), so a chairman's first named
   // crop cannot be carried away by a January that arrived while his field was
   // busy, or cold, or already sown.
-  field.rotation_skips_turn = 0;
+  //
+  // EXCEPT A WINTER CROP NAMED FIRST (0.36.10): its season is the year AFTER
+  // the autumn it goes in, so its ploughing uses the chain without yet
+  // reaching its year. The mark stands, and the turn that brings that year
+  // holds the chain once more and spends it (production_system.cpp).
+  const bool first_slot_winter =
+      field.rotation_skips_turn != 0 && crop.value < config.crops.size() &&
+      crop.value == field.rotation_year0.value && config.crops[crop.value].is_winter;
+  if (!first_slot_winter) {
+    field.rotation_skips_turn = 0;
+  }
   // AND THE WEEDS GO WITH THE FIRST FURROW. "Одна вспашка возвращает всё
   // назад. Ступень сбрасывается сразу" (farming design) — a black field
   // looks like a black field however many years it stood. The byte was set

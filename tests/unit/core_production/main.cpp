@@ -23,6 +23,7 @@
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -5173,13 +5174,15 @@ int CheckTheChairmanSetsARotation() {
                        "first season by the turn that runs in the same call");
   }
 
-  // -- THE FIELD SPENDS THE MARK WHEN IT USES THE CHAIN ---------------------
+  // -- A WINTER CROP NAMED FIRST KEEPS THE MARK UNTIL ITS YEAR ---------------
   //
   // A winter rye named first in August has its own window that fortnight, so
-  // the ploughing opens the same day the order lands — and THAT is what
-  // clears the mark. The month never enters into it: what is asked is
-  // whether the chain has been used, and the one place every use passes
-  // through is OpenPlowing.
+  // the ploughing opens the same day the order lands. Until 0.36.10 THAT
+  // cleared the mark, the turn then moved the chain on with the rye still
+  // standing, and the crop named second lost its spring under it (boss,
+  // boss-core-epoch1-resume [12]; tests/run/rotation_chain). The rye's year
+  // is the next one: the mark stands, and the turn into that year holds the
+  // chain and spends it.
   {
     const core::ITable* const crops_table = tables->FindTable("crops");
     const core::CropId rye{static_cast<std::uint16_t>(crops_table->FindRowByKey("rye_winter"))};
@@ -5211,9 +5214,35 @@ int CheckTheChairmanSetsARotation() {
     failures += Expect(sown.phase == core::FieldPhase::kPlowing,
                        "and the rye's own window is this fortnight, so the ploughing opens the "
                        "same day the order lands");
-    failures += Expect(sown.rotation_skips_turn == 0,
-                       "and THAT is what spends the mark: the chain has been used, so the "
-                       "coming turn may carry it on");
+    failures += Expect(sown.rotation_skips_turn == 1,
+                       "and the mark STANDS: a winter crop named first reaches its year only at "
+                       "the coming turn (0.36.10)");
+
+    // The rye in the ground at the turn: the chain holds, and the turn spends
+    // the mark — the next turn moves on.
+    core::WorldState before_turn = current;
+    before_turn.calendar.tick = (48U * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(before_turn.calendar);
+    before_turn.orders.rows.clear();
+    before_turn.orders.row_ids.clear();
+    before_turn.fields.rows[0].phase = core::FieldPhase::kGrowing;  // sown in September
+    before_turn.weather.air_temperature_celsius = -12.0F;
+    // The rye is in and the mark still stands: the seed alarm's next sowing
+    // is the oats, not the rye a second time (fund_ladder.cpp, 0.36.11).
+    failures +=
+        Expect(core::NextSowingCrop(before_turn.fields.rows[0], before_turn.calendar.day).value ==
+                   oat.value,
+               "with the rye named first already in the ground, the next sowing is the "
+               "crop named second");
+    core::WorldState turned = before_turn;
+    turned.calendar.tick = 48U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(turned.calendar);
+    system->RunProductionDecisions(before_turn, turned);
+    const core::FieldRow& held = turned.fields.rows[0];
+    failures += Expect(held.rotation_year0.value == rye.value &&
+                           held.rotation_year1.value == oat.value && held.rotation_skips_turn == 0,
+                       "the turn into the rye's year holds the chain on the rye and spends the "
+                       "mark: the crop named second keeps its own spring");
   }
   return failures;
 }
