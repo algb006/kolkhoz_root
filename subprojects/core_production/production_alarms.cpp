@@ -600,9 +600,14 @@ void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,
     }
     const std::array<CropId, 3> slots = {
         field.rotation_year0, field.rotation_year1, field.rotation_year2};
-    for (std::uint32_t year = 0; year + 1 < slots.size(); ++year) {
+    // THE CHAIN IS A CIRCLE (econ's acceptance of 0.36.22, boss-core-epoch1-
+    // resume [60]): the last slot is followed by the first of the next round,
+    // and a (rye, oats, potato) chain laid on day 49 has its potato-then-rye
+    // pair across that joint — marked only at the second turn until 0.36.24,
+    // not «при самой раскладке». The joint's winter crop is lost in year 3.
+    for (std::uint32_t year = 0; year < slots.size(); ++year) {
       const CropId before = slots[year];
-      const CropId winter = slots[year + 1];
+      const CropId winter = slots[(year + 1) % slots.size()];
       if (before.value >= config.crops.size() || winter.value >= config.crops.size() ||
           !config.crops[winter.value].is_winter) {
         continue;  // a fallow before, or no winter crop after

@@ -9526,8 +9526,9 @@ int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
 /// than its last sowing month. Known answer, worked out first — potato dug
 /// from September, oats from August, winter rye sown by September:
 ///   (potato, rye, oats) — year 1; (oats, potato, rye) — year 2;
+///   (rye, oats, potato) — year 3, across the joint (0.36.24);
 ///   (oats, rye, potato), (fallow, rye, oats) and a meadow — nothing.
-/// Two alarms, those two.
+/// Three alarms, those three.
 int CheckAWinterCropTheChainCannotSow() {
   int failures = 0;
   core::ProductionConfig config;
@@ -9558,6 +9559,11 @@ int CheckAWinterCropTheChainCannotSow() {
   chain(core::LandKind::kArable, 1, 2, 0);
   chain(core::LandKind::kArable, kFallow, 2, 1);
   chain(core::LandKind::kMeadow, 0, 2, 1);
+  // ACROSS THE CHAIN'S JOINT (0.36.24; econ's acceptance, boss [60]): (rye,
+  // oats, potato) laid on day 49 — the potato of slot 2 is followed by the
+  // rye of the next round's slot 0: year 3, marked at the laying.
+  world.calendar.day = 49;
+  const core::FieldId across_joint = chain(core::LandKind::kArable, 2, 1, 0);
   std::vector<core::Alarm> alarms;
   core::CollectWinterCropUnsowableAlarms(config, world, alarms);
   const auto has = [&alarms](core::FieldId field, std::int64_t year) {
@@ -9566,9 +9572,11 @@ int CheckAWinterCropTheChainCannotSow() {
              alarm.field.value == field.value && alarm.amount == year;
     });
   };
-  failures += Expect(alarms.size() == 2 && has(potato_rye, 1) && has(potato_rye_later, 2),
-                     "winter crop unsowable: rye after potato is marked, next year and the year "
-                     "after — and not after oats, a fallow or on a meadow");
+  failures += Expect(
+      alarms.size() == 3 && has(potato_rye, 1) && has(potato_rye_later, 2) && has(across_joint, 3),
+      "winter crop unsowable: rye after potato is marked, next year, the year "
+      "after and across the chain's joint — and not after oats, a fallow or on a "
+      "meadow");
   return failures;
 }
 

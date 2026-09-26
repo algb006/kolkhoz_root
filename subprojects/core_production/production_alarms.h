@@ -53,8 +53,9 @@ void CollectPlanAlarms(const ProductionConfig& config,
                        std::vector<Alarm>& alarms);
 
 /// @brief Appends kWinterCropUnsowable for every arable field whose chain
-/// puts a winter crop in slot k + 1 (k = 0, 1) right after a crop whose
-/// reaping opens no earlier than the winter crop's last sowing month
+/// puts a winter crop in the slot after slot k (k = 0, 1, 2; the chain is a
+/// circle, slot 2 is followed by slot 0 of the next round) right after a crop
+/// whose reaping opens no earlier than the winter crop's last sowing month
 /// (alarm_state.h); `amount` = k + 1.
 /// @param alarms Appended to; never cleared.
 void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,

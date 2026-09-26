@@ -425,11 +425,13 @@ enum class AlarmKind : std::uint8_t {
   /// of the winter crop's sowing — potato, cabbage, buckwheat or maize before
   /// rye on the shipped tables — so the plough cannot get in and the slot
   /// will be lost (question 278). The pair of kPlanPositionUncovered: said
-  /// when the chain is laid, a year or two before the loss. Subject: `field`;
-  /// `amount` = the YEAR the winter crop is lost in, counted from the current
-  /// one (1 or 2; this year's winter crop was sown last autumn or is already
-  /// lost, question 278's event). THE CRITERION IS core's STUB, named: the
-  /// reaping's first month against the sowing's last, no days counted.
+  /// when the chain is laid, one to three years before the loss. Subject:
+  /// `field`; `amount` = the YEAR the winter crop is lost in, counted from the
+  /// current one: 1 or 2 inside the chain, 3 across its joint — the last slot
+  /// followed by the first of the next round (0.36.24; boss-core-epoch1-
+  /// resume [60]). 0 never: this year's winter crop was sown last autumn or
+  /// is already lost, question 278's event. THE CRITERION IS core's STUB,
+  /// named: the reaping's first month against the sowing's last, no days.
   kWinterCropUnsowable,
 
   // Appended by later tasks and phases: children out of school, sewage,
