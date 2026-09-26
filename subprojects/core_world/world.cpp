@@ -43,6 +43,7 @@
 #include "core_time/month_ice.h"
 #include "core_time/time_system.h"
 #include "core_world/era_readiness.h"
+#include "core_world/road_tools.h"
 
 namespace core {
 
@@ -463,8 +464,10 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<IResidentsSystem> residents,
                      std::unique_ptr<IProductionSystem> production,
                      std::unique_ptr<ILaborSystem> labor,
-                     std::unique_ptr<IConstructionSystem> construction)
-      : time_(std::move(time)),
+                     std::unique_ptr<IConstructionSystem> construction,
+                     RoadTools road_tools)
+      : road_tools_(std::move(road_tools)),
+        time_(std::move(time)),
         residents_(std::move(residents)),
         production_(std::move(production)),
         labor_(std::move(labor)),
@@ -570,17 +573,12 @@ class StandardSimulation final : public ISimulation {
     }
   }
 
-  // THE ROAD TOOLS, CONTRACT ONLY (delivery 7a): every door answers "not
-  // built yet" until its part lands — the tracer (7b), laying (7c), the
-  // selection and demolition (7d), road work (7e). STUB, named: a draft's
-  // default answer is RoadDraftRefusal::kSnapsToNothing with no axis, a
-  // selection's is no piece, and every tool kNotYetBuilt. Roads() is not a
-  // stub: it reads the network as it stands, with no work on any road.
+  // THE ROAD TOOLS (delivery 7): the preview traces for real since 7b
+  // (road_tools.h). STUB, named, until their parts land: a selection is no
+  // piece (7d), and every tool stands kNotYetBuilt (7c-7e). Roads() reads
+  // the network as it stands, with no work on any road.
   RoadDraftResult PreviewRoad(const RoadDraft& draft) const override {
-    RoadDraftResult result;
-    result.blocks.push_back(
-        RoadDraftBlock{.refusal = RoadDraftRefusal::kSnapsToNothing, .at = draft.points[0]});
-    return result;
+    return road_tools_.Preview(engine_->CompletedState(), draft);
   }
 
   RoadPieces SelectRoadPieces(const RoadSelection& /*selection*/,
@@ -607,6 +605,9 @@ class StandardSimulation final : public ISimulation {
   }
 
  private:
+  /// Declared first so the constructor's list can fill it first.
+  RoadTools road_tools_;
+
   std::unique_ptr<ITimeSystem> time_;
 
   std::unique_ptr<IResidentsSystem> residents_;
@@ -723,6 +724,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                       "difficulty",
                       "life",
                       "livestock",
+                      "map_areas",
+                      "map_lines",
                       "resources",
                       "roads",
                       "start_layout",
@@ -870,13 +873,23 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   if (!layout_error.empty()) {
     return nullptr;
   }
+  // The road tools' tables (delivery 7b): the map's obstacles, the road
+  // levels' prices, the plot radii. A malformed one refuses the assembly,
+  // like any table a subsystem reads.
+  std::string road_tools_error;
+  std::optional<RoadTools> road_tools = RoadTools::Read(*config.tables, road_tools_error);
+  if (!road_tools) {
+    LogError(road_tools_error);
+    return nullptr;
+  }
   return std::make_unique<StandardSimulation>(config,
                                               std::move(start),
                                               std::move(time),
                                               std::move(residents),
                                               std::move(production),
                                               std::move(labor),
-                                              std::move(construction));
+                                              std::move(construction),
+                                              std::move(*road_tools));
 }
 
 }  // namespace core

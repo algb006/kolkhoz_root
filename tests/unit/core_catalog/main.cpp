@@ -20,6 +20,8 @@
 #include "../../common/fake_tables.h"
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/limit_catalog.h"
+#include "core_catalog/map_obstacle_tables.h"
+#include "core_catalog/road_cost_catalog.h"
 #include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
@@ -678,6 +680,113 @@ int TestRoadRules() {
   return failures;
 }
 
+/// THE MAP'S OBSTACLES (map_obstacle_tables.h; delivery 7b): the rows of
+/// an area and a line land in order with their kind and marks; each fault
+/// the header names refuses on its own — an unknown kind, an unknown mark, a
+/// key whose kind changes, seq out of order, an area of two points.
+int TestMapObstacleTables() {
+  int failures = 0;
+  const std::vector<std::string> area_columns = {"area", "kind", "seq", "x_m", "y_m"};
+  const std::vector<std::string> line_columns = {
+      "line", "kind", "seq", "x_m", "y_m", "half_w_m", "mark"};
+  const std::vector<std::vector<std::string>> good_areas = {
+      {"wood", "forest", "0", "0", "0"},
+      {"wood", "forest", "1", "10", "0"},
+      {"wood", "forest", "2", "10", "10"},
+      {"home", "village_zone", "0", "50", "50"},
+      {"home", "village_zone", "1", "60", "50"},
+      {"home", "village_zone", "2", "60", "60"}};
+  const std::vector<std::vector<std::string>> good_lines = {
+      {"river", "river", "0", "0", "100", "10", ""},
+      {"river", "river", "1", "50", "100", "12", "ford"},
+      {"brook", "brook", "0", "0", "200", "1", "dam"},
+      {"brook", "brook", "1", "40", "200", "1", "spring"}};
+  const auto read = [&](const std::vector<std::vector<std::string>>& areas,
+                        const std::vector<std::vector<std::string>>& lines,
+                        core::MapObstacles& out) {
+    const test::FakeTable area_table(area_columns, areas);
+    const test::FakeTable line_table(line_columns, lines);
+    const test::FakeTableSet set({{"map_areas", &area_table}, {"map_lines", &line_table}});
+    std::string error;
+    return core::ReadMapObstacles(set, out, error);
+  };
+  core::MapObstacles map;
+  failures += Expect(read(good_areas, good_lines, map) && map.areas.size() == 2 &&
+                         map.areas[0].kind == core::MapAreaKind::kForest &&
+                         map.areas[0].outline.size() == 3 && map.areas[0].outline[2].y == 10.0F &&
+                         map.areas[1].kind == core::MapAreaKind::kVillageZone &&
+                         map.lines.size() == 2 && map.lines[0].kind == core::MapLineKind::kRiver &&
+                         map.lines[0].points[1].mark == core::MapLineMark::kFord &&
+                         map.lines[0].points[1].half_width_m == 12.0F &&
+                         map.lines[1].points[0].mark == core::MapLineMark::kDam &&
+                         map.lines[1].points[1].mark == core::MapLineMark::kOther,
+                     "map obstacles: areas and lines land in order with kinds, widths and marks");
+  const auto spoiled_area = [&](std::size_t row, std::size_t column, std::string value) {
+    std::vector<std::vector<std::string>> areas = good_areas;
+    areas[row][column] = std::move(value);
+    core::MapObstacles out;
+    return !read(areas, good_lines, out);
+  };
+  const auto spoiled_line = [&](std::size_t row, std::size_t column, std::string value) {
+    std::vector<std::vector<std::string>> lines = good_lines;
+    lines[row][column] = std::move(value);
+    core::MapObstacles out;
+    return !read(good_areas, lines, out);
+  };
+  failures += Expect(spoiled_area(0, 1, "meadow"), "map obstacles: an unknown area kind refuses");
+  failures += Expect(spoiled_line(1, 6, "bridge"), "map obstacles: an unknown mark refuses");
+  failures +=
+      Expect(spoiled_area(1, 1, "grove"), "map obstacles: a key whose kind changes refuses");
+  failures += Expect(spoiled_area(1, 2, "0"), "map obstacles: seq out of order refuses");
+  failures += Expect(spoiled_area(2, 0, "wood2"), "map obstacles: an area of two points refuses");
+  core::MapObstacles none;
+  const test::FakeTableSet empty;
+  std::string error;
+  failures += Expect(core::ReadMapObstacles(empty, none, error) && none.areas.empty(),
+                     "map obstacles: a set without the tables reads as no map");
+  return failures;
+}
+
+/// THE ROAD LEVELS' PRICES (road_cost_catalog.h; delivery 7b): level 2 is
+/// gravel and 3 asphalt, with their epochs and man-days; materials become
+/// grams by kg_per_unit; asphalt with walks copies asphalt (STUB); a road
+/// material with no mass refuses.
+int TestRoadSurfaceLevels() {
+  int failures = 0;
+  const test::FakeTable levels({"unit", "level", "era", "labor_days"},
+                               {{"road", "1", "1", "0"},
+                                {"road", "2", "1", "60"},
+                                {"road", "3", "2", "120"},
+                                {"barn", "2", "1", "999"}});
+  const test::FakeTable costs(
+      {"unit", "level", "resource", "amount"},
+      {{"road", "2", "stone", "20"}, {"road", "3", "cement", "6"}, {"barn", "2", "stone", "999"}});
+  const test::FakeTable resources({"key", "kg_per_unit"}, {{"stone", "1000"}, {"cement", "1000"}});
+  const test::FakeTableSet set(
+      {{"unit_levels", &levels}, {"unit_level_cost", &costs}, {"resources", &resources}});
+  core::RoadSurfaceLevels read;
+  std::string error;
+  const bool ok = core::ReadRoadSurfaceLevels(set, read, error);
+  const auto& gravel = read[static_cast<std::size_t>(core::RoadSurface::kGravel)];
+  const auto& asphalt = read[static_cast<std::size_t>(core::RoadSurface::kAsphalt)];
+  const auto& walks = read[static_cast<std::size_t>(core::RoadSurface::kAsphaltWalks)];
+  failures += Expect(
+      ok && gravel.opens == core::Epoch::kOne && gravel.man_days_per_100m == 60.0F &&
+          gravel.materials_per_100m.size() == 2 && gravel.materials_per_100m[0] == 20'000'000 &&
+          asphalt.opens == core::Epoch::kTwo && asphalt.man_days_per_100m == 120.0F &&
+          asphalt.materials_per_100m[1] == 6'000'000 && walks.man_days_per_100m == 120.0F &&
+          walks.opens == core::Epoch::kTwo,
+      "road levels: gravel and asphalt with epochs, man-days and grams; walks as "
+      "asphalt; the barn's rows untouched");
+  const test::FakeTable massless({"key", "kg_per_unit"}, {{"stone", "0"}, {"cement", "1000"}});
+  const test::FakeTableSet no_mass(
+      {{"unit_levels", &levels}, {"unit_level_cost", &costs}, {"resources", &massless}});
+  core::RoadSurfaceLevels refused;
+  failures += Expect(!core::ReadRoadSurfaceLevels(no_mass, refused, error),
+                     "road levels: a road material with no mass refuses");
+  return failures;
+}
+
 /// The district's regular visits (boss, parcel 324): the three knobs read, and
 /// a month outside the year, a half month and a notice longer than a month
 /// refuse the catalogue.
@@ -723,6 +832,8 @@ int main() {
   failures += TestNotANumber();
   failures += TestEntryPoints();
   failures += TestLookupKey();
+  failures += TestMapObstacleTables();
+  failures += TestRoadSurfaceLevels();
   if (failures == 0) {
     std::cout << "unit_core_catalog: all checks passed\n";
   }

@@ -362,8 +362,9 @@ class ISimulation {
   /// @note Called between steps on the sim thread; pure reads. Its cost is
   ///       measured on the longest trace (corner to corner, four points)
   ///       against ue's ~0.5 ms on the game thread (boss [59] p.9).
-  /// STUB until the tracer (7b): every draft is refused
-  /// RoadDraftRefusal::kSnapsToNothing at its first point, with no axis.
+  /// Traced for real by the full simulation since 7b (core_common/
+  /// road_trace.h); the bare step engine, with no tables, refuses every
+  /// draft RoadDraftRefusal::kSnapsToNothing at its first point.
   virtual RoadDraftResult PreviewRoad(const RoadDraft& draft) const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,

@@ -1387,11 +1387,13 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
   draft.points[0] = core::Vec2{.x = 12.0F, .y = 34.0F};
   draft.points[1] = core::Vec2{.x = 50.0F, .y = 0.0F};
   const core::RoadDraftResult answer = session->PreviewRoad(draft);
-  failures += Expect(!answer.blocks.empty() &&
-                         answer.blocks[0].refusal == core::RoadDraftRefusal::kSnapsToNothing &&
-                         answer.blocks[0].at.x == 12.0F && answer.blocks[0].at.y == 34.0F &&
+  // Since 7b the session's world traces for real. These fake tables carry
+  // no map, so the trace sees no ground — and must SAY so, since a clean
+  // answer over no map means nothing.
+  failures += Expect(answer.axis.size() >= 2 && answer.axis.front().s_m == 0.0F &&
+                         answer.length_m > 40.0F && answer.gaps.obstacles_unread &&
                          answer.gaps.slope_unchecked,
-                     "roads: the preview says it is not built, at the draft's first point, never "
+                     "roads: the preview traces the draft and says it saw no map, never "
                      "an empty answer");
   // Roads() is real: one view a road of the completed world, its axis's `s`
   // from nought. The count is printed — on a network of nought roads every

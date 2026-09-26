@@ -89,18 +89,25 @@ struct RoadAxisPoint {
 ///        renumbered: the layer keys its words by the value.
 enum class RoadDraftRefusal : std::uint8_t {
   kNone = 0,
-  kBadPoints,        ///< Not 2-4 points, two points on one spot, or a surface a path has not.
-  kOutsideMap,       ///< A point or the axis leaves the map.
+  kBadPoints,   ///< Not 2-4 points, two on one spot (after snapping too), or a surface a path has
+                ///< not.
+  kOutsideMap,  ///< A point or the axis leaves the map.
   kClosedByEpoch,    ///< The surface is not open yet (asphalt: Epoch II).
-  kUnit,             ///< A unit's outline is in the way (two points), or no way round it.
+  kUnit,             ///< A unit's building is in the way (RoadUnitDisc).
   kWater,            ///< A lake, pond, backwater or shallows.
-  kRiverNoCrossing,  ///< A river away from a ford, a bridge or a dam (a point).
+  kRiverNoCrossing,  ///< The river away from a ford; its bridges are the map's roads, joined, not
+                     ///< built.
   kForest,           ///< The forest: never cut for a road (roads design §9).
   kTrees,            ///< A grove or old orchard, for a path or a dirt road (gravel clears them).
   kFloodplain,       ///< Gravel or asphalt on the floodplain (roads design §11а).
   kNoWayRound,       ///< Three or four points: no curve round the obstacles near the points.
   kOutsideVillage,   ///< Asphalt with walks away from the village (roads design §2).
-  kSnapsToNothing,   ///< STUB until the tracer is written (7b): the door answers this.
+  /// No tracer: the answer of the door before 7b, and since then only of the
+  /// bare step engine, which has no tables to trace on. The full simulation
+  /// never answers it.
+  kSnapsToNothing,
+  kReserve,                ///< A reserve (map_areas.csv `reserve`; 7b).
+  kRuins,                  ///< A ruins site (map_areas.csv `ruins_site`; 7b).
   kRoadDraftRefusalCount,  ///< NOT A REFUSAL: the count, for mirrors.
 };
 
@@ -118,7 +125,7 @@ struct RoadDraftBlock {
 enum class RoadEndSnap : std::uint8_t {
   kFree = 0,          ///< Open ground: a dead end.
   kRoad,              ///< Onto a road's axis between junctions: a new junction.
-  kJunction,          ///< Onto an existing junction.
+  kJunction,          ///< Onto an existing junction or a road's end.
   kRoadEndSnapCount,  ///< NOT A SNAP: the count, for mirrors.
 };
 
@@ -158,6 +165,10 @@ struct RoadTracerGaps {
   bool slope_unchecked = true;         ///< No slope in the map: «кручи нет» is assumed.
   bool single_trees_unchecked = true;  ///< No trees outside the forest, groves and orchards.
   bool yard_plots_unchecked = true;    ///< No yard plots; units the core knows itself.
+
+  /// The table set carries no map_areas and map_lines: the trace saw no
+  /// water, forest or river at all, and a clean answer means nothing (7b).
+  bool obstacles_unread = false;
 };
 
 /// @brief The core's answer to a draft.

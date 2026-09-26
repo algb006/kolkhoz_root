@@ -21,6 +21,8 @@ kolkhoz_add_module(core_catalog
     district_visit_catalog.cpp
     district_trip_catalog.cpp
     map_roads.cpp
+    map_obstacle_tables.cpp
+    road_cost_catalog.cpp
     road_rules_catalog.cpp
     world_conventions.cpp)
 

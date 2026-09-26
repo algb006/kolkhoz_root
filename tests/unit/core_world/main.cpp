@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -17,12 +18,16 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_catalog/definitions.h"
 #include "core_catalog/extraction_catalog.h"
+#include "core_catalog/map_obstacle_tables.h"
 #include "core_catalog/map_roads.h"
 #include "core_common/calendar.h"
 #include "core_common/herd_state.h"
+#include "core_common/obstacle_raster.h"
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
+#include "core_common/road_trace.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
@@ -30,6 +35,7 @@
 #include "core_save/save.h"
 #include "core_tables/tables.h"
 #include "core_world/era_readiness.h"
+#include "core_world/road_tools.h"
 #include "core_world/world.h"
 
 namespace {
@@ -942,6 +948,161 @@ int CheckRoadsDoor() {
   return Expect(whole, "roads door: Roads() answers every start road whole, no work on any");
 }
 
+/// THE TRACER ON THE SHIPPED MAP (delivery 7b; road_tools.h). Three
+/// instruments and a count:
+///   * what the reader took — areas, lines, fords — against the export's own
+///     count (26 areas: lake 1, pond 2, backwater 1, shallows 1, forest 5,
+///     floodplain 1, grove 5, old orchard 2, reserve 3, ruins 2, village 3;
+///     4 lines; 4 fords);
+///   * the raster's price — bytes and build time — and its cells by flag;
+///   * HOW NEAR THE START ROADS RUN TO THE UNITS' CIRCLES (boss [64] item 1):
+///     the tracer refuses a bed that enters one, and if the start's own
+///     street does, the rule is wrong, not the street. Printed road by road,
+///     the worst first;
+///   * the preview's cost, corner to corner, two points and four (boss [59]
+///     p.9, ue's ~0.5 ms): printed, never asserted — the VM's clock is not a
+///     measure of the game thread.
+int CheckRoadTracer() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "tracer: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::MapObstacles obstacles;
+  std::string error;
+  const bool read = core::ReadMapObstacles(*shipped, obstacles, error);
+  std::size_t fords = 0;
+  for (const core::MapLineDef& line : obstacles.lines) {
+    for (const core::MapLinePoint& point : line.points) {
+      fords += (line.kind == core::MapLineKind::kRiver && point.mark == core::MapLineMark::kFord)
+                   ? 1U
+                   : 0U;
+    }
+  }
+  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 26), "
+            << obstacles.lines.size() << " lines (4), " << fords << " fords (4)"
+            << (read ? "" : " — READ FAILED: " + error) << '\n';
+  failures +=
+      Expect(read && obstacles.areas.size() == 26 && obstacles.lines.size() == 4 && fords == 4,
+             "tracer: the reader takes every area, line and ford of the export");
+
+  const auto built_at = std::chrono::steady_clock::now();
+  const core::ObstacleRaster raster(obstacles, 12000.0F, core::kObstacleCellMetres);
+  const auto build_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - built_at)
+          .count();
+  std::cout << "tracer: raster " << raster.Bytes() / 1000000 << " MB, built in " << build_ms
+            << " ms; cells: water " << raster.CountCells(core::kObstacleWater) << ", forest "
+            << raster.CountCells(core::kObstacleForest) << ", trees "
+            << raster.CountCells(core::kObstacleTrees) << ", floodplain "
+            << raster.CountCells(core::kObstacleFloodplain) << ", reserve "
+            << raster.CountCells(core::kObstacleReserve) << ", ruins "
+            << raster.CountCells(core::kObstacleRuins) << ", river "
+            << raster.CountCells(core::kObstacleRiver) << '\n';
+  failures += Expect(raster.CountCells(core::kObstacleForest) > 0 &&
+                         raster.CountCells(core::kObstacleRiver) > 0 &&
+                         raster.CountCells(core::kObstacleWater) > 0,
+                     "tracer: the raster holds forest, river and water");
+
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "tracer: the shipped set assembles") != 0) {
+    return failures + 1;
+  }
+  const core::WorldState& world = simulation->CompletedState();
+  const std::optional<core::RoadTools> tools = core::RoadTools::Read(*shipped, error);
+  if (Expect(tools.has_value(), "tracer: the road tools read the shipped set") != 0) {
+    return failures + 1;
+  }
+  // The start roads against the units' circles AS THE TRACER SEES THEM
+  // (RoadTools::UnitDiscs — the preview's own door): the least clearance of
+  // each road's bed, axis sampled every 2 m, worst first. On 26 September
+  // the whole plot circle was the rule and three streets entered it — the
+  // church store's by 24 m; the rule was loosened to the building
+  // (plot_core_share), and this is what holds it.
+  const core::RoadTraceConfig trace_config;
+  const std::vector<core::RoadUnitDisc> discs = tools->UnitDiscs(world);
+  std::vector<std::pair<float, std::string>> clearances;
+  std::vector<core::MapRoadDef> map_roads;
+  (void)core::ReadMapRoads(*shipped, map_roads, error);
+  std::uint32_t entering = 0;
+  for (std::size_t row = 0; row < world.roads.rows.size(); ++row) {
+    const std::vector<core::RoadPoint>& axis = world.roads.rows[row].axis;
+    const float half = world.roads.rows[row].kind == core::RoadKind::kPath
+                           ? trace_config.path_half_width_m
+                           : trace_config.road_half_width_m;
+    float least = std::numeric_limits<float>::infinity();
+    const float length = core::RoadAxisLength(axis);
+    for (float s = 0.0F; s <= length; s += 2.0F) {
+      const core::Vec2 at = core::PointAtChainage(axis, s);
+      for (const core::RoadUnitDisc& disc : discs) {
+        least = std::min(
+            least, std::hypot(at.x - disc.centre.x, at.y - disc.centre.y) - disc.radius_m - half);
+      }
+    }
+    entering += least < 0.0F ? 1U : 0U;
+    clearances.emplace_back(least, row < map_roads.size() ? map_roads[row].key : "?");
+  }
+  std::ranges::sort(clearances);
+  std::cout << "tracer: " << discs.size()
+            << " unit circles; start roads whose bed enters one: " << entering << " of "
+            << clearances.size() << "; least clearance, worst first (m):";
+  for (const auto& [gap, key] : clearances) {
+    std::cout << ' ' << key << '=' << gap;
+  }
+  std::cout << '\n';
+  failures += Expect(entering == 0 && !discs.empty(),
+                     "tracer: no start road's bed enters a building as the tracer sees it");
+
+  // The preview's cost, corner to corner.
+  const auto time_trace = [&](const core::RoadDraft& draft, core::RoadDraftResult& out) {
+    std::vector<double> runs;
+    for (int run = 0; run < 5; ++run) {
+      const auto from = std::chrono::steady_clock::now();
+      out = simulation->PreviewRoad(draft);
+      runs.push_back(
+          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - from)
+              .count());
+    }
+    std::ranges::sort(runs);
+    return std::pair{runs[2], runs[4]};
+  };
+  core::RoadDraft straight;
+  straight.point_count = 2;
+  straight.points[0] = {.x = 150.0F, .y = 150.0F};
+  straight.points[1] = {.x = 11850.0F, .y = 11850.0F};
+  core::RoadDraft curve = straight;
+  curve.point_count = 4;
+  curve.points[1] = {.x = 4000.0F, .y = 6000.0F};
+  curve.points[2] = {.x = 8000.0F, .y = 6000.0F};
+  curve.points[3] = {.x = 11850.0F, .y = 11850.0F};
+  core::RoadDraftResult straight_answer;
+  core::RoadDraftResult curve_answer;
+  const auto [straight_median, straight_worst] = time_trace(straight, straight_answer);
+  const auto [curve_median, curve_worst] = time_trace(curve, curve_answer);
+  const auto print_blocks = [](const core::RoadDraftResult& answer) {
+    std::cout << answer.blocks.size() << " blocks:";
+    for (const core::RoadDraftBlock& block : answer.blocks) {
+      std::cout << ' ' << static_cast<int>(block.refusal) << '@' << block.s_from_m << '-'
+                << block.s_to_m;
+    }
+  };
+  std::cout << "tracer: corner to corner, 2 points: " << straight_answer.length_m << " m, median "
+            << straight_median << " ms, worst " << straight_worst << " ms, ";
+  print_blocks(straight_answer);
+  std::cout << "\ntracer: corner to corner, 4 points: " << curve_answer.length_m << " m, median "
+            << curve_median << " ms, worst " << curve_worst << " ms, ";
+  print_blocks(curve_answer);
+  std::cout << '\n';
+  failures += Expect(!straight_answer.axis.empty() && !straight_answer.gaps.obstacles_unread &&
+                         !curve_answer.axis.empty(),
+                     "tracer: corner to corner traces on the map it read");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -950,6 +1111,7 @@ int main() {
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
   failures += CheckRoadsDoor();
+  failures += CheckRoadTracer();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 
@@ -1924,10 +2086,11 @@ int main() {
     // core lays the network from it now (core_world/start_roads.h), and the
     // world requires it. The list stays for the next table in that position.
     //
-    // map_areas and map_lines are there since boss's export of 26 September
-    // (163dc7d3; boss-core-epoch1-resume [55], [56]): what a player's road may
-    // not cross — the road tracer of delivery 7b is their reader.
-    const std::array<std::string_view, 2> not_read_yet = {"map_areas", "map_lines"};
+    // map_areas and map_lines were here from boss's export of 26 September
+    // (163dc7d3; boss-core-epoch1-resume [55], [56]) until the road tracer
+    // of delivery 7b read them the same day (core_world/road_tools.h). The
+    // list stays empty for the next table in that position.
+    const std::array<std::string_view, 0> not_read_yet = {};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {

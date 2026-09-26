@@ -21,6 +21,8 @@
 #include "core_common/herd_age_band.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
+#include "core_common/map_obstacles.h"
+#include "core_common/obstacle_raster.h"
 #include "core_common/plot.h"
 #include "core_common/post_shift.h"
 #include "core_common/quantities.h"
@@ -30,6 +32,7 @@
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
 #include "core_common/road_rules.h"
+#include "core_common/road_trace.h"
 #include "core_common/road_view.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
@@ -1439,6 +1442,300 @@ int CheckTheTopOfTheLadder() {
   return failures;
 }
 
+/// A closed square area of `kind` from (x0, y0) to (x1, y1).
+core::MapAreaDef SquareArea(core::MapAreaKind kind, float x0, float y0, float x1, float y1) {
+  return core::MapAreaDef{
+      .key = "square",
+      .kind = kind,
+      .outline = {{.x = x0, .y = y0}, {.x = x1, .y = y0}, {.x = x1, .y = y1}, {.x = x0, .y = y1}}};
+}
+
+/// THE OBSTACLE RASTER (obstacle_raster.h; delivery 7b), counted by hand: a
+/// forest square 100 m on a 10 m grid is a hundred cells; a river along
+/// y = 300 with a half-width of 10 m flags the two rows whose centres (295,
+/// 305) lie within it — eighty cells on a 400 m map. A village contour flags
+/// nothing; a brook is not drawn at all.
+int TestObstacleRaster() {
+  int failures = 0;
+  core::MapObstacles obstacles;
+  obstacles.areas.push_back(SquareArea(core::MapAreaKind::kForest, 100.0F, 100.0F, 200.0F, 200.0F));
+  obstacles.areas.push_back(
+      SquareArea(core::MapAreaKind::kVillageZone, 0.0F, 0.0F, 400.0F, 400.0F));
+  obstacles.lines.push_back(core::MapLineDef{
+      .key = "river",
+      .kind = core::MapLineKind::kRiver,
+      .points = {{.position = {.x = 0.0F, .y = 300.0F}, .half_width_m = 10.0F},
+                 {.position = {.x = 400.0F, .y = 300.0F}, .half_width_m = 10.0F}}});
+  obstacles.lines.push_back(
+      core::MapLineDef{.key = "brook",
+                       .kind = core::MapLineKind::kBrook,
+                       .points = {{.position = {.x = 0.0F, .y = 50.0F}, .half_width_m = 5.0F},
+                                  {.position = {.x = 400.0F, .y = 50.0F}, .half_width_m = 5.0F}}});
+  const core::ObstacleRaster raster(obstacles, 400.0F, 10.0F);
+  failures += Expect(raster.CountCells(core::kObstacleForest) == 100,
+                     "raster: a 100 m forest square is a hundred 10 m cells");
+  failures += Expect(raster.CountCells(core::kObstacleRiver) == 80,
+                     "raster: the river's two rows of forty cells");
+  failures += Expect(raster.CountCells(core::kObstacleWater) == 0 && raster.Bytes() == 1600,
+                     "raster: the village and the brook flag nothing; 40 x 40 cells, a byte each");
+  failures += Expect(raster.FlagsAt({.x = 150.0F, .y = 150.0F}) == core::kObstacleForest &&
+                         raster.FlagsAt({.x = 50.0F, .y = 150.0F}) == 0 &&
+                         raster.FlagsAt({.x = -1.0F, .y = 150.0F}) == 0,
+                     "raster: forest inside, clear outside, nothing off the map");
+  return failures;
+}
+
+/// The tracer's test map: 1000 m square, 2.5 m cells, and what each case
+/// adds to it.
+struct TraceBench {
+  core::MapObstacles obstacles;
+  std::vector<core::RoadFord> fords;
+  std::vector<std::vector<core::Vec2>> village;
+  std::vector<core::RoadUnitDisc> units;
+  core::RoadTable roads;
+
+  core::RoadDraftResult Trace(const core::RoadDraft& draft, bool asphalt_open = false) const {
+    const core::ObstacleRaster raster(obstacles, 1000.0F, 2.5F);
+    core::RoadTraceSite site;
+    site.raster = &raster;
+    site.fords = fords;
+    site.village = village;
+    site.units = units;
+    site.roads = &roads;
+    site.map_side_m = 1000.0F;
+    site.timber_m3_per_ha = 30.0F;
+    for (std::size_t surface = 0; surface < core::kRoadSurfaceSlots; ++surface) {
+      site.costs[surface].open = surface <= 2 || asphalt_open;
+    }
+    site.costs[2].man_days_per_100m = 60.0F;
+    site.costs[2].materials_per_100m = {0, 2000};
+    return core::TraceRoad(site, draft);
+  }
+};
+
+core::RoadDraft Draft(core::RoadSurface surface, std::initializer_list<core::Vec2> points) {
+  core::RoadDraft draft;
+  draft.kind = surface == core::RoadSurface::kNone ? core::RoadKind::kPath : core::RoadKind::kRoad;
+  draft.surface = surface;
+  for (const core::Vec2& point : points) {
+    draft.points[draft.point_count++] = point;
+  }
+  return draft;
+}
+
+bool HasBlock(const core::RoadDraftResult& result, core::RoadDraftRefusal refusal) {
+  return std::ranges::any_of(result.blocks, [refusal](const core::RoadDraftBlock& block) {
+    return block.refusal == refusal;
+  });
+}
+
+/// THE TRACER (road_trace.h; delivery 7b), one rule a case, each with its
+/// neighbour that the rule lets through.
+int TestRoadTrace() {
+  int failures = 0;
+  const core::RoadSurface dirt = core::RoadSurface::kDirt;
+  const core::RoadSurface gravel = core::RoadSurface::kGravel;
+  {
+    // Clear ground: a straight dirt road, waved within 5 m, the same twice.
+    const TraceBench bench;
+    const core::RoadDraft draft =
+        Draft(dirt, {{.x = 100.0F, .y = 500.0F}, {.x = 900.0F, .y = 500.0F}});
+    const core::RoadDraftResult first = bench.Trace(draft);
+    const core::RoadDraftResult again = bench.Trace(draft);
+    float stray = 0.0F;
+    for (const core::RoadAxisPoint& point : first.axis) {
+      stray = std::max(stray, std::abs(point.position.y - 500.0F));
+    }
+    failures += Expect(first.blocks.empty() && !first.gaps.obstacles_unread &&
+                           first.length_m >= 800.0F && first.length_m < 808.0F,
+                       "trace: clear ground, no block, 800 m and a little wave");
+    failures += Expect(stray > 0.5F && stray <= 5.01F,
+                       "trace: the dirt road's wave strays more than 0.5 m and at most 5 m");
+    bool same = first.axis.size() == again.axis.size();
+    for (std::size_t index = 0; same && index < first.axis.size(); ++index) {
+      same = first.axis[index].position.x == again.axis[index].position.x &&
+             first.axis[index].position.y == again.axis[index].position.y;
+    }
+    failures += Expect(same, "trace: the same draft traces to the bit");
+    failures += Expect(
+        first.carriageway_m == 8.0F && first.clearing_m == 0.0F && first.estimate.man_days == 0.0F,
+        "trace: an 8 m bed, and dirt costs nothing");
+  }
+  {
+    // Forest across the line: a red span where it is, from ~300 to ~400 m.
+    TraceBench bench;
+    bench.obstacles.areas.push_back(
+        SquareArea(core::MapAreaKind::kForest, 400.0F, 0.0F, 500.0F, 1000.0F));
+    const core::RoadDraftResult result =
+        bench.Trace(Draft(dirt, {{.x = 100.0F, .y = 500.0F}, {.x = 900.0F, .y = 500.0F}}));
+    const bool one_span =
+        result.blocks.size() == 1 && result.blocks[0].refusal == core::RoadDraftRefusal::kForest &&
+        result.blocks[0].s_from_m > 290.0F && result.blocks[0].s_from_m < 305.0F &&
+        result.blocks[0].s_to_m > 395.0F && result.blocks[0].s_to_m < 410.0F;
+    failures += Expect(one_span, "trace: two points go round nothing — the forest is one red span");
+    // Three points round a wall that has a way past: the curve finds it.
+    TraceBench pond;
+    pond.obstacles.areas.push_back(
+        SquareArea(core::MapAreaKind::kPond, 280.0F, 540.0F, 320.0F, 640.0F));
+    const core::RoadDraftResult round = pond.Trace(Draft(
+        dirt,
+        {{.x = 100.0F, .y = 500.0F}, {.x = 500.0F, .y = 700.0F}, {.x = 900.0F, .y = 500.0F}}));
+    bool through_middle = false;
+    for (const core::RoadAxisPoint& point : round.axis) {
+      through_middle = through_middle || (point.position.x == 500.0F && point.position.y == 700.0F);
+    }
+    failures += Expect(round.blocks.empty() && through_middle,
+                       "trace: three points go round the pond and still through the middle point");
+    // And a wall with no way past inside the band: kNoWayRound, never a
+    // road quietly led somewhere else.
+    TraceBench wall;
+    wall.obstacles.areas.push_back(
+        SquareArea(core::MapAreaKind::kForest, 280.0F, 0.0F, 320.0F, 1000.0F));
+    const core::RoadDraftResult stuck = wall.Trace(Draft(
+        dirt,
+        {{.x = 100.0F, .y = 500.0F}, {.x = 500.0F, .y = 700.0F}, {.x = 900.0F, .y = 500.0F}}));
+    failures += Expect(HasBlock(stuck, core::RoadDraftRefusal::kNoWayRound) &&
+                           HasBlock(stuck, core::RoadDraftRefusal::kForest),
+                       "trace: a wall across the band — no way round, and the forest said");
+  }
+  {
+    // The river: crossed at the ford, refused away from it.
+    TraceBench bench;
+    bench.obstacles.lines.push_back(core::MapLineDef{
+        .key = "river",
+        .kind = core::MapLineKind::kRiver,
+        .points = {{.position = {.x = 0.0F, .y = 300.0F}, .half_width_m = 10.0F},
+                   {.position = {.x = 1000.0F, .y = 300.0F}, .half_width_m = 10.0F}}});
+    bench.fords.push_back(core::RoadFord{.position = {.x = 500.0F, .y = 300.0F}, .reach_m = 20.0F});
+    failures += Expect(
+        bench.Trace(Draft(dirt, {{.x = 500.0F, .y = 100.0F}, {.x = 500.0F, .y = 500.0F}}))
+                .blocks.empty() &&
+            HasBlock(
+                bench.Trace(Draft(dirt, {{.x = 200.0F, .y = 100.0F}, {.x = 200.0F, .y = 500.0F}})),
+                core::RoadDraftRefusal::kRiverNoCrossing),
+        "trace: the river crossed at the ford, refused 300 m from it");
+  }
+  {
+    // The floodplain: dirt crosses it, gravel does not.
+    TraceBench bench;
+    bench.obstacles.areas.push_back(
+        SquareArea(core::MapAreaKind::kFloodplain, 400.0F, 0.0F, 600.0F, 1000.0F));
+    const core::RoadDraft line =
+        Draft(dirt, {{.x = 100.0F, .y = 500.0F}, {.x = 900.0F, .y = 500.0F}});
+    core::RoadDraft paved = line;
+    paved.surface = gravel;
+    failures += Expect(bench.Trace(line).blocks.empty() &&
+                           HasBlock(bench.Trace(paved), core::RoadDraftRefusal::kFloodplain),
+                       "trace: the floodplain takes dirt and refuses gravel");
+  }
+  {
+    // A grove: in dirt's way, cleared by gravel — and the estimate counts it.
+    TraceBench bench;
+    bench.obstacles.areas.push_back(
+        SquareArea(core::MapAreaKind::kGrove, 400.0F, 0.0F, 500.0F, 1000.0F));
+    const core::RoadDraft line =
+        Draft(dirt, {{.x = 100.0F, .y = 500.0F}, {.x = 900.0F, .y = 500.0F}});
+    core::RoadDraft paved = line;
+    paved.surface = gravel;
+    const core::RoadDraftResult cleared = bench.Trace(paved);
+    // ~108 m of trees across the bed's width (100 m plus half a bed each
+    // side) times 8 m: ~0.086 ha, 2.6 m³ at 30 a hectare; 800 m of gravel is
+    // eight hundreds: 480 man-days and 16000 g of the second material.
+    failures += Expect(
+        HasBlock(bench.Trace(line), core::RoadDraftRefusal::kTrees) && cleared.blocks.empty() &&
+            cleared.clearing_m == 8.0F && cleared.estimate.clearing_ha > 0.080F &&
+            cleared.estimate.clearing_ha < 0.092F &&
+            std::abs(cleared.estimate.timber_m3 - (cleared.estimate.clearing_ha * 30.0F)) < 1e-4F &&
+            cleared.estimate.man_days > 479.0F && cleared.estimate.man_days < 486.0F &&
+            cleared.estimate.materials.size() == 2 && cleared.estimate.materials[1] > 15990 &&
+            cleared.estimate.materials[1] < 16200,
+        "trace: the grove stops dirt; gravel clears it, and the estimate counts it");
+  }
+  {
+    // The epoch, a unit's circle, bad points, off the map.
+    TraceBench bench;
+    bench.units.push_back(
+        core::RoadUnitDisc{.centre = {.x = 500.0F, .y = 520.0F}, .radius_m = 25.0F});
+    const core::RoadDraftResult asphalt = bench.Trace(Draft(
+        core::RoadSurface::kAsphalt, {{.x = 100.0F, .y = 100.0F}, {.x = 900.0F, .y = 100.0F}}));
+    failures += Expect(asphalt.blocks.size() == 1 &&
+                           asphalt.blocks[0].refusal == core::RoadDraftRefusal::kClosedByEpoch &&
+                           asphalt.blocks[0].s_to_m == asphalt.length_m,
+                       "trace: asphalt before its epoch is refused along the whole axis");
+    failures += Expect(
+        HasBlock(bench.Trace(Draft(dirt, {{.x = 100.0F, .y = 500.0F}, {.x = 900.0F, .y = 500.0F}})),
+                 core::RoadDraftRefusal::kUnit) &&
+            bench.Trace(Draft(dirt, {{.x = 100.0F, .y = 440.0F}, {.x = 900.0F, .y = 440.0F}}))
+                .blocks.empty(),
+        "trace: a unit's circle refuses the road through it, not the one 80 m off");
+    core::RoadDraft one_point = Draft(dirt, {{.x = 100.0F, .y = 100.0F}});
+    core::RoadDraft path_with_bed =
+        Draft(dirt, {{.x = 100.0F, .y = 100.0F}, {.x = 200.0F, .y = 100.0F}});
+    path_with_bed.kind = core::RoadKind::kPath;
+    const core::RoadDraftResult bad = bench.Trace(one_point);
+    failures += Expect(
+        bad.blocks.size() == 1 && bad.blocks[0].refusal == core::RoadDraftRefusal::kBadPoints &&
+            bad.axis.empty() &&
+            bench.Trace(path_with_bed).blocks[0].refusal == core::RoadDraftRefusal::kBadPoints,
+        "trace: one point, or a path with a bed, is no draft");
+    failures += Expect(
+        HasBlock(bench.Trace(Draft(dirt, {{.x = -50.0F, .y = 100.0F}, {.x = 300.0F, .y = 100.0F}})),
+                 core::RoadDraftRefusal::kOutsideMap),
+        "trace: off the map is refused");
+  }
+  {
+    // The ends: onto a junction within 20 m, onto a road's axis within 12 m.
+    TraceBench bench;
+    core::RoadRow road;
+    road.axis = {
+        core::RoadPoint{.position = {.x = 0.0F, .y = 700.0F}},
+        core::RoadPoint{.position = {.x = 600.0F, .y = 700.0F}, .mark = core::RoadMark::kJunction},
+        core::RoadPoint{.position = {.x = 1000.0F, .y = 700.0F}}};
+    const core::RoadId road_id = core::AppendRow(bench.roads, road);
+    const core::RoadDraftResult snapped =
+        bench.Trace(Draft(dirt, {{.x = 590.0F, .y = 705.0F}, {.x = 300.0F, .y = 708.0F}}));
+    failures +=
+        Expect(snapped.start.snap == core::RoadEndSnap::kJunction &&
+                   snapped.start.road.value == road_id.value && snapped.start.road_s_m == 600.0F &&
+                   snapped.end.snap == core::RoadEndSnap::kRoad &&
+                   std::abs(snapped.end.road_s_m - 300.0F) < 0.01F &&
+                   std::abs(snapped.end.point.y - 700.0F) < 0.01F &&
+                   snapped.axis.front().mark == core::RoadMark::kJunction,
+               "trace: an end takes the junction 10 m off, the other the axis 8 m off");
+    const core::RoadDraftResult free =
+        bench.Trace(Draft(dirt, {{.x = 300.0F, .y = 100.0F}, {.x = 300.0F, .y = 400.0F}}));
+    failures += Expect(
+        free.start.snap == core::RoadEndSnap::kFree && free.end.snap == core::RoadEndSnap::kFree,
+        "trace: ends far from any road stay free");
+    // Both ends snapped onto one junction: no road of nought metres passed
+    // clean (static review of 0.36.26), but the draft's own refusal.
+    const core::RoadDraftResult collapsed =
+        bench.Trace(Draft(dirt, {{.x = 595.0F, .y = 705.0F}, {.x = 606.0F, .y = 703.0F}}));
+    failures += Expect(collapsed.blocks.size() == 1 &&
+                           collapsed.blocks[0].refusal == core::RoadDraftRefusal::kBadPoints &&
+                           collapsed.axis.empty(),
+                       "trace: two ends snapped onto one junction are no draft");
+  }
+  {
+    // Asphalt with walks: in the village and nowhere else.
+    TraceBench bench;
+    bench.village.push_back({{.x = 0.0F, .y = 0.0F},
+                             {.x = 300.0F, .y = 0.0F},
+                             {.x = 300.0F, .y = 300.0F},
+                             {.x = 0.0F, .y = 300.0F}});
+    const core::RoadSurface walks = core::RoadSurface::kAsphaltWalks;
+    failures += Expect(
+        bench.Trace(Draft(walks, {{.x = 50.0F, .y = 100.0F}, {.x = 250.0F, .y = 100.0F}}), true)
+                .blocks.empty() &&
+            HasBlock(
+                bench.Trace(Draft(walks, {{.x = 50.0F, .y = 100.0F}, {.x = 600.0F, .y = 100.0F}}),
+                            true),
+                core::RoadDraftRefusal::kOutsideVillage),
+        "trace: walks inside the village, refused past its edge");
+  }
+  return failures;
+}
+
 /// THE ROADS AS THE LAYER DRAWS THEM (road_view.h; delivery 7a): a map road
 /// of three points with a bridge mark and worn stretches, and a player's
 /// path. Each view carries the row's id and fields, `s` running from nought
@@ -1992,6 +2289,8 @@ int main() {
   failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadViews();
+  failures += TestObstacleRaster();
+  failures += TestRoadTrace();
   failures += TestRoadIndex();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to

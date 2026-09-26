@@ -10,6 +10,7 @@
 kolkhoz_add_module(core_world
     era_readiness.cpp
     genesis.cpp
+    road_tools.cpp
     start_layout.cpp
     start_roads.cpp
     world.cpp)
