@@ -198,6 +198,12 @@ struct WorkAssignment {
   /// site; invalid otherwise (extraction_state.h).
   ExtractionSiteId extraction_site;
 
+  /// Valid for kHauling of a timber lot waiting at the district centre for
+  /// the village's own carts (limit_state.h, own_carts; decision 279,
+  /// 0.36.17); invalid otherwise. The work's place is the map's northern
+  /// border end (DistrictExitPoint).
+  LimitDeliveryId limit_delivery;
+
   /// Norm-days of output delivered since the day started, in game man-days
   /// of the assigned kind. Accumulated hourly while working; converted into
   /// trudodni on the family account at day close (rate x delivered), then

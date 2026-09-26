@@ -388,6 +388,7 @@ class LaborSystem final : public ILaborSystem {
           work.unit = job.unit;
           work.stand = job.stand;
           work.extraction_site = job.extraction_site;
+          work.limit_delivery = job.limit_delivery;
           work.travel_hours = -1.0F;  // a new target: its road is measured anew
         }
       }
@@ -438,7 +439,8 @@ class LaborSystem final : public ILaborSystem {
         return work.kind == job.kind && work.field.value == job.field.value &&
                work.herd.value == job.herd.value && work.unit.value == job.unit.value &&
                work.stand.value == job.stand.value &&
-               work.extraction_site.value == job.extraction_site.value;
+               work.extraction_site.value == job.extraction_site.value &&
+               work.limit_delivery.value == job.limit_delivery.value;
       });
     };
     std::erase_if(jobs, crewed);
@@ -478,6 +480,7 @@ class LaborSystem final : public ILaborSystem {
       work.unit = job.unit;
       work.stand = job.stand;
       work.extraction_site = job.extraction_site;
+      work.limit_delivery = job.limit_delivery;
       work.travel_hours = -1.0F;  // a new target: its road is measured anew
     }
   }
@@ -520,7 +523,9 @@ class LaborSystem final : public ILaborSystem {
       // logs off them (roads design §11), every other ride a team.
       std::size_t ride_mode = 1;
       if (job.kind == WorkKind::kHauling) {
-        ride_mode = job.stand.value != kInvalidEntityIdValue ? 3 : 2;
+        const bool logs = job.stand.value != kInvalidEntityIdValue ||
+                          job.limit_delivery.value != kInvalidEntityIdValue;
+        ride_mode = logs ? 3 : 2;
       }
       const NetworkPlace walk_place = index->Locate(TravelMode::kWalk, job.position);
       const NetworkPlace ride_place = index->Locate(kModes[ride_mode], job.position);
@@ -954,6 +959,29 @@ class LaborSystem final : public ILaborSystem {
         job.position = unit.position;
         job.work_days_remaining = unit.haul_days_remaining;
         job.harnessed = DraughtHorses(current) > 0;
+        jobs.push_back(job);
+      }
+      // THE TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): the
+      // village's own carts fetch it, with the haul window a stand's logs and
+      // a dig's load have (HaulWindow: the year's end) — NOT windowless like
+      // the perevalka: its first draft copied that, and on seed 1931 the lot's
+      // carters got five days and then nothing from March to November, every
+      // windowed job outranking them. The carter's place is the map's
+      // northern border end, where the district's road begins
+      // (road_route.h, DistrictExitPoint).
+      for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
+        const LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
+        if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day ||
+            !(lot.haul_days_remaining > 0.0F)) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.limit_delivery = current.limit_deliveries.row_ids[row];
+        job.position = DistrictExitPoint(current);
+        job.work_days_remaining = lot.haul_days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        job.window = HaulWindow(current);
         jobs.push_back(job);
       }
     }

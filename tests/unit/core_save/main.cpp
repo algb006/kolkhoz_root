@@ -223,6 +223,10 @@ core::WorldState MakeWorld() {
   // codec has to admit, and the site she digs at.
   second.work.kind = core::WorkKind::kExtraction;
   second.work.extraction_site = core::ExtractionSiteId{4};
+  // Save 98: the district's timber lot as a work target — off its default so a
+  // codec that drops the id cannot round-trip clean (the world does not mind
+  // a digger carrying it; the codec is what is under test).
+  second.work.limit_delivery = core::LimitDeliveryId{7};
   // Save 88: the placement's horse mark, 1 away from its nought. On a digger
   // it means nothing to the world (WorkRidesOut reads it for a carter only);
   // here it is the byte the codec must carry.
@@ -456,6 +460,10 @@ core::WorldState MakeWorld() {
   cart.lot = core::LimitLotId{0};
   cart.arrive_day = 131;
   cart.goods = Amounts({0, 0, 4'800'000});
+  // Save 98: the village's own carts and their seam, off every default.
+  cart.own_carts = 1;
+  cart.haul_days_remaining = 2.5F;
+  cart.haul_days_written = 3.75F;
   core::AppendRow(world.limit_deliveries, cart);
 
   // A head bought and still on its way (save format 48). EVERY FIELD IS
@@ -1258,7 +1266,9 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // unmoved before the build, and held.
     // Save 93: +8 — the assignment's travel_hours, four bytes by two
     // residents; predicted 404 -> 412 before the build, held.
-    {"residents", 412, 0x9f42bc247dabc6fcULL},
+    // Save 98: +8 — the work's limit_delivery, an entity id for each of the
+    // two residents; predicted 412 -> 420 before the build, held.
+    {"residents", 420, 0x14b1fdd0cae2f619ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1337,7 +1347,9 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
     {"stands", 67, 0x9d5183df2ce65288ULL},
-    {"limit_deliveries", 44, 0x9bfa765670c30958ULL},
+    // Save 98: +9 — own_carts and the carting seam's two floats on the one
+    // cart of the fixture; predicted 44 -> 53 before the build, held.
+    {"limit_deliveries", 53, 0x6030630cf91d7457ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
     // its own beside the carts, because a head rides nothing.
     {"livestock_arrivals", 24, 0x216b896caae651cbULL},
@@ -1406,7 +1418,10 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // the fingerprint moved, as it must with the fixture's new values).
     // Save 97: +48 — the store's end, two float arrays of three sources in
     // each book (24 + 24); predicted 1288 -> 1336 before the build; held.
-    {"ledger", 1336, 0x257704b278adfddfULL},
+    // Save 98: +80 — the cart's sources three -> four (the district), six
+    // float and two gram arrays each one entry longer in each book (24 + 16)
+    // x 2; predicted 1336 -> 1416 before the build, held.
+    {"ledger", 1416, 0x5d3b7f013ece4cffULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1936,8 +1951,14 @@ int main() {
   failures += Expect(loaded.limit_deliveries.rows.size() == 1 &&
                          loaded.limit_deliveries.rows[0].lot.value == 0 &&
                          loaded.limit_deliveries.rows[0].arrive_day == 131 &&
-                         AmountAt(loaded.limit_deliveries.rows[0].goods, 2) == 4'800'000,
-                     "a cart on the road came back with its lot, its day and its goods");
+                         AmountAt(loaded.limit_deliveries.rows[0].goods, 2) == 4'800'000 &&
+                         loaded.limit_deliveries.rows[0].own_carts == 1 &&
+                         loaded.limit_deliveries.rows[0].haul_days_remaining == 2.5F &&
+                         loaded.limit_deliveries.rows[0].haul_days_written == 3.75F,
+                     "a cart on the road came back with its lot, its day and its goods — and an "
+                     "own-carts lot with its carting seam (save 98)");
+  failures += Expect(loaded.residents.rows[1].work.limit_delivery.value == 7,
+                     "a carter's district lot comes back with his work (save 98)");
   failures += Expect(loaded.specialist_arrivals.rows.size() == 1 &&
                          loaded.specialist_arrivals.rows[0].profession.value == 1 &&
                          loaded.specialist_arrivals.rows[0].unit.value == 3 &&

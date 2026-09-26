@@ -49,6 +49,16 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     const UnitRow& unit = world.units.rows[row];
     return unit.emptying == 1 ? &unit.haul_days_remaining : nullptr;
   }
+  // A TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): carting
+  // drains the lot's own carting seam while anything of it waits there.
+  if (work.limit_delivery.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.limit_deliveries, work.limit_delivery);
+    if (row == kNoRow || work.kind != WorkKind::kHauling) {
+      return nullptr;  // fetched and gone since the morning
+    }
+    const LimitDeliveryRow& lot = world.limit_deliveries.rows[row];
+    return lot.own_carts != 0 ? &lot.haul_days_remaining : nullptr;
+  }
   // A STAND: felling drains the felling seam while timber is marked, and
   // carting drains the stand's own carting seam while logs lie there — the
   // same two rules a field follows, on the stand's row (2026-09-13).
@@ -139,6 +149,15 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
     place = world.stands.rows[stand_row].position;
     return true;
   }
+  // The timber lot's carter heads for the map's northern border end, where
+  // the district's road begins (road_route.h, DistrictExitPoint; 0.36.17).
+  if (work.limit_delivery.value != kInvalidEntityIdValue) {
+    if (FindRow(world.limit_deliveries, work.limit_delivery) == kNoRow) {
+      return false;
+    }
+    place = DistrictExitPoint(world);
+    return true;
+  }
   if (work.extraction_site.value != kInvalidEntityIdValue) {
     const std::uint32_t site_row = FindRow(world.extraction_sites, work.extraction_site);
     if (site_row == kNoRow) {
@@ -206,7 +225,11 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
     return TravelMode::kWalk;
   }
   if (work.kind == WorkKind::kHauling) {
-    return work.stand.value != kInvalidEntityIdValue ? TravelMode::kLogCart : TravelMode::kCart;
+    // Logs off a stand, or a timber lot from the district (0.36.17): the log
+    // cart; produce: the cart that keeps to the roads.
+    const bool logs = work.stand.value != kInvalidEntityIdValue ||
+                      work.limit_delivery.value != kInvalidEntityIdValue;
+    return logs ? TravelMode::kLogCart : TravelMode::kCart;
   }
   return TravelMode::kTeam;
 }

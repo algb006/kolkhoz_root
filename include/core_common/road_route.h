@@ -214,6 +214,14 @@ float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 ///        road.
 RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 
+/// @brief Where the village's way to the district leaves the map: the
+///        network's northernmost border end (terrain design §1а, «Райцентр на
+///        севере»; the player arrives on a cart from the district's side). A
+///        world with no border end (hand-built): the first unit's ground, or
+///        the origin with no unit. The timber lots' carters go there
+///        (decision 279, 0.36.17), and the carting is measured from it.
+Vec2 DistrictExitPoint(const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_ROAD_ROUTE_H_

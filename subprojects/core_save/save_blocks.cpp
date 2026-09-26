@@ -80,7 +80,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 97 (0.36.15, the cart's two ends): two more float arrays of three
 // sources, the store's end — 376 -> 400 and 82 -> 84, predicted before the
 // build (72 bytes of floats before the grams: still 8-aligned).
-static_assert(sizeof(YearLedger) == 400 + (30 * kAmountsSize),
+// Save 98 (0.36.17): the cart's sources 3 -> 4 (the district) — six float and
+// two gram arrays each one entry longer: 400 -> 440, fields unmoved; predicted
+// before the build.
+static_assert(sizeof(YearLedger) == 440 + (30 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 84,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");

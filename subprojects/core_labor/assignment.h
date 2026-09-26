@@ -48,6 +48,10 @@ struct AssignmentJob {
   /// site. Copied into WorkAssignment.
   ExtractionSiteId extraction_site;
 
+  /// Valid for kHauling of a timber lot at the district centre (0.36.17).
+  /// Copied into WorkAssignment.
+  LimitDeliveryId limit_delivery;
+
   /// At most this many workers on this job at once; 0 = no cap beyond the
   /// demand ceiling below. Construction sites carry one — the build
   /// class's brigade (unit_levels.csv max_crew): without it a 250-day site

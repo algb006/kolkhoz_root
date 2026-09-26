@@ -558,6 +558,107 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& world) {
+  // TO THE LOG PILE, as a stand's logs go (StandHaulRate): the door's own
+  // home for logs; no pile, the shared store.
+  std::uint32_t destination_row = kNoRow;
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
+        IsHomeOf(unit, config, config.timber.log_resource)) {
+      destination_row = row;
+      break;
+    }
+  }
+  if (destination_row == kNoRow) {
+    destination_row = FindStorageRow(world, config);
+  }
+  const Vec2 exit = DistrictExitPoint(world);
+  const Vec2 destination =
+      destination_row == kNoRow ? exit : world.units.rows[destination_row].position;
+  // A HARNESSED CART OR NOTHING: the district is 25 km off, and nobody
+  // carries a log that far on his back. With no draught horse free the lot
+  // waits at the district centre.
+  if (!DraughtHorsesFree(config, world)) {
+    return HaulRate{};
+  }
+  const float bed = HaulBedFactor(config, world.weather);
+  const float speed_kmh = config.harness_speed_kmh * bed;
+  const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
+  // THE WAY: from the district centre to the map's border (off the map, by
+  // the district's road — district_center_km), then by the network to the
+  // pile (TravelMode::kLogCart, the log cart's roads).
+  const RouteMeasure way = RoadMeasure(world, TravelMode::kLogCart, exit, destination);
+  HaulRate rate = RateOverKm(config.district_center_km + way.effective_km,
+                             hours_per_km,
+                             GramsFromKilograms(config.cart_load_kg));
+  // Booked on the cart's columns under the district (CartLoadSource::kDistrict):
+  // the load's end is the district's road, never a field; the store's end is
+  // the pile's gate.
+  rate.produce_cart = true;
+  rate.off_road_load_m = 0.0F;
+  rate.off_road_store_m = way.off_road_end_m;
+  return rate;
+}
+
+void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current) {
+  std::vector<LimitDeliveryId> emptied;
+  for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
+    LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
+    if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day) {
+      continue;
+    }
+    // AS A STORE BEING EMPTIED IS (SettleStoreEmptying): what the carters
+    // drained since last night is a share of what could be taken in, carted
+    // in the lot's resource order — logs first — through the store door.
+    const auto movable = [&config, &current, &lot]() {
+      Grams total = 0;
+      for (std::size_t index = 0; index < lot.goods.size(); ++index) {
+        if (lot.goods[index] <= 0) {
+          continue;
+        }
+        const Grams room = ReceivableRoom(config, current, DefIdFromIndex<ResourceIdTag>(index));
+        total += lot.goods[index] < room ? lot.goods[index] : room;
+      }
+      return total;
+    };
+    const HaulRate rate = DistrictLotHaulRate(config, current);
+    const float done = lot.haul_days_written > lot.haul_days_remaining
+                           ? lot.haul_days_written - lot.haul_days_remaining
+                           : 0.0F;
+    if (done > 0.0F && lot.haul_days_written > 0.0F) {
+      const float share = done / lot.haul_days_written;
+      Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
+      Grams carted = 0;
+      for (std::size_t index = 0; index < lot.goods.size() && budget > 0; ++index) {
+        if (lot.goods[index] <= 0) {
+          continue;
+        }
+        const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+        const Grams wanted = lot.goods[index] < budget ? lot.goods[index] : budget;
+        const Grams moved = DeliverToStores(current, config, resource, wanted);
+        lot.goods[index] -= moved;
+        budget -= moved;
+        carted += moved;
+      }
+      BookCartRun(config, current, CartLoadSource::kDistrict, rate, carted);
+    }
+    if (std::ranges::none_of(lot.goods, [](Grams grams) { return grams > 0; })) {
+      emptied.push_back(current.limit_deliveries.row_ids[row]);
+      continue;
+    }
+    // Tomorrow's demand: what is still at the district that has somewhere
+    // to go. No horse free: nobody is sent (the rate carries no load).
+    const Grams left = movable();
+    lot.haul_days_remaining =
+        left > 0 && rate.load > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
+    lot.haul_days_written = lot.haul_days_remaining;
+  }
+  for (const LimitDeliveryId id : emptied) {
+    RemoveRow(current.limit_deliveries, id);
+  }
+}
+
 float HaulBedFactor(const ProductionConfig& config, const WeatherState& weather) {
   constexpr auto kDirt = static_cast<std::size_t>(RoadBed::kDirt);
   return RoadBedFactor(config.roads,

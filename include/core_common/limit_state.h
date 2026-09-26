@@ -79,12 +79,28 @@ struct LimitDeliveryRow {
   /// The catalogue row it was bought as (tables/limit_catalog.csv).
   LimitLotId lot;
 
+  /// 1 when the VILLAGE'S OWN CARTS fetch this lot (decision 279; district
+  /// design §4, «Исключение — брёвна»; 0.36.17): a lot carrying logs — the
+  /// whole timber lot, logs and boards, one load. From `arrive_day` its goods
+  /// wait at the district centre, `district_center_km` beyond the map's
+  /// northern border, and come in only as the village's carters haul them
+  /// (field_haul.cpp, SettleDistrictLotHauling). 0: the district's cart, as
+  /// every other lot. Set at the order, from the lot's goods. Beside `lot`,
+  /// in its padding.
+  std::uint8_t own_carts = 0;
+
   /// The campaign day the cart reaches the village: the order's day plus
   /// limit_delivery_days plus a delay of 0..limit_delivery_delay_days_max drawn
   /// from the world's generator state at the order and the order's tick
   /// (district_limit.cpp, OrderLimitLot). From that day on the goods go through the store
   /// door every day until none is left.
   std::uint32_t arrive_day = 0;
+
+  /// The carting seam of an own-carts lot — the same pair a field's heap
+  /// carries (land_state.h): norm man-days still wanted, and what the
+  /// settlement wrote last night. Nought for the district's cart.
+  float haul_days_remaining = 0.0F;
+  float haul_days_written = 0.0F;
 
   /// What is still on the cart, grams by resource. FROZEN AT THE ORDER from
   /// the lot's amounts: a balance edit mid-delivery does not change a cart

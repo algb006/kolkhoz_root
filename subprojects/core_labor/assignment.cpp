@@ -108,6 +108,9 @@ constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
   if (job.extraction_site.value != kInvalidEntityIdValue) {
     return job.extraction_site.value;
   }
+  if (job.limit_delivery.value != kInvalidEntityIdValue) {
+    return job.limit_delivery.value;
+  }
   return job.field.value;
 }
 

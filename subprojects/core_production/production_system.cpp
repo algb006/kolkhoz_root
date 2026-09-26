@@ -263,6 +263,9 @@ class ProductionSystem final : public IProductionSystem {
       SettleSiteHauling(config_, current);
       // And the perevalka out of a store being emptied (field_haul.h).
       SettleStoreEmptying(config_, current);
+      // And the timber lots the village fetches from the district centre
+      // (decision 279, 0.36.17; field_haul.h).
+      SettleDistrictLotHauling(config_, current);
       // And what a unit being taken down held (demolition_stock.h) — before
       // the shops, so the manor's firewood reaches the smokehouse tonight.
       SettleDemolitionStock(config_, current);

@@ -287,6 +287,14 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   cart.lot = order.lot;
   cart.arrive_day = arrive_day;
   cart.goods = def.goods;
+  // LOGS COME ON THE VILLAGE'S OWN CARTS (decision 279; district design §4,
+  // «Исключение — брёвна»; 0.36.17): a lot carrying logs — the timber lot,
+  // logs and boards, one load — waits at the district centre from
+  // `arrive_day`, and the carters fetch it (field_haul.cpp). Until 0.36.17 it
+  // walked into the stores by itself: no hauling day, no horse (core's check
+  // of 26.09: 6 t of logs in the stores on the third day, 0 man-days).
+  const std::size_t log = config.timber.log_resource.value;
+  cart.own_carts = log < cart.goods.size() && cart.goods[log] > 0 ? 1U : 0U;
   AppendRow(current.limit_deliveries, cart);
   return OrderRefusal::kNone;
 }
@@ -295,6 +303,11 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current) 
   std::vector<LimitDeliveryId> emptied;
   for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
     if (current.limit_deliveries.rows[row].arrive_day > current.calendar.day) {
+      continue;
+    }
+    // An own-carts lot does not come by itself: the carters fetch it
+    // (SettleDistrictLotHauling), and that settlement empties its row.
+    if (current.limit_deliveries.rows[row].own_carts != 0) {
       continue;
     }
     // By index and re-read: the door writes unit rows, not cart rows, but the

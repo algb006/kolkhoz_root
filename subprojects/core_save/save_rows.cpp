@@ -66,7 +66,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // passport, which push `traits` a word on (+4): 212, predicted before.
 // Save 93: the assignment's travel_hours (+4): 216 — NOT predicted with the
 // WorkAssignment's own 32 -> 36, a miss in the inventory, named; caught here.
-static_assert(sizeof(ResidentRow) == 216,
+// Save 98: the work's limit_delivery, +4 — predicted 216 -> 220 before the
+// build (unless the row's alignment rounds it up).
+static_assert(sizeof(ResidentRow) == 220,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -200,13 +202,18 @@ static_assert(AggregateArity<OrderRow>() == 27,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
-static_assert(sizeof(WorkAssignment) == 36,
+// Save 98: limit_delivery, the district's timber lot (decision 279) — 40 and
+// eleven fields, predicted before the field was added.
+static_assert(sizeof(WorkAssignment) == 40,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
-static_assert(AggregateArity<WorkAssignment>() == 10,
+static_assert(AggregateArity<WorkAssignment>() == 11,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(LimitDeliveryRow) == 8 + kAmountsSize,
+// Save 98: own_carts (a byte into the padding after the lot) and the two
+// floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
+// the build.
+static_assert(sizeof(LimitDeliveryRow) == 16 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(LivestockArrivalRow) == 16,
               "LivestockArrivalRow changed — update the codec and VERSION_SAVE");
@@ -217,7 +224,7 @@ static_assert(sizeof(LivestockArrivalRow) == 16,
 // twice over on the very day this row was written.
 static_assert(AggregateArity<LivestockArrivalRow>() == 6,
               "LivestockArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LimitDeliveryRow>() == 3,
+static_assert(AggregateArity<LimitDeliveryRow>() == 6,
               "LimitDeliveryRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(SpecialistArrivalRow) == 12,
               "SpecialistArrivalRow changed — update the codec and VERSION_SAVE");
@@ -441,6 +448,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.unit);
   WriteEntityId(out, row.work.stand);
   WriteEntityId(out, row.work.extraction_site);
+  WriteEntityId(out, row.work.limit_delivery);  // save 98: the district's timber lot
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
   out.WriteFloat(row.work.travel_hours);  // save 93
@@ -518,6 +526,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.unit = ReadEntityId<UnitId>(in);
   row.work.stand = ReadEntityId<TimberStandId>(in);
   row.work.extraction_site = ReadEntityId<ExtractionSiteId>(in);
+  row.work.limit_delivery = ReadEntityId<LimitDeliveryId>(in);  // save 98
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
   row.work.travel_hours = in.ReadFloat();
@@ -1182,6 +1191,10 @@ void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row) {
   ByteWriter& out = sink.Out();
   sink.WriteDefId(DefKind::kLimitLot, row.lot.value);
   out.WriteU32(row.arrive_day);
+  // The village's own carts (decision 279, save 98): the flag and the seam.
+  out.WriteU8(row.own_carts);
+  out.WriteFloat(row.haul_days_remaining);
+  out.WriteFloat(row.haul_days_written);
   sink.WriteAmounts(DefKind::kResource, row.goods);
 }
 
@@ -1190,6 +1203,9 @@ LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source) {
   LimitDeliveryRow row;
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.arrive_day = in.ReadU32();
+  row.own_carts = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "own carts"));  // save 98
+  row.haul_days_remaining = in.ReadFloat();
+  row.haul_days_written = in.ReadFloat();
   row.goods = source.ReadAmounts(DefKind::kResource);
   return row;
 }

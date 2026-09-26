@@ -35,6 +35,20 @@ namespace core {
 ///         already holds this resource stands built.
 Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, ResourceId resource);
 
+/// @brief The terms of carting an own-carts limit lot (decision 279,
+///        0.36.17): a harnessed cart's load, from the district centre —
+///        `district_center_km` beyond the border — and by the network to the
+///        log pile. No draught horse free: a rate with no load (nobody is
+///        sent; the lot waits at the district).
+HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& world);
+
+/// @brief One day of the village's carters fetching the timber lots that
+///        wait at the district centre (LimitDeliveryRow::own_carts): what
+///        they drained since last night comes in through the store door,
+///        tomorrow's demand is written, and an empty lot's row goes.
+/// @note Runs beside SettleStoreEmptying, at the day's last tick.
+void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current);
+
 /// @brief Where a field's heap stands: at the edge of the field nearest a road
 ///        a produce cart may use — or at that road where it crosses the field;
 ///        the centre when no road is near at all (0.36.15; decision 275,

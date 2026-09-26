@@ -68,7 +68,7 @@ static_assert(
 /// Where a produce cart's load came from (CartLoadSource), as the column
 /// names it. Its length is the enum's, and the same hole guard stands on it.
 constexpr std::array<const char*, kCartLoadSourceCountValue> kCartLoadSourceNames = {
-    "field", "site", "store"};
+    "field", "site", "store", "district"};
 
 static_assert(
     [] {

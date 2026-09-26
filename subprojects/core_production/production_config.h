@@ -882,6 +882,12 @@ struct ProductionConfig {
   /// last metres to a gate. The site's road access check will be its second.
   float road_access_m = 10.0F;
 
+  /// world_params `district_center_km`: kilometres from the map's border to
+  /// the district centre (decision 279, 0.36.17; boss assigned 25 — the
+  /// design had no number). A timber lot waits there for the village's own
+  /// carts, and this is the off-map part of their way.
+  float district_center_km = 25.0F;
+
   float min_usable_hours = 1.0F;
 
   // -- shelf life (task A4; transport design §10) --------------------------

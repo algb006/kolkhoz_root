@@ -51,13 +51,18 @@
 
 namespace core {
 
-/// @brief Where a produce cart's load came from (YearLedger::cart_trips and
-///        its siblings, index = the enum value): the three places the core
-///        carts produce from by TravelMode::kCart.
+/// @brief Where a cart's load came from (YearLedger::cart_trips and its
+///        siblings, index = the enum value): the three places the core carts
+///        produce from by TravelMode::kCart, and — since 0.36.17 — the
+///        district centre, whose timber lots the village fetches by log cart.
 enum class CartLoadSource : std::uint8_t {
   kField = 0,  ///< A field's heap, to its store (field_haul SettleHauling).
   kSite,       ///< An extraction site's dig, to its pile (SettleSiteHauling).
   kStore,      ///< A store being emptied, to the stores that take it in.
+  /// A timber lot fetched from the district centre by the village's own carts
+  /// (decision 279, 0.36.17; SettleDistrictLotHauling) — a log cart, booked
+  /// here because its trips are the cost the lot's «везти далеко» names.
+  kDistrict,
   kCartLoadSourceCount,
 };
 

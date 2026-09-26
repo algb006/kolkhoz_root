@@ -694,4 +694,20 @@ RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Ve
   return RoadIndexOf(world)->Measure(mode, from, to);
 }
 
+Vec2 DistrictExitPoint(const WorldState& world) {
+  const std::shared_ptr<const RoadIndex> index = RoadIndexOf(world);
+  bool found = false;
+  Vec2 exit{};
+  for (const RoadNode& node : index->Graph().nodes) {
+    if (node.border && (!found || node.position.y > exit.y)) {
+      exit = node.position;
+      found = true;
+    }
+  }
+  if (found) {
+    return exit;
+  }
+  return world.units.rows.empty() ? Vec2{} : world.units.rows.front().position;
+}
+
 }  // namespace core
