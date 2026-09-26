@@ -5,6 +5,7 @@
 #include "production_alarms.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -576,6 +577,37 @@ void CollectPlanAlarms(const ProductionConfig& config,
     }
   }
   CollectPlanShortAlarms(config, world, alarms);
+}
+
+void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,
+                                      const WorldState& world,
+                                      std::vector<Alarm>& alarms) {
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const std::array<CropId, 3> slots = {
+        field.rotation_year0, field.rotation_year1, field.rotation_year2};
+    for (std::uint32_t year = 0; year + 1 < slots.size(); ++year) {
+      const CropId before = slots[year];
+      const CropId winter = slots[year + 1];
+      if (before.value >= config.crops.size() || winter.value >= config.crops.size() ||
+          !config.crops[winter.value].is_winter) {
+        continue;  // a fallow before, or no winter crop after
+      }
+      // THE REAPING OPENS NO EARLIER THAN THE SOWING'S LAST MONTH: no month is
+      // left for the plough and the harrow (core's STUB criterion, named).
+      if (config.crops[before.value].harvest_from_month < config.crops[winter.value].sow_to_month) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kWinterCropUnsowable;
+      alarm.field = world.fields.row_ids[row];
+      alarm.amount = year + 1;
+      alarms.push_back(alarm);
+    }
+  }
 }
 
 namespace {

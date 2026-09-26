@@ -53,6 +53,11 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
       // one value per alarm, so two years of one position sort by the year.
       return (static_cast<std::uint32_t>(alarm.resource.value) * 3U) +
              static_cast<std::uint32_t>(alarm.amount);
+    case AlarmKind::kWinterCropUnsowable:
+      // The field, times the three years, plus the year: one field can carry
+      // the mark for two years of its chain.
+      return (static_cast<std::uint32_t>(alarm.field.value) * 3U) +
+             static_cast<std::uint32_t>(alarm.amount);
   }
   return 0;
 }

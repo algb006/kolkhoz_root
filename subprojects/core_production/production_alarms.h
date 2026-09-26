@@ -52,6 +52,15 @@ void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms);
 
+/// @brief Appends kWinterCropUnsowable for every arable field whose chain
+/// puts a winter crop in slot k + 1 (k = 0, 1) right after a crop whose
+/// reaping opens no earlier than the winter crop's last sowing month
+/// (alarm_state.h); `amount` = k + 1.
+/// @param alarms Appended to; never cleared.
+void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,
+                                      const WorldState& world,
+                                      std::vector<Alarm>& alarms);
+
 /// @brief Appends kSowingWillNotFit for every spring field in the plough whose
 /// harnessed work the team cannot finish by the last day its crop can be sown
 /// and still ripen before the snow (alarm_state.h). The days are spent in the

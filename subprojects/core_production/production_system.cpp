@@ -414,6 +414,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);
     CollectPlanAlarms(config_, completed, alarms);
+    CollectWinterCropUnsowableAlarms(config_, completed, alarms);
     CollectTimberAlarms(config_, completed, alarms);
     CollectProcessingAlarms(config_, completed, alarms);
     CollectDemolitionAlarms(completed, alarms);

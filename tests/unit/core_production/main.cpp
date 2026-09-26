@@ -9506,6 +9506,57 @@ int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
   return failures;
 }
 
+/// kWinterCropUnsowable (0.36.22; boss-core-epoch1-resume [34], [47] (a)):
+/// the chain's winter crop right after a crop whose reaping opens no earlier
+/// than its last sowing month. Known answer, worked out first — potato dug
+/// from September, oats from August, winter rye sown by September:
+///   (potato, rye, oats) — year 1; (oats, potato, rye) — year 2;
+///   (oats, rye, potato), (fallow, rye, oats) and a meadow — nothing.
+/// Two alarms, those two.
+int CheckAWinterCropTheChainCannotSow() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.crops.resize(3);
+  core::CropDef& potato = config.crops[0];
+  potato.harvest_from_month = 8;  // September, 0-based
+  core::CropDef& oats = config.crops[1];
+  oats.harvest_from_month = 7;  // August
+  core::CropDef& rye = config.crops[2];
+  rye.is_winter = true;
+  rye.sow_to_month = 8;  // September
+  rye.harvest_from_month = 6;
+  core::WorldState world;
+  const auto chain = [&world](
+                         core::LandKind kind, std::uint16_t a, std::uint16_t b, std::uint16_t c) {
+    core::FieldRow field;
+    field.kind = kind;
+    field.area_ga = 5.0F;
+    field.rotation_assigned = 1;
+    field.rotation_year0 = core::CropId{a};
+    field.rotation_year1 = core::CropId{b};
+    field.rotation_year2 = core::CropId{c};
+    return core::AppendRow(world.fields, field);
+  };
+  constexpr std::uint16_t kFallow = core::kInvalidDefIdValue;
+  const core::FieldId potato_rye = chain(core::LandKind::kArable, 0, 2, 1);
+  const core::FieldId potato_rye_later = chain(core::LandKind::kArable, 1, 0, 2);
+  chain(core::LandKind::kArable, 1, 2, 0);
+  chain(core::LandKind::kArable, kFallow, 2, 1);
+  chain(core::LandKind::kMeadow, 0, 2, 1);
+  std::vector<core::Alarm> alarms;
+  core::CollectWinterCropUnsowableAlarms(config, world, alarms);
+  const auto has = [&alarms](core::FieldId field, std::int64_t year) {
+    return std::ranges::any_of(alarms, [&](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kWinterCropUnsowable &&
+             alarm.field.value == field.value && alarm.amount == year;
+    });
+  };
+  failures += Expect(alarms.size() == 2 && has(potato_rye, 1) && has(potato_rye_later, 2),
+                     "winter crop unsowable: rye after potato is marked, next year and the year "
+                     "after — and not after oats, a fallow or on a meadow");
+  return failures;
+}
+
 /// kPlanPositionUncovered (boss, 2026-09-13): a district position that no
 /// chain grows in one of its three years stands as an alarm naming the
 /// produce and the year, and goes out once any chain grows it then. By
@@ -9794,6 +9845,7 @@ int main() {
   int failures = 0;
   failures += CheckTheChairmanRemovesAField();
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
+  failures += CheckAWinterCropTheChainCannotSow();
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
