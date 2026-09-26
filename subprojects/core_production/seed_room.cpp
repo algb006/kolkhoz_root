@@ -180,7 +180,15 @@ std::vector<Grams> SeedNeedByResource(const ProductionConfig& config, const Worl
 std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
                                     const WorldState& world,
                                     SimDay as_of) {
-  std::vector<Grams> held(config.feed_values.size(), 0);
+  return SeedHeldByField(config, world, as_of).by_resource;
+}
+
+SeedHold SeedHeldByField(const ProductionConfig& config, const WorldState& world, SimDay as_of) {
+  SeedHold hold;
+  hold.by_resource.assign(config.feed_values.size(), 0);
+  hold.by_field_row.assign(world.fields.rows.size(), 0);
+  hold.seed_of_row.assign(world.fields.rows.size(), ResourceId{});
+  std::vector<Grams>& held = hold.by_resource;
   const auto month = static_cast<std::int32_t>((as_of % kDaysPerYear) / kDaysPerMonth);
   constexpr auto kYear = static_cast<std::int32_t>(kMonthsPerYear);
   constexpr std::int32_t kNever = std::numeric_limits<std::int32_t>::max();
@@ -193,7 +201,7 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
   // month that sowing is reaped, which is a harvest of its seed too.
   struct Sowing {
     const CropDef* crop = nullptr;
-    const FieldRow* field = nullptr;
+    std::uint32_t row = 0;
     std::int32_t sow_end = 0;  // months; <= 0 — its window gone
   };
 
@@ -208,7 +216,8 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
   const auto months_to = [month](std::uint8_t target) {
     return (static_cast<std::int32_t>(target) - month + kYear) % kYear;
   };
-  for (const FieldRow& field : world.fields.rows) {
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
     if (field.kind != LandKind::kArable) {
       continue;
     }
@@ -251,7 +260,7 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
     if (sow_end > 0 && reaped_in >= 0) {
       harvest_in[crop.resource.value] = std::min(harvest_in[crop.resource.value], reaped_in);
     }
-    sowings.push_back(Sowing{.crop = &crop, .field = &field, .sow_end = sow_end});
+    sowings.push_back(Sowing{.crop = &crop, .row = row, .sow_end = sow_end});
   }
   // A FIELD'S SEED IS HELD when its sowing ends before the seed's next
   // harvest: otherwise that harvest gives it. The winter rye is sown in
@@ -265,10 +274,13 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
     if (sowing.sow_end <= 0 || harvest_in[resource] < sowing.sow_end) {
       continue;  // its window gone, or a harvest comes first
     }
-    held[resource] +=
-        GramsFromKilograms(sowing.crop->sowing_norm_kg_per_ha * sowing.field->area_ga);
+    const Grams norm = GramsFromKilograms(sowing.crop->sowing_norm_kg_per_ha *
+                                          world.fields.rows[sowing.row].area_ga);
+    held[resource] += norm;
+    hold.by_field_row[sowing.row] = norm;
+    hold.seed_of_row[sowing.row] = sowing.crop->resource;
   }
-  return held;
+  return hold;
 }
 
 Grams SeedNeedWithRot(const ProductionConfig& config,
@@ -286,6 +298,11 @@ Grams SeedNeedWithRot(const ProductionConfig& config,
 }
 
 std::vector<Grams> SeedRoomBooked(const ProductionConfig& config, const WorldState& world) {
+  // EVERY NEXT SOWING, NOT THE PLAN DOOR'S RULE (0.36.23, named to boss): the
+  // booking asks for room for the seed a harvest BRINGS — the rye reaped in
+  // July and kept to September — which is exactly what the door's rule does
+  // not hold ("a harvest comes first, it gives it"). Read by the door's rule
+  // the rye's booking is nought in its own reaping month.
   std::vector<Grams> booked = SeedNeedByResource(config, world);
   for (std::uint32_t index = 0; index < booked.size(); ++index) {
     if (booked[index] <= 0) {

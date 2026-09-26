@@ -26,10 +26,11 @@
 
 namespace core {
 
-/// @brief The most of `resource` the district lends this year: the seed need
-///        of the resource's next sowing (SeedNeedByResource — the number the
-///        seed booking reads), grams. 0 for a resource that is no crop's
-///        seed: other goods are a STUB, not this stage (boss seq 15).
+/// @brief The most of `resource` the district lends this year: the seed the
+///        stores must keep for its sowings before its next harvest — the plan
+///        door's rule (SeedHeldToSowing, as of today; 0.36.23), grams. 0 for a
+///        resource that is no crop's seed or has no such sowing: other goods
+///        are a STUB, not this stage (boss seq 15).
 Grams GoodsLoanCeiling(const ProductionConfig& config,
                        const WorldState& current,
                        ResourceId resource);

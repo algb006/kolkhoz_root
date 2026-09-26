@@ -275,7 +275,12 @@ bool AwayToday(const WorldState& world) {
   const ChairmanState& chairman = world.chairman;
   const Tick dawn = TickAt(world.calendar.day, 0);
   const Tick dusk = dawn + kTicksPerDay;
-  const bool leaves_today = chairman.away_from_tick >= dawn && chairman.away_from_tick < dusk;
+  // 0 IS "NEVER" FOR BOTH HALVES (0.36.23; boss-core-epoch1-resume [54]): the
+  // still_away half below always excluded it, this one did not, and on day 0
+  // — dawn at tick 0 — the default read as leaving today, and a visit due that
+  // day moved to day 1.
+  const bool leaves_today = chairman.away_from_tick != 0 && chairman.away_from_tick >= dawn &&
+                            chairman.away_from_tick < dusk;
   const bool still_away = chairman.away_from_tick != 0 && chairman.away_from_tick < dawn &&
                           chairman.away_until_tick > dawn;
   const bool summoned_today = chairman.summon_day != 0 && chairman.summon_day == world.calendar.day;

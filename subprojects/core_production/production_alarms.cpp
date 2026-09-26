@@ -62,22 +62,27 @@ Grams FreeRoomOfStores(const ProductionConfig& config, const WorldState& world) 
 /// produce of the crop out of the stores (§7), so the question is what the
 /// stores hold.
 ///
-/// THE NEED IS SUMMED BY RESOURCE (SeedNeedByResource, seed_room.h). Field by
-/// field against the whole store was the defect (boss seq 26): two fields of
-/// one crop each passed against a store that sows only one of them, and the
-/// alarm stayed silent over a rotation that could not be sown.
+/// THE NEED IS SUMMED BY RESOURCE. Field by field against the whole store was
+/// the defect (boss seq 26): two fields of one crop each passed against a
+/// store that sows only one of them, and the alarm stayed silent over a
+/// rotation that could not be sown.
+///
+/// AND IT IS THE PLAN DOOR'S NEED since 0.36.23 (SeedHeldByField; boss,
+/// boss-core-epoch1-resume [54]): a field's sowing counts when its seed must
+/// come out of today's stores — before the seed's next harvest. Until then
+/// this counted every next sowing (SeedNeedByResource), next year's too, and
+/// in January could call potato short while the plan shipped it.
 Grams SeedShortfall(const ProductionConfig& config,
                     const WorldState& world,
-                    const std::vector<Grams>& need_by_resource,
-                    const FieldRow& field,
+                    const SeedHold& hold,
+                    std::uint32_t row,
                     ResourceId& resource) {
-  // One rule of a field's seed need with the booking (seed_room.h; static
-  // review, M4): the share's numerator and the sum it is divided by.
-  const Grams wanted = FieldSeedNeed(config, world, field, resource);
-  if (wanted <= 0 || resource.value >= need_by_resource.size()) {
+  resource = row < hold.seed_of_row.size() ? hold.seed_of_row[row] : ResourceId{};
+  const Grams wanted = row < hold.by_field_row.size() ? hold.by_field_row[row] : 0;
+  if (wanted <= 0 || resource.value >= hold.by_resource.size()) {
     return 0;
   }
-  const Grams bare = need_by_resource[resource.value];
+  const Grams bare = hold.by_resource[resource.value];
   // THE NORM AND ITS ROT TO THE SOWING, the booking's own rule (0.35.13): the
   // seed loan is sized by this alarm, and sized on the bare norm it arrived a
   // week before the window and the rot took the difference back.
@@ -359,7 +364,9 @@ void CollectFieldAlarms(const ProductionConfig& config,
   //
   // The alarm may keep silent about a field. The arithmetic may not.
   Grams room_left = FreeRoomOfStores(config, world);
-  const std::vector<Grams> seed_need = SeedNeedByResource(config, world);
+  // The plan door's own rule, as of today: alarms are read off a completed
+  // step, the turn's rotation already turned.
+  const SeedHold seed_hold = SeedHeldByField(config, world, world.calendar.day);
   for (const std::uint32_t row : FieldsInHarvestOrder(config, world)) {
     const FieldRow& field = world.fields.rows[row];
     const Grams claim = RoomClaimOf(config, field);
@@ -417,7 +424,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
       alarms.push_back(alarm);
     }
     ResourceId seed;
-    const Grams short_of = SeedShortfall(config, world, seed_need, field, seed);
+    const Grams short_of = SeedShortfall(config, world, seed_hold, row, seed);
     if (short_of > 0) {
       Alarm alarm;
       alarm.kind = AlarmKind::kSeedShort;
@@ -501,9 +508,13 @@ float ChainHectares(const ProductionConfig& config,
 }
 
 /// kPlanPositionShort (boss seq 89): on the year's last day, every position
-/// the turn's delivery cannot bring to the met share. The turn takes what is
-/// owed from the stores (DeliverPlan), so the forecast is delivered plus the
-/// least of owed and takeable — the same walk the take makes (IsTakenFrom).
+/// the turn's delivery cannot bring to the met share. THE FORECAST ENTERS BY
+/// THE TURN'S OWN DOOR since 0.36.23 (boss-core-epoch1-resume [54]):
+/// delivered plus the least of owed and DeliverableAboveSeed — the heaps and
+/// the stores less the seed held, as of this last day, the day the turn reads
+/// the seed as of (SeedDayAtTheTurn). Until then it counted the stores alone:
+/// it said "met" while the turn held seed and failed, and "short" while the
+/// turn took a heap.
 void CollectPlanShortAlarms(const ProductionConfig& config,
                             const WorldState& world,
                             std::vector<Alarm>& alarms) {
@@ -519,8 +530,8 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     const Grams owed = due > delivered ? due - delivered : 0;
-    const Grams takeable = TakeableGrams(world, config, resource);
-    const Grams shipped_at_turn = delivered + (takeable < owed ? takeable : owed);
+    const Grams deliverable = DeliverableAboveSeed(config, world, resource, world.calendar.day);
+    const Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
     if (PositionDelivered(config, due, shipped_at_turn)) {
       continue;
     }

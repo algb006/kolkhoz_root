@@ -80,6 +80,20 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
                                     const WorldState& world,
                                     SimDay as_of);
 
+/// @brief SeedHeldToSowing's answer with its parts: the grams held for each
+/// field row (0 when its sowing is not held) and the seed they are of. ONE
+/// RULE, FOUR READERS (0.36.23; boss-core-epoch1-resume [54]): the plan's
+/// door (DeliverableAboveSeed), the seed_short alarm and its shares
+/// (production_alarms.cpp), the goods loan's ceiling (goods_loan.cpp) and
+/// the plan-short forecast. Not the seed room's booking — see SeedRoomBooked.
+struct SeedHold {
+  std::vector<Grams> by_resource;       ///< Dense by ResourceId.
+  std::vector<Grams> by_field_row;      ///< By row of world.fields.
+  std::vector<ResourceId> seed_of_row;  ///< The seed each held row is of.
+};
+
+SeedHold SeedHeldByField(const ProductionConfig& config, const WorldState& world, SimDay as_of);
+
 /// @brief The room each resource books for its missing seed: the need of
 /// its next sowings less what the stores hold, and only while some of its
 /// harvest is still out — no more than the heaps hold once nothing of it

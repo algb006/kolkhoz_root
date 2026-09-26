@@ -45,7 +45,11 @@ Grams GoodsLoanCeiling(const ProductionConfig& config,
   if (resource.value == kInvalidDefIdValue) {
     return 0;
   }
-  const std::vector<Grams> need = SeedNeedByResource(config, current);
+  // THE PLAN DOOR'S RULE (0.36.23; boss-core-epoch1-resume [54]): the loan
+  // lends the seed today's stores must keep — the sowings before the seed's
+  // next harvest — and not next year's, which the harvest gives. As of
+  // today: a loan is never taken in the turn's own hour (TakeGoodsLoan).
+  const std::vector<Grams> need = SeedHeldToSowing(config, current, current.calendar.day);
   return resource.value < need.size() ? need[resource.value] : 0;
 }
 

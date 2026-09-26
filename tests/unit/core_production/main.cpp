@@ -1912,6 +1912,21 @@ int CheckSeedHeldFieldByField() {
       core::SeedHeldToSowing(config, world, world.calendar.day);
   failures += Expect(january.size() > 1 && january[0] == 25 * kTonne && january[1] == 0,
                      "seed held: in January only this spring's potato, 25 t — not next year's");
+  // ONE RULE, ITS OTHER READERS (0.36.23; boss-core-epoch1-resume [54]): the
+  // goods loan lends the 25 t, not 75; with 40 t of potato in the stores the
+  // seed alarm is silent (every next sowing counted, 75 t, it called both
+  // fields short).
+  failures += Expect(core::GoodsLoanCeiling(config, world, core::ResourceId{0}) == 25 * kTonne,
+                     "seed held, the loan: the ceiling is this spring's 25 t");
+  world.units.rows[0].stock[0] = 40 * kTonne;
+  std::vector<core::Alarm> field_alarms;
+  core::CollectFieldAlarms(config, world, field_alarms);
+  failures += Expect(std::ranges::none_of(field_alarms,
+                                          [](const core::Alarm& alarm) {
+                                            return alarm.kind == core::AlarmKind::kSeedShort;
+                                          }),
+                     "seed held, the alarm: 40 t cover this spring's 25 t — no field is short");
+  world.units.rows[0].stock[0] = 0;
 
   core::WorldState november = MakeHerdWorld(0.0F);
   november.calendar.tick = 10 * core::kDaysPerMonth * core::kTicksPerDay;
@@ -6812,10 +6827,10 @@ int CheckTheAccumulationLimit() {
   const auto arrive_polushkina = [&world, &config, &visit_of]() {
     world.step_events.clear();
     world.district_visits = core::DistrictVisitTable{};
-    // Not day 0: AwayToday reads the default away_from_tick 0 as leaving
-    // today on day 0 (a sentinel its still_away half excludes and its
-    // leaves_today half does not — named to boss, not repaired here).
-    world.calendar.day = 10;
+    // DAY 0 ON PURPOSE (0.36.23): until then AwayToday read the default
+    // away_from_tick 0 as leaving today on day 0, and the visit moved to day 1
+    // — this check is the one that found it.
+    world.calendar.day = 0;
     core::DistrictVisitRow visit = visit_of(core::DistrictFace::kPolushkina);
     visit.arrive_day = world.calendar.day;
     core::AppendRow(world.district_visits, visit);
@@ -9619,6 +9634,53 @@ int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
   world.plan.announced = 0;
   failures += Expect(shorts(core::kDaysPerYear - 1).empty(),
                      "plan short: no plan announced, nothing to fall short of");
+
+  // BY THE TURN'S OWN DOOR (0.36.23; boss-core-epoch1-resume [54]): the
+  // forecast counts what the turn ships — the heaps too, the seed held back.
+  // Known answers on the potato (2 t due): a 2 t heap on a field and nothing
+  // in the stores — delivered, not short (the stores alone said short); 3 t in
+  // the barn and 1 ha to plant next May at 2.5 t — 0.5 t shipped, short (the
+  // stores alone said delivered).
+  const auto potato_short = [&shorts]() {
+    for (const Short& found : shorts(core::kDaysPerYear - 1)) {
+      if (found.first == 1) {
+        return true;
+      }
+    }
+    return false;
+  };
+  world.plan.announced = 1;
+  core::FieldRow heaped;
+  heaped.kind = core::LandKind::kArable;
+  heaped.area_ga = 1.0F;
+  heaped.reaped_grams = 2 * kTonne;
+  heaped.reaped_resource = core::ResourceId{1};
+  core::AppendRow(world.fields, heaped);
+  failures += Expect(!potato_short(),
+                     "plan short, the turn's door: a 2 t heap pays the potato — not short");
+  world.fields = core::FieldTable{};
+  config.feed_values.resize(3, 0.0F);  // the seed's vectors are sized by the resources
+  config.crops.resize(2);
+  config.crops[0].resource = core::ResourceId{0};  // a crop of rye, sown in no field
+  core::CropDef& potato = config.crops[1];
+  potato.resource = core::ResourceId{1};
+  potato.sowing_norm_kg_per_ha = 2500.0F;
+  potato.sow_from_month = 3;
+  potato.sow_to_month = 4;
+  potato.harvest_from_month = 8;
+  potato.harvest_to_month = 9;
+  core::FieldRow to_plant;
+  to_plant.kind = core::LandKind::kArable;
+  to_plant.area_ga = 1.0F;
+  to_plant.rotation_assigned = 1;
+  to_plant.rotation_year0 = core::CropId{0};
+  to_plant.rotation_year1 = core::CropId{1};
+  to_plant.reaped_day = core::kDaysPerYear - 20;  // the rye reaped this year
+  core::AppendRow(world.fields, to_plant);
+  world.units.rows[0].stock[1] = 3 * kTonne;
+  failures += Expect(potato_short(),
+                     "plan short, the turn's door: 3 t in the barn less next May's 2.5 t of seed "
+                     "— short");
   return failures;
 }
 
