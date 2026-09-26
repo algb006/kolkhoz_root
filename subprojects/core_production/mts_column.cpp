@@ -90,8 +90,7 @@ void CarryShare(const ProductionConfig& config, WorldState& current, FieldRow& f
 /// phase's demand is held at that share of the whole phase.
 void HoldCrewShare(const ProductionConfig& config, const WorldState& current, FieldRow& field) {
   const float worked = field.area_ga > 0.0F ? current.mts_column.field_ha / field.area_ga : 1.0F;
-  const float owed =
-      std::clamp(1.0F - worked, 0.0F, 1.0F) * PhaseWorkDays(config, current, field, field.phase);
+  const float owed = std::clamp(1.0F - worked, 0.0F, 1.0F) * PhaseTotalDays(config, current, field);
   field.work_days_remaining = std::min(field.work_days_remaining, owed);
 }
 

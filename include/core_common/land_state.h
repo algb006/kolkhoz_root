@@ -419,6 +419,17 @@ struct FieldRow {
   /// a crop that takes no seed, and for every field until its first sowing.
   float sown_share = 1.0F;
 
+  /// THE REAPING'S WHOLE WORK, written when it opened (save 99, 0.36.20):
+  /// the norm times the area plus the carry to the heap (field_work.h,
+  /// PhaseWorkDays), in norm man-days. The laid share is cut against it
+  /// (LayReapedShare) and the MTS column holds the crew's share of it. FROZEN
+  /// BECAUSE THE CARRY MOVES: it is priced by whether the settlement has a
+  /// draught horse and where the heap stands, and a horse bought or lost, or
+  /// a road built, halfway through a reaping would otherwise re-cut the laid
+  /// share — nothing laid for days of work, or tonnes laid with none (static
+  /// review of 0.36.20). Nought outside a reaping.
+  float harvest_work_days = 0.0F;
+
   Grams harvest_laid_grams = 0;
 
   /// THE AVRAL ON THIS FIELD'S WORK (kDeclareRush; unit rules §7; save 65):

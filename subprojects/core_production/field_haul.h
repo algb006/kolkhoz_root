@@ -59,6 +59,21 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
 ///        roads; that comes with the map's access roads (boss's (a)).
 Vec2 FieldHeapPoint(const WorldState& world, const FieldRow& field);
 
+/// @brief Norm man-days of carrying `yield` from across an arable field to its
+///        heap (FieldHeapPoint): part of the REAPING, booked as harvest
+///        (0.36.20; boss, boss-core-epoch1-resume [34]-[35]). DERIVED, NOT A
+///        NORM: haul.h's arithmetic over the mean shoulder BEYOND the field's
+///        centre — the reaping's norms carry to the centre (boss [47]) — from
+///        a point of the disc to the heap: (32/(9π) − 2/3) r with the heap at
+///        the edge, nought with it at the centre (no road near); across open
+///        ground, by a cart when the settlement has a draught horse, on a back
+///        when not. It grows with the field and falls with the horse.
+/// @return 0 for land that is not arable, for no yield, or for no area.
+float CarryToHeapDays(const ProductionConfig& config,
+                      const WorldState& world,
+                      const FieldRow& field,
+                      Grams yield);
+
 /// @brief What one carrier is worth on this field's shoulder today: a cart's
 /// load at harness speed when the settlement has a draught horse to spare, a
 /// person's load on foot when it has not.

@@ -684,7 +684,6 @@ std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
         RipenDays(config, field.crop) == 0) {
       continue;
     }
-    const CropDef& crop = config.crops[field.crop.value];
     GatherClaim claim{.row = row};
     if (field.phase == FieldPhase::kHarvest) {
       claim.open_day = static_cast<std::int32_t>(day_of_year);
@@ -699,7 +698,10 @@ std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
           break;
         }
       }
-      claim.owed_days = crop.harvest_days_per_ha * field.area_ga;
+      // What the reaping will write when it opens, asked of the door that
+      // writes it (0.36.20: it carries the crop to the heap too, and a norm
+      // times the area here would have owed less than the reaping will).
+      claim.owed_days = PhaseWorkDays(config, world, field, FieldPhase::kHarvest);
     }
     // THE HORIZON (boss seq 161 А): a field whose reaping opens further off
     // than the chairman needs to act is not judged yet — its pace would be

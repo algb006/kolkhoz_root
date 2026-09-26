@@ -83,8 +83,9 @@ FieldId FieldIdOf(const WorldState& current, const FieldRow& field);
 /// carries the NEW phase in `amount`, as the kind's contract says.
 void MoveFieldPhase(WorldState& current, FieldRow& field, FieldPhase phase);
 
-/// @brief Moves the field into a working phase and sizes its demand:
-/// area x the phase's norm. The crop is the one in the ground or, while
+/// @brief Moves the field into a working phase and sizes its demand
+/// (PhaseWorkDays); a reaping's whole work is also frozen in
+/// FieldRow::harvest_work_days. The crop is the one in the ground or, while
 /// the field is still being prepared, the one this year's rotation plans.
 void OpenPhase(const ProductionConfig& config,
                WorldState& current,
@@ -92,13 +93,22 @@ void OpenPhase(const ProductionConfig& config,
                FieldPhase phase);
 
 /// @brief The game man-days a whole phase of this field asks today: area x
-/// the phase's norm, horse work lengthened by the traction ration. What
-/// OpenPhase writes; the MTS column scales it by the hectares it leaves
-/// (mts_column.cpp).
+/// the phase's norm, horse work lengthened by the traction ration, and for an
+/// arable reaping the carry to the heap on top (field_haul.h,
+/// CarryToHeapDays; 0.36.20). What OpenPhase writes.
 float PhaseWorkDays(const ProductionConfig& config,
                     const WorldState& current,
                     const FieldRow& field,
                     FieldPhase phase);
+
+/// @brief The whole of the field's CURRENT phase, as its share is cut
+/// against: for a reaping the number frozen when it opened
+/// (FieldRow::harvest_work_days — the carry in it moves with a horse or a
+/// road, and the cut must not), else PhaseWorkDays today. Read by
+/// LayReapedShare and the MTS column's crew share (mts_column.cpp).
+float PhaseTotalDays(const ProductionConfig& config,
+                     const WorldState& current,
+                     const FieldRow& field);
 
 /// @brief The late sowing's yield factor for a crop sown on `sown_day`: 1
 ///        inside its window, in the first spring and for winter crops and

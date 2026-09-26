@@ -190,9 +190,10 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
   }
   const CropDef& crop = config.crops[field.crop.value];
   // THE SHARE CUT, off the labour: what is left against what the phase
-  // costs (PhaseWorkDays, the number OpenPhase wrote). One measure for every
-  // hand that drains it — the crew, the MTS column, the avral.
-  const float phase_days = PhaseWorkDays(config, current, field, FieldPhase::kHarvest);
+  // costs — the number OpenPhase wrote, frozen since 0.36.20 (PhaseTotalDays,
+  // harvest_work_days). One measure for every hand that drains it — the crew,
+  // the MTS column, the avral.
+  const float phase_days = PhaseTotalDays(config, current, field);
   float cut = phase_days > 0.0F ? 1.0F - (field.work_days_remaining / phase_days) : 1.0F;
   cut = cut < 0.0F ? 0.0F : (cut > 1.0F ? 1.0F : cut);
   if (field.work_days_remaining <= 0.0F) {
@@ -305,6 +306,7 @@ void LoseFieldToSnow(const ProductionConfig& config,
   }
   field.harvest_laid_share = 0.0F;
   field.harvest_laid_grams = 0;
+  field.harvest_work_days = 0.0F;
   // AND HERE IT IS SAID. A comment that once stood where this was called
   // claimed the loss "is an event already — kFieldLost, emitted where the
   // events slot folds it". It was not: the kind had no emitter anywhere in
@@ -346,6 +348,7 @@ void Harvest(const ProductionConfig& config,
   reaped.amount = static_cast<std::int64_t>(field.harvest_laid_grams);
   field.harvest_laid_share = 0.0F;
   field.harvest_laid_grams = 0;
+  field.harvest_work_days = 0.0F;
   // THE PLAN NO LONGER ACCRUES HERE, and its absence is the point of the
   // 2026-09-12 pass. A share of the reaping made the plan a function of the
   // harvest: a poor year asked for less, so every year was met and the
@@ -509,6 +512,17 @@ void OpenPhase(const ProductionConfig& config,
     field.sown_day = current.calendar.day;
   }
   field.work_days_remaining = PhaseWorkDays(config, current, field, phase);
+  // The reaping's whole work, frozen (land_state.h, harvest_work_days).
+  field.harvest_work_days = phase == FieldPhase::kHarvest ? field.work_days_remaining : 0.0F;
+}
+
+float PhaseTotalDays(const ProductionConfig& config,
+                     const WorldState& current,
+                     const FieldRow& field) {
+  if (field.phase == FieldPhase::kHarvest && field.harvest_work_days > 0.0F) {
+    return field.harvest_work_days;
+  }
+  return PhaseWorkDays(config, current, field, field.phase);
 }
 
 float PhaseWorkDays(const ProductionConfig& config,
@@ -622,7 +636,17 @@ float PhaseWorkDays(const ProductionConfig& config,
     const float factor = TractionFactor(config, current.traction_ration);
     norm = factor > 0.0F ? norm / factor : norm;
   }
-  return norm * field.area_ga;
+  // AND THE REAPED CROP CARRIED TO THE FIELD'S HEAP (0.36.20): part of the
+  // reaping, booked as harvest, derived from the field and the transport
+  // (field_haul.h, CarryToHeapDays) — not a norm. Until 0.36.20 the reaping's
+  // norm laid the whole yield at the heap on the field's edge (0.36.15) with
+  // no one carrying it there.
+  float carry = 0.0F;
+  if (phase == FieldPhase::kHarvest && crop.value < config.crops.size()) {
+    carry = CarryToHeapDays(
+        config, current, field, FieldYieldGrams(config, field, config.crops[crop.value]));
+  }
+  return (norm * field.area_ga) + carry;
 }
 
 float TractionFactor(const ProductionConfig& config, float traction_ration) {

@@ -190,6 +190,12 @@ class RoadIndex {
   /// @brief The graph the index was built on.
   virtual const RoadGraph& Graph() const = 0;
 
+  /// @brief What a kilometre of open ground weighs for `mode` in this index:
+  ///        its rules' off_road_weight, or 1 in an index with no network
+  ///        (0.36.20; the carry to a field's heap is priced by it, across the
+  ///        field, where no road runs).
+  virtual float OffRoadWeight(TravelMode mode) const = 0;
+
   virtual ~RoadIndex() = default;
 };
 
@@ -213,6 +219,9 @@ float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 /// @brief Measure through RoadIndexOf: RoadKm's way with its metres off the
 ///        road.
 RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
+
+/// @brief OffRoadWeight through RoadIndexOf.
+float OffRoadWeightOf(const WorldState& world, TravelMode mode);
 
 /// @brief Where the village's way to the district leaves the map: the
 ///        network's northernmost border end (terrain design §1а, «Райцентр на

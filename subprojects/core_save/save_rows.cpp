@@ -21,6 +21,7 @@
 
 #include "save_rows.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -146,8 +147,11 @@ static_assert(AggregateArity<FamilyRow>() == 27,
 // the laid grams. A MISS, named: the laid share sits at offset 76, so there
 // was no hole, and the float opened one of its own before the grams. Measured
 // 120 (offsetof: laid share 76, sown share 80, laid grams 88), 36 fields.
+// Save 99: the reaping's frozen work (float) after the sown share, into the
+// hole save 87's miss opened at 84 — predicted "120 stays" from the dumped
+// layout before the build, 37 fields.
 static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 36,
+static_assert(AggregateArity<FieldRow>() == 37,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -732,6 +736,10 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // into the heap, and its grams.
   out.WriteFloat(row.harvest_laid_share);
   out.WriteFloat(row.sown_share);  // save 87
+  // The reaping's whole work, frozen when it opened (save 99): the laid share
+  // is cut against it, and a world loaded mid-reaping would otherwise cut it
+  // against today's carry.
+  out.WriteFloat(row.harvest_work_days);
   out.WriteI64(row.harvest_laid_grams);
   // The day this meadow was last mown (2026-09-06). History the simulation
   // cannot rederive: from today alone there is no telling a meadow standing
@@ -820,6 +828,12 @@ FieldRow ReadFieldRow(LoadSource& source) {
   // would grow a crop nobody sowed, or less than none.
   if (!(row.sown_share >= 0.0F && row.sown_share <= 1.0F)) {
     source.Fail("a field's sown share is outside 0..1");
+  }
+  row.harvest_work_days = in.ReadFloat();
+  // A divisor of the laid share: negative or not a number, the reaping would
+  // lay nothing, or everything at once.
+  if (!(row.harvest_work_days >= 0.0F) || !std::isfinite(row.harvest_work_days)) {
+    source.Fail("a field's reaping work is negative or not a number");
   }
   row.harvest_laid_grams = in.ReadI64();
   row.last_mown_day = in.ReadU32();

@@ -3181,6 +3181,92 @@ int CheckTheSnowBooksWhatItTakes() {
   return failures;
 }
 
+/// THE CARRY TO THE HEAP (0.36.20; boss, boss-core-epoch1-resume [34], [35],
+/// [47]): derived from the field and the transport, not a norm, and only
+/// BEYOND the field's centre — the reaping's norms carry to the centre.
+/// Known answers, worked out before the build: a 10 ha disc (r = 178.41 m)
+/// centred 400 m from a road, so the heap is at its edge and owes
+/// (32/(9π) − 2/3) r = 82.98 m beyond the norm, across open ground weighing
+/// 1.2 on foot and 2.5 for a loaded cart.
+///   - On foot, 20 kg a trip at 5 km/h (2.4 game hours a km): a round trip of
+///     0.4780 h, 10 t in 500 trips — 23.90 norm-days of 10 hours.
+///   - By cart, 750 kg at 12 km/h: a round trip of 0.4149 h — 0.553
+///     norm-days.
+///   - Four times the field with four times the crop, on foot (r doubles and
+///     the heap is still at the edge): eight times the days (191.2).
+///   - The same field in a world with no road near: the heap at its centre,
+///     nothing beyond the norm.
+int CheckTheCarryToTheHeap() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.horse_kind = core::LivestockKindId{0};
+  core::WorldState roadless;
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 10.0F;
+  field.center = core::Vec2{.x = 1000.0F, .y = 400.0F};
+  const core::Grams ten_tonnes = 10'000'000;
+  failures += Expect(core::CarryToHeapDays(config, roadless, field, ten_tonnes) == 0.0F,
+                     "carry: no road near — the heap at the centre, nothing beyond the norm");
+  core::WorldState world;
+  core::RoadRow road;
+  road.axis.push_back(core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}});
+  road.axis.push_back(core::RoadPoint{.position = {.x = 2000.0F, .y = 0.0F}});
+  core::AppendRow(world.roads, road);
+  world.road_index = core::BuildRoadIndex(world.roads);
+  const auto near = [](float got, float want) {
+    return got > want * 0.999F && got < want * 1.001F;
+  };
+  const float on_foot = core::CarryToHeapDays(config, world, field, ten_tonnes);
+  failures += Expect(near(on_foot, 23.898F),
+                     "carry: 10 t to the heap at the edge on foot, 23.90 days beyond the norm");
+  core::FieldRow big = field;
+  big.area_ga = 40.0F;
+  const float big_on_foot = core::CarryToHeapDays(config, world, big, 4 * ten_tonnes);
+  failures += Expect(near(big_on_foot, 8.0F * on_foot),
+                     "carry: four times the field and the crop, eight times the days");
+  core::HerdRow horses;
+  horses.kind = core::LivestockKindId{0};
+  horses.adult_count = 2;
+  core::AppendRow(world.herds, horses);
+  const float by_cart = core::CarryToHeapDays(config, world, field, ten_tonnes);
+  failures += Expect(near(by_cart, 0.5532F), "carry: with a horse, a cart's 750 kg: 0.553 days");
+  core::FieldRow meadow = field;
+  meadow.kind = core::LandKind::kMeadow;
+  failures += Expect(core::CarryToHeapDays(config, world, meadow, ten_tonnes) == 0.0F &&
+                         core::CarryToHeapDays(config, world, field, 0) == 0.0F,
+                     "carry: nothing for a meadow's hay here, nothing for no crop");
+
+  // THE REAPING'S WORK IS FROZEN WHEN IT OPENS (save 99; the static review of
+  // 0.36.20): opened on foot, the carry is in its whole; a horse bought when
+  // 70 % of the work is done must not re-cut the laid share against the
+  // cheaper carry. Known answer 0.70; with the divisor recomputed today it
+  // would be 1 − 0.3 × (on foot) / (by cart), well below.
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{1};
+  config.crops[0].yield_kg_per_ha = 1000.0F;
+  config.crops[0].harvest_days_per_ha = 5.0F;
+  core::WorldState reaping;
+  reaping.roads = world.roads;  // the heap at the edge: a carry beyond the norm to freeze
+  reaping.road_index = world.road_index;
+  core::FieldRow standing = field;
+  standing.fertility = 100.0F;
+  standing.crop = core::CropId{0};
+  standing.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(reaping.fields, standing);
+  core::FieldRow& opened = reaping.fields.rows[0];
+  core::OpenPhase(config, reaping, opened, core::FieldPhase::kHarvest);
+  const float whole = opened.work_days_remaining;
+  failures += Expect(opened.harvest_work_days == whole && whole > 50.0F + 1.0F,
+                     "frozen: the reaping opened on foot holds its whole work, the carry in it");
+  opened.work_days_remaining = 0.3F * whole;
+  core::AppendRow(reaping.herds, horses);
+  core::LayReapedShare(config, reaping, opened);
+  failures += Expect(opened.harvest_laid_share > 0.699F && opened.harvest_laid_share < 0.701F,
+                     "frozen: a horse bought at 70 % of the work leaves the laid share at 0.70");
+  return failures;
+}
+
 /// kHarvestWillNotBeGathered (boss seq 78 and 91): the reaping's days are
 /// spent in the order the annuals ripen, at the season's best reaping day —
 /// or every hand of working age before the season has reaped — and a field
@@ -3203,6 +3289,12 @@ int CheckTheHarvestWillNotBeGathered() {
   oat.harvest_from_month = 7;      // reaped from day 28: ripens in 9 days
   oat.harvest_days_per_ha = 2.0F;  // 20 norm-days on 10 ha
   config.crops = {potato, oat};
+  // THE CARRY TO THE HEAP KEPT OUT OF THE CALENDAR'S ARITHMETIC (0.36.20): the
+  // reaping owes it too (CarryToHeapDays), and every number below was worked
+  // out on the norm alone. A carrier that takes a thousand tonnes makes it
+  // nought; that the alarm reads it is checked on its own, after "twice the
+  // pace".
+  config.carry_kg_adult = 1.0e6F;
   core::WorldState world;
   world.calendar.tick = 30 * static_cast<core::Tick>(core::kTicksPerDay);
   core::RefreshCalendarCaches(world.calendar);
@@ -3250,6 +3342,21 @@ int CheckTheHarvestWillNotBeGathered() {
                      "said before the potato is ripe — the whole field, which the snow takes");
   world.ledger.current.reaping_last_day = 12.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
+  // AND THE CARRY IS OWED (0.36.20): a road a kilometre off puts each heap at
+  // its field's edge; a person's 20 kg, no horse — the potato's 10 t and the
+  // oat's go the 0.47 r beyond the norm in 500 trips each, some 24 norm-days
+  // more apiece (CheckTheCarryToTheHeap's answer; the pair is what is tested),
+  // and at the same twelve a day the potato is no longer reaped in time.
+  core::RoadRow far_road;
+  far_road.axis.push_back(core::RoadPoint{.position = {.x = -2000.0F, .y = 1000.0F}});
+  far_road.axis.push_back(core::RoadPoint{.position = {.x = 2000.0F, .y = 1000.0F}});
+  core::AppendRow(world.roads, far_road);
+  world.road_index = core::BuildRoadIndex(world.roads);
+  config.carry_kg_adult = 20.0F;
+  failures += Expect(warned() == 10'000'000,
+                     "gather: the reaping owes the carry to the heap as well, and at twelve a "
+                     "day on foot the potato is lost");
+  config.carry_kg_adult = 1.0e6F;
   // RAIN STOPS THE REAPING (core_common/rain_stops_work.h): the same twelve,
   // the days counted as above (no Sunday 34, last day 39). Today (day 30) is
   // dry and counts whole. Six rain days in ten ahead: the oat's 1.67 days run
@@ -9571,6 +9678,7 @@ int main() {
   failures += CheckTheHarvestWarningComesBeforeTheHarvest();
   failures += CheckTheRoomIsSpentInHarvestOrder();
   failures += CheckTheSowingWillNotFit();
+  failures += CheckTheCarryToTheHeap();
   failures += CheckTheHarvestWillNotBeGathered();
   failures += CheckTheSnowBooksWhatItTakes();
   failures += CheckAReapedFieldStillSpendsTheRoom();

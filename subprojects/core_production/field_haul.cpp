@@ -263,6 +263,54 @@ Vec2 FieldHeapPoint(const WorldState& world, const FieldRow& field) {
               .y = field.center.y + ((nearest.point.y - field.center.y) * share)};
 }
 
+float CarryToHeapDays(const ProductionConfig& config,
+                      const WorldState& world,
+                      const FieldRow& field,
+                      Grams yield) {
+  if (field.kind != LandKind::kArable || yield <= 0 || !(field.area_ga > 0.0F)) {
+    return 0.0F;
+  }
+  // THE SHOULDER BEYOND THE NORM, DERIVED AND NOT A NORM (boss,
+  // boss-core-epoch1-resume [34], [35], [47]): the mean way from a point of
+  // the disc to its heap is 32r/(9π) ≈ 1.13 r with the heap at the edge and
+  // 2r/3 with it at the centre. THE REAPING'S NORMS ALREADY CARRY TO THE
+  // CENTRE (boss [47]: «жнут, вяжут, копают и сносят к ближнему месту на самом
+  // поле»), so only what lies beyond is owed: nought with no road near (the
+  // heap at the centre), (32/(9π) − 2/3) r ≈ 0.47 r at the edge. A heap where
+  // a road crosses the field lies between: taken linear in its distance from
+  // the centre — an APPROXIMATION, named (the exact mean is an elliptic
+  // integral).
+  const float radius = std::sqrt(field.area_ga * 10000.0F / std::numbers::pi_v<float>);
+  const Vec2 heap = FieldHeapPoint(world, field);
+  const float dx = heap.x - field.center.x;
+  const float dy = heap.y - field.center.y;
+  float out = radius > 0.0F ? std::sqrt((dx * dx) + (dy * dy)) / radius : 0.0F;
+  out = out > 1.0F ? 1.0F : out;
+  constexpr float kAtCentre = 2.0F / 3.0F;
+  constexpr float kAtEdge = 32.0F / (9.0F * std::numbers::pi_v<float>);
+  const float shoulder_m = radius * (kAtEdge - kAtCentre) * out;
+  if (!(shoulder_m > 0.0F)) {
+    return 0.0F;  // the heap at the centre: the norm has carried it there
+  }
+  // By a cart when the settlement has a draught horse, else on a back — the
+  // field's load's own choice (FieldHaulRate) — and ACROSS OPEN GROUND at the
+  // mode's weight (roads design §11: a loaded cart 2.5, a man 1.2). NOT BY THE
+  // BED'S CONDITION: the weather moves every day, and this number is the
+  // divisor of the reaping's laid share (LayReapedShare) for as long as the
+  // reaping lasts; the field's own ground is priced dry.
+  const bool harnessed = DraughtHorsesFree(config, world);
+  const TravelMode mode = harnessed ? TravelMode::kCart : TravelMode::kWalk;
+  const float speed_kmh = harnessed ? config.harness_speed_kmh : config.walk_speed_kmh;
+  if (!(speed_kmh > 0.0F)) {
+    return 0.0F;
+  }
+  const float hours_per_km = static_cast<float>(kClockScale) / speed_kmh;
+  const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
+  const HaulRate rate =
+      RateOverKm((shoulder_m / 1000.0F) * OffRoadWeightOf(world, mode), hours_per_km, load);
+  return HaulDaysFor(yield, rate, config.standard_day_hours);
+}
+
 HaulRate FieldHaulRate(const ProductionConfig& config,
                        const WorldState& world,
                        const FieldRow& field) {
@@ -284,7 +332,8 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
       store_row == kNoRow ? field.center : world.units.rows[store_row].position;
   // FROM THE HEAP AT THE FIELD'S EDGE TOWARD THE ROAD (0.36.15; decision 275,
   // boss-core-epoch1-resume [31] (b)), not from the field's centre: carrying
-  // the reaped crop to the heap is field work, in the field's own norms.
+  // the reaped crop to the heap is field work, paid in the reaping since
+  // 0.36.20 (CarryToHeapDays) — not here, and not twice.
   return RateToward(config, world, FieldHeapPoint(world, field), destination);
 }
 

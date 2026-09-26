@@ -175,6 +175,11 @@ class RoadIndexImpl final : public RoadIndex {
 
   const RoadGraph& Graph() const override { return graph_; }
 
+  float OffRoadWeight(TravelMode mode) const override {
+    const auto index = static_cast<std::size_t>(mode);
+    return index < rules_.off_road_weight.size() ? rules_.off_road_weight[index] : 1.0F;
+  }
+
  private:
   /// The way chosen, as numbers: what EffectiveKm answers and Way unfolds.
   struct Choice {
@@ -692,6 +697,10 @@ float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
 
 RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
   return RoadIndexOf(world)->Measure(mode, from, to);
+}
+
+float OffRoadWeightOf(const WorldState& world, TravelMode mode) {
+  return RoadIndexOf(world)->OffRoadWeight(mode);
 }
 
 Vec2 DistrictExitPoint(const WorldState& world) {

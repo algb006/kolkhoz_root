@@ -1286,7 +1286,10 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // row given non-zero values: the size held at 305, the hash moved.
     // Save 87: +12 — the sown share, a float a row, three rows; predicted 317
     // before the build and held (the struct's size was the miss, not this).
-    {"fields", 317, 0xad9f9678a2051685ULL},
+    // Save 99: +12 — the reaping's frozen work, a float a row, three rows;
+    // predicted 317 -> 329 with every other section unmoved before the build,
+    // held.
+    {"fields", 329, 0xb0b9eaa4a6b7f275ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
