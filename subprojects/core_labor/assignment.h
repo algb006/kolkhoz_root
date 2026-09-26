@@ -49,7 +49,9 @@ struct AssignmentJob {
   ExtractionSiteId extraction_site;
 
   /// Valid for kHauling of a timber lot at the district centre (0.36.17).
-  /// Copied into WorkAssignment.
+  /// Copied into WorkAssignment. Such a job is never done on foot: with no
+  /// horse left in the day's pool nobody is placed on it (0.36.18,
+  /// StopsWithoutHorse in assignment.cpp).
   LimitDeliveryId limit_delivery;
 
   /// At most this many workers on this job at once; 0 = no cap beyond the
@@ -250,7 +252,8 @@ inline constexpr std::uint32_t kNoJobAssigned = 0xFFFFFFFFU;
 ///                   horse out of the pool (a ploughman or harrower always;
 ///                   a carter while one was left), else 0. A carter placed
 ///                   after the pool ran dry was judged on foot — reach and
-///                   day's norm — and walks (WorkAssignment::rides_horse).
+///                   day's norm — and walks (WorkAssignment::rides_horse);
+///                   except on a lot at the district, where none is placed.
 ///                   Resized to `candidates`; nullptr when not wanted.
 /// @param road_blocked Optional, per job: 1 when it had work left, nobody was
 ///                   placed on it, and free workers were turned away by the

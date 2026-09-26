@@ -550,19 +550,27 @@ class LaborSystem final : public ILaborSystem {
   ///       his reach was judged by the ride. The released stand idle for the
   ///       top-up, which may still send them to work that needs no horse;
   ///       before sunrise they have worked nothing to be paid for.
+  ///       THE LOT'S CARTERS GO FIRST (0.36.18): the fetch from the district
+  ///       is the lowest horse work of the day (windowless, below the rye's
+  ///       fallow), and releasing by row alone could take the ploughman off
+  ///       and leave a cart riding to the district.
   void ReleaseHorselessWork(WorldState& current) const {
     const std::uint32_t herd = DraughtHorses(current);
     std::uint32_t in_traces = HorsesInTraces(current);
-    for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
-         row > 0 && in_traces > herd;
-         --row) {
-      WorkAssignment& work = current.residents.rows[row - 1].work;
-      const bool carter_on_horse = work.kind == WorkKind::kHauling && work.rides_horse != 0;
-      if (!carter_on_horse && !IsHorseWork(work.kind)) {
-        continue;
+    for (const bool lot_pass : {true, false}) {
+      for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
+           row > 0 && in_traces > herd;
+           --row) {
+        WorkAssignment& work = current.residents.rows[row - 1].work;
+        const bool carter_on_horse = work.kind == WorkKind::kHauling && work.rides_horse != 0;
+        const bool lot_carter =
+            carter_on_horse && work.limit_delivery.value != kInvalidEntityIdValue;
+        if (lot_pass ? !lot_carter : (!carter_on_horse && !IsHorseWork(work.kind))) {
+          continue;
+        }
+        work = WorkAssignment{};
+        --in_traces;
       }
-      work = WorkAssignment{};
-      --in_traces;
     }
   }
 
@@ -962,13 +970,18 @@ class LaborSystem final : public ILaborSystem {
         jobs.push_back(job);
       }
       // THE TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): the
-      // village's own carts fetch it, with the haul window a stand's logs and
-      // a dig's load have (HaulWindow: the year's end) — NOT windowless like
-      // the perevalka: its first draft copied that, and on seed 1931 the lot's
-      // carters got five days and then nothing from March to November, every
-      // windowed job outranking them. The carter's place is the map's
-      // northern border end, where the district's road begins
-      // (road_route.h, DistrictExitPoint).
+      // village's own carts fetch it, WINDOWLESS since 0.36.18 — below the
+      // fallow for this autumn's rye (parcel 233: it yields to every job with
+      // a window of its own). A lot at the district is not bread in the field
+      // and does not spoil; the horse goes for it when no field holds it.
+      // 0.36.17 gave it a stand's haul window (the year's end), and on the
+      // canon all sixteen horses stood at the district every working day of
+      // July-September while the rye's fallow waited with no crew. With the
+      // run's chairman buying no faster than the lots are fetched, the window
+      // still failed 38 plan years of 180, windowless 16, 0.36.16 6
+      // (boss-core-epoch1-resume [36]-[37]).
+      // The carter's place is the map's northern border end, where the
+      // district's road begins (road_route.h, DistrictExitPoint).
       for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
         const LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
         if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day ||
@@ -981,7 +994,6 @@ class LaborSystem final : public ILaborSystem {
         job.position = DistrictExitPoint(current);
         job.work_days_remaining = lot.haul_days_remaining;
         job.harnessed = DraughtHorses(current) > 0;
-        job.window = HaulWindow(current);
         jobs.push_back(job);
       }
     }

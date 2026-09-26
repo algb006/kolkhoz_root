@@ -426,6 +426,11 @@ void ApplyStandingWork(const WorldState& world,
     work.unit = order.unit;
     work.stand = order.stand;
     work.extraction_site = order.extraction_site;
+    // No order names a timber lot at the district: the man leaves it. Until
+    // 0.36.18 this line was missing, and a carter the chairman ordered to
+    // the plough kept the lot as his target — WorkSeamOf reads the lot
+    // first, so he drained nothing and was sent to the map's border.
+    work.limit_delivery = LimitDeliveryId{};
     work.travel_hours = -1.0F;  // the order's target: its road is measured anew
   }
 }

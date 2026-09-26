@@ -34,6 +34,7 @@
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
+#include "work_orders.h"
 
 static_assert(std::is_abstract_v<core::ILaborSystem>, "ILaborSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::ILaborSystem>,
@@ -180,6 +181,84 @@ int TestACarterRidesOnlyAFreeHorse() {
   failures += Expect(with_one == 0,
                      "every horse in the plough: the carter is judged on foot and nobody carts");
   return failures;
+}
+
+/// A TIMBER LOT AT THE DISTRICT IS FETCHED ONLY ON A HORSE (0.36.18). Two
+/// windowless harnessed carts, both within a walk: a load about the village
+/// and the lot. With no horse in the pool the village load is still carried
+/// on foot and the lot is left; with one horse the lot gets its one carter,
+/// riding. Within walking reach on purpose: in the run test the road rule
+/// already turns a walker away from the map's border, and this rule stood
+/// unseen behind it (its fault there reddened nothing).
+int TestTheLotIsFetchedOnlyOnAHorse() {
+  int failures = 0;
+  const core::Vec2 origin{0.0F, 0.0F};
+  std::vector<core::AssignmentJob> jobs(2);
+  jobs[0].kind = core::WorkKind::kHauling;
+  jobs[0].unit = core::UnitId{7};  // the perevalka's shape: windowless, a unit's load
+  jobs[0].position = {500.0F, 0.0F};
+  jobs[0].work_days_remaining = 5.0F;  // more than one man's day: the crew is not capped by demand
+  jobs[0].harnessed = true;
+  jobs[1] = jobs[0];
+  jobs[1].unit = core::UnitId{};
+  jobs[1].limit_delivery = core::LimitDeliveryId{3};
+  std::vector<core::AssignmentCandidate> candidates;
+  for (std::uint32_t row = 0; row < 4; ++row) {
+    candidates.push_back(Worker(row, origin));
+  }
+  core::AssignmentParams params = DayParams();
+  params.harness_hours_per_km = 0.1F;
+  const auto on_job = [&jobs, &candidates, &params](
+                          std::uint32_t horses, std::uint32_t job, std::uint32_t& riding) {
+    params.draught_horses = horses;
+    std::vector<std::uint8_t> rides;
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params, &rides);
+    std::uint32_t placed = 0;
+    riding = 0;
+    for (std::uint32_t index = 0; index < plan.size(); ++index) {
+      if (plan[index] == job) {
+        ++placed;
+        riding += rides[index];
+      }
+    }
+    return placed;
+  };
+  std::uint32_t riding = 0;
+  failures += Expect(on_job(0, 0, riding) > 0 && riding == 0,
+                     "no horse: the village load is still carried, on foot");
+  failures +=
+      Expect(on_job(0, 1, riding) == 0, "no horse: nobody walks for the lot at the district");
+  const std::uint32_t lot_carters = on_job(1, 1, riding);
+  failures += Expect(lot_carters == 1 && riding == 1,
+                     "one horse: the lot gets one carter, riding it, and nobody walks after him");
+  return failures;
+}
+
+/// THE CHAIRMAN'S ORDER TAKES A MAN OFF THE LOT (0.36.18, static review): the
+/// standing order wrote every target of the work but the district's lot, and
+/// a carter ordered to the plough kept the lot — WorkSeamOf reads it first,
+/// so he drained nothing and was sent to the map's border.
+int TestAnOrderTakesTheCarterOffTheLot() {
+  core::WorldState world;
+  core::ResidentRow carter;
+  carter.rest = 90.0F;
+  carter.work.kind = core::WorkKind::kHauling;
+  carter.work.rides_horse = 1;
+  carter.work.limit_delivery = core::LimitDeliveryId{3};
+  const core::ResidentId carter_id = core::AppendRow(world.residents, carter);
+  core::OrderRow to_plough;
+  to_plough.kind = core::OrderKind::kAssignWork;
+  to_plough.status = core::OrderStatus::kAccepted;
+  to_plough.resident = carter_id;
+  to_plough.work = core::WorkKind::kPlowing;
+  to_plough.field = core::FieldId{1};
+  core::AppendRow(world.orders, to_plough);
+  core::WorldState current = world;
+  core::ApplyStandingWork(world, current, false, 0.0F);
+  const core::WorkAssignment& work = current.residents.rows[0].work;
+  return Expect(work.kind == core::WorkKind::kPlowing && work.field.value == 1 &&
+                    work.limit_delivery.value == core::kInvalidEntityIdValue,
+                "ordered to the plough, the lot's carter leaves the lot for the field");
 }
 
 /// THE PLOUGH GOES TO THE PLAN'S FIELD FIRST (boss, boss-core-epoch1-5 seq
@@ -3572,6 +3651,8 @@ int main() {
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();
   failures += TestACarterRidesOnlyAFreeHorse();
+  failures += TestTheLotIsFetchedOnlyOnAHorse();
+  failures += TestAnOrderTakesTheCarterOffTheLot();
   failures += TestThePloughGoesToThePlansFieldFirst();
   failures += TestWindowUrgency();
   failures += TestPlacementLevels();

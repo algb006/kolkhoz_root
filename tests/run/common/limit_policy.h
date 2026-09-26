@@ -90,7 +90,8 @@ class LimitPolicy {
                  "has waited a quarter of the year, the design's emergency (timber §2), OR at "
                  "once, with no wait and no regard for a timber cart on the road, while the "
                  "year's points above the planned buys (other materials' lots, the team's pair) "
-                 "cover a timber lot and would otherwise burn (0.36.14) — "
+                 "cover a timber lot and would otherwise burn (0.36.14), unless a lot of that "
+                 "material still lies at the district for the village's own carts (0.36.18) — "
                  "when the year's points cover it and no cart with that material is on the road "
                  "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
                  "DISTRICT'S SEED LOAN for the shortfall seed_short names, seven days before the "
@@ -344,6 +345,18 @@ class LimitPolicy {
     return false;
   }
 
+  /// Whether a lot carrying `resource` is at, or on its way to, the district
+  /// centre for the village's own carts (LimitDeliveryRow::own_carts;
+  /// decision 279) — bought and not yet all carted home.
+  static bool WaitsAtTheDistrict(const core::WorldState& world, std::uint32_t resource) {
+    for (const core::LimitDeliveryRow& cart : world.limit_deliveries.rows) {
+      if (cart.own_carts != 0 && resource < cart.goods.size() && cart.goods[resource] > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// The cheapest goods lot of an open epoch that carries `resource`;
   /// kNoTableRow when none does.
   std::uint32_t CheapestLotCarrying(const core::WorldState& world, std::uint32_t resource) const {
@@ -379,7 +392,9 @@ class LimitPolicy {
   /// `skip_on_the_road`, that no cart already brings). Logs and boards are in
   /// it for a site that waited kTimberEmergencyDays — or for any site when
   /// `spend_surplus` (0.36.14: the points would burn otherwise), and then a
-  /// timber cart already on the road does not hold the next one back.
+  /// timber cart already on the road does not hold the next one back — a lot
+  /// still lying at the district for the village's carts does (0.36.18,
+  /// WaitsAtTheDistrict).
   void CollectMissing(const core::WorldState& world,
                       bool spend_surplus,
                       bool skip_on_the_road,
@@ -419,8 +434,15 @@ class LimitPolicy {
         }
         const core::Grams on_site =
             cost.resource < unit.stock.size() ? unit.stock[cost.resource] : 0;
+        // A LOT LYING AT THE DISTRICT HOLDS THE SURPLUS'S NEXT ONE BACK
+        // (0.36.18): the cart on the road let it through while the district
+        // brought the lot on the third day; since 0.36.17 the village's own
+        // carts fetch it, and on the canon the chairman bought faster than
+        // sixteen horses could fetch — 55 lots waiting on seed 1931 by year
+        // eight, every horse at the district and the rye's fallow unploughed.
         const bool road_holds =
-            skip_on_the_road && !timber_by_surplus && OnTheRoad(world, cost.resource);
+            skip_on_the_road && (timber_by_surplus ? WaitsAtTheDistrict(world, cost.resource)
+                                                   : OnTheRoad(world, cost.resource));
         if (cost.grams > on_site + HeldInStores(world, cost.resource) &&
             CheapestLotCarrying(world, cost.resource) != core::kNoTableRow && !road_holds &&
             std::ranges::find(missing, cost.resource) == missing.end()) {
@@ -459,7 +481,8 @@ class LimitPolicy {
 
   /// Whether the points above the planned buys cover a lot of timber: then
   /// the timber is bought now rather than after kTimberEmergencyDays and the
-  /// cart on the road (0.36.14) — the chairman's decision every winter, «это
+  /// cart on the road (0.36.14; but not over a lot still lying at the
+  /// district, 0.36.18) — the chairman's decision every winter, «это
   /// заставляет игрока каждую зиму принимать решение», which the run did not
   /// take and so burnt 250-350 points a year (econ, roads-balance §7).
   bool SurplusCoversTimber(const core::WorldState& world) const {

@@ -562,8 +562,9 @@ int main(int argc, char** argv) {
   // design's own reading of it: hay is a decision, not a given.
   // The meadow half of this number is bounded by HANDS and the window, not
   // by the sixteen horses. A mower without an animal is a man with a scythe,
-  // slower and still mowing: only ploughing and harrowing are stopped by the
-  // want of a horse (assignment.cpp), and the canon says the same of the
+  // slower and still mowing: only ploughing, harrowing and the fetch of a
+  // district timber lot are stopped by the want of a horse (assignment.cpp,
+  // StopsWithoutHorse), and the canon says the same of the
   // fodder base — "limited not by land but by hands at the haymaking and by
   // the cutting season". For one measured run this band sat at 190-280,
   // while a horse was wrongly REQUIRED and the cut fell by a third; it is

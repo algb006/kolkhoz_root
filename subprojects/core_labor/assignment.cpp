@@ -114,6 +114,15 @@ constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
   return job.field.value;
 }
 
+/// True for a job nobody can do without a horse: the plough and the harrow
+/// (IsHorseWork), and the fetch of a timber lot from the district centre —
+/// 25 km beyond the border is no carry for a back. Until 0.36.18 the lot's
+/// carters fell to the on-foot rule once the horses were gone, and on the
+/// canon forty walked for the logs every free day (seed 1931, year 2).
+constexpr bool StopsWithoutHorse(const AssignmentJob& job) {
+  return IsHorseWork(job.kind) || job.limit_delivery.value != kInvalidEntityIdValue;
+}
+
 /// How much the skill blend lifts a pick: 0.7 at skill 0, 1.0 at 100.
 constexpr float kSkillWeightBase = 0.7F;
 constexpr float kSkillWeightSpan = 0.3F;
@@ -422,13 +431,15 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // cut at all — while the rule below says a scythe is still work.
     const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
     const bool horse_work = IsHorseWork(job.kind) || (job.harnessed && !meadow_cut);
-    // ONLY THE PLOUGH AND THE HARROW STOP FOR WANT OF A HORSE, as the rule
-    // below says. Until 2026-09-15 this skipped every harnessed job once the
+    // ONLY THE PLOUGH, THE HARROW AND THE LOT'S FETCH FROM THE DISTRICT
+    // (0.36.18) STOP FOR WANT OF A HORSE, as the rule below says (every
+    // other cart about the village is a back without one). Until 2026-09-15
+    // this skipped every harnessed job once the
     // pool was empty, so the autumn ploughing took the last horse and the
     // carts behind it were not offered at all: on seed 1936 the vegetables
     // lay a day with 45 hands idle, and a December potato load went to the
     // snow. A cart with no horse is a back.
-    if (IsHorseWork(job.kind) && horses_left == 0) {
+    if (StopsWithoutHorse(job) && horses_left == 0) {
       continue;
     }
     if (meadow_cut && horses_left > 0) {
@@ -461,10 +472,11 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         break;
       }
       // A HORSE IS TAKEN IF ONE IS FREE. Whether its absence STOPS the work
-      // is a different question, and only ploughing and harrowing answer it
-      // yes — those are IsHorseWork, and a man cannot pull a plough. Mowing
-      // without a horse is a scythe, and carrying without one is a back:
-      // slower, and still work.
+      // is a different question, and ploughing and harrowing answer it yes —
+      // those are IsHorseWork, and a man cannot pull a plough — and so, since
+      // 0.36.18, does the fetch of a timber lot from the district
+      // (StopsWithoutHorse). Mowing without a horse is a scythe, and carrying
+      // about the village without one is a back: slower, and still work.
       //
       // Measured, because the difference is not academic: while every
       // harnessed job demanded an animal, the carts took all sixteen horses
@@ -476,8 +488,8 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         if (horses_left > 0) {
           --horses_left;
           took_horse = true;
-        } else if (IsHorseWork(job.kind)) {
-          break;  // no horse, no plough: this job cannot be done at all today
+        } else if (StopsWithoutHorse(job)) {
+          break;  // no horse, no plough (nor a lot fetched): not done at all today
         } else {
           // A CARTER WITH NO HORSE IS JUDGED ON FOOT (boss, boss-core-topup-
           // horses seq 2): he was ranked by the ride, and until 0.34.51 he
