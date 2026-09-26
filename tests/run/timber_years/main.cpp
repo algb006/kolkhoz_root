@@ -105,6 +105,53 @@ struct YearTally {
   double most_idle_boards_m3 = 0.0;  ///< most boards lying on such a day
 };
 
+/// Carters riding a horse to a load that does not spoil — a stand's logs, a
+/// dig's load, the district's timber lot — on a day a field's plough or
+/// harrow, in that phase since the morning before (`morning`), waits with
+/// nobody of its own kind on it (0.36.19; district_lot's check for the lot,
+/// 0.36.18). A phase opens in production, after the morning's placement, so
+/// a field that opened today had no plough to offer anyone.
+std::uint32_t TimberCartsOverAWaitingPlough(const std::vector<core::FieldRow>& morning,
+                                            const std::vector<core::FieldId>& morning_ids,
+                                            const core::WorldState& world) {
+  bool plough_waits = false;
+  for (std::uint32_t row = 0; row < world.fields.rows.size() && !plough_waits; ++row) {
+    const core::FieldRow& field = world.fields.rows[row];
+    const bool plough = field.phase == core::FieldPhase::kPlowing;
+    const bool harrow = field.phase == core::FieldPhase::kHarrowing;
+    if ((!plough && !harrow) || !(field.work_days_remaining > 0.0F)) {
+      continue;
+    }
+    const bool open_since_morning = row < morning.size() &&
+                                    morning_ids[row].value == world.fields.row_ids[row].value &&
+                                    morning[row].phase == field.phase;
+    if (!open_since_morning) {
+      continue;
+    }
+    const core::WorkKind kind = plough ? core::WorkKind::kPlowing : core::WorkKind::kHarrowing;
+    bool crewed = false;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      crewed = crewed || (person.work.field.value == world.fields.row_ids[row].value &&
+                          person.work.kind == kind);
+    }
+    plough_waits = !crewed;
+  }
+  if (!plough_waits) {
+    return 0;
+  }
+  std::uint32_t carts = 0;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    const bool timber_load = person.work.stand.value != core::kInvalidEntityIdValue ||
+                             person.work.extraction_site.value != core::kInvalidEntityIdValue ||
+                             person.work.limit_delivery.value != core::kInvalidEntityIdValue;
+    carts +=
+        person.work.kind == core::WorkKind::kHauling && person.work.rides_horse != 0 && timber_load
+            ? 1U
+            : 0U;
+  }
+  return carts;
+}
+
 }  // namespace
 
 /// Hours one way from the nearest lived-in house to `place` by the road, at
@@ -217,6 +264,8 @@ int main(int argc, char** argv) {
   std::uint32_t felling_beyond_days = 0;
   std::uint32_t planting_beyond_days = 0;
   std::uint32_t unreachable_alarm_days = 0;
+  std::uint32_t timber_carts_over_plough = 0;      // man-days
+  std::uint32_t timber_cart_days_over_plough = 0;  // days
 
   std::vector<YearTally> years(kYears);
   std::vector<core::TimberStandRow> yesterday = started.State().stands.rows;
@@ -235,6 +284,8 @@ int main(int argc, char** argv) {
       // one tick before the last and read zero on every seed: the settle had
       // already run by then.)
       std::vector<float> drained(started.State().stands.rows.size(), 0.0F);
+      const std::vector<core::FieldRow> morning_fields = started.State().fields.rows;
+      const std::vector<core::FieldId> morning_ids = started.State().fields.row_ids;
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         started->AdvanceStep();
         const std::vector<core::TimberStandRow>& stands = started.State().stands.rows;
@@ -245,6 +296,12 @@ int main(int argc, char** argv) {
       }
       for (const float drained_today : drained) {
         tally.stand_haul_man_days += drained_today;
+      }
+      {
+        const std::uint32_t carts =
+            TimberCartsOverAWaitingPlough(morning_fields, morning_ids, started.State());
+        timber_carts_over_plough += carts;
+        timber_cart_days_over_plough += carts > 0 ? 1U : 0U;
       }
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
@@ -437,6 +494,17 @@ int main(int argc, char** argv) {
   failures += run::Expect(grove_at[2] > 0.0,
                           "and the groves and belts still stand at year thirty — criterion 4's "
                           "own subject, floored at 'not nothing' and no higher");
+  // THE PLOUGH BEFORE THE LOGS (0.36.19; boss-core-epoch1-resume [40]): a
+  // stand's logs, a dig's load and the district's lot are carted windowless,
+  // below every field work with a window and the rye's fallow. With the
+  // year's-end window they took the fallow's horses at the end of September
+  // and the canon lost seven autumns' rye on nine seeds.
+  std::cout << "timber_years: seed " << seed << ": timber carts on a horse while a plough or "
+            << "harrow waited uncrewed since the morning — " << timber_carts_over_plough
+            << " man-days on " << timber_cart_days_over_plough << " days\n";
+  failures += run::Expect(timber_carts_over_plough == 0,
+                          "no cart goes for logs, a dig's load or the lot on a horse while a "
+                          "plough or a harrow waits with nobody on it");
   // PRINTED, NOT ASSERTED: an assertion here could not go red. With the
   // felling policy's reach test switched off altogether (every stand
   // "reachable") seed 1929 still raised not one unreachable alarm in thirty

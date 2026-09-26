@@ -550,22 +550,25 @@ class LaborSystem final : public ILaborSystem {
   ///       his reach was judged by the ride. The released stand idle for the
   ///       top-up, which may still send them to work that needs no horse;
   ///       before sunrise they have worked nothing to be paid for.
-  ///       THE LOT'S CARTERS GO FIRST (0.36.18): the fetch from the district
-  ///       is the lowest horse work of the day (windowless, below the rye's
-  ///       fallow), and releasing by row alone could take the ploughman off
-  ///       and leave a cart riding to the district.
+  ///       THE CARTS OF WHAT DOES NOT SPOIL GO FIRST: the district's lot
+  ///       (0.36.18), a stand's logs and a dig's load (0.36.19) are the
+  ///       lowest horse work of the day (windowless, below the rye's fallow),
+  ///       and releasing by row alone could take the ploughman off and leave
+  ///       a cart riding for logs.
   void ReleaseHorselessWork(WorldState& current) const {
     const std::uint32_t herd = DraughtHorses(current);
     std::uint32_t in_traces = HorsesInTraces(current);
-    for (const bool lot_pass : {true, false}) {
+    for (const bool timber_pass : {true, false}) {
       for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
            row > 0 && in_traces > herd;
            --row) {
         WorkAssignment& work = current.residents.rows[row - 1].work;
         const bool carter_on_horse = work.kind == WorkKind::kHauling && work.rides_horse != 0;
-        const bool lot_carter =
-            carter_on_horse && work.limit_delivery.value != kInvalidEntityIdValue;
-        if (lot_pass ? !lot_carter : (!carter_on_horse && !IsHorseWork(work.kind))) {
+        const bool timber_carter =
+            carter_on_horse && (work.limit_delivery.value != kInvalidEntityIdValue ||
+                                work.stand.value != kInvalidEntityIdValue ||
+                                work.extraction_site.value != kInvalidEntityIdValue);
+        if (timber_pass ? !timber_carter : (!carter_on_horse && !IsHorseWork(work.kind))) {
           continue;
         }
         work = WorkAssignment{};
@@ -886,7 +889,8 @@ class LaborSystem final : public ILaborSystem {
     }
     // The timber stands (timber design §8a, 2026-09-13): felling, windowless
     // and capped by the tools in the stores, and the carting of the logs lying
-    // there, exactly as a field's load is carted.
+    // there, by a field's load's arithmetic — though since 0.36.19 not at its
+    // rank: windowless, below the rye's fallow (see HaulWindow).
     if (!day_off) {
       const std::uint32_t crew_cap =
           FellingCrewCap(config_.timber, TotalHeld(current, config_.timber.tool_resource));
@@ -919,7 +923,14 @@ class LaborSystem final : public ILaborSystem {
           job.position = stand.position;
           job.work_days_remaining = stand.haul_days_remaining;
           job.harnessed = DraughtHorses(current) > 0;
-          job.window = HaulWindow(current);
+          // WINDOWLESS SINCE 0.36.19, as the district's lot (0.36.18): logs
+          // lying at the felling do not spoil, and the fallow for this
+          // autumn's rye goes first (parcel 233). With the year's-end window
+          // (HaulWindow) the stand's carts took 27-30 horses of 30 in the
+          // last days of September while the rye's harrowing waited with 0-3
+          // (seed 1934, year 5, f11): the sowing never opened, the slot was
+          // lost (278). Seven lost autumns on the canon's nine seeds -> one
+          // (boss-core-epoch1-resume [39]-[40]).
           jobs.push_back(job);
         }
       }
@@ -948,7 +959,8 @@ class LaborSystem final : public ILaborSystem {
           job.position = site.position;
           job.work_days_remaining = site.haul_days_remaining;
           job.harnessed = DraughtHorses(current) > 0;
-          job.window = HaulWindow(current);
+          // Windowless since 0.36.19, for the stand's reason above: dug
+          // stone, sand and clay do not spoil either.
           jobs.push_back(job);
         }
       }
@@ -1149,6 +1161,15 @@ class LaborSystem final : public ILaborSystem {
   /// urgent as work gets" — so through the whole of spring the carts
   /// outranked the plough and took every horse in the village. The load was
   /// indeed old; it was not due tonight.
+  ///
+  /// A FIELD'S LOAD ONLY, since 0.36.19: grain lying on a field is rained
+  /// on and the snow takes what is still out. A stand's logs, a dig's load
+  /// (0.36.19) and the district's timber lot (0.36.18) had it too, and did
+  /// not spoil; ranked with a window, above the fallow for the rye, they took
+  /// its horses at the end of September (boss-core-epoch1-resume [36]-[40]).
+  /// The field's load still does, and knowingly: on seed 1934, year 5, its
+  /// carts held 22 and 30 horses on two days of the rye's harrowing — boss
+  /// kept it with a window ([40]: «зерно на поле мокнет»).
   static Deadline HaulWindow(const WorldState& current) {
     const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
     return DeadlineInDays(static_cast<std::int32_t>(kDaysPerYear - day_of_year - 1U));
