@@ -1,0 +1,24 @@
+# generated from db/map.db — do not edit by hand
+# metres from the map's SOUTH-WEST corner, x east, y north
+# PLACES THE ROAD NETWORK MUST KEEP REACHING (roads.md §17): one
+# point per settlement zone, dacha zone, industry zone and hay
+# meadow — the contour's centroid. The last road to one is not
+# demolished. Units and fields are the core's own and not here.
+place,kind,x_m,y_m
+new_village_zone,village_zone,8750.0,8922.5
+village_zone,village_zone,8625.0,9275.0
+village_zone_pond,village_zone,6200.0,3900.0
+artel_zone,industry_zone,9065.0,10520.0
+industry_zone,industry_zone,7640.0,9007.5
+dacha_zone,dacha_zone,11551.9,8366.0
+meadow_01,meadow,8476.2,9909.3
+meadow_02,meadow,7676.2,8509.3
+meadow_03,meadow,9871.2,8759.3
+meadow_04,meadow,6826.2,9409.3
+meadow_05,meadow,8626.2,7959.3
+meadow_06,meadow,9626.2,8309.3
+meadow_07,meadow,8626.2,7759.3
+meadow_08,meadow,8776.2,11080.0
+meadow_09,meadow,7676.2,8009.3
+meadow_10,meadow,6426.2,9259.3
+
