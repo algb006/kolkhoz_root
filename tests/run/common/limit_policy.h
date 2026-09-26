@@ -21,6 +21,15 @@
 /// nothing by year twenty, and the design gives the district's timber lot as
 /// the emergency channel (timber §2; boss, boss-core-epoch1-3 seq 9). So a
 /// site that has waited a quarter of the year may have them bought.
+///
+/// AND AT ONCE WHEN THE POINTS WOULD BURN (0.36.14; boss, boss-core-epoch1-
+/// resume [17]; econ, roads-balance §7): measured with the wait at 0 and no
+/// cart held back, the world reached Epoch II on 26 seeds of 27 at six hours,
+/// while the canon's chairman burnt 250-350 points a year — the «never» on
+/// the canon measured this harness's brake, not the world. «Неизрасходованные
+/// баллы сгорают в конце года. Это заставляет игрока каждую зиму принимать
+/// решение» (district design): the run takes that decision now. The wait of
+/// the emergency stays for a year whose points are needed elsewhere.
 
 #ifndef TESTS_RUN_COMMON_LIMIT_POLICY_H_
 #define TESTS_RUN_COMMON_LIMIT_POLICY_H_
@@ -77,8 +86,11 @@ class LimitPolicy {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman BUYS on the "
                  "district's limit the cheapest goods lot carrying a material a building site "
-                 "waits for and the stores cannot cover — logs and boards only for a site that "
-                 "has waited a quarter of the year, the design's emergency (timber §2) — "
+                 "waits for and the stores cannot cover — logs and boards for a site that "
+                 "has waited a quarter of the year, the design's emergency (timber §2), OR at "
+                 "once, with no wait and no regard for a timber cart on the road, while the "
+                 "year's points above the planned buys (other materials' lots, the team's pair) "
+                 "cover a timber lot and would otherwise burn (0.36.14) — "
                  "when the year's points cover it and no cart with that material is on the road "
                  "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
                  "DISTRICT'S SEED LOAN for the shortfall seed_short names, seven days before the "
@@ -356,7 +368,22 @@ class LimitPolicy {
   /// first missing material of the queue — straw, clay — had no lot, and the
   /// chairman bought nothing while the granary behind it waited for glass
   /// (seed 1931 bought one lot in twenty years, 2026-09-14).
-  std::uint32_t MissingMaterial(const core::WorldState& world) const {
+  std::uint32_t MissingMaterial(const core::WorldState& world, bool spend_surplus) const {
+    std::vector<std::uint32_t> missing;
+    CollectMissing(world, spend_surplus, true, missing);
+    return missing.empty() ? core::kNoTableRow : missing.front();
+  }
+
+  /// Every material, over the queue in row order and each once, that a site
+  /// lacks beyond what the stores hold and some lot carries (and, with
+  /// `skip_on_the_road`, that no cart already brings). Logs and boards are in
+  /// it for a site that waited kTimberEmergencyDays — or for any site when
+  /// `spend_surplus` (0.36.14: the points would burn otherwise), and then a
+  /// timber cart already on the road does not hold the next one back.
+  void CollectMissing(const core::WorldState& world,
+                      bool spend_surplus,
+                      bool skip_on_the_road,
+                      std::vector<std::uint32_t>& missing) const {
     const std::uint32_t rising = rise_watch_ ? rise_watch_(world) : core::kNoRow;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
@@ -385,19 +412,67 @@ class LimitPolicy {
         if (cost.type.value != unit.type.value || cost.level != target) {
           continue;
         }
-        if ((cost.resource == log_ || cost.resource == board_) && !emergency) {
+        const bool timber = cost.resource == log_ || cost.resource == board_;
+        const bool timber_by_surplus = timber && spend_surplus && timber_emergency_ && !emergency;
+        if (timber && !emergency && !timber_by_surplus) {
           continue;
         }
         const core::Grams on_site =
             cost.resource < unit.stock.size() ? unit.stock[cost.resource] : 0;
+        const bool road_holds =
+            skip_on_the_road && !timber_by_surplus && OnTheRoad(world, cost.resource);
         if (cost.grams > on_site + HeldInStores(world, cost.resource) &&
-            CheapestLotCarrying(world, cost.resource) != core::kNoTableRow &&
-            !OnTheRoad(world, cost.resource)) {
-          return cost.resource;
+            CheapestLotCarrying(world, cost.resource) != core::kNoTableRow && !road_holds &&
+            std::ranges::find(missing, cost.resource) == missing.end()) {
+          missing.push_back(cost.resource);
         }
       }
     }
-    return core::kNoTableRow;
+  }
+
+  /// THE POINTS THE YEAR'S PLANNED BUYS NEED (0.36.14; econ, roads-balance
+  /// §7; boss, boss-core-epoch1-resume [17]): the cheapest lot of every
+  /// non-timber material a site lacks and no cart brings yet, and the horse
+  /// lot while the team is below its pair. What is above this would burn at
+  /// the year's end (district design: «неизрасходованные баллы сгорают»).
+  /// The run's reading of «плановые покупки», not the design's number.
+  std::int32_t PlannedPoints(const core::WorldState& world) const {
+    std::vector<std::uint32_t> missing;
+    CollectMissing(world, false, true, missing);
+    std::int32_t points = 0;
+    for (const std::uint32_t resource : missing) {
+      if (resource == log_ || resource == board_) {
+        continue;  // the timber is what the surplus is for
+      }
+      const std::uint32_t lot = CheapestLotCarrying(world, resource);
+      points += lot != core::kNoTableRow ? catalog_.lots[lot].points : 0;
+    }
+    if (horse_kind_ != core::kNoTableRow && horse_lot_ != core::kNoTableRow) {
+      std::uint32_t adults = 0;
+      for (const core::HerdRow& herd : world.herds.rows) {
+        adults += herd.kind.value == horse_kind_ ? herd.adult_count : 0U;
+      }
+      points += adults < kTeamFloor ? catalog_.lots[horse_lot_].points : 0;
+    }
+    return points;
+  }
+
+  /// Whether the points above the planned buys cover a lot of timber: then
+  /// the timber is bought now rather than after kTimberEmergencyDays and the
+  /// cart on the road (0.36.14) — the chairman's decision every winter, «это
+  /// заставляет игрока каждую зиму принимать решение», which the run did not
+  /// take and so burnt 250-350 points a year (econ, roads-balance §7).
+  bool SurplusCoversTimber(const core::WorldState& world) const {
+    const std::int32_t surplus = world.limit.points - PlannedPoints(world);
+    std::int32_t cheapest = -1;
+    for (const std::uint32_t resource : {log_, board_}) {
+      const std::uint32_t lot =
+          resource == core::kNoTableRow ? core::kNoTableRow : CheapestLotCarrying(world, resource);
+      if (lot != core::kNoTableRow && (cheapest < 0 || catalog_.lots[lot].points < cheapest)) {
+        cheapest = catalog_.lots[lot].points;
+      }
+    }
+    return cheapest > 0 && surplus >= cheapest;
   }
 
   /// THE TEAM IS GONE, and this is the run standing in for the player again —
@@ -467,7 +542,7 @@ class LimitPolicy {
     if (BuyBackTheTeam(world, order)) {
       return true;  // before anything a building site wants: the plough first
     }
-    const std::uint32_t missing = MissingMaterial(world);
+    const std::uint32_t missing = MissingMaterial(world, SurplusCoversTimber(world));
     if (missing == core::kNoTableRow) {
       return false;
     }
