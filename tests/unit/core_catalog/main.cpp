@@ -784,6 +784,24 @@ int TestRoadSurfaceLevels() {
   core::RoadSurfaceLevels refused;
   failures += Expect(!core::ReadRoadSurfaceLevels(no_mass, refused, error),
                      "road levels: a road material with no mass refuses");
+  // The clearing's man-days a hectare (boss [68]): read, refused out of
+  // range, kept at the default without the row.
+  const auto clearing = [](std::vector<std::vector<std::string>> rows, float& per_ha) {
+    const test::FakeTable world({"key", "value", "reader"}, std::move(rows));
+    const test::FakeTableSet set({{"world_params", &world}});
+    std::string trouble;
+    return core::ReadClearingLabour(set, per_ha, trouble);
+  };
+  float read_per_ha = 150.0F;
+  float bad_per_ha = 150.0F;
+  float kept_per_ha = 150.0F;
+  failures += Expect(clearing({{"clearing_trudodni_per_ha", "200", "core"}}, read_per_ha) &&
+                         read_per_ha == 200.0F &&
+                         !clearing({{"clearing_trudodni_per_ha", "-1", "core"}}, bad_per_ha) &&
+                         clearing({{"road_access_m", "10", "core"}}, kept_per_ha) &&
+                         kept_per_ha == 150.0F && core::RoadToolWorldParamKeys().size() == 1,
+                     "road tools: the clearing's man-days read, refused below nought, kept "
+                     "without the row");
   return failures;
 }
 

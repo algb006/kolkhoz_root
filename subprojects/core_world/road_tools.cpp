@@ -31,7 +31,8 @@ std::optional<RoadTools> RoadTools::Read(const ITableSet& tables, std::string& e
     return std::nullopt;
   }
   TimberCatalog timber;
-  if (!ParseTimberCatalog(tables, timber, error)) {
+  if (!ParseTimberCatalog(tables, timber, error) ||
+      !ReadClearingLabour(tables, tools.config_.clearing_trudodni_per_ha, error)) {
     return std::nullopt;
   }
   tools.plot_radius_m_ = definitions.units.plot_radius_m;

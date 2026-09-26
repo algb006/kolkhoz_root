@@ -19,6 +19,7 @@
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_catalog/processing_catalog.h"
+#include "core_catalog/road_cost_catalog.h"
 #include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
@@ -838,6 +839,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_conventions.begin(), from_conventions.end());
       const std::span<const std::string_view> from_roads = RoadWorldParamKeys();
       known.insert(known.end(), from_roads.begin(), from_roads.end());
+      // The road tools' own (road_tools.h): the clearing's man-days a hectare.
+      const std::span<const std::string_view> from_road_tools = RoadToolWorldParamKeys();
+      known.insert(known.end(), from_road_tools.begin(), from_road_tools.end());
       // The ice's two fulls: read by the month's ice door (month_ice.h), not
       // by the simulation — the door is the core's all the same.
       const std::span<const std::string_view> from_ice = IceWorldParamKeys();

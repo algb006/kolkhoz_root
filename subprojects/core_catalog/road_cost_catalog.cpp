@@ -1,10 +1,13 @@
 #include "core_catalog/road_cost_catalog.h"
 
+#include <array>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -34,7 +37,26 @@ RoadSurfaceLevels DesignEpochs() {
   return levels;
 }
 
+constexpr std::array<std::string_view, 1> kRoadToolWorldParamKeys = {"clearing_trudodni_per_ha"};
+
 }  // namespace
+
+std::span<const std::string_view> RoadToolWorldParamKeys() {
+  return kRoadToolWorldParamKeys;
+}
+
+bool ReadClearingLabour(const ITableSet& tables, float& per_ha, std::string& error) {
+  const ITable* const world = tables.FindTable("world_params");
+  if (world == nullptr) {
+    return true;
+  }
+  const std::array<ScalarKnob, 1> knobs = {{
+      {.key = kRoadToolWorldParamKeys[0],
+       .value = &per_ha,
+       .range = Range{.low = 0.0F, .high = 2000.0F}},
+  }};
+  return ReadKnobs(*world, "world_params", knobs, error);
+}
 
 bool ReadRoadSurfaceLevels(const ITableSet& tables, RoadSurfaceLevels& levels, std::string& error) {
   RoadSurfaceLevels read = DesignEpochs();

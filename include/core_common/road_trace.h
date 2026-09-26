@@ -88,8 +88,8 @@ struct RoadTraceConfig {
   /// (roads design §9, «Трудоёмкость растёт: чем больше деревьев…»). STUB
   /// (boss [66]): felling and grubbing by hand in the 1920s runs 100-300
   /// man-days a hectare, the middle taken — +12 man-days a 100 m of bed
-  /// through trees; econ measures. A world_params key
-  /// (`clearing_trudodni_per_ha`) comes when boss is told the reader is.
+  /// through trees; econ measures. Read from world_params
+  /// `clearing_trudodni_per_ha` (boss [68]); this default equals the export.
   float clearing_trudodni_per_ha = 150.0F;
 
   /// How far past the river's half-width at a ford a road may still cross.

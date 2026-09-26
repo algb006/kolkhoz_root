@@ -16,7 +16,9 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <string>
+#include <string_view>
 
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
@@ -51,6 +53,17 @@ using RoadSurfaceLevels =
 ///         parse or names an unknown resource, or a resource without a mass,
 ///         with the reason in `error`.
 bool ReadRoadSurfaceLevels(const ITableSet& tables, RoadSurfaceLevels& levels, std::string& error);
+
+/// @brief The world_params.csv keys the road tools read — for the
+///        assembly's declared-readers check.
+std::span<const std::string_view> RoadToolWorldParamKeys();
+
+/// @brief Reads `clearing_trudodni_per_ha` (boss [66]/[68]: 150, STUB with
+///        its reasoning) into `per_ha`.
+/// @param per_ha Overwritten when the row is present; kept when the set has
+///        no world_params or no such row (the compiled default).
+/// @return false when the row is present and not a number in 0..2000.
+bool ReadClearingLabour(const ITableSet& tables, float& per_ha, std::string& error);
 
 }  // namespace core
 
