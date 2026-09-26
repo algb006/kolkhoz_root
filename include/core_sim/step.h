@@ -372,7 +372,8 @@ class ISimulation {
   ///        and the operation's estimate — what kUpgradeRoad / kDemolishRoad
   ///        would act on.
   /// @note Called between steps on the sim thread; pure reads.
-  /// STUB until the selection (7d): no piece, a nought estimate.
+  /// Real in the full simulation since 7d (core_common/road_pieces.h); the
+  /// bare step engine answers no piece.
   virtual RoadPieces SelectRoadPieces(const RoadSelection& selection,
                                       RoadOperation operation) const = 0;
 

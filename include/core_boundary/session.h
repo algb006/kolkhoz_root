@@ -724,9 +724,9 @@ class ISession {
   virtual float ResidentHeightMeters(ResidentId resident) const = 0;
 
   // -- the player's road tools (delivery 7; core_common/road_draft.h) ---------
-  // STUB in part (ISimulation says each one's answer): SelectRoadPieces
-  // until 7d; RoadKindsAvailable opens the path and the dirt road since 7c
-  // and the rest with 7d-7e. Roads() is real from 7a, PreviewRoad from 7b.
+  // STUB in part (ISimulation says each one's answer): RoadKindsAvailable
+  // opens the path and the dirt road since 7c and the rest with 7d-7e.
+  // Roads() is real from 7a, PreviewRoad from 7b, SelectRoadPieces from 7d.
   // kLayRoad lays a path or a dirt road since 7c; kUpgradeRoad and
   // kDemolishRoad are staged and then refused kNoConsumer until 7e and 7d.
 

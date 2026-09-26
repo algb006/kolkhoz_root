@@ -7,7 +7,9 @@
 #include "core_catalog/definitions.h"
 #include "core_catalog/map_obstacle_tables.h"
 #include "core_catalog/road_cost_catalog.h"
+#include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
+#include "core_common/road_pieces.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
@@ -34,6 +36,18 @@ std::optional<RoadTools> RoadTools::Read(const ITableSet& tables, std::string& e
   if (!ParseTimberCatalog(tables, timber, error) ||
       !ReadClearingLabour(tables, tools.config_.clearing_trudodni_per_ha, error)) {
     return std::nullopt;
+  }
+  // The access distance a unit is on the network by (declared by
+  // core_production, its first reader; read here as well, one row).
+  if (const ITable* world_params = tables.FindTable("world_params")) {
+    const std::array<ScalarKnob, 1> knobs = {{
+        {.key = "road_access_m",
+         .value = &tools.road_access_m_,
+         .range = Range{.low = 0.0F, .high = 500.0F}},
+    }};
+    if (!ReadKnobs(*world_params, "world_params", knobs, error)) {
+      return std::nullopt;
+    }
   }
   tools.plot_radius_m_ = definitions.units.plot_radius_m;
   tools.keep_out_radius_m_ = definitions.units.keep_out_radius_m;
@@ -133,6 +147,30 @@ RoadToolStates RoadTools::ToolStates(const WorldState& world) const {
       built_later(RoadSurface::kAsphaltWalks);
   states[static_cast<std::size_t>(RoadTool::kDemolish)] = RoadToolClosed::kNotYetBuilt;
   return states;
+}
+
+RoadPieces RoadTools::Select(const WorldState& world,
+                             const RoadSelection& selection,
+                             RoadOperation operation) const {
+  std::vector<RoadAnchorUnit> units;
+  units.reserve(world.units.rows.size());
+  for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
+    units.push_back(RoadAnchorUnit{.unit = world.units.row_ids[row],
+                                   .position = world.units.rows[row].position});
+  }
+  RoadPieceSite site;
+  site.roads = &world.roads;
+  site.units = units;
+  site.road_access_m = road_access_m_;
+  site.raster = Raster();
+  site.village = village_;
+  site.costs = costs_;
+  for (std::size_t surface = 0; surface < costs_.size(); ++surface) {
+    site.costs[surface].open = EpochIndex(opens_[surface]) <= EpochIndex(world.epoch);
+  }
+  site.road_half_width_m = config_.road_half_width_m;
+  site.path_half_width_m = config_.path_half_width_m;
+  return SelectRoadPiecesOn(site, selection, operation);
 }
 
 RoadDraftResult RoadTools::Trace(const WorldState& world, const RoadDraft& draft) const {

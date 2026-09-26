@@ -42,6 +42,12 @@ class RoadTools {
   ///        step's — one object for both, so the two cannot trace apart.
   RoadDraftResult Trace(const WorldState& world, const RoadDraft& draft) const;
 
+  /// @brief The pieces `selection` takes on `world` for `operation`
+  ///        (road_pieces.h): what the tools 6-9 show before the order.
+  RoadPieces Select(const WorldState& world,
+                    const RoadSelection& selection,
+                    RoadOperation operation) const;
+
   /// @brief Every tool of the roads menu on `world` (roads design §9, «Дизаблим
   ///        но не скрываем»): a path and a dirt road open (7c); a surface its
   ///        epoch has not opened kByEpoch; the rest kNotYetBuilt until their
@@ -72,6 +78,10 @@ class RoadTools {
   std::vector<float> plot_radius_m_;      ///< By UnitTypeId; 0 — no plot.
   std::vector<float> keep_out_radius_m_;  ///< The plot's, or the body's.
   float map_side_m_ = 0.0F;
+
+  /// world_params `road_access_m` (units rules §12): how near a road must
+  /// come to a unit for the unit to be on the network.
+  float road_access_m_ = 10.0F;
   float timber_m3_per_ha_ = 0.0F;
   RoadTraceConfig config_;
 

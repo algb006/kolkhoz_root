@@ -1239,6 +1239,65 @@ int CheckRoadLaying() {
   return failures;
 }
 
+/// THE DEMOLITION'S SELECTION ON THE START NETWORK (delivery 7d;
+/// road_pieces.h), through the full simulation's door: a drag along each
+/// start road end to end, and what it would take. Printed road by road —
+/// pieces in, pieces the map keeps, pieces that are the only road to a unit
+/// or a way out, with the unit or the map road. Asserted: every piece of a
+/// road the map keeps (removable 0) is refused as such, and there is at
+/// least one of each other answer, so the print is not a column of one word.
+int CheckRoadPiecesOnStart() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation =
+      shipped ? core::CreateStandardSimulation(config) : nullptr;
+  if (Expect(simulation != nullptr, "pieces on start: the shipped set assembles") != 0) {
+    return 1;
+  }
+  const core::WorldState& world = simulation->CompletedState();
+  std::vector<core::MapRoadDef> map_roads;
+  std::string error;
+  (void)core::ReadMapRoads(*shipped, map_roads, error);
+  bool kept_refused = true;
+  std::uint32_t in = 0;
+  std::uint32_t only = 0;
+  std::uint32_t kept = 0;
+  for (std::size_t row = 0; row < world.roads.rows.size(); ++row) {
+    const core::RoadRow& road = world.roads.rows[row];
+    const core::RoadPieces pieces =
+        simulation->SelectRoadPieces(core::RoadSelection{.road = world.roads.row_ids[row],
+                                                         .from = road.axis.front().position,
+                                                         .to = road.axis.back().position},
+                                     core::RoadOperation::kDemolish);
+    std::cout << "pieces on start: " << (row < map_roads.size() ? map_roads[row].key : "?")
+              << (road.removable == 0 ? " (kept)" : "") << ':';
+    for (const core::RoadPiece& piece : pieces.pieces) {
+      std::cout << ' ' << static_cast<int>(piece.s_from_m) << '-' << static_cast<int>(piece.s_to_m)
+                << '=' << static_cast<int>(piece.refusal);
+      if (piece.refusal == core::RoadPieceRefusal::kOnlyRoad) {
+        std::cout << (piece.stranded_unit.value != 0
+                          ? "(unit " + std::to_string(piece.stranded_unit.value) + ")"
+                          : "(map road " + std::to_string(piece.stranded_map_road.value) + ")");
+        ++only;
+      }
+      in += piece.refusal == core::RoadPieceRefusal::kNone ? 1U : 0U;
+      kept += piece.refusal == core::RoadPieceRefusal::kStartRoad ? 1U : 0U;
+      kept_refused = kept_refused &&
+                     (road.removable != 0 || piece.refusal == core::RoadPieceRefusal::kStartRoad);
+    }
+    std::cout << '\n';
+  }
+  std::cout << "pieces on start: in " << in << ", the map keeps " << kept << ", only road " << only
+            << '\n';
+  failures += Expect(kept_refused && kept > 0 && only > 0 && in > 0,
+                     "pieces on start: a kept road's pieces refused as such; each answer seen");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -1249,6 +1308,7 @@ int main() {
   failures += CheckRoadsDoor();
   failures += CheckRoadTracer();
   failures += CheckRoadLaying();
+  failures += CheckRoadPiecesOnStart();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 

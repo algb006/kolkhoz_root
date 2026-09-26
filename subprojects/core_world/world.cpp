@@ -583,9 +583,9 @@ class StandardSimulation final : public ISimulation {
     return road_tools_->Trace(engine_->CompletedState(), draft);
   }
 
-  RoadPieces SelectRoadPieces(const RoadSelection& /*selection*/,
-                              RoadOperation /*operation*/) const override {
-    return {};
+  RoadPieces SelectRoadPieces(const RoadSelection& selection,
+                              RoadOperation operation) const override {
+    return road_tools_->Select(engine_->CompletedState(), selection, operation);
   }
 
   RoadToolStates RoadKindsAvailable() const override {

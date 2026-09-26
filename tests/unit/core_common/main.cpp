@@ -30,6 +30,7 @@
 #include "core_common/random.h"
 #include "core_common/resident_activity.h"
 #include "core_common/road_graph.h"
+#include "core_common/road_pieces.h"
 #include "core_common/road_route.h"
 #include "core_common/road_rules.h"
 #include "core_common/road_trace.h"
@@ -1529,6 +1530,143 @@ bool HasBlock(const core::RoadDraftResult& result, core::RoadDraftRefusal refusa
   });
 }
 
+/// THE SELECTION OF PIECES (road_pieces.h; delivery 7d). The network: a
+/// trunk the map keeps (removable 0) along y = 0 with its way out at x = 0;
+/// a branch north from the trunk at x = 400 up to y = 600; a spur east from
+/// the branch at y = 300 to x = 700, a unit at its end; a unit at the
+/// branch's top; a map road east from x = 1000 to a way out at x = 1500.
+int TestRoadPieces() {
+  int failures = 0;
+  core::RoadTable roads;
+  const auto road = [&roads](std::vector<core::RoadPoint> axis,
+                             std::uint8_t removable,
+                             core::RoadSurface surface = core::RoadSurface::kDirt,
+                             core::RoadKind kind = core::RoadKind::kRoad) {
+    core::RoadRow row;
+    row.kind = kind;
+    row.surface = surface;
+    row.removable = removable;
+    row.axis = std::move(axis);
+    return core::AppendRow(roads, row);
+  };
+  const core::RoadId trunk =
+      road({{.position = {.x = 0.0F, .y = 0.0F}, .mark = core::RoadMark::kBorder},
+            {.position = {.x = 1000.0F, .y = 0.0F}}},
+           0);
+  const core::RoadId branch =
+      road({{.position = {.x = 400.0F, .y = 0.0F}}, {.position = {.x = 400.0F, .y = 600.0F}}}, 1);
+  const core::RoadId spur =
+      road({{.position = {.x = 400.0F, .y = 300.0F}}, {.position = {.x = 700.0F, .y = 300.0F}}}, 1);
+  core::RoadRow east_row;
+  east_row.removable = 1;
+  east_row.map_road = core::MapRoadId{3};
+  east_row.axis = {{.position = {.x = 1000.0F, .y = 0.0F}},
+                   {.position = {.x = 1500.0F, .y = 0.0F}, .mark = core::RoadMark::kBorder}};
+  const core::RoadId east = core::AppendRow(roads, east_row);
+  const std::vector<core::RoadAnchorUnit> units = {
+      {.unit = core::UnitId{5}, .position = {.x = 705.0F, .y = 305.0F}},
+      {.unit = core::UnitId{6}, .position = {.x = 400.0F, .y = 610.0F}}};
+  core::RoadPieceSite site;
+  site.roads = &roads;
+  site.units = units;
+  site.costs[static_cast<std::size_t>(core::RoadSurface::kGravel)].open = true;
+  site.costs[static_cast<std::size_t>(core::RoadSurface::kGravel)].man_days_per_100m = 60.0F;
+  const auto select =
+      [&site](core::RoadId on, core::Vec2 from, core::Vec2 to, core::RoadOperation operation) {
+        return core::SelectRoadPiecesOn(
+            site, core::RoadSelection{.road = on, .from = from, .to = to}, operation);
+      };
+  const core::RoadOperation demolish = core::RoadOperation::kDemolish;
+
+  // Snapping: a drag from 20 m to 200 m up the branch's first piece (0-300)
+  // runs back to the joint at 0 (a 20 m remnant) and is cut at 200 (100 m).
+  const core::RoadPieces snapped = select(branch,
+                                          {.x = 400.0F, .y = 20.0F},
+                                          {.x = 400.0F, .y = 200.0F},
+                                          core::RoadOperation::kUpgradeToGravel);
+  failures += Expect(snapped.pieces.size() == 1 && snapped.pieces[0].s_from_m == 0.0F &&
+                         std::abs(snapped.pieces[0].s_to_m - 200.0F) < 0.01F &&
+                         snapped.pieces[0].refusal == core::RoadPieceRefusal::kNone &&
+                         std::abs(snapped.estimate.man_days - 120.0F) < 0.01F,
+                     "pieces: a 20 m remnant runs to the joint, a 100 m one is cut; gravel on "
+                     "200 m is 120 man-days");
+  // The branch's lower piece is the only way for both units: refused, the
+  // unit named. The spur alone strands the unit at its end.
+  const core::RoadPieces lower =
+      select(branch, {.x = 400.0F, .y = 60.0F}, {.x = 400.0F, .y = 240.0F}, demolish);
+  const core::RoadPieces spur_only =
+      select(spur, {.x = 400.0F, .y = 300.0F}, {.x = 700.0F, .y = 300.0F}, demolish);
+  failures += Expect(lower.pieces.size() == 1 &&
+                         lower.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
+                         lower.pieces[0].stranded_unit.value != 0 && spur_only.pieces.size() == 1 &&
+                         spur_only.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
+                         spur_only.pieces[0].stranded_unit.value == 5,
+                     "pieces: the only road to a unit is not taken, and the unit is named");
+  failures += Expect(select(trunk, {.x = 100.0F, .y = 0.0F}, {.x = 300.0F, .y = 0.0F}, demolish)
+                             .pieces[0]
+                             .refusal == core::RoadPieceRefusal::kStartRoad,
+                     "pieces: a road the map keeps is not taken");
+  const core::RoadPieces way_out =
+      select(east, {.x = 1000.0F, .y = 0.0F}, {.x = 1500.0F, .y = 0.0F}, demolish);
+  failures += Expect(way_out.pieces.size() == 1 &&
+                         way_out.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
+                         way_out.pieces[0].stranded_map_road.value == 3,
+                     "pieces: the only road to a way out is not taken, and its map road named");
+  // The pair: a second road to the spur's unit, down to the trunk — now the
+  // spur duplicates it and goes.
+  road({{.position = {.x = 700.0F, .y = 300.0F}}, {.position = {.x = 700.0F, .y = 0.0F}}}, 1);
+  const core::RoadPieces duplicated =
+      select(spur, {.x = 400.0F, .y = 300.0F}, {.x = 700.0F, .y = 300.0F}, demolish);
+  failures += Expect(duplicated.pieces.size() == 1 &&
+                         duplicated.pieces[0].refusal == core::RoadPieceRefusal::kNone,
+                     "pieces: a road another duplicates is taken");
+  // A map road's dead end leads somewhere (STUB until the places are
+  // exported): its last way is kept. The same dead end laid by the player is
+  // not a place, and goes.
+  core::RoadRow map_dead_end;
+  map_dead_end.removable = 1;
+  map_dead_end.map_road = core::MapRoadId{8};
+  map_dead_end.axis = {{.position = {.x = 200.0F, .y = 0.0F}},
+                       {.position = {.x = 200.0F, .y = -300.0F}}};
+  const core::RoadId map_end = core::AppendRow(roads, map_dead_end);
+  core::RoadRow player_dead_end = map_dead_end;
+  player_dead_end.origin = core::RoadOrigin::kPlayer;
+  player_dead_end.map_road = core::MapRoadId{};
+  player_dead_end.axis = {{.position = {.x = 900.0F, .y = 0.0F}},
+                          {.position = {.x = 900.0F, .y = -300.0F}}};
+  const core::RoadId player_end = core::AppendRow(roads, player_dead_end);
+  const core::RoadPieces to_place =
+      select(map_end, {.x = 200.0F, .y = 0.0F}, {.x = 200.0F, .y = -300.0F}, demolish);
+  const core::RoadPieces to_nothing =
+      select(player_end, {.x = 900.0F, .y = 0.0F}, {.x = 900.0F, .y = -300.0F}, demolish);
+  failures +=
+      Expect(to_place.pieces.size() == 1 &&
+                 to_place.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
+                 to_place.pieces[0].stranded_map_road.value == 8 && to_nothing.pieces.size() == 1 &&
+                 to_nothing.pieces[0].refusal == core::RoadPieceRefusal::kNone,
+             "pieces: a map road's dead end is a place and kept; a player's goes");
+  // Upgrades: asphalt before its epoch; a path is no road's step.
+  const core::RoadId path =
+      road({{.position = {.x = 100.0F, .y = 0.0F}}, {.position = {.x = 100.0F, .y = 200.0F}}},
+           1,
+           core::RoadSurface::kNone,
+           core::RoadKind::kPath);
+  failures += Expect(select(branch,
+                            {.x = 400.0F, .y = 0.0F},
+                            {.x = 400.0F, .y = 300.0F},
+                            core::RoadOperation::kUpgradeToAsphalt)
+                                 .pieces[0]
+                                 .refusal == core::RoadPieceRefusal::kClosedByEpoch &&
+                         select(path,
+                                {.x = 100.0F, .y = 0.0F},
+                                {.x = 100.0F, .y = 200.0F},
+                                core::RoadOperation::kUpgradeToGravel)
+                                 .pieces[0]
+                                 .refusal == core::RoadPieceRefusal::kNotThisStep,
+                     "pieces: asphalt before its epoch, and a path upgraded, are refused");
+  return failures;
+}
+
 /// THE TRACER (road_trace.h; delivery 7b), one rule a case, each with its
 /// neighbour that the rule lets through.
 int TestRoadTrace() {
@@ -2303,6 +2441,7 @@ int main() {
   failures += TestRoadViews();
   failures += TestObstacleRaster();
   failures += TestRoadTrace();
+  failures += TestRoadPieces();
   failures += TestRoadIndex();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to
