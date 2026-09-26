@@ -41,6 +41,7 @@
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
 #include "core_common/herd_state.h"
+#include "core_common/home_reach.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
@@ -65,6 +66,14 @@
 
 namespace core {
 namespace {
+
+/// @brief Whether the log cart reaches `place` from the nearest lived-in
+/// house within `limit_hours` at `speed_kmh`, by the network (home_reach.h).
+/// Nobody living anywhere reaches nothing.
+bool LogCartReaches(const WorldState& world, Vec2 place, float speed_kmh, float limit_hours) {
+  const float hours = NearestHomeTravelHours(world, place, speed_kmh, TravelMode::kLogCart);
+  return hours >= 0.0F && hours <= limit_hours;
+}
 
 /// @brief The window as a PAIR: open with days left, or closed with the days
 /// since (core_common/deadline.h).
@@ -896,7 +905,19 @@ class LaborSystem final : public ILaborSystem {
           FellingCrewCap(config_.timber, TotalHeld(current, config_.timber.tool_resource));
       for (std::uint32_t row = 0; row < current.stands.rows.size(); ++row) {
         const TimberStandRow& stand = current.stands.rows[row];
-        if (stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F && crew_cap > 0) {
+        // NOT FELLED WHAT CANNOT BE CARTED OUT (0.36.29; boss [69], «не
+        // рубить то, что не вывезти»): the felling is offered only where the
+        // log cart reaches within the road limit, by the network. A third of
+        // the forest in the team's reach was past the log cart's, and the
+        // fellers were sent where the logs then lay. A dirt road laid there
+        // brings the stand back by itself; kFellingUnreachable says why it
+        // stands (timber_felling.cpp, the same road).
+        const bool carted_out =
+            stand.marked_m3 > 0.0F &&
+            LogCartReaches(
+                current, stand.position, config_.harness_speed_kmh, config_.travel_limit_hours);
+        if (stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F && crew_cap > 0 &&
+            carted_out) {
           AssignmentJob job;
           job.kind = WorkKind::kFelling;
           job.stand = current.stands.row_ids[row];

@@ -6057,6 +6057,23 @@ int CheckFellingUnreachable() {
   failures += Expect(named(winter, edge) == 3 && named(winter, near) < 0,
                      "felling out of reach: in a 7-hour winter day 3.5 hours there and back "
                      "leave nothing, and the stand is named; the near one is not");
+  // BY THE LOG CART'S ROAD (0.36.29; boss [69]): with a network somewhere,
+  // open ground weighs 1.5 for a team and 2.5 for the log cart. The stand
+  // 2 km out is 3 hours for the team — inside the 4 — and 5 for the log
+  // cart: named, with the log cart's 5.
+  core::WorldState roaded = world;
+  roaded.weather.daylight_hours = 12.0F;
+  core::RoadRow far_road;
+  far_road.axis = {core::RoadPoint{.position = {.x = -9000.0F, .y = -9000.0F}},
+                   core::RoadPoint{.position = {.x = -8900.0F, .y = -9000.0F}}};
+  far_road.stretches = {
+      core::RoadStretch{}, core::RoadStretch{}, core::RoadStretch{}, core::RoadStretch{}};
+  core::AppendRow(roaded.roads, far_road);
+  std::vector<core::Alarm> by_cart;
+  core::CollectTimberAlarms(config, roaded, by_cart);
+  failures += Expect(named(by_cart, near) == 5,
+                     "felling out of reach: by the log cart's road the stand 2 km out is 5 hours "
+                     "and named, though the team rides it in 3");
 
   // THE PLANTING WALKS (kPlantingUnreachable; boss seq 21): 2.4 game hours a
   // kilometre on foot. A zone 2 km out is 4.8 hours — past the road limit —

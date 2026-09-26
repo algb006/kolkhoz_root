@@ -8,6 +8,7 @@
 
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/home_reach.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
 #include "timber_planting.h"
@@ -93,32 +94,6 @@ void GrowOldForest(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-float NearestHomeTravelHours(const WorldState& world,
-                             Vec2 place,
-                             float speed_kmh,
-                             TravelMode mode) {
-  if (!(speed_kmh > 0.0F)) {
-    return -1.0F;
-  }
-  // The labour model's own chronometer (labor_day.cpp, HoursPerKm): real
-  // km/h divided by the clock's scale, so one number means one road for the
-  // assignment and for this alarm.
-  const float hours_per_km = static_cast<float>(kClockScale) / speed_kmh;
-  float best = -1.0F;
-  for (const UnitRow& unit : world.units.rows) {
-    // A LIVED-IN house: the brigade sets out from where people sleep, and an
-    // empty house far out is nobody's road.
-    if (unit.level == 0 || unit.household.value == kInvalidEntityIdValue) {
-      continue;
-    }
-    // BY THE WAY THERE IS, not the crow's line (roads design §11-§13;
-    // 0.36.2).
-    const float hours = RoadKm(world, mode, unit.position, place) * hours_per_km;
-    best = best < 0.0F || hours < best ? hours : best;
-  }
-  return best;
-}
-
 void CollectTimberAlarms(const ProductionConfig& config,
                          const WorldState& world,
                          std::vector<Alarm>& alarms) {
@@ -134,9 +109,14 @@ void CollectTimberAlarms(const ProductionConfig& config,
     if (!felling && !planting) {
       continue;  // nothing asked of anybody here
     }
+    // A FELLING IS ASKED BY THE LOG CART'S ROAD, not the team's (0.36.29;
+    // boss [69]): the logs go out by it, and the accountant offers no felling
+    // the log cart cannot reach (labor_system.cpp). Off the roads the cart
+    // weighs 2.5 to the team's 1.5 (road_route.h), so its road is the longer
+    // and covers the brigade's own ride too.
     const float speed = felling ? config.harness_speed_kmh : config.walk_speed_kmh;
     const float road = NearestHomeTravelHours(
-        world, stand.position, speed, felling ? TravelMode::kTeam : TravelMode::kWalk);
+        world, stand.position, speed, felling ? TravelMode::kLogCart : TravelMode::kWalk);
     if (road < 0.0F) {
       continue;  // nobody lives anywhere: every alarm of the village says so already
     }

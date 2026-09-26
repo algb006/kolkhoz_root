@@ -285,6 +285,13 @@ enum class AlarmKind : std::uint8_t {
   /// the daylight after the ride there and back. Subject: `stand`; `amount` =
   /// the hours of the ride, one way, in game hours.
   ///
+  /// THE RIDE IS THE LOG CART'S since 0.36.29 (boss [69], «не рубить то,
+  /// что не вывезти»): a third of the forest within the team's six hours was
+  /// past the log cart's, and fellers were sent where no log could come out.
+  /// Past travel_limit_hours by the log cart, the accountant offers no felling
+  /// at all (labor_system.cpp) — this alarm is then the chairman's only word
+  /// of why; a dirt road laid there brings the stand back by itself.
+  ///
   /// THE FELLING BRIGADE RIDES (time design §7, timber design §8a; boss,
   /// 2026-09-14, parcel 308): it goes out on the carts that will cart the
   /// logs, so the ride is measured at harness speed for the whole brigade,

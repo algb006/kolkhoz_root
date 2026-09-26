@@ -3286,6 +3286,54 @@ int TestFellersRideOut() {
   return failures;
 }
 
+/// NOT FELLED WHAT CANNOT BE CARTED OUT (0.36.29; boss [69]): with a road
+/// network somewhere, open ground weighs 1.5 for a team and 2.5 for the log
+/// cart (road_route.h). A stand 3 km out is 4.5 hours for the team — in the
+/// 6-hour limit — and 7.5 for the log cart, past it: nobody is sent. The
+/// pair: 2 km out is 5 hours for the log cart, and the fellers go.
+int TestFellingWaitsForTheLogCart() {
+  int failures = 0;
+  const test::FakeTableSet nothing;
+  const auto fellers_at = [&nothing](float metres) {
+    const auto labor = core::CreateLaborSystem(nothing, core::StubTables::kAllowed);
+    DayWorld day(2);
+    // A road far off: the network exists, so open ground has its weights.
+    core::RoadRow far_road;
+    far_road.axis = {core::RoadPoint{.position = {.x = -9000.0F, .y = -9000.0F}},
+                     core::RoadPoint{.position = {.x = -8900.0F, .y = -9000.0F}}};
+    far_road.stretches = {
+        core::RoadStretch{}, core::RoadStretch{}, core::RoadStretch{}, core::RoadStretch{}};
+    core::AppendRow(day.world.roads, far_road);
+    core::TimberStandRow stand;
+    stand.position = core::Vec2{.x = metres, .y = 0.0F};
+    stand.stock_m3 = 100.0F;
+    stand.marked_m3 = 100.0F;
+    stand.work_days_remaining = 5.0F;
+    const core::TimberStandId stand_id = core::AppendRow(day.world.stands, stand);
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    std::uint32_t fellers = 0;
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      fellers += resident.work.kind == core::WorkKind::kFelling &&
+                         resident.work.stand.value == stand_id.value
+                     ? 1U
+                     : 0U;
+    }
+    return fellers;
+  };
+  const std::uint32_t far = fellers_at(3000.0F);
+  const std::uint32_t near = fellers_at(2000.0F);
+  std::cout << "  log cart: fellers at 3 km " << far << ", at 2 km " << near << '\n';
+  failures += Expect(far == 0 && near == 2,
+                     "log cart: no felling where the log cart cannot come; the fellers go where "
+                     "it can");
+  return failures;
+}
+
 /// A PLANTING IS PLANTED (timber_planting.h, save 82): the accountant sends
 /// people to a planting not yet planted, and they drain its seam. The pair:
 /// the same stand once planted asks for nobody.
@@ -3705,6 +3753,7 @@ int main() {
   failures += TestPlantersPlant();
   failures += TestAPausedSiteDrawsNoCrew();
   failures += TestFellersRideOut();
+  failures += TestFellingWaitsForTheLogCart();
   failures += TestMeadowCutRidesAndTakesOneHorse();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestMeadowCutHasTheTablesWindow();

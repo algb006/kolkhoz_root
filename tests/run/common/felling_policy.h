@@ -249,10 +249,12 @@ class FellingPolicy {
   ///        village and its sites are short of when that is more.
   /// Hours of the ride, one way, from the nearest lived-in house, at the
   /// labour model's harness speed (felling rides; labor_state.h, RidesOut).
-  /// BY THE ROAD, as a team rides it (0.36.12): the core's own question for
-  /// kFellingUnreachable (timber_felling.cpp, NearestHomeTravelHours) — the
+  /// BY THE ROAD, as the LOG CART goes it (0.36.29; team until then, from
+  /// 0.36.12): the core's own question for kFellingUnreachable and for the
+  /// accountant's felling offer (home_reach.h, NearestHomeTravelHours) — the
   /// limit is by the network since 0.36.2, and until 0.36.12 this measured
-  /// the straight line, so the canon marked stands the core then refused.
+  /// the straight line, so the canon marked stands the core then refused;
+  /// kept in step with the core for that reason.
   /// THE HOUSES ARE FOUND ON THE NETWORK ONCE A STEP, the stand once a call:
   /// finding is the costly half of a query (road_route.h, NetworkPlace), and
   /// asking it anew for every house and every stand doubled timber_years'
@@ -266,14 +268,14 @@ class FellingPolicy {
         if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
           continue;
         }
-        homes_.push_back(index->Locate(core::TravelMode::kTeam, unit.position));
+        homes_.push_back(index->Locate(core::TravelMode::kLogCart, unit.position));
       }
       homes_tick_ = world.calendar.tick;
       homes_index_ = index.get();
       homes_units_ = world.units.rows.size();
       homes_owner_ = index;
     }
-    const core::NetworkPlace there = index->Locate(core::TravelMode::kTeam, place);
+    const core::NetworkPlace there = index->Locate(core::TravelMode::kLogCart, place);
     float best = 1.0e9F;
     for (const core::NetworkPlace& home : homes_) {
       best = std::min(best, index->EffectiveKm(home, there) * ride_hours_per_km_);
