@@ -77,9 +77,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 96 (0.36.9, the produce cart off the road): four float and two gram
 // arrays of three sources — 280 -> 376 and 76 -> 82, predicted before the
 // build (the float arrays first, so the grams land 8-aligned: no padding).
-static_assert(sizeof(YearLedger) == 376 + (30 * kAmountsSize),
+// Save 97 (0.36.15, the cart's two ends): two more float arrays of three
+// sources, the store's end — 376 -> 400 and 82 -> 84, predicted before the
+// build (72 bytes of floats before the grams: still 8-aligned).
+static_assert(sizeof(YearLedger) == 400 + (30 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 82,
+static_assert(AggregateArity<YearLedger>() == 84,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(VitalsState) == 24, "VitalsState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<VitalsState>() == 4,
@@ -358,6 +361,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   WriteFloatArray(out, book.cart_off_road_m);
   WriteFloatArray(out, book.cart_off_road_worst_m);
   WriteFloatArray(out, book.cart_trips_off_road);
+  WriteFloatArray(out, book.cart_store_off_road_m);        // save 97
+  WriteFloatArray(out, book.cart_store_off_road_worst_m);  // save 97
   for (const Grams grams : book.cart_grams) {
     out.WriteI64(grams);
   }
@@ -484,6 +489,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   ReadFloatArray(in, book.cart_off_road_m);
   ReadFloatArray(in, book.cart_off_road_worst_m);
   ReadFloatArray(in, book.cart_trips_off_road);
+  ReadFloatArray(in, book.cart_store_off_road_m);        // save 97
+  ReadFloatArray(in, book.cart_store_off_road_worst_m);  // save 97
   for (Grams& grams : book.cart_grams) {
     grams = in.ReadI64();
   }

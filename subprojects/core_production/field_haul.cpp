@@ -6,8 +6,11 @@
 #include "field_haul.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <numbers>
 #include <vector>
 
 #include "core_common/herd_state.h"
@@ -154,7 +157,8 @@ HaulRate RateToward(const ProductionConfig& config,
   const RouteMeasure way = RoadMeasure(world, mode, from, destination);
   HaulRate rate = RateOverKm(way.effective_km, hours_per_km, load);
   rate.produce_cart = true;
-  rate.off_road_m = way.off_road_m;
+  rate.off_road_load_m = way.off_road_start_m;
+  rate.off_road_store_m = way.off_road_end_m;
   return rate;
 }
 
@@ -175,11 +179,17 @@ void BookCartRun(const ProductionConfig& config,
   const float trips = static_cast<float>(moved) / static_cast<float>(rate.load);
   book.cart_trips[at] += trips;
   book.cart_grams[at] += moved;
-  book.cart_off_road_m[at] += trips * rate.off_road_m;
-  if (rate.off_road_m > book.cart_off_road_worst_m[at]) {
-    book.cart_off_road_worst_m[at] = rate.off_road_m;
+  book.cart_off_road_m[at] += trips * rate.off_road_load_m;
+  if (rate.off_road_load_m > book.cart_off_road_worst_m[at]) {
+    book.cart_off_road_worst_m[at] = rate.off_road_load_m;
   }
-  if (rate.off_road_m > config.road_access_m) {
+  book.cart_store_off_road_m[at] += trips * rate.off_road_store_m;
+  if (rate.off_road_store_m > book.cart_store_off_road_worst_m[at]) {
+    book.cart_store_off_road_worst_m[at] = rate.off_road_store_m;
+  }
+  // THE LOAD'S END ONLY against road_access_m (0.36.15): the store's gate is
+  // a unit's road access, not the driving question 268 is about.
+  if (rate.off_road_load_m > config.road_access_m) {
     book.cart_trips_off_road[at] += trips;
     book.cart_grams_off_road[at] += moved;
   }
@@ -235,6 +245,24 @@ void SettleLoad(const ProductionConfig& config,
 
 }  // namespace
 
+Vec2 FieldHeapPoint(const WorldState& world, const FieldRow& field) {
+  const std::shared_ptr<const RoadIndex> index = RoadIndexOf(world);
+  const NetworkPlace place = index->Locate(TravelMode::kCart, field.center);
+  if (place.access_count == 0) {
+    return field.center;  // no road a cart may use anywhere near: the whole way is the field's
+  }
+  const RoadAccess& nearest = place.accesses[0];
+  // The field is a disc of its area (land_state.h): the heap goes to its edge
+  // on the side of the road, or to the road itself where the road crosses it.
+  const float radius = std::sqrt(field.area_ga * 10000.0F / std::numbers::pi_v<float>);
+  if (!(nearest.distance_m > radius)) {
+    return nearest.point;
+  }
+  const float share = radius / nearest.distance_m;
+  return Vec2{.x = field.center.x + ((nearest.point.x - field.center.x) * share),
+              .y = field.center.y + ((nearest.point.y - field.center.y) * share)};
+}
+
 HaulRate FieldHaulRate(const ProductionConfig& config,
                        const WorldState& world,
                        const FieldRow& field) {
@@ -254,7 +282,10 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
   }
   const Vec2 destination =
       store_row == kNoRow ? field.center : world.units.rows[store_row].position;
-  return RateToward(config, world, field.center, destination);
+  // FROM THE HEAP AT THE FIELD'S EDGE TOWARD THE ROAD (0.36.15; decision 275,
+  // boss-core-epoch1-resume [31] (b)), not from the field's centre: carrying
+  // the reaped crop to the heap is field work, in the field's own norms.
+  return RateToward(config, world, FieldHeapPoint(world, field), destination);
 }
 
 HaulRate StandHaulRate(const ProductionConfig& config,

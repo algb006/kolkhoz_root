@@ -649,6 +649,8 @@ core::WorldState MakeWorld() {
   world.ledger.closed.cart_off_road_m = {1500.0F, 20.0F, 90.0F};
   world.ledger.closed.cart_off_road_worst_m = {220.0F, 80.0F, 30.0F};
   world.ledger.closed.cart_trips_off_road = {6.0F, 0.25F, 2.0F};
+  world.ledger.closed.cart_store_off_road_m = {400.0F, 30.0F, 7.5F};  // save 97
+  world.ledger.closed.cart_store_off_road_worst_m = {40.0F, 120.0F, 2.5F};
   world.ledger.closed.cart_grams = {9'375'000, 187'500, 2'250'000};
   world.ledger.closed.cart_grams_off_road = {4'500'000, 187'500, 1'500'000};
   world.ledger.closed.trudodni_burned = 4200;
@@ -1402,7 +1404,9 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // and two gram arrays of three sources (48 + 48); predicted 1096 -> 1288
     // with the nineteen other sections unmoved, before the build; held (only
     // the fingerprint moved, as it must with the fixture's new values).
-    {"ledger", 1288, 0x88d39f743371aabdULL},
+    // Save 97: +48 — the store's end, two float arrays of three sources in
+    // each book (24 + 24); predicted 1288 -> 1336 before the build; held.
+    {"ledger", 1336, 0x257704b278adfddfULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1746,6 +1750,8 @@ int main() {
         Expect(back.cart_trips == sent.cart_trips && back.cart_off_road_m == sent.cart_off_road_m &&
                    back.cart_off_road_worst_m == sent.cart_off_road_worst_m &&
                    back.cart_trips_off_road == sent.cart_trips_off_road &&
+                   back.cart_store_off_road_m == sent.cart_store_off_road_m &&
+                   back.cart_store_off_road_worst_m == sent.cart_store_off_road_worst_m &&
                    back.cart_grams == sent.cart_grams &&
                    back.cart_grams_off_road == sent.cart_grams_off_road,
                "the produce cart's six columns survive, source by source (save 96)");

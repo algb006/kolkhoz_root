@@ -401,15 +401,29 @@ struct YearLedger {
   // no road can be reached. Booked by core_production's haul (field_haul),
   // with the way of the day's rate — the trips a day brings in were priced
   // by that day's route.
+  //
+  // THE LOAD'S END AND THE STORE'S END ARE TWO QUESTIONS (0.36.15; boss,
+  // boss-core-epoch1-resume [31]). Until 0.36.15 the metres below were the
+  // SUM of both ends of a way, and road_access_m was compared with the sum:
+  // a dig whose loading point lies 7 m from the road read "beyond access"
+  // for the 200-400 m from the road to the start's stone pile. The first
+  // four columns are now the LOAD's end only — driving the field or the dig
+  // to reach a road, what question 268 forbids; the store's end, a unit's
+  // gate off the road (unit rules §12), has two columns of its own below.
   /// Loaded trips, fractional.
   std::array<float, kCartLoadSourceCountValue> cart_trips = {};
-  /// Metres off the road summed over the trips (trips x one way's metres).
+  /// Metres off the road AT THE LOAD'S END summed over the trips (trips x
+  /// one way's load-end metres).
   std::array<float, kCartLoadSourceCountValue> cart_off_road_m = {};
-  /// The longest single loaded way off the road in the year, metres.
+  /// The longest single load-end way off the road in the year, metres.
   std::array<float, kCartLoadSourceCountValue> cart_off_road_worst_m = {};
-  /// Trips whose way off the road was longer than world_params
-  /// `road_access_m` — beyond the last metres to a gate, driving the field.
+  /// Trips whose load-end way off the road was longer than world_params
+  /// `road_access_m` — beyond the last metres to a road, driving the field.
   std::array<float, kCartLoadSourceCountValue> cart_trips_off_road = {};
+  /// The STORE's end (0.36.15): metres from the road to the store's gate
+  /// summed over the trips, and the longest single one.
+  std::array<float, kCartLoadSourceCountValue> cart_store_off_road_m = {};
+  std::array<float, kCartLoadSourceCountValue> cart_store_off_road_worst_m = {};
   /// The grams those trips carried, and all the grams carted: the share of
   /// the haul that rests on the forbidden driving is a mass, not a count.
   std::array<Grams, kCartLoadSourceCountValue> cart_grams = {};

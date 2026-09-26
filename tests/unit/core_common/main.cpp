@@ -1748,6 +1748,16 @@ int TestRoadIndex() {
                      "road index: the metres off the road are the pieces that join it — 50 to "
                      "the trunk, the 500 past the path's end a cart may not use, 50 + 50 for the "
                      "walker; with no network, the whole line");
+  // BY END (0.36.15): the start's piece and the end's, and a way with no road
+  // is the start's whole.
+  failures +=
+      Expect(std::abs(cart_measure.off_road_start_m - 50.0F) < 0.5F &&
+                 cart_measure.off_road_end_m < 0.5F && cart_path_measure.off_road_start_m < 0.5F &&
+                 std::abs(cart_path_measure.off_road_end_m - 500.0F) < 0.5F &&
+                 std::abs(lost_measure.off_road_start_m - 1000.0F) < 0.5F &&
+                 lost_measure.off_road_end_m == 0.0F,
+             "road index: by end — 50 at the start and none at the spur's end; none at "
+             "the road's end and 500 to the place; with no road, all at the start");
   return failures;
 }
 

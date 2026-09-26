@@ -42,11 +42,15 @@ struct HaulRate {
   /// THE PRODUCE CART'S WAY OFF THE ROAD (0.36.9): true when the load goes
   /// by a harnessed cart with produce (TravelMode::kCart) — the one carrier
   /// the design keeps to the roads (roads design §11) — and then the metres
-  /// of ONE loaded way that lie off the network. Filled by the caller that
-  /// measured the way (field_haul); RateBetween and RateOverKm leave them
-  /// false and nought. Read only by the year's book (YearLedger::cart_trips).
+  /// of ONE loaded way that lie off the network, BY END since 0.36.15: from
+  /// the load to the road (driving the field, question 268) and from the road
+  /// to the store (the store's gate, unit rules §12). Filled by the caller
+  /// that measured the way (field_haul); RateBetween and RateOverKm leave
+  /// them false and nought. Read only by the year's book
+  /// (YearLedger::cart_trips and its siblings).
   bool produce_cart = false;
-  float off_road_m = 0.0F;
+  float off_road_load_m = 0.0F;
+  float off_road_store_m = 0.0F;
 };
 
 /// @brief The terms of a trip between two places.

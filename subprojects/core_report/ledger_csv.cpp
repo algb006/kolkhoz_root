@@ -341,6 +341,9 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
     out.Number(stem + "_off_road_m", book.cart_off_road_m[source]);
     out.Number(stem + "_off_road_worst_m", book.cart_off_road_worst_m[source]);
     out.Number(stem + "_trips_beyond_access", book.cart_trips_off_road[source]);
+    // The store's end (0.36.15): the off_road columns above are the LOAD's.
+    out.Number(stem + "_store_off_road_m", book.cart_store_off_road_m[source]);
+    out.Number(stem + "_store_off_road_worst_m", book.cart_store_off_road_worst_m[source]);
     out.Mass(stem + "_carted_beyond_access", book.cart_grams_off_road[source]);
   }
   // Trudodni are stored in hundredths and reported whole: the sheet speaks

@@ -118,8 +118,19 @@ struct RouteMeasure {
   /// Metres of the way that lie OFF the network: the piece from the start
   /// to the road and the piece from the road to the end, or the whole
   /// straight line when the way is taken across open ground (or a cart
-  /// found no road at all). Plain metres, not weighed.
+  /// found no road at all). Plain metres, not weighed. Always the sum of the
+  /// two below.
   float off_road_m = 0.0F;
+
+  /// The same, BY END (0.36.15): the piece at the start and the piece at the
+  /// end. A way taken across open ground, or with no road at all, is the
+  /// start's whole — it never joined the network to reach the end by it.
+  /// Told apart because the produce cart's two ends are different questions
+  /// (boss, boss-core-epoch1-resume [31]): driving a field from the load is
+  /// what question 268 forbids; the store's gate off the road is a unit's
+  /// road access (unit rules §12).
+  float off_road_start_m = 0.0F;
+  float off_road_end_m = 0.0F;
 };
 
 /// @brief Where a place meets a road piece a mode may use.

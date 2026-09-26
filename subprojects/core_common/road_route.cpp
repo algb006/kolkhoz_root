@@ -128,9 +128,10 @@ class RoadIndexImpl final : public RoadIndex {
     measure.effective_km = choice.km;
     // THE SAME CHOICE Way unfolds: across open ground the whole line is off
     // the road; on the network, the two pieces that join it.
-    measure.off_road_m = choice.kind == Choice::kStraight || choice.kind == Choice::kNoRoad
-                             ? Distance(from, to)
-                             : choice.start.distance_m + choice.end.distance_m;
+    const bool across = choice.kind == Choice::kStraight || choice.kind == Choice::kNoRoad;
+    measure.off_road_start_m = across ? Distance(from, to) : choice.start.distance_m;
+    measure.off_road_end_m = across ? 0.0F : choice.end.distance_m;
+    measure.off_road_m = measure.off_road_start_m + measure.off_road_end_m;
     return measure;
   }
 

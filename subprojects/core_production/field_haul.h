@@ -35,6 +35,16 @@ namespace core {
 ///         already holds this resource stands built.
 Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, ResourceId resource);
 
+/// @brief Where a field's heap stands: at the edge of the field nearest a road
+///        a produce cart may use — or at that road where it crosses the field;
+///        the centre when no road is near at all (0.36.15; decision 275,
+///        «куча стоит у подъезда поля», boss-core-epoch1-resume [31] (b)). The
+///        field is a disc of its area. Until 0.36.15 the carting started at the
+///        field's centre, 141-907 m from a road on the start's map. NO REFUSAL
+///        for a field with no road near yet: the start's map has no field
+///        roads; that comes with the map's access roads (boss's (a)).
+Vec2 FieldHeapPoint(const WorldState& world, const FieldRow& field);
+
 /// @brief What one carrier is worth on this field's shoulder today: a cart's
 /// load at harness speed when the settlement has a draught horse to spare, a
 /// person's load on foot when it has not.
