@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
@@ -55,7 +56,49 @@ struct SeedNorm {
   /// inside the window that horizon is nought while the seed waits weeks for
   /// the crew (plan700, seed 1937 year 14, 0.34.42's first draft).
   std::uint8_t sow_to_month = kNoSowingMonth;
+
+  /// The months its reaping runs (crops.csv `harvest_from_month`,
+  /// `harvest_to_month`, 0-based), or kNoSowingMonth when the table names
+  /// none: a harvest of its seed, which comes before a later sowing and
+  /// gives it (SeedHeldByField).
+  std::uint8_t harvest_from_month = kNoSowingMonth;
+  std::uint8_t harvest_to_month = kNoSowingMonth;
 };
+
+/// @brief The seed held for the next sowings, with its parts: the grams held
+///        for each field row (0 when its sowing is not held) and the seed
+///        they are of.
+struct SeedHold {
+  ResourceAmounts by_resource;          ///< Dense by ResourceId.
+  std::vector<Grams> by_field_row;      ///< By row of world.fields.
+  std::vector<ResourceId> seed_of_row;  ///< The seed each held row is of.
+};
+
+/// @brief THE SEED FUND'S ONE RULE (resources design §6, «сев следующего
+///        года»; 0.36.21 field by field, one door since 0.36.34): the norm of
+///        each arable field whose own next sowing (NextSowingOf, by the slot
+///        it comes from) ends before the seed's next harvest begins. A sowing
+///        the harvest comes first to holds nothing today — the winter rye,
+///        reaped in July and sown in September, and a chain's potato of NEXT
+///        year, which this August's digging gives. The seed's next harvest is
+///        read off the FIELDS — a crop in the ground, a sowing to come — and a
+///        seed nothing will reap holds its sowings.
+///
+///        READ BY EVERY DOOR THAT KEEPS SEED: the fund ladder's seed rung
+///        (SeedRungLeft, what the ration, the families' exchange and the
+///        herds may not take), and core_production's delivery door, seed
+///        alarm, goods loan and plan forecast (seed_room.h). Until 0.36.34 the
+///        rung had a rule of its own — this year's sowings still to come —
+///        and before the turn held next spring's potato on the fields dug that
+///        year for nobody (boss-core-seed-ladders [1]-[2]).
+/// @param as_of The day the rotation slots describe. At the year's turn the
+///        calendar is the new year's and the slots are still the old year's:
+///        the turn's callers pass the closing year's last day.
+/// @param resource_count The length of `by_resource`.
+SeedHold SeedHeldByField(const WorldState& world,
+                         std::span<const SeedNorm> seed_norms_by_crop,
+                         std::size_t resource_count,
+                         SimDay as_of);
 
 /// @brief The crop a field's NEXT sowing puts in, read off its rotation and
 ///        its state today: the first slot until it is sown, reaped or given
@@ -116,9 +159,8 @@ Grams PlanRungGrams(const WorldState& world,
                     ResourceId carted_daily = ResourceId{},
                     Grams held_above = 0);
 
-/// @brief Rung 1 alone: grams of each resource the seed fund holds for the
-///        sowings still to come (see HeldAboveFodder, SEED), less what the
-///        chairman has unsealed of the SEED fund, never below nought.
+/// @brief Rung 1 alone: SeedHeldByField as of today, less what the chairman
+///        has unsealed of the SEED fund, never below nought.
 /// @return Dense by ResourceId, sized `resource_count`.
 ResourceAmounts SeedRungLeft(const WorldState& world,
                              std::span<const SeedNorm> seed_norms_by_crop,
@@ -127,13 +169,9 @@ ResourceAmounts SeedRungLeft(const WorldState& world,
 /// @brief Grams of each resource held by the seed fund and the plan reserve
 ///        together, less whatever the chairman has unsealed.
 ///
-/// SEED: the sowing norm of every field that has yet to be sown this year's
-/// first slot — idle, ploughing, harrowing or sowing, and not yet growing or
-/// being reaped. AND the autumn's winter crop of the second slot, on a field
-/// whose first slot is done with — reaped this year, a fallow year, or given
-/// up past its window and worked for the winter crop instead — until
-/// that winter crop is in the ground. Skipped entirely when
-/// `reserve_seed_fund` is false.
+/// SEED: SeedRungLeft — every field's next sowing that ends before its seed's
+/// next harvest (SeedHeldByField). Skipped entirely when `reserve_seed_fund`
+/// is false.
 ///
 /// PLAN: what is owed, as far as the crop lies in the stores (PlanRungGrams;
 /// boss, boss-core-epoch1-4 seq 10). It replaced, on 0.34.42, "as much as

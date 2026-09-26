@@ -23,6 +23,7 @@
 #include "herd_life.h"
 #include "livestock_homes.h"
 #include "night_pasture.h"
+#include "seed_room.h"
 #include "stable_horses.h"
 #include "stock_ops.h"
 
@@ -146,14 +147,7 @@ Grams TakeFeed(WorldState& world,
 /// seed-days, the ploughing at 1/0.7 — and it is the ladder as the design
 /// writes it (resources design §6): the seed above the fodder.
 ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& world) {
-  std::vector<SeedNorm> seed_norms;
-  seed_norms.reserve(config.crops.size());
-  for (const CropDef& crop : config.crops) {
-    seed_norms.push_back(SeedNorm{.resource = crop.resource,
-                                  .sowing_norm_kg_per_ha = crop.sowing_norm_kg_per_ha,
-                                  .is_winter = crop.is_winter,
-                                  .sow_to_month = crop.sow_to_month});
-  }
+  const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
   ResourceAmounts allowance =
       HeldAboveFodder(world, seed_norms, config.feed_values.size(), true, config.milk_resource);
   // AND WHAT THOSE RUNGS WILL LOSE TO ROT BEFORE THEY ARE USED (0.35.11;

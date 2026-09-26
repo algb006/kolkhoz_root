@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
@@ -30,24 +32,6 @@ Grams Unsealed(const WorldState& world, FundKind fund, std::size_t index) {
 /// One rung less what was unsealed of IT, never below nought.
 Grams RungLeft(Grams held, Grams unsealed) {
   return held > unsealed ? held - unsealed : 0;
-}
-
-/// Adds one field's sowing of `crop` to `seed`; a crop past the norms' end,
-/// one that needs no seed, or — when `winter_only` — a spring crop adds none.
-void AddSowing(std::span<const SeedNorm> seed_norms_by_crop,
-               CropId crop,
-               float area_ha,
-               bool winter_only,
-               ResourceAmounts& seed) {
-  if (crop.value >= seed_norms_by_crop.size()) {
-    return;
-  }
-  const SeedNorm& norm = seed_norms_by_crop[crop.value];
-  if ((winter_only && !norm.is_winter) || norm.resource.value >= seed.size() ||
-      norm.sowing_norm_kg_per_ha <= 0.0F) {
-    return;
-  }
-  seed[norm.resource.value] += GramsFromKilograms(norm.sowing_norm_kg_per_ha * area_ha);
 }
 
 }  // namespace
@@ -157,73 +141,146 @@ NextSowing NextSowingOf(const FieldRow& field, SimDay today, bool year0_is_winte
   return NextSowing{.crop = field.rotation_year1, .slot = 1};
 }
 
+SeedHold SeedHeldByField(const WorldState& world,
+                         std::span<const SeedNorm> seed_norms_by_crop,
+                         std::size_t resource_count,
+                         SimDay as_of) {
+  SeedHold hold;
+  hold.by_resource.assign(resource_count, 0);
+  hold.by_field_row.assign(world.fields.rows.size(), 0);
+  hold.seed_of_row.assign(world.fields.rows.size(), ResourceId{});
+  ResourceAmounts& held = hold.by_resource;
+  const auto month = static_cast<std::int32_t>((as_of % kDaysPerYear) / kDaysPerMonth);
+  constexpr auto kYear = static_cast<std::int32_t>(kMonthsPerYear);
+  constexpr std::int32_t kNever = std::numeric_limits<std::int32_t>::max();
+  const auto months_to = [month](std::uint8_t target) {
+    return (static_cast<std::int32_t>(target) - month + kYear) % kYear;
+  };
+
+  // THE SOWINGS FIELD BY FIELD (0.36.21; boss-core-epoch1-resume [35]): each
+  // arable field's next sowing, in months from `as_of` to its window's end —
+  // by the slot it comes from (a winter crop of slot k is sown in the autumn
+  // of year k − 1), this month counting whole as DaysToSowingEnd counts it;
+  // a held chain at its crop's next window (NextSowing::held_chain). And the
+  // month that sowing is reaped, which is a harvest of its seed too.
+  struct Sowing {
+    const SeedNorm* norm = nullptr;
+    std::uint32_t row = 0;
+    std::int32_t sow_end = 0;  // months; <= 0 — its window gone
+  };
+
+  std::vector<Sowing> sowings;
+  // THE NEXT HARVEST OF EACH SEED, from `as_of`, in months — off the FIELDS,
+  // not off the crop table (static review of 0.36.21): a crop in the ground
+  // (nought while in its reaping months), and a sowing to come, reaped in its
+  // slot's year. A seed nothing will reap holds its sowings whatever the
+  // calendar says: in a year with no field of oats, next year's oat seed is
+  // not "given by August's oats". A crop whose table names no reaping month
+  // gives no harvest to wait for.
+  std::vector<std::int32_t> harvest_in(held.size(), kNever);
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    if (field.kind != LandKind::kArable) {
+      continue;
+    }
+    const bool in_ground =
+        (field.phase == FieldPhase::kGrowing ||
+         (field.phase == FieldPhase::kHarvest && field.harvest_laid_share < 1.0F)) &&
+        field.crop.value < seed_norms_by_crop.size();
+    if (in_ground) {
+      const SeedNorm& standing = seed_norms_by_crop[field.crop.value];
+      if (standing.resource.value < held.size() && standing.harvest_from_month != kNoSowingMonth) {
+        const std::uint8_t to = standing.harvest_to_month != kNoSowingMonth
+                                    ? standing.harvest_to_month
+                                    : standing.harvest_from_month;
+        const bool reaping_now = month >= static_cast<std::int32_t>(standing.harvest_from_month) &&
+                                 month <= static_cast<std::int32_t>(to);
+        const std::int32_t months = reaping_now ? 0 : months_to(standing.harvest_from_month);
+        harvest_in[standing.resource.value] = std::min(harvest_in[standing.resource.value], months);
+      }
+    }
+    const bool year0_winter = field.rotation_year0.value < seed_norms_by_crop.size() &&
+                              seed_norms_by_crop[field.rotation_year0.value].is_winter;
+    const NextSowing next = NextSowingOf(field, as_of, year0_winter);
+    if (next.crop.value >= seed_norms_by_crop.size()) {
+      continue;
+    }
+    const SeedNorm& norm = seed_norms_by_crop[next.crop.value];
+    if (!(norm.sowing_norm_kg_per_ha > 0.0F) || norm.resource.value >= held.size()) {
+      continue;
+    }
+    // A crop whose table names no last sowing month is sown by its slot's
+    // year's end at the latest: held until then.
+    const std::uint8_t sow_to = norm.sow_to_month != kNoSowingMonth
+                                    ? norm.sow_to_month
+                                    : static_cast<std::uint8_t>(kYear - 1);
+    const bool reaping_known = norm.harvest_from_month != kNoSowingMonth;
+    std::int32_t sow_end = 0;
+    std::int32_t reaped_in = 0;
+    if (next.held_chain) {
+      const std::int32_t sown = months_to(sow_to);
+      const std::int32_t reaped = reaping_known ? months_to(norm.harvest_from_month) : 0;
+      sow_end = sown + 1;
+      reaped_in = reaped > sown ? reaped : reaped + kYear;  // the first reaping after it
+    } else {
+      const std::int32_t sow_year = static_cast<std::int32_t>(next.slot) - (norm.is_winter ? 1 : 0);
+      sow_end = (sow_year * kYear) + static_cast<std::int32_t>(sow_to) - month + 1;
+      reaped_in = (static_cast<std::int32_t>(next.slot) * kYear) +
+                  static_cast<std::int32_t>(norm.harvest_from_month) - month;
+    }
+    // A SOWING ALREADY BEGUN — the field under the plough, the harrow or the
+    // seed drill for this very crop — is finished by its crew past its window
+    // (field_work.cpp, SowingMayOpen: the back edge is the crew's) and takes
+    // its seed then. The ladder's own rule held it since question 278; the
+    // door's did not, and let the plan take the seed of a sowing in progress
+    // (the ladder's unit test, on the move of 0.36.34).
+    const bool begun =
+        !in_ground && field.crop.value == next.crop.value &&
+        (field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing ||
+         field.phase == FieldPhase::kSowing);
+    if (begun && sow_end < 1) {
+      sow_end = 1;
+    }
+    if (reaping_known && sow_end > 0 && reaped_in >= 0) {
+      harvest_in[norm.resource.value] = std::min(harvest_in[norm.resource.value], reaped_in);
+    }
+    sowings.push_back(Sowing{.norm = &norm, .row = row, .sow_end = sow_end});
+  }
+  // A FIELD'S SEED IS HELD when its sowing ends before the seed's next
+  // harvest: otherwise that harvest gives it. The winter rye is sown in
+  // September out of July's rye; holding it from January failed the canon's
+  // rye 17 years of 108 (seq 5 item 8). Until 0.36.21 the rule was asked of
+  // the seed as a whole, and at the turn held the potato of every chain whose
+  // potato comes NEXT year out of this year's stores (econ's E2Bf, seed 1934,
+  // the turn of year 7: the position 10 t short beside the idle seed).
+  for (const Sowing& sowing : sowings) {
+    const auto resource = sowing.norm->resource.value;
+    if (sowing.sow_end <= 0 || harvest_in[resource] < sowing.sow_end) {
+      continue;  // its window gone, or a harvest comes first
+    }
+    const Grams norm = GramsFromKilograms(sowing.norm->sowing_norm_kg_per_ha *
+                                          world.fields.rows[sowing.row].area_ga);
+    held[resource] += norm;
+    hold.by_field_row[sowing.row] = norm;
+    hold.seed_of_row[sowing.row] = sowing.norm->resource;
+  }
+  return hold;
+}
+
 ResourceAmounts SeedRungLeft(const WorldState& world,
                              std::span<const SeedNorm> seed_norms_by_crop,
                              std::size_t resource_count) {
-  ResourceAmounts seed(resource_count, 0);
-  {
-    for (const FieldRow& field : world.fields.rows) {
-      // UNTIL THE SOWING TAKES IT, not until the ploughing starts: a field is
-      // done needing seed once the crop is in the ground (69-reconciliation.md
-      // §13.16 — the fund used to guard a phase of the field rather than a
-      // quantity of grain).
-      const bool already_sown =
-          field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
-      // AND NOT ONCE THE REAPING HAS TAKEN IT (2026-09-15, boss parcel 421): a
-      // reaped field is idle again and still names this year's crop until the
-      // year's turn, so the fund held seed for a sowing already sown and
-      // reaped — 52.5 t of potatoes from the October digging to New Year.
-      const bool reaped_this_year =
-          field.reaped_day != kNeverReapedDay &&
-          field.reaped_day / kDaysPerYear == world.calendar.day / kDaysPerYear;
-      // A FIELD WHOSE FIRST SLOT MISSED ITS WINDOW and is being worked for the
-      // second slot's winter crop (TrySow hands it to TrySowWinter): the
-      // first slot will not be sown this year, and its seed is owed nobody
-      // (static review of the change, 2026-09-24). Where both slots name one
-      // crop the work is the first slot's own, and it stays owed above — a
-      // spring crop in both slots is not owed below at all, which is how
-      // 0.34.36, without this test, held no oats through their own ploughing.
-      const bool preparing_second_slot = !already_sown && field.crop.value != kInvalidDefIdValue &&
-                                         field.crop.value == field.rotation_year1.value &&
-                                         field.crop.value != field.rotation_year0.value;
-      // A WINTER SLOT LOST TO ITS WINDOW owes nothing this year and passes
-      // to the second slot like a fallow (question 278; static review of
-      // 0.36.13: the fund held its rye from January to the fallow's harrow).
-      const bool year0_winter = field.rotation_year0.value < seed_norms_by_crop.size() &&
-                                seed_norms_by_crop[field.rotation_year0.value].is_winter;
-      const bool first_slot_lost = WinterSlotLost(field, year0_winter, world.calendar.day);
-      if (!already_sown && !reaped_this_year && !preparing_second_slot && !first_slot_lost) {
-        AddSowing(seed_norms_by_crop, field.rotation_year0, field.area_ga, false, seed);
-      }
-      // AND THE AUTUMN'S WINTER CROP IS NEXT YEAR'S SOWING TOO (boss seq 18,
-      // econ plan-700 §3). The rye sown in September is the seed fund's own
-      // "сев следующего года" (resources design §6), but the rung above
-      // read only the first slot and let the reaped field go — so from the
-      // reaping to the sowing nothing held that seed, the ration ate it, and
-      // the sowing took its 1.89 t out of the plan's rye (seed 1934, year 23).
-      // Owed once the first slot is done with — reaped this year, a fallow
-      // year, or given up past its window for the winter crop — and until the
-      // winter crop is in the ground.
-      const bool first_slot_done = reaped_this_year ||
-                                   field.rotation_year0.value == kInvalidDefIdValue ||
-                                   preparing_second_slot || first_slot_lost;
-      const bool winter_sown = already_sown && field.crop.value == field.rotation_year1.value;
-      // AND NOT PAST ITS OWN WINDOW (question 278): an autumn whose window
-      // went by unsown loses that winter crop, and its seed is owed nobody
-      // from the window's end to the turn — unless its work had begun: a
-      // sowing opened in its window is finished by the crew after it
-      // (field_work.cpp, SowingMayOpen), and still takes its seed.
-      const bool working_year1 = !already_sown && field.crop.value == field.rotation_year1.value;
-      const bool window_gone =
-          !working_year1 && field.rotation_year1.value < seed_norms_by_crop.size() &&
-          seed_norms_by_crop[field.rotation_year1.value].sow_to_month != kNoSowingMonth &&
-          static_cast<std::uint8_t>(world.calendar.date.month) >
-              seed_norms_by_crop[field.rotation_year1.value].sow_to_month;
-      if (first_slot_done && !winter_sown && !window_gone) {
-        AddSowing(seed_norms_by_crop, field.rotation_year1, field.area_ga, true, seed);
-      }
-    }
-  }
+  // ONE RULE WITH THE DELIVERY DOOR (boss-core-seed-ladders [1]-[2]; 0.36.34).
+  // Until then the rung held "this year's sowings still to come": before the
+  // turn it kept a first slot whose spring window had gone by, and nothing of
+  // next spring's sowings on the fields reaped that year — on seed 1931 at
+  // the turn of year 3, 147.5 t of potato against the door's 185 t, and the
+  // ration and the families' exchange free to eat the difference from the
+  // digging to New Year. The cases its own history named — a reaped field,
+  // the autumn's winter crop, a window gone, a first slot given up for the
+  // winter crop — are the rule's by NextSowingOf and the harvest-first test.
+  ResourceAmounts seed =
+      SeedHeldByField(world, seed_norms_by_crop, resource_count, world.calendar.day).by_resource;
   for (std::size_t index = 0; index < resource_count; ++index) {
     seed[index] = RungLeft(seed[index], Unsealed(world, FundKind::kSeed, index));
   }

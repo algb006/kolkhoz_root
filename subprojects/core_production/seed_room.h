@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/quantities.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
@@ -39,6 +40,11 @@ Grams FieldSeedNeed(const ProductionConfig& config,
                     const WorldState& world,
                     const FieldRow& field,
                     ResourceId& seed);
+
+/// @brief The crop table's seed norms as the fund ladder reads them
+/// (fund_ladder.h, SeedNorm), dense by CropId: one builder for every reader
+/// in core_production (the herds' feed allowance and the seed doors).
+std::vector<SeedNorm> SeedNormsOf(const ProductionConfig& config);
 
 /// @brief Grams of seed every field's NEXT sowing asks, summed by resource
 /// (farming design §7: «площади следующего года × норма высева, по каждой
@@ -80,18 +86,14 @@ std::vector<Grams> SeedHeldToSowing(const ProductionConfig& config,
                                     const WorldState& world,
                                     SimDay as_of);
 
-/// @brief SeedHeldToSowing's answer with its parts: the grams held for each
-/// field row (0 when its sowing is not held) and the seed they are of. ONE
-/// RULE, FOUR READERS (0.36.23; boss-core-epoch1-resume [54]): the plan's
-/// door (DeliverableAboveSeed), the seed_short alarm and its shares
-/// (production_alarms.cpp), the goods loan's ceiling (goods_loan.cpp) and
-/// the plan-short forecast. Not the seed room's booking — see SeedRoomBooked.
-struct SeedHold {
-  std::vector<Grams> by_resource;       ///< Dense by ResourceId.
-  std::vector<Grams> by_field_row;      ///< By row of world.fields.
-  std::vector<ResourceId> seed_of_row;  ///< The seed each held row is of.
-};
-
+/// @brief SeedHeldToSowing's answer with its parts (fund_ladder.h, SeedHold)
+/// — the common rule (core_common SeedHeldByField) over this config's norms.
+/// ONE RULE, FIVE READERS (0.36.23; boss-core-epoch1-resume [54]; the fund
+/// ladder's seed rung since 0.36.34): the plan's door (DeliverableAboveSeed),
+/// the seed_short alarm and its shares (production_alarms.cpp), the goods
+/// loan's ceiling (goods_loan.cpp), the plan-short forecast, and the rung the
+/// herds, the ration and the families' exchange stay below. Not the seed
+/// room's booking — see SeedRoomBooked.
 SeedHold SeedHeldByField(const ProductionConfig& config, const WorldState& world, SimDay as_of);
 
 /// @brief The room each resource books for its missing seed: the need of

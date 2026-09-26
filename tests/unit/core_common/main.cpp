@@ -1407,8 +1407,14 @@ int CheckTheTopOfTheLadder() {
     autumn.fields.rows[0].rotation_year0 = core::CropId{0};
     autumn.fields.rows[0].reaped_day = core::kDaysPerYear + 30;
     autumn.fields.rows[0].rotation_year1 = core::CropId{2};
-    failures += Expect(core::HeldAboveFodder(autumn, norms, 3, true)[0] == 0,
-                       "ladder: a SPRING crop of the second slot is not owed in the autumn");
+    // NEXT SPRING'S SEED IS HELD FROM THE REAPING (0.36.34; boss-core-seed-
+    // ladders): the rung reads the delivery door's rule — the next sowing,
+    // unless a harvest of its seed comes first, and none does here. Until
+    // then this line said the opposite, and on seed 1931 the potato for next
+    // spring on the fields dug that year was held by nobody until New Year.
+    failures += Expect(core::HeldAboveFodder(autumn, norms, 3, true)[0] == 160'000,
+                       "ladder: a SPRING crop of the second slot is owed from the reaping, "
+                       "2 ha x 80 kg");
   }
 
   // EACH FUND OPENS ITS OWN RUNG (boss, boss-core-epoch1-resume seq 14,

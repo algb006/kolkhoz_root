@@ -19,6 +19,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/seed_norm_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
@@ -348,62 +349,10 @@ bool ParseSeedNorms(const ITable& crops,
                     const ITable* resources,
                     FoodConfig& config,
                     std::string& error) {
-  config.seed_norms.assign(crops.RowCount(), SeedNormDef{});
-  const std::uint32_t resource_column = crops.FindColumn("resource");
-  const std::uint32_t norm_column = crops.FindColumn("sowing_norm_kg_per_ha");
-  const std::uint32_t winter_column = crops.FindColumn("is_winter");
-  const std::uint32_t sow_column = crops.FindColumn("sow_to_month");
-  for (std::uint32_t row = 0; row < crops.RowCount(); ++row) {
-    // The latest the held seed is sown: the horizon of its rot margin
-    // (0.34.42). 1-based in the table as production reads it
-    // (production_config.cpp); blank, absent or 0 is "not known", and the
-    // margin then runs to the turn.
-    float sow_month = 0.0F;
-    if (!OptionalCell(
-            crops, row, sow_column, Range{.low = 0.0F, .high = 12.0F}, sow_month, error)) {
-      PrefixError("crops", "sow_to_month", error);
-      return false;
-    }
-    config.seed_norms[row].sow_to_month =
-        sow_month >= 1.0F ? static_cast<std::uint8_t>(sow_month - 1.0F) : kNoSowingMonth;
-    // A winter crop's seed is owed from the autumn before its slot
-    // (fund_ladder.h); blank or absent is a spring crop.
-    float winter = 0.0F;
-    if (!OptionalCell(crops, row, winter_column, Range{.low = 0.0F, .high = 1.0F}, winter, error)) {
-      PrefixError("crops", "is_winter", error);
-      return false;
-    }
-    // Read as production reads it (production_config.cpp): any non-zero.
-    config.seed_norms[row].is_winter = winter != 0.0F;
-    if (!OptionalCell(crops,
-                      row,
-                      norm_column,
-                      Range{.low = 0.0F, .high = 1.0e5F},
-                      config.seed_norms[row].sowing_norm_kg_per_ha,
-                      error)) {
-      PrefixError("crops", "sowing_norm_kg_per_ha", error);
-      return false;
-    }
-    if (resource_column == kNoTableColumn) {
-      continue;  // an older crops table without the column at all
-    }
-    // The SAME cell core_production reads, and it refuses the same things
-    // there (0.17.79): a name resources.csv does not carry is a typo, and an
-    // unnamed crop has nowhere to put what it grows. A null roster still
-    // passes — there is nobody to ask, which is a stub table set and legal.
-    if (!RequiredResource(resources,
-                          crops,
-                          row,
-                          resource_column,
-                          "resource",
-                          false,
-                          config.seed_norms[row].resource,
-                          error)) {
-      PrefixError("crops", "resource", error);
-      return false;
-    }
-  }
-  return true;
+  // ONE READING OF THE TABLE (core_catalog/seed_norm_catalog.h; 0.36.34):
+  // the seed rung reads the delivery door's rule, and the rule reads these
+  // norms — its reaping months among them, which this parse did not carry.
+  return ReadSeedNorms(crops, resources, config.seed_norms, error);
 }
 
 /// @brief Row of the resource roster by key, as the dense id; invalid when

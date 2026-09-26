@@ -24,6 +24,7 @@ kolkhoz_add_module(core_catalog
     map_obstacle_tables.cpp
     road_cost_catalog.cpp
     road_rules_catalog.cpp
+    seed_norm_catalog.cpp
     world_conventions.cpp)
 
 target_link_libraries(core_catalog

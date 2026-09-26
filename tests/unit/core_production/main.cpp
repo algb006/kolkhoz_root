@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_catalog/seed_norm_catalog.h"
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
@@ -275,6 +276,11 @@ int CheckTheHerdDoesNotEatTheSeed() {
   config.crops[0].resource = core::ResourceId{0};
   config.crops[0].sowing_norm_kg_per_ha = 9.8F;
   config.crops[0].sow_to_month = 4;
+  // Reaped in August: since 0.36.34 the herds' rung reads the door's rule,
+  // and a crop left at the default reaping month of January reads as reaped
+  // before its May sowing — a harvest first, nothing held.
+  config.crops[0].harvest_from_month = 7;
+  config.crops[0].harvest_to_month = 8;
   const auto store_left = [&config](bool field_to_sow) {
     core::WorldState world = MakeHerdWorld(100.0F);
     if (field_to_sow) {
@@ -2001,6 +2007,78 @@ int CheckSeedHeldFieldByField() {
   failures +=
       Expect(core::SeedHeldToSowing(config, turn, core::SeedDayAtTheTurn(turn))[0] == 25 * kTonne,
              "seed held at the turn: as of the closing year's last day, next spring's 25 t");
+
+  // ONE DOOR, TWO READERS (boss-core-seed-ladders [1]-[2]): the fund ladder's
+  // seed rung, with nothing unsealed, is the delivery door's hold on every
+  // one of these worlds. Until 0.36.34 the rung asked "this year's sowings
+  // still to come": on seed 1931 at the turn of year 3 it held 147.5 t of
+  // potato against the door's 185 t, the next spring's potato on the fields
+  // dug that year held by nobody. A TRIPWIRE: it reddens the day either
+  // reader is given a rule of its own again.
+  const auto norms = core::SeedNormsOf(config);
+  const auto one_door = [&](const core::WorldState& state, const char* label) {
+    return Expect(
+        core::SeedRungLeft(state, norms, config.feed_values.size()) ==
+            core::ResourceAmounts(core::SeedHeldToSowing(config, state, state.calendar.day)),
+        label);
+  };
+  failures += one_door(world, "one door: January, this spring's potato beside the rye");
+  failures += one_door(november, "one door: November, next spring's potato on a field dug");
+  failures += one_door(only_next, "one door: January, only next year's potato");
+  failures += one_door(november_named, "one door: November, a chain named at the turn");
+  failures += one_door(august, "one door: August, a fresh chain's winter rye");
+  return failures;
+}
+
+/// ONE READING OF THE SEED NORMS (core_catalog/seed_norm_catalog.h; 0.36.34):
+/// the families' ladder reads crops.csv through the catalogue, the herds and
+/// the seed doors through this module's crop definitions (SeedNormsOf). On the
+/// shipped tables the two agree field for field, or the one rule answers two
+/// ways again through its input.
+int CheckTheSeedNormsAreReadOnce() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load for the seed norms") != 0) {
+    return 1;
+  }
+  core::ProductionConfig config;
+  if (Expect(core::ParseProductionConfig(*tables, config, error), "production parses them") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  std::vector<core::SeedNorm> catalogue;
+  const core::ITable* const crops = tables->FindTable("crops");
+  if (Expect(crops != nullptr &&
+                 core::ReadSeedNorms(*crops, tables->FindTable("resources"), catalogue, error),
+             "the catalogue reads the same crops") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const std::vector<core::SeedNorm> production = core::SeedNormsOf(config);
+  std::uint32_t seeded = 0;
+  std::uint32_t differing = 0;
+  for (std::size_t row = 0; row < std::min(production.size(), catalogue.size()); ++row) {
+    const core::SeedNorm& a = production[row];
+    const core::SeedNorm& b = catalogue[row];
+    seeded += a.sowing_norm_kg_per_ha > 0.0F ? 1U : 0U;
+    // Months matter only where there is seed to hold: an unseeded crop's
+    // blank month is kNoSowingMonth in the catalogue and 0 in the config.
+    const bool months_agree =
+        a.sowing_norm_kg_per_ha <= 0.0F ||
+        (a.sow_to_month == b.sow_to_month && a.harvest_from_month == b.harvest_from_month &&
+         a.harvest_to_month == b.harvest_to_month);
+    if (a.resource.value != b.resource.value ||
+        a.sowing_norm_kg_per_ha != b.sowing_norm_kg_per_ha || a.is_winter != b.is_winter ||
+        !months_agree) {
+      ++differing;
+      std::cout << "  seed norms differ at crop row " << row << '\n';
+    }
+  }
+  std::cout << "  seed norms: " << production.size() << " crops, " << seeded << " seeded, "
+            << differing << " differing\n";
+  failures += Expect(production.size() == catalogue.size() && seeded > 0 && differing == 0,
+                     "the seed norms read one way: production's and the catalogue's agree");
   return failures;
 }
 
@@ -10029,6 +10107,7 @@ int main() {
   failures += CheckFeedLightNeverRunsOut();
   failures += CheckSeedLightMeasuresCoverage();
   failures += CheckSeedHeldFieldByField();
+  failures += CheckTheSeedNormsAreReadOnce();
   failures += CheckSeedLightAsksAboutTheNearestCampaign();
   failures += CheckFeedLightKeepsTheKindsApart();
   failures += CheckSeedLightDoesNotNetCropsOff();
