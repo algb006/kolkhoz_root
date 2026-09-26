@@ -5342,6 +5342,95 @@ int CheckLostWinterCropLiesFallow() {
   return failures;
 }
 
+/// NO WINTER SOWING AFTER ITS WINDOW (fields design §4, §7; boss,
+/// boss-core-epoch1-resume [34], 0.36.16). A running chain (potatoes, rye,
+/// oats) whose field was harrowed for the rye: in September, inside the
+/// rye's window, the sowing opens; the same field harrowed only in October
+/// does not open it — it waits, the year's turn lets the preparation go,
+/// and the slot is lost (kWinterSowingLost). Until 0.36.16 the harrow's end
+/// opened the sowing in any month: the host's trace sowed rye in November.
+int CheckNoWinterSowingAfterWindow() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "late winter sowing: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+  const core::CropId potato{static_cast<std::uint16_t>(crops->FindRowByKey("potato"))};
+  const core::Grams seed_stock = 10000 * core::kGramsPerKilogram;
+
+  // A field harrowed for the rye, the harrow done, on the last tick of `day`.
+  const auto harrowed_on = [&](std::uint32_t day) {
+    core::WorldState world;
+    world.calendar.tick = ((day + 1U) * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(world.calendar);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.fertility = 65.0F;
+    field.rotation_year0 = potato;
+    field.rotation_year1 = rye;
+    field.rotation_year2 = oat;
+    field.rotation_assigned = 1;
+    field.crop = rye;
+    field.phase = core::FieldPhase::kHarrowing;
+    field.work_days_remaining = 0.0F;
+    field.reaped_day = day - 4U;  // the potatoes came off this year
+    core::AppendRow(world.fields, field);
+    core::UnitRow store;
+    store.level = 1;
+    store.type = core::UnitTypeId{0};
+    store.stock.assign(64, 0);
+    const std::uint32_t rye_resource =
+        tables->FindTable("resources")
+            ->FindRowByKey(crops->CellText(rye.value, crops->FindColumn("resource")));
+    store.stock[rye_resource] = seed_stock;
+    core::AppendRow(world.units, store);
+    return world;
+  };
+  const auto step = [&system](core::WorldState& state, float temperature) {
+    core::WorldState next = state;
+    next.calendar.tick = ((state.calendar.tick / core::kTicksPerDay) + 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next.calendar);
+    next.weather.air_temperature_celsius = temperature;
+    next.step_events.clear();
+    system->RunProductionDecisions(state, next);
+    state = next;
+  };
+
+  // September of year 1 (day 32 is the month's first, 0-based month 8).
+  core::WorldState september = harrowed_on(32);
+  step(september, 10.0F);
+  failures += Expect(september.fields.rows[0].phase == core::FieldPhase::kSowing,
+                     "harrowed for the rye inside its window, the field opens the sowing");
+
+  // October: the window went by (sow_to_month September).
+  core::WorldState october = harrowed_on(36);
+  step(october, 10.0F);
+  failures += Expect(october.fields.rows[0].phase == core::FieldPhase::kHarrowing,
+                     "harrowed in October, past the rye's window, it does not sow (no sowing "
+                     "after the window)");
+
+  // The year's turn lets the preparation go, and the lost slot is said.
+  october.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(october.calendar);
+  step(october, -12.0F);
+  bool said = false;
+  for (const core::SimEvent& event : october.step_events) {
+    said = said || (event.kind == core::EventKind::kWinterSowingLost &&
+                    event.amount == static_cast<std::int64_t>(rye.value));
+  }
+  failures += Expect(said && october.fields.rows[0].phase == core::FieldPhase::kIdle,
+                     "and at the turn the rye's slot is lost (kWinterSowingLost), the field idle");
+  return failures;
+}
+
 int CheckPauseAndResume() {
   int failures = 0;
   const std::filesystem::path root =
@@ -9498,6 +9587,7 @@ int main() {
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
   failures += CheckLostWinterCropLiesFallow();
+  failures += CheckNoWinterSowingAfterWindow();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();

@@ -66,9 +66,12 @@ enum class ResidentActivity : std::uint8_t {
   /// threshold, and none of the four places exist as units yet.
   kTreated = 0,
 
-  /// Away in the district: a messenger, the market, the raikom, a fair.
-  /// STUB: nothing in the core sends anybody, and the order that would is
-  /// the quest layer's, not this module's.
+  /// Away in the district: in its hospital or on the road home from its
+  /// border — the district's ambulance takes the gravely ill since 0.34.18
+  /// (district_car.h, AwayInDistrict). A messenger, the market, the raikom
+  /// and a fair still have no source; the order that would send them is the
+  /// quest layer's. (Until 2026-09-26 this line called the whole state a
+  /// STUB, eight versions after its source landed.)
   kAway,
 
   /// Off work without leave. Half of it is real — a man who walks off from

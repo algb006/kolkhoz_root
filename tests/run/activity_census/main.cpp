@@ -131,7 +131,13 @@ constexpr std::array<std::string_view,
 /// lots moved the stream, a resident on one seed fell under the line, and the
 /// census refused the waiver. The state is reachable; the waiver was luck —
 /// and so is its absence, which is why it is RARE below and not demanded.
-constexpr std::array<std::string_view, 2> kWaived = {"away", "resting"};
+///
+/// AND AWAY CAME OFF IT ON 2026-09-26 THE SAME WAY (0.36.15's suite on the
+/// Xeon: 192 man-hours on one seed). Its source has stood since 0.34.18 —
+/// the district's ambulance takes the gravely ill to the district hospital
+/// (AwayInDistrict) — while the header still called it a STUB; the heap at
+/// the field's edge moved the stream and a resident crossed the line. RARE.
+constexpr std::array<std::string_view, 1> kWaived = {"resting"};
 
 /// THE OPEN QUESTION THIS CHECK RAISED IS CLOSED, and the way it closed is
 /// the reason to keep the check. It found not_worker and too_young
@@ -154,7 +160,7 @@ bool Waived(std::string_view name) {
 /// it failed the day the start's night trades moved the stream and no seed
 /// did (2026-09-15, both within one afternoon). It is printed and asserted
 /// neither way; its source is named in resident_activity.h.
-constexpr std::array<std::string_view, 1> kRare = {"treated"};
+constexpr std::array<std::string_view, 2> kRare = {"treated", "away"};
 
 bool Rare(std::string_view name) {
   return std::ranges::find(kRare, name) != kRare.end();

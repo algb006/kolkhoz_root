@@ -794,6 +794,18 @@ bool SowingMayOpen(const ProductionConfig& config,
   // snow may take the lot (production_system.cpp — the one TOTAL loss of a
   // harvest in the game). Past the snow there is nothing to gamble on, and the
   // seed stays in the fund.
+  // A WINTER CROP HAS NO SOWING AFTER ITS WINDOW (fields design §4, «раньше и
+  // позже нельзя»; §7, «Сева после окна нет»; boss, boss-core-epoch1-resume
+  // [34], 0.36.16). The crew's back edge above is the spring crops': an
+  // annual sown late still ripens before the snow or does not, and the snow
+  // gate below says which. A winter crop has no such gate — its ripening is
+  // next year's — so it passed here whenever its harrow finished, and the
+  // host's trace sowed rye in NOVEMBER. Past the window the field waits
+  // harrowed, the year's turn lets the preparation go, and the slot is lost
+  // (question 278, WinterSlotLost).
+  if (def.is_winter && month > def.sow_to_month) {
+    return false;
+  }
   const std::int32_t ripen = RipenDays(config, crop);
   if (ripen == 0) {
     return true;  // winter or perennial: reaped in another year, no gap to miss
