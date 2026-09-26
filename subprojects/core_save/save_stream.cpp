@@ -83,4 +83,16 @@ std::uint64_t HashBytes(std::span<const std::byte> bytes) {
   return hash;
 }
 
+void WriteFloatArray(ByteWriter& out, std::span<const float> values) {
+  for (const float value : values) {
+    out.WriteFloat(value);
+  }
+}
+
+void ReadFloatArray(ByteReader& in, std::span<float> values) {
+  for (float& value : values) {
+    value = in.ReadFloat();
+  }
+}
+
 }  // namespace core

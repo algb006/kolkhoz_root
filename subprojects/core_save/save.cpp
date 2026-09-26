@@ -32,6 +32,7 @@
 #include "core_tables/tables.h"
 #include "save_blocks.h"
 #include "save_dictionary.h"
+#include "save_ledger.h"
 #include "save_rows.h"
 #include "save_stream.h"
 

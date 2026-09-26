@@ -86,6 +86,83 @@ core::AssignmentParams DayParams() {
   return params;
 }
 
+/// WHY NOT PLACED (assignment.h, PlacementDiagnosis; boss-core-epoch1-resume
+/// [73]-[74]): one case a reason, asked of the plan's own rules, and in none
+/// of them a person left kUnexplained.
+int TestPlacementDiagnosis() {
+  int failures = 0;
+  const auto plan = [](const std::vector<core::AssignmentJob>& jobs,
+                       const std::vector<core::AssignmentCandidate>& candidates,
+                       const core::AssignmentParams& params) {
+    core::PlacementDiagnosis diagnosis;
+    core::PlanDayAssignments(jobs, candidates, params, nullptr, nullptr, &diagnosis);
+    return diagnosis;
+  };
+  const auto count = [](const core::PlacementDiagnosis& diagnosis, core::IdleReason reason) {
+    return std::ranges::count_if(diagnosis.idle,
+                                 [reason](const auto& idle) { return idle && *idle == reason; });
+  };
+  std::vector<core::AssignmentCandidate> three;
+  for (std::uint32_t row = 0; row < 3; ++row) {
+    three.push_back(Worker(row, {0.0F, 0.0F}));
+  }
+  // No horse: a plough with work left and no horse in the pool.
+  const core::PlacementDiagnosis no_horse =
+      plan({FieldJob(core::WorkKind::kPlowing, 1, {100.0F, 0.0F}, 5.0F, 3)}, three, DayParams());
+  failures += Expect(no_horse.shortfall[0] == core::JobShortfall::kNoHorse &&
+                         count(no_horse, core::IdleReason::kNoHorse) == 3,
+                     "diagnosis: a plough with no horse is short of a horse, and all three idle "
+                     "for it");
+  // Covered: half a norm-day of sowing, one hand takes it, two idle covered.
+  const core::PlacementDiagnosis covered =
+      plan({FieldJob(core::WorkKind::kSowing, 1, {100.0F, 0.0F}, 0.5F, 3)}, three, DayParams());
+  failures += Expect(!covered.shortfall[0] && count(covered, core::IdleReason::kWorkCovered) == 2 &&
+                         !covered.idle[0],
+                     "diagnosis: a covered job leaves the rest idle as covered, the placed none");
+  // Road: sowing 1 km out, past the 2-hour limit at 3.1 h/km.
+  const core::PlacementDiagnosis road =
+      plan({FieldJob(core::WorkKind::kSowing, 1, {1000.0F, 0.0F}, 5.0F, 3)}, three, DayParams());
+  failures += Expect(
+      road.shortfall[0] == core::JobShortfall::kRoad && count(road, core::IdleReason::kRoad) == 3,
+      "diagnosis: a job past the road limit is short by the road, and so are they");
+  // Crew cap: a brigade of one on five days of work.
+  core::AssignmentJob capped = FieldJob(core::WorkKind::kSowing, 1, {100.0F, 0.0F}, 5.0F, 3);
+  capped.max_crew = 1;
+  const core::PlacementDiagnosis cap = plan({capped}, three, DayParams());
+  failures += Expect(cap.shortfall[0] == core::JobShortfall::kCrewCap &&
+                         count(cap, core::IdleReason::kCrewCap) == 2,
+                     "diagnosis: a full brigade leaves the other two idle for the cap");
+  // Horse lock: the one free hand hosts a horse and the job left short is
+  // sowing; the other hand is placed and the sowing still wants more.
+  std::vector<core::AssignmentCandidate> locked = {Worker(0, {0.0F, 0.0F}),
+                                                   Worker(1, {0.0F, 0.0F})};
+  locked[1].horse_locked = true;
+  const core::PlacementDiagnosis lock =
+      plan({FieldJob(core::WorkKind::kSowing, 1, {100.0F, 0.0F}, 5.0F, 3)}, locked, DayParams());
+  failures +=
+      Expect(lock.shortfall[0] == core::JobShortfall::kNoHands &&
+                 lock.idle[1] == core::IdleReason::kHorseLock,
+             "diagnosis: the horse's host idles for his lock beside a sowing short of hands");
+  // A carter with no horse, the load 1 km out: in reach at the harness pace,
+  // past the limit on foot. The job and the people answer the same — the way
+  // (static review of 0.36.32: the job read kNoHands while they read kRoad).
+  core::AssignmentJob cart = FieldJob(core::WorkKind::kHauling, 1, {1000.0F, 0.0F}, 5.0F, 3);
+  cart.harnessed = true;
+  const core::PlacementDiagnosis carter = plan({cart}, three, DayParams());
+  failures += Expect(carter.shortfall[0] == core::JobShortfall::kRoad &&
+                         count(carter, core::IdleReason::kRoad) == 3,
+                     "diagnosis: a horseless cart turned away on foot is short by the way, and so "
+                     "are its carters");
+  const auto unexplained = [&](const core::PlacementDiagnosis& diagnosis) {
+    return count(diagnosis, core::IdleReason::kUnexplained);
+  };
+  failures += Expect(unexplained(no_horse) + unexplained(covered) + unexplained(road) +
+                             unexplained(cap) + unexplained(lock) + unexplained(carter) ==
+                         0,
+                     "diagnosis: nobody idle without a reason the rules give");
+  return failures;
+}
+
 int TestSurplusIdles() {
   int failures = 0;
   // One tiny job, five hands: the crew stops when expected output covers
@@ -3696,6 +3773,7 @@ int main() {
   failures += TestNightShiftStarts();
   failures += CheckStubTablesMustBeDeclared();
   failures += TestSurplusIdles();
+  failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();
   failures += TestACarterRidesOnlyAFreeHorse();

@@ -121,6 +121,52 @@ enum class WorkKind : std::uint8_t {
 inline constexpr std::uint32_t kWorkKindCount =
     static_cast<std::uint32_t>(WorkKind::kWorkKindCount);
 
+/// @brief Why an adult who could work stood without a placement this
+///        morning (boss-core-epoch1-resume [73]-[74]: 62-70 % of adults
+///        without a placement a day on econ's measure, and the question which
+///        of the accountant's rules holds them). ONE REASON A PERSON A DAY.
+///        No open work and kResting (the rest limit kept him off the list)
+///        are booked before the plan; a day off answers for whatever the
+///        plan left idle. Over the jobs left short, the first reason that
+///        holds in the enum's order is kept, save that kUnexplained — a
+///        free, fit person on a job that wanted him and did not get him, the
+///        instrument's own hole, which must stay nought — outranks all;
+///        kWorkCovered only when no job was left short. "Idle" is the
+///        accountant's plan: a standing order that sends him after it does
+///        not take him out of the count.
+enum class IdleReason : std::uint8_t {
+  kNoOpenWork = 0,   ///< No job at all this morning (a working day).
+  kDayOff,           ///< A day off: only the barn was offered.
+  kWorkCovered,      ///< Every job had its day covered by others.
+  kNoHorse,          ///< A plough, a harrow or a lot's fetch stood for want of a horse.
+  kCrewCap,          ///< A job he could take was capped by its brigade.
+  kRoad,             ///< The only jobs with room were past his road limit.
+  kHorseLock,        ///< Hosts a kolkhoz horse, and no horse work had room.
+  kNoDayLeft,        ///< The road left him no working day.
+  kResting,          ///< Past the rest limit: stayed home (not on the list).
+  kUnexplained,      ///< Fit, free, wanted — and not placed: must stay nought.
+  kIdleReasonCount,  ///< NOT A REASON: the count, for mirrors.
+};
+
+inline constexpr std::uint32_t kIdleReasonCount =
+    static_cast<std::uint32_t>(IdleReason::kIdleReasonCount);
+
+/// @brief Why a job with work left was not covered this morning. kNoHorse
+///        and kCrewCap name what stopped a further pick: a job whose last
+///        fit hand filled the brigade, or took the last horse, and still
+///        fell short reads kNoHands — more of either would not have helped.
+enum class JobShortfall : std::uint8_t {
+  kNoHorse = 0,        ///< A plough, a harrow or a lot's fetch with no horse left.
+  kCrewCap,            ///< Its brigade was full.
+  kNoHands,            ///< Nobody free and fit was left for it.
+  kRoad,               ///< Nobody placed; every free hand asked was turned away by the way
+                       ///< (the road rule, or a horseless carter's walk).
+  kJobShortfallCount,  ///< NOT A REASON: the count, for mirrors.
+};
+
+inline constexpr std::uint32_t kJobShortfallCount =
+    static_cast<std::uint32_t>(JobShortfall::kJobShortfallCount);
+
 /// @brief True for kinds that harness a horse: the crew is capped by adult
 /// kolkhoz horses, and residents hosting a kolkhoz horse at their yard are
 /// assignable ONLY to these kinds (start canon, livestock design §5).

@@ -181,6 +181,13 @@ class ByteReader {
 /// a local save file is exposed to.
 std::uint64_t HashBytes(std::span<const std::byte> bytes);
 
+/// @brief A fixed-size float array goes out as its elements, with no count:
+/// the length is part of the format, not of the data.
+void WriteFloatArray(ByteWriter& out, std::span<const float> values);
+
+/// @brief The same array back, element by element, into `values`.
+void ReadFloatArray(ByteReader& in, std::span<float> values);
+
 }  // namespace core
 
 #endif  // CORE_SAVE_SAVE_STREAM_H_

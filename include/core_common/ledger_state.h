@@ -391,6 +391,21 @@ struct YearLedger {
   /// so by kProcessingStopped. Save 94.
   std::array<std::uint32_t, kWorkKindCount> road_blocked_job_days = {};
 
+  // WHY NOT PLACED (boss-core-epoch1-resume [73]-[74], save 102): the
+  // morning's plan, counted by the accountant's own rules (labor_state.h,
+  // IdleReason and JobShortfall). The top-up re-plans the day and is not
+  // counted, as road_blocked_job_days is not.
+  /// Adult person-days without a placement, by the first reason that held.
+  std::array<std::uint32_t, kIdleReasonCount> idle_person_days = {};
+  /// Job-days with work left and not covered, by kind and reason.
+  std::array<std::array<std::uint32_t, kJobShortfallCount>, kWorkKindCount> short_job_days = {};
+  /// Job-days offered: the base of short_job_days.
+  std::uint32_t offered_job_days = 0;
+  /// Adult person-days on the accountant's list: the base of every idle
+  /// reason but kResting, whose people were kept off the list and are not
+  /// in it — idle over this base is the sum without kResting.
+  std::uint32_t candidate_person_days = 0;
+
   // THE PRODUCE CART OFF THE ROAD (0.36.9; boss, boss-core-epoch1-resume
   // [4] and [11], question 268). The design forbids a cart with produce to
   // leave the road (roads design §11: «с зерном нет»), and the core still

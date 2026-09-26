@@ -664,6 +664,17 @@ core::WorldState MakeWorld() {
   world.ledger.closed.road_blocked_job_days[static_cast<std::size_t>(core::WorkKind::kHauling)] =
       17;
   world.ledger.closed.road_blocked_job_days[static_cast<std::size_t>(core::WorkKind::kHarvest)] = 3;
+  // Save 102, why not placed: a value off nought in each new field, the
+  // last idle reason and the last cell of the last kind among them — a
+  // reader one short reads a nought there and fails.
+  world.ledger.closed.idle_person_days[static_cast<std::size_t>(core::IdleReason::kNoHorse)] = 7;
+  world.ledger.closed.idle_person_days[static_cast<std::size_t>(core::IdleReason::kUnexplained)] =
+      1;
+  world.ledger.closed.short_job_days[static_cast<std::size_t>(core::WorkKind::kPlowing)]
+                                    [static_cast<std::size_t>(core::JobShortfall::kNoHorse)] = 4;
+  world.ledger.closed.short_job_days[core::kWorkKindCount - 1][core::kJobShortfallCount - 1] = 2;
+  world.ledger.closed.offered_job_days = 11;
+  world.ledger.closed.candidate_person_days = 13;
   // The produce cart off the road (save 96): every source different and
   // off its default, so a codec that shifts one column onto its neighbour,
   // or one source onto the next, cannot round-trip clean.
@@ -1448,7 +1459,9 @@ constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
     // Save 100 (delivery 7a): +16 — WorkKind::kRoadWork, work_days_by_kind
     // and road_blocked_job_days one entry longer in each book; predicted
     // 1416 -> 1432 before the build, held.
-    {"ledger", 1432, 0xc7b70551368ed03fULL},
+    // Save 102: why not placed — 64 u32 a book, two books: +512 (1432 ->
+    // 1944), predicted before the build.
+    {"ledger", 1944, 0x10731831802ff5c9ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1785,6 +1798,12 @@ int main() {
       AmountAt(loaded.ledger.closed.hauled_to_stores, 1) == 9'000'000 &&
           loaded.ledger.closed.road_blocked_job_days == world.ledger.closed.road_blocked_job_days,
       "what the carts brought in and the jobs the road stopped survive, kind by kind (save 94)");
+  failures +=
+      Expect(loaded.ledger.closed.idle_person_days == world.ledger.closed.idle_person_days &&
+                 loaded.ledger.closed.short_job_days == world.ledger.closed.short_job_days &&
+                 loaded.ledger.closed.offered_job_days == 11 &&
+                 loaded.ledger.closed.candidate_person_days == 13,
+             "why not placed survives, reason by reason and kind by kind (save 102)");
   {
     const core::YearLedger& back = loaded.ledger.closed;
     const core::YearLedger& sent = world.ledger.closed;

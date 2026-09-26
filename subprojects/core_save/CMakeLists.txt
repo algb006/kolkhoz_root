@@ -11,6 +11,7 @@ kolkhoz_add_module(core_save
     save.cpp
     save_blocks.cpp
     save_dictionary.cpp
+    save_ledger.cpp
     save_rows.cpp
     save_stream.cpp)
 

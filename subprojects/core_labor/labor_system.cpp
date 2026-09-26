@@ -366,15 +366,59 @@ class LaborSystem final : public ILaborSystem {
     // orders with it. work_orders.h promises the opposite: a standing order
     // whose target has no work today leaves its man IDLE, not unassigned.
     const std::vector<AssignmentJob> jobs = CollectJobs(current);
+    // WHY NOT PLACED (save 102; YearLedger::idle_person_days): the morning's
+    // plan only, as the road's blocked job-days. Resting adults are counted
+    // by the list itself; with no job at all, everybody on the list is idle
+    // for that; on a day off, whatever the barn left.
+    const bool day_off_today = IsDayOffIn(current, current.calendar.day);
+    std::uint32_t resting = 0;
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(current, &resting);
+    book.idle_person_days[static_cast<std::size_t>(IdleReason::kResting)] += resting;
+    book.candidate_person_days += static_cast<std::uint32_t>(candidates.size());
+    if (jobs.empty()) {
+      book.idle_person_days[static_cast<std::size_t>(day_off_today ? IdleReason::kDayOff
+                                                                   : IdleReason::kNoOpenWork)] +=
+          static_cast<std::uint32_t>(candidates.size());
+    }
     if (!jobs.empty()) {
-      std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
+      book.offered_job_days += static_cast<std::uint32_t>(jobs.size());
+      // Nobody on the list at all (static review of 0.36.32): the plan is not
+      // run, and every job with work left went short of hands — booked, not
+      // left out of the short count while the offered count took it.
+      if (candidates.empty()) {
+        for (const AssignmentJob& job : jobs) {
+          const auto kind = static_cast<std::size_t>(job.kind);
+          if (job.work_days_remaining > 0.0F && kind < book.short_job_days.size()) {
+            ++book.short_job_days[kind][static_cast<std::size_t>(JobShortfall::kNoHands)];
+          }
+        }
+      }
       if (!candidates.empty()) {
         std::vector<std::uint8_t> rides_horse;
         std::vector<std::uint8_t> road_blocked;
+        PlacementDiagnosis diagnosis;
         AssignmentParams params = DayParams(current);
         MeasureRoads(current, jobs, candidates, params);
         const std::vector<std::uint32_t> plan =
-            PlanDayAssignments(jobs, candidates, params, &rides_horse, &road_blocked);
+            PlanDayAssignments(jobs, candidates, params, &rides_horse, &road_blocked, &diagnosis);
+        for (std::size_t index = 0; index < jobs.size(); ++index) {
+          const auto kind = static_cast<std::size_t>(jobs[index].kind);
+          if (diagnosis.shortfall[index] && kind < book.short_job_days.size()) {
+            ++book.short_job_days[kind][static_cast<std::size_t>(*diagnosis.shortfall[index])];
+          }
+        }
+        for (std::size_t index = 0; index < candidates.size(); ++index) {
+          if (diagnosis.idle[index]) {
+            // A day off answers for the idle — except a contradiction of the
+            // plan, which no day off explains (static review of 0.36.32: the
+            // override hid kUnexplained on every day off).
+            const IdleReason planned = *diagnosis.idle[index];
+            const IdleReason reason = day_off_today && planned != IdleReason::kUnexplained
+                                          ? IdleReason::kDayOff
+                                          : planned;
+            ++book.idle_person_days[static_cast<std::size_t>(reason)];
+          }
+        }
         // THE MORNING'S PLAN ONLY: the day's jobs the road stopped, by kind
         // (YearLedger::road_blocked_job_days). The top-up re-plans the same
         // day and would count it twice.
@@ -1358,7 +1402,13 @@ class LaborSystem final : public ILaborSystem {
 
   /// Everyone of working age whose day can start somewhere. Children are
   /// left out entirely: child labor (life-cycle §7) is deferred.
-  std::vector<AssignmentCandidate> CollectCandidates(const WorldState& current) const {
+  /// `resting`, when given, is raised by each adult who passed every other
+  /// test of the list and was kept home by the rest limit alone
+  /// (IdleReason::kResting). The rest test stands last for that: a mirror
+  /// of the list's tests kept apart from it missed the efficiency drop
+  /// (static review of 0.36.32).
+  std::vector<AssignmentCandidate> CollectCandidates(const WorldState& current,
+                                                     std::uint32_t* resting = nullptr) const {
     const std::vector<bool> horse_locked = MarkHorseHosts(current);
     const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;
@@ -1367,17 +1417,6 @@ class LaborSystem final : public ILaborSystem {
       const ResidentRow& resident = current.residents.rows[row];
       Vec2 home;
       if (!Employable(current, resident) || !HomePosition(current, resident.family, home)) {
-        continue;
-      }
-      // PAST HIS LIMIT HE STAYS HOME (units rules §8: "Решает сам работник —
-      // не игрок и не учётчик", "Возвращается на следующий день, отдохнув").
-      // Placed anyway until 0.35.11, he walked off in his first working hour,
-      // his crew stood "crewed" for the top-up, and his day counted as worked,
-      // so he never rested back: thirty_years year 19, the same five harrowers
-      // at rest 0-9 sent to the oat fields three mornings running while 707
-      // rested men idled, and the oats missed their window. EMPLOYABLE STILL
-      // SAYS YES — he is not away and not a child; he is resting today.
-      if (resident.rest <= config_.rest_walkoff_threshold) {
         continue;
       }
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
@@ -1390,14 +1429,36 @@ class LaborSystem final : public ILaborSystem {
            PostHoldsTheDay(config_.professions[resident.post.profession.value].shift))) {
         continue;
       }
+      const bool first_year = current.calendar.date.year == 0;
+      // PAST HIS LIMIT HE STAYS HOME (units rules §8: "Решает сам работник —
+      // не игрок и не учётчик", "Возвращается на следующий день, отдохнув").
+      // Placed anyway until 0.35.11, he walked off in his first working hour,
+      // his crew stood "crewed" for the top-up, and his day counted as worked,
+      // so he never rested back: thirty_years year 19, the same five harrowers
+      // at rest 0-9 sent to the oat fields three mornings running while 707
+      // rested men idled, and the oats missed their window. EMPLOYABLE STILL
+      // SAYS YES — he is not away and not a child; he is resting today.
+      if (resident.rest <= config_.rest_walkoff_threshold) {
+        if (resting != nullptr) {
+          // Counted only if a rested morning would put him on the list: his
+          // efficiency with the rest restored, not today's, since the table
+          // may set rest_factor_spent to nought.
+          ResidentRow rested = resident;
+          rested.rest = kMetricMax;
+          *resting += ResidentEfficiency(config_, rested, age, aging_from, first_year, false) > 0.0F
+                          ? 1U
+                          : 0U;
+        }
+        continue;
+      }
       AssignmentCandidate candidate;
       candidate.resident_row = row;
       candidate.home = home;
       // Ranked before any work is chosen, so the sober factor is the general
       // one: the three spared works (AlcoholSparesWork) are spared where the
       // work is delivered, below, and not in who comes first to the list.
-      candidate.efficiency = ResidentEfficiency(
-          config_, resident, age, aging_from, current.calendar.date.year == 0, false);
+      candidate.efficiency =
+          ResidentEfficiency(config_, resident, age, aging_from, first_year, false);
       candidate.rest = resident.rest;
       candidate.skill = FieldSkillBlend(config_, resident);
       candidate.horse_locked = horse_locked[row];

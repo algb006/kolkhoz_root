@@ -49,6 +49,22 @@ constexpr std::array<const char*, kWorkKindCount> kWorkKindNames = {"none",
                                                                     "planting",
                                                                     "road_work"};
 
+/// Why not placed (save 102): IdleReason and JobShortfall, one name each.
+/// Sized by the enums' counts, so an appended reason is a null the check
+/// below catches rather than a column that silently reads the wrong cell.
+constexpr std::array<const char*, kIdleReasonCount> kIdleReasonNames = {"no_open_work",
+                                                                        "day_off",
+                                                                        "work_covered",
+                                                                        "no_horse",
+                                                                        "crew_cap",
+                                                                        "road",
+                                                                        "horse_lock",
+                                                                        "no_day_left",
+                                                                        "resting",
+                                                                        "unexplained"};
+constexpr std::array<const char*, kJobShortfallCount> kJobShortfallNames = {
+    "no_horse", "crew_cap", "no_hands", "road"};
+
 // EVERY CELL HAS A NAME, which is not the same question as "are there as
 // many cells" (host, 2026-09-04). The array takes its length from the enum
 // now, so appending a kind widens it and leaves the new cell holding a null
@@ -65,6 +81,21 @@ static_assert(
       return true;
     }(),
     "every work kind carries a column name: appending a kind must name it here too");
+static_assert(
+    [] {
+      for (const char* const name : kIdleReasonNames) {
+        if (name == nullptr || *name == '\0') {
+          return false;
+        }
+      }
+      for (const char* const name : kJobShortfallNames) {
+        if (name == nullptr || *name == '\0') {
+          return false;
+        }
+      }
+      return true;
+    }(),
+    "every idle reason and shortfall carries a column name: appending one must name it here");
 
 /// Where a produce cart's load came from (CartLoadSource), as the column
 /// names it. Its length is the enum's, and the same hole guard stands on it.
@@ -331,6 +362,21 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   for (std::size_t kind = 1; kind < kWorkKindNames.size(); ++kind) {
     out.Integer(std::string("road_blocked_") + kWorkKindNames[kind] + "_job_days",
                 book.road_blocked_job_days[kind]);
+  }
+  // Why not placed (save 102): the two bases, the idle adults by reason
+  // (person-days), and the jobs left short by kind and reason (job-days).
+  out.Integer("offered_job_days", book.offered_job_days);
+  out.Integer("candidate_person_days", book.candidate_person_days);
+  for (std::size_t reason = 0; reason < kIdleReasonNames.size(); ++reason) {
+    out.Integer(std::string("idle_") + kIdleReasonNames[reason] + "_person_days",
+                book.idle_person_days[reason]);
+  }
+  for (std::size_t kind = 1; kind < kWorkKindNames.size(); ++kind) {
+    for (std::size_t reason = 0; reason < kJobShortfallNames.size(); ++reason) {
+      out.Integer(std::string("short_") + kWorkKindNames[kind] + "_" + kJobShortfallNames[reason] +
+                      "_job_days",
+                  book.short_job_days[kind][reason]);
+    }
   }
   // The produce cart off the road (0.36.9, question 268), by where the load
   // came from: the trips and the mass beside each other, the forbidden

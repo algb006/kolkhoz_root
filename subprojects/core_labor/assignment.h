@@ -18,6 +18,7 @@
 #define CORE_LABOR_ASSIGNMENT_H_
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "core_common/deadline.h"
@@ -241,6 +242,22 @@ struct AssignmentParams {
 /// @brief Index value meaning "left idle today" in the result.
 inline constexpr std::uint32_t kNoJobAssigned = 0xFFFFFFFFU;
 
+/// @brief Why the plan left what it left (labor_state.h IdleReason and
+///        JobShortfall; boss-core-epoch1-resume [73]-[74]), asked of the
+///        plan's own rules and not guessed after them.
+struct PlacementDiagnosis {
+  /// Per job: why its work was not covered; nothing when it was, or when
+  /// it had no work left.
+  std::vector<std::optional<JobShortfall>> shortfall;
+
+  /// Per candidate: why he stands idle — the first reason that holds over
+  /// the jobs left short, in the order of IdleReason, save that
+  /// kUnexplained outranks every other (a contradiction is not hidden
+  /// behind another job's reason); kWorkCovered when no job was left short.
+  /// Nothing for the placed.
+  std::vector<std::optional<IdleReason>> idle;
+};
+
 /// @brief Places the day's workers over the day's jobs.
 /// @param jobs       The openings; order irrelevant (the algorithm orders
 ///                   deterministically by urgency, then kind, then target
@@ -269,7 +286,8 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                               const std::vector<AssignmentCandidate>& candidates,
                                               const AssignmentParams& params,
                                               std::vector<std::uint8_t>* rides_horse = nullptr,
-                                              std::vector<std::uint8_t>* road_blocked = nullptr);
+                                              std::vector<std::uint8_t>* road_blocked = nullptr,
+                                              PlacementDiagnosis* diagnosis = nullptr);
 
 }  // namespace core
 

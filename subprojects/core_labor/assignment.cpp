@@ -124,6 +124,12 @@ constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
 /// 25 km beyond the border is no carry for a back. Until 0.36.18 the lot's
 /// carters fell to the on-foot rule once the horses were gone, and on the
 /// canon forty walked for the logs every free day (seed 1931, year 2).
+/// The meadow cut: a harnessed harvest, one horse for the whole brigade,
+/// and a scythe when there is none — never judged on foot (the plan below).
+constexpr bool IsMeadowCut(const AssignmentJob& job) {
+  return job.kind == WorkKind::kHarvest && job.harnessed;
+}
+
 constexpr bool StopsWithoutHorse(const AssignmentJob& job) {
   return IsHorseWork(job.kind) || job.limit_delivery.value != kInvalidEntityIdValue;
 }
@@ -196,7 +202,7 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     }
     // The meadow cut is the one harvest that rides out (labor_system.cpp,
     // CollectJobs sets `harnessed` on a harvest for a meadow and no other).
-    const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
+    const bool meadow_cut = IsMeadowCut(job);
     if (meadow_cut) {
       return job.window.kind == DeadlineKind::kDays ? 2 : 4;
     }
@@ -411,8 +417,10 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                               const std::vector<AssignmentCandidate>& candidates,
                                               const AssignmentParams& params,
                                               std::vector<std::uint8_t>* rides_horse,
-                                              std::vector<std::uint8_t>* road_blocked) {
+                                              std::vector<std::uint8_t>* road_blocked,
+                                              PlacementDiagnosis* diagnosis) {
   std::vector<std::uint32_t> result(candidates.size(), kNoJobAssigned);
+  std::vector<std::optional<JobShortfall>> shortfall(jobs.size());
   if (rides_horse != nullptr) {
     rides_horse->assign(candidates.size(), 0U);
   }
@@ -434,7 +442,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // §7: "косилка одна на бригаду, а не всадник на косца"; boss, parcel 312).
     // It took one a mower until 2026-09-14, and with no horse left it was not
     // cut at all — while the rule below says a scythe is still work.
-    const bool meadow_cut = job.kind == WorkKind::kHarvest && job.harnessed;
+    const bool meadow_cut = IsMeadowCut(job);
     const bool horse_work = IsHorseWork(job.kind) || (job.harnessed && !meadow_cut);
     // ONLY THE PLOUGH, THE HARROW AND THE LOT'S FETCH FROM THE DISTRICT
     // (0.36.18) STOP FOR WANT OF A HORSE, as the rule below says (every
@@ -445,6 +453,9 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // lay a day with 45 hands idle, and a December potato load went to the
     // snow. A cart with no horse is a back.
     if (StopsWithoutHorse(job) && horses_left == 0) {
+      if (job.work_days_remaining > 0.0F) {
+        shortfall[job_index] = JobShortfall::kNoHorse;
+      }
       continue;
     }
     if (meadow_cut && horses_left > 0) {
@@ -467,6 +478,10 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         job.work_days_remaining > 0.0F) {
       (*road_blocked)[job_index] = 1U;
     }
+    // What stopped the filling, for the diagnosis; and the carters with no
+    // horse turned away on foot, who are the way's and not the hands'.
+    std::optional<JobShortfall> stopped;
+    std::uint32_t refused_on_foot = 0;
     for (const RankedPick& pick : picks) {
       if (expected_output >= job.work_days_remaining) {
         break;
@@ -474,6 +489,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       // The job's own ceiling, where it has one: a build class's brigade
       // caps a site regardless of how much work is left on it.
       if (job.max_crew != 0 && placed >= job.max_crew) {
+        stopped = JobShortfall::kCrewCap;
         break;
       }
       // A HORSE IS TAKEN IF ONE IS FREE. Whether its absence STOPS the work
@@ -494,6 +510,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
           --horses_left;
           took_horse = true;
         } else if (StopsWithoutHorse(job)) {
+          stopped = JobShortfall::kNoHorse;
           break;  // no horse, no plough (nor a lot fetched): not done at all today
         } else {
           // A CARTER WITH NO HORSE IS JUDGED ON FOOT (boss, boss-core-topup-
@@ -512,6 +529,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                  params,
                                  walking,
                                  walk_refused_by_road)) {
+            ++refused_on_foot;
             continue;
           }
           daily_norm = walking.daily_norm;
@@ -524,8 +542,86 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       expected_output += daily_norm;
       ++placed;
     }
+    if (expected_output < job.work_days_remaining) {
+      // THE WAY TURNED EVERYONE AWAY: nobody placed, and every free hand
+      // asked was refused by the road rule or, a carter with no horse, by
+      // the walk. Until the static review of 0.36.32 the walk's refusals
+      // fell to kNoHands here while the same hands idled kRoad or
+      // kNoDayLeft — two answers for one morning.
+      const bool turned_away_by_the_way =
+          placed == 0 && refused_on_foot == picks.size() && road_refused + refused_on_foot > 0;
+      if (stopped) {
+        shortfall[job_index] = stopped;
+      } else if (turned_away_by_the_way) {
+        shortfall[job_index] = JobShortfall::kRoad;
+      } else {
+        shortfall[job_index] = JobShortfall::kNoHands;
+      }
+    }
   }
 
+  if (diagnosis != nullptr) {
+    diagnosis->shortfall = shortfall;
+    diagnosis->idle.assign(candidates.size(), std::nullopt);
+    // Each idle person asked of every job left short, the first reason in
+    // IdleReason's order kept: a horse missing outranks a full brigade,
+    // which outranks his road, and so on — EXCEPT kUnexplained, which
+    // outranks them all. A hand fit for a job short of hands and left idle
+    // is the plan contradicting its own rules; ranked last, as it was in the
+    // first reading, any other short job he could not take answered for him,
+    // and its nought on seed 1936 said nothing. Ranked first, it still read
+    // nought over thirty years: a nought measured, not masked.
+    const auto rank = [](IdleReason reason) {
+      return reason == IdleReason::kUnexplained
+                 ? std::uint8_t{0}
+                 : static_cast<std::uint8_t>(static_cast<std::uint8_t>(reason) + 1U);
+    };
+    for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+      if (result[index] != kNoJobAssigned) {
+        continue;
+      }
+      std::optional<IdleReason> reason;
+      for (std::uint32_t job_index = 0; job_index < jobs.size(); ++job_index) {
+        if (!shortfall[job_index]) {
+          continue;
+        }
+        const AssignmentJob& job = jobs[job_index];
+        RankedPick pick;
+        bool by_road = false;
+        IdleReason here = IdleReason::kUnexplained;
+        if (ConsiderCandidate(job, job_index, candidates[index], index, params, pick, by_road)) {
+          if (*shortfall[job_index] == JobShortfall::kNoHorse) {
+            here = IdleReason::kNoHorse;
+          } else if (*shortfall[job_index] == JobShortfall::kCrewCap) {
+            here = IdleReason::kCrewCap;
+          } else if (job.harnessed && !IsMeadowCut(job)) {
+            // A carter left over with no horse is judged on foot (above); the
+            // mower is not. LIMIT: whether a horse was still free at his turn
+            // is not replayed, so a carter skipped while horses remained and
+            // unable to walk reads kRoad or kNoDayLeft, not kUnexplained.
+            AssignmentJob on_foot = job;
+            on_foot.harnessed = false;
+            RankedPick walking;
+            bool walk_by_road = false;
+            if (!ConsiderCandidate(
+                    on_foot, job_index, candidates[index], index, params, walking, walk_by_road)) {
+              here = walk_by_road ? IdleReason::kRoad : IdleReason::kNoDayLeft;
+            }
+          }
+        } else if (by_road) {
+          here = IdleReason::kRoad;
+        } else if (candidates[index].horse_locked && !(IsHorseWork(job.kind) || job.harnessed)) {
+          here = IdleReason::kHorseLock;
+        } else {
+          here = IdleReason::kNoDayLeft;
+        }
+        if (!reason || rank(here) < rank(*reason)) {
+          reason = here;
+        }
+      }
+      diagnosis->idle[index] = reason ? *reason : IdleReason::kWorkCovered;
+    }
+  }
   return result;
 }
 
