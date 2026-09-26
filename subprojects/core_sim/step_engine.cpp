@@ -18,6 +18,7 @@
 
 #include "TaskScheduler.h"
 #include "core_common/order_state.h"
+#include "core_common/road_view.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_sim/step.h"
@@ -189,6 +190,30 @@ class StepEngine final : public ISimulation {
       day = DayForecast{};
     }
   }
+
+  /// The bare engine knows no roads' rules: a draft traces to nothing, a
+  /// selection selects nothing, every tool stands grey as not yet built, and
+  /// the network is read off the state as it is (delivery 7a; road_draft.h).
+  RoadDraftResult PreviewRoad(const RoadDraft& draft) const override {
+    // Never an empty answer: no blocks would read as "lay it as drawn".
+    RoadDraftResult result;
+    result.blocks.push_back(
+        RoadDraftBlock{.refusal = RoadDraftRefusal::kSnapsToNothing, .at = draft.points[0]});
+    return result;
+  }
+
+  RoadPieces SelectRoadPieces(const RoadSelection& /*selection*/,
+                              RoadOperation /*operation*/) const override {
+    return {};
+  }
+
+  RoadToolStates RoadKindsAvailable() const override {
+    RoadToolStates states{};
+    states.fill(RoadToolClosed::kNotYetBuilt);
+    return states;
+  }
+
+  std::vector<RoadView> Roads() const override { return RoadViews(previous_.roads); }
 
   /// The bare engine knows no subsystems, so it knows no rules: nobody can
   /// be ordered and the workforce is empty. StandardSimulation answers these

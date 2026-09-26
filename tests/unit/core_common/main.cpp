@@ -30,6 +30,7 @@
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
 #include "core_common/road_rules.h"
+#include "core_common/road_view.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -1438,6 +1439,71 @@ int CheckTheTopOfTheLadder() {
   return failures;
 }
 
+/// THE ROADS AS THE LAYER DRAWS THEM (road_view.h; delivery 7a): a map road
+/// of three points with a bridge mark and worn stretches, and a player's
+/// path. Each view carries the row's id and fields, `s` running from nought
+/// and ending at the very length the graph measures, the marks, the wear —
+/// and no work, which comes with 7e.
+int TestRoadViews() {
+  int failures = 0;
+  core::RoadTable roads;
+  core::RoadRow trunk;
+  trunk.surface = core::RoadSurface::kDirt;
+  trunk.map_road = core::MapRoadId{2};
+  trunk.removable = 0;
+  trunk.traffic_word = core::RoadTrafficWord::kAlmostNone;
+  trunk.axis = {
+      core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}},
+      core::RoadPoint{.position = {.x = 30.0F, .y = 40.0F}, .mark = core::RoadMark::kBridge},
+      core::RoadPoint{.position = {.x = 30.0F, .y = 100.0F}}};
+  trunk.stretches = {core::RoadStretch{.wear_pct = 35.0F},
+                     core::RoadStretch{.wear_pct = 60.0F},
+                     core::RoadStretch{.wear_pct = 10.0F},
+                     core::RoadStretch{.wear_pct = 0.0F},
+                     core::RoadStretch{.wear_pct = 5.0F}};
+  const core::RoadId trunk_id = core::AppendRow(roads, trunk);
+  core::RoadRow path;
+  path.kind = core::RoadKind::kPath;
+  path.surface = core::RoadSurface::kNone;
+  path.origin = core::RoadOrigin::kPlayer;
+  path.axis = {core::RoadPoint{.position = {.x = 200.0F, .y = 0.0F}},
+               core::RoadPoint{.position = {.x = 200.0F, .y = 20.0F}}};
+  path.stretches = {core::RoadStretch{}};
+  core::AppendRow(roads, path);
+
+  const std::vector<core::RoadView> views = core::RoadViews(roads);
+  failures += Expect(views.size() == 2, "road views: one a road");
+  if (views.size() != 2) {
+    return failures;
+  }
+  const core::RoadView& first = views[0];
+  failures +=
+      Expect(first.road.value == trunk_id.value && first.kind == core::RoadKind::kRoad &&
+                 first.surface == core::RoadSurface::kDirt &&
+                 first.origin == core::RoadOrigin::kMap && first.map_road.value == 2 &&
+                 first.removable == 0 && first.traffic_word == core::RoadTrafficWord::kAlmostNone,
+             "road views: the row's id, kind, surface, origin, map road, removability "
+             "and traffic word");
+  failures += Expect(first.axis.size() == 3 && first.axis[0].s_m == 0.0F &&
+                         first.axis[1].s_m == 50.0F && first.axis[2].s_m == 110.0F &&
+                         first.axis[2].s_m == core::RoadAxisLength(trunk.axis),
+                     "road views: `s` runs from nought to the graph's own length (50, 110)");
+  failures += Expect(first.axis[1].mark == core::RoadMark::kBridge &&
+                         first.axis[0].mark == core::RoadMark::kNone &&
+                         first.axis[1].position.x == 30.0F && first.axis[1].position.y == 40.0F,
+                     "road views: each point keeps its position and its mark");
+  failures += Expect(first.wear_pct == std::vector<float>{35.0F, 60.0F, 10.0F, 0.0F, 5.0F},
+                     "road views: the stretches' wear, in order");
+  failures += Expect(first.works.empty() && views[1].works.empty(),
+                     "road views: no work on any road until 7e");
+  failures += Expect(views[1].kind == core::RoadKind::kPath &&
+                         views[1].surface == core::RoadSurface::kNone &&
+                         views[1].origin == core::RoadOrigin::kPlayer &&
+                         views[1].axis[1].s_m == 20.0F && views[1].wear_pct.size() == 1,
+                     "road views: and the player's path as it is");
+  return failures;
+}
+
 /// THE ROAD GRAPH (road_graph.h; 0.36.0): a trunk from (0,0) to (1000,0), a
 /// spur leaving it at x = 400 — its first point ON the trunk's axis, not at
 /// a vertex, as the map draws junctions — and a second spur from the
@@ -1925,6 +1991,7 @@ int main() {
   failures += TestHerdAgeBand();
   failures += TestRoadBeds();
   failures += TestRoadGraph();
+  failures += TestRoadViews();
   failures += TestRoadIndex();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to

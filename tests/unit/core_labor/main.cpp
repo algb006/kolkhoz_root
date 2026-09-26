@@ -3670,9 +3670,12 @@ int main() {
   failures += TestLaborTableParsing();
   {
     // EVERY WORK KIND BUT NONE HAS A COMPILED RATE. The rates' brace
-    // initialiser fills a cell a new kind forgot with zeros, and a table set
-    // without the kind's row then works unpaid and untiring — the unit work's
-    // cell was lost exactly that way (2026-09-13).
+    // initialiser fills a cell a new kind forgot with WorkKindRates' member
+    // defaults, and a table set without the kind's row then works on them —
+    // the unit work's cell was lost that way (2026-09-13). UNTIL 0.36.25 THIS
+    // COULD NOT FAIL on a forgotten cell: the defaults were 1.0 and 2.0, a
+    // plausible kind, and road work's missing cell passed here; they are
+    // nought now (labor_config.h), and a fault removing a cell turns it red.
     const core::LaborConfig defaults;
     bool every_kind_paid = true;
     for (std::uint32_t kind = 1; kind < core::kWorkKindCount; ++kind) {

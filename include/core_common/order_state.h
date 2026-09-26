@@ -16,13 +16,17 @@
 ///     kDemolishUnit, kRepairUnit, kInsulateUnit;
 ///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund, kSetRotation,
 ///     kMarkFelling, kMarkExtraction, kOrderLimitLot, kRemoveField,
-///     kGrazeAtNight, kHandStock and kDeliverPlan;
+///     kGrazeAtNight, kHandStock, kDeliverPlan, kPlantForest and
+///     kTakeGoodsLoan;
 ///   * core_labor — kAssignWork, kReleaseWork, kAppoint and kDismiss, the
 ///     last two applied at the day's close rather than at once;
 ///   * core_residents — kTakeNightTrader, kSetRation and kSetIssueNorm (since
 ///     2026-09-18);
 ///   * core_world — kAdvanceEra (since 2026-09-18), in the events slot, where
-///     the readiness is scored.
+///     the readiness is scored;
+///   * NONE YET — kLayRoad, kUpgradeRoad and kDemolishRoad (delivery 7a, the
+///     contract): the sweep refuses them kNoConsumer in the step they are
+///     read, until core_construction takes them in 7c, 7d and 7e.
 /// This list was three consumers and short by seven kinds on 2026-09-18,
 /// when the fourth consumer was added and the list counted rather than
 /// appended to: every kind below names its consumer, and that is the
@@ -31,15 +35,19 @@
 /// REMOVES the row, so the book is empty again by the end of the step that
 /// settled it.
 ///
-/// NOTHING IS UNCONSUMED ANY MORE, and this paragraph named kSetRotation as
-/// the last one until 2026-09-12. It got its consumer that evening — the
+/// NOTHING WAS UNCONSUMED from 2026-09-12 until delivery 7a (0.36.25), which
+/// added the three road kinds ahead of their consumer, ON PURPOSE: the layer
+/// builds its menu against the contract while 7c-7e land, and until then the
+/// sweep's kNoConsumer is their live answer (the list above). This paragraph
+/// named kSetRotation as the last one until 2026-09-12. It got its consumer
+/// that evening — the
 /// player's lever for telling a field what to grow, and the reason
 /// ninety-three of the start's hundred and sixty-three hectares had lain
 /// unworked through every thirty-year run the project had measured: work is
 /// opened off the rotation, and nothing could give a field one after genesis.
 ///
-/// The sweep's kNoConsumer is not dead for that. It is the guard for a kind
-/// ADDED WITHOUT A CONSUMER, which is the mistake that otherwise leaves no
+/// The sweep's kNoConsumer is not dead for that. Besides the road kinds, it
+/// is the guard for a kind ADDED WITHOUT A CONSUMER BY MISTAKE, which otherwise leaves no
 /// trace at all — an order accepted, answered by nobody, and quietly gone.
 ///
 /// This paragraph said "wired for the construction kinds and only for those"
@@ -107,6 +115,7 @@
 #ifndef CORE_COMMON_ORDER_STATE_H_
 #define CORE_COMMON_ORDER_STATE_H_
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -115,6 +124,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/quantities.h"
+#include "core_common/road_state.h"
 #include "core_common/state_table.h"
 
 namespace core {
@@ -769,6 +779,34 @@ enum class OrderKind : std::uint8_t {
   /// Seam key `take_goods_loan` (boss). Consumer: core_production.
   kTakeGoodsLoan,
 
+  /// LAY A ROAD OR A PATH (roads design §9, tools 1-5; delivery 7): the
+  /// draft in `road_kind`, `road_surface`, `road_point_count` and
+  /// `road_points`, traced again on execution by the same function as
+  /// PreviewRoad (road_draft.h). A path and a dirt road are laid at once
+  /// (roads design §9: «Грунтовка ничего не стоит»); gravel and asphalt
+  /// become road work (WorkKind::kRoadWork). Refusals: kRuleForbids (the
+  /// trace refused — the event says which), kGateClosed (the surface not
+  /// open in this epoch). Seam key `lay_road`. Consumer: core_construction
+  /// FROM 7c; until then none, and the sweep refuses it kNoConsumer.
+  kLayRoad,
+
+  /// UPGRADE PIECES OF A LAID ROAD (tools 6-8): the selection in `road` and
+  /// `road_points[0..1]` (the drag's two ends), the target in
+  /// `road_surface`; the pieces are selected again on execution as
+  /// SelectRoadPieces does, and only those that are in are worked.
+  /// Refusals: kRuleForbids (no piece in), kGateClosed (the target not
+  /// open). Seam key `upgrade_road`. Consumer: core_construction FROM 7e;
+  /// until then none, and the sweep refuses it kNoConsumer.
+  kUpgradeRoad,
+
+  /// DEMOLISH PIECES OF A LAID ROAD (tool 9; construction design §13): the
+  /// selection as kUpgradeRoad's. A path and a dirt road go at once; gravel
+  /// and asphalt become road work. Never a start road nor the only road to
+  /// something (RoadPieceRefusal). Refusals: kRuleForbids (no piece in).
+  /// Seam key `demolish_road`. Consumer: core_construction FROM 7d; until
+  /// then none, and the sweep refuses it kNoConsumer.
+  kDemolishRoad,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -1280,6 +1318,25 @@ struct OrderRow {
   /// or `amount` borrowed: a seam field read under two meanings is how a
   /// layer ends up sending a sex where a switch was meant.
   std::uint8_t enable = 0;
+
+  // -- the player's roads (delivery 7; road_draft.h). Fields of their own,
+  // for the reason `enable` gives.
+
+  /// kLayRoad: road or path.
+  RoadKind road_kind = RoadKind::kRoad;
+
+  /// kLayRoad: the surface laid; kUpgradeRoad: the surface upgraded to.
+  RoadSurface road_surface = RoadSurface::kNone;
+
+  /// kLayRoad: 2, 3 or 4 points in `road_points`.
+  std::uint8_t road_point_count = 0;
+
+  /// kLayRoad: the draft's points; kUpgradeRoad and kDemolishRoad: the
+  /// drag's two ends in [0] and [1]. Metres from the map's south-west corner.
+  std::array<Vec2, kRoadDraftMaxPoints> road_points{};
+
+  /// kUpgradeRoad and kDemolishRoad: the road the drag began on.
+  RoadId road;
 };
 
 /// @brief The order book type used by WorldState.

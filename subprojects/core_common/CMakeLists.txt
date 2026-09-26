@@ -16,6 +16,7 @@ kolkhoz_add_module(core_common
     road_graph.cpp
     road_route.cpp
     road_rules.cpp
+    road_view.cpp
     haul.cpp
     plot.cpp
     spoilage.cpp

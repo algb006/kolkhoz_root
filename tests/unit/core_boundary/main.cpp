@@ -8,6 +8,7 @@
 // order that reached kActive — without inventing a consumer that task O3 has
 // not written.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -145,6 +146,27 @@ class ScriptedSimulation final : public core::ISimulation {
       into[ahead] = ahead < forecast_.size() ? forecast_[ahead] : core::DayForecast{};
     }
   }
+
+  // Never an empty answer, even here: no blocks would read "lay it as drawn".
+  core::RoadDraftResult PreviewRoad(const core::RoadDraft& /*draft*/) const override {
+    core::RoadDraftResult result;
+    result.blocks.push_back(
+        core::RoadDraftBlock{.refusal = core::RoadDraftRefusal::kSnapsToNothing});
+    return result;
+  }
+
+  core::RoadPieces SelectRoadPieces(const core::RoadSelection& /*selection*/,
+                                    core::RoadOperation /*operation*/) const override {
+    return {};
+  }
+
+  core::RoadToolStates RoadKindsAvailable() const override {
+    core::RoadToolStates states{};
+    states.fill(core::RoadToolClosed::kNotYetBuilt);
+    return states;
+  }
+
+  std::vector<core::RoadView> Roads() const override { return {}; }
 
   std::vector<core::DayForecast> forecast_;
 
@@ -1248,12 +1270,180 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
   return failures;
 }
 
-/// The shape of a CREW order: building names the UNIT that is the site, not
-/// a field (task A2 — a site is a unit row). This case was missing from the
-/// boundary's shape check, so the order the design describes was refused
-/// here, while the one shaped to get past named a field the labor seam
-/// would never read. Its own session, because issuing orders moves the id
-/// counter and the promised-id assertions above count on it.
+/// THE ROAD TOOLS' CONTRACT (delivery 7a; road_draft.h): the session takes a
+/// road order of the right shape and refuses a wrong one; the engine refuses
+/// the order with no consumer until its part lands, rather than leaving it
+/// pending; the doors answer "not built" — never an empty draft answer, which
+/// would read "lay it as drawn" — Roads() reads the network, and the journal
+/// carries the points at the top of every range.
+int TestRoadToolsContract(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the road-tools session was refused\n";
+    return 1;
+  }
+  core::OrderRow lay;
+  lay.kind = core::OrderKind::kLayRoad;
+  lay.road_kind = core::RoadKind::kRoad;
+  lay.road_surface = core::RoadSurface::kDirt;
+  lay.road_point_count = 1;
+  lay.road_points[0] = core::Vec2{.x = 100.0F, .y = 100.0F};
+  failures += Expect(session->IssueOrder(lay).value == 0, "roads: one point is not a road");
+  lay.road_point_count = 2;
+  lay.road_points[1] = core::Vec2{.x = 400.0F, .y = 120.0F};
+  const core::OrderId laid = session->IssueOrder(lay);
+  failures += Expect(laid.value != 0, "roads: two points are a shape the book takes");
+  // The surface must be one the kind has: a path none, a road one.
+  core::OrderRow wrong_surface = lay;
+  wrong_surface.road_kind = core::RoadKind::kPath;
+  failures += Expect(session->IssueOrder(wrong_surface).value == 0,
+                     "roads: a path with a dirt bed is not a shape");
+  wrong_surface.road_kind = core::RoadKind::kRoad;
+  wrong_surface.road_surface = core::RoadSurface::kNone;
+  failures +=
+      Expect(session->IssueOrder(wrong_surface).value == 0, "roads: nor is a road with no surface");
+  core::OrderRow named_road = lay;
+  named_road.road = core::RoadId{5};
+  failures += Expect(session->IssueOrder(named_road).value == 0,
+                     "roads: nor a laying that names a road it has not laid");
+  core::OrderRow same_spot = lay;
+  same_spot.road_points[1] = same_spot.road_points[0];
+  failures += Expect(session->IssueOrder(same_spot).value == 0,
+                     "roads: nor a draft whose first two points are one spot");
+
+  core::OrderRow demolish;
+  demolish.kind = core::OrderKind::kDemolishRoad;
+  demolish.road_points[1] = core::Vec2{.x = 30.0F, .y = 0.0F};
+  failures += Expect(session->IssueOrder(demolish).value == 0,
+                     "roads: a demolition names the road it drags along");
+  demolish.road = core::RoadId{3};
+  demolish.road_surface = core::RoadSurface::kGravel;
+  failures += Expect(session->IssueOrder(demolish).value == 0,
+                     "roads: a demolition names no surface to make");
+  demolish.road_surface = core::RoadSurface::kNone;
+  const core::OrderId demolished = session->IssueOrder(demolish);
+  failures += Expect(demolished.value != 0, "roads: and with the road alone, it is taken");
+
+  core::OrderRow upgrade = demolish;
+  upgrade.kind = core::OrderKind::kUpgradeRoad;
+  upgrade.road_surface = core::RoadSurface::kDirt;
+  failures += Expect(session->IssueOrder(upgrade).value == 0,
+                     "roads: an upgrade to dirt is no upgrade — every road starts dirt");
+  upgrade.road_surface = core::RoadSurface::kGravel;
+  failures += Expect(session->IssueOrder(upgrade).value != 0, "roads: an upgrade to gravel is");
+
+  // The road fields are in range on EVERY kind: the journal reads them back
+  // range-checked, so a stray value on another kind must not get staged.
+  core::OrderRow stray;
+  stray.kind = core::OrderKind::kSetRotation;
+  stray.field = core::FieldId{1};
+  stray.road_kind = static_cast<core::RoadKind>(7);
+  failures += Expect(session->IssueOrder(stray).value == 0,
+                     "roads: a rotation carrying a road kind out of range is not staged");
+  stray.road_kind = core::RoadKind::kRoad;
+  stray.road_point_count = core::kRoadDraftMaxPoints + 1;
+  failures += Expect(session->IssueOrder(stray).value == 0, "roads: nor one carrying five points");
+
+  // Road work has no target an order can name until 7e.
+  core::OrderRow road_crew;
+  road_crew.kind = core::OrderKind::kAssignWork;
+  road_crew.resident = core::ResidentId{1};
+  road_crew.field = core::FieldId{1};
+  road_crew.work = core::WorkKind::kRoadWork;
+  failures += Expect(session->IssueOrder(road_crew).value == 0,
+                     "roads: a crew for road work is refused at the door until 7e");
+  session->AdvanceStep();
+  // Answered by an event and swept from the book in the same step: NO
+  // CONSUMER, the sweep's own word for a kind nobody handles yet (static
+  // review of 0.36.25: the first draft refused it as a closed gate, which
+  // tells the layer to name a unit type's gate the order does not carry).
+  bool refused_unconsumed = false;
+  bool demolition_names_road = false;
+  for (const core::SimEvent& event : session->Events()) {
+    refused_unconsumed =
+        refused_unconsumed ||
+        (event.order.value == laid.value && event.kind == core::EventKind::kOrderRefused &&
+         event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer));
+    demolition_names_road = demolition_names_road ||
+                            (event.order.value == demolished.value &&
+                             event.kind == core::EventKind::kOrderRefused && event.road.value == 3);
+  }
+  failures += Expect(refused_unconsumed,
+                     "roads: until its part lands, the order is refused with no consumer");
+  failures +=
+      Expect(demolition_names_road, "roads: the refusal names the road the order dragged along");
+
+  core::RoadDraft draft;
+  draft.point_count = 2;
+  draft.points[0] = core::Vec2{.x = 12.0F, .y = 34.0F};
+  draft.points[1] = core::Vec2{.x = 50.0F, .y = 0.0F};
+  const core::RoadDraftResult answer = session->PreviewRoad(draft);
+  failures += Expect(!answer.blocks.empty() &&
+                         answer.blocks[0].refusal == core::RoadDraftRefusal::kSnapsToNothing &&
+                         answer.blocks[0].at.x == 12.0F && answer.blocks[0].at.y == 34.0F &&
+                         answer.gaps.slope_unchecked,
+                     "roads: the preview says it is not built, at the draft's first point, never "
+                     "an empty answer");
+  // Roads() is real: one view a road of the completed world, its axis's `s`
+  // from nought. The count is printed — on a network of nought roads every
+  // per-road check below would pass by having nothing to check.
+  const std::vector<core::RoadView> views = session->Roads();
+  const core::RoadTable& network = session->State().roads;
+  std::cout << "  roads: " << views.size() << " views of " << network.rows.size() << " roads\n";
+  bool views_match = views.size() == network.rows.size();
+  for (std::size_t row = 0; views_match && row < views.size(); ++row) {
+    const core::RoadView& view = views[row];
+    views_match = view.road.value == network.row_ids[row].value &&
+                  view.axis.size() == network.rows[row].axis.size() &&
+                  view.wear_pct.size() == network.rows[row].stretches.size() &&
+                  view.works.empty() && (view.axis.empty() || view.axis.front().s_m == 0.0F);
+  }
+  failures += Expect(views_match, "roads: Roads() answers every road of the world, no work on any");
+  const core::RoadToolStates tools = session->RoadKindsAvailable();
+  failures += Expect(std::ranges::all_of(tools,
+                                         [](core::RoadToolClosed closed) {
+                                           return closed == core::RoadToolClosed::kNotYetBuilt;
+                                         }),
+                     "roads: every tool stands grey as not yet built");
+
+  core::JournalEntry entry;
+  entry.verb = core::JournalVerb::kIssue;
+  entry.order = lay;
+  entry.order.road_points[3] = core::Vec2{.x = -7.5F, .y = 9.25F};
+  entry.order.road = core::RoadId{42};
+  // And one at the TOP of every range: the path, asphalt with walks, four
+  // points — a reader range-checked one short fails on this entry alone.
+  core::JournalEntry top = entry;
+  top.order.road_kind = core::RoadKind::kPath;
+  top.order.road_surface = core::RoadSurface::kAsphaltWalks;
+  top.order.road_point_count = core::kRoadDraftMaxPoints;
+  const std::vector<core::JournalEntry> entries = {entry, top};
+  std::vector<core::JournalEntry> decoded;
+  std::string error;
+  const bool read = core::DecodeJournal(core::EncodeJournal(entries), &decoded, &error);
+  failures += Expect(
+      read && decoded.size() == 2 && decoded[0].order.road_kind == lay.road_kind &&
+          decoded[0].order.road_surface == lay.road_surface &&
+          decoded[0].order.road_point_count == 2 && decoded[0].order.road_points[1].x == 400.0F &&
+          decoded[0].order.road_points[3].y == 9.25F && decoded[0].order.road.value == 42,
+      "roads: the journal carries the kind, the surface, the points and the road");
+  failures +=
+      Expect(read && decoded.size() == 2 && decoded[1].order.road_kind == core::RoadKind::kPath &&
+                 decoded[1].order.road_surface == core::RoadSurface::kAsphaltWalks &&
+                 decoded[1].order.road_point_count == core::kRoadDraftMaxPoints,
+             "roads: and it carries the top of every range");
+  return failures;
+}
+
 int TestCrewOrderShape(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
@@ -1504,6 +1694,7 @@ int main() {
   failures += TestJournalCodec();
   failures += TestWorkerIndependence(tables);
   failures += TestCrewOrderShape(tables);
+  failures += TestRoadToolsContract(tables);
   failures += TestStockLights(tables);
   failures += TestWorkforceQuestions(tables);
 

@@ -156,6 +156,8 @@ class OrdersPolicy {
         return "digging";
       case core::WorkKind::kPlanting:
         return "planting";
+      case core::WorkKind::kRoadWork:
+        return "road work";
       case core::WorkKind::kNone:
       case core::WorkKind::kWorkKindCount:
         break;

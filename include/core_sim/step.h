@@ -74,6 +74,7 @@
 #include "core_common/labor_state.h"
 #include "core_common/material_shortfall.h"
 #include "core_common/order_state.h"
+#include "core_common/road_draft.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
 #include "core_common/world_state.h"
@@ -351,6 +352,42 @@ class ISimulation {
   /// for today.
   /// @note Called between steps on the sim thread.
   virtual void CollectWeatherForecast(std::span<DayForecast> into) const = 0;
+
+  // -- the player's road tools (roads design §9; construction design §13;
+  // delivery 7; core_common/road_draft.h) ------------------------------------
+
+  /// @brief The trace of a road or path the player is drawing, with what is
+  ///        in its way, what it costs and what the map cannot tell yet — the
+  ///        axis the order kLayRoad would lay from the same points.
+  /// @note Called between steps on the sim thread; pure reads. Its cost is
+  ///       measured on the longest trace (corner to corner, four points)
+  ///       against ue's ~0.5 ms on the game thread (boss [59] p.9).
+  /// STUB until the tracer (7b): every draft is refused
+  /// RoadDraftRefusal::kSnapsToNothing at its first point, with no axis.
+  virtual RoadDraftResult PreviewRoad(const RoadDraft& draft) const = 0;
+
+  /// @brief The pieces a drag along a laid road selects for `operation`,
+  ///        snapped to whole pieces, each with whether it is in and why not,
+  ///        and the operation's estimate — what kUpgradeRoad / kDemolishRoad
+  ///        would act on.
+  /// @note Called between steps on the sim thread; pure reads.
+  /// STUB until the selection (7d): no piece, a nought estimate.
+  virtual RoadPieces SelectRoadPieces(const RoadSelection& selection,
+                                      RoadOperation operation) const = 0;
+
+  /// @brief Every tool of the roads menu, open or why grey, in one call.
+  /// @note Called between steps on the sim thread; pure reads.
+  /// STUB until each tool's part lands (7c-7e): every tool
+  /// RoadToolClosed::kNotYetBuilt.
+  virtual RoadToolStates RoadKindsAvailable() const = 0;
+
+  /// @brief The network as the layer draws it: every road and path, its
+  ///        axis with running lengths, surface, wear by stretch and work
+  ///        standing on it. For loading and the first frame; after that an
+  ///        event names the road to read again.
+  /// @note Called between steps on the sim thread; pure reads. Real from
+  ///       7a (core_common/road_view.h); no road carries work until 7e.
+  virtual std::vector<RoadView> Roads() const = 0;
 };
 
 /// @brief Creates the step engine over an initial world.

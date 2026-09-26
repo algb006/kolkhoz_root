@@ -83,7 +83,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 98 (0.36.17): the cart's sources 3 -> 4 (the district) — six float and
 // two gram arrays each one entry longer: 400 -> 440, fields unmoved; predicted
 // before the build.
-static_assert(sizeof(YearLedger) == 440 + (30 * kAmountsSize),
+// Save 100 (delivery 7a): WorkKind::kRoadWork lengthens work_days_by_kind and
+// road_blocked_job_days by one entry each — 440 -> 448, fields unmoved,
+// predicted off the dumped layout (the next field 8-aligned at 936).
+static_assert(sizeof(YearLedger) == 448 + (30 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 84,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");

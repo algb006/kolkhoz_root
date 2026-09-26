@@ -198,11 +198,15 @@ static_assert(AggregateArity<HerdRow>() == 22,
 // to 88 and 25 fields.
 // Save 82: the planting's hectares and species — predicted 88 -> 96 and 27
 // fields before the fields were added.
-static_assert(sizeof(OrderRow) == 96, "OrderRow changed — update the codec and VERSION_SAVE");
+// Save 100 (delivery 7a): the road tools' kind, surface, point count, four
+// points and road — the three bytes into the tail's padding at 93-95, the
+// points at 96-127, the road at 128: predicted 96 -> 136 and 32 fields off
+// the dumped layout before the build.
+static_assert(sizeof(OrderRow) == 136, "OrderRow changed — update the codec and VERSION_SAVE");
 // 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
 // 23 fields. Two padding fields in a row now, which is the answer to whether
 // the arity check was worth its line.
-static_assert(AggregateArity<OrderRow>() == 27,
+static_assert(AggregateArity<OrderRow>() == 32,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
@@ -1063,6 +1067,16 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // the 0/1 byte.
   WriteEntityId(out, row.family);
   out.WriteU8(row.enable);
+
+  // The road tools (delivery 7a, save 100): the draft's kind, surface and
+  // points, or the selection's road and the drag's two ends.
+  out.WriteU8(static_cast<std::uint8_t>(row.road_kind));
+  out.WriteU8(static_cast<std::uint8_t>(row.road_surface));
+  out.WriteU8(row.road_point_count);
+  for (const Vec2& point : row.road_points) {
+    WriteVec2(out, point);
+  }
+  WriteEntityId(out, row.road);
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -1100,6 +1114,16 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.male = in.ReadU8();
   row.family = ReadEntityId<FamilyId>(in);
   row.enable = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "order ration switch"));
+  row.road_kind = static_cast<RoadKind>(source.ReadEnumValue(
+      0, static_cast<std::uint32_t>(RoadKind::kRoadKindCount) - 1U, "order road kind"));
+  row.road_surface = static_cast<RoadSurface>(source.ReadEnumValue(
+      0, static_cast<std::uint32_t>(RoadSurface::kRoadSurfaceCount) - 1U, "order road surface"));
+  row.road_point_count = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, kRoadDraftMaxPoints, "order road point count"));
+  for (Vec2& point : row.road_points) {
+    point = ReadVec2(in);
+  }
+  row.road = ReadEntityId<RoadId>(in);
   return row;
 }
 

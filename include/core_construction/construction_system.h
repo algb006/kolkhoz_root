@@ -81,6 +81,10 @@
 ///     sets UnitRow::insulated with kUnitInsulated; a finished upgrade to
 ///     the third level takes it off.
 ///
+/// NOT YET: the three road orders (kLayRoad, kUpgradeRoad, kDemolishRoad,
+/// delivery 7a) are this module's from 7c, 7d and 7e; until each lands it does
+/// not read them, and the events slot's sweep refuses them kNoConsumer.
+///
 /// WHAT IT DOES NOT DO, and who will:
 ///   * seasons of building (winter stops masonry, not carpentry —
 ///     construction design §8): STUB, builds year-round. A per-class

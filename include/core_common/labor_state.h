@@ -97,6 +97,14 @@ enum class WorkKind : std::uint8_t {
   /// key `planting`.
   kPlanting,
 
+  /// Work on a piece of road (delivery 7; roads design §9): a gravel or
+  /// asphalt laying or upgrade — its clearing, bed and surface — and the
+  /// demolition of a paved piece. Any adult, windowless, one half of the
+  /// width at a time (the traffic's slowdown is a STUB, named). Target: the
+  /// road work's row, which comes with delivery 7e; until then no job of
+  /// this kind is ever offered. Seam key `road_work`.
+  kRoadWork,
+
   /// NOT A VALUE: the number of them, for a consumer's mirror. Values are
   /// appended BEFORE it.
   kWorkKindCount,
@@ -169,7 +177,9 @@ struct WorkforceCount {
 /// field kinds, a herd for kHerdCare, a unit for kConstruction, a stand for
 /// kFelling, an extraction site for kExtraction, none for kNone. kHauling has
 /// THREE possible targets — a field, a stand or an extraction site, whichever
-/// the load lies on — and exactly one of them is valid. Travel time and
+/// the load lies on — and exactly one of them is valid. kUnitWork names a unit
+/// and kPlanting a stand; kRoadWork has no target field yet (delivery 7e) and
+/// is never assigned until it does. Travel time and
 /// eligibility are NOT stored — they are pure functions of positions and state (state model law:
 /// derived values are recomputed, never cached in state).
 struct WorkAssignment {

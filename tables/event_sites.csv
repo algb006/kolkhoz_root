@@ -86,3 +86,7 @@ kHerdMalesCulled,1,
 kHerdSurplusSlaughtered,1,
 kHerdAutumnSlaughter,1,
 kWinterSowingLost,1,
+kRoadLaid,0,the laying comes with delivery 7c; until then kLayRoad is refused
+kRoadWorkStarted,0,road work comes with delivery 7e; until then no road work stands
+kRoadWorkFinished,0,road work comes with delivery 7e; until then no road work stands
+kRoadDemolished,0,the demolition comes with delivery 7d; until then kDemolishRoad is refused

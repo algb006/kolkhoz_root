@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -907,6 +908,40 @@ int CheckStartRoads() {
   return failures;
 }
 
+/// THE ROADS DOOR ON THE START NETWORK (delivery 7a; road_view.h): the full
+/// simulation answers Roads() off its completed world — one view a road of
+/// roads.csv, the axis whole with `s` ending at the graph's length, the wear
+/// of every stretch, no work. core_boundary's session test runs on fake
+/// tables with no roads, where this check would pass with nothing to check.
+int CheckRoadsDoor() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "roads door: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "roads door: the shipped set assembles") != 0) {
+    return 1;
+  }
+  const core::RoadTable& roads = simulation->CompletedState().roads;
+  const std::vector<core::RoadView> views = simulation->Roads();
+  std::cout << "roads door: " << views.size() << " views of " << roads.rows.size() << " roads\n";
+  bool whole = views.size() == roads.rows.size() && !views.empty();
+  for (std::size_t row = 0; whole && row < views.size(); ++row) {
+    const core::RoadView& view = views[row];
+    const core::RoadRow& road = roads.rows[row];
+    whole = view.road.value == roads.row_ids[row].value && view.kind == road.kind &&
+            view.surface == road.surface && view.axis.size() == road.axis.size() &&
+            view.axis.size() >= 2 && view.axis.back().s_m == core::RoadAxisLength(road.axis) &&
+            view.wear_pct.size() == road.stretches.size() &&
+            view.wear_pct.front() == road.stretches.front().wear_pct && view.works.empty();
+  }
+  return Expect(whole, "roads door: Roads() answers every start road whole, no work on any");
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -914,6 +949,7 @@ int main() {
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
+  failures += CheckRoadsDoor();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 

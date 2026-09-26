@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -36,6 +37,12 @@
 namespace core {
 namespace {
 
+/// @brief Are two of a road order's points on different spots? A drag or a
+/// draft whose first two points coincide has no direction to trace.
+bool RoadPointsApart(const Vec2& first, const Vec2& second) {
+  return std::hypot(second.x - first.x, second.y - first.y) > 0.0F;
+}
+
 /// @brief Does this order name the entities its kind reads? SHAPE only —
 /// whether the subject exists, is eligible or is already busy is the
 /// consumer's verdict and comes back as an event after the step (session.h,
@@ -49,6 +56,15 @@ bool ShapeIsValid(const OrderRow& order) {
   const bool has_herd = order.herd.value != kInvalidEntityIdValue;
   const bool has_stand = order.stand.value != kInvalidEntityIdValue;
   const bool has_site = order.extraction_site.value != kInvalidEntityIdValue;
+  // THE ROAD FIELDS ARE IN RANGE ON EVERY KIND, not only on the road kinds:
+  // the journal writes them for every row and reads them back range-checked,
+  // so a kSetRotation carrying a stray road kind of 7 would be staged here
+  // and refuse to replay (delivery 7a, the static review).
+  if (order.road_kind >= RoadKind::kRoadKindCount ||
+      order.road_surface >= RoadSurface::kRoadSurfaceCount ||
+      order.road_point_count > kRoadDraftMaxPoints) {
+    return false;
+  }
   switch (order.kind) {
     case OrderKind::kNone:
     // The count is not a kind. It is refused beside kNone and for the same
@@ -110,6 +126,12 @@ bool ShapeIsValid(const OrderRow& order) {
       if (order.work == WorkKind::kHauling) {
         return (has_field ? 1 : 0) + (has_stand ? 1 : 0) + (has_site ? 1 : 0) == 1;
       }
+      // Road work names a piece of a road, and the order has no field for
+      // one until delivery 7e brings it. STUB: refused at the door rather
+      // than let through naming a field the seam would never read.
+      if (order.work == WorkKind::kRoadWork) {
+        return false;
+      }
       return has_field;
     case OrderKind::kReleaseWork:
       return has_resident;
@@ -149,6 +171,34 @@ bool ShapeIsValid(const OrderRow& order) {
       // Whether the resource is a seed, the ceiling and the year's one loan
       // are the consumer's (order_state.h).
       return order.resource.value != kInvalidDefIdValue && order.amount >= 0 && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kLayRoad: {
+      // Two to four points, the first two apart, and a surface the kind has
+      // (a path none, a road one); no other subject, a road id included — a
+      // laying names no road yet, and a stray one would ride into the order's
+      // event. Whether the trace lays
+      // — what is in the way, the epoch — is the consumer's (road_draft.h).
+      const bool surface_fits = order.road_kind == RoadKind::kPath
+                                    ? order.road_surface == RoadSurface::kNone
+                                    : order.road_surface != RoadSurface::kNone;
+      return order.road_point_count >= 2 && surface_fits &&
+             order.road.value == kInvalidEntityIdValue &&
+             RoadPointsApart(order.road_points[0], order.road_points[1]) && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    }
+    case OrderKind::kUpgradeRoad:
+      // A road, the drag's two ends apart, and a target an upgrade makes:
+      // gravel or better (dirt is where roads start). Which pieces are in is
+      // the consumer's (SelectRoadPieces).
+      return order.road.value != kInvalidEntityIdValue &&
+             order.road_surface >= RoadSurface::kGravel &&
+             RoadPointsApart(order.road_points[0], order.road_points[1]) && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kDemolishRoad:
+      // A road and the drag's two ends apart; no target, so no surface.
+      return order.road.value != kInvalidEntityIdValue &&
+             order.road_surface == RoadSurface::kNone &&
+             RoadPointsApart(order.road_points[0], order.road_points[1]) && !has_resident &&
              !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kRemoveField:
       // kRemoveField names the field alone: whether it still holds bread, and
@@ -382,6 +432,19 @@ class Session final : public ISession {
   float ResidentHeightMeters(ResidentId resident) const override {
     return simulation_->ResidentHeightMeters(resident);
   }
+
+  RoadDraftResult PreviewRoad(const RoadDraft& draft) const override {
+    return simulation_->PreviewRoad(draft);
+  }
+
+  RoadPieces SelectRoadPieces(const RoadSelection& selection,
+                              RoadOperation operation) const override {
+    return simulation_->SelectRoadPieces(selection, operation);
+  }
+
+  RoadToolStates RoadKindsAvailable() const override { return simulation_->RoadKindsAvailable(); }
+
+  std::vector<RoadView> Roads() const override { return simulation_->Roads(); }
 
   // -- orders ---------------------------------------------------------------
 

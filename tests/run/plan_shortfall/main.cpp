@@ -445,7 +445,8 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
                                                                                "fell",
                                                                                "unit",
                                                                                "dig",
-                                                                               "plant"};
+                                                                               "plant",
+                                                                               "road"};
   static_assert(kKindNames.back() != nullptr, "every work kind needs a name in this run");
   const Carting& why = sample.carting;
   std::cout << "plan_shortfall:     WHY NOBODY CARTED — no room in the stores " << why.days_no_room

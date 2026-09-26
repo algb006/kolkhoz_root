@@ -177,6 +177,7 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     case WorkKind::kUnitWork:
     case WorkKind::kExtraction:
     case WorkKind::kPlanting:
+    case WorkKind::kRoadWork:
     case WorkKind::kNone:
       return OrderRefusal::kNone;  // no field named; nothing to ask about
     case WorkKind::kPlowing:

@@ -49,17 +49,22 @@ class ITableSet;  // Defined in core_tables.
 struct WorldState;
 
 /// Per-work-kind pay and hardness (tables/labor.csv, one row per kind).
+/// THE MEMBERS DEFAULT TO NOUGHT ON PURPOSE (0.36.25): LaborConfig::rates
+/// lists a cell per kind, and a cell a new kind forgets takes these defaults.
+/// They were 1.0 and 2.0 until then — a plausible ordinary kind — so a
+/// forgotten cell passed every check, road work's among them; nought turns
+/// the every-kind block of tests/unit/core_labor red instead.
 struct WorkKindRates {
   /// Trudodni per delivered norm man-day (labor-payment design §2:
   /// 0.5 / 1.0 / 1.5 / 2.0 by grade). Epoch-I manual work is grade 1.0.
-  float trudodni_rate = 1.0F;
+  float trudodni_rate = 0.0F;
 
   /// Rest drained per delivered norm man-day, in metric points. Decision
   /// 107 fixes the daily deltas — ordinary work -2, heavy -4, light -1 —
   /// and a norm man-day IS the reference worker's day, so the canonical
   /// per-day number is charged per norm-day: a long summer day costs
   /// proportionally more, which is the same thing said in hours.
-  float rest_drain_per_norm_day = 2.0F;
+  float rest_drain_per_norm_day = 0.0F;
 };
 
 /// What labor needs to know about a crop: only when its calendar window
@@ -342,6 +347,15 @@ struct LaborConfig {
       // почти ничего», children plant (map design §7). ASSUMPTION; labor.csv
       // carries no `planting` row yet.
       {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 2.0F},
+      // Road work (delivery 7a): ordinary grade, the HEAVY drain — earth,
+      // gravel and a bed laid by hand, the digging's row. ASSUMPTION; a
+      // labor.csv `road_work` row is asked of boss. The first draft left this
+      // cell out, and a missing trailing cell took WorkKindRates' member
+      // defaults, then 1.0 and the ORDINARY drain 2.0 — so road work went at
+      // the ordinary drain, silently, and the every-kind block in
+      // tests/unit/core_labor main() stayed green (a fault removing this cell
+      // proved it). The defaults are nought since, and the block sees a gap.
+      {.trudodni_rate = 1.0F, .rest_drain_per_norm_day = 4.0F},
   }};
 
   // -- the day (labor.csv; time design §6-§7) ------------------------------

@@ -43,6 +43,12 @@ namespace core {
 ///        enough that the start network is a few thousand, not ten thousand.
 inline constexpr float kRoadStretchMetres = 25.0F;
 
+/// @brief The most control points the player's road draft takes: the tool's
+///        modes are two, three and four points (the human's word of 25
+///        September 2026; road_draft.h). Here rather than there because the
+///        order row carries the points and need not see the whole draft.
+inline constexpr std::uint8_t kRoadDraftMaxPoints = 4;
+
 /// @brief What the line is for (roads design §12: «Дороги — для транспорта,
 ///        тропинки — для людей»).
 enum class RoadKind : std::uint8_t {

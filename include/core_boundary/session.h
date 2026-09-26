@@ -723,6 +723,36 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual float ResidentHeightMeters(ResidentId resident) const = 0;
 
+  // -- the player's road tools (delivery 7; core_common/road_draft.h) ---------
+  // STUB, three of four doors (ISimulation says each one's stub answer):
+  // PreviewRoad until 7b, SelectRoadPieces until 7d, RoadKindsAvailable
+  // until 7e. Roads() is real from 7a. The three road orders are staged and
+  // then refused kNoConsumer until 7c-7e.
+
+  /// @brief The trace of a road or path the player is drawing: the axis the
+  ///        order kLayRoad would lay from the same points, what is in its
+  ///        way span by span, the corridor's widths, the estimate, and what
+  ///        the map cannot tell yet (ISimulation::PreviewRoad).
+  /// @note Between steps; the answer describes State().
+  virtual RoadDraftResult PreviewRoad(const RoadDraft& draft) const = 0;
+
+  /// @brief The pieces a drag along a laid road selects for `operation`,
+  ///        snapped to whole pieces, each in or out and why, and the
+  ///        operation's estimate (ISimulation::SelectRoadPieces).
+  /// @note Between steps; the answer describes State().
+  virtual RoadPieces SelectRoadPieces(const RoadSelection& selection,
+                                      RoadOperation operation) const = 0;
+
+  /// @brief Every tool of the roads menu, open or why grey, in one call.
+  /// @note Between steps; the answer describes State().
+  virtual RoadToolStates RoadKindsAvailable() const = 0;
+
+  /// @brief The network as the layer draws it (RoadView): for loading and
+  ///        the first frame, and again for a road an event names — which,
+  ///        by the time the event is read, already answers the change.
+  /// @note Between steps; the answer describes State().
+  virtual std::vector<RoadView> Roads() const = 0;
+
   // -- orders -----------------------------------------------------------------
 
   /// @brief Stages an order for the next step. The session fills the

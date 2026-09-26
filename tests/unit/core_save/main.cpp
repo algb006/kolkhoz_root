@@ -446,6 +446,14 @@ core::WorldState MakeWorld() {
   // The ration's switch (save 57): a family and a 1, for the same reason.
   refused.family = core::FamilyId{2};
   refused.enable = 1;
+  // The road draft (save 100), every field at the TOP of its range: the
+  // path, asphalt with walks, four points and the last one off nought — a
+  // reader that range-checked one short, or read three points, fails here.
+  refused.road_kind = core::RoadKind::kPath;
+  refused.road_surface = core::RoadSurface::kAsphaltWalks;
+  refused.road_point_count = core::kRoadDraftMaxPoints;
+  refused.road_points[3] = core::Vec2{.x = 4410.5F, .y = -2.25F};
+  refused.road = core::RoadId{7};
   core::AppendRow(world.orders, refused);
 
   // The district's limit (save format 31): the year's points, a cart on the
@@ -1345,7 +1353,10 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // Save 89: kTakeGoodsLoan became the top OrderKind — same 530 bytes, the
     // hash moved. NOT predicted: the prediction named world and ledger and
     // left this one out, the fifth time the top of the enum has moved here.
-    {"orders", 530, 0x1e7fbae9a9b126e8ULL},
+    // Save 100 (delivery 7a): +234 — the road tools' fields, 39 bytes an
+    // order row (three bytes, four points, a road id), six rows; predicted
+    // +39 a row before the build, held.
+    {"orders", 764, 0x21a584ce399e1cd9ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -1424,7 +1435,10 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // Save 98: +80 — the cart's sources three -> four (the district), six
     // float and two gram arrays each one entry longer in each book (24 + 16)
     // x 2; predicted 1336 -> 1416 before the build, held.
-    {"ledger", 1416, 0x5d3b7f013ece4cffULL},
+    // Save 100 (delivery 7a): +16 — WorkKind::kRoadWork, work_days_by_kind
+    // and road_blocked_job_days one entry longer in each book; predicted
+    // 1416 -> 1432 before the build, held.
+    {"ledger", 1432, 0xc7b70551368ed03fULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1899,6 +1913,13 @@ int main() {
                      "the sex the chairman chose for a head comes back off the save");
   failures += Expect(loaded.orders.rows[3].family.value == 2 && loaded.orders.rows[3].enable == 1,
                      "the ration order's family and switch come back off the save (save 57)");
+  failures += Expect(loaded.orders.rows[3].road_kind == core::RoadKind::kPath &&
+                         loaded.orders.rows[3].road_surface == core::RoadSurface::kAsphaltWalks &&
+                         loaded.orders.rows[3].road_point_count == core::kRoadDraftMaxPoints &&
+                         loaded.orders.rows[3].road_points[3].x == 4410.5F &&
+                         loaded.orders.rows[3].road_points[3].y == -2.25F &&
+                         loaded.orders.rows[3].road.value == 7,
+                     "the road draft comes back off the save at the top of every range (save 100)");
   // The head on its way, field by field. The byte-for-byte re-encode above
   // would catch a dropped field too, but it would say only "the file differs";
   // this says WHICH of the six.

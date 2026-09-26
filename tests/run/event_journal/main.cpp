@@ -202,6 +202,14 @@ const char* KindName(core::EventKind kind) {
       return "herd_autumn_slaughter";
     case core::EventKind::kWinterSowingLost:
       return "winter_sowing_lost";
+    case core::EventKind::kRoadLaid:
+      return "road_laid";
+    case core::EventKind::kRoadWorkStarted:
+      return "road_work_started";
+    case core::EventKind::kRoadWorkFinished:
+      return "road_work_finished";
+    case core::EventKind::kRoadDemolished:
+      return "road_demolished";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

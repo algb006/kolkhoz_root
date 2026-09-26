@@ -551,6 +551,35 @@ enum class EventKind : std::uint8_t {
   /// crop was not sown — its window went"; showing it is the layer's.
   kWinterSowingLost,
 
+  // -- the player's roads (delivery 7; road_draft.h). EACH COMES AFTER ITS
+  // WRITE, in the same tick (ue's condition): Roads() already answers it.
+
+  /// road — a road or path was laid (kLayRoad): a path or a dirt road at
+  /// once, a gravel or asphalt one when its work is done (then this follows
+  /// kRoadWorkFinished). kNotable. Seam key `road_laid`.
+  /// @no_emit the laying comes with delivery 7c; until then kLayRoad is refused
+  kRoadLaid,
+
+  /// road — road work began on a piece (an upgrade, a gravel or asphalt
+  /// laying, the demolition of a paved piece). amount = the target
+  /// RoadSurface value (kNone for a demolition). kNotable. Seam key
+  /// `road_work_started`.
+  /// @no_emit road work comes with delivery 7e; until then no road work stands
+  kRoadWorkStarted,
+
+  /// road — the road work on a piece is done; the piece is of its new
+  /// surface (or gone). amount = the RoadSurface value it has now.
+  /// kNotable. Seam key `road_work_finished`.
+  /// @no_emit road work comes with delivery 7e; until then no road work stands
+  kRoadWorkFinished,
+
+  /// road — a piece was demolished (kDemolishRoad): at once for a path and a
+  /// dirt road, after its work for a paved one. The road id may name a road
+  /// that no longer exists when the whole of it went. kNotable. Seam key
+  /// `road_demolished`.
+  /// @no_emit the demolition comes with delivery 7d; until then kDemolishRoad is refused
+  kRoadDemolished,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -608,6 +637,11 @@ struct SimEvent {
   /// The timber stand an event is about: kForestPlanted, kPlantingMatured
   /// (0.34.35). Invalid on every other kind.
   TimberStandId stand;
+
+  /// The road an event is about: kRoadLaid, kRoadWorkStarted,
+  /// kRoadWorkFinished, kRoadDemolished (delivery 7a); and, on the three order
+  /// events, the road the order named (OrderRow::road). Invalid otherwise.
+  RoadId road;
 };
 
 /// @brief The outbox type used by WorldState: one step's events, in the

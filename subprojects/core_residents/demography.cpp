@@ -761,6 +761,7 @@ bool DirtyWorkToday(WorkKind kind) {
     case WorkKind::kHarvest:
     case WorkKind::kFelling:
     case WorkKind::kPlanting:  // earth and saplings: «поле» (save 82)
+    case WorkKind::kRoadWork:  // a road's bed is «стройка» (delivery 7a)
       return true;
     default:
       return false;

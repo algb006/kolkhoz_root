@@ -30,6 +30,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
 #include "core_common/random.h"
+#include "core_common/road_view.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
@@ -239,6 +240,9 @@ class EventsSlot final : public ISequentialPhase {
       // 0.34.29 the what died with it, and no reader of the refusal ever saw
       // which material held a site (the Epoch II diagnosis).
       event.resource = order.resource;
+      // And the road an upgrade or a demolition named (delivery 7a), for the
+      // same reason as the lot.
+      event.road = order.road;
       done.push_back(current.orders.row_ids[row]);
     }
     for (const OrderId id : done) {
@@ -564,6 +568,34 @@ class StandardSimulation final : public ISimulation {
       into[ahead] = time_->WeatherOn(completed.world_seed,
                                      completed.calendar.day + static_cast<SimDay>(ahead) + 1U);
     }
+  }
+
+  // THE ROAD TOOLS, CONTRACT ONLY (delivery 7a): every door answers "not
+  // built yet" until its part lands — the tracer (7b), laying (7c), the
+  // selection and demolition (7d), road work (7e). STUB, named: a draft's
+  // default answer is RoadDraftRefusal::kSnapsToNothing with no axis, a
+  // selection's is no piece, and every tool kNotYetBuilt. Roads() is not a
+  // stub: it reads the network as it stands, with no work on any road.
+  RoadDraftResult PreviewRoad(const RoadDraft& draft) const override {
+    RoadDraftResult result;
+    result.blocks.push_back(
+        RoadDraftBlock{.refusal = RoadDraftRefusal::kSnapsToNothing, .at = draft.points[0]});
+    return result;
+  }
+
+  RoadPieces SelectRoadPieces(const RoadSelection& /*selection*/,
+                              RoadOperation /*operation*/) const override {
+    return {};
+  }
+
+  RoadToolStates RoadKindsAvailable() const override {
+    RoadToolStates states{};
+    states.fill(RoadToolClosed::kNotYetBuilt);
+    return states;
+  }
+
+  std::vector<RoadView> Roads() const override {
+    return RoadViews(engine_->CompletedState().roads);
   }
 
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
