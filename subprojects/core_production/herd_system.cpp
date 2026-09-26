@@ -603,7 +603,7 @@ bool GiveToNeighbour(GiftQueues& queues,
       gift.adult_count = 1;
       gift.adult_male_count = TargetMales(kind, 1);
       gift.adult_age_game_years_total = age_years;
-      WidenAdultAgeBand(gift, 0, age_years, age_years);
+      WidenAdultAgeBand(gift, 0, 1, age_years, age_years);
     } else {
       gift.juvenile_count = 1;
     }

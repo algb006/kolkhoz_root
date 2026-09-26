@@ -244,7 +244,7 @@ void RunMaturation(const ProductionConfig& config,
     return;
   }
   const float entry_age = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
-  WidenAdultAgeBand(herd, herd.adult_count, entry_age, entry_age);
+  WidenAdultAgeBand(herd, herd.adult_count, grown, entry_age, entry_age);
   herd.adult_count = static_cast<std::uint16_t>(herd.adult_count + grown);
   herd.adult_age_game_years_total += static_cast<float>(grown) * entry_age;
   const std::uint16_t males_target = TargetMales(kind, herd.adult_count);
@@ -450,11 +450,21 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   // age before the oldest has reached the lifespan band — the mean and an
   // assumed ±3.3 years killed one or two of the start's one-to-four-year-old
   // horses in year 2 on five seeds of nine.
-  const float low = herd.adult_age_min_game_years;
-  const float high = herd.adult_age_max_game_years > low ? herd.adult_age_max_game_years : low;
-  const float hazard_per_year = AverageAgeHazard(
-      (low + high) * 0.5F, (high - low) * 0.5F, kind.life_game_years_min, kind.life_game_years_max);
-  const float expected = adults * hazard_per_year / static_cast<float>(kDaysPerYear);
+  // BAND BY BAND (herd_age_band.h; save 103): each band's heads at that
+  // band's hazard, so young horses bought into an old row do not share the
+  // old one's.
+  const AdultAgeBands bands = AdultAgeBandsOf(herd, herd.adult_count);
+  float heads_per_year = 0.0F;
+  for (std::uint32_t index = 0; index < bands.size; ++index) {
+    const AdultAgeBand& band = bands.band[index];
+    const float low = band.low;
+    const float high = band.high > low ? band.high : low;
+    heads_per_year += static_cast<float>(band.count) * AverageAgeHazard((low + high) * 0.5F,
+                                                                        (high - low) * 0.5F,
+                                                                        kind.life_game_years_min,
+                                                                        kind.life_game_years_max);
+  }
+  const float expected = heads_per_year / static_cast<float>(kDaysPerYear);
   auto dead = static_cast<std::uint16_t>(expected);
   if (NextRandomUnitFloat(world.rng) < expected - static_cast<float>(dead)) {
     dead = static_cast<std::uint16_t>(dead + 1);

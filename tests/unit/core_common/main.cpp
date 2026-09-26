@@ -2395,19 +2395,21 @@ int TestRoadIndex() {
 }
 
 /// THE HERD'S AGE BAND (herd_age_band.h; 0.35.16): set by the first heads,
-/// widened by more, folded when herds are gathered, aged, and cut from the
-/// top when the oldest go — the top of a uniform band, by the share gone.
+/// widened by more within a year of it, folded when herds are gathered, aged,
+/// and cut from the top when the oldest go — the top of a uniform band, by
+/// the share gone.
 int TestHerdAgeBand() {
   int failures = 0;
   core::HerdRow herd;
-  core::WidenAdultAgeBand(herd, 0, 2.0F, 2.0F);
+  core::WidenAdultAgeBand(herd, 0, 1, 2.0F, 2.0F);
   failures += Expect(herd.adult_age_min_game_years == 2.0F && herd.adult_age_max_game_years == 2.0F,
                      "age band: the first head sets it, stale values or not");
-  core::WidenAdultAgeBand(herd, 1, 1.0F, 1.0F);
-  core::WidenAdultAgeBand(herd, 2, 4.0F, 4.0F);
-  failures += Expect(herd.adult_age_min_game_years == 1.0F && herd.adult_age_max_game_years == 4.0F,
-                     "age band: more heads widen it at both ends");
-  herd.adult_count = 4;
+  core::WidenAdultAgeBand(herd, 1, 1, 1.4F, 1.4F);
+  core::WidenAdultAgeBand(herd, 2, 1, 2.8F, 2.8F);
+  failures += Expect(herd.adult_age_min_game_years == 1.4F &&
+                         herd.adult_age_max_game_years == 2.8F && herd.adult_older_count == 0,
+                     "age band: heads within a year of it widen it at both ends, one band");
+  herd.adult_count = 3;
   core::HerdRow other;
   other.adult_count = 2;
   other.adult_age_min_game_years = 0.5F;
@@ -2419,21 +2421,59 @@ int TestHerdAgeBand() {
   failures +=
       Expect(stale.adult_age_min_game_years == 0.5F && stale.adult_age_max_game_years == 3.0F,
              "age band: gathered into a herd with no adults, the band is the newcomers'");
-  core::MergeAdultAgeBand(herd, 4, other);
-  failures += Expect(herd.adult_age_min_game_years == 0.5F && herd.adult_age_max_game_years == 4.0F,
-                     "age band: two herds gathered hold both bands");
+  core::MergeAdultAgeBand(herd, 3, other);
+  failures += Expect(herd.adult_age_min_game_years == 0.5F &&
+                         herd.adult_age_max_game_years == 3.0F && herd.adult_older_count == 0,
+                     "age band: two overlapping bands gathered are one");
   core::AgeAdultAgeBand(herd, 0.5F);
-  failures += Expect(herd.adult_age_min_game_years == 1.0F && herd.adult_age_max_game_years == 4.5F,
+  failures += Expect(herd.adult_age_min_game_years == 1.0F && herd.adult_age_max_game_years == 3.5F,
                      "age band: ageing moves both ends");
-  // Four of eight go from the top of 1.0..4.5: the band keeps 1.0..2.75, and
-  // the four were 2.75..4.5, a mean of 3.625.
-  const float taken = core::CutOldestFromAdultAgeBand(herd, 8, 4);
-  failures += Expect(std::abs(taken - 3.625F) < 1.0e-4F && herd.adult_age_min_game_years == 1.0F &&
-                         std::abs(herd.adult_age_max_game_years - 2.75F) < 1.0e-4F,
-                     "age band: the oldest half goes off the top, and the top comes down");
-  core::CutOldestFromAdultAgeBand(herd, 4, 4);
+  // Two of five go from the top of 1.0..3.5: the band keeps 1.0..2.5, and the
+  // two were 2.5..3.5, a mean of 3.0.
+  const float taken = core::CutOldestFromAdultAgeBand(herd, 5, 2);
+  failures += Expect(std::abs(taken - 3.0F) < 1.0e-4F && herd.adult_age_min_game_years == 1.0F &&
+                         std::abs(herd.adult_age_max_game_years - 2.5F) < 1.0e-4F,
+                     "age band: the oldest two go off the top, and the top comes down");
+  core::CutOldestFromAdultAgeBand(herd, 3, 3);
   failures += Expect(herd.adult_age_min_game_years == 0.0F && herd.adult_age_max_game_years == 0.0F,
                      "age band: with every adult gone it is empty");
+
+  // THE BAND IN TWO (save 103; boss-core-epoch1-resume [80]-[81]): ten young
+  // horses bought into a row whose one horse is old. One band would read
+  // [1.0, 6.1] of eleven, and the old one's death would leave its top at
+  // 6.1 − 5.1/11 = 5.64: still "old", and the age death reading old horses
+  // that are not there.
+  // THE PAIR FIRST: the row's own ten grown up at 1.0 beside it widen the
+  // band, however far — a herd's yearly cohorts are what a uniform band is.
+  core::HerdRow own;
+  core::WidenAdultAgeBand(own, 0, 1, 5.9F, 5.9F);
+  core::WidenAdultAgeBand(own, 1, 10, 1.0F, 1.0F);
+  failures += Expect(own.adult_older_count == 0 && own.adult_age_min_game_years == 1.0F &&
+                         own.adult_age_max_game_years == 5.9F,
+                     "age band: the row's own heads grown up widen it, one band at any distance");
+  core::HerdRow team;
+  core::WidenAdultAgeBand(team, 0, 1, 5.9F, 5.9F);
+  core::AddAdultAgeGroup(team, 1, 10, 1.0F, 1.0F);
+  team.adult_count = 11;
+  failures += Expect(
+      team.adult_older_count == 1 && team.adult_age_min_game_years == 1.0F &&
+          team.adult_age_max_game_years == 5.9F && team.adult_younger_to_game_years == 1.0F &&
+          team.adult_older_from_game_years == 5.9F,
+      "age band: ten young bought beside one old horse stand as a band of their own");
+  core::AgeAdultAgeBand(team, 0.2F);
+  const float old_one = core::CutOldestFromAdultAgeBand(team, 11, 1);
+  failures += Expect(std::abs(old_one - 6.1F) < 1.0e-4F && team.adult_older_count == 0 &&
+                         std::abs(team.adult_age_max_game_years - 1.2F) < 1.0e-4F,
+                     "age band: the old one dies and the top is the young ones' 1.2, not 5.64");
+  team.adult_count = 10;
+  // A third group folds the two nearest: 1.2 and 3.5 stand 2.3 apart, 3.5
+  // and 6.5 stand 3.0 — the young and the middle fold, the old stay apart.
+  core::AddAdultAgeGroup(team, 10, 5, 3.5F, 3.5F);
+  core::AddAdultAgeGroup(team, 15, 2, 6.5F, 6.5F);
+  failures += Expect(team.adult_older_count == 2 &&
+                         std::abs(team.adult_younger_to_game_years - 3.5F) < 1.0e-4F &&
+                         team.adult_age_max_game_years == 6.5F,
+                     "age band: a third group folds the two nearest, two bands at most");
   return failures;
 }
 

@@ -25,6 +25,7 @@
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
 #include "core_common/fund_ladder.h"
+#include "core_common/herd_age_band.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -45,6 +46,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "herd_life.h"
 #include "herd_system.h"
 #include "livestock_homes.h"
 #include "milk_cart.h"
@@ -509,6 +511,41 @@ int CheckCohortFlows() {
     }
     failures += Expect(world.herds.rows[0].adult_count < 40,
                        "a herd above the top of its lifespan band loses heads to age");
+  }
+
+  // THE YOUNG BOUGHT BESIDE AN OLD ONE DO NOT DIE WITH IT (save 103; boss-
+  // core-epoch1-resume [81]): one horse of 7.9 and ten of 1.0 in one row, a
+  // lifespan of 6 to 8. The old one reaches the top in days and dies; the ten
+  // stand years from the band and none dies. As one band [1.0, 7.9] of eleven
+  // the hazard read a quarter of the row inside the lifespan and took young
+  // heads for it.
+  {
+    core::ProductionConfig lifespan = MakeHerdConfig();
+    lifespan.livestock[0].life_game_years_min = 6.0F;
+    lifespan.livestock[0].life_game_years_max = 8.0F;
+    core::WorldState world = MakeHerdWorld(100000.0F);
+    world.rng = core::SeedRngState(11, 0);
+    const core::HerdId id = AddHerd(world, 0, 11, 1, true);
+    core::HerdRow& row = world.herds.rows[FindRow(world.herds, id)];
+    core::WidenAdultAgeBand(row, 0, 1, 7.9F, 7.9F);
+    core::AddAdultAgeGroup(row, 1, 10, 1.0F, 1.0F);
+    row.adult_age_game_years_total = 7.9F + 10.0F;
+    // The hazard is a year's, at most one death a head a year: the old one is
+    // given three years, which the young at 1.0 spend far from six.
+    std::uint32_t days = 0;
+    for (; days < 3U * core::kDaysPerYear; ++days) {
+      core::HerdRow& living = world.herds.rows[FindRow(world.herds, id)];
+      core::RunAgeDeaths(lifespan.livestock[0], living, id, world);
+      if (living.adult_count < 11) {
+        break;
+      }
+    }
+    const core::HerdRow& after = world.herds.rows[FindRow(world.herds, id)];
+    std::cout << "  age, two bands: the old one died on day " << days << ", adults left "
+              << after.adult_count << ", top " << after.adult_age_max_game_years << '\n';
+    failures += Expect(after.adult_count == 10 && after.adult_older_count == 0 &&
+                           after.adult_age_max_game_years < 4.1F,
+                       "age: the old one dies, and the ten young ones all live");
   }
   return failures;
 }
@@ -4121,6 +4158,28 @@ int CheckTheTeamWithoutARoofSaysSo() {
                      "a row with no adults has no band: its stale top is not read");
   world.herds.rows[2].adult_count = 5;
   world.herds.rows[2].juvenile_count = 0;
+  // THE BAND IN TWO (save 103; boss [81]): one old horse of 6.2 and ten young
+  // of 1.0 bought into its row — the line is lit; the old one dies, and it
+  // goes out, the young band's top far from old age. As one band the old
+  // one's death left the top at 6.2 − 5.2/11 = 5.73 of 6: "old" a few weeks
+  // later again with no old horse in the row.
+  {
+    core::WorldState bought = world;
+    core::HerdRow& row = bought.herds.rows[2];
+    row.adult_count = 11;
+    row.juvenile_count = 0;
+    core::WidenAdultAgeBand(row, 0, 1, 6.2F, 6.2F);
+    core::AddAdultAgeGroup(row, 1, 10, 1.0F, 1.0F);
+    bought.herds.rows[3].adult_age_max_game_years = 5.0F;
+    failures += Expect(aging(bought).second == bought.herds.row_ids[2].value,
+                       "aging, two bands: the old one among ten young lights the line");
+    core::CutOldestFromAdultAgeBand(row, 11, 1);
+    row.adult_count = 10;
+    core::AgeAdultAgeBand(row, 0.3F);  // one band would read 6.03 here: "old" again
+    failures +=
+        Expect(aging(bought).first == -1,
+               "aging, two bands: the old one dead, the line stays out beside the ten young");
+  }
 
   world.units.rows[0].level = 1;
   failures += Expect(burning(world) == 9, "a yard at step one is a pen: the ask stands");

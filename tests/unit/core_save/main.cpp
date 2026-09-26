@@ -380,6 +380,9 @@ core::WorldState MakeWorld() {
   herd.adult_age_game_years_total = 137.5F;
   herd.adult_age_min_game_years = 1.25F;  // save 91: the band, away from its zero defaults
   herd.adult_age_max_game_years = 6.5F;
+  herd.adult_younger_to_game_years = 2.75F;  // save 103: the band in two, 30 young and 9 old
+  herd.adult_older_from_game_years = 5.25F;
+  herd.adult_older_count = 9;
   herd.hunger_progress = 0.375F;
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
@@ -1325,7 +1328,7 @@ constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
-    {"herds", 79, 0xdb8c5a2f8e799ee2ULL},
+    {"herds", 89, 0xa819b69703b188fULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this

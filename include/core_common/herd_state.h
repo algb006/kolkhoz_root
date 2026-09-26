@@ -131,6 +131,18 @@ struct HerdRow {
   float adult_age_min_game_years = 0.0F;
   float adult_age_max_game_years = 0.0F;
 
+  /// THE BAND IN TWO (save 103; boss-core-epoch1-resume [80]-[81]): a group
+  /// of adults a game year or more away from the band — young horses bought
+  /// into a row of old ones — is kept as a band of its own, so that a cut
+  /// takes the old ones and not a share of an imagined even spread. With
+  /// `adult_older_count` 0 there is one band, [min, max]; with it between 0
+  /// and adult_count, the younger band is [min, adult_younger_to] of the
+  /// rest and the older [adult_older_from, max] of these. Kept by
+  /// herd_age_band.h and nothing else.
+  float adult_older_from_game_years = 0.0F;
+  float adult_younger_to_game_years = 0.0F;
+  std::uint16_t adult_older_count = 0;
+
   /// Adult heads with no room under the roof, BILLETED at private yards
   /// (livestock design §6, boss answer 2026-08-30). They are not slaughtered
   /// and they stay kolkhoz property — the milk is the farm's, not the

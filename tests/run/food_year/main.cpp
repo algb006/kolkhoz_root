@@ -1273,18 +1273,31 @@ int main(int argc, char** argv) {
   // The spending moved the median −2.7 and brought the top down: the issue
   // closes less of the lean season when the village's timber comes from the
   // district's lots rather than its own hands. Re-recorded on 0.36.14.
+  //
+  // AND WITH THE SEED FUND HOLDING NEXT SPRING'S SEED FROM THE REAPING (0.36.34;
+  // boss-core-seed-ladders), the red on seed 1931: 38.58 under 38.77. The band
+  // HAD GONE STALE BEFORE IT, unseen, because this run binds seed 1931 alone:
+  // on 0.36.33 (55147c0) three of the nine were already outside it. Each tree
+  // its own binary on the Xeon, the tables byte-identical, the nine seeds one
+  // at a time:
+  //   0.36.33 (55147c0): 33.84, 39.17 (seed 1931), 41.35, 41.40, 44.77
+  //        (median), 47.83, 51.67, 53.88, 57.59;
+  //   0.36.35 (3ae72dd) and 0.36.36 (d23cf44), identical: 33.90, 38.58 (seed
+  //        1931), 40.86, 41.35, 43.33 (median), 45.93, 50.62, 53.88, 57.64.
+  // The seed potato held from the digging is not eaten at the lean season:
+  // seed 1931 −0.6, the median −1.4. Re-recorded on 0.36.36 (d23cf44).
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 38.77-51.85, median 46.87)\n";
-  // The edges are the measured 38.7703 and 51.852 rounded OUTWARD, so that
-  // the seeds that set them stay inside it (40.1956 and 54.5191 before
-  // 0.36.14; 46.1034 and 54.8420 before 0.36.9).
+            << " (nine seeds: 33.90-57.64, median 43.33)\n";
+  // The edges are the measured 33.9006 and 57.6432 rounded OUTWARD, so that
+  // the seeds that set them stay inside it (38.7703 and 51.852 before 0.36.36;
+  // 40.1956 and 54.5191 before 0.36.14; 46.1034 and 54.8420 before 0.36.9).
   // A KNOWN GAP FROM 0.34.51 TO 0.35.10, RESTORED: with the horses counted
   // once the gap fell from 46.5 (0.34.50) to 40.8, out of the band. The
   // spring's repairs of 0.35.1-0.35.8 and the young start team of 0.35.10
   // brought it back to 48.5, and the gap printed CLOSED.
   failures +=
-      ExpectBand(issue_gap >= 38.77F && issue_gap <= 51.86F,
+      ExpectBand(issue_gap >= 33.90F && issue_gap <= 57.65F,
                  "the gap the issue makes at the lean season stays in the nine seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village

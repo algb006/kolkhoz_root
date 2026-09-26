@@ -653,11 +653,18 @@ void AddHerd(WorldState& world,
     oldest = cap < oldest ? cap : oldest;
   }
   const float youngest = adult_from_years < oldest ? adult_from_years : oldest;
+  // THE BAND OF THE AGES DRAWN, not of the range, and ONE band: an even draw
+  // is what a uniform band describes exactly (herd_age_band.h). Widened head
+  // by head it would split wherever two draws fell a year apart.
+  float drawn_min = 0.0F;
+  float drawn_max = 0.0F;
   for (std::uint16_t head = 0; head < adults; ++head) {
     const float age = DrawInRange(rng, youngest, oldest);
     herd.adult_age_game_years_total += age;
-    WidenAdultAgeBand(herd, head, age, age);  // the band of the ages drawn, not of the range
+    drawn_min = head == 0 || age < drawn_min ? age : drawn_min;
+    drawn_max = head == 0 || age > drawn_max ? age : drawn_max;
   }
+  WidenAdultAgeBand(herd, 0, adults, drawn_min, drawn_max);
   AppendRow(world.herds, herd);
 }
 

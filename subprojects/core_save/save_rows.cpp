@@ -184,8 +184,11 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // autumn_slaughter_done, a byte into the padding after disease_stage — 68
 // and twenty, predicted before. Save 91: the adult age band, two floats after
 // the age total — 76 and twenty-two, predicted before the fields were added.
-static_assert(sizeof(HerdRow) == 76, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 22,
+// Save 103: the band in two, two floats and a u16 after the band — the u16
+// into the padding beside billeted_count: 84 and twenty-five, predicted
+// before the fields were added.
+static_assert(sizeof(HerdRow) == 84, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 25,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -971,8 +974,11 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteFloat(row.cull_progress);
   out.WriteFloat(row.hunger_progress);
   out.WriteFloat(row.adult_age_game_years_total);
-  out.WriteFloat(row.adult_age_min_game_years);  // save 91
-  out.WriteFloat(row.adult_age_max_game_years);  // save 91
+  out.WriteFloat(row.adult_age_min_game_years);     // save 91
+  out.WriteFloat(row.adult_age_max_game_years);     // save 91
+  out.WriteFloat(row.adult_older_from_game_years);  // save 103
+  out.WriteFloat(row.adult_younger_to_game_years);  // save 103
+  out.WriteU16(row.adult_older_count);              // save 103
 
   out.WriteU16(row.billeted_count);
   out.WriteFloat(row.unfed_days);
@@ -1003,6 +1009,12 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.adult_age_game_years_total = in.ReadFloat();
   row.adult_age_min_game_years = in.ReadFloat();
   row.adult_age_max_game_years = in.ReadFloat();
+  row.adult_older_from_game_years = in.ReadFloat();  // save 103
+  row.adult_younger_to_game_years = in.ReadFloat();
+  row.adult_older_count = in.ReadU16();
+  if (row.adult_older_count > row.adult_count) {
+    source.Fail("a herd's older age band holds more heads than the herd");
+  }
 
   row.billeted_count = in.ReadU16();
   row.unfed_days = in.ReadFloat();

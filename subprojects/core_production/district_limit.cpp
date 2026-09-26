@@ -533,7 +533,10 @@ void ArriveLivestock(const ProductionConfig& config, WorldState& current) {
                                     static_cast<float>(kMonthsPerYear)
                               : 0.0F;
       herd.adult_age_game_years_total += entry * static_cast<float>(arrival.head_count);
-      WidenAdultAgeBand(herd, adults_before, entry, entry);
+      // A band of their own when they stand a year or more from the row's
+      // (herd_age_band.h): the young bought into an old row are not read as
+      // an even spread over both.
+      AddAdultAgeGroup(herd, adults_before, arrival.head_count, entry, entry);
     }
     landed.push_back(current.livestock_arrivals.row_ids[row]);
   }
