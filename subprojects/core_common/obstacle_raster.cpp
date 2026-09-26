@@ -36,6 +36,9 @@ std::uint8_t ObstacleFlagOf(MapAreaKind kind) {
     case MapAreaKind::kRuinsSite:
       return kObstacleRuins;
     case MapAreaKind::kVillageZone:
+    case MapAreaKind::kStoneQuarry:  // a pit wants its road, not a refusal
+    case MapAreaKind::kClayPit:
+    case MapAreaKind::kSandPit:
     case MapAreaKind::kMapAreaKindCount:
       return 0;
   }

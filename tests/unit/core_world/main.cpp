@@ -1030,12 +1030,22 @@ int CheckRoadTracer() {
                    : 0U;
     }
   }
-  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 26), "
-            << obstacles.lines.size() << " lines (4), " << fords << " fords (4)"
-            << (read ? "" : " — READ FAILED: " + error) << '\n';
-  failures +=
-      Expect(read && obstacles.areas.size() == 26 && obstacles.lines.size() == 4 && fords == 4,
-             "tracer: the reader takes every area, line and ford of the export");
+  // 32 since the diggings were exported (boss [90]): the 26 of before and two
+  // contours each of the stone quarry, the clay pit and the sand pit.
+  std::size_t diggings = 0;
+  for (const core::MapAreaDef& area : obstacles.areas) {
+    diggings += area.kind == core::MapAreaKind::kStoneQuarry ||
+                        area.kind == core::MapAreaKind::kClayPit ||
+                        area.kind == core::MapAreaKind::kSandPit
+                    ? 1U
+                    : 0U;
+  }
+  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 32), of them "
+            << diggings << " diggings (6), " << obstacles.lines.size() << " lines (4), " << fords
+            << " fords (4)" << (read ? "" : " — READ FAILED: " + error) << '\n';
+  failures += Expect(read && obstacles.areas.size() == 32 && diggings == 6 &&
+                         obstacles.lines.size() == 4 && fords == 4,
+                     "tracer: the reader takes every area, line and ford of the export");
 
   const auto built_at = std::chrono::steady_clock::now();
   const core::ObstacleRaster raster(obstacles, 12000.0F, core::kObstacleCellMetres);

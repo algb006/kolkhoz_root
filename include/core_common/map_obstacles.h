@@ -35,6 +35,14 @@ enum class MapAreaKind : std::uint8_t {
   /// NOT AN OBSTACLE: the village's contour, the only place asphalt with
   /// walks is laid (roads design §9; boss [64], exported 2026-09-26).
   kVillageZone,
+  /// THE DIGGINGS (the extraction sites' contours, 0.5 ha each; boss,
+  /// boss-core-field-door [3] and boss-core-epoch1-resume [90]): NOT AN
+  /// OBSTACLE to a road — a pit wants its access road (construction design
+  /// §3, «Подъездная дорога»). A field may not be laid on them (the field
+  /// door, when it comes: «копаное место не пашут»).
+  kStoneQuarry,
+  kClayPit,
+  kSandPit,
   kMapAreaKindCount,  ///< NOT A KIND: the count, for mirrors.
 };
 

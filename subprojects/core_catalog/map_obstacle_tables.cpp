@@ -25,7 +25,10 @@ constexpr std::array<std::string_view, static_cast<std::size_t>(MapAreaKind::kMa
                       "old_orchard",
                       "reserve",
                       "ruins_site",
-                      "village_zone"};
+                      "village_zone",
+                      "stone_quarry",
+                      "clay_pit",
+                      "sand_pit"};
 
 std::optional<MapAreaKind> AreaKindOf(std::string_view word) {
   for (std::size_t index = 0; index < kAreaKindWords.size(); ++index) {
