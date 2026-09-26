@@ -5,7 +5,9 @@
 # ruins — each a closed polygon as the plan sheets draw it. THE
 # FLOODPLAIN IS DIFFERENT: a dirt road and a path may cross it and go
 # under the spring flood (roads.md §9, §11a); gravel, asphalt, an
-# upgrade and any unit may not. The whole forest and the whole
+# upgrade and any unit may not. VILLAGE_ZONE IS NOT A REFUSAL AT ALL:
+# it is the village contour, the only place where asphalt with
+# pavements may go (roads.md §9). The whole forest and the whole
 # grove are refused, not single trees: a STUB the tracer must say
 # aloud. Yard plots are not here — the core knows its own units.
 # NO SLOPE: heights live in the layer; «no cliff» is a STUB too.
@@ -22117,6 +22119,18 @@ old_orchard_hill,old_orchard,12,10250.0,848.7
 old_orchard_hill,old_orchard,13,10360.0,861.9
 old_orchard_hill,old_orchard,14,10407.1,885.2
 old_orchard_hill,old_orchard,15,10441.7,914.1
+new_village_zone,village_zone,0,8200.0,8665.0
+new_village_zone,village_zone,1,9300.0,8665.0
+new_village_zone,village_zone,2,9300.0,9180.0
+new_village_zone,village_zone,3,8200.0,9180.0
+village_zone,village_zone,0,8000.0,9000.0
+village_zone,village_zone,1,9250.0,9000.0
+village_zone,village_zone,2,9250.0,9550.0
+village_zone,village_zone,3,8000.0,9550.0
+village_zone_pond,village_zone,0,5700.0,3550.0
+village_zone_pond,village_zone,1,6700.0,3550.0
+village_zone_pond,village_zone,2,6700.0,4250.0
+village_zone_pond,village_zone,3,5700.0,4250.0
 old_hunting_lodge,ruins_site,0,1050.0,10380.0
 old_hunting_lodge,ruins_site,1,1290.0,10330.0
 old_hunting_lodge,ruins_site,2,1360.0,10130.0
