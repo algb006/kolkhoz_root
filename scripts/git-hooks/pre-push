@@ -18,6 +18,17 @@
 # slips and cannot be rewritten. A message that must NAME a placeholder
 # writes it another way (CANON-PENDING, "the placeholder").
 #
+# ONE WAY PAST IT, and only one (boss-core-seed-ladders [4], 2026-09-27): a
+# commit whose placeholder is RECORDED ABOVE IT IN THE SAME PUSH — a later
+# commit of this push, descended from it, whose message names its sha (7
+# characters) with the numbers it was waiting for. Checked by the sha, not
+# by a word like "Record": a record about another commit does not pass.
+# The case: 0.36.35 and 0.36.36 were committed over 0.36.34 before its
+# canon came back; only HEAD can be amended, rewording the two below needs
+# a rebase, which the role does not run — and the numbers went into
+# 0.36.36's message instead. The numbers themselves are the writer's to
+# give; this checks only that the record names the commit.
+#
 # Git calls it with the remote's name and URL as arguments and one line a
 # ref on stdin: <local ref> <local sha> <remote ref> <remote sha>.
 
@@ -39,6 +50,22 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     text="$(git log -1 --format=%B "$commit" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
     found="$(printf '%s' "$text" | grep -Eo '[A-Z]+_[[:space:]]?PENDING' | sort -u | tr '\n' ' ' || true)"
     if [ -n "$found" ]; then
+      # RECORDED ABOVE IT IN THE SAME PUSH: a later commit of this push whose
+      # message names this commit's sha carries its numbers (see the header).
+      short="$(git rev-parse --short=7 "$commit")"
+      recorded=""
+      for later in $commits; do
+        if [ "$later" != "$commit" ] && git merge-base --is-ancestor "$commit" "$later" &&
+          git log -1 --format=%B "$later" | tr '\n' ' ' | grep -q "$short"; then
+          recorded="$later"
+          break
+        fi
+      done
+      if [ -n "$recorded" ]; then
+        echo "pre-push: $(git log -1 --format='%h %s' "$commit" | cut -c1-60)" >&2
+        echo "pre-push:   заглушка ${found}— числа записаны выше: $(git log -1 --format='%h' "$recorded")" >&2
+        continue
+      fi
       echo "pre-push: $(git log -1 --format='%h %s' "$commit" | cut -c1-72)" >&2
       echo "pre-push:   в сообщении заглушка: ${found}— замени её числами и повтори" >&2
       refused=1
