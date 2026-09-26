@@ -582,6 +582,57 @@ int CheckTransitionOrder() {
 /// §13; 0.36.0), on the shipped tables. Every road of roads.csv is a row with
 /// its axis and its stretches; the layout's wear lies on every stretch of its
 /// road and a path wears nothing. And the GRAPH is measured against the one
+/// THE ERA'S SOCIAL NORM IS THE TABLE'S `era_norm` (boss-core-epoch1-resume
+/// [84]; 0.36.35): on the shipped tables Era I's list is the design's six —
+/// not the class `social`, which held the beach and the barter place as well
+/// and read 4 built as 50. Four of the six score 67; the beach and the barter
+/// place beside three of them open no «4» block.
+int CheckEraNormList() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "era norm: the shipped tables load") != 0) {
+    return 1;
+  }
+  const core::ITable* const types = shipped->FindTable("unit_types");
+  const core::ReadinessCatalog catalog = core::ReadReadinessCatalog(*shipped, core::Epoch::kOne);
+  const auto type_of = [types](std::string_view key) {
+    return core::DefIdFromRow<core::UnitTypeIdTag>(types->FindRowByKey(key));
+  };
+  const auto listed = [&catalog](core::UnitTypeId type) {
+    return std::ranges::any_of(catalog.social_objects,
+                               [type](core::UnitTypeId in) { return in.value == type.value; });
+  };
+  const std::array<std::string_view, 6> six = {
+      "school", "culture_house", "selpo", "field_canteen", "bathhouse", "stadium"};
+  failures += Expect(
+      catalog.social_objects.size() == six.size() &&
+          std::ranges::all_of(six, [&](std::string_view key) { return listed(type_of(key)); }),
+      "era norm: Era I's list is the design's six");
+  failures += Expect(!listed(type_of("beach")) && !listed(type_of("barter_place")),
+                     "era norm: the beach and the barter place are not in it");
+  const auto world_with = [&](std::initializer_list<std::string_view> keys) {
+    core::WorldState world;
+    for (const std::string_view key : keys) {
+      core::UnitRow unit;
+      unit.type = type_of(key);
+      unit.level = 1;
+      core::AppendRow(world.units, unit);
+    }
+    return world;
+  };
+  core::WorldState four = world_with({"school", "culture_house", "selpo", "bathhouse"});
+  core::ScoreReadiness(catalog, 4.0F, 4.0F, four);
+  const float score = four.readiness.society.social_objects.score;
+  failures += Expect(score > 66.6F && score < 66.7F,
+                     "era norm: four of the six score 67 (two thirds), not 50");
+  const core::WorldState three_and_two =
+      world_with({"school", "culture_house", "selpo", "beach", "barter_place"});
+  failures +=
+      Expect(core::StandingBlocks(catalog, three_and_two).social_objects == 0,
+             "era norm: three of the six beside the beach and the barter place open no block");
+  return failures;
+}
+
 /// count the design gives of the start network — «так на старте ДЕВЯТЬ»
 /// dead-end roads (roads design §4, the start map's wear table): a dead end
 /// is a road one of whose ends meets no other road and no border. The joins
@@ -1435,6 +1486,7 @@ int main() {
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
+  failures += CheckEraNormList();
   failures += CheckRoadsDoor();
   failures += CheckRoadTracer();
   failures += CheckRoadLaying();

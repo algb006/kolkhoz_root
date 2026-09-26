@@ -31,12 +31,13 @@ namespace core {
 /// funds, the social objects and the office — read once at wiring, because a
 /// table cannot change under a running campaign.
 struct ReadinessCatalog {
-  /// Unit types of the era's social list: class `social`, of this era, and
-  /// free-standing. The design's six for Era I — school, culture house,
-  /// selpo, field canteen, bathhouse, stadium — come out of the table rather
-  /// than out of a list written here, so that the day a seventh is added the
-  /// component follows it (epochs design §6: «берётся он из класса social
-  /// базы дизайна по колонке эпохи»).
+  /// Unit types of the era's social list: unit_types.csv `era_norm` = 1, of
+  /// this era (since 0.36.35; the class `social`, which also holds the beach
+  /// and the barter place, until then). The design's six for Era I — school,
+  /// culture house, selpo, field canteen, bathhouse, stadium — come out of the
+  /// table rather than out of a list written here, so that the day a seventh
+  /// is added the component follows it. Empty = the era's list is not
+  /// written: the component is unmeasured and the block shut.
   std::vector<UnitTypeId> social_objects;
 
   /// The office. Its own block, and the design says why: the district looks

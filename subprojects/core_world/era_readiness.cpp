@@ -192,9 +192,8 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
   if (types == nullptr) {
     return catalog;
   }
-  const std::uint32_t class_column = types->FindColumn("class");
   const std::uint32_t era_column = types->FindColumn("era");
-  const std::uint32_t parent_column = types->FindColumn("parent");
+  const std::uint32_t era_norm_column = types->FindColumn("era_norm");
   const std::uint32_t one_family_column = types->FindColumn("one_family");
   // Same off-by-one as the threshold above and the same cure: unit_types.csv's
   // `era` column is the human number. With the `+ 1` this list held Era II's
@@ -212,26 +211,30 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
     if (!one_family.has_value() || *one_family == 0) {
       catalog.kolkhoz_types.push_back(id);
     }
-    if (class_column == kNoTableColumn) {
-      continue;
-    }
-    const std::string_view kind = types->CellText(row, class_column);
-    // THE LIST COMES OUT OF THE TABLE, not out of six names written here: the
-    // design's own instruction is «берётся он из класса social базы дизайна по
-    // колонке эпохи», so a seventh object added to the table is a seventh the
-    // component counts, without anybody remembering to come back here.
-    //
-    // FREE-STANDING ONLY. A module hung on somebody else's plot — the
-    // boarding wing on the school, the sports ground beside it — is a RUNG of
-    // its parent and not an object of the norm; counting it would let one
-    // school answer the list twice.
-    const bool free_standing =
-        parent_column == kNoTableColumn || types->CellText(row, parent_column).empty();
+    // THE LIST IS THE TABLE'S `era_norm` COLUMN (boss-core-epoch1-resume [84];
+    // 0.36.35): a row with era_norm = 1 of the era asked counts toward that
+    // era's norm, epochs §6 «4 из 6» — the school, the house of culture, the
+    // bathhouse, the selpo, the field canteen, the stadium. It was the class
+    // `social` of the era with no parent until then, which is wider: the beach
+    // and the barter place made it eight, 4 built read 50 instead of 67, and
+    // either one eased the «4» block (econ, neglect-floor.md §9). The design
+    // had said «из класса по колонке эпохи»; the column is its answer.
+    const std::optional<std::int64_t> in_norm =
+        era_norm_column == kNoTableColumn ? std::nullopt : types->CellInteger(row, era_norm_column);
     const std::optional<std::int64_t> row_era =
         era_column == kNoTableColumn ? std::nullopt : types->CellInteger(row, era_column);
-    if (kind == "social" && free_standing && row_era.has_value() && *row_era == wanted_era) {
+    if (in_norm.has_value() && *in_norm == 1 && row_era.has_value() && *row_era == wanted_era) {
       catalog.social_objects.push_back(id);
     }
+  }
+  // AN ERA WITH NO ROW OF ITS NORM is a list not written, not a list of none:
+  // the component stays unmeasured (SharePercent of nought) and the block
+  // shut, and it is said, not read as nought of nought.
+  if (catalog.social_objects.empty()) {
+    LogWarning("unit_types: no row with era_norm = 1 for Era " +
+               std::to_string(EpochHumanNumber(era)) +
+               " — the era's social norm list is not written; its component is unmeasured and "
+               "its block shut");
   }
   // THE LADDERS, counted off the level table rather than assumed. A type with
   // one level cannot be raised at all, and a blocker that asks it for a second
