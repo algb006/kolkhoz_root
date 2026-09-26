@@ -12,6 +12,11 @@
 /// is appended once the row and the index are written, in the same tick, so
 /// Roads() answers it by the time the layer reads it.
 ///
+/// THE LAND KEEPS ITS WEAR (construction design §13; 7d): a stretch of a new
+/// road laid along a strip a road was taken off (within half the bed of the
+/// strip's axis) begins with the strip's wear, not at nought — «стирали не
+/// яму, а имя».
+///
 /// WHAT IT DOES NOT DO YET, and who will:
 ///   * gravel, asphalt and asphalt with walks become road work (7e); until
 ///     then their laying is refused kNoConsumer — STUB, named;
@@ -44,6 +49,23 @@ OrderRefusal LayRoad(const RoadTracer& trace,
                      WorldState& current,
                      OrderId order_id,
                      OrderRow& order);
+
+/// @brief Takes out the pieces `order` drags along (kDemolishRoad; 7d),
+///        selected again on the step's world by the preview's own selection:
+///        the road cut (core_common/road_cut.h) — gone whole, shortened, or
+///        split into two roads, the second a new row — the land strips
+///        appended with the wear the pieces had, the index rebuilt, and
+///        kRoadDemolished raised after the write for the road (its id even
+///        when the whole of it went).
+/// @param select The world's selection; empty — refused kNoConsumer.
+/// @return kNone when taken; kRuleForbids when no piece is in (a kept road,
+///         the only road to something, or nothing under the drag);
+///         kNoConsumer for a paved road — its demolition is road work, 7e
+///         (STUB).
+OrderRefusal DemolishRoad(const RoadSelector& select,
+                          WorldState& current,
+                          OrderId order_id,
+                          OrderRow& order);
 
 }  // namespace core
 

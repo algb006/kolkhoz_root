@@ -13,7 +13,8 @@
 /// kRefused IN THE STEP THE ROW IS READ — never to kAccepted or kActive,
 /// except where a kind says otherwise:
 ///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
-///     kDemolishUnit, kRepairUnit, kInsulateUnit, and kLayRoad since 7c;
+///     kDemolishUnit, kRepairUnit, kInsulateUnit, kLayRoad since 7c and
+///     kDemolishRoad since 7d;
 ///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund, kSetRotation,
 ///     kMarkFelling, kMarkExtraction, kOrderLimitLot, kRemoveField,
 ///     kGrazeAtNight, kHandStock, kDeliverPlan, kPlantForest and
@@ -24,9 +25,9 @@
 ///     2026-09-18);
 ///   * core_world — kAdvanceEra (since 2026-09-18), in the events slot, where
 ///     the readiness is scored;
-///   * NONE YET — kUpgradeRoad and kDemolishRoad (delivery 7a, the contract):
-///     the sweep refuses them kNoConsumer in the step they are read, until
-///     core_construction takes them in 7e and 7d.
+///   * NONE YET — kUpgradeRoad (delivery 7a, the contract): the sweep refuses
+///     it kNoConsumer in the step it is read, until core_construction takes it
+///     in 7e.
 /// This list was three consumers and short by seven kinds on 2026-09-18,
 /// when the fourth consumer was added and the list counted rather than
 /// appended to: every kind below names its consumer, and that is the
@@ -804,9 +805,10 @@ enum class OrderKind : std::uint8_t {
   /// DEMOLISH PIECES OF A LAID ROAD (tool 9; construction design §13): the
   /// selection as kUpgradeRoad's. A path and a dirt road go at once; gravel
   /// and asphalt become road work. Never a start road nor the only road to
-  /// something (RoadPieceRefusal). Refusals: kRuleForbids (no piece in).
-  /// Seam key `demolish_road`. Consumer: core_construction FROM 7d; until
-  /// then none, and the sweep refuses it kNoConsumer.
+  /// something (RoadPieceRefusal). The land keeps the pieces' wear
+  /// (WorldState::land_strips). Refusals: kRuleForbids (no piece in, or no
+  /// such road), kNoConsumer (a paved road until road work, 7e). Seam key
+  /// `demolish_road`. Consumer: core_construction since 7d (road_laying.h).
   kDemolishRoad,
 
   // Reserved, appended by their tasks and named here so the numbering is

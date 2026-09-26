@@ -145,7 +145,17 @@ RoadToolStates RoadTools::ToolStates(const WorldState& world) const {
       built_later(RoadSurface::kAsphalt);
   states[static_cast<std::size_t>(RoadTool::kUpgradeToAsphaltWalks)] =
       built_later(RoadSurface::kAsphaltWalks);
-  states[static_cast<std::size_t>(RoadTool::kDemolish)] = RoadToolClosed::kNotYetBuilt;
+  // Taken since 7d: open while any road may be taken at all (removable),
+  // else nothing to work on. Whether a given piece goes is the selection's.
+  // Only a path's or a dirt road's: a paved road's demolition is road work
+  // (7e) and would be refused (static review of 0.36.31).
+  const bool any_removable =
+      std::any_of(world.roads.rows.begin(), world.roads.rows.end(), [](const RoadRow& road) {
+        return road.removable != 0 &&
+               (road.surface == RoadSurface::kNone || road.surface == RoadSurface::kDirt);
+      });
+  states[static_cast<std::size_t>(RoadTool::kDemolish)] =
+      any_removable ? RoadToolClosed::kOpen : RoadToolClosed::kNothingToWork;
   return states;
 }
 
@@ -158,9 +168,24 @@ RoadPieces RoadTools::Select(const WorldState& world,
     units.push_back(RoadAnchorUnit{.unit = world.units.row_ids[row],
                                    .position = world.units.rows[row].position});
   }
+  // The places of map_places.csv, and every field by its centre (§17).
+  std::vector<RoadAnchorArea> areas;
+  areas.reserve(obstacles_.places.size() + world.fields.rows.size());
+  for (std::size_t index = 0; index < obstacles_.places.size(); ++index) {
+    areas.push_back(
+        RoadAnchorArea{.place = DefIdFromRow<MapPlaceIdTag>(static_cast<std::uint32_t>(index)),
+                       .field = FieldId{},
+                       .point = obstacles_.places[index].point});
+  }
+  for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
+    areas.push_back(RoadAnchorArea{.place = MapPlaceId{},
+                                   .field = world.fields.row_ids[row],
+                                   .point = world.fields.rows[row].center});
+  }
   RoadPieceSite site;
   site.roads = &world.roads;
   site.units = units;
+  site.areas = areas;
   site.road_access_m = road_access_m_;
   site.raster = Raster();
   site.village = village_;

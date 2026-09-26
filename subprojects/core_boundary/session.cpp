@@ -187,19 +187,19 @@ bool ShapeIsValid(const OrderRow& order) {
              !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     }
     case OrderKind::kUpgradeRoad:
-      // A road, the drag's two ends apart, and a target an upgrade makes:
-      // gravel or better (dirt is where roads start). Which pieces are in is
-      // the consumer's (SelectRoadPieces).
+      // A road, the drag's two ends — ONE SPOT IS A CLICK, which takes the
+      // piece under it, as the selection shows it (7d2; static review) — and
+      // a target an upgrade makes: gravel or better (dirt is where roads
+      // start). Which pieces are in is the consumer's (SelectRoadPieces).
       return order.road.value != kInvalidEntityIdValue &&
-             order.road_surface >= RoadSurface::kGravel &&
-             RoadPointsApart(order.road_points[0], order.road_points[1]) && !has_resident &&
-             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+             order.road_surface >= RoadSurface::kGravel && !has_resident && !has_unit &&
+             !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kDemolishRoad:
-      // A road and the drag's two ends apart; no target, so no surface.
+      // A road and the drag's two ends (one spot a click); no target, so no
+      // surface.
       return order.road.value != kInvalidEntityIdValue &&
-             order.road_surface == RoadSurface::kNone &&
-             RoadPointsApart(order.road_points[0], order.road_points[1]) && !has_resident &&
-             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+             order.road_surface == RoadSurface::kNone && !has_resident && !has_unit && !has_field &&
+             !has_herd && !has_stand && !has_site;
     case OrderKind::kRemoveField:
       // kRemoveField names the field alone: whether it still holds bread, and
       // whether it is arable at all, change with the season — the consumer's

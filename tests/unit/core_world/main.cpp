@@ -1262,6 +1262,9 @@ int CheckRoadPiecesOnStart() {
   std::vector<core::MapRoadDef> map_roads;
   std::string error;
   (void)core::ReadMapRoads(*shipped, map_roads, error);
+  core::MapObstacles obstacles;
+  (void)core::ReadMapObstacles(*shipped, obstacles, error);
+  const std::vector<core::MapPlaceDef>& places = obstacles.places;
   bool kept_refused = true;
   std::uint32_t in = 0;
   std::uint32_t only = 0;
@@ -1279,9 +1282,17 @@ int CheckRoadPiecesOnStart() {
       std::cout << ' ' << static_cast<int>(piece.s_from_m) << '-' << static_cast<int>(piece.s_to_m)
                 << '=' << static_cast<int>(piece.refusal);
       if (piece.refusal == core::RoadPieceRefusal::kOnlyRoad) {
-        std::cout << (piece.stranded_unit.value != 0
-                          ? "(unit " + std::to_string(piece.stranded_unit.value) + ")"
-                          : "(map road " + std::to_string(piece.stranded_map_road.value) + ")");
+        // What is stranded, by the one id set: a unit, a place (by key), a
+        // field, or the way out's map road.
+        if (piece.stranded_unit.value != core::kInvalidEntityIdValue) {
+          std::cout << "(unit " << piece.stranded_unit.value << ")";
+        } else if (piece.stranded_place.value != core::kInvalidDefIdValue) {
+          std::cout << "(place " << places[piece.stranded_place.value].key << ")";
+        } else if (piece.stranded_field.value != core::kInvalidEntityIdValue) {
+          std::cout << "(field " << piece.stranded_field.value << ")";
+        } else {
+          std::cout << "(way out " << piece.stranded_map_road.value << ")";
+        }
         ++only;
       }
       in += piece.refusal == core::RoadPieceRefusal::kNone ? 1U : 0U;
@@ -1298,6 +1309,125 @@ int CheckRoadPiecesOnStart() {
   return failures;
 }
 
+/// DEMOLITION ON THE SHIPPED MAP (delivery 7d; road_laying.h). The first
+/// piece of road_bridge_village — taken by the start instrument above — is
+/// ordered out by a drag from its start to 520 m (a 36 m remnant runs on to
+/// the joint at 556). Then: the road stands shortened, a player's road now
+/// (its axis no longer the map's); the land keeps a strip worn as the road
+/// was; kRoadDemolished names the road after the write; a dirt road laid
+/// again along the strip takes its wear back on the stretches that run
+/// within half a bed of it; and the save keeps both the strip and the
+/// remnant's axis.
+int CheckRoadDemolition() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation =
+      shipped ? core::CreateStandardSimulation(config) : nullptr;
+  if (Expect(simulation != nullptr, "demolition: the shipped set assembles") != 0) {
+    return 1;
+  }
+  std::vector<core::MapRoadDef> map_roads;
+  std::string error;
+  (void)core::ReadMapRoads(*shipped, map_roads, error);
+  std::size_t row = map_roads.size();
+  for (std::size_t index = 0; index < map_roads.size(); ++index) {
+    row = map_roads[index].key == "road_bridge_village" ? index : row;
+  }
+  if (Expect(row < simulation->CompletedState().roads.rows.size(),
+             "demolition: road_bridge_village is on the map") != 0) {
+    return failures + 1;
+  }
+  const core::RoadId road_id = simulation->CompletedState().roads.row_ids[row];
+  const core::RoadRow before = simulation->CompletedState().roads.rows[row];
+  const float length_before = core::RoadAxisLength(before.axis);
+  core::OrderRow order;
+  order.kind = core::OrderKind::kDemolishRoad;
+  order.road = road_id;
+  order.road_points[0] = before.axis.front().position;
+  order.road_points[1] = core::PointAtChainage(before.axis, 520.0F);
+  const std::array<core::OrderRow, 1> orders = {order};
+  simulation->StageOrders(orders, {});
+  simulation->AdvanceStep();
+  const core::WorldState& after = simulation->CompletedState();
+  const std::uint32_t kept_row = core::FindRow(after.roads, road_id);
+  const float length_after =
+      kept_row != core::kNoRow ? core::RoadAxisLength(after.roads.rows[kept_row].axis) : 0.0F;
+  bool named = false;
+  for (const core::SimEvent& event : after.step_events) {
+    named = named ||
+            (event.kind == core::EventKind::kRoadDemolished && event.road.value == road_id.value);
+  }
+  const bool strip_worn =
+      after.land_strips.rows.size() == 1 && !after.land_strips.rows[0].stretches.empty() &&
+      std::ranges::all_of(after.land_strips.rows[0].stretches, [&](const core::RoadStretch& s) {
+        return s.wear_pct == before.stretches.front().wear_pct;
+      });
+  std::cout << "demolition: road_bridge_village " << length_before << " m -> " << length_after
+            << " m; strips " << after.land_strips.rows.size() << " worn "
+            << before.stretches.front().wear_pct << "%\n";
+  failures += Expect(
+      kept_row != core::kNoRow && std::abs(length_after - (length_before - 556.0F)) < 2.0F &&
+          after.roads.rows[kept_row].origin == core::RoadOrigin::kPlayer && named && strip_worn,
+      "demolition: the first piece goes, the road stands shortened as the "
+      "player's, the land keeps its wear, and kRoadDemolished names it");
+  // No strip, nothing to lay along: red above, and stop here rather than
+  // read a row that is not there (a fault once crashed this test instead of
+  // reddening it).
+  if (after.land_strips.rows.empty()) {
+    return failures;
+  }
+  // Laid again along the strip: the stretches within half a bed take its
+  // wear back — «стирали не яму, а имя».
+  const core::LandStripRow strip = after.land_strips.rows[0];
+  core::OrderRow relay;
+  relay.kind = core::OrderKind::kLayRoad;
+  relay.road_kind = core::RoadKind::kRoad;
+  relay.road_surface = core::RoadSurface::kDirt;
+  relay.road_point_count = 4;
+  const auto strip_at = [&strip](float share) {
+    std::vector<core::RoadPoint> axis;
+    for (const core::Vec2& point : strip.axis) {
+      axis.push_back(core::RoadPoint{.position = point});
+    }
+    return core::PointAtChainage(axis, share * core::RoadAxisLength(axis));
+  };
+  relay.road_points[0] = strip_at(0.0F);
+  relay.road_points[1] = strip_at(0.33F);
+  relay.road_points[2] = strip_at(0.66F);
+  relay.road_points[3] = strip_at(1.0F);
+  const std::size_t roads_before_relay = after.roads.rows.size();
+  const std::array<core::OrderRow, 1> relays = {relay};
+  simulation->StageOrders(relays, {});
+  simulation->AdvanceStep();
+  const core::WorldState& relaid = simulation->CompletedState();
+  std::uint32_t inherited = 0;
+  std::uint32_t stretches = 0;
+  if (relaid.roads.rows.size() == roads_before_relay + 1) {
+    for (const core::RoadStretch& stretch : relaid.roads.rows.back().stretches) {
+      ++stretches;
+      inherited += stretch.wear_pct == before.stretches.front().wear_pct ? 1U : 0U;
+    }
+  }
+  std::cout << "demolition: laid again, " << inherited << " of " << stretches
+            << " stretches took the land's wear\n";
+  failures += Expect(stretches > 0 && inherited * 2 > stretches,
+                     "demolition: a road laid again along the strip takes its wear back on most "
+                     "of its stretches");
+  const std::vector<std::byte> bytes = core::EncodeWorld(relaid, *shipped);
+  core::WorldState loaded;
+  const bool decoded = core::DecodeWorld(bytes, *shipped, &loaded, &error);
+  const std::uint32_t loaded_row = decoded ? core::FindRow(loaded.roads, road_id) : core::kNoRow;
+  failures += Expect(decoded && loaded.land_strips.rows.size() == 1 && loaded_row != core::kNoRow &&
+                         loaded.roads.rows[loaded_row].axis.size() ==
+                             relaid.roads.rows[core::FindRow(relaid.roads, road_id)].axis.size(),
+                     "demolition: the save keeps the strip and the remnant's own axis");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -1309,6 +1439,7 @@ int main() {
   failures += CheckRoadTracer();
   failures += CheckRoadLaying();
   failures += CheckRoadPiecesOnStart();
+  failures += CheckRoadDemolition();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 

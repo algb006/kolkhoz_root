@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -35,10 +36,13 @@ struct AccessPoint {
   float chainage_m = 0.0F;
 };
 
-/// Something the network must not be cut from: a unit, or a way out.
+/// Something the network must not be cut from: a unit, a way out, a place
+/// or a field — exactly one of the ids set.
 struct Anchor {
   UnitId unit;
   MapRoadId map_road;
+  MapPlaceId place;
+  FieldId field;
   std::vector<AccessPoint> points;
 };
 
@@ -65,20 +69,19 @@ class Connectivity {
     for (std::size_t index = 0; index < graph_.edges.size(); ++index) {
       edges_of_road_[graph_.edges[index].road.value].push_back(index);
     }
-    // Units with a road in reach: every road whose axis comes within the
-    // access distance of the bed's edge.
+    // Units with a road in reach: every ROAD (a path is not road access —
+    // roads.csv, unit rules §12; static review of 0.36.31) whose axis comes
+    // within the access distance of the bed's edge.
     for (const RoadAnchorUnit& unit : site_.units) {
       Anchor anchor;
       anchor.unit = unit.unit;
       for (std::size_t row = 0; row < site_.roads->rows.size(); ++row) {
         const RoadRow& road = site_.roads->rows[row];
-        if (road.axis.size() < 2) {
+        if (road.axis.size() < 2 || road.kind == RoadKind::kPath) {
           continue;
         }
-        const float half =
-            road.kind == RoadKind::kPath ? site_.path_half_width_m : site_.road_half_width_m;
         const AxisProjection projection = ProjectOntoAxis(road.axis, unit.position);
-        if (projection.distance_m <= site_.road_access_m + half) {
+        if (projection.distance_m <= site_.road_access_m + site_.road_half_width_m) {
           anchor.points.push_back(AccessPoint{.road = site_.roads->row_ids[row].value,
                                               .chainage_m = projection.chainage_m});
         }
@@ -87,49 +90,60 @@ class Connectivity {
         anchors_.push_back(std::move(anchor));
       }
     }
-    // The ways out — a road's end marked as the border — and THE PLACES A
-    // MAP ROAD LEADS TO: an end of a map road that meets no other road. The
-    // core knows no settlement, hayfield or cemetery by name (they live in
-    // map.db), and a road the map draws to a dead end leads somewhere for a
-    // reason — STUB until the places are exported: the neighbours inside the
-    // map (road_pond_village, road_lesnoy_spur) came out removable whole
-    // without it. A player's dead end leads to nothing the map knows.
-    std::vector<std::uint32_t> degree(graph_.nodes.size(), 0);
-    for (const RoadEdge& edge : graph_.edges) {
-      ++degree[edge.from];
-      ++degree[edge.to];
-    }
+    // The ways out: a road's end marked as the border.
     for (std::size_t row = 0; row < site_.roads->rows.size(); ++row) {
       const RoadRow& road = site_.roads->rows[row];
       if (road.axis.size() < 2) {
         continue;
       }
       const std::uint32_t id = site_.roads->row_ids[row].value;
-      const float length = RoadAxisLength(road.axis);
-      const auto end_node = [&](float chainage) -> std::optional<RoadNodeIndex> {
-        for (const RoadEdge& edge : graph_.edges) {
-          if (edge.road.value != id) {
-            continue;
-          }
-          if (std::abs(edge.from_chainage_m - chainage) <= kJointSlackMetres) {
-            return edge.from;
-          }
-          if (std::abs(edge.to_chainage_m - chainage) <= kJointSlackMetres) {
-            return edge.to;
-          }
-        }
-        return std::nullopt;
-      };
-      for (const float chainage : {0.0F, length}) {
+      for (const float chainage : {0.0F, RoadAxisLength(road.axis)}) {
         const RoadPoint& end = chainage == 0.0F ? road.axis.front() : road.axis.back();
-        const std::optional<RoadNodeIndex> node = end_node(chainage);
-        const bool dead_end_of_map_road =
-            road.origin == RoadOrigin::kMap && node && degree[*node] == 1;
-        if (end.mark == RoadMark::kBorder || dead_end_of_map_road) {
-          anchors_.push_back(Anchor{.unit = UnitId{},
-                                    .map_road = road.map_road,
-                                    .points = {{.road = id, .chainage_m = chainage}}});
+        if (end.mark == RoadMark::kBorder) {
+          Anchor anchor;
+          anchor.map_road = road.map_road;
+          anchor.points.push_back(AccessPoint{.road = id, .chainage_m = chainage});
+          anchors_.push_back(std::move(anchor));
         }
+      }
+    }
+    // The places of map_places.csv and the fields (§17; boss [72]): by every
+    // ROAD within kAreaEntryReachMetres past the nearest MAP road — the map
+    // says where a place is entered from; a road the player lays nearer is
+    // one more way in, not the only one (static review of 0.36.31: measured
+    // from the nearest road of any kind, a player's dead end laid 100 m
+    // nearer became the area's only way and could never be taken again).
+    // With no map road at all, from the nearest road. (Until 7d2 a map
+    // road's dead end stood for the places, STUB; the export replaced it.)
+    for (const RoadAnchorArea& area : site_.areas) {
+      std::vector<std::pair<float, AccessPoint>> near;
+      float nearest = std::numeric_limits<float>::infinity();
+      float nearest_map = std::numeric_limits<float>::infinity();
+      for (std::size_t row = 0; row < site_.roads->rows.size(); ++row) {
+        const RoadRow& road = site_.roads->rows[row];
+        if (road.axis.size() < 2 || road.kind == RoadKind::kPath) {
+          continue;
+        }
+        const AxisProjection projection = ProjectOntoAxis(road.axis, area.point);
+        nearest = std::min(nearest, projection.distance_m);
+        if (road.origin == RoadOrigin::kMap || road.map_road.value != kInvalidDefIdValue) {
+          nearest_map = std::min(nearest_map, projection.distance_m);
+        }
+        near.emplace_back(projection.distance_m,
+                          AccessPoint{.road = site_.roads->row_ids[row].value,
+                                      .chainage_m = projection.chainage_m});
+      }
+      Anchor anchor;
+      anchor.place = area.place;
+      anchor.field = area.field;
+      const float base = std::isfinite(nearest_map) ? nearest_map : nearest;
+      for (const auto& [distance, point] : near) {
+        if (distance <= base + kAreaEntryReachMetres) {
+          anchor.points.push_back(point);
+        }
+      }
+      if (!anchor.points.empty()) {
+        anchors_.push_back(std::move(anchor));
       }
     }
     reached_before_ = Reach({});
@@ -171,6 +185,11 @@ class Connectivity {
     std::vector<std::vector<Kept>> kept(graph_.edges.size());
     for (std::size_t index = 0; index < graph_.edges.size(); ++index) {
       const RoadEdge& edge = graph_.edges[index];
+      // A path joins nothing: no cart passes it (unit rules §12), and §17's
+      // way is a road's (static review of 0.36.31).
+      if (edge.kind == RoadKind::kPath) {
+        continue;
+      }
       std::vector<Cut> on_edge;
       for (const Cut& cut : cuts) {
         if (cut.road == edge.road.value && cut.to_m > edge.from_chainage_m + kJointSlackMetres &&
@@ -359,10 +378,24 @@ RoadPieces SelectRoadPiecesOn(const RoadPieceSite& site,
     return result;
   }
   const RoadRow& road = site.roads->rows[row];
-  const float drag_from = ProjectOntoAxis(road.axis, selection.from).chainage_m;
-  const float drag_to = ProjectOntoAxis(road.axis, selection.to).chainage_m;
-  const float low = std::min(drag_from, drag_to);
-  const float high = std::max(drag_from, drag_to);
+  const AxisProjection start = ProjectOntoAxis(road.axis, selection.from);
+  const AxisProjection finish = ProjectOntoAxis(road.axis, selection.to);
+  // A DRAG OFF THE ROAD SELECTS NOTHING (static review of 0.36.31): an
+  // order whose road was cut in the same step would otherwise clamp both
+  // ends onto the remnant's cut end and take a piece nobody dragged.
+  if (start.distance_m > kDragReachMetres || finish.distance_m > kDragReachMetres) {
+    return result;
+  }
+  const float drag_from = start.chainage_m;
+  const float drag_to = finish.chainage_m;
+  float low = std::min(drag_from, drag_to);
+  float high = std::max(drag_from, drag_to);
+  // A drag shorter than a remnant may be is a click on its middle: no
+  // sliver cut out of a road by a twitch of the hand (§13, «достаточно
+  // большими фрагментами»).
+  if (high - low < kMinRemnantMetres) {
+    low = high = 0.5F * (low + high);
+  }
 
   const RoadGraph graph = BuildRoadGraph(*site.roads);
   std::vector<const RoadEdge*> edges;
@@ -425,6 +458,8 @@ RoadPieces SelectRoadPiecesOn(const RoadPieceSite& site,
         piece.refusal = RoadPieceRefusal::kOnlyRoad;
         piece.stranded_unit = stranded->unit;
         piece.stranded_map_road = stranded->map_road;
+        piece.stranded_place = stranded->place;
+        piece.stranded_field = stranded->field;
         continue;
       }
       taken = std::move(with_this);

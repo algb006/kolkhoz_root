@@ -128,7 +128,12 @@ struct RoadRow {
 
   RoadOrigin origin = RoadOrigin::kMap;
 
-  /// For a map road, which one; invalid for a player road.
+  /// For a map road, which one; invalid for a road the player laid. A
+  /// REMNANT of a map road the player cut (7d) keeps it with origin kPlayer:
+  /// the map road it came from — its name and its way-out naming — while its
+  /// axis is its own now. Two remnants of one map road name the same one;
+  /// a reader keying things along the whole map road (decor by traffic)
+  /// must ask `origin` too.
   MapRoadId map_road;
 
   /// 0: the player may not take it away — the trunk road, its bridge and the
@@ -147,6 +152,27 @@ struct RoadRow {
 };
 
 using RoadTable = StateTable<RoadId, RoadRow>;
+
+/// @brief A strip of land a road was taken off (construction design §13,
+///        «Износ принадлежит ЗЕМЛЕ»; delivery 7d): where the road ran there
+///        and its wear by stretch, as it was the day it went. THE LAND KEEPS
+///        IT: a road laid again along the strip takes its wear back (road_
+///        laying.cpp), so taking a broken road away and laying it again the
+///        same way gains nothing — «стирали не яму, а имя».
+///
+/// The strip forgets, but over years (road_rules.h strip_decay_pct_per_day)
+/// — STUB, not applied until road wear moves at all (delivery 3b); until
+/// then a strip keeps its wear as it came.
+struct LandStripRow {
+  /// The removed stretch of axis, in order; always its own geometry (a
+  /// strip is never the map's).
+  std::vector<Vec2> axis;
+
+  /// kRoadStretchMetres of axis each, from its first point.
+  std::vector<RoadStretch> stretches;
+};
+
+using LandStripTable = StateTable<LandStripId, LandStripRow>;
 
 }  // namespace core
 

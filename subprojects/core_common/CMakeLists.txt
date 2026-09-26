@@ -20,6 +20,7 @@ kolkhoz_add_module(core_common
     obstacle_raster.cpp
     road_trace.cpp
     road_pieces.cpp
+    road_cut.cpp
     home_reach.cpp
     haul.cpp
     plot.cpp

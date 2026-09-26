@@ -86,9 +86,11 @@
 ///     kRoadLaid after the write; gravel and asphalt are refused kNoConsumer
 ///     until road work (7e).
 ///
-/// NOT YET: kUpgradeRoad and kDemolishRoad are this module's from 7e and 7d;
-/// until each lands it does not read them, and the events slot's sweep
-/// refuses them kNoConsumer.
+///   * kDemolishRoad (7d) takes a path's or a dirt road's pieces at once, by
+///     the world's selection (RoadSelector), the land keeping their wear.
+///
+/// NOT YET: kUpgradeRoad is this module's from 7e; until then it does not
+/// read it, and the events slot's sweep refuses it kNoConsumer.
 ///
 /// WHAT IT DOES NOT DO, and who will:
 ///   * seasons of building (winter stops masonry, not carpentry —
@@ -351,12 +353,25 @@ std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& t
 ///        trace alike).
 using RoadTracer = std::function<RoadDraftResult(const WorldState&, const RoadDraft&)>;
 
-/// @brief As above, with the tracer kLayRoad needs (delivery 7c). The
-///        two-argument form passes none, and every kLayRoad is then refused
-///        kNoConsumer — the form this module's own tests use.
+/// @brief The world's piece selection as construction calls it
+///        (core_common/road_pieces.h through RoadTools — the same object
+///        SelectRoadPieces asks, so the demolition takes what the drag
+///        showed on the same world).
+using RoadSelector =
+    std::function<RoadPieces(const WorldState&, const RoadSelection&, RoadOperation)>;
+
+/// @brief The road tools' doors construction consumes the road orders by.
+struct RoadToolDoors {
+  RoadTracer trace;     ///< kLayRoad (7c).
+  RoadSelector select;  ///< kDemolishRoad (7d).
+};
+
+/// @brief As above, with the road tools' doors (delivery 7c, 7d). The
+///        two-argument form passes none, and every road order is then
+///        refused kNoConsumer — the form this module's own tests use.
 std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
                                                               StubTables stubs,
-                                                              RoadTracer road_tracer);
+                                                              RoadToolDoors road_doors);
 
 }  // namespace core
 

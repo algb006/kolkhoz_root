@@ -380,10 +380,11 @@ class ISimulation {
   /// @brief Every tool of the roads menu, open or why grey, in one call.
   /// @note Called between steps on the sim thread; pure reads.
   /// The full simulation opens the path and the dirt road since 7c (by
-  /// their epoch), closes a paved surface by its epoch, and answers
-  /// kNotYetBuilt for the rest until 7d-7e (STUB); kNoMaterial and
-  /// kNothingToWork are not produced yet (STUB). The bare step engine
-  /// answers kNotYetBuilt for every tool.
+  /// their epoch) and the demolition since 7d (kNothingToWork when no path
+  /// or dirt road may be taken), closes a paved surface by its epoch, and
+  /// answers kNotYetBuilt for the paved tools until 7e (STUB); kNoMaterial is
+  /// not produced yet (STUB). The bare step engine answers kNotYetBuilt for
+  /// every tool.
   virtual RoadToolStates RoadKindsAvailable() const = 0;
 
   /// @brief The network as the layer draws it: every road and path, its

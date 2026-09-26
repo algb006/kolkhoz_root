@@ -273,6 +273,10 @@ static_assert(sizeof(RoadPoint) == 12, "RoadPoint changed — update the codec a
 static_assert(AggregateArity<RoadPoint>() == 2,
               "RoadPoint gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(RoadStretch) == 4, "RoadStretch changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(LandStripRow) == sizeof(std::vector<Vec2>) + sizeof(std::vector<RoadStretch>),
+              "LandStripRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<LandStripRow>() == 2,
+              "LandStripRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadStretch>() == 1,
               "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictCarRow) == 24,
@@ -366,6 +370,8 @@ constexpr std::uint8_t kMaxRoadMark = static_cast<std::uint8_t>(RoadMark::kRoadM
 /// count read before the points, against the bytes left.
 constexpr std::size_t kSavedRoadPointBytes = 9;
 constexpr std::size_t kSavedRoadStretchBytes = 4;
+/// A land strip's point: the position alone, no mark (save 101).
+constexpr std::size_t kSavedStripPointBytes = 8;
 constexpr std::uint8_t kMaxDistrictCarKind =
     static_cast<std::uint8_t>(DistrictCarKind::kDistrictCarKindCount) - 1;
 constexpr std::uint8_t kMaxDistrictCarPhase =
@@ -1391,6 +1397,43 @@ void WriteRoadRow(SaveSink& sink, const RoadRow& row) {
   for (const RoadStretch& stretch : row.stretches) {
     out.WriteFloat(stretch.wear_pct);
   }
+}
+
+void WriteLandStripRow(SaveSink& sink, const LandStripRow& row) {
+  ByteWriter& out = sink.Out();
+  // Always its own geometry: a strip is never the map's (road_state.h).
+  out.WriteU32(static_cast<std::uint32_t>(row.axis.size()));
+  for (const Vec2& point : row.axis) {
+    WriteVec2(out, point);
+  }
+  out.WriteU32(static_cast<std::uint32_t>(row.stretches.size()));
+  for (const RoadStretch& stretch : row.stretches) {
+    out.WriteFloat(stretch.wear_pct);
+  }
+}
+
+LandStripRow ReadLandStripRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  LandStripRow row;
+  const std::uint32_t points = in.ReadU32();
+  if (static_cast<std::size_t>(points) * kSavedStripPointBytes > in.Remaining()) {
+    source.Fail("a land strip's axis is longer than the bytes left");
+    return row;
+  }
+  row.axis.reserve(points);
+  for (std::uint32_t index = 0; index < points && source.Valid(); ++index) {
+    row.axis.push_back(ReadVec2(in));
+  }
+  const std::uint32_t stretches = in.ReadU32();
+  if (static_cast<std::size_t>(stretches) * kSavedRoadStretchBytes > in.Remaining()) {
+    source.Fail("a land strip's stretches are longer than the bytes left");
+    return row;
+  }
+  row.stretches.reserve(stretches);
+  for (std::uint32_t index = 0; index < stretches && source.Valid(); ++index) {
+    row.stretches.push_back(RoadStretch{.wear_pct = in.ReadFloat()});
+  }
+  return row;
 }
 
 RoadRow ReadRoadRow(LoadSource& source) {

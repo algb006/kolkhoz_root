@@ -29,6 +29,7 @@
 #include "core_common/rain_stops_work.h"
 #include "core_common/random.h"
 #include "core_common/resident_activity.h"
+#include "core_common/road_cut.h"
 #include "core_common/road_graph.h"
 #include "core_common/road_pieces.h"
 #include "core_common/road_route.h"
@@ -1620,31 +1621,91 @@ int TestRoadPieces() {
   failures += Expect(duplicated.pieces.size() == 1 &&
                          duplicated.pieces[0].refusal == core::RoadPieceRefusal::kNone,
                      "pieces: a road another duplicates is taken");
-  // A map road's dead end leads somewhere (STUB until the places are
-  // exported): its last way is kept. The same dead end laid by the player is
-  // not a place, and goes.
-  core::RoadRow map_dead_end;
-  map_dead_end.removable = 1;
-  map_dead_end.map_road = core::MapRoadId{8};
-  map_dead_end.axis = {{.position = {.x = 200.0F, .y = 0.0F}},
-                       {.position = {.x = 200.0F, .y = -300.0F}}};
-  const core::RoadId map_end = core::AppendRow(roads, map_dead_end);
-  core::RoadRow player_dead_end = map_dead_end;
-  player_dead_end.origin = core::RoadOrigin::kPlayer;
-  player_dead_end.map_road = core::MapRoadId{};
-  player_dead_end.axis = {{.position = {.x = 900.0F, .y = 0.0F}},
-                          {.position = {.x = 900.0F, .y = -300.0F}}};
-  const core::RoadId player_end = core::AppendRow(roads, player_dead_end);
-  const core::RoadPieces to_place =
-      select(map_end, {.x = 200.0F, .y = 0.0F}, {.x = 200.0F, .y = -300.0F}, demolish);
-  const core::RoadPieces to_nothing =
-      select(player_end, {.x = 900.0F, .y = 0.0F}, {.x = 900.0F, .y = -300.0F}, demolish);
+  // A place (map_places.csv) and a field at the ends of two dead-end roads:
+  // their last ways are kept, each named. A third dead end with nothing at
+  // it goes (boss [72]; until 7d2 any map road's dead end was kept, STUB).
+  const auto dead_end = [&road](float x) {
+    return road({{.position = {.x = x, .y = 0.0F}}, {.position = {.x = x, .y = -300.0F}}}, 1);
+  };
+  const core::RoadId to_meadow = dead_end(200.0F);
+  const core::RoadId to_field = dead_end(900.0F);
+  const core::RoadId to_nothing_id = dead_end(600.0F);
+  const std::vector<core::RoadAnchorArea> areas = {
+      {.place = core::DefIdFromRow<core::MapPlaceIdTag>(4),
+       .field = core::FieldId{},
+       .point = {.x = 200.0F, .y = -320.0F}},
+      {.place = core::MapPlaceId{},
+       .field = core::FieldId{9},
+       .point = {.x = 900.0F, .y = -320.0F}}};
+  site.areas = areas;
+  const core::RoadPieces meadow_way =
+      select(to_meadow, {.x = 200.0F, .y = 0.0F}, {.x = 200.0F, .y = -300.0F}, demolish);
+  const core::RoadPieces field_way =
+      select(to_field, {.x = 900.0F, .y = 0.0F}, {.x = 900.0F, .y = -300.0F}, demolish);
+  const core::RoadPieces nothing_way =
+      select(to_nothing_id, {.x = 600.0F, .y = 0.0F}, {.x = 600.0F, .y = -300.0F}, demolish);
   failures +=
-      Expect(to_place.pieces.size() == 1 &&
-                 to_place.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
-                 to_place.pieces[0].stranded_map_road.value == 8 && to_nothing.pieces.size() == 1 &&
-                 to_nothing.pieces[0].refusal == core::RoadPieceRefusal::kNone,
-             "pieces: a map road's dead end is a place and kept; a player's goes");
+      Expect(meadow_way.pieces.size() == 1 &&
+                 meadow_way.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
+                 meadow_way.pieces[0].stranded_place.value == 4 && field_way.pieces.size() == 1 &&
+                 field_way.pieces[0].refusal == core::RoadPieceRefusal::kOnlyRoad &&
+                 field_way.pieces[0].stranded_field.value == 9 && nothing_way.pieces.size() == 1 &&
+                 nothing_way.pieces[0].refusal == core::RoadPieceRefusal::kNone,
+             "pieces: the only way to a place or a field is kept, each named; a dead end "
+             "to nothing goes");
+  // The static review of 0.36.31, a check each:
+  // a drag off the road selects nothing;
+  failures += Expect(
+      select(spur, {.x = 400.0F, .y = 330.0F}, {.x = 700.0F, .y = 330.0F}, demolish).pieces.empty(),
+      "pieces: a drag 30 m off the road selects nothing");
+  // a 10 m drag is a click, the whole piece under it;
+  const core::RoadPieces twitch = select(branch,
+                                         {.x = 400.0F, .y = 100.0F},
+                                         {.x = 400.0F, .y = 110.0F},
+                                         core::RoadOperation::kUpgradeToGravel);
+  failures += Expect(twitch.pieces.size() == 1 && twitch.pieces[0].s_from_m == 0.0F &&
+                         std::abs(twitch.pieces[0].s_to_m - 300.0F) < 0.01F,
+                     "pieces: a 10 m drag is a click and takes the piece under it");
+  // a path is no road access: the unit at a path's end holds nothing up;
+  const core::RoadId unit_path =
+      road({{.position = {.x = 300.0F, .y = 0.0F}}, {.position = {.x = 300.0F, .y = -150.0F}}},
+           1,
+           core::RoadSurface::kNone,
+           core::RoadKind::kPath);
+  const std::vector<core::RoadAnchorUnit> path_unit = {
+      {.unit = core::UnitId{7}, .position = {.x = 300.0F, .y = -155.0F}}};
+  const std::span<const core::RoadAnchorUnit> units_before = site.units;
+  site.units = path_unit;
+  failures +=
+      Expect(select(unit_path, {.x = 300.0F, .y = 0.0F}, {.x = 300.0F, .y = -150.0F}, demolish)
+                     .pieces[0]
+                     .refusal == core::RoadPieceRefusal::kNone,
+             "pieces: a path is no road access, and a unit on one holds nothing up");
+  site.units = units_before;
+  // and a player's road laid MORE than 100 m nearer a place than the map
+  // road is one more way in, not the only one: a place at (600, -420) has
+  // the map's dead end at x = 600 120 m off; the player lays a road on from
+  // its end to 10 m off. Measured from the nearest road of any kind (10 m),
+  // the map's 120 fell outside the 100 m reach and the player's road could
+  // never go; measured from the map's, both are ways in.
+  core::RoadRow nearer;
+  nearer.origin = core::RoadOrigin::kPlayer;
+  nearer.removable = 1;
+  nearer.axis = {{.position = {.x = 600.0F, .y = -300.0F}},
+                 {.position = {.x = 600.0F, .y = -410.0F}}};
+  const core::RoadId nearer_id = core::AppendRow(roads, nearer);
+  const std::vector<core::RoadAnchorArea> far_place = {
+      {.place = core::DefIdFromRow<core::MapPlaceIdTag>(1),
+       .field = core::FieldId{},
+       .point = {.x = 600.0F, .y = -420.0F}}};
+  site.areas = far_place;
+  failures +=
+      Expect(select(nearer_id, {.x = 600.0F, .y = -300.0F}, {.x = 600.0F, .y = -410.0F}, demolish)
+                     .pieces[0]
+                     .refusal == core::RoadPieceRefusal::kNone,
+             "pieces: a player's road laid over 100 m nearer a place than the map's is "
+             "not its only way");
+  site.areas = {};
   // Upgrades: asphalt before its epoch; a path is no road's step.
   const core::RoadId path =
       road({{.position = {.x = 100.0F, .y = 0.0F}}, {.position = {.x = 100.0F, .y = 200.0F}}},
@@ -1664,6 +1725,59 @@ int TestRoadPieces() {
                                  .pieces[0]
                                  .refusal == core::RoadPieceRefusal::kNotThisStep,
                      "pieces: asphalt before its epoch, and a path upgraded, are refused");
+  return failures;
+}
+
+/// CUTTING A ROAD (road_cut.h; delivery 7d), counted by hand: a straight
+/// 100 m road of four stretches worn 10, 20, 30, 40. The middle 40-60 out:
+/// two remnants of 40 m, their stretches taking the wear at their middles
+/// (12.5 -> 10, 37.5 -> 20; 72.5 -> 30, 97.5 -> 40), a strip of 20 m worn 30
+/// (its middle at 50). The whole out: no remnant, one strip with all four.
+/// Nothing out: the road as it was, still the map's.
+int TestRoadCut() {
+  int failures = 0;
+  core::RoadRow road;
+  road.map_road = core::MapRoadId{2};
+  road.axis = {{.position = {.x = 0.0F, .y = 0.0F}, .mark = core::RoadMark::kBorder},
+               {.position = {.x = 100.0F, .y = 0.0F}}};
+  road.stretches = {
+      {.wear_pct = 10.0F}, {.wear_pct = 20.0F}, {.wear_pct = 30.0F}, {.wear_pct = 40.0F}};
+  const std::array<std::pair<float, float>, 1> middle = {{{60.0F, 40.0F}}};
+  const core::RoadCut split = core::CutRoad(road, middle);
+  const auto wears = [](const std::vector<core::RoadStretch>& stretches) {
+    std::vector<float> out;
+    for (const core::RoadStretch& stretch : stretches) {
+      out.push_back(stretch.wear_pct);
+    }
+    return out;
+  };
+  // The cut points are interpolated: compared within a millimetre.
+  const auto at = [](float got, float want) { return std::abs(got - want) < 0.001F; };
+  failures += Expect(
+      split.remnants.size() == 2 && split.strips.size() == 1 &&
+          wears(split.remnants[0].stretches) == std::vector<float>{10.0F, 20.0F} &&
+          wears(split.remnants[1].stretches) == std::vector<float>{30.0F, 40.0F} &&
+          wears(split.strips[0].stretches) == std::vector<float>{30.0F} &&
+          split.remnants[0].origin == core::RoadOrigin::kPlayer &&
+          split.remnants[0].map_road.value == 2 &&
+          split.remnants[0].axis.front().mark == core::RoadMark::kBorder &&
+          at(split.remnants[0].axis.back().position.x, 40.0F) &&
+          at(split.remnants[1].axis.front().position.x, 60.0F) &&
+          at(split.strips[0].axis.front().x, 40.0F) && at(split.strips[0].axis.back().x, 60.0F),
+      "cut: the middle out leaves two remnants and a strip, each with the wear under it");
+  const std::array<std::pair<float, float>, 1> whole = {{{0.0F, 100.0F}}};
+  const core::RoadCut gone = core::CutRoad(road, whole);
+  const std::array<std::pair<float, float>, 1> none = {{{50.0F, 50.0F}}};
+  const core::RoadCut kept = core::CutRoad(road, none);
+  failures += Expect(
+      gone.remnants.empty() && gone.strips.size() == 1 &&
+          wears(gone.strips[0].stretches) == std::vector<float>{10.0F, 20.0F, 30.0F, 40.0F} &&
+          kept.remnants.size() == 1 && kept.strips.empty() &&
+          kept.remnants[0].origin == core::RoadOrigin::kMap,
+      "cut: the whole out leaves only land; nothing out leaves the map's road");
+  failures += Expect(core::StripWearAt(split.strips, {.x = 50.0F, .y = 3.0F}, 4.0F) == 30.0F &&
+                         core::StripWearAt(split.strips, {.x = 50.0F, .y = 6.0F}, 4.0F) < 0.0F,
+                     "cut: the land's wear is found within half a bed of the strip, not past it");
   return failures;
 }
 
@@ -2442,6 +2556,7 @@ int main() {
   failures += TestObstacleRaster();
   failures += TestRoadTrace();
   failures += TestRoadPieces();
+  failures += TestRoadCut();
   failures += TestRoadIndex();
   {
     // The night shift (boss, parcel 360): read as itself now, sunset to

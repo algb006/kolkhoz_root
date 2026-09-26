@@ -245,9 +245,18 @@ struct RoadPiece {
   UnitId stranded_unit;
 
   /// For kOnlyRoad with no unit: the map road (tables/roads.csv) that leads
-  /// to what is stranded — a neighbour, the district's way out; the layer
-  /// names it from its key.
+  /// to what is stranded — the district's way out; the layer names it from
+  /// its key.
   MapRoadId stranded_map_road;
+
+  /// For kOnlyRoad: the place of map_places.csv that would be left without
+  /// a road (a settlement, the dacha zone, the industry zone, a hay meadow;
+  /// 7d2, boss [72]) — its index in file order; the layer names it by key.
+  MapPlaceId stranded_place;
+
+  /// For kOnlyRoad: the field that would be left with no way to the
+  /// village (roads design §17; 7d2, boss [72]).
+  FieldId stranded_field;
 };
 
 /// @brief The core's answer to a selection: the pieces, in order along the
@@ -311,7 +320,9 @@ struct RoadView {
   RoadSurface surface = RoadSurface::kDirt;
   RoadOrigin origin = RoadOrigin::kMap;
 
-  /// For a map road, which one (tables/roads.csv); invalid for a player road.
+  /// For a map road, which one (tables/roads.csv); invalid for a road the
+  /// player laid; a remnant of a cut map road keeps it with origin kPlayer
+  /// (RoadRow::map_road) — the name, not the axis.
   MapRoadId map_road;
 
   /// 0: the player may not take it away — the trunk road, its bridge, the

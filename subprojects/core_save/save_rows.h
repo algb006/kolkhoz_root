@@ -85,6 +85,10 @@ DistrictCarRow ReadDistrictCarRow(LoadSource& source);
 void WriteRoadRow(SaveSink& sink, const RoadRow& row);
 RoadRow ReadRoadRow(LoadSource& source);
 
+/// A land strip's axis is always written: it is nobody's map (save 101).
+void WriteLandStripRow(SaveSink& sink, const LandStripRow& row);
+LandStripRow ReadLandStripRow(LoadSource& source);
+
 }  // namespace core
 
 #endif  // CORE_SAVE_SAVE_ROWS_H_

@@ -576,9 +576,10 @@ enum class EventKind : std::uint8_t {
 
   /// road — a piece was demolished (kDemolishRoad): at once for a path and a
   /// dirt road, after its work for a paved one. The road id may name a road
-  /// that no longer exists when the whole of it went. kNotable. Seam key
-  /// `road_demolished`.
-  /// @no_emit the demolition comes with delivery 7d; until then kDemolishRoad is refused
+  /// that no longer exists when the whole of it went; a road split in two
+  /// keeps its id on the first part, and the second is a new road Roads()
+  /// answers. road = the road, order = the kDemolishRoad. kNotable. Seam key
+  /// `road_demolished`. Raised since 7d (core_construction/road_laying.cpp).
   kRoadDemolished,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

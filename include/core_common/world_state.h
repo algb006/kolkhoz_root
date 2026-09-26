@@ -935,6 +935,10 @@ struct WorldState {
   /// axis, which the loader puts back from tables/roads.csv. road_state.h.
   RoadTable roads;
 
+  /// The land roads were taken off, keeping their wear (construction design
+  /// §13; delivery 7d); SAVED (save 101). road_state.h.
+  LandStripTable land_strips;
+
   /// The network made queryable (road_route.h): its graph, node-to-node
   /// distances and a grid of its pieces. DERIVED and NOT SAVED — built from
   /// `roads` at genesis and on load, and rebuilt by whatever changes the

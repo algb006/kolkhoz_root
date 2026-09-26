@@ -725,10 +725,11 @@ class ISession {
 
   // -- the player's road tools (delivery 7; core_common/road_draft.h) ---------
   // STUB in part (ISimulation says each one's answer): RoadKindsAvailable
-  // opens the path and the dirt road since 7c and the rest with 7d-7e.
-  // Roads() is real from 7a, PreviewRoad from 7b, SelectRoadPieces from 7d.
-  // kLayRoad lays a path or a dirt road since 7c; kUpgradeRoad and
-  // kDemolishRoad are staged and then refused kNoConsumer until 7e and 7d.
+  // opens the path and the dirt road since 7c, the demolition since 7d, the
+  // paved tools with 7e. Roads() is real from 7a, PreviewRoad from 7b,
+  // SelectRoadPieces from 7d. kLayRoad lays a path or a dirt road since 7c,
+  // kDemolishRoad takes one since 7d; kUpgradeRoad is staged and then
+  // refused kNoConsumer until 7e.
 
   /// @brief The trace of a road or path the player is drawing: the axis the
   ///        order kLayRoad would lay from the same points, what is in its

@@ -72,6 +72,7 @@ constexpr const char* kSectionDistrictVisits = "district_visits";
 constexpr const char* kSectionNightOutings = "night_outings";
 constexpr const char* kSectionDistrictCars = "district_cars";
 constexpr const char* kSectionRoads = "roads";
+constexpr const char* kSectionLandStrips = "land_strips";
 
 /// Puts every map road's axis back from tables/roads.csv after the section
 /// is read (a map road's axis is never saved; road_state.h), by the road's
@@ -428,6 +429,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.roads, WriteRoadRow);
   CloseSection(out, length_offset);
 
+  // The land roads were taken off, keeping their wear (save format 101).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.land_strips, WriteLandStripRow);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -561,7 +567,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionDistrictVisits, &loaded.district_visits, ReadDistrictVisitRow) ||
       !read_table_section(kSectionNightOutings, &loaded.night_outings, ReadNightOutingRow) ||
       !read_table_section(kSectionDistrictCars, &loaded.district_cars, ReadDistrictCarRow) ||
-      !read_table_section(kSectionRoads, &loaded.roads, ReadRoadRow)) {
+      !read_table_section(kSectionRoads, &loaded.roads, ReadRoadRow) ||
+      !read_table_section(kSectionLandStrips, &loaded.land_strips, ReadLandStripRow)) {
     return false;
   }
   {

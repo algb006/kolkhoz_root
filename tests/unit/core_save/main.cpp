@@ -529,6 +529,12 @@ core::WorldState MakeWorld() {
       core::RoadPoint{.position = {.x = 45.0F, .y = 25.0F}}};
   road.stretches = {core::RoadStretch{.wear_pct = 12.5F}, core::RoadStretch{.wear_pct = 40.0F}};
   core::AppendRow(world.roads, road);
+  // Save 101: the land a road was taken off, keeping its wear — three
+  // points, two stretches of differing wear, none of them nought.
+  core::LandStripRow strip;
+  strip.axis = {{.x = 100.0F, .y = 5.0F}, {.x = 120.0F, .y = 5.5F}, {.x = 140.0F, .y = 7.25F}};
+  strip.stretches = {core::RoadStretch{.wear_pct = 65.0F}, core::RoadStretch{.wear_pct = 33.5F}};
+  core::AppendRow(world.land_strips, strip);
   world.residents.rows[1].away_until_day = 91;
   world.residents.rows[1].away_until_hour = 14;
   world.residents.rows[1].away_walk_hours = 3;
@@ -1211,7 +1217,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1378,6 +1384,10 @@ constexpr std::array<RecordedSection, 20> kRecordedPayload = {{
     // Predicted 62 before the build, with the dictionaries +2 (the new kind's
     // empty count) and every other section unmoved.
     {"roads", 62, 0x1b467446569a40b2ULL},
+    // Save 101: the land strips — one: 8 of table, 4 of id, 4 + 3 x 8 of
+    // axis, 4 + 2 x 4 of stretches. Predicted 52 before the build, every
+    // other section unmoved.
+    {"land_strips", 52, 0x13f1ce4d8e4c8cb7ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -1814,6 +1824,14 @@ int main() {
                          loaded.roads.rows[0].stretches.size() == 2 &&
                          loaded.roads.rows[0].stretches[1].wear_pct == 40.0F,
                      "a player's road comes back with its axis and its stretches (save 92)");
+  failures +=
+      Expect(loaded.land_strips.rows.size() == 1 && loaded.land_strips.rows[0].axis.size() == 3 &&
+                 loaded.land_strips.rows[0].axis[2].x == 140.0F &&
+                 loaded.land_strips.rows[0].axis[2].y == 7.25F &&
+                 loaded.land_strips.rows[0].stretches.size() == 2 &&
+                 loaded.land_strips.rows[0].stretches[0].wear_pct == 65.0F &&
+                 loaded.land_strips.rows[0].stretches[1].wear_pct == 33.5F,
+             "a land strip comes back with its axis and its wear (save 101)");
   failures += Expect(loaded.residents.rows.size() >= 2 &&
                          loaded.residents.rows[0].twin.value == loaded.residents.row_ids[1].value &&
                          loaded.residents.rows[1].identical_twin == 1,

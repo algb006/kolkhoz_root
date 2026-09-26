@@ -21,14 +21,15 @@
 /// is asked of the network: the pieces are taken one by one in drag order,
 /// and a piece is refused kOnlyRoad when taking it too would cut from the
 /// district's network a unit that reached it (a road within road_access_m of
-/// the unit's centre plus half the bed), a way out to a neighbour, or the
-/// dead end of a map road — the place it leads to (a settlement inside the
-/// map, a hayfield, the forest), STUB until the places are exported: the
-/// core knows them by no name. The unit or the map road is named. The
-/// district's network is the part holding the roads that may not be
+/// the unit's centre plus half the bed), a way out to a neighbour, a place of
+/// map_places.csv (a settlement, the dacha zone, the industry zone, a hay
+/// meadow; boss [72]) or a field (§17) — each named. A place or a field
+/// reaches by its nearest road and any within kAreaEntryReachMetres past it.
+/// The district's network is the part holding the roads that may not be
 /// removed; a world with none takes the part holding most of what is
-/// reached. STUB, named: fields are not asked yet (§17 names them), nor
-/// winter roads and fords' seasons.
+/// reached. Until 7d2 a map road's dead end stood for a place (STUB); the
+/// places' export replaced it. STUB, named: winter roads and fords' seasons
+/// are not asked; the forest is outside §17 (boss [72]).
 ///
 /// WHAT AN UPGRADE MAY NOT TAKE (roads design §9, the chain): a piece
 /// already of that surface or past it (kAlreadyThat), asphalt over dirt — the
@@ -57,11 +58,31 @@ namespace core {
 ///        (construction design §13: «не короче 50 м (`STUB`)»).
 inline constexpr float kMinRemnantMetres = 50.0F;
 
+/// @brief How far off a road's axis a drag's end may lie and still be on
+///        that road, metres: a bed and a half. STUB (7d2, static review):
+///        further, the drag selects nothing.
+inline constexpr float kDragReachMetres = 12.0F;
+
 /// @brief A unit as connectivity asks it: its id and where it stands.
 struct RoadAnchorUnit {
   UnitId unit;
   Vec2 position;
 };
+
+/// @brief A place or a field as connectivity asks it: which, and its point
+///        (a place's centroid, a field's centre). Exactly one id is valid.
+struct RoadAnchorArea {
+  MapPlaceId place;
+  FieldId field;
+  Vec2 point;
+};
+
+/// @brief How far past its nearest road a place or a field still counts a
+///        road as its way in, metres. STUB (7d2): a centroid is not an
+///        entry, and a meadow reached from two sides would otherwise lose
+///        its second road to the nearer one; boss [72] gives an entry point
+///        for any place where this reads wrong.
+inline constexpr float kAreaEntryReachMetres = 100.0F;
 
 /// @brief The world as the selection reads it.
 struct RoadPieceSite {
@@ -69,6 +90,11 @@ struct RoadPieceSite {
 
   /// Every unit; the ones with no road in reach take no part.
   std::span<const RoadAnchorUnit> units;
+
+  /// The places of map_places.csv and the fields (roads design §17): each
+  /// reaches the network by its nearest road and any other within
+  /// kAreaEntryReachMetres past it.
+  std::span<const RoadAnchorArea> areas;
 
   /// How near a road must come to a unit, metres from the bed's edge
   /// (world_params `road_access_m`, units rules §12).

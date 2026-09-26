@@ -739,6 +739,27 @@ int TestMapObstacleTables() {
       Expect(spoiled_area(1, 1, "grove"), "map obstacles: a key whose kind changes refuses");
   failures += Expect(spoiled_area(1, 2, "0"), "map obstacles: seq out of order refuses");
   failures += Expect(spoiled_area(2, 0, "wood2"), "map obstacles: an area of two points refuses");
+  // The places (boss [72]): one row a place; an unknown kind, or a key
+  // listed twice, refuses.
+  const auto places = [](std::vector<std::vector<std::string>> rows, core::MapObstacles& out) {
+    const test::FakeTable table({"place", "kind", "x_m", "y_m"}, std::move(rows));
+    const test::FakeTableSet set("map_places", table);
+    std::string trouble;
+    return core::ReadMapObstacles(set, out, trouble);
+  };
+  core::MapObstacles with_places;
+  core::MapObstacles bad_kind;
+  core::MapObstacles twice;
+  failures +=
+      Expect(places({{"meadow_01", "meadow", "10", "20"}, {"artel", "industry_zone", "5", "6"}},
+                    with_places) &&
+                 with_places.places.size() == 2 &&
+                 with_places.places[0].kind == core::MapPlaceKind::kMeadow &&
+                 with_places.places[1].point.y == 6.0F &&
+                 !places({{"lake_house", "lake", "1", "1"}}, bad_kind) &&
+                 !places({{"m", "meadow", "1", "1"}, {"m", "meadow", "2", "2"}}, twice),
+             "map places: read with kind and point; an unknown kind or a key twice "
+             "refuses");
   core::MapObstacles none;
   const test::FakeTableSet empty;
   std::string error;

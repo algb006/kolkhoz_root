@@ -49,11 +49,11 @@ class RoadTools {
                     RoadOperation operation) const;
 
   /// @brief Every tool of the roads menu on `world` (roads design §9, «Дизаблим
-  ///        но не скрываем»): a path and a dirt road open (7c); a surface its
-  ///        epoch has not opened kByEpoch; the rest kNotYetBuilt until their
-  ///        part lands (road work 7e, the demolition 7d). STUB for those —
-  ///        and kNoMaterial and kNothingToWork are not produced yet at all
-  ///        (they come with the paved tools and the selection).
+  ///        но не скрываем»): a path and a dirt road open (7c); the
+  ///        demolition open while a path or a dirt road may be taken, else
+  ///        kNothingToWork (7d); a surface its epoch has not opened kByEpoch;
+  ///        the paved tools kNotYetBuilt until road work (7e), STUB — and
+  ///        kNoMaterial not produced yet (it comes with the paved tools).
   RoadToolStates ToolStates(const WorldState& world) const;
 
   /// @brief The raster, built if it was not — for a test's count and the

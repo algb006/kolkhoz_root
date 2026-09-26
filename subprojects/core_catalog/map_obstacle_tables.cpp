@@ -1,5 +1,6 @@
 #include "core_catalog/map_obstacle_tables.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -209,6 +210,61 @@ bool ReadLines(const ITable& table, std::vector<MapLineDef>& lines, std::string&
   return true;
 }
 
+std::optional<MapPlaceKind> PlaceKindOf(std::string_view word) {
+  if (word == "village_zone") {
+    return MapPlaceKind::kVillageZone;
+  }
+  if (word == "dacha_zone") {
+    return MapPlaceKind::kDachaZone;
+  }
+  if (word == "industry_zone") {
+    return MapPlaceKind::kIndustryZone;
+  }
+  if (word == "meadow") {
+    return MapPlaceKind::kMeadow;
+  }
+  return std::nullopt;
+}
+
+/// map_places.csv: ONE ROW A PLACE (unlike the other two), `place` the key.
+bool ReadPlaces(const ITable& table, std::vector<MapPlaceDef>& places, std::string& error) {
+  const std::uint32_t key_column = table.FindColumn("place");
+  const std::uint32_t kind_column = table.FindColumn("kind");
+  const std::uint32_t x_column = table.FindColumn("x_m");
+  const std::uint32_t y_column = table.FindColumn("y_m");
+  if (key_column == kNoTableColumn || kind_column == kNoTableColumn || x_column == kNoTableColumn ||
+      y_column == kNoTableColumn) {
+    error = "map_places: a column of place, kind, x_m, y_m is missing";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    const std::string_view key = table.CellText(row, key_column);
+    const std::string_view kind_word = table.CellText(row, kind_column);
+    const std::optional<float> x = table.CellReal(row, x_column);
+    const std::optional<float> y = table.CellReal(row, y_column);
+    const std::optional<MapPlaceKind> kind = PlaceKindOf(kind_word);
+    const std::string where =
+        "map_places: row " + std::to_string(row) + " (" + std::string(key) + ")";
+    if (key.empty() || !x || !y) {
+      error = where + ": place, x_m or y_m does not parse";
+      return false;
+    }
+    if (!kind) {
+      error = where + ": kind '" + std::string(kind_word) + "' is not a place kind the core knows";
+      return false;
+    }
+    if (std::any_of(places.begin(), places.end(), [key](const MapPlaceDef& place) {
+          return place.key == key;
+        })) {
+      error = where + ": the place is listed twice";
+      return false;
+    }
+    places.push_back(
+        MapPlaceDef{.key = std::string(key), .kind = *kind, .point = Vec2{.x = *x, .y = *y}});
+  }
+  return true;
+}
+
 }  // namespace
 
 bool ReadMapObstacles(const ITableSet& tables, MapObstacles& obstacles, std::string& error) {
@@ -220,6 +276,11 @@ bool ReadMapObstacles(const ITableSet& tables, MapObstacles& obstacles, std::str
   }
   if (const ITable* lines = tables.FindTable("map_lines")) {
     if (!ReadLines(*lines, read.lines, error)) {
+      return false;
+    }
+  }
+  if (const ITable* places = tables.FindTable("map_places")) {
+    if (!ReadPlaces(*places, read.places, error)) {
       return false;
     }
   }

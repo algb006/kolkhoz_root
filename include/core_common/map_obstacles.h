@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core_common/geometry.h"
+#include "core_common/ids.h"
 
 namespace core {
 
@@ -78,10 +79,29 @@ struct MapLineDef {
   std::vector<MapLinePoint> points;
 };
 
-/// @brief Everything map_areas.csv and map_lines.csv say, in file order.
+/// @brief What a place of map_places.csv is (roads design §17: the places the
+///        network must keep reaching; boss [72]).
+enum class MapPlaceKind : std::uint8_t {
+  kVillageZone = 0,    ///< A settlement: the village, the new village, the pond village.
+  kDachaZone,          ///< The dacha settlement by the lake.
+  kIndustryZone,       ///< The industrial zone, the artel.
+  kMeadow,             ///< A hay meadow.
+  kMapPlaceKindCount,  ///< NOT A KIND: the count, for mirrors.
+};
+
+/// @brief One place: its key, kind and one point — the contour's centroid.
+struct MapPlaceDef {
+  std::string key;
+  MapPlaceKind kind = MapPlaceKind::kVillageZone;
+  Vec2 point;
+};
+
+/// @brief Everything map_areas.csv, map_lines.csv and map_places.csv say, in
+///        file order.
 struct MapObstacles {
   std::vector<MapAreaDef> areas;
   std::vector<MapLineDef> lines;
+  std::vector<MapPlaceDef> places;
 };
 
 }  // namespace core

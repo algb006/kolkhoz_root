@@ -1365,10 +1365,8 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
   // Since 7c the dirt road is LAID in the step it is read: kRoadLaid names
   // the new road and comes before the order's own kOrderDone, which names
   // it too — and the road is in the book by then (the event after the
-  // write). The demolition has no consumer until 7d: NO CONSUMER, the
-  // sweep's own word for a kind nobody handles yet (static review of
-  // 0.36.25: its first draft refused as a closed gate, which tells the layer
-  // to name a unit type's gate the order does not carry).
+  // write). The demolition names road 3, which the book does not hold: since
+  // 7d construction takes it and refuses it by the rule (no piece in).
   core::RoadId laid_road;
   std::size_t laid_at = 0;
   std::size_t done_at = 0;
@@ -1388,7 +1386,7 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
         demolition_unconsumed ||
         (event.order.value == demolished.value && event.kind == core::EventKind::kOrderRefused &&
          event.road.value == 3 &&
-         event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer));
+         event.amount == static_cast<std::int64_t>(core::OrderRefusal::kRuleForbids));
   }
   const core::RoadTable& book = session->State().roads;
   const bool in_book = !book.rows.empty() && book.row_ids.back().value == laid_road.value &&
@@ -1398,8 +1396,8 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
                      "roads: the dirt road is laid, named by kRoadLaid and by the order's "
                      "kOrderDone, and in the book");
   failures += Expect(demolition_unconsumed,
-                     "roads: the demolition, until 7d, is refused with no consumer and names "
-                     "its road");
+                     "roads: the demolition of a road that is not there is refused by the rule "
+                     "(7d) and names the road");
 
   core::RoadDraft draft;
   draft.point_count = 2;
@@ -1442,8 +1440,9 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
                  tool(core::RoadTool::kLayAsphalt) == core::RoadToolClosed::kByEpoch &&
                  tool(core::RoadTool::kUpgradeToGravel) == core::RoadToolClosed::kNotYetBuilt &&
                  tool(core::RoadTool::kUpgradeToAsphaltWalks) == core::RoadToolClosed::kByEpoch &&
-                 tool(core::RoadTool::kDemolish) == core::RoadToolClosed::kNotYetBuilt,
-             "roads: path and dirt open, gravel not built, asphalt by its epoch");
+                 tool(core::RoadTool::kDemolish) == core::RoadToolClosed::kOpen,
+             "roads: path and dirt open, gravel not built, asphalt by its epoch, demolition "
+             "open over the road laid");
 
   core::JournalEntry entry;
   entry.verb = core::JournalVerb::kIssue;

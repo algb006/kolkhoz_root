@@ -89,4 +89,4 @@ kWinterSowingLost,1,
 kRoadLaid,1,
 kRoadWorkStarted,0,road work comes with delivery 7e; until then no road work stands
 kRoadWorkFinished,0,road work comes with delivery 7e; until then no road work stands
-kRoadDemolished,0,the demolition comes with delivery 7d; until then kDemolishRoad is refused
+kRoadDemolished,1,

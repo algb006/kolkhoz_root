@@ -727,6 +727,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                       "livestock",
                       "map_areas",
                       "map_lines",
+                      "map_places",
                       "resources",
                       "roads",
                       "start_layout",
@@ -789,12 +790,19 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     return nullptr;
   }
   const auto road_tools = std::make_shared<const RoadTools>(std::move(*read_tools));
-  auto construction =
-      CreateConstructionSystem(*config.tables,
-                               config.stub_tables,
-                               [road_tools](const WorldState& world, const RoadDraft& draft) {
-                                 return road_tools->Trace(world, draft);
-                               });
+  auto construction = CreateConstructionSystem(
+      *config.tables,
+      config.stub_tables,
+      RoadToolDoors{
+          .trace = [road_tools](const WorldState& world,
+                                const RoadDraft& draft) { return road_tools->Trace(world, draft); },
+          .select =
+              [road_tools](const WorldState& world,
+                           const RoadSelection& selection,
+                           RoadOperation operation) {
+                return road_tools->Select(world, selection, operation);
+              },
+      });
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).
     return nullptr;

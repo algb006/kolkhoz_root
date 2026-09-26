@@ -231,7 +231,9 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // 2026-09-25, save 92: the road network, 35 — its own section (save.cpp,
 // roads). 0.36.1: the road index, 36 — DERIVED and deliberately NOT written:
 // DecodeWorld builds it from the roads it read (save.cpp).
-static_assert(AggregateArity<WorldState>() == 36,
+// 2026-09-26, save 101: the land strips, 37 — their own section (save.cpp,
+// land_strips).
+static_assert(AggregateArity<WorldState>() == 37,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

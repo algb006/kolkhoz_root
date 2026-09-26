@@ -147,6 +147,12 @@ struct RoadIdTag {};
 /// @brief One road or path of the network (core_common/road_state.h).
 using RoadId = EntityId<RoadIdTag>;
 
+struct LandStripIdTag {};
+
+/// @brief A strip of land a road was taken off, keeping its wear
+/// (core_common/road_state.h).
+using LandStripId = EntityId<LandStripIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------
@@ -231,6 +237,13 @@ using ResourceId = DefId<ResourceIdTag>;
 /// @brief A crop from the crop table: rye, potato, clover, flax.
 /// Fallow (пар) is not a crop; a field with no crop holds an invalid CropId.
 using CropId = DefId<CropIdTag>;
+
+struct MapPlaceIdTag {};
+
+/// @brief A place of tables/map_places.csv — a settlement, the dacha zone,
+/// the industry zone, a hay meadow — by its index in file order
+/// (core_common/map_obstacles.h; delivery 7d).
+using MapPlaceId = DefId<MapPlaceIdTag>;
 
 /// @brief A unit type from the unit table: barn, school, smithy.
 /// One generic Unit entity plus a type row — never a class per building.

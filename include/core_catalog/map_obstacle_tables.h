@@ -21,7 +21,9 @@ namespace core {
 
 class ITableSet;
 
-/// @brief Reads both tables.
+/// @brief Reads the three tables (map_places.csv one row a place, boss [72]:
+///        a key, a kind among village_zone, dacha_zone, industry_zone and
+///        meadow, the contour's centroid; a key listed twice refuses).
 /// @param obstacles Replaced on success; untouched on failure.
 /// @return true with no areas (no lines) when the set has no `map_areas`
 ///         (`map_lines`) table — unit tests and stub worlds, where the tracer
