@@ -103,7 +103,8 @@ class IProductionSystem {
   /// day its crop can be sown and still ripen before the snow, the days
   /// spent in the order the fields must be sown; kHerdStarving for every kolkhoz herd with
   /// unfed_days > 0; kHerdWithoutStable, one line for the whole kolkhoz
-  /// horse team, while the yard has not reached its second step;
+  /// horse team, while the yard has not reached its second step, and
+  /// kHerdAging beside it once the team's oldest head is at old age;
   /// kFellingUnreachable for every stand marked for felling, with work left,
   /// that the brigade's ride from the nearest lived-in house does not reach
   /// by the accountant's road rule (harness speed; parcel 308);

@@ -231,26 +231,27 @@ std::vector<std::uint32_t> FieldsInHarvestOrder(const ProductionConfig& config,
 }
 
 /// kHerdWithoutStable: the farm owns a horse team and the yard has not
-/// reached its second step, so the team ages and cannot renew itself
-/// (alarm_state.h).
+/// reached its second step, so the team cannot renew itself
+/// (alarm_state.h). kHerdAging, beside it: the team's oldest head has
+/// reached old age.
 ///
-/// LIT ON THE FOUNDING MORNING, and that is a measurement and not a
-/// convenience. The order said "light it with the death of the first
-/// horse", for the sake of an early date with a natural link. The date
-/// is earlier than that and the link is the same one: the sixteen start
-/// horses are SIXTEEN HERDS OF ONE HEAD, aged 1.8 to 7.8 game years
-/// against a lifespan band of 6 to 8, so four of them stand inside the
-/// death band on day zero and the first head goes on day 33 (seed 1930,
-/// core 2026-09-05). There is no morning on which this team is not
-/// dying; waiting for the first death would only spend a fifth of the
-/// 144-day deadline saying nothing.
+/// LIT ON THE FOUNDING MORNING. It was first argued by a measurement that
+/// no longer holds: the start's sixteen horses were drawn 1.8 to 7.8 game
+/// years against a lifespan band of 6 to 8, four stood inside the death
+/// band on day zero and the first died on day 33 (seed 1930, core
+/// 2026-09-05). SINCE 0.35.10 THE TEAM IS DRAWN SHORT OF OLD AGE (genesis),
+/// no head is in the band on day zero, and "the first horse aged" became a
+/// real date about two years in. The founding-morning light stays on boss's
+/// word (boss-core-epoch1-resume [79]): the stable is the condition of the
+/// ploughing and is asked for from the start; the date the team begins to
+/// age is kHerdAging's, a line of its own, because the constant one is read
+/// as scenery by then (econ's measure).
 ///
-/// AND IT COSTS NO STATE. "A horse has died" is a transition and the
-/// world keeps no per-kind tally of one, so that predicate would need a
-/// new field in HerdRow — a save-format change, and the save version is
-/// the human's to raise. "The farm has horses and no stable" is a
-/// property of the completed state, which is what an alarm is allowed to
-/// be (alarm_state.h).
+/// AND BOTH COST NO STATE. "A horse has died" is a transition, and the
+/// world keeps no per-kind tally of one. "The farm has horses and no
+/// stable" and "its oldest head is past old age" are properties of the
+/// completed state, which is what an alarm is allowed to be
+/// (alarm_state.h); the second reads the band of ages HerdRow keeps.
 ///
 /// ONE ALARM FOR THE TEAM, not one per row. The team is sixteen rows at
 /// the start and one after the horses are stabled, and sixteen identical
@@ -274,6 +275,9 @@ void CollectStableAlarms(const ProductionConfig& config,
   }
   std::uint32_t first = kNoRow;
   std::int64_t heads = 0;
+  // The row holding the team's oldest adult, the first of them on a tie.
+  std::uint32_t oldest = kNoRow;
+  float oldest_years = 0.0F;
   for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
     const HerdRow& herd = world.herds.rows[row];
     // The farm's own team, wherever it stands: the start keeps it at
@@ -291,6 +295,12 @@ void CollectStableAlarms(const ProductionConfig& config,
     }
     first = first == kNoRow ? row : first;
     heads += mine;
+    // The band means nothing with no adults (herd_age_band.h).
+    if (herd.adult_count > 0 &&
+        (oldest == kNoRow || herd.adult_age_max_game_years > oldest_years)) {
+      oldest = row;
+      oldest_years = herd.adult_age_max_game_years;
+    }
   }
   if (first == kNoRow) {
     return;  // no horses: nothing to lose, and no stable to ask for
@@ -300,6 +310,22 @@ void CollectStableAlarms(const ProductionConfig& config,
   alarm.herd = world.herds.row_ids[first];
   alarm.amount = heads;
   alarms.push_back(alarm);
+  // OLD AGE BY THE AGE DEATH'S OWN GATE (herd_life.cpp): a lifespan band
+  // exists when its top is above nought, and its bottom is where the dying
+  // begins — nought included, which lights the line from the first day on a
+  // table that kills from the first day. With no band, no old age to reach.
+  const bool horse_row = config.horse_kind.value < config.livestock.size();
+  const float life_top =
+      horse_row ? config.livestock[config.horse_kind.value].life_game_years_max : 0.0F;
+  const float old_age =
+      horse_row ? config.livestock[config.horse_kind.value].life_game_years_min : 0.0F;
+  if (oldest != kNoRow && life_top > 0.0F && oldest_years >= old_age) {
+    Alarm aging;
+    aging.kind = AlarmKind::kHerdAging;
+    aging.herd = world.herds.row_ids[oldest];
+    aging.amount = heads;
+    alarms.push_back(aging);
+  }
 }
 }  // namespace
 

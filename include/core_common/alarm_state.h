@@ -215,19 +215,19 @@ enum class AlarmKind : std::uint8_t {
   /// returns after the horses are stabled.
   kYardWithoutGroom,
 
-  /// THE TEAM IS DYING OUT AND THERE IS NO ROOF TO BREED UNDER: a kolkhoz
-  /// horse herd has entered its lifespan band — age deaths are running —
-  /// while the kolkhoz yard has not reached its SECOND step, the stable,
-  /// and horses foal only under that roof (livestock design §5).
-  /// Subject: `herd`; `amount` = the heads still alive.
+  /// THE TEAM CANNOT RENEW ITSELF: the kolkhoz owns horses while its yard
+  /// has not reached its SECOND step, the stable, and horses foal only
+  /// under that roof (livestock design §5). Subject: `herd` (the team's
+  /// first row); `amount` = the heads still alive. LIT FROM THE FOUNDING
+  /// MORNING (production_alarms.cpp says why) — so it cannot say that the
+  /// team has begun to age; kHerdAging says that.
   ///
   /// THE CONDITION IS A STATE AND NOT AN OUTCOME, because the outcome has
   /// no warning form. Measured: the team stands at 26 head on day 160 and
   /// at zero on day 168, and between 41 head and 26 there is nothing a
-  /// player could read as a slope (core, 2026-09-05). So the predicate is
-  /// "the herd is now losing heads to age", which is true from the first
-  /// death onwards and is a property of the completed state, not of a
-  /// transition that happened once and is gone.
+  /// player could read as a slope (core, 2026-09-05). This line said until
+  /// 0.36.33 that the predicate was "the herd is now losing heads to age";
+  /// the code lit it on the founding morning from the start.
   ///
   /// IT DOES NOT GO OUT WHEN A GROOM IS APPOINTED, and that is the whole
   /// reason it exists beside kYardWithoutGroom. That one clears on the
@@ -440,6 +440,26 @@ enum class AlarmKind : std::uint8_t {
   /// is already lost, question 278's event. THE CRITERION IS core's STUB,
   /// named: the reaping's first month against the sowing's last, no days.
   kWinterCropUnsowable,
+
+  /// THE TEAM HAS BEGUN TO AGE (seam key `herd_aging`, its alarms.csv row
+  /// boss's export with this kind; livestock design,
+  /// «Табун без конюшни кончается»: «первая состарившаяся лошадь поднимает
+  /// подсказку»; boss, boss-core-epoch1-resume [79]): the oldest head of the
+  /// kolkhoz's horses has reached the lower end of the horse's lifespan band
+  /// (livestock.csv life_game_years_min) and the stable is not built. A NEW
+  /// LINE and not kHerdWithoutStable louder: that one burns from day 0, and
+  /// a signal built constant is scenery (boss's word on econ's measure). The
+  /// start's team is drawn short of old age (genesis, 0.35.10), so this
+  /// lights on the day the first head crosses it — about year two on the
+  /// shipped tables, an estimate. Subject: `herd`, the row holding the
+  /// oldest head; `amount` = the heads still alive in the team. A STATE: it
+  /// goes out with the stable, and also for as long as every head past old
+  /// age has died and the next has not yet reached it. LIMIT, the band's:
+  /// its top is exact until the first cut, and a cut takes the oldest k of
+  /// n as if the ages were even over the band (herd_age_band.h), so a row
+  /// with young heads bought into it keeps an "old" top after its old horse
+  /// died — the line stays lit, and the age death reads the same top.
+  kHerdAging,
 
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not

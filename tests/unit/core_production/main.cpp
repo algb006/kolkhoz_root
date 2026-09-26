@@ -4007,14 +4007,53 @@ int CheckTheTeamWithoutARoofSaysSo() {
     failures += Expect(subject.value == first.value, "and it names the team's first row");
   }
 
+  // kHerdAging (boss-core-epoch1-resume [79]): the team's oldest head at the
+  // horse's old age, 6 game years in the table above. The mare and the cow
+  // are older and are nobody's business here.
+  const auto aging = [&](const core::WorldState& state) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(state, alarms);
+    std::pair<std::int64_t, std::uint32_t> found{-1, core::kInvalidEntityIdValue};
+    std::uint32_t lines = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHerdAging) {
+        found = {alarm.amount, alarm.herd.value};
+        ++lines;
+      }
+    }
+    return lines > 1 ? std::pair<std::int64_t, std::uint32_t>{-2, 0} : found;
+  };
+  world.herds.rows[0].adult_age_max_game_years = 7.5F;  // the family's mare
+  world.herds.rows[1].adult_age_max_game_years = 7.5F;  // the cow
+  world.herds.rows[2].adult_age_max_game_years = 5.9F;
+  world.herds.rows[3].adult_age_max_game_years = 4.0F;
+  failures += Expect(aging(world).first == -1,
+                     "a team whose oldest head is short of old age is not said to age");
+  world.herds.rows[3].adult_age_max_game_years = 6.0F;
+  failures += Expect(
+      aging(world) == std::pair<std::int64_t, std::uint32_t>{9, world.herds.row_ids[3].value},
+      "the first head at old age lights one line, on its row, with the team's heads");
+  world.herds.rows[2].adult_age_max_game_years = 6.0F;
+  failures +=
+      Expect(aging(world).second == first.value, "two rows as old: the first of them in row order");
+  world.herds.rows[2].adult_count = 0;
+  world.herds.rows[2].juvenile_count = 1;
+  world.herds.rows[3].adult_age_max_game_years = 5.0F;
+  failures += Expect(aging(world).first == -1,
+                     "a row with no adults has no band: its stale top is not read");
+  world.herds.rows[2].adult_count = 5;
+  world.herds.rows[2].juvenile_count = 0;
+
   world.units.rows[0].level = 1;
   failures += Expect(burning(world) == 9, "a yard at step one is a pen: the ask stands");
   // The groom's appointment is what silences kYardWithoutGroom. It changes
   // nothing here, and that is the defect this kind exists for.
   world.chairman.horses_stabled = 1;
   failures += Expect(burning(world) == 9, "and stabling the horses does not answer it either");
+  failures += Expect(aging(world).first == 9, "the aging line stands at step one as well");
   world.units.rows[0].level = 2;
   failures += Expect(burning(world) < 0, "the second step answers it, and only the second step");
+  failures += Expect(aging(world).first == -1, "and the stable answers the aging line with it");
   return failures;
 }
 

@@ -465,6 +465,10 @@ int main(int argc, char** argv) {
     std::int32_t groom_day = -1;
     std::int32_t gone = -1;
     std::int32_t groom_silenced_yard = -1;
+    // kHerdAging (0.36.33): the first day the team's oldest head stands at
+    // old age with no stable, and how many days the line stood.
+    std::int32_t aging_lit = -1;
+    std::uint32_t aging_days = 0;
     bool burning = false;
     const std::uint32_t days = 3U * core::kDaysPerYear;
     for (std::uint32_t day = 0; day < days; ++day) {
@@ -487,6 +491,10 @@ int main(int argc, char** argv) {
           left = alarm.amount;
         }
         yard_alarm = yard_alarm || alarm.kind == core::AlarmKind::kYardWithoutGroom;
+        if (alarm.kind == core::AlarmKind::kHerdAging) {
+          aging_lit = aging_lit < 0 ? today : aging_lit;
+          ++aging_days;
+        }
       }
       if (on && lit < 0) {
         lit = today;
@@ -531,6 +539,8 @@ int main(int argc, char** argv) {
     std::cout << "idle_curve: тревога — загорелась " << lit << ", погасла " << went_out
               << ", загорелась снова " << relit << "; «двор без конюха» замолк на сутках "
               << groom_silenced_yard << '\n';
+    std::cout << "idle_curve: «табун стареет» — загорелась " << aging_lit << ", стояла суток "
+              << aging_days << " из " << days << '\n';
     // THE GUARDS. Without a stable the kind must light and stay lit to the
     // last day; with one it must be out at the end. And it must NOT be the
     // groom that puts it out: the day the yard's own alarm falls silent, this
