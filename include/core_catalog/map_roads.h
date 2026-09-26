@@ -35,6 +35,13 @@ struct MapRoadDef {
   /// roads.csv `removable`.
   std::uint8_t removable = 1;
 
+  /// roads.csv `district` (boss [90], 27 September 2026): 1 for the
+  /// district's road — built, upgraded and kept by the district, never by the
+  /// kolkhoz (kDistrictRoad). Wider than `removable` = 0: the ford track and
+  /// the ways east and west are fixed but the kolkhoz's. 0 in a table without
+  /// the column.
+  std::uint8_t district = 0;
+
   /// The drawn line in `seq` order, with its marks.
   std::vector<RoadPoint> axis;
 };

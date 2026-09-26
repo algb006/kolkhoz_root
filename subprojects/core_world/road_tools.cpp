@@ -6,6 +6,7 @@
 
 #include "core_catalog/definitions.h"
 #include "core_catalog/map_obstacle_tables.h"
+#include "core_catalog/map_roads.h"
 #include "core_catalog/road_cost_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
@@ -27,6 +28,15 @@ std::optional<RoadTools> RoadTools::Read(const ITableSet& tables, std::string& e
     tools.opens_[surface] = levels[surface].opens;
     tools.costs_[surface].man_days_per_100m = levels[surface].man_days_per_100m;
     tools.costs_[surface].materials_per_100m = levels[surface].materials_per_100m;
+  }
+  // The district's road, by map road (7e; the order genesis numbers them in).
+  std::vector<MapRoadDef> map_roads;
+  if (!ReadMapRoads(tables, map_roads, error)) {
+    return std::nullopt;
+  }
+  tools.district_by_map_road_.reserve(map_roads.size());
+  for (const MapRoadDef& map_road : map_roads) {
+    tools.district_by_map_road_.push_back(map_road.district);
   }
   Definitions definitions;
   if (!LoadDefinitions(tables, StubTables::kAllowed, definitions, error)) {
@@ -184,6 +194,8 @@ RoadPieces RoadTools::Select(const WorldState& world,
   }
   RoadPieceSite site;
   site.roads = &world.roads;
+  site.road_works = &world.road_works;
+  site.district_by_map_road = district_by_map_road_;
   site.units = units;
   site.areas = areas;
   site.road_access_m = road_access_m_;

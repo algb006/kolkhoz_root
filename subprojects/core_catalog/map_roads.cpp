@@ -43,6 +43,7 @@ bool ReadMapRoads(const ITableSet& tables, std::vector<MapRoadDef>& roads, std::
   const std::uint32_t road_column = table->FindColumn("road");
   const std::uint32_t kind_column = table->FindColumn("kind");
   const std::uint32_t removable_column = table->FindColumn("removable");
+  const std::uint32_t district_column = table->FindColumn("district");
   const std::uint32_t seq_column = table->FindColumn("seq");
   const std::uint32_t x_column = table->FindColumn("x_m");
   const std::uint32_t y_column = table->FindColumn("y_m");
@@ -83,6 +84,16 @@ bool ReadMapRoads(const ITableSet& tables, std::vector<MapRoadDef>& roads, std::
       road.key = std::string(key);
       road.kind = kind == "path" ? RoadKind::kPath : RoadKind::kRoad;
       road.removable = static_cast<std::uint8_t>(*removable);
+      // The district's road (boss [90]): a column added after removable; a
+      // table without it names none, and a cell other than 0 or 1 is refused.
+      if (district_column != kNoTableColumn) {
+        const std::optional<std::int64_t> district = table->CellInteger(row, district_column);
+        if (!district || (*district != 0 && *district != 1)) {
+          error = where + ": district is neither 0 nor 1";
+          return false;
+        }
+        road.district = static_cast<std::uint8_t>(*district);
+      }
       read.push_back(std::move(road));
       last_seq.push_back(-1);
     } else if (*seq <= last_seq[index]) {

@@ -9,9 +9,6 @@
 namespace core {
 namespace {
 
-/// A span of axis shorter than this is no road and no strip.
-constexpr float kShortestSpanMetres = 0.01F;
-
 /// The stretch of `road` holding `chainage`, clamped to its stretches.
 float WearAt(const RoadRow& road, float chainage) {
   if (road.stretches.empty()) {
@@ -62,6 +59,14 @@ std::vector<RoadStretch> StretchesBetween(const RoadRow& road, float from, float
 
 }  // namespace
 
+RoadRow RoadStretchAsRoad(const RoadRow& road, float from, float to) {
+  RoadRow part = road;
+  part.origin = RoadOrigin::kPlayer;
+  part.axis = AxisBetween(road, from, to);
+  part.stretches = StretchesBetween(road, from, to);
+  return part;
+}
+
 RoadCut CutRoad(const RoadRow& road, std::span<const std::pair<float, float>> taken) {
   RoadCut cut;
   const float length = RoadAxisLength(road.axis);
@@ -84,14 +89,12 @@ RoadCut CutRoad(const RoadRow& road, std::span<const std::pair<float, float>> ta
   }
   if (merged.empty()) {
     cut.remnants.push_back(road);
+    cut.remnant_spans.emplace_back(0.0F, length);
     return cut;
   }
   const auto remnant = [&](float from, float to) {
-    RoadRow part = road;
-    part.origin = RoadOrigin::kPlayer;
-    part.axis = AxisBetween(road, from, to);
-    part.stretches = StretchesBetween(road, from, to);
-    cut.remnants.push_back(std::move(part));
+    cut.remnants.push_back(RoadStretchAsRoad(road, from, to));
+    cut.remnant_spans.emplace_back(from, to);
   };
   float kept_from = 0.0F;
   for (const auto& [from, to] : merged) {

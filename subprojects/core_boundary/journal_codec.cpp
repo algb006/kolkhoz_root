@@ -63,9 +63,10 @@ namespace {
 /// (kPlantForest, save 82): its hectares a fourth float, its species an
 /// EIGHTH definition id. And for the road tools (delivery 7a): the road's
 /// kind and surface two more one-byte enums, the point count a raw byte,
-/// the four points eight more floats, the road an EIGHTH entity id.
+/// the four points eight more floats, the road an EIGHTH entity id. And for
+/// road work (delivery 7e): the piece under work a NINTH entity id.
 constexpr std::size_t kOrderBytes =
-    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4;
+    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -100,8 +101,10 @@ static_assert(sizeof(OrderRow) == 136, "OrderRow changed — update the journal 
 /// 2026-09-18: the ration's family and switch, 25 fields and 88 bytes —
 /// both tripwires fired this time.
 /// Delivery 7a: the road tools' five fields, 32 fields and 136 bytes, both
-/// predicted off the dumped layout before the build.
-static_assert(AggregateArity<OrderRow>() == 32,
+/// predicted off the dumped layout before the build. Delivery 7e: the piece
+/// under work, 33 fields and still 136 bytes — the id in the tail padding
+/// after the road, predicted before the build: only this wire could fire.
+static_assert(AggregateArity<OrderRow>() == 33,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -289,6 +292,7 @@ void WriteOrder(Writer& out, const OrderRow& row) {
     out.Float(point.y);
   }
   out.U32(row.road.value);
+  out.U32(row.road_work.value);  // delivery 7e
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -341,6 +345,7 @@ OrderRow ReadOrder(Reader& in) {
     point.y = in.Float();
   }
   row.road = RoadId{in.U32()};
+  row.road_work = RoadWorkId{in.U32()};
   return row;
 }
 

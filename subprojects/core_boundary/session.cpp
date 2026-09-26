@@ -126,11 +126,9 @@ bool ShapeIsValid(const OrderRow& order) {
       if (order.work == WorkKind::kHauling) {
         return (has_field ? 1 : 0) + (has_stand ? 1 : 0) + (has_site ? 1 : 0) == 1;
       }
-      // Road work names a piece of a road, and the order has no field for
-      // one until delivery 7e brings it. STUB: refused at the door rather
-      // than let through naming a field the seam would never read.
+      // Road work names the piece of road under work (7e: OrderRow::road_work).
       if (order.work == WorkKind::kRoadWork) {
-        return false;
+        return order.road_work.value != kInvalidEntityIdValue;
       }
       return has_field;
     case OrderKind::kReleaseWork:

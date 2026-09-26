@@ -538,6 +538,19 @@ core::WorldState MakeWorld() {
   strip.axis = {{.x = 100.0F, .y = 5.0F}, {.x = 120.0F, .y = 5.5F}, {.x = 140.0F, .y = 7.25F}};
   strip.stretches = {core::RoadStretch{.wear_pct = 65.0F}, core::RoadStretch{.wear_pct = 33.5F}};
   core::AppendRow(world.land_strips, strip);
+  // Save 104 (7e): a piece of road under work, every field off its default —
+  // a take-up on the road above, half its labour left, a winter site.
+  core::RoadWorkRow work;
+  work.road = world.roads.row_ids.back();
+  work.from_m = 12.5F;
+  work.to_m = 37.75F;
+  work.kind = core::RoadWorkKind::kTakeUp;
+  work.surface = core::RoadSurface::kGravel;
+  work.labor_days_remaining = 4.25F;
+  work.place = {.x = 21.5F, .y = 18.0F};
+  work.max_crew = 8;
+  work.winter_works = 1;
+  core::AppendRow(world.road_works, work);
   world.residents.rows[1].away_until_day = 91;
   world.residents.rows[1].away_until_hour = 14;
   world.residents.rows[1].away_walk_hours = 3;
@@ -1231,7 +1244,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1296,7 +1309,9 @@ constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
     // residents; predicted 404 -> 412 before the build, held.
     // Save 98: +8 — the work's limit_delivery, an entity id for each of the
     // two residents; predicted 412 -> 420 before the build, held.
-    {"residents", 420, 0x14b1fdd0cae2f619ULL},
+    // Save 104 (7e): +8 — the work's road_work on each of two residents,
+    // predicted before the build, held.
+    {"residents", 428, 0x55917686bfa1f139ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1376,7 +1391,9 @@ constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
     // Save 100 (delivery 7a): +234 — the road tools' fields, 39 bytes an
     // order row (three bytes, four points, a road id), six rows; predicted
     // +39 a row before the build, held.
-    {"orders", 764, 0x21a584ce399e1cd9ULL},
+    // Save 104 (7e): +24 — road_work on each of six orders, predicted before
+    // the build, held.
+    {"orders", 788, 0xa8e2a17f34550d3cULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -1402,6 +1419,9 @@ constexpr std::array<RecordedSection, 21> kRecordedPayload = {{
     // axis, 4 + 2 x 4 of stretches. Predicted 52 before the build, every
     // other section unmoved.
     {"land_strips", 52, 0x13f1ce4d8e4c8cb7ULL},
+    // Save 104 (7e): one piece of road under work — 8 of table, 4 of id, 28 of
+    // row. Predicted 36 before the build: the row's id forgotten, a miss.
+    {"road_works", 40, 0x2144bd9d6bf7b0dcULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -1854,6 +1874,16 @@ int main() {
                  loaded.land_strips.rows[0].stretches[0].wear_pct == 65.0F &&
                  loaded.land_strips.rows[0].stretches[1].wear_pct == 33.5F,
              "a land strip comes back with its axis and its wear (save 101)");
+  failures += Expect(
+      loaded.road_works.rows.size() == 1 &&
+          loaded.road_works.rows[0].road.value == loaded.roads.row_ids.back().value &&
+          loaded.road_works.rows[0].from_m == 12.5F && loaded.road_works.rows[0].to_m == 37.75F &&
+          loaded.road_works.rows[0].kind == core::RoadWorkKind::kTakeUp &&
+          loaded.road_works.rows[0].surface == core::RoadSurface::kGravel &&
+          loaded.road_works.rows[0].labor_days_remaining == 4.25F &&
+          loaded.road_works.rows[0].place.x == 21.5F && loaded.road_works.rows[0].max_crew == 8 &&
+          loaded.road_works.rows[0].winter_works == 1,
+      "a piece of road under work comes back whole (save 104)");
   failures += Expect(loaded.residents.rows.size() >= 2 &&
                          loaded.residents.rows[0].twin.value == loaded.residents.row_ids[1].value &&
                          loaded.residents.rows[1].identical_twin == 1,

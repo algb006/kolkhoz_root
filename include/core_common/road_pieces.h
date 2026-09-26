@@ -51,6 +51,7 @@
 #include "core_common/road_draft.h"
 #include "core_common/road_state.h"
 #include "core_common/road_trace.h"
+#include "core_common/road_work_state.h"
 
 namespace core {
 
@@ -87,6 +88,16 @@ inline constexpr float kAreaEntryReachMetres = 100.0F;
 /// @brief The world as the selection reads it.
 struct RoadPieceSite {
   const RoadTable* roads = nullptr;
+
+  /// The pieces under work (7e): a piece overlapping one is left out
+  /// (kUnderWork), whatever the operation. Null — none.
+  const RoadWorkTable* road_works = nullptr;
+
+  /// By MapRoadId value: 1 for the district's road (roads.csv `district`;
+  /// boss [90]). An upgrade of a piece of a road whose map road is the
+  /// district's is left out (kDistrictRoad) — its remnants too, which keep
+  /// their map road. Empty — none.
+  std::span<const std::uint8_t> district_by_map_road;
 
   /// Every unit; the ones with no road in reach take no part.
   std::span<const RoadAnchorUnit> units;

@@ -79,9 +79,11 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
     // village this year goes before it.
     case WorkKind::kPlanting:
       return 10;
-    // Road work (delivery 7a declared it; its jobs come with 7e): last, for
-    // now — windowless, and a road waits as a site does. Where it truly
-    // stands against building and hauling is 7e's to measure and say.
+    // Road work (7e): last — windowless, a road waits as a site does, and a
+    // road paved is the chairman's investment, not what the village eats or
+    // is housed by this year. The canon lays no gravel, so its place has not
+    // been measured against building and hauling (named); a chairman who
+    // wants it sooner sends a crew by a standing order (kAssignWork).
     case WorkKind::kRoadWork:
       return 11;
     // Not a kind of work, and neither is the terminator. Handled beside

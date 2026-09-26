@@ -69,7 +69,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // WorkAssignment's own 32 -> 36, a miss in the inventory, named; caught here.
 // Save 98: the work's limit_delivery, +4 — predicted 216 -> 220 before the
 // build (unless the row's alignment rounds it up).
-static_assert(sizeof(ResidentRow) == 220,
+// Save 104 (7e): the work's road_work, +4 — predicted 220 -> 224 before the
+// build.
+static_assert(sizeof(ResidentRow) == 224,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -209,17 +211,21 @@ static_assert(sizeof(OrderRow) == 136, "OrderRow changed — update the codec an
 // 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
 // 23 fields. Two padding fields in a row now, which is the answer to whether
 // the arity check was worth its line.
-static_assert(AggregateArity<OrderRow>() == 32,
+// Save 104 (7e): road_work, an entity id into the tail's padding after the
+// road — 136 still and 33 fields, predicted before the build.
+static_assert(AggregateArity<OrderRow>() == 33,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
 // Save 98: limit_delivery, the district's timber lot (decision 279) — 40 and
 // eleven fields, predicted before the field was added.
-static_assert(sizeof(WorkAssignment) == 40,
+// Save 104 (7e): road_work, the piece of road under work — 44 and twelve
+// fields, predicted before the field was added.
+static_assert(sizeof(WorkAssignment) == 44,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
-static_assert(AggregateArity<WorkAssignment>() == 11,
+static_assert(AggregateArity<WorkAssignment>() == 12,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 // Save 98: own_carts (a byte into the padding after the lot) and the two
 // floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
@@ -280,6 +286,12 @@ static_assert(sizeof(LandStripRow) == sizeof(std::vector<Vec2>) + sizeof(std::ve
               "LandStripRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<LandStripRow>() == 2,
               "LandStripRow gained or lost a field — update the codec and VERSION_SAVE");
+// Save 104 (7e): a piece of road under work — 32 and nine fields, predicted
+// before the build (the winter byte into the padding after the crew; 28
+// bytes saved: 4 + 4 + 4 + 1 + 1 + 4 + 8 + 1 + 1).
+static_assert(sizeof(RoadWorkRow) == 32, "RoadWorkRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RoadWorkRow>() == 9,
+              "RoadWorkRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadStretch>() == 1,
               "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictCarRow) == 24,
@@ -466,6 +478,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.stand);
   WriteEntityId(out, row.work.extraction_site);
   WriteEntityId(out, row.work.limit_delivery);  // save 98: the district's timber lot
+  WriteEntityId(out, row.work.road_work);       // save 104: the piece of road under work
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
   out.WriteFloat(row.work.travel_hours);  // save 93
@@ -544,6 +557,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.stand = ReadEntityId<TimberStandId>(in);
   row.work.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.work.limit_delivery = ReadEntityId<LimitDeliveryId>(in);  // save 98
+  row.work.road_work = ReadEntityId<RoadWorkId>(in);            // save 104
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
   row.work.travel_hours = in.ReadFloat();
@@ -1095,6 +1109,7 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
     WriteVec2(out, point);
   }
   WriteEntityId(out, row.road);
+  WriteEntityId(out, row.road_work);  // save 104
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -1142,6 +1157,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
     point = ReadVec2(in);
   }
   row.road = ReadEntityId<RoadId>(in);
+  row.road_work = ReadEntityId<RoadWorkId>(in);  // save 104
   return row;
 }
 
@@ -1422,6 +1438,39 @@ void WriteLandStripRow(SaveSink& sink, const LandStripRow& row) {
   for (const RoadStretch& stretch : row.stretches) {
     out.WriteFloat(stretch.wear_pct);
   }
+}
+
+void WriteRoadWorkRow(SaveSink& sink, const RoadWorkRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteEntityId(out, row.road);
+  out.WriteFloat(row.from_m);
+  out.WriteFloat(row.to_m);
+  out.WriteU8(static_cast<std::uint8_t>(row.kind));
+  out.WriteU8(static_cast<std::uint8_t>(row.surface));
+  out.WriteFloat(row.labor_days_remaining);
+  WriteVec2(out, row.place);
+  out.WriteU8(row.max_crew);
+  out.WriteU8(row.winter_works);
+}
+
+RoadWorkRow ReadRoadWorkRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  RoadWorkRow row;
+  row.road = ReadEntityId<RoadId>(in);
+  row.from_m = in.ReadFloat();
+  row.to_m = in.ReadFloat();
+  row.kind = static_cast<RoadWorkKind>(source.ReadEnumValue(
+      0, static_cast<std::uint8_t>(RoadWorkKind::kRoadWorkKindCount) - 1U, "road work kind"));
+  row.surface = static_cast<RoadSurface>(source.ReadEnumValue(
+      0, static_cast<std::uint8_t>(RoadSurface::kRoadSurfaceCount) - 1U, "road work surface"));
+  row.labor_days_remaining = in.ReadFloat();
+  row.place = ReadVec2(in);
+  row.max_crew = in.ReadU8();
+  row.winter_works = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "road work winter"));
+  if (!(row.to_m >= row.from_m) || !(row.labor_days_remaining >= 0.0F)) {
+    source.Fail("a road work's piece is reversed or its labour negative");
+  }
+  return row;
 }
 
 LandStripRow ReadLandStripRow(LoadSource& source) {

@@ -779,6 +779,8 @@ bool ParseConstructionConfig(const ITableSet& tables,
         {"insulation_heated_straw_t", 1e3F, &config.insulation_heated_straw_t},
         {"insulation_heated_labor_days", 1e3F, &config.insulation_heated_labor_days},
         {"insulation_reset_level", 255.0F, &config.insulation_reset_level},
+        // Taking gravel up: a share of the laying's labour (STUB 1/3; boss [81]).
+        {"road_take_up_labor_share", 1.0F, &config.road_take_up_labor_share},
     };
     for (const Knob& knob : knob_list) {
       const std::uint32_t row = knobs->FindRowByKey(knob.key);

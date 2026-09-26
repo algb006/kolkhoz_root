@@ -50,6 +50,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/road_rules.h"
 #include "core_common/road_state.h"
+#include "core_common/road_work_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
@@ -938,6 +939,10 @@ struct WorldState {
   /// The land roads were taken off, keeping their wear (construction design
   /// §13; delivery 7d); SAVED (save 101). road_state.h.
   LandStripTable land_strips;
+
+  /// The pieces of road under work — gravel laid or taken up (delivery 7e);
+  /// SAVED (save 104). road_work_state.h.
+  RoadWorkTable road_works;
 
   /// The network made queryable (road_route.h): its graph, node-to-node
   /// distances and a grid of its pieces. DERIVED and NOT SAVED — built from

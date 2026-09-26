@@ -1370,6 +1370,388 @@ int CheckRoadPiecesOnStart() {
   return failures;
 }
 
+/// ROAD WORK ON THE SHIPPED MAP (delivery 7e; road_laying.h). The first
+/// piece of road_bridge_village, a kolkhoz dirt road, upgraded to gravel:
+///   * with no gravel in the village the order is refused kMaterialsShort
+///     naming the gravel, and no work opens — the refusal boss [82] asked the
+///     test to SHOW while the district's lot has no price;
+///   * the district's road is refused kDistrictRoad (boss [83], [90]);
+///   * with gravel and sand in a store the work opens: the piece's materials
+///     taken at the order at 20 t and 15 t per 100 m, its labour 60 man-days
+///     per 100 m, kRoadWorkStarted naming the road;
+///   * the same piece again is left out as under work (kRuleForbids);
+///   * its labour done, at the next day's first hour the piece stands as a
+///     gravel road of its own, the rest of the road still dirt, and
+///     kRoadWorkFinished names the gravel row;
+///   * the gravel taken up opens a work of labour alone, a third of the
+///     laying's, and takes nothing off the stores.
+int CheckRoadWork() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation =
+      shipped ? core::CreateStandardSimulation(config) : nullptr;
+  if (Expect(simulation != nullptr, "road work: the shipped set assembles") != 0) {
+    return 1;
+  }
+  std::vector<core::MapRoadDef> map_roads;
+  std::string error;
+  (void)core::ReadMapRoads(*shipped, map_roads, error);
+  std::size_t bridge = map_roads.size();
+  std::size_t trunk = map_roads.size();
+  for (std::size_t index = 0; index < map_roads.size(); ++index) {
+    bridge = map_roads[index].key == "road_bridge_village" ? index : bridge;
+    trunk = map_roads[index].key == "trunk_road" ? index : trunk;
+  }
+  const core::ITable* const resources = shipped->FindTable("resources");
+  const auto resource = [&](std::string_view key) {
+    return static_cast<std::size_t>(resources->FindRowByKey(key));
+  };
+  const std::size_t gravel = resource("gravel");
+  const std::size_t sand = resource("sand");
+  if (Expect(bridge < map_roads.size() && trunk < map_roads.size() &&
+                 map_roads[trunk].district == 1 && map_roads[bridge].district == 0 &&
+                 gravel != core::kNoTableRow,
+             "road work: road_bridge_village and the district's trunk_road are on the map") != 0) {
+    return failures + 1;
+  }
+  const auto refusal_of = [&](const core::OrderRow& order) {
+    const std::array<core::OrderRow, 1> orders = {order};
+    simulation->StageOrders(orders, {});
+    simulation->AdvanceStep();
+    std::pair<std::int64_t, std::uint32_t> refused{-1, core::kInvalidDefIdValue};
+    for (const core::SimEvent& event : simulation->CompletedState().step_events) {
+      if (event.kind == core::EventKind::kOrderRefused) {
+        refused = {event.amount, event.resource.value};
+      }
+    }
+    return refused;
+  };
+  const auto held = [&](std::size_t index) {
+    core::Grams sum = 0;
+    for (const core::UnitRow& unit : simulation->CompletedState().units.rows) {
+      sum += unit.level > 0 && index < unit.stock.size() ? unit.stock[index] : 0;
+    }
+    return sum;
+  };
+  // THE ROAD: the first kolkhoz dirt road of the map whose first piece the
+  // selection takes for gravel — road_bridge_village's lies on the floodplain
+  // (roads design §11а, kFloodplain), and a name picked by hand would be the
+  // next map edit's red.
+  core::OrderRow upgrade;
+  upgrade.kind = core::OrderKind::kUpgradeRoad;
+  upgrade.road_surface = core::RoadSurface::kGravel;
+  std::size_t chosen = map_roads.size();
+  for (std::size_t index = 0; index < map_roads.size() && chosen == map_roads.size(); ++index) {
+    const core::RoadRow& candidate = simulation->CompletedState().roads.rows[index];
+    if (map_roads[index].district != 0 || candidate.kind != core::RoadKind::kRoad ||
+        candidate.surface != core::RoadSurface::kDirt) {
+      continue;
+    }
+    upgrade.road = simulation->CompletedState().roads.row_ids[index];
+    upgrade.road_points[0] = candidate.axis.front().position;
+    upgrade.road_points[1] = core::PointAtChainage(candidate.axis, 150.0F);
+    const core::RoadPieces probe = simulation->SelectRoadPieces(
+        core::RoadSelection{
+            .road = upgrade.road, .from = upgrade.road_points[0], .to = upgrade.road_points[1]},
+        core::RoadOperation::kUpgradeToGravel);
+    chosen = std::ranges::any_of(probe.pieces,
+                                 [](const core::RoadPiece& piece) {
+                                   return piece.refusal == core::RoadPieceRefusal::kNone;
+                                 })
+                 ? index
+                 : chosen;
+  }
+  if (Expect(chosen < map_roads.size(), "road work: a kolkhoz dirt road takes gravel") != 0) {
+    return failures + 1;
+  }
+  std::cout << "road work: on " << map_roads[chosen].key << " (" << map_roads[bridge].key
+            << " lies on the floodplain)\n";
+  const core::RoadId bridge_id = upgrade.road;
+  const auto no_gravel = refusal_of(upgrade);
+  std::cout << "road work: with no gravel, refusal " << no_gravel.first << " naming resource "
+            << no_gravel.second << " (gravel is " << gravel << ")\n";
+  failures +=
+      Expect(no_gravel.first == static_cast<std::int64_t>(core::OrderRefusal::kMaterialsShort) &&
+                 (no_gravel.second == gravel || no_gravel.second == sand) &&
+                 simulation->CompletedState().road_works.rows.empty(),
+             "road work: with no gravel or sand in the village the upgrade is refused, naming the "
+             "first line short, and no work opens");
+
+  const core::RoadRow trunk_road = simulation->CompletedState().roads.rows[trunk];
+  core::OrderRow district = upgrade;
+  district.road = simulation->CompletedState().roads.row_ids[trunk];
+  district.road_points[0] = trunk_road.axis.front().position;
+  district.road_points[1] = core::PointAtChainage(trunk_road.axis, 300.0F);
+  failures += Expect(
+      refusal_of(district).first == static_cast<std::int64_t>(core::OrderRefusal::kDistrictRoad),
+      "road work: the district's road is the district's to pave");
+
+  core::WorldState stocked = simulation->CompletedState();
+  for (core::UnitRow& unit : stocked.units.rows) {
+    if (unit.level > 0) {
+      unit.stock.resize(std::max({unit.stock.size(), gravel + 1, sand + 1}), 0);
+      unit.stock[gravel] += 100 * core::kGramsPerTonne;
+      unit.stock[sand] += 100 * core::kGramsPerTonne;
+      break;
+    }
+  }
+  simulation->ResetWorld(stocked);
+  const core::Grams gravel_before = held(gravel);
+  const auto opened = refusal_of(upgrade);
+  const core::WorldState& with_work = simulation->CompletedState();
+  bool started = false;
+  for (const core::SimEvent& event : with_work.step_events) {
+    started = started || (event.kind == core::EventKind::kRoadWorkStarted &&
+                          event.road.value == bridge_id.value);
+  }
+  const bool one_work = with_work.road_works.rows.size() == 1;
+  const float metres =
+      one_work ? with_work.road_works.rows[0].to_m - with_work.road_works.rows[0].from_m : 0.0F;
+  const core::Grams gravel_taken = gravel_before - held(gravel);
+  const core::Grams gravel_due = static_cast<core::Grams>(std::llround(
+      20.0 * static_cast<double>(core::kGramsPerTonne) * static_cast<double>(metres / 100.0F)));
+  std::cout << "road work: a piece of " << metres << " m, gravel taken " << gravel_taken << " g of "
+            << gravel_due << " due, labour "
+            << (one_work ? with_work.road_works.rows[0].labor_days_remaining : 0.0F) << "\n";
+  failures += Expect(opened.first == -1 && one_work && started && metres > 100.0F &&
+                         std::llabs(gravel_taken - gravel_due) <= 1 &&
+                         std::abs(with_work.road_works.rows[0].labor_days_remaining -
+                                  (60.0F * metres / 100.0F)) < 0.01F,
+                     "road work: with gravel in store the work opens — its materials taken at the "
+                     "order, its labour priced per 100 m, kRoadWorkStarted naming the road");
+  failures += Expect(
+      refusal_of(upgrade).first == static_cast<std::int64_t>(core::OrderRefusal::kRuleForbids),
+      "road work: the same piece again is under work and left out");
+  if (!one_work) {
+    return failures;
+  }
+
+  // THE CREW. A January day (the core's winter season): gravel's level does
+  // not work in winter, and nobody is sent. A May day: the accountant sends a
+  // crew, and the labour goes down. The pair: the same work, the season alone
+  // differing — and the work's place set in the village, at the first unit:
+  // road_artel's piece is 3.9 h out, and a January day too short for the walk
+  // kept the crew home with the winter rule taken off (the fault's first run),
+  // so the pair measured the road and not the season.
+  // THE CHAIRMAN'S OWN MAN (static review of 0.36.38: a standing order to the
+  // work skipped no winter): `man`, one the accountant sent to the road in
+  // May, is ordered to it — kept home in January, on it in May.
+  struct CrewDay {
+    std::uint32_t sent = 0;
+    float drained = 0.0F;
+    bool ordered_on_road = false;
+    bool order_stands = false;
+    core::ResidentId first_on_road;
+  };
+
+  const auto crew_day = [&](std::uint32_t month, core::ResidentId man) {
+    const bool ordered = man.value != core::kInvalidEntityIdValue;
+    core::WorldState dated = simulation->CompletedState();
+    dated.road_works.rows[0].place = dated.units.rows[0].position;
+    // Everyone off the road: a crew left on it by the day before works its
+    // first hours in any month (the ordered January's first run: 8 on it).
+    for (core::ResidentRow& resident : dated.residents.rows) {
+      if (resident.work.kind == core::WorkKind::kRoadWork) {
+        resident.work = core::WorkAssignment{};
+      }
+    }
+    dated.calendar.tick = static_cast<core::Tick>(month) * core::kDaysPerMonth * core::kTicksPerDay;
+    core::RefreshCalendarCaches(dated.calendar);
+    simulation->ResetWorld(dated);
+    const core::WorldState& reset = simulation->CompletedState();
+    const float before = reset.road_works.rows[0].labor_days_remaining;
+    if (ordered) {
+      core::OrderRow to_road;
+      to_road.kind = core::OrderKind::kAssignWork;
+      to_road.resident = man;
+      to_road.work = core::WorkKind::kRoadWork;
+      to_road.road_work = reset.road_works.row_ids[0];
+      const std::array<core::OrderRow, 1> orders = {to_road};
+      simulation->StageOrders(orders, {});
+    }
+    CrewDay day;
+    // Two days: the morning's placement is the next day's first hour.
+    for (std::uint32_t tick = 0; tick < 2U * core::kTicksPerDay; ++tick) {
+      simulation->AdvanceStep();
+      const core::WorldState& now = simulation->CompletedState();
+      std::uint32_t on_road = 0;
+      for (std::size_t row = 0; row < now.residents.rows.size(); ++row) {
+        if (now.residents.rows[row].work.kind == core::WorkKind::kRoadWork) {
+          ++on_road;
+          day.ordered_on_road =
+              day.ordered_on_road || (ordered && now.residents.row_ids[row].value == man.value);
+          if (day.first_on_road.value == core::kInvalidEntityIdValue) {
+            day.first_on_road = now.residents.row_ids[row];
+          }
+        }
+      }
+      day.sent = std::max(day.sent, on_road);
+    }
+    const core::WorldState& worked = simulation->CompletedState();
+    const float after =
+        worked.road_works.rows.empty() ? before : worked.road_works.rows[0].labor_days_remaining;
+    day.drained = before - after;
+    // The order stands: a refused one would keep him home in any month, and
+    // the January half would pass without asking the winter.
+    day.order_stands = std::ranges::any_of(worked.orders.rows, [&](const core::OrderRow& order) {
+      return order.kind == core::OrderKind::kAssignWork &&
+             order.status == core::OrderStatus::kAccepted && order.resident.value == man.value &&
+             order.work == core::WorkKind::kRoadWork;
+    });
+    std::cout << "road work: month " << month << (ordered ? " (one man ordered)" : "")
+              << " — at most " << day.sent << " on the road"
+              << (ordered ? (day.ordered_on_road ? ", the ordered man among them"
+                                                 : ", the ordered man not")
+                          : "")
+              << (ordered ? (day.order_stands ? ", his order stands" : ", his order NOT standing")
+                          : "")
+              << ", labour " << before << " -> " << after << "\n";
+    return day;
+  };
+  const CrewDay winter = crew_day(0, core::ResidentId{});
+  const CrewDay may = crew_day(4, core::ResidentId{});
+  failures += Expect(winter.sent == 0 && winter.drained == 0.0F && may.sent > 0 && may.sent <= 8 &&
+                         may.drained > 0.0F,
+                     "road work: nobody on gravel in the winter season; in May a crew of at most "
+                     "the level's eight, and the labour goes down");
+  const CrewDay winter_ordered = crew_day(0, may.first_on_road);
+  const CrewDay may_ordered = crew_day(4, may.first_on_road);
+  failures += Expect(
+      may.first_on_road.value != core::kInvalidEntityIdValue && winter_ordered.order_stands &&
+          winter_ordered.sent == 0 && winter_ordered.drained == 0.0F && may_ordered.ordered_on_road,
+      "road work: the chairman's standing order keeps the winter too — his man stays "
+      "off gravel in January and is on it in May");
+
+  core::WorldState finishing = simulation->CompletedState();
+  finishing.road_works.rows[0].labor_days_remaining = 0.0F;
+  // The standing order goes with the crew check: its work finished, it is
+  // refused kNoSuchSubject, and refusal_of below reads the step's last refusal.
+  finishing.orders = core::OrderTable{};
+  simulation->ResetWorld(finishing);
+  bool finished = false;
+  core::RoadId gravel_row;
+  for (std::uint32_t tick = 0; tick < core::kTicksPerDay && !finished; ++tick) {
+    simulation->AdvanceStep();
+    for (const core::SimEvent& event : simulation->CompletedState().step_events) {
+      if (event.kind == core::EventKind::kRoadWorkFinished) {
+        finished = true;
+        gravel_row = event.road;
+      }
+    }
+  }
+  const core::WorldState& paved = simulation->CompletedState();
+  const std::uint32_t gravel_at = core::FindRow(paved.roads, gravel_row);
+  const std::uint32_t rest_at = core::FindRow(paved.roads, bridge_id);
+  failures += Expect(
+      finished && paved.road_works.rows.empty() && gravel_at != core::kNoRow &&
+          paved.roads.rows[gravel_at].surface == core::RoadSurface::kGravel &&
+          std::abs(core::RoadAxisLength(paved.roads.rows[gravel_at].axis) - metres) < 1.0F &&
+          rest_at != core::kNoRow && paved.roads.rows[rest_at].surface == core::RoadSurface::kDirt,
+      "road work: its labour done, the piece stands as gravel of its own, the rest still dirt");
+  if (gravel_at == core::kNoRow) {
+    return failures;
+  }
+
+  // TAKING GRAVEL UP where a demolition may take the piece: the piece paved
+  // above is road_artel's start, the only road to the artel (kOnlyRoad, 7d's
+  // rule, rightly). road_bridge_village's first piece, which 7d's own test
+  // takes out as dirt, is made gravel in the state and taken up.
+  core::WorldState graveled = simulation->CompletedState();
+  const core::RoadId bridge_road_id = graveled.roads.row_ids[bridge];
+  graveled.roads.rows[bridge].surface = core::RoadSurface::kGravel;
+  simulation->ResetWorld(graveled);
+  const core::RoadRow gravel_road = simulation->CompletedState().roads.rows[bridge];
+  core::OrderRow take_up;
+  take_up.kind = core::OrderKind::kDemolishRoad;
+  take_up.road = bridge_road_id;
+  take_up.road_points[0] = gravel_road.axis.front().position;
+  take_up.road_points[1] = core::PointAtChainage(gravel_road.axis, 520.0F);
+  const core::Grams gravel_kept = held(gravel);
+  const auto taken_up = refusal_of(take_up);
+  const core::WorldState& up = simulation->CompletedState();
+  std::cout << "road work: take-up refusal " << taken_up.first << ", works "
+            << up.road_works.rows.size() << ", labour "
+            << (up.road_works.rows.empty() ? -1.0F : up.road_works.rows[0].labor_days_remaining)
+            << "\n";
+  failures += Expect(
+      taken_up.first == -1 && up.road_works.rows.size() == 1 &&
+          up.road_works.rows[0].kind == core::RoadWorkKind::kTakeUp &&
+          std::abs(up.road_works.rows[0].labor_days_remaining -
+                   (20.0F * (up.road_works.rows[0].to_m - up.road_works.rows[0].from_m) / 100.0F)) <
+              0.05F &&
+          held(gravel) == gravel_kept,
+      "road work: gravel taken up is labour alone, a third of the laying's, no material");
+
+  // AN OPEN TAKE-UP IS A ROAD TAKEN (static review of 0.36.38): two roads to
+  // one place, each allowed out alone — with the first's take-up open, the
+  // second is the only road. Searched on the start network, not named: a
+  // pair (A, B) where a piece of B demolition takes alone is refused
+  // kOnlyRoad once a take-up over the whole of A stands.
+  core::WorldState bare = simulation->CompletedState();
+  bare.road_works = core::RoadWorkTable{};
+  simulation->ResetWorld(bare);
+  const auto demolition_of = [&](std::size_t index) {
+    const core::WorldState& now = simulation->CompletedState();
+    const core::RoadRow& road = now.roads.rows[index];
+    return simulation->SelectRoadPieces(core::RoadSelection{.road = now.roads.row_ids[index],
+                                                            .from = road.axis.front().position,
+                                                            .to = road.axis.back().position},
+                                        core::RoadOperation::kDemolish);
+  };
+  const std::size_t road_count = bare.roads.rows.size();
+  std::vector<core::RoadPieces> alone;
+  alone.reserve(road_count);
+  for (std::size_t index = 0; index < road_count; ++index) {
+    alone.push_back(demolition_of(index));
+  }
+  const auto all_in = [](const core::RoadPieces& pieces) {
+    return !pieces.pieces.empty() &&
+           std::ranges::all_of(pieces.pieces, [](const core::RoadPiece& piece) {
+             return piece.refusal == core::RoadPieceRefusal::kNone;
+           });
+  };
+  std::string pair_found;
+  for (std::size_t first = 0; first < road_count && pair_found.empty(); ++first) {
+    if (!all_in(alone[first])) {
+      continue;
+    }
+    core::WorldState with_take_up = bare;
+    core::RoadWorkRow open;
+    open.road = bare.roads.row_ids[first];
+    open.from_m = 0.0F;
+    open.to_m = core::RoadAxisLength(bare.roads.rows[first].axis);
+    open.kind = core::RoadWorkKind::kTakeUp;
+    open.labor_days_remaining = 1.0F;
+    core::AppendRow(with_take_up.road_works, open);
+    simulation->ResetWorld(with_take_up);
+    for (std::size_t second = 0; second < road_count && pair_found.empty(); ++second) {
+      if (second == first) {
+        continue;
+      }
+      const core::RoadPieces with_first_gone = demolition_of(second);
+      for (std::size_t piece = 0; piece < with_first_gone.pieces.size() &&
+                                  piece < alone[second].pieces.size() && pair_found.empty();
+           ++piece) {
+        if (alone[second].pieces[piece].refusal == core::RoadPieceRefusal::kNone &&
+            with_first_gone.pieces[piece].refusal == core::RoadPieceRefusal::kOnlyRoad) {
+          pair_found = map_roads[first].key + " then " + map_roads[second].key;
+        }
+      }
+    }
+  }
+  simulation->ResetWorld(bare);
+  std::cout << "road work: an open take-up strands through a second road: "
+            << (pair_found.empty() ? "NO PAIR FOUND" : pair_found) << "\n";
+  failures += Expect(!pair_found.empty(),
+                     "road work: a road under an open take-up counts as taken — the second road "
+                     "to the same place is then the only one, and refused");
+  return failures;
+}
+
 /// DEMOLITION ON THE SHIPPED MAP (delivery 7d; road_laying.h). The first
 /// piece of road_bridge_village — taken by the start instrument above — is
 /// ordered out by a drag from its start to 520 m (a 36 m remnant runs on to
@@ -1502,6 +1884,7 @@ int main() {
   failures += CheckRoadLaying();
   failures += CheckRoadPiecesOnStart();
   failures += CheckRoadDemolition();
+  failures += CheckRoadWork();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 

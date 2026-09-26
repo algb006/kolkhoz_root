@@ -224,8 +224,8 @@ struct WorkforceCount {
 /// kFelling, an extraction site for kExtraction, none for kNone. kHauling has
 /// THREE possible targets — a field, a stand or an extraction site, whichever
 /// the load lies on — and exactly one of them is valid. kUnitWork names a unit
-/// and kPlanting a stand; kRoadWork has no target field yet (delivery 7e) and
-/// is never assigned until it does. Travel time and
+/// and kPlanting a stand; kRoadWork a piece of road under work (`road_work`,
+/// delivery 7e). Travel time and
 /// eligibility are NOT stored — they are pure functions of positions and state (state model law:
 /// derived values are recomputed, never cached in state).
 struct WorkAssignment {
@@ -259,6 +259,10 @@ struct WorkAssignment {
   /// 0.36.17); invalid otherwise. The work's place is the map's northern
   /// border end (DistrictExitPoint).
   LimitDeliveryId limit_delivery;
+
+  /// Valid for kRoadWork: the piece of road under work (road_work_state.h;
+  /// delivery 7e, save 104); invalid otherwise.
+  RoadWorkId road_work;
 
   /// Norm-days of output delivered since the day started, in game man-days
   /// of the assigned kind. Accumulated hourly while working; converted into

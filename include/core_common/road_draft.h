@@ -219,15 +219,18 @@ struct RoadSelection {
 ///        renumbered.
 enum class RoadPieceRefusal : std::uint8_t {
   kNone = 0,
-  kStartRoad,              ///< One of the four start roads, never removed (construction §13).
-  kOnlyRoad,               ///< The only road to a unit, a settlement or the network's way out.
-  kFloodplain,             ///< A dirt road on the floodplain is not upgraded (roads design §11а).
-  kAlreadyThat,            ///< Already of the surface the upgrade makes.
-  kNotThisStep,            ///< Asphalt over dirt: the chain goes through gravel (roads design §9).
-  kClosedByEpoch,          ///< The target surface is not open yet.
-  kUnderWork,              ///< Road work already stands on the piece.
-  kOutsideVillage,         ///< Asphalt with walks away from the village (roads design §2).
-  kSnapsToNothing,         ///< STUB until the selection is written (7d).
+  kStartRoad,       ///< One of the four start roads, never removed (construction §13).
+  kOnlyRoad,        ///< The only road to a unit, a settlement or the network's way out.
+  kFloodplain,      ///< A dirt road on the floodplain is not upgraded (roads design §11а).
+  kAlreadyThat,     ///< Already of the surface the upgrade makes.
+  kNotThisStep,     ///< Asphalt over dirt: the chain goes through gravel (roads design §9).
+  kClosedByEpoch,   ///< The target surface is not open yet.
+  kUnderWork,       ///< Road work already stands on the piece.
+  kOutsideVillage,  ///< Asphalt with walks away from the village (roads design §2).
+  kSnapsToNothing,  ///< STUB until the selection is written (7d).
+  /// The district's road (roads.csv `district`; boss [90], the human's word of
+  /// 27 September 2026): an upgrade is the district's, never the kolkhoz's.
+  kDistrictRoad,
   kRoadPieceRefusalCount,  ///< NOT A REFUSAL: the count, for mirrors.
 };
 

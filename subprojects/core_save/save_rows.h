@@ -28,6 +28,7 @@
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/road_state.h"
+#include "core_common/road_work_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
@@ -88,6 +89,9 @@ RoadRow ReadRoadRow(LoadSource& source);
 /// A land strip's axis is always written: it is nobody's map (save 101).
 void WriteLandStripRow(SaveSink& sink, const LandStripRow& row);
 LandStripRow ReadLandStripRow(LoadSource& source);
+
+void WriteRoadWorkRow(SaveSink& sink, const RoadWorkRow& row);
+RoadWorkRow ReadRoadWorkRow(LoadSource& source);
 
 }  // namespace core
 

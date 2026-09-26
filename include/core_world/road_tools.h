@@ -75,6 +75,8 @@ class RoadTools {
   /// world's epoch) and the epoch each opens in.
   std::array<RoadSurfaceCost, kRoadSurfaceSlots> costs_{};
   std::array<Epoch, kRoadSurfaceSlots> opens_{};
+  /// By MapRoadId value: 1 for the district's road (roads.csv `district`; 7e).
+  std::vector<std::uint8_t> district_by_map_road_;
   std::vector<float> plot_radius_m_;      ///< By UnitTypeId; 0 — no plot.
   std::vector<float> keep_out_radius_m_;  ///< The plot's, or the body's.
   float map_side_m_ = 0.0F;

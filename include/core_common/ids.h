@@ -153,6 +153,12 @@ struct LandStripIdTag {};
 /// (core_common/road_state.h).
 using LandStripId = EntityId<LandStripIdTag>;
 
+struct RoadWorkIdTag {};
+
+/// @brief A piece of road under work — paved or taken up by hand
+/// (core_common/road_work_state.h; delivery 7e).
+using RoadWorkId = EntityId<RoadWorkIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------

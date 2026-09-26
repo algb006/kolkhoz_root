@@ -442,6 +442,7 @@ class LaborSystem final : public ILaborSystem {
           work.stand = job.stand;
           work.extraction_site = job.extraction_site;
           work.limit_delivery = job.limit_delivery;
+          work.road_work = job.road_work;
           work.travel_hours = -1.0F;  // a new target: its road is measured anew
         }
       }
@@ -534,6 +535,7 @@ class LaborSystem final : public ILaborSystem {
       work.stand = job.stand;
       work.extraction_site = job.extraction_site;
       work.limit_delivery = job.limit_delivery;
+      work.road_work = job.road_work;
       work.travel_hours = -1.0F;  // a new target: its road is measured anew
     }
   }
@@ -1120,6 +1122,23 @@ class LaborSystem final : public ILaborSystem {
         job.position = unit.position;
         job.work_days_remaining = unit.construction.labor_days_remaining;
         job.max_crew = unit.construction.max_crew;
+        jobs.push_back(job);
+      }
+      // THE PIECES OF ROAD UNDER WORK (7e; road_work_state.h): a site as a
+      // unit's is — its labour, its brigade, no window, and the winter's rule
+      // of its surface's level.
+      for (std::uint32_t row = 0; row < current.road_works.rows.size(); ++row) {
+        const RoadWorkRow& work = current.road_works.rows[row];
+        if (work.labor_days_remaining <= 0.0F ||
+            WinterStopsSite(current.calendar.season, work.winter_works)) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kRoadWork;
+        job.road_work = current.road_works.row_ids[row];
+        job.position = work.place;
+        job.work_days_remaining = work.labor_days_remaining;
+        job.max_crew = work.max_crew;
         jobs.push_back(job);
       }
     }

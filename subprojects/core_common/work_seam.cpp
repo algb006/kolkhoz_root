@@ -24,6 +24,11 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // moved on.
     return row == kNoRow ? nullptr : &world.units.rows[row].construction.labor_days_remaining;
   }
+  // A PIECE OF ROAD UNDER WORK (7e): its labour, until the day it is applied.
+  if (work.kind == WorkKind::kRoadWork) {
+    const std::uint32_t row = FindRow(world.road_works, work.road_work);
+    return row == kNoRow ? nullptr : &world.road_works.rows[row].labor_days_remaining;
+  }
   // A PRODUCING UNIT (2026-09-13): its own production seam, and only while it
   // can produce at all — built, alive, not paused, its parent sound. A pause
   // or a yard falling still sends the sawyers home the same hour.
@@ -130,6 +135,14 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
       return false;
     }
     place = world.units.rows[unit_row].position;
+    return true;
+  }
+  if (work.kind == WorkKind::kRoadWork) {
+    const std::uint32_t row = FindRow(world.road_works, work.road_work);
+    if (row == kNoRow) {
+      return false;  // applied and gone since the morning
+    }
+    place = world.road_works.rows[row].place;
     return true;
   }
   if (work.kind == WorkKind::kConstruction || work.kind == WorkKind::kUnitWork ||

@@ -87,6 +87,6 @@ kHerdSurplusSlaughtered,1,
 kHerdAutumnSlaughter,1,
 kWinterSowingLost,1,
 kRoadLaid,1,
-kRoadWorkStarted,0,road work comes with delivery 7e; until then no road work stands
-kRoadWorkFinished,0,road work comes with delivery 7e; until then no road work stands
+kRoadWorkStarted,1,
+kRoadWorkFinished,1,
 kRoadDemolished,1,

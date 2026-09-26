@@ -433,17 +433,51 @@ RoadPieces SelectRoadPiecesOn(const RoadPieceSite& site,
     std::reverse(result.pieces.begin(), result.pieces.end());
   }
 
+  // A PIECE UNDER WORK (7e) is left out whatever the operation: the work names
+  // it by metres along this road, and a second work or a cut would move them.
+  if (site.road_works != nullptr) {
+    for (RoadPiece& piece : result.pieces) {
+      for (const RoadWorkRow& work : site.road_works->rows) {
+        if (work.road.value == selection.road.value && work.from_m < piece.s_to_m &&
+            work.to_m > piece.s_from_m) {
+          piece.refusal = RoadPieceRefusal::kUnderWork;
+          break;
+        }
+      }
+    }
+  }
   const std::optional<RoadSurface> target = TargetOf(operation);
   if (target) {
+    // THE DISTRICT'S ROAD is the district's to pave (boss [90]); its remnants
+    // keep their map road, and with it this.
+    const bool district = road.map_road.value < site.district_by_map_road.size() &&
+                          site.district_by_map_road[road.map_road.value] != 0;
     for (RoadPiece& piece : result.pieces) {
-      piece.refusal = UpgradeRefusal(site, road, *target, piece.s_from_m, piece.s_to_m);
+      if (piece.refusal != RoadPieceRefusal::kNone) {
+        continue;
+      }
+      piece.refusal = district ? RoadPieceRefusal::kDistrictRoad
+                               : UpgradeRefusal(site, road, *target, piece.s_from_m, piece.s_to_m);
     }
   } else {
     // A demolition: never a road the map keeps, never the only road to
     // something — asked piece by piece, each with those already taken.
+    // AN OPEN TAKE-UP IS TAKEN ALREADY (static review of 0.36.38): its road
+    // stands until the crew is done, and without it two gravel roads to one
+    // yard could each be ordered up while the other still stood.
     std::unique_ptr<Connectivity> network;
     std::vector<Cut> taken;
+    if (site.road_works != nullptr) {
+      for (const RoadWorkRow& work : site.road_works->rows) {
+        if (work.kind == RoadWorkKind::kTakeUp) {
+          taken.push_back(Cut{.road = work.road.value, .from_m = work.from_m, .to_m = work.to_m});
+        }
+      }
+    }
     for (RoadPiece& piece : result.pieces) {
+      if (piece.refusal != RoadPieceRefusal::kNone) {
+        continue;
+      }
       if (road.removable == 0) {
         piece.refusal = RoadPieceRefusal::kStartRoad;
         continue;

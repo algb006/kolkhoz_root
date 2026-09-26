@@ -86,8 +86,12 @@ std::uint32_t CrewOnSite(const WorldState& completed, UnitId site) {
 
 class ConstructionSystem final : public IConstructionSystem {
  public:
-  ConstructionSystem(ConstructionConfig config, RoadToolDoors road_doors)
-      : config_(std::move(config)), road_doors_(std::move(road_doors)) {}
+  ConstructionSystem(ConstructionConfig config,
+                     RoadToolDoors road_doors,
+                     RoadWorkCatalog road_works)
+      : config_(std::move(config)),
+        road_doors_(std::move(road_doors)),
+        road_works_(std::move(road_works)) {}
 
   /// What the settlement holds of a resource outside the site itself —
   /// the same reach the delivery stub draws on: built units only, because a
@@ -257,6 +261,9 @@ class ConstructionSystem final : public IConstructionSystem {
       RunFires(current);
       core::MoveStinkZones(config_, current);
       DeliverMaterials(current);
+      // The road works whose labour was done yesterday take their surface
+      // or leave the network (7e; road_laying.h).
+      SettleRoadWorks(current);
     }
     FinishSites(current);
   }
@@ -529,14 +536,24 @@ class ConstructionSystem final : public IConstructionSystem {
           Settle(order, StartInsulation(config_, current, order.unit));
           break;
         case OrderKind::kLayRoad:
-          // A path or a dirt road laid at once (7c; road_laying.h).
-          Settle(order, LayRoad(road_doors_.trace, current, current.orders.row_ids[row], order));
+          // A path or a dirt road laid at once (7c), gravel with its work
+          // (7e; road_laying.h).
+          Settle(
+              order,
+              LayRoad(road_doors_.trace, road_works_, current, current.orders.row_ids[row], order));
           break;
         case OrderKind::kDemolishRoad:
           // A path or a dirt road taken at once, the land keeping its wear
-          // (7d; road_laying.h).
+          // (7d); a paved one taken up as work (7e; road_laying.h).
           Settle(order,
-                 DemolishRoad(road_doors_.select, current, current.orders.row_ids[row], order));
+                 DemolishRoad(
+                     road_doors_.select, road_works_, current, current.orders.row_ids[row], order));
+          break;
+        case OrderKind::kUpgradeRoad:
+          // A surface laid on the pieces, as work (7e; road_laying.h).
+          Settle(order,
+                 UpgradeRoad(
+                     road_doors_.select, road_works_, current, current.orders.row_ids[row], order));
           break;
         default:
           break;  // not ours; another consumer's, or the events slot's refusal
@@ -554,6 +571,9 @@ class ConstructionSystem final : public IConstructionSystem {
   ResourceId FirstShortMaterial(const WorldState& current, const OrderRow& order) const {
     if (order.kind == OrderKind::kInsulateUnit) {
       return config_.straw_resource;  // the one material insulation asks
+    }
+    if (order.kind == OrderKind::kLayRoad || order.kind == OrderKind::kUpgradeRoad) {
+      return order.resource;  // named by the road work itself (road_laying.cpp)
     }
     const std::uint32_t row = FindRow(current.units, order.unit);
     if (row == kNoRow) {
@@ -1165,6 +1185,7 @@ class ConstructionSystem final : public IConstructionSystem {
   /// The world's road tools (delivery 7c, 7d); empty — the road orders
   /// refused kNoConsumer — in a system built without them.
   RoadToolDoors road_doors_;
+  RoadWorkCatalog road_works_;  ///< Road work's tables (7e; road_laying.h).
 };
 
 }  // namespace
@@ -1205,7 +1226,13 @@ std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& t
     LogError("construction: " + error);
     return nullptr;
   }
-  return std::make_unique<ConstructionSystem>(std::move(config), std::move(road_doors));
+  RoadWorkCatalog road_works = ReadRoadWorkCatalog(tables, config.road_take_up_labor_share, error);
+  if (!error.empty()) {
+    LogError("construction: " + error);
+    return nullptr;
+  }
+  return std::make_unique<ConstructionSystem>(
+      std::move(config), std::move(road_doors), std::move(road_works));
 }
 
 }  // namespace core

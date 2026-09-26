@@ -69,6 +69,8 @@ bool ReadRoadSurfaceLevels(const ITableSet& tables, RoadSurfaceLevels& levels, s
   const std::uint32_t level_column = unit_levels->FindColumn("level");
   const std::uint32_t era_column = unit_levels->FindColumn("era");
   const std::uint32_t labor_column = unit_levels->FindColumn("labor_days");
+  const std::uint32_t crew_column = unit_levels->FindColumn("max_crew");
+  const std::uint32_t winter_column = unit_levels->FindColumn("winter_works");
   if (unit_column == kNoTableColumn || level_column == kNoTableColumn ||
       era_column == kNoTableColumn || labor_column == kNoTableColumn) {
     error = "unit_levels: a column of unit, level, era, labor_days is missing";
@@ -90,6 +92,16 @@ bool ReadRoadSurfaceLevels(const ITableSet& tables, RoadSurfaceLevels& levels, s
     RoadSurfaceLevel& slot = read[static_cast<std::size_t>(*surface)];
     slot.opens = static_cast<Epoch>(*era);
     slot.man_days_per_100m = *labor;
+    // The brigade on one piece under work (7e): blank reads 0 — a surface
+    // laid at once, as the plot rung of level 1 is.
+    if (crew_column != kNoTableColumn) {
+      const std::optional<std::int64_t> crew = unit_levels->CellInteger(row, crew_column);
+      slot.max_crew = crew && *crew > 0 && *crew <= 255 ? static_cast<std::uint8_t>(*crew) : 0;
+    }
+    if (winter_column != kNoTableColumn) {
+      const std::optional<std::int64_t> winter = unit_levels->CellInteger(row, winter_column);
+      slot.winter_works = winter && *winter != 0 ? 1U : 0U;
+    }
   }
   const ITable* costs = tables.FindTable("unit_level_cost");
   const ITable* resources = tables.FindTable("resources");

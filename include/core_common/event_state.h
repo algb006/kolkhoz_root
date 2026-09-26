@@ -561,17 +561,18 @@ enum class EventKind : std::uint8_t {
   /// (core_construction/road_laying.cpp).
   kRoadLaid,
 
-  /// road — road work began on a piece (an upgrade, a gravel or asphalt
-  /// laying, the demolition of a paved piece). amount = the target
-  /// RoadSurface value (kNone for a demolition). kNotable. Seam key
-  /// `road_work_started`.
-  /// @no_emit road work comes with delivery 7e; until then no road work stands
+  /// road — road work began on a piece (an upgrade, a gravel laying, the
+  /// taking up of a paved piece), its materials taken. road = the road the
+  /// piece lies on, order = the order that opened it. amount = the target
+  /// RoadSurface value (0 for a take-up). kNotable. Seam key
+  /// `road_work_started`. Raised since 7e (core_construction/road_laying.cpp).
   kRoadWorkStarted,
 
   /// road — the road work on a piece is done; the piece is of its new
-  /// surface (or gone). amount = the RoadSurface value it has now.
-  /// kNotable. Seam key `road_work_finished`.
-  /// @no_emit road work comes with delivery 7e; until then no road work stands
+  /// surface (road = the piece's own row now) or gone (road = the road it
+  /// was cut from, kRoadDemolished following). amount = the RoadSurface
+  /// value it has now (0 when gone). kNotable. Seam key `road_work_finished`.
+  /// Raised since 7e (core_construction/road_laying.cpp, SettleRoadWorks).
   kRoadWorkFinished,
 
   /// road — a piece was demolished (kDemolishRoad): at once for a path and a

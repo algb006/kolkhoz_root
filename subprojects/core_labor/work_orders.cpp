@@ -43,6 +43,10 @@ bool TargetExists(const WorldState& world, const OrderRow& order) {
       (order.work == WorkKind::kHauling && order.extraction_site.value != kInvalidEntityIdValue)) {
     return FindRow(world.extraction_sites, order.extraction_site) != kNoRow;
   }
+  // The piece of road under work (7e): applied and gone, the order closes.
+  if (order.work == WorkKind::kRoadWork) {
+    return FindRow(world.road_works, order.road_work) != kNoRow;
+  }
   return FindRow(world.fields, order.field) != kNoRow;
 }
 
@@ -388,12 +392,21 @@ void ApplyStandingWork(const WorldState& world,
     if (RainStopsWork(world.weather.precipitation, order.work)) {
       continue;
     }
-    // AND THE WINTER, for a site whose class stands in it — the same skip.
+    // AND THE WINTER, for a site whose class stands in it — the same skip;
+    // and for a road work whose level stands in it (static review of
+    // 0.36.38: the chairman's man drained a gravel work in January).
     if (order.work == WorkKind::kConstruction) {
       const std::uint32_t site_row = FindRow(world.units, order.unit);
       if (site_row != kNoRow &&
           WinterStopsSite(world.calendar.season,
                           world.units.rows[site_row].construction.winter_works)) {
+        continue;
+      }
+    }
+    if (order.work == WorkKind::kRoadWork) {
+      const std::uint32_t work_row = FindRow(world.road_works, order.road_work);
+      if (work_row != kNoRow &&
+          WinterStopsSite(world.calendar.season, world.road_works.rows[work_row].winter_works)) {
         continue;
       }
     }
@@ -432,6 +445,9 @@ void ApplyStandingWork(const WorldState& world,
     // the plough kept the lot as his target — WorkSeamOf reads the lot
     // first, so he drained nothing and was sent to the map's border.
     work.limit_delivery = LimitDeliveryId{};
+    // The piece of road under work (7e) — the order's, or none: a man
+    // ordered elsewhere leaves the road, as the carter leaves the lot above.
+    work.road_work = order.work == WorkKind::kRoadWork ? order.road_work : RoadWorkId{};
     work.travel_hours = -1.0F;  // the order's target: its road is measured anew
   }
 }

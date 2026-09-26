@@ -1161,6 +1161,14 @@ enum class OrderRefusal : std::uint8_t {
   /// still lies there, and goes with this word once the last is carted.
   kSiteExhausted,
 
+  /// kUpgradeRoad on a piece of the district's road (roads.csv `district`; the
+  /// human's word of 27 September 2026: «Нам не надо строить гравийку до
+  /// райцентра, это строит район»): the district builds, upgrades and keeps it,
+  /// in every era; a spur off it is the kolkhoz's and is upgraded. When the
+  /// district paves its own road is its schedule (STUB); until then its
+  /// surface does not change. Seam key `district_road` (delivery 7e).
+  kDistrictRoad,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a
@@ -1343,6 +1351,11 @@ struct OrderRow {
   /// invalid when issued; the consumer writes the road it laid (7c), so the
   /// order's own event names it.
   RoadId road;
+
+  /// kAssignWork with WorkKind::kRoadWork: the piece of road under work
+  /// (road_work_state.h; delivery 7e, save 104). A field of its own, for the
+  /// reason `enable` gives.
+  RoadWorkId road_work;
 };
 
 /// @brief The order book type used by WorldState.

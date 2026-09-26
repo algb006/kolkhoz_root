@@ -220,6 +220,12 @@ struct ConstructionConfig {
   /// (construction design §12: "noticeably less than building"). ASSUMPTION.
   float demolition_labor_share = 0.25F;
 
+  /// Taking a paved piece of road up costs this share of its laying's labour
+  /// (construction.csv `road_take_up_labor_share`; boss-core-epoch1-resume
+  /// [81]: labour alone, a third, no material back — STUB, the default
+  /// until the key is exported).
+  float road_take_up_labor_share = 1.0F / 3.0F;
+
   /// THE FULL RADIUS OF A STINK ZONE IN METRES, by strength — index by
   /// StinkStrength, so index 0 (kNone) is a zero radius and never used.
   ///

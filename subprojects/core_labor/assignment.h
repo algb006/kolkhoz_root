@@ -55,6 +55,10 @@ struct AssignmentJob {
   /// StopsWithoutHorse in assignment.cpp).
   LimitDeliveryId limit_delivery;
 
+  /// Valid for kRoadWork: the piece of road under work (delivery 7e).
+  /// Copied into WorkAssignment.
+  RoadWorkId road_work;
+
   /// At most this many workers on this job at once; 0 = no cap beyond the
   /// demand ceiling below. Construction sites carry one — the build
   /// class's brigade (unit_levels.csv max_crew): without it a 250-day site

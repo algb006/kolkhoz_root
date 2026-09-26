@@ -39,6 +39,15 @@ struct RoadSurfaceLevel {
   /// Grams per 100 m, dense by ResourceId (unit_level_cost.csv `amount` times
   /// resources.csv `kg_per_unit`).
   ResourceAmounts materials_per_100m;
+
+  /// The most hands on one piece under work (unit_levels.csv `max_crew`;
+  /// delivery 7e). 0 where the row names none: a surface laid at once.
+  std::uint8_t max_crew = 0;
+
+  /// 0/1 (unit_levels.csv `winter_works`): whether its work goes on in the
+  /// core's winter season (construction design §8; WinterStopsSite). 0 for
+  /// gravel on the shipped tables: a road site waits out the winter.
+  std::uint8_t winter_works = 0;
 };
 
 /// @brief By RoadSurface.
