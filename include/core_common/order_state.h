@@ -13,7 +13,7 @@
 /// kRefused IN THE STEP THE ROW IS READ — never to kAccepted or kActive,
 /// except where a kind says otherwise:
 ///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
-///     kDemolishUnit, kRepairUnit, kInsulateUnit;
+///     kDemolishUnit, kRepairUnit, kInsulateUnit, and kLayRoad since 7c;
 ///   * core_production — kPauseUnit, kResumeUnit, kUnsealFund, kSetRotation,
 ///     kMarkFelling, kMarkExtraction, kOrderLimitLot, kRemoveField,
 ///     kGrazeAtNight, kHandStock, kDeliverPlan, kPlantForest and
@@ -24,9 +24,9 @@
 ///     2026-09-18);
 ///   * core_world — kAdvanceEra (since 2026-09-18), in the events slot, where
 ///     the readiness is scored;
-///   * NONE YET — kLayRoad, kUpgradeRoad and kDemolishRoad (delivery 7a, the
-///     contract): the sweep refuses them kNoConsumer in the step they are
-///     read, until core_construction takes them in 7c, 7d and 7e.
+///   * NONE YET — kUpgradeRoad and kDemolishRoad (delivery 7a, the contract):
+///     the sweep refuses them kNoConsumer in the step they are read, until
+///     core_construction takes them in 7e and 7d.
 /// This list was three consumers and short by seven kinds on 2026-09-18,
 /// when the fourth consumer was added and the list counted rather than
 /// appended to: every kind below names its consumer, and that is the
@@ -785,9 +785,11 @@ enum class OrderKind : std::uint8_t {
   /// PreviewRoad (road_draft.h). A path and a dirt road are laid at once
   /// (roads design §9: «Грунтовка ничего не стоит»); gravel and asphalt
   /// become road work (WorkKind::kRoadWork). Refusals: kRuleForbids (the
-  /// trace refused — the event says which), kGateClosed (the surface not
-  /// open in this epoch). Seam key `lay_road`. Consumer: core_construction
-  /// FROM 7c; until then none, and the sweep refuses it kNoConsumer.
+  /// trace refused on the step's world — PreviewRoad on the same points says
+  /// which block; the refusal carries none), kNoConsumer (gravel and asphalt
+  /// until road work, 7e — the epoch's closing is one of the trace's
+  /// blocks, so it is kRuleForbids). Seam key `lay_road`. Consumer:
+  /// core_construction since 7c (road_laying.h).
   kLayRoad,
 
   /// UPGRADE PIECES OF A LAID ROAD (tools 6-8): the selection in `road` and
@@ -1335,7 +1337,9 @@ struct OrderRow {
   /// drag's two ends in [0] and [1]. Metres from the map's south-west corner.
   std::array<Vec2, kRoadDraftMaxPoints> road_points{};
 
-  /// kUpgradeRoad and kDemolishRoad: the road the drag began on.
+  /// kUpgradeRoad and kDemolishRoad: the road the drag began on. kLayRoad:
+  /// invalid when issued; the consumer writes the road it laid (7c), so the
+  /// order's own event names it.
   RoadId road;
 };
 

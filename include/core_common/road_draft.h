@@ -108,6 +108,7 @@ enum class RoadDraftRefusal : std::uint8_t {
   kSnapsToNothing,
   kReserve,                ///< A reserve (map_areas.csv `reserve`; 7b).
   kRuins,                  ///< A ruins site (map_areas.csv `ruins_site`; 7b).
+  kAlongRoad,              ///< Runs along a laid road's bed, not across or into it (7c).
   kRoadDraftRefusalCount,  ///< NOT A REFUSAL: the count, for mirrors.
 };
 

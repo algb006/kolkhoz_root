@@ -724,10 +724,11 @@ class ISession {
   virtual float ResidentHeightMeters(ResidentId resident) const = 0;
 
   // -- the player's road tools (delivery 7; core_common/road_draft.h) ---------
-  // STUB, two of four doors (ISimulation says each one's stub answer):
-  // SelectRoadPieces until 7d, RoadKindsAvailable until 7e. Roads() is real
-  // from 7a, PreviewRoad from 7b. The three road orders are staged and then
-  // refused kNoConsumer until 7c-7e.
+  // STUB in part (ISimulation says each one's answer): SelectRoadPieces
+  // until 7d; RoadKindsAvailable opens the path and the dirt road since 7c
+  // and the rest with 7d-7e. Roads() is real from 7a, PreviewRoad from 7b.
+  // kLayRoad lays a path or a dirt road since 7c; kUpgradeRoad and
+  // kDemolishRoad are staged and then refused kNoConsumer until 7e and 7d.
 
   /// @brief The trace of a road or path the player is drawing: the axis the
   ///        order kLayRoad would lay from the same points, what is in its

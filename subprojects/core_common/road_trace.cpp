@@ -9,7 +9,9 @@
 #include <numbers>
 #include <optional>
 #include <queue>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "core_common/road_graph.h"
 
@@ -138,6 +140,75 @@ class UnitIndex {
  private:
   std::vector<RoadUnitDisc> discs_;
   float reach_m_ = 0.0F;
+};
+
+/// The laid network's beds, bucketed on a coarse grid so a sample asks only
+/// the pieces near it: whether a bed of `half_width` at a point overlaps any
+/// laid road's bed (kAlongRoad's question, 7c).
+class LaidBeds {
+ public:
+  LaidBeds(const RoadTable* roads, const RoadTraceConfig& config) {
+    if (roads == nullptr) {
+      return;
+    }
+    for (const RoadRow& road : roads->rows) {
+      const float half =
+          road.kind == RoadKind::kPath ? config.path_half_width_m : config.road_half_width_m;
+      for (std::size_t index = 0; index + 1 < road.axis.size(); ++index) {
+        const auto piece = static_cast<std::uint32_t>(pieces_.size());
+        pieces_.push_back(Piece{.from = road.axis[index].position,
+                                .to = road.axis[index + 1].position,
+                                .half_width_m = half});
+        // Into every cell the piece's box touches, widened by the widest
+        // two beds, so a point's own cell holds every piece that can reach.
+        const float reach = 2.0F * config.road_half_width_m;
+        const Vec2 low{.x = std::min(pieces_.back().from.x, pieces_.back().to.x) - reach,
+                       .y = std::min(pieces_.back().from.y, pieces_.back().to.y) - reach};
+        const Vec2 high{.x = std::max(pieces_.back().from.x, pieces_.back().to.x) + reach,
+                        .y = std::max(pieces_.back().from.y, pieces_.back().to.y) + reach};
+        for (std::int64_t column = CellOf(low.x); column <= CellOf(high.x); ++column) {
+          for (std::int64_t row = CellOf(low.y); row <= CellOf(high.y); ++row) {
+            cells_[Key(column, row)].push_back(piece);
+          }
+        }
+      }
+    }
+  }
+
+  /// Whether a bed of `half_width` centred on `point` overlaps a laid bed.
+  bool Overlaps(Vec2 point, float half_width) const {
+    const auto found = cells_.find(Key(CellOf(point.x), CellOf(point.y)));
+    if (found == cells_.end()) {
+      return false;
+    }
+    return std::any_of(found->second.begin(), found->second.end(), [&](std::uint32_t piece) {
+      const Piece& laid = pieces_[piece];
+      return DistanceToSegment(point, laid.from, laid.to) < half_width + laid.half_width_m;
+    });
+  }
+
+ private:
+  /// The bucket's side, metres: coarse, since a piece sits in every bucket
+  /// its box touches.
+  static constexpr float kCellMetres = 50.0F;
+
+  struct Piece {
+    Vec2 from;
+    Vec2 to;
+    float half_width_m = 0.0F;
+  };
+
+  static std::int64_t CellOf(float metres) {
+    return static_cast<std::int64_t>(std::floor(metres / kCellMetres));
+  }
+
+  static std::uint64_t Key(std::int64_t column, std::int64_t row) {
+    return (static_cast<std::uint64_t>(column) << 32U) ^
+           static_cast<std::uint64_t>(static_cast<std::uint32_t>(row));
+  }
+
+  std::vector<Piece> pieces_;
+  std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> cells_;
 };
 
 /// What stands in the corridor at one place: the refusal, in the order a
@@ -557,6 +628,7 @@ struct Sample {
   Vec2 point;
   RoadDraftRefusal refusal = RoadDraftRefusal::kNone;
   bool trees = false;
+  bool on_laid_bed = false;  ///< The bed overlaps a laid road's here.
 };
 
 }  // namespace
@@ -663,6 +735,7 @@ RoadDraftResult TraceRoad(const RoadTraceSite& site,
 
   // Judged every sample_step_m along the finished axis.
   std::vector<Sample> samples;
+  const LaidBeds laid_beds(site.roads, config);
   float clearing_m = 0.0F;
   for (std::size_t index = 0; index + 1 < axis.size(); ++index) {
     const Vec2 span = Minus(axis[index + 1], axis[index]);
@@ -679,6 +752,7 @@ RoadDraftResult TraceRoad(const RoadTraceSite& site,
       Sample sample{.s_m = s_of[index] + (length * share),
                     .point = Plus(axis[index], Times(span, share))};
       sample.refusal = judge.At(sample.point, left, &sample.trees);
+      sample.on_laid_bed = laid_beds.Overlaps(sample.point, judge.HalfWidth());
       if (sample.trees && sample.refusal == RoadDraftRefusal::kNone && part < count) {
         clearing_m += length / static_cast<float>(count);
       }
@@ -708,6 +782,25 @@ RoadDraftResult TraceRoad(const RoadTraceSite& site,
     }
     index = run_end + 1;
   }
+  // Riding on a laid road: a run on its bed longer than a crossing or a
+  // joining end takes (along_road_m).
+  for (std::size_t index = 0; index < samples.size();) {
+    if (!samples[index].on_laid_bed) {
+      ++index;
+      continue;
+    }
+    std::size_t run_end = index;
+    while (run_end + 1 < samples.size() && samples[run_end + 1].on_laid_bed) {
+      ++run_end;
+    }
+    if (samples[run_end].s_m - samples[index].s_m > config.along_road_m) {
+      add_block(RoadDraftRefusal::kAlongRoad,
+                samples[index].s_m,
+                samples[run_end].s_m,
+                samples[(index + run_end) / 2].point);
+    }
+    index = run_end + 1;
+  }
 
   result.carriageway_m = 2.0F * judge.HalfWidth();
   const bool built = IsBuilt(draft.surface);
@@ -722,6 +815,8 @@ RoadDraftResult TraceRoad(const RoadTraceSite& site,
     }
     result.estimate.clearing_ha = clearing_m * config.clearing_width_m / 10000.0F;
     result.estimate.timber_m3 = result.estimate.clearing_ha * site.timber_m3_per_ha;
+    // The work grows with the trees (§9): the clearing's man-days on top.
+    result.estimate.man_days += result.estimate.clearing_ha * config.clearing_trudodni_per_ha;
   }
   return result;
 }

@@ -1362,25 +1362,44 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
   failures += Expect(session->IssueOrder(road_crew).value == 0,
                      "roads: a crew for road work is refused at the door until 7e");
   session->AdvanceStep();
-  // Answered by an event and swept from the book in the same step: NO
-  // CONSUMER, the sweep's own word for a kind nobody handles yet (static
-  // review of 0.36.25: the first draft refused it as a closed gate, which
-  // tells the layer to name a unit type's gate the order does not carry).
-  bool refused_unconsumed = false;
-  bool demolition_names_road = false;
-  for (const core::SimEvent& event : session->Events()) {
-    refused_unconsumed =
-        refused_unconsumed ||
-        (event.order.value == laid.value && event.kind == core::EventKind::kOrderRefused &&
+  // Since 7c the dirt road is LAID in the step it is read: kRoadLaid names
+  // the new road and comes before the order's own kOrderDone, which names
+  // it too — and the road is in the book by then (the event after the
+  // write). The demolition has no consumer until 7d: NO CONSUMER, the
+  // sweep's own word for a kind nobody handles yet (static review of
+  // 0.36.25: its first draft refused as a closed gate, which tells the layer
+  // to name a unit type's gate the order does not carry).
+  core::RoadId laid_road;
+  std::size_t laid_at = 0;
+  std::size_t done_at = 0;
+  bool demolition_unconsumed = false;
+  const std::span<const core::SimEvent> events = session->Events();
+  for (std::size_t index = 0; index < events.size(); ++index) {
+    const core::SimEvent& event = events[index];
+    if (event.kind == core::EventKind::kRoadLaid && event.order.value == laid.value) {
+      laid_road = event.road;
+      laid_at = index + 1;
+    }
+    if (event.kind == core::EventKind::kOrderDone && event.order.value == laid.value &&
+        event.road.value == laid_road.value) {
+      done_at = index + 1;
+    }
+    demolition_unconsumed =
+        demolition_unconsumed ||
+        (event.order.value == demolished.value && event.kind == core::EventKind::kOrderRefused &&
+         event.road.value == 3 &&
          event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer));
-    demolition_names_road = demolition_names_road ||
-                            (event.order.value == demolished.value &&
-                             event.kind == core::EventKind::kOrderRefused && event.road.value == 3);
   }
-  failures += Expect(refused_unconsumed,
-                     "roads: until its part lands, the order is refused with no consumer");
-  failures +=
-      Expect(demolition_names_road, "roads: the refusal names the road the order dragged along");
+  const core::RoadTable& book = session->State().roads;
+  const bool in_book = !book.rows.empty() && book.row_ids.back().value == laid_road.value &&
+                       book.rows.back().origin == core::RoadOrigin::kPlayer &&
+                       book.rows.back().surface == core::RoadSurface::kDirt;
+  failures += Expect(laid_road.value != 0 && laid_at > 0 && done_at > laid_at && in_book,
+                     "roads: the dirt road is laid, named by kRoadLaid and by the order's "
+                     "kOrderDone, and in the book");
+  failures += Expect(demolition_unconsumed,
+                     "roads: the demolition, until 7d, is refused with no consumer and names "
+                     "its road");
 
   core::RoadDraft draft;
   draft.point_count = 2;
@@ -1410,12 +1429,21 @@ int TestRoadToolsContract(const core::ITableSet& tables) {
                   view.works.empty() && (view.axis.empty() || view.axis.front().s_m == 0.0F);
   }
   failures += Expect(views_match, "roads: Roads() answers every road of the world, no work on any");
+  // Epoch I: the path and the dirt road open (7c); gravel not built yet
+  // (7e); asphalt closed by its epoch; the demolition not built (7d).
   const core::RoadToolStates tools = session->RoadKindsAvailable();
-  failures += Expect(std::ranges::all_of(tools,
-                                         [](core::RoadToolClosed closed) {
-                                           return closed == core::RoadToolClosed::kNotYetBuilt;
-                                         }),
-                     "roads: every tool stands grey as not yet built");
+  const auto tool = [&tools](core::RoadTool which) {
+    return tools[static_cast<std::size_t>(which)];
+  };
+  failures +=
+      Expect(tool(core::RoadTool::kLayPath) == core::RoadToolClosed::kOpen &&
+                 tool(core::RoadTool::kLayDirt) == core::RoadToolClosed::kOpen &&
+                 tool(core::RoadTool::kLayGravel) == core::RoadToolClosed::kNotYetBuilt &&
+                 tool(core::RoadTool::kLayAsphalt) == core::RoadToolClosed::kByEpoch &&
+                 tool(core::RoadTool::kUpgradeToGravel) == core::RoadToolClosed::kNotYetBuilt &&
+                 tool(core::RoadTool::kUpgradeToAsphaltWalks) == core::RoadToolClosed::kByEpoch &&
+                 tool(core::RoadTool::kDemolish) == core::RoadToolClosed::kNotYetBuilt,
+             "roads: path and dirt open, gravel not built, asphalt by its epoch");
 
   core::JournalEntry entry;
   entry.verb = core::JournalVerb::kIssue;

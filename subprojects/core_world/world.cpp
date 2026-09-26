@@ -465,7 +465,7 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<IProductionSystem> production,
                      std::unique_ptr<ILaborSystem> labor,
                      std::unique_ptr<IConstructionSystem> construction,
-                     RoadTools road_tools)
+                     std::shared_ptr<const RoadTools> road_tools)
       : road_tools_(std::move(road_tools)),
         time_(std::move(time)),
         residents_(std::move(residents)),
@@ -573,12 +573,13 @@ class StandardSimulation final : public ISimulation {
     }
   }
 
-  // THE ROAD TOOLS (delivery 7): the preview traces for real since 7b
-  // (road_tools.h). STUB, named, until their parts land: a selection is no
-  // piece (7d), and every tool stands kNotYetBuilt (7c-7e). Roads() reads
+  // THE ROAD TOOLS (delivery 7; road_tools.h): the preview traces since 7b,
+  // a path and a dirt road are laid since 7c and their tools open. STUB,
+  // named, until their parts land: a selection is no piece (7d), and the
+  // paved and demolition tools stand kNotYetBuilt (7d, 7e). Roads() reads
   // the network as it stands, with no work on any road.
   RoadDraftResult PreviewRoad(const RoadDraft& draft) const override {
-    return road_tools_.Preview(engine_->CompletedState(), draft);
+    return road_tools_->Trace(engine_->CompletedState(), draft);
   }
 
   RoadPieces SelectRoadPieces(const RoadSelection& /*selection*/,
@@ -587,9 +588,7 @@ class StandardSimulation final : public ISimulation {
   }
 
   RoadToolStates RoadKindsAvailable() const override {
-    RoadToolStates states{};
-    states.fill(RoadToolClosed::kNotYetBuilt);
-    return states;
+    return road_tools_->ToolStates(engine_->CompletedState());
   }
 
   std::vector<RoadView> Roads() const override {
@@ -605,8 +604,9 @@ class StandardSimulation final : public ISimulation {
   }
 
  private:
-  /// Declared first so the constructor's list can fill it first.
-  RoadTools road_tools_;
+  /// Declared first so the constructor's list can fill it first. Shared
+  /// with construction's tracer (the factory below).
+  std::shared_ptr<const RoadTools> road_tools_;
 
   std::unique_ptr<ITimeSystem> time_;
 
@@ -776,7 +776,24 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       *config.tables, config.stub_tables, [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->FodderFund(world);
       });
-  auto construction = CreateConstructionSystem(*config.tables, config.stub_tables);
+  // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
+  // prices, the plot radii — one object, and construction is handed its
+  // tracer by the same road labor is handed the grams of a crop, so the
+  // preview and the order that lays a road trace alike. A malformed table
+  // refuses the assembly.
+  std::string road_tools_error;
+  std::optional<RoadTools> read_tools = RoadTools::Read(*config.tables, road_tools_error);
+  if (!read_tools) {
+    LogError(road_tools_error);
+    return nullptr;
+  }
+  const auto road_tools = std::make_shared<const RoadTools>(std::move(*read_tools));
+  auto construction =
+      CreateConstructionSystem(*config.tables,
+                               config.stub_tables,
+                               [road_tools](const WorldState& world, const RoadDraft& draft) {
+                                 return road_tools->Trace(world, draft);
+                               });
   if (!time || !residents || !production || !labor || !construction) {
     // A factory refused its configuration (it already logged why).
     return nullptr;
@@ -873,15 +890,6 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   if (!layout_error.empty()) {
     return nullptr;
   }
-  // The road tools' tables (delivery 7b): the map's obstacles, the road
-  // levels' prices, the plot radii. A malformed one refuses the assembly,
-  // like any table a subsystem reads.
-  std::string road_tools_error;
-  std::optional<RoadTools> road_tools = RoadTools::Read(*config.tables, road_tools_error);
-  if (!road_tools) {
-    LogError(road_tools_error);
-    return nullptr;
-  }
   return std::make_unique<StandardSimulation>(config,
                                               std::move(start),
                                               std::move(time),
@@ -889,7 +897,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(production),
                                               std::move(labor),
                                               std::move(construction),
-                                              std::move(*road_tools));
+                                              road_tools);
 }
 
 }  // namespace core

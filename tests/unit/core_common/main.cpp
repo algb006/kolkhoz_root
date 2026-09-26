@@ -1640,13 +1640,16 @@ int TestRoadTrace() {
     const core::RoadDraftResult cleared = bench.Trace(paved);
     // ~108 m of trees across the bed's width (100 m plus half a bed each
     // side) times 8 m: ~0.086 ha, 2.6 m³ at 30 a hectare; 800 m of gravel is
-    // eight hundreds: 480 man-days and 16000 g of the second material.
+    // eight hundreds: 480 man-days and 16000 g of the second material; and
+    // the clearing's 150 man-days a hectare on top (boss [66]), ~13 more.
     failures += Expect(
         HasBlock(bench.Trace(line), core::RoadDraftRefusal::kTrees) && cleared.blocks.empty() &&
             cleared.clearing_m == 8.0F && cleared.estimate.clearing_ha > 0.080F &&
             cleared.estimate.clearing_ha < 0.092F &&
             std::abs(cleared.estimate.timber_m3 - (cleared.estimate.clearing_ha * 30.0F)) < 1e-4F &&
-            cleared.estimate.man_days > 479.0F && cleared.estimate.man_days < 486.0F &&
+            std::abs(cleared.estimate.man_days - (60.0F * cleared.length_m / 100.0F) -
+                     (cleared.estimate.clearing_ha * 150.0F)) < 0.01F &&
+            cleared.estimate.man_days > 490.0F && cleared.estimate.man_days < 500.0F &&
             cleared.estimate.materials.size() == 2 && cleared.estimate.materials[1] > 15990 &&
             cleared.estimate.materials[1] < 16200,
         "trace: the grove stops dirt; gravel clears it, and the estimate counts it");
@@ -1715,6 +1718,15 @@ int TestRoadTrace() {
                            collapsed.blocks[0].refusal == core::RoadDraftRefusal::kBadPoints &&
                            collapsed.axis.empty(),
                        "trace: two ends snapped onto one junction are no draft");
+    // Along the laid road (5 m off its axis, beds overlapping for 800 m):
+    // kAlongRoad. Across it, square: no. Into it, an end joining: no.
+    const auto along_of = [&bench](core::Vec2 from, core::Vec2 to) {
+      return HasBlock(bench.Trace(Draft(dirt, {from, to})), core::RoadDraftRefusal::kAlongRoad);
+    };
+    failures += Expect(along_of({.x = 100.0F, .y = 705.0F}, {.x = 900.0F, .y = 705.0F}) &&
+                           !along_of({.x = 300.0F, .y = 500.0F}, {.x = 300.0F, .y = 900.0F}) &&
+                           !along_of({.x = 450.0F, .y = 500.0F}, {.x = 450.0F, .y = 699.0F}),
+                       "trace: along a laid road is refused; across it or into it is a junction");
   }
   {
     // Asphalt with walks: in the village and nowhere else.

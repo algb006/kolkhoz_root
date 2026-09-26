@@ -28,18 +28,15 @@
 ///     from a ford, forest, reserve, ruins, and — by surface — trees (a path
 ///     and a dirt road) or the floodplain (gravel and asphalt), and for
 ///     asphalt with walks the village's contour. Runs of one refusal are the
-///     blocks, along `s`.
+///     blocks, along `s`. And a run where the bed overlaps a laid road's bed
+///     for longer than along_road_m is kAlongRoad: crossing a road or
+///     joining one is a junction, riding on it is a second road on the
+///     first (the same draft ordered twice laid two, before 7c's review).
 ///
 /// WHAT IT DOES NOT SEE YET, named so it is not taken for a pass:
-///   * a road laid ALONG an existing one — two ends snapped to one road at
-///     two places lay a second road on the first, unrefused (7c decides);
 ///   * an obstacle thinner than the search cell between two of its centres:
 ///     the way round may hop it, and the hop is judged again sample by
 ///     sample and shows as its own red span, not as kNoWayRound;
-///   * the clearing's labour: trees add hectares and timber to the estimate
-///     but no man-days, while the design says the work grows with the trees
-///     (roads design §9, «Трудоёмкость растёт») — STUB, the number is
-///     asked of boss.
 ///
 /// EVERY NUMBER HERE IS A STUB, named in RoadTraceConfig with its source;
 /// the design gives the bed (8 m), the clearing (a bed's width) and the calm
@@ -87,6 +84,14 @@ struct RoadTraceConfig {
   /// width (roads design §2, «Просека шириной в полотно»).
   float clearing_width_m = 8.0F;
 
+  /// Трудодни a hectare of that clearing costs on top of the road's level
+  /// (roads design §9, «Трудоёмкость растёт: чем больше деревьев…»). STUB
+  /// (boss [66]): felling and grubbing by hand in the 1920s runs 100-300
+  /// man-days a hectare, the middle taken — +12 man-days a 100 m of bed
+  /// through trees; econ measures. A world_params key
+  /// (`clearing_trudodni_per_ha`) comes when boss is told the reader is.
+  float clearing_trudodni_per_ha = 150.0F;
+
   /// How far past the river's half-width at a ford a road may still cross.
   /// STUB (boss [64] item 3).
   float ford_extra_m = 10.0F;
@@ -114,6 +119,13 @@ struct RoadTraceConfig {
 
   /// Metres between the points of a drawn curve.
   float curve_step_m = 5.0F;
+
+  /// The longest run of axis whose bed overlaps a laid road's bed before it
+  /// counts as laid ALONG that road (kAlongRoad) rather than across it or
+  /// into it. STUB (7c): three beds — a square crossing overlaps for two
+  /// (16 m), an end joining a road for one; the same draft laid twice
+  /// overlaps for its whole length.
+  float along_road_m = 24.0F;
 
   /// The share of a unit's PLOT radius a road may not enter: the building,
   /// not the yard. STUB, measured (7b): the plot circle whole refused the

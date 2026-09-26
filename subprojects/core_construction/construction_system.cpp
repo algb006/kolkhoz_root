@@ -35,6 +35,7 @@
 #include "core_tables/required_tables.h"
 #include "field_camp.h"
 #include "insulation.h"
+#include "road_laying.h"
 #include "site_supply.h"
 #include "unit_decay.h"
 
@@ -85,7 +86,8 @@ std::uint32_t CrewOnSite(const WorldState& completed, UnitId site) {
 
 class ConstructionSystem final : public IConstructionSystem {
  public:
-  explicit ConstructionSystem(ConstructionConfig config) : config_(std::move(config)) {}
+  ConstructionSystem(ConstructionConfig config, RoadTracer road_tracer)
+      : config_(std::move(config)), road_tracer_(std::move(road_tracer)) {}
 
   /// What the settlement holds of a resource outside the site itself —
   /// the same reach the delivery stub draws on: built units only, because a
@@ -525,6 +527,10 @@ class ConstructionSystem final : public IConstructionSystem {
           break;
         case OrderKind::kInsulateUnit:
           Settle(order, StartInsulation(config_, current, order.unit));
+          break;
+        case OrderKind::kLayRoad:
+          // A path or a dirt road laid at once (7c; road_laying.h).
+          Settle(order, LayRoad(road_tracer_, current, current.orders.row_ids[row], order));
           break;
         default:
           break;  // not ours; another consumer's, or the events slot's refusal
@@ -1149,12 +1155,22 @@ class ConstructionSystem final : public IConstructionSystem {
   }
 
   ConstructionConfig config_;
+
+  /// The world's road tracer (delivery 7c); empty — kLayRoad refused
+  /// kNoConsumer — in a system built without one.
+  RoadTracer road_tracer_;
 };
 
 }  // namespace
 
 std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
                                                               StubTables stubs) {
+  return CreateConstructionSystem(tables, stubs, RoadTracer{});
+}
+
+std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
+                                                              StubTables stubs,
+                                                              RoadTracer road_tracer) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1183,7 +1199,7 @@ std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& t
     LogError("construction: " + error);
     return nullptr;
   }
-  return std::make_unique<ConstructionSystem>(std::move(config));
+  return std::make_unique<ConstructionSystem>(std::move(config), std::move(road_tracer));
 }
 
 }  // namespace core

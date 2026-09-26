@@ -104,7 +104,37 @@ std::vector<RoadUnitDisc> RoadTools::UnitDiscs(const WorldState& world) const {
   return units;
 }
 
-RoadDraftResult RoadTools::Preview(const WorldState& world, const RoadDraft& draft) const {
+RoadToolStates RoadTools::ToolStates(const WorldState& world) const {
+  const auto open = [&](RoadSurface surface) {
+    return EpochIndex(opens_[static_cast<std::size_t>(surface)]) <= EpochIndex(world.epoch);
+  };
+  // Built tools not written yet say so; a closed epoch is said first, being
+  // the reason that holds after the tool is built.
+  const auto built_later = [&](RoadSurface surface) {
+    return open(surface) ? RoadToolClosed::kNotYetBuilt : RoadToolClosed::kByEpoch;
+  };
+  RoadToolStates states{};
+  // Laid since 7c: open, when their epoch is (the trace refuses them by the
+  // same `opens_` otherwise — the menu must not say open over it).
+  const auto laid_now = [&](RoadSurface surface) {
+    return open(surface) ? RoadToolClosed::kOpen : RoadToolClosed::kByEpoch;
+  };
+  states[static_cast<std::size_t>(RoadTool::kLayPath)] = laid_now(RoadSurface::kNone);
+  states[static_cast<std::size_t>(RoadTool::kLayDirt)] = laid_now(RoadSurface::kDirt);
+  states[static_cast<std::size_t>(RoadTool::kLayGravel)] = built_later(RoadSurface::kGravel);
+  states[static_cast<std::size_t>(RoadTool::kLayAsphalt)] = built_later(RoadSurface::kAsphalt);
+  states[static_cast<std::size_t>(RoadTool::kLayAsphaltWalks)] =
+      built_later(RoadSurface::kAsphaltWalks);
+  states[static_cast<std::size_t>(RoadTool::kUpgradeToGravel)] = built_later(RoadSurface::kGravel);
+  states[static_cast<std::size_t>(RoadTool::kUpgradeToAsphalt)] =
+      built_later(RoadSurface::kAsphalt);
+  states[static_cast<std::size_t>(RoadTool::kUpgradeToAsphaltWalks)] =
+      built_later(RoadSurface::kAsphaltWalks);
+  states[static_cast<std::size_t>(RoadTool::kDemolish)] = RoadToolClosed::kNotYetBuilt;
+  return states;
+}
+
+RoadDraftResult RoadTools::Trace(const WorldState& world, const RoadDraft& draft) const {
   const std::vector<RoadUnitDisc> units = UnitDiscs(world);
   RoadTraceSite site;
   site.raster = Raster();

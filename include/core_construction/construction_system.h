@@ -81,9 +81,14 @@
 ///     sets UnitRow::insulated with kUnitInsulated; a finished upgrade to
 ///     the third level takes it off.
 ///
-/// NOT YET: the three road orders (kLayRoad, kUpgradeRoad, kDemolishRoad,
-/// delivery 7a) are this module's from 7c, 7d and 7e; until each lands it does
-/// not read them, and the events slot's sweep refuses them kNoConsumer.
+///   * ROADS (delivery 7c; road_laying.h): kLayRoad lays a path or a dirt
+///     road at once, traced by the world's tracer (RoadTracer), and raises
+///     kRoadLaid after the write; gravel and asphalt are refused kNoConsumer
+///     until road work (7e).
+///
+/// NOT YET: kUpgradeRoad and kDemolishRoad are this module's from 7e and 7d;
+/// until each lands it does not read them, and the events slot's sweep
+/// refuses them kNoConsumer.
 ///
 /// WHAT IT DOES NOT DO, and who will:
 ///   * seasons of building (winter stops masonry, not carpentry —
@@ -123,6 +128,7 @@
 #ifndef CORE_CONSTRUCTION_CONSTRUCTION_SYSTEM_H_
 #define CORE_CONSTRUCTION_CONSTRUCTION_SYSTEM_H_
 
+#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -131,6 +137,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/deadline.h"
 #include "core_common/material_shortfall.h"
+#include "core_common/road_draft.h"
 #include "core_common/stink.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
@@ -337,6 +344,19 @@ std::span<const std::string_view> ConstructionWorldParamKeys();
 
 std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
                                                               StubTables stubs);
+
+/// @brief The world's road tracer as construction calls it: the draft traced
+///        on the step's world (core_common/road_trace.h through core_world's
+///        RoadTools — the same object the preview asks, so preview and order
+///        trace alike).
+using RoadTracer = std::function<RoadDraftResult(const WorldState&, const RoadDraft&)>;
+
+/// @brief As above, with the tracer kLayRoad needs (delivery 7c). The
+///        two-argument form passes none, and every kLayRoad is then refused
+///        kNoConsumer — the form this module's own tests use.
+std::unique_ptr<IConstructionSystem> CreateConstructionSystem(const ITableSet& tables,
+                                                              StubTables stubs,
+                                                              RoadTracer road_tracer);
 
 }  // namespace core
 

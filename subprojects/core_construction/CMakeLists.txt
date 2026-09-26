@@ -17,6 +17,7 @@ kolkhoz_add_module(core_construction
     construction_system.cpp
     field_camp.cpp
     insulation.cpp
+    road_laying.cpp
     site_supply.cpp
     unit_decay.cpp)
 

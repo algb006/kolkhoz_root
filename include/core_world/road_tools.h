@@ -37,8 +37,18 @@ class RoadTools {
   /// @return Nothing, with `error` set, when a present table is malformed.
   static std::optional<RoadTools> Read(const ITableSet& tables, std::string& error);
 
-  /// @brief The trace of `draft` on `world` (road_trace.h).
-  RoadDraftResult Preview(const WorldState& world, const RoadDraft& draft) const;
+  /// @brief The trace of `draft` on `world` (road_trace.h): what the preview
+  ///        shows on the completed world and what kLayRoad lays on the
+  ///        step's — one object for both, so the two cannot trace apart.
+  RoadDraftResult Trace(const WorldState& world, const RoadDraft& draft) const;
+
+  /// @brief Every tool of the roads menu on `world` (roads design §9, «Дизаблим
+  ///        но не скрываем»): a path and a dirt road open (7c); a surface its
+  ///        epoch has not opened kByEpoch; the rest kNotYetBuilt until their
+  ///        part lands (road work 7e, the demolition 7d). STUB for those —
+  ///        and kNoMaterial and kNothingToWork are not produced yet at all
+  ///        (they come with the paved tools and the selection).
+  RoadToolStates ToolStates(const WorldState& world) const;
 
   /// @brief The raster, built if it was not — for a test's count and the
   ///        delivery's price. Null when the tables carry no map areas.

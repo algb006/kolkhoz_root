@@ -1103,6 +1103,142 @@ int CheckRoadTracer() {
   return failures;
 }
 
+/// LAYING A ROAD ON THE SHIPPED MAP (delivery 7c; core_construction/
+/// road_laying.h). The drafts are FOUND, not guessed: 300 m eastward drafts
+/// on a 1 km grid, the first the preview calls clean and the first it
+/// refuses for forest — both printed. Then:
+///   * the clean one, ordered, is laid as the preview drew it, point for
+///     point to the bit (ONE TRACE, TWO CALLERS, road_draft.h), a player road
+///     of dirt with a fresh bed, named by kRoadLaid, and Roads() has it;
+///   * the save keeps its axis — a player road's axis is in the save, not
+///     re-traced (roads design §2) — point for point;
+///   * the forest one, ordered, is refused kRuleForbids and lays nothing.
+int CheckRoadLaying() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "laying: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "laying: the shipped set assembles") != 0) {
+    return 1;
+  }
+  const auto draft_at = [](float x, float y) {
+    core::RoadDraft draft;
+    draft.surface = core::RoadSurface::kDirt;
+    draft.point_count = 2;
+    draft.points[0] = {.x = x, .y = y};
+    draft.points[1] = {.x = x + 300.0F, .y = y};
+    return draft;
+  };
+  std::optional<core::RoadDraft> clean;
+  std::optional<core::RoadDraft> forest;
+  core::RoadDraftResult clean_answer;
+  for (float y = 1000.0F; y < 11500.0F && (!clean || !forest); y += 1000.0F) {
+    for (float x = 1000.0F; x < 11000.0F && (!clean || !forest); x += 1000.0F) {
+      const core::RoadDraft draft = draft_at(x, y);
+      const core::RoadDraftResult answer = simulation->PreviewRoad(draft);
+      if (!clean && answer.blocks.empty()) {
+        clean = draft;
+        clean_answer = answer;
+      }
+      if (!forest && answer.blocks.size() == 1 &&
+          answer.blocks[0].refusal == core::RoadDraftRefusal::kForest) {
+        forest = draft;
+      }
+    }
+  }
+  if (Expect(clean.has_value() && forest.has_value(),
+             "laying: the grid holds a clean draft and a forest one") != 0) {
+    return failures + 1;
+  }
+  std::cout << "laying: clean draft from (" << clean->points[0].x << ", " << clean->points[0].y
+            << "), forest draft from (" << forest->points[0].x << ", " << forest->points[0].y
+            << ")\n";
+  const auto order_of = [](const core::RoadDraft& draft) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kLayRoad;
+    order.road_kind = draft.kind;
+    order.road_surface = draft.surface;
+    order.road_point_count = draft.point_count;
+    order.road_points = draft.points;
+    return order;
+  };
+  const std::size_t roads_before = simulation->CompletedState().roads.rows.size();
+  const std::array<core::OrderRow, 2> orders = {order_of(*clean), order_of(*forest)};
+  simulation->StageOrders(orders, {});
+  simulation->AdvanceStep();
+  const core::WorldState& after = simulation->CompletedState();
+  const bool one_more = after.roads.rows.size() == roads_before + 1;
+  const core::RoadRow* laid = one_more ? &after.roads.rows.back() : nullptr;
+  bool as_drawn = laid != nullptr && laid->axis.size() == clean_answer.axis.size();
+  for (std::size_t index = 0; as_drawn && index < laid->axis.size(); ++index) {
+    as_drawn = laid->axis[index].position.x == clean_answer.axis[index].position.x &&
+               laid->axis[index].position.y == clean_answer.axis[index].position.y;
+  }
+  const bool fresh = laid != nullptr && laid->origin == core::RoadOrigin::kPlayer &&
+                     laid->surface == core::RoadSurface::kDirt && !laid->stretches.empty() &&
+                     std::ranges::all_of(laid->stretches, [](const core::RoadStretch& stretch) {
+                       return stretch.wear_pct == 0.0F;
+                     });
+  bool named = false;
+  core::OrderId laid_order;
+  bool forest_refused = false;
+  for (const core::SimEvent& event : after.step_events) {
+    if (event.kind == core::EventKind::kRoadLaid && laid != nullptr &&
+        event.road.value == after.roads.row_ids.back().value) {
+      named = true;
+      laid_order = event.order;
+    }
+  }
+  // The refusal must be the OTHER order's — the one kRoadLaid did not name
+  // (static review of 0.36.27: any kRuleForbids passed before).
+  std::uint32_t forbids = 0;
+  for (const core::SimEvent& event : after.step_events) {
+    if (event.kind == core::EventKind::kOrderRefused &&
+        event.amount == static_cast<std::int64_t>(core::OrderRefusal::kRuleForbids)) {
+      ++forbids;
+      forest_refused = named && event.order.value != laid_order.value;
+    }
+  }
+  forest_refused = forest_refused && forbids == 1;
+  const std::vector<core::RoadView> views = simulation->Roads();
+  failures += Expect(one_more && as_drawn && fresh && named && views.size() == roads_before + 1,
+                     "laying: the clean draft is laid as the preview drew it, to the bit — a "
+                     "fresh player dirt road, named by kRoadLaid, in Roads()");
+  failures += Expect(forest_refused, "laying: the forest draft is refused and lays nothing");
+  const std::vector<std::byte> bytes = core::EncodeWorld(after, *shipped);
+  core::WorldState loaded;
+  std::string load_error;
+  const bool decoded = core::DecodeWorld(bytes, *shipped, &loaded, &load_error);
+  bool kept = decoded && laid != nullptr && !loaded.roads.rows.empty() &&
+              loaded.roads.rows.back().axis.size() == laid->axis.size();
+  for (std::size_t index = 0; kept && index < laid->axis.size(); ++index) {
+    kept = loaded.roads.rows.back().axis[index].position.x == laid->axis[index].position.x &&
+           loaded.roads.rows.back().axis[index].position.y == laid->axis[index].position.y &&
+           loaded.roads.rows.back().axis[index].mark == laid->axis[index].mark;
+  }
+  failures += Expect(kept, "laying: the save keeps the laid axis, point for point");
+  // THE SAME DRAFT ORDERED AGAIN lays nothing (static review of 0.36.27: it
+  // snapped onto the first and laid a second road on it): its preview says
+  // kAlongRoad, and the order is refused.
+  const std::size_t roads_now = simulation->CompletedState().roads.rows.size();
+  const core::RoadDraftResult again = simulation->PreviewRoad(*clean);
+  const std::array<core::OrderRow, 1> repeat = {order_of(*clean)};
+  simulation->StageOrders(repeat, {});
+  simulation->AdvanceStep();
+  const bool along = std::ranges::any_of(again.blocks, [](const core::RoadDraftBlock& block) {
+    return block.refusal == core::RoadDraftRefusal::kAlongRoad;
+  });
+  failures += Expect(along && simulation->CompletedState().roads.rows.size() == roads_now,
+                     "laying: the same draft again is along the road it laid, and lays nothing");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -1112,6 +1248,7 @@ int main() {
   failures += CheckStartRoads();
   failures += CheckRoadsDoor();
   failures += CheckRoadTracer();
+  failures += CheckRoadLaying();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 

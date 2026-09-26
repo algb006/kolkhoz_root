@@ -556,8 +556,9 @@ enum class EventKind : std::uint8_t {
 
   /// road — a road or path was laid (kLayRoad): a path or a dirt road at
   /// once, a gravel or asphalt one when its work is done (then this follows
-  /// kRoadWorkFinished). kNotable. Seam key `road_laid`.
-  /// @no_emit the laying comes with delivery 7c; until then kLayRoad is refused
+  /// kRoadWorkFinished). road = the road laid, order = the kLayRoad that laid
+  /// it. kNotable. Seam key `road_laid`. Raised since 7c
+  /// (core_construction/road_laying.cpp).
   kRoadLaid,
 
   /// road — road work began on a piece (an upgrade, a gravel or asphalt
