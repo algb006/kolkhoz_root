@@ -34,6 +34,10 @@
 namespace core {
 namespace {
 
+/// Feed units a day's feeding may fall short of the need and still count as
+/// fed: the need is a float and the take whole grams (RunFeeding's share).
+constexpr float kFeedToleranceUnits = 0.001F;
+
 HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdRow& herd) {
   HerdPlace place;
   // OWNERSHIP decides the purse, not the address. A kolkhoz cow billeted at
@@ -408,9 +412,9 @@ float FeedLinkRoom(const FeedLinkDef& link, float need_units, float working_shar
 ///        comes out inverted, lands above one, and the clamp pins it to
 ///        "fully fed" — the most flattering possible wrong answer. Named
 ///        fields cannot be swapped silently.
-/// @return true when the whole need was covered.
-/// The day's feeding: the share of the need it covered, 0..1 (boss seq 171 А:
-/// hunger is a share, not a yes-or-no). 1 when there is no need.
+/// @return The day's feeding: the share of the need it covered, 0..1 (boss
+///         seq 171 А: hunger is a share, not a yes-or-no). 1 when there is
+///         no need.
 float RunFeeding(const ProductionConfig& config,
                  LivestockKindId kind_id,
                  const HerdPlace& place,
@@ -455,6 +459,12 @@ float RunFeeding(const ProductionConfig& config,
     }
     const Grams wanted = KilogramsToGrams(take_units / value);
     const Grams got = TakeFeed(world, config, place, link.resource, wanted, link.reserve != 0);
+    // THE HAY BY KIND (save 108), on the same terms TakeFeed books `feed`:
+    // the kolkhoz herds only (at_unit), a pantry's goat being `yard_feed`.
+    if (place.pantry == nullptr && place.at_unit &&
+        link.resource.value == config.hay_resource.value) {
+      AddLedgerKindGrams(world.ledger.current.herd_hay_eaten, kind_id, got);
+    }
     const float gained = static_cast<float>(got) / static_cast<float>(kGramsPerKilogram) * value;
     if (link.work_only != 0) {
       work_covered += gained;
@@ -490,7 +500,20 @@ float RunFeeding(const ProductionConfig& config,
   }
   // A hair of tolerance: the need is a float and the take is integer grams,
   // so an exactly-fed herd can land a milligram short of its own norm.
-  return std::min(1.0F, (covered + 0.001F) / need_units);
+  const float share = std::min(1.0F, (covered + kFeedToleranceUnits) / need_units);
+  // THE NEED LEFT UNCOVERED, priced in hay (save 108; ledger_state.h,
+  // herd_feed_short): the kolkhoz herds only, as the hay above, and on
+  // exactly the days the share says hungry — one test for both, so the two
+  // cannot part at the float's edge (static review of 0.37.7).
+  if (share < 1.0F && place.pantry == nullptr && place.at_unit &&
+      config.hay_resource.value < config.feed_values.size() &&
+      config.feed_values[config.hay_resource.value] > 0.0F) {
+    AddLedgerKindGrams(
+        world.ledger.current.herd_feed_short,
+        kind_id,
+        KilogramsToGrams((need_units - covered) / config.feed_values[config.hay_resource.value]));
+  }
+  return share;
 }
 
 /// What the day's produce is multiplied by. Two leaks, both of them the

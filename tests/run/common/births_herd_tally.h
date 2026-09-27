@@ -19,15 +19,22 @@
 /// job-days left short for want of a horse, and the book's own horse-backed and total assignment
 /// days (the mechanisation component's numerator and denominator).
 ///
+/// HAY (boss-core-epoch1-queue [78], for econ's clover rule): the hay reaped
+/// and the meadows mown, what each kind ate and went short of (the book's by
+/// kind, save 108), the horses' unfed head-days by month, and the hay left
+/// at the turnout.
+///
 /// Nothing here moves the world; the numbers are read, never used.
 
 #ifndef TESTS_RUN_COMMON_BIRTHS_HERD_TALLY_H_
 #define TESTS_RUN_COMMON_BIRTHS_HERD_TALLY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -62,6 +69,19 @@ class BirthsHerdTally {
     }
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
       horse_kind_ = kinds->FindRowByKey("horse");
+      cow_kind_ = kinds->FindRowByKey("cow");
+      sheep_kind_ = kinds->FindRowByKey("sheep");
+    }
+    // THE TURNOUT: the first day of the pasture months (farming.csv, human
+    // months 1..12), the day the hay left in the stores is read (boss [78]).
+    if (const core::ITable* const farming = tables.FindTable("farming")) {
+      const std::uint32_t row = farming->FindRowByKey("pasture_from_month");
+      if (row != core::kNoTableRow) {
+        const std::optional<float> month = farming->CellReal(row, farming->FindColumn("value"));
+        turnout_month_ = month.has_value() && *month >= 1.0F
+                             ? static_cast<std::uint32_t>(*month) - 1U
+                             : core::kNoTableRow;
+      }
     }
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       oat_ = resources->FindRowByKey("oat");
@@ -70,10 +90,21 @@ class BirthsHerdTally {
     }
   }
 
-  /// @brief One day, after the day's steps: the horses ordered that day, and
-  ///        at the turn, the closed year.
+  /// @brief One day, after the day's steps: the horses ordered that day; on
+  ///        the turnout's first hour, the hay in every unit's stock (a
+  ///        level-0 unit's too, which the herds cannot take from), read after
+  ///        that day's herd walk, which runs on the day-change tick; and at
+  ///        the turn, the closed year.
   void CountDay(const core::WorldState& world) {
     CountOrderedHorses(world);
+    if (static_cast<std::uint32_t>(world.calendar.date.month) == turnout_month_ &&
+        world.calendar.date.day_in_month == 0) {
+      double hay_t = 0.0;
+      for (const core::UnitRow& unit : world.units.rows) {
+        hay_t += Tonnes(unit.stock, hay_);
+      }
+      current_.hay_at_turnout_t = hay_t;
+    }
     const core::SimDay day = world.calendar.day;
     if (day != 0 && day % core::kDaysPerYear == 0 && day / core::kDaysPerYear != last_year_) {
       last_year_ = day / core::kDaysPerYear;
@@ -120,8 +151,13 @@ class BirthsHerdTally {
     }
     for (const core::HerdRow& herd : world.herds.rows) {
       if (herd.kind.value == horse_kind_ && herd.unfed_days > 0.0F) {
-        current_.horse_unfed_head_days +=
+        const std::uint32_t heads =
             static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
+        current_.horse_unfed_head_days += heads;
+        // By month too (boss [78]): which months the horses go hungry in.
+        if (month < current_.horse_unfed_by_month.size()) {
+          current_.horse_unfed_by_month[month] += heads;
+        }
       }
     }
   }
@@ -179,6 +215,39 @@ class BirthsHerdTally {
       }
       std::cout << "; unfed " << year.work.horse_unfed_head_days << " head-days";
     }
+    std::cout << '\n'
+              << run_name << ": seed " << seed
+              << " hay by closed year (boss-core-epoch1-queue [78]) — hay reaped, t (the book's "
+                 "harvest: meadows and grass crops); meadow ha mown this year of standing; hay "
+                 "the kolkhoz herds ate, t, horse / cow / sheep (the book's by kind, save 108); "
+                 "their need left uncovered, in t of hay, horse / cow / sheep / every kind; "
+                 "horse head-days unfed by month 1..12, sampled at noon; hay in the stores at the "
+                 "turnout (first day of pasture_from_month; NOT MEASURED before it came):";
+    // A key the tables do not have would print a silent nought in its place.
+    if (hay_ == core::kNoTableRow || horse_kind_ == core::kNoTableRow ||
+        cow_kind_ == core::kNoTableRow || sheep_kind_ == core::kNoTableRow ||
+        turnout_month_ == core::kNoTableRow) {
+      std::cout << "\n    NOT MEASURED: the tables lack hay, horse, cow, sheep or "
+                   "pasture_from_month — their columns below read nought";
+    }
+    for (const Year& year : years_) {
+      std::cout << "\n    year " << year.number << ": reaped (meadows and grass crops) "
+                << year.hay.mown_t << " t; meadows mown " << year.hay.meadows_mown_ha << " of "
+                << year.hay.meadows_ha << " ha; eaten " << year.hay.eaten_horse_t << " / "
+                << year.hay.eaten_cow_t << " / " << year.hay.eaten_sheep_t << " t; short "
+                << year.hay.short_horse_t << " / " << year.hay.short_cow_t << " / "
+                << year.hay.short_sheep_t << " / " << year.hay.short_all_t
+                << " t; horse unfed by month";
+      for (const std::uint32_t heads : year.work.horse_unfed_by_month) {
+        std::cout << ' ' << heads;
+      }
+      std::cout << "; at turnout ";
+      if (year.work.hay_at_turnout_t < 0.0) {
+        std::cout << "NOT MEASURED";
+      } else {
+        std::cout << year.work.hay_at_turnout_t << " t";
+      }
+    }
     std::cout << '\n';
   }
 
@@ -194,6 +263,23 @@ class BirthsHerdTally {
     std::uint32_t cold_days = 0;
     float cold_ration_sum = 0.0F;
     std::uint32_t horse_unfed_head_days = 0;
+    std::array<std::uint32_t, core::kMonthsPerYear> horse_unfed_by_month = {};
+    double hay_at_turnout_t = -1.0;  ///< Negative: the turnout day not reached.
+  };
+
+  /// The hay's year (boss [78]): what the meadows gave and on how much of
+  /// them, what each kind ate, and what each went short of, in hay.
+  struct Hay {
+    double mown_t = 0.0;
+    float meadows_mown_ha = 0.0F;
+    float meadows_ha = 0.0F;
+    double eaten_horse_t = 0.0;
+    double eaten_cow_t = 0.0;
+    double eaten_sheep_t = 0.0;
+    double short_horse_t = 0.0;
+    double short_cow_t = 0.0;
+    double short_sheep_t = 0.0;
+    double short_all_t = 0.0;
   };
 
   struct Year {
@@ -217,6 +303,7 @@ class BirthsHerdTally {
     double oat_fed_t = 0.0;
     double hay_fed_t = 0.0;
     double rye_reaped_t = 0.0;
+    Hay hay;
     Work work;
   };
 
@@ -239,9 +326,11 @@ class BirthsHerdTally {
     arrivals_seen_ = std::move(today);
   }
 
-  static double Tonnes(const core::ResourceAmounts& amounts, std::uint32_t resource) {
-    return resource < amounts.size()
-               ? static_cast<double>(amounts[resource]) / static_cast<double>(core::kGramsPerTonne)
+  /// Grams at `index` of a dense column — by ResourceId, or by
+  /// LivestockKindId for the book's by-kind columns — in tonnes.
+  static double Tonnes(const core::ResourceAmounts& amounts, std::uint32_t index) {
+    return index < amounts.size()
+               ? static_cast<double>(amounts[index]) / static_cast<double>(core::kGramsPerTonne)
                : 0.0;
   }
 
@@ -295,6 +384,28 @@ class BirthsHerdTally {
     year.oat_fed_t = Tonnes(book.feed, oat_);
     year.hay_fed_t = Tonnes(book.feed, hay_);
     year.rye_reaped_t = Tonnes(book.harvest, rye_);
+    year.hay.mown_t = Tonnes(book.harvest, hay_);
+    const core::SimDay closed_year = last_year_ - 1U;
+    for (const core::FieldRow& field : world.fields.rows) {
+      if (field.kind != core::LandKind::kMeadow &&
+          field.kind != core::LandKind::kFloodplainMeadow) {
+        continue;
+      }
+      year.hay.meadows_ha += field.area_ga;
+      if (field.last_mown_day != core::kNeverMownDay &&
+          field.last_mown_day / core::kDaysPerYear == closed_year) {
+        year.hay.meadows_mown_ha += field.area_ga;
+      }
+    }
+    year.hay.eaten_horse_t = Tonnes(book.herd_hay_eaten, horse_kind_);
+    year.hay.eaten_cow_t = Tonnes(book.herd_hay_eaten, cow_kind_);
+    year.hay.eaten_sheep_t = Tonnes(book.herd_hay_eaten, sheep_kind_);
+    year.hay.short_horse_t = Tonnes(book.herd_feed_short, horse_kind_);
+    year.hay.short_cow_t = Tonnes(book.herd_feed_short, cow_kind_);
+    year.hay.short_sheep_t = Tonnes(book.herd_feed_short, sheep_kind_);
+    for (std::uint32_t kind = 0; kind < book.herd_feed_short.size(); ++kind) {
+      year.hay.short_all_t += Tonnes(book.herd_feed_short, kind);
+    }
     year.work = current_;
     current_ = Work{};
     years_.push_back(year);
@@ -305,6 +416,9 @@ class BirthsHerdTally {
   float fertile_from_ = 0.0F;
   float fertile_to_ = 0.0F;
   std::uint32_t horse_kind_ = core::kNoTableRow;
+  std::uint32_t cow_kind_ = core::kNoTableRow;
+  std::uint32_t sheep_kind_ = core::kNoTableRow;
+  std::uint32_t turnout_month_ = core::kNoTableRow;
   std::uint32_t oat_ = core::kNoTableRow;
   std::uint32_t hay_ = core::kNoTableRow;
   std::uint32_t rye_ = core::kNoTableRow;

@@ -642,6 +642,30 @@ struct YearLedger {
   /// and the milkmaids, who no horse could ever carry — and not its team
   /// (econ, horse-traction.md).
   float harnessed_assignment_days = 0.0F;
+
+  /// THE KOLKHOZ HERDS' HAY BY KIND, grams, dense by LivestockKindId (save
+  /// 108; boss-core-epoch1-queue [78], [84]): what each kind took of
+  /// `feed`'s hay (ProductionConfig::hay_resource). A ResourceAmounts for its
+  /// dense int64 shape, as herd_males_culled. Summed over the kinds it is
+  /// `feed` at the hay, to the gram; a family's goat eats out of the pantry
+  /// (`yard_feed`) and is in neither.
+  ResourceAmounts herd_hay_eaten;
+
+  /// THE KOLKHOZ HERDS' NEED LEFT UNCOVERED BY KIND, in grams of HAY — the
+  /// feed units the day's walk could not find in any feed the kind eats,
+  /// over hay's feed value (save 108; boss [78]: «недостача сена, т»; the
+  /// hay line of econ's clover rule, canon-horses-oats.md §3а). Dense by
+  /// LivestockKindId. Hay's room for a horse, a cow or a sheep is the whole
+  /// need (feed_links max_share 1), so such a kind goes short only once the
+  /// hay is gone — and then this is the hay that would have filled the need
+  /// ON TOP OF the straw and the reserve grain it ate instead: LESS than the
+  /// hay the stores lacked, which those feeds partly stood in for (static
+  /// review of 0.37.7). For a kind that eats no hay (pigs, hens) it is the
+  /// same shortfall priced in hay: a size, not a demand for hay. Booked on
+  /// the kolkhoz herds' hungry days — the days a kolkhoz herd adds to
+  /// `herd_hungry_head_days`, which counts the families' goats as well;
+  /// zero with no hay in the tables.
+  ResourceAmounts herd_feed_short;
 };
 
 /// @brief The two books of the world: the year being written and the last
@@ -753,6 +777,19 @@ inline void AddLedgerHeads(ResourceAmounts& column, LivestockKindId kind, std::u
     column.resize(static_cast<std::size_t>(kind.value) + 1U, 0);
   }
   column[kind.value] += static_cast<Grams>(heads);
+}
+
+/// @brief Adds grams under `kind` to a by-kind column of the book (save 108:
+///        herd_hay_eaten, herd_feed_short), growing it on first use. An
+///        invalid kind or a non-positive amount is ignored.
+inline void AddLedgerKindGrams(ResourceAmounts& column, LivestockKindId kind, Grams amount) {
+  if (kind.value == kInvalidDefIdValue || amount <= 0) {
+    return;
+  }
+  if (column.size() <= kind.value) {
+    column.resize(static_cast<std::size_t>(kind.value) + 1U, 0);
+  }
+  column[kind.value] += amount;
 }
 
 }  // namespace core

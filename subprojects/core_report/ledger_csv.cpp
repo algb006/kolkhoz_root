@@ -496,6 +496,11 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
                 static_cast<std::uint64_t>(AmountAt(book.herd_surplus_slaughtered, kind)));
     out.Integer(prefix + "_autumn_slaughtered",
                 static_cast<std::uint64_t>(AmountAt(book.herd_autumn_slaughtered, kind)));
+    // The kind's hay and its need left uncovered, in grams of hay (save 108).
+    out.Integer(prefix + "_hay_eaten_g",
+                static_cast<std::uint64_t>(AmountAt(book.herd_hay_eaten, kind)));
+    out.Integer(prefix + "_feed_short_hay_g",
+                static_cast<std::uint64_t>(AmountAt(book.herd_feed_short, kind)));
   }
 }
 

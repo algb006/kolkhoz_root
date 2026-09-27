@@ -701,6 +701,11 @@ core::WorldState MakeWorld() {
   // two books, so a reader that drops it or swaps the books fails.
   world.ledger.closed.harnessed_assignment_days = 17.5F;
   world.ledger.current.harnessed_assignment_days = 2.25F;
+  // Save 108: the herds' hay and their need uncovered, by kind — two lengths
+  // in the closed book, empty in the current one, so a reader that swaps
+  // the columns or the books fails.
+  world.ledger.closed.herd_hay_eaten = Amounts({0, 9});
+  world.ledger.closed.herd_feed_short = Amounts({6});
   // The produce cart off the road (save 96): every source different and
   // off its default, so a codec that shifts one column onto its neighbour,
   // or one source onto the next, cannot round-trip clean.
@@ -1500,7 +1505,10 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // 1944), predicted before the build.
     // Save 107: the traction's denominator, a float a book — 1944 -> 1952,
     // predicted before the build, held.
-    {"ledger", 1952, 0x804699dc9155608eULL},
+    // Save 108: the herds' hay and need uncovered by kind, two amounts a
+    // book — the closed book's 2 + 16 and 2 + 8, the current's 2 + 2: 1952
+    // -> 1984, predicted before the build, held.
+    {"ledger", 1984, 0xf5e912f48a16210aULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1923,6 +1931,11 @@ int main() {
                      "the goods loan owed and taken come back, and the book's repayment (save 89)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_autumn_slaughtered, 1) == 4,
                      "the book's autumn slaughter by kind comes back (save 90)");
+  failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
+                         AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
+                         loaded.ledger.closed.herd_feed_short.size() == 1 &&
+                         loaded.ledger.current.herd_hay_eaten.empty(),
+                     "the book's hay and need uncovered by kind come back (save 108)");
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");

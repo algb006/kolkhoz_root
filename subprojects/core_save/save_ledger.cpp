@@ -84,9 +84,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 107: harnessed_assignment_days, a float at the end — 88 -> 89, the
 // size 704 -> 712 (predicted "+0 or +8, the tail's padding decides") and the
 // wire +4 a book.
-static_assert(sizeof(YearLedger) == 712 + (30 * kAmountsSize),
+// Save 108: the herds' hay and their need uncovered, by kind — two columns
+// at the end, 89 -> 91 fields, the size 712 + 30 A -> 712 + 32 A (the float
+// before them already padded to 8), predicted before the build.
+static_assert(sizeof(YearLedger) == 712 + (32 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 89,
+static_assert(AggregateArity<YearLedger>() == 91,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -209,6 +212,10 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU8(book.winter_cover_taken);
   // The traction's denominator (save 107).
   out.WriteFloat(book.harnessed_assignment_days);
+  // The herds' hay and their need uncovered, by kind (save 108), against the
+  // livestock dictionary.
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_hay_eaten);
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_feed_short);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -353,6 +360,15 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.winter_days_dec1 = in.ReadU16();
   book.winter_cover_taken = in.ReadU8();
   book.harnessed_assignment_days = in.ReadFloat();
+  book.herd_hay_eaten = source.ReadAmounts(DefKind::kLivestock);   // save 108
+  book.herd_feed_short = source.ReadAmounts(DefKind::kLivestock);  // save 108
+  for (const ResourceAmounts* column : {&book.herd_hay_eaten, &book.herd_feed_short}) {
+    for (const Grams grams : *column) {
+      if (grams < 0) {
+        source.Fail("the book's hay or feed shortfall by kind is negative");
+      }
+    }
+  }
   return book;
 }
 

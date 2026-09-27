@@ -969,6 +969,54 @@ int CheckTheReserveLeavesThePeoplesBarley() {
   return failures;
 }
 
+/// THE HERDS' HAY AND THEIR NEED UNCOVERED, BY KIND (save 108; boss [78]):
+/// four cows at a unit of hay a day each. With 100 kg of hay they eat 4 kg,
+/// booked under the cow, and nothing is short. With 3 kg they eat the 3 kg
+/// and the fourth unit, uncovered, is booked as 1 kg of hay short — on the
+/// day the herd is counted hungry. The kinds' hay sums to the book's feed.
+/// Beside them, three pigs at a unit a day with no feed at all: 3 kg of hay
+/// short, a size in hay for a kind that eats none; and two cows of a yard
+/// whose family is gone (no pantry, not the kolkhoz's): hungry, and in
+/// neither column (static review of 0.37.7).
+int CheckTheHerdsHayAndShortfallByKind() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.hay_resource = core::ResourceId{0};
+  config.livestock[1].feed_units_per_game_day = 1.0F;  // the pigs eat, and have no feed link
+  const auto at = [](const core::ResourceAmounts& amounts, std::size_t index) -> core::Grams {
+    return index < amounts.size() ? amounts[index] : 0;
+  };
+  const auto day_on = [&config](float hay_kg) {
+    core::WorldState world = MakeHerdWorld(hay_kg);
+    AddHerd(world, 0, 4, 2, true);
+    AddHerd(world, 1, 3, 1, true);
+    AddHerd(world, 0, 2, 1, false);
+    world.herds.rows[2].household_owned = 1;  // its family row is gone
+    core::RunHerdDay(config, world);
+    return world.ledger.current;
+  };
+  const core::YearLedger fed = day_on(100.0F);
+  failures += Expect(at(fed.herd_hay_eaten, 0) == 4 * kKilo && at(fed.herd_hay_eaten, 1) == 0 &&
+                         at(fed.feed, 0) == 4 * kKilo,
+                     "hay by kind: four cows' 4 kg under the cow, the book's feed the same");
+  failures += Expect(at(fed.herd_feed_short, 0) == 0,
+                     "hay by kind: the fed kolkhoz cows are short of nothing, the orphaned yard's "
+                     "hungry cows are not the kolkhoz's");
+  failures += Expect(at(fed.herd_feed_short, 1) == 3 * kKilo && fed.herd_hungry_head_days == 5.0F,
+                     "hay by kind: three pigs with no feed are 3 kg of hay short; hungry: the pigs "
+                     "and the yard's two cows");
+  const core::YearLedger lean = day_on(3.0F);
+  std::cout << "hay by kind, 3 kg for four cows: eaten " << at(lean.herd_hay_eaten, 0)
+            << " g, short " << at(lean.herd_feed_short, 0) << " g, hungry head-days "
+            << lean.herd_hungry_head_days << '\n';
+  failures += Expect(at(lean.herd_hay_eaten, 0) == 3 * kKilo && at(lean.feed, 0) == 3 * kKilo,
+                     "hay by kind: the 3 kg there were are eaten, under the cow");
+  failures += Expect(at(lean.herd_feed_short, 0) == 1 * kKilo && lean.herd_hungry_head_days == 9.0F,
+                     "hay by kind: the uncovered unit is 1 kg of hay short, on a hungry day");
+  return failures;
+}
+
 /// THE SEED RUNG'S SOWING IS NOT HELD TWICE (static review of 0.37.4): winter
 /// rye in the ground for next year, spring oats after it in the year after,
 /// and no oats reaped before that sowing — the seed rung holds the oats' 100
@@ -11079,6 +11127,7 @@ int main() {
   failures += CheckThePloughKeepsItsOats();
   failures += CheckNextYearsHoldDoesNotCountTheSeedRung();
   failures += CheckTheReserveLeavesThePeoplesBarley();
+  failures += CheckTheHerdsHayAndShortfallByKind();
   failures += CheckThePloughEatsBeforeNextYear();
   failures += CheckMangerReach();
   failures += CheckStableGate();

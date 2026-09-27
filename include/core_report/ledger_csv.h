@@ -75,6 +75,11 @@
 ///                                     kolkhoz-owned herds only; the
 ///                                     yards' own animals are
 ///                                     yard_<key>_head, all rungs summed
+///   herd_<key>_males_culled, _surplus_slaughtered, _autumn_slaughtered
+///                                     the book's removals by cause, heads
+///   herd_<key>_hay_eaten_g            the book's hay the kind ate, grams
+///   herd_<key>_feed_short_hay_g       its need left uncovered, in grams
+///                                     of hay (save 108)
 ///
 /// Numbers are printed so that they read back exactly: integers as
 /// integers, kilograms as grams / 1000 with three decimals, floats with
