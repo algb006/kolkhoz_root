@@ -38,7 +38,7 @@ workshop_rig_unit,180,2,vehicle
 imported_machine_unit,700,3,vehicle
 grocery_lot,20,1,goods
 glass_container_lot,25,1,goods
-lime_gravel_lot,,1,goods
+lime_gravel_lot,15,1,goods
 tool_lot,20,1,goods
 insulation_lot,,2,goods
 paint_lot,,2,goods
