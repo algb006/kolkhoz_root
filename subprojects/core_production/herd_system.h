@@ -115,6 +115,21 @@ Grams FodderClaimGrams(const ProductionConfig& config,
 /// size core_common/fund_ladder.h (FodderRungLeft) is handed.
 ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& current);
 
+/// @brief What NOBODY eats today because next year needs it (0.37.2;
+/// boss-core-epoch1-queue [52]-[54] (2), [59]-[60] (г)): for every produce
+/// of a crop, what next year's own harvest will not pay of next year's
+/// positions and the year after's seed (plan_alarms.h, NextYearUnpaidGrams),
+/// held with the rot of its wait to the end of next year (district_plan.h,
+/// HeldForDeliveryGrams). Dense by ResourceId.
+///
+/// ONE HOLD, TWO EATERS: the herds stay above it (FeedAllowance), and the
+/// people's issue does (IProductionSystem::NextYearHold, residents'
+/// IssueReserve). The herds alone held it first, and the issue then took the
+/// good year's rye the lean year needed: with the harness the good years
+/// gave out 4.4 t against 3.4, the lean ones 0.1 against 1.2, and the rye of
+/// years 4, 7 and 10 failed on the canon.
+ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor
 /// today (YieldFactor: billeting, underfeeding), grams — the same sum
 /// RunProduce delivers, read without delivering it. A household's cow is the

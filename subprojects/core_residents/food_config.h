@@ -300,6 +300,13 @@ struct FoodConfig {
   /// phase that called it would run production's read on a worker thread.
   std::function<ResourceAmounts(const WorldState&)> fodder_fund;
 
+  /// What nobody eats today because next year needs it, by ResourceId
+  /// (IProductionSystem::NextYearHold; 0.37.2, boss-core-epoch1-queue [60],
+  /// (г)) — held above the issue's rungs, rot margin included. A CALL INTO
+  /// core_production on the same terms as `fodder_fund` above: the decisions
+  /// slot and between steps only. Empty: nothing held.
+  std::function<ResourceAmounts(const WorldState&)> next_year_hold;
+
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
   /// seal it from the issue — its share of the day has left at the milking

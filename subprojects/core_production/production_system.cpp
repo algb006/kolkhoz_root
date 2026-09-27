@@ -447,6 +447,10 @@ class ProductionSystem final : public IProductionSystem {
     return FodderClaim(config_, world);
   }
 
+  ResourceAmounts NextYearHold(const WorldState& world) const override {
+    return core::NextYearHold(config_, world);
+  }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));

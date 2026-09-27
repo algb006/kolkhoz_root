@@ -169,20 +169,11 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& 
   // the lean year paid its position and the next spring's seed out of it;
   // once they ate their oats, a team took 14.6 t of the 19 and the lean year
   // shipped 1.65 t of its 2.5 (seed 1933, years 4-5). Held with the rot of
-  // its wait, to the end of next year, where the last of it is used.
-  const auto days_to_next_turn =
-      static_cast<std::uint32_t>(kDaysPerYear - (world.calendar.day % kDaysPerYear) + kDaysPerYear);
-  for (std::size_t index = 0; index < allowance.size(); ++index) {
-    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const bool grown = std::ranges::any_of(
-        config.crops, [resource](const CropDef& crop) { return crop.resource == resource; });
-    if (!grown) {
-      continue;  // no field gives it, so no harvest owes it
-    }
-    const Grams unpaid = NextYearUnpaidGrams(config, world, resource, world.calendar.day);
-    if (unpaid > 0) {
-      allowance[index] += HeldForDeliveryGrams(config, resource, unpaid, days_to_next_turn);
-    }
+  // its wait, to the end of next year, where the last of it is used. One
+  // hold with the people's issue (NextYearHold; boss [60], (г)).
+  const ResourceAmounts next_year = NextYearHold(config, world);
+  for (std::size_t index = 0; index < allowance.size() && index < next_year.size(); ++index) {
+    allowance[index] += next_year[index];
   }
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
@@ -963,6 +954,25 @@ std::uint32_t DaysToNextReaping(const ProductionConfig& config,
 }
 
 }  // namespace
+
+ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& world) {
+  ResourceAmounts hold(config.feed_values.size(), 0);
+  const auto days_to_next_turn =
+      static_cast<std::uint32_t>(kDaysPerYear - (world.calendar.day % kDaysPerYear) + kDaysPerYear);
+  for (std::size_t index = 0; index < hold.size(); ++index) {
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const bool grown = std::ranges::any_of(
+        config.crops, [resource](const CropDef& crop) { return crop.resource == resource; });
+    if (!grown) {
+      continue;  // no field gives it, so no harvest owes it
+    }
+    const Grams unpaid = NextYearUnpaidGrams(config, world, resource, world.calendar.day);
+    if (unpaid > 0) {
+      hold[index] = HeldForDeliveryGrams(config, resource, unpaid, days_to_next_turn);
+    }
+  }
+  return hold;
+}
 
 Grams FodderFundGrams(const ProductionConfig& config,
                       const WorldState& current,

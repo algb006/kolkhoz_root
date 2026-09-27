@@ -786,9 +786,16 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // below rung 3 of the ladder, which holds it (core_common/fund_ladder.h;
   // boss seq 14 and 17): residents is handed the one size by the same road
   // labor is handed the grams of a crop, and is therefore built after it.
+  // AND THE HOLD FOR NEXT YEAR by the same road (0.37.2; boss-core-epoch1-
+  // queue [60], (г)): the herds and the issue stay above one hold.
   auto residents = CreateResidentsSystem(
-      *config.tables, config.stub_tables, [estimate](const WorldState& world) {
+      *config.tables,
+      config.stub_tables,
+      [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->FodderFund(world);
+      },
+      [estimate](const WorldState& world) {
+        return estimate == nullptr ? ResourceAmounts{} : estimate->NextYearHold(world);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its

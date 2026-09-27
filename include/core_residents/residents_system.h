@@ -137,10 +137,16 @@ class IResidentsSystem {
 ///        issue stays below rung 3 of the ladder, the larger of last year's
 ///        feed and this fund (core_common/fund_ladder.h). Empty: no fund, and
 ///        rung 3 is last year's feed alone, as it was before 0.34.17.
+/// @param next_year_hold What nobody eats today because next year needs it,
+///        dense by ResourceId — IProductionSystem::NextYearHold, bound by the
+///        assembly (0.37.2; boss-core-epoch1-queue [60], (г)). The people's
+///        issue stays above it as the herds do. Empty: nothing held for next
+///        year, as before 0.37.2.
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     const ITableSet& tables,
     StubTables stubs,
-    std::function<ResourceAmounts(const WorldState&)> fodder_fund = {});
+    std::function<ResourceAmounts(const WorldState&)> fodder_fund = {},
+    std::function<ResourceAmounts(const WorldState&)> next_year_hold = {});
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
 /// figure a newborn is given, and the organizations' and ideology's numbers).

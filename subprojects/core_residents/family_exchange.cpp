@@ -210,6 +210,19 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
                     config.spoil_days,
                     config.keeping_factor,
                     reserve);
+  // AND WHAT NEXT YEAR NEEDS AND ITS OWN HARVEST WILL NOT PAY (0.37.2; boss-
+  // core-epoch1-queue [59]-[60], (г)). The rotation leaves the rye unreaped
+  // one year in three, and that year pays its position out of the good
+  // year's carry-over; the issue took it — with the harness, 4.4 t given out
+  // in a good year against 3.4, 0.1 t in the lean one against 1.2, and the
+  // rye of years 4, 7 and 10 failed on the canon. The herds already stayed
+  // above this hold; one hold, the same grams, rot margin included.
+  if (config.next_year_hold) {
+    const ResourceAmounts next_year = config.next_year_hold(world);
+    for (std::size_t index = 0; index < reserve.size() && index < next_year.size(); ++index) {
+      reserve[index] += next_year[index];
+    }
+  }
   return reserve;
 }
 

@@ -552,6 +552,21 @@ int CheckLockedRationFood() {
   failures += Expect(core::LockedRationFood(with_fund, herd).empty(),
                      "fodder rung: and the release comes off it — off the fund alone it would "
                      "free nothing");
+
+  // NEXT YEAR'S HOLD (0.37.2; boss-core-epoch1-queue [60], (г)): what next
+  // year's own harvest will not pay is held from the people as from the
+  // herds — 100 kg held of 100 locks them; 40 kg held leaves 60 to eat.
+  core::FoodConfig with_hold = MakeExchangeConfig();
+  core::Grams held = 100 * kKilo;
+  with_hold.next_year_hold = [&held](const core::WorldState& /*world*/) {
+    return core::ResourceAmounts{held};
+  };
+  const core::WorldState lean = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  failures += Expect(core::LockedRationFood(with_hold, lean).size() == 1,
+                     "next year's hold: the lean year's 100 kg are held from the people");
+  held = 40 * kKilo;
+  failures += Expect(core::LockedRationFood(with_hold, lean).empty(),
+                     "next year's hold: 40 kg held of 100 leave the people 60 to eat");
   return failures;
 }
 

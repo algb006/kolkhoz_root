@@ -192,6 +192,18 @@ class IProductionSystem {
   /// @note A pure read; called by residents in the decisions slot (phase 3)
   /// and between steps for the ration alarm.
   virtual ResourceAmounts FodderFund(const WorldState& world) const = 0;
+
+  /// @brief Grams of each resource nobody may eat today because next year
+  /// needs them (0.37.2; boss-core-epoch1-queue [60], (г)): what next year's
+  /// own harvest, at a normal yield on next year's chains, will not pay of
+  /// next year's plan positions and the year after's seed, with the rot of
+  /// its wait. Dense by ResourceId.
+  ///
+  /// Exposed for the people's issue, as FodderFund is: the herds stay above
+  /// the same hold, and the chains, the positions and the norms are this
+  /// module's.
+  /// @note A pure read; called by residents in the decisions slot (phase 3).
+  virtual ResourceAmounts NextYearHold(const WorldState& world) const = 0;
 };
 
 /// @brief Creates the production subsystem.
