@@ -161,7 +161,8 @@ static_assert(AggregateArity<ReadinessState>() == 11,
 // byte for both made the emptiest year score best.
 static_assert(AggregateArity<ReadinessComponent>() == 3,
               "ReadinessComponent changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TransitionBlocks>() == 6,
+// Save 106: the seventh block, the village's size (population) — 7.
+static_assert(AggregateArity<TransitionBlocks>() == 7,
               "TransitionBlocks gained or lost a block — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: the chairman's issue norms (kSetIssueNorm), 32.
 // 2026-09-19, save 68: the sports field's month, 33.
@@ -267,6 +268,7 @@ void WriteReadiness(ByteWriter& out, const ReadinessState& readiness) {
   out.WriteU8(readiness.blocks.wintering_two_years);
   out.WriteU8(readiness.blocks.units_at_level);
   out.WriteU8(readiness.blocks.office_repaired);
+  out.WriteU8(readiness.blocks.population);  // save 106
   out.WriteFloat(readiness.satisfaction_stub_points);
 }
 
@@ -298,6 +300,7 @@ void ReadReadiness(LoadSource& source, ReadinessState& readiness) {
   readiness.blocks.wintering_two_years = source.ReadEnumValue(0, 1, "wintering block");
   readiness.blocks.units_at_level = source.ReadEnumValue(0, 1, "units at level block");
   readiness.blocks.office_repaired = source.ReadEnumValue(0, 1, "office repaired block");
+  readiness.blocks.population = source.ReadEnumValue(0, 1, "population block");  // save 106
   readiness.satisfaction_stub_points = in.ReadFloat();
 }
 

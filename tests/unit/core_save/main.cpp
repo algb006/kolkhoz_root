@@ -781,6 +781,9 @@ core::WorldState MakeWorld() {
   world.readiness.blocks.wintering_two_years = 0;
   world.readiness.blocks.units_at_level = 1;
   world.readiness.blocks.office_repaired = 0;
+  // Save 106: the seventh block, off its nought so a codec that drops the
+  // byte cannot round-trip clean.
+  world.readiness.blocks.population = 1;
   world.readiness.satisfaction_stub_points = 45.0F;
   return world;
 }
@@ -1144,6 +1147,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"readiness.blocks.units_at_level", U8(world.readiness.blocks.units_at_level)});
   chunks.push_back(
       {"readiness.blocks.office_repaired", U8(world.readiness.blocks.office_repaired)});
+  chunks.push_back({"readiness.blocks.population", U8(world.readiness.blocks.population)});
   chunks.push_back(
       {"readiness.satisfaction_stub_points", F32(world.readiness.satisfaction_stub_points)});
   return chunks;
@@ -1301,7 +1305,7 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // resources (2 + 16 each); predicted 509 -> 545 before the build, held.
     // Save 95: +15 — the road beds, a byte and a float for each of three;
     // predicted 545 -> 560 with the nineteen other sections unmoved, held.
-    {"world", 560, 0x6f1115721e0c953eULL},
+    {"world", 561, 0x7f64ac13edd82ef9ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1399,7 +1403,7 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // +39 a row before the build, held.
     // Save 104 (7e): +24 — road_work on each of six orders, predicted before
     // the build, held.
-    {"orders", 788, 0xa8e2a17f34550d3cULL},
+    {"orders", 788, 0x2a66356052872f67ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.

@@ -501,7 +501,8 @@ enum class OrderKind : std::uint8_t {
   /// transition and the blocks step 2, and the blocks in the order of their
   /// one complete list (epochs §6, «Отдельные пороговые условия»): kIndicesNotHeld,
   /// kNoOwnTraction, kWinteringNotClosed, kOfficeNotRepaired,
-  /// kFoodVarietyShort, kSocialObjectsShort, kUnitsBelowLevel. In Epoch II
+  /// kFoodVarietyShort, kSocialObjectsShort, kUnitsBelowLevel,
+  /// kPopulationShort (the seventh, 2026-09-27). In Epoch II
   /// and later: kNotEligible — the build is Epoch I only (the human, 18
   /// September 2026: «пока делаем ТОЛЬКО эпоху 1»).
   ///
@@ -1168,6 +1169,11 @@ enum class OrderRefusal : std::uint8_t {
   /// district paves its own road is its schedule (STUB); until then its
   /// surface does not change. Seam key `district_road` (delivery 7e).
   kDistrictRoad,
+
+  /// kAdvanceEra: fewer residents than the era's seventh block asks
+  /// (era_readiness.h, kPopulationRequired — 380 for I → II; the human's
+  /// word of 2026-09-27). Seam key `population_short`.
+  kPopulationShort,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

@@ -417,8 +417,9 @@ int CheckTransitionOrder() {
                  .own_traction = 1,
                  .wintering_two_years = 1,
                  .units_at_level = 1,
-                 .office_repaired = 1};
-  // The standing three are passed apart from the year's bytes; where a test
+                 .office_repaired = 1,
+                 .population = 1};
+  // The standing four are passed apart from the year's bytes; where a test
   // is about the ORDER of the answers both carry the same, so shutting one
   // shuts it for whichever the function reads.
   const auto refusal = [](const core::ReadinessState& readiness, core::Epoch era) {
@@ -465,10 +466,13 @@ int CheckTransitionOrder() {
     const char* label;
   };
 
-  const std::array<Step, 7> steps = {{
+  const std::array<Step, 8> steps = {{
+      {[](core::ReadinessState& state) { state.blocks.population = 0; },
+       core::OrderRefusal::kPopulationShort,
+       "transition: fewer than 380 residents refuse it — the seventh block, last"},
       {[](core::ReadinessState& state) { state.blocks.units_at_level = 0; },
        core::OrderRefusal::kUnitsBelowLevel,
-       "transition: units below their level refuse it"},
+       "transition: units below their level are named before the residents"},
       {[](core::ReadinessState& state) { state.blocks.social_objects = 0; },
        core::OrderRefusal::kSocialObjectsShort,
        "transition: the social objects are named before the units"},
@@ -509,6 +513,10 @@ int CheckTransitionOrder() {
     world.readiness.blocks.own_traction = 1;
     world.readiness.blocks.wintering_two_years = 1;
     world.readiness.blocks.food_variety = 1;
+    // The seventh block's village: exactly kPopulationRequired residents.
+    for (std::uint32_t person = 0; person < core::kPopulationRequired; ++person) {
+      AppendRow(world.residents, core::ResidentRow{});
+    }
     for (std::uint16_t type = 0; type <= catalog.social_objects.size(); ++type) {
       core::UnitRow unit;
       unit.type = core::UnitTypeId{type};
@@ -521,8 +529,18 @@ int CheckTransitionOrder() {
   const core::WorldState fresh = ready_world();
   const core::TransitionBlocks fresh_blocks = core::StandingBlocks(catalog, fresh);
   failures += Expect(fresh_blocks.office_repaired == 1 && fresh_blocks.social_objects == 1 &&
-                         fresh_blocks.units_at_level == 1,
-                     "standing blocks: an office at 0.5 % and four social objects stand open");
+                         fresh_blocks.units_at_level == 1 && fresh_blocks.population == 1,
+                     "standing blocks: an office at 0.5 %, four social objects and 380 residents "
+                     "stand open");
+  // THE SEVENTH'S PAIR: one resident fewer shuts it, and the order names it.
+  core::WorldState short_one = ready_world();
+  core::RemoveRow(short_one.residents, short_one.residents.row_ids.back());
+  const core::TransitionBlocks short_blocks = core::StandingBlocks(catalog, short_one);
+  failures +=
+      Expect(short_blocks.population == 0 &&
+                 core::TransitionRefusal(short_one.readiness, short_blocks, core::Epoch::kOne) ==
+                     core::OrderRefusal::kPopulationShort,
+             "standing blocks: 379 residents shut the seventh, and the order says why");
   core::WorldState worn = ready_world();
   worn.units.rows[0].wear = 2.0F;
   worn.units.rows[4].dead = 1;

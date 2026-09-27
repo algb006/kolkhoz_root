@@ -164,10 +164,12 @@ class TransitionTally {
                                                                  "правление ≤1%    ",
                                                                  "разнообразие пищи",
                                                                  "4 соцобъекта из 6",
-                                                                 "юниты на уровне  "};
+                                                                 "юниты на уровне  ",
+                                                                 "жителей ≥ 380    "};
 
   /// The gates' order in a year's line, one mark each.
-  static constexpr const char* kGateLetters = "indices/traction/wintering/office/food/social/units";
+  static constexpr const char* kGateLetters =
+      "indices/traction/wintering/office/food/social/units/residents";
 
   /// The turn scores the closed year after the books rotate (world.cpp): on
   /// the new year's first day, the readiness judges the year just closed.
@@ -227,8 +229,8 @@ class TransitionTally {
   }
 
   core::ReadinessCatalog catalog_;
-  std::array<std::int64_t, kGates> first_met_day_ = {-1, -1, -1, -1, -1, -1, -1};
-  std::array<std::int64_t, kGates> became_met_day_ = {-1, -1, -1, -1, -1, -1, -1};
+  std::array<std::int64_t, kGates> first_met_day_ = {-1, -1, -1, -1, -1, -1, -1, -1};
+  std::array<std::int64_t, kGates> became_met_day_ = {-1, -1, -1, -1, -1, -1, -1, -1};
   std::array<bool, kGates> met_yesterday_ = {};
   std::array<bool, kGates> met_last_ = {};
   std::int64_t opened_day_ = -1;

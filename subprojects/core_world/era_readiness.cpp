@@ -433,6 +433,7 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   const TransitionBlocks standing_now = StandingBlocks(catalog, current);
   out.blocks.social_objects = standing_now.social_objects;
   out.blocks.units_at_level = standing_now.units_at_level;
+  out.blocks.population = standing_now.population;
   out.blocks.office_repaired = standing_now.office_repaired;
   out.blocks.wintering_two_years = out.wintering_run >= 2 ? 1U : 0U;
   // VARIETY IN EVERY SEASON INCLUDING WINTER, and it is the village's mean
@@ -494,6 +495,8 @@ TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldStat
         });
       });
   blocks.units_at_level = all_at_level ? 1U : 0U;
+  // THE SEVENTH, THE VILLAGE'S SIZE (readiness_state.h, population).
+  blocks.population = world.residents.rows.size() >= kPopulationRequired ? 1U : 0U;
   // THE OFFICE, STANDING AND JUST REPAIRED. One per cent and not nought,
   // because nought is unreachable: wear runs continuously, so a threshold of
   // nought would be a block that can never be met — the same defect as a rule
@@ -541,6 +544,9 @@ OrderRefusal TransitionRefusal(const ReadinessState& readiness,
   }
   if (standing.units_at_level == 0) {
     return OrderRefusal::kUnitsBelowLevel;
+  }
+  if (standing.population == 0) {
+    return OrderRefusal::kPopulationShort;
   }
   return OrderRefusal::kNone;
 }

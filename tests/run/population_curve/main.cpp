@@ -139,7 +139,7 @@ struct Trajectory {
   /// indices, then the six blocks): the first Epoch I day it stood met (-1
   /// never), and the Epoch I days it ALONE held the door (SoleHoldout).
   std::array<std::int64_t, run::TransitionPolicy::kConditions> condition_first_met_day = {
-      -1, -1, -1, -1, -1, -1, -1};
+      -1, -1, -1, -1, -1, -1, -1, -1};
   std::array<std::uint32_t, run::TransitionPolicy::kConditions> sole_holdout_days = {};
   /// Days walked in Epoch I: what the two above are counted against.
   std::uint32_t epoch_one_days = 0;
@@ -859,11 +859,13 @@ int main(int argc, char** argv) {
   // marked; no line of the design asks a population of a year. What the
   // design pairs is the village the era opens with and the year it opens
   // in: the population on the day Epoch II opens is asked, the year printed.
-  // It stands red — a KNOWN GAP, the registry's own line «Переход в Эпоху II
-  // на каноне — примерно год 6 при ~200 жителях» (26a525eb) — until boss
-  // rules on the readiness gates. The year-14 population is printed only;
-  // the old line comes back when the median transition year is 12 or later
-  // (the harness says so by itself).
+  // SINCE THE SEVENTH BLOCK (the human's word of 2026-09-27, «По числу
+  // жителей согласен»; era_readiness.h, kPopulationRequired) the population
+  // on the opening day is 380 or more by construction, and asking it would be
+  // a tautology: the gap that asked it is gone. What keeps its meaning is the
+  // YEAR against the design's ~14 — printed beside econ's row (V1: year 13,
+  // 11..13, at 387 residents, 9 villages of 9). The year-14 population line
+  // was a known gap while the era opened in year 4; it is asked again below.
   std::vector<std::uint32_t> opened_populations;
   std::vector<std::uint32_t> opened_years;
   for (const Trajectory& walk : walks) {
@@ -878,21 +880,14 @@ int main(int argc, char** argv) {
   std::cout << "population_curve: Epoch II opened in " << opened_years.size() << " villages of "
             << walks.size() << ", median year " << median_opened_year
             << ", median residents on the day " << median_opened_population
-            << "; population by year 14, printed only: median " << median_year14 << '\n';
-  failures += run::KnownGap(
-      !opened_populations.empty() && median_opened_population >= 380,
-      "the village Epoch II opens with has 380 residents or more",
-      std::to_string(median_opened_population) + " (median of " +
-          std::to_string(opened_populations.size()) + " villages), median year " +
-          std::to_string(median_opened_year),
-      "registry 26a525eb, «Переход в Эпоху II на каноне — примерно год 6 при ~200 жителях»; "
-      "boss-core-epoch1-queue [28]");
-  failures += run::KnownGap(
-      median_opened_year >= 12,
-      "population by year 14 >= 380 — asked again once the median transition year is 12 or later",
-      "median transition year " + std::to_string(median_opened_year) + ", median year-14 " +
-          std::to_string(median_year14),
-      "boss-core-epoch1-queue [28]: the year-14 population is printed only until then");
+            << "; population by year 14, printed only: median " << median_year14
+            << "; econ's row (V1): year 13 (11..13), 387 residents, 9 of 9; the design ~14\n";
+  // RESTORED on 0.37.1: with the seventh block the median transition year
+  // is 13, the harness printed "KNOWN GAP CLOSED — restore the assertion"
+  // (median year-14 435 against 380), and a gap left standing after it
+  // closes cannot report the day it reopens.
+  failures += run::Expect(median_year14 >= 380,
+                          "and is past the Epoch II mark by year 14 (median of nine)");
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
@@ -1068,7 +1063,8 @@ int main(int argc, char** argv) {
       "правление ≤1%     ",
       "разнообразие пищи ",
       "4 соцобъекта из 6 ",
-      "юниты на уровне   "};
+      "юниты на уровне   ",
+      "жителей ≥ 380     "};
   std::cout << "population_curve: transition conditions by village, first year met / Epoch I days "
                "it ALONE held the door (villages "
             << walks.size() << "; Epoch I days by village:";

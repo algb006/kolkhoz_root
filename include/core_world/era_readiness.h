@@ -42,6 +42,12 @@ inline constexpr float kSocialThreshold = 50.0F;
 /// which gate met last (a copy there would be the rule's second home).
 inline constexpr std::uint8_t kIndexYearsRequired = 3;
 
+/// The seventh block of I → II: residents in the village at least this many
+/// (TransitionBlocks::population). The design's number, not a STUB — the
+/// human's word of 2026-09-27, «По числу жителей согласен» (registry
+/// 22daef4c).
+inline constexpr std::uint32_t kPopulationRequired = 380;
+
 /// @brief What this module needs to know about the unit types to score the
 /// funds, the social objects and the office — read once at wiring, because a
 /// table cannot change under a running campaign.

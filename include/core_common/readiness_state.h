@@ -147,6 +147,17 @@ struct TransitionBlocks {
   /// thing is `office_wear_at_most_1pct`, so the number is the same on both
   /// sides of the seam.
   std::uint8_t office_repaired = 0;
+
+  /// The village holds at least kPopulationRequired residents
+  /// (era_readiness.h) — the seventh block of I → II.
+  ///
+  /// THE HUMAN'S WORD, 27 September 2026, on econ's variant V1: «По числу
+  /// жителей согласен» (epochs §6; registry 22daef4c). None of the six gates
+  /// above depends on the village's size, and the runs opened the era in
+  /// year 4 at about 150 residents against the design's ~14; the indices'
+  /// gates stay as they were. Standing: read off the world now, like the
+  /// office and the social objects.
+  std::uint8_t population = 0;
 };
 
 /// @brief Readiness as of the last turn of the year.

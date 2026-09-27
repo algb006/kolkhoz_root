@@ -84,9 +84,10 @@ class TransitionPolicy {
            core::OrderRefusal::kNone;
   }
 
-  /// The seven conditions the order asks, in TransitionRefusal's order: the
-  /// indices held three years, then the six blocks.
-  static constexpr std::size_t kConditions = 7;
+  /// The eight conditions the order asks, in TransitionRefusal's order: the
+  /// indices held three years, then the seven blocks (the seventh, the
+  /// village's size, since 2026-09-27).
+  static constexpr std::size_t kConditions = 8;
 
   /// @brief Which of the seven stand met today — each asked through the
   /// core's own door with every OTHER forced open, so the answer is the
@@ -166,8 +167,11 @@ class TransitionPolicy {
         case 5:
           standing.social_objects = 1;
           break;
-        default:
+        case 6:
           standing.units_at_level = 1;
+          break;
+        default:
+          standing.population = 1;
           break;
       }
     }
