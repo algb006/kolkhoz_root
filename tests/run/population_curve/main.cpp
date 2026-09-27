@@ -584,6 +584,10 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       }
       transition_tally.CountDay(builder.transition, today);
       if (births_herd_on != nullptr) {
+        // The team's two alarms, through the simulation's own door (0.37.8).
+        std::vector<core::Alarm> alarms;
+        simulation->CollectAlarms(alarms);
+        births_herd_on->CountAlarms(alarms);
         births_herd_on->CountDay(today);
       }
     }

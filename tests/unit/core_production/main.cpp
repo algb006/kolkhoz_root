@@ -930,6 +930,143 @@ int CheckTheCartHorseEatsOats() {
   return failures;
 }
 
+/// THE TEAM'S TWO ALARMS (0.37.8, save 109; boss-core-epoch1-queue [84],
+/// [90]). Four horses, two ploughmen: half the team in the traces, a work
+/// ration of 1 kg of oats a day (4 units x 0.5 x the full ration's 0.5).
+///   «упряжь на сене»: no oats — each working day adds a day and 1 kg; lit on
+///   the third, with 3 kg; a day nobody works keeps the count; the first
+///   day with oats puts it out.
+///   «лошадей не хватает»: the week's harness, 70 assignment-days; 66.5 with a
+///   horse (5 % without) is silent, 59.5 (15 %) lights it with 2 teams short
+///   a day (10.5 / 7, rounded); with no horse left the subject is invalid.
+int CheckTheTeamOnHayAndTooFewHorses() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.horse_kind = core::LivestockKindId{0};
+  config.feed_links = {
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{1},
+                        .max_share = 0.5F,
+                        .work_only = 1},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .max_share = 1.0F}};
+  core::WorldState world = MakeHerdWorld(100.0F);
+  AddHerd(world, 0, 4, 2, true);
+  for (int ploughman = 0; ploughman < 2; ++ploughman) {
+    core::ResidentRow hand;
+    hand.work.kind = core::WorkKind::kPlowing;
+    AppendRow(world.residents, hand);
+  }
+  const auto lit = [&config](const core::WorldState& state, core::AlarmKind kind) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdAlarms(config, state, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == kind) {
+        return std::optional<core::Alarm>(alarm);
+      }
+    }
+    return std::optional<core::Alarm>();
+  };
+  const auto day = [&config, &world](std::uint32_t number) {
+    world.calendar.tick = static_cast<core::Tick>(number) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::RunHerdDay(config, world);
+  };
+  day(1);
+  day(2);
+  failures += Expect(world.traction_watch.short_ration_days == 2 &&
+                         world.traction_watch.work_grain_short == 2 * kKilo &&
+                         !lit(world, core::AlarmKind::kTeamOnHay),
+                     "on hay: two working days without oats — 2 days, 2 kg, not lit yet");
+  const std::vector<core::ResidentRow> crew = world.residents.rows;
+  for (core::ResidentRow& hand : world.residents.rows) {
+    hand.work.kind = core::WorkKind::kNone;
+  }
+  day(3);
+  failures += Expect(world.traction_watch.short_ration_days == 2,
+                     "on hay: a day nobody works keeps the count");
+  world.residents.rows = crew;
+  day(4);
+  const std::optional<core::Alarm> on_hay = lit(world, core::AlarmKind::kTeamOnHay);
+  failures +=
+      Expect(on_hay.has_value() && on_hay->amount == 3 * kKilo && on_hay->resource.value == 1 &&
+                 on_hay->herd.value == world.herds.row_ids[0].value,
+             "on hay: lit on the third working day, 3 kg of oats short, the team's row");
+  world.units.rows[0].stock[1] = 100 * kKilo;
+  day(5);
+  failures +=
+      Expect(!lit(world, core::AlarmKind::kTeamOnHay) && world.traction_watch.work_grain_short == 0,
+             "on hay: the first day of the full ration puts it out");
+  failures += Expect(world.traction_watch.week_harnessed[5 % core::kHarnessWeekDays] == 2.0F &&
+                         world.traction_watch.week_horse_backed[5 % core::kHarnessWeekDays] == 2.0F,
+                     "the week: day 5's slot holds its 2 of 2");
+  for (core::ResidentRow& hand : world.residents.rows) {
+    hand.work.kind = core::WorkKind::kNone;
+  }
+  day(12);  // day 5's slot a week on, nobody in harness
+  failures += Expect(world.traction_watch.week_harnessed[5 % core::kHarnessWeekDays] == 0.0F &&
+                         world.traction_watch.week_horse_backed[5 % core::kHarnessWeekDays] == 0.0F,
+                     "the week: an idle day a week later writes its noughts over day 5's slot");
+
+  // A TEAM OF SIXTEEN ROWS ON A FULL BARN IS NOT ON HAY (static review of
+  // 0.37.8): each row's 62.5 g is taken as 62, 8 g short on the day — above
+  // one herd's tolerance, inside the takes' own rounding.
+  core::WorldState rows = MakeHerdWorld(100.0F);
+  rows.units.rows[0].stock[1] = 100 * kKilo;
+  for (int horse = 0; horse < 16; ++horse) {
+    AddHerd(rows, 0, 1, 0, true);
+  }
+  rows.residents.rows = crew;
+  for (std::uint32_t number = 1; number <= 3; ++number) {
+    rows.calendar.tick = static_cast<core::Tick>(number) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(rows.calendar);
+    core::RunHerdDay(config, rows);
+  }
+  failures +=
+      Expect(rows.traction_watch.short_ration_days == 0 && !lit(rows, core::AlarmKind::kTeamOnHay),
+             "on hay: sixteen rows of one horse on a full barn are fed, the grams' rounding "
+             "is not hay");
+  // AND A DEAD TEAM'S STREAK DOES NOT WAIT FOR THE NEXT HORSES: two short
+  // days, then no horse — cleared.
+  core::WorldState gone = world;
+  gone.units.rows[0].stock[1] = 0;
+  gone.residents.rows = crew;
+  for (std::uint32_t number = 20; number <= 21; ++number) {
+    gone.calendar.tick = static_cast<core::Tick>(number) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(gone.calendar);
+    core::RunHerdDay(config, gone);
+  }
+  const std::uint16_t before_loss = gone.traction_watch.short_ration_days;
+  gone.herds.rows[0].adult_count = 0;
+  gone.herds.rows[0].adult_male_count = 0;
+  gone.calendar.tick = static_cast<core::Tick>(22) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(gone.calendar);
+  core::RunHerdDay(config, gone);
+  failures += Expect(before_loss == 2 && gone.traction_watch.short_ration_days == 0 &&
+                         gone.traction_watch.work_grain_short == 0,
+                     "on hay: the team gone, its streak is cleared");
+
+  core::WorldState week = world;
+  week.traction_watch.week_harnessed.fill(10.0F);
+  week.traction_watch.week_horse_backed.fill(9.5F);
+  failures += Expect(!lit(week, core::AlarmKind::kTooFewHorses),
+                     "too few horses: 5 % of the week without a horse is silent");
+  week.traction_watch.week_horse_backed.fill(8.5F);
+  const std::optional<core::Alarm> too_few = lit(week, core::AlarmKind::kTooFewHorses);
+  failures += Expect(too_few.has_value() && too_few->amount == 2 &&
+                         too_few->herd.value == week.herds.row_ids[0].value,
+                     "too few horses: 15 % lights it, 2 teams short a working day");
+  week.herds.rows[0].adult_count = 0;
+  week.herds.rows[0].adult_male_count = 0;
+  const std::optional<core::Alarm> none_left = lit(week, core::AlarmKind::kTooFewHorses);
+  failures += Expect(none_left.has_value() && none_left->herd.value == core::kInvalidEntityIdValue,
+                     "too few horses: with no horse left it still burns, its subject invalid");
+  return failures;
+}
+
 /// THE RESERVE LEAVES THE PEOPLE'S BARLEY (0.37.5; resources design §6,
 /// «Запас рабочего скота не ест хлеба, который выдают людям»; boss [73],
 /// (е)): four horses, no hay, 50 kg of barley in the store. The people were
@@ -11128,6 +11265,7 @@ int main() {
   failures += CheckNextYearsHoldDoesNotCountTheSeedRung();
   failures += CheckTheReserveLeavesThePeoplesBarley();
   failures += CheckTheHerdsHayAndShortfallByKind();
+  failures += CheckTheTeamOnHayAndTooFewHorses();
   failures += CheckThePloughEatsBeforeNextYear();
   failures += CheckMangerReach();
   failures += CheckStableGate();

@@ -43,9 +43,11 @@
 #ifndef CORE_COMMON_HERD_STATE_H_
 #define CORE_COMMON_HERD_STATE_H_
 
+#include <array>
 #include <cstdint>
 
 #include "core_common/ids.h"
+#include "core_common/quantities.h"
 #include "core_common/state_table.h"
 
 namespace core {
@@ -192,6 +194,43 @@ struct HerdRow {
 
 /// @brief The herds table type used by WorldState.
 using HerdTable = StateTable<HerdId, HerdRow>;
+
+/// The days of the harness's rolling week (TractionWatch): the alarm
+/// «лошадей не хватает» asks a week, not a day (boss-core-epoch1-queue [67]).
+inline constexpr std::uint32_t kHarnessWeekDays = 7;
+
+/// @brief What the team's two alarms remember between days (save 109;
+///        boss-core-epoch1-queue [84], [90]; econ canon-horses-oats.md §3, §4).
+///
+/// Written only by the herd day (herd_system.cpp, RunHerdDay), at the tick
+/// that turns the day; read by the production alarms.
+///
+/// «УПРЯЖЬ НА СЕНЕ»: the team's work ration short of full on consecutive
+/// WORKING days — a day with the work ration's room above nought, a horse in
+/// the traces — short beyond what the takes' whole grams may cost. A day
+/// nobody works leaves both numbers as they are; the first day of the full
+/// ration, or a day with no adult horse of the kolkhoz's, clears them.
+///
+/// «ЛОШАДЕЙ НЕ ХВАТАЕТ»: the harnessed assignment-days and those of them a
+/// horse carried, a slot a day by `calendar.day % kHarnessWeekDays`, every
+/// day written (a day with no harness writes noughts), so the sums are the
+/// last seven days'.
+struct TractionWatch {
+  /// Working days in a row the team's work ration fell short of full.
+  std::uint16_t short_ration_days = 0;
+
+  /// Grams of the team's work grain those days lacked: the work ration's
+  /// uncovered feed units over the feed value of the horse's first
+  /// work-only feed (oats in the shipped tables).
+  Grams work_grain_short = 0;
+
+  /// Harnessed assignment-days by day of the week (the mechanisation
+  /// share's denominator, YearLedger::harnessed_assignment_days).
+  std::array<float, kHarnessWeekDays> week_harnessed = {};
+
+  /// Of them, the horse-backed ones (its numerator).
+  std::array<float, kHarnessWeekDays> week_horse_backed = {};
+};
 
 }  // namespace core
 

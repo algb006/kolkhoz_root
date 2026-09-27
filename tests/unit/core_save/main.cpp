@@ -704,6 +704,11 @@ core::WorldState MakeWorld() {
   // Save 108: the herds' hay and their need uncovered, by kind — two lengths
   // in the closed book, empty in the current one, so a reader that swaps
   // the columns or the books fails.
+  // Save 109: the team's two alarms' memory, off nought.
+  world.traction_watch.short_ration_days = 3;
+  world.traction_watch.work_grain_short = 700;
+  world.traction_watch.week_harnessed[2] = 5.0F;
+  world.traction_watch.week_horse_backed[2] = 4.0F;
   world.ledger.closed.herd_hay_eaten = Amounts({0, 9});
   world.ledger.closed.herd_feed_short = Amounts({6});
   // The produce cart off the road (save 96): every source different and
@@ -948,6 +953,14 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.pencil_pending = 1;
 
   witness.traction_ration = 0.75F;
+  // The team's two alarms' memory (save 109): every slot different, so a
+  // codec that shifts a day or swaps the two weeks cannot round-trip clean.
+  witness.traction_watch.short_ration_days = 4;
+  witness.traction_watch.work_grain_short = 12'500;
+  for (std::uint32_t day = 0; day < core::kHarnessWeekDays; ++day) {
+    witness.traction_watch.week_harnessed[day] = 10.0F + static_cast<float>(day);
+    witness.traction_watch.week_horse_backed[day] = 0.5F * static_cast<float>(day);
+  }
   // The chairman's issue norms (save 57): NOT empty, since empty is what a
   // codec that forgot them would read back.
   witness.issue_norms = {500, 0, 1'500};
@@ -1065,6 +1078,17 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.pencil_pending", U8(world.chairman.pencil_pending)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
+  // The team's two alarms' memory (save 109).
+  chunks.push_back(
+      {"traction_watch.short_ration_days", U16(world.traction_watch.short_ration_days)});
+  chunks.push_back({"traction_watch.work_grain_short",
+                    U64(static_cast<std::uint64_t>(world.traction_watch.work_grain_short))});
+  for (const float days : world.traction_watch.week_harnessed) {
+    chunks.push_back({"traction_watch.week_harnessed", F32(days)});
+  }
+  for (const float days : world.traction_watch.week_horse_backed) {
+    chunks.push_back({"traction_watch.week_horse_backed", F32(days)});
+  }
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
@@ -1314,7 +1338,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // resources (2 + 16 each); predicted 509 -> 545 before the build, held.
     // Save 95: +15 — the road beds, a byte and a float for each of three;
     // predicted 545 -> 560 with the nineteen other sections unmoved, held.
-    {"world", 561, 0x7f64ac13edd82ef9ULL},
+    // Save 109: +66 — the team's two alarms' memory, a u16, an i64 and two
+    // weeks of seven floats; predicted 561 -> 627 before the build, held.
+    {"world", 627, 0x3bec46d2237fa220ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1936,6 +1962,11 @@ int main() {
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&
                          loaded.ledger.current.herd_hay_eaten.empty(),
                      "the book's hay and need uncovered by kind come back (save 108)");
+  failures += Expect(loaded.traction_watch.short_ration_days == 3 &&
+                         loaded.traction_watch.work_grain_short == 700 &&
+                         loaded.traction_watch.week_harnessed[2] == 5.0F &&
+                         loaded.traction_watch.week_horse_backed[2] == 4.0F,
+                     "the team's two alarms' memory comes back (save 109)");
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");

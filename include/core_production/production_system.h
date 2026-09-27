@@ -106,6 +106,10 @@ class IProductionSystem {
   /// unfed_days > 0; kHerdWithoutStable, one line for the whole kolkhoz
   /// horse team, while the yard has not reached its second step, and
   /// kHerdAging beside it once the team's oldest head is at old age;
+  /// kTeamOnHay once the team's work ration is short kTeamOnHayDays working
+  /// days in a row, and kTooFewHorses once more than kTooFewHorsesShare of
+  /// the week's harness went without a horse (both STUB thresholds,
+  /// production_alarms.h);
   /// kFellingUnreachable for every stand marked for felling, with work left,
   /// that the brigade's ride from the nearest lived-in house does not reach
   /// by the accountant's road rule (harness speed; parcel 308);

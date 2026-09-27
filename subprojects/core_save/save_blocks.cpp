@@ -178,7 +178,14 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // land_strips).
 // 2026-09-27, save 104: the road works, 38 — their own section (save.cpp,
 // road_works; 7e).
-static_assert(AggregateArity<WorldState>() == 38,
+// 2026-09-28, save 109: the team's two alarms' memory, 39 — written in the
+// world block beside the traction ration.
+static_assert(sizeof(TractionWatch) == 72,
+              "TractionWatch changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<TractionWatch>() == 4,
+              "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 39,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -401,6 +408,15 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.chairman.pencil_pending);
 
   out.WriteFloat(world.traction_ration);
+  // The team's two alarms' memory (save 109).
+  out.WriteU16(world.traction_watch.short_ration_days);
+  out.WriteI64(world.traction_watch.work_grain_short);
+  for (const float days : world.traction_watch.week_harnessed) {
+    out.WriteFloat(days);
+  }
+  for (const float days : world.traction_watch.week_horse_backed) {
+    out.WriteFloat(days);
+  }
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
   // resource dictionary like every amounts vector; empty until his first
   // order, and empty round-trips as empty.
@@ -554,6 +570,27 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.pencil_pending = source.ReadEnumValue(0, 1, "the pencil's deferred summons");
 
   world->traction_ration = in.ReadFloat();
+  world->traction_watch.short_ration_days = in.ReadU16();  // save 109
+  world->traction_watch.work_grain_short = in.ReadI64();
+  if (world->traction_watch.work_grain_short < 0) {
+    source.Fail("the team's work grain short is negative");
+  }
+  for (float& days : world->traction_watch.week_harnessed) {
+    days = in.ReadFloat();
+  }
+  for (float& days : world->traction_watch.week_horse_backed) {
+    days = in.ReadFloat();
+  }
+  for (std::uint32_t day = 0; day < kHarnessWeekDays; ++day) {
+    const float harnessed = world->traction_watch.week_harnessed[day];
+    const float backed = world->traction_watch.week_horse_backed[day];
+    // Written as counts of assignment-days: none negative, and the
+    // horse-backed a part of the harnessed. `!(x >= 0)` catches a NaN too.
+    if (!(harnessed >= 0.0F) || !(backed >= 0.0F) || backed > harnessed) {
+      source.Fail(
+          "the harness's week holds a day that is negative or backs more than it harnessed");
+    }
+  }
   world->issue_norms = source.ReadAmounts(DefKind::kResource);
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);

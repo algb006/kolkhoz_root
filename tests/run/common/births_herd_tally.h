@@ -39,6 +39,7 @@
 #include <utility>
 #include <vector>
 
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
@@ -110,6 +111,22 @@ class BirthsHerdTally {
       last_year_ = day / core::kDaysPerYear;
       CloseYear(world);
     }
+  }
+
+  /// @brief One day's alarms, read through the simulation's own door after
+  ///        the day: the days the team's two alarms stood (0.37.8; boss
+  ///        [84]: «печатай число суток горения по годам, чтобы не вышел
+  ///        сторож, горящий всегда»).
+  void CountAlarms(const std::vector<core::Alarm>& alarms) {
+    bool on_hay = false;
+    bool too_few = false;
+    for (const core::Alarm& alarm : alarms) {
+      on_hay = on_hay || alarm.kind == core::AlarmKind::kTeamOnHay;
+      too_few = too_few || alarm.kind == core::AlarmKind::kTooFewHorses;
+    }
+    current_.team_on_hay_days += on_hay ? 1U : 0U;
+    current_.too_few_horses_days += too_few ? 1U : 0U;
+    ++current_.alarm_days;
   }
 
   /// The hour of the day the work is sampled at: noon — the day's close
@@ -248,6 +265,30 @@ class BirthsHerdTally {
         std::cout << year.work.hay_at_turnout_t << " t";
       }
     }
+    std::cout << '\n'
+              << run_name << ": seed " << seed
+              << " the team's alarms by closed year (0.37.8; boss-core-epoch1-queue [84]) — days "
+                 "kTeamOnHay stood (idle days it keeps standing included) / days kTooFewHorses "
+                 "stood, of the days read (the "
+                 "simulation's CollectAlarms after each day; 0 days read is NOT MEASURED); the "
+                 "team's mean ration in the autumn and winter; the jobs stopped for want of a "
+                 "horse (JobShortfall::kNoHorse, job-days — beside, not in, kTooFewHorses):";
+    for (const Year& year : years_) {
+      std::cout << "\n    year " << year.number << ": ";
+      if (year.work.alarm_days == 0) {
+        std::cout << "NOT MEASURED";
+      } else {
+        std::cout << "on hay " << year.work.team_on_hay_days << " / too few horses "
+                  << year.work.too_few_horses_days << " of " << year.work.alarm_days << " days";
+      }
+      std::cout << "; cold ration ";
+      if (year.work.cold_days == 0) {
+        std::cout << "NOT MEASURED";
+      } else {
+        std::cout << year.work.cold_ration_sum / static_cast<float>(year.work.cold_days);
+      }
+      std::cout << "; short of a horse " << year.short_of_horse << " job-days";
+    }
     std::cout << '\n';
   }
 
@@ -265,6 +306,9 @@ class BirthsHerdTally {
     std::uint32_t horse_unfed_head_days = 0;
     std::array<std::uint32_t, core::kMonthsPerYear> horse_unfed_by_month = {};
     double hay_at_turnout_t = -1.0;  ///< Negative: the turnout day not reached.
+    std::uint32_t team_on_hay_days = 0;
+    std::uint32_t too_few_horses_days = 0;
+    std::uint32_t alarm_days = 0;  ///< Days CountAlarms was called: 0 is NOT MEASURED.
   };
 
   /// The hay's year (boss [78]): what the meadows gave and on how much of

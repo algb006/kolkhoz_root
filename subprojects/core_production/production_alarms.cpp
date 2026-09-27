@@ -327,6 +327,64 @@ void CollectStableAlarms(const ProductionConfig& config,
     alarms.push_back(aging);
   }
 }
+
+/// The first row holding the kolkhoz's own horses, heads in it — the team's
+/// subject, as kHerdWithoutStable's; kNoRow when the team is gone.
+std::uint32_t FirstTeamRow(const ProductionConfig& config, const WorldState& world) {
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    const HerdRow& herd = world.herds.rows[row];
+    if (herd.household_owned == 0 && herd.kind.value == config.horse_kind.value &&
+        herd.newborn_count + herd.juvenile_count + herd.adult_count > 0) {
+      return row;
+    }
+  }
+  return kNoRow;
+}
+
+/// kTeamOnHay and kTooFewHorses (alarm_state.h), read off the memory the
+/// herd day keeps (herd_state.h, TractionWatch). Both are about the kolkhoz's
+/// team, so a world with no horse kind in its tables raises neither.
+void CollectTeamAlarms(const ProductionConfig& config,
+                       const WorldState& world,
+                       std::vector<Alarm>& alarms) {
+  if (config.horse_kind.value == kInvalidDefIdValue) {
+    return;
+  }
+  const std::uint32_t team = FirstTeamRow(config, world);
+  const TractionWatch& watch = world.traction_watch;
+  if (watch.short_ration_days >= kTeamOnHayDays && team != kNoRow) {
+    Alarm on_hay;
+    on_hay.kind = AlarmKind::kTeamOnHay;
+    on_hay.herd = world.herds.row_ids[team];
+    for (const FeedLinkDef& link : config.feed_links) {
+      if (link.kind.value == config.horse_kind.value && link.work_only != 0) {
+        on_hay.resource = link.resource;
+        break;
+      }
+    }
+    on_hay.amount = watch.work_grain_short;
+    alarms.push_back(on_hay);
+  }
+  float harnessed = 0.0F;
+  float horse_backed = 0.0F;
+  std::uint32_t working_days = 0;
+  for (std::uint32_t day = 0; day < kHarnessWeekDays; ++day) {
+    harnessed += watch.week_harnessed[day];
+    horse_backed += watch.week_horse_backed[day];
+    working_days += watch.week_harnessed[day] > 0.0F ? 1U : 0U;
+  }
+  const float without = harnessed - horse_backed;
+  if (harnessed > 0.0F && without > kTooFewHorsesShare * harnessed) {
+    Alarm too_few;
+    too_few.kind = AlarmKind::kTooFewHorses;
+    if (team != kNoRow) {
+      too_few.herd = world.herds.row_ids[team];
+    }
+    too_few.amount =
+        static_cast<std::int64_t>(std::lround(without / static_cast<float>(working_days)));
+    alarms.push_back(too_few);
+  }
+}
 }  // namespace
 
 /// kStoreFull: a numbered store holding at least its capacity. A store
@@ -495,6 +553,7 @@ void CollectHerdAlarms(const ProductionConfig& config,
     alarms.push_back(alarm);
   }
   CollectStableAlarms(config, world, alarms);
+  CollectTeamAlarms(config, world, alarms);
 }
 
 void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,

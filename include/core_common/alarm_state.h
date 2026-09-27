@@ -475,6 +475,29 @@ enum class AlarmKind : std::uint8_t {
   /// died — the line stays lit, and the age death reads the same top.
   kHerdAging,
 
+  /// «УПРЯЖЬ НА СЕНЕ» (0.37.8, save 109; boss-core-epoch1-queue [84], [90];
+  /// econ canon-horses-oats.md §3): the team's work ration has been short of
+  /// full for `kTeamOnHayDays` working days in a row — the horses pull on
+  /// hay, and the ploughing goes slower (WorldState::traction_ration). Goes
+  /// out on the first working day of the full ration, or when the team is
+  /// gone; a day nobody works keeps it standing. On a carting day the
+  /// plough's oats are held by rule (FeedAllowance, PloughFeedHold), so it
+  /// can stand beside oats in the barn that are the plough's. OATS, NOT HAY: a team
+  /// short of hay is kHerdStarving. Subject: `herd`, the first row of the
+  /// kolkhoz's horses; `resource` the horse's first work-only feed (oats);
+  /// `amount` the grams of it the streak lacked (TractionWatch).
+  kTeamOnHay,
+
+  /// «ЛОШАДЕЙ НЕ ХВАТАЕТ» (0.37.8, save 109; boss [67], [90]; econ
+  /// canon-horses-oats.md §4): over the last seven days more than
+  /// `kTooFewHorsesShare` of the harnessed assignment-days had no horse —
+  /// carters on foot, the village carrying on its backs. Too few horses for
+  /// the work, where kTeamOnHay is too little oats for the horses. Subject:
+  /// `herd`, the first row of the kolkhoz's horses, INVALID when not a head
+  /// is left (the case it exists for; a row of foals alone still names it); `amount` the harnessed
+  /// assignments without a horse on a mean working day of the week, rounded — the teams short.
+  kTooFewHorses,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

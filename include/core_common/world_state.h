@@ -861,6 +861,10 @@ struct WorldState {
   /// Naming a horse would be a precision the order book does not carry.
   float traction_ration = 0.0F;
 
+  /// The team's two alarms' memory between days — the ration short in a
+  /// row and the harness's rolling week (save 109; herd_state.h).
+  TractionWatch traction_watch;
+
   /// THE CHAIRMAN'S ISSUE NORMS, grams per trudoden, by ResourceId — the
   /// bundle's positions of labor-payment §3 as the chairman set them
   /// (kSetIssueNorm; econ's audit M1, Л1). EMPTY until his first order, and

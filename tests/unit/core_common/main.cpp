@@ -2556,8 +2556,10 @@ int CheckAlarmSubjectValue() {
   failures += Expect(subject(core::AlarmKind::kHerdStarving, herd_id) == 33 &&
                          subject(core::AlarmKind::kHerdWithoutStable, herd_id) == 33 &&
                          subject(core::AlarmKind::kHerdAging, herd_id) == 33 &&
-                         subject(core::AlarmKind::kSlaughterWaitsForRoom, herd_id) == 33,
-                     "the herd's four answer with the herd");
+                         subject(core::AlarmKind::kSlaughterWaitsForRoom, herd_id) == 33 &&
+                         subject(core::AlarmKind::kTeamOnHay, herd_id) == 33 &&
+                         subject(core::AlarmKind::kTooFewHorses, herd_id) == 33,
+                     "the herd's six answer with the herd");
   failures += Expect(subject(core::AlarmKind::kFamilyGoingHungry, family_id) == 44,
                      "a hungry family answers with the family");
   failures += Expect(subject(core::AlarmKind::kFellingUnreachable, stand_id) == 55,

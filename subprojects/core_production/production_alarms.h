@@ -28,6 +28,16 @@
 
 namespace core {
 
+/// STUB (boss-core-epoch1-queue [84], [90]): the working days in a row the
+/// team's work ration is short of full before kTeamOnHay lights. A number
+/// for econ, not measured.
+inline constexpr std::uint16_t kTeamOnHayDays = 3;
+
+/// STUB (boss [67], [90]; econ canon-horses-oats.md §4 proposed 10 %): the
+/// share of the week's harnessed assignment-days without a horse above which
+/// kTooFewHorses lights.
+inline constexpr float kTooFewHorsesShare = 0.10F;
+
 /// @brief Appends the store alarms standing in `world` (kStoreFull).
 /// @param alarms Appended to; never cleared.
 void CollectStoreAlarms(const ProductionConfig& config,
@@ -73,7 +83,9 @@ void CollectGatherAlarms(const ProductionConfig& config,
                          std::vector<Alarm>& alarms);
 
 /// @brief Appends the herd alarms standing in `world`, the stable's among
-/// them: fodder running out, a byre over its head count, horses unfed.
+/// them: fodder running out, a byre over its head count, horses unfed; and
+/// the team's two (0.37.8): the work ration short in a row (kTeamOnHay) and
+/// the week's harness short of horses (kTooFewHorses).
 /// @param alarms Appended to; never cleared.
 void CollectHerdAlarms(const ProductionConfig& config,
                        const WorldState& world,

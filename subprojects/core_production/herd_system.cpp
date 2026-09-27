@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -365,6 +366,10 @@ struct WorkRation {
   float room = 0.0F;
 
   float covered = 0.0F;
+
+  /// What the takes' whole grams may have cost the cover, in feed units: a
+  /// gram of each work-only feed taken, row by row (0.37.8; static review).
+  float gram_loss = 0.0F;
 };
 
 /// Feed units a kilogram of this link's feed gives. A reserve ration covers
@@ -427,6 +432,7 @@ float RunFeeding(const ProductionConfig& config,
   }
   float covered = 0.0F;
   float work_covered = 0.0F;
+  float work_gram_loss = 0.0F;
   // DOES THIS KIND HAVE A WORK RATION AT ALL — asked in its own walk, before
   // the feeding one and not inside it. Inside, the answer depended on the
   // feeding getting AS FAR AS a work-only row: a herd filled up by
@@ -468,6 +474,7 @@ float RunFeeding(const ProductionConfig& config,
     const float gained = static_cast<float>(got) / static_cast<float>(kGramsPerKilogram) * value;
     if (link.work_only != 0) {
       work_covered += gained;
+      work_gram_loss += value / static_cast<float>(kGramsPerKilogram);
     }
     covered += gained;
   }
@@ -497,6 +504,7 @@ float RunFeeding(const ProductionConfig& config,
     const float full = need_units * working_share * config.farming.traction_full_ration_share;
     work->room += full;
     work->covered += work_covered < full ? work_covered : full;
+    work->gram_loss += work_gram_loss;
   }
   // A hair of tolerance: the need is a float and the take is integer grams,
   // so an exactly-fed herd can land a milligram short of its own norm.
@@ -514,6 +522,62 @@ float RunFeeding(const ProductionConfig& config,
         KilogramsToGrams((need_units - covered) / config.feed_values[config.hay_resource.value]));
   }
   return share;
+}
+
+/// THE TEAM'S TWO ALARMS' MEMORY, written once a day after the walk
+/// (herd_state.h, TractionWatch; save 109). `work` is the walk's work ration,
+/// the two days the herd day booked into the mechanisation share.
+void WatchTheTeam(const ProductionConfig& config,
+                  const WorkRation& work,
+                  float horse_backed_days,
+                  float harnessed_days,
+                  WorldState& current) {
+  TractionWatch& watch = current.traction_watch;
+  // «УПРЯЖЬ НА СЕНЕ»: a working day short of the full work ration adds a day
+  // and its grain; a full one clears both; a day with no room keeps them —
+  // unless the team is gone, which clears them too: a streak of a dead team
+  // would otherwise light on the first horses bought, before they worked a
+  // day (static review of 0.37.8).
+  //
+  // SHORT BEYOND THE GRAMS' ROUNDING, ROW BY ROW (static review of 0.37.8):
+  // each row's oats are taken in whole grams, truncated, so a team standing
+  // in sixteen rows of one head — the start's, until the stable — comes up
+  // to 16 g short on a full barn, far above RunFeeding's one-herd tolerance.
+  // The walk says what its takes may have cost (WorkRation::gram_loss).
+  bool team_left = false;
+  for (const HerdRow& herd : current.herds.rows) {
+    team_left = team_left || (herd.household_owned == 0 &&
+                              herd.kind.value == config.horse_kind.value && herd.adult_count > 0);
+  }
+  if (!team_left) {
+    watch.short_ration_days = 0;
+    watch.work_grain_short = 0;
+  } else if (work.room > 0.0F) {
+    const float short_units = work.room - work.covered;
+    if (short_units > work.gram_loss + kFeedToleranceUnits) {
+      if (watch.short_ration_days < std::numeric_limits<std::uint16_t>::max()) {
+        ++watch.short_ration_days;
+      }
+      // Priced in the horse's first work-only feed: the oats.
+      for (const FeedLinkDef& link : config.feed_links) {
+        if (link.kind.value == config.horse_kind.value && link.work_only != 0) {
+          const float value = FeedLinkValue(config, link);
+          if (value > 0.0F) {
+            watch.work_grain_short += KilogramsToGrams(short_units / value);
+          }
+          break;
+        }
+      }
+    } else {
+      watch.short_ration_days = 0;
+      watch.work_grain_short = 0;
+    }
+  }
+  // «ЛОШАДЕЙ НЕ ХВАТАЕТ»: today's slot of the rolling week, written every
+  // day, noughts included, so the week never holds a stale day.
+  const std::uint32_t slot = current.calendar.day % kHarnessWeekDays;
+  watch.week_harnessed[slot] = harnessed_days;
+  watch.week_horse_backed[slot] = horse_backed_days;
 }
 
 /// What the day's produce is multiplied by. Two leaks, both of them the
@@ -929,6 +993,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     const float ration = work.covered / work.room;
     current.traction_ration = ration < 1.0F ? ration : 1.0F;
   }
+  WatchTheTeam(config, work, horse_backed_days, harnessed_days, current);
   for (const HerdRow& gift : gifts) {
     AppendRow(current.herds, gift);
   }
