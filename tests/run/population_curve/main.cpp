@@ -390,9 +390,22 @@ bool g_epoch_one_forever = false;
 /// each row took all sixteen (the first probe, 16 -> 0).
 bool g_horses_half = false;
 
-/// Halves the horses of the world just started (g_horses_half), from the
-/// last herd row up, and prints the adults before and after.
-void HalveHorses(const run::Simulation& world) {
+/// `--horses-loss-year=N`: econ's pair for own traction's 70 % (boss-core-
+/// epoch1-queue [57]; econ, proposals/own-traction.md §4): at the start of
+/// year N the village keeps a quarter of its horses, each age band, as a
+/// murrain would leave it. Lost before the door (year 10) the gate must shut
+/// for 2-4 years and open by itself as the team grows back; lost long before
+/// (year 3) nothing moves. 0: no loss.
+std::uint32_t g_horses_loss_year = 0;
+
+/// Keeps `keep_num`/`keep_den` of the world's horses, rounded down, each age
+/// band counted over all horse herds and taken from the last herd row up,
+/// and prints the adults before and after with `when`.
+void KeepHorsesShare(const run::Simulation& world,
+                     std::uint32_t keep_num,
+                     std::uint32_t keep_den,
+                     const char* flag,
+                     const char* when) {
   core::WorldState halved = world.State();
   const core::ITable* const kinds = world.tables->FindTable("livestock");
   const std::uint32_t horse = kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
@@ -406,9 +419,9 @@ void HalveHorses(const run::Simulation& world) {
       newborns += herd.newborn_count;
     }
   }
-  std::uint32_t adults_to_take = adults - (adults / 2);
-  std::uint32_t juveniles_to_take = juveniles - (juveniles / 2);
-  std::uint32_t newborns_to_take = newborns - (newborns / 2);
+  std::uint32_t adults_to_take = adults - (adults * keep_num / keep_den);
+  std::uint32_t juveniles_to_take = juveniles - (juveniles * keep_num / keep_den);
+  std::uint32_t newborns_to_take = newborns - (newborns * keep_num / keep_den);
   const auto take = [](std::uint16_t& count, std::uint32_t& wanted) {
     const std::uint32_t taken = std::min<std::uint32_t>(count, wanted);
     count = static_cast<std::uint16_t>(count - taken);
@@ -438,8 +451,8 @@ void HalveHorses(const run::Simulation& world) {
   }
   const std::uint32_t before = adults;
   world.simulation->ResetWorld(halved);
-  std::cout << "population_curve: --horses-half — adult horses " << before << " -> " << after
-            << " on day 0\n";
+  std::cout << "population_curve: " << flag << " — adult horses " << before << " -> " << after
+            << ' ' << when << '\n';
 }
 
 /// `--seed-offset=N`: every seed of kSeeds moved by N — a SECOND sample of
@@ -496,7 +509,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     return false;
   }
   if (g_horses_half) {
-    HalveHorses(world);
+    KeepHorsesShare(world, 1, 2, "--horses-half", "on day 0");
   }
   core::ISimulation* simulation = world.simulation.get();
   out.seed = seed;
@@ -540,6 +553,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
 
   for (std::uint32_t year = 1; year <= kYears; ++year) {
+    if (g_horses_loss_year != 0 && year == g_horses_loss_year) {
+      KeepHorsesShare(world, 1, 4, "--horses-loss-year", "at the start of the year");
+    }
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
       // THE DAY IS WALKED TICK BY TICK AND NOT BY AdvanceDays, for one
       // reason: the outbox is cleared every step, so a loop that advances a
@@ -811,6 +827,11 @@ int main(int argc, char** argv) {
       g_epoch_one_forever = true;
     } else if (argument == "--horses-half") {
       g_horses_half = true;
+    } else if (argument.starts_with("--horses-loss-year=")) {
+      g_horses_loss_year = static_cast<std::uint32_t>(std::strtoul(
+          std::string(argument.substr(std::string_view("--horses-loss-year=").size())).c_str(),
+          nullptr,
+          10));
     } else if (argument.starts_with("--seed-offset=")) {
       g_seed_offset = std::strtoull(
           std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
@@ -828,6 +849,12 @@ int main(int argc, char** argv) {
     std::cout << "population_curve: ECON'S BRANCH — --epoch-one-forever: the run's chairman "
                  "never orders Epoch II (the declaration above does not hold for the "
                  "transition); every verdict below is printed, not trusted\n";
+  }
+  if (g_horses_loss_year != 0) {
+    std::cout << "population_curve: CONTROL ARM — --horses-loss-year=" << g_horses_loss_year
+              << ": a quarter of the horses kept, each age band, at the start of that year "
+                 "(econ's pair for own traction's 70 %); the bands below are read on the "
+                 "whole team, so their verdict is printed, not trusted\n";
   }
   if (g_horses_half) {
     std::cout << "population_curve: CONTROL ARM — --horses-half: every horse herd halved on day "

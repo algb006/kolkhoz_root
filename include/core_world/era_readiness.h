@@ -48,6 +48,16 @@ inline constexpr std::uint8_t kIndexYearsRequired = 3;
 /// 22daef4c).
 inline constexpr std::uint32_t kPopulationRequired = 380;
 
+/// «Своя тяга» of I → II (TransitionBlocks::own_traction): the share of the
+/// harnessed work the village's own horses carried in the last closed year,
+/// in percent — the mechanisation component's own door (boss-core-epoch1-
+/// queue [57]; econ, proposals/own-traction.md, variant A). STUB at 70: «the
+/// village ends pulling by horse» read as more than two thirds of it; to be
+/// tuned by playtest. The gate asked "one horse-day in the year" until
+/// 0.37.3, which every village with the start's sixteen horses passed in
+/// year 1.
+inline constexpr float kOwnTractionSharePercent = 70.0F;
+
 /// @brief What this module needs to know about the unit types to score the
 /// funds, the social objects and the office — read once at wiring, because a
 /// table cannot change under a running campaign.

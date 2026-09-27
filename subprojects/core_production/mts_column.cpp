@@ -227,6 +227,18 @@ void WorkColumnDay(const ProductionConfig& config, WorldState& current) {
       return;
     }
     const float hectares = std::min(budget, field.area_ga - column.field_ha);
+    // THE COLUMN'S PLOUGHING IS HARNESSED WORK, AND NOT THE VILLAGE'S OWN
+    // TRACTION (0.37.3; boss-core-epoch1-queue [57]; econ, proposals/own-
+    // traction.md): what the column ploughs and harrows goes into the
+    // mechanisation share's denominator at the crew's man-days for those
+    // hectares, and never into its numerator — the village living on the
+    // district's column does not pass the gate of its own traction. The
+    // sowing and the reaping are hand work in the village, and stay out of
+    // both halves, as a crew's would.
+    if (IsHorseWork(KindOfPhase(field.phase)) && field.area_ga > 0.0F) {
+      current.ledger.current.harnessed_assignment_days +=
+          hectares / field.area_ga * PhaseTotalDays(config, current, field);
+    }
     column.field_ha += hectares;
     column.worked_ha += hectares;
     budget -= hectares;

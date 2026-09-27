@@ -453,13 +453,27 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
   // OWN TRACTION OR A REPAIR BASE. The traction half is read off the year
   // rather than off the stable: a horse that pulled nothing is not the farm
   // pulling its own work.
+  //
+  // THE SHARE, NOT "A HORSE-DAY" (0.37.3; boss-core-epoch1-queue [57]; econ,
+  // proposals/own-traction.md): the gate asked `horse_backed > 0` and opened
+  // in year 2, day 0, on 9 seeds of 9 — with the whole team and with half of
+  // it. It reads the mechanisation component now, the same door, against
+  // kOwnTractionSharePercent.
+  //
+  // THE REPAIR BASE IS NOT AN EPOCH I DOOR: by design the repair base is the
+  // MTS (question 126; MTS §3), the village's own MTS opens in Epoch II, and
+  // the workshops the catalog names stood for it in I -> II and opened the
+  // gate for every village that built a yard. Kept from Epoch II on, where
+  // it is the II -> III block's — still pointing at the workshops rather than
+  // the MTS's base (named to boss; not this delivery's to change).
   const bool repair_base_stands =
-      catalog.repair_base.value != kInvalidDefIdValue &&
+      current.epoch != Epoch::kOne && catalog.repair_base.value != kInvalidDefIdValue &&
       std::ranges::any_of(current.units.rows, [&catalog](const UnitRow& unit) {
         return unit.type.value == catalog.repair_base.value && unit.level >= 1 && unit.dead == 0;
       });
-  out.blocks.own_traction =
-      (book.horse_backed_assignment_days > 0.0F || repair_base_stands) ? 1U : 0U;
+  const bool own_horses_pull = out.economy.mechanisation.measured != 0 &&
+                               out.economy.mechanisation.score >= kOwnTractionSharePercent;
+  out.blocks.own_traction = (own_horses_pull || repair_base_stands) ? 1U : 0U;
 }
 
 TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldState& world) {

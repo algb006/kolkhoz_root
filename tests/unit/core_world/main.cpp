@@ -338,6 +338,40 @@ int CheckReadinessShape() {
                      "readiness: mechanisation divides by the harnessed days — 5 of 10 is 50, "
                      "whatever else the village did");
 
+  // OWN TRACTION IS THE SHARE, NOT A HORSE-DAY (0.37.3; boss-core-epoch1-queue
+  // [57]): the gate reads the mechanisation component against 70 %. The pair:
+  // 70 of 100 harnessed opens it, 69 does not — a village that had horses in
+  // the traces on 69 days of every 100 still pulls a third of its work by
+  // hand. And the workshops no longer stand for a repair base in Epoch I;
+  // from Epoch II on they still do.
+  const auto traction_gate = [&empty](float horse_backed, core::Epoch epoch, bool workshops) {
+    core::ReadinessCatalog catalog = empty;
+    core::WorldState world;
+    world.epoch = epoch;
+    world.ledger.closed.total_assignment_days = 1000.0F;
+    world.ledger.closed.harnessed_assignment_days = 100.0F;
+    world.ledger.closed.horse_backed_assignment_days = horse_backed;
+    if (workshops) {
+      catalog.repair_base = core::UnitTypeId{7};
+      core::UnitRow shop;
+      shop.type = core::UnitTypeId{7};
+      shop.level = 1;
+      core::AppendRow(world.units, shop);
+    }
+    core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
+    return world.readiness.blocks.own_traction;
+  };
+  failures += Expect(traction_gate(70.0F, core::Epoch::kOne, false) == 1 &&
+                         traction_gate(69.0F, core::Epoch::kOne, false) == 0,
+                     "readiness: own traction opens at 70 % of the harnessed work on the "
+                     "village's horses and not at 69");
+  failures += Expect(traction_gate(1.0F, core::Epoch::kOne, false) == 0,
+                     "readiness: one horse-day in a year is not the village's own traction");
+  failures += Expect(traction_gate(0.0F, core::Epoch::kOne, true) == 0 &&
+                         traction_gate(0.0F, core::Epoch::kTwo, true) == 1,
+                     "readiness: the workshops open no gate in Epoch I (the repair base is the "
+                     "MTS's), and still do from Epoch II");
+
   // THE RUNS ARE RUNS: they count consecutive years and a year that misses
   // puts them back to nought. Scored twice over a world whose wintering
   // closed, then once over one whose did not.

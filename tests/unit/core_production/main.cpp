@@ -9302,6 +9302,14 @@ int CheckTheMtsColumn() {
       failures += Expect(ManDaysNear(field(near).work_days_remaining, 15.0F) &&
                              world.mts_column.field == near && world.mts_column.worked_ha == 10.0F,
                          "mts: the first day works 10 ha of the nearest field, the crew owes 15");
+      // THE COLUMN'S PLOUGHING IS HARNESSED WORK, NOT THE VILLAGE'S TRACTION
+      // (0.37.3; boss-core-epoch1-queue [57]): 10 ha at the crew's 1 man-day
+      // a hectare go into the share's denominator, nothing into its numerator.
+      failures += Expect(world.ledger.current.harnessed_assignment_days > 9.99F &&
+                             world.ledger.current.harnessed_assignment_days < 10.01F &&
+                             world.ledger.current.horse_backed_assignment_days == 0.0F,
+                         "mts: the column's 10 ploughed hectares are 10 harnessed man-days in "
+                         "the book, and none of them horse-backed");
       // A crew's phase opened afresh at full demand is held to the share left
       // at the very next tick, whatever the hour.
       field(near).work_days_remaining = 25.0F;
