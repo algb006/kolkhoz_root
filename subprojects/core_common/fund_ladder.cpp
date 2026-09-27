@@ -329,6 +329,28 @@ ResourceAmounts FodderRungLeft(const WorldState& world,
   return left;
 }
 
+ResourceAmounts NextYearRungLeft(const WorldState& world,
+                                 std::span<const SeedNorm> seed_norms_by_crop,
+                                 bool reserve_seed_fund,
+                                 ResourceId carted_daily,
+                                 const ResourceAmounts& next_year_hold) {
+  const ResourceAmounts seed = reserve_seed_fund
+                                   ? SeedRungLeft(world, seed_norms_by_crop, next_year_hold.size())
+                                   : ResourceAmounts(next_year_hold.size(), 0);
+  ResourceAmounts left(next_year_hold.size(), 0);
+  for (std::size_t index = 0; index < next_year_hold.size(); ++index) {
+    if (next_year_hold[index] <= 0) {
+      continue;
+    }
+    // What the plan reserve's release frees beyond this year's plan rung.
+    const Grams plan = PlanRungGrams(world, index, carted_daily, seed[index]);
+    const Grams released = Unsealed(world, FundKind::kPlanReserve, index);
+    const Grams beyond = released > plan ? released - plan : 0;
+    left[index] = RungLeft(next_year_hold[index], beyond);
+  }
+  return left;
+}
+
 namespace {
 
 /// Days from today to the end of the latest sowing window among the crops

@@ -242,6 +242,27 @@ ResourceAmounts FodderRungLeft(const WorldState& world,
                                const ResourceAmounts& last_year_feed,
                                const ResourceAmounts& fodder_fund);
 
+/// @brief NEXT YEAR'S HOLD LEFT after the chairman's unsealing — the plan
+///        reserve's, because the hold IS the plan's, one year ahead (0.37.2;
+///        boss-core-epoch1-queue [60], (г); the static review of it).
+///
+/// A release of the plan reserve comes off this year's plan rung first
+/// (HeldAboveFodder) and whatever it releases beyond that rung comes off
+/// next year's hold. Without it the hold was a lock no order opened: the
+/// alarm «the reserve is full and nobody eats» names «unseal a fund» as its
+/// door, and all three funds unsealed left the lean year's rye locked.
+/// @param seed_norms_by_crop, reserve_seed_fund, carted_daily As
+///        HeldAboveFodder is given them — the plan rung is measured by the
+///        same arithmetic.
+/// @param next_year_hold Dense by ResourceId (IProductionSystem::
+///        NextYearHold).
+/// @return Dense by ResourceId, sized as `next_year_hold`.
+ResourceAmounts NextYearRungLeft(const WorldState& world,
+                                 std::span<const SeedNorm> seed_norms_by_crop,
+                                 bool reserve_seed_fund,
+                                 ResourceId carted_daily,
+                                 const ResourceAmounts& next_year_hold);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_FUND_LADDER_H_

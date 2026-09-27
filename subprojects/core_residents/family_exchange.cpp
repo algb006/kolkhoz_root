@@ -216,9 +216,15 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // year's carry-over; the issue took it — with the harness, 4.4 t given out
   // in a good year against 3.4, 0.1 t in the lean one against 1.2, and the
   // rye of years 4, 7 and 10 failed on the canon. The herds already stayed
-  // above this hold; one hold, the same grams, rot margin included.
+  // above this hold; one hold, the same grams, rot margin included. The
+  // chairman's release of the plan reserve opens it past this year's plan
+  // (fund_ladder.h, NextYearRungLeft; static review of 0.37.2).
   if (config.next_year_hold) {
-    const ResourceAmounts next_year = config.next_year_hold(world);
+    const ResourceAmounts next_year = NextYearRungLeft(world,
+                                                       config.seed_norms,
+                                                       config.distribution.reserve_seed_fund != 0,
+                                                       config.carted_daily,
+                                                       config.next_year_hold(world));
     for (std::size_t index = 0; index < reserve.size() && index < next_year.size(); ++index) {
       reserve[index] += next_year[index];
     }

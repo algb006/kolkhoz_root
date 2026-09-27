@@ -567,6 +567,16 @@ int CheckLockedRationFood() {
   held = 40 * kKilo;
   failures += Expect(core::LockedRationFood(with_hold, lean).empty(),
                      "next year's hold: 40 kg held of 100 leave the people 60 to eat");
+  // AND THE PLAN RESERVE'S RELEASE OPENS IT (static review of 0.37.2): the
+  // hold is the plan's, a year ahead, and a lock no order opens would leave
+  // the alarm's «unseal a fund» a door to nowhere. Nothing owed this year, so
+  // a release of 100 kg frees the whole hold.
+  held = 100 * kKilo;
+  core::WorldState opened = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  opened.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {100 * kKilo};
+  failures += Expect(core::LockedRationFood(with_hold, opened).empty(),
+                     "next year's hold: the plan reserve's release of 100 kg opens it to the "
+                     "people");
   return failures;
 }
 
