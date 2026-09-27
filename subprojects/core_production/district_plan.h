@@ -144,6 +144,27 @@ Grams NextYearPositionGrams(const ProductionConfig& config,
                             const WorldState& current,
                             ResourceId resource);
 
+/// @brief One position's spring figure off `worked_ha`: a normal yield on its
+/// share of the area, times the plan's share — AnnouncePlan's rule, in one
+/// home for the announcement, next year's figure and the herd's hold of what
+/// next year's harvest will not pay (0.37.2). Nought for a position whose
+/// crop is not in the table or yields nothing.
+Grams PlanPositionGrams(const ProductionConfig& config,
+                        const ProductionConfig::PlanPosition& position,
+                        float worked_ha);
+
+/// @brief Grams of `resource` to hold in the stores `days` ahead of a
+/// delivery of `grams`, so that `grams` is still there on the day: `grams`
+/// and the rot of its wait, at the stores' shelf life (spoil_days ×
+/// keeping_factor; spoilage.h, RotMarginGrams — the seed fund's rule). For
+/// the herd's hold of what next year's harvest will not pay (0.37.2;
+/// herd_system.h, FeedAllowance): held to the gram, a year in the barn eats
+/// part of it before it is used.
+Grams HeldForDeliveryGrams(const ProductionConfig& config,
+                           ResourceId resource,
+                           Grams grams,
+                           std::uint32_t days);
+
 /// @brief The worked area next spring's figure will be priced off, as of
 /// `as_of`: the ratchet RunYearStart writes (district §9; register 222, «база
 /// только растёт») — the largest of last year's figure, the arable worked in

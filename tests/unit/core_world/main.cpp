@@ -312,12 +312,31 @@ int CheckReadinessShape() {
 
   // THE CEILING. Overshooting one component may not buy another, so a
   // delivery of two hundred per cent weighs as a hundred.
+  // The denominator is the harnessed days since 0.37.2: a book with only
+  // `total_assignment_days` would leave the share unmeasured, and this
+  // ceiling would pass on a nought.
   core::WorldState over;
   over.ledger.closed.total_assignment_days = 10.0F;
+  over.ledger.closed.harnessed_assignment_days = 10.0F;
   over.ledger.closed.horse_backed_assignment_days = 30.0F;
   core::ScoreReadiness(empty, 4.0F, 4.0F, over);
-  failures += Expect(over.readiness.economy.mechanisation.score <= 100.0F,
+  failures += Expect(over.readiness.economy.mechanisation.measured == 1 &&
+                         over.readiness.economy.mechanisation.score > 99.9F &&
+                         over.readiness.economy.mechanisation.score <= 100.0F,
                      "readiness: a component is capped at 100 before it is weighed");
+
+  // MECHANISATION IS THE HARNESSED WORK THE HORSES CARRIED (0.37.2; boss-core-
+  // epoch1-queue [42]), not a share of every assignment: 5 horse-backed of 10
+  // harnessed in a year of 100 assignment-days is half, not a twentieth.
+  core::WorldState harness;
+  harness.ledger.closed.total_assignment_days = 100.0F;
+  harness.ledger.closed.harnessed_assignment_days = 10.0F;
+  harness.ledger.closed.horse_backed_assignment_days = 5.0F;
+  core::ScoreReadiness(empty, 4.0F, 4.0F, harness);
+  failures += Expect(harness.readiness.economy.mechanisation.score > 49.9F &&
+                         harness.readiness.economy.mechanisation.score < 50.1F,
+                     "readiness: mechanisation divides by the harnessed days — 5 of 10 is 50, "
+                     "whatever else the village did");
 
   // THE RUNS ARE RUNS: they count consecutive years and a year that misses
   // puts them back to nought. Scored twice over a world whose wintering

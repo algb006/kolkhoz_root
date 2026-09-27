@@ -697,6 +697,10 @@ core::WorldState MakeWorld() {
   world.ledger.closed.short_job_days[core::kWorkKindCount - 1][core::kJobShortfallCount - 1] = 2;
   world.ledger.closed.offered_job_days = 11;
   world.ledger.closed.candidate_person_days = 13;
+  // Save 107: the traction's denominator, off nought and different in the
+  // two books, so a reader that drops it or swaps the books fails.
+  world.ledger.closed.harnessed_assignment_days = 17.5F;
+  world.ledger.current.harnessed_assignment_days = 2.25F;
   // The produce cart off the road (save 96): every source different and
   // off its default, so a codec that shifts one column onto its neighbour,
   // or one source onto the next, cannot round-trip clean.
@@ -1494,7 +1498,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // 1416 -> 1432 before the build, held.
     // Save 102: why not placed — 64 u32 a book, two books: +512 (1432 ->
     // 1944), predicted before the build.
-    {"ledger", 1944, 0x10731831802ff5c9ULL},
+    // Save 107: the traction's denominator, a float a book — 1944 -> 1952,
+    // predicted before the build, held.
+    {"ledger", 1952, 0x804699dc9155608eULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1837,6 +1843,9 @@ int main() {
                  loaded.ledger.closed.offered_job_days == 11 &&
                  loaded.ledger.closed.candidate_person_days == 13,
              "why not placed survives, reason by reason and kind by kind (save 102)");
+  failures += Expect(loaded.ledger.closed.harnessed_assignment_days == 17.5F &&
+                         loaded.ledger.current.harnessed_assignment_days == 2.25F,
+                     "the traction's denominator survives in both books (save 107)");
   {
     const core::YearLedger& back = loaded.ledger.closed;
     const core::YearLedger& sent = world.ledger.closed;

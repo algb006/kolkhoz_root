@@ -96,6 +96,39 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work);
 ///        activity, as WorkRidesOut is.
 TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work);
 
+/// @brief The day's harness as the placements stand (boss-core-epoch1-queue
+///        [42], «одна дверь двух потребителей»).
+struct HarnessCount {
+  /// The horses the placements hold: one a ploughman or harrower, one a
+  /// carter the placement gave one (WorkAssignment::rides_horse), one a
+  /// MEADOW for its mowers (the brigade's, not the mower's). May exceed the
+  /// herd — the chairman's standing orders can put more men on the plough
+  /// than there are horses, and a meadow's horse is counted whether or not
+  /// one was left for it.
+  std::uint32_t in_traces = 0;
+
+  /// The harnessed assignments, with a horse and without: the ploughmen and
+  /// harrowers, EVERY carter — on the horse or on foot — and one a meadow
+  /// being mown. `in_traces` never exceeds it.
+  std::uint32_t harnessed = 0;
+
+  /// The part of `in_traces` the morning's release takes off when the herd
+  /// is short (labor_system.cpp, ReleaseHorselessWork): the ploughmen, the
+  /// harrowers and the carters on a horse — not a meadow, whose mowers go
+  /// on with scythes.
+  std::uint32_t releasable = 0;
+};
+
+/// @brief Counts the harness off the day's assignments.
+///
+/// ONE COUNT FOR THREE READERS: the labour sub-step releases the work the
+/// herd cannot carry by `in_traces`; the herd day pays the oats and books the
+/// mechanisation share off both halves. Until 0.37.2 the herd day counted
+/// the plough and the harrow alone, and a horse in a cart was neither in the
+/// traction nor in the oats (econ, horse-traction.md), though the placement
+/// takes it out of the pool «exactly as ploughing does».
+HarnessCount CountHarness(const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_WORK_SEAM_H_

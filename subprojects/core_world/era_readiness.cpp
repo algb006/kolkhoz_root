@@ -339,8 +339,11 @@ void ScoreReadiness(const ReadinessCatalog& catalog,
                        : static_cast<std::uint8_t>(0);
 
   // -- MECHANISATION, both halves of the ratio already in one book ---------
+  // The harnessed work the horses carried (0.37.2; boss-core-epoch1-queue
+  // [42]): over every assignment it had the village's work, not its team,
+  // for a ceiling (econ, horse-traction.md).
   out.economy.mechanisation =
-      SharePercent(book.horse_backed_assignment_days, book.total_assignment_days);
+      SharePercent(book.horse_backed_assignment_days, book.harnessed_assignment_days);
 
   // -- THE FUNDS: a hundred less the mean wear of the farm's buildings -----
   float wear_sum = 0.0F;

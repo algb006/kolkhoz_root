@@ -398,7 +398,10 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // The two halves of the mechanisation share, as figures rather than as a
   // ratio: a sheet that carried only the quotient could not say whether a
   // low year was a poor one or a short one.
+  // Its denominator since 0.37.2 is the harnessed days; every assignment-day
+  // stays beside them, the effort share's numerator.
   out.Number("horse_backed_assignment_days", book.horse_backed_assignment_days);
+  out.Number("harnessed_assignment_days", book.harnessed_assignment_days);
   out.Number("total_assignment_days", book.total_assignment_days);
   out.Number("trudodni_accrued",
              static_cast<float>(book.trudodni_accrued) / static_cast<float>(kTrudodniScale));

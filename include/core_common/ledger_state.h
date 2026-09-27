@@ -490,14 +490,17 @@ struct YearLedger {
   /// and reading positive at a farm with an empty stable. A quantity with no
   /// subject behind it adds up, compares against a threshold, and lies.
   ///
-  /// Written only by the herd day of the production decisions sub-step.
+  /// Written only by the herd day of the production decisions sub-step. Its
+  /// denominator is `harnessed_assignment_days` (at the end of the book, for
+  /// the wire order) since 0.37.2; both come off one count of the harness
+  /// (work_seam.h, CountHarness), a cart horse and a meadow's mower
+  /// included.
   float horse_backed_assignment_days = 0.0F;
 
-  /// Every assignment-day of the year, the denominator of the share above.
-  /// Written in the same loop as the numerator, and that is the whole point:
-  /// two halves of one ratio derived in two places drift, and a ratio is the
-  /// one shape where drift is invisible — the quotient still looks like a
-  /// quotient.
+  /// Every assignment-day of the year: the numerator of the effort share
+  /// (`able_bodied_days` below). It was the traction's denominator too until
+  /// 0.37.2, and held its ceiling at the structure of the village's work.
+  /// Written by the herd day, in the same pass as the traction's halves.
   float total_assignment_days = 0.0F;
 
   // The district's limit (district design §1; limit_state.h). A point is
@@ -626,6 +629,19 @@ struct YearLedger {
   std::uint16_t winter_days_dec1 = 0;
 
   std::uint8_t winter_cover_taken = 0;
+
+  /// The harnessed assignment-days of the year, with a horse and without —
+  /// the denominator of the mechanisation share since 0.37.2 (save 107;
+  /// boss-core-epoch1-queue [42]): the ploughmen and harrowers, every carter
+  /// on the horse or on foot, one a meadow being mown (work_seam.h,
+  /// CountHarness). Booked in the same count as its numerator
+  /// `horse_backed_assignment_days`, by the herd day.
+  ///
+  /// NOT EVERY ASSIGNMENT, which it was until 0.37.2: the share's ceiling was
+  /// then the structure of the village's work — the fellers, the builders
+  /// and the milkmaids, who no horse could ever carry — and not its team
+  /// (econ, horse-traction.md).
+  float harnessed_assignment_days = 0.0F;
 };
 
 /// @brief The two books of the world: the year being written and the last

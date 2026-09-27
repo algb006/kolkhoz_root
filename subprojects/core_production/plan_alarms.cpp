@@ -304,6 +304,46 @@ bool PositionCounts(const ProductionConfig& config,
 
 }  // namespace
 
+Grams NextYearUnpaidGrams(const ProductionConfig& config,
+                          const WorldState& world,
+                          ResourceId resource,
+                          SimDay as_of) {
+  // What next year owes out of this produce: the district's positions,
+  // priced as next spring's figure will be (NextPlanAreaHa)...
+  Grams owed = 0;
+  const float next_area = NextPlanAreaHa(world, as_of);
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (PositionCounts(config, position) &&
+        config.crops[position.crop.value].resource.value == resource.value) {
+      owed += PlanPositionGrams(config, position, next_area);
+    }
+  }
+  // ...and the seed of the year after's crops of it, which next year's
+  // harvest gives: a spring crop of year 2 is sown from it that spring, a
+  // winter crop of year 2 that autumn.
+  float seed_kg = 0.0F;
+  float harvest_kg = 0.0F;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const CropId after = CropInYear(config, field, 2, as_of);
+    if (after.value < config.crops.size() &&
+        config.crops[after.value].resource.value == resource.value) {
+      seed_kg += config.crops[after.value].sowing_norm_kg_per_ha * field.area_ga;
+    }
+    const CropId next = CropInYear(config, field, 1, as_of);
+    if (next.value < config.crops.size() &&
+        config.crops[next.value].resource.value == resource.value &&
+        !SlotLost(config, field, 1, as_of)) {
+      harvest_kg += config.crops[next.value].yield_kg_per_ha * field.area_ga;
+    }
+  }
+  const Grams needed = owed + GramsFromKilograms(seed_kg);
+  const Grams harvest = GramsFromKilograms(harvest_kg);
+  return needed > harvest ? needed - harvest : 0;
+}
+
 bool PlanPositionUncovered(const ProductionConfig& config,
                            const WorldState& world,
                            ResourceId resource,

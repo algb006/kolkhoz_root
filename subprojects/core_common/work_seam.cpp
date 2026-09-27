@@ -5,7 +5,9 @@
 
 #include "core_common/work_seam.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <vector>
 
 #include "core_common/module_rules.h"
 #include "core_common/state_table_ops.h"
@@ -245,6 +247,36 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
     return logs ? TravelMode::kLogCart : TravelMode::kCart;
   }
   return TravelMode::kTeam;
+}
+
+HarnessCount CountHarness(const WorldState& world) {
+  HarnessCount count;
+  std::vector<FieldId> meadows_mown;
+  for (const ResidentRow& person : world.residents.rows) {
+    const WorkAssignment& work = person.work;
+    if (IsHorseWork(work.kind)) {
+      ++count.in_traces;
+      ++count.harnessed;
+      ++count.releasable;
+      continue;
+    }
+    if (work.kind == WorkKind::kHauling) {
+      const std::uint32_t on_horse = work.rides_horse != 0 ? 1U : 0U;
+      count.in_traces += on_horse;
+      count.releasable += on_horse;
+      ++count.harnessed;
+      continue;
+    }
+    // The one harvest that rides is a meadow's cut (WorkRidesOut), and its
+    // horse is the brigade's: one a meadow, however many mow it.
+    const bool meadow_cut = work.kind == WorkKind::kHarvest && WorkRidesOut(world, work);
+    if (meadow_cut && std::ranges::find(meadows_mown, work.field) == meadows_mown.end()) {
+      meadows_mown.push_back(work.field);
+      ++count.in_traces;
+      ++count.harnessed;
+    }
+  }
+  return count;
 }
 
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {

@@ -85,17 +85,28 @@ class BirthsHerdTally {
   /// after the day would count nobody.
   static constexpr std::uint32_t kSampleHour = 12;
 
-  /// @brief The day's work, sampled once, at kSampleHour.
+  /// @brief The day's work, sampled once, at kSampleHour; and on a day the
+  ///        plough or the harrow is out, the team's ration it is priced by
+  ///        (WorldState::traction_ration; boss-core-epoch1-queue [54]: «паёк
+  ///        упряжи весной — медиана и худший год»).
   void SampleWork(const core::WorldState& world) {
+    bool ploughing = false;
     for (const core::ResidentRow& resident : world.residents.rows) {
       const core::WorkAssignment& work = resident.work;
       if (core::IsHorseWork(work.kind)) {
         ++current_.plough_harrow;
+        ploughing = true;
       } else if (work.kind == core::WorkKind::kHauling) {
         ++(work.rides_horse != 0 ? current_.carting_with_horse : current_.carting_on_foot);
       } else if (work.kind == core::WorkKind::kHarvest && OnMeadow(world, work.field)) {
         ++current_.mowing;
       }
+    }
+    if (ploughing) {
+      current_.ploughing_days += 1;
+      current_.ploughing_ration_sum += world.traction_ration;
+      current_.ploughing_ration_min =
+          std::min(current_.ploughing_ration_min, world.traction_ration);
     }
   }
 
@@ -118,9 +129,12 @@ class BirthsHerdTally {
                  "horses ordered from the district; herd births, deaths by age / hunger "
                  "(every kind); person-days sampled at "
                  "noon: plough+harrow, carting with a horse / on foot, meadow "
-                 "mowing; harnessed job-days short of a horse; horse-backed / total "
-                 "assignment days (the book's); oats / hay the kolkhoz herds ate, t (the "
-                 "book's `feed`, every kind):";
+                 "mowing; harnessed job-days short of a horse; horse-backed / harnessed / "
+                 "total assignment days (the book's; the share is the first over the second "
+                 "since 0.37.2); oats / hay the kolkhoz herds ate, t (the "
+                 "book's `feed`, every kind); the team's ration on the days the plough or the "
+                 "harrow was out, sampled at noon — least / mean over N days (no ploughing: "
+                 "NOT MEASURED):";
     for (const Year& year : years_) {
       std::cout << "\n    year " << year.number << ": " << year.adult_horses << " / "
                 << year.young_horses << " horses; " << year.horses_bought << " bought; "
@@ -129,8 +143,15 @@ class BirthsHerdTally {
                 << " plough+harrow, " << year.work.carting_with_horse << " / "
                 << year.work.carting_on_foot << " carting, " << year.work.mowing << " mowing; "
                 << year.short_of_horse << " short of a horse; " << year.horse_backed_days << " / "
-                << year.total_assignment_days << "; fed " << year.oat_fed_t << " / "
-                << year.hay_fed_t << " t";
+                << year.harnessed_days << " / " << year.total_assignment_days << "; fed "
+                << year.oat_fed_t << " / " << year.hay_fed_t << " t; ration ";
+      if (year.work.ploughing_days == 0) {
+        std::cout << "NOT MEASURED";
+      } else {
+        std::cout << year.work.ploughing_ration_min << " / "
+                  << year.work.ploughing_ration_sum / static_cast<float>(year.work.ploughing_days)
+                  << " over " << year.work.ploughing_days << " days";
+      }
     }
     std::cout << '\n';
   }
@@ -141,6 +162,9 @@ class BirthsHerdTally {
     std::uint32_t carting_with_horse = 0;
     std::uint32_t carting_on_foot = 0;
     std::uint32_t mowing = 0;
+    std::uint32_t ploughing_days = 0;
+    float ploughing_ration_sum = 0.0F;
+    float ploughing_ration_min = 1.0F;
   };
 
   struct Year {
@@ -159,6 +183,7 @@ class BirthsHerdTally {
     std::uint32_t herd_deaths_hunger = 0;
     std::uint32_t short_of_horse = 0;
     float horse_backed_days = 0.0F;
+    float harnessed_days = 0.0F;
     float total_assignment_days = 0.0F;
     double oat_fed_t = 0.0;
     double hay_fed_t = 0.0;
@@ -235,6 +260,7 @@ class BirthsHerdTally {
       year.short_of_horse += by_cause[static_cast<std::size_t>(core::JobShortfall::kNoHorse)];
     }
     year.horse_backed_days = book.horse_backed_assignment_days;
+    year.harnessed_days = book.harnessed_assignment_days;
     year.total_assignment_days = book.total_assignment_days;
     year.oat_fed_t = Tonnes(book.feed, oat_);
     year.hay_fed_t = Tonnes(book.feed, hay_);

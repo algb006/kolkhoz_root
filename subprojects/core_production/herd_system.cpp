@@ -7,6 +7,7 @@
 
 #include "herd_system.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -20,9 +21,12 @@
 #include "core_common/quantities.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
+#include "district_plan.h"
 #include "herd_life.h"
 #include "livestock_homes.h"
 #include "night_pasture.h"
+#include "plan_alarms.h"
 #include "seed_room.h"
 #include "stable_horses.h"
 #include "stock_ops.h"
@@ -159,6 +163,27 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& 
   const ResourceAmounts seed_part = SeedRungLeft(world, seed_norms, config.feed_values.size());
   AddRungRotMargins(
       world, seed_norms, rungs, seed_part, config.spoil_days, config.keeping_factor, allowance);
+  // AND WHAT NEXT YEAR'S OWN HARVEST WILL NOT PAY (0.37.2; boss-core-epoch1-
+  // queue [52]-[54]): the rotation gives oats 19 t one year and 3.7 t the
+  // next. While the carts' horses ate hay the good year's carry-over lay, and
+  // the lean year paid its position and the next spring's seed out of it;
+  // once they ate their oats, a team took 14.6 t of the 19 and the lean year
+  // shipped 1.65 t of its 2.5 (seed 1933, years 4-5). Held with the rot of
+  // its wait, to the end of next year, where the last of it is used.
+  const auto days_to_next_turn =
+      static_cast<std::uint32_t>(kDaysPerYear - (world.calendar.day % kDaysPerYear) + kDaysPerYear);
+  for (std::size_t index = 0; index < allowance.size(); ++index) {
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const bool grown = std::ranges::any_of(
+        config.crops, [resource](const CropDef& crop) { return crop.resource == resource; });
+    if (!grown) {
+      continue;  // no field gives it, so no harvest owes it
+    }
+    const Grams unpaid = NextYearUnpaidGrams(config, world, resource, world.calendar.day);
+    if (unpaid > 0) {
+      allowance[index] += HeldForDeliveryGrams(config, resource, unpaid, days_to_next_turn);
+    }
+  }
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
     // counted gross, a construction's reserve R of a planned crop came out as
@@ -222,47 +247,62 @@ void RunBilleting(const HerdRow& herd,
 ///
 /// The wage ration of question Q2 is per head and per day: a horse in the
 /// traces gets oats, a horse standing in the yard gets hay. The core knows
-/// how many horses went out — one adult per horse work order, which is the
-/// start canon's own arithmetic (livestock design §5) — but not WHICH ones,
-/// because a work order names a field and a worker, never an animal. So the
-/// ration is spread: on a day when five horses of sixteen are in the traces,
-/// oats may cover five sixteenths of what they would cover on a full working
-/// day, and hay carries the rest.
+/// how many horses went out — the harness the placements hold (work_seam.h,
+/// CountHarness: the plough, the harrow, a carter's horse, a meadow's
+/// mower) — but not WHICH ones, because a work order names a field and a
+/// worker, never an animal. So the ration is spread: on a day when five
+/// horses of sixteen are in the traces, oats may cover five sixteenths of
+/// what they would cover on a full working day, and hay carries the rest.
 ///
 /// Read from `current` after the labor sub-step of the same sequential slot
 /// has written today's orders (manual/54-modules.md §3).
 /// @param horse_backed_days Optional out: today's assignment-days that a horse
 ///        ACTUALLY pulled — the mechanisation numerator (epochs design §6,
-///        boss's decision of 2026-09-12). Filled from the same single walk
-///        that feeds the oats, because the two are one question asked twice:
-///        "how much of the pool was in the traces today". A second walk of
-///        its own would be the same fact with two homes, and the two would
-///        part company the first time one of them learned about a mower.
+///        boss's decision of 2026-09-12). Filled from the same count that
+///        feeds the oats, because the two are one question asked twice: "how
+///        much of the pool was in the traces today" (boss-core-epoch1-queue
+///        [42], «одна дверь двух потребителей»). Until 0.37.2 that count was
+///        the plough and the harrow alone, and a cart horse was in neither.
 ///
-///        NOT the horse-work man-days themselves. `IsHorseWork` is a
-///        `constexpr` over the KIND of work and calls ploughing horse work
-///        in a village with an empty stable, so those man-days measure the
-///        rotation. What is booked is the share of them the horses could
-///        actually carry: more ploughmen than horses means the surplus
-///        pulled by hand.
+///        NOT the harnessed assignments themselves: more of them than horses
+///        means the surplus pulled by hand, so the lesser of the two.
+/// @param harnessed_days Optional out: today's harnessed assignments, with a
+///        horse and without — the mechanisation denominator, from the SAME
+///        count. Answered even in a village with no horse: its carters on
+///        foot are harnessed work pulled by hand, and the share is then nil
+///        rather than unmeasured.
 float WorkingShare(const WorldState& world,
                    const ProductionConfig& config,
-                   float* horse_backed_days = nullptr) {
-  // THE OUT-PARAM IS ANSWERED ON EVERY PATH, including the two that give up
-  // early. It was left untouched there, and the doc's "stays at nothing" was
-  // then a promise kept by the CALLER's initialiser — true today and true
-  // only while every caller keeps writing one.
+                   float* horse_backed_days = nullptr,
+                   float* harnessed_days = nullptr) {
+  // THE OUT-PARAMS ARE ANSWERED ON EVERY PATH, including the two that give
+  // up early. The numerator was left untouched there once, and the doc's
+  // "stays at nothing" was then a promise kept by the CALLER's initialiser —
+  // true today and true only while every caller keeps writing one.
   if (horse_backed_days != nullptr) {
     *horse_backed_days = 0.0F;
   }
-  if (config.horse_kind.value == kInvalidDefIdValue) {
-    return 0.0F;
-  }
+  const HarnessCount harness = CountHarness(world);
   std::uint32_t horses = 0;
   for (const HerdRow& herd : world.herds.rows) {
-    if (herd.kind.value == config.horse_kind.value) {
+    if (config.horse_kind.value != kInvalidDefIdValue &&
+        herd.kind.value == config.horse_kind.value) {
       horses += herd.adult_count;
     }
+  }
+  if (harnessed_days != nullptr) {
+    // WHAT THE MORNING RELEASES IS NOT WORK PULLED BY HAND (static review of
+    // 0.37.2): this runs at hour 0, the release of the work no horse is left
+    // for at hour 1 (labor_system.cpp, ReleaseHorselessWork). A chairman's
+    // standing order that puts twenty on the plough behind sixteen horses
+    // frees four, and they work nothing — counted here, they would read as
+    // four days the village ploughed by hand.
+    const std::uint32_t excess = harness.in_traces > horses ? harness.in_traces - horses : 0U;
+    const std::uint32_t released = excess < harness.releasable ? excess : harness.releasable;
+    *harnessed_days = static_cast<float>(harness.harnessed - released);
+  }
+  if (config.horse_kind.value == kInvalidDefIdValue) {
+    return 0.0F;
   }
   if (horses == 0) {
     return 0.0F;  // no horses, no traction, and the out-param already says so
@@ -279,18 +319,12 @@ float WorkingShare(const WorldState& world,
   // going into the traces, so the assignment is the right thing to read and
   // the hours are the wrong one. Found while wiring the mechanisation share,
   // which reads the same quantity and would have shipped as a constant nil.
-  std::uint32_t working = 0;
-  for (const ResidentRow& resident : world.residents.rows) {
-    if (IsHorseWork(resident.work.kind)) {
-      ++working;
-    }
-  }
+  const std::uint32_t working = harness.in_traces;
   const float share = static_cast<float>(working) / static_cast<float>(horses);
   if (horse_backed_days != nullptr) {
-    // Assignment-days: one per man ordered out today, and what the horses
-    // can carry is the lesser of the two counts. The denominator is counted
-    // in the same walk (see the caller) so that both halves of the ratio
-    // are the same unit, taken at the same hour, by the same module.
+    // Assignment-days: one per harness held today, and what the horses can
+    // carry is the lesser of the two counts. Both halves of the ratio are
+    // one count, the same unit, taken at the same hour, by the same module.
     *horse_backed_days = static_cast<float>(working < horses ? working : horses);
   }
   return share < 1.0F ? share : 1.0F;
@@ -723,7 +757,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   std::vector<float> room = RoofRoom(current, config);
   float horse_backed_days = 0.0F;
-  const float working_share = WorkingShare(current, config, &horse_backed_days);
+  float harnessed_days = 0.0F;
+  const float working_share = WorkingShare(current, config, &horse_backed_days, &harnessed_days);
   // BOTH HALVES OF THE MECHANISATION SHARE, here and only here (epochs
   // design §6; ledger_state.h). The denominator was booked by core_labor for
   // one afternoon, from delivered norm-days — a different unit at a
@@ -731,9 +766,12 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // quotient pass 1 and made the drift invisible, because a quotient of two
   // wrong things still looks like a quotient.
   current.ledger.current.horse_backed_assignment_days += horse_backed_days;
+  current.ledger.current.harnessed_assignment_days += harnessed_days;
   // The day's work ration of the working stock, summed over every herd the
   // walk below feeds and turned into the traction ration at the end of it.
   WorkRation work;
+  // Every assignment-day: the numerator of the effort share (ledger_state.h),
+  // no longer the traction's denominator since 0.37.2.
   for (const ResidentRow& resident : current.residents.rows) {
     if (resident.work.kind != WorkKind::kNone) {
       current.ledger.current.total_assignment_days += 1.0F;

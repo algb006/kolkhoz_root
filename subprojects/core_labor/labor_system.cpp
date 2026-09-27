@@ -684,24 +684,11 @@ class LaborSystem final : public ILaborSystem {
   ///       crew, so a meadow nobody could reach holds a horse that stands idle;
   ///       nobody stands on it here, and the top-up may put that horse to work
   ///       (static review of 0.34.51).
-  std::uint32_t HorsesInTraces(const WorldState& current) const {
-    std::uint32_t horses = 0;
-    std::vector<FieldId> meadows_mown;
-    for (const ResidentRow& person : current.residents.rows) {
-      const WorkAssignment& work = person.work;
-      if (IsHorseWork(work.kind) || (work.kind == WorkKind::kHauling && work.rides_horse != 0)) {
-        ++horses;
-        continue;
-      }
-      // The one harvest that rides is a meadow's cut (work_seam.h), and its
-      // horse is the brigade's: one a meadow, however many mow it.
-      const bool meadow_cut = work.kind == WorkKind::kHarvest && WorkRidesOut(current, work);
-      if (meadow_cut && std::ranges::find(meadows_mown, work.field) == meadows_mown.end()) {
-        meadows_mown.push_back(work.field);
-        ++horses;
-      }
-    }
-    return horses;
+  ///
+  /// The count is work_seam.h's CountHarness since 0.37.2: the herd day
+  /// pays the oats and books the traction off the same one.
+  static std::uint32_t HorsesInTraces(const WorldState& current) {
+    return CountHarness(current).in_traces;
   }
 
   /// The holder's morning (manual/74-posts.md §4): he is out of the

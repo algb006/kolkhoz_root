@@ -16,6 +16,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
+#include "core_common/spoilage.h"
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
@@ -381,17 +382,31 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
 }
 
-/// One position's spring figure off `worked_ha`: a normal yield on its share
-/// of the area, times the plan's share (AnnouncePlan's rule, below).
-Grams PositionGrams(const ProductionConfig& config,
-                    const CropDef& crop,
-                    const ProductionConfig::PlanPosition& position,
-                    float worked_ha) {
+}  // namespace
+
+Grams PlanPositionGrams(const ProductionConfig& config,
+                        const ProductionConfig::PlanPosition& position,
+                        float worked_ha) {
+  if (position.crop.value >= config.crops.size()) {
+    return 0;
+  }
+  const CropDef& crop = config.crops[position.crop.value];
+  if (crop.yield_kg_per_ha <= 0.0F) {
+    return 0;
+  }
   const float area = worked_ha * position.area_share;
   return GramsFromKilograms(crop.yield_kg_per_ha * area * config.plan_grain_share);
 }
 
-}  // namespace
+Grams HeldForDeliveryGrams(const ProductionConfig& config,
+                           ResourceId resource,
+                           Grams grams,
+                           std::uint32_t days) {
+  const float shelf_days = resource.value < config.spoil_days.size()
+                               ? config.spoil_days[resource.value] * config.keeping_factor
+                               : 0.0F;
+  return grams + RotMarginGrams(grams, shelf_days, days);
+}
 
 Grams NextYearPositionGrams(const ProductionConfig& config,
                             const WorldState& current,
@@ -411,7 +426,7 @@ Grams NextYearPositionGrams(const ProductionConfig& config,
     if (crop.yield_kg_per_ha <= 0.0F || crop.resource.value != resource.value) {
       continue;
     }
-    grams += PositionGrams(config, crop, position, worked);
+    grams += PlanPositionGrams(config, position, worked);
   }
   return grams;
 }
@@ -497,7 +512,7 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
     }
     AddToStock(current.plan.due,
                crop.resource,
-               PositionGrams(config, crop, position, current.plan.worked_ha_last_year));
+               PlanPositionGrams(config, position, current.plan.worked_ha_last_year));
   }
   AnnounceMilkPosition(config, current);
   NameAccumulationLimit(config, current, first_year);

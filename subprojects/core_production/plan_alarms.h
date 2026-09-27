@@ -40,6 +40,21 @@ void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms);
 
+/// @brief Grams of `resource` NEXT year's own harvest will not pay of what
+/// next year needs out of it (0.37.2; boss-core-epoch1-queue [52]-[54]): the
+/// district's positions of it, priced off the area next spring's figure will
+/// be (NextPlanAreaHa), and the seed of the year after's crops of it, which
+/// next year's harvest gives — against next year's chain hectares at a normal
+/// yield (neutral fertility), a slot already lost growing nothing. What the
+/// herds may not eat today (herd_system.h, FeedAllowance): the rotation
+/// gives oats 19 t one year and 3.7 t the next, and the team that ate the
+/// good year's carry-over left the lean year's position short of its seed.
+/// @param as_of The day `next year` is counted from.
+Grams NextYearUnpaidGrams(const ProductionConfig& config,
+                          const WorldState& world,
+                          ResourceId resource,
+                          SimDay as_of);
+
 /// @brief Whether a position of the district's plan yielding `resource` is
 /// uncovered in calendar year `year` (0 this, 1 next, 2 the one after) —
 /// kPlanPositionUncovered's test, asked as of `as_of` rather than today: the

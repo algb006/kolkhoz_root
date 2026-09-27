@@ -1261,19 +1261,26 @@ int main(int argc, char** argv) {
   // after a walk-off — so the quotient could pass 1 and mean nothing on the
   // way there. Both halves are assignment-days now, booked in one loop, and
   // THIS is the check that would have caught it: a share above one is
-  // arithmetically impossible and was not.
-  const double traction = book.total_assignment_days > 0.0F
+  // arithmetically impossible and was not. Its denominator is the harnessed
+  // days since 0.37.2 (boss-core-epoch1-queue [42]).
+  const double traction = book.harnessed_assignment_days > 0.0F
                               ? static_cast<double>(book.horse_backed_assignment_days) /
-                                    static_cast<double>(book.total_assignment_days)
+                                    static_cast<double>(book.harnessed_assignment_days)
                               : 0.0;
-  std::cout << "thirty_years: " << (traction * 100.0) << "% of the last year's assignment-days "
-            << "had a horse behind them, and the working stock's fodder ration stood at "
-            << (state.traction_ration * 100.0F) << "% on the last day\n";
+  std::cout << "thirty_years: " << (traction * 100.0) << "% of the last year's harnessed "
+            << "assignment-days (" << book.harnessed_assignment_days << " of "
+            << book.total_assignment_days << " assignment-days) had a horse behind them, and "
+            << "the working stock's fodder ration stood at " << (state.traction_ration * 100.0F)
+            << "% on the last day\n";
   failures += run::Expect(book.total_assignment_days > 0.0F,
                           "the settlement worked at all in its thirtieth year");
+  failures += run::Expect(book.harnessed_assignment_days > 0.0F &&
+                              book.harnessed_assignment_days <= book.total_assignment_days,
+                          "the harnessed days are some of the days worked, and not none");
   failures += run::Expect(traction <= 1.0,
-                          "and the traction share is a share: more horse-backed days than days "
-                          "worked would mean the two halves are counted in different units");
+                          "and the traction share is a share: more horse-backed days than "
+                          "harnessed ones would mean the two halves are counted in different "
+                          "units");
   // AND IT IS NOT NOTHING. A numerator that quietly stayed at zero is what
   // the oats ration hid for thirty years, and a share of zero reads exactly
   // like a village that owns no horse.

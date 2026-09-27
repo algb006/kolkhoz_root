@@ -81,9 +81,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // two bases, 64 u32 after road_blocked_job_days — 448 -> 704 and 84 -> 88,
 // predicted before the build (256 bytes: the float and gram arrays after
 // stay where their alignment wants them).
-static_assert(sizeof(YearLedger) == 704 + (30 * kAmountsSize),
+// Save 107: harnessed_assignment_days, a float at the end — 88 -> 89, the
+// size 704 -> 712 (predicted "+0 or +8, the tail's padding decides") and the
+// wire +4 a book.
+static_assert(sizeof(YearLedger) == 712 + (30 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 88,
+static_assert(AggregateArity<YearLedger>() == 89,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -204,6 +207,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.feed_days_dec1);
   out.WriteU16(book.winter_days_dec1);
   out.WriteU8(book.winter_cover_taken);
+  // The traction's denominator (save 107).
+  out.WriteFloat(book.harnessed_assignment_days);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -347,6 +352,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.feed_days_dec1 = in.ReadFloat();
   book.winter_days_dec1 = in.ReadU16();
   book.winter_cover_taken = in.ReadU8();
+  book.harnessed_assignment_days = in.ReadFloat();
   return book;
 }
 

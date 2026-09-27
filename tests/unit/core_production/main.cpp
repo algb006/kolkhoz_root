@@ -32,6 +32,7 @@
 #include "core_common/road_route.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_production/production_system.h"
@@ -345,6 +346,64 @@ int CheckTheHerdDoesNotEatThePlan() {
     failures += Expect(StoreOf(world, 0) == 96 * kKilo,
                        "50 kg owed of 100 carried over: the herd eats its 4 kg in full");
   }
+  return failures;
+}
+
+/// NOR WHAT NEXT YEAR'S OWN HARVEST WILL NOT PAY (0.37.2; boss-core-epoch1-
+/// queue [52]-[54]): the rotation gives the produce thin one year and thick
+/// the next, and the carry-over is what the thin year pays its position and
+/// the next spring's seed with. A crop of the stored produce, 100 kg/ha at a
+/// normal yield, sown at 50 kg/ha: next year it stands on A ha, the year
+/// after on 1 ha (50 kg of seed from next year's harvest), and the position
+/// is a tenth of the area at the crop's yield. 100 kg carried, 50 owed now.
+int CheckTheHerdDoesNotEatNextYear() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  core::CropDef crop;
+  crop.resource = core::ResourceId{0};
+  crop.yield_kg_per_ha = 100.0F;
+  crop.sowing_norm_kg_per_ha = 50.0F;
+  config.crops = {crop};
+  config.plan_grain_share = 1.0F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F}};
+
+  const auto herd_day = [&config](float next_year_ha, core::Grams& unpaid) {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.plan.due.assign(1, 50 * kKilo);
+    world.plan.worked_ha_last_year = 1.0F;
+    core::FieldRow next_year;
+    next_year.kind = core::LandKind::kArable;
+    next_year.area_ga = next_year_ha;
+    next_year.rotation_assigned = 1;
+    next_year.rotation_year1 = core::CropId{0};
+    AppendRow(world.fields, next_year);
+    core::FieldRow year_after;
+    year_after.kind = core::LandKind::kArable;
+    year_after.area_ga = 1.0F;
+    year_after.rotation_assigned = 1;
+    year_after.rotation_year2 = core::CropId{0};
+    AppendRow(world.fields, year_after);
+    unpaid = core::NextYearUnpaidGrams(config, world, core::ResourceId{0}, world.calendar.day);
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    return StoreOf(world, 0);
+  };
+  core::Grams thin_unpaid = 0;
+  const core::Grams thin = herd_day(0.1F, thin_unpaid);
+  core::Grams thick_unpaid = 0;
+  const core::Grams thick = herd_day(1.0F, thick_unpaid);
+  std::cout << "herd, next year: unpaid thin " << thin_unpaid << " g, thick " << thick_unpaid
+            << " g; the store after the day thin " << thin << " g, thick " << thick << " g\n";
+  // Thin: next spring's figure off last year's 1 ha is 10 kg (fields not yet
+  // worked are not worked arable), the seed 50 kg, next year's harvest 10 kg
+  // — 50 kg unpaid, the whole 50 the plan leaves.
+  failures += Expect(thin_unpaid == 50 * kKilo && thin == 100 * kKilo,
+                     "a thin next year: its 50 kg unpaid are held on top of this year's 50, and "
+                     "the herd eats none of the 100 carried over");
+  // Thick: 20 kg owed and 50 of seed against a 100 kg harvest — nothing held.
+  failures += Expect(thick_unpaid == 0 && thick == 96 * kKilo,
+                     "a thick next year pays its own way: the herd eats its 4 kg in full");
   return failures;
 }
 
@@ -788,6 +847,86 @@ int CheckWorkOnlyFeed() {
     failures +=
         Expect(half.units.rows[0].stock[1] == 99 * kKilo, "half the team out means half the oats");
   }
+  return failures;
+}
+
+/// THE CART HORSE IS IN THE TRACES (0.37.2; boss-core-epoch1-queue [42]):
+/// the oats and both halves of the traction share come off one count of the
+/// harness — a ploughman, a carter the placement gave a horse, a meadow's
+/// mowers one horse between them. A carter on foot is harnessed work pulled
+/// by hand: in the denominator, not in the traces. Until 0.37.2 the count was
+/// the plough and the harrow alone and the carts ate hay.
+int CheckTheCartHorseEatsOats() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.horse_kind = core::LivestockKindId{0};
+  config.feed_links = {
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{1},
+                        .max_share = 0.5F,
+                        .work_only = 1},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .max_share = 1.0F}};
+
+  core::WorldState world = MakeHerdWorld(100.0F);
+  world.units.rows[0].stock[1] = 100 * kKilo;
+  AddHerd(world, 0, 4, 2, true);
+  core::FieldRow meadow_row;
+  meadow_row.kind = core::LandKind::kMeadow;
+  const core::FieldId meadow = AppendRow(world.fields, meadow_row);
+  const auto put = [&world](core::WorkKind kind, std::uint8_t rides, core::FieldId field) {
+    core::ResidentRow hand;
+    hand.work.kind = kind;
+    hand.work.rides_horse = rides;
+    hand.work.field = field;
+    AppendRow(world.residents, hand);
+  };
+  put(core::WorkKind::kHauling, 1, core::FieldId{});  // on the horse the placement gave
+  put(core::WorkKind::kHauling, 1, core::FieldId{});
+  put(core::WorkKind::kHauling, 0, core::FieldId{});  // on foot: every horse was taken
+  for (int mower = 0; mower < 3; ++mower) {
+    put(core::WorkKind::kHarvest, 0, meadow);  // one brigade, one horse
+  }
+  put(core::WorkKind::kFelling, 0, core::FieldId{});  // no harness at all
+
+  const core::HarnessCount harness = core::CountHarness(world);
+  failures += Expect(harness.in_traces == 3 && harness.harnessed == 4,
+                     "the harness: two carters on horses and the meadow's one in the traces, the "
+                     "carter on foot harnessed too — 3 of 4 (the felling is neither)");
+  core::RunHerdDay(config, world);
+  failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo - (3 * kKilo / 2),
+                     "three horses of four in the traces take three quarters of the oats — the "
+                     "carts' horses eat the wage too");
+  failures += Expect(world.ledger.current.horse_backed_assignment_days == 3.0F &&
+                         world.ledger.current.harnessed_assignment_days == 4.0F,
+                     "the traction share is booked off the same count: 3 horse-backed of 4 "
+                     "harnessed assignment-days");
+  failures += Expect(world.ledger.current.total_assignment_days == 7.0F,
+                     "and every assignment-day, the effort share's numerator, stays every one: 7");
+
+  // THE MORNING'S RELEASE IS NOT HAND WORK (static review of 0.37.2): three on
+  // the plough by standing order behind two horses, and a carter on foot. The
+  // third ploughman is freed at hour 1 and works nothing, so the harnessed
+  // days are 2 + 1, not 3 + 1.
+  core::WorldState short_team = MakeHerdWorld(100.0F);
+  short_team.units.rows[0].stock[1] = 100 * kKilo;
+  AddHerd(short_team, 0, 2, 1, true);
+  for (int ploughman = 0; ploughman < 3; ++ploughman) {
+    core::ResidentRow hand;
+    hand.work.kind = core::WorkKind::kPlowing;
+    AppendRow(short_team.residents, hand);
+  }
+  core::ResidentRow walker;
+  walker.work.kind = core::WorkKind::kHauling;
+  AppendRow(short_team.residents, walker);
+  core::RunHerdDay(config, short_team);
+  failures += Expect(short_team.ledger.current.horse_backed_assignment_days == 2.0F &&
+                         short_team.ledger.current.harnessed_assignment_days == 3.0F,
+                     "a ploughman the morning will free for want of a horse is in neither half: "
+                     "2 horse-backed of 3 harnessed, not of 4");
   return failures;
 }
 
@@ -10479,6 +10618,7 @@ int main() {
   failures += CheckFeeding();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();
+  failures += CheckTheHerdDoesNotEatNextYear();
   failures += CheckTheHerdDoesNotEatTheSeed();
   failures += CheckFeedCaps();
   failures += CheckFeedLightCountsTheWinter();
@@ -10502,6 +10642,7 @@ int main() {
   failures += CheckTheAutumnKeepsAFewSows();
   failures += CheckSelfFedYard();
   failures += CheckWorkOnlyFeed();
+  failures += CheckTheCartHorseEatsOats();
   failures += CheckMangerReach();
   failures += CheckStableGate();
   failures += CheckNightPasture();
