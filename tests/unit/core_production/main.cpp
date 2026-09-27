@@ -930,6 +930,86 @@ int CheckTheCartHorseEatsOats() {
   return failures;
 }
 
+/// THE PLOUGH KEEPS ITS OATS (0.37.2; boss-core-epoch1-queue [59]-[60], (а)):
+/// on a day nobody ploughs, the herd leaves the ploughing's oats in the store
+/// — last year's ploughing horse-days at a working horse's oats; on a
+/// ploughing day they are the plough's; between the spring's sowing and the
+/// oats' reaping nothing is held. Four horses, two carters on them, 100 kg of
+/// oats; last year's book ploughed 200 man-days, at 1 unit a horse-day and
+/// the oats' half of it, 100 kg held.
+int CheckThePloughKeepsItsOats() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.horse_kind = core::LivestockKindId{0};
+  config.feed_links = {
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{1},
+                        .max_share = 0.5F,
+                        .work_only = 1},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .max_share = 1.0F}};
+  core::CropDef oats_crop;  // a spring crop sown to month 3: the season ends on day 16
+  oats_crop.resource = core::ResourceId{1};
+  oats_crop.sow_from_month = 2;
+  oats_crop.sow_to_month = 3;
+  oats_crop.harvest_from_month = 6;  // reaped by the end of month 7: day 32
+  oats_crop.harvest_to_month = 7;
+  config.crops = {oats_crop};
+
+  const auto oats_left = [&config](core::SimDay day, bool plough, core::PloughFeedHold& hold) {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.units.rows[0].stock[1] = 100 * kKilo;
+    world.ledger.closed.year = 1;
+    world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] =
+        200.0F;
+    AddHerd(world, 0, 4, 2, true);
+    for (int carter = 0; carter < 2; ++carter) {
+      core::ResidentRow hand;
+      hand.work.kind = core::WorkKind::kHauling;
+      hand.work.rides_horse = 1;
+      AppendRow(world.residents, hand);
+    }
+    if (plough) {
+      core::ResidentRow ploughman;
+      ploughman.work.kind = core::WorkKind::kPlowing;
+      AppendRow(world.residents, ploughman);
+    }
+    hold = core::PloughFeedHoldOf(config, world);
+    core::RunHerdDay(config, world);
+    return world.units.rows[0].stock[1];
+  };
+  core::PloughFeedHold winter_hold;
+  const core::Grams winter = oats_left(core::kDaysPerYear + 2, false, winter_hold);
+  failures += Expect(winter_hold.held && winter_hold.grams == 100 * kKilo &&
+                         winter_hold.book_year == 1 && winter_hold.horse_days == 200.0F,
+                     "plough's oats: held in the winter, 100 kg off last year's 200 horse-days "
+                     "(book year 1)");
+  failures += Expect(winter == 100 * kKilo,
+                     "plough's oats: the carts' horses leave them in the store on a day nobody "
+                     "ploughs");
+  core::PloughFeedHold spring_hold;
+  const core::Grams spring = oats_left(core::kDaysPerYear + 2, true, spring_hold);
+  failures += Expect(spring < 100 * kKilo, "plough's oats: on a ploughing day the team eats them");
+  core::PloughFeedHold summer_hold;
+  const core::Grams summer = oats_left(core::kDaysPerYear + 20, false, summer_hold);
+  failures += Expect(!summer_hold.held && summer < 100 * kKilo,
+                     "plough's oats: after the spring's sowing and before the reaping nothing is "
+                     "held, and the carts eat");
+  // A YEAR WITH NO OATS IN (static review of 0.37.2): past the reaping's
+  // window, reaped or not, next spring's ploughing is held again.
+  core::PloughFeedHold autumn_hold;
+  const core::Grams autumn = oats_left(core::kDaysPerYear + 36, false, autumn_hold);
+  failures += Expect(autumn_hold.held && autumn == 100 * kKilo,
+                     "plough's oats: in an autumn with no oats reaped the plough's are held all "
+                     "the same");
+  return failures;
+}
+
 /// The manger of the settlement is reachable from any barn: hay is delivered
 /// to the ONE stock yard, and a herd standing elsewhere must still reach it.
 int CheckMangerReach() {
@@ -10643,6 +10723,7 @@ int main() {
   failures += CheckSelfFedYard();
   failures += CheckWorkOnlyFeed();
   failures += CheckTheCartHorseEatsOats();
+  failures += CheckThePloughKeepsItsOats();
   failures += CheckMangerReach();
   failures += CheckStableGate();
   failures += CheckNightPasture();

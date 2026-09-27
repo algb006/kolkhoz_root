@@ -66,6 +66,7 @@ class BirthsHerdTally {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       oat_ = resources->FindRowByKey("oat");
       hay_ = resources->FindRowByKey("hay");
+      rye_ = resources->FindRowByKey("rye");
     }
   }
 
@@ -116,12 +117,14 @@ class BirthsHerdTally {
               << " births by closed year — births; families' mean yearly satiety [under "
                  "birth_satiety_stop "
               << birth_satiety_stop_ << "]; couples waiting for a house; women aged "
-              << fertile_from_ << ".." << fertile_to_ << ':';
+              << fertile_from_ << ".." << fertile_to_
+              << "; the rye reaped, t (a reaped year before an unreaped one is a year next "
+                 "year's hold keeps rye from the issue — boss-core-epoch1-queue [61]):";
     for (const Year& year : years_) {
       std::cout << "\n    year " << year.number << ": " << year.births << " births; satiety "
                 << year.mean_satiety << " [" << year.families_under_stop << " of " << year.families
                 << " under]; " << year.couples_waiting << " waiting; " << year.fertile_women
-                << " women";
+                << " women; rye reaped " << year.rye_reaped_t << " t";
     }
     std::cout << '\n'
               << run_name << ": seed " << seed
@@ -187,6 +190,7 @@ class BirthsHerdTally {
     float total_assignment_days = 0.0F;
     double oat_fed_t = 0.0;
     double hay_fed_t = 0.0;
+    double rye_reaped_t = 0.0;
     Work work;
   };
 
@@ -264,6 +268,7 @@ class BirthsHerdTally {
     year.total_assignment_days = book.total_assignment_days;
     year.oat_fed_t = Tonnes(book.feed, oat_);
     year.hay_fed_t = Tonnes(book.feed, hay_);
+    year.rye_reaped_t = Tonnes(book.harvest, rye_);
     year.work = current_;
     current_ = Work{};
     years_.push_back(year);
@@ -276,6 +281,7 @@ class BirthsHerdTally {
   std::uint32_t horse_kind_ = core::kNoTableRow;
   std::uint32_t oat_ = core::kNoTableRow;
   std::uint32_t hay_ = core::kNoTableRow;
+  std::uint32_t rye_ = core::kNoTableRow;
   std::uint32_t last_year_ = 0;
   Work current_;
   std::uint32_t current_bought_ = 0;

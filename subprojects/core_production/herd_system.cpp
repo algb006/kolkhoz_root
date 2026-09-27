@@ -150,7 +150,13 @@ Grams TakeFeed(WorldState& world,
 /// price is the pace — the work ration at nought on 72 of 108 spring
 /// seed-days, the ploughing at 1/0.7 — and it is the ladder as the design
 /// writes it (resources design §6): the seed above the fodder.
-ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& world) {
+/// @param ploughing_today Whether the plough or the harrow is out today: on
+///        such a day the ploughing's oats are the plough's to eat, and are
+///        not held (PloughFeedHold). The fodder fund's own read passes true —
+///        the fund is the team's, the plough's share inside it.
+ResourceAmounts FeedAllowance(const ProductionConfig& config,
+                              const WorldState& world,
+                              bool ploughing_today) {
   const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
   ResourceAmounts allowance =
       HeldAboveFodder(world, seed_norms, config.feed_values.size(), true, config.milk_resource);
@@ -174,6 +180,13 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config, const WorldState& 
   const ResourceAmounts next_year = NextYearHold(config, world);
   for (std::size_t index = 0; index < allowance.size() && index < next_year.size(); ++index) {
     allowance[index] += next_year[index];
+  }
+  // AND THE PLOUGH'S OATS ON A DAY NOBODY PLOUGHS (0.37.2; boss [59]-[60], (а)).
+  if (!ploughing_today) {
+    const PloughFeedHold plough = PloughFeedHoldOf(config, world);
+    if (plough.held && plough.resource.value < allowance.size()) {
+      allowance[plough.resource.value] += plough.grams;
+    }
   }
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
@@ -784,7 +797,10 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const auto grazing_tonight = [&](LivestockKindId kind_id) {
     return kind_id.value != config.horse_kind.value || team_out;
   };
-  ResourceAmounts feed_allowance = FeedAllowance(config, current);
+  const bool ploughing_today = std::ranges::any_of(
+      current.residents.rows,
+      [](const ResidentRow& resident) { return IsHorseWork(resident.work.kind); });
+  ResourceAmounts feed_allowance = FeedAllowance(config, current, ploughing_today);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
   for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
@@ -974,6 +990,78 @@ ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& w
   return hold;
 }
 
+PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState& world) {
+  PloughFeedHold hold;
+  if (config.horse_kind.value == kInvalidDefIdValue ||
+      config.horse_kind.value >= config.livestock.size()) {
+    return hold;
+  }
+  const FeedLinkDef* oats = nullptr;
+  for (const FeedLinkDef& link : config.feed_links) {
+    if (link.kind.value == config.horse_kind.value && link.work_only != 0 && link.reserve == 0) {
+      oats = &link;
+      break;
+    }
+  }
+  if (oats == nullptr) {
+    return hold;
+  }
+  hold.resource = oats->resource;
+  const float value = FeedLinkValue(config, *oats);
+  if (!(value > 0.0F)) {
+    return hold;
+  }
+  // THE SEASON: from the feed's reaping this year to the end of the latest
+  // spring sowing window (a winter crop's sowing follows the reaping and is
+  // on the new feed).
+  std::uint32_t spring_end_day = 0;
+  for (const CropDef& crop : config.crops) {
+    if (!crop.is_winter) {
+      const std::uint32_t window_end =
+          (static_cast<std::uint32_t>(crop.sow_to_month) + 1U) * kDaysPerMonth;
+      spring_end_day = std::max(spring_end_day, window_end);
+    }
+  }
+  // AND ONCE THE REAPING'S WINDOW IS PAST, reaped or not (static review of
+  // 0.37.2): a year with no oats in — a failed crop, a lost slot — held
+  // nothing from the spring to the turn, and the carts ate next spring's
+  // ploughing in exactly the year it was scarcest.
+  std::uint32_t reaping_end_day = kDaysPerYear;
+  for (const CropDef& crop : config.crops) {
+    if (crop.resource.value == oats->resource.value) {
+      const std::uint32_t window_end =
+          (static_cast<std::uint32_t>(crop.harvest_to_month) + 1U) * kDaysPerMonth;
+      reaping_end_day = std::min(reaping_end_day, window_end);
+    }
+  }
+  const std::uint32_t today = world.calendar.day % kDaysPerYear;
+  const bool reaped = AmountOf(world.ledger.current.harvest, oats->resource) > 0;
+  hold.held = reaped || today < spring_end_day || today >= reaping_end_day;
+  // THE HORSE-DAYS: the last closed book's ploughing and harrowing, or in the
+  // first year the arable under chains at the norms.
+  if (world.calendar.day >= static_cast<SimDay>(kDaysPerYear)) {
+    const YearLedger& book = world.ledger.closed;
+    hold.book_year = book.year;
+    hold.horse_days = book.work_days_by_kind[static_cast<std::size_t>(WorkKind::kPlowing)] +
+                      book.work_days_by_kind[static_cast<std::size_t>(WorkKind::kHarrowing)];
+  } else {
+    for (const FieldRow& field : world.fields.rows) {
+      if (field.kind == LandKind::kArable && field.rotation_assigned != 0) {
+        hold.horse_days +=
+            field.area_ga * (config.farming.plow_days_per_ha + config.farming.harrow_days_per_ha);
+      }
+    }
+  }
+  // The oats of one horse-day at full work: the need, the oats' share of it
+  // no more than the full work ration's share, at the oats' value.
+  const float need = config.livestock[config.horse_kind.value].feed_units_per_game_day;
+  const float share = std::min(oats->max_share, config.farming.traction_full_ration_share);
+  if (hold.held) {
+    hold.grams = KilogramsToGrams(hold.horse_days * need * share / value);
+  }
+  return hold;
+}
+
 Grams FodderFundGrams(const ProductionConfig& config,
                       const WorldState& current,
                       ResourceId resource) {
@@ -1010,7 +1098,9 @@ ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& cu
   // winter decision must live in year 1): before the first reaping of a feed
   // in the campaign, no cap. The cap was applied after the walk until the
   // same loop, and what it cut off a staple no reserve then took up.
-  ResourceAmounts stock = FeedAllowance(config, current);
+  // The fund is the team's, the plough's share inside it: read as on a
+  // ploughing day, nothing held from it for the plough.
+  ResourceAmounts stock = FeedAllowance(config, current, true);
   stock.resize(claim.size(), 0);
   const ResourceAmounts& this_year = current.ledger.current.harvest;
   const ResourceAmounts& last_year = current.ledger.closed.harvest;

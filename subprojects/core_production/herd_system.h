@@ -130,6 +130,46 @@ ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& cu
 /// years 4, 7 and 10 failed on the canon.
 ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The ploughing's oats, held from the team's other work (0.37.2;
+/// boss-core-epoch1-queue [59]-[60], (а); resources design §6: the fodder
+/// fund is kept «from the team that will plough»).
+///
+/// THE PLOUGH IS THE FUND'S FIRST EATER. With the carts' horses fed their
+/// oats (the harness, work_seam.h), the carts ate through the winter and
+/// the spring's plough went to work on hay: the team's ration on the
+/// ploughing days fell from 1.00 to 0.00 (median of the years' means, nine
+/// seeds). On a day nobody ploughs or harrows the herd leaves this much of
+/// the plough's feed in the store; on a ploughing day it is the plough's.
+struct PloughFeedHold {
+  /// The feed held: the horse kind's first work feed that is no reserve —
+  /// the oats; invalid when the tables name none.
+  ResourceId resource;
+
+  /// Grams held today; nought outside the window below.
+  Grams grams = 0;
+
+  /// Horse-days of ploughing and harrowing it is sized for: the last closed
+  /// book's man-days of the two (one horse a ploughman), or in the first
+  /// year, which has no book, the arable under chains at the ploughing and
+  /// harrowing norms a hectare.
+  float horse_days = 0.0F;
+
+  /// The book the horse-days were read off: its year, or 0 in the first year
+  /// (off the chains) — what the instrument prints as its basis.
+  std::uint32_t book_year = 0;
+
+  /// Held from the feed's reaping — or the end of its reaping window, reaped
+  /// or not — to the end of the spring sowing's latest window, the
+  /// ploughing's season; between them the stores hold the old feed and the
+  /// new one is on its way.
+  bool held = false;
+};
+
+/// @brief PloughFeedHold as of `world`'s today. The whole book year's
+/// ploughing is held, spring and the autumn's fallow alike — the book does not
+/// split them, and the error is to the plough's side.
+PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor
 /// today (YieldFactor: billeting, underfeeding), grams — the same sum
 /// RunProduce delivers, read without delivering it. A household's cow is the
