@@ -36,8 +36,9 @@ constexpr float kWeightDemography = 10.0F;
 //
 // Tuned by runs. They stand here and not in a table only because no readiness
 // table exists yet; the day one does, these move into it and this block goes.
-constexpr float kEconomicThreshold = 55.0F;        ///< STUB
-constexpr float kSocialThreshold = 50.0F;          ///< STUB
+// kEconomicThreshold, kSocialThreshold and kIndexYearsRequired stand in
+// era_readiness.h since 2026-09-27: the runs print which of the eight gates
+// met last, and a copy of 55 and 50 there would be the rule's second home.
 constexpr float kBirthsPerThousandTarget = 30.0F;  ///< STUB
 constexpr float kChildShareTarget = 0.30F;         ///< STUB
 /// «доля детей до 16 лет» — the design's own boundary for the age structure,
@@ -46,9 +47,6 @@ constexpr float kChildShareTarget = 0.30F;         ///< STUB
 constexpr float kChildUntilYears = 16.0F;
 constexpr std::uint8_t kSocialObjectsRequired = 4;  ///< STUB — «4 из 6»
 constexpr float kOfficeWearAtMostPercent = 1.0F;    ///< units rules §11, not a stub
-/// «Индексы держатся 3 года» — epochs §6, step 1 of the transition. The
-/// design's structure, not balance, like the weights above.
-constexpr std::uint8_t kIndexYearsRequired = 3;
 /// Bounds of a level table row this reader accepts: past them a cell is a
 /// typo, and the table's own check says so. The game has three eras.
 constexpr std::int64_t kHighestRung = 16;

@@ -19,6 +19,7 @@
 #ifndef CORE_WORLD_ERA_READINESS_H_
 #define CORE_WORLD_ERA_READINESS_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "core_common/ids.h"
@@ -26,6 +27,20 @@
 #include "core_tables/tables.h"
 
 namespace core {
+
+/// The economic index's gate of the transition (epochs §6). BALANCE, AND
+/// STUB (boss, parcel 132): tuned by runs, here and not in a table only
+/// because no readiness table exists yet.
+inline constexpr float kEconomicThreshold = 55.0F;
+
+/// The social index's gate, on the same terms.
+inline constexpr float kSocialThreshold = 50.0F;
+
+/// «Индексы держатся 3 года» — epochs §6, step 1 of the transition: the years
+/// in a row both indices must stand at their gates. The design's structure,
+/// not balance. In the header since 2026-09-27, for the runs that print
+/// which gate met last (a copy there would be the rule's second home).
+inline constexpr std::uint8_t kIndexYearsRequired = 3;
 
 /// @brief What this module needs to know about the unit types to score the
 /// funds, the social objects and the office — read once at wiring, because a

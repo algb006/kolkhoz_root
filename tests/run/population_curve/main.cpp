@@ -33,6 +33,7 @@
 #include "../common/building_chairman.h"
 #include "../common/run_harness.h"
 #include "../common/timber_flow_tally.h"
+#include "../common/transition_tally.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -240,6 +241,10 @@ struct Trajectory {
   /// and not as a median (boss, epoch1-next seq 17): a median of "never" and
   /// three years says nothing about either.
   std::uint16_t transition_year = 0;
+  /// The day Epoch II opened (-1 never) and the residents on it
+  /// (transition_tally.h).
+  std::int64_t epoch2_day = -1;
+  std::uint32_t epoch2_population = 0;
   /// The same event by the policy's own clock (calendar year + 1), printed
   /// beside the run's year so the two clocks are compared, not assumed.
   std::uint16_t transition_calendar_year = 0;
@@ -432,6 +437,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     builder.planting.Disable();
   }
   run::TimberFlowTally timber(*world.tables);
+  run::TransitionTally transition_tally(*world.tables);
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t key_column = types->FindColumn("key");
     for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
@@ -476,6 +482,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         }
         CountStandingShut(builder.transition, today, met, out);
       }
+      transition_tally.CountDay(builder.transition, today);
     }
     const core::WorldState& state = simulation->CompletedState();
     const auto population = static_cast<std::uint32_t>(state.residents.rows.size());
@@ -634,6 +641,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
   out.social_held = builder.social.held();
   out.upgrade_held = builder.upgrades.held();
+  out.epoch2_day = transition_tally.OpenedDay();
+  out.epoch2_population = transition_tally.OpenedPopulation();
+  transition_tally.Print("population_curve", seed);
   out.social_marked_past_a_house_site = builder.social.marked_past_a_house_site();
   out.social_fates = builder.social.fates();
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
@@ -822,7 +832,48 @@ int main(int argc, char** argv) {
   // is the MEDIAN, and it holds with room: 441 on 0.34.41, 431 on 0.34.44 and
   // 430 on 0.34.45, against 380. The weakest seed does not hold it (338 on
   // 0.34.45, seed 1937), and nothing here says it should.
-  failures += run::Expect(median_year14 >= 380, "and is past the Epoch II mark by year 14");
+  // THE DESIGN'S PAIR, NOT A POPULATION OF A YEAR (boss-core-epoch1-queue
+  // [28]; econ, boss-econ-pop14-threshold [2], econ/manual/audit/
+  // pop14-threshold.md). «Population by year 14 >= 380» was born on 28
+  // August (48ff005) a demography check with no farm behind it, and its
+  // 430-450 were taken in a world where the fourth social object was never
+  // marked; no line of the design asks a population of a year. What the
+  // design pairs is the village the era opens with and the year it opens
+  // in: the population on the day Epoch II opens is asked, the year printed.
+  // It stands red — a KNOWN GAP, the registry's own line «Переход в Эпоху II
+  // на каноне — примерно год 6 при ~200 жителях» (26a525eb) — until boss
+  // rules on the readiness gates. The year-14 population is printed only;
+  // the old line comes back when the median transition year is 12 or later
+  // (the harness says so by itself).
+  std::vector<std::uint32_t> opened_populations;
+  std::vector<std::uint32_t> opened_years;
+  for (const Trajectory& walk : walks) {
+    if (walk.epoch2_day >= 0) {
+      opened_populations.push_back(walk.epoch2_population);
+      opened_years.push_back(static_cast<std::uint32_t>(walk.epoch2_day / core::kDaysPerYear + 1));
+    }
+  }
+  const std::uint32_t median_opened_population =
+      opened_populations.empty() ? 0U : Median(opened_populations);
+  const std::uint32_t median_opened_year = opened_years.empty() ? 0U : Median(opened_years);
+  std::cout << "population_curve: Epoch II opened in " << opened_years.size() << " villages of "
+            << walks.size() << ", median year " << median_opened_year
+            << ", median residents on the day " << median_opened_population
+            << "; population by year 14, printed only: median " << median_year14 << '\n';
+  failures += run::KnownGap(
+      !opened_populations.empty() && median_opened_population >= 380,
+      "the village Epoch II opens with has 380 residents or more",
+      std::to_string(median_opened_population) + " (median of " +
+          std::to_string(opened_populations.size()) + " villages), median year " +
+          std::to_string(median_opened_year),
+      "registry 26a525eb, «Переход в Эпоху II на каноне — примерно год 6 при ~200 жителях»; "
+      "boss-core-epoch1-queue [28]");
+  failures += run::KnownGap(
+      median_opened_year >= 12,
+      "population by year 14 >= 380 — asked again once the median transition year is 12 or later",
+      "median transition year " + std::to_string(median_opened_year) + ", median year-14 " +
+          std::to_string(median_year14),
+      "boss-core-epoch1-queue [28]: the year-14 population is printed only until then");
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
