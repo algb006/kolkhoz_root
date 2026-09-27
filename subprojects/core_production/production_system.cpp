@@ -701,8 +701,9 @@ class ProductionSystem final : public IProductionSystem {
       if (standing && field.crop.value == kInvalidDefIdValue) {
         // Black fallow: ploughed this spring and standing bare (D11). It is
         // sown only from the NEXT slot, and only with a winter crop — the
-        // canon's "fallow, then winter rye" — never re-ploughed as fallow.
-        TrySowWinter(config_, current, field, month, temperature);
+        // canon's "fallow, then winter rye" — never re-ploughed as fallow, and
+        // not re-ploughed for the rye either: its furrow is the rye's (0.37.6).
+        TrySowWinter(config_, current, field, month, temperature, /*furrow_turned=*/true);
         continue;
       }
       if (!standing || field.crop.value >= config_.crops.size()) {

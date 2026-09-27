@@ -6225,6 +6225,87 @@ int CheckNoWinterSowingAfterWindow() {
   return failures;
 }
 
+/// THE BLACK FALLOW'S FURROW IS THE RYE'S (fields design §3, «Пар»; boss,
+/// boss-core-epoch1-queue [82], 0.37.6). In August, inside the rye's window:
+/// a chain (fallow, rye, oats) whose fallow was ploughed and harrowed this
+/// summer and stands bare opens the rye at the HARROWING; a chain (oats, rye,
+/// potato) whose oats came off this August opens it at the plough. On a day
+/// too cold for the rye neither opens, and the fallow keeps no «only the
+/// harrow is owed» byte for a crop that did not open. Until 0.37.6 the
+/// fallow was ploughed a second time: on seed 1945 that cost the rye its
+/// autumn.
+int CheckTheBlackFallowsFurrowIsTheRyes() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "black fallow: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+  const core::CropId potato{static_cast<std::uint16_t>(crops->FindRowByKey("potato"))};
+
+  // August of year 1: day 28 is the month's first (0-based month 7), the
+  // rye's window August to September. The world stands at day 29's last
+  // tick; the step decides on day 30, still August.
+  constexpr std::uint32_t kAugustDay = 29;
+  const auto august_world = [&]() {
+    core::WorldState world;
+    world.calendar.tick = ((kAugustDay + 1U) * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(world.calendar);
+    core::FieldRow fallow;
+    fallow.kind = core::LandKind::kArable;
+    fallow.area_ga = 10.0F;
+    fallow.fertility = 65.0F;
+    fallow.rotation_year0 = core::CropId{};
+    fallow.rotation_year1 = rye;
+    fallow.rotation_year2 = oat;
+    fallow.rotation_assigned = 1;
+    fallow.crop = core::CropId{};
+    fallow.phase = core::FieldPhase::kGrowing;  // ploughed, harrowed, standing bare
+    core::AppendRow(world.fields, fallow);
+    core::FieldRow stubble = fallow;
+    stubble.rotation_year0 = oat;
+    stubble.rotation_year2 = potato;
+    stubble.phase = core::FieldPhase::kIdle;
+    stubble.reaped_day = kAugustDay - 1U;  // the oats came off this August
+    stubble.last_crop = oat;
+    core::AppendRow(world.fields, stubble);
+    return world;
+  };
+  const auto step = [&system](core::WorldState& state, float temperature) {
+    core::WorldState next = state;
+    next.calendar.tick = ((state.calendar.tick / core::kTicksPerDay) + 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next.calendar);
+    next.weather.air_temperature_celsius = temperature;
+    next.step_events.clear();
+    system->RunProductionDecisions(state, next);
+    state = next;
+  };
+
+  core::WorldState warm = august_world();
+  step(warm, 15.0F);
+  const core::FieldRow& fallow = warm.fields.rows[0];
+  const core::FieldRow& stubble = warm.fields.rows[1];
+  failures += Expect(fallow.crop.value == rye.value &&
+                         fallow.phase == core::FieldPhase::kHarrowing && fallow.autumn_plowed == 0,
+                     "black fallow: the rye opens at the harrowing, the byte spent");
+  failures += Expect(stubble.crop.value == rye.value && stubble.phase == core::FieldPhase::kPlowing,
+                     "black fallow: the oats' stubble is ploughed for the rye");
+
+  core::WorldState cold = august_world();
+  step(cold, 4.0F);  // under the rye's 8 °C
+  failures += Expect(cold.fields.rows[0].crop.value == core::kInvalidDefIdValue &&
+                         cold.fields.rows[0].phase == core::FieldPhase::kGrowing &&
+                         cold.fields.rows[0].autumn_plowed == 0,
+                     "black fallow: too cold for the rye, nothing opens and no byte is left");
+  return failures;
+}
+
 int CheckPauseAndResume() {
   int failures = 0;
   const std::filesystem::path root =
@@ -11031,6 +11112,7 @@ int main() {
   failures += CheckTheChairmanSetsARotation();
   failures += CheckLostWinterCropLiesFallow();
   failures += CheckNoWinterSowingAfterWindow();
+  failures += CheckTheBlackFallowsFurrowIsTheRyes();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();

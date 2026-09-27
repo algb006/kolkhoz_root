@@ -174,19 +174,25 @@ void RunMeadow(const ProductionConfig& config,
                FieldRow& field,
                std::uint8_t month);
 
-/// @brief Opens the ploughing for NEXT year's slot when the autumn window
-///        and the temperature both allow it.
+/// @brief Opens the preparation of NEXT year's winter slot — its ploughing,
+///        or its harrowing on this year's black fallow — when the autumn
+///        window and the temperature both allow it.
 ///
 /// The autumn sowing (defect D12). A winter crop is harvested the summer
 /// AFTER it is sown, so the slot it belongs to is next year's — "winter rye
 /// goes into the ground in the autumn of the same year, and the ring starts
 /// turning in the second" (start canon §8). Sown from this year's slot it
 /// arrived a year late and ate the following spring as well.
+/// @param furrow_turned The field is THIS year's black fallow, ploughed and
+///        standing bare: the winter crop opens at the harrowing, and the
+///        fallow's furrow is not turned a second time (fields design §3,
+///        «Пар»; boss-core-epoch1-queue [82], 0.37.6). False for idle ground.
 void TrySowWinter(const ProductionConfig& config,
                   WorldState& current,
                   FieldRow& field,
                   std::uint8_t month,
-                  float temperature);
+                  float temperature,
+                  bool furrow_turned);
 
 /// @brief How long this crop takes to ripen, in game days.
 ///

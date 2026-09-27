@@ -487,14 +487,22 @@ struct FieldRow {
   /// sowing that established the stand.
   SimDay sown_day = kNeverSownDay;
 
-  /// PLOUGHED LAST AUTUMN AND LYING BLACK — «чёрная зябь», 0 or 1. The field
-  /// owes no spring ploughing: work opens straight at the harrowing, and the
+  /// THE FURROW IS ALREADY TURNED, 0 or 1 — at the start, «чёрная зябь»,
+  /// ground ploughed last autumn and lying black. The field owes no
+  /// ploughing: work opens straight at the harrowing (OpenPlowing), and the
   /// byte is spent there.
   ///
-  /// SET ONLY AT GENESIS, and that is the whole of it today (boss's decision
-  /// of 2026-09-13). Autumn ploughing as something the CHAIRMAN chooses is a
-  /// separate mechanic with a separate price, and it stays an open question:
-  /// this byte is a STATE the village inherits, not an action it takes. Fixing
+  /// THREE WRITERS, none of them the chairman's order: genesis (the zyab the
+  /// village inherits); the year's turn releasing a crop whose ploughing was
+  /// done but not its sowing (ReleaseUnsownPreparation); and this year's black
+  /// fallow opening the next slot's winter crop, whose furrow the fallow's
+  /// own is (TrySowWinter, 0.37.6). Until 0.37.6 this block said «set only
+  /// at genesis», which the release had already made untrue.
+  ///
+  /// NOT AN ACTION (boss's decision of 2026-09-13). Autumn ploughing as
+  /// something the CHAIRMAN chooses is a separate mechanic with a separate
+  /// price, and it stays an open question: this byte is a STATE the village
+  /// inherits, not an action it takes. Fixing
   /// the first spring with the action would have brought the mechanic into the
   /// game as a side effect of debugging, rather than as a decision somebody
   /// made.

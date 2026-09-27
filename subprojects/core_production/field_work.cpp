@@ -842,7 +842,8 @@ void TrySowWinter(const ProductionConfig& config,
                   WorldState& current,
                   FieldRow& field,
                   std::uint8_t month,
-                  float temperature) {
+                  float temperature,
+                  bool furrow_turned) {
   if (field.rotation_year1.value >= config.crops.size()) {
     return;
   }
@@ -850,6 +851,17 @@ void TrySowWinter(const ProductionConfig& config,
   if (!next.is_winter || month < next.sow_from_month || month > next.sow_to_month ||
       temperature < next.sow_min_temp_c) {
     return;
+  }
+  // THE BLACK FALLOW'S FURROW IS THE RYE'S (boss-core-epoch1-queue [81]-[82]).
+  // Until 0.37.6 the rye opened a ploughing from nothing on a fallow the
+  // village had ploughed and harrowed that summer. On seed 1945 the second
+  // furrow ran from day 30 to day 33, the field was ready on day 34, and
+  // September's last two days were at 4.4 and 2.9 °C against the rye's 8: the
+  // slot was lost, and year 2 delivered 19 kg of 1116 kg of rye. The byte
+  // that says «only the harrow is owed» is the one the start's black field
+  // already carries, and OpenPlowing spends it.
+  if (furrow_turned) {
+    field.autumn_plowed = 1;
   }
   OpenPlowing(config, current, field, field.rotation_year1);
 }
@@ -910,7 +922,7 @@ void TrySow(const ProductionConfig& config,
     }
     // Not ploughed as a fallow (its month went by while the field was busy):
     // the next slot's winter crop may still go into it in its own autumn.
-    TrySowWinter(config, current, field, month, temperature);
+    TrySowWinter(config, current, field, month, temperature, /*furrow_turned=*/false);
     return;
   }
   // Not lost and not fresh, a winter crop of this year's slot at an idle field
@@ -922,7 +934,7 @@ void TrySow(const ProductionConfig& config,
     // was missed. Sowing it again in August would put the same rye in two
     // years running and eat the next slot with it — the field sheet caught
     // exactly that. Only the next slot's winter crop may go in now.
-    TrySowWinter(config, current, field, month, temperature);
+    TrySowWinter(config, current, field, month, temperature, /*furrow_turned=*/false);
     return;
   }
   // THE WINDOW IS STILL WHAT SAYS THE YEAR IS OVER FOR THIS CROP. Past
@@ -933,7 +945,7 @@ void TrySow(const ProductionConfig& config,
   // the sowing window a gate on the ploughing (see the header).
   if (month > crop.sow_to_month) {
     if (!fresh_chain) {
-      TrySowWinter(config, current, field, month, temperature);
+      TrySowWinter(config, current, field, month, temperature, /*furrow_turned=*/false);
     }
     return;
   }
