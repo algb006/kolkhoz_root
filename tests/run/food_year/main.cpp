@@ -29,6 +29,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -432,15 +433,66 @@ int ExpectNoHigher(float value, float recorded, const char* label) {
   return ExpectBand(value <= recorded, label);
 }
 
+/// The people's foods the herds may eat, by resources.csv key: what econ asked
+/// to see eaten month by month (boss-core-epoch1-queue [64]; econ-boss-rye-
+/// hold [23]: «лошадь доедает овёс раньше, и лестница корма уходит в запасной
+/// ячмень, а ячмень выдают людям»).
+constexpr std::array<const char*, 3> kPeoplesFoods = {"barley", "potato", "rye"};
+
+/// Kilograms of each of kPeoplesFoods the kolkhoz's herds ate, by (year,
+/// month), read off the book's `feed` once a day: the day's growth, and at
+/// the year's turn the closing book's rest plus the new one's first day.
+struct HerdFoodByMonth {
+  std::array<std::uint32_t, kPeoplesFoods.size()> rows{};
+  std::array<core::Grams, kPeoplesFoods.size()> yesterday{};
+  std::map<std::pair<std::uint32_t, std::uint32_t>, std::array<double, kPeoplesFoods.size()>> eaten;
+
+  explicit HerdFoodByMonth(const core::ITableSet& tables) {
+    const core::ITable* const resources = tables.FindTable("resources");
+    for (std::size_t index = 0; index < kPeoplesFoods.size(); ++index) {
+      rows[index] =
+          resources == nullptr ? core::kNoTableRow : resources->FindRowByKey(kPeoplesFoods[index]);
+    }
+  }
+
+  void CountDay(const core::WorldState& day) {
+    auto& month =
+        eaten[{day.calendar.date.year, static_cast<std::uint32_t>(day.calendar.date.month)}];
+    for (std::size_t index = 0; index < kPeoplesFoods.size(); ++index) {
+      const core::ResourceId resource{static_cast<std::uint16_t>(rows[index])};
+      const core::Grams now = core::AmountOf(day.ledger.current.feed, resource);
+      core::Grams grown = now - yesterday[index];
+      if (now < yesterday[index]) {  // the year turned: the old book's rest, the new one's day
+        grown = (core::AmountOf(day.ledger.closed.feed, resource) - yesterday[index]) + now;
+      }
+      month[index] += static_cast<double>(grown) / static_cast<double>(core::kGramsPerKilogram);
+      yesterday[index] = now;
+    }
+  }
+
+  void Print(const char* label) const {
+    std::cout << "food_year: " << label
+              << " — the people's foods the kolkhoz's herds ate, kg by month (barley / potato "
+                 "/ rye):";
+    for (const auto& [key, kilograms] : eaten) {
+      std::cout << "\n    year " << key.first << " month " << key.second << ": " << kilograms[0]
+                << " / " << kilograms[1] << " / " << kilograms[2];
+    }
+    std::cout << '\n';
+  }
+};
+
 Outcome RunYears(const std::filesystem::path& tables_root,
                  std::uint32_t years,
                  float chairman_portion,
-                 std::uint64_t seed) {
+                 std::uint64_t seed,
+                 const char* herd_food_label = nullptr) {
   Outcome outcome;
   const run::Simulation world = run::Start(seed, 1, tables_root.string());
   if (!world) {
     return outcome;
   }
+  HerdFoodByMonth herd_food(*world.tables);
   core::ISimulation* simulation = world.simulation.get();
   MinimalChairman chairman(chairman_portion);
   // THE BUILDING CHAIRMAN (building_chairman.h). The core raises no house
@@ -530,6 +582,9 @@ Outcome RunYears(const std::filesystem::path& tables_root,
       continue;
     }
     builder.RunDay(*simulation);
+    if (herd_food_label != nullptr) {
+      herd_food.CountDay(day);
+    }
     const auto people = static_cast<std::uint32_t>(day.residents.rows.size());
     outcome.lowest_people = people < outcome.lowest_people ? people : outcome.lowest_people;
     float today_total = 0.0F;
@@ -628,6 +683,9 @@ Outcome RunYears(const std::filesystem::path& tables_root,
     // to this one.
     outcome.released[fund] += standing[fund];
   }
+  if (herd_food_label != nullptr) {
+    herd_food.Print(herd_food_label);
+  }
   return outcome;
 }
 
@@ -706,7 +764,7 @@ int main(int argc, char** argv) {
   CopyTables(good_root, "");
   CopyTables(bad_root, "issue_kg_per_trudoden");
 
-  const Outcome good = RunYears(good_root, kYears, 0.0F, seed);
+  const Outcome good = RunYears(good_root, kYears, 0.0F, seed, "shipped tables");
   Report("shipped tables", good);
   const Outcome bad = RunYears(bad_root, kYears, 0.0F, seed);
   Report("nothing issued", bad);

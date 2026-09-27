@@ -139,7 +139,9 @@ ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& w
 /// the spring's plough went to work on hay: the team's ration on the
 /// ploughing days fell from 1.00 to 0.00 (median of the years' means, nine
 /// seeds). On a day nobody ploughs or harrows the herd leaves this much of
-/// the plough's feed in the store; on a ploughing day it is the plough's.
+/// the plough's feed in the store; on a ploughing day it is the plough's —
+/// and it stands above next year's hold (0.37.3; boss [63], (д)): the seed,
+/// this year's plan, this spring's ploughing, next year's hold, the rest.
 struct PloughFeedHold {
   /// The feed held: the horse kind's first work feed that is no reserve —
   /// the oats; invalid when the tables name none.

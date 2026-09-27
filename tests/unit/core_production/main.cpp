@@ -1010,6 +1010,61 @@ int CheckThePloughKeepsItsOats() {
   return failures;
 }
 
+/// THE PLOUGH STANDS ABOVE NEXT YEAR'S HOLD (0.37.3; boss-core-epoch1-queue
+/// [62]-[63], (д)): 100 kg of oats, all of them next year's position (0.1 ha
+/// worked at 1 t/ha, no field to grow it) and last year's ploughing asking
+/// 100 kg. On a ploughing day the team eats them; on a day nobody ploughs it
+/// leaves them — for the plough and for next year alike.
+int CheckThePloughEatsBeforeNextYear() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.horse_kind = core::LivestockKindId{0};
+  config.feed_links = {
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{1},
+                        .max_share = 0.5F,
+                        .work_only = 1},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .max_share = 1.0F}};
+  core::CropDef oats_crop;
+  oats_crop.resource = core::ResourceId{1};
+  oats_crop.yield_kg_per_ha = 1000.0F;
+  oats_crop.sow_from_month = 2;
+  oats_crop.sow_to_month = 3;
+  oats_crop.harvest_from_month = 6;
+  oats_crop.harvest_to_month = 7;
+  config.crops = {oats_crop};
+  config.plan_grain_share = 1.0F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 1.0F}};
+
+  const auto oats_left = [&config](bool plough) {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 2) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.units.rows[0].stock[1] = 100 * kKilo;
+    world.plan.worked_ha_last_year = 0.1F;
+    world.ledger.closed.year = 1;
+    world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] =
+        200.0F;
+    AddHerd(world, 0, 4, 2, true);
+    core::ResidentRow hand;
+    hand.work.kind = plough ? core::WorkKind::kPlowing : core::WorkKind::kHauling;
+    hand.work.rides_horse = 1;
+    AppendRow(world.residents, hand);
+    core::RunHerdDay(config, world);
+    return world.units.rows[0].stock[1];
+  };
+  failures += Expect(oats_left(true) < 100 * kKilo,
+                     "plough before next year: on a ploughing day the team eats the oats next "
+                     "year's hold would keep");
+  failures += Expect(oats_left(false) == 100 * kKilo,
+                     "plough before next year: on a day nobody ploughs the cart leaves them");
+  return failures;
+}
+
 /// The manger of the settlement is reachable from any barn: hay is delivered
 /// to the ONE stock yard, and a herd standing elsewhere must still reach it.
 int CheckMangerReach() {
@@ -10732,6 +10787,7 @@ int main() {
   failures += CheckWorkOnlyFeed();
   failures += CheckTheCartHorseEatsOats();
   failures += CheckThePloughKeepsItsOats();
+  failures += CheckThePloughEatsBeforeNextYear();
   failures += CheckMangerReach();
   failures += CheckStableGate();
   failures += CheckNightPasture();

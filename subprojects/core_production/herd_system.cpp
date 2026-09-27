@@ -177,16 +177,26 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
   // shipped 1.65 t of its 2.5 (seed 1933, years 4-5). Held with the rot of
   // its wait, to the end of next year, where the last of it is used. One
   // hold with the people's issue (NextYearHold; boss [60], (г)).
-  const ResourceAmounts next_year = NextYearHold(config, world);
+  ResourceAmounts next_year = NextYearHold(config, world);
+  // AND THE PLOUGH'S OATS ON A DAY NOBODY PLOUGHS (0.37.2; boss [59]-[60], (а)).
+  //
+  // THE PLOUGH STANDS ABOVE NEXT YEAR'S HOLD (0.37.3; boss [62]-[63], (д)):
+  // the oats' ladder is the seed, this year's plan, this spring's ploughing,
+  // next year's hold, the rest. On a ploughing day the plough may eat into
+  // next year's hold as far as its own rung: below it, a lean spring gave
+  // the plough nothing, and the team's ration on the ploughing days stood
+  // at 0.185 (median of the years' means, 0426fb2) against 1.00 before the
+  // hold existed. A sowing missed costs this harvest and the next one.
+  const PloughFeedHold plough = PloughFeedHoldOf(config, world);
+  if (plough.held && plough.resource.value < next_year.size() && ploughing_today) {
+    Grams& held = next_year[plough.resource.value];
+    held = held > plough.grams ? held - plough.grams : 0;
+  }
   for (std::size_t index = 0; index < allowance.size() && index < next_year.size(); ++index) {
     allowance[index] += next_year[index];
   }
-  // AND THE PLOUGH'S OATS ON A DAY NOBODY PLOUGHS (0.37.2; boss [59]-[60], (а)).
-  if (!ploughing_today) {
-    const PloughFeedHold plough = PloughFeedHoldOf(config, world);
-    if (plough.held && plough.resource.value < allowance.size()) {
-      allowance[plough.resource.value] += plough.grams;
-    }
+  if (!ploughing_today && plough.held && plough.resource.value < allowance.size()) {
+    allowance[plough.resource.value] += plough.grams;
   }
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
