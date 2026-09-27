@@ -648,6 +648,109 @@ int TestReferenceWorkerDeliversOneNorm() {
   return failures;
 }
 
+/// THE OFFICE'S WORKBOOK (core_common/office_views.h; boss-core-epoch1-queue
+/// [1], item 3): the morning writes each free adult's reason on him — the
+/// very reason the book counts, one a person — and OfficeWorkbook reads it
+/// back beside the placement. Four adults and one field wanting a little
+/// sowing: some placed, the rest free for a covered job; one past his rest
+/// limit, kResting.
+int TestTheWorkbookCarriesTheMorningsReason() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  DayWorld day(4);
+  day.world.residents.rows[3].rest = 0.0F;  // under rest_walkoff_threshold: stays home
+  day.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+  // The morning's hour alone: by the day's end the placed are closed out.
+  day.world.calendar.tick = 0;
+  core::RefreshCalendarCaches(day.world.calendar);
+  const core::WorldState before = day.world;
+  labor->RunAssignmentDecisions(before, day.world);
+  const core::WorldState& world = day.world;
+  std::array<std::uint32_t, core::kIdleReasonCount> on_residents = {};
+  std::uint32_t placed_without_reason = 0;
+  for (const core::ResidentRow& resident : world.residents.rows) {
+    if (resident.idle_reason != core::IdleReason::kIdleReasonCount) {
+      ++on_residents[static_cast<std::size_t>(resident.idle_reason)];
+    } else {
+      placed_without_reason += resident.work.kind != core::WorkKind::kNone ? 1U : 0U;
+    }
+  }
+  const auto& book = world.ledger.current.idle_person_days;
+  std::cout << "workbook: resting "
+            << on_residents[static_cast<std::size_t>(core::IdleReason::kResting)]
+            << ", work covered "
+            << on_residents[static_cast<std::size_t>(core::IdleReason::kWorkCovered)]
+            << ", placed without a reason " << placed_without_reason << '\n';
+  failures += Expect(std::equal(on_residents.begin(), on_residents.end(), book.begin()),
+                     "workbook: the reasons on the residents are the book's, one a person");
+  failures += Expect(world.residents.rows[3].idle_reason == core::IdleReason::kResting,
+                     "workbook: the man past his rest limit carries kResting");
+  failures += Expect(placed_without_reason > 0 &&
+                         on_residents[static_cast<std::size_t>(core::IdleReason::kWorkCovered)] > 0,
+                     "workbook: the placed carry no reason, the free ones a covered job");
+  const std::vector<core::WorkbookLine> lines = labor->OfficeWorkbook(world);
+  bool lines_match = lines.size() == world.residents.rows.size();
+  for (std::size_t row = 0; lines_match && row < lines.size(); ++row) {
+    const core::ResidentRow& resident = world.residents.rows[row];
+    lines_match = lines[row].resident.value == world.residents.row_ids[row].value &&
+                  lines[row].family.value == resident.family.value &&
+                  lines[row].idle == resident.idle_reason &&
+                  lines[row].work == resident.work.kind && lines[row].can_be_ordered &&
+                  lines[row].age_years > 20.0F;
+  }
+  failures += Expect(lines_match,
+                     "workbook: a line a resident, in row order — the family, the age, the "
+                     "placement and the morning's reason as the resident carries them");
+
+  // NO ONE AT WORK CARRIES A REASON (static review of 0.37.0: the standing
+  // order and the top-up placed men who kept the morning's reason). A free
+  // man is ordered to the field; every hour of two days, anyone at work has
+  // none — and the ordered man is at work on the second.
+  auto free_row = static_cast<std::uint32_t>(world.residents.rows.size());
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    if (world.residents.rows[row].idle_reason == core::IdleReason::kWorkCovered) {
+      free_row = row;
+    }
+  }
+  if (Expect(free_row < world.residents.rows.size(), "workbook: a free man to order") != 0) {
+    return failures + 1;
+  }
+  core::OrderRow to_field;
+  to_field.kind = core::OrderKind::kAssignWork;
+  to_field.status = core::OrderStatus::kPending;
+  to_field.resident = day.world.residents.row_ids[free_row];
+  to_field.work = core::WorkKind::kSowing;
+  to_field.field = day.world.fields.row_ids[0];
+  core::AppendRow(day.world.orders, to_field);
+  // AND A FIELD OPENED AFTER THE MORNING: the hour-1 top-up puts a free man
+  // on it (TopUpDay), the other path that placed men with a reason.
+  day.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 150.0F, .y = 0.0F});
+  std::uint32_t working_with_reason = 0;
+  bool ordered_worked = false;
+  for (std::uint32_t tick = 1; tick < 2U * core::kTicksPerDay; ++tick) {
+    day.world.calendar.tick = tick;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState previous = day.world;
+    labor->RunAssignmentDecisions(previous, day.world);
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      working_with_reason += resident.work.kind != core::WorkKind::kNone &&
+                                     resident.idle_reason != core::IdleReason::kIdleReasonCount
+                                 ? 1U
+                                 : 0U;
+    }
+    ordered_worked =
+        ordered_worked || day.world.residents.rows[free_row].work.kind == core::WorkKind::kSowing;
+  }
+  failures += Expect(ordered_worked && working_with_reason == 0,
+                     "workbook: the ordered man goes to the field, and nobody at work carries "
+                     "an idle reason in any hour");
+  return failures;
+}
+
 int TestWholeWorkingDay() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -3787,6 +3890,7 @@ int main() {
   failures += TestRoadByWhatHeTravelsOn();
   failures += TestReferenceWorkerDeliversOneNorm();
   failures += TestWholeWorkingDay();
+  failures += TestTheWorkbookCarriesTheMorningsReason();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();
   failures += TestASpentManIsNotSent();

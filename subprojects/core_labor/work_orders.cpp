@@ -435,6 +435,10 @@ void ApplyStandingWork(const WorldState& world,
       work.rides_horse = IsHorseWork(order.work) ? 1U : 0U;
     }
     work.kind = order.work;
+    // The chairman's man is working: the workbook shows no idle reason on
+    // him, though the ledger keeps the accountant's (static review of
+    // 0.37.0; «"Idle" is the accountant's plan», labor_state.h).
+    current.residents.rows[resident_row].idle_reason = IdleReason::kIdleReasonCount;
     work.field = order.field;
     work.herd = order.herd;
     work.unit = order.unit;

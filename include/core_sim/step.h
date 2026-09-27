@@ -73,6 +73,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/material_shortfall.h"
+#include "core_common/office_views.h"
 #include "core_common/order_state.h"
 #include "core_common/road_draft.h"
 #include "core_common/stink.h"
@@ -296,6 +297,25 @@ class ISimulation {
   /// the rule; the bare engine answers {0, 0}.
   /// @note Called between steps on the sim thread.
   virtual DeliveryTerm LimitDeliveryTerm() const = 0;
+
+  /// @brief The office's workbook: one line a living resident, in the
+  /// residents' row order (core_common/office_views.h, WorkbookLine). Fans
+  /// out to core_labor, which owns the placement, the working age and the
+  /// idle reasons; the bare engine answers an empty list.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual std::vector<WorkbookLine> OfficeWorkbook() const = 0;
+
+  /// @brief The office's plan window (office_views.h, PlanBook). Fans out to
+  /// core_production, which owns the plan's rule; the bare engine answers a
+  /// PlanBook that is not announced.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual PlanBook OfficePlan() const = 0;
+
+  /// @brief The office's limit window (office_views.h, LimitBook). Fans out
+  /// to core_production, which owns the catalogue; the bare engine answers
+  /// the points alone.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual LimitBook OfficeLimit() const = 0;
 
   /// @brief What the village lacks to start the works on `unit`, line by line
   /// (construction design §6). Fans out to core_construction; the bare engine

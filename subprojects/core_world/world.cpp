@@ -547,6 +547,18 @@ class StandardSimulation final : public ISimulation {
     return production_->LimitDeliveryTerm(engine_->CompletedState());
   }
 
+  std::vector<WorkbookLine> OfficeWorkbook() const override {
+    return labor_->OfficeWorkbook(engine_->CompletedState());
+  }
+
+  PlanBook OfficePlan() const override {
+    return production_->OfficePlan(engine_->CompletedState());
+  }
+
+  LimitBook OfficeLimit() const override {
+    return production_->OfficeLimit(engine_->CompletedState());
+  }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
   }

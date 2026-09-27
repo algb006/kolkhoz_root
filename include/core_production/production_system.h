@@ -57,6 +57,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/office_views.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_sim/step.h"
@@ -153,6 +154,20 @@ class IProductionSystem {
   /// LimitBaseDeliveryDays, and that plus limit_delivery_delay_days_max.
   /// @note Called between steps on the sim thread. A pure read.
   virtual DeliveryTerm LimitDeliveryTerm(const WorldState& completed) const = 0;
+
+  /// @brief The plan window off `completed` (office_views.h, PlanBook): every
+  /// produce with a figure, by resource row, each with the turn's own
+  /// PositionDelivered on what is shipped so far; the deadline the next
+  /// year's first day.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual PlanBook OfficePlan(const WorldState& completed) const = 0;
+
+  /// @brief The limit window off `completed` (office_views.h, LimitBook): the
+  /// points left, every lot of the catalogue with its price and LotOrderable's
+  /// answer (kLimitShort when the points do not reach a lot the district
+  /// would sell), and every cart on its way.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual LimitBook OfficeLimit(const WorldState& completed) const = 0;
 
   /// @brief Grams the snow would take from this field's standing crop now:
   /// the harvest's own estimate (fertility, weather stress, late sowing),

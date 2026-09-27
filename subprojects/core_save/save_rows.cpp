@@ -70,14 +70,16 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 98: the work's limit_delivery, +4 — predicted 216 -> 220 before the
 // build (unless the row's alignment rounds it up).
 // Save 104 (7e): the work's road_work, +4 — predicted 220 -> 224 before the
-// build.
-static_assert(sizeof(ResidentRow) == 224,
+// build. Save 105: idle_reason, one byte after the 44-byte work block — 228,
+// read off the build (the byte takes a 4-aligned slot of its own).
+static_assert(sizeof(ResidentRow) == 228,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
 // Save 69: talk_until_day — 44. Save 78: twin and identical_twin — 46.
-// Save 79: away_until_day, _hour, _walk_hours, _reason — 50.
-static_assert(AggregateArity<ResidentRow>() == 50,
+// Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
+// idle_reason — 51.
+static_assert(AggregateArity<ResidentRow>() == 51,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -324,6 +326,8 @@ static_assert(AggregateArity<DistrictVisitRow>() == 4,
 constexpr std::uint8_t kMaxSex = static_cast<std::uint8_t>(Sex::kSexCount) - 1;
 
 constexpr std::uint8_t kMaxWorkKind = static_cast<std::uint8_t>(kWorkKindCount) - 1;
+/// ResidentRow::idle_reason's "no reason" — the count itself, a legal value.
+constexpr auto kIdleReasonNone = static_cast<std::uint8_t>(kIdleReasonCount);
 
 constexpr std::uint8_t kMaxConstructionPhase =
     static_cast<std::uint8_t>(ConstructionPhase::kConstructionPhaseCount) - 1;
@@ -482,6 +486,9 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
   out.WriteFloat(row.work.travel_hours);  // save 93
+  // Save 105: the morning's idle reason (the office's workbook);
+  // kIdleReasonCount — none — is a legal value.
+  out.WriteU8(static_cast<std::uint8_t>(row.idle_reason));
 
   // The post (task A7). Both halves or neither: a profession without a unit
   // names a groom of nowhere, a unit without a profession names a place
@@ -561,6 +568,8 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
   row.work.travel_hours = in.ReadFloat();
+  row.idle_reason =
+      static_cast<IdleReason>(source.ReadEnumValue(0, kIdleReasonNone, "idle reason"));
 
   row.post.profession = ProfessionId{source.ReadDefId(DefKind::kProfession)};
   row.post.unit = ReadEntityId<UnitId>(in);

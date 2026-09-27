@@ -223,6 +223,12 @@ core::WorldState MakeWorld() {
   // codec has to admit, and the site she digs at.
   second.work.kind = core::WorkKind::kExtraction;
   second.work.extraction_site = core::ExtractionSiteId{4};
+  // Save 105: the morning's idle reason, the LAST reason of the enum — the
+  // codec's bound admits it — off its "none" default so a codec that drops
+  // the byte cannot round-trip clean (the world does not mind a digger
+  // carrying it; the codec is what is under test). The first resident keeps
+  // "none", the sentinel the bound has to admit too.
+  second.idle_reason = core::IdleReason::kUnexplained;
   // Save 98: the district's timber lot as a work target — off its default so a
   // codec that drops the id cannot round-trip clean (the world does not mind
   // a digger carrying it; the codec is what is under test).
@@ -1311,7 +1317,7 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // two residents; predicted 412 -> 420 before the build, held.
     // Save 104 (7e): +8 — the work's road_work on each of two residents,
     // predicted before the build, held.
-    {"residents", 428, 0x55917686bfa1f139ULL},
+    {"residents", 430, 0x5715d50f16c730deULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's

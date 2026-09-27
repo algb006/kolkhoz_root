@@ -176,6 +176,25 @@ class LaborSystem final : public ILaborSystem {
     return count;
   }
 
+  std::vector<WorkbookLine> OfficeWorkbook(const WorldState& state) const override {
+    std::vector<WorkbookLine> lines;
+    lines.reserve(state.residents.rows.size());
+    for (std::uint32_t row = 0; row < state.residents.rows.size(); ++row) {
+      const ResidentRow& resident = state.residents.rows[row];
+      WorkbookLine line;
+      line.resident = state.residents.row_ids[row];
+      line.family = resident.family;
+      line.age_years = BiologicalAgeYears(config_, resident.birth_day, state.calendar.day);
+      line.can_be_ordered = Employable(state, resident);
+      line.work = resident.work.kind;
+      line.field = resident.work.field;
+      line.unit = resident.work.unit;
+      line.idle = resident.idle_reason;
+      lines.push_back(line);
+    }
+    return lines;
+  }
+
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
     // Once the team is in, the question is closed for the campaign: the flag
     // is the milestone, not the yard's current staffing (world_state.h).
@@ -371,14 +390,27 @@ class LaborSystem final : public ILaborSystem {
     // by the list itself; with no job at all, everybody on the list is idle
     // for that; on a day off, whatever the barn left.
     const bool day_off_today = IsDayOffIn(current, current.calendar.day);
-    std::uint32_t resting = 0;
+    // AND ON THE RESIDENT (ResidentRow::idle_reason; the office's workbook):
+    // the same reason the book counts, one a person, this morning's. Cleared
+    // first: a man placed today, or not asked, carries no reason.
+    for (ResidentRow& resident : current.residents.rows) {
+      resident.idle_reason = IdleReason::kIdleReasonCount;
+    }
+    std::vector<std::uint32_t> resting;
     std::vector<AssignmentCandidate> candidates = CollectCandidates(current, &resting);
-    book.idle_person_days[static_cast<std::size_t>(IdleReason::kResting)] += resting;
+    book.idle_person_days[static_cast<std::size_t>(IdleReason::kResting)] +=
+        static_cast<std::uint32_t>(resting.size());
+    for (const std::uint32_t row : resting) {
+      current.residents.rows[row].idle_reason = IdleReason::kResting;
+    }
     book.candidate_person_days += static_cast<std::uint32_t>(candidates.size());
     if (jobs.empty()) {
-      book.idle_person_days[static_cast<std::size_t>(day_off_today ? IdleReason::kDayOff
-                                                                   : IdleReason::kNoOpenWork)] +=
+      const IdleReason none = day_off_today ? IdleReason::kDayOff : IdleReason::kNoOpenWork;
+      book.idle_person_days[static_cast<std::size_t>(none)] +=
           static_cast<std::uint32_t>(candidates.size());
+      for (const AssignmentCandidate& candidate : candidates) {
+        current.residents.rows[candidate.resident_row].idle_reason = none;
+      }
     }
     if (!jobs.empty()) {
       book.offered_job_days += static_cast<std::uint32_t>(jobs.size());
@@ -417,6 +449,7 @@ class LaborSystem final : public ILaborSystem {
                                           ? IdleReason::kDayOff
                                           : planned;
             ++book.idle_person_days[static_cast<std::size_t>(reason)];
+            current.residents.rows[candidates[index].resident_row].idle_reason = reason;
           }
         }
         // THE MORNING'S PLAN ONLY: the day's jobs the road stopped, by kind
@@ -526,7 +559,12 @@ class LaborSystem final : public ILaborSystem {
         continue;
       }
       const AssignmentJob& job = jobs[plan[index]];
-      WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
+      ResidentRow& placed = current.residents.rows[candidates[index].resident_row];
+      // Placed by the top-up: no longer free, and no longer carrying the
+      // morning's reason (the workbook; static review of 0.37.0 — seed 1930's
+      // 69 potato reapers read "no open work" all day).
+      placed.idle_reason = IdleReason::kIdleReasonCount;
+      WorkAssignment& work = placed.work;
       work.rides_horse = rides_horse[index];
       work.kind = job.kind;
       work.field = job.field;
@@ -627,6 +665,8 @@ class LaborSystem final : public ILaborSystem {
           continue;
         }
         work = WorkAssignment{};
+        // Freed for want of a horse: the workbook says so (IdleReason::kNoHorse).
+        current.residents.rows[row - 1].idle_reason = IdleReason::kNoHorse;
         --in_traces;
       }
     }
@@ -1421,13 +1461,14 @@ class LaborSystem final : public ILaborSystem {
 
   /// Everyone of working age whose day can start somewhere. Children are
   /// left out entirely: child labor (life-cycle §7) is deferred.
-  /// `resting`, when given, is raised by each adult who passed every other
-  /// test of the list and was kept home by the rest limit alone
-  /// (IdleReason::kResting). The rest test stands last for that: a mirror
-  /// of the list's tests kept apart from it missed the efficiency drop
+  /// `resting`, when given, gets the row of each adult who passed every
+  /// other test of the list and was kept home by the rest limit alone
+  /// (IdleReason::kResting) — rows since the office's workbook (the reason
+  /// on the resident), a count before. The rest test stands last for that: a
+  /// mirror of the list's tests kept apart from it missed the efficiency drop
   /// (static review of 0.36.32).
-  std::vector<AssignmentCandidate> CollectCandidates(const WorldState& current,
-                                                     std::uint32_t* resting = nullptr) const {
+  std::vector<AssignmentCandidate> CollectCandidates(
+      const WorldState& current, std::vector<std::uint32_t>* resting = nullptr) const {
     const std::vector<bool> horse_locked = MarkHorseHosts(current);
     const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;
@@ -1464,9 +1505,9 @@ class LaborSystem final : public ILaborSystem {
           // may set rest_factor_spent to nought.
           ResidentRow rested = resident;
           rested.rest = kMetricMax;
-          *resting += ResidentEfficiency(config_, rested, age, aging_from, first_year, false) > 0.0F
-                          ? 1U
-                          : 0U;
+          if (ResidentEfficiency(config_, rested, age, aging_from, first_year, false) > 0.0F) {
+            resting->push_back(row);
+          }
         }
         continue;
       }

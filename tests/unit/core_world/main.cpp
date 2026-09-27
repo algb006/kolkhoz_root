@@ -1761,6 +1761,109 @@ int CheckRoadWork() {
 /// again along the strip takes its wear back on the stretches that run
 /// within half a bed of it; and the save keeps both the strip and the
 /// remnant's axis.
+/// THE OFFICE'S DOORS on the shipped tables (core_common/office_views.h;
+/// boss-core-epoch1-queue [1], item 3), through the full simulation's door:
+/// the workbook has a line a resident; the plan lists the announced figure
+/// and says a position met the day its delivery reaches the met share; the
+/// limit lists the whole catalogue — a priced lot sold, the same lot short of
+/// points kLimitShort, an unpriced one kRuleForbids — and a cart on its way.
+int CheckTheOfficeDoors() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation =
+      shipped ? core::CreateStandardSimulation(config) : nullptr;
+  if (Expect(simulation != nullptr, "office doors: the shipped set assembles") != 0) {
+    return 1;
+  }
+  // A COPY: ResetWorld below moves the state a reference would follow (the
+  // first draft's carts read day 60 as day 0).
+  const core::WorldState start = simulation->CompletedState();
+  failures += Expect(simulation->OfficeWorkbook().size() == start.residents.rows.size(),
+                     "office doors: the workbook has a line a resident");
+
+  // THE PLAN: a figure of 10 t of two resources written into the state (the
+  // spring announces it; day 0 is winter). A position delivered in full reads
+  // met, one delivered at half does not; a resource with no figure is not
+  // listed; the term is the turn.
+  // Day 60 of the second year: the term is the next turn, day 96. The met
+  // share is campaign.csv's 0.99 — 9.9 t of 10 met, 9.8 t not (a test with
+  // 100 % and 50 % could not tell the share from "all of it").
+  core::WorldState planned = start;
+  constexpr core::Grams kTen = 10 * core::kGramsPerTonne;
+  planned.calendar.tick = static_cast<core::Tick>(60) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(planned.calendar);
+  planned.plan.announced = 1;
+  planned.plan.due.assign(std::max<std::size_t>(planned.plan.due.size(), 3), 0);
+  planned.plan.delivered.assign(planned.plan.due.size(), 0);
+  planned.plan.due[1] = kTen;
+  planned.plan.delivered[1] = kTen * 99 / 100;
+  planned.plan.due[2] = kTen;
+  planned.plan.delivered[2] = kTen * 98 / 100;
+  simulation->ResetWorld(planned);
+  const core::PlanBook plan = simulation->OfficePlan();
+  failures += Expect(plan.announced && plan.deadline == 2U * core::kDaysPerYear &&
+                         plan.positions.size() == 2 && plan.positions[0].resource.value == 1 &&
+                         plan.positions[0].met && plan.positions[1].resource.value == 2 &&
+                         !plan.positions[1].met && plan.positions[1].delivered == kTen * 98 / 100,
+                     "office doors: the plan by resource, its term the next turn — 99 % met at "
+                     "the district's share, 98 % not, no figure not listed");
+
+  // THE LIMIT: the lots by the catalogue's own words, and the balance.
+  const core::ITable* const lots = shipped->FindTable("limit_catalog");
+  const std::uint32_t timber = lots->FindRowByKey("timber_lot");
+  const std::uint32_t kerosene = lots->FindRowByKey("kerosene_lot");
+  const std::uint32_t mts = lots->FindRowByKey("mts_column_spring");
+  core::WorldState rich = start;
+  rich.limit.points = 1000;
+  core::LimitDeliveryRow cart;
+  cart.lot = core::LimitLotId{static_cast<std::uint16_t>(timber)};
+  cart.arrive_day = 7;
+  cart.own_carts = 1;
+  core::AppendRow(rich.limit_deliveries, cart);
+  core::LimitDeliveryRow at_the_gate;
+  at_the_gate.lot = core::LimitLotId{static_cast<std::uint16_t>(kerosene)};
+  at_the_gate.arrive_day = 0;
+  core::AppendRow(rich.limit_deliveries, at_the_gate);
+  simulation->ResetWorld(rich);
+  const core::LimitBook full = simulation->OfficeLimit();
+  core::WorldState poor = rich;
+  poor.limit.points = 0;
+  simulation->ResetWorld(poor);
+  const core::LimitBook empty = simulation->OfficeLimit();
+  failures += Expect(full.catalogue.size() == lots->RowCount() && full.points == 1000 &&
+                         full.catalogue[timber].points > 0 &&
+                         full.catalogue[timber].orderable == core::OrderRefusal::kNone &&
+                         empty.catalogue[timber].orderable == core::OrderRefusal::kLimitShort &&
+                         full.catalogue[kerosene].points == -1 &&
+                         full.catalogue[kerosene].orderable == core::OrderRefusal::kRuleForbids,
+                     "office doors: the whole catalogue — timber priced and sold, short of "
+                     "points kLimitShort, the unpriced kerosene kRuleForbids");
+  std::cout << "office doors: on the way " << full.on_the_way.size() << ':';
+  for (const core::LimitCartLine& line : full.on_the_way) {
+    std::cout << " lot " << line.lot.value << " day " << line.arrive_day
+              << (line.arrived ? " arrived" : "") << (line.own_carts ? " own carts" : "");
+  }
+  std::cout << '\n';
+  failures += Expect(full.on_the_way.size() == 2 && full.on_the_way[0].lot.value == timber &&
+                         full.on_the_way[0].arrive_day == 7 && !full.on_the_way[0].arrived &&
+                         full.on_the_way[0].own_carts && full.on_the_way[1].arrived &&
+                         !full.on_the_way[1].own_carts,
+                     "office doors: the carts with their lots and days — the timber on its way "
+                     "for the village's own carts, the other come and waiting");
+  // THE MTS COLUMN BY ITS OWN RULES (MtsColumnRefusal; static review of
+  // 0.37.0): the start has no field camp, and the column is not sold without
+  // one however many points there are.
+  failures += Expect(
+      mts != core::kNoTableRow && full.catalogue[mts].orderable == core::OrderRefusal::kRuleForbids,
+      "office doors: the MTS column with no field camp is refused by its own "
+      "rule, not called buyable");
+  return failures;
+}
+
 int CheckRoadDemolition() {
   int failures = 0;
   const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
@@ -1885,6 +1988,7 @@ int main() {
   failures += CheckRoadPiecesOnStart();
   failures += CheckRoadDemolition();
   failures += CheckRoadWork();
+  failures += CheckTheOfficeDoors();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
 

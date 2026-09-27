@@ -22,13 +22,17 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — twenty-six methods, counting
+/// concrete, and it is deliberately small — thirty-eight methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
 ///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce,
-///               StockLights, WeatherForecast, WearDeadline
+///               StockLights, WeatherForecast, WearDeadline,
+///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
+///               StinkNowAt, ResidentHeightMeters
+///     office    OfficeWorkbook, OfficePlan, OfficeLimit
+///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -39,8 +43,12 @@
 /// ReplaceWorld, StagedBatch and MapSideMeters; twenty-one since the event
 /// log gained readers; twenty-three since task A8 added the two workforce
 /// questions; twenty-four since the stock lights, twenty-five with the wear
-/// deadline — all additions, which is
-/// what the contract's minor number is for; 70-boundary.md §6.)
+/// deadline; thirty-five by the roads, the smell, the heights and the
+/// district's term, which this list did not keep up with; thirty-eight with
+/// the office's three doors, 0.37.0 (counted by name: a count of the lines
+/// ending "= 0;" said 36 and missed two declarations wrapped over two lines)
+/// — all additions, which is what the
+/// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
 /// the session and drains the event log for its HUD and its fast-forward
@@ -120,6 +128,7 @@
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/material_shortfall.h"
+#include "core_common/office_views.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/stink.h"
@@ -657,6 +666,21 @@ class ISession {
   /// itself will get, from the same rule (LimitBaseDeliveryDays).
   /// @note Between steps; the answer describes State().
   virtual DeliveryTerm LimitDeliveryTerm() const = 0;
+
+  /// @brief The office's workbook: who works where today and, free, why
+  /// (core_common/office_views.h — the office's three doors and why «Приём»
+  /// has none). Derived now through core_labor; empty for a table-less world.
+  virtual std::vector<WorkbookLine> OfficeWorkbook() const = 0;
+
+  /// @brief The office's plan window: the year's positions, shipped, met,
+  /// and the term (office_views.h). Through core_production; not announced
+  /// for a table-less world.
+  virtual PlanBook OfficePlan() const = 0;
+
+  /// @brief The office's limit window: the points left, the catalogue with
+  /// price and today's answer, the carts on the way (office_views.h).
+  /// Through core_production.
+  virtual LimitBook OfficeLimit() const = 0;
 
   /// @brief What the village lacks to START the works on `unit`, line by line:
   /// the resource, needed, held (construction design §6, "старт проверяет

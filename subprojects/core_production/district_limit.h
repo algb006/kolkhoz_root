@@ -42,6 +42,18 @@ namespace core {
 ///         lot with no amount does.
 OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epoch);
 
+/// @brief The MTS column's own answer to a purchase of `lot` today, before
+/// any point is spent: kRuleForbids while a column is out, when it would
+/// arrive after its season's window, or with no standing field camp;
+/// kLimitShort when the points do not reach `points`; kNone otherwise. One
+/// home for the purchase (OrderLimitLot) and the office's window
+/// (OfficeLimit; static review of 0.37.0: the window called the column
+/// buyable on every seed with no camp).
+OrderRefusal MtsColumnRefusal(const ProductionConfig& config,
+                              const WorldState& current,
+                              LimitLotId lot,
+                              std::int32_t points);
+
 /// @brief The raikom reputation's multiplier on the year's grant (district
 /// design §5): 0–20 ×0.7, 21–40 ×0.85, 41–60 ×1.0, 61–80 ×1.2, 81–100 ×1.4.
 /// @param reputation ChairmanState::raikom_reputation, 0..100; out of range

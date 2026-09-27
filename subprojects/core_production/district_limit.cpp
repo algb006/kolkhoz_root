@@ -62,13 +62,12 @@ float PlacesForStock(const ProductionConfig& config, const WorldState& world) {
   return roofs + (yards * config.farming.billet_heads_per_yard);
 }
 
-/// The MTS column bought (limit_state.h, MtsColumnState): one at a time, and
-/// only while it can still reach its season's window this year. Refused
-/// before any point is spent — "not cancellable" is about the accepted one.
-OrderRefusal OrderMtsColumn(const ProductionConfig& config,
-                            WorldState& current,
-                            LimitLotId lot,
-                            std::int32_t points) {
+}  // namespace
+
+OrderRefusal MtsColumnRefusal(const ProductionConfig& config,
+                              const WorldState& current,
+                              LimitLotId lot,
+                              std::int32_t points) {
   const MtsColumnPhase phase = current.mts_column.phase;
   if (phase == MtsColumnPhase::kOnTheRoad || phase == MtsColumnPhase::kWorking) {
     return OrderRefusal::kRuleForbids;  // one column a season, and this one is out
@@ -94,12 +93,31 @@ OrderRefusal OrderMtsColumn(const ProductionConfig& config,
   if (current.limit.points < points) {
     return OrderRefusal::kLimitShort;
   }
+  return OrderRefusal::kNone;
+}
+
+namespace {
+
+/// The MTS column bought (limit_state.h, MtsColumnState): one at a time, and
+/// only while it can still reach its season's window this year. Refused
+/// before any point is spent — "not cancellable" is about the accepted one.
+/// The refusals are MtsColumnRefusal's, one home with the office's window.
+OrderRefusal OrderMtsColumn(const ProductionConfig& config,
+                            WorldState& current,
+                            LimitLotId lot,
+                            std::int32_t points) {
+  const OrderRefusal refusal = MtsColumnRefusal(config, current, lot, points);
+  if (refusal != OrderRefusal::kNone) {
+    return refusal;
+  }
   current.limit.points -= points;
   current.ledger.current.limit_points_spent += points;
   current.mts_column = MtsColumnState{};
   current.mts_column.phase = MtsColumnPhase::kOnTheRoad;
   current.mts_column.lot = lot;
-  current.mts_column.arrive_day = arrive_day;
+  // The same day MtsColumnRefusal judged the window by.
+  current.mts_column.arrive_day =
+      static_cast<std::uint32_t>(current.calendar.day) + LimitBaseDeliveryDays(config, current);
   return OrderRefusal::kNone;
 }
 

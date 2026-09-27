@@ -205,6 +205,15 @@ struct ResidentRow {
   /// keeps worked_norm_days_today until the close-out pays it.
   WorkAssignment work;
 
+  /// WHY THE MORNING'S PLAN LEFT HIM FREE (office's workbook; boss-core-
+  /// epoch1-queue [1], item 3: «причину простоя хранить на жителе»): the
+  /// reason the ledger counts in YearLedger::idle_person_days, one a person
+  /// a day, written by the same morning pass. kIdleReasonCount — NOT A
+  /// REASON — when he was placed, or not asked (a child, the old, one away,
+  /// before the first morning). SAVED: a workbook read after a load must say
+  /// what the morning said, and the next morning is up to a day away.
+  IdleReason idle_reason = IdleReason::kIdleReasonCount;
+
   // -- the post (task A7; manual/74-posts.md) --------------------------------
   /// The post this resident HOLDS — a standing appointment, not today's
   /// work: the groom, the storekeeper, the timekeeper are appointed and

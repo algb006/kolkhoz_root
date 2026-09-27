@@ -118,6 +118,22 @@ class ScriptedSimulation final : public core::ISimulation {
     return core::DeliveryTerm{.days_min = 4, .days_max = 6};
   }
 
+  /// Scripted office windows, one line each, so the session's pass-through
+  /// has something to carry (the office's doors).
+  std::vector<core::WorkbookLine> OfficeWorkbook() const override {
+    core::WorkbookLine line;
+    line.idle = core::IdleReason::kNoHorse;
+    return {line};
+  }
+
+  core::PlanBook OfficePlan() const override {
+    return core::PlanBook{.announced = true, .deadline = 48, .positions = {}};
+  }
+
+  core::LimitBook OfficeLimit() const override {
+    return core::LimitBook{.points = 7, .catalogue = {}, .on_the_way = {}};
+  }
+
   /// No recipe here either: nothing is short.
   std::vector<core::MaterialShortfall> MaterialsShortFor(core::UnitId /*unit*/) const override {
     return {};
@@ -1583,6 +1599,14 @@ int TestStockLights(const core::ITableSet& tables) {
   const core::DeliveryTerm term = session->LimitDeliveryTerm();
   failures += Expect(term.days_min == 4 && term.days_max == 6,
                      "the lot's term reaches the order window as the simulation computes it");
+  // The office's three doors pass through unchanged (office_views.h).
+  const std::vector<core::WorkbookLine> workbook = session->OfficeWorkbook();
+  const core::PlanBook plan = session->OfficePlan();
+  const core::LimitBook limit = session->OfficeLimit();
+  failures += Expect(workbook.size() == 1 && workbook[0].idle == core::IdleReason::kNoHorse &&
+                         plan.announced && plan.deadline == 48 && limit.points == 7,
+                     "the office's workbook, plan and limit reach the window as the simulation "
+                     "computes them");
   failures += Expect(forecast.size() == 3 && forecast[1].sky == core::SkyStep::kClear &&
                          forecast[2].sky == core::SkyStep::kHeavyPrecipitation,
                      "the sky step travels beside the name");

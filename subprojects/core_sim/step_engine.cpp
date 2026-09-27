@@ -236,6 +236,16 @@ class StepEngine final : public ISimulation {
   /// No district here: no cart and no term (delivery_term.h, both 0).
   DeliveryTerm LimitDeliveryTerm() const override { return DeliveryTerm{}; }
 
+  /// No subsystems, so no office: no workbook, no plan announced, the limit's
+  /// points as the state holds them and no catalogue.
+  std::vector<WorkbookLine> OfficeWorkbook() const override { return {}; }
+
+  PlanBook OfficePlan() const override { return PlanBook{}; }
+
+  LimitBook OfficeLimit() const override {
+    return LimitBook{.points = CompletedState().limit.points, .catalogue = {}, .on_the_way = {}};
+  }
+
   /// No subsystems, so no recipe: nothing is short.
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId /*unit*/) const override { return {}; }
 

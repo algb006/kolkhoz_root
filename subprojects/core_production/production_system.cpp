@@ -382,6 +382,58 @@ class ProductionSystem final : public IProductionSystem {
     return DeliveryTerm{.days_min = base, .days_max = base + config_.limit.delivery_delay_days_max};
   }
 
+  PlanBook OfficePlan(const WorldState& completed) const override {
+    PlanBook book;
+    book.announced = completed.plan.announced != 0;
+    book.deadline = ((completed.calendar.day / kDaysPerYear) + 1U) * kDaysPerYear;
+    for (std::uint32_t index = 0; index < completed.plan.due.size(); ++index) {
+      const Grams due = completed.plan.due[index];
+      if (due <= 0) {
+        continue;
+      }
+      PlanLine line;
+      line.resource = DefIdFromIndex<ResourceIdTag>(index);
+      line.due = due;
+      line.delivered =
+          index < completed.plan.delivered.size() ? completed.plan.delivered[index] : 0;
+      line.met = PositionDelivered(config_, due, line.delivered);
+      book.positions.push_back(line);
+    }
+    return book;
+  }
+
+  LimitBook OfficeLimit(const WorldState& completed) const override {
+    LimitBook book;
+    book.points = completed.limit.points;
+    for (std::size_t index = 0; index < config_.limit.lots.size(); ++index) {
+      const LimitLotId lot = DefIdFromIndex<LimitLotIdTag>(index);
+      const LimitLotDef& def = config_.limit.lots[index];
+      OrderRefusal answer = LotOrderable(config_.limit, lot, completed.epoch);
+      if (answer == OrderRefusal::kNone && def.kind == LimitLotKind::kService) {
+        // The MTS column: its own rules and the balance, as the purchase asks.
+        answer = MtsColumnRefusal(config_, completed, lot, def.points);
+      } else if (answer == OrderRefusal::kNone && completed.limit.points < def.points) {
+        // The balance after the lot's own answer, as the purchase asks it.
+        answer = OrderRefusal::kLimitShort;
+      }
+      book.catalogue.push_back(LimitLotLine{.lot = lot, .points = def.points, .orderable = answer});
+    }
+    const auto today = static_cast<std::uint32_t>(completed.calendar.day);
+    for (const LimitDeliveryRow& cart : completed.limit_deliveries.rows) {
+      book.on_the_way.push_back(LimitCartLine{.lot = cart.lot,
+                                              .arrive_day = cart.arrive_day,
+                                              .arrived = cart.arrive_day <= today,
+                                              .own_carts = cart.own_carts != 0});
+    }
+    for (const LivestockArrivalRow& heads : completed.livestock_arrivals.rows) {
+      book.on_the_way.push_back(LimitCartLine{.lot = heads.lot,
+                                              .arrive_day = heads.arrive_day,
+                                              .arrived = heads.arrive_day <= today,
+                                              .own_carts = false});
+    }
+    return book;
+  }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;

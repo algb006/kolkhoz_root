@@ -59,6 +59,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
+#include "core_common/office_views.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
@@ -97,6 +98,13 @@ class ILaborSystem {
   /// @brief The two workforce numbers over the whole settlement: how many
   /// could be put to work, and how many of those have no work right now.
   virtual WorkforceCount CountWorkforce(const WorldState& state) const = 0;
+
+  /// @brief The office's workbook off `state` (office_views.h, WorkbookLine):
+  /// one line a living resident, in row order — the age at this world's speed
+  /// of life, CanBeOrdered's answer, today's placement and, free, the
+  /// morning's idle reason as the placement wrote it (ResidentRow::
+  /// idle_reason). The same thresholds the placement reads; no second rule.
+  virtual std::vector<WorkbookLine> OfficeWorkbook(const WorldState& state) const = 0;
 
   /// @brief Appends the labor alarms that hold in `state` (task A7).
   /// Today one: kYardWithoutGroom — a built unit whose staff table names

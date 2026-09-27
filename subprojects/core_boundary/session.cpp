@@ -419,6 +419,14 @@ class Session final : public ISession {
 
   DeliveryTerm LimitDeliveryTerm() const override { return simulation_->LimitDeliveryTerm(); }
 
+  std::vector<WorkbookLine> OfficeWorkbook() const override {
+    return simulation_->OfficeWorkbook();
+  }
+
+  PlanBook OfficePlan() const override { return simulation_->OfficePlan(); }
+
+  LimitBook OfficeLimit() const override { return simulation_->OfficeLimit(); }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return simulation_->MaterialsShortFor(unit);
   }
