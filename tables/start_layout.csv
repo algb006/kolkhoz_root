@@ -90,3 +90,4 @@ road_bridge_village,road,,8131.68,9599.75,0.5829,,,,0,,-1,55,0,regular
 count_lodge,unit,count_lodge,8117,10640,,,,,0,,-1,60,1,
 road_pond_village,road,,6785.5,3898.32,0.3168,,,,0,,0,10,0,none
 road_east_pond,road,,9081.7,1993.65,4.9799,,,,0,,0,10,0,none
+cemetery_chapel,unit,cemetery_chapel,8104,10424,,,,,0,,-1,70,1,
