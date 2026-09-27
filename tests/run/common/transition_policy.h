@@ -45,7 +45,14 @@ class TransitionPolicy {
   explicit TransitionPolicy(const core::ITableSet& tables)
       : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)) {}
 
+  /// @brief The run never orders the transition (population_curve's
+  /// `--epoch-one-forever`, econ's branch): the era stays because nobody asks.
+  void Disable() { disabled_ = true; }
+
   void RunDay(core::ISimulation& simulation) {
+    if (disabled_) {
+      return;
+    }
     const core::WorldState& world = simulation.CompletedState();
     if (world.epoch != core::Epoch::kOne) {
       if (year_taken_ == 0) {
@@ -169,6 +176,7 @@ class TransitionPolicy {
 
   core::ReadinessCatalog catalog_;
   std::uint16_t year_taken_ = 0;
+  bool disabled_ = false;
 };
 
 }  // namespace run

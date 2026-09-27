@@ -368,6 +368,14 @@ void LiveOneDay(core::ISimulation& simulation,
 /// the building chairman without the one policy under test.
 bool g_no_planting = false;
 
+/// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
+/// run's chairman never orders the transition, and the transition print runs
+/// all thirty-three years: population, traction, the indices with their
+/// components and the gates at every turn. The world's rules are untouched;
+/// the era stays because nobody asks. Its verdicts are printed, not trusted:
+/// the curve's bands were read on villages that go on.
+bool g_epoch_one_forever = false;
+
 /// `--seed-offset=N`: every seed of kSeeds moved by N — a SECOND sample of
 /// nine villages for a comparison, not the canonical curve (its bands are
 /// read on kSeeds; a verdict on another sample is printed, not trusted).
@@ -436,8 +444,12 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   if (g_no_planting) {
     builder.planting.Disable();
   }
+  if (g_epoch_one_forever) {
+    builder.transition.Disable();
+  }
   run::TimberFlowTally timber(*world.tables);
-  run::TransitionTally transition_tally(*world.tables);
+  run::TransitionTally transition_tally(
+      *world.tables, g_epoch_one_forever ? kYears : run::TransitionTally::kYearsDecomposedDefault);
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t key_column = types->FindColumn("key");
     for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
@@ -717,6 +729,8 @@ int main(int argc, char** argv) {
     const std::string_view argument(argv[index]);
     if (argument == "--no-planting") {
       g_no_planting = true;
+    } else if (argument == "--epoch-one-forever") {
+      g_epoch_one_forever = true;
     } else if (argument.starts_with("--seed-offset=")) {
       g_seed_offset = std::strtoull(
           std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
@@ -729,6 +743,11 @@ int main(int argc, char** argv) {
   if (g_no_planting) {
     std::cout << "population_curve: CONTROL ARM — --no-planting: the building chairman "
                  "plants nothing (the declaration above does not hold)\n";
+  }
+  if (g_epoch_one_forever) {
+    std::cout << "population_curve: ECON'S BRANCH — --epoch-one-forever: the run's chairman "
+                 "never orders Epoch II (the declaration above does not hold for the "
+                 "transition); every verdict below is printed, not trusted\n";
   }
   if (g_seed_offset != 0) {
     std::cout << "population_curve: NOT THE CANONICAL SAMPLE — --seed-offset=" << g_seed_offset

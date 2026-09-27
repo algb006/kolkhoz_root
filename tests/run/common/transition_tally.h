@@ -42,27 +42,34 @@ namespace run {
 
 class TransitionTally {
  public:
-  /// The years whose indices are printed with their components.
-  static constexpr std::size_t kYearsDecomposed = 6;
+  /// The years whose indices are printed with their components, by default
+  /// (boss-core-epoch1-queue [29]: years 1-6); econ's branch asks all.
+  static constexpr std::size_t kYearsDecomposedDefault = 6;
 
   /// One closed year as the turn scored it.
   struct YearScore {
     float economic = 0.0F;
     float social = 0.0F;
-    /// plan, winter stocks, mechanisation, funds; satisfaction, kolkhoz
-    /// effort, social objects, demography (ReadinessState's own order).
+    /// plan, winter stocks, mechanisation (traction), funds; satisfaction,
+    /// kolkhoz effort, social objects, demography (ReadinessState's order).
     std::array<float, 8> components = {};
     float satisfaction_stub_points = 0.0F;
+    /// The residents on the turn's day, and the door's seven gates as met
+    /// then (TransitionPolicy::ConditionsMet's order).
+    std::uint32_t residents = 0;
+    std::array<bool, TransitionPolicy::kConditions> gates = {};
     bool scored = false;
   };
 
-  explicit TransitionTally(const core::ITableSet& tables)
-      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)) {}
+  /// @param years_decomposed Closed years printed with their components.
+  explicit TransitionTally(const core::ITableSet& tables,
+                           std::size_t years_decomposed = kYearsDecomposedDefault)
+      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)), years_(years_decomposed) {}
 
   /// @brief One day, after the day's steps and the chairman's orders.
   void CountDay(const TransitionPolicy& transition, const core::WorldState& world) {
     const core::SimDay day = world.calendar.day;
-    ScoreTurn(world, day);
+    ScoreTurn(transition, world, day);
     if (world.epoch != core::Epoch::kOne) {
       if (opened_day_ < 0) {
         opened_day_ = static_cast<std::int64_t>(day);
@@ -121,8 +128,10 @@ class TransitionTally {
               << static_cast<int>(core::kIndexYearsRequired) << " alone "
               << year_day(social_met_day_) << '\n';
     std::cout << "  indices by closed year — economic (plan, stocks, traction, funds) / social "
-                 "(satisfaction [stub points], effort, social objects, demography):";
-    for (std::size_t year = 0; year < kYearsDecomposed; ++year) {
+                 "(satisfaction [stub points], effort, social objects, demography); residents "
+                 "at the turn; gates met then, "
+              << kGateLetters << ':';
+    for (std::size_t year = 0; year < years_.size(); ++year) {
       const YearScore& score = years_[year];
       if (!score.scored) {
         continue;
@@ -131,7 +140,10 @@ class TransitionTally {
       std::cout << "\n    year " << year + 1 << ": " << score.economic << " (" << c[0] << ", "
                 << c[1] << ", " << c[2] << ", " << c[3] << ") / " << score.social << " (" << c[4]
                 << " [" << score.satisfaction_stub_points << "], " << c[5] << ", " << c[6] << ", "
-                << c[7] << ')';
+                << c[7] << "); " << score.residents << " residents; gates ";
+      for (const bool met : score.gates) {
+        std::cout << (met ? '+' : '-');
+      }
     }
     std::cout << '\n';
   }
@@ -154,9 +166,14 @@ class TransitionTally {
                                                                  "4 соцобъекта из 6",
                                                                  "юниты на уровне  "};
 
+  /// The gates' order in a year's line, one mark each.
+  static constexpr const char* kGateLetters = "indices/traction/wintering/office/food/social/units";
+
   /// The turn scores the closed year after the books rotate (world.cpp): on
   /// the new year's first day, the readiness judges the year just closed.
-  void ScoreTurn(const core::WorldState& world, core::SimDay day) {
+  void ScoreTurn(const TransitionPolicy& transition,
+                 const core::WorldState& world,
+                 core::SimDay day) {
     const std::uint32_t year = day / core::kDaysPerYear;
     if (year == 0 || day % core::kDaysPerYear != 0 || year == last_scored_year_) {
       return;
@@ -172,7 +189,7 @@ class TransitionTally {
       social_met_day_ = static_cast<std::int64_t>(day);
     }
     const std::size_t closed = year - 1U;
-    if (closed < kYearsDecomposed) {
+    if (closed < years_.size()) {
       YearScore& score = years_[closed];
       score.economic = readiness.economic_index;
       score.social = readiness.social_index;
@@ -185,6 +202,12 @@ class TransitionTally {
                           readiness.society.social_objects.score,
                           readiness.society.demography.score};
       score.satisfaction_stub_points = readiness.satisfaction_stub_points;
+      score.residents = static_cast<std::uint32_t>(world.residents.rows.size());
+      // The gates as the door reads them in Epoch I; after the transition
+      // the door answers every question "not eligible", so none stands met.
+      if (world.epoch == core::Epoch::kOne) {
+        score.gates = transition.ConditionsMet(world);
+      }
       score.scored = true;
     }
   }
@@ -216,7 +239,7 @@ class TransitionTally {
   std::uint32_t social_run_ = 0;
   std::int64_t economic_met_day_ = -1;
   std::int64_t social_met_day_ = -1;
-  std::array<YearScore, kYearsDecomposed> years_ = {};
+  std::vector<YearScore> years_;
 };
 
 }  // namespace run
