@@ -121,10 +121,23 @@ void RepayGoodsLoans(const ProductionConfig& config, WorldState& current) {
     // harvest, and keeps nothing back. The first draft skipped the repayment
     // outright, and the static review found the debt growing for ever at a
     // full barn: the barn never changes the hectares.
-    const Grams kept_for_plan =
-        PlanPositionUncovered(config, current, resource, 1, SeedDayAtTheTurn(current))
-            ? NextYearPositionGrams(config, current, resource)
-            : 0;
+    //
+    // ONE HOLD FOR THE THREE WHO EAT IT (0.37.4; boss-core-epoch1-queue [49]
+    // (а), [62]-[63]; econ-boss-rye-hold [1]): the loan keeps what the herds
+    // and the people's issue keep — what the new year's own harvest will not
+    // pay of its position AND of the seed the year after sows from it
+    // (plan_alarms.h, NextYearUnpaidGrams), with the rot of its year in the
+    // barn (district_plan.h, HeldForDeliveryGrams). The position alone
+    // was kept, to the gram: in the rye's unreaped year 4 the autumn sowing
+    // took its 630 kg of seed first and 417 kg of 1116 shipped (pd 0.37 on 7
+    // seeds of 9, 0426fb2), and seed 1938 kept 1.12 t for 1.12 owed and
+    // shipped 1.00 to the barn's rot. A position the new year's harvest pays
+    // with its seed keeps nothing back, as a covered one did before.
+    const Grams kept_for_plan = HeldForDeliveryGrams(
+        config,
+        resource,
+        NextYearUnpaidGrams(config, current, resource, SeedDayAtTheTurn(current)),
+        kDaysPerYear);
     // FROM THE STORES ONLY, AND THE SEED STILL HELD: DeliverableAboveSeed
     // counts the heaps lying on the fields as well, and the repayment takes
     // from the stores alone — so with a heap lying and the seed in the barn,

@@ -10,9 +10,11 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
 #include "district_plan.h"
 #include "field_work.h"
+#include "seed_room.h"
 
 namespace core {
 namespace {
@@ -302,6 +304,118 @@ bool PositionCounts(const ProductionConfig& config,
   return position.crop.value < config.crops.size() && position.area_share > 0.0F;
 }
 
+using CoverYears = std::array<bool, kChainYears>;
+
+/// Whether the fields OR THE STORES cover each position in each year, as of
+/// today (0.37.4; boss-core-epoch1-queue [49] (б), econ-boss-rye-hold [1]).
+///
+/// THE ALARM COUNTED THE FIELDS ALONE and burned beside a full barn: year 1
+/// of the rye on 27 seeds of 27 from day 0 — 1.60 t owed, 7.37 t above the
+/// seed — 81 seed-years of 540. The stores count now as the goods loan keeps
+/// them (goods_loan.cpp): per produce, what is above the seed pays first
+/// what this year still owes, then, year by year and position by position in
+/// table order, each position the fields leave uncovered, each claim held
+/// with the rot of its wait to its delivery at the end of its year
+/// (HeldForDeliveryGrams). A claim the stores cannot meet is not covered and
+/// takes what is left, so a later year is not covered by grams an earlier
+/// one already needed.
+///
+/// THIS YEAR'S DEBT COMES OFF IN ANY CASE, covered by its fields or not: the
+/// turn ships it from the stores, the harvest the fields bring lands in them
+/// first, and before the harvest the grams it will bring are not in the barn
+/// yet — so the stores are read short rather than twice.
+std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const WorldState& world) {
+  const SimDay today = world.calendar.day;
+  const auto days_to_turn = static_cast<std::uint32_t>(kDaysPerYear - (today % kDaysPerYear));
+  const float next_area = NextPlanAreaHa(world, today);
+  const std::size_t count = config.plan_positions.size();
+  std::vector<CoverYears> covered(count, CoverYears{});
+  for (std::size_t index = 0; index < count; ++index) {
+    if (!PositionCounts(config, config.plan_positions[index])) {
+      continue;
+    }
+    for (std::uint32_t year = 0; year < kChainYears; ++year) {
+      covered[index][year] =
+          PositionCovered(config, world, config.plan_positions[index], year, today);
+    }
+  }
+  const auto produce_of = [&config](std::size_t index) {
+    return config.crops[config.plan_positions[index].crop.value].resource;
+  };
+  std::vector<std::uint32_t> produce_done;
+  for (std::size_t first = 0; first < count; ++first) {
+    if (!PositionCounts(config, config.plan_positions[first])) {
+      continue;
+    }
+    const ResourceId produce = produce_of(first);
+    if (std::ranges::find(produce_done, produce.value) != produce_done.end()) {
+      continue;
+    }
+    produce_done.push_back(produce.value);
+    std::vector<std::size_t> positions;
+    for (std::size_t index = first; index < count; ++index) {
+      if (PositionCounts(config, config.plan_positions[index]) &&
+          produce_of(index).value == produce.value) {
+        positions.push_back(index);
+      }
+    }
+    Grams stock = DeliverableAboveSeed(config, world, produce, today);
+    // This year's owed: the announced figure less what has left. Unannounced
+    // only at genesis before the first tick (the letter comes at the turn),
+    // where the positions are priced off last year's area as a stand-in —
+    // not the first year's start-stock figure AnnouncePlan will name.
+    Grams owed_now = 0;
+    if (world.plan.announced != 0) {
+      const Grams due = AmountOf(world.plan.due, produce);
+      const Grams delivered = AmountOf(world.plan.delivered, produce);
+      owed_now = due > delivered ? due - delivered : 0;
+    } else {
+      for (const std::size_t index : positions) {
+        owed_now +=
+            PlanPositionGrams(config, config.plan_positions[index], world.plan.worked_ha_last_year);
+      }
+    }
+    const Grams claim_now = HeldForDeliveryGrams(config, produce, owed_now, days_to_turn);
+    const bool stock_pays_now = owed_now > 0 && stock >= claim_now;
+    stock = stock > claim_now ? stock - claim_now : 0;
+    for (const std::size_t index : positions) {
+      covered[index][0] = covered[index][0] || stock_pays_now;
+    }
+    // NEXT YEAR BY THE HOLD ITSELF (static review of 0.37.4): what its own
+    // harvest will not pay of its positions AND of the year after's seed,
+    // once for the produce — the grams the loan, the herds and the issue
+    // keep. By the position alone the alarm went quiet over a barn the
+    // autumn's sowing would empty first.
+    bool year_one_open = false;
+    for (const std::size_t index : positions) {
+      year_one_open = year_one_open || !covered[index][1];
+    }
+    if (year_one_open) {
+      const Grams claim = HeldForDeliveryGrams(config,
+                                               produce,
+                                               NextYearUnpaidGrams(config, world, produce, today),
+                                               days_to_turn + kDaysPerYear);
+      const bool stock_pays = claim > 0 && stock >= claim;
+      for (const std::size_t index : positions) {
+        covered[index][1] = covered[index][1] || stock_pays;
+      }
+      stock = stock > claim ? stock - claim : 0;
+    }
+    // The year after by each position's own grams, with the rot of its wait.
+    for (const std::size_t index : positions) {
+      if (covered[index][2]) {
+        continue;
+      }
+      const Grams owed = PlanPositionGrams(config, config.plan_positions[index], next_area);
+      const Grams claim =
+          HeldForDeliveryGrams(config, produce, owed, days_to_turn + (2 * kDaysPerYear));
+      covered[index][2] = owed > 0 && stock >= claim;
+      stock = stock > claim ? stock - claim : 0;
+    }
+  }
+  return covered;
+}
+
 }  // namespace
 
 Grams NextYearUnpaidGrams(const ProductionConfig& config,
@@ -321,14 +435,27 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
   // ...and the seed of the year after's crops of it, which next year's
   // harvest gives: a spring crop of year 2 is sown from it that spring, a
   // winter crop of year 2 that autumn.
+  //
+  // A SOWING THE SEED RUNG ALREADY HOLDS IS NOT COUNTED AGAIN (static review
+  // of 0.37.4): a field whose next sowing is the year after's crop and whose
+  // seed no harvest gives first is held by SeedHeldByField, off the stores
+  // before this hold is taken — winter rye in the ground for next year, a
+  // spring crop after it. Counted here too, the loan repaid less and the
+  // herds held twice.
+  const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
+  const SeedHold seed_held = SeedHeldByField(world, seed_norms, config.feed_values.size(), as_of);
   float seed_kg = 0.0F;
   float harvest_kg = 0.0F;
-  for (const FieldRow& field : world.fields.rows) {
+  for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
     if (field.kind != LandKind::kArable || !HasRotation(field)) {
       continue;
     }
+    const bool seed_already_held = row < seed_held.by_field_row.size() &&
+                                   seed_held.by_field_row[row] > 0 &&
+                                   seed_held.seed_of_row[row].value == resource.value;
     const CropId after = CropInYear(config, field, 2, as_of);
-    if (after.value < config.crops.size() &&
+    if (!seed_already_held && after.value < config.crops.size() &&
         config.crops[after.value].resource.value == resource.value) {
       seed_kg += config.crops[after.value].sowing_norm_kg_per_ha * field.area_ga;
     }
@@ -344,36 +471,20 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
   return needed > harvest ? needed - harvest : 0;
 }
 
-bool PlanPositionUncovered(const ProductionConfig& config,
-                           const WorldState& world,
-                           ResourceId resource,
-                           std::uint32_t year,
-                           SimDay as_of) {
-  if (year >= kChainYears) {
-    return false;
-  }
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
-    if (PositionCounts(config, position) &&
-        config.crops[position.crop.value].resource == resource &&
-        !PositionCovered(config, world, position, year, as_of)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms) {
   // Positions in table order, years in chain order: the emission order is a
   // function of the tables and the chains, and the session sorts it anyway.
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  const std::vector<CoverYears> covered = CoveredPositions(config, world);
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (!PositionCounts(config, position)) {
       continue;
     }
     const ResourceId produce = config.crops[position.crop.value].resource;
     for (std::uint32_t year = 0; year < kChainYears; ++year) {
-      if (PositionCovered(config, world, position, year, world.calendar.day)) {
+      if (covered[index][year]) {
         continue;
       }
       Alarm alarm;

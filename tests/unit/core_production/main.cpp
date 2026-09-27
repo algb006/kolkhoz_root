@@ -930,6 +930,56 @@ int CheckTheCartHorseEatsOats() {
   return failures;
 }
 
+/// THE SEED RUNG'S SOWING IS NOT HELD TWICE (static review of 0.37.4): winter
+/// rye in the ground for next year, spring oats after it in the year after,
+/// and no oats reaped before that sowing — the seed rung holds the oats' 100
+/// kg already (SeedHeldByField), and next year's hold must not add them.
+int CheckNextYearsHoldDoesNotCountTheSeedRung() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.feed_values.assign(2, 0.0F);
+  core::CropDef rye;
+  rye.resource = core::ResourceId{0};
+  rye.is_winter = true;
+  rye.sow_from_month = 7;
+  rye.sow_to_month = 8;
+  rye.harvest_from_month = 6;
+  rye.harvest_to_month = 7;
+  rye.sowing_norm_kg_per_ha = 100.0F;
+  core::CropDef oats;
+  oats.resource = core::ResourceId{1};
+  oats.sow_from_month = 2;
+  oats.sow_to_month = 3;
+  oats.harvest_from_month = 6;
+  oats.harvest_to_month = 7;
+  oats.sowing_norm_kg_per_ha = 100.0F;
+  config.crops = {rye, oats};
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(40) * core::kTicksPerDay;  // month 10
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 1.0F;
+  field.rotation_assigned = 1;
+  field.rotation_year1 = core::CropId{0};  // the rye, sown this autumn
+  field.rotation_year2 = core::CropId{1};  // the oats after it
+  field.crop = core::CropId{0};
+  field.phase = core::FieldPhase::kGrowing;
+  field.sown_day = 34;
+  core::AppendRow(world.fields, field);
+  const core::SeedHold held =
+      core::SeedHeldByField(world, core::SeedNormsOf(config), 2, world.calendar.day);
+  const core::Grams unpaid =
+      core::NextYearUnpaidGrams(config, world, core::ResourceId{1}, world.calendar.day);
+  std::cout << "next year's hold, the seed rung's sowing: the rung holds "
+            << core::AmountOf(held.by_resource, core::ResourceId{1}) << " g of oats, the hold "
+            << unpaid << " g\n";
+  failures +=
+      Expect(core::AmountOf(held.by_resource, core::ResourceId{1}) == 100'000 && unpaid == 0,
+             "next year's hold: the oats the seed rung already holds are not held again");
+  return failures;
+}
+
 /// THE PLOUGH KEEPS ITS OATS (0.37.2; boss-core-epoch1-queue [59]-[60], (а)):
 /// on a day nobody ploughs, the herd leaves the ploughing's oats in the store
 /// — last year's ploughing horse-days at a working horse's oats; on a
@@ -9789,6 +9839,14 @@ int CheckTheGoodsLoan() {
   // repays only what is above the seed AND those 5 t. The pairs: the rye sown
   // (covered) keeps nothing back; and a full barn repays the whole debt even
   // uncovered — the first draft's skip grew it for ever (static review).
+  //
+  // AND THE SEED THE YEAR AFTER SOWS FROM IT (0.37.4; boss [62]-[63]): the
+  // loan keeps the herds' and the issue's hold, the position AND the seed of
+  // the year after's rye (10 ha at 100 kg: 1 t) less the new year's own
+  // harvest — 6 t when the rye is lost, nothing when it stands on 10 ha.
+  // The rye sows 100 kg a hectare here; at the base's 1 t a hectare the seed
+  // alone was the whole next harvest, and the first run of the new rule kept
+  // 15 t of a 14 t barn — true to the rule, and a world that is no rye.
   core::ProductionConfig winter = config;
   core::CropDef& rye = winter.crops[0];
   rye.is_winter = true;
@@ -9797,9 +9855,11 @@ int CheckTheGoodsLoan() {
   rye.harvest_from_month = 6;
   rye.harvest_to_month = 7;
   rye.yield_kg_per_ha = 1000.0F;
+  rye.sowing_norm_kg_per_ha = 100.0F;
   winter.plan_grain_share = 1.0F;
   winter.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.5F}};
   const core::Grams next_spring = 5 * kTonne;
+  const core::Grams seed_after = 1 * kTonne;
 
   struct Turn {
     core::WorldState world;
@@ -9826,7 +9886,8 @@ int CheckTheGoodsLoan() {
     world.plan.goods_loan_owed = {12 * kTonne};
     turn.above_seed = core::DeliverableAboveSeed(
         winter, world, core::ResourceId{0}, core::SeedDayAtTheTurn(world));
-    turn.kept_back = core::NextYearPositionGrams(winter, world, core::ResourceId{0});
+    turn.kept_back = core::NextYearUnpaidGrams(
+        winter, world, core::ResourceId{0}, core::SeedDayAtTheTurn(world));
     core::RepayGoodsLoans(winter, world);
     return turn;
   };
@@ -9834,23 +9895,24 @@ int CheckTheGoodsLoan() {
     return core::AmountOf(turn.world.ledger.current.goods_loan_repaid, core::ResourceId{0});
   };
   // 14 t in the barn, all of it above the seed (the rye's next sowing comes
-  // after its next harvest): less than the 12 t owed plus next spring's 5 t,
-  // which come off it — 9 t repaid, 3 t left owing 3.6 t.
+  // after its next harvest): less than the 12 t owed plus next spring's 5 t
+  // and the year after's 1 t of seed, which come off it — 8 t repaid, 4 t
+  // left owing 4.8 t.
   const Turn short_barn = turn_with_rye(14 * kTonne, false);
   const core::Grams expected_paid = std::min<core::Grams>(
-      12 * kTonne, std::max<core::Grams>(short_barn.above_seed - next_spring, 0));
+      12 * kTonne, std::max<core::Grams>(short_barn.above_seed - next_spring - seed_after, 0));
   std::cout << "repay, rye uncovered next year: above the seed " << short_barn.above_seed
-            << " g, next spring's rye " << short_barn.kept_back << " g, repaid "
+            << " g, next year's hold " << short_barn.kept_back << " g, repaid "
             << repaid_of(short_barn) << " g, owed after "
             << core::AmountOf(short_barn.world.plan.goods_loan_owed, core::ResourceId{0}) << " g\n";
-  failures +=
-      Expect(short_barn.kept_back == next_spring && short_barn.above_seed > next_spring &&
-                 short_barn.above_seed < 12 * kTonne + next_spring &&
-                 repaid_of(short_barn) == expected_paid &&
-                 core::AmountOf(short_barn.world.plan.goods_loan_owed, core::ResourceId{0}) ==
-                     std::llround(static_cast<double>(12 * kTonne - expected_paid) * 1.2),
-             "repay: next year's rye lost to its window — the turn repays only above the seed and "
-             "next spring's 5 t, the rest owed with the markup");
+  failures += Expect(
+      short_barn.kept_back == next_spring + seed_after && short_barn.above_seed > next_spring &&
+          short_barn.above_seed < 12 * kTonne + next_spring &&
+          repaid_of(short_barn) == expected_paid &&
+          core::AmountOf(short_barn.world.plan.goods_loan_owed, core::ResourceId{0}) ==
+              std::llround(static_cast<double>(12 * kTonne - expected_paid) * 1.2),
+      "repay: next year's rye lost to its window — the turn repays only above the seed, "
+      "next spring's 5 t and the year after's 1 t of seed, the rest owed with the markup");
   const Turn covered = turn_with_rye(14 * kTonne, true);
   // Nothing kept back: the whole 12 t, 14 t in the barn (static review: "more
   // than the short barn" passed with a smaller keep-back too).
@@ -9863,6 +9925,26 @@ int CheckTheGoodsLoan() {
                  core::AmountOf(full_barn.world.plan.goods_loan_owed, core::ResourceId{0}) == 0,
              "repay: a full barn repays the whole debt even with next year uncovered — "
              "the debt does not grow for ever");
+
+  // AND THE YEAR'S ROT ON TOP (0.37.4; boss-core-epoch1-queue [49] (а)): rye
+  // keeping 600 days loses 1 − (1 − 1/600)^48 ≈ 7.7 % in a year of stores, so
+  // 6 t kept to the gram arrive 5.5 t. The keep-back is 6 t plus the seed
+  // fund's own margin for 48 days, and the repayment is that much smaller.
+  winter.spoil_days.assign(3, 0.0F);
+  winter.spoil_days[0] = 600.0F;
+  winter.keeping_factor = 1.0F;
+  const core::Grams hold = next_spring + seed_after;
+  const core::Grams rot = core::RotMarginGrams(hold, 600.0F, core::kDaysPerYear);
+  const Turn rotting = turn_with_rye(14 * kTonne, false);
+  const core::Grams expected_rotting =
+      std::min<core::Grams>(12 * kTonne, std::max<core::Grams>(rotting.above_seed - hold - rot, 0));
+  std::cout << "repay, rye uncovered and rotting: above the seed " << rotting.above_seed
+            << " g, next year's hold " << hold << " g and its year's rot " << rot
+            << " g kept, repaid " << repaid_of(rotting) << " g\n";
+  failures += Expect(rot > 480'000 && rot < 520'000 && rotting.above_seed > hold + rot &&
+                         repaid_of(rotting) == expected_rotting,
+                     "repay: next year's hold is kept with the year's rot on top (about 0.5 t "
+                     "on 6 t), and the repayment is that much smaller");
   return failures;
 }
 
@@ -10341,6 +10423,93 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   return failures;
 }
 
+/// THE STORES COVER TOO (0.37.4; boss-core-epoch1-queue [49] (б)): a position
+/// no chain grows is covered by what lies above the seed, as the goods loan
+/// keeps it — this year's debt first, then year by year, each claim with the
+/// rot of its wait. Rye, 5 t a year owed (10 ha × 0.5 × 1 t/ha), no field
+/// growing it: the barn's tonnes decide how many years stand covered.
+int CheckTheStoresCoverAPlanPosition() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {100'000.0F};
+  config.feed_values.assign(3, 0.0F);
+  config.spoil_days.assign(3, 0.0F);
+  core::CropDef rye;
+  rye.resource = core::ResourceId{0};
+  rye.yield_kg_per_ha = 1000.0F;
+  config.crops = {rye};
+  config.plan_grain_share = 1.0F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.5F}};
+
+  core::WorldState world;
+  world.plan.worked_ha_last_year = 10.0F;
+  world.plan.announced = 1;
+  world.plan.due = {5 * kTonne, 0, 0};
+  world.plan.delivered = {0, 0, 0};
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {0, 0, 0};
+  core::AppendRow(world.units, barn);
+
+  const auto uncovered_years = [&config, &world](core::Grams in_barn) {
+    world.units.rows[0].stock[0] = in_barn;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    std::vector<std::int64_t> years;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionUncovered) {
+        years.push_back(alarm.amount);
+      }
+    }
+    return years;
+  };
+  using Years = std::vector<std::int64_t>;
+  failures += Expect(uncovered_years(0) == Years{0, 1, 2},
+                     "plan alarm, the stores: an empty barn covers no year");
+  failures += Expect(uncovered_years(5 * kTonne) == Years{1, 2},
+                     "plan alarm, the stores: 5 t pay this year's 5 t and nothing after");
+  failures += Expect(uncovered_years(10 * kTonne) == Years{2},
+                     "plan alarm, the stores: 10 t pay this year and next, in that order");
+  failures += Expect(uncovered_years(15 * kTonne).empty(),
+                     "plan alarm, the stores: 15 t cover all three years — the alarm that burned "
+                     "beside a full barn is out");
+  // With the rot of each wait: rye keeping 600 days, the three claims are 5 t
+  // held 48, 96 and 144 days — about 5.42 + 5.87 + 6.36 = 17.6 t.
+  config.spoil_days[0] = 600.0F;
+  failures += Expect(uncovered_years(15 * kTonne) == Years{2},
+                     "plan alarm, the stores: with the rot of the wait 15 t no longer reach the "
+                     "year after next");
+  failures += Expect(uncovered_years(18 * kTonne).empty(), "plan alarm, the stores: and 18 t do");
+  // Each wait's own rot, and not the first's for all three (static review of
+  // 0.37.4): at 48 days apiece the three claims came to 16.25 t and 17 t
+  // covered them; at their own waits they come to 17.6 t, and 17 t do not.
+  failures += Expect(uncovered_years(17 * kTonne) == Years{2},
+                     "plan alarm, the stores: 17 t do not reach the year after next either — "
+                     "each claim is held to its own delivery");
+  // NEXT YEAR BY THE HOLD (static review of 0.37.4): the year after's rye on
+  // 10 ha at 100 kg a hectare is sown from next year's harvest, and next
+  // year grows none — so next year's claim is its 5 t AND that 1 t of seed.
+  // 10 t: this year's 5 t, and 5 t left short of next year's 6. The field's
+  // 10 ha of rye in the year after cover that year by the fields.
+  config.spoil_days[0] = 0.0F;
+  config.crops[0].sowing_norm_kg_per_ha = 100.0F;
+  core::FieldRow after;
+  after.kind = core::LandKind::kArable;
+  after.area_ga = 10.0F;
+  after.rotation_assigned = 1;
+  after.rotation_year2 = core::CropId{0};
+  core::AppendRow(world.fields, after);
+  failures += Expect(uncovered_years(10 * kTonne) == Years{1},
+                     "plan alarm, the stores: next year's claim holds the year after's seed too "
+                     "— 10 t pay this year's 5 t and not next year's 6");
+  failures +=
+      Expect(uncovered_years(11 * kTonne).empty(), "plan alarm, the stores: and 11 t pay both");
+  return failures;
+}
+
 /// A LOST SLOT IS UNCOVERED (boss-core-epoch1-resume [98]): the rye of next
 /// year whose window closed this autumn unsown stands as (rye, 1) from that
 /// day; after the turn, the same lost slot as (rye, 0); and the spring kin —
@@ -10709,6 +10878,7 @@ int main() {
   int failures = 0;
   failures += CheckTheChairmanRemovesAField();
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
+  failures += CheckTheStoresCoverAPlanPosition();
   failures += CheckALostSlotIsAnUncoveredPosition();
   failures += CheckAWinterCropTheChainCannotSow();
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
@@ -10787,6 +10957,7 @@ int main() {
   failures += CheckWorkOnlyFeed();
   failures += CheckTheCartHorseEatsOats();
   failures += CheckThePloughKeepsItsOats();
+  failures += CheckNextYearsHoldDoesNotCountTheSeedRung();
   failures += CheckThePloughEatsBeforeNextYear();
   failures += CheckMangerReach();
   failures += CheckStableGate();

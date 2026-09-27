@@ -408,29 +408,6 @@ Grams HeldForDeliveryGrams(const ProductionConfig& config,
   return grams + RotMarginGrams(grams, shelf_days, days);
 }
 
-Grams NextYearPositionGrams(const ProductionConfig& config,
-                            const WorldState& current,
-                            ResourceId resource) {
-  if (!(config.plan_grain_share > 0.0F)) {
-    return 0;
-  }
-  // The area RunYearStart will write, as it writes it: the closing year is
-  // the one `SeedDayAtTheTurn` lies in.
-  const float worked = NextPlanAreaHa(current, SeedDayAtTheTurn(current));
-  Grams grams = 0;
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
-    if (position.crop.value >= config.crops.size()) {
-      continue;
-    }
-    const CropDef& crop = config.crops[position.crop.value];
-    if (crop.yield_kg_per_ha <= 0.0F || crop.resource.value != resource.value) {
-      continue;
-    }
-    grams += PlanPositionGrams(config, position, worked);
-  }
-  return grams;
-}
-
 float NextPlanAreaHa(const WorldState& current, SimDay as_of) {
   const SimDay year_start = (as_of / kDaysPerYear) * kDaysPerYear;
   return std::max({current.plan.worked_ha_last_year,

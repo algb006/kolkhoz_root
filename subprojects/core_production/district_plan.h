@@ -133,22 +133,12 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current);
 /// nothing (ProductionConfig::first_plan_start_stock_share).
 void AnnouncePlan(const ProductionConfig& config, WorldState& current);
 
-/// @brief Grams of `resource` the district's positions will ask NEXT spring,
-/// asked at the year's turn before RunYearStart writes the area: priced off
-/// the area that write will give — the largest of last year's figure, the
-/// closing year's worked arable and this year's running maximum — by
-/// AnnouncePlan's own rule for a position. The goods loan's repayment keeps
-/// it back when next year's position is uncovered (goods_loan.h). Never the
-/// first year's start-stock figure: a turn is never the first year's spring.
-Grams NextYearPositionGrams(const ProductionConfig& config,
-                            const WorldState& current,
-                            ResourceId resource);
-
 /// @brief One position's spring figure off `worked_ha`: a normal yield on its
 /// share of the area, times the plan's share — AnnouncePlan's rule, in one
-/// home for the announcement, next year's figure and the herd's hold of what
-/// next year's harvest will not pay (0.37.2). Nought for a position whose
-/// crop is not in the table or yields nothing.
+/// home for the announcement, the hold of what
+/// next year's harvest will not pay (0.37.2) and the plan alarm's claims on
+/// the stores (0.37.4). Nought for a position whose crop is not in the table
+/// or yields nothing.
 Grams PlanPositionGrams(const ProductionConfig& config,
                         const ProductionConfig::PlanPosition& position,
                         float worked_ha);
@@ -156,10 +146,12 @@ Grams PlanPositionGrams(const ProductionConfig& config,
 /// @brief Grams of `resource` to hold in the stores `days` ahead of a
 /// delivery of `grams`, so that `grams` is still there on the day: `grams`
 /// and the rot of its wait, at the stores' shelf life (spoil_days ×
-/// keeping_factor; spoilage.h, RotMarginGrams — the seed fund's rule). For
-/// the herd's hold of what next year's harvest will not pay (0.37.2;
-/// herd_system.h, FeedAllowance): held to the gram, a year in the barn eats
-/// part of it before it is used.
+/// keeping_factor; spoilage.h, RotMarginGrams — the seed fund's rule). One
+/// home for the herd's hold of what next year's harvest will not pay (0.37.2;
+/// herd_system.h, FeedAllowance), the goods loan's keep-back and the plan
+/// alarm's cover by stock (0.37.4; boss-core-epoch1-queue [49]): kept to the
+/// gram, a position rotted in the barn before it left — seed 1938 kept
+/// 1.12 t for 1.12 owed and shipped 1.00.
 Grams HeldForDeliveryGrams(const ProductionConfig& config,
                            ResourceId resource,
                            Grams grams,

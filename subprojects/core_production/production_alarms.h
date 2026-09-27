@@ -41,8 +41,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
                         const WorldState& world,
                         std::vector<Alarm>& alarms);
 
-// The plan's alarms, CollectPlanAlarms and PlanPositionUncovered, are in
-// plan_alarms.h since 0.36.39.
+// The plan's alarms, CollectPlanAlarms, are in plan_alarms.h since 0.36.39.
 
 /// @brief Appends kWinterCropUnsowable for every arable field whose chain
 /// puts a winter crop in the slot after slot k (k = 0, 1, 2; the chain is a

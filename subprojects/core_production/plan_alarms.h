@@ -1,8 +1,9 @@
 /// @file
 /// @brief The district plan's alarms: a position the chains will not cover
 ///        (kPlanPositionUncovered) and a position the turn will not bring to
-///        the met share (kPlanPositionShort), and the coverage question the
-///        goods loan's repayment asks by the same rule.
+///        the met share (kPlanPositionShort), and what next year's own
+///        harvest will not pay (NextYearUnpaidGrams) — the hold the goods
+///        loan, the herds and the people's issue keep.
 /// @threading SINGLE_THREADED
 /// Called BETWEEN steps, off the completed buffer, from the sim thread — and
 /// at the year's turn by RepayGoodsLoans, inside the production phase, which
@@ -30,7 +31,11 @@ namespace core {
 /// plan and every one of the three calendar years ahead (0 this one, 1 next,
 /// 2 the one after) in which the arable grows its crop on fewer hectares than
 /// worked arable × area share × plan share (alarm_state.h; year 0 priced off
-/// last year's worked arable). A slot already lost does not count (question
+/// last year's worked arable) AND the stores above the seed do not hold it
+/// either (0.37.4; boss-core-epoch1-queue [49] (б)): per produce, this year's
+/// debt first, then year by year the positions the fields leave, each held
+/// with the rot of its wait (HeldForDeliveryGrams) — the measure the goods
+/// loan keeps by. A slot already lost does not count (question
 /// 278; boss-core-epoch1-resume [98]), and a chain that stands before its
 /// first season is read by the year its first slot is grown in. On the
 /// year's last day, also kPlanPositionShort for every position that
@@ -54,17 +59,6 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           const WorldState& world,
                           ResourceId resource,
                           SimDay as_of);
-
-/// @brief Whether a position of the district's plan yielding `resource` is
-/// uncovered in calendar year `year` (0 this, 1 next, 2 the one after) —
-/// kPlanPositionUncovered's test, asked as of `as_of` rather than today: the
-/// turn asks it as of the closing year's last day (SeedDayAtTheTurn), its
-/// chains not yet turned.
-bool PlanPositionUncovered(const ProductionConfig& config,
-                           const WorldState& world,
-                           ResourceId resource,
-                           std::uint32_t year,
-                           SimDay as_of);
 
 }  // namespace core
 
