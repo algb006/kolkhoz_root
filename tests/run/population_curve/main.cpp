@@ -131,6 +131,30 @@ struct Trajectory {
   /// so a settlement could be read as "sixteen years above the thresholds"
   /// while a block nobody printed kept the door shut the whole time.
   std::array<std::uint32_t, 6> block_years = {};
+  /// THE DAY, NOT THE YEAR (boss-core-epoch1-queue [15]): the transition is
+  /// ordered the first DAY the door opens, and the yearly sample above could
+  /// not say what held it — "all six open together: 0 years in 0 villages"
+  /// on villages that went. Per condition in TransitionPolicy's order (the
+  /// indices, then the six blocks): the first Epoch I day it stood met (-1
+  /// never), and the Epoch I days it ALONE held the door (SoleHoldout).
+  std::array<std::int64_t, run::TransitionPolicy::kConditions> condition_first_met_day = {
+      -1, -1, -1, -1, -1, -1, -1};
+  std::array<std::uint32_t, run::TransitionPolicy::kConditions> sole_holdout_days = {};
+  /// Days walked in Epoch I: what the two above are counted against.
+  std::uint32_t epoch_one_days = 0;
+  /// WHAT SHUTS THE TWO STANDING BLOCKS (boss-core-epoch1-queue [18]): from
+  /// the first day each was met, the Epoch I days it stood shut, and on those
+  /// days, by unit type row, the kolkhoz types below the era's level and the
+  /// social types not standing. Seed 1931 met every condition by year 6 and
+  /// never all on one day; these say which building shut which.
+  std::uint32_t units_shut_days = 0;
+  std::map<std::uint16_t, std::uint32_t> units_below_days;
+  std::uint32_t social_shut_days = 0;
+  std::map<std::uint16_t, std::uint32_t> social_missing_days;
+  std::vector<std::string> unit_type_keys;
+  /// Why no upgrade was ordered on the days a kolkhoz unit stood below the
+  /// era's level (upgrade_policy.h, Held).
+  run::UpgradePolicy::Held upgrade_held;
   /// WAS IT EVER ASKED FOR. A nought in a block is two different worlds —
   /// "the fixture never ordered it" and "it was ordered and never came" —
   /// and the two have opposite repairs: the first is a hole in the run, the
@@ -192,6 +216,8 @@ struct Trajectory {
   std::vector<std::string> resource_keys;
   /// What held the social objects' marking (social_objects_policy.h, Held).
   run::SocialObjectsPolicy::Held social_held;
+  /// Marks made while a house site stood, which the old veto held.
+  std::uint32_t social_marked_past_a_house_site = 0;
   std::vector<run::SocialObjectsPolicy::Fate> social_fates;
   std::vector<std::string> social_keys;
   /// Where the logs went, year by year (timber_flow_tally.h).
@@ -342,6 +368,49 @@ bool g_no_planting = false;
 /// read on kSeeds; a verdict on another sample is printed, not trusted).
 std::uint64_t g_seed_offset = 0;
 
+/// One Epoch I day of the two STANDING blocks, from the first day each was
+/// met: shut, and by what (Trajectory::units_below_days, social_missing_days).
+/// The lists are the core's door's own (TransitionPolicy::Catalog), the level
+/// its RequiredUnitLevel.
+void CountStandingShut(const run::TransitionPolicy& transition,
+                       const core::WorldState& today,
+                       const std::array<bool, run::TransitionPolicy::kConditions>& met,
+                       Trajectory& out) {
+  constexpr std::size_t kSocial = 5;
+  constexpr std::size_t kUnits = 6;
+  const core::ReadinessCatalog& catalog = transition.Catalog();
+  if (out.condition_first_met_day[kUnits] >= 0 && !met[kUnits]) {
+    ++out.units_shut_days;
+    std::vector<std::uint16_t> below;
+    for (const core::UnitRow& unit : today.units.rows) {
+      const bool kolkhoz = std::ranges::any_of(
+          catalog.kolkhoz_types,
+          [&unit](core::UnitTypeId type) { return type.value == unit.type.value; });
+      if (unit.level == 0 || unit.dead != 0 || !kolkhoz ||
+          unit.level >= core::RequiredUnitLevel(catalog, unit.type, today.epoch)) {
+        continue;
+      }
+      if (std::ranges::find(below, unit.type.value) == below.end()) {
+        below.push_back(unit.type.value);
+      }
+    }
+    for (const std::uint16_t type : below) {
+      ++out.units_below_days[type];
+    }
+  }
+  if (out.condition_first_met_day[kSocial] >= 0 && !met[kSocial]) {
+    ++out.social_shut_days;
+    for (const core::UnitTypeId type : catalog.social_objects) {
+      const bool stands = std::ranges::any_of(today.units.rows, [type](const core::UnitRow& unit) {
+        return unit.type.value == type.value && unit.level >= 1 && unit.dead == 0;
+      });
+      if (!stands) {
+        ++out.social_missing_days[type.value];
+      }
+    }
+  }
+}
+
 bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   const run::Simulation world = run::Start(seed);
   if (!world) {
@@ -363,6 +432,14 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     builder.planting.Disable();
   }
   run::TimberFlowTally timber(*world.tables);
+  if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
+    const std::uint32_t key_column = types->FindColumn("key");
+    for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
+      out.unit_type_keys.emplace_back(key_column == core::kNoTableColumn
+                                          ? std::to_string(row)
+                                          : std::string(types->CellText(row, key_column)));
+    }
+  }
   if (const core::ITable* const resources = world.tables->FindTable("resources")) {
     const std::uint32_t key_column = resources->FindColumn("key");
     for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
@@ -383,6 +460,22 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       LiveOneDay(*simulation, builder.upgrades, out);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
+      // What held the transition TODAY, by the order's own door.
+      const core::WorldState& today = simulation->CompletedState();
+      if (today.epoch == core::Epoch::kOne) {
+        ++out.epoch_one_days;
+        const auto met = builder.transition.ConditionsMet(today);
+        for (std::size_t condition = 0; condition < met.size(); ++condition) {
+          if (met[condition] && out.condition_first_met_day[condition] < 0) {
+            out.condition_first_met_day[condition] = static_cast<std::int64_t>(today.calendar.day);
+          }
+        }
+        const int sole = builder.transition.SoleHoldout(today);
+        if (sole >= 0) {
+          ++out.sole_holdout_days[static_cast<std::size_t>(sole)];
+        }
+        CountStandingShut(builder.transition, today, met, out);
+      }
     }
     const core::WorldState& state = simulation->CompletedState();
     const auto population = static_cast<std::uint32_t>(state.residents.rows.size());
@@ -540,6 +633,8 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.upgrades_ordered = builder.upgrades.ordered();
   out.upgrade_fates = builder.upgrades.FatesAtEnd(*simulation);
   out.social_held = builder.social.held();
+  out.upgrade_held = builder.upgrades.held();
+  out.social_marked_past_a_house_site = builder.social.marked_past_a_house_site();
   out.social_fates = builder.social.fates();
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t key_column = types->FindColumn("key");
@@ -883,7 +978,81 @@ int main(int argc, char** argv) {
       open_years += static_cast<float>(walk.block_years[index]);
     }
     std::cout << "  " << kBlockNames[index] << "  "
-              << (open_years / static_cast<float>(walks.size())) << '\n';
+              << (open_years / static_cast<float>(walks.size())) << "  by village:";
+    // BY VILLAGE, the mean's place (2026-09-27): seed 1931 alone never
+    // reached Epoch II under the houses-first veto, and the mean could not
+    // say which block held it.
+    for (const Trajectory& walk : walks) {
+      std::cout << ' ' << walk.block_years[index];
+    }
+    std::cout << '\n';
+  }
+  // THE DAY'S ANSWER, BY VILLAGE (boss-core-epoch1-queue [15]): the first
+  // campaign year each condition stood met ("-" never), and the Epoch I days
+  // it alone held the door. The office's days are the fixture's own: the run
+  // repairs it only once the other six are met (office_policy.h).
+  constexpr std::array<const char*, run::TransitionPolicy::kConditions> kConditionNames = {
+      "индексы 3 года    ",
+      "своя тяга/база    ",
+      "зимовка 2 года    ",
+      "правление ≤1%     ",
+      "разнообразие пищи ",
+      "4 соцобъекта из 6 ",
+      "юниты на уровне   "};
+  std::cout << "population_curve: transition conditions by village, first year met / Epoch I days "
+               "it ALONE held the door (villages "
+            << walks.size() << "; Epoch I days by village:";
+  for (const Trajectory& walk : walks) {
+    std::cout << ' ' << walk.epoch_one_days;
+  }
+  std::cout << ")\n";
+  for (std::size_t condition = 0; condition < kConditionNames.size(); ++condition) {
+    std::cout << "  " << kConditionNames[condition] << ':';
+    std::uint32_t villages_held = 0;
+    for (const Trajectory& walk : walks) {
+      const std::int64_t day = walk.condition_first_met_day[condition];
+      std::cout << ' '
+                << (day < 0 ? std::string("-") : std::to_string(day / core::kDaysPerYear + 1))
+                << '/' << walk.sole_holdout_days[condition];
+      villages_held += walk.sole_holdout_days[condition] > 0 ? 1U : 0U;
+    }
+    std::cout << "  — alone in " << villages_held << " villages\n";
+  }
+  // AND WHAT SHUT THE TWO STANDING BLOCKS, village by village (boss-core-
+  // epoch1-queue [18]-[19]), from the first day each was met: the days shut,
+  // and on them the types below the era's level / the social types not
+  // standing, by days.
+  for (const Trajectory& walk : walks) {
+    const auto key_of = [&walk](std::uint16_t type) {
+      return type < walk.unit_type_keys.size() ? walk.unit_type_keys[type] : std::to_string(type);
+    };
+    std::cout << "population_curve: seed " << walk.seed
+              << " after first met — юниты на уровне shut " << walk.units_shut_days
+              << " days, below level:";
+    for (const auto& [type, days] : walk.units_below_days) {
+      std::cout << ' ' << key_of(type) << 'x' << days;
+    }
+    std::cout << "; 4 соцобъекта shut " << walk.social_shut_days << " days, not standing:";
+    for (const auto& [type, days] : walk.social_missing_days) {
+      std::cout << ' ' << key_of(type) << 'x' << days;
+    }
+    std::cout << '\n';
+    // AND WHY THE RAISE DID NOT COME (upgrade_policy.h, Held), every day a
+    // kolkhoz unit stood below the era's level, the first reason of the day.
+    const run::UpgradePolicy::Held& held = walk.upgrade_held;
+    std::cout << "population_curve: seed " << walk.seed
+              << " upgrade not ordered, days below level — farm first " << held.farm_first
+              << ", yard not up " << held.farm_not_standing << ", another raise building "
+              << held.one_going_up << ", unit a site already " << held.site_open << ", gate closed "
+              << held.gate_closed << ", next rung short " << held.materials_short
+              << " (first short:";
+    for (const auto& [resource, days] : held.short_by_resource) {
+      std::cout << ' '
+                << (resource < walk.resource_keys.size() ? walk.resource_keys[resource]
+                                                         : std::to_string(resource))
+                << 'x' << days;
+    }
+    std::cout << "), UNEXPLAINED " << held.unexplained << '\n';
   }
 
   // WAS IT EVER ASKED FOR. Three numbers that turn a nought in a block from a
@@ -918,11 +1087,13 @@ int main(int argc, char** argv) {
   float going_up = 0.0F;
   float farm_first = 0.0F;
   float house_waits = 0.0F;
+  float past_house_site = 0.0F;
   for (const Trajectory& walk : walks) {
     nothing_left += static_cast<float>(walk.social_held.nothing_left);
     going_up += static_cast<float>(walk.social_held.one_going_up);
     farm_first += static_cast<float>(walk.social_held.farm_first);
     house_waits += static_cast<float>(walk.social_held.a_house_waits);
+    past_house_site += static_cast<float>(walk.social_marked_past_a_house_site);
   }
   // THE SIX BY TYPE (boss, boss-core-epoch1-3 seq 7): per village, for each
   // wanted type, the campaign year it was first a site and first stood
@@ -971,7 +1142,9 @@ int main(int argc, char** argv) {
             << " — every object stands " << (nothing_left / villages) << ", one still going up "
             << (going_up / villages) << ", the farm first " << (farm_first / villages)
             << ", a house waits " << (house_waits / villages)
-            << " (days before the farm stood are not counted)\n";
+            << " (a roofless family or a waiting couple; days before the farm stood are not "
+               "counted); marks made past a house site ahead of need "
+            << (past_house_site / villages) << "\n";
   // WHERE THE LOGS WENT (boss seq 25): the lead village year by year, then
   // the nine villages' thirty-three-year totals, means of nine.
   if (!walks.empty()) {

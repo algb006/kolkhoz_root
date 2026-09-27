@@ -36,6 +36,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -74,11 +75,21 @@ class UpgradePolicy {
   /// @param farm_first The farm's own shortage has a site waiting: nothing is
   ///        raised today.
   void RunDay(core::ISimulation& simulation, bool farm_first) {
-    if (catalog_.kolkhoz_types.empty() || farm_first) {
+    if (catalog_.kolkhoz_types.empty()) {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
+    // WHY NOTHING WAS RAISED TODAY, counted only on days a kolkhoz unit
+    // stands below the era's level (2026-09-27, boss-core-epoch1-queue [19]:
+    // seed 1931's bathhouse stood at level 1 for 1320 days and kept the era
+    // shut, and the policy said nothing of why).
+    const bool wanted = AnyBelowLevel(world);
+    if (farm_first) {
+      held_.farm_first += wanted ? 1U : 0U;
+      return;
+    }
     if (world.chairman.horses_stabled == 0) {
+      held_.farm_not_standing += wanted ? 1U : 0U;
       return;  // the same scar as the office's: not before the farm stands
     }
     // ONE UPGRADE AT A TIME — AND ONLY AN UPGRADE COUNTS.
@@ -96,9 +107,18 @@ class UpgradePolicy {
     for (const core::UnitRow& unit : world.units.rows) {
       if (unit.dead == 0 && unit.level >= 1 &&
           unit.construction.phase == core::ConstructionPhase::kBuilding) {
+        held_.one_going_up += wanted ? 1U : 0U;
         return;
       }
     }
+    // The FIRST unit below level's reason is the day's (one reason a day).
+    bool reason_taken = false;
+    const auto hold = [&reason_taken](std::uint32_t& counter) {
+      if (!reason_taken) {
+        ++counter;
+        reason_taken = true;
+      }
+    };
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.level == 0 || unit.dead != 0 || !Kolkhoz(unit.type)) {
@@ -114,10 +134,12 @@ class UpgradePolicy {
       // insulated — cannot take an upgrade until that closes: 19 orders a
       // village went onto such units and were refused, measured the same day.
       if (unit.construction.phase != core::ConstructionPhase::kNone) {
+        hold(held_.site_open);
         continue;
       }
       const auto next = static_cast<std::uint8_t>(unit.level + 1U);
       if (!GateOpen(start_gate_, world, unit.type, next)) {
+        hold(held_.gate_closed);
         continue;
       }
       // THE NEXT LEVEL'S RECIPE, and the door for it already existed.
@@ -136,7 +158,13 @@ class UpgradePolicy {
       // cause is elsewhere, and it does not say WHICH elsewhere. I read a
       // missing door out of it and offered to build one that was already
       // there.
-      if (!simulation.MaterialsShortFor(world.units.row_ids[row]).empty()) {
+      const std::vector<core::MaterialShortfall> short_lines =
+          simulation.MaterialsShortFor(world.units.row_ids[row]);
+      if (!short_lines.empty()) {
+        if (!reason_taken) {
+          ++held_.short_by_resource[short_lines.front().resource.value];
+        }
+        hold(held_.materials_short);
         continue;
       }
       core::OrderRow order;
@@ -151,6 +179,43 @@ class UpgradePolicy {
                      .phase = unit.construction.phase};
       return;
     }
+    // Wanted, and no unit gave a reason: the instrument's own hole.
+    held_.unexplained += wanted && !reason_taken ? 1U : 0U;
+  }
+
+  /// Days a kolkhoz unit stood below the era's level and nothing was
+  /// raised, by the first reason that held it, in RunDay's order.
+  struct Held {
+    std::uint32_t farm_first = 0;         ///< the farm's own shortage waits for its recipe
+    std::uint32_t farm_not_standing = 0;  ///< the chairman's yard not up yet
+    std::uint32_t one_going_up = 0;       ///< another upgrade is building
+    std::uint32_t site_open = 0;          ///< the unit is a site already (delivering, repair…)
+    std::uint32_t gate_closed = 0;        ///< the start gate said no
+    std::uint32_t materials_short = 0;    ///< the next rung's recipe is short
+    std::uint32_t unexplained = 0;        ///< none of the above: must stay nought
+    /// The first short line on the materials_short days, by resource row.
+    std::map<std::uint16_t, std::uint32_t> short_by_resource;
+  };
+
+  const Held& held() const { return held_; }
+
+  /// @brief The row of the kolkhoz unit the era's level waits on — RunDay's
+  /// first candidate: standing, below the level this era requires, no site
+  /// open — or kNoRow (rise_watch.h). THE SAME KNOT AS THE YARD'S (2026-09-27,
+  /// boss-core-epoch1-queue [21]-[22]): an upgrade is refused until its whole
+  /// recipe is in the village, so it is no site, and the limit bought nothing
+  /// for it — seed 1931's bathhouse waited 426 days with glass its first
+  /// short line, and the era never came.
+  std::uint32_t RowWaitingToRise(const core::WorldState& world) const {
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.level != 0 && unit.dead == 0 && Kolkhoz(unit.type) &&
+          unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch) &&
+          unit.construction.phase == core::ConstructionPhase::kNone) {
+        return row;
+      }
+    }
+    return core::kNoRow;
   }
 
   /// @brief The fixture difference, in words, BEFORE the run measures.
@@ -315,6 +380,20 @@ class UpgradePolicy {
     }
     return false;
   }
+
+  /// A standing kolkhoz unit below the era's level: RunDay's own candidate
+  /// test, before its reasons.
+  bool AnyBelowLevel(const core::WorldState& world) const {
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.level != 0 && unit.dead == 0 && Kolkhoz(unit.type) &&
+          unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Held held_;
 
   /// The score's catalogue: the kolkhoz's types and the ladders by era.
   core::ReadinessCatalog catalog_;

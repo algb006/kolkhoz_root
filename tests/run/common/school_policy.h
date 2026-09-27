@@ -16,9 +16,10 @@
 /// stands (the horses stabled); then one wooden school (level 1) once ten
 /// children of the enrolment ages stand in the village, marked near the
 /// village's houses, and started when its recipe is covered — only while the
-/// farm has no shortage waiting and the housing queue is empty: no couple
-/// waiting, no family without a roof, no house going up. A family without a
-/// roof comes before a classroom.
+/// farm has no shortage waiting and nobody needs a house now: no couple
+/// waiting, no family without a roof. A family without a roof comes before a
+/// classroom; a house site going up ahead of need does not (boss-core-
+/// epoch1-queue [1], item 1).
 
 #ifndef TESTS_RUN_COMMON_SCHOOL_POLICY_H_
 #define TESTS_RUN_COMMON_SCHOOL_POLICY_H_
@@ -87,9 +88,16 @@ class SchoolPolicy {
     // its 130 logs and crew of twelve then took what the next houses needed,
     // and on seed 1929 the village fell from 107 to 56 by year five as
     // families left for want of a roof (claude/analysis/
-    // school_prosthesis_predictions.md). A family without a roof comes first,
-    // and so does every house going up.
-    bool a_house_waits = !world.wedding_waits.rows.empty();
+    // school_prosthesis_predictions.md). A family without a roof comes first.
+    // A HOUSE SITE AHEAD OF NEED NO LONGER DOES (boss-core-epoch1-queue [1],
+    // item 1: the social objects' rule, «school and office by the same
+    // rule»): the housing policy keeps one going up in 98-100 % of the months,
+    // and the veto that counted it was a veto on the school for good. The
+    // scar above is a roofless family's, and a roofless family still holds it
+    // — and the houses' logs and builders hold the start (boss-core-epoch1-
+    // queue [5]; HousePolicy::HousesWantMaterials).
+    bool a_house_waits = !world.wedding_waits.rows.empty() ||
+                         HousePolicy::HousesWantMaterials(simulation, world, house_);
     for (const core::FamilyRow& family : world.families.rows) {
       a_house_waits = a_house_waits || family.house.value == core::kInvalidEntityIdValue;
     }
@@ -97,9 +105,6 @@ class SchoolPolicy {
       const core::UnitRow& unit = world.units.rows[row];
       const bool marked =
           unit.level == 0 && unit.construction.phase == core::ConstructionPhase::kMarked;
-      if (unit.type.value == house_.value && unit.level == 0) {
-        a_house_waits = true;
-      }
       if (unit.type.value != school_.value) {
         continue;
       }
@@ -139,7 +144,9 @@ class SchoolPolicy {
               << ": FIXTURE DIFFERS FROM THE START CANON — once the chairman's yard stands, "
                  "the run's chairman marks ONE SCHOOL when ten children of the enrolment ages "
                  "live in the village, and starts it when its recipe is covered and no farm "
-                 "shortage, couple, roofless family or house site is waiting (boss, parcel 358)\n";
+                 "shortage, couple or roofless family is waiting and the houses want neither "
+                 "its logs nor its builders (boss, parcel 358; a house site ahead of need no "
+                 "longer holds it by itself)\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.

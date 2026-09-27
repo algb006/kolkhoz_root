@@ -29,10 +29,21 @@
 ///
 /// ONE AT A TIME, AND HOUSES FIRST. A village that raises five public
 /// buildings at once is not a village the rest of the run was measured on.
-/// The housing queue keeps its veto on MARKING a new object, but not on
-/// finishing one already marked: a settlement that always has a house going
-/// up would otherwise never raise anything else, which is precisely the gate
-/// that kept these five at nought.
+/// A REAL NEED for housing keeps its veto on MARKING a new object — a family
+/// without a roof, a couple waiting for a house now — but not on finishing
+/// one already marked: a settlement that always has a house going up would
+/// otherwise never raise anything else, which is precisely the gate that kept
+/// these five at nought. The START waits only while the houses want its logs
+/// or its builders (HousePolicy::HousesWantMaterials; boss-core-epoch1-queue
+/// [5]): without it the population by year 14 fell from 450 to 374 on nine
+/// seeds.
+///
+/// A HOUSE SITE AHEAD OF NEED DOES NOT HOLD IT (boss-core-epoch1-resume [96],
+/// econ's neglect-floor §10): the housing policy keeps sites going up ahead of
+/// the families, so a house site stood in 98–100 % of the months and the veto
+/// that counted it marked no missing object on any of 29 seeds. Those sites
+/// are the reserve, not the need; the chairman marks the selpo while the
+/// street grows ahead of the families.
 
 #ifndef TESTS_RUN_COMMON_SOCIAL_OBJECTS_POLICY_H_
 #define TESTS_RUN_COMMON_SOCIAL_OBJECTS_POLICY_H_
@@ -99,6 +110,10 @@ class SocialObjectsPolicy {
       a_house_waits = a_house_waits || family.house.value == core::kInvalidEntityIdValue;
     }
     bool one_is_going_up = false;
+    // A house site at level 0: counted, no longer a veto on marking (the
+    // header's note).
+    bool a_house_site_only = false;
+    const bool houses_want_materials = HousePolicy::HousesWantMaterials(simulation, world, house_);
     // BY TYPE (the six-types measure, boss-core-epoch1-3 seq 7): the first
     // day each wanted type was a site, the first it stood, and its site-days.
     for (std::size_t index = 0; index < wanted_.size(); ++index) {
@@ -130,8 +145,8 @@ class SocialObjectsPolicy {
     }
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
-      if (unit.type.value == house_.value && unit.level == 0) {
-        a_house_waits = true;
+      if (unit.type.value == house_.value && unit.level == 0 && unit.dead == 0) {
+        a_house_site_only = true;
       }
       if (!Wanted(unit.type) || unit.dead != 0) {
         continue;
@@ -154,7 +169,13 @@ class SocialObjectsPolicy {
         // STARTED WITHOUT THE HOUSING VETO, on purpose. The veto belongs on
         // MARKING a new one; applied here it leaves a marked plot standing
         // empty for thirty-three years, which is what the measurement found.
-        if (marked && !farm_first &&
+        // BUT NOT WITH THE HOUSES' LOGS AND BUILDERS (boss-core-epoch1-queue
+        // [5]; HousePolicy::HousesWantMaterials): marked freely since the
+        // veto narrowed, the objects started on covered recipes took what
+        // the houses were waiting for, and the population by year 14 fell.
+        const bool houses_first = marked && houses_want_materials;
+        starts_held_for_houses_ += houses_first ? 1U : 0U;
+        if (marked && !farm_first && !houses_first &&
             simulation.MaterialsShortFor(world.units.row_ids[row]).empty() &&
             GateOpen(start_gate_, world, unit.type, unit.construction.target_level)) {
           core::OrderRow start;
@@ -190,6 +211,7 @@ class SocialObjectsPolicy {
             world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
         orders.push_back(mark);
         ++marked_;
+        marked_past_a_house_site_ += a_house_site_only ? 1U : 0U;
       }
     }
     if (!orders.empty()) {
@@ -202,8 +224,10 @@ class SocialObjectsPolicy {
     std::cout << run_name
               << ": FIXTURE DIFFERS FROM THE START CANON — once the chairman's yard stands, the "
                  "run's chairman marks the era's SOCIAL OBJECTS one at a time, taking the list "
-                 "from the design base by class and era rather than by name, and starts each "
-                 "when its recipe is covered. The school keeps its own rule. Measured on "
+                 "from the design base by class and era rather than by name, while no family "
+                 "is roofless and no couple waits, and starts each when its recipe is covered "
+                 "and the houses want neither its logs nor its builders. The school keeps its "
+                 "own rule. Measured on "
                  "2026-09-18 before this existed: one of the six was ever marked in "
                  "thirty-three years of nine villages, so the transition's «4 из 6» block stood "
                  "shut in every year and its component read nought for ever (boss, blockers "
@@ -214,13 +238,21 @@ class SocialObjectsPolicy {
 
   std::uint32_t started() const { return started_; }
 
+  /// Of marked(), the marks made while a house site stood at level 0 — the
+  /// ones the old veto on house sites would have held ([96]'s instrument).
+  std::uint32_t marked_past_a_house_site() const { return marked_past_a_house_site_; }
+
+  /// Site-days a marked object's start was held for the houses' logs or
+  /// builders (HousePolicy::HousesWantMaterials).
+  std::uint32_t starts_held_for_houses() const { return starts_held_for_houses_; }
+
   /// Days after the farm stood on which no new object was marked, by the
   /// first reason that held it, in RunDay's order.
   struct Held {
     std::uint32_t nothing_left = 0;   ///< every object of the list stands or is a site
     std::uint32_t one_going_up = 0;   ///< one at a time: a site still at level 0
     std::uint32_t farm_first = 0;     ///< the farm's own shortage waits for its recipe
-    std::uint32_t a_house_waits = 0;  ///< a couple, a roofless family or a house site
+    std::uint32_t a_house_waits = 0;  ///< a couple waiting or a roofless family
   };
 
   const Held& held() const { return held_; }
@@ -293,6 +325,10 @@ class SocialObjectsPolicy {
   std::uint32_t marked_ = 0;
 
   std::uint32_t started_ = 0;
+
+  std::uint32_t marked_past_a_house_site_ = 0;
+
+  std::uint32_t starts_held_for_houses_ = 0;
 
   /// Marked-and-short days in a row after which a site no longer holds the
   /// queue: a quarter of the year. The run's number.

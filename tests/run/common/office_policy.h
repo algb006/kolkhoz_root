@@ -127,11 +127,16 @@ class OfficePolicy {
     }
     std::vector<core::OrderRow> orders;
     bool an_office = false;
-    // A FAMILY WITHOUT A ROOF COMES FIRST, and so does every house going up.
+    // A FAMILY WITHOUT A ROOF COMES FIRST, and a couple waiting for a house.
     // The office is the first building the farm ORDERS; that is not the same
     // as the first it needs, and the design's own order of care puts people
-    // before papers.
-    bool a_house_waits = !world.wedding_waits.rows.empty();
+    // before papers. A HOUSE SITE AHEAD OF NEED NO LONGER HOLDS IT (boss-
+    // core-epoch1-queue [1], item 1, the social objects' rule): the housing
+    // policy keeps one going up in 98-100 % of the months. The houses' logs
+    // and builders hold it instead (boss-core-epoch1-queue [5];
+    // HousePolicy::HousesWantMaterials).
+    bool a_house_waits = !world.wedding_waits.rows.empty() ||
+                         HousePolicy::HousesWantMaterials(simulation, world, house_);
     for (const core::FamilyRow& family : world.families.rows) {
       a_house_waits = a_house_waits || family.house.value == core::kInvalidEntityIdValue;
     }
@@ -139,9 +144,6 @@ class OfficePolicy {
       const core::UnitRow& unit = world.units.rows[row];
       const bool marked =
           unit.level == 0 && unit.construction.phase == core::ConstructionPhase::kMarked;
-      if (unit.type.value == house_.value && unit.level == 0) {
-        a_house_waits = true;
-      }
       if (unit.type.value != office_.value) {
         continue;
       }
@@ -180,7 +182,9 @@ class OfficePolicy {
     std::cout << run_name
               << ": FIXTURE DIFFERS FROM THE START CANON — once the chairman's yard stands, the "
                  "run's chairman marks ONE FARM OFFICE and starts it when its recipe is covered "
-                 "and no farm shortage, couple, roofless family or house site is waiting. THE "
+                 "and no farm shortage, couple or roofless family is waiting and the houses "
+                 "want neither its logs nor its builders (a house site ahead of need no longer "
+                 "holds it by itself). THE "
                  "CANON SHIPS NO OFFICE ON PURPOSE — the chairman begins in the church annexe, "
                  "and the office being the farm's FIRST ORDERED building is precisely what "
                  "electrification's third blocker stands on (electricity design §3). Do not "

@@ -301,6 +301,40 @@ class HousePolicy {
     return core::Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
   }
 
+  /// @brief The houses want the logs or the builders a public building's
+  /// start would take (boss-core-epoch1-queue [5]): a house site marked and
+  /// short of its recipe — the logs go to it first — or one started and not
+  /// yet up (delivering or building) — the builders go to it first. Asked by
+  /// the social objects, the school and the office before a START; their
+  /// marking does not ask it.
+  ///
+  /// WHY: with the veto on house sites narrowed to a real need, the social
+  /// objects were marked 6-7 a seed instead of 1-4, started whenever their
+  /// recipe was covered, and the population_curve median by year 14 fell
+  /// from 450 to 374 on nine seeds (the canon's own assertion is 380). The
+  /// school and the office moved one seed of nine more.
+  /// @param house The wooden house's type (the housing policy's own).
+  static bool HousesWantMaterials(core::ISimulation& simulation,
+                                  const core::WorldState& world,
+                                  core::UnitTypeId house) {
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != house.value || unit.level != 0 || unit.dead != 0) {
+        continue;
+      }
+      const core::ConstructionPhase phase = unit.construction.phase;
+      if (phase == core::ConstructionPhase::kDelivering ||
+          phase == core::ConstructionPhase::kBuilding) {
+        return true;
+      }
+      if (phase == core::ConstructionPhase::kMarked &&
+          !simulation.MaterialsShortFor(world.units.row_ids[row]).empty()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
  private:
   /// One year's queue by cause (ReportQueue).
   struct QueueTally {

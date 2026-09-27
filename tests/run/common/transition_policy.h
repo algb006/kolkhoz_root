@@ -24,8 +24,11 @@
 #ifndef TESTS_RUN_COMMON_TRANSITION_POLICY_H_
 #define TESTS_RUN_COMMON_TRANSITION_POLICY_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <span>
 #include <string_view>
 
@@ -74,6 +77,43 @@ class TransitionPolicy {
            core::OrderRefusal::kNone;
   }
 
+  /// The seven conditions the order asks, in TransitionRefusal's order: the
+  /// indices held three years, then the six blocks.
+  static constexpr std::size_t kConditions = 7;
+
+  /// @brief Which of the seven stand met today — each asked through the
+  /// core's own door with every OTHER forced open, so the answer is the
+  /// order's and not a second copy of its rules.
+  [[nodiscard]] std::array<bool, kConditions> ConditionsMet(const core::WorldState& world) const {
+    std::array<bool, kConditions> met = {};
+    for (std::size_t condition = 0; condition < kConditions; ++condition) {
+      met[condition] =
+          RefusalWith(world, condition, /*force_all_but=*/true) == core::OrderRefusal::kNone;
+    }
+    return met;
+  }
+
+  /// @brief The one condition that alone holds the door shut today: forced
+  /// open, the core answers kNone. -1 when the door is open, or when two or
+  /// more hold it (2026-09-27, boss-core-epoch1-queue [15]: «что держит
+  /// переход» is a question of the day the order is asked, and the yearly
+  /// sample could not see it).
+  [[nodiscard]] int SoleHoldout(const core::WorldState& world) const {
+    if (Refusal(world) == core::OrderRefusal::kNone) {
+      return -1;
+    }
+    for (std::size_t condition = 0; condition < kConditions; ++condition) {
+      if (RefusalWith(world, condition, /*force_all_but=*/false) == core::OrderRefusal::kNone) {
+        return static_cast<int>(condition);
+      }
+    }
+    return -1;
+  }
+
+  /// @brief The catalogue the core's door is asked with (the runs' printing
+  /// of what holds a block reads the same lists).
+  [[nodiscard]] const core::ReadinessCatalog& Catalog() const { return catalog_; }
+
   /// @brief The campaign year the village was first seen in Epoch II,
   /// counted from 1 as the runs count them ("year 7"), or 0 when it never
   /// went. The calendar counts from 0, hence the +1.
@@ -89,6 +129,44 @@ class TransitionPolicy {
   }
 
  private:
+  /// TransitionRefusal with `condition` forced open — or, with
+  /// `force_all_but`, with every condition BUT it forced open.
+  core::OrderRefusal RefusalWith(const core::WorldState& world,
+                                 std::size_t condition,
+                                 bool force_all_but) const {
+    core::ReadinessState readiness = world.readiness;
+    core::TransitionBlocks standing = core::StandingBlocks(catalog_, world);
+    for (std::size_t each = 0; each < kConditions; ++each) {
+      if ((each == condition) == force_all_but) {
+        continue;
+      }
+      switch (each) {
+        case 0:
+          readiness.both_above_run = std::numeric_limits<std::uint8_t>::max();
+          break;
+        case 1:
+          readiness.blocks.own_traction = 1;
+          break;
+        case 2:
+          readiness.blocks.wintering_two_years = 1;
+          break;
+        case 3:
+          standing.office_repaired = 1;
+          break;
+        case 4:
+          readiness.blocks.food_variety = 1;
+          break;
+        case 5:
+          standing.social_objects = 1;
+          break;
+        default:
+          standing.units_at_level = 1;
+          break;
+      }
+    }
+    return core::TransitionRefusal(readiness, standing, world.epoch);
+  }
+
   core::ReadinessCatalog catalog_;
   std::uint16_t year_taken_ = 0;
 };

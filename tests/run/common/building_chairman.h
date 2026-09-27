@@ -71,6 +71,7 @@ class BuildingChairman {
     WireSawGate(social, sawmill);
     WireSawGate(upgrades, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
+    WireUpgradeRiseWatch(yard, upgrades, limit);
     // THE SAW KEEPS A RESERVE (boss, parcel 314's P1; the Epoch II boards,
     // boss-core-epoch1-3 seq 3). Sawing only towards the MARKED sites' need,
     // the saw stood paused 791 days of about 1536 a village: an upgrade is
@@ -98,6 +99,21 @@ class BuildingChairman {
     felling_policy.SetRiseWatch(watch);
     limit_policy.SetRiseWatch(watch);
     digging_policy.SetRiseWatch(watch);
+  }
+
+  /// @brief Tells the LIMIT, after the yard, of the upgrade the era's level
+  /// waits on (UpgradePolicy::RowWaitingToRise): it buys the lot for the
+  /// step as it does for a marked site (boss-core-epoch1-queue [22], (а)).
+  /// The limit alone — the felling and the digging are not told, one cause a
+  /// measure. Called after WireRiseWatches, whose watch it replaces on the
+  /// limit; a run that wires by hand calls both.
+  static void WireUpgradeRiseWatch(const YardPolicy& yard_policy,
+                                   const UpgradePolicy& upgrade_policy,
+                                   LimitPolicy& limit_policy) {
+    limit_policy.SetRiseWatch([&yard_policy, &upgrade_policy](const core::WorldState& world) {
+      const std::uint32_t yard_row = yard_policy.RowWaitingToRise(world);
+      return yard_row != core::kNoRow ? yard_row : upgrade_policy.RowWaitingToRise(world);
+    });
   }
 
   /// @brief The school asks the sawmill's question too (parcel 305): the
