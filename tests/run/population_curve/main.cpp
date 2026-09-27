@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/run_harness.h"
 #include "../common/timber_flow_tally.h"
@@ -318,12 +319,17 @@ constexpr float kHotAfternoonCelsius = 25.0F;
 /// population bands are the proof.
 void LiveOneDay(core::ISimulation& simulation,
                 const run::UpgradePolicy& upgrades,
-                Trajectory& out) {
+                Trajectory& out,
+                run::BirthsHerdTally* births_herd = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
     simulation.AdvanceStep();
     const core::WorldState& state = simulation.CompletedState();
+    // econ's work sample (births_herd_tally.h), once a day at noon.
+    if (births_herd != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      births_herd->SampleWork(state);
+    }
     if (awaiting.value != core::kInvalidEntityIdValue) {
       for (const core::SimEvent& event : state.step_events) {
         if (event.kind == core::EventKind::kOrderRefused && event.unit.value == awaiting.value &&
@@ -375,6 +381,66 @@ bool g_no_planting = false;
 /// the era stays because nobody asks. Its verdicts are printed, not trusted:
 /// the curve's bands were read on villages that go on.
 bool g_epoch_one_forever = false;
+
+/// `--horses-half`: the parameter with a KNOWN DIRECTION for the traction
+/// share (boss-core-epoch1-queue [42]): half the team on day 0 must move
+/// the mechanisation component down, or the instrument is dead. Of each age
+/// band the village keeps half its horses, rounded down, counted over
+/// ALL horse herds: the start stables them one head a row, and halving
+/// each row took all sixteen (the first probe, 16 -> 0).
+bool g_horses_half = false;
+
+/// Halves the horses of the world just started (g_horses_half), from the
+/// last herd row up, and prints the adults before and after.
+void HalveHorses(const run::Simulation& world) {
+  core::WorldState halved = world.State();
+  const core::ITable* const kinds = world.tables->FindTable("livestock");
+  const std::uint32_t horse = kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
+  std::uint32_t adults = 0;
+  std::uint32_t juveniles = 0;
+  std::uint32_t newborns = 0;
+  for (const core::HerdRow& herd : halved.herds.rows) {
+    if (horse != core::kNoTableRow && herd.kind.value == horse) {
+      adults += herd.adult_count;
+      juveniles += herd.juvenile_count;
+      newborns += herd.newborn_count;
+    }
+  }
+  std::uint32_t adults_to_take = adults - (adults / 2);
+  std::uint32_t juveniles_to_take = juveniles - (juveniles / 2);
+  std::uint32_t newborns_to_take = newborns - (newborns / 2);
+  const auto take = [](std::uint16_t& count, std::uint32_t& wanted) {
+    const std::uint32_t taken = std::min<std::uint32_t>(count, wanted);
+    count = static_cast<std::uint16_t>(count - taken);
+    wanted -= taken;
+    return taken;
+  };
+  for (auto row = halved.herds.rows.size(); row > 0; --row) {
+    core::HerdRow& herd = halved.herds.rows[row - 1];
+    if (horse == core::kNoTableRow || herd.kind.value != horse) {
+      continue;
+    }
+    const std::uint16_t adults_before = herd.adult_count;
+    take(herd.adult_count, adults_to_take);
+    take(herd.juvenile_count, juveniles_to_take);
+    take(herd.newborn_count, newborns_to_take);
+    herd.adult_male_count = std::min(herd.adult_male_count, herd.adult_count);
+    // The mean age of the adults is kept: the total follows the head.
+    herd.adult_age_game_years_total = adults_before == 0
+                                          ? 0.0F
+                                          : herd.adult_age_game_years_total *
+                                                static_cast<float>(herd.adult_count) /
+                                                static_cast<float>(adults_before);
+  }
+  std::uint32_t after = 0;
+  for (const core::HerdRow& herd : halved.herds.rows) {
+    after += horse != core::kNoTableRow && herd.kind.value == horse ? herd.adult_count : 0U;
+  }
+  const std::uint32_t before = adults;
+  world.simulation->ResetWorld(halved);
+  std::cout << "population_curve: --horses-half — adult horses " << before << " -> " << after
+            << " on day 0\n";
+}
 
 /// `--seed-offset=N`: every seed of kSeeds moved by N — a SECOND sample of
 /// nine villages for a comparison, not the canonical curve (its bands are
@@ -429,6 +495,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   if (!world) {
     return false;
   }
+  if (g_horses_half) {
+    HalveHorses(world);
+  }
   core::ISimulation* simulation = world.simulation.get();
   out.seed = seed;
   out.start_population =
@@ -448,6 +517,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     builder.transition.Disable();
   }
   run::TimberFlowTally timber(*world.tables);
+  // econ's births and horses prints: the "forever" branch only.
+  run::BirthsHerdTally births_herd(*world.tables);
+  run::BirthsHerdTally* const births_herd_on = g_epoch_one_forever ? &births_herd : nullptr;
   run::TransitionTally transition_tally(
       *world.tables, g_epoch_one_forever ? kYears : run::TransitionTally::kYearsDecomposedDefault);
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
@@ -475,7 +547,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // calls the rest silence (event_journal's own header says the same).
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
-      LiveOneDay(*simulation, builder.upgrades, out);
+      LiveOneDay(*simulation, builder.upgrades, out, births_herd_on);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       // What held the transition TODAY, by the order's own door.
@@ -495,6 +567,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         CountStandingShut(builder.transition, today, met, out);
       }
       transition_tally.CountDay(builder.transition, today);
+      if (births_herd_on != nullptr) {
+        births_herd_on->CountDay(today);
+      }
     }
     const core::WorldState& state = simulation->CompletedState();
     const auto population = static_cast<std::uint32_t>(state.residents.rows.size());
@@ -656,6 +731,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.epoch2_day = transition_tally.OpenedDay();
   out.epoch2_population = transition_tally.OpenedPopulation();
   transition_tally.Print("population_curve", seed);
+  if (births_herd_on != nullptr) {
+    births_herd_on->Print("population_curve", seed);
+  }
   out.social_marked_past_a_house_site = builder.social.marked_past_a_house_site();
   out.social_fates = builder.social.fates();
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
@@ -731,6 +809,8 @@ int main(int argc, char** argv) {
       g_no_planting = true;
     } else if (argument == "--epoch-one-forever") {
       g_epoch_one_forever = true;
+    } else if (argument == "--horses-half") {
+      g_horses_half = true;
     } else if (argument.starts_with("--seed-offset=")) {
       g_seed_offset = std::strtoull(
           std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
@@ -748,6 +828,11 @@ int main(int argc, char** argv) {
     std::cout << "population_curve: ECON'S BRANCH — --epoch-one-forever: the run's chairman "
                  "never orders Epoch II (the declaration above does not hold for the "
                  "transition); every verdict below is printed, not trusted\n";
+  }
+  if (g_horses_half) {
+    std::cout << "population_curve: CONTROL ARM — --horses-half: every horse herd halved on day "
+                 "0, adults and young alike; the bands below are read on the whole team, so "
+                 "their verdict is printed, not trusted\n";
   }
   if (g_seed_offset != 0) {
     std::cout << "population_curve: NOT THE CANONICAL SAMPLE — --seed-offset=" << g_seed_offset
