@@ -70,7 +70,8 @@ Grams TakeFeed(WorldState& world,
                const ProductionConfig& config,
                const HerdPlace& place,
                ResourceId resource,
-               Grams wanted) {
+               Grams wanted,
+               bool reserve_feed = false) {
   if (place.pantry != nullptr) {
     // Booked in its own column (ledger_state.h, yard_feed): the family's
     // `eaten` is the family meal and does not hold a goat's hay.
@@ -89,8 +90,17 @@ Grams TakeFeed(WorldState& world,
   // against the ladder's own line: "в плохой год район забирает первым, и
   // лошадь худеет раньше, чем срывается сдача" (resources design §6).
   if (place.feed_allowance != nullptr) {
-    const Grams allowed =
+    Grams allowed =
         resource.value < place.feed_allowance->size() ? (*place.feed_allowance)[resource.value] : 0;
+    // A RESERVE FEED TAKES NONE OF THE PEOPLE'S FOOD (0.37.5; resources
+    // design §6; PeoplesFoods): the horse's reserve barley is the people's
+    // bread, and the herds ate 24.5 t of it on seed 1931 in three years once
+    // the rungs held the oats, against 9.0 t before.
+    if (reserve_feed && place.peoples_foods != nullptr &&
+        resource.value < place.peoples_foods->size() &&
+        (*place.peoples_foods)[resource.value] != 0) {
+      allowed = 0;
+    }
     wanted = wanted < allowed ? wanted : allowed;
   }
   Grams taken = place.unit != nullptr ? TakeFromUnit(*place.unit, resource, wanted) : 0;
@@ -444,7 +454,7 @@ float RunFeeding(const ProductionConfig& config,
       continue;
     }
     const Grams wanted = KilogramsToGrams(take_units / value);
-    const Grams got = TakeFeed(world, config, place, link.resource, wanted);
+    const Grams got = TakeFeed(world, config, place, link.resource, wanted, link.reserve != 0);
     const float gained = static_cast<float>(got) / static_cast<float>(kGramsPerKilogram) * value;
     if (link.work_only != 0) {
       work_covered += gained;
@@ -811,6 +821,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
       current.residents.rows,
       [](const ResidentRow& resident) { return IsHorseWork(resident.work.kind); });
   ResourceAmounts feed_allowance = FeedAllowance(config, current, ploughing_today);
+  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
   for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
@@ -834,6 +845,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
         kind.sexed == 0 ? 0U : std::min(herd.adult_male_count, herd.adult_count);
     HerdPlace place = PlaceOf(current, config, herd);
     place.feed_allowance = &feed_allowance;
+    place.peoples_foods = &peoples_foods;
     RunBilleting(herd, room, current, herd.billeted_count);
     // The yard's hens, ducks and pig feed themselves (question Q1): range,
     // scraps and the garden, and the winter handful of grain out of the
@@ -1000,6 +1012,18 @@ ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& w
   return hold;
 }
 
+std::vector<std::uint8_t> PeoplesFoods(const ProductionConfig& config, const WorldState& world) {
+  std::vector<std::uint8_t> foods(config.feed_values.size(), 0);
+  for (std::size_t index = 0; index < foods.size(); ++index) {
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    foods[index] = AmountOf(world.ledger.closed.issued, resource) > 0 ||
+                           AmountOf(world.ledger.current.issued, resource) > 0
+                       ? 1U
+                       : 0U;
+  }
+  return foods;
+}
+
 PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState& world) {
   PloughFeedHold hold;
   if (config.horse_kind.value == kInvalidDefIdValue ||
@@ -1126,6 +1150,7 @@ ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& cu
     stock[index] = stock[index] < cap ? stock[index] : cap;
   }
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   for (std::uint32_t kind = 0; kind < config.livestock.size(); ++kind) {
     // THE TEAM'S NEED, ONCE (host's barley trace, boss-core-epoch1-2 seq 1):
     // the fund held each fund feed at its own cap — oats 0.5 AND barley 0.4
@@ -1176,8 +1201,16 @@ ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& cu
         continue;
       }
       const float room = FeedLinkRoom(link, need_day, 1.0F) * days;
-      const float in_store = static_cast<float>(stock[link.resource.value]) /
-                             static_cast<float>(kGramsPerKilogram) * value;
+      // NOT A RESERVE FEED OF THE PEOPLE'S FOOD, as the herd day eats none of
+      // it (0.37.5; PeoplesFoods): held for a horse that may not eat it, the
+      // barley would be locked from both.
+      Grams available = stock[link.resource.value];
+      if (link.reserve != 0 && link.resource.value < peoples_foods.size() &&
+          peoples_foods[link.resource.value] != 0) {
+        available = 0;
+      }
+      const float in_store =
+          static_cast<float>(available) / static_cast<float>(kGramsPerKilogram) * value;
       float units = owed < room ? owed : room;
       units = units < in_store ? units : in_store;
       if (!(units > 0.0F)) {

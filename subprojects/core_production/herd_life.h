@@ -38,6 +38,7 @@
 #define CORE_PRODUCTION_HERD_LIFE_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/ledger_state.h"
 #include "core_common/world_state.h"
@@ -75,6 +76,12 @@ struct HerdPlace {
   /// its own stack for one day's walk), so it lives by that caller's scope,
   /// not by the row-count rule below.
   ResourceAmounts* feed_allowance = nullptr;
+
+  /// By resource, 1 for a food the people are issued: a RESERVE feed takes
+  /// none of it (0.37.5; resources design §6, «Запас рабочего скота не ест
+  /// хлеба, который выдают людям»; herd_system.h, PeoplesFoods). Null:
+  /// nothing kept back. Owned by the caller, as `feed_allowance` is.
+  const std::vector<std::uint8_t>* peoples_foods = nullptr;
 };
 
 /// THE LIFETIME CONTRACT OF THE TWO POINTERS INTO THE WORLD, the pantry and

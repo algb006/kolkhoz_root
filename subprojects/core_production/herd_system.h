@@ -130,6 +130,27 @@ ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& cu
 /// years 4, 7 and 10 failed on the canon.
 ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The foods the people are issued, which the herds' RESERVE feeds
+/// take none of (0.37.5; resources design §6, «Запас рабочего скота не ест
+/// хлеба, который выдают людям»; boss-core-epoch1-queue [65]-[73], (е)): 1
+/// for a resource the last closed book or the current one issued. Dense by
+/// ResourceId. A food not yet issued in the campaign's first days is not
+/// one of them until its first issue.
+///
+/// THE HORSE'S RESERVE BARLEY WAS THE PEOPLE'S BREAD: with the oats held by
+/// the rungs (0.37.2-0.37.3) the team fell through into it, and on seed 1931
+/// the herds ate 24.5 t of the people's barley in three years against 9.0 t,
+/// in the autumns and winters, and the lean season's gap the issue makes
+/// fell under its band. With the horse's barley taken out of the tables
+/// they ate none and the gap was back in it. A hungry horse is a live signal
+/// («упряжь на сене»); a family whose barley a horse ate is punished for the
+/// unforeseeable.
+///
+/// ALL OF IT, NOT THE ISSUE UNTIL THE REAPING: the first cut of this rule
+/// held last year's issue x the days to the next reaping, and the herds still
+/// ate 22.5 t of the 24.5 - the rule held 8 % of what it meant to (boss [73]).
+std::vector<std::uint8_t> PeoplesFoods(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The ploughing's oats, held from the team's other work (0.37.2;
 /// boss-core-epoch1-queue [59]-[60], (а); resources design §6: the fodder
 /// fund is kept «from the team that will plough»).

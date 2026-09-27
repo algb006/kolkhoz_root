@@ -930,6 +930,45 @@ int CheckTheCartHorseEatsOats() {
   return failures;
 }
 
+/// THE RESERVE LEAVES THE PEOPLE'S BARLEY (0.37.5; resources design §6,
+/// «Запас рабочего скота не ест хлеба, который выдают людям»; boss [73],
+/// (е)): four horses, no hay, 50 kg of barley in the store. The people were
+/// issued barley last year, so the reserve takes none of it; with nothing
+/// issued it takes its need.
+int CheckTheReserveLeavesThePeoplesBarley() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 1.0F};
+  config.milk_resource = core::ResourceId{};
+  config.feed_links = {
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .max_share = 1.0F},
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{2},
+                        .reserve = 1,
+                        .max_share = 1.0F}};
+  const auto barley_left = [&config](core::Grams issued) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 2) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.units.rows[0].stock[2] = 50 * kKilo;
+    world.ledger.closed.issued = {0, 0, issued};
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(config, world);
+    return world.units.rows[0].stock[2];
+  };
+  const core::Grams issued = barley_left(48 * kKilo);
+  const core::Grams none = barley_left(0);
+  std::cout << "reserve and the people's barley: left of 50 kg with 48 kg issued " << issued
+            << " g, with none issued " << none << " g\n";
+  failures +=
+      Expect(issued == 50 * kKilo, "reserve feed: the herd takes none of the people's barley");
+  failures += Expect(none < 48 * kKilo,
+                     "reserve feed: with nothing issued the herd takes its need from the barley");
+  return failures;
+}
+
 /// THE SEED RUNG'S SOWING IS NOT HELD TWICE (static review of 0.37.4): winter
 /// rye in the ground for next year, spring oats after it in the year after,
 /// and no oats reaped before that sowing — the seed rung holds the oats' 100
@@ -10958,6 +10997,7 @@ int main() {
   failures += CheckTheCartHorseEatsOats();
   failures += CheckThePloughKeepsItsOats();
   failures += CheckNextYearsHoldDoesNotCountTheSeedRung();
+  failures += CheckTheReserveLeavesThePeoplesBarley();
   failures += CheckThePloughEatsBeforeNextYear();
   failures += CheckMangerReach();
   failures += CheckStableGate();

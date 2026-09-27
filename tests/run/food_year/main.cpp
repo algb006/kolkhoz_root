@@ -156,6 +156,13 @@ struct Outcome {
 /// Copies tables/ into `root`, letting the caller rewrite one file on the way.
 /// The core reads a DIRECTORY, so a doctored run needs a doctored directory —
 /// there is no back door into a loaded table set, by design.
+/// `--no-horse-barley` (second argument): the control arm for the people's
+/// barley (boss-core-epoch1-queue [66]; 0.37.5's measurement): every table
+/// copy drops the horse's barley row of feed_links.csv, so the barley the
+/// herds still eat is the pigs', the hens' and the ducks' staple alone. The
+/// bands print, they do not judge.
+bool g_no_horse_barley = false;
+
 void CopyTables(const std::filesystem::path& root, std::string_view drop_column) {
   namespace fs = std::filesystem;
   fs::remove_all(root);
@@ -166,6 +173,15 @@ void CopyTables(const std::filesystem::path& root, std::string_view drop_column)
     }
     std::ifstream in(entry.path(), std::ios::binary);
     std::ofstream out(root / entry.path().filename(), std::ios::binary);
+    if (g_no_horse_barley && entry.path().filename() == "feed_links.csv") {
+      std::string row;
+      while (std::getline(in, row)) {
+        if (!row.starts_with("horse,barley,")) {
+          out << row << '\n';
+        }
+      }
+      continue;
+    }
     if (entry.path().filename() != "food.csv" || drop_column.empty()) {
       out << in.rdbuf();
       continue;
@@ -747,9 +763,16 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
-  g_bands_bind = seed == kCanonSeed;
+  if (argc > 2 && std::string_view(argv[2]) == "--no-horse-barley") {
+    g_no_horse_barley = true;
+  }
+  g_bands_bind = seed == kCanonSeed && !g_no_horse_barley;
   std::cout << "food_year: seed " << seed
             << (g_bands_bind ? "\n" : " — swept: bands print, model claims still bind\n");
+  if (g_no_horse_barley) {
+    std::cout << "food_year: CONTROL ARM — --no-horse-barley: the horse's barley row dropped "
+                 "from feed_links.csv in every copy\n";
+  }
 
   // A DIRECTORY OF ITS OWN FOR EVERY INVOCATION. Shared by name, two runs at
   // once wrote each other's tables half-way: a nine-seed sweep on 2026-09-24

@@ -109,6 +109,21 @@ class BirthsHerdTally {
       current_.ploughing_ration_min =
           std::min(current_.ploughing_ration_min, world.traction_ration);
     }
+    // THE HORSES' PRICE OF THE PEOPLE'S BARLEY (0.37.5; boss [73]): the
+    // team's ration in the autumn and the winter (months 8-11, 0-1), when the
+    // oats are held and the barley is the people's; and the horse head-days
+    // unfed — short of hay too, not only of oats.
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    if (month >= 8 || month <= 1) {
+      current_.cold_days += 1;
+      current_.cold_ration_sum += world.traction_ration;
+    }
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.kind.value == horse_kind_ && herd.unfed_days > 0.0F) {
+        current_.horse_unfed_head_days +=
+            static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
+      }
+    }
   }
 
   /// @brief The village's lines, headed by its seed.
@@ -137,7 +152,8 @@ class BirthsHerdTally {
                  "since 0.37.2); oats / hay the kolkhoz herds ate, t (the "
                  "book's `feed`, every kind); the team's ration on the days the plough or the "
                  "harrow was out, sampled at noon — least / mean over N days (no ploughing: "
-                 "NOT MEASURED):";
+                 "NOT MEASURED); the team's mean ration in the autumn and winter (months "
+                 "8-11, 0-1); horse head-days unfed (short of hay too), sampled at noon:";
     for (const Year& year : years_) {
       std::cout << "\n    year " << year.number << ": " << year.adult_horses << " / "
                 << year.young_horses << " horses; " << year.horses_bought << " bought; "
@@ -155,6 +171,13 @@ class BirthsHerdTally {
                   << year.work.ploughing_ration_sum / static_cast<float>(year.work.ploughing_days)
                   << " over " << year.work.ploughing_days << " days";
       }
+      std::cout << "; cold ration ";
+      if (year.work.cold_days == 0) {
+        std::cout << "NOT MEASURED";
+      } else {
+        std::cout << year.work.cold_ration_sum / static_cast<float>(year.work.cold_days);
+      }
+      std::cout << "; unfed " << year.work.horse_unfed_head_days << " head-days";
     }
     std::cout << '\n';
   }
@@ -168,6 +191,9 @@ class BirthsHerdTally {
     std::uint32_t ploughing_days = 0;
     float ploughing_ration_sum = 0.0F;
     float ploughing_ration_min = 1.0F;
+    std::uint32_t cold_days = 0;
+    float cold_ration_sum = 0.0F;
+    std::uint32_t horse_unfed_head_days = 0;
   };
 
   struct Year {
