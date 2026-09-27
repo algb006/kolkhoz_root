@@ -133,6 +133,25 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current);
 /// nothing (ProductionConfig::first_plan_start_stock_share).
 void AnnouncePlan(const ProductionConfig& config, WorldState& current);
 
+/// @brief Grams of `resource` the district's positions will ask NEXT spring,
+/// asked at the year's turn before RunYearStart writes the area: priced off
+/// the area that write will give — the largest of last year's figure, the
+/// closing year's worked arable and this year's running maximum — by
+/// AnnouncePlan's own rule for a position. The goods loan's repayment keeps
+/// it back when next year's position is uncovered (goods_loan.h). Never the
+/// first year's start-stock figure: a turn is never the first year's spring.
+Grams NextYearPositionGrams(const ProductionConfig& config,
+                            const WorldState& current,
+                            ResourceId resource);
+
+/// @brief The worked area next spring's figure will be priced off, as of
+/// `as_of`: the ratchet RunYearStart writes (district §9; register 222, «база
+/// только растёт») — the largest of last year's figure, the arable worked in
+/// `as_of`'s year and this year's running maximum. One home for the plan
+/// alarm's years 1 and 2 and the goods loan's keep-back (boss-core-epoch1-
+/// queue [30]-[31]: they had measured "covered" off two different areas).
+float NextPlanAreaHa(const WorldState& current, SimDay as_of);
+
 /// @brief The accumulation limit, named with the plan (district §9; register
 /// 234): for every produce of the district's positions, `accumulation_share`
 /// × (next year's seed of the fields whose next slot grows it + this year's

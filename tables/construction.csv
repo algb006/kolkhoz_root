@@ -10,6 +10,10 @@
 # insulation (unit rules section 16, Epoch I): straw in tonnes and game man-days
 # by kind — housing, a unit for livestock, any other heated unit — and the level
 # whose finished upgrade takes the insulation off. Boss's figures, parcel 364
+# road_take_up_labor_share: taking a paved road up costs labour days as this
+# share of its level's laying (man_days_per_100m), and no material back —
+# gravel trodden into the bed is not gathered (boss-core-epoch1-resume [81]).
+# STUB 1/3: boss's figure with no measure behind it; the core's own default
 key,value
 demolition_labor_share,0.25
 repair_labor_share,0.30
@@ -24,3 +28,4 @@ insulation_livestock_labor_days,5
 insulation_heated_straw_t,3
 insulation_heated_labor_days,3
 insulation_reset_level,3
+road_take_up_labor_share,0.333333

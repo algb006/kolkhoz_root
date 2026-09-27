@@ -381,7 +381,47 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
 }
 
+/// One position's spring figure off `worked_ha`: a normal yield on its share
+/// of the area, times the plan's share (AnnouncePlan's rule, below).
+Grams PositionGrams(const ProductionConfig& config,
+                    const CropDef& crop,
+                    const ProductionConfig::PlanPosition& position,
+                    float worked_ha) {
+  const float area = worked_ha * position.area_share;
+  return GramsFromKilograms(crop.yield_kg_per_ha * area * config.plan_grain_share);
+}
+
 }  // namespace
+
+Grams NextYearPositionGrams(const ProductionConfig& config,
+                            const WorldState& current,
+                            ResourceId resource) {
+  if (!(config.plan_grain_share > 0.0F)) {
+    return 0;
+  }
+  // The area RunYearStart will write, as it writes it: the closing year is
+  // the one `SeedDayAtTheTurn` lies in.
+  const float worked = NextPlanAreaHa(current, SeedDayAtTheTurn(current));
+  Grams grams = 0;
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (position.crop.value >= config.crops.size()) {
+      continue;
+    }
+    const CropDef& crop = config.crops[position.crop.value];
+    if (crop.yield_kg_per_ha <= 0.0F || crop.resource.value != resource.value) {
+      continue;
+    }
+    grams += PositionGrams(config, crop, position, worked);
+  }
+  return grams;
+}
+
+float NextPlanAreaHa(const WorldState& current, SimDay as_of) {
+  const SimDay year_start = (as_of / kDaysPerYear) * kDaysPerYear;
+  return std::max({current.plan.worked_ha_last_year,
+                   WorkedArableHa(current, year_start),
+                   current.plan.worked_ha_this_year});
+}
 
 void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
   // THE RELEASES ARE NOT CLEARED HERE, and they were for one afternoon:
@@ -455,10 +495,9 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
                                   static_cast<double>(config.first_plan_start_stock_share))));
       continue;
     }
-    const float area = current.plan.worked_ha_last_year * position.area_share;
     AddToStock(current.plan.due,
                crop.resource,
-               GramsFromKilograms(crop.yield_kg_per_ha * area * config.plan_grain_share));
+               PositionGrams(config, crop, position, current.plan.worked_ha_last_year));
   }
   AnnounceMilkPosition(config, current);
   NameAccumulationLimit(config, current, first_year);

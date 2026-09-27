@@ -16,6 +16,7 @@
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "plan_alarms.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -109,6 +110,21 @@ void RepayGoodsLoans(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    // NEXT YEAR'S POSITION KEPT BACK WHEN THE FIELDS WILL NOT PAY IT (0.36.39;
+    // boss-core-epoch1-resume [99], item 2; boss-core-epoch1-queue [3]; wage
+    // design, «Товарный заём», c2ba44ad): the order is seed, then this year's
+    // plan and next year's, then the debt. econ (neglect-floor §10.4–10.5):
+    // after a winter slot was lost, 2.72 t of rye went back on the loan at the
+    // turn of year 3 and the rye of year 4 failed. Asked as the alarm asks it,
+    // as of the closing year's last day — the chains are not turned yet
+    // (RunYearStart). A position the chains cover is paid by next year's
+    // harvest, and keeps nothing back. The first draft skipped the repayment
+    // outright, and the static review found the debt growing for ever at a
+    // full barn: the barn never changes the hectares.
+    const Grams kept_for_plan =
+        PlanPositionUncovered(config, current, resource, 1, SeedDayAtTheTurn(current))
+            ? NextYearPositionGrams(config, current, resource)
+            : 0;
     // FROM THE STORES ONLY, AND THE SEED STILL HELD: DeliverableAboveSeed
     // counts the heaps lying on the fields as well, and the repayment takes
     // from the stores alone — so with a heap lying and the seed in the barn,
@@ -124,7 +140,8 @@ void RepayGoodsLoans(const ProductionConfig& config, WorldState& current) {
     // turns): the seed as of the closing year's last day (SeedDayAtTheTurn).
     const Grams above_seed =
         DeliverableAboveSeed(config, current, resource, SeedDayAtTheTurn(current));
-    const Grams can_pay = above_seed > lying ? above_seed - lying : 0;
+    const Grams held_back = lying + kept_for_plan;
+    const Grams can_pay = above_seed > held_back ? above_seed - held_back : 0;
     const Grams paid = TakeFromStorage(current, config, resource, owed < can_pay ? owed : can_pay);
     AddLedgerAmount(current.ledger.current.goods_loan_repaid, resource, paid);
     owed -= paid;

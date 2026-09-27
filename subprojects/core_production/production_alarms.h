@@ -41,16 +41,8 @@ void CollectFieldAlarms(const ProductionConfig& config,
                         const WorldState& world,
                         std::vector<Alarm>& alarms);
 
-/// @brief Appends kPlanPositionUncovered for every position of the district's
-/// plan and every one of the chains' three years in which the arable grows
-/// its crop on fewer hectares than worked arable × area share × plan share
-/// (alarm_state.h; year 0 priced off last year's worked arable). On the
-/// year's last day, also kPlanPositionShort for every position that delivered
-/// plus takeable (TakeableGrams) will not bring to the met share.
-/// @param alarms Appended to; never cleared.
-void CollectPlanAlarms(const ProductionConfig& config,
-                       const WorldState& world,
-                       std::vector<Alarm>& alarms);
+// The plan's alarms, CollectPlanAlarms and PlanPositionUncovered, are in
+// plan_alarms.h since 0.36.39.
 
 /// @brief Appends kWinterCropUnsowable for every arable field whose chain
 /// puts a winter crop in the slot after slot k (k = 0, 1, 2; the chain is a

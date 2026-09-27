@@ -57,6 +57,7 @@
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
+#include "plan_alarms.h"
 #include "processing_shops.h"
 #include "production_alarms.h"
 #include "production_config.h"

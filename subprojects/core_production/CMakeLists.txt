@@ -17,6 +17,7 @@ kolkhoz_add_module(core_production
     stable_horses.cpp
     night_pasture.cpp
     production_alarms.cpp
+    plan_alarms.cpp
     seed_room.cpp
     stock_lights.cpp
     timber_felling.cpp

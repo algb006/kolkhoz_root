@@ -51,6 +51,7 @@
 #include "livestock_homes.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
+#include "plan_alarms.h"
 #include "processing_shops.h"
 #include "production_alarms.h"
 #include "production_config.h"
@@ -9355,9 +9356,9 @@ int CheckTheUnpricedLotsOfTheShippedTables() {
       Expect(verdict("timber_lot", timber_points) == core::OrderRefusal::kNone && timber_points > 0,
              "shipped limit catalogue: timber, priced, is sold");
   std::int32_t gravel_points = 0;
-  failures += Expect(verdict("lime_gravel_lot", gravel_points) == core::OrderRefusal::kNone &&
-                         gravel_points > 0,
-                     "shipped limit catalogue: lime and gravel, priced, are sold in Epoch I");
+  failures += Expect(
+      verdict("lime_gravel_lot", gravel_points) == core::OrderRefusal::kNone && gravel_points > 0,
+      "shipped limit catalogue: lime and gravel, priced, are sold in Epoch I");
   return failures;
 }
 
@@ -9498,6 +9499,88 @@ int CheckTheGoodsLoan() {
   failures += Expect(core::TakeGoodsLoan(config, turning, loan(core::ResourceId{0}, 0)) ==
                          core::OrderRefusal::kNone,
                      "loan: an hour later it is lent");
+
+  // NEXT YEAR'S POSITION KEPT BACK WHILE THE FIELDS WILL NOT PAY IT (boss-
+  // core-epoch1-resume [99], item 2; boss-core-epoch1-queue [3]): rye owed
+  // 12 t, next year's rye lost to its window — its autumn closed unsown. Next
+  // spring asks 1 t/ha × 10 ha worked × 0.5 × 1.0 = 5 t of rye, and the turn
+  // repays only what is above the seed AND those 5 t. The pairs: the rye sown
+  // (covered) keeps nothing back; and a full barn repays the whole debt even
+  // uncovered — the first draft's skip grew it for ever (static review).
+  core::ProductionConfig winter = config;
+  core::CropDef& rye = winter.crops[0];
+  rye.is_winter = true;
+  rye.sow_from_month = 7;
+  rye.sow_to_month = 8;
+  rye.harvest_from_month = 6;
+  rye.harvest_to_month = 7;
+  rye.yield_kg_per_ha = 1000.0F;
+  winter.plan_grain_share = 1.0F;
+  winter.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.5F}};
+  const core::Grams next_spring = 5 * kTonne;
+
+  struct Turn {
+    core::WorldState world;
+    core::Grams above_seed = 0;
+    core::Grams kept_back = 0;
+  };
+
+  const auto turn_with_rye = [&make_world, &winter](core::Grams in_barn, bool rye_sown) {
+    Turn turn{.world = make_world(in_barn)};
+    core::WorldState& world = turn.world;
+    world.calendar.day = core::kDaysPerYear;  // the turn: its seed day is the last one
+    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+    world.plan.worked_ha_last_year = 10.0F;
+    core::FieldRow& field = world.fields.rows[0];
+    field.rotation_assigned = 1;
+    field.rotation_year0 = core::CropId{};  // a fallow this year
+    field.rotation_year1 = core::CropId{0};
+    field.rotation_year2 = core::CropId{0};
+    if (rye_sown) {
+      field.crop = core::CropId{0};
+      field.phase = core::FieldPhase::kGrowing;
+      field.sown_day = core::kDaysPerYear - 10;  // this autumn, in the closing year
+    }
+    world.plan.goods_loan_owed = {12 * kTonne};
+    turn.above_seed = core::DeliverableAboveSeed(
+        winter, world, core::ResourceId{0}, core::SeedDayAtTheTurn(world));
+    turn.kept_back = core::NextYearPositionGrams(winter, world, core::ResourceId{0});
+    core::RepayGoodsLoans(winter, world);
+    return turn;
+  };
+  const auto repaid_of = [](const Turn& turn) {
+    return core::AmountOf(turn.world.ledger.current.goods_loan_repaid, core::ResourceId{0});
+  };
+  // 14 t in the barn, all of it above the seed (the rye's next sowing comes
+  // after its next harvest): less than the 12 t owed plus next spring's 5 t,
+  // which come off it — 9 t repaid, 3 t left owing 3.6 t.
+  const Turn short_barn = turn_with_rye(14 * kTonne, false);
+  const core::Grams expected_paid = std::min<core::Grams>(
+      12 * kTonne, std::max<core::Grams>(short_barn.above_seed - next_spring, 0));
+  std::cout << "repay, rye uncovered next year: above the seed " << short_barn.above_seed
+            << " g, next spring's rye " << short_barn.kept_back << " g, repaid "
+            << repaid_of(short_barn) << " g, owed after "
+            << core::AmountOf(short_barn.world.plan.goods_loan_owed, core::ResourceId{0}) << " g\n";
+  failures +=
+      Expect(short_barn.kept_back == next_spring && short_barn.above_seed > next_spring &&
+                 short_barn.above_seed < 12 * kTonne + next_spring &&
+                 repaid_of(short_barn) == expected_paid &&
+                 core::AmountOf(short_barn.world.plan.goods_loan_owed, core::ResourceId{0}) ==
+                     std::llround(static_cast<double>(12 * kTonne - expected_paid) * 1.2),
+             "repay: next year's rye lost to its window — the turn repays only above the seed and "
+             "next spring's 5 t, the rest owed with the markup");
+  const Turn covered = turn_with_rye(14 * kTonne, true);
+  // Nothing kept back: the whole 12 t, 14 t in the barn (static review: "more
+  // than the short barn" passed with a smaller keep-back too).
+  failures += Expect(repaid_of(covered) == 12 * kTonne,
+                     "repay: the rye sown and the position covered — nothing kept back, the "
+                     "whole 12 t repaid from the same barn");
+  const Turn full_barn = turn_with_rye(40 * kTonne, false);
+  failures +=
+      Expect(repaid_of(full_barn) == 12 * kTonne &&
+                 core::AmountOf(full_barn.world.plan.goods_loan_owed, core::ResourceId{0}) == 0,
+             "repay: a full barn repays the whole debt even with next year uncovered — "
+             "the debt does not grow for ever");
   return failures;
 }
 
@@ -9905,8 +9988,9 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
                            {.crop = core::CropId{1}, .area_share = 0.4F}};
 
   // Owed hectares = priced area × share × plan share. This year is priced off
-  // LAST year's 20 ha (oat 2, potato 4); the two after off today's worked 13 ha
-  // (oat 1.3, potato 2.6).
+  // LAST year's 20 ha (oat 2, potato 4); the two after off the area next
+  // spring is priced off — the ratchet, here the same 20 ha (NextPlanAreaHa;
+  // until 0.36.39 today's 13 ha under chains, oat 1.3, potato 2.6).
   core::WorldState world;
   world.plan.worked_ha_last_year = 20.0F;
   core::FieldRow wide;
@@ -9959,6 +10043,235 @@ int CheckAnUncoveredPlanPositionIsAnAlarm() {
   failures += Expect(after == expected_after,
                      "plan alarm: the owed hectares put it out, and another crop of the same "
                      "produce covers the year");
+
+  // NEXT YEAR PRICED OFF THE RATCHET (boss-core-epoch1-queue [30]-[31]): last
+  // year's figure 60 ha, the chains on 13 today. Next year's potato is owed
+  // 60 × 0.4 × 0.5 = 12 ha against the wide field's 10 — uncovered; priced
+  // off today's 13 ha (2.6 owed) the same 10 ha read covered, and the goods
+  // loan kept nothing back for a figure the district then asked in full.
+  world.plan.worked_ha_last_year = 60.0F;
+  const auto ratchet = uncovered();
+  const bool potato_next_uncovered =
+      std::ranges::find(ratchet, Uncovered{std::uint16_t{6}, std::int64_t{1}}) != ratchet.end();
+  failures += Expect(potato_next_uncovered,
+                     "plan alarm: next year's potato is priced off the area next spring asks by "
+                     "(last year's 60 ha), not off today's 13 under chains");
+  return failures;
+}
+
+/// A LOST SLOT IS UNCOVERED (boss-core-epoch1-resume [98]): the rye of next
+/// year whose window closed this autumn unsown stands as (rye, 1) from that
+/// day; after the turn, the same lost slot as (rye, 0); and the spring kin —
+/// oats of this year not in the ground past their last sowing day — as
+/// (oats, 0). Each against its pair: the window still open, the crop in hand,
+/// a held chain. Two fields cross-cover both positions in all three years, so
+/// the only alarm is the one the loss makes.
+int CheckALostSlotIsAnUncoveredPosition() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::CropDef rye;  // resource 0: sown Aug–Sep (months 7–8), reaped from July
+  rye.resource = core::ResourceId{0};
+  rye.is_winter = true;
+  rye.sow_from_month = 7;
+  rye.sow_to_month = 8;
+  rye.harvest_from_month = 6;
+  rye.harvest_to_month = 7;
+  core::CropDef oats;  // resource 1: sown Apr–May, reaped from August
+  oats.resource = core::ResourceId{1};
+  oats.sow_from_month = 3;
+  oats.sow_to_month = 4;
+  oats.harvest_from_month = 7;
+  oats.harvest_to_month = 8;
+  config.crops = {rye, oats};
+  // The snow on day 39: oats ripen 28 - 19 = 9 days, so day 30 is their last.
+  config.growing_season_last_day = 39;
+  config.plan_grain_share = 1.0F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.5F},
+                           {.crop = core::CropId{1}, .area_share = 0.5F}};
+  const core::CropId rye_id{0};
+  const core::CropId oats_id{1};
+
+  core::WorldState world;
+  world.plan.worked_ha_last_year = 20.0F;
+  core::FieldRow field_a;  // oats reaped on day 30, rye to sow this autumn
+  field_a.area_ga = 10.0F;
+  field_a.rotation_assigned = 1;
+  field_a.rotation_year0 = oats_id;
+  field_a.rotation_year1 = rye_id;
+  field_a.rotation_year2 = rye_id;
+  field_a.reaped_day = 30;
+  core::AppendRow(world.fields, field_a);
+  core::FieldRow field_b;  // rye reaped on day 25, oats next year and after
+  field_b.area_ga = 10.0F;
+  field_b.rotation_assigned = 1;
+  field_b.rotation_year0 = rye_id;
+  field_b.rotation_year1 = oats_id;
+  field_b.rotation_year2 = oats_id;
+  field_b.reaped_day = 25;
+  core::AppendRow(world.fields, field_b);
+
+  using Uncovered = std::pair<std::uint16_t, std::int64_t>;
+  const auto uncovered = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    std::vector<Uncovered> found;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionUncovered) {
+        found.emplace_back(alarm.resource.value, alarm.amount);
+      }
+    }
+    return found;
+  };
+  const std::vector<Uncovered> rye_next{Uncovered{std::uint16_t{0}, std::int64_t{1}}};
+  const std::vector<Uncovered> rye_now{Uncovered{std::uint16_t{0}, std::int64_t{0}}};
+  const std::vector<Uncovered> oats_now{Uncovered{std::uint16_t{1}, std::int64_t{0}}};
+
+  // THE WINTER WINDOW: open on day 35 (month 8), closed on day 36 (month 9).
+  failures += Expect(uncovered(35).empty() && uncovered(36) == rye_next,
+                     "lost slot: next year's rye is uncovered from the day its window closed "
+                     "unsown, and not while it is open");
+  world.fields.rows[0].crop = rye_id;
+  world.fields.rows[0].phase = core::FieldPhase::kGrowing;
+  world.fields.rows[0].sown_day = 34;
+  failures += Expect(uncovered(36).empty(), "lost slot: rye sown in its window is no loss");
+  // THE SAME RYE STANDING FROM LAST AUTUMN is not next year's (static review
+  // of 0.36.39): a rye-after-rye field whose rye was never reaped holds the
+  // same key in kGrowing, sown in another year.
+  // Asked a year on (SimDay is unsigned: the year before day 0 does not
+  // exist), both fields' reapings moved with it, the rye's sowing kept.
+  constexpr core::SimDay kYear = core::kDaysPerYear;
+  world.fields.rows[0].reaped_day = 30 + kYear;
+  world.fields.rows[1].reaped_day = 25 + kYear;
+  failures += Expect(uncovered(36 + kYear) == rye_next,
+                     "lost slot: last year's rye still standing does not sow next year's");
+  world.fields.rows[0].reaped_day = 30;
+  world.fields.rows[1].reaped_day = 25;
+  world.fields.rows[0].crop = core::CropId{};
+  world.fields.rows[0].phase = core::FieldPhase::kIdle;
+  world.fields.rows[0].sown_day = core::kNeverSownDay;
+  // A HELD CHAIN IS READ BY THE YEAR ITS FIRST SLOT GROWS IN (static review of
+  // 0.36.39): (oats, rye, rye) named in September sows its oats NEXT spring,
+  // so next year field A grows oats, and next year's rye is uncovered — which
+  // the old reading, slot for year, called covered. Nothing is lost: the
+  // alarm is the chain's own year 1, not a loss. This year A keeps its oats
+  // reaped on day 30 (last_crop).
+  world.fields.rows[0].rotation_skips_turn = 1;
+  world.fields.rows[0].last_crop = oats_id;
+  failures += Expect(uncovered(36) == rye_next,
+                     "lost slot: a held (oats, rye, rye) named in September grows oats next year — "
+                     "next year's rye is uncovered, the field's reaped oats pay this year");
+  // AND THE REVERSE: a held (rye, oats, oats) whose rye went in this autumn —
+  // its rye is next year's. Rye is then covered next year, and missing the
+  // year after (field B grows oats; A its oats).
+  world.fields.rows[0].rotation_year0 = rye_id;
+  world.fields.rows[0].rotation_year1 = oats_id;
+  world.fields.rows[0].rotation_year2 = oats_id;
+  world.fields.rows[0].crop = rye_id;
+  world.fields.rows[0].phase = core::FieldPhase::kGrowing;
+  world.fields.rows[0].sown_day = 34;
+  failures +=
+      Expect(uncovered(36) == std::vector<Uncovered>{Uncovered{std::uint16_t{0}, std::int64_t{2}}},
+             "lost slot: a held (rye, oats, oats) with its rye sown this autumn covers "
+             "next year's rye, and not the year after's");
+  world.fields.rows[0].rotation_skips_turn = 0;
+  world.fields.rows[0].crop = core::CropId{};
+  world.fields.rows[0].phase = core::FieldPhase::kIdle;
+  world.fields.rows[0].sown_day = core::kNeverSownDay;
+  world.fields.rows[0].last_crop = core::CropId{};
+
+  // AFTER THE TURN: the chains moved on, field A's rye now this year's and
+  // not in the ground (question 278) — the same loss, now year 0.
+  world.fields.rows[0].rotation_year0 = rye_id;
+  world.fields.rows[0].rotation_year1 = rye_id;
+  world.fields.rows[0].rotation_year2 = oats_id;
+  world.fields.rows[1].rotation_year0 = oats_id;
+  world.fields.rows[1].rotation_year1 = oats_id;
+  world.fields.rows[1].rotation_year2 = rye_id;
+  failures += Expect(uncovered(core::kDaysPerYear + 4) == rye_now,
+                     "lost slot: after the turn the lost rye is this year's, (rye, 0)");
+
+  // THE SPRING'S KIN: back in the first year, field A's oats not reaped and
+  // not in the ground. IDLE, the field is not ploughed for them past their
+  // window (TrySow; month 4 ends on day 19); BEING PLOUGHED, it may still sow
+  // them until day 30, the last that ripens before the snow (static review of
+  // 0.36.39: the first draft gave the idle field the snow's day too, three
+  // game months late on the canon's oats).
+  world.fields.rows[0].rotation_year0 = oats_id;
+  world.fields.rows[0].rotation_year1 = rye_id;
+  world.fields.rows[0].rotation_year2 = rye_id;
+  world.fields.rows[1].rotation_year0 = rye_id;
+  world.fields.rows[1].rotation_year1 = oats_id;
+  world.fields.rows[1].rotation_year2 = oats_id;
+  world.fields.rows[0].reaped_day = core::kNeverReapedDay;
+  // Field B's rye reaped on day 12 for this part — asked on days 19..31, a
+  // reaping on day 25 would be one in the future (static review of the
+  // second draft: B's cover rested on it).
+  world.fields.rows[1].reaped_day = 12;
+  failures += Expect(uncovered(19).empty() && uncovered(20) == oats_now,
+                     "lost slot: this year's oats on an idle field are uncovered from the day "
+                     "their window closed, and not on its last day");
+  world.fields.rows[0].crop = oats_id;
+  world.fields.rows[0].phase = core::FieldPhase::kPlowing;
+  failures += Expect(uncovered(30).empty() && uncovered(31) == oats_now,
+                     "lost slot: a field ploughed for the oats keeps them to their last sowing "
+                     "day before the snow, and loses them the day after");
+  world.fields.rows[0].crop = oats_id;
+  world.fields.rows[0].phase = core::FieldPhase::kGrowing;
+  failures += Expect(uncovered(31).empty(), "lost slot: oats in the ground are no loss");
+
+  // AN OLD CROP HOLDS A HELD CHAIN'S FIELD (static review of the second
+  // draft). (a) Rye sown this September, the chain renamed in October to
+  // (oats, rye, oats): the rye is reaped next year, the oats come the year
+  // after — rye covered next year by the standing rye, missing the year
+  // after (the old reading: oats next year, (rye, 1)).
+  core::FieldRow& a = world.fields.rows[0];
+  a.rotation_skips_turn = 1;
+  a.rotation_year0 = oats_id;
+  a.rotation_year1 = rye_id;
+  a.rotation_year2 = oats_id;
+  a.crop = rye_id;
+  a.phase = core::FieldPhase::kGrowing;
+  a.sown_day = 34;
+  a.reaped_day = 30;
+  a.last_crop = oats_id;
+  world.fields.rows[1].reaped_day = 25;
+  failures +=
+      Expect(uncovered(38) == std::vector<Uncovered>{Uncovered{std::uint16_t{0}, std::int64_t{2}}},
+             "lost slot: rye sown in autumn holds a renamed held chain's field — next "
+             "year's rye covered by it, the chain's oats the year after");
+  // (b) Oats standing in June, sown before the naming, the chain (oats, rye,
+  // rye): the chain's own oats wait for next spring — next year's rye is
+  // uncovered (the old reading took the standing oats for the chain's own).
+  a.rotation_year2 = rye_id;
+  a.crop = oats_id;
+  a.sown_day = 18;
+  a.reaped_day = core::kNeverReapedDay;
+  world.fields.rows[1].reaped_day = 20;
+  failures += Expect(uncovered(24) == rye_next,
+                     "lost slot: oats standing from before the naming are not a held chain's "
+                     "first slot — its oats wait a year, next year's rye with them");
+  a.rotation_skips_turn = 0;
+
+  // A FIELD BEING PREPARED IS LOST THE DAY ITS SOWING WOULD NOT GIVE ITS SEED
+  // BACK (LateSowingReturnsItsSeed; static review): the second year (the
+  // first spring is free of the late factor), oats 1100 kg/ha against 1000
+  // of seed on a neutral field. Their window's last day is 19: on day 20 the
+  // late factor 0.94 still returns 1034 kg, on day 21 0.88 returns 968.
+  config.crops[1].sowing_norm_kg_per_ha = 1000.0F;
+  config.crops[1].yield_kg_per_ha = 1100.0F;
+  config.farming.late_sowing_yield_loss_per_day = 0.06F;
+  a.fertility = config.farming.fertility_neutral;
+  a.rotation_year0 = oats_id;
+  a.rotation_year1 = rye_id;
+  a.rotation_year2 = rye_id;
+  a.crop = oats_id;
+  a.phase = core::FieldPhase::kHarrowing;
+  a.reaped_day = core::kNeverReapedDay;
+  world.fields.rows[1].reaped_day = kYear + 10;
+  failures += Expect(uncovered(kYear + 20).empty() && uncovered(kYear + 21) == oats_now,
+                     "lost slot: harrowed oats are lost the day their sowing would no longer "
+                     "give the seed back, before the snow");
   return failures;
 }
 
@@ -10114,6 +10427,7 @@ int main() {
   int failures = 0;
   failures += CheckTheChairmanRemovesAField();
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
+  failures += CheckALostSlotIsAnUncoveredPosition();
   failures += CheckAWinterCropTheChainCannotSow();
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();

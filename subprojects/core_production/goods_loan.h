@@ -58,6 +58,11 @@ OrderRefusal TakeGoodsLoan(const ProductionConfig& config,
 ///        not hold,
 ///        booked in the closing year's goods_loan_repaid. What is left takes
 ///        the markup again and carries on. The year's taken marks clear.
+///        A resource whose position is uncovered NEXT year
+///        (PlanPositionUncovered, year 1, as of the closing year's last day)
+///        keeps that position's grams back too (NextYearPositionGrams): it
+///        repays only from what is left above the seed and next year's plan
+///        (boss-core-epoch1-resume [99]; boss-core-epoch1-queue [3]).
 /// @note Paid from above the seed on purpose: a repayment that took the held
 ///       seed would open the chain «семена 0 → пустое поле» the loan exists
 ///       to close.

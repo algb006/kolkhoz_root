@@ -256,7 +256,21 @@ enum class AlarmKind : std::uint8_t {
   /// it at a normal yield are worked arable × area share × plan share. The
   /// alarm stands while the chains grow the crop on fewer hectares than that
   /// in the year — year 0 priced off last year's worked arable, years 1 and 2
-  /// off today's — and goes out when they grow at least that. How much this
+  /// off the area next spring's figure is priced off (the district's ratchet,
+  /// NextPlanAreaHa; off the arable under chains today until 0.36.39, boss-
+  /// core-epoch1-queue [31]) — and goes out when they grow at least that.
+  ///
+  /// A LOST SLOT GROWS NOTHING (0.36.39; boss-core-epoch1-resume [98]): a
+  /// winter crop of year 1 whose window closed this autumn unsown counts no
+  /// hectares from that day (amount 1), and from the turn as year 0's
+  /// (question 278, WinterSlotLost; amount 0); so does a spring crop of year
+  /// 0 not in the ground — on an idle field from the day its window closed,
+  /// on a field ploughed for it from the day it could no longer ripen before
+  /// the snow. A chain standing before its first season is read by the year
+  /// its first slot grows in (plan_alarms.cpp, CropInYear), not slot-for-year.
+  /// Before, the rye lost to its window paid the position until the harvest
+  /// that never came, and the alarm stood 0 times of 135 seed-years before
+  /// the eight rye failures that followed a lost slot. How much this
   /// field's fertility will fall short is not in it: that is the accountant's
   /// forecast, Epoch I has no specialists (society design §1a), and fertility
   /// is visible on the ground. The same shape as the seed alarm the registry
