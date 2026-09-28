@@ -163,6 +163,9 @@ inline constexpr SimDay kNeverSownDay = static_cast<SimDay>(-1);
 /// @brief No crop of this field has been reaped yet (FieldRow::reaped_day).
 inline constexpr SimDay kNeverReapedDay = static_cast<SimDay>(-1);
 
+/// @brief A preparation whose own plough has not ended (FieldRow::furrow_day).
+inline constexpr SimDay kNoFurrowDay = static_cast<SimDay>(-1);
+
 /// @brief One field. Plain data.
 struct FieldRow {
   /// Center of the contour. The shape itself is presentation/routing data
@@ -314,6 +317,17 @@ struct FieldRow {
   /// its autumn is not this case: since 0.36.13 it is lost and its slot lies
   /// fallow (question 278, WinterSlotLost below).
   std::uint8_t rotation_skips_turn = 0;
+
+  /// THE ROW'S MANURE IS ALREADY IN THE BOOK, 0 or 1 (save 111; boss-core-
+  /// epoch1-queue [94] (2): «навоз пишется в книгу один раз на цикл поля»).
+  /// Set by the furrow that books `manure_applied` (OpenPlowing), cleared
+  /// wherever the manure settles (the harvest, the snow's loss of the crop,
+  /// the bare fallow at the turn) and where the winter's plan deals a new
+  /// dose (PlanManure). Never 1 on a row with no manure (the save refuses it). A preparation
+  /// the turn lets go carries its paid manure with it, and the next plough
+  /// does not book it again; nor does a winter crop on the black fallow,
+  /// whose furrow booked it.
+  std::uint8_t manure_booked = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
   /// growing (farming design §6).
@@ -493,13 +507,14 @@ struct FieldRow {
   /// byte is spent there.
   ///
   /// TWO WRITERS, neither of them the chairman's order: genesis (the zyab the
-  /// village inherits), and the year's turn releasing a crop whose OWN
-  /// ploughing was done but not its sowing (ReleaseUnsownPreparation,
-  /// `furrow_of_preparation`; 0.37.9). A winter crop on this year's black
-  /// fallow opens at the harrow without it (TrySowOnBlackFallow). Until
-  /// 0.37.6 this block said «set only at genesis», which the release had
-  /// already made untrue; 0.37.6 made the black fallow a third writer, and
-  /// 0.37.9 took that back.
+  /// village inherits), and the year's turn releasing a harrowing on the
+  /// AUTUMN FURROW of the year's stubble — its own plough ended after the
+  /// field's reaping of the same year (ReleaseUnsownPreparation,
+  /// `furrow_day`; 0.37.10). A winter crop on this year's black fallow opens
+  /// at the harrow without it (TrySowOnBlackFallow). Until 0.37.6 this block
+  /// said «set only at genesis», which the release had already made untrue;
+  /// 0.37.6 made the black fallow a third writer, 0.37.9 took that back, and
+  /// 0.37.10 made zyab a question of when the furrow was turned.
   ///
   /// NOT AN ACTION (boss's decision of 2026-09-13). Autumn ploughing as
   /// something the CHAIRMAN chooses is a separate mechanic with a separate
@@ -560,14 +575,20 @@ struct FieldRow {
   /// other trace of the harvest it gave.
   SimDay reaped_day = kNeverReapedDay;
 
-  /// THIS PREPARATION TURNED ITS OWN FURROW, 0 or 1 (save 110; boss-core-
-  /// epoch1-queue [84] (2)): set when the plough's phase ends into the
-  /// harrow's, cleared when a preparation opens (OpenPlowing), when it ends
-  /// in the sowing (FinishSowing) and when the turn lets one go. The turn's release keeps a
-  /// harrowed field's furrow as zyab (`autumn_plowed`) only on it: a winter crop opened at the
-  /// harrow on the black fallow stands on May's furrow, and ground out of the autumn black spent
-  /// its furrow in the spring — «пар, не засеянный к зиме, весной пашут заново».
-  std::uint8_t furrow_of_preparation = 0;
+  /// THE DAY THIS PREPARATION'S OWN PLOUGH ENDED into the harrow, or
+  /// kNoFurrowDay (save 111; was a 0/1 byte in save 110): set at the plough's
+  /// end, cleared when a preparation opens (OpenPlowing), when it ends in the
+  /// sowing (FinishSowing) and when the turn lets one go.
+  ///
+  /// ZYAB IS WHEN, NOT WHO (boss-core-epoch1-queue [94] (1); farming design:
+  /// «Зябь — та же вспашка, только сразу после уборки»): the turn's release
+  /// keeps a harrowed field's furrow as zyab (`autumn_plowed`) only when this
+  /// day falls after the field's reaping of the same year (`reaped_day`) —
+  /// the autumn furrow on the stubble. April's furrow for potatoes left unsown
+  /// is not zyab, nor May's on the black fallow, nor a furrow of a field that
+  /// gave no harvest this year. 0.37.9 kept it on any furrow the preparation
+  /// turned itself.
+  SimDay furrow_day = kNoFurrowDay;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

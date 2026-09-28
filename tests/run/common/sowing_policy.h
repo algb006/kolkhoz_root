@@ -136,7 +136,10 @@ class SowingPolicy {
   void Report() const {
     std::cout << "sowing_policy: the obvious chairman released " << released_
               << " chains from fields whose sowing would not have ripened, and gave " << restored_
-              << " of them back at the year's turn\n";
+              << " of them back at the year's turn; spared " << spared_winter_preparations_
+              << " chains of a winter crop being prepared, once a field a year (0.37.10: the "
+                 "black fallow's "
+                 "rye is not a spring crop late)\n";
     if (!crop_of_resource_.empty()) {
       std::cout
           << "sowing_policy: he answered " << answered_
@@ -403,6 +406,27 @@ class SowingPolicy {
       if (crop < winter_crop_.size() && winter_crop_[crop] != 0) {
         continue;
       }
+      // AND A WINTER CROP BEING PREPARED IS NOT A SPRING CROP LATE (boss-core-
+      // epoch1-queue [94] (4); static review of 0.37.9): the black fallow's
+      // rye, opened at the harrow in August from the chain's NEXT slot, stands
+      // on a field whose first slot is the fallow, and the test above, asking
+      // the first slot, took it for a spring crop that would not ripen and
+      // withdrew the chain. Counted, so the run says how many it spared.
+      const std::uint16_t preparing = field.crop.value;
+      if (preparing < winter_crop_.size() && winter_crop_[preparing] != 0) {
+        // Counted once a field a year — 0.37.9 withdrew it once, and its
+        // release count is of chains.
+        const core::FieldId id = world.fields.row_ids[row];
+        const std::uint32_t year = world.calendar.day / core::kDaysPerYear;
+        const bool seen = std::ranges::any_of(spared_seen_, [&](const SparedField& spared) {
+          return spared.field.value == id.value && spared.year == year;
+        });
+        if (!seen) {
+          spared_seen_.push_back({.field = id, .year = year});
+          ++spared_winter_preparations_;
+        }
+        continue;
+      }
       doomed.push_back(row);
     }
     if (doomed.empty()) {
@@ -548,6 +572,17 @@ class SowingPolicy {
   std::uint32_t released_ = 0;
 
   std::uint32_t restored_ = 0;
+
+  /// Winter crops being prepared the release now leaves alone (0.37.10).
+  std::uint32_t spared_winter_preparations_ = 0;
+
+  /// The fields spared, by the year: each counted once a year.
+  struct SparedField {
+    core::FieldId field;
+    std::uint32_t year = 0;
+  };
+
+  std::vector<SparedField> spared_seen_;
 };
 
 }  // namespace run

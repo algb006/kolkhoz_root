@@ -543,6 +543,7 @@ class ProductionSystem final : public IProductionSystem {
           field.fertility += ManureBonus(config_, field);
           field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
           field.manure_applied = 0;
+          field.manure_booked = 0;
         }
       }
       // RESTING FALLOW RECOVERS; UNWORKED GROUND MERELY KEEPS WHAT IT HAS.
@@ -555,16 +556,29 @@ class ProductionSystem final : public IProductionSystem {
       // returning under a new name, and it would have handed a player who
       // raised the land a hundred-point field instead of the canon's sixty-
       // five.
-      // AND A LOST WINTER SLOT'S FALLOW RESTS LIKE ONE (question 278: «звено
-      // становится паром»): ploughed bare in its year and nothing sown, it
-      // recovers as a fallow does (static review of 0.36.13).
-      const bool lost_slot_fallow =
-          bare && field.rotation_year0.value < config_.crops.size() &&
-          WinterSlotLost(
-              field, config_.crops[field.rotation_year0.value].is_winter, current.calendar.day);
-      if ((field.phase == FieldPhase::kIdle) &&
-          (field.rotation_year0.value == kInvalidDefIdValue || lost_slot_fallow) &&
-          HasRotation(field)) {
+      // AND GROUND THAT STOOD BARE THROUGH THE TURN RESTS LIKE A FALLOW,
+      // whatever its chain calls its first slot (boss-core-epoch1-queue [94]
+      // (3)): «по тому, что поле сделало, а не по имени цепочки». Ploughed
+      // bare and nothing sown — a fallow year, a lost winter slot (question
+      // 278), a bare fallow renamed to a fresh chain — or a preparation the
+      // turn lets go unsown on ground that gave nothing this year (the black
+      // fallow's rye that missed its window). Until 0.37.10 the chain's name
+      // decided: a fallow slot or a lost winter slot, so a renamed bare fallow
+      // and an unsown preparation got nothing.
+      const bool reaped_in_closing_year =
+          field.reaped_day != kNeverReapedDay &&
+          field.reaped_day / kDaysPerYear == closing_year / kDaysPerYear;
+      const bool unsown_preparation =
+          (field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing) &&
+          field.crop.value != kInvalidDefIdValue;
+      const bool stood_bare = bare || (unsown_preparation && !reaped_in_closing_year);
+      // An idle fallow slot rests too — unless the field bore a crop this
+      // year: oats reaped in August and the chain renamed to (fallow, …) in
+      // November did not rest (static review of 0.37.10).
+      const bool idle_fallow_slot = field.phase == FieldPhase::kIdle &&
+                                    field.rotation_year0.value == kInvalidDefIdValue &&
+                                    !reaped_in_closing_year;
+      if ((stood_bare || idle_fallow_slot) && HasRotation(field)) {
         field.fertility += config_.farming.fallow_recovery;
         field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
         field.last_crop = CropId{};
@@ -845,6 +859,7 @@ class ProductionSystem final : public IProductionSystem {
       if (field.manure_applied == 0) {
         field.manure_applied = 1;  // a dribble still counts as touched
       }
+      field.manure_booked = 0;  // a new dose: its furrow books it (0.37.10)
     }
   }
 

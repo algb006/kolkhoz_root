@@ -324,8 +324,10 @@ core::WorldState MakeWorld() {
   overgrown.reaped_day = 39;    // reaped in the first October
   overgrown.rush_step = 3;      // save 65: an avral of +15 % on its harvest
   overgrown.rush_phase = core::FieldPhase::kHarvest;
-  overgrown.furrow_of_preparation = 1;  // save 110: off its default
-  overgrown.rotation_assigned = 0;      // nobody has told this ground anything
+  overgrown.furrow_day = 41;        // save 111: off its default
+  overgrown.manure_applied = 30;    // save 111: a booked dose on the row
+  overgrown.manure_booked = 1;      // save 111
+  overgrown.rotation_assigned = 0;  // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
   core::AppendRow(world.fields, overgrown);
@@ -1380,7 +1382,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // held.
     // Save 110: +3 — the preparation's own furrow, a byte for each of three
     // fields (measured after the build, not predicted before it).
-    {"fields", 332, 0x446e6ab7a579699aULL},
+    // Save 111: +12 — the byte a u32 (+3 each) and the manure's mark a byte
+    // (+1 each), three fields; predicted 332 -> 344 before the build, held.
+    {"fields", 344, 0xef868c12d7fbf2ebULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1709,6 +1713,19 @@ int main() {
                        "and arrives unchanged — the bound refuses, it does not clamp");
   }
 
+  // A FIELD'S MANURE BOOKED WITH NO MANURE ON IT (save 111) is no state the
+  // simulation makes: the mark is set only by a furrow booking a dose. The
+  // control is the fixture itself, whose booked field holds its dose.
+  {
+    core::WorldState phantom = MakeWorld();
+    phantom.fields.rows[2].manure_applied = 0;
+    core::WorldState refused;
+    std::string phantom_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(phantom, *tables), *tables, &refused, &phantom_error),
+        "a save with a field's manure booked and none on it is refused");
+  }
+
   // A NEGATIVE MILK DEBT is no state the simulation makes, and taken as it
   // stands it would ask the stores for a negative amount (save 85). The
   // control is the same world with no debt, which loads.
@@ -2024,9 +2041,11 @@ int main() {
                          loaded.fields.rows[0].reaped_day == core::kNeverReapedDay,
                      "the day a field was last reaped comes back, and a field never reaped "
                      "comes back never reaped");
-  failures += Expect(loaded.fields.rows[2].furrow_of_preparation == 1 &&
-                         loaded.fields.rows[0].furrow_of_preparation == 0,
-                     "the preparation's own furrow comes back (save 110)");
+  failures += Expect(loaded.fields.rows[2].furrow_day == 41 &&
+                         loaded.fields.rows[0].furrow_day == core::kNoFurrowDay &&
+                         loaded.fields.rows[2].manure_booked == 1 &&
+                         loaded.fields.rows[0].manure_booked == 0,
+                     "the furrow's day and the manure's booked mark come back (save 111)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

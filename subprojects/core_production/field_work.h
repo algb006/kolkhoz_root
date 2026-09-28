@@ -284,9 +284,11 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
 /// again and the run had nothing to balance for fifteen years.
 ///
 /// The crop is dropped and the field is idle. Ploughing that WAS finished is
-/// kept as autumn ploughing (FieldRow::autumn_plowed): the furrow is in the
-/// ground whichever crop it was turned for. A fallow being ploughed is left
-/// alone — it carries no crop to go stale.
+/// kept as autumn ploughing (FieldRow::autumn_plowed) when it was the autumn
+/// furrow on this year's stubble — the preparation's own plough ended after
+/// the field's reaping of the same year (FieldRow::furrow_day; boss [94] (1),
+/// 0.37.10). Its manure, if booked, stays booked (FieldRow::manure_booked).
+/// A fallow being ploughed is left alone — it carries no crop to go stale.
 /// @return true when the field was released.
 bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field);
 

@@ -157,8 +157,11 @@ static_assert(AggregateArity<FamilyRow>() == 27,
 // Save 110: the preparation's own furrow, a byte after reaped_day — predicted
 // "120 stays" (reaped_day ends at 116, the row pads to 120) before the build,
 // 38 fields.
+// Save 111: the byte becomes the furrow's DAY (u32, at 116) and the manure's
+// booked mark a byte in the hole after rotation_skips_turn (34) — predicted
+// "120 stays" off the dumped offsets before the build, 39 fields.
 static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 38,
+static_assert(AggregateArity<FieldRow>() == 39,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -810,9 +813,11 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The avral on the field's work and the phase it stands on (save 65).
   out.WriteU8(row.rush_step);
   out.WriteU8(static_cast<std::uint8_t>(row.rush_phase));
-  // The preparation's own furrow (save 110): the turn's release keeps a
-  // furrow as zyab only on it.
-  out.WriteU8(row.furrow_of_preparation);
+  // The day the preparation's own furrow ended (save 111; a byte in save
+  // 110): the turn's release keeps zyab only on the autumn furrow.
+  out.WriteU32(row.furrow_day);
+  // The manure already in the book (save 111): booked once a field's cycle.
+  out.WriteU8(row.manure_booked);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -888,8 +893,12 @@ FieldRow ReadFieldRow(LoadSource& source) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "field's avral step"));
   row.rush_phase =
       static_cast<FieldPhase>(source.ReadEnumValue(0, kMaxFieldPhase, "field's avral phase"));
-  row.furrow_of_preparation = static_cast<std::uint8_t>(
-      source.ReadEnumValue(0, 1, "the preparation's own furrow"));  // save 110
+  row.furrow_day = in.ReadU32();  // save 111
+  row.manure_booked = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
+  if (row.manure_booked != 0 && row.manure_applied == 0) {
+    source.Fail("a field's manure is marked booked with no manure on it");
+  }
   return row;
 }
 

@@ -6419,8 +6419,10 @@ int CheckNoWinterSowingAfterWindow() {
 /// a second time: on seed 1945 that cost the rye its autumn. 0.37.9 (boss
 /// [84]): the fallow's manure is not booked again; a chain named on the
 /// fallow this year sows its FIRST slot if that is winter, else waits; and
-/// the rye opened at the harrow carries no furrow of its own
-/// (furrow_of_preparation), where the stubble's own plough marks one.
+/// the rye opened at the harrow carries no furrow of its own (furrow_day,
+/// 0.37.10), where the stubble's own plough marks its day. 0.37.10: the
+/// fallow's manure stays unbooked again because its furrow marked it booked
+/// (manure_booked).
 int CheckTheBlackFallowsFurrowIsTheRyes() {
   int failures = 0;
   std::string error;
@@ -6454,12 +6456,15 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
     fallow.rotation_assigned = 1;
     fallow.crop = core::CropId{};
     fallow.phase = core::FieldPhase::kGrowing;  // ploughed, harrowed, standing bare
-    fallow.manure_applied = 50;                 // booked at its May furrow already (0.37.9)
+    fallow.manure_applied = 50;                 // dealt at the turn
+    fallow.manure_booked = 1;                   // and booked at its May furrow (0.37.10)
     // A furrow mark left on the row: whatever it holds, a preparation opening
     // starts it at nothing (OpenPlowing; static review of 0.37.9).
-    fallow.furrow_of_preparation = 1;
+    fallow.furrow_day = 10;
     core::AppendRow(world.fields, fallow);
     core::FieldRow stubble = fallow;
+    stubble.manure_booked = 0;  // a dose its plough has not turned in yet
+    stubble.furrow_day = core::kNoFurrowDay;
     stubble.rotation_year0 = oat;
     stubble.rotation_year2 = potato;
     stubble.phase = core::FieldPhase::kIdle;
@@ -6496,7 +6501,7 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
   const core::FieldRow& stubble = warm.fields.rows[1];
   failures +=
       Expect(fallow.crop.value == rye.value && fallow.phase == core::FieldPhase::kHarrowing &&
-                 fallow.furrow_of_preparation == 0,
+                 fallow.furrow_day == core::kNoFurrowDay,
              "black fallow: the rye opens at the harrowing, with no furrow of its own");
   failures += Expect(stubble.crop.value == rye.value && stubble.phase == core::FieldPhase::kPlowing,
                      "black fallow: the oats' stubble is ploughed for the rye");
@@ -6515,14 +6520,15 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
                  fresh_rye.rotation_skips_turn == 1,
              "black fallow: a chain named on it with rye first sows its rye now, the "
              "chain held for the rye's year");
-  // The stubble's plough ends into the harrow: ITS furrow (save 110); the
+  // The stubble's plough ends into the harrow: ITS furrow's day (save 111); the
   // fallow's rye, opened at the harrow, has none of its own.
   warm.fields.rows[1].work_days_remaining = 0.0F;
   step(warm, 15.0F);
   failures += Expect(warm.fields.rows[1].phase == core::FieldPhase::kHarrowing &&
-                         warm.fields.rows[1].furrow_of_preparation == 1 &&
-                         warm.fields.rows[0].furrow_of_preparation == 0,
-                     "black fallow: the stubble's own furrow is marked, the fallow's rye has none");
+                         warm.fields.rows[1].furrow_day == warm.calendar.day &&
+                         warm.fields.rows[0].furrow_day == core::kNoFurrowDay,
+                     "black fallow: the stubble's own furrow is marked with its day, the "
+                     "fallow's rye has none");
   // And the sowing ends the preparation and its mark with it.
   core::ProductionConfig parsed;
   std::string parse_error;
@@ -6530,16 +6536,149 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
                      "black fallow: the shipped tables parse");
   core::FinishSowing(parsed, warm, warm.fields.rows[1]);
   const core::FieldRow& sown_stubble = warm.fields.rows[1];
-  failures += Expect(
-      sown_stubble.phase == core::FieldPhase::kGrowing && sown_stubble.furrow_of_preparation == 0,
-      "black fallow: the stubble's rye sown, its furrow mark goes with the "
-      "preparation");
+  failures += Expect(sown_stubble.phase == core::FieldPhase::kGrowing &&
+                         sown_stubble.furrow_day == core::kNoFurrowDay,
+                     "black fallow: the stubble's rye sown, its furrow mark goes with the "
+                     "preparation");
 
   core::WorldState cold = august_world();
   step(cold, 4.0F);  // under the rye's 8 °C
   failures += Expect(cold.fields.rows[0].crop.value == core::kInvalidDefIdValue &&
                          cold.fields.rows[0].phase == core::FieldPhase::kGrowing,
                      "black fallow: too cold for the rye, nothing opens");
+  return failures;
+}
+
+/// THE TURN RESTS BARE GROUND AND CARRIES PAID MANURE (0.37.10; boss-core-
+/// epoch1-queue [94] (2), (3)), on the shipped tables:
+///   * at the second turn, fertility 60: a bare fallow renamed to a fresh
+///     (oats, rye) chain, a black fallow's rye left unsown on ground reaped
+///     LAST year, and oats harrowed and never sown on such ground all rested
+///     — each gets fallow_recovery, whatever its first slot; an oats stubble
+///     reaped this year whose rye went unsown, and oats reaped this year under
+///     a chain renamed to a fallow, did not rest;
+///   * the unsown rye's paid manure stays on the row, booked;
+///   * in April two idle fields open for their oats, each with half a dose on
+///     the row: the one whose dose is booked books nothing, the other books
+///     its 5 ha.
+int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  core::ProductionConfig parsed;
+  if (Expect(system != nullptr && core::ParseProductionConfig(*tables, parsed, error),
+             "turn rest: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+  const auto step = [&system](core::WorldState& state, float temperature) {
+    core::WorldState next = state;
+    next.calendar.tick = ((state.calendar.tick / core::kTicksPerDay) + 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next.calendar);
+    next.weather.air_temperature_celsius = temperature;
+    next.step_events.clear();
+    system->RunProductionDecisions(state, next);
+    state = next;
+  };
+  core::FieldRow base;
+  base.kind = core::LandKind::kArable;
+  base.area_ga = 10.0F;
+  base.fertility = 60.0F;
+  base.rotation_assigned = 1;
+
+  // The SECOND turn, so that «reaped this year» and «reaped ever» part:
+  // day 30 is last year's, day 78 this year's (static review of 0.37.10).
+  constexpr core::SimDay kLastYearReaping = 30;
+  constexpr core::SimDay kThisYearReaping = core::kDaysPerYear + 30;
+  core::WorldState turn;
+  turn.calendar.tick = (2U * core::kDaysPerYear * core::kTicksPerDay) - 1U;  // year 2's last tick
+  core::RefreshCalendarCaches(turn.calendar);
+  core::FieldRow renamed = base;  // a bare fallow given (oats, rye) this autumn
+  renamed.phase = core::FieldPhase::kGrowing;
+  renamed.rotation_year0 = oat;
+  renamed.rotation_year1 = rye;
+  renamed.rotation_skips_turn = 1;
+  core::AppendRow(turn.fields, renamed);
+  core::FieldRow unsown_rye = base;  // the black fallow's rye, harrowed, never sown
+  unsown_rye.phase = core::FieldPhase::kHarrowing;
+  unsown_rye.crop = rye;
+  unsown_rye.rotation_year1 = rye;
+  unsown_rye.rotation_year2 = oat;
+  unsown_rye.manure_applied = 50;
+  unsown_rye.manure_booked = 1;
+  unsown_rye.reaped_day = kLastYearReaping;  // the crop before the fallow
+  core::AppendRow(turn.fields, unsown_rye);
+  core::FieldRow stubble = base;  // oats reaped this year, the rye after them unsown
+  stubble.phase = core::FieldPhase::kHarrowing;
+  stubble.crop = rye;
+  stubble.rotation_year0 = oat;
+  stubble.rotation_year1 = rye;
+  stubble.reaped_day = kThisYearReaping;
+  stubble.last_crop = oat;
+  core::AppendRow(turn.fields, stubble);
+  // Oats ploughed and harrowed this spring, never sown, on ground reaped last
+  // year: rested — and judged BEFORE the release lets the crop go (a year0
+  // crop, so the idle fallow slot's arm cannot stand in for it).
+  core::FieldRow unsown_spring = base;
+  unsown_spring.phase = core::FieldPhase::kHarrowing;
+  unsown_spring.crop = oat;
+  unsown_spring.rotation_year0 = oat;
+  unsown_spring.rotation_year1 = rye;
+  unsown_spring.reaped_day = kLastYearReaping;
+  core::AppendRow(turn.fields, unsown_spring);
+  // Oats reaped this year, the chain renamed to (fallow, rye) in November:
+  // idle under a fallow's name, and it did not rest.
+  core::FieldRow renamed_stubble = base;
+  renamed_stubble.phase = core::FieldPhase::kIdle;
+  renamed_stubble.rotation_year1 = rye;
+  renamed_stubble.rotation_skips_turn = 1;
+  renamed_stubble.reaped_day = kThisYearReaping;
+  core::AppendRow(turn.fields, renamed_stubble);
+  step(turn, -5.0F);
+  const float rested = 60.0F + parsed.farming.fallow_recovery;
+  failures +=
+      Expect(turn.fields.rows[0].fertility == rested,
+             "turn rest: a bare fallow renamed to (oats, rye) rested — recovered (boss [94] "
+             "(3))");
+  failures += Expect(turn.fields.rows[1].fertility == rested &&
+                         turn.fields.rows[1].phase == core::FieldPhase::kIdle,
+                     "turn rest: the black fallow's rye left unsown rested — recovered, let go");
+  failures +=
+      Expect(turn.fields.rows[1].manure_applied == 50 && turn.fields.rows[1].manure_booked == 1,
+             "turn rest: the unsown rye's manure goes with it, paid (boss [94] (2))");
+  failures += Expect(turn.fields.rows[2].fertility == 60.0F,
+                     "turn rest: an oats stubble reaped this year did not rest — no recovery");
+  failures += Expect(turn.fields.rows[3].fertility == rested,
+                     "turn rest: a spring crop harrowed and never sown, on ground reaped last "
+                     "year, rested");
+  failures += Expect(turn.fields.rows[4].fertility == 60.0F,
+                     "turn rest: oats reaped this year and the chain renamed to a fallow did not "
+                     "rest");
+
+  core::WorldState april;
+  april.calendar.tick = ((core::kDaysPerYear + 13U) * core::kTicksPerDay) - 1U;  // year 2, April
+  core::RefreshCalendarCaches(april.calendar);
+  core::FieldRow paid = base;
+  paid.phase = core::FieldPhase::kIdle;
+  paid.rotation_year0 = oat;
+  paid.rotation_year1 = rye;
+  paid.manure_applied = 50;
+  paid.manure_booked = 1;
+  core::AppendRow(april.fields, paid);
+  core::FieldRow owed = paid;
+  owed.manure_booked = 0;
+  core::AppendRow(april.fields, owed);
+  step(april, 8.0F);
+  failures += Expect(
+      april.fields.rows[0].crop.value == oat.value && april.fields.rows[1].crop.value == oat.value,
+      "turn rest: both fields open for their oats in April");
+  failures += Expect(april.ledger.current.area_manured_ha == 5.0F,
+                     "turn rest: only the unbooked dose is booked by its plough — 5 ha, not 10");
   return failures;
 }
 
@@ -10501,27 +10640,56 @@ int CheckAnUnsownFieldLetsItsCropGoAtTheTurn() {
   add_field(core::CropId{}, core::FieldPhase::kPlowing);
   add_field(cabbage, core::FieldPhase::kGrowing);
   add_field(cabbage, core::FieldPhase::kHarrowing);
+  add_field(cabbage, core::FieldPhase::kHarrowing);
+  add_field(cabbage, core::FieldPhase::kHarrowing);
+  add_field(cabbage, core::FieldPhase::kHarrowing);
   core::FieldRow& harrowed = world.fields.rows[0];
   core::FieldRow& half_ploughed = world.fields.rows[1];
   core::FieldRow& fallow = world.fields.rows[2];
   core::FieldRow& sown = world.fields.rows[3];
-  // Harrowed on a furrow that was not this preparation's (0.37.9): a winter
-  // crop opened at the harrow on the black fallow, or ground out of the
-  // autumn black.
+  // ZYAB IS WHEN (0.37.10; boss [94] (1)): the autumn furrow on the year's
+  // stubble — reaped on day 30, its own plough ended on day 33.
+  harrowed.reaped_day = 30;
+  harrowed.furrow_day = 33;
+  // Harrowed on a furrow not its own (a winter crop opened at the harrow on
+  // the black fallow, or ground out of the autumn black): no furrow day.
   core::FieldRow& borrowed_furrow = world.fields.rows[4];
-  harrowed.furrow_of_preparation = 1;  // its own plough ended into the harrow
+  borrowed_furrow.reaped_day = 30;
+  // April's furrow for a crop never reaped this year: its own, and not zyab.
+  core::FieldRow& spring_furrow = world.fields.rows[5];
+  spring_furrow.furrow_day = 14;
+  // A furrow turned BEFORE the year's reaping (the field reaped after it) is
+  // not the stubble's.
+  core::FieldRow& before_reaping = world.fields.rows[6];
+  before_reaping.furrow_day = 20;
+  before_reaping.reaped_day = 30;
+  // April's furrow of year 1 on ground reaped in year 0 — the case the rule
+  // exists for: after the reaping, and still not the autumn's (static review
+  // of 0.37.10: the same-year term).
+  core::FieldRow& last_years_stubble = world.fields.rows[7];
+  last_years_stubble.reaped_day = 30;
+  last_years_stubble.furrow_day = core::kDaysPerYear + 14;
 
   failures += Expect(core::ReleaseUnsownPreparation(world, harrowed),
                      "turn release: a harrowed, unsown field is released");
   failures += Expect(
       harrowed.phase == core::FieldPhase::kIdle && harrowed.crop.value == core::kInvalidDefIdValue,
       "turn release: the stale crop is gone and the field is idle");
-  failures += Expect(harrowed.autumn_plowed == 1 && harrowed.furrow_of_preparation == 0,
-                     "turn release: the finished furrow is kept as autumn ploughing");
+  failures += Expect(harrowed.autumn_plowed == 1 && harrowed.furrow_day == core::kNoFurrowDay,
+                     "turn release: the autumn furrow on the year's stubble is kept as zyab");
   failures += Expect(
       core::ReleaseUnsownPreparation(world, borrowed_furrow) && borrowed_furrow.autumn_plowed == 0,
-      "turn release: a harrowing on a furrow not its own — May's fallow furrow — "
-      "is not zyab (boss [84] (2))");
+      "turn release: a harrowing on a furrow not its own is not zyab");
+  failures += Expect(
+      core::ReleaseUnsownPreparation(world, spring_furrow) && spring_furrow.autumn_plowed == 0,
+      "turn release: April's furrow on ground reaped nothing this year is not zyab (boss [94] "
+      "(1): when, not who)");
+  failures += Expect(
+      core::ReleaseUnsownPreparation(world, before_reaping) && before_reaping.autumn_plowed == 0,
+      "turn release: a furrow turned before the year's reaping is not the stubble's");
+  failures += Expect(core::ReleaseUnsownPreparation(world, last_years_stubble) &&
+                         last_years_stubble.autumn_plowed == 0,
+                     "turn release: April's furrow on ground reaped LAST year is not zyab");
   failures += Expect(
       core::ReleaseUnsownPreparation(world, half_ploughed) && half_ploughed.autumn_plowed == 0,
       "turn release: an unfinished ploughing is released without the credit");
@@ -11362,6 +11530,7 @@ int main() {
   failures += CheckLostWinterCropLiesFallow();
   failures += CheckNoWinterSowingAfterWindow();
   failures += CheckTheBlackFallowsFurrowIsTheRyes();
+  failures += CheckTheTurnRestsBareGroundAndCarriesPaidManure();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();

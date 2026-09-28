@@ -294,6 +294,7 @@ void LoseFieldToSnow(const ProductionConfig& config,
   field.work_days_remaining = 0.0F;
   ClearFieldWeather(field);
   field.manure_applied = 0;
+  field.manure_booked = 0;  // settled with the crop the snow took
   current.ledger.current.area_lost_ha += area_lost;
   // THE PART DUG IS SAID TOO (static review of 0.34.44): a field reaped to
   // 70 % and then snowed on gave 7 t to the heap and the book, and the
@@ -381,6 +382,7 @@ void Harvest(const ProductionConfig& config,
   field.fertility = field.fertility < floor_value ? floor_value : field.fertility;
   field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
   field.manure_applied = 0;
+  field.manure_booked = 0;  // settled at the harvest: the next dose books anew
   field.last_crop = field.crop;
   ClearFieldWeather(field);
   // The reaping is over, so the PHASE seam is cleared — without this the
@@ -425,9 +427,9 @@ void OpenPlowing(const ProductionConfig& config,
                  CropId crop,
                  PreparationStart start = PreparationStart::kGround) {
   field.crop = crop;
-  // No furrow of THIS preparation yet (land_state.h, furrow_of_preparation):
-  // the plough's end sets it, and the turn's release reads it.
-  field.furrow_of_preparation = 0;
+  // No furrow of THIS preparation yet (land_state.h, furrow_day): the
+  // plough's end sets it, and the turn's release reads it.
+  field.furrow_day = kNoFurrowDay;
   // AND THE CHAIN'S FIRST SEASON IS SPENT HERE, which is the one place every
   // way of using a rotation passes through: this year's crop, a fallow year's
   // ploughing, and the autumn sowing of the next slot's winter crop all open
@@ -452,22 +454,27 @@ void OpenPlowing(const ProductionConfig& config,
   // at genesis and never cleared for one afternoon, so ground the village
   // had ploughed six times running went on reading overgrown from the road.
   field.overgrown = 0;
-  // THE BLACK FALLOW'S FURROW AND MANURE ARE THE WINTER CROP'S (0.37.6,
-  // 0.37.9): the fallow's own OpenPlowing turned the furrow and booked the
-  // manure, and the manure stays on the row until the crop's harvest
-  // settles it. Booked again here it was counted twice in the book
-  // (manure_plowed_in, area_manured_ha; static review of 0.37.6, boss [84]
-  // (3)) — the fertility never was, it settles once.
-  if (start == PreparationStart::kBlackFallow) {
-    OpenPhase(config, current, field, FieldPhase::kHarrowing);
-    return;
-  }
-  if (field.manure_applied != 0) {
+  // THE MANURE GOES INTO THE BOOK ONCE A FIELD'S CYCLE (boss-core-epoch1-
+  // queue [94] (2); land_state.h, manure_booked): the furrow that turns it in
+  // books it, and it stays on the row until the harvest or the fallow's turn
+  // settles it. A preparation let go at the turn carries it, paid, to the
+  // next spring's plough; a winter crop on the black fallow stands on the
+  // fallow's furrow, which booked it. Until 0.37.9 each of those booked it
+  // again (manure_plowed_in, area_manured_ha) — the fertility never was, it
+  // settles once.
+  if (field.manure_applied != 0 && field.manure_booked == 0) {
     const float share = static_cast<float>(field.manure_applied) / 100.0F;
     const auto dose =
         GramsFromKilograms(config.farming.manure_norm_kg_per_ha * field.area_ga * share);
     current.ledger.current.manure_plowed_in += dose;
     current.ledger.current.area_manured_ha += field.area_ga * share;
+    field.manure_booked = 1;
+  }
+  // THE BLACK FALLOW'S FURROW IS THE WINTER CROP'S (0.37.6): opened at the
+  // harrow, not ploughed a second time.
+  if (start == PreparationStart::kBlackFallow) {
+    OpenPhase(config, current, field, FieldPhase::kHarrowing);
+    return;
   }
   // GROUND THAT CAME OUT OF THE AUTUMN BLACK OWES NO SPRING FURROW. The byte
   // is spent here, at the one call every way of using a rotation passes
@@ -753,16 +760,22 @@ bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field) {
   if (!preparing || field.crop.value == kInvalidDefIdValue) {
     return false;
   }
-  // THE FURROW IS KEPT ONLY IF THIS PREPARATION TURNED IT (boss-core-epoch1-
-  // queue [84] (2), 0.37.9): «пар, не засеянный к зиме, весной пашут
-  // заново». A winter crop opened at the harrow on the black fallow stands
-  // on May's furrow, and ground that came out of the autumn black spent its
-  // furrow in the spring: neither is zyab for the next spring. Until 0.37.9
-  // every harrowing let go at the turn became zyab.
-  if (field.phase == FieldPhase::kHarrowing && field.furrow_of_preparation != 0) {
+  // ZYAB IS THE AUTUMN FURROW ON THE STUBBLE (boss-core-epoch1-queue [94]
+  // (1); farming design: «Зябь — та же вспашка, только сразу после
+  // уборки»): the furrow is kept only when this preparation's own plough
+  // ended after the field's reaping of the same year. April's furrow for
+  // potatoes left unsown, May's on the black fallow, a furrow on ground that
+  // gave nothing this year — none is zyab for the next spring. Until 0.37.9
+  // every harrowing let go at the turn became zyab; 0.37.9 kept it on any
+  // furrow the preparation turned itself.
+  const bool autumn_furrow = field.furrow_day != kNoFurrowDay &&
+                             field.reaped_day != kNeverReapedDay &&
+                             field.furrow_day / kDaysPerYear == field.reaped_day / kDaysPerYear &&
+                             field.furrow_day >= field.reaped_day;
+  if (field.phase == FieldPhase::kHarrowing && autumn_furrow) {
     field.autumn_plowed = 1;  // the furrow is turned; only the harrow is owed
   }
-  field.furrow_of_preparation = 0;
+  field.furrow_day = kNoFurrowDay;
   field.crop = CropId{};
   MoveFieldPhase(current, field, FieldPhase::kIdle);
   field.work_days_remaining = 0.0F;
@@ -1008,8 +1021,8 @@ void TrySow(const ProductionConfig& config,
 void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow& field) {
   const CropId crop_id = field.crop;
   // The preparation is over, sown or standing bare: its furrow mark means
-  // nothing past the harrow (land_state.h, furrow_of_preparation).
-  field.furrow_of_preparation = 0;
+  // nothing past the harrow (land_state.h, furrow_day).
+  field.furrow_day = kNoFurrowDay;
   if (crop_id.value == kInvalidDefIdValue) {
     // Bare fallow: ploughed and harrowed, nothing goes in. It stands as
     // ground with no crop until the year turns or a winter crop takes it.
@@ -1057,7 +1070,7 @@ void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, F
   switch (field.phase) {
     case FieldPhase::kPlowing:
       OpenPhase(config, current, field, FieldPhase::kHarrowing);
-      field.furrow_of_preparation = 1;  // this preparation turned its furrow
+      field.furrow_day = current.calendar.day;  // this preparation's furrow, and its day
       break;
     case FieldPhase::kHarrowing:
       if (field.crop.value == kInvalidDefIdValue) {
