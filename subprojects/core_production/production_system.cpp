@@ -337,13 +337,15 @@ class ProductionSystem final : public IProductionSystem {
     current.plan.worked_ha_this_year = worked_today > current.plan.worked_ha_this_year
                                            ? worked_today
                                            : current.plan.worked_ha_this_year;
-    // The district's cart takes the plan's debt off the heaps first (register
-    // 242): RunFields' settled snow takes them whole the same morning. The
-    // first snowy day no longer takes a heap (LoseFieldToSnow takes only the
-    // standing part since the harvest by parts, 0.34.44), so the settled
-    // cover is the one door, and this guards it (OPEN_ITEMS, MEM-X01: the
-    // second door it named is closed).
-    if (current.weather.snow_cover_days >= kSettledSnowCoverDays) {
+    // The district's cart takes the plan's debt off the heaps on the day the
+    // cover settles (register 242). It raced the settled snow, which took the
+    // heaps whole that day until 0.37.11, so it came ONCE a settling. The
+    // snow takes no heap now (RunFields; the decision of 13 September), and
+    // the heaps lie the winter: asked on every settled day, the cart would
+    // come again and again, and in January take the NEW year's plan off last
+    // year's heaps (static review of 0.37.11). It keeps its one day — the
+    // reach it had, not re-decided.
+    if (current.weather.snow_cover_days == kSettledSnowCoverDays) {
       TakePlanDebtFromFields(config_, current, current.calendar.day);
     }
     RunFields(current);
@@ -662,29 +664,21 @@ class ProductionSystem final : public IProductionSystem {
     const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
     const float temperature = current.weather.air_temperature_celsius;
     const bool snowing = current.weather.precipitation == Precipitation::kSnow;
-    // THE SETTLED SNOW TAKES WHAT LIES ON THE FIELD (farming design §6: "Лёг
-    // снег — всё, что осталось на этом поле… в кучах на краю — пропадает
-    // целиком"). A cover on its second day is settled: the melt rule never lets
-    // a dusting reach it (world_state.h, snow_cover_days).
-    const bool cover_settled = current.weather.snow_cover_days >= kSettledSnowCoverDays;
     for (FieldRow& field : current.fields.rows) {
       // THE DAY'S CUT INTO THE HEAP FIRST (the harvest by parts, farming
       // design §6, 24 September 2026): whatever the snow does below, it does
       // to a field whose reaped share already lies at its edge.
       LayReapedShare(config_, current, field);
-      // Until 2026-09-15 a reaped load that no cart had taken lay out through
-      // the winter and into the next year, booked as lost only when a second
-      // harvest came to take its place — and a loaded field stood as the
-      // shortage signal all that time. The snow takes it the winter it lies
-      // out, and the field is empty by spring (boss, parcel 408).
-      if (cover_settled && field.reaped_grams > 0) {
-        AddLedgerAmount(
-            current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
-        field.reaped_grams = 0;
-        field.reaped_resource = ResourceId{};
-        field.haul_days_remaining = 0.0F;
-        field.haul_days_written = 0.0F;
-      }
+      LayMownShare(config_, current, field);  // a meadow's hay, by the share mown (0.37.11)
+      // THE SNOW DOES NOT TAKE WHAT IS REAPED (resources design §6; boss's
+      // decision of 13 September 2026, «Выкопанное снег НЕ берёт: убранное
+      // лежит грузом на поле до вывоза; снег берёт только неубранное на
+      // корню»; boss-core-epoch1-queue [96], 0.37.11): the heap at the
+      // field's edge lies as a load until it is carted, winter or not, and
+      // the carting goes on to the empty heap. Only the standing crop is the
+      // snow's (LoseFieldToSnow). From 2026-09-15 (parcel 408) to 0.37.11
+      // the settled cover took every heap whole — the decision of the 13th,
+      // taken first and never put into the engine.
       // The buffer is no longer emptied here. Until task A4 this was a
       // daily retry that moved whatever the stores had room for, the moment
       // they had it — the instant-delivery stub. The load now leaves when

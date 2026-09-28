@@ -55,21 +55,64 @@ Grams DeliverHarvest(const ProductionConfig& config,
   return amount - placed;
 }
 
-/// The season's cut. The yield is the land's own rate for the WHOLE
-/// season, which is why one cut a year is not a simplification: the
-/// second cut is inside the number (farming.csv, meadow_yield_kg_per_ha).
-void MowMeadow(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+}  // namespace
+
+void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
+    return;
+  }
+  // THE SHARE MOWN, off the labour, as the arable's reaping lays it
+  // (LayReapedShare; boss-core-epoch1-queue-2026-09-28 [1], 0.37.11): until
+  // 0.37.11 the meadow laid its whole season in the day its last hour was
+  // mown, and on host's seed 7 thirty tonnes waited from October to December
+  // behind 0.29 man-days left on one meadow — the wintering's feed days read
+  // 17 against 20, the hay cut but not in the book.
+  const float phase_days = PhaseTotalDays(config, current, field);
+  float cut = phase_days > 0.0F ? 1.0F - (field.work_days_remaining / phase_days) : 1.0F;
+  cut = cut < 0.0F ? 0.0F : (cut > 1.0F ? 1.0F : cut);
+  if (field.work_days_remaining <= 0.0F) {
+    cut = 1.0F;  // mown through: the last of it, whatever the arithmetic says
+  }
+  const float share = cut - field.harvest_laid_share;
+  if (!(share > 0.0F)) {
+    return;
+  }
+  // The land's own rate for the WHOLE season, which is why one cut a year is
+  // not a simplification: the second cut is inside the number (farming.csv,
+  // meadow_yield_kg_per_ha).
   const float rate = field.kind == LandKind::kFloodplainMeadow
                          ? config.farming.meadow_floodplain_yield_kg_per_ha
                          : config.farming.meadow_yield_kg_per_ha;
-  const Grams hay = KilogramsToGrams(rate * field.area_ga);
-  // A meadow has no reaped buffer of its own: the cut either reaches the
-  // manger and the stores or it is lost, and either way it is booked.
+  const Grams hay_total = KilogramsToGrams(rate * field.area_ga);
+  // The last lay takes exactly what is left, so the season lays to the gram.
+  const Grams hay =
+      cut >= 1.0F
+          ? (hay_total > field.harvest_laid_grams ? hay_total - field.harvest_laid_grams : 0)
+          : GramsFromFloat(static_cast<float>(hay_total) * share);
+  field.harvest_laid_share = cut;
+  field.harvest_laid_grams += hay;
+  current.ledger.current.area_harvested_ha += field.area_ga * share;
+  if (hay <= 0) {
+    return;
+  }
+  // STRAIGHT TO THE MANGER AND THE STORES, as the whole cut always went: a
+  // meadow has no reaped buffer of its own, so the share adds no load to the
+  // carting. What finds no room is lost, and either way it is booked.
   const Grams hay_lost = DeliverHarvest(config, current, config.hay_resource, hay);
   AddLedgerAmount(current.ledger.current.harvest, config.hay_resource, hay);
   AddLedgerAmount(current.ledger.current.lost_no_room, config.hay_resource, hay_lost);
-  current.ledger.current.area_harvested_ha += field.area_ga;
+}
+
+namespace {
+
+/// The season's cut ends: the last share laid, the meadow back to grass.
+void MowMeadow(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  // The last of the cut, whatever the days before it laid (LayMownShare).
   field.work_days_remaining = 0.0F;
+  LayMownShare(config, current, field);
+  field.harvest_laid_share = 0.0F;
+  field.harvest_laid_grams = 0;
+  field.harvest_work_days = 0.0F;  // nought outside a reaping (land_state.h)
   // THE DAY IT WAS CUT, and it is the only trace the cut leaves. The phase
   // goes straight back to kGrowing below — the grass does stand again —
   // so without this day a mown meadow and an untouched one are the same
@@ -275,9 +318,9 @@ void LoseFieldToSnow(const ProductionConfig& config,
                      const CropDef& crop) {
   // WHAT THE REAPING CUT IS LAID FIRST (the harvest by parts, farming design
   // §6, 24 September 2026): the snow takes what still stands, not the day's
-  // work. And the HEAP IS NOT TOUCHED here — lying snow takes it, a day on
-  // (production_system.cpp, RunFields); the first flake took it until
-  // 0.34.44, against the design's own two thresholds.
+  // work. And the HEAP IS NOT TOUCHED here, nor by any snow since 0.37.11
+  // (the decision of 13 September); the first flake took it until 0.34.44,
+  // and the lying snow until 0.37.11.
   LayReapedShare(config, current, field);
   // THE STANDING CROP, BOOKED. Only the hectares and the heap were written
   // until 2026-09-18, and host found a seed's 150 t of potato in no column

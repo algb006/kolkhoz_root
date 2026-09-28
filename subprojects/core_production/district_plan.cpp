@@ -82,7 +82,8 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   // THE HEAPS FIRST AT THE TURN TOO (host seq 42 on 0.34.2): in a year whose
   // snow settles after the turn the snow's day never came, and seeds 1 and 23
   // failed the potato beside a 68 t heap. The cart comes on the snow's day or
-  // at the turn, whichever is first; after the snow there is no heap to take.
+  // at the turn, whichever is first. (Until 0.37.11 the snow took the heap,
+  // so after it there was none to take; the heap lies the winter now.)
   const SimDay seed_as_of = SeedDayAtTheTurn(current);
   TakePlanDebtFromFields(config, current, seed_as_of);
   if (current.plan.delivered.size() < current.plan.due.size()) {
@@ -118,10 +119,11 @@ void TakePlanDebtFromFields(const ProductionConfig& config,
       continue;
     }
     // THE HEAP FIRST, AND THE WHOLE DEBT (boss seq 180, on core's question):
-    // the heap is gone by the evening anyway, and what the stores hold is the
-    // village's winter. Taking only what the stores could not cover in
-    // November left the position short again in January, once the winter had
-    // eaten the stores it was counted on.
+    // what the stores hold is the village's winter. (The other half of the
+    // reason, «the heap is gone by the evening anyway», held until 0.37.11,
+    // when the snow stopped taking heaps; the rule stands on the first half.) Taking only what the
+    // stores could not cover in November left the position short again in January, once the winter
+    // had eaten the stores it was counted on.
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     Grams taken = 0;
     for (FieldRow& field : current.fields.rows) {

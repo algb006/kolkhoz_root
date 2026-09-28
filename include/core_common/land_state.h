@@ -400,12 +400,14 @@ struct FieldRow {
   /// the field"), in its smallest form — one resource, one number. Laid
   /// into day by day as the reaping cuts (the harvest by parts, 0.34.44:
   /// LayReapedShare) and emptied by the carting (SettleHauling);
-  /// kHarvestWaitingOnField stands while it holds anything. The first
-  /// SETTLED snow takes what is still lying there — the first snowfall does
-  /// not (farming design §6, the two thresholds) — booked to the ledger's
-  /// lost_no_room, never silently. STUB, with the term named (boss,
-  /// 2026-09-03): that bounds the free storage rather than modelling the
-  /// weathering of swaths, which is polish the design owes a number for.
+  /// kHarvestWaitingOnField stands while it holds anything. THE SNOW DOES NOT
+  /// TAKE IT (boss's decision of 13 September 2026, in the engine since
+  /// 0.37.11): the load lies until it is carted, winter or not. Until 0.37.11
+  /// the first SETTLED snow took it whole, to lost_no_room — a STUB bounding
+  /// the free storage (boss, 2026-09-03), removed with its reason: the
+  /// weathering of swaths is still unmodelled, and the design owes it a
+  /// number if it is ever wanted. The one write-off left is a next crop of
+  /// another resource laid over an old load (LayReapedShare), loud.
   /// SAVED: history the simulation cannot rederive (VERSION_SAVE 4 → 5).
   Grams reaped_grams = 0;
 
@@ -588,6 +590,12 @@ struct FieldRow {
   /// is not zyab, nor May's on the black fallow, nor a furrow of a field that
   /// gave no harvest this year. 0.37.9 kept it on any furrow the preparation
   /// turned itself.
+  ///
+  /// TWO EDGES, KEPT (boss-core-epoch1-queue-2026-09-28 [7]): a plough
+  /// ending on the turn's own tick dates its furrow in the new year and
+  /// loses zyab; and a FALLOW still being ploughed or harrowed at the turn
+  /// rests by no arm of the recovery (production_system.cpp) — a May plough
+  /// unfinished on 1 January.
   SimDay furrow_day = kNoFurrowDay;
 };
 

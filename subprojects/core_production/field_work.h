@@ -250,13 +250,25 @@ Grams StandingYieldGrams(const ProductionConfig& config,
 ///        lost, so whoever drained the work — crew, column, avral — is paid.
 void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
+/// @brief THE MEADOW'S CUT BY PARTS (0.37.11; boss-core-epoch1-queue-
+///        2026-09-28 [1]): lays into the manger and the stores the share of
+///        the season's hay the mowing's labour has cut since the last lay —
+///        `hay × (1 − work left / phase work − laid share)` — booked as
+///        harvest (and lost_no_room for what finds no room), area_harvested_ha
+///        by the share. No reaped buffer and no carting: the whole cut always
+///        went straight in, now it goes in as it is mown. Does nothing on
+///        arable land, a meadow not being mown, or a share already laid.
+///        Called at the day's turn beside LayReapedShare, and by MowMeadow for
+///        the last of it.
+void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
+
 /// @brief The snow takes what still STANDS of an unreaped annual (farming
 /// design §6): the share the reaping has cut is laid into the heap first
 /// (LayReapedShare), the rest — StandingYieldGrams — goes to lost_to_snow,
 /// its hectares to area_lost_ha; the field is left idle with its crop
 /// cleared, and kFieldLost says field, resource and grams. The HEAP IS NOT
-/// TOUCHED: lying snow takes it, the first snowfall does not (the two
-/// thresholds, production_system.cpp).
+/// TOUCHED, and since 0.37.11 no snow takes it (the decision of 13 September
+/// 2026): it lies until it is carted.
 /// @pre The caller has decided it is snowing in `crop`'s reaping season and
 ///      the crop is neither a winter crop nor a perennial.
 void LoseFieldToSnow(const ProductionConfig& config,

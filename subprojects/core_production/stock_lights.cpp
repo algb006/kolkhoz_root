@@ -147,6 +147,21 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
     held_kg[resource] =
         static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
   }
+  // AND THE HAY LYING REAPED ON THE FIELDS (boss-core-epoch1-queue [96],
+  // [97]; resources design §6, «убранное сено»; 0.37.11): the snow takes no
+  // heap, so a grass crop's hay at a field's edge is fodder a cart away and
+  // counts whole, as the store's does. HAY ONLY: a heap of grain or potato is
+  // the district's first (TakePlanDebtFromFields) and the people's before
+  // the pigs', and counted here it would green a light over fodder the plan
+  // then takes (static review of 0.37.11). Straw lies in no heap — the
+  // reaping sends it to the stores — and a meadow lays its hay straight in.
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.reaped_grams > 0 && field.reaped_resource.value == config.hay_resource.value &&
+        field.reaped_resource.value < held_kg.size()) {
+      held_kg[field.reaped_resource.value] +=
+          static_cast<float>(field.reaped_grams) / static_cast<float>(kGramsPerKilogram);
+    }
+  }
 
   std::int32_t days = 0;
   bool starving_today = false;

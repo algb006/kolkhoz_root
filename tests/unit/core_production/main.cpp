@@ -2255,10 +2255,12 @@ int CheckStoreCeilingAndAlarms() {
   failures += Expect(world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram,
                      "and what still does not fit keeps waiting");
 
-  // THE SETTLED SNOW TAKES WHAT STILL LIES OUT (farming design §6; boss,
-  // parcel 408). A cover on its first day is a dusting the melt rule may yet
-  // take away, so the load waits on; a cover on its second day is settled,
-  // and the load is written off that day rather than lying into next year.
+  // THE SNOW DOES NOT TAKE WHAT IS REAPED (resources design §6; boss's
+  // decision of 13 September 2026; boss-core-epoch1-queue [96], 0.37.11): a
+  // cover on its first day and a settled one alike leave the load lying,
+  // lost nowhere. From parcel 408 (2026-09-15) to
+  // 0.37.11 the settled cover wrote the waiting load off whole, which is
+  // what this block tested until then.
   world.weather.snow_cover_days = 1;
   {
     const core::WorldState yesterday = world;
@@ -2276,11 +2278,9 @@ int CheckStoreCeilingAndAlarms() {
     system->RunProductionDecisions(yesterday, world);
   }
   failures += Expect(
-      world.fields.rows[0].reaped_grams == 0 &&
-          !(world.fields.rows[0].haul_days_remaining > 0.0F) &&
-          !world.ledger.current.lost_no_room.empty() &&
-          world.ledger.current.lost_no_room[0] == 5'000 * core::kGramsPerKilogram,
-      "settled snow writes the waiting load off as lost, and the field asks for no carriers");
+      world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram &&
+          (world.ledger.current.lost_no_room.empty() || world.ledger.current.lost_no_room[0] == 0),
+      "settled snow leaves the reaped load lying, lost nowhere");
 
   // TWO THRESHOLDS FOR TWO THINGS (boss, parcel 430; fields and crops §6):
   // the crop still standing on its root dies on the first snowfall of the
@@ -2346,6 +2346,78 @@ int CheckFeedLightCountsTheWinter() {
   failures += Expect(winter.days_of_stock == summer.days_of_stock,
                      "and the same answer in December: the light does not change its mind "
                      "with the season, only the date it is measured against does");
+
+  // AND THE HEAP ON A FIELD IS FEED TOO (0.37.11; boss [96], [97]): the snow
+  // takes no heap, so 40 kg of hay lying reaped at a field's edge is ten
+  // more days, as if it were in the store. And HAY ONLY: forty units of a
+  // grain the herd also eats, lying in a heap, are the district's first and
+  // add nothing (static review of 0.37.11).
+  config.hay_resource = core::ResourceId{0};
+  config.feed_links.push_back(core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                                .resource = core::ResourceId{1},
+                                                .reserve = 0,
+                                                .max_share = 1.0F});
+  core::FieldRow heap;
+  heap.reaped_grams = 40 * kKilo;
+  heap.reaped_resource = core::ResourceId{0};
+  core::AppendRow(world.fields, heap);
+  core::FieldRow grain_heap;
+  grain_heap.reaped_grams = 40 * kKilo;
+  grain_heap.reaped_resource = core::ResourceId{1};
+  core::AppendRow(world.fields, grain_heap);
+  const core::StockForecast with_heap = core::FeedLight(config, world);
+  failures += Expect(with_heap.days_of_stock == 20,
+                     "a reaped heap of forty units of hay adds its ten days: twenty; the grain "
+                     "heap beside it adds none");
+  return failures;
+}
+
+/// THE MEADOW LAYS ITS HAY AS IT IS MOWN (0.37.11; boss-core-epoch1-queue-
+/// 2026-09-28 [1]; host's seed 7, thirty tonnes behind 0.29 man-days): on
+/// the shipped tables, a 10 ha meadow mown to its half books half its
+/// season's hay and 5 ha that day; mown out, the rest — the whole season to
+/// the gram — and the grass stands again with its day.
+int CheckTheMeadowLaysItsHayAsItIsMown() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "meadow by parts: the shipped tables parse") != 0) {
+    return 1;
+  }
+  core::WorldState world;
+  world.calendar.tick = 25U * core::kTicksPerDay;  // June
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.area_ga = 10.0F;
+  meadow.phase = core::FieldPhase::kHarvest;
+  const float total_days = config.farming.meadow_mow_days_per_ha * meadow.area_ga;
+  meadow.work_days_remaining = total_days * 0.5F;
+  core::AppendRow(world.fields, meadow);
+  const auto hay_booked = [&config](const core::WorldState& state) {
+    return core::AmountOf(state.ledger.current.harvest, config.hay_resource);
+  };
+  const core::Grams season =
+      core::KilogramsToGrams(config.farming.meadow_yield_kg_per_ha * meadow.area_ga);
+  core::LayMownShare(config, world, world.fields.rows[0]);
+  failures +=
+      Expect(hay_booked(world) == season / 2 && world.ledger.current.area_harvested_ha == 5.0F,
+             "meadow by parts: mown to its half, half the season's hay is booked, 5 ha");
+  core::LayMownShare(config, world, world.fields.rows[0]);
+  failures +=
+      Expect(hay_booked(world) == season / 2, "meadow by parts: the same share is not laid twice");
+  world.fields.rows[0].work_days_remaining = 0.0F;
+  core::FinishHarvest(config, world, world.fields.rows[0]);
+  failures += Expect(hay_booked(world) == season && world.ledger.current.area_harvested_ha == 10.0F,
+                     "meadow by parts: mown out, the season to the gram, 10 ha");
+  failures +=
+      Expect(world.fields.rows[0].phase == core::FieldPhase::kGrowing &&
+                 world.fields.rows[0].harvest_laid_share == 0.0F &&
+                 world.fields.rows[0].harvest_laid_grams == 0 &&
+                 world.fields.rows[0].last_mown_day == world.calendar.day,
+             "meadow by parts: the grass stands again, its laid share cleared, its day kept");
   return failures;
 }
 
@@ -3982,13 +4054,13 @@ int CheckTheSnowBooksWhatItTakes() {
                      "snow: kFieldLost says what and how much the snow took, not nought");
   failures += Expect(field.crop.value == core::kInvalidDefIdValue &&
                          field.phase == core::FieldPhase::kIdle && field.harvest_laid_share == 0.0F,
-                     "snow: the field is left idle, its crop cleared, its heap left to lying snow");
+                     "snow: the field is left idle, its crop cleared, its heap left lying");
 
   core::FieldRow& whole = world.fields.rows[core::FindRow(world.fields, whole_id)];
   core::LoseFieldToSnow(config, world, whole, config.crops[0]);
   failures += Expect(near(book.lost_to_snow[1], 13 * kTonne) && whole.reaped_grams == 2 * kTonne,
                      "snow: a field the reaping never touched loses all 10 t, and last year's "
-                     "heap on it is left to the lying snow");
+                     "heap on it is left lying");
   return failures;
 }
 
@@ -11531,6 +11603,7 @@ int main() {
   failures += CheckNoWinterSowingAfterWindow();
   failures += CheckTheBlackFallowsFurrowIsTheRyes();
   failures += CheckTheTurnRestsBareGroundAndCarriesPaidManure();
+  failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();
