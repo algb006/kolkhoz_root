@@ -21,7 +21,8 @@ kolkhoz_add_module(core_residents
     night_trade.cpp
     schooling.cpp
     vitals.cpp
-    year_metrics.cpp)
+    year_metrics.cpp
+    appearance_memory.cpp)
 
 target_link_libraries(core_residents
     PUBLIC core_common core_sim

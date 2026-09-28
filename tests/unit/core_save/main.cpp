@@ -213,6 +213,10 @@ core::WorldState MakeWorld() {
   // fifth dictionary can move, and the pair the codec refuses to see broken.
   first.post.profession = core::ProfessionId{1};
   first.post.unit = core::UnitId{1};
+  // Save 113: the look's memory, off «not yet» and apart from each other; the
+  // second resident keeps «not yet», the sentinel the bound has to admit.
+  first.satiety_year = 55.5F;
+  first.satiety_childhood = 62.25F;
   const core::ResidentId first_id = core::AppendRow(world.residents, first);
 
   core::ResidentRow second;
@@ -266,6 +270,7 @@ core::WorldState MakeWorld() {
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
   rich.trudodni_redeemed = 567;
+  rich.satisfaction_year = 47.75F;  // save 113; `bare` keeps «not yet»
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -1363,7 +1368,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // two residents; predicted 412 -> 420 before the build, held.
     // Save 104 (7e): +8 — the work's road_work on each of two residents,
     // predicted before the build, held.
-    {"residents", 430, 0x5715d50f16c730deULL},
+    // Save 113: +16 — the look's memory, two floats a resident, two saved;
+    // predicted 430 -> 446 before the build, held.
+    {"residents", 446, 0x92d6a61817dbcccfULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1375,7 +1382,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Predicted +18 before the cost was added, held; then +26, held.
     // Save 75: +2 a family — in_barrack and the hunger alarm's memory; two
     // families, +4, each byte predicted before its build.
-    {"families", 234, 0xb453a11b8ea5ef95ULL},
+    // Save 113: +8 — satisfaction_year, a float a family, two; predicted
+    // 234 -> 242 before the build, held (the struct's size was the miss).
+    {"families", 242, 0xdf9a3d15c8f4f333ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -1744,6 +1753,20 @@ int main() {
     failures += Expect(
         !core::DecodeWorld(core::EncodeWorld(grown, *tables), *tables, &refused, &grown_error),
         "a save with a fallow's rest owed on a field already growing is refused");
+    // THE LOOK'S MEMORY OFF ITS SCALE (save 113): 130 is no satiety, −0.5 is
+    // not «not yet». The control is the fixture's 55.5 and its «not yet».
+    core::WorldState overfed = MakeWorld();
+    overfed.residents.rows[0].satiety_childhood = 130.0F;
+    std::string overfed_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(overfed, *tables), *tables, &refused, &overfed_error),
+        "a save with a childhood's satiety of 130 is refused");
+    core::WorldState stray = MakeWorld();
+    stray.families.rows[0].satisfaction_year = -0.5F;
+    std::string stray_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(stray, *tables), *tables, &refused, &stray_error),
+        "and a family's remembered satisfaction of −0.5, which is not «not yet»");
     core::WorldState idle = MakeWorld();
     idle.fields.rows[0].phase = core::FieldPhase::kIdle;
     std::string idle_error;
@@ -2083,6 +2106,12 @@ int main() {
       loaded.fields.rows[0].fallow_rest_owed == 1 && loaded.fields.rows[2].fallow_rest_owed == 0,
       "the black fallow's rest owed comes back, and a field owing none owes none "
       "(save 112)");
+  failures += Expect(loaded.residents.rows[0].satiety_year == 55.5F &&
+                         loaded.residents.rows[0].satiety_childhood == 62.25F &&
+                         loaded.residents.rows[1].satiety_year == core::kNotYetRemembered &&
+                         loaded.families.rows[0].satisfaction_year == 47.75F &&
+                         loaded.families.rows[1].satisfaction_year == core::kNotYetRemembered,
+                     "the look's memory comes back, and «not yet» comes back not yet (save 113)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

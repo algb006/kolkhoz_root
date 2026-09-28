@@ -216,6 +216,15 @@ struct FamilyRow {
   /// with goods, hundredths. Issue covers account - redeemed; both burn to
   /// zero at the economic year's turn (labor-payment design §3).
   TrudodniHundredths trudodni_redeemed = 0;
+
+  /// SATISFACTION OVER THE LAST YEAR, 0..100, or kNotYetRemembered (save 113;
+  /// live signals design §6; boss-core-epoch1-queue-2026-09-29 [14] (1);
+  /// 0.37.17): a year's exponential mean of `satisfaction`, stepped once a
+  /// day, both ways — satisfaction is the family's, not a resident's
+  /// (terminology). The look's memory: the layer draws an adult's freshness
+  /// from the worse of this and their own satiety_year
+  /// (core_residents/appearance_memory.h). Nothing in the simulation reads it.
+  Metric satisfaction_year = kNotYetRemembered;
 };
 
 /// @brief The families table type used by WorldState.

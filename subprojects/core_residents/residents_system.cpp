@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 
+#include "appearance_memory.h"
 #include "core_catalog/definitions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
@@ -91,12 +92,13 @@ class FamilyMetricsPhase final : public IParallelPhase {
     return static_cast<std::uint32_t>(current.families.rows.size());
   }
 
-  void RunItemRange(const WorldState& /*previous*/,
+  void RunItemRange(const WorldState& previous,
                     WorldState& current,
                     std::uint32_t begin_item,
                     std::uint32_t end_item) override {
     // current.epoch is finalized by the decisions slot (buffer-law rule 4).
     const SatisfactionWeights& weights = config_->weights[EpochIndex(current.epoch)];
+    const bool new_day = current.calendar.day != previous.calendar.day;
     for (std::uint32_t item = begin_item; item < end_item; ++item) {
       // The plot goes first: the day's hours are an input to nothing here
       // yet, but the garden it pays out feeds tomorrow's meal, and both
@@ -126,6 +128,9 @@ class FamilyMetricsPhase final : public IParallelPhase {
       // in one house, both of them (family_state.h, lodging_penalty).
       const float after_overwork = capped - family.overwork_penalty - family.lodging_penalty;
       family.satisfaction = after_overwork > 0.0F ? after_overwork : 0.0F;
+      // THE LOOK'S MEMORY, off the satisfaction just set and the members'
+      // satiety the needs phase set this step (appearance_memory.h; 0.37.17).
+      RememberWellbeing(*config_, current, item, new_day);
     }
   }
 

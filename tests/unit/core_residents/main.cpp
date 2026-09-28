@@ -25,6 +25,7 @@
 
 #include "../../common/fake_tables.h"
 #include "alcoholism.h"
+#include "appearance_memory.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -218,6 +219,74 @@ int CheckTheWinterCountsTheHeapAbovePlan() {
   world.plan.announced = 0;
   failures += Expect(core::SettlementFoodDays(food, life, world) == whole,
                      "winter food: and with no plan announced, the whole store is food");
+  return failures;
+}
+
+/// THE LOOK'S MEMORY (appearance_memory.h; live signals design §6; 0.37.17):
+/// one family, an adult of thirty and a child of ten days, everything «not
+/// yet». The first pass seeds each memory with today's value, on any step;
+/// a step that crosses no day moves nothing; a new day moves the year's
+/// memories a year's step (1/48) towards today — down, and back up — and the
+/// child's childhood by a day of its eleven; the adult's childhood stays as
+/// seeded (STUB «измождённое село»), and a grown child's is frozen too.
+int CheckTheLooksMemory() {
+  int failures = 0;
+  const core::LifeConfig life;
+  core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+  world.calendar.tick = 100 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::ResidentRow child;
+  child.family = world.families.row_ids[0];
+  child.birth_day = static_cast<std::int32_t>(world.calendar.day) - 10;
+  child.satiety = 70.0F;
+  core::AppendRow(world.residents, child);
+  world.families.rows[0].satisfaction = 60.0F;
+  const auto& adult = world.residents.rows[0];
+  const auto& kid = world.residents.rows[1];
+  const auto& family = world.families.rows[0];
+
+  core::RememberWellbeing(life, world, 0, false);
+  failures += Expect(adult.satiety_year == 70.0F && adult.satiety_childhood == 70.0F &&
+                         kid.satiety_year == 70.0F && kid.satiety_childhood == 70.0F &&
+                         family.satisfaction_year == 60.0F,
+                     "look's memory: the first pass seeds every memory with today's value");
+  world.residents.rows[0].satiety = 22.0F;
+  world.residents.rows[1].satiety = 22.0F;
+  world.families.rows[0].satisfaction = 12.0F;
+  core::RememberWellbeing(life, world, 0, false);
+  failures += Expect(adult.satiety_year == 70.0F && family.satisfaction_year == 60.0F,
+                     "look's memory: a step that crosses no day moves nothing");
+  core::RememberWellbeing(life, world, 0, true);
+  const float year_step = static_cast<float>(core::kDaysPerYear);
+  failures += Expect(adult.satiety_year == 70.0F + (22.0F - 70.0F) / year_step &&
+                         family.satisfaction_year == 60.0F + (12.0F - 60.0F) / year_step,
+                     "look's memory: a new day moves the year a year's step towards today");
+  failures += Expect(
+      kid.satiety_childhood == 70.0F + (22.0F - 70.0F) / 11.0F && adult.satiety_childhood == 70.0F,
+      "look's memory: the child's childhood moves by a day of its eleven (the birth day is "
+      "one), the adult's stays as seeded");
+  const float low = adult.satiety_year;
+  world.residents.rows[0].satiety = 95.0F;
+  for (int day = 0; day < 10; ++day) {
+    core::RememberWellbeing(life, world, 0, true);
+  }
+  failures += Expect(adult.satiety_year > low && adult.satiety_year < 95.0F,
+                     "look's memory: and back up, slowly — both ways");
+  // Grown: the child's birth set back past the adult age, its childhood holds.
+  world.residents.rows[1].birth_day = -1000;
+  const float grown = kid.satiety_childhood;
+  world.residents.rows[1].satiety = 99.0F;
+  core::RememberWellbeing(life, world, 0, true);
+  failures += Expect(kid.satiety_childhood == grown,
+                     "look's memory: grown up, the childhood is frozen for life");
+  // ON THE SCALE whatever it is fed (static review of 0.37.17): a family's
+  // satisfaction of 130 — tables whose weights sum past 100 — is remembered
+  // as 100, which the save loads.
+  world.families.rows[0].satisfaction_year = core::kNotYetRemembered;
+  world.families.rows[0].satisfaction = 130.0F;
+  core::RememberWellbeing(life, world, 0, false);
+  failures += Expect(family.satisfaction_year == 100.0F,
+                     "look's memory: held on 0..100 whatever it is fed");
   return failures;
 }
 
@@ -3675,6 +3744,19 @@ int main() {
     failures += Expect(current.families.rows[0].satisfaction == 52.5F &&
                            current.families.rows[1].satisfaction == 0.0F,
                        "a yard's overwork is taken off its satisfaction, down to nought");
+    // THE LOOK'S MEMORY RIDES THIS PHASE (appearance_memory.h; 0.37.17): its
+    // first run seeded the yard's year of satisfaction with that run's 60 and
+    // its members' year of satiety with their 60; the second run crossed no
+    // day, and the memory kept them.
+    bool members_seeded = true;
+    for (const core::ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value == current.families.row_ids[0].value) {
+        members_seeded = members_seeded && resident.satiety_year == 60.0F;
+      }
+    }
+    failures += Expect(current.calendar.day == previous.calendar.day &&
+                           current.families.rows[0].satisfaction_year == 60.0F && members_seeded,
+                       "the metrics phase seeds the look's memory and moves it only across a day");
   }
 
   failures += CheckFoodConfigDefaults(tables);
@@ -3706,6 +3788,7 @@ int main() {
   failures += CheckAlcoholismInheritance();
   failures += CheckTheSportsField();
   failures += CheckTheWinterCountsTheHeapAbovePlan();
+  failures += CheckTheLooksMemory();
   failures += CheckTakeNightTrader();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);

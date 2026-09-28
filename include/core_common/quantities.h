@@ -144,6 +144,13 @@ inline constexpr Kopecks kKopecksPerRuble = 100;
 /// long periods, so integer exactness buys nothing here.
 using Metric = float;
 
+/// @brief A Metric's MEMORY not yet seeded — below every metric's 0..100:
+/// a world just made, a resident just born, a family just wed (the look's
+/// memories, core_residents/appearance_memory.h; 0.37.17). The first pass of
+/// the memory seeds it with the current value; a reader meeting it reads the
+/// current value itself.
+inline constexpr Metric kNotYetRemembered = -1.0F;
+
 /// @brief The top of the wear scale — a ruin (unit rules §15: 0..100, and
 /// 100 is where it stops). Named here beside Metric because wear IS one,
 /// and because "100" spelled out at every clamp is the kind of magic

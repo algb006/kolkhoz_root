@@ -423,6 +423,21 @@ struct ResidentRow {
   /// receives. A hungry village looks hungry without a field of its own,
   /// which is what a live signal means.
   float build_deviation = 0.0F;
+
+  /// SATIETY OVER THE LAST YEAR, 0..100, or kNotYetRemembered (save 113;
+  /// live signals design §6, «Облик растёт с благополучием»; 0.37.17): a
+  /// year's exponential mean, stepped once a day, both ways. The look's
+  /// memory, not a rule's: nothing in the simulation reads it. The layer
+  /// draws an adult's freshness from the worse of this and the family's
+  /// satisfaction_year (core_residents/appearance_memory.h).
+  Metric satiety_year = kNotYetRemembered;
+
+  /// SATIETY OF THE CHILDHOOD, 0..100, or kNotYetRemembered (save 113): the
+  /// mean of the days from birth, frozen at `adult_age_years` and carried
+  /// for life — «сытое детство — полнее лицо, ровнее кожа, выше рост в
+  /// пределах генератора». The start's residents are seeded with their first
+  /// day's satiety: STUB «измождённое село» (appearance_memory.h).
+  Metric satiety_childhood = kNotYetRemembered;
 };
 
 /// @brief The residents table type used by WorldState.

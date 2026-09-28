@@ -72,14 +72,16 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 104 (7e): the work's road_work, +4 — predicted 220 -> 224 before the
 // build. Save 105: idle_reason, one byte after the 44-byte work block — 228,
 // read off the build (the byte takes a 4-aligned slot of its own).
-static_assert(sizeof(ResidentRow) == 228,
+// Save 113: the look's memory, two floats at the row's end — predicted 228 ->
+// 236 before the build (the row aligns to 4).
+static_assert(sizeof(ResidentRow) == 236,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
 // Save 69: talk_until_day — 44. Save 78: twin and identical_twin — 46.
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
-// idle_reason — 51.
-static_assert(AggregateArity<ResidentRow>() == 51,
+// idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
+static_assert(AggregateArity<ResidentRow>() == 53,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -91,6 +93,10 @@ static_assert(AggregateArity<ResidentRow>() == 51,
 // by the layout, confirmed by the build.
 // Save 75: in_barrack, a byte after lodging_penalty — 88 -> 96 + amounts (the
 // byte opened a new word).
+// Save 113: satisfaction_year, a float at the row's end — predicted 96 -> 104
+// + amounts before the build (the row aligns to 8). A MISS, named: the float
+// took the tail padding after trudodni_redeemed (at 112, the float at 116),
+// and the size stays 96 + amounts — measured by a sizeof/offsetof probe.
 static_assert(sizeof(FamilyRow) == 96 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
@@ -98,8 +104,9 @@ static_assert(sizeof(FamilyRow) == 96 + kAmountsSize,
 // 2026-09-18, save 60: dry_months, the yard's sobriety clock — 20 fields.
 // Save 74: asked_to_leave, asked_day, lodged_in and lodging_penalty — 25
 // fields.
-// Save 75: in_barrack and hunger_alarm_lit — 27 fields.
-static_assert(AggregateArity<FamilyRow>() == 27,
+// Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
+// satisfaction_year — 28.
+static_assert(AggregateArity<FamilyRow>() == 28,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -460,6 +467,13 @@ Vec2 ReadVec2(ByteReader& in) {
   return value;
 }
 
+/// A remembered metric as the look's memory writes it (save 113): exactly
+/// «not yet» (kNotYetRemembered) or on the 0..100 scale. Anything else — a
+/// NaN, a stray −0.5, a 130 — is no state the memory makes.
+bool RememberedMetricIsSound(Metric value) {
+  return value == kNotYetRemembered || (value >= 0.0F && value <= 100.0F);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -546,6 +560,9 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU16(row.traits);
   out.WriteFloat(row.height_deviation);
   out.WriteFloat(row.build_deviation);
+  // The look's memory (save 113; core_residents/appearance_memory.h).
+  out.WriteFloat(row.satiety_year);
+  out.WriteFloat(row.satiety_childhood);
 }
 
 ResidentRow ReadResidentRow(LoadSource& source) {
@@ -628,6 +645,12 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.traits = in.ReadU16();
   row.height_deviation = in.ReadFloat();
   row.build_deviation = in.ReadFloat();
+  row.satiety_year = in.ReadFloat();       // save 113
+  row.satiety_childhood = in.ReadFloat();  // save 113
+  if (!RememberedMetricIsSound(row.satiety_year) ||
+      !RememberedMetricIsSound(row.satiety_childhood)) {
+    source.Fail("a resident's remembered satiety is outside 0..100 and not «not yet»");
+  }
   return row;
 }
 
@@ -674,6 +697,7 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
 
   out.WriteI32(row.trudodni_account);
   out.WriteI32(row.trudodni_redeemed);
+  out.WriteFloat(row.satisfaction_year);  // save 113: the look's memory
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -714,6 +738,10 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
 
   row.trudodni_account = in.ReadI32();
   row.trudodni_redeemed = in.ReadI32();
+  row.satisfaction_year = in.ReadFloat();  // save 113
+  if (!RememberedMetricIsSound(row.satisfaction_year)) {
+    source.Fail("a family's remembered satisfaction is outside 0..100 and not «not yet»");
+  }
   return row;
 }
 
