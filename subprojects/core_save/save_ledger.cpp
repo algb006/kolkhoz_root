@@ -4,6 +4,7 @@
 
 #include "save_ledger.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -87,9 +88,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 108: the herds' hay and their need uncovered, by kind — two columns
 // at the end, 89 -> 91 fields, the size 712 + 30 A -> 712 + 32 A (the float
 // before them already padded to 8), predicted before the build.
-static_assert(sizeof(YearLedger) == 712 + (32 * kAmountsSize),
+// Save 114: the zyab on 1 December, a float and a u16 at the end, after the
+// last vector (which ends the struct unpadded) — 91 -> 93 fields, the size
+// 712 + 32 A -> 720 + 32 A (1486 rounded to 8), predicted before the build.
+static_assert(sizeof(YearLedger) == 720 + (32 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 91,
+static_assert(AggregateArity<YearLedger>() == 93,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -216,6 +220,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // livestock dictionary.
   sink.WriteAmounts(DefKind::kLivestock, book.herd_hay_eaten);
   sink.WriteAmounts(DefKind::kLivestock, book.herd_feed_short);
+  // The zyab on 1 December (save 114).
+  out.WriteFloat(book.zyab_ha_dec1);
+  out.WriteU16(book.zyab_fields_dec1);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -368,6 +375,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
         source.Fail("the book's hay or feed shortfall by kind is negative");
       }
     }
+  }
+  book.zyab_ha_dec1 = in.ReadFloat();    // save 114
+  book.zyab_fields_dec1 = in.ReadU16();  // save 114
+  if (!(book.zyab_ha_dec1 >= 0.0F) || !std::isfinite(book.zyab_ha_dec1)) {
+    source.Fail("the book's zyab on 1 December is negative or not a number");
   }
   return book;
 }

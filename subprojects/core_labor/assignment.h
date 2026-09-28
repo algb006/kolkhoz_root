@@ -92,6 +92,14 @@ struct AssignmentJob {
   /// potato harvest and sent potatoes under the snow.
   bool prepares_winter_crop = false;
 
+  /// True for the farm rule's zyab — the stubble ploughed for next spring's
+  /// crop (FieldRow::autumn_furrowing; register 13; 0.37.18). It has no
+  /// window (the tier of work with none) and goes FIRST in that tier: the
+  /// reaping, the carting and the winter crop, all with windows, go before
+  /// it, the building and the felling after (boss-core-epoch1-queue-2026-09-
+  /// 29 [22]). STUB: the place, not a number of the design's.
+  bool autumn_furrow = false;
+
   /// True for ploughing and harrowing of a field whose crop carries a position
   /// of this year's plan (plan.due above nought for its resource). Inside one
   /// tier and one kind of window such a field is worked before the others,

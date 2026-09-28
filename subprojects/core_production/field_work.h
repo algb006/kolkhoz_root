@@ -152,7 +152,9 @@ float TractionFactor(const ProductionConfig& config, float traction_ration);
 /// (econ-host-fodder-and-winter seq 2): the base paid hungry ploughing, 114.29
 /// man-days against 80, in 6 seeds of 7 with a full oat store, and the
 /// winter's fodder decision never reached the spring's biggest work. The
-/// shape is RescaleHaulForBeds's: priced at `was`, worked at `now`.
+/// shape is RescaleHaulForBeds's: priced at `was`, worked at `now`. The rest
+/// a part-turned autumn furrow owes over the winter, idle, is plough work too
+/// and rescaled with it (option «г», 0.37.18).
 /// @param traction_ration_was The ration before today's herd day wrote it.
 void RescaleHorseWorkForRation(const ProductionConfig& config,
                                float traction_ration_was,
@@ -318,7 +320,9 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
 /// the field's reaping of the same year (FieldRow::furrow_day; boss [94] (1),
 /// 0.37.10). Its manure, if booked, stays booked (FieldRow::manure_booked);
 /// a black fallow's owed rest is dropped, the turn having rested the field.
-/// A fallow being ploughed is left alone — it carries no crop to go stale.
+/// A fallow being ploughed is left alone — it carries no crop to go stale —
+/// and so is an autumn furrow not finished by the turn: it crosses the turn
+/// with the work it has done (option «г», boss-core-epoch1-queue [32]).
 /// @return true when the field was released.
 bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field);
 

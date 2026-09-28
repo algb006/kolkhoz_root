@@ -319,7 +319,10 @@ core::WorldState MakeWorld() {
   meadow.kind = core::LandKind::kMeadow;
   meadow.center = core::Vec2{.x = -900.0F, .y = 1100.0F};
   meadow.area_ga = 20.0F;
-  meadow.phase = core::FieldPhase::kGrowing;
+  // Save 114: under an autumn furrow — a crop-less ploughing, the one state
+  // the loader lets carry it (the codec is under test, not the meadow).
+  meadow.phase = core::FieldPhase::kPlowing;
+  meadow.autumn_furrowing = 1;
   core::AppendRow(world.fields, meadow);
   // The TOP of the land enum, so its bound is exercised, and the overgrown
   // byte set so the round trip carries it. The byte replaced a whole
@@ -663,6 +666,8 @@ core::WorldState MakeWorld() {
   // books, or a codec that swapped them would still round-trip.
   world.ledger.closed.plan_delivered = Amounts({11'800'000, 0, 0});
   world.ledger.current.plan_delivered = Amounts({5'000});
+  world.ledger.closed.zyab_ha_dec1 = 17.5F;  // save 114; the current book keeps nought
+  world.ledger.closed.zyab_fields_dec1 = 3;
   // Save 86: the milk debt of each book, two different values, so a codec
   // that swapped the books could not round-trip them.
   world.ledger.closed.milk_debt = 200'000;
@@ -1400,7 +1405,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 112: +3 — the black fallow's rest owed, a byte a row, three rows;
     // predicted 344 -> 347 with every other section unmoved before the build,
     // held; the hash moved with the byte and the fixture's sowing phase.
-    {"fields", 347, 0x15da2987d7677341ULL},
+    // Save 114: +3 — the autumn furrow, a byte a row, three rows; predicted
+    // 347 -> 350 before the build, held.
+    {"fields", 350, 0x3fc1a3c3e38463e7ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1557,7 +1564,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 108: the herds' hay and need uncovered by kind, two amounts a
     // book — the closed book's 2 + 16 and 2 + 8, the current's 2 + 2: 1952
     // -> 1984, predicted before the build, held.
-    {"ledger", 1984, 0xf5e912f48a16210aULL},
+    // Save 114: +12 — the zyab on 1 December, a float and a u16 a book, two
+    // books; predicted 1984 -> 1996 before the build, held.
+    {"ledger", 1996, 0xa61b3e7befcbd886ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1767,6 +1776,41 @@ int main() {
     failures += Expect(
         !core::DecodeWorld(core::EncodeWorld(stray, *tables), *tables, &refused, &stray_error),
         "and a family's remembered satisfaction of −0.5, which is not «not yet»");
+    // AN AUTUMN FURROW OFF THE PLOUGH (save 114): a growing field cannot be
+    // ploughing its zyab. The control is the fixture's meadow under it.
+    core::WorldState grown_furrow = MakeWorld();
+    grown_furrow.fields.rows[1].phase = core::FieldPhase::kGrowing;
+    std::string furrow_error;
+    failures +=
+        Expect(!core::DecodeWorld(
+                   core::EncodeWorld(grown_furrow, *tables), *tables, &refused, &furrow_error),
+               "a save with an autumn furrow on a growing field is refused");
+    core::WorldState twice = MakeWorld();
+    twice.fields.rows[1].autumn_plowed = 1;
+    std::string twice_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(twice, *tables), *tables, &refused, &twice_error),
+        "and one ploughing a furrow already turned");
+    // PART-TURNED OVER THE TURN (option «г»): idle with the rest owed loads;
+    // idle with nothing owed is no furrow at all and is refused.
+    core::WorldState part_turned = MakeWorld();
+    part_turned.fields.rows[1].phase = core::FieldPhase::kIdle;
+    part_turned.fields.rows[1].work_days_remaining = 3.0F;
+    core::WorldState part_loaded;
+    std::string part_error;
+    failures +=
+        Expect(core::DecodeWorld(
+                   core::EncodeWorld(part_turned, *tables), *tables, &part_loaded, &part_error) &&
+                   part_loaded.fields.rows[1].autumn_furrowing == 1 &&
+                   part_loaded.fields.rows[1].work_days_remaining == 3.0F,
+               "a part-turned autumn furrow, idle with its rest owed, loads");
+    core::WorldState nothing_owed = part_turned;
+    nothing_owed.fields.rows[1].work_days_remaining = 0.0F;
+    std::string owed_error;
+    failures +=
+        Expect(!core::DecodeWorld(
+                   core::EncodeWorld(nothing_owed, *tables), *tables, &refused, &owed_error),
+               "and an idle one with nothing owed is refused");
     core::WorldState idle = MakeWorld();
     idle.fields.rows[0].phase = core::FieldPhase::kIdle;
     std::string idle_error;
@@ -2112,6 +2156,11 @@ int main() {
                          loaded.families.rows[0].satisfaction_year == 47.75F &&
                          loaded.families.rows[1].satisfaction_year == core::kNotYetRemembered,
                      "the look's memory comes back, and «not yet» comes back not yet (save 113)");
+  failures += Expect(
+      loaded.fields.rows[1].autumn_furrowing == 1 && loaded.fields.rows[0].autumn_furrowing == 0 &&
+          loaded.ledger.closed.zyab_ha_dec1 == 17.5F &&
+          loaded.ledger.closed.zyab_fields_dec1 == 3 && loaded.ledger.current.zyab_ha_dec1 == 0.0F,
+      "the autumn furrow and the book's zyab come back (save 114)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

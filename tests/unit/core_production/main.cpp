@@ -1274,6 +1274,38 @@ int CheckThePloughKeepsItsOats() {
   failures += Expect(!summer_hold.held && summer < 100 * kKilo,
                      "plough's oats: after the spring's sowing and before the reaping nothing is "
                      "held, and the carts eat");
+  // THE AUTUMN FURROW IS NOT THE SPRING'S PLOUGH (static review of 0.37.18):
+  // a ploughman on a zyab field leaves the spring's oats held, as on a day
+  // nobody ploughs.
+  {
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 36) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.units.rows[0].stock[1] = 100 * kKilo;
+    world.ledger.closed.year = 1;
+    world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] =
+        200.0F;
+    AddHerd(world, 0, 4, 2, true);
+    for (int carter = 0; carter < 2; ++carter) {
+      core::ResidentRow hand;
+      hand.work.kind = core::WorkKind::kHauling;
+      hand.work.rides_horse = 1;
+      AppendRow(world.residents, hand);
+    }
+    core::FieldRow stubble;
+    stubble.kind = core::LandKind::kArable;
+    stubble.phase = core::FieldPhase::kPlowing;
+    stubble.autumn_furrowing = 1;
+    const core::FieldId stubble_id = core::AppendRow(world.fields, stubble);
+    core::ResidentRow zyab_ploughman;
+    zyab_ploughman.work.kind = core::WorkKind::kPlowing;
+    zyab_ploughman.work.field = stubble_id;
+    AppendRow(world.residents, zyab_ploughman);
+    core::RunHerdDay(config, world);
+    failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo,
+                       "plough's oats: a ploughman on the autumn furrow leaves the spring's oats "
+                       "held");
+  }
   // A YEAR WITH NO OATS IN (static review of 0.37.2): past the reaping's
   // window, reaped or not, next spring's ploughing is held again.
   core::PloughFeedHold autumn_hold;
@@ -6988,6 +7020,242 @@ int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
   return failures;
 }
 
+/// THE FARM RULE'S ZYAB (0.37.18; register 13; boss-core-epoch1-queue-2026-
+/// 09-29 [22], [23]), on the shipped tables, in the autumn of year 2:
+///   * stubble reaped this year, next slot potato: the autumn furrow opens at
+///     5 °C — a plough, no crop on the row, the chain's mark untouched;
+///   * next slot winter rye: no zyab (the rye's own sowing);
+///   * the furrow already turned, or the field reaped last year: no zyab;
+///   * at −2 °C: none opens;
+///   * the plough drained: the field idle, `autumn_plowed` set;
+///   * one unfinished at the turn: let go, idle, no zyab;
+///   * 1 December: the book counts the zyab's hectares and fields.
+int CheckTheFarmRulesZyab() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "zyab: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+  const core::CropId potato{static_cast<std::uint16_t>(crops->FindRowByKey("potato"))};
+  const auto step = [&system](core::WorldState& state, float temperature) {
+    core::WorldState next = state;
+    next.calendar.tick = ((state.calendar.tick / core::kTicksPerDay) + 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next.calendar);
+    next.weather.air_temperature_celsius = temperature;
+    next.step_events.clear();
+    system->RunProductionDecisions(state, next);
+    state = next;
+  };
+  // Year 2, the day before the first of November (0-based month 10).
+  constexpr core::SimDay kOctoberEnd = core::kDaysPerYear + (10 * core::kDaysPerMonth) - 1;
+  core::FieldRow base;
+  base.kind = core::LandKind::kArable;
+  base.area_ga = 10.0F;
+  base.fertility = 60.0F;
+  base.rotation_assigned = 1;
+  base.phase = core::FieldPhase::kIdle;
+  base.rotation_year0 = oat;
+  base.rotation_year1 = potato;
+  base.rotation_year2 = rye;
+  base.reaped_day = kOctoberEnd - 20;  // this year's oats are off
+  // A granary, so an oat heap has somewhere to go and a potato heap (the
+  // food store's) has not.
+  const core::ITable* const unit_types = tables->FindTable("unit_types");
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ResourceId oat_grain{static_cast<std::uint16_t>(resources->FindRowByKey("oat"))};
+  const core::ResourceId potato_tuber{
+      static_cast<std::uint16_t>(resources->FindRowByKey("potato"))};
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{static_cast<std::uint16_t>(unit_types->FindRowByKey("granary"))};
+  granary.level = 1;
+  const auto autumn = [&](float temperature, const core::FieldRow* extra = nullptr) {
+    core::WorldState world;
+    world.calendar.tick = ((kOctoberEnd + 1U) * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(world.calendar);
+    core::AppendRow(world.units, granary);
+    core::AppendRow(world.fields, base);  // 0: potato next — zyab
+    core::FieldRow rye_next = base;
+    rye_next.rotation_year1 = rye;
+    rye_next.rotation_year2 = potato;
+    core::AppendRow(world.fields, rye_next);  // 1: rye next — none
+    core::FieldRow turned = base;
+    turned.autumn_plowed = 1;
+    core::AppendRow(world.fields, turned);  // 2: already zyab — none
+    core::FieldRow old_stubble = base;
+    old_stubble.reaped_day = 20;                 // last year
+    core::AppendRow(world.fields, old_stubble);  // 3: reaped last year — none
+    if (extra != nullptr) {
+      core::AppendRow(world.fields, *extra);  // 4: the rest of the farm
+    }
+    step(world, temperature);
+    return world;
+  };
+  // THE HARVEST IN AND CARTED FIRST (boss [27] «б», [32]): another arable
+  // field with a heap lying that will be carted, being reaped, or with a
+  // spring crop still to be dug, holds the zyab back; a heap with nowhere to
+  // go, this autumn's rye growing, and a perennial standing or cut do not.
+  const auto zyab_opens_beside = [&](const core::FieldRow& other) {
+    return autumn(5.0F, &other).fields.rows[0].autumn_furrowing == 1;
+  };
+  core::FieldRow heap;
+  heap.kind = core::LandKind::kArable;
+  heap.area_ga = 5.0F;
+  heap.phase = core::FieldPhase::kIdle;
+  heap.reaped_grams = 3'000'000;
+  heap.reaped_resource = oat_grain;  // the granary takes it
+  core::FieldRow nowhere = heap;
+  nowhere.reaped_resource = potato_tuber;  // no food store in this world
+  core::FieldRow digging = heap;
+  digging.reaped_grams = 0;
+  digging.reaped_resource = core::ResourceId{};
+  digging.phase = core::FieldPhase::kGrowing;
+  digging.crop = potato;
+  core::FieldRow reaping = digging;
+  reaping.phase = core::FieldPhase::kHarvest;  // being dug, nothing laid yet
+  reaping.work_days_remaining = 5.0F;          // with no work left it would end today
+  core::FieldRow new_rye = digging;
+  new_rye.crop = rye;
+  const core::CropId clover{static_cast<std::uint16_t>(crops->FindRowByKey("clover"))};
+  core::FieldRow clover_standing = digging;
+  clover_standing.crop = clover;
+  core::FieldRow clover_cut = clover_standing;
+  clover_cut.phase = core::FieldPhase::kHarvest;
+  clover_cut.work_days_remaining = 5.0F;  // being cut: with none left it ends today, a heap laid
+  failures +=
+      Expect(!zyab_opens_beside(heap), "zyab: none while another field's heap lies to be carted");
+  failures +=
+      Expect(!zyab_opens_beside(digging), "zyab: none while another field's potato is still undug");
+  failures +=
+      Expect(!zyab_opens_beside(reaping), "zyab: none while another field's potato is being dug");
+  failures += Expect(zyab_opens_beside(nowhere),
+                     "zyab: a heap with nowhere to go does not hold it — it is not carted at all");
+  failures += Expect(zyab_opens_beside(new_rye) && zyab_opens_beside(clover_standing) &&
+                         zyab_opens_beside(clover_cut),
+                     "zyab: this autumn's rye growing and a perennial standing or cut hold "
+                     "nothing back");
+  core::WorldState warm = autumn(5.0F);
+  const core::FieldRow& opened = warm.fields.rows[0];
+  failures += Expect(opened.phase == core::FieldPhase::kPlowing && opened.autumn_furrowing == 1 &&
+                         opened.crop.value == core::kInvalidDefIdValue &&
+                         opened.rotation_skips_turn == 0 && opened.work_days_remaining > 0.0F,
+                     "zyab: the stubble with potato next opens its autumn furrow — a plough, no "
+                     "crop on the row");
+  failures += Expect(warm.fields.rows[1].autumn_furrowing == 0 &&
+                         warm.fields.rows[2].autumn_furrowing == 0 &&
+                         warm.fields.rows[3].autumn_furrowing == 0,
+                     "zyab: none with rye next, none on a furrow turned, none on last year's "
+                     "stubble");
+  core::WorldState cold = autumn(-2.0F);
+  failures += Expect(cold.fields.rows[0].phase == core::FieldPhase::kIdle &&
+                         cold.fields.rows[0].autumn_furrowing == 0,
+                     "zyab: on frozen ground none opens");
+  // The plough drained: zyab, idle.
+  core::WorldState done = warm;
+  done.fields.rows[0].work_days_remaining = 0.0F;
+  step(done, 5.0F);
+  failures += Expect(done.fields.rows[0].phase == core::FieldPhase::kIdle &&
+                         done.fields.rows[0].autumn_plowed == 1 &&
+                         done.fields.rows[0].autumn_furrowing == 0,
+                     "zyab: the plough's end leaves the field idle, the furrow turned");
+  // 1 December: the book counts it (and the field turned before, 2).
+  core::WorldState december = done;
+  december.calendar.tick =
+      ((core::kDaysPerYear + (11 * core::kDaysPerMonth)) * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(december.calendar);
+  step(december, -5.0F);
+  failures += Expect(december.ledger.current.zyab_fields_dec1 == 2 &&
+                         december.ledger.current.zyab_ha_dec1 == 20.0F,
+                     "zyab: on 1 December the book counts two fields, 20 ha, of zyab");
+  // AN UNFINISHED FURROW KEEPS ITS WORK OVER THE TURN (option «г», boss
+  // [32]): half ploughed, the field goes idle for the winter with the mark on
+  // it and the half still owed, and the chain moves on to the potato it was
+  // ploughed for — idle, so the winter's manure plan deals to it and no
+  // plough goes out on it in January.
+  core::WorldState turn = warm;
+  const float half = warm.fields.rows[0].work_days_remaining / 2.0F;
+  turn.fields.rows[0].work_days_remaining = half;
+  turn.calendar.tick = (2U * core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(turn.calendar);
+  step(turn, -5.0F);
+  const core::FieldRow& carried = turn.fields.rows[0];
+  failures += Expect(carried.phase == core::FieldPhase::kIdle && carried.autumn_furrowing == 1 &&
+                         carried.work_days_remaining == half && carried.autumn_plowed == 0 &&
+                         carried.rotation_year0.value == potato.value,
+                     "zyab: unfinished at the turn, idle for the winter with the half still owed, "
+                     "the chain on to the potato");
+  // The spring's own furrow opens it — the potato on the row, a plough — and
+  // ploughs only the rest; the mark is spent.
+  core::WorldState spring = turn;
+  spring.calendar.tick =
+      ((2U * core::kDaysPerYear + (4U * core::kDaysPerMonth)) * core::kTicksPerDay) -
+      1U;  // year 3, the end of April
+  core::RefreshCalendarCaches(spring.calendar);
+  step(spring, 8.0F);
+  const core::FieldRow& reopened = spring.fields.rows[0];
+  failures +=
+      Expect(reopened.phase == core::FieldPhase::kPlowing && reopened.crop.value == potato.value &&
+                 reopened.work_days_remaining == half && reopened.autumn_furrowing == 0,
+             "zyab: part-turned, the spring's furrow opens for the potato and ploughs only "
+             "the rest");
+  // The control: the same field with no autumn furrow ploughs the whole norm
+  // — with the same work left on its row, so a spring that capped any idle
+  // field's leftover, and not the mark's, reddens here (static review).
+  core::WorldState whole = spring;
+  whole.fields.rows[0] = turn.fields.rows[0];
+  whole.fields.rows[0].phase = core::FieldPhase::kIdle;  // set here, not read off the turn above
+  whole.fields.rows[0].crop = core::CropId{};
+  whole.fields.rows[0].rotation_year0 = potato;
+  whole.fields.rows[0].rotation_year1 = rye;
+  whole.fields.rows[0].rotation_year2 = oat;
+  whole.fields.rows[0].autumn_furrowing = 0;
+  whole.fields.rows[0].work_days_remaining = half;
+  whole.calendar = turn.calendar;
+  whole.calendar.tick = spring.calendar.tick - core::kTicksPerDay;
+  core::RefreshCalendarCaches(whole.calendar);
+  step(whole, 8.0F);
+  failures += Expect(whole.fields.rows[0].phase == core::FieldPhase::kPlowing &&
+                         whole.fields.rows[0].work_days_remaining == 2.0F * half,
+                     "zyab: the control, no autumn furrow, ploughs the whole norm");
+  // STILL PART-TURNED AT THE NEXT TURN — no spring opened it (its chain
+  // withdrawn): the mark and the rest go; a furrow a year old is no furrow.
+  core::WorldState stale = turn;
+  stale.fields.rows[0].rotation_assigned = 0;
+  stale.calendar.tick = (3U * core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(stale.calendar);
+  step(stale, -5.0F);
+  failures += Expect(stale.fields.rows[0].autumn_furrowing == 0 &&
+                         stale.fields.rows[0].work_days_remaining == 0.0F,
+                     "zyab: still part-turned at the next turn, the mark and the rest go");
+  // THE REST IS PRICED AT TODAY'S PULL (static review): a change of the
+  // horses' ration rescales it as it rescales the plough under way; an idle
+  // field with no mark keeps its row.
+  core::ProductionConfig parsed;
+  std::string parse_error;
+  if (core::ParseProductionConfig(*tables, parsed, parse_error)) {
+    core::WorldState ration = turn;
+    ration.fields.rows[1].phase = core::FieldPhase::kIdle;
+    ration.fields.rows[1].autumn_furrowing = 0;
+    ration.fields.rows[1].work_days_remaining = half;
+    ration.traction_ration = 0.5F;
+    core::RescaleHorseWorkForRation(parsed, 1.0F, ration);
+    const float scale = core::TractionFactor(parsed, 1.0F) / core::TractionFactor(parsed, 0.5F);
+    failures += Expect(scale != 1.0F && ration.fields.rows[0].work_days_remaining == half * scale &&
+                           ration.fields.rows[1].work_days_remaining == half,
+                       "zyab: the part-turned rest is rescaled with the horses' ration, an idle "
+                       "field's leftover is not");
+  } else {
+    failures += Expect(false, "zyab: the shipped tables parse for the ration check");
+  }
+  return failures;
+}
+
 /// THE CAP OF 100 BITES AFTER THE CROP'S DELTA (0.37.13; boss-core-epoch1-
 /// queue-2026-09-29 [7]: min(100, f + manure + delta)), on the shipped tables:
 ///   * a field at 95 with a full dose opens for its potato: 105 on the row,
@@ -12085,6 +12353,7 @@ int main() {
   failures += CheckTheTurnRestsBareGroundAndCarriesPaidManure();
   failures += CheckTheHeapsManurePaysItsFurrow();
   failures += CheckTheCapBitesAfterTheDelta();
+  failures += CheckTheFarmRulesZyab();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();

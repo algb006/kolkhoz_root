@@ -111,15 +111,29 @@ struct YearTally {
 /// nobody of its own kind on it (0.36.19; district_lot's check for the lot,
 /// 0.36.18). A phase opens in production, after the morning's placement, so
 /// a field that opened today had no plough to offer anyone.
+///
+/// A ZYAB ON A FROSTY MORNING IS NOT A PLOUGH WAITING (0.37.18): the
+/// accountant does not offer the autumn furrow on a day below nought
+/// («успеть до мёрзлой земли»), so its field stands uncrewed by the rule, and
+/// a horse on the logs takes nothing from it. The frost is read off `world`
+/// itself: the loop's "day" runs from hour 1 to the next day's hour 0, so the
+/// placement counted here is the one made in `world`'s own hour 0, in its
+/// weather. (The first reading took the air at the loop's first step — the
+/// day before's hour 1 — and seed 1932 went red on a morning at −7 °C.)
+/// Seed 1929, day 285, −4.5 °C: 34 man-days counted before the exemption.
 std::uint32_t TimberCartsOverAWaitingPlough(const std::vector<core::FieldRow>& morning,
                                             const std::vector<core::FieldId>& morning_ids,
                                             const core::WorldState& world) {
+  const bool frost_at_placement = world.weather.air_temperature_celsius < 0.0F;
   bool plough_waits = false;
   for (std::uint32_t row = 0; row < world.fields.rows.size() && !plough_waits; ++row) {
     const core::FieldRow& field = world.fields.rows[row];
     const bool plough = field.phase == core::FieldPhase::kPlowing;
     const bool harrow = field.phase == core::FieldPhase::kHarrowing;
     if ((!plough && !harrow) || !(field.work_days_remaining > 0.0F)) {
+      continue;
+    }
+    if (field.autumn_furrowing != 0 && frost_at_placement) {
       continue;
     }
     const bool open_since_morning = row < morning.size() &&

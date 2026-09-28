@@ -583,6 +583,25 @@ struct FieldRow {
   /// kind of its own would make every farming rule decide what to do with it.
   std::uint8_t start_reserve = 0;
 
+  /// THE AUTUMN FURROW IS BEING PLOUGHED, 0 or 1 (save 114; register 13,
+  /// decided 29 September 2026; farming design: «правило хозяйства; ставит
+  /// учётчик по правилу, объясняет староста» — Epoch I has no agronomist;
+  /// boss-core-epoch1-queue-2026-09-29 [20], [22], [23], [27], [32]; 0.37.18):
+  /// the zyab, the stubble of this year's reaping ploughed for the spring crop
+  /// the chain sows next (TrySow, OpenZyab), once the farm's harvest is in and
+  /// carted. A plough and no harrow: its end leaves the field idle with
+  /// `autumn_plowed` set, and the spring opens at the harrow. Set with
+  /// kPlowing and no crop on the row; cleared at the plough's end. AN
+  /// UNFINISHED ONE KEEPS ITS WORK OVER THE TURN (option «г»): the field goes
+  /// idle with this mark and the rest owed in `work_days_remaining`, and the
+  /// spring's own ploughing (OpenPlowing) opens it, ploughs only the rest and
+  /// clears the mark (ReleaseUnsownPreparation). So the mark stands on kPlowing
+  /// (being ploughed) or on kIdle with work owed (part-turned). The
+  /// chairman does not order it: he decides how many hands and horses he
+  /// keeps in the field in the autumn (assignment.cpp: the first of the jobs
+  /// with no window).
+  std::uint8_t autumn_furrowing = 0;
+
   /// THE DAY THIS FIELD'S CROP WAS LAST REAPED — whole, so the field went back
   /// to kIdle — or kNeverReapedDay (2026-09-15, boss parcel 421).
   ///

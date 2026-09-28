@@ -170,8 +170,12 @@ static_assert(AggregateArity<FamilyRow>() == 28,
 // Save 112: the black fallow's rest owed, a byte declared after the manure's
 // mark, into the hole before drought_stress (35) — predicted "120 stays"
 // before the build, 40 fields.
+// Save 114: the autumn furrow in progress, a byte declared after
+// start_reserve, into the hole at 111 (an offsetof probe listed the holes:
+// 17, 47, 60-63, 74-75, 98-99, 111) — predicted "120 stays" before the build,
+// 41 fields.
 static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 40,
+static_assert(AggregateArity<FieldRow>() == 41,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -852,6 +856,8 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(row.manure_booked);
   // The black fallow's rest owed to its winter crop's sowing (save 112).
   out.WriteU8(row.fallow_rest_owed);
+  // The zyab's autumn furrow in progress (save 114).
+  out.WriteU8(row.autumn_furrowing);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -942,6 +948,20 @@ FieldRow ReadFieldRow(LoadSource& source) {
       row.crop.value != kInvalidDefIdValue;
   if (row.fallow_rest_owed != 0 && !sowing_ahead) {
     source.Fail("a field owes a fallow's rest with no crop being sown on it");
+  }
+  row.autumn_furrowing =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the autumn furrow"));  // save 114
+  // Only with no crop on the row and not over a furrow already turned — the
+  // zyab is next spring's furrow, sown by nobody this year (field_work.cpp,
+  // OpenZyab; ZyabDue refuses a turned furrow) — and either under the plough
+  // or idle with the rest owed: part-turned over the turn (option «г»,
+  // ReleaseUnsownPreparation), for the spring's furrow to finish.
+  const bool furrow_place = row.phase == FieldPhase::kPlowing ||
+                            (row.phase == FieldPhase::kIdle && row.work_days_remaining > 0.0F);
+  if (row.autumn_furrowing != 0 &&
+      (!furrow_place || row.crop.value != kInvalidDefIdValue || row.autumn_plowed != 0)) {
+    source.Fail(
+        "a field ploughs an autumn furrow outside a crop-less ploughing or a part-turned rest");
   }
   return row;
 }

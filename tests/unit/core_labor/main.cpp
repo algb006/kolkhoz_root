@@ -338,6 +338,41 @@ int TestAnOrderTakesTheCarterOffTheLot() {
                 "ordered to the plough, the lot's carter leaves the lot for the field");
 }
 
+/// THE CHAIRMAN'S ORDER DOES NOT PLOUGH A FROZEN ZYAB (static review of
+/// 0.37.18): the accountant's list skips the autumn furrow on a day below
+/// nought, and the standing order is the second door to the same field. At
+/// −5 °C the ordered man is not put on it; on a thaw he is.
+int TestAnOrderDoesNotPloughAFrozenZyab() {
+  int failures = 0;
+  for (const bool frost : {true, false}) {
+    core::WorldState world;
+    world.weather.air_temperature_celsius = frost ? -5.0F : 3.0F;
+    core::FieldRow zyab;
+    zyab.kind = core::LandKind::kArable;
+    zyab.phase = core::FieldPhase::kPlowing;
+    zyab.autumn_furrowing = 1;
+    zyab.work_days_remaining = 5.0F;
+    const core::FieldId zyab_id = core::AppendRow(world.fields, zyab);
+    core::ResidentRow ploughman;
+    ploughman.rest = 90.0F;
+    const core::ResidentId ploughman_id = core::AppendRow(world.residents, ploughman);
+    core::OrderRow to_plough;
+    to_plough.kind = core::OrderKind::kAssignWork;
+    to_plough.status = core::OrderStatus::kAccepted;
+    to_plough.resident = ploughman_id;
+    to_plough.work = core::WorkKind::kPlowing;
+    to_plough.field = zyab_id;
+    core::AppendRow(world.orders, to_plough);
+    core::WorldState current = world;
+    core::ApplyStandingWork(world, current, false, 0.0F);
+    const bool on_it = current.residents.rows[0].work.kind == core::WorkKind::kPlowing;
+    failures += Expect(on_it != frost,
+                       frost ? "frost: the order does not plough the frozen zyab"
+                             : "thaw: the order ploughs the zyab");
+  }
+  return failures;
+}
+
 /// THE PLOUGH GOES TO THE PLAN'S FIELD FIRST (boss, boss-core-epoch1-5 seq
 /// 50; 0.35.6). One horse, two ploughings of one tier: a barley field due in
 /// 2 days and a potato field of the plan due in 8. The horse goes to the
@@ -1037,6 +1072,34 @@ int TestRainStopsTheSowingAndTheReaping() {
                          rain ? "rain: no crew goes out and the field is not worked"
                               : "dry: the crew goes out and works the field");
     }
+  }
+
+  // THE AUTUMN FURROW STOPS ON FROZEN GROUND (0.37.18, static review): a
+  // zyab field is offered on a day at or above nought and not below it. No
+  // horse in this world, so the plough's job shows up as offered — the book's
+  // job-days — and not staffed; the frost day offers nothing.
+  for (const bool frost : {false, true}) {
+    DayWorld zyab(3);
+    zyab.AddField(core::FieldPhase::kPlowing, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+    zyab.world.fields.rows[0].autumn_furrowing = 1;
+    zyab.world.weather.air_temperature_celsius = frost ? -3.0F : 4.0F;
+    run_hours(zyab, 1, 0, 12);
+    const std::uint32_t offered = zyab.world.ledger.current.offered_job_days;
+    failures += Expect(frost ? offered == 0 : offered > 0,
+                       frost ? "frost: the autumn furrow is not offered on frozen ground"
+                             : "thaw: the autumn furrow is offered");
+  }
+  // PART-TURNED OVER THE TURN (option «г», boss [32]) the field is idle with
+  // the rest owed: no job, whatever the weather — the spring's own furrow
+  // opens it (field_work.cpp, OpenPlowing).
+  {
+    DayWorld part(3);
+    part.AddField(core::FieldPhase::kIdle, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+    part.world.fields.rows[0].autumn_furrowing = 1;
+    part.world.weather.air_temperature_celsius = 4.0F;
+    run_hours(part, 1, 0, 12);
+    failures += Expect(part.world.ledger.current.offered_job_days == 0,
+                       "a part-turned autumn furrow, idle over the winter, is offered no job");
   }
 
   // AWAY IN THE DISTRICT (district_car.h): a man in its hospital is nobody's
@@ -2498,6 +2561,53 @@ int TestWinterTierHasOneOrder() {
   return failures;
 }
 
+/// THE ZYAB IS THE FIRST OF THE WINDOWLESS (0.37.18; register
+/// 13; AssignmentJob::autumn_furrow): one worker, one horse. The carting with
+/// a window and the fallow for rye go before it; any other windowless job
+/// after it, in either input order.
+int TestTheZyabIsFirstOfTheWindowless() {
+  int failures = 0;
+  const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
+  // The zyab on the HIGHER field id: the order's last key is the target's
+  // id, and with the zyab on field 1 against field 2 that key alone put it
+  // first — the test passed with its own key removed (a fault that stayed
+  // green, 0.37.18).
+  const auto zyab = [&origin]() {
+    core::AssignmentJob job = FieldJob(core::WorkKind::kPlowing, 9, origin, 3.0F, 0);
+    job.window = core::DeadlineNotApplicable();
+    job.autumn_furrow = true;
+    return job;
+  };
+  const std::vector<core::AssignmentCandidate> candidates = {Worker(0, origin)};
+  auto params = DayParams();
+  params.draught_horses = 1;
+  {
+    const std::vector<core::AssignmentJob> jobs = {
+        zyab(), FieldJob(core::WorkKind::kHauling, 2, origin, 3.0F, 30)};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1, "zyab: the carting with a window goes first");
+  }
+  {
+    core::AssignmentJob winter = FieldJob(core::WorkKind::kPlowing, 2, origin, 3.0F, 5);
+    winter.prepares_winter_crop = true;
+    const std::vector<core::AssignmentJob> jobs = {zyab(), winter};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1, "zyab: the fallow for rye goes first");
+  }
+  for (const bool zyab_first : {true, false}) {
+    core::AssignmentJob other = FieldJob(core::WorkKind::kPlowing, 2, origin, 3.0F, 0);
+    other.window = core::DeadlineNotApplicable();
+    const std::vector<core::AssignmentJob> jobs =
+        zyab_first ? std::vector<core::AssignmentJob>{zyab(), other}
+                   : std::vector<core::AssignmentJob>{other, zyab()};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    const std::uint32_t zyab_index = zyab_first ? 0 : 1;
+    failures += Expect(plan[0] == zyab_index,
+                       "zyab: ahead of another windowless job, in either input order");
+  }
+  return failures;
+}
+
 int TestWinterPreparationYieldsToWindowedWork() {
   int failures = 0;
   const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
@@ -3882,6 +3992,7 @@ int main() {
   failures += TestACarterRidesOnlyAFreeHorse();
   failures += TestTheLotIsFetchedOnlyOnAHorse();
   failures += TestAnOrderTakesTheCarterOffTheLot();
+  failures += TestAnOrderDoesNotPloughAFrozenZyab();
   failures += TestThePloughGoesToThePlansFieldFirst();
   failures += TestWindowUrgency();
   failures += TestPlacementLevels();
@@ -3938,6 +4049,7 @@ int main() {
   failures += TestFellingWaitsForTheLogCart();
   failures += TestMeadowCutRidesAndTakesOneHorse();
   failures += TestWinterPreparationYieldsToWindowedWork();
+  failures += TestTheZyabIsFirstOfTheWindowless();
   failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();
   failures += TestWinterTierHasOneOrder();

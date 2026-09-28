@@ -26,6 +26,10 @@ bool RainStopsWork(Precipitation precipitation, WorkKind kind) {
          (kind == WorkKind::kSowing || kind == WorkKind::kHarvest);
 }
 
+bool FrostStopsFieldWork(const FieldRow& field, float air_celsius) {
+  return field.autumn_furrowing != 0 && field.phase == FieldPhase::kPlowing && air_celsius < 0.0F;
+}
+
 bool WinterStopsSite(Season season, std::uint8_t winter_works) {
   return season == Season::kWinter && winter_works == 0;
 }

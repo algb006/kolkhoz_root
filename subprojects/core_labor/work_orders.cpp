@@ -392,6 +392,16 @@ void ApplyStandingWork(const WorldState& world,
     if (RainStopsWork(world.weather.precipitation, order.work)) {
       continue;
     }
+    // AND THE FROST STOPS THE AUTUMN FURROW, for the same reason (static
+    // review of 0.37.18: the accountant's list skipped it and this door did
+    // not — the chairman's man ploughed the frozen zyab).
+    if (order.field.value != kInvalidEntityIdValue) {
+      const std::uint32_t field_row = FindRow(world.fields, order.field);
+      if (field_row != kNoRow && FrostStopsFieldWork(world.fields.rows[field_row],
+                                                     world.weather.air_temperature_celsius)) {
+        continue;
+      }
+    }
     // AND THE WINTER, for a site whose class stands in it — the same skip;
     // and for a road work whose level stands in it (static review of
     // 0.36.38: the chairman's man drained a gravel work in January).

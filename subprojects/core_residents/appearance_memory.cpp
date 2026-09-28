@@ -49,6 +49,9 @@ void RememberWellbeing(const LifeConfig& life,
     // THE CHILDHOOD, the mean of its days, frozen at growing up. Seeded with
     // today's satiety as if every day before had been today — for the start's
     // children and adults alike, the STUB of the ruined village (@file).
+    // STUB: on the start's first day that satiety is genesis's 70, the middle
+    // of the scale and no emaciated face (boss-core-epoch1-queue-2026-09-29
+    // [22]); the seed for the start's adults is `look`'s number to set.
     if (resident.satiety_childhood < 0.0F) {
       resident.satiety_childhood = OnTheScale(resident.satiety);
       continue;

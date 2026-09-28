@@ -900,6 +900,15 @@ class LaborSystem final : public ILaborSystem {
         if (RainStopsWork(current.weather.precipitation, kind)) {
           continue;
         }
+        // THE AUTUMN FURROW STOPS ON FROZEN GROUND («Надо успеть до мёрзлой
+        // земли», farming design; static review of 0.37.18): not offered on a
+        // day below nought — the gate it opened by — and taken up again on a
+        // thaw. Opened and worked on through the frosts, the December's work
+        // went into a furrow the turn then let go. One home with the
+        // chairman's standing order (FrostStopsFieldWork).
+        if (FrostStopsFieldWork(field, current.weather.air_temperature_celsius)) {
+          continue;
+        }
         AssignmentJob job;
         job.kind = kind;
         job.field = current.fields.row_ids[row];
@@ -911,6 +920,20 @@ class LaborSystem final : public ILaborSystem {
         }
         job.prepares_winter_crop = PreparesWinterCrop(field, kind, current.calendar.day);
         job.plan_position = IsHorseWork(kind) && CarriesPlanPosition(current, field, kind);
+        // THE ZYAB HAS NO WINDOW OF ITS OWN (register 13; boss-
+        // core-epoch1-queue-2026-09-29 [22]; 0.37.18): read off the field's
+        // slot, the stubble's window would be the crop just reaped — past, so
+        // overdue, ahead of the carting. It is the first of the jobs with no
+        // window instead (assignment.cpp, `autumn_furrow`), and no plan's
+        // plough and no winter crop's preparation. One left part-turned by
+        // the turn is idle over the winter and offers no job; the spring's
+        // ploughing opens it (OpenPlowing, option «г»).
+        if (field.autumn_furrowing != 0) {
+          job.window = DeadlineNotApplicable();
+          job.autumn_furrow = true;
+          job.plan_position = false;
+          job.prepares_winter_crop = false;
+        }
         // THE THIRD TIER IS NOT WIRED, AND THE REASON IS MEASURED. The rule
         // asked for is "an overdue sowing is not offered at all" — seed put
         // in after the window does not ripen (boss, 2026-09-12). Written as

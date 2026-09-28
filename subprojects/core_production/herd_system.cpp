@@ -827,9 +827,20 @@ void PlaceSurplusHead(const ProductionConfig& config,
 /// Whether the plough or the harrow is out today: the day the ploughing's
 /// oats are the plough's to eat (FeedAllowance). One reading for the herd day
 /// and the feed light (HerdFeedAllowance).
+///
+/// NOT THE AUTUMN FURROW (static review of 0.37.18): the hold is the SPRING
+/// ploughing's oats, «ровно то, что зима есть не должна» (resources §6);
+/// released on every zyab day from August to December, the pigs ate the
+/// spring's oats in the autumn. One left part-turned by the turn is ploughed
+/// out in the spring by the spring's own furrow (OpenPlowing clears the
+/// mark), which eats as any spring furrow does.
 bool PloughingToday(const WorldState& world) {
-  return std::ranges::any_of(world.residents.rows, [](const ResidentRow& resident) {
-    return IsHorseWork(resident.work.kind);
+  return std::ranges::any_of(world.residents.rows, [&world](const ResidentRow& resident) {
+    if (!IsHorseWork(resident.work.kind)) {
+      return false;
+    }
+    const std::uint32_t row = FindRow(world.fields, resident.work.field);
+    return row == kNoRow || world.fields.rows[row].autumn_furrowing == 0;
   });
 }
 

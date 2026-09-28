@@ -394,10 +394,30 @@ int main(int argc, char** argv) {
   std::uint32_t last_plow_day = 0;
   std::uint32_t last_sow_day = 0;
   std::uint32_t horse_bound_days = 0;
+  // THIS AUTUMN'S ZYAB (0.37.18): the stubble ploughed for next spring is
+  // this year's ploughing too, and the band below never heard of it (red
+  // 107.36 against 84.29..99.29 on its first run). Read off the world tick by
+  // tick, by the same norm: a furrow in progress by its work done, a
+  // finished one whole. One the turn leaves part-turned keeps the work read
+  // last before the turn (it goes idle, the rest owed to the spring). Since
+  // option «б» the zyab opens only after the potato is carted, and the first
+  // year prints 0 here.
+  std::vector<double> zyab_days(simulation->CompletedState().fields.rows.size(), 0.0);
+  std::vector<bool> zyab_seen(zyab_days.size(), false);
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
     const core::WorldState& world = simulation->CompletedState();
     SampleDay(world, seen, tally);
+    for (std::size_t row = 0; row < world.fields.rows.size() && row < zyab_days.size(); ++row) {
+      const core::FieldRow& field = world.fields.rows[row];
+      const double norm = static_cast<double>(field.area_ga) * plow_days_per_ha;
+      if (field.autumn_furrowing != 0) {
+        zyab_seen[row] = true;
+        zyab_days[row] = norm - static_cast<double>(field.work_days_remaining);
+      } else if (zyab_seen[row] && field.autumn_plowed != 0) {
+        zyab_days[row] = norm;
+      }
+    }
     if (core::HourFromTick(world.calendar.tick) == 12) {
       float plow_left = 0.0F;
       float sow_left = 0.0F;
@@ -486,6 +506,14 @@ int main(int argc, char** argv) {
             << " ha\n";
 
   const double plowing = tally.by_kind[1];
+  double zyab_spent_days = 0.0;
+  std::uint32_t zyab_fields = 0;
+  for (std::size_t row = 0; row < zyab_days.size(); ++row) {
+    zyab_spent_days += zyab_days[row];
+    zyab_fields += zyab_seen[row] ? 1U : 0U;
+  }
+  std::cout << "labor_year: this autumn's zyab on " << zyab_fields << " fields, " << zyab_spent_days
+            << " game man-days of ploughing for next spring\n";
   const double harrowing = tally.by_kind[2];
   const double sowing = tally.by_kind[3];
   const double harvest = tally.by_kind[4];
@@ -528,9 +556,10 @@ int main(int argc, char** argv) {
   // its lower edge exactly on 84.29 and hidden the fallow for good.
   failures +=
       ExpectBand(plowing,
-                 95.0 - autumn_saved_days,
-                 110.0 - autumn_saved_days,
-                 "plowing costs the raised land's norm, less the land ploughed last autumn");
+                 95.0 - autumn_saved_days + zyab_spent_days,
+                 110.0 - autumn_saved_days + zyab_spent_days,
+                 "plowing costs the raised land's norm, less the land ploughed last autumn, "
+                 "plus this autumn's zyab");
   // Harrowing is horse work, and since task A4 the day's horses are a REAL
   // pool: sixteen of them, wanted at once by the plough, by the meadow
   // mowers and by the carts. The band was measured when a harnessed job took

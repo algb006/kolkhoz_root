@@ -323,6 +323,17 @@ class ProductionSystem final : public IProductionSystem {
       current.ledger.current.feed_days_dec1 = static_cast<float>(fodder.days_of_stock);
       current.ledger.current.winter_days_dec1 =
           static_cast<std::uint16_t>(fodder.days_to_date < 0 ? 0 : fodder.days_to_date);
+      // THE ZYAB AS IT LIES ON THE DATE (register 13; 0.37.18; ledger_state.h).
+      float zyab_ha = 0.0F;
+      std::uint16_t zyab_fields = 0;
+      for (const FieldRow& field : current.fields.rows) {
+        if (field.kind == LandKind::kArable && field.autumn_plowed != 0) {
+          zyab_ha += field.area_ga;
+          ++zyab_fields;
+        }
+      }
+      current.ledger.current.zyab_ha_dec1 = zyab_ha;
+      current.ledger.current.zyab_fields_dec1 = zyab_fields;
     }
     // The district's people: announced first, so a notice of zero days
     // announces a visit before it arrives on the same tick (district_visit.h).

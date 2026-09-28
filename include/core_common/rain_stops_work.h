@@ -44,6 +44,18 @@ namespace core {
 /// @return true when the work does not go on this day.
 bool RainStopsWork(Precipitation precipitation, WorkKind kind);
 
+/// @brief Whether the frost stops the autumn furrow on this field today.
+///
+/// «Надо успеть до мёрзлой земли» (farming design; static review of 0.37.18):
+/// a zyab (FieldRow::autumn_furrowing) is not ploughed on a day below nought,
+/// and is taken up again on a thaw. ONE HOME for the two doors to a field's
+/// work — the accountant's job list and the chairman's standing order
+/// (work_orders.cpp): the first draft stopped only the first, and a review
+/// found the chairman's man ploughing the frozen furrow through the second.
+/// @param field The field the work is on.
+/// @param air_celsius The day's air temperature.
+bool FrostStopsFieldWork(const FieldRow& field, float air_celsius);
+
 /// @brief Whether the core's winter season stops this building site.
 ///
 /// THE SEASON'S HALF OF "WHAT STOPS THE WORK", beside the rain's, for the

@@ -246,6 +246,12 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     if (window_rank(a) != window_rank(b)) {
       return window_rank(a) < window_rank(b);
     }
+    // THE ZYAB FIRST OF THE WINDOWLESS (0.37.18; AssignmentJob::
+    // autumn_furrow): a KEY, like the plan's plough below — a zyab job carries
+    // no window, so it only ever meets its own tier's jobs here.
+    if (a.autumn_furrow != b.autumn_furrow) {
+      return a.autumn_furrow;
+    }
     // THE PLOUGH GOES TO THE PLAN'S FIELDS FIRST (boss, boss-core-epoch1-5 seq
     // 50; transport design §1): inside one tier and one kind of window, horse
     // work on a field whose crop carries a plan position goes before the

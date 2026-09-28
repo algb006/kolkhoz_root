@@ -485,6 +485,12 @@ void OpenPlowing(const ProductionConfig& config,
                  FieldRow& field,
                  CropId crop,
                  PreparationStart start = PreparationStart::kGround) {
+  // AN AUTUMN FURROW LEFT PART-TURNED BY THE TURN (option «г»; land_state.h,
+  // autumn_furrowing): the rest it owes, read before the phase below writes
+  // the full norm, and the mark spent — this is its spring.
+  const bool part_turned = field.autumn_furrowing != 0 && field.phase == FieldPhase::kIdle;
+  const float rest_owed = field.work_days_remaining;
+  field.autumn_furrowing = 0;
   field.crop = crop;
   // No furrow of THIS preparation yet (land_state.h, furrow_day): the
   // plough's end sets it, and the turn's release reads it.
@@ -567,6 +573,10 @@ void OpenPlowing(const ProductionConfig& config,
     return;
   }
   OpenPhase(config, current, field, FieldPhase::kPlowing);
+  // The part the autumn turned is not ploughed twice: only the rest.
+  if (part_turned && rest_owed > 0.0F && rest_owed < field.work_days_remaining) {
+    field.work_days_remaining = rest_owed;
+  }
 }
 
 }  // namespace
@@ -775,7 +785,12 @@ void RescaleHorseWorkForRation(const ProductionConfig& config,
   // Days go as one over the pull: priced at `was`, worked at `now`.
   const float scale = was / now;
   for (FieldRow& field : current.fields.rows) {
-    if (field.kind == LandKind::kArable && IsHorseWork(KindOfPhase(field.phase))) {
+    // And the rest a part-turned autumn furrow owes over the winter (option
+    // «г»): idle, it is still plough work, priced at today's pull — or the
+    // spring would compare a December price with a spring norm (static review
+    // of 0.37.18).
+    const bool part_turned = field.phase == FieldPhase::kIdle && field.autumn_furrowing != 0;
+    if (field.kind == LandKind::kArable && (IsHorseWork(KindOfPhase(field.phase)) || part_turned)) {
       field.work_days_remaining *= scale;
     }
   }
@@ -832,6 +847,37 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
 }
 
 bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field) {
+  // AN AUTUMN FURROW NOT FINISHED BY THE TURN KEEPS ITS WORK (boss-core-
+  // epoch1-queue-2026-09-29 [32], option «г»): the field goes idle with the
+  // mark still on it and the rest owed in `work_days_remaining`, and the
+  // spring's own ploughing (OpenPlowing) opens it and ploughs only that rest.
+  // The first draft let it go — «полборозды — не зябь» — and with the zyab
+  // opening only after the potato was carted (option «б»), 6 577 ha of
+  // furrows begun in November were thrown away at the turn on 138 of the
+  // canon's 180 year-ends, against 1 260 ha of zyab finished (core [31]).
+  // The second kept it UNDER THE PLOUGH across the turn and it was ploughed
+  // from the 1st of January on frozen ground, released the spring's oats to
+  // the herds in the winter, and missed the turn's manure plan (it deals to
+  // idle fields): hungry family-days +29 %, the potato's harvest −24 %, its
+  // fields sown at fertility 59.5 against 83.0 (the static review of «г»,
+  // and a sowing trace). Idle, it is none of that: the winter is the
+  // winter's, the manure is dealt, and the spring opens it as any spring
+  // furrow — on a thaw, in its window, eating the spring's oats. A finished
+  // one is idle already, `autumn_plowed`.
+  if (field.autumn_furrowing != 0) {
+    if (field.phase == FieldPhase::kPlowing) {
+      field.furrow_day = kNoFurrowDay;
+      MoveFieldPhase(current, field, FieldPhase::kIdle);  // the rest stays owed
+      return true;
+    }
+    // STILL PART-TURNED AT A SECOND TURN: the spring it was owed to passed
+    // without opening it (its chain withdrawn, no chain to open it), and a
+    // furrow a year and more old is no furrow — the next chain ploughs the
+    // whole (static review of 0.37.18).
+    field.autumn_furrowing = 0;
+    field.work_days_remaining = 0.0F;
+    return true;
+  }
   const bool preparing =
       field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing;
   if (!preparing || field.crop.value == kInvalidDefIdValue) {
@@ -1003,11 +1049,103 @@ void TrySowOnBlackFallow(const ProductionConfig& config,
   }
 }
 
+namespace {
+
+/// THE ZYAB IS DUE (register 13, decided 29 September 2026; farming design:
+/// «правило хозяйства; ставит учётчик по правилу, объясняет староста» — no
+/// agronomist in Epoch I; «Зябь — та же вспашка, только сразу после
+/// уборки»; boss-core-epoch1-queue-2026-09-29 [20], [22], [23];
+/// 0.37.18): an idle field of a chain, reaped this calendar year, whose next
+/// sowing is a SPRING crop — the next slot's for a running chain, the first
+/// for a chain named this year and not yet used — and whose furrow is not
+/// turned yet. A winter crop next is sown this autumn (TrySowWinter) and is
+/// no zyab's; a fallow next is ploughed in its own May.
+bool ZyabDue(const ProductionConfig& config, const FieldRow& field, SimDay today) {
+  if (field.autumn_plowed != 0 || !HasRotation(field) || field.reaped_day == kNeverReapedDay ||
+      field.reaped_day / kDaysPerYear != today / kDaysPerYear) {
+    return false;
+  }
+  const CropId next = field.rotation_skips_turn != 0 ? field.rotation_year0 : field.rotation_year1;
+  return next.value < config.crops.size() && !config.crops[next.value].is_winter;
+}
+
+/// THE HARVEST IN AND CARTED FIRST (boss-core-epoch1-queue-2026-09-29 [27],
+/// option «б»: «сначала убери и вывези, потом паши»): no arable field of the
+/// farm has a heap lying, is being reaped, or grows a spring crop still to be
+/// reaped this year — the potato the last of them. The first draft ranked the
+/// zyab below the carting by the accountant's key alone, and the canon's
+/// heaps on 1 December went 12.7 t -> 72.0 t, potato rotting in them on
+/// three seed-years and hungry family-days +3.8 % (core [26]). A winter crop
+/// growing does not hold it: in the autumn it is the one sown this autumn,
+/// reaped next year; before July it is last autumn's, due in the summer —
+/// then a zyab opens only on stubble reaped before July beside no spring
+/// crop growing anywhere, which the canon never shows, and the rule lets it
+/// be (static review of «б»). A perennial is cut, not dug, and neither its
+/// standing nor its cut holds it — its hay heap does, as any heap to cart. A
+/// meadow's hay goes straight to the stores (LayMownShare) and a meadow is
+/// not asked: the rule is the arable's.
+///
+/// ONLY A HEAP THAT WILL BE CARTED holds it (boss [32]; static review of
+/// «б»): one with nowhere to go — no room in the stores for it, flax with no
+/// store that takes flax (ReceivableRoom, the carting's own door) — is not
+/// carted at all, and holding the zyab behind it closed the field for the
+/// year for a reason the player cannot see. The alarm that the load waits
+/// says that trouble (kHarvestWaitingOnField).
+bool HarvestInAndCarted(const ProductionConfig& config, const WorldState& world) {
+  for (const FieldRow& other : world.fields.rows) {
+    if (other.kind != LandKind::kArable) {
+      continue;
+    }
+    if (other.reaped_grams > 0 && ReceivableRoom(config, world, other.reaped_resource) > 0) {
+      return false;
+    }
+    const bool standing =
+        other.phase == FieldPhase::kGrowing || other.phase == FieldPhase::kHarvest;
+    if (standing && other.crop.value < config.crops.size()) {
+      const CropDef& crop = config.crops[other.crop.value];
+      if (crop.is_perennial) {
+        continue;
+      }
+      if (other.phase == FieldPhase::kHarvest || !crop.is_winter) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/// Opens the autumn furrow: a plough and no harrow, no crop on the row. Not
+/// through OpenPlowing, and on purpose: it spends no chain's first season
+/// (rotation_skips_turn — the crop it is for is sown next spring, by the
+/// spring's own opening), books no manure (the spring furrow books and pays
+/// the dose the winter's plan deals), and owes no fallow's rest.
+void OpenZyab(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  field.crop = CropId{};
+  field.furrow_day = kNoFurrowDay;
+  field.autumn_furrowing = 1;
+  field.overgrown = 0;  // one furrow brings the field back (OpenPlowing)
+  OpenPhase(config, current, field, FieldPhase::kPlowing);
+}
+
+}  // namespace
+
 void TrySow(const ProductionConfig& config,
             WorldState& current,
             FieldRow& field,
             std::uint8_t month,
             float temperature) {
+  // THE STUBBLE FIRST, WHILE THE GROUND IS OPEN (register 13; ZyabDue): the
+  // autumn furrow for next spring's crop, opened on a day at or above
+  // nought, the spring ploughing's own gate. What comes of it is the
+  // accountant's: the first of the jobs with no window (assignment.cpp), so
+  // the reaping, the carting and the winter crop go before it and the
+  // building and the felling after. And not before the farm's harvest is in
+  // and carted (HarvestInAndCarted, boss [27] «б»).
+  if (temperature >= 0.0F && ZyabDue(config, field, current.calendar.day) &&
+      HarvestInAndCarted(config, current)) {
+    OpenZyab(config, current, field);
+    return;
+  }
   if (field.rotation_year0.value >= config.crops.size()) {
     // A FALLOW YEAR IS PLOUGHED (farming design §7, "fallow is ploughed";
     // defect D11 of the reconciliation): the manure goes in with the
@@ -1163,6 +1301,15 @@ void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, F
   field.work_days_remaining = 0.0F;
   switch (field.phase) {
     case FieldPhase::kPlowing:
+      if (field.autumn_furrowing != 0) {
+        // THE AUTUMN FURROW TURNED: zyab, and the field idle till the spring
+        // opens it at the harrow (OpenPlowing spends `autumn_plowed`).
+        field.autumn_furrowing = 0;
+        field.autumn_plowed = 1;
+        field.furrow_day = kNoFurrowDay;
+        MoveFieldPhase(current, field, FieldPhase::kIdle);
+        break;
+      }
       OpenPhase(config, current, field, FieldPhase::kHarrowing);
       field.furrow_day = current.calendar.day;  // this preparation's furrow, and its day
       break;

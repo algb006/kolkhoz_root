@@ -666,6 +666,18 @@ struct YearLedger {
   /// `herd_hungry_head_days`, which counts the families' goats as well;
   /// zero with no hay in the tables.
   ResourceAmounts herd_feed_short;
+
+  /// THE ZYAB ON 1 DECEMBER (save 114; register 13; boss-core-epoch1-queue-
+  /// 2026-09-29 [22]; 0.37.18): the arable lying autumn-ploughed for next
+  /// spring — `autumn_plowed`, the farm rule's furrow finished and the
+  /// start's inherited one alike — in hectares, and the fields it is on. An
+  /// autumn furrow still being ploughed on the date is not counted (its field
+  /// is not zyab until the plough ends). Booked by production beside
+  /// feed_days_dec1; its reader is econ (the spring of year 2 on, the
+  /// spring's ploughing shorter).
+  float zyab_ha_dec1 = 0.0F;
+
+  std::uint16_t zyab_fields_dec1 = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last
