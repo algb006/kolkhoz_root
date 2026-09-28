@@ -162,6 +162,20 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
           static_cast<float>(field.reaped_grams) / static_cast<float>(kGramsPerKilogram);
     }
   }
+  // NOT THE PLOUGH'S OATS (resources design §6, the row of 28 September:
+  // «Не входит: овёс, удержанный под весеннюю пахоту (ступень выше) — это
+  // ровно то, что зима есть не должна»; boss-core-epoch1-queue-2026-09-29 [1]
+  // item 3; 0.37.14). The horse's oats are its work feed and the forecast
+  // skips them (work_only below), but another kind's link to the same grain
+  // is no work link — the pig's — and it ate the spring's ploughing in the
+  // forecast while the herds may not (PloughFeedHoldOf).
+  const PloughFeedHold plough = PloughFeedHoldOf(config, world);
+  if (plough.held && plough.resource.value < held_kg.size()) {
+    const float plough_kg =
+        static_cast<float>(plough.grams) / static_cast<float>(kGramsPerKilogram);
+    float& oats_kg = held_kg[plough.resource.value];
+    oats_kg = oats_kg > plough_kg ? oats_kg - plough_kg : 0.0F;
+  }
 
   std::int32_t days = 0;
   bool starving_today = false;

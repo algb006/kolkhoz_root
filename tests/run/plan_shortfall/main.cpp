@@ -355,9 +355,13 @@ struct YearEnd {
   float area_sown_ha = 0.0F;
   float area_harvested_ha = 0.0F;
   float area_lost_ha = 0.0F;
-  /// Tonnes already DUG on fields the snow then took mid-reaping (boss, parcel
-  /// 172: "сколько тонн выкопанного пропало под снегом"). See DugLossWatch.
-  double dug_lost_tonnes = 0.0;
+  /// Tonnes of the STANDING crop the snow took, the year's book
+  /// (lost_to_snow): since 0.37.11 the only thing the snow takes («снег берёт
+  /// только неубранное на корню», boss's decision of 13 September). Until
+  /// then this was the dug heap the lying cover took (DugLossWatch, parcel
+  /// 172), which the engine no longer does, and it printed nought for good
+  /// (boss-core-epoch1-queue-2026-09-29 [1] item 3; 0.37.14).
+  double snow_took_standing_tonnes = 0.0;
   StoreSites store_sites;
   std::array<float, core::kWorkKindCount> work_days{};
 
@@ -416,9 +420,9 @@ void PrintShortfall(const YearEnd& sample, const core::ITable* resources) {
   std::cout << "plan_shortfall:     in store " << Tonnes(sample.grain_in_store)
             << " t, waiting on the fields " << Tonnes(sample.waiting_on_fields) << " t, "
             << sample.horses << " horses; sown " << sample.area_sown_ha << " ha, reaped "
-            << sample.area_harvested_ha << " ha, lost to snow " << sample.area_lost_ha
-            << " ha; dug and lost with its heap to lying snow "
-            << std::lround(sample.dug_lost_tonnes) << " t (measured: heaps the cover took)\n";
+            << sample.area_harvested_ha << " ha, lost to snow " << sample.area_lost_ha << " ha, "
+            << std::lround(sample.snow_took_standing_tonnes)
+            << " t of it standing (the book's lost_to_snow; the snow takes no heap)\n";
   std::cout << "plan_shortfall:     man-days — plough " << sample.work_days[1] << ", harrow "
             << sample.work_days[2] << ", sow " << sample.work_days[3] << ", reap "
             << sample.work_days[4] << ", barn " << sample.work_days[5] << ", haul "
@@ -556,66 +560,6 @@ void TraceCropDay(const core::WorldState& world, core::CropId crop) {
   }
 }
 
-/// @brief What the snow took of a field ALREADY BEING DUG, in tonnes (boss,
-/// parcel 172: the two thirds of a potato field dug and lost on seed 1935 read
-/// to the player as a trap, and he decides by the number).
-///
-/// A MEASURE, NOT AN ESTIMATE, SINCE 0.34.44. Under the one-shot harvest
-/// ("жатва разовая") a field lost mid-reaping never carried a dug tonnage,
-/// and this watch estimated it off the labour. The harvest by parts lays the
-/// dug share into the heap at the edge the same day (farming design §6, 24
-/// September 2026): what is dug is IN the heap, and the only thing that can
-/// take it is the lying snow. So the watch reads exactly that — a heap that
-/// stood yesterday and is gone today under a settled cover — and the
-/// standing part the first snowfall took is the book's lost_to_snow, not
-/// this. `tables` is no longer read; kept for the callers' shape.
-class DugLossWatch {
- public:
-  explicit DugLossWatch(const core::ITableSet& /*tables*/) {}
-
-  /// @brief Call once a day after the day ran; returns the tonnes dug (lying
-  /// in a heap at a field's edge) that the lying snow took since yesterday.
-  double Observe(const core::WorldState& world) {
-    double lost = 0.0;
-    heap_.resize(world.fields.rows.size(), 0);
-    heap_of_.resize(world.fields.rows.size());
-    // WHAT THE BOOK WROTE OFF TODAY, by resource: a heap gone under a settled
-    // cover may also have gone to the district (district_plan.cpp,
-    // TakePlanDebtFromFields), which is a delivery and not a loss — so a
-    // vanished heap counts only as far as lost_no_room grew for its resource.
-    const core::ResourceAmounts& written = world.ledger.current.lost_no_room;
-    core::ResourceAmounts written_today(written.size(), 0);
-    for (std::size_t index = 0; index < written.size(); ++index) {
-      const core::Grams before = index < written_seen_.size() ? written_seen_[index] : 0;
-      // The book rotates at the year's turn: a smaller figure is a new year.
-      written_today[index] = written[index] >= before ? written[index] - before : written[index];
-    }
-    written_seen_ = written;
-    // The core's own threshold, mirrored (production_system.cpp,
-    // kSettledSnowCoverDays): a cover on its second day is settled.
-    constexpr std::uint16_t kSettledCoverDays = 2;
-    const bool settled = world.weather.snow_cover_days >= kSettledCoverDays;
-    for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
-      const core::FieldRow& field = world.fields.rows[row];
-      const core::ResourceId resource = heap_of_[row];
-      if (settled && heap_[row] > 0 && field.reaped_grams == 0 &&
-          resource.value < written_today.size()) {
-        const core::Grams taken = std::min(heap_[row], written_today[resource.value]);
-        written_today[resource.value] -= taken;
-        lost += static_cast<double>(taken) / 1.0e6;
-      }
-      heap_[row] = field.reaped_grams;
-      heap_of_[row] = field.reaped_resource;
-    }
-    return lost;
-  }
-
- private:
-  std::vector<core::Grams> heap_;
-  std::vector<core::ResourceId> heap_of_;
-  core::ResourceAmounts written_seen_;
-};
-
 int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year) {
   run::Simulation started = run::Start(seed);
   if (!started) {
@@ -645,8 +589,6 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
   YearEnd last_day;
   Carting running;
   Signals signals_running = FreshSignals(resources);
-  DugLossWatch dug_watch(*started.tables);
-  double dug_lost_running = 0.0;
   const StoreSiteWatch site_watch(*started.tables);
   StoreSites sites_running;
   std::uint8_t failed_before = 0;
@@ -693,10 +635,8 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
       if (world.calendar.day % core::kDaysPerYear == 0) {
         running = Carting{};
         signals_running = FreshSignals(resources);
-        dug_lost_running = 0.0;
         sites_running = StoreSites{};
       }
-      dug_lost_running += dug_watch.Observe(world);
       site_watch.Observe(*started.simulation, sites_running);
       RecordSignals(*started.simulation, signals_running);
       const core::Grams waiting_today = WaitingOnFields(world);
@@ -731,7 +671,14 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
         last_day.area_sown_ha = world.ledger.current.area_sown_ha;
         last_day.area_harvested_ha = world.ledger.current.area_harvested_ha;
         last_day.area_lost_ha = world.ledger.current.area_lost_ha;
-        last_day.dug_lost_tonnes = dug_lost_running;
+        // THIS year's book, assigned like its neighbours: summed into the
+        // snapshot, which lives across the years, it carried every earlier
+        // year's snow into the next (static review of 0.37.14).
+        double snow_took_standing = 0.0;
+        for (const core::Grams grams : world.ledger.current.lost_to_snow) {
+          snow_took_standing += static_cast<double>(grams) / 1.0e6;
+        }
+        last_day.snow_took_standing_tonnes = snow_took_standing;
         site_watch.Close(world, sites_running);
         last_day.store_sites = sites_running;
         last_day.work_days = world.ledger.current.work_days_by_kind;

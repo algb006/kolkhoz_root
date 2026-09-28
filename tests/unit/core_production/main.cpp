@@ -2372,6 +2372,57 @@ int CheckFeedLightCountsTheWinter() {
   return failures;
 }
 
+/// THE FEED LIGHT LEAVES THE PLOUGH'S OATS (0.37.14; resources design §6, the
+/// row of 28 September: «Не входит: овёс, удержанный под весеннюю пахоту»):
+/// a cow eating oats by an ordinary link, a horse whose oats are its work
+/// feed, 60 kg of oats in the store in the December of year 2 and last
+/// year's book ploughing 40 horse-days. The light counts the oats above the
+/// plough's hold; its pair is the same world with no horse kind, where
+/// nothing is held and all 60 kg count (the forecast's horizon is 96 days).
+int CheckFeedLightLeavesThePloughsOats() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.livestock[1].feed_units_per_game_day = 1.0F;  // the second kind is the horse here
+  config.feed_links = {
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{1}, .max_share = 1.0F},
+      core::FeedLinkDef{.kind = core::LivestockKindId{1},
+                        .resource = core::ResourceId{1},
+                        .max_share = 0.5F,
+                        .work_only = 1}};
+  core::CropDef oats_crop;
+  oats_crop.resource = core::ResourceId{1};
+  oats_crop.sow_from_month = 2;
+  oats_crop.sow_to_month = 3;
+  oats_crop.harvest_from_month = 6;
+  oats_crop.harvest_to_month = 7;
+  config.crops = {oats_crop};
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 44) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  world.units.rows[0].stock[1] = 60 * kKilo;
+  world.ledger.closed.year = 1;
+  world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] = 40.0F;
+  AddHerd(world, 0, 1, 0, true);  // one cow: one unit a winter day
+
+  const core::StockForecast unheld = core::FeedLight(config, world);
+  failures += Expect(unheld.days_of_stock == 60,
+                     "feed light, no horse kind: nothing is held, 60 kg of oats are 60 days");
+  config.horse_kind = core::LivestockKindId{1};
+  const core::PloughFeedHold hold = core::PloughFeedHoldOf(config, world);
+  const core::StockForecast held = core::FeedLight(config, world);
+  failures += Expect(hold.held && hold.grams > 0 && hold.grams < 60 * kKilo,
+                     "feed light: the plough's oats are held in December");
+  failures +=
+      Expect(held.days_of_stock == static_cast<std::int32_t>((60 * kKilo - hold.grams) / kKilo),
+             "feed light: the cow's days are the oats above the plough's hold");
+  return failures;
+}
+
 /// THE MEADOW LAYS ITS HAY AS IT IS MOWN (0.37.11; boss-core-epoch1-queue-
 /// 2026-09-28 [1]; host's seed 7, thirty tonnes behind 0.29 man-days): on
 /// the shipped tables, a 10 ha meadow mown to its half books half its
@@ -11895,6 +11946,7 @@ int main() {
   failures += CheckTheHerdDoesNotEatTheSeed();
   failures += CheckFeedCaps();
   failures += CheckFeedLightCountsTheWinter();
+  failures += CheckFeedLightLeavesThePloughsOats();
   failures += CheckFeedLightRespectsTheCeiling();
   failures += CheckFeedLightNeverRunsOut();
   failures += CheckSeedLightMeasuresCoverage();

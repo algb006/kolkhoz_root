@@ -11,7 +11,12 @@
 /// could not take it (no demand was written), it was a day off, somebody
 /// carried part of it, or a demand stood and nobody came — split by whether
 /// hands stood idle at noon. And every load is followed to its end: carried
-/// off, or written off by the snow.
+/// off, or written off whole into the book's lost_no_room. Until 0.37.11
+/// that was the settled snow's doing and the lines said «snow took»; since
+/// then the snow takes no heap (boss's decision of 13 September) and no
+/// writer the design allows empties a load into the book, so a whole
+/// write-off printed here is a finding to chase, and nought is the answer
+/// (boss-core-epoch1-queue-2026-09-29 [1] item 3; 0.37.14).
 
 #ifndef TESTS_RUN_COMMON_HAUL_TALLY_H_
 #define TESTS_RUN_COMMON_HAUL_TALLY_H_
@@ -58,7 +63,7 @@ class HaulTally {
     // Monday, and the Sundays showed up as "idle hands not sent".
     const core::SimDay lived = world.calendar.day > 0 ? world.calendar.day - 1 : 0;
     const bool day_off = core::IsRestDay(lived, world.calendar.day_zero_weekday, world.epoch);
-    core::Grams snowed_today = 0;
+    core::Grams written_whole_today = 0;
     for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
       const core::FieldRow& field = world.fields.rows[row];
       Load& load = lying_[row];
@@ -75,8 +80,8 @@ class HaulTally {
       load.laid_seen = laid_now;
       if (before > 0) {
         Reason reason = Reason::kNoHands;
-        if (now < before && now == 0 && Snowed(world, load)) {
-          reason = Reason::kSnow;
+        if (now < before && now == 0 && WrittenOffWhole(world, load)) {
+          reason = Reason::kWrittenOff;
         } else if (now < before + laid_today) {
           reason = Reason::kCarried;
         } else if (!(load.demand_days > 0.0F)) {
@@ -89,16 +94,16 @@ class HaulTally {
         year.tonne_days[static_cast<std::size_t>(reason)] += static_cast<double>(before) / 1.0e6;
         if (now == 0) {
           const std::uint32_t lay = lived - load.first_day;
-          if (reason == Reason::kSnow) {
-            ++year.loads_snowed;
-            year.snowed_tonnes += static_cast<double>(before) / 1.0e6;
-            snow_lines_.push_back(SnowLine{.day = lived,
-                                           .reaped_day = load.first_day,
-                                           .sown_day = field.sown_day,
-                                           .tonnes = static_cast<double>(before) / 1.0e6,
-                                           .demand_days = load.demand_days,
-                                           .resource = load.resource.value});
-            snowed_today += before;
+          if (reason == Reason::kWrittenOff) {
+            ++year.loads_written_off;
+            year.written_whole_tonnes += static_cast<double>(before) / 1.0e6;
+            whole_write_offs_.push_back(WholeWriteOff{.day = lived,
+                                                      .reaped_day = load.first_day,
+                                                      .sown_day = field.sown_day,
+                                                      .tonnes = static_cast<double>(before) / 1.0e6,
+                                                      .demand_days = load.demand_days,
+                                                      .resource = load.resource.value});
+            written_whole_today += before;
           } else {
             ++year.loads_cleared;
             year.days_to_clear += lay;
@@ -113,7 +118,7 @@ class HaulTally {
       load.resource = field.reaped_resource;
       load.demand_days = field.haul_days_remaining;
     }
-    // EVERY WRITE-OFF OF THE DAY, not only the snow on a lying load: a crop
+    // EVERY WRITE-OFF OF THE DAY, not only a lying load gone whole: a crop
     // can be reaped and lost the same day, a store can come down, a pantry
     // can go with its last household — none of them a load this tally sees.
     const core::ResourceAmounts& lost = world.ledger.current.lost_no_room;
@@ -129,10 +134,10 @@ class HaulTally {
       }
     }
     year.written_off_tonnes += static_cast<double>(written_today) / 1.0e6;
-    if (written_today - snowed_today > kOtherLineGrams) {
+    if (written_today - written_whole_today > kOtherLineGrams) {
       other_lines_.push_back(
           OtherLine{.day = lived,
-                    .tonnes = static_cast<double>(written_today - snowed_today) / 1.0e6,
+                    .tonnes = static_cast<double>(written_today - written_whole_today) / 1.0e6,
                     .resource = other_resource_});
     }
     lost_yesterday_ = world.ledger.current.lost_no_room;
@@ -152,18 +157,19 @@ class HaulTally {
       }
       std::cout << "; loads cleared " << year.loads_cleared << " (mean "
                 << (year.loads_cleared > 0 ? year.days_to_clear / year.loads_cleared : 0)
-                << " days, longest " << year.longest_clear << "), snowed " << year.loads_snowed
-                << " (" << static_cast<std::int64_t>(year.snowed_tonnes) << " t); all written off "
+                << " days, longest " << year.longest_clear << "), written off whole "
+                << year.loads_written_off << " ("
+                << static_cast<std::int64_t>(year.written_whole_tonnes) << " t); all written off "
                 << static_cast<std::int64_t>(year.written_off_tonnes) << " t; hauler-days "
                 << year.hauler_days << "\n";
     }
-    for (const SnowLine& line : snow_lines_) {
+    for (const WholeWriteOff& line : whole_write_offs_) {
       if (line.day / core::kDaysPerYear >= last_year) {
         break;
       }
-      std::cout << run_name << ": HAUL snow took " << line.tonnes << " t of resource "
-                << line.resource << " on day " << line.day << ", sown on day " << line.sown_day
-                << ", reaped on day " << line.reaped_day
+      std::cout << run_name << ": HAUL a load written off whole: " << line.tonnes
+                << " t of resource " << line.resource << " on day " << line.day << ", sown on day "
+                << line.sown_day << ", reaped on day " << line.reaped_day
                 << ", its carrying demand the evening before " << line.demand_days << " man-days\n";
     }
     for (const OtherLine& line : other_lines_) {
@@ -182,11 +188,11 @@ class HaulTally {
     kDayOff,
     kIdleHandsNotSent,
     kNoHands,
-    kSnow,
+    kWrittenOff,
   };
   static constexpr std::size_t kReasonCount = 6;
   static constexpr std::array<const char*, kReasonCount> kReasonNames = {
-      "carried", "no-room", "day-off", "idle-hands-not-sent", "no-free-hands", "snowed"};
+      "carried", "no-room", "day-off", "idle-hands-not-sent", "no-free-hands", "written-off-whole"};
 
   struct Load {
     core::Grams grams = 0;
@@ -200,16 +206,16 @@ class HaulTally {
   struct Year {
     std::array<double, kReasonCount> tonne_days{};
     std::uint32_t loads_cleared = 0;
-    std::uint32_t loads_snowed = 0;
+    std::uint32_t loads_written_off = 0;
     std::uint32_t days_to_clear = 0;
     std::uint32_t longest_clear = 0;
-    double snowed_tonnes = 0.0;
+    double written_whole_tonnes = 0.0;
     double written_off_tonnes = 0.0;
     std::uint32_t hauler_days = 0;
   };
 
   /// A load that went to zero on a day the book wrote its whole weight off.
-  bool Snowed(const core::WorldState& world, const Load& load) const {
+  bool WrittenOffWhole(const core::WorldState& world, const Load& load) const {
     const std::uint16_t index = load.resource.value;
     const core::ResourceAmounts& lost = world.ledger.current.lost_no_room;
     const core::Grams today = index < lost.size() ? lost[index] : 0;
@@ -220,7 +226,7 @@ class HaulTally {
     return today - yesterday >= load.grams;
   }
 
-  struct SnowLine {
+  struct WholeWriteOff {
     core::SimDay day = 0;
     core::SimDay reaped_day = 0;
     core::SimDay sown_day = 0;
@@ -239,7 +245,7 @@ class HaulTally {
   static constexpr core::Grams kOtherLineGrams = 1'000'000;
 
   std::vector<Year> years_;
-  std::vector<SnowLine> snow_lines_;
+  std::vector<WholeWriteOff> whole_write_offs_;
   std::vector<OtherLine> other_lines_;
   std::uint16_t other_resource_ = 0;
   std::vector<Load> lying_;
