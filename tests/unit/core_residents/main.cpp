@@ -180,25 +180,44 @@ int CheckTheWinterCountsTheHeapAbovePlan() {
   const core::FoodConfig food = MakeExchangeConfig();
   const core::LifeConfig life;
   core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
-  const float bare = core::SettlementFoodDays(food, life, world);
+  const double bare = core::SettlementFoodDays(food, life, world);
   core::FieldRow heap;
   heap.reaped_grams = 100 * core::kGramsPerKilogram;
   heap.reaped_resource = core::ResourceId{1};
   core::AppendRow(world.fields, heap);
-  const float whole = core::SettlementFoodDays(food, life, world);
+  const double whole = core::SettlementFoodDays(food, life, world);
   world.plan.announced = 1;
   world.plan.due.assign(4, 0);
   world.plan.delivered.assign(4, 0);
   world.plan.due[1] = 100 * core::kGramsPerKilogram;
-  const float all_owed = core::SettlementFoodDays(food, life, world);
+  const double all_owed = core::SettlementFoodDays(food, life, world);
   world.plan.due[1] = 40 * core::kGramsPerKilogram;
-  const float part_owed = core::SettlementFoodDays(food, life, world);
+  const double part_owed = core::SettlementFoodDays(food, life, world);
   failures += Expect(
-      bare == 0.0F && whole > 0.0F && whole < static_cast<float>(core::kStockForecastHorizonDays),
+      bare == 0.0 && whole > 0.0 && whole < static_cast<double>(core::kStockForecastHorizonDays),
       "winter food: a potato heap with no plan announced is food a cart away");
   failures += Expect(all_owed == bare, "winter food: the heap the plan takes whole counts nothing");
   failures += Expect(part_owed > bare && part_owed < whole,
                      "winter food: the heap above the plan's 40 kg counts, the 40 do not");
+  // THE STORES AND HEAPS ARE ONE (0.37.16; boss [17]: «никто не ест план»):
+  // the same 100 kg carted into the store read the same days with 40 owed,
+  // and the plan's 40 come off the store as they came off the heap.
+  world.fields.rows.back().reaped_grams = 0;
+  world.fields.rows.back().reaped_resource = core::ResourceId{};
+  world.units.rows[0].stock[1] = 100 * core::kGramsPerKilogram;
+  const double carted = core::SettlementFoodDays(food, life, world);
+  failures += Expect(carted == part_owed,
+                     "winter food: carted into the store, the same grain and the same plan read "
+                     "the same days");
+  // THE POSITION CARTED DAILY IS NOT NETTED (the milk; static review of
+  // 0.37.16): its due is paid by the milkings to come, not by today's stock.
+  core::FoodConfig milk_food = food;
+  milk_food.carted_daily = core::ResourceId{1};
+  failures += Expect(core::SettlementFoodDays(milk_food, life, world) == whole,
+                     "winter food: a position carted daily leaves today's stock whole");
+  world.plan.announced = 0;
+  failures += Expect(core::SettlementFoodDays(food, life, world) == whole,
+                     "winter food: and with no plan announced, the whole store is food");
   return failures;
 }
 

@@ -22,6 +22,7 @@
 
 #include "core_residents/residents_system.h"
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -300,14 +301,15 @@ class ResidentsSystem final : public IResidentsSystem {
       return;
     }
 
-    // Everything edible, wherever it lies — stores, pantries and the heaps
-    // above the plan's take — converted through calories, because the norm is
+    // Everything edible, wherever it lies — pantries, and the stores and heaps
+    // less the plan's take — converted through calories, because the norm is
     // a grain EQUIVALENT and a tonne of potatoes is not a tonne of rye. ONE
     // DOOR WITH THE WINTERING'S food_days_dec1 (year_metrics.h,
     // SettlementFoodDays; 0.37.15): until then the light carried a copy of
     // the same arithmetic, and a change to one would have measured the other's
     // neighbour.
-    food.days_of_stock = static_cast<std::int32_t>(SettlementFoodDays(food_, config_, completed));
+    food.days_of_stock =
+        static_cast<std::int32_t>(std::floor(SettlementFoodDays(food_, config_, completed)));
     food.light = LightFrom(food.days_of_stock,
                            food.days_to_date,
                            static_cast<std::int32_t>(food_.consumption.food_light_margin_days),

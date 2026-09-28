@@ -200,7 +200,9 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
 /// (RunFeeding), and the feed light's (stock_lights.cpp, FeedLight; boss-
 /// core-epoch1-queue-2026-09-29 [14] (1), (3); 0.37.15): the light counts
 /// what the herds may eat, and releases the plough's oats on the day the
-/// feeding does.
+/// feeding does. The stores are counted UNRESERVED in every unit, a level-0
+/// site's too — HeldEverywhere skips those; they differ only for a marked
+/// site holding stock (static review of 0.37.15, left as it is).
 ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world);
 
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor

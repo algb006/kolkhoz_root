@@ -182,7 +182,9 @@ Grams PlanRungGrams(const WorldState& world,
 ///        is announced (district_plan.cpp, TakePlanDebtFromFields: «the heap
 ///        first, and the whole debt»). A stock the winter may count, but not
 ///        the one the plan takes (boss-core-epoch1-queue-2026-09-29 [14] (2);
-///        0.37.15) — the food and seed lights and food_days_dec1 add it.
+///        0.37.15) — the feed light's hay adds it. The food days and the seed
+///        light net the take off the stores and heaps together since 0.37.16
+///        (HeapGrams, PlanOwedGrams), so carting a heap in moves nothing.
 ///
 ///        NOT CAPPED BY THE SEED as the district's take is (DeliverableAboveSeed,
 ///        core_production): the whole remaining due comes off, so where the

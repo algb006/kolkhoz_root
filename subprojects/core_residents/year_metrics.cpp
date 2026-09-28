@@ -23,18 +23,27 @@ namespace {
 constexpr std::uint32_t kDecemberFirstDayOfYear =
     static_cast<std::uint32_t>(Month::kDecember) * kDaysPerMonth;
 
-/// Everything edible of one resource, wherever it lies: the stores, the
-/// pantries, and the heaps lying the winter less what the district takes from
-/// them first (HeapAbovePlanDebt; boss-core-epoch1-queue-2026-09-29 [14] (2);
-/// 0.37.15). Until 0.37.15 no heap counted, and since 0.37.11 a potato heap
-/// lies through the winter a cart away — the wintering read it unclosed.
-Grams EdibleHeld(const WorldState& world, ResourceId resource) {
-  Grams total = HeapAbovePlanDebt(world, resource);
+/// Everything edible of one resource, wherever it lies: the pantries, and the
+/// stores and the heaps lying the winter TOGETHER, less what the district
+/// takes of them — the plan's remaining due (PlanOwedGrams). «Никто не ест
+/// план» (resources design §6; boss-core-epoch1-queue-2026-09-29 [17]):
+/// the plan's grain is not the people's food wherever it lies. Until 0.37.15
+/// no heap counted (and since 0.37.11 a potato heap lies the winter a cart
+/// away); 0.37.15 counted the heap net and the stores gross, so carting the
+/// heap in raised the days by up to the owed.
+/// EXCEPT THE POSITION CARTED DAILY (the milk; FoodConfig::carted_daily, as
+/// the plan rung leaves it, fund_ladder.cpp): its due is the season's to
+/// come, paid out of the milkings to come, not a claim on the dairy's day's
+/// leftover (static review of 0.37.16).
+Grams EdibleHeld(const WorldState& world, ResourceId resource, ResourceId carted_daily) {
+  Grams lying = HeapGrams(world, resource);
   for (const UnitRow& unit : world.units.rows) {
     if (unit.level != 0) {
-      total += UnreservedOf(unit, resource);
+      lying += UnreservedOf(unit, resource);
     }
   }
+  const Grams owed = resource.value == carted_daily.value ? 0 : PlanOwedGrams(world, resource);
+  Grams total = lying > owed ? lying - owed : 0;
   for (const FamilyRow& family : world.families.rows) {
     total += AmountOf(family.pantry, resource);
   }
@@ -43,12 +52,12 @@ Grams EdibleHeld(const WorldState& world, ResourceId resource) {
 
 }  // namespace
 
-float SettlementFoodDays(const FoodConfig& food, const LifeConfig& life, const WorldState& world) {
+double SettlementFoodDays(const FoodConfig& food, const LifeConfig& life, const WorldState& world) {
   const float need_kg = SettlementDailyNeedKilograms(food, life.life_speedup, world);
   if (!(need_kg > 0.0F)) {
     // An empty village eats nothing, and that is an ANSWER rather than a
     // missing value: the question was asked and the stock never runs out.
-    return static_cast<float>(kStockForecastHorizonDays);
+    return static_cast<double>(kStockForecastHorizonDays);
   }
   const float reference = food.consumption.grain_reference_kcal_per_gram;
   double kcal = 0.0;
@@ -59,15 +68,16 @@ float SettlementFoodDays(const FoodConfig& food, const LifeConfig& life, const W
         continue;
       }
       const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
-      kcal += static_cast<double>(EdibleHeld(world, id)) * static_cast<double>(density);
+      kcal += static_cast<double>(EdibleHeld(world, id, food.carted_daily)) *
+              static_cast<double>(density);
     }
   }
   const double need_kcal = static_cast<double>(need_kg) * static_cast<double>(kGramsPerKilogram) *
                            static_cast<double>(reference);
   const double days = need_kcal > 0.0 ? kcal / need_kcal : 0.0;
   return days >= static_cast<double>(kStockForecastHorizonDays)
-             ? static_cast<float>(kStockForecastHorizonDays)
-             : static_cast<float>(days);
+             ? static_cast<double>(kStockForecastHorizonDays)
+             : days;
 }
 
 void AccumulateYearMetrics(const FoodConfig& food, const LifeConfig& life, WorldState& world) {
@@ -131,7 +141,7 @@ void AccumulateYearMetrics(const FoodConfig& food, const LifeConfig& life, World
   // share against the days to the grass is taken once, by the reader, off
   // three numbers each of which can be checked against the world — the feed
   // half and the date are core_production's and are booked there.
-  book.food_days_dec1 = SettlementFoodDays(food, life, world);
+  book.food_days_dec1 = static_cast<float>(SettlementFoodDays(food, life, world));
   book.winter_cover_taken = 1;
 }
 

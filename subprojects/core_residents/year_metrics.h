@@ -30,8 +30,10 @@ namespace core {
 ///
 /// @return kStockForecastHorizonDays when the stock outlasts the horizon,
 ///         and the same saturation when nobody eats — an empty village does
-///         not run out.
-float SettlementFoodDays(const FoodConfig& food, const LifeConfig& life, const WorldState& world);
+///         not run out. In double: the office's light floors it to whole
+///         days itself, and a float between them rounded a day up when it
+///         lay a hair under a whole one (0.37.16).
+double SettlementFoodDays(const FoodConfig& food, const LifeConfig& life, const WorldState& world);
 
 /// @brief Books the day into the year's book: every family's satisfaction,
 /// one person-day for every able-bodied villager, and — on the first of
