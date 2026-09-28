@@ -174,7 +174,10 @@ struct FieldRow {
 
   float area_ga = 0.0F;
 
-  /// Soil fertility, 0-100; 50 is the neutral yield factor (see @file).
+  /// Soil fertility, 0-100; 50 is the neutral yield factor (see @file). Above
+  /// 100 only while a paid manure dose is on the row (`manure_booked`): its
+  /// bonus is paid at the furrow and the cap bites at the cycle's end, after
+  /// the crop's delta (0.37.13); the yield reads at most 100 (SoilFertility).
   Metric fertility = 50.0F;
 
   FieldPhase phase = FieldPhase::kIdle;

@@ -67,22 +67,39 @@ struct SeedNorm {
 
 /// @brief The seed held for the next sowings, with its parts: the grams held
 ///        for each field row (0 when its sowing is not held) and the seed
-///        they are of.
+///        they are of — for the field's next sowing, and for the winter crop
+///        its chain sows after that spring crop in the same year (`after_*`,
+///        0.37.13; 0 and invalid when there is none or it is not held).
 struct SeedHold {
-  ResourceAmounts by_resource;          ///< Dense by ResourceId.
-  std::vector<Grams> by_field_row;      ///< By row of world.fields.
-  std::vector<ResourceId> seed_of_row;  ///< The seed each held row is of.
+  ResourceAmounts by_resource;                ///< Dense by ResourceId, both sowings.
+  std::vector<Grams> by_field_row;            ///< By row of world.fields: the next sowing.
+  std::vector<ResourceId> seed_of_row;        ///< The seed each held row's next sowing is of.
+  std::vector<Grams> after_by_field_row;      ///< By row: the winter crop after it.
+  std::vector<ResourceId> after_seed_of_row;  ///< The seed of that winter crop.
 };
 
-/// @brief THE SEED FUND'S ONE RULE (resources design §6, «сев следующего
-///        года»; 0.36.21 field by field, one door since 0.36.34): the norm of
-///        each arable field whose own next sowing (NextSowingOf, by the slot
-///        it comes from) ends before the seed's next harvest begins. A sowing
-///        the harvest comes first to holds nothing today — the winter rye,
-///        reaped in July and sown in September, and a chain's potato of NEXT
-///        year, which this August's digging gives. The seed's next harvest is
-///        read off the FIELDS — a crop in the ground, a sowing to come — and a
-///        seed nothing will reap holds its sowings.
+/// @brief THE SEED FUND'S ONE RULE (resources design §6, «Посевной материал
+///        под назначенный севооборот следующего года»; 0.36.21 field by
+///        field, one door since 0.36.34): the norm of each arable field's
+///        sowings of the year — its next sowing (NextSowingOf, by the slot it
+///        comes from) and, where that is a spring crop of slot k and slot
+///        k + 1 names a winter crop the spring one leaves a month for, the
+///        winter crop sown the autumn after it (0.37.13; a chain held at the
+///        turn included) — each held when its sowing ends before the
+///        seed's next harvest begins. A sowing the harvest comes first to
+///        holds nothing today — the winter rye, reaped in July and sown in
+///        September, and a chain's potato of NEXT year, which this August's
+///        digging gives. The seed's next harvest is read off the FIELDS — a
+///        crop in the ground, a sowing to come — and a seed nothing will reap
+///        holds its sowings.
+///
+///        THE WINTER CROP AFTER A SPRING ONE WAS HELD ONLY FROM THE SPRING
+///        SOWING until 0.37.13 — the «nearest campaign», narrower than the
+///        design's «назначенный севооборот» (boss-core-epoch1-queue-2026-09-29
+///        [7]): from January to May the issue handed out the rye already
+///        named for the autumn, and on econ's pair (the black fallow sown with
+///        oats) the rye position of year 4 failed at 47 % on five seeds of six
+///        — the fallow's own rye, its field's next sowing, held from January.
 ///
 ///        READ BY EVERY DOOR THAT KEEPS SEED: the fund ladder's seed rung
 ///        (SeedRungLeft, what the ration, the families' exchange and the

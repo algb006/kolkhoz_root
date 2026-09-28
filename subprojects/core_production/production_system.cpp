@@ -545,6 +545,7 @@ class ProductionSystem final : public IProductionSystem {
         // was paid here.
         field.manure_applied = 0;
         field.manure_booked = 0;
+        field.fertility = SoilFertility(field);  // the dose's cap, at its cycle's end (0.37.13)
       }
       // RESTING FALLOW RECOVERS; UNWORKED GROUND MERELY KEEPS WHAT IT HAS.
       // The two were told apart by the land kind until 2026-09-12, and when
@@ -582,7 +583,7 @@ class ProductionSystem final : public IProductionSystem {
                                     !reaped_in_closing_year;
       if ((stood_bare || idle_fallow_slot) && HasRotation(field)) {
         field.fertility += config_.farming.fallow_recovery;
-        field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
+        CapRestedFertility(config_, field);  // a paid dose's crop settles the cap (0.37.13)
         field.last_crop = CropId{};
         field.repeat_years = 0;
       }

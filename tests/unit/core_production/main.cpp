@@ -2666,6 +2666,90 @@ int CheckSeedHeldFieldByField() {
       Expect(core::SeedHeldToSowing(config, turn, core::SeedDayAtTheTurn(turn))[0] == 25 * kTonne,
              "seed held at the turn: as of the closing year's last day, next spring's 25 t");
 
+  // THE WINTER CROP AFTER A SPRING ONE, FROM JANUARY (0.37.13; resources
+  // design §6, «назначенный севооборот»; boss-core-epoch1-queue-2026-09-29
+  // [7]): field A alone — potato this spring, rye this autumn, no rye in the
+  // ground to give its seed first. Both are held in January: 25 t of potato
+  // and 2 t of rye. The pair is the first world above, where B's rye stands
+  // to be reaped in July and A's rye holds nothing.
+  core::WorldState spring_then_rye = MakeHerdWorld(0.0F);
+  spring_then_rye.calendar.tick = 0;  // January
+  core::RefreshCalendarCaches(spring_then_rye.calendar);
+  core::AppendRow(spring_then_rye.fields, a);
+  const std::vector<core::Grams> both = core::SeedHeldToSowing(config, spring_then_rye, 0);
+  failures += Expect(both[0] == 25 * kTonne && both[1] == 2 * core::kGramsPerKilogram * 1000,
+                     "seed held: in January a chain's autumn rye after its spring potato is "
+                     "held too, 2 t, when no rye stands to give it first");
+  const core::SeedHold parts = core::SeedHeldByField(config, spring_then_rye, 0);
+  failures += Expect(parts.by_field_row[0] == 25 * kTonne &&
+                         parts.after_by_field_row[0] == 2 * core::kGramsPerKilogram * 1000 &&
+                         parts.after_seed_of_row[0].value == 1,
+                     "seed held: the field's two sowings, each under its own part");
+  // The alarm names each: 40 t of potato and no rye — the rye is short on
+  // its field, the potato is not.
+  spring_then_rye.units.rows[0].stock[0] = 40 * kTonne;
+  std::vector<core::Alarm> after_alarms;
+  core::CollectFieldAlarms(config, spring_then_rye, after_alarms);
+  const auto seed_short_of = [&after_alarms](std::uint16_t resource) {
+    return std::ranges::count_if(after_alarms, [resource](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == resource;
+    });
+  };
+  failures += Expect(seed_short_of(1) == 1 && seed_short_of(0) == 0,
+                     "seed held, the alarm: the autumn rye's seed short on its field, the "
+                     "covered potato silent");
+  // Short of both: ONE alarm on the field, the nearer sowing's (a kind and a
+  // subject are one alarm, alarm_state.h).
+  spring_then_rye.units.rows[0].stock[0] = 0;
+  after_alarms.clear();
+  core::CollectFieldAlarms(config, spring_then_rye, after_alarms);
+  failures += Expect(seed_short_of(0) == 1 && seed_short_of(1) == 0,
+                     "seed held, the alarm: short of both, one alarm on the field — the "
+                     "spring potato's");
+  // AT THE TURN (static review of 0.37.13): as of the closing year's last
+  // day the layout is still the old one — the potato reaped this year in
+  // slot 0, next year's potato in slot 1, that autumn's rye in slot 2. The
+  // delivery reads it so: the rye is held, 2 t. Its pair: with rye standing
+  // to be reaped next July, it holds nothing.
+  core::WorldState at_turn = MakeHerdWorld(0.0F);
+  at_turn.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;  // the last day
+  core::RefreshCalendarCaches(at_turn.calendar);
+  core::FieldRow reaped_potato = a;
+  reaped_potato.rotation_year0 = core::CropId{0};
+  reaped_potato.rotation_year1 = core::CropId{0};
+  reaped_potato.rotation_year2 = core::CropId{1};
+  reaped_potato.reaped_day = at_turn.calendar.day - 10;
+  core::AppendRow(at_turn.fields, reaped_potato);
+  failures += Expect(
+      core::SeedHeldToSowing(config, at_turn, at_turn.calendar.day)[1] ==
+          2 * core::kGramsPerKilogram * 1000,
+      "seed held at the turn: next year's potato, then that autumn's rye — the rye held, 2 t");
+  core::AppendRow(at_turn.fields, b);  // rye standing, reaped next July
+  failures += Expect(core::SeedHeldToSowing(config, at_turn, at_turn.calendar.day)[1] == 0,
+                     "seed held at the turn: with rye standing to be reaped first, none");
+  // A CHAIN HELD AT THE TURN (laid in the winter, rotation_skips_turn):
+  // potato this spring, its window still open in January, and the rye that
+  // autumn — held from the day it is laid.
+  core::WorldState laid = MakeHerdWorld(0.0F);
+  laid.calendar.tick = 0;
+  core::RefreshCalendarCaches(laid.calendar);
+  core::FieldRow held_chain = a;
+  held_chain.rotation_skips_turn = 1;
+  core::AppendRow(laid.fields, held_chain);
+  failures +=
+      Expect(core::SeedHeldToSowing(config, laid, 0)[1] == 2 * core::kGramsPerKilogram * 1000,
+             "seed held: a chain laid in the winter holds its autumn rye, 2 t");
+  // NOT A WINTER CROP ITS SPRING CROP LEAVES NO MONTH FOR (kWinterCropUnsowable's
+  // test): a spring crop reaped from the rye's last sowing month — its rye is
+  // lost, and nothing is held for it.
+  core::ProductionConfig late_config = config;
+  late_config.crops.push_back(potato);
+  late_config.crops.back().harvest_from_month = rye.sow_to_month;
+  core::WorldState late = spring_then_rye;
+  late.fields.rows[0].rotation_year0 = core::CropId{2};
+  failures += Expect(core::SeedHeldToSowing(late_config, late, 0)[1] == 0,
+                     "seed held: no rye for a slot the spring crop before it leaves no month for");
+
   // ONE DOOR, TWO READERS (boss-core-seed-ladders [1]-[2]): the fund ladder's
   // seed rung, with nothing unsealed, is the delivery door's hold on every
   // one of these worlds. Until 0.36.34 the rung asked "this year's sowings
@@ -2685,6 +2769,8 @@ int CheckSeedHeldFieldByField() {
   failures += one_door(only_next, "one door: January, only next year's potato");
   failures += one_door(november_named, "one door: November, a chain named at the turn");
   failures += one_door(august, "one door: August, a fresh chain's winter rye");
+  spring_then_rye.units.rows[0].stock[0] = 0;
+  failures += one_door(spring_then_rye, "one door: January, the autumn rye after a spring crop");
   return failures;
 }
 
@@ -6773,6 +6859,86 @@ int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
       "turn rest: both fields open for their oats in April");
   failures += Expect(april.ledger.current.area_manured_ha == 5.0F,
                      "turn rest: only the unbooked dose is booked by its plough — 5 ha, not 10");
+  return failures;
+}
+
+/// THE CAP OF 100 BITES AFTER THE CROP'S DELTA (0.37.13; boss-core-epoch1-
+/// queue-2026-09-29 [7]: min(100, f + manure + delta)), on the shipped tables:
+///   * a field at 95 with a full dose opens for its potato: 105 on the row,
+///     the yield read at 100 — the same grams as a field at 100;
+///   * the potato reaped (delta −2): 100, where 0.37.12 capped at the furrow
+///     and left 98;
+///   * the same field lost to the snow: 100, the dose's cap at its cycle's end;
+///   * a black fallow at 107 with its dose on the row sows its rye: the rest
+///     caps at 100 plus the dose, 110 — min(100, f + rest) + manure.
+int CheckTheCapBitesAfterTheDelta() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  core::ProductionConfig parsed;
+  if (Expect(system != nullptr && core::ParseProductionConfig(*tables, parsed, error),
+             "cap after delta: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId potato{static_cast<std::uint16_t>(crops->FindRowByKey("potato"))};
+  const core::CropDef& potato_def = parsed.crops[potato.value];
+  core::WorldState april;
+  april.calendar.tick = ((core::kDaysPerYear + 13U) * core::kTicksPerDay) - 1U;  // year 2, April
+  core::RefreshCalendarCaches(april.calendar);
+  core::FieldRow near_full;
+  near_full.kind = core::LandKind::kArable;
+  near_full.area_ga = 10.0F;
+  near_full.fertility = 95.0F;
+  near_full.rotation_assigned = 1;
+  near_full.rotation_year0 = potato;
+  near_full.rotation_year1 = rye;
+  near_full.phase = core::FieldPhase::kIdle;
+  near_full.manure_applied = 100;
+  core::AppendRow(april.fields, near_full);
+  core::WorldState next = april;
+  next.calendar.tick += 1;
+  core::RefreshCalendarCaches(next.calendar);
+  next.weather.air_temperature_celsius = 8.0F;
+  system->RunProductionDecisions(april, next);
+  core::FieldRow& opened = next.fields.rows[0];
+  failures += Expect(opened.crop.value == potato.value && opened.manure_booked == 1 &&
+                         opened.fertility == 95.0F + parsed.farming.manure_fertility_bonus,
+                     "cap after delta: the furrow pays the full dose uncapped, 95 -> 105");
+  core::FieldRow at_hundred = opened;
+  at_hundred.fertility = 100.0F;
+  failures += Expect(core::FieldYieldGrams(parsed, opened, potato_def) ==
+                         core::FieldYieldGrams(parsed, at_hundred, potato_def),
+                     "cap after delta: the yield reads the soil at 100, not 105");
+  core::FieldRow snowed = opened;
+  opened.phase = core::FieldPhase::kHarvest;
+  opened.sown_day = core::kNeverSownDay;
+  opened.work_days_remaining = 0.0F;
+  core::FinishHarvest(parsed, next, opened);
+  failures += Expect(opened.fertility == 100.0F,
+                     "cap after delta: the potato reaped, 105 - 2 capped at 100 — not 98");
+  snowed.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(next.fields, snowed);
+  core::LoseFieldToSnow(parsed, next, next.fields.rows[1], potato_def);
+  failures +=
+      Expect(next.fields.rows[1].fertility == 100.0F && next.fields.rows[1].manure_booked == 0,
+             "cap after delta: lost to the snow, the dose's cycle ends at 100");
+  core::FieldRow fallow_rye = near_full;
+  fallow_rye.fertility = 107.0F;
+  fallow_rye.manure_booked = 1;
+  fallow_rye.crop = rye;
+  fallow_rye.phase = core::FieldPhase::kSowing;
+  fallow_rye.fallow_rest_owed = 1;
+  core::AppendRow(next.fields, fallow_rye);
+  core::FinishSowing(parsed, next, next.fields.rows[2]);
+  failures +=
+      Expect(next.fields.rows[2].fertility == 100.0F + parsed.farming.manure_fertility_bonus,
+             "cap after delta: the fallow's rest on a dosed row caps at 100 plus its "
+             "dose (110), not at 100 before the rye's delta, nor above it (113)");
   return failures;
 }
 
@@ -11791,6 +11957,7 @@ int main() {
   failures += CheckTheBlackFallowsFurrowIsTheRyes();
   failures += CheckTheTurnRestsBareGroundAndCarriesPaidManure();
   failures += CheckTheHeapsManurePaysItsFurrow();
+  failures += CheckTheCapBitesAfterTheDelta();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();

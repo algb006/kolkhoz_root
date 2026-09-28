@@ -188,7 +188,8 @@ bool LateSowingReturnsItsSeed(const ProductionConfig& config,
   if (!(crop.sowing_norm_kg_per_ha > 0.0F)) {
     return true;  // nothing goes into the ground to lose
   }
-  const float soil_factor = field.fertility / config.farming.fertility_neutral;
+  // The soil the yield will read, at most 100 (SoilFertility, 0.37.13).
+  const float soil_factor = SoilFertility(field) / config.farming.fertility_neutral;
   const float expected = crop.yield_kg_per_ha * soil_factor * LateFactorOnDay(config, crop, today);
   return expected >= crop.sowing_norm_kg_per_ha;
 }
@@ -204,8 +205,21 @@ bool SowingHasSeed(const ProductionConfig& config, const WorldState& world, Crop
   return TakeableGrams(world, config, crop.resource) > 0;
 }
 
+float SoilFertility(const FieldRow& field) {
+  return field.fertility > 100.0F ? 100.0F : field.fertility;
+}
+
+void CapRestedFertility(const ProductionConfig& config, FieldRow& field) {
+  const float ceiling = 100.0F + (field.manure_booked != 0 ? ManureBonus(config, field) : 0.0F);
+  if (field.fertility > ceiling) {
+    field.fertility = ceiling;
+  }
+}
+
 Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop) {
-  const float soil_factor = field.fertility / config.farming.fertility_neutral;
+  // At most 100 however far a paid dose lifts the row before its harvest
+  // settles the cap (0.37.13; SoilFertility).
+  const float soil_factor = SoilFertility(field) / config.farming.fertility_neutral;
   // The sum of the two, capped exactly where the single number was.
   const float stress_total = field.drought_stress + field.wet_stress;
   const float capped =
@@ -337,7 +351,8 @@ void LoseFieldToSnow(const ProductionConfig& config,
   field.work_days_remaining = 0.0F;
   ClearFieldWeather(field);
   field.manure_applied = 0;
-  field.manure_booked = 0;  // settled with the crop the snow took
+  field.manure_booked = 0;                 // settled with the crop the snow took
+  field.fertility = SoilFertility(field);  // and its dose's cap with it (0.37.13)
   current.ledger.current.area_lost_ha += area_lost;
   // THE PART DUG IS SAID TOO (static review of 0.34.44): a field reaped to
   // 70 % and then snowed on gave 7 t to the heap and the book, and the
@@ -519,8 +534,14 @@ void OpenPlowing(const ProductionConfig& config,
         GramsFromKilograms(config.farming.manure_norm_kg_per_ha * field.area_ga * share);
     current.ledger.current.manure_plowed_in += dose;
     current.ledger.current.area_manured_ha += field.area_ga * share;
+    // NOT CAPPED HERE (boss-core-epoch1-queue-2026-09-29 [7]): the cap of 100
+    // bites where the cycle ends, after the crop's delta, as it bit when the
+    // bonus came at the harvest — min(100, f + manure + delta). Capped at the
+    // furrow, a field near 100 under a crop with a negative delta lost up to
+    // |delta| a cycle to where the clamp stood. Above 100 only while the paid
+    // dose is on the row (manure_booked); the yield reads at most 100
+    // (FieldYieldGrams).
     field.fertility += ManureBonus(config, field);
-    field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
     field.manure_booked = 1;
   }
   // THE BLACK FALLOW'S FURROW IS THE WINTER CROP'S (0.37.6): opened at the
@@ -1091,7 +1112,7 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
   // the rest, and the rotation's memory cleared.
   if (field.fallow_rest_owed != 0 && crop_id.value != kInvalidDefIdValue) {
     field.fertility += config.farming.fallow_recovery;
-    field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
+    CapRestedFertility(config, field);
     field.last_crop = CropId{};
     field.repeat_years = 0;
   }

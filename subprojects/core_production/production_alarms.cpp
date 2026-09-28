@@ -72,13 +72,21 @@ Grams FreeRoomOfStores(const ProductionConfig& config, const WorldState& world) 
 /// come out of today's stores — before the seed's next harvest. Until then
 /// this counted every next sowing (SeedNeedByResource), next year's too, and
 /// in January could call potato short while the plan shipped it.
+///
+/// `after`: the field's second sowing of the year, the winter crop after its
+/// spring crop (SeedHold::after_by_field_row, 0.37.13) — held, it takes its
+/// share of its seed's shortfall like any sowing, named when the field's
+/// next sowing is not short (one alarm a field, CollectFieldAlarms).
 Grams SeedShortfall(const ProductionConfig& config,
                     const WorldState& world,
                     const SeedHold& hold,
                     std::uint32_t row,
+                    bool after,
                     ResourceId& resource) {
-  resource = row < hold.seed_of_row.size() ? hold.seed_of_row[row] : ResourceId{};
-  const Grams wanted = row < hold.by_field_row.size() ? hold.by_field_row[row] : 0;
+  const std::vector<ResourceId>& seeds = after ? hold.after_seed_of_row : hold.seed_of_row;
+  const std::vector<Grams>& grams = after ? hold.after_by_field_row : hold.by_field_row;
+  resource = row < seeds.size() ? seeds[row] : ResourceId{};
+  const Grams wanted = row < grams.size() ? grams[row] : 0;
   if (wanted <= 0 || resource.value >= hold.by_resource.size()) {
     return 0;
   }
@@ -163,7 +171,7 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
     return claim;
   }
   const CropDef& crop = config.crops[field.crop.value];
-  const float soil = field.fertility / config.farming.fertility_neutral;
+  const float soil = SoilFertility(field) / config.farming.fertility_neutral;
   // On the sown share, as the harvest itself (FieldYieldGrams, 0.34.50).
   const Grams expected =
       GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * field.sown_share * soil);
@@ -507,15 +515,24 @@ void CollectFieldAlarms(const ProductionConfig& config,
       alarm.amount = field.reaped_grams;
       alarms.push_back(alarm);
     }
-    ResourceId seed;
-    const Grams short_of = SeedShortfall(config, world, seed_hold, row, seed);
-    if (short_of > 0) {
-      Alarm alarm;
-      alarm.kind = AlarmKind::kSeedShort;
-      alarm.field = world.fields.row_ids[row];
-      alarm.resource = seed;
-      alarm.amount = short_of;
-      alarms.push_back(alarm);
+    // ONE kSeedShort A FIELD (alarm_state.h: a kind and a subject are one
+    // alarm; the subject is the field): the next sowing's, else the winter
+    // crop's after it (0.37.13). Both short, the nearer one speaks; the
+    // winter crop's share is named once the spring crop is in and it becomes
+    // the next sowing — so a crop's alarms sum to its shortfall except while
+    // one field is short of both.
+    for (const bool after : {false, true}) {
+      ResourceId seed;
+      const Grams short_of = SeedShortfall(config, world, seed_hold, row, after, seed);
+      if (short_of > 0) {
+        Alarm alarm;
+        alarm.kind = AlarmKind::kSeedShort;
+        alarm.field = world.fields.row_ids[row];
+        alarm.resource = seed;
+        alarm.amount = short_of;
+        alarms.push_back(alarm);
+        break;
+      }
     }
   }
 }

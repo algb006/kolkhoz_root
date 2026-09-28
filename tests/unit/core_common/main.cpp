@@ -1358,10 +1358,17 @@ int CheckTheTopOfTheLadder() {
     autumn.fields.rows[0].reaped_day = core::kNeverReapedDay;
     failures += Expect(winter_seed(autumn) == 100'000,
                        "ladder: a fallow year holds the seed of the winter crop after it");
+    // A FIELD STILL OWING ITS FIRST SLOT'S SPRING CROP holds the winter crop
+    // after it too (0.37.13; resources design §6, «назначенный севооборот»;
+    // boss-core-epoch1-queue-2026-09-29 [7]): these norms name no windows, so
+    // both go in before the year's end. Until 0.37.13 this line said «holds
+    // no winter seed yet» — the nearest-campaign rule the decision replaced,
+    // which let the issue eat the autumn's rye from January to May.
     autumn.fields.rows[0].rotation_year0 = core::CropId{0};
     autumn.fields.rows[0].phase = core::FieldPhase::kHarrowing;
-    failures += Expect(winter_seed(autumn) == 0,
-                       "ladder: a field still owing its first slot holds no winter seed yet");
+    failures += Expect(winter_seed(autumn) == 100'000,
+                       "ladder: a field still owing its first slot holds the winter seed after "
+                       "it too");
     autumn.fields.rows[0].phase = core::FieldPhase::kGrowing;
     autumn.fields.rows[0].crop = core::CropId{1};
     autumn.fields.rows[0].reaped_day = core::kDaysPerYear + 30;

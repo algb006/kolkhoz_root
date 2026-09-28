@@ -158,6 +158,21 @@ void RescaleHorseWorkForRation(const ProductionConfig& config,
                                float traction_ration_was,
                                WorldState& current);
 
+/// @brief The fertility the yield reads: the row's, at most 100. The row may
+/// stand above 100 while a paid manure dose is on it (FieldRow::manure_booked):
+/// the cap bites where the cycle ends, after the crop's delta — min(100,
+/// f + manure + delta), as when the bonus came at the harvest (boss-core-
+/// epoch1-queue-2026-09-29 [7]; 0.37.13).
+float SoilFertility(const FieldRow& field);
+
+/// @brief The rests' cap (the turn's, the fallow's at its rye's sowing): 100,
+/// raised by the bonus of a paid manure dose still on the row
+/// (FieldRow::manure_booked) — so the dose's crop settles min(100, f + rest
+/// + manure + delta) as when the rest was capped at 100 and the bonus came at
+/// the harvest. Uncapped, a dosed preparation let go turn after turn climbed
+/// by every rest (static review of 0.37.13).
+void CapRestedFertility(const ProductionConfig& config, FieldRow& field);
+
 /// @brief The manure bonus this field has coming, by the share of its dose
 /// it received (FieldRow::manure_applied is that share in percent). Paid
 /// into the fertility by the furrow that turns the dose in (OpenPlowing,
