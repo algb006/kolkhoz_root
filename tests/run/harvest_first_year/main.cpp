@@ -258,34 +258,44 @@ int main() {
   // 1.3), and a full cut, once the village stopped losing a day at every phase
   // it opened, went over it by 6.2 t (2026-09-19): the instrument's gap, not
   // the world's.
+  //
+  // AND THE FIRST MORNING'S MANURE ON IT (0.37.12, static review): the heap
+  // genesis hands over is dealt out on tick 1 (PlanManure), and since 0.37.12
+  // a dose pays its fertility at its field's furrow — before a sown grass's
+  // cut, where until then it came after. A dose dealt to a hay field raises
+  // its soil by the bonus times its share, to at most 100; that part is added
+  // off the first morning's rows below (sown_hay_dose_tonnes).
   double sown_hay_ceiling_tonnes = 0.0;
-  {
-    const core::ITable* const crop_table = world.tables->FindTable("crops");
-    const core::ITable* const farming = world.tables->FindTable("farming");
-    const std::uint32_t neutral_row =
-        farming == nullptr ? core::kNoTableRow : farming->FindRowByKey("fertility_neutral");
-    const std::optional<float> neutral =
-        neutral_row == core::kNoTableRow
-            ? std::nullopt
-            : farming->CellReal(neutral_row, farming->FindColumn("value"));
-    if (crop_table != nullptr && neutral.has_value() && *neutral > 0.0F) {
-      const std::uint32_t resource_col = crop_table->FindColumn("resource");
-      const std::uint32_t yield_col = crop_table->FindColumn("yield_kg_per_ha");
-      for (const core::FieldRow& field : start.fields.rows) {
-        const std::uint32_t crop = field.rotation_year0.value;
-        if (field.kind != core::LandKind::kArable || crop >= crop_table->RowCount() ||
-            crop_table->CellText(crop, resource_col) != "hay") {
-          continue;
-        }
-        const std::optional<float> yield = crop_table->CellReal(crop, yield_col);
-        if (yield.has_value()) {
-          sown_hay_ceiling_tonnes += static_cast<double>(field.area_ga) *
-                                     static_cast<double>(*yield) *
-                                     static_cast<double>(field.fertility / *neutral) / 1000.0;
-        }
+  const core::ITable* const crop_table = world.tables->FindTable("crops");
+  const core::ITable* const farming = world.tables->FindTable("farming");
+  const auto farming_value = [farming](std::string_view key) -> std::optional<float> {
+    const std::uint32_t row = farming == nullptr ? core::kNoTableRow : farming->FindRowByKey(key);
+    return row == core::kNoTableRow ? std::nullopt
+                                    : farming->CellReal(row, farming->FindColumn("value"));
+  };
+  const std::optional<float> neutral = farming_value("fertility_neutral");
+  const std::optional<float> manure_bonus = farming_value("manure_fertility_bonus");
+  // A hay field's crop yield, kg/ha, or nothing for any other field.
+  const auto hay_yield = [&crop_table](const core::FieldRow& field) -> std::optional<float> {
+    const std::uint32_t crop = field.rotation_year0.value;
+    if (crop_table == nullptr || field.kind != core::LandKind::kArable ||
+        crop >= crop_table->RowCount() ||
+        crop_table->CellText(crop, crop_table->FindColumn("resource")) != "hay") {
+      return std::nullopt;
+    }
+    return crop_table->CellReal(crop, crop_table->FindColumn("yield_kg_per_ha"));
+  };
+  if (neutral.has_value() && *neutral > 0.0F) {
+    for (const core::FieldRow& field : start.fields.rows) {
+      const std::optional<float> yield = hay_yield(field);
+      if (yield.has_value()) {
+        sown_hay_ceiling_tonnes += static_cast<double>(field.area_ga) *
+                                   static_cast<double>(*yield) *
+                                   static_cast<double>(field.fertility / *neutral) / 1000.0;
       }
     }
   }
+  double sown_hay_dose_tonnes = 0.0;
   // Seven sown fields, a fallow one, six derelict, ten meadows — the start
   // canon's suggested three-year rotation on 70 raised hectares of the 160
   // (start canon §8), and grass that is not scarce; the hands and the
@@ -332,6 +342,19 @@ int main() {
   for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
     const core::WorldState& day = simulation->CompletedState();
+    if (tick == 0 && neutral.has_value() && *neutral > 0.0F && manure_bonus.has_value()) {
+      // The first morning's doses on the hay fields (the ceiling above).
+      for (const core::FieldRow& field : day.fields.rows) {
+        const std::optional<float> yield = hay_yield(field);
+        if (!yield.has_value() || field.manure_applied == 0 || field.manure_booked != 0) {
+          continue;
+        }
+        const float bonus = *manure_bonus * static_cast<float>(field.manure_applied) / 100.0F;
+        const float raised = field.fertility + bonus > 100.0F ? 100.0F - field.fertility : bonus;
+        sown_hay_dose_tonnes += static_cast<double>(field.area_ga) * static_cast<double>(*yield) *
+                                static_cast<double>(raised / *neutral) / 1000.0;
+      }
+    }
     if (core::HourFromTick(day.calendar.tick) != 0) {
       continue;
     }
@@ -486,8 +509,9 @@ int main() {
   // травы: укосами каждое лето") and their crop's resource is hay (crops.csv).
   // The start layout sows timothy on 10.5 ha in its first year; the ceiling
   // counts a field whose first-year crop gives hay at that crop's yield AND
-  // its start soil (sown_hay_ceiling_tonnes, read before the year).
-  double hay_ceiling_tonnes = sown_hay_ceiling_tonnes;
+  // its start soil (sown_hay_ceiling_tonnes, read before the year), raised by
+  // the first morning's manure on it (sown_hay_dose_tonnes, 0.37.12).
+  double hay_ceiling_tonnes = sown_hay_ceiling_tonnes + sown_hay_dose_tonnes;
   const core::ITable* const layout = world.tables->FindTable("start_layout");
   const core::ITable* const meadow_kinds = world.tables->FindTable("meadow_kinds");
   if (layout != nullptr && meadow_kinds != nullptr) {
@@ -510,7 +534,7 @@ int main() {
   const double hay_cut_tonnes = static_cast<double>(reaped_of(hay)) / 1.0e6;
   std::cout << "harvest_first_year: the meadows were cut for " << hay_cut_tonnes << " t of hay of "
             << hay_ceiling_tonnes << " t they can give (the stack peaked at " << hay_tonnes
-            << " t)\n";
+            << " t; the first morning's manure on sown grass " << sown_hay_dose_tonnes << " t)\n";
   failures += run::Expect(hay_ceiling_tonnes > 0.0 && hay_cut_tonnes > 150.0 &&
                               hay_cut_tonnes <= hay_ceiling_tonnes + 1.0,
                           "the meadows deliver what the hands and the window allow");

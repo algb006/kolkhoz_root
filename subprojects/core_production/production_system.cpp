@@ -540,13 +540,11 @@ class ProductionSystem final : public IProductionSystem {
           field.phase == FieldPhase::kGrowing && field.crop.value == kInvalidDefIdValue;
       if (bare) {
         MoveFieldPhase(current, field, FieldPhase::kIdle);  // the fallow stood its year
-        if (field.manure_applied != 0) {
-          // A fallow has no harvest to settle its manure at: it settles here.
-          field.fertility += ManureBonus(config_, field);
-          field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
-          field.manure_applied = 0;
-          field.manure_booked = 0;
-        }
+        // A fallow has no harvest to end its manure's cycle: it ends here. Its
+        // furrow paid the bonus in May (OpenPlowing, 0.37.12); until then it
+        // was paid here.
+        field.manure_applied = 0;
+        field.manure_booked = 0;
       }
       // RESTING FALLOW RECOVERS; UNWORKED GROUND MERELY KEEPS WHAT IT HAS.
       // The two were told apart by the land kind until 2026-09-12, and when
@@ -566,7 +564,9 @@ class ProductionSystem final : public IProductionSystem {
       // turn lets go unsown on ground that gave nothing this year (the black
       // fallow's rye that missed its window). Until 0.37.10 the chain's name
       // decided: a fallow slot or a lost winter slot, so a renamed bare fallow
-      // and an unsown preparation got nothing.
+      // and an unsown preparation got nothing. The black fallow's rye SOWN
+      // rests on its sowing day (FinishSowing, 0.37.12), and grows through
+      // this turn owing nothing.
       const bool reaped_in_closing_year =
           field.reaped_day != kNeverReapedDay &&
           field.reaped_day / kDaysPerYear == closing_year / kDaysPerYear;

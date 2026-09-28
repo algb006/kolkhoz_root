@@ -6580,6 +6580,14 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
   failures += Expect(warm.ledger.current.area_manured_ha == 5.0F,
                      "black fallow: the manure is booked by the stubble's plough (half of 10 ha), "
                      "not again by the fallow's rye (boss [84] (3))");
+  // The manure pays its furrow (0.37.12): the stubble's half dose goes into
+  // its fertility as its plough opens; the fallow's, paid in May, not again.
+  // And the fallow's rest waits for the rye's sowing.
+  failures += Expect(stubble.fertility == 70.0F && fallow.fertility == 65.0F,
+                     "black fallow: the stubble's plough pays its half dose (65 + 5), the "
+                     "fallow's rye pays nothing at the harrow");
+  failures += Expect(fallow.fallow_rest_owed == 1 && stubble.fallow_rest_owed == 0,
+                     "black fallow: the fallow's rye owes the fallow's rest, the stubble's none");
   const core::FieldRow& fresh_oats = warm.fields.rows[2];
   const core::FieldRow& fresh_rye = warm.fields.rows[3];
   failures += Expect(fresh_oats.crop.value == core::kInvalidDefIdValue &&
@@ -6612,6 +6620,16 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
                          sown_stubble.furrow_day == core::kNoFurrowDay,
                      "black fallow: the stubble's rye sown, its furrow mark goes with the "
                      "preparation");
+  failures += Expect(sown_stubble.fertility == 70.0F,
+                     "black fallow: the stubble's rye sown rests nothing — it stood no summer");
+  // THE FALLOW RESTS THE DAY ITS RYE IS SOWN (0.37.12): fallow_recovery, once.
+  core::FinishSowing(parsed, warm, warm.fields.rows[0]);
+  const core::FieldRow& sown_fallow = warm.fields.rows[0];
+  failures += Expect(sown_fallow.phase == core::FieldPhase::kGrowing &&
+                         sown_fallow.fertility == 65.0F + parsed.farming.fallow_recovery &&
+                         sown_fallow.fallow_rest_owed == 0,
+                     "black fallow: its rye sown, the fallow's summer rest is paid (65 + 6) and "
+                     "the debt is gone");
 
   core::WorldState cold = august_world();
   step(cold, 4.0F);  // under the rye's 8 °C
@@ -6683,6 +6701,7 @@ int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
   unsown_rye.rotation_year2 = oat;
   unsown_rye.manure_applied = 50;
   unsown_rye.manure_booked = 1;
+  unsown_rye.fallow_rest_owed = 1;           // opened on the fallow (0.37.12)
   unsown_rye.reaped_day = kLastYearReaping;  // the crop before the fallow
   core::AppendRow(turn.fields, unsown_rye);
   core::FieldRow stubble = base;  // oats reaped this year, the rye after them unsown
@@ -6723,6 +6742,9 @@ int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
   failures +=
       Expect(turn.fields.rows[1].manure_applied == 50 && turn.fields.rows[1].manure_booked == 1,
              "turn rest: the unsown rye's manure goes with it, paid (boss [94] (2))");
+  failures += Expect(turn.fields.rows[1].fallow_rest_owed == 0,
+                     "turn rest: and its fallow's rest, rested once by the turn, is owed no more "
+                     "(0.37.12)");
   failures += Expect(turn.fields.rows[2].fertility == 60.0F,
                      "turn rest: an oats stubble reaped this year did not rest — no recovery");
   failures += Expect(turn.fields.rows[3].fertility == rested,
@@ -6751,6 +6773,171 @@ int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
       "turn rest: both fields open for their oats in April");
   failures += Expect(april.ledger.current.area_manured_ha == 5.0F,
                      "turn rest: only the unbooked dose is booked by its plough — 5 ha, not 10");
+  return failures;
+}
+
+/// THE MANURE PAYS ITS FURROW, AND THE HEAP'S DOSE IS DEALT ONCE A CYCLE
+/// (0.37.12; farming design, «Навоз платит культуре, под которую запахан»;
+/// boss-core-epoch1-queue-2026-09-29 [1]), on the shipped tables with a
+/// manure heap in the world:
+///   * at the second turn, fertility 60: a spring preparation let go unsown
+///     with its paid half dose, a bare fallow whose May furrow paid its half
+///     dose, and plain idle ground with none. The turn rests the first two by
+///     fallow_recovery alone — no manure paid again; the heap deals a new
+///     full dose to the plain ground and the bare fallow's idle ground, and
+///     none to the released field, which carries its own;
+///   * in April the plain ground's plough pays its full dose (60 + 10) and
+///     the released field's pays nothing;
+///   * the plain ground's oats reaped: the crop's delta alone, the manure
+///     paid once — the double count econ named red.
+int CheckTheHeapsManurePaysItsFurrow() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kRefused);
+  core::ProductionConfig parsed;
+  if (Expect(system != nullptr && core::ParseProductionConfig(*tables, parsed, error),
+             "manure's furrow: the shipped tables build a system") != 0) {
+    return 1;
+  }
+  const core::ITable* const crops = tables->FindTable("crops");
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ITable* const types = tables->FindTable("unit_types");
+  const core::CropId rye{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+  const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
+  const core::ResourceId manure{static_cast<std::uint16_t>(resources->FindRowByKey("manure"))};
+  const core::UnitTypeId heap_type{static_cast<std::uint16_t>(types->FindRowByKey("manure_pile"))};
+  const auto step = [&system](core::WorldState& state, float temperature) {
+    core::WorldState next = state;
+    next.calendar.tick = ((state.calendar.tick / core::kTicksPerDay) + 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next.calendar);
+    next.weather.air_temperature_celsius = temperature;
+    next.step_events.clear();
+    system->RunProductionDecisions(state, next);
+    state = next;
+  };
+  core::FieldRow base;
+  base.kind = core::LandKind::kArable;
+  base.area_ga = 10.0F;
+  base.fertility = 60.0F;
+  base.rotation_assigned = 1;
+  base.rotation_year0 = oat;
+  base.rotation_year1 = rye;
+
+  constexpr core::SimDay kLastYearReaping = 30;
+  core::WorldState world;
+  world.calendar.tick = (2U * core::kDaysPerYear * core::kTicksPerDay) - 1U;  // year 2's last tick
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow released = base;  // oats harrowed this spring, never sown, half a dose paid
+  released.phase = core::FieldPhase::kHarrowing;
+  released.crop = oat;
+  released.rotation_year1 = oat;  // the turn brings oats again: the April check's crop
+  released.reaped_day = kLastYearReaping;
+  released.manure_applied = 50;
+  released.manure_booked = 1;
+  core::AppendRow(world.fields, released);
+  core::FieldRow bare = base;  // a bare fallow, its May furrow paid half a dose
+  bare.phase = core::FieldPhase::kGrowing;
+  bare.rotation_year0 = core::CropId{};
+  bare.rotation_year1 = rye;
+  bare.rotation_year2 = oat;
+  bare.manure_applied = 50;
+  bare.manure_booked = 1;
+  core::AppendRow(world.fields, bare);
+  core::FieldRow plain = base;  // idle ground, oats reaped this year, no manure
+  plain.phase = core::FieldPhase::kIdle;
+  plain.rotation_year0 = rye;  // the turn brings the oats
+  plain.rotation_year1 = oat;
+  plain.reaped_day = core::kDaysPerYear + 30;
+  plain.last_crop = rye;
+  core::AppendRow(world.fields, plain);
+  // A black fallow's rye still being sown at the turn (the crew short, the
+  // work not drained): the turn rests nothing and lets nothing go, the debt
+  // stands, and the day the sowing ends pays it — through the phase machine
+  // (AdvanceFinishedField), the way a real sowing ends.
+  core::FieldRow sowing = base;
+  sowing.phase = core::FieldPhase::kSowing;
+  sowing.crop = rye;
+  sowing.rotation_year0 = core::CropId{};
+  sowing.rotation_year1 = rye;
+  sowing.rotation_year2 = oat;
+  sowing.fallow_rest_owed = 1;
+  sowing.work_days_remaining = 1.0F;
+  core::AppendRow(world.fields, sowing);
+  // A heap holding two full doses of 10 ha (20 t a hectare), and no more.
+  core::UnitRow heap;
+  heap.type = heap_type;
+  heap.level = 1;
+  heap.stock.assign(static_cast<std::size_t>(manure.value) + 1U, 0);
+  const core::Grams dose = core::GramsFromKilograms(parsed.farming.manure_norm_kg_per_ha * 10.0F);
+  heap.stock[manure.value] = 2 * dose;
+  core::AppendRow(world.units, heap);
+
+  step(world, -5.0F);
+  const float rested = 60.0F + parsed.farming.fallow_recovery;
+  failures += Expect(world.fields.rows[0].fertility == rested &&
+                         world.fields.rows[0].phase == core::FieldPhase::kIdle &&
+                         world.fields.rows[0].manure_applied == 50 &&
+                         world.fields.rows[0].manure_booked == 1,
+                     "manure's furrow: the released preparation rests (60 + 6), keeps its paid "
+                     "half dose, and is dealt no other");
+  failures += Expect(world.fields.rows[1].fertility == rested,
+                     "manure's furrow: the bare fallow rests by 6 alone — its manure was paid "
+                     "by its May furrow, not again at the turn");
+  failures += Expect(
+      world.fields.rows[1].manure_applied == 100 && world.fields.rows[1].manure_booked == 0 &&
+          world.fields.rows[2].manure_applied == 100 && world.fields.rows[2].manure_booked == 0 &&
+          world.fields.rows[2].fertility == 60.0F,
+      "manure's furrow: the heap deals a full dose each to the plain ground and "
+      "the fallow's idle ground, unpaid until a furrow turns it in");
+  failures += Expect(core::StockOf(world.units.rows[0].stock, manure) == 0,
+                     "manure's furrow: and the heap is spent on exactly those two doses");
+  failures += Expect(world.fields.rows[3].fertility == 60.0F &&
+                         world.fields.rows[3].fallow_rest_owed == 1 &&
+                         world.fields.rows[3].phase == core::FieldPhase::kSowing,
+                     "fallow's rest: a rye still being sown at the turn is neither rested nor let "
+                     "go by it — the debt stands");
+  world.fields.rows[3].work_days_remaining = 0.0F;
+  step(world, -5.0F);  // the first January day: dry, the crew's work drained
+  failures += Expect(world.fields.rows[3].phase == core::FieldPhase::kGrowing &&
+                         world.fields.rows[3].fertility == rested &&
+                         world.fields.rows[3].fallow_rest_owed == 0,
+                     "fallow's rest: the sowing ends through the phase machine and pays the "
+                     "fallow's rest once (60 + 6)");
+
+  // April of year 3: the plain ground and the released field open for oats.
+  world.calendar.tick = ((2U * core::kDaysPerYear + 13U) * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(world.calendar);
+  world.fields.rows[1].rotation_assigned = 0;  // the fallow's chain is not this check's
+  world.fields.rows[1].rotation_year0 = core::CropId{};
+  world.fields.rows[1].rotation_year1 = core::CropId{};
+  world.fields.rows[1].rotation_year2 = core::CropId{};
+  step(world, 8.0F);
+  failures += Expect(
+      world.fields.rows[0].crop.value == oat.value && world.fields.rows[2].crop.value == oat.value,
+      "manure's furrow: both fields open for their oats in April");
+  failures +=
+      Expect(world.fields.rows[2].fertility == 70.0F && world.fields.rows[2].manure_booked == 1,
+             "manure's furrow: the plain ground's plough pays its full dose (60 + 10) "
+             "before its oats grow");
+  failures += Expect(world.fields.rows[0].fertility == rested,
+                     "manure's furrow: the released field's plough pays nothing — its dose was "
+                     "paid last year");
+
+  // The oats reaped: the crop's delta alone.
+  core::FieldRow& reaped = world.fields.rows[2];
+  reaped.phase = core::FieldPhase::kHarvest;
+  reaped.sown_day = core::kNeverSownDay;
+  reaped.work_days_remaining = 0.0F;
+  core::FinishHarvest(parsed, world, reaped);
+  float expected = 70.0F + parsed.crops[oat.value].fertility_delta;
+  expected = expected > 100.0F ? 100.0F : expected;
+  failures += Expect(reaped.phase == core::FieldPhase::kIdle && reaped.fertility == expected &&
+                         reaped.manure_applied == 0 && reaped.manure_booked == 0,
+                     "manure's furrow: the harvest adds the crop's delta and no manure — paid "
+                     "once, at the furrow — and ends the dose's cycle");
   return failures;
 }
 
@@ -11603,6 +11790,7 @@ int main() {
   failures += CheckNoWinterSowingAfterWindow();
   failures += CheckTheBlackFallowsFurrowIsTheRyes();
   failures += CheckTheTurnRestsBareGroundAndCarriesPaidManure();
+  failures += CheckTheHeapsManurePaysItsFurrow();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();

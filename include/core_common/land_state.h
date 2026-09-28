@@ -198,10 +198,12 @@ struct FieldRow {
   std::uint8_t repeat_years = 0;
 
   /// The share of the manure norm this field received for the current cycle,
-  /// in PERCENT (§8): the bonus at the harvest — or at the year's turn for a
-  /// bare fallow — scales by it, then it resets. It was a 0/1 flag until the
-  /// fifth reconciliation pass: whole doses or nothing left the biggest field
-  /// unmanured for thirty years.
+  /// in PERCENT (§8): the fertility bonus paid by the furrow that turns it in
+  /// scales by it (OpenPlowing, 0.37.12), and it resets where the cycle ends —
+  /// the harvest, the snow's loss of the crop, a bare fallow's turn. Until
+  /// 0.37.12 the bonus itself was paid there, after the yield was counted. It
+  /// was a 0/1 flag until the fifth reconciliation pass: whole doses or
+  /// nothing left the biggest field unmanured for thirty years.
   std::uint8_t manure_applied = 0;
 
   /// Arable land or meadow (see LandKind). A meadow ignores every field
@@ -318,16 +320,31 @@ struct FieldRow {
   /// fallow (question 278, WinterSlotLost below).
   std::uint8_t rotation_skips_turn = 0;
 
-  /// THE ROW'S MANURE IS ALREADY IN THE BOOK, 0 or 1 (save 111; boss-core-
-  /// epoch1-queue [94] (2): «навоз пишется в книгу один раз на цикл поля»).
-  /// Set by the furrow that books `manure_applied` (OpenPlowing), cleared
-  /// wherever the manure settles (the harvest, the snow's loss of the crop,
-  /// the bare fallow at the turn) and where the winter's plan deals a new
-  /// dose (PlanManure). Never 1 on a row with no manure (the save refuses it). A preparation
-  /// the turn lets go carries its paid manure with it, and the next plough
-  /// does not book it again; nor does a winter crop on the black fallow,
-  /// whose furrow booked it.
+  /// THE ROW'S MANURE IS ALREADY IN THE BOOK AND IN THE GROUND, 0 or 1 (save
+  /// 111; boss-core-epoch1-queue [94] (2): «навоз пишется в книгу один раз на
+  /// цикл поля»). Set by the furrow that books `manure_applied` and pays its
+  /// fertility (OpenPlowing; paid there since save 112, «навоз платит
+  /// культуре, под которую запахан»), cleared wherever the cycle ends (the
+  /// harvest, the snow's loss of the crop, the bare fallow at the turn) and
+  /// where the winter's plan deals a new dose (PlanManure). Never 1 on a row
+  /// with no manure (the save refuses it). A preparation the turn lets go
+  /// carries its paid manure with it, and the next plough neither books nor
+  /// pays it again; nor does a winter crop on the black fallow, whose furrow
+  /// did both.
   std::uint8_t manure_booked = 0;
+
+  /// THE BLACK FALLOW'S SUMMER REST IS OWED TO THE WINTER CROP BEING SOWN ON
+  /// IT, 0 or 1 (save 112; farming design, «Чёрный пар, простоявший лето,
+  /// восстанавливается в день сева озимой по нему», boss 28 September 2026).
+  /// Set when a winter crop opens on this year's black fallow (OpenPlowing,
+  /// PreparationStart::kBlackFallow); spent by the sowing, which pays
+  /// `fallow_recovery` (FinishSowing), or by the turn letting the preparation
+  /// go unsown, which rests the field by its own rule (production_system.cpp).
+  /// Only on a preparation with a crop, harrowed or being sown (the save
+  /// refuses it elsewhere). Until 0.37.12 the rest came only at the turn to
+  /// ground standing bare, and the rye the fallow is kept for grew through
+  /// every turn: +0 on 189 seed-years of 189 (econ, fallow-chain.md §6.1).
+  std::uint8_t fallow_rest_owed = 0;
 
   /// Growth-season weather stress from HEAT, 0..1, accumulated daily while
   /// growing (farming design §6).

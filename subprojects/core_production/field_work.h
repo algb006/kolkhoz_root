@@ -159,7 +159,9 @@ void RescaleHorseWorkForRation(const ProductionConfig& config,
                                WorldState& current);
 
 /// @brief The manure bonus this field has coming, by the share of its dose
-/// it received (FieldRow::manure_applied is that share in percent).
+/// it received (FieldRow::manure_applied is that share in percent). Paid
+/// into the fertility by the furrow that turns the dose in (OpenPlowing,
+/// 0.37.12), not at the harvest.
 float ManureBonus(const ProductionConfig& config, const FieldRow& field);
 
 /// @brief Opens the meadow's cut when its month comes round; does nothing
@@ -299,7 +301,8 @@ bool CropHasRipened(const ProductionConfig& config, const FieldRow& field, SimDa
 /// kept as autumn ploughing (FieldRow::autumn_plowed) when it was the autumn
 /// furrow on this year's stubble — the preparation's own plough ended after
 /// the field's reaping of the same year (FieldRow::furrow_day; boss [94] (1),
-/// 0.37.10). Its manure, if booked, stays booked (FieldRow::manure_booked).
+/// 0.37.10). Its manure, if booked, stays booked (FieldRow::manure_booked);
+/// a black fallow's owed rest is dropped, the turn having rested the field.
 /// A fallow being ploughed is left alone — it carries no crop to go stale.
 /// @return true when the field was released.
 bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field);
@@ -374,6 +377,8 @@ void TrySow(const ProductionConfig& config,
 /// AS FAR AS IT GOES (farming design §7; 0.34.50): FieldRow::sown_share is the
 /// seed taken over the whole field's norm, and the crop grows on that share
 /// (FieldYieldGrams). A crop that takes no seed sows the whole field.
+/// A winter crop on this year's black fallow pays the fallow's rest here
+/// (FieldRow::fallow_rest_owed; 0.37.12).
 void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 /// @brief Closes a worked-through harvest phase: arable lays the last of

@@ -160,8 +160,11 @@ static_assert(AggregateArity<FamilyRow>() == 27,
 // Save 111: the byte becomes the furrow's DAY (u32, at 116) and the manure's
 // booked mark a byte in the hole after rotation_skips_turn (34) — predicted
 // "120 stays" off the dumped offsets before the build, 39 fields.
+// Save 112: the black fallow's rest owed, a byte declared after the manure's
+// mark, into the hole before drought_stress (35) — predicted "120 stays"
+// before the build, 40 fields.
 static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 39,
+static_assert(AggregateArity<FieldRow>() == 40,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -816,8 +819,11 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The day the preparation's own furrow ended (save 111; a byte in save
   // 110): the turn's release keeps zyab only on the autumn furrow.
   out.WriteU32(row.furrow_day);
-  // The manure already in the book (save 111): booked once a field's cycle.
+  // The manure already in the book (save 111): booked once a field's cycle,
+  // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
+  // The black fallow's rest owed to its winter crop's sowing (save 112).
+  out.WriteU8(row.fallow_rest_owed);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -898,6 +904,16 @@ FieldRow ReadFieldRow(LoadSource& source) {
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {
     source.Fail("a field's manure is marked booked with no manure on it");
+  }
+  row.fallow_rest_owed = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the black fallow's rest owed"));  // save 112
+  // Owed only by a winter crop harrowed or being sown on the fallow: anywhere
+  // else no sowing would ever pay it, or one would pay it that never rested.
+  const bool sowing_ahead =
+      (row.phase == FieldPhase::kHarrowing || row.phase == FieldPhase::kSowing) &&
+      row.crop.value != kInvalidDefIdValue;
+  if (row.fallow_rest_owed != 0 && !sowing_ahead) {
+    source.Fail("a field owes a fallow's rest with no crop being sown on it");
   }
   return row;
 }

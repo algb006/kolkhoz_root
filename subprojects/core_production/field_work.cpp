@@ -398,8 +398,9 @@ void Harvest(const ProductionConfig& config,
   // harvest: a poor year asked for less, so every year was met and the
   // verdict on it could not fail. The district names its figure in
   // plan.csv and hands it down at the year's turn (production_system.cpp).
-  // Fertility bookkeeping (§2, §7, §8): the crop's delta, the manure
-  // bonus, the growing repeat penalty.
+  // Fertility bookkeeping (§2, §7): the crop's delta and the growing repeat
+  // penalty. The manure's bonus is not here: its furrow paid it before this
+  // crop grew (OpenPlowing, 0.37.12), and here only its mark is cleared.
   if (crop.is_perennial) {
     // A standing meadow is one sowing cut year after year, not a repeat
     // of that sowing: the rotation penalty must not accrue on it.
@@ -418,8 +419,7 @@ void Harvest(const ProductionConfig& config,
   const float charged = repeated < config.farming.repeat_penalty_max_years
                             ? repeated
                             : config.farming.repeat_penalty_max_years;
-  field.fertility += crop.fertility_delta + ManureBonus(config, field) -
-                     charged * config.farming.repeat_penalty_per_year;
+  field.fertility += crop.fertility_delta - charged * config.farming.repeat_penalty_per_year;
   // And a floor under it: an exhausted field bears little, but it bears.
   const float floor_value = config.farming.fertility_floor;
   field.fertility = field.fertility < floor_value ? floor_value : field.fertility;
@@ -458,7 +458,8 @@ void Harvest(const ProductionConfig& config,
 /// Where a preparation's work begins (OpenPlowing).
 enum class PreparationStart : std::uint8_t {
   kGround,       ///< Idle ground: the plough, or the harrow on an autumn furrow.
-  kBlackFallow,  ///< This year's black fallow: the harrow, its furrow and manure spent.
+  kBlackFallow,  ///< This year's black fallow: the harrow, its furrow and manure spent,
+                 ///< its summer's rest owed to the sowing.
 };
 
 /// @brief Opens the ploughing for `crop` (invalid = bare fallow). The
@@ -503,18 +504,30 @@ void OpenPlowing(const ProductionConfig& config,
   // settles it. A preparation let go at the turn carries it, paid, to the
   // next spring's plough; a winter crop on the black fallow stands on the
   // fallow's furrow, which booked it. Until 0.37.9 each of those booked it
-  // again (manure_plowed_in, area_manured_ha) — the fertility never was, it
-  // settles once.
+  // again (manure_plowed_in, area_manured_ha).
+  //
+  // AND THE SAME FURROW PAYS IT (farming design, «Навоз платит культуре, под
+  // которую запахан», boss 28 September 2026; 0.37.12): the bonus goes into
+  // the fertility here, before the crop it goes under is reaped. Until 0.37.12
+  // it was paid at the harvest AFTER the yield was counted (or at a bare
+  // fallow's turn), so a manured field gave the same crop and the manure fed
+  // the next one: on the canon the fallow's May manure reached the oats after
+  // the rye it was ploughed in for (econ, fallow-chain.md §6.2).
   if (field.manure_applied != 0 && field.manure_booked == 0) {
     const float share = static_cast<float>(field.manure_applied) / 100.0F;
     const auto dose =
         GramsFromKilograms(config.farming.manure_norm_kg_per_ha * field.area_ga * share);
     current.ledger.current.manure_plowed_in += dose;
     current.ledger.current.area_manured_ha += field.area_ga * share;
+    field.fertility += ManureBonus(config, field);
+    field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
     field.manure_booked = 1;
   }
   // THE BLACK FALLOW'S FURROW IS THE WINTER CROP'S (0.37.6): opened at the
-  // harrow, not ploughed a second time.
+  // harrow, not ploughed a second time. And its summer's rest is the winter
+  // crop's too, paid the day it is sown (FinishSowing; land_state.h,
+  // fallow_rest_owed).
+  field.fallow_rest_owed = start == PreparationStart::kBlackFallow ? 1U : 0U;
   if (start == PreparationStart::kBlackFallow) {
     OpenPhase(config, current, field, FieldPhase::kHarrowing);
     return;
@@ -819,6 +832,9 @@ bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field) {
     field.autumn_plowed = 1;  // the furrow is turned; only the harrow is owed
   }
   field.furrow_day = kNoFurrowDay;
+  // The black fallow's rest goes with its unsown winter crop: the turn has
+  // already rested the field by its own rule (production_system.cpp).
+  field.fallow_rest_owed = 0;
   field.crop = CropId{};
   MoveFieldPhase(current, field, FieldPhase::kIdle);
   field.work_days_remaining = 0.0F;
@@ -1066,6 +1082,20 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
   // The preparation is over, sown or standing bare: its furrow mark means
   // nothing past the harrow (land_state.h, furrow_day).
   field.furrow_day = kNoFurrowDay;
+  // THE BLACK FALLOW RESTS THE DAY ITS WINTER CROP IS SOWN (farming design,
+  // «Чёрный пар, простоявший лето, восстанавливается в день сева озимой по
+  // нему»; 0.37.12): the rye goes in before the turn and grows through it, so
+  // the turn's rest, which asks for ground standing bare, never reached the
+  // one crop the fallow is kept for — +0 on 189 seed-years of 189 (econ,
+  // fallow-chain.md §6.1). Paid as the turn pays it (production_system.cpp):
+  // the rest, and the rotation's memory cleared.
+  if (field.fallow_rest_owed != 0 && crop_id.value != kInvalidDefIdValue) {
+    field.fertility += config.farming.fallow_recovery;
+    field.fertility = field.fertility > 100.0F ? 100.0F : field.fertility;
+    field.last_crop = CropId{};
+    field.repeat_years = 0;
+  }
+  field.fallow_rest_owed = 0;
   if (crop_id.value == kInvalidDefIdValue) {
     // Bare fallow: ploughed and harrowed, nothing goes in. It stands as
     // ground with no crop until the year turns or a winter crop takes it.

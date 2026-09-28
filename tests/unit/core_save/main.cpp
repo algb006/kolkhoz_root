@@ -300,6 +300,10 @@ core::WorldState MakeWorld() {
   // The sown share (save 87), away from its default of 1 and from the laid
   // share beside it.
   field.sown_share = 0.625F;
+  // Save 112: a black fallow's rest owed to the winter crop being sown on it
+  // — the one phase and crop the loader lets carry it.
+  field.phase = core::FieldPhase::kSowing;
+  field.fallow_rest_owed = 1;
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -1384,7 +1388,10 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // fields (measured after the build, not predicted before it).
     // Save 111: +12 — the byte a u32 (+3 each) and the manure's mark a byte
     // (+1 each), three fields; predicted 332 -> 344 before the build, held.
-    {"fields", 344, 0xef868c12d7fbf2ebULL},
+    // Save 112: +3 — the black fallow's rest owed, a byte a row, three rows;
+    // predicted 344 -> 347 with every other section unmoved before the build,
+    // held; the hash moved with the byte and the fixture's sowing phase.
+    {"fields", 347, 0x15da2987d7677341ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1726,6 +1733,32 @@ int main() {
         "a save with a field's manure booked and none on it is refused");
   }
 
+  // A FALLOW'S REST OWED BY A FIELD WITH NOTHING BEING SOWN (save 112): no
+  // sowing would pay it. The control is the fixture itself, whose owing field
+  // is being sown.
+  {
+    core::WorldState grown = MakeWorld();
+    grown.fields.rows[0].phase = core::FieldPhase::kGrowing;
+    core::WorldState refused;
+    std::string grown_error;
+    failures += Expect(
+        !core::DecodeWorld(core::EncodeWorld(grown, *tables), *tables, &refused, &grown_error),
+        "a save with a fallow's rest owed on a field already growing is refused");
+    core::WorldState idle = MakeWorld();
+    idle.fields.rows[0].phase = core::FieldPhase::kIdle;
+    std::string idle_error;
+    failures +=
+        Expect(!core::DecodeWorld(core::EncodeWorld(idle, *tables), *tables, &refused, &idle_error),
+               "and on an idle field");
+    core::WorldState cropless = MakeWorld();
+    cropless.fields.rows[0].crop = core::CropId{};  // still in its sowing phase
+    std::string cropless_error;
+    failures +=
+        Expect(!core::DecodeWorld(
+                   core::EncodeWorld(cropless, *tables), *tables, &refused, &cropless_error),
+               "and on a sowing with no crop named");
+  }
+
   // A NEGATIVE MILK DEBT is no state the simulation makes, and taken as it
   // stands it would ask the stores for a negative amount (save 85). The
   // control is the same world with no debt, which loads.
@@ -2046,6 +2079,10 @@ int main() {
                          loaded.fields.rows[2].manure_booked == 1 &&
                          loaded.fields.rows[0].manure_booked == 0,
                      "the furrow's day and the manure's booked mark come back (save 111)");
+  failures += Expect(
+      loaded.fields.rows[0].fallow_rest_owed == 1 && loaded.fields.rows[2].fallow_rest_owed == 0,
+      "the black fallow's rest owed comes back, and a field owing none owes none "
+      "(save 112)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");
