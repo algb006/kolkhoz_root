@@ -154,8 +154,11 @@ static_assert(AggregateArity<FamilyRow>() == 27,
 // Save 99: the reaping's frozen work (float) after the sown share, into the
 // hole save 87's miss opened at 84 — predicted "120 stays" from the dumped
 // layout before the build, 37 fields.
+// Save 110: the preparation's own furrow, a byte after reaped_day — predicted
+// "120 stays" (reaped_day ends at 116, the row pads to 120) before the build,
+// 38 fields.
 static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 37,
+static_assert(AggregateArity<FieldRow>() == 38,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -807,6 +810,9 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The avral on the field's work and the phase it stands on (save 65).
   out.WriteU8(row.rush_step);
   out.WriteU8(static_cast<std::uint8_t>(row.rush_phase));
+  // The preparation's own furrow (save 110): the turn's release keeps a
+  // furrow as zyab only on it.
+  out.WriteU8(row.furrow_of_preparation);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -882,6 +888,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "field's avral step"));
   row.rush_phase =
       static_cast<FieldPhase>(source.ReadEnumValue(0, kMaxFieldPhase, "field's avral phase"));
+  row.furrow_of_preparation = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the preparation's own furrow"));  // save 110
   return row;
 }
 

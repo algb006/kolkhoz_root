@@ -410,14 +410,24 @@ void Harvest(const ProductionConfig& config,
   MoveFieldPhase(current, field, FieldPhase::kIdle);
 }
 
+/// Where a preparation's work begins (OpenPlowing).
+enum class PreparationStart : std::uint8_t {
+  kGround,       ///< Idle ground: the plough, or the harrow on an autumn furrow.
+  kBlackFallow,  ///< This year's black fallow: the harrow, its furrow and manure spent.
+};
+
 /// @brief Opens the ploughing for `crop` (invalid = bare fallow). The
 /// manure, if the winter's plan gave this field any, is already on the
 /// row (PlanManure) and goes in with the plough (§8).
 void OpenPlowing(const ProductionConfig& config,
                  WorldState& current,
                  FieldRow& field,
-                 CropId crop) {
+                 CropId crop,
+                 PreparationStart start = PreparationStart::kGround) {
   field.crop = crop;
+  // No furrow of THIS preparation yet (land_state.h, furrow_of_preparation):
+  // the plough's end sets it, and the turn's release reads it.
+  field.furrow_of_preparation = 0;
   // AND THE CHAIN'S FIRST SEASON IS SPENT HERE, which is the one place every
   // way of using a rotation passes through: this year's crop, a fallow year's
   // ploughing, and the autumn sowing of the next slot's winter crop all open
@@ -442,6 +452,16 @@ void OpenPlowing(const ProductionConfig& config,
   // at genesis and never cleared for one afternoon, so ground the village
   // had ploughed six times running went on reading overgrown from the road.
   field.overgrown = 0;
+  // THE BLACK FALLOW'S FURROW AND MANURE ARE THE WINTER CROP'S (0.37.6,
+  // 0.37.9): the fallow's own OpenPlowing turned the furrow and booked the
+  // manure, and the manure stays on the row until the crop's harvest
+  // settles it. Booked again here it was counted twice in the book
+  // (manure_plowed_in, area_manured_ha; static review of 0.37.6, boss [84]
+  // (3)) — the fertility never was, it settles once.
+  if (start == PreparationStart::kBlackFallow) {
+    OpenPhase(config, current, field, FieldPhase::kHarrowing);
+    return;
+  }
   if (field.manure_applied != 0) {
     const float share = static_cast<float>(field.manure_applied) / 100.0F;
     const auto dose =
@@ -733,9 +753,16 @@ bool ReleaseUnsownPreparation(WorldState& current, FieldRow& field) {
   if (!preparing || field.crop.value == kInvalidDefIdValue) {
     return false;
   }
-  if (field.phase == FieldPhase::kHarrowing) {
+  // THE FURROW IS KEPT ONLY IF THIS PREPARATION TURNED IT (boss-core-epoch1-
+  // queue [84] (2), 0.37.9): «пар, не засеянный к зиме, весной пашут
+  // заново». A winter crop opened at the harrow on the black fallow stands
+  // on May's furrow, and ground that came out of the autumn black spent its
+  // furrow in the spring: neither is zyab for the next spring. Until 0.37.9
+  // every harrowing let go at the turn became zyab.
+  if (field.phase == FieldPhase::kHarrowing && field.furrow_of_preparation != 0) {
     field.autumn_plowed = 1;  // the furrow is turned; only the harrow is owed
   }
+  field.furrow_of_preparation = 0;
   field.crop = CropId{};
   MoveFieldPhase(current, field, FieldPhase::kIdle);
   field.work_days_remaining = 0.0F;
@@ -838,32 +865,49 @@ bool SowingMayOpen(const ProductionConfig& config,
          static_cast<std::int32_t>(config.growing_season_last_day);
 }
 
+namespace {
+
+/// Whether `slot` is a winter crop whose autumn window is open and the day
+/// warm enough to begin it.
+bool WinterWindowOpen(const ProductionConfig& config,
+                      CropId slot,
+                      std::uint8_t month,
+                      float temperature) {
+  if (slot.value >= config.crops.size()) {
+    return false;
+  }
+  const CropDef& crop = config.crops[slot.value];
+  return crop.is_winter && month >= crop.sow_from_month && month <= crop.sow_to_month &&
+         temperature >= crop.sow_min_temp_c;
+}
+
+}  // namespace
+
 void TrySowWinter(const ProductionConfig& config,
                   WorldState& current,
                   FieldRow& field,
                   std::uint8_t month,
-                  float temperature,
-                  bool furrow_turned) {
-  if (field.rotation_year1.value >= config.crops.size()) {
-    return;
+                  float temperature) {
+  if (WinterWindowOpen(config, field.rotation_year1, month, temperature)) {
+    OpenPlowing(config, current, field, field.rotation_year1);
   }
-  const CropDef& next = config.crops[field.rotation_year1.value];
-  if (!next.is_winter || month < next.sow_from_month || month > next.sow_to_month ||
-      temperature < next.sow_min_temp_c) {
-    return;
-  }
+}
+
+void TrySowOnBlackFallow(const ProductionConfig& config,
+                         WorldState& current,
+                         FieldRow& field,
+                         std::uint8_t month,
+                         float temperature) {
   // THE BLACK FALLOW'S FURROW IS THE RYE'S (boss-core-epoch1-queue [81]-[82]).
   // Until 0.37.6 the rye opened a ploughing from nothing on a fallow the
   // village had ploughed and harrowed that summer. On seed 1945 the second
   // furrow ran from day 30 to day 33, the field was ready on day 34, and
   // September's last two days were at 4.4 and 2.9 °C against the rye's 8: the
-  // slot was lost, and year 2 delivered 19 kg of 1116 kg of rye. The byte
-  // that says «only the harrow is owed» is the one the start's black field
-  // already carries, and OpenPlowing spends it.
-  if (furrow_turned) {
-    field.autumn_plowed = 1;
+  // slot was lost, and year 2 delivered 19 kg of 1116 kg of rye.
+  const CropId slot = field.rotation_skips_turn != 0 ? field.rotation_year0 : field.rotation_year1;
+  if (WinterWindowOpen(config, slot, month, temperature)) {
+    OpenPlowing(config, current, field, slot, PreparationStart::kBlackFallow);
   }
-  OpenPlowing(config, current, field, field.rotation_year1);
 }
 
 void TrySow(const ProductionConfig& config,
@@ -875,7 +919,7 @@ void TrySow(const ProductionConfig& config,
     // A FALLOW YEAR IS PLOUGHED (farming design §7, "fallow is ploughed";
     // defect D11 of the reconciliation): the manure goes in with the
     // plough and the ground stands bare until the year turns, or until the
-    // next slot's winter crop goes into it in the autumn (TrySowWinter).
+    // next slot's winter crop goes into it in the autumn (TrySowOnBlackFallow).
     //
     // BUT A FIELD WITH NO CHAIN AT ALL IS NOT ON FALLOW — NOBODY HAS TOLD IT
     // ANYTHING. The player gives each field a chain of three seasons, crop or
@@ -910,7 +954,7 @@ void TrySow(const ProductionConfig& config,
   // The field is idle with this year's winter crop neither standing nor
   // reaped — so it was not sown last autumn — and the slot lies FALLOW this
   // year: ploughed as a fallow, and the next slot's winter crop goes into the
-  // bare ground in its own autumn (RunFields, TrySowWinter). Until 0.36.13 it
+  // bare ground in its own autumn (RunFields, TrySowOnBlackFallow). Until 0.36.13 it
   // was ploughed in the spring and sown the autumn after, a year late, and it
   // stood through the next slot's only spring: the oats of a chain (potatoes,
   // rye, oats) whose rye missed its window were lost under it. A FRESH chain's
@@ -922,7 +966,7 @@ void TrySow(const ProductionConfig& config,
     }
     // Not ploughed as a fallow (its month went by while the field was busy):
     // the next slot's winter crop may still go into it in its own autumn.
-    TrySowWinter(config, current, field, month, temperature, /*furrow_turned=*/false);
+    TrySowWinter(config, current, field, month, temperature);
     return;
   }
   // Not lost and not fresh, a winter crop of this year's slot at an idle field
@@ -934,7 +978,7 @@ void TrySow(const ProductionConfig& config,
     // was missed. Sowing it again in August would put the same rye in two
     // years running and eat the next slot with it — the field sheet caught
     // exactly that. Only the next slot's winter crop may go in now.
-    TrySowWinter(config, current, field, month, temperature, /*furrow_turned=*/false);
+    TrySowWinter(config, current, field, month, temperature);
     return;
   }
   // THE WINDOW IS STILL WHAT SAYS THE YEAR IS OVER FOR THIS CROP. Past
@@ -945,7 +989,7 @@ void TrySow(const ProductionConfig& config,
   // the sowing window a gate on the ploughing (see the header).
   if (month > crop.sow_to_month) {
     if (!fresh_chain) {
-      TrySowWinter(config, current, field, month, temperature, /*furrow_turned=*/false);
+      TrySowWinter(config, current, field, month, temperature);
     }
     return;
   }
@@ -963,6 +1007,9 @@ void TrySow(const ProductionConfig& config,
 
 void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow& field) {
   const CropId crop_id = field.crop;
+  // The preparation is over, sown or standing bare: its furrow mark means
+  // nothing past the harrow (land_state.h, furrow_of_preparation).
+  field.furrow_of_preparation = 0;
   if (crop_id.value == kInvalidDefIdValue) {
     // Bare fallow: ploughed and harrowed, nothing goes in. It stands as
     // ground with no crop until the year turns or a winter crop takes it.
@@ -1010,6 +1057,7 @@ void AdvanceFinishedField(const ProductionConfig& config, WorldState& current, F
   switch (field.phase) {
     case FieldPhase::kPlowing:
       OpenPhase(config, current, field, FieldPhase::kHarrowing);
+      field.furrow_of_preparation = 1;  // this preparation turned its furrow
       break;
     case FieldPhase::kHarrowing:
       if (field.crop.value == kInvalidDefIdValue) {

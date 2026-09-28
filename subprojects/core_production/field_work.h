@@ -174,25 +174,38 @@ void RunMeadow(const ProductionConfig& config,
                FieldRow& field,
                std::uint8_t month);
 
-/// @brief Opens the preparation of NEXT year's winter slot — its ploughing,
-///        or its harrowing on this year's black fallow — when the autumn
-///        window and the temperature both allow it.
+/// @brief Opens the ploughing of NEXT year's winter slot on idle ground when
+///        the autumn window and the temperature both allow it.
 ///
 /// The autumn sowing (defect D12). A winter crop is harvested the summer
 /// AFTER it is sown, so the slot it belongs to is next year's — "winter rye
 /// goes into the ground in the autumn of the same year, and the ring starts
 /// turning in the second" (start canon §8). Sown from this year's slot it
 /// arrived a year late and ate the following spring as well.
-/// @param furrow_turned The field is THIS year's black fallow, ploughed and
-///        standing bare: the winter crop opens at the harrowing, and the
-///        fallow's furrow is not turned a second time (fields design §3,
-///        «Пар»; boss-core-epoch1-queue [82], 0.37.6). False for idle ground.
 void TrySowWinter(const ProductionConfig& config,
                   WorldState& current,
                   FieldRow& field,
                   std::uint8_t month,
-                  float temperature,
-                  bool furrow_turned);
+                  float temperature);
+
+/// @brief Opens a winter crop on THIS year's black fallow — ploughed,
+///        harrowed and standing bare — at the HARROWING, in its autumn
+///        window and warm enough (fields design §3, «Пар»; boss-core-epoch1-
+///        queue [82], 0.37.6): the fallow's furrow is the crop's, not turned a
+///        second time, and its manure, booked at that furrow, not booked again
+///        ([84] (3), 0.37.9).
+///
+/// WHICH SLOT: a running chain's NEXT slot, as on idle ground; a chain named
+/// on the bare fallow this year (rotation_skips_turn) waits for its FIRST
+/// slot's season, and only a winter crop named first goes in from here — the
+/// rule TrySow keeps for a fresh chain on idle ground ([84] (1), 0.37.9;
+/// static review of 0.37.6). Until 0.37.9 the branch sowed the next slot
+/// of a fresh chain and spent the first one's season.
+void TrySowOnBlackFallow(const ProductionConfig& config,
+                         WorldState& current,
+                         FieldRow& field,
+                         std::uint8_t month,
+                         float temperature);
 
 /// @brief How long this crop takes to ripen, in game days.
 ///

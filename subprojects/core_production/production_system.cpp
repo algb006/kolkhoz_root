@@ -700,10 +700,11 @@ class ProductionSystem final : public IProductionSystem {
           field.phase == FieldPhase::kGrowing || field.phase == FieldPhase::kHarvest;
       if (standing && field.crop.value == kInvalidDefIdValue) {
         // Black fallow: ploughed this spring and standing bare (D11). It is
-        // sown only from the NEXT slot, and only with a winter crop — the
-        // canon's "fallow, then winter rye" — never re-ploughed as fallow, and
-        // not re-ploughed for the rye either: its furrow is the rye's (0.37.6).
-        TrySowWinter(config_, current, field, month, temperature, /*furrow_turned=*/true);
+        // sown only with a winter crop — the canon's "fallow, then winter
+        // rye" — never re-ploughed as fallow, and not re-ploughed for the rye
+        // either: its furrow is the rye's (0.37.6). A running chain's next
+        // slot; a chain named on it this year, its first (0.37.9).
+        TrySowOnBlackFallow(config_, current, field, month, temperature);
         continue;
       }
       if (!standing || field.crop.value >= config_.crops.size()) {

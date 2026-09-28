@@ -324,7 +324,8 @@ core::WorldState MakeWorld() {
   overgrown.reaped_day = 39;    // reaped in the first October
   overgrown.rush_step = 3;      // save 65: an avral of +15 % on its harvest
   overgrown.rush_phase = core::FieldPhase::kHarvest;
-  overgrown.rotation_assigned = 0;  // nobody has told this ground anything
+  overgrown.furrow_of_preparation = 1;  // save 110: off its default
+  overgrown.rotation_assigned = 0;      // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
   core::AppendRow(world.fields, overgrown);
@@ -1377,7 +1378,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 99: +12 — the reaping's frozen work, a float a row, three rows;
     // predicted 317 -> 329 with every other section unmoved before the build,
     // held.
-    {"fields", 329, 0xb0b9eaa4a6b7f275ULL},
+    // Save 110: +3 — the preparation's own furrow, a byte for each of three
+    // fields (measured after the build, not predicted before it).
+    {"fields", 332, 0x446e6ab7a579699aULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2021,6 +2024,9 @@ int main() {
                          loaded.fields.rows[0].reaped_day == core::kNeverReapedDay,
                      "the day a field was last reaped comes back, and a field never reaped "
                      "comes back never reaped");
+  failures += Expect(loaded.fields.rows[2].furrow_of_preparation == 1 &&
+                         loaded.fields.rows[0].furrow_of_preparation == 0,
+                     "the preparation's own furrow comes back (save 110)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");

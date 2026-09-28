@@ -492,12 +492,14 @@ struct FieldRow {
   /// ploughing: work opens straight at the harrowing (OpenPlowing), and the
   /// byte is spent there.
   ///
-  /// THREE WRITERS, none of them the chairman's order: genesis (the zyab the
-  /// village inherits); the year's turn releasing a crop whose ploughing was
-  /// done but not its sowing (ReleaseUnsownPreparation); and this year's black
-  /// fallow opening the next slot's winter crop, whose furrow the fallow's
-  /// own is (TrySowWinter, 0.37.6). Until 0.37.6 this block said «set only
-  /// at genesis», which the release had already made untrue.
+  /// TWO WRITERS, neither of them the chairman's order: genesis (the zyab the
+  /// village inherits), and the year's turn releasing a crop whose OWN
+  /// ploughing was done but not its sowing (ReleaseUnsownPreparation,
+  /// `furrow_of_preparation`; 0.37.9). A winter crop on this year's black
+  /// fallow opens at the harrow without it (TrySowOnBlackFallow). Until
+  /// 0.37.6 this block said «set only at genesis», which the release had
+  /// already made untrue; 0.37.6 made the black fallow a third writer, and
+  /// 0.37.9 took that back.
   ///
   /// NOT AN ACTION (boss's decision of 2026-09-13). Autumn ploughing as
   /// something the CHAIRMAN chooses is a separate mechanic with a separate
@@ -557,6 +559,15 @@ struct FieldRow {
   /// seed. History the simulation cannot rederive: an idle field carries no
   /// other trace of the harvest it gave.
   SimDay reaped_day = kNeverReapedDay;
+
+  /// THIS PREPARATION TURNED ITS OWN FURROW, 0 or 1 (save 110; boss-core-
+  /// epoch1-queue [84] (2)): set when the plough's phase ends into the
+  /// harrow's, cleared when a preparation opens (OpenPlowing), when it ends
+  /// in the sowing (FinishSowing) and when the turn lets one go. The turn's release keeps a
+  /// harrowed field's furrow as zyab (`autumn_plowed`) only on it: a winter crop opened at the
+  /// harrow on the black fallow stands on May's furrow, and ground out of the autumn black spent
+  /// its furrow in the spring — «пар, не засеянный к зиме, весной пашут заново».
+  std::uint8_t furrow_of_preparation = 0;
 };
 
 /// @brief Whether the player has given this field a rotation at all.
