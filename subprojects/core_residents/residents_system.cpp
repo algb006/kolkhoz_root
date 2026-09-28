@@ -256,23 +256,6 @@ class ResidentsSystem final : public IResidentsSystem {
     }
   }
 
-  /// Everything edible of one resource the settlement can reach: the stores
-  /// AND the family pantries. A forecast that counted only the stores would
-  /// go yellow every spring with the pantries full, and a light that cries
-  /// wolf is a light nobody reads.
-  static Grams EdibleHeld(const WorldState& world, ResourceId resource) {
-    Grams total = 0;
-    for (const UnitRow& unit : world.units.rows) {
-      if (unit.level != 0) {
-        total += UnreservedOf(unit, resource);
-      }
-    }
-    for (const FamilyRow& family : world.families.rows) {
-      total += AmountOf(family.pantry, resource);
-    }
-    return total;
-  }
-
   bool AnyoneGoingHungry(const WorldState& completed) const {
     std::vector<FamilyId> hungry;
     CollectHungryFamilies(completed, hungry);
@@ -317,29 +300,14 @@ class ResidentsSystem final : public IResidentsSystem {
       return;
     }
 
-    // Everything edible, wherever it lies — stores and pantries both. A
-    // forecast that counted only the stores would go yellow every spring
-    // while the pantries were full, and the player would learn to ignore it.
-    // Converted through calories, because the norm is a grain EQUIVALENT and
-    // a tonne of potatoes is not a tonne of rye.
-    const float reference = food_.consumption.grain_reference_kcal_per_gram;
-    double kcal = 0.0;
-    if (reference > 0.0F) {
-      for (std::uint32_t resource = 0; resource < food_.resources.size(); ++resource) {
-        const float density = food_.resources[resource].kcal_per_gram;
-        if (!(density > 0.0F)) {
-          continue;
-        }
-        const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
-        kcal += static_cast<double>(EdibleHeld(completed, id)) * static_cast<double>(density);
-      }
-    }
-    const double need_kcal = static_cast<double>(need_kg) * static_cast<double>(kGramsPerKilogram) *
-                             static_cast<double>(reference);
-    const double days = need_kcal > 0.0 ? kcal / need_kcal : 0.0;
-    food.days_of_stock = days >= static_cast<double>(kStockForecastHorizonDays)
-                             ? kStockForecastHorizonDays
-                             : static_cast<std::int32_t>(days);
+    // Everything edible, wherever it lies — stores, pantries and the heaps
+    // above the plan's take — converted through calories, because the norm is
+    // a grain EQUIVALENT and a tonne of potatoes is not a tonne of rye. ONE
+    // DOOR WITH THE WINTERING'S food_days_dec1 (year_metrics.h,
+    // SettlementFoodDays; 0.37.15): until then the light carried a copy of
+    // the same arithmetic, and a change to one would have measured the other's
+    // neighbour.
+    food.days_of_stock = static_cast<std::int32_t>(SettlementFoodDays(food_, config_, completed));
     food.light = LightFrom(food.days_of_stock,
                            food.days_to_date,
                            static_cast<std::int32_t>(food_.consumption.food_light_margin_days),

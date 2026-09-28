@@ -193,6 +193,16 @@ struct PloughFeedHold {
 /// split them, and the error is to the plough's side.
 PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState& world);
 
+/// @brief What the kolkhoz herds may eat of each resource today, grams, dense
+/// by ResourceId: the stores unreserved, less every rung the herds stay below
+/// — the seed fund, this year's plan, next year's hold, the plough's oats on
+/// a day nobody ploughs — and their rot's margins. THE HERD DAY'S OWN DOOR
+/// (RunFeeding), and the feed light's (stock_lights.cpp, FeedLight; boss-
+/// core-epoch1-queue-2026-09-29 [14] (1), (3); 0.37.15): the light counts
+/// what the herds may eat, and releases the plough's oats on the day the
+/// feeding does.
+ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor
 /// today (YieldFactor: billeting, underfeeding), grams — the same sum
 /// RunProduce delivers, read without delivering it. A household's cow is the

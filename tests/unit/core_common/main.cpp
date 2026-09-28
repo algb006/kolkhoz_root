@@ -1210,6 +1210,38 @@ int CheckNextSowingCrop() {
   return failures;
 }
 
+/// THE HEAP ABOVE THE PLAN'S TAKE (fund_ladder.h, HeapAbovePlanDebt;
+/// 0.37.15): two heaps of resource 1, 300 kg in all, and one of another. No
+/// plan announced: all 300 kg. Announced, 200 kg due and 50 kg already sent:
+/// 150 kg above the 150 still owed. Owed more than lies: nought.
+int CheckTheHeapAbovePlanDebt() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::WorldState world;
+  core::FieldRow a;
+  a.reaped_grams = 100 * kKilo;
+  a.reaped_resource = core::ResourceId{1};
+  core::AppendRow(world.fields, a);
+  core::FieldRow b = a;
+  b.reaped_grams = 200 * kKilo;
+  core::AppendRow(world.fields, b);
+  core::FieldRow other = a;
+  other.reaped_resource = core::ResourceId{2};
+  core::AppendRow(world.fields, other);
+  const core::ResourceId resource{1};
+  failures += Expect(core::HeapAbovePlanDebt(world, resource) == 300 * kKilo,
+                     "heap above the plan: no plan announced, every heap of the resource");
+  world.plan.announced = 1;
+  world.plan.due = {0, 200 * kKilo, 0};
+  world.plan.delivered = {0, 50 * kKilo, 0};
+  failures += Expect(core::HeapAbovePlanDebt(world, resource) == 150 * kKilo,
+                     "heap above the plan: 300 lying, 150 still owed, 150 above it");
+  world.plan.due[1] = 900 * kKilo;
+  failures += Expect(core::HeapAbovePlanDebt(world, resource) == 0,
+                     "heap above the plan: owed more than lies, nothing");
+  return failures;
+}
+
 /// The top two rungs of the ladder of funds (fund_ladder.h): seed for a field
 /// not yet sown, the plan reserve — what is owed, as far as the crop lies
 /// below the seed (0.34.42) — and each unsealing off its own rung (0.34.17).
@@ -2677,6 +2709,7 @@ int main() {
   failures += TestDaylightCurve();
   failures += TestRainStopsWork();
   failures += CheckTheTopOfTheLadder();
+  failures += CheckTheHeapAbovePlanDebt();
   failures += CheckNextSowingCrop();
   failures += CheckTheFigureRule();
   failures += CheckAlarmSubjectValue();

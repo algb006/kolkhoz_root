@@ -89,6 +89,32 @@ Grams PlanRungGrams(const WorldState& world,
   return owed < below_the_seed ? owed : below_the_seed;
 }
 
+Grams HeapGrams(const WorldState& world, ResourceId resource) {
+  Grams heaps = 0;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.reaped_grams > 0 && field.reaped_resource.value == resource.value) {
+      heaps += field.reaped_grams;
+    }
+  }
+  return heaps;
+}
+
+Grams PlanOwedGrams(const WorldState& world, ResourceId resource) {
+  if (world.plan.announced == 0) {
+    return 0;
+  }
+  const std::size_t index = resource.value;
+  const Grams due = index < world.plan.due.size() ? world.plan.due[index] : 0;
+  const Grams sent = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
+  return due > sent ? due - sent : 0;
+}
+
+Grams HeapAbovePlanDebt(const WorldState& world, ResourceId resource) {
+  const Grams heaps = HeapGrams(world, resource);
+  const Grams owed = PlanOwedGrams(world, resource);
+  return heaps > owed ? heaps - owed : 0;
+}
+
 CropId NextSowingCrop(const FieldRow& field, SimDay today, bool year0_is_winter) {
   return NextSowingOf(field, today, year0_is_winter).crop;
 }

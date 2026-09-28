@@ -28,6 +28,7 @@
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/stock_forecast.h"
 #include "core_common/wedding_state.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
@@ -46,6 +47,7 @@
 #include "schooling.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
+#include "year_metrics.h"
 
 static_assert(std::is_abstract_v<core::IResidentsSystem>, "IResidentsSystem is a contract");
 static_assert(std::has_virtual_destructor_v<core::IResidentsSystem>,
@@ -166,6 +168,38 @@ core::WorldState MakeExchangeWorld(float grain_kg,
   adult.satiety = satiety;
   AppendRow(world.residents, adult);
   return world;
+}
+
+/// THE WINTER'S FOOD COUNTS THE HEAP ABOVE THE PLAN'S TAKE (0.37.15; boss-
+/// core-epoch1-queue-2026-09-29 [14] (2)): an empty store, one adult, and a
+/// heap of 100 kg of potato on a field. Unannounced, the whole heap is food;
+/// announced with all 100 kg owed, none of it; with 40 kg owed, the 60 above.
+/// The food light reads the same door (SettlementFoodDays).
+int CheckTheWinterCountsTheHeapAbovePlan() {
+  int failures = 0;
+  const core::FoodConfig food = MakeExchangeConfig();
+  const core::LifeConfig life;
+  core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+  const float bare = core::SettlementFoodDays(food, life, world);
+  core::FieldRow heap;
+  heap.reaped_grams = 100 * core::kGramsPerKilogram;
+  heap.reaped_resource = core::ResourceId{1};
+  core::AppendRow(world.fields, heap);
+  const float whole = core::SettlementFoodDays(food, life, world);
+  world.plan.announced = 1;
+  world.plan.due.assign(4, 0);
+  world.plan.delivered.assign(4, 0);
+  world.plan.due[1] = 100 * core::kGramsPerKilogram;
+  const float all_owed = core::SettlementFoodDays(food, life, world);
+  world.plan.due[1] = 40 * core::kGramsPerKilogram;
+  const float part_owed = core::SettlementFoodDays(food, life, world);
+  failures += Expect(
+      bare == 0.0F && whole > 0.0F && whole < static_cast<float>(core::kStockForecastHorizonDays),
+      "winter food: a potato heap with no plan announced is food a cart away");
+  failures += Expect(all_owed == bare, "winter food: the heap the plan takes whole counts nothing");
+  failures += Expect(part_owed > bare && part_owed < whole,
+                     "winter food: the heap above the plan's 40 kg counts, the 40 do not");
+  return failures;
 }
 
 core::Grams PantryOf(const core::WorldState& world, std::uint32_t resource) {
@@ -3652,6 +3686,7 @@ int main() {
   failures += CheckAlcoholism();
   failures += CheckAlcoholismInheritance();
   failures += CheckTheSportsField();
+  failures += CheckTheWinterCountsTheHeapAbovePlan();
   failures += CheckTakeNightTrader();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);

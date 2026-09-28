@@ -824,7 +824,20 @@ void PlaceSurplusHead(const ProductionConfig& config,
   }
 }
 
+/// Whether the plough or the harrow is out today: the day the ploughing's
+/// oats are the plough's to eat (FeedAllowance). One reading for the herd day
+/// and the feed light (HerdFeedAllowance).
+bool PloughingToday(const WorldState& world) {
+  return std::ranges::any_of(world.residents.rows, [](const ResidentRow& resident) {
+    return IsHorseWork(resident.work.kind);
+  });
+}
+
 }  // namespace
+
+ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world) {
+  return FeedAllowance(config, world, PloughingToday(world));
+}
 
 bool StableBuilt(const WorldState& world, const ProductionConfig& config) {
   if (config.stable_type.value == kInvalidDefIdValue) {
@@ -904,10 +917,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const auto grazing_tonight = [&](LivestockKindId kind_id) {
     return kind_id.value != config.horse_kind.value || team_out;
   };
-  const bool ploughing_today = std::ranges::any_of(
-      current.residents.rows,
-      [](const ResidentRow& resident) { return IsHorseWork(resident.work.kind); });
-  ResourceAmounts feed_allowance = FeedAllowance(config, current, ploughing_today);
+  ResourceAmounts feed_allowance = HerdFeedAllowance(config, current);
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);

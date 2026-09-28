@@ -6,6 +6,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/stock_forecast.h"
@@ -22,9 +23,13 @@ namespace {
 constexpr std::uint32_t kDecemberFirstDayOfYear =
     static_cast<std::uint32_t>(Month::kDecember) * kDaysPerMonth;
 
-/// Everything edible of one resource, wherever it lies.
+/// Everything edible of one resource, wherever it lies: the stores, the
+/// pantries, and the heaps lying the winter less what the district takes from
+/// them first (HeapAbovePlanDebt; boss-core-epoch1-queue-2026-09-29 [14] (2);
+/// 0.37.15). Until 0.37.15 no heap counted, and since 0.37.11 a potato heap
+/// lies through the winter a cart away — the wintering read it unclosed.
 Grams EdibleHeld(const WorldState& world, ResourceId resource) {
-  Grams total = 0;
+  Grams total = HeapAbovePlanDebt(world, resource);
   for (const UnitRow& unit : world.units.rows) {
     if (unit.level != 0) {
       total += UnreservedOf(unit, resource);

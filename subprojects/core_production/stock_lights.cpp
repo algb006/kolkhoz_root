@@ -137,44 +137,40 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
     return light;
   }
 
-  // A copy of the stores in KILOGRAMS per feed resource, drained day by day.
+  // WHAT THE HERDS MAY EAT, in KILOGRAMS per feed resource, drained day by
+  // day — THROUGH THE HERD DAY'S OWN DOOR (HerdFeedAllowance; resources design
+  // §6, the row of 28 September: «то, что зима МОЖЕТ съесть»; boss-core-
+  // epoch1-queue-2026-09-29 [14] (1), (3); 0.37.15). The stores less every
+  // rung the herds stay below: the seed fund, this year's plan, next year's
+  // hold and the plough's oats — released on the day the feeding releases
+  // them. Until 0.37.14 the light read the whole stores, and 0.37.14 took
+  // off the plough's oats alone, the one exclusion the row names, while the
+  // feeding kept all four: the light measured a neighbour of the feeding.
+  const ResourceAmounts allowance = HerdFeedAllowance(config, world);
+  // AND THE FEEDING'S REFUSAL PER LINK: a reserve feed takes none of the
+  // people's food (herd_system.cpp, PeoplesFoods; 0.37.5). Without it the
+  // light offered the pigs' reserve wheat and rye the feeding refuses (static
+  // review of 0.37.15).
+  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
   std::vector<float> held_kg(config.feed_values.size(), 0.0F);
   for (std::uint32_t resource = 0; resource < held_kg.size(); ++resource) {
-    if (!(config.feed_values[resource] > 0.0F)) {
+    if (!(config.feed_values[resource] > 0.0F) || resource >= allowance.size()) {
       continue;
     }
-    const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
     held_kg[resource] =
-        static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
+        static_cast<float>(allowance[resource]) / static_cast<float>(kGramsPerKilogram);
   }
   // AND THE HAY LYING REAPED ON THE FIELDS (boss-core-epoch1-queue [96],
   // [97]; resources design §6, «убранное сено»; 0.37.11): the snow takes no
-  // heap, so a grass crop's hay at a field's edge is fodder a cart away and
-  // counts whole, as the store's does. HAY ONLY: a heap of grain or potato is
-  // the district's first (TakePlanDebtFromFields) and the people's before
-  // the pigs', and counted here it would green a light over fodder the plan
-  // then takes (static review of 0.37.11). Straw lies in no heap — the
-  // reaping sends it to the stores — and a meadow lays its hay straight in.
-  for (const FieldRow& field : world.fields.rows) {
-    if (field.reaped_grams > 0 && field.reaped_resource.value == config.hay_resource.value &&
-        field.reaped_resource.value < held_kg.size()) {
-      held_kg[field.reaped_resource.value] +=
-          static_cast<float>(field.reaped_grams) / static_cast<float>(kGramsPerKilogram);
-    }
-  }
-  // NOT THE PLOUGH'S OATS (resources design §6, the row of 28 September:
-  // «Не входит: овёс, удержанный под весеннюю пахоту (ступень выше) — это
-  // ровно то, что зима есть не должна»; boss-core-epoch1-queue-2026-09-29 [1]
-  // item 3; 0.37.14). The horse's oats are its work feed and the forecast
-  // skips them (work_only below), but another kind's link to the same grain
-  // is no work link — the pig's — and it ate the spring's ploughing in the
-  // forecast while the herds may not (PloughFeedHoldOf).
-  const PloughFeedHold plough = PloughFeedHoldOf(config, world);
-  if (plough.held && plough.resource.value < held_kg.size()) {
-    const float plough_kg =
-        static_cast<float>(plough.grams) / static_cast<float>(kGramsPerKilogram);
-    float& oats_kg = held_kg[plough.resource.value];
-    oats_kg = oats_kg > plough_kg ? oats_kg - plough_kg : 0.0F;
+  // heap, so a grass crop's hay at a field's edge is fodder a cart away, less
+  // what the district takes from it first (HeapAbovePlanDebt, 0.37.15). HAY
+  // ONLY: a heap of grain or potato is the people's before the pigs'. Straw
+  // lies in no heap — the reaping sends it to the stores — and a meadow lays
+  // its hay straight in.
+  if (config.hay_resource.value < held_kg.size()) {
+    held_kg[config.hay_resource.value] +=
+        static_cast<float>(HeapAbovePlanDebt(world, config.hay_resource)) /
+        static_cast<float>(kGramsPerKilogram);
   }
 
   std::int32_t days = 0;
@@ -197,6 +193,10 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
         // Leaving them in would let the oats forecast the hay.
         if (link.work_only != 0) {
           continue;
+        }
+        if (link.reserve != 0 && link.resource.value < peoples_foods.size() &&
+            peoples_foods[link.resource.value] != 0) {
+          continue;  // the people's food: the feeding refuses it to a reserve link
         }
         const float value = config.feed_values[link.resource.value] *
                             (link.reserve != 0 ? config.farming.reserve_feed_factor : 1.0F);
@@ -313,8 +313,20 @@ StockForecast SeedLight(const ProductionConfig& config, const WorldState& world)
       continue;
     }
     const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
-    const float have_kg =
-        static_cast<float>(HeldEverywhere(world, id)) / static_cast<float>(kGramsPerKilogram);
+    // The stores AND the heaps lying the winter, less what the district takes
+    // (boss-core-epoch1-queue-2026-09-29 [14] (2); 0.37.15) — and the
+    // district takes no seed: its take is capped above it
+    // (DeliverableAboveSeed), so here it is the owed, as far as the stores
+    // and heaps hold more than this campaign's seed. Netted of the whole owed
+    // (HeapAbovePlanDebt) the light read red over seed the district leaves
+    // (static review of 0.37.15), and the stores and heaps are counted
+    // together, so carting a heap in moves nothing.
+    const Grams lying = HeldEverywhere(world, id) + HeapGrams(world, id);
+    const auto need = static_cast<Grams>(need_kg[resource] * static_cast<float>(kGramsPerKilogram));
+    const Grams above_seed = lying > need ? lying - need : 0;
+    const Grams owed = PlanOwedGrams(world, id);
+    const Grams taken = owed < above_seed ? owed : above_seed;
+    const float have_kg = static_cast<float>(lying - taken) / static_cast<float>(kGramsPerKilogram);
     const float share = have_kg / need_kg[resource];
     coverage = coverage < 0.0F || share < coverage ? share : coverage;
   }

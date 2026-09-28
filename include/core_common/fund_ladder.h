@@ -176,6 +176,27 @@ Grams PlanRungGrams(const WorldState& world,
                     ResourceId carted_daily = ResourceId{},
                     Grams held_above = 0);
 
+/// @brief What of `resource` lies reaped in the fields' heaps beyond what the
+///        district takes from them first, grams, never below nought: the
+///        heaps less the plan's remaining due on the resource, once the plan
+///        is announced (district_plan.cpp, TakePlanDebtFromFields: «the heap
+///        first, and the whole debt»). A stock the winter may count, but not
+///        the one the plan takes (boss-core-epoch1-queue-2026-09-29 [14] (2);
+///        0.37.15) — the food and seed lights and food_days_dec1 add it.
+///
+///        NOT CAPPED BY THE SEED as the district's take is (DeliverableAboveSeed,
+///        core_production): the whole remaining due comes off, so where the
+///        seed would cap the take this counts less than will lie — the
+///        cautious side, and the only one core_common can read.
+Grams HeapAbovePlanDebt(const WorldState& world, ResourceId resource);
+
+/// @brief Grams of `resource` lying reaped in the fields' heaps.
+Grams HeapGrams(const WorldState& world, ResourceId resource);
+
+/// @brief The plan's remaining due on `resource`, grams: due less delivered,
+///        never below nought; nought before the plan is announced.
+Grams PlanOwedGrams(const WorldState& world, ResourceId resource);
+
 /// @brief Rung 1 alone: SeedHeldByField as of today, less what the chairman
 ///        has unsealed of the SEED fund, never below nought.
 /// @return Dense by ResourceId, sized `resource_count`.

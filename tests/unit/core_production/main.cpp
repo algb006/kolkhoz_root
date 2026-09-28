@@ -2369,6 +2369,25 @@ int CheckFeedLightCountsTheWinter() {
   failures += Expect(with_heap.days_of_stock == 20,
                      "a reaped heap of forty units of hay adds its ten days: twenty; the grain "
                      "heap beside it adds none");
+  // A RESERVE FEED TAKES NONE OF THE PEOPLE'S FOOD, in the light as in the
+  // feeding (PeoplesFoods; 0.37.5, static review of 0.37.15): forty units of
+  // grain in store by a reserve link add their days while nobody is issued
+  // grain, and none once the book has issued it.
+  core::WorldState reserve_world = MakeHerdWorld(0.0F);
+  reserve_world.calendar = world.calendar;
+  AddHerd(reserve_world, 0, 4, 0, true);
+  reserve_world.units.rows[0].stock[1] = 40 * kKilo;
+  core::ProductionConfig reserve_config = config;
+  reserve_config.feed_links = {core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                                 .resource = core::ResourceId{1},
+                                                 .reserve = 1,
+                                                 .max_share = 1.0F}};
+  const std::int32_t unissued = core::FeedLight(reserve_config, reserve_world).days_of_stock;
+  reserve_world.ledger.current.issued.assign(3, 0);
+  reserve_world.ledger.current.issued[1] = kKilo;
+  const std::int32_t issued = core::FeedLight(reserve_config, reserve_world).days_of_stock;
+  failures += Expect(unissued > 0 && issued == 0,
+                     "a reserve link to the people's grain feeds nobody in the light either");
   return failures;
 }
 
@@ -2420,6 +2439,32 @@ int CheckFeedLightLeavesThePloughsOats() {
   failures +=
       Expect(held.days_of_stock == static_cast<std::int32_t>((60 * kKilo - hold.grams) / kKilo),
              "feed light: the cow's days are the oats above the plough's hold");
+  // ONE DOOR WITH THE FEEDING (0.37.15; boss [14] (1), (3)): on a ploughing
+  // day the feeding releases the plough's oats, and so does the light; and
+  // the seed fund's oats the feeding keeps, the light does not count.
+  core::WorldState ploughing = world;
+  core::ResidentRow ploughman;
+  ploughman.work.kind = core::WorkKind::kPlowing;
+  core::AppendRow(ploughing.residents, ploughman);
+  failures += Expect(core::FeedLight(config, ploughing).days_of_stock == 60,
+                     "feed light: on a ploughing day the plough's oats are released, as the "
+                     "feeding releases them — 60 days");
+  core::WorldState seeded = world;
+  config.crops[0].sowing_norm_kg_per_ha = 10.0F;  // 10 kg of oat seed for next spring
+  core::FieldRow oats_field;
+  oats_field.kind = core::LandKind::kArable;
+  oats_field.area_ga = 1.0F;
+  oats_field.rotation_year0 = core::CropId{0};
+  oats_field.rotation_assigned = 1;
+  oats_field.reaped_day = seeded.calendar.day - 10;  // this year's oats are off
+  oats_field.rotation_year1 = core::CropId{0};
+  core::AppendRow(seeded.fields, oats_field);
+  const core::ResourceAmounts door = core::HerdFeedAllowance(config, seeded);
+  const core::StockForecast with_seed = core::FeedLight(config, seeded);
+  failures += Expect(with_seed.days_of_stock < held.days_of_stock &&
+                         with_seed.days_of_stock == static_cast<std::int32_t>(door[1] / kKilo),
+                     "feed light: next spring's oat seed is not winter fodder — the light's days "
+                     "are the feeding's allowance, kilo for day");
   return failures;
 }
 
@@ -2569,6 +2614,36 @@ int CheckSeedLightMeasuresCoverage() {
   world.units.rows[0].stock[0] = 200 * kKilo;
   failures += Expect(core::SeedLight(config, world).light == core::StockLight::kGreen,
                      "and twice the norm is room to spare");
+  // A HEAP LYING THE WINTER IS SEED A CART AWAY, above the plan's take
+  // (0.37.15; boss-core-epoch1-queue-2026-09-29 [14] (2)): 60 kg in the store
+  // and 60 kg in a heap cover the hundred; with 50 kg owed the district,
+  // which takes no seed, it takes the 20 above the hundred and leaves the
+  // seed whole; with 10 kg owed, 110 is left.
+  world.units.rows[0].stock[0] = 60 * kKilo;
+  core::FieldRow heap;
+  heap.reaped_grams = 60 * kKilo;
+  heap.reaped_resource = core::ResourceId{0};
+  core::AppendRow(world.fields, heap);
+  const float with_heap = core::SeedLight(config, world).coverage;
+  failures += Expect(with_heap > 1.19F && with_heap < 1.21F,
+                     "a heap of sixty beside sixty in store is twelve tenths");
+  world.plan.announced = 1;
+  world.plan.due.assign(3, 0);
+  world.plan.delivered.assign(3, 0);
+  world.plan.due[0] = 50 * kKilo;
+  const float owed = core::SeedLight(config, world).coverage;
+  failures += Expect(owed > 0.99F && owed < 1.01F,
+                     "with fifty owed the district, which takes no seed: the hundred stays whole");
+  world.plan.due[0] = 10 * kKilo;
+  const float owed_little = core::SeedLight(config, world).coverage;
+  failures +=
+      Expect(owed_little > 1.09F && owed_little < 1.11F, "with ten owed, eleven tenths left");
+  // Carted in, the same grain reads the same: the stores and heaps are one.
+  world.fields.rows.back().reaped_grams = 0;
+  world.units.rows[0].stock[0] = 120 * kKilo;
+  const float carted = core::SeedLight(config, world).coverage;
+  failures +=
+      Expect(carted > 1.09F && carted < 1.11F, "and carted into the store, the same eleven tenths");
   return failures;
 }
 
