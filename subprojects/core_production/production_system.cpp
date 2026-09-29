@@ -489,6 +489,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectProcessingAlarms(config_, completed, alarms);
     CollectDemolitionAlarms(completed, alarms);
     CollectMeadowAdvice(config_, completed, alarms);
+    CollectSowingWindowAdvice(config_, completed, alarms);
     // Last: a full store's lamp reads the refusals appended above.
     LightStoreFullLamps(config_, completed, alarms);
   }

@@ -113,6 +113,46 @@ constexpr double kSeedShortLampShare = 0.05;
 /// (boss-core-epoch1-queue-2026-09-29 [36]).
 constexpr std::int64_t kSeedShortLampLeadDays = static_cast<std::int64_t>(kDaysPerSeason);
 
+/// The window of a field's NEXT sowing on the calendar: its crop, the first
+/// day of the window and the first day after it (sow_to_month's end), as
+/// absolute days. The slot names the year the crop is REAPED: a spring crop
+/// of slot k is sown in the spring of year k, a winter crop of slot k in the
+/// autumn of year k − 1; a held chain sows its first slot at the crop's next
+/// window. ONE HOME for the seed lamp's lead and the sowing-window advice
+/// (0.37.25). An invalid crop when the field sows nothing next.
+struct SowingWindow {
+  CropId crop;
+  std::int64_t opens = 0;
+  std::int64_t closes = 0;
+};
+
+SowingWindow NextSowingWindow(const ProductionConfig& config, const FieldRow& field, SimDay today) {
+  SowingWindow window;
+  const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
+                            config.crops[field.rotation_year0.value].is_winter;
+  const NextSowing next = NextSowingOf(field, today, year0_winter);
+  if (next.crop.value >= config.crops.size()) {
+    return window;
+  }
+  const CropDef& crop = config.crops[next.crop.value];
+  const std::int64_t year_start = static_cast<std::int64_t>(today / kDaysPerYear) * kDaysPerYear;
+  const std::int64_t from = static_cast<std::int64_t>(crop.sow_from_month) * kDaysPerMonth;
+  const std::int64_t to = (static_cast<std::int64_t>(crop.sow_to_month) + 1) * kDaysPerMonth;
+  std::int64_t sown_year_start = 0;
+  if (next.held_chain) {
+    sown_year_start = year_start + (year_start + to <= static_cast<std::int64_t>(today)
+                                        ? static_cast<std::int64_t>(kDaysPerYear)
+                                        : 0);
+  } else {
+    const std::int64_t sown_year = static_cast<std::int64_t>(next.slot) - (crop.is_winter ? 1 : 0);
+    sown_year_start = year_start + (sown_year * kDaysPerYear);
+  }
+  window.crop = next.crop;
+  window.opens = sown_year_start + from;
+  window.closes = sown_year_start + to;
+  return window;
+}
+
 /// THE LAMP OF kSeedShort (Alarm::lamp; farming design, «Когда горит — с 29
 /// сентября 2026»: «только когда не покрыт БЛИЖАЙШИЙ сев, а не вся
 /// раскладка»): the field's NEXT sowing, and short by at least
@@ -145,32 +185,9 @@ bool SeedShortLamp(const ProductionConfig& config,
       static_cast<double>(short_of) < kSeedShortLampShare * static_cast<double>(wanted)) {
     return false;
   }
-  const FieldRow& field = world.fields.rows[row];
-  const SimDay today = world.calendar.day;
-  const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
-                            config.crops[field.rotation_year0.value].is_winter;
-  const NextSowing next = NextSowingOf(field, today, year0_winter);
-  if (next.crop.value >= config.crops.size()) {
-    return false;
-  }
-  const CropDef& crop = config.crops[next.crop.value];
-  const std::int64_t year_start = static_cast<std::int64_t>(today / kDaysPerYear) * kDaysPerYear;
-  const std::int64_t window_in_year =
-      static_cast<std::int64_t>(crop.sow_from_month) * kDaysPerMonth;
-  // The slot names the year the crop is REAPED: a spring crop of slot k is
-  // sown in the spring of year k, a winter crop of slot k in the autumn of
-  // year k − 1. A held chain sows its first slot at the crop's next window.
-  std::int64_t opens = 0;
-  if (next.held_chain) {
-    opens = year_start + window_in_year;
-    const std::int64_t window_end =
-        year_start + (static_cast<std::int64_t>(crop.sow_to_month) + 1) * kDaysPerMonth;
-    opens += window_end <= static_cast<std::int64_t>(today) ? kDaysPerYear : 0;
-  } else {
-    const std::int64_t sown_year = static_cast<std::int64_t>(next.slot) - (crop.is_winter ? 1 : 0);
-    opens = year_start + (sown_year * kDaysPerYear) + window_in_year;
-  }
-  return opens - static_cast<std::int64_t>(today) <= kSeedShortLampLeadDays;
+  const SowingWindow window = NextSowingWindow(config, world.fields.rows[row], world.calendar.day);
+  return window.crop.value < config.crops.size() &&
+         window.opens - static_cast<std::int64_t>(world.calendar.day) <= kSeedShortLampLeadDays;
 }
 
 /// @brief What this field will still put into a store this season, in
@@ -513,6 +530,38 @@ void CollectStoreAlarms(const ProductionConfig& config,
     alarm.unit = world.units.row_ids[static_cast<std::size_t>(&unit - world.units.rows.data())];
     alarm.amount = capacity;
     alarms.push_back(alarm);
+  }
+}
+
+/// Days before a sowing window's end from which the elder speaks of an
+/// untouched field. STUB, core's number (boss-core-elder-facts-2026-09-29
+/// [3]): a month of four days.
+constexpr std::int64_t kSowingWindowAdviceDays = static_cast<std::int64_t>(kDaysPerMonth);
+
+void CollectSowingWindowAdvice(const ProductionConfig& config,
+                               const WorldState& world,
+                               std::vector<Alarm>& alarms) {
+  const auto today = static_cast<std::int64_t>(world.calendar.day);
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    // THE WORK NOT BEGUN: the field idle — no plough, harrow or drill opened
+    // on it this season. A field under its preparation is kSowingWillNotFit's.
+    if (field.kind != LandKind::kArable || field.phase != FieldPhase::kIdle ||
+        !HasRotation(field)) {
+      continue;
+    }
+    const SowingWindow window = NextSowingWindow(config, field, world.calendar.day);
+    if (window.crop.value >= config.crops.size() || today < window.opens ||
+        today >= window.closes || window.closes - today > kSowingWindowAdviceDays) {
+      continue;
+    }
+    Alarm advice;
+    advice.kind = AlarmKind::kSowingWindowClosing;
+    advice.field = world.fields.row_ids[row];
+    advice.resource = config.crops[window.crop.value].resource;
+    advice.amount = window.closes - today;
+    advice.lamp = 0;  // the elder's advice, never a lamp
+    alarms.push_back(advice);
   }
 }
 

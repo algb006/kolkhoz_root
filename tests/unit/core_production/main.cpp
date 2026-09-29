@@ -7422,6 +7422,51 @@ int CheckTheElderSpeaksOfGrassBeforeTheSnow() {
   return failures;
 }
 
+/// THE ELDER'S ADVICE ON A SOWING WINDOW CLOSING (0.37.25; boss-core-elder-
+/// facts-2026-09-29 [3]): potato sown in months 3-4 (days 12-19), a field of
+/// its chain idle —
+///   * day 17, three days left: the advice, the field, the potato, 3, lamp 0;
+///   * day 14, six left: silent (beyond the month); day 20, the window gone:
+///     silent;
+///   * the same field under its plough on day 17: silent (its work begun).
+int CheckTheElderSpeaksOfAClosingSowingWindow() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{5};
+  config.crops[0].sow_from_month = 3;
+  config.crops[0].sow_to_month = 4;
+  config.crops[0].harvest_from_month = 7;
+  const auto advice_on = [&](core::SimDay day, core::FieldPhase phase) {
+    core::WorldState world;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = 10.0F;
+    field.rotation_assigned = 1;
+    field.rotation_year0 = core::CropId{0};
+    field.rotation_year1 = core::CropId{0};
+    field.phase = phase;
+    core::AppendRow(world.fields, field);
+    std::vector<core::Alarm> alarms;
+    core::CollectSowingWindowAdvice(config, world, alarms);
+    return alarms;
+  };
+  const std::vector<core::Alarm> closing = advice_on(17, core::FieldPhase::kIdle);
+  failures +=
+      Expect(closing.size() == 1 && closing[0].kind == core::AlarmKind::kSowingWindowClosing &&
+                 closing[0].resource.value == 5 && closing[0].amount == 3 && closing[0].lamp == 0,
+             "sowing window advice: an idle field three days before its potato's window "
+             "ends — the elder speaks, no lamp");
+  failures += Expect(advice_on(14, core::FieldPhase::kIdle).empty() &&
+                         advice_on(20, core::FieldPhase::kIdle).empty(),
+                     "sowing window advice: not six days before the end, not after it");
+  failures += Expect(advice_on(17, core::FieldPhase::kPlowing).empty(),
+                     "sowing window advice: a field under its plough is silent — its work began");
+  return failures;
+}
+
 /// THE CAP OF 100 BITES AFTER THE CROP'S DELTA (0.37.13; boss-core-epoch1-
 /// queue-2026-09-29 [7]: min(100, f + manure + delta)), on the shipped tables:
 ///   * a field at 95 with a full dose opens for its potato: 105 on the row,
@@ -12562,6 +12607,7 @@ int main() {
   failures += CheckTheCapBitesAfterTheDelta();
   failures += CheckTheFarmRulesZyab();
   failures += CheckTheElderSpeaksOfGrassBeforeTheSnow();
+  failures += CheckTheElderSpeaksOfAClosingSowingWindow();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();

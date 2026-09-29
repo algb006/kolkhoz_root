@@ -54,6 +54,16 @@ void CollectMeadowAdvice(const ProductionConfig& config,
                          const WorldState& world,
                          std::vector<Alarm>& alarms);
 
+/// @brief kSowingWindowClosing (alarm_state.h; boss-core-elder-facts-2026-
+/// 09-29 [3]): the elder's advice, lamp 0, for every arable field of a chain
+/// standing idle while its next sowing's window is open and ends within
+/// kSowingWindowAdviceDays. `resource` = the crop's produce, `amount` = the
+/// whole days left to the window's end.
+/// @param alarms Appended to; never cleared.
+void CollectSowingWindowAdvice(const ProductionConfig& config,
+                               const WorldState& world,
+                               std::vector<Alarm>& alarms);
+
 /// @brief Sets the lamp of every kStoreFull in `alarms` from the ones beside
 /// it (Alarm::lamp; boss-core-epoch1-queue-2026-09-29 [24], [36]: «красное,
 /// когда полнота срывает приём урожая или сева, а не просто „полон“»): lit
