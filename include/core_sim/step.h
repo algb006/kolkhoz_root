@@ -77,6 +77,7 @@
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
+#include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
 #include "core_common/road_draft.h"
 #include "core_common/stink.h"
@@ -313,6 +314,13 @@ class ISimulation {
   virtual std::optional<HarvestNeed> NeedUntilHarvest(ResourceId /*resource*/) const {
     return std::nullopt;
   }
+
+  /// @brief The village's readiness for the next era, as the office shows it
+  /// (readiness_view.h): the indices against their thresholds, the parts and
+  /// their weights, the blocks, and the verdict an order would get now.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
+  ///       view (nothing scored, the verdict kIndicesNotHeld).
+  virtual EraReadinessView EraReadiness() const { return {}; }
 
   /// @brief Appends every stock light the wired subsystems own, in the
   /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms

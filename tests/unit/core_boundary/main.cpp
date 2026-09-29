@@ -200,9 +200,14 @@ class ScriptedSimulation final : public core::ISimulation {
     return need_;
   }
 
+  core::EraReadinessView EraReadiness() const override { return readiness_; }
+
   /// What IssueNorms() and NeedUntilHarvest() hand back.
   std::vector<core::IssueNormLine> norms_;
   std::optional<core::HarvestNeed> need_;
+
+  /// What EraReadiness() hands back.
+  core::EraReadinessView readiness_;
 
   std::vector<core::DayForecast> forecast_;
 
@@ -1171,6 +1176,18 @@ int TestSignals(const core::ITableSet& tables) {
         "need until harvest: forwarded with the resource asked for");
     script->norms_.clear();
     script->need_.reset();
+  }
+
+  // «Куда я иду» (0.37.31): the world's view, forwarded whole.
+  {
+    script->readiness_.year_scored = 3;
+    script->readiness_.economic_index = 61.5F;
+    script->readiness_.verdict = core::OrderRefusal::kNoOwnTraction;
+    const core::EraReadinessView view = session->EraReadiness();
+    failures += Expect(view.year_scored == 3 && view.economic_index == 61.5F &&
+                           view.verdict == core::OrderRefusal::kNoOwnTraction,
+                       "era readiness: the session forwards the world's view");
+    script->readiness_ = core::EraReadinessView{};
   }
 
   // After dark everyone is home, assignment or not: the STUB whereabouts

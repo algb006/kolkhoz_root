@@ -443,6 +443,8 @@ class Session final : public ISession {
     return simulation_->NeedUntilHarvest(resource);
   }
 
+  EraReadinessView EraReadiness() const override { return simulation_->EraReadiness(); }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return simulation_->MaterialsShortFor(unit);
   }

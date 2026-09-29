@@ -22,7 +22,7 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — forty-two methods, counting
+/// concrete, and it is deliberately small — forty-three methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
@@ -32,7 +32,7 @@
 ///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
 ///               StinkNowAt, ResidentHeightMeters
 ///     office    OfficeWorkbook, OfficePlan, OfficeLimit, IssueNorms,
-///               NeedUntilHarvest
+///               NeedUntilHarvest, EraReadiness
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
 ///               Junctions
 ///     orders    IssueOrder, CancelOrder
@@ -51,7 +51,8 @@
 /// ending "= 0;" said 36 and missed two declarations wrapped over two lines);
 /// thirty-nine with a resident's activity, 0.37.19; forty with the map's
 /// junctions, 0.37.26; forty-two with the issue norms and the need until
-/// the harvest, 0.37.28 — all additions, which is what the
+/// the harvest, 0.37.28; forty-three with the era's readiness, 0.37.31 —
+/// all additions, which is what the
 /// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -137,6 +138,7 @@
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
+#include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
 #include "core_common/stink.h"
 #include "core_common/world_junction.h"
@@ -714,6 +716,14 @@ class ISession {
   ///        food position of the bundle.
   /// @note Between steps; the answer describes State().
   virtual std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const = 0;
+
+  /// @brief «Куда я иду» (readiness_view.h; epochs design §6): the indices
+  ///        against their thresholds, the years they held, the eight parts
+  ///        with their weights, the transition's blocks and the verdict an
+  ///        order to go into the next era would get now. Through the world's
+  ///        own scoring and the order's own rule.
+  /// @note Between steps; the answer describes State().
+  virtual EraReadinessView EraReadiness() const = 0;
 
   /// @brief What the village lacks to START the works on `unit`, line by line:
   /// the resource, needed, held (construction design §6, "старт проверяет
