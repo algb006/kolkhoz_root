@@ -184,6 +184,10 @@ class EventsSlot final : public ISequentialPhase {
         food_variety_categories_(food_variety_categories),
         life_speedup_(life_speedup) {}
 
+  /// The era's catalog the transition is judged by — read by the office's
+  /// «куда я иду» (EraReadiness), so the view and the order share one.
+  const ReadinessCatalog& Readiness() const { return readiness_; }
+
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
     // Before the sweep, so the transition is answered in the step it was
@@ -572,6 +576,12 @@ class StandardSimulation final : public ISimulation {
 
   std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const override {
     return residents_->NeedUntilHarvest(engine_->CompletedState(), resource);
+  }
+
+  /// The era's catalog the transition order reads, and its rule
+  /// (era_readiness.h, BuildEraReadinessView).
+  EraReadinessView EraReadiness() const override {
+    return BuildEraReadinessView(events_slot_.Readiness(), engine_->CompletedState());
   }
 
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {

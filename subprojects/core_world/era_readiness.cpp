@@ -568,6 +568,43 @@ OrderRefusal TransitionRefusal(const ReadinessState& readiness,
   return OrderRefusal::kNone;
 }
 
+EraReadinessView BuildEraReadinessView(const ReadinessCatalog& catalog, const WorldState& world) {
+  const ReadinessState& state = world.readiness;
+  EraReadinessView view;
+  view.year_scored = state.year;
+  view.economic_index = state.economic_index;
+  view.economic_threshold = kEconomicThreshold;
+  view.social_index = state.social_index;
+  view.social_threshold = kSocialThreshold;
+  view.years_both_above = state.both_above_run;
+  view.years_required = kIndexYearsRequired;
+  const auto part = [&view](
+                        ReadinessPart which, const ReadinessComponent& component, float weight) {
+    view.parts[static_cast<std::size_t>(which)] =
+        ReadinessPartView{.component = component, .weight = weight};
+  };
+  part(ReadinessPart::kPlan, state.economy.plan, kWeightPlan);
+  part(ReadinessPart::kWinterStocks, state.economy.winter_stocks, kWeightWinterStocks);
+  part(ReadinessPart::kMechanisation, state.economy.mechanisation, kWeightMechanisation);
+  part(ReadinessPart::kFunds, state.economy.funds, kWeightFunds);
+  part(ReadinessPart::kSatisfaction, state.society.satisfaction, kWeightSatisfaction);
+  part(ReadinessPart::kKolkhozEffort, state.society.kolkhoz_effort, kWeightEffort);
+  part(ReadinessPart::kSocialObjects, state.society.social_objects, kWeightSocialObjects);
+  part(ReadinessPart::kDemography, state.society.demography, kWeightDemography);
+  // The blocks exactly as the order reads them (TransitionRefusal): the
+  // accumulated off the turn, the standing off the world now.
+  const TransitionBlocks standing = StandingBlocks(catalog, world);
+  view.blocks = state.blocks;
+  view.blocks.office_repaired = standing.office_repaired;
+  view.blocks.social_objects = standing.social_objects;
+  view.blocks.units_at_level = standing.units_at_level;
+  view.blocks.population = standing.population;
+  view.population = static_cast<std::uint32_t>(world.residents.rows.size());
+  view.population_required = kPopulationRequired;
+  view.verdict = TransitionRefusal(state, standing, world.epoch);
+  return view;
+}
+
 void ConsumeTransitionOrders(const ReadinessCatalog& catalog, WorldState& current) {
   for (OrderRow& order : current.orders.rows) {
     if (order.status != OrderStatus::kPending || order.kind != OrderKind::kAdvanceEra) {

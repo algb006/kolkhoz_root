@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "core_common/ids.h"
+#include "core_common/readiness_view.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 
@@ -173,6 +174,13 @@ TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldStat
 OrderRefusal TransitionRefusal(const ReadinessState& readiness,
                                const TransitionBlocks& standing,
                                Epoch era);
+
+/// @brief «Куда я иду» (readiness_view.h; 0.37.32): the last turn's scoring
+/// with the thresholds, the weights and the years required beside it, the
+/// accumulated blocks off the turn and the standing ones off the world now,
+/// and TransitionRefusal's answer — the one an order would get.
+/// @note A pure read of `world`; between steps.
+EraReadinessView BuildEraReadinessView(const ReadinessCatalog& catalog, const WorldState& world);
 
 /// @brief Settles every pending kAdvanceEra: kDone and the next era when
 /// TransitionRefusal says kNone, kRefused with its answer otherwise. A

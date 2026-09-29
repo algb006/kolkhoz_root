@@ -1162,6 +1162,52 @@ int CheckTheIssueNormDoors() {
   return failures;
 }
 
+/// «КУДА Я ИДУ» ON THE SHIPPED WORLD (0.37.32; boss-core-early-build [1]
+/// p. 6): before the first turn nothing is scored and the order would meet
+/// kIndicesNotHeld; the thresholds, the years asked and the weights stand
+/// beside it (economic 25 + 20 + 20 + 15, social 35 + 25 + 20 + 10); with
+/// three years held, the verdict moves to the next unmet condition — it is
+/// the order's own rule, read now.
+int CheckTheEraReadinessDoor() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "era readiness: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "era readiness: the shipped set assembles") != 0) {
+    return 1;
+  }
+  int failures = 0;
+  const core::EraReadinessView start = simulation->EraReadiness();
+  float economic_weight = 0.0F;
+  float social_weight = 0.0F;
+  for (std::size_t part = 0; part < start.parts.size(); ++part) {
+    (part < 4 ? economic_weight : social_weight) += start.parts[part].weight;
+  }
+  failures +=
+      Expect(start.year_scored == 0 && start.economic_threshold == 55.0F &&
+                 start.social_threshold == 50.0F && start.years_required == 3 &&
+                 economic_weight == 80.0F && social_weight == 90.0F && start.population == 80 &&
+                 start.population_required == 380 && start.blocks.population == 0 &&
+                 start.verdict == core::OrderRefusal::kIndicesNotHeld,
+             "era readiness: nothing scored at the start, the thresholds, the weights "
+             "and the order's answer beside it");
+  core::WorldState held = simulation->CompletedState();
+  held.readiness.year = 3;
+  held.readiness.both_above_run = 3;
+  simulation->ResetWorld(held);
+  const core::EraReadinessView after = simulation->EraReadiness();
+  failures += Expect(after.year_scored == 3 && after.years_both_above == 3 &&
+                         after.verdict == core::OrderRefusal::kNoOwnTraction,
+                     "era readiness: three years held, the verdict moves to the next unmet "
+                     "condition");
+  return failures;
+}
+
 /// THE JUNCTIONS DOOR ON THE SHIPPED MAP (0.37.27; layers §15а, register
 /// 300): before the first tick the world answers every row of
 /// world_junctions.csv, each on a vertex of its own road that lies on the
@@ -2198,6 +2244,7 @@ int main() {
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();
+  failures += CheckTheEraReadinessDoor();
   failures += CheckTheIssueNormDoors();
   failures += CheckTheStartSettlesSatisfaction();
   failures += CheckRoadTracer();
