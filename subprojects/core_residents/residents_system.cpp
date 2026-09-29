@@ -260,6 +260,10 @@ class ResidentsSystem final : public IResidentsSystem {
 
   /// kFamilyGoingHungry, one per hungry family, in family row order — the
   /// session sorts by id.
+  /// STUB (0.37.22, the contract): settles nothing yet — the start world's
+  /// families keep the struct's default until the implementation, next.
+  void SettleStartMetrics(WorldState& /*current*/) const override {}
+
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     std::vector<FamilyId> hungry;
     CollectHungryFamilies(completed, hungry);

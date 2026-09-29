@@ -67,6 +67,16 @@ class IResidentsSystem {
   /// tick; the implementation itself gates daily and monthly work.
   virtual void RunDemographyDecisions(const WorldState& previous, WorldState& current) = 0;
 
+  /// @brief Settles the families' derived metrics of a world that has not
+  /// run a step — the satiety and rest components and the satisfaction, by
+  /// the metrics phase's own reckoning — so a start world reads them before
+  /// its first tick (boss-core-layers-doors-2026-09-29 [3]-[4]: the layers'
+  /// «Благополучие» in the demo read every family at the struct's default
+  /// 55 until the first day). Not the day's acts: no household plot, no
+  /// memory of the look. Called once, by the assembly, right after genesis.
+  /// @param current The start world; only family rows are written.
+  virtual void SettleStartMetrics(WorldState& current) const = 0;
+
   /// @brief Appends the people alarms standing in `completed`
   /// (core_common/alarm_state.h): kFamilyGoingHungry for every family whose
   /// satiety component is under the ration floor of the food configuration
