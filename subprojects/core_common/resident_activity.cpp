@@ -21,6 +21,7 @@
 
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 
@@ -153,7 +154,12 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   // The child and the old man are not exempted by a state of their own —
   // there is simply nothing to charge them with, which is the same answer
   // arrived at without a second question in the list.
-  if (!assigned && of_working_age && fit && Inside(hour, leaves, returns)) {
+  // AND ON A WORKING DAY: on a day of rest the accountant places nobody by
+  // rule (labor_system.cpp, IdleReason::kDayOff), and a man at home on his
+  // Sunday is not standing about — the idle count read the whole workforce
+  // at noon on every day off (static review of 0.37.20).
+  if (!assigned && of_working_age && fit && Inside(hour, leaves, returns) &&
+      !IsDayOffIn(world, world.calendar.day)) {
     set(ResidentActivity::kIdle);
   }
   if (assigned && !nothing_to_work_with && Inside(hour, starts, stops)) {

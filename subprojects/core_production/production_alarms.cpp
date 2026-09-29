@@ -103,6 +103,76 @@ Grams SeedShortfall(const ProductionConfig& config,
   return std::max<Grams>(1, std::llround(static_cast<double>(need - have) * share));
 }
 
+/// Of the field's own need, the share a shortfall must reach to light the
+/// player's lamp. STUB, core's number (boss-core-epoch1-queue-2026-09-29
+/// [35]–[36]).
+constexpr double kSeedShortLampShare = 0.05;
+
+/// The lamp's lead: a sowing whose window opens within this many days is
+/// the NEAR one — a season (three months of four days). STUB, core's number
+/// (boss-core-epoch1-queue-2026-09-29 [36]).
+constexpr std::int64_t kSeedShortLampLeadDays = static_cast<std::int64_t>(kDaysPerSeason);
+
+/// THE LAMP OF kSeedShort (Alarm::lamp; farming design, «Когда горит — с 29
+/// сентября 2026»: «только когда не покрыт БЛИЖАЙШИЙ сев, а не вся
+/// раскладка»): the field's NEXT sowing, and short by at least
+/// kSeedShortLampShare of its own need. The winter crop after the spring
+/// crop (`after`) is the layout's line, not the lamp; a shortfall of a few
+/// kilograms is the rot's arithmetic, not a loss. Measured before the lamp
+/// (0.37.18, canon KD, 27 x 3 years): the kind stood 88.7 days a run with
+/// the chairman, every one of days 0-30 — from day 13 on the barley at
+/// shortfalls from 2 kg on 7.5 ha, and the rye after oats. The start's
+/// potato, 6-7 t short of the rot to its sowing, stays a lamp: that is true,
+/// and the chairman's loan answers it.
+///
+/// AND NEAR IN TIME (farming design: «Семена под сев, до которого ещё год, —
+/// строка окна раскладки»): its sowing window opens within
+/// kSeedShortLampLeadDays. The first cut lit by the field's next sowing
+/// alone, and the next sowing of a field still growing its crop is next
+/// year's: the canon's barley in June was "short" of next spring's pea,
+/// every run, days 20-30 (lamp probe, 0.37.20's first cut).
+bool SeedShortLamp(const ProductionConfig& config,
+                   const WorldState& world,
+                   const SeedHold& hold,
+                   std::uint32_t row,
+                   bool after,
+                   Grams short_of) {
+  if (after) {
+    return false;
+  }
+  const Grams wanted = row < hold.by_field_row.size() ? hold.by_field_row[row] : 0;
+  if (wanted <= 0 ||
+      static_cast<double>(short_of) < kSeedShortLampShare * static_cast<double>(wanted)) {
+    return false;
+  }
+  const FieldRow& field = world.fields.rows[row];
+  const SimDay today = world.calendar.day;
+  const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
+                            config.crops[field.rotation_year0.value].is_winter;
+  const NextSowing next = NextSowingOf(field, today, year0_winter);
+  if (next.crop.value >= config.crops.size()) {
+    return false;
+  }
+  const CropDef& crop = config.crops[next.crop.value];
+  const std::int64_t year_start = static_cast<std::int64_t>(today / kDaysPerYear) * kDaysPerYear;
+  const std::int64_t window_in_year =
+      static_cast<std::int64_t>(crop.sow_from_month) * kDaysPerMonth;
+  // The slot names the year the crop is REAPED: a spring crop of slot k is
+  // sown in the spring of year k, a winter crop of slot k in the autumn of
+  // year k − 1. A held chain sows its first slot at the crop's next window.
+  std::int64_t opens = 0;
+  if (next.held_chain) {
+    opens = year_start + window_in_year;
+    const std::int64_t window_end =
+        year_start + (static_cast<std::int64_t>(crop.sow_to_month) + 1) * kDaysPerMonth;
+    opens += window_end <= static_cast<std::int64_t>(today) ? kDaysPerYear : 0;
+  } else {
+    const std::int64_t sown_year = static_cast<std::int64_t>(next.slot) - (crop.is_winter ? 1 : 0);
+    opens = year_start + (sown_year * kDaysPerYear) + window_in_year;
+  }
+  return opens - static_cast<std::int64_t>(today) <= kSeedShortLampLeadDays;
+}
+
 /// @brief What this field will still put into a store this season, in
 ///        grams — its claim on the shared room.
 ///
@@ -313,11 +383,6 @@ void CollectStableAlarms(const ProductionConfig& config,
   if (first == kNoRow) {
     return;  // no horses: nothing to lose, and no stable to ask for
   }
-  Alarm alarm;
-  alarm.kind = AlarmKind::kHerdWithoutStable;
-  alarm.herd = world.herds.row_ids[first];
-  alarm.amount = heads;
-  alarms.push_back(alarm);
   // OLD AGE BY THE AGE DEATH'S OWN GATE (herd_life.cpp): a lifespan band
   // exists when its top is above nought, and its bottom is where the dying
   // begins — nought included, which lights the line from the first day on a
@@ -327,7 +392,22 @@ void CollectStableAlarms(const ProductionConfig& config,
       horse_row ? config.livestock[config.horse_kind.value].life_game_years_max : 0.0F;
   const float old_age =
       horse_row ? config.livestock[config.horse_kind.value].life_game_years_min : 0.0F;
-  if (oldest != kNoRow && life_top > 0.0F && oldest_years >= old_age) {
+  const bool team_old = oldest != kNoRow && life_top > 0.0F && oldest_years >= old_age;
+  Alarm alarm;
+  alarm.kind = AlarmKind::kHerdWithoutStable;
+  alarm.herd = world.herds.row_ids[first];
+  alarm.amount = heads;
+  // THE LAMP ONCE THE LOSS HAS BEGUN (Alarm::lamp; boss-core-epoch1-queue-
+  // 2026-09-29 [24], [36]: «красное, только когда убыль реально идёт»): a
+  // team without a stable breeds nobody and ends by old age (livestock
+  // design, «Табун без конюшни кончается»), and the dying begins at the
+  // band's bottom — the gate kHerdAging lights by. Before that the start's
+  // stableless team is the start's state, a line for the window: measured
+  // (0.37.18, canon KD), the kind stood from day 0 in every run, 144 days of
+  // 144 without a chairman.
+  alarm.lamp = team_old ? 1U : 0U;
+  alarms.push_back(alarm);
+  if (team_old) {
     Alarm aging;
     aging.kind = AlarmKind::kHerdAging;
     aging.herd = world.herds.row_ids[oldest];
@@ -371,6 +451,25 @@ void CollectTeamAlarms(const ProductionConfig& config,
       }
     }
     on_hay.amount = watch.work_grain_short;
+    // THE LAMP WHEN THE OATS ARE NOT THERE (Alarm::lamp; boss-core-epoch1-
+    // queue-2026-09-29 [36]): the kind stands beside oats in the barn that
+    // are the plough's by rule (FeedAllowance, PloughFeedHold) — the farm's
+    // own rule at work, a line for the window. Red when what the stores hold
+    // of it is less than the streak lacked: then there is no oat to give, and
+    // buying or growing it is the player's move. Measured before the lamp
+    // (0.37.18, canon KD): 53.7 days a run with the chairman, 10.7 of days
+    // 0-30.
+    // AGAINST ONE DAY'S LACK, NOT THE STREAK'S (static review of 0.37.20):
+    // `work_grain_short` sums every day of the streak, so the first cut lit
+    // a long streak kept off oats held by rule once the sum passed the barn.
+    // Red when the barn holds less than a day of what the team lacked — no
+    // oat to give, whatever the rules hold.
+    const Grams days = watch.short_ration_days > 0 ? watch.short_ration_days : 1;
+    const Grams one_days_lack = watch.work_grain_short / days;
+    on_hay.lamp = on_hay.resource.value != kInvalidDefIdValue &&
+                          HeldEverywhere(world, on_hay.resource) < one_days_lack
+                      ? 1U
+                      : 0U;
     alarms.push_back(on_hay);
   }
   float harnessed = 0.0F;
@@ -414,6 +513,66 @@ void CollectStoreAlarms(const ProductionConfig& config,
     alarm.unit = world.units.row_ids[static_cast<std::size_t>(&unit - world.units.rows.data())];
     alarm.amount = capacity;
     alarms.push_back(alarm);
+  }
+}
+
+/// The share of the meadows' hectares standing unmown from which the elder
+/// speaks. STUB, core's number (boss-core-epoch1-queue-2026-09-29 [25]).
+constexpr float kMeadowUncutAdviceShare = 0.30F;
+
+void CollectMeadowAdvice(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms) {
+  // A MONTH BEFORE THE FIRST SNOW BY THE CLIMATE: the day the gather alarm
+  // counts to (the P10 of the first snow in the reaping season, a first
+  // snow's day and not a steady cover's — named to boss), less a month.
+  const float day_of_year = static_cast<float>(world.calendar.day % kDaysPerYear);
+  const float snow_day = config.farming.gather_alarm_snow_day;
+  if (day_of_year < snow_day - static_cast<float>(kDaysPerMonth) || day_of_year >= snow_day) {
+    return;
+  }
+  const SimDay year = world.calendar.day / kDaysPerYear;
+  float meadows = 0.0F;
+  float unmown = 0.0F;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kMeadow && field.kind != LandKind::kFloodplainMeadow) {
+      continue;
+    }
+    meadows += field.area_ga;
+    // Mown this calendar year: its grass is cut, and hay lying in heaps is
+    // a store (0.37.11), not grass on the root.
+    const bool mown =
+        field.last_mown_day != kNeverMownDay && field.last_mown_day / kDaysPerYear == year;
+    unmown += mown ? 0.0F : field.area_ga;
+  }
+  if (!(meadows > 0.0F) || unmown < kMeadowUncutAdviceShare * meadows) {
+    return;
+  }
+  Alarm advice;
+  advice.kind = AlarmKind::kMeadowUncutBeforeSnow;
+  advice.amount = static_cast<std::int64_t>(std::lround(unmown));
+  advice.lamp = 0;  // the elder's advice, never a lamp
+  alarms.push_back(advice);
+}
+
+void LightStoreFullLamps(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms) {
+  for (Alarm& full : alarms) {
+    if (full.kind != AlarmKind::kStoreFull) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(world.units, full.unit);
+    bool refused = false;
+    for (const Alarm& other : alarms) {
+      const bool refusal =
+          other.kind == AlarmKind::kHarvestWillNotFit || other.kind == AlarmKind::kSeedHasNoRoom;
+      refused = refused || (refusal && row != kNoRow &&
+                            IsHomeOf(world.units.rows[row], config, other.resource));
+    }
+    // Measured before the lamp (0.37.18, canon KD): a flicker inside days
+    // 0-2 of every run, with nothing to take in.
+    full.lamp = refused ? 1U : 0U;
   }
 }
 
@@ -530,6 +689,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
         alarm.field = world.fields.row_ids[row];
         alarm.resource = seed;
         alarm.amount = short_of;
+        alarm.lamp = SeedShortLamp(config, world, seed_hold, row, after, short_of) ? 1U : 0U;
         alarms.push_back(alarm);
         break;
       }

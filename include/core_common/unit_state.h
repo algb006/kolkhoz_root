@@ -193,6 +193,13 @@ struct ConstructionState {
   /// byte gates the crew, `UnitRow::paused` the crew and the delivery.
   std::uint8_t winter_works = 1;
 
+  /// DAYS IN A ROW THE SITE STOOD IN kBuilding WITH NOBODY ON IT at the
+  /// day's noon (save 115; boss-core-epoch1-queue-2026-09-29 [36]): the
+  /// memory kSiteWithoutCrew's lamp reads. A day off and a day the winter
+  /// stops the site by rule (WinterStopsSite) neither count nor reset it; a
+  /// day with a crew resets it. Emptied with the block when the works end.
+  std::uint16_t crewless_days = 0;
+
   /// THE WORKS' OWN SHARE OF A STANDING UNIT'S STOCK, dense by ResourceId:
   /// grams of `UnitRow::stock` held for the level being raised (or the
   /// spare parts of a repair) and for nothing else. A level-0 site needs no

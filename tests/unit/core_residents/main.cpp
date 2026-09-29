@@ -1775,6 +1775,60 @@ int CheckHungerAlarmHysteresis() {
   return failures;
 }
 
+/// THE HUNGER LAMP IS THE VILLAGE'S (0.37.20; boss-core-epoch1-queue-2026-
+/// 09-29 [23], [36]): eleven families of two; one at the ration's floor is
+/// 9 % of them — every hungry family stands in the list, no lamp; two are
+/// 18 % — both lit. An emptied household is not counted in the share.
+int CheckTheHungerLampIsTheVillages() {
+  int failures = 0;
+  const HousingTables tables;
+  const auto system = core::CreateResidentsSystem(tables, core::StubTables::kAllowed);
+  core::WorldState world;
+  for (int family = 0; family < 11; ++family) {
+    const core::FamilyId yard = AppendRow(world.families, core::FamilyRow{});
+    AddAdult(world, yard, core::Sex::kFemale, 30.0F);
+    AddAdult(world, yard, core::Sex::kMale, 31.0F);
+  }
+  AppendRow(world.families, core::FamilyRow{});  // emptied: nobody in it
+  const auto lamps = [&system, &world]() {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    std::pair<int, int> standing_lit{0, 0};
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kFamilyGoingHungry) {
+        ++standing_lit.first;
+        standing_lit.second += alarm.lamp;
+      }
+    }
+    return standing_lit;
+  };
+  world.families.rows[0].hunger_alarm_lit = 1;
+  failures += Expect(lamps() == std::pair{1, 0},
+                     "hunger lamp: one family of eleven hungry stands in the list, no lamp");
+  world.families.rows[1].hunger_alarm_lit = 1;
+  failures +=
+      Expect(lamps() == std::pair{2, 2}, "hunger lamp: two of eleven, above a tenth — both lit");
+  // THE EMPTY HOUSEHOLD IS NOT IN THE SHARE: ten families with people and one
+  // without, one hungry — a tenth of ten, lit; counted over eleven it would
+  // be 9 % and dark (static review of 0.37.20).
+  core::WorldState ten;
+  for (int family = 0; family < 10; ++family) {
+    const core::FamilyId yard = AppendRow(ten.families, core::FamilyRow{});
+    AddAdult(ten, yard, core::Sex::kFemale, 30.0F);
+  }
+  AppendRow(ten.families, core::FamilyRow{});
+  ten.families.rows[0].hunger_alarm_lit = 1;
+  std::vector<core::Alarm> ten_alarms;
+  system->CollectAlarms(ten, ten_alarms);
+  int ten_lit = 0;
+  for (const core::Alarm& alarm : ten_alarms) {
+    ten_lit += alarm.kind == core::AlarmKind::kFamilyGoingHungry ? alarm.lamp : 0;
+  }
+  failures += Expect(ten_lit == 1,
+                     "hunger lamp: one of ten with people, the empty household not counted — lit");
+  return failures;
+}
+
 /// A post empties with its holder, and the village is told (task A7; boss's
 /// decision of 2026-09-03: an empty post is an EVENT, not an alarm — the
 /// place may simply not be needed any more, and the trouble, when there is
@@ -3780,6 +3834,7 @@ int main() {
   failures += CheckRooflessLadder();
   failures += CheckBarrack();
   failures += CheckHungerAlarmHysteresis();
+  failures += CheckTheHungerLampIsTheVillages();
   failures += CheckMembership();
   failures += CheckNightTrades();
   failures += CheckSchooling();

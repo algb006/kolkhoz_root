@@ -1718,9 +1718,20 @@ int TestWorkforceQuestions(const core::ITableSet& tables) {
   failures += Expect(!session->CanBeOrdered(core::ResidentId{404}),
                      "a resident that does not exist takes no orders either");
 
+  // At midnight nobody is idle — he is at home (0.37.20; boss [28]–[30]);
+  // the idle count is asked at noon, in working hours.
+  failures += Expect(session->Workforce().idle == 0, "at midnight he is at home, not idle");
+  failures += Expect(!session->ActivityOf(core::ResidentId{404}).has_value(),
+                     "and the door says nothing of a resident that does not exist");
+  world.calendar.tick = 12;
+  core::RefreshCalendarCaches(world.calendar);
+  session->ReplaceWorld(world);
   const core::WorkforceCount empty_day = session->Workforce();
   failures += Expect(empty_day.employable == 1, "one of the three can be put to work");
-  failures += Expect(empty_day.idle == 1, "and today he stands idle");
+  failures += Expect(empty_day.idle == 1, "and at noon today he stands idle");
+  const std::optional<core::ResidentActivityState> grown_now = session->ActivityOf(grown_id);
+  failures += Expect(grown_now.has_value() && grown_now->activity == core::ResidentActivity::kIdle,
+                     "and the session's door calls him idle, as the count does");
 
   // The same world with the man at work: employable does not move, idle does.
   // Two numbers that moved together would be one number with two names.

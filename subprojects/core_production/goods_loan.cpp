@@ -167,15 +167,31 @@ void RepayGoodsLoans(const ProductionConfig& config, WorldState& current) {
   current.plan.goods_loan_taken.assign(current.plan.goods_loan_taken.size(), 0);
 }
 
-void CollectGoodsLoanAlarms(const WorldState& world, std::vector<Alarm>& alarms) {
+void CollectGoodsLoanAlarms(const ProductionConfig& config,
+                            const WorldState& world,
+                            std::vector<Alarm>& alarms) {
   for (std::size_t index = 0; index < world.plan.goods_loan_owed.size(); ++index) {
-    if (world.plan.goods_loan_owed[index] <= 0) {
+    const Grams owed = world.plan.goods_loan_owed[index];
+    if (owed <= 0) {
       continue;
     }
     Alarm alarm;
     alarm.kind = AlarmKind::kGoodsLoanOwed;
     alarm.resource = DefIdFromIndex<ResourceIdTag>(index);
-    alarm.amount = world.plan.goods_loan_owed[index];
+    alarm.amount = owed;
+    // THE LAMP WHEN THE DEBT HAS CROSSED A TURN (Alarm::lamp; boss-core-
+    // epoch1-queue-2026-09-29 [36]): a loan taken this year is the chairman's
+    // own decision and is repaid at the turn after the plan — a line for the
+    // window; what the turn could not pay carries on with the markup again
+    // and grows with no ceiling, the loss the kind was written for. Carried
+    // is what stands above this year's own loans with their markup (each
+    // loan books its markup when taken, TakeGoodsLoan). A kilogram's slack
+    // covers the rounding of the markup loan by loan. Measured before the
+    // lamp (0.37.18, canon KD): 121.6 days a run with the chairman, 22.0 of
+    // days 0-30.
+    const Grams taken = AmountOf(world.plan.goods_loan_taken, alarm.resource);
+    const Grams this_years = WithMarkup(config, taken);
+    alarm.lamp = owed > this_years + kGramsPerKilogram ? 1U : 0U;
     alarms.push_back(alarm);
   }
 }

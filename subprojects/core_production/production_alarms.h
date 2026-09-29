@@ -44,6 +44,28 @@ void CollectStoreAlarms(const ProductionConfig& config,
                         const WorldState& world,
                         std::vector<Alarm>& alarms);
 
+/// @brief kMeadowUncutBeforeSnow (alarm_state.h; boss-core-epoch1-queue-
+/// 2026-09-29 [25]): the elder's advice, lamp 0, while the farm's meadows
+/// have at least kMeadowUncutAdviceShare of their hectares not mown this
+/// calendar year in the month before the first snow's day
+/// (farming.gather_alarm_snow_day). `amount` = the unmown hectares, whole.
+/// @param alarms Appended to; never cleared.
+void CollectMeadowAdvice(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms);
+
+/// @brief Sets the lamp of every kStoreFull in `alarms` from the ones beside
+/// it (Alarm::lamp; boss-core-epoch1-queue-2026-09-29 [24], [36]: «красное,
+/// когда полнота срывает приём урожая или сева, а не просто „полон“»): lit
+/// when a harvest will not fit (kHarvestWillNotFit) or a seed has no room
+/// (kSeedHasNoRoom) for a resource this store is a home of (IsHomeOf); a full
+/// store nothing is refused at is a line. Called after every production
+/// predicate has appended, so the refusals are in the list.
+/// @param alarms The whole list; only kStoreFull's lamps are written.
+void LightStoreFullLamps(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::vector<Alarm>& alarms);
+
 /// @brief Appends the field alarms standing in `world`: no room for the
 /// harvest ahead, and no seed for the sowing just assigned.
 /// @param alarms Appended to; never cleared.

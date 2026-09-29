@@ -211,10 +211,13 @@ struct WorkforceCount {
   /// to leave from. A post holder counts here — he is employed, not idle.
   std::uint32_t employable = 0;
 
-  /// Of those, the ones with no work assigned right now. Read it after a
-  /// day's first tick and it is the morning's leftovers; read it at night
-  /// and the day has been cleared, so it is everybody. The number means
-  /// "standing about AT THIS MOMENT", which is what a HUD shows.
+  /// Of those, the ones IDLE right now in the activity's sense
+  /// (resident_activity.h, ResidentActivity::kIdle): no order, of working
+  /// age and fit, IN WORKING HOURS. At night and on a day's rest nobody is
+  /// idle — he is at home. Until 0.37.20 it was "no work assigned at this
+  /// moment", and at midnight, the day cleared, that was everybody: the
+  /// office read «Работают 0 · Без дела 50» at 00:00 (ue; boss-core-epoch1-
+  /// queue-2026-09-29 [28]–[30]).
   std::uint32_t idle = 0;
 };
 

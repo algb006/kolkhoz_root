@@ -589,8 +589,13 @@ struct Alarm {
   /// loan by kSeedShort's amounts (tests/run/common/limit_policy.h), host's
   /// probes and the core's own guards read the kinds — and a condition
   /// silenced to dim a lamp would have moved them (core [35]: two doors to
-  /// one action). Each kind's rule is at its kind; a kind that names none
-  /// keeps the default, 1.
+  /// one action). Each kind's rule is where its predicate raises it (0.37.20:
+  /// kSeedShort, kHerdWithoutStable, kTeamOnHay, kStoreFull, kGoodsLoanOwed —
+  /// core_production; kFamilyGoingHungry — core_residents; kSiteWithoutCrew —
+  /// core_construction; kMeadowUncutBeforeSnow always 0); a kind that names
+  /// none keeps the default, 1 — kTooFewHorses among them, by rule: a team
+  /// short for the work is a loss the player has a move against.
+  /// @note Not in the save: the list is collected afresh every step.
   std::uint8_t lamp = 1;
 };
 

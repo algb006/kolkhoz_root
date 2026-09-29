@@ -56,6 +56,27 @@
 namespace core {
 namespace {
 
+/// Of the families with anybody in them, the share at the ration's floor from
+/// which kFamilyGoingHungry lights the player's lamp. STUB, core's number,
+/// measured by the lamp-days instrument (boss-core-epoch1-queue-2026-09-29
+/// [23], [36]): see ResidentsSystem::CollectAlarms.
+constexpr float kHungerLampShare = 0.10F;
+
+/// Families with at least one resident — an emptied household is not a
+/// family the lamp's share is counted over.
+std::uint32_t FamiliesWithMembers(const WorldState& world) {
+  std::vector<bool> lived(world.families.rows.size(), false);
+  std::uint32_t count = 0;
+  for (const ResidentRow& resident : world.residents.rows) {
+    const std::uint32_t row = FindRow(world.families, resident.family);
+    if (row != kNoRow && !lived[row]) {
+      lived[row] = true;
+      ++count;
+    }
+  }
+  return count;
+}
+
 class FamilyNeedsPhase final : public IParallelPhase {
  public:
   FamilyNeedsPhase(const FoodConfig& food, float life_speedup)
@@ -242,10 +263,24 @@ class ResidentsSystem final : public IResidentsSystem {
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     std::vector<FamilyId> hungry;
     CollectHungryFamilies(completed, hungry);
+    // THE VILLAGE'S LAMP, NOT EACH FAMILY'S (Alarm::lamp; boss-core-epoch1-
+    // queue-2026-09-29 [23], [36]: «только когда голод шире порога»): every
+    // family at the ration's floor stays in the list — the food light, the
+    // ration and host read it — and the red lights when the hungry are at
+    // least kHungerLampShare of the families with anybody in them. Measured
+    // before the lamp (0.37.18, canon KD, 27 x 3 years): with any family
+    // hungry, the canon lit 43.7 days a run and the world with no chairman
+    // 59.6 — 1.36 times, «не различает»; at a tenth of the families, 15.3
+    // against 44.7 — 2.9 times.
+    const bool village_hungry =
+        !hungry.empty() &&
+        static_cast<float>(hungry.size()) >=
+            kHungerLampShare * static_cast<float>(FamiliesWithMembers(completed));
     for (const FamilyId family : hungry) {
       Alarm alarm;
       alarm.kind = AlarmKind::kFamilyGoingHungry;
       alarm.family = family;
+      alarm.lamp = village_hungry ? 1U : 0U;
       alarms.push_back(alarm);
     }
     // FOOD LOCKED IN THE FUNDS (I6): only while somebody is at the threshold
@@ -258,6 +293,10 @@ class ResidentsSystem final : public IResidentsSystem {
       alarm.kind = AlarmKind::kReserveFullNothingToEat;
       alarm.resource = resource;
       alarm.amount = grams;
+      // Its lamp is the hunger's (static review of 0.37.20): it stands
+      // beside any hungry family, and one family of twenty left the hunger
+      // dark and this red.
+      alarm.lamp = village_hungry ? 1U : 0U;
       alarms.push_back(alarm);
     }
   }

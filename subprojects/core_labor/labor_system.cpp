@@ -122,9 +122,39 @@ bool HomePosition(const WorldState& world, FamilyId family, Vec2& home) {
   return HomePositionOf(world, family, home);
 }
 
+/// THE ACTIVITY'S THRESHOLDS FROM THE OWNER OF MOST OF THEM (resident_
+/// activity.h, ActivityRules: «the caller fills this from the configs that
+/// own the numbers»): the working age, the walk-off rest, the road rates,
+/// the speed of life, sleep, the posts' shifts — labour's. The runs filled
+/// their own copies (activity_census, idle_curve: the road rates, the speed
+/// of life, the shifts). NOT labour's and left at ActivityRules' defaults,
+/// as in every run: the top of the working age (70), the health lines of
+/// fitness and treatment (20, 10 — core_residents'), the school band (the
+/// plot table's), the meal hour.
+ActivityRules ActivityRulesOfConfig(const LaborConfig& config) {
+  ActivityRules rules;
+  rules.work_from_bio_years = config.adult_age_years;
+  rules.life_speedup = config.life_speedup;
+  rules.walkoff_rest = config.rest_walkoff_threshold;
+  rules.sleep_hours = config.sleep_hours;
+  // Real km/h against game hours: the clock runs faster (the runs' rate).
+  if (config.walk_speed_kmh > 0.0F) {
+    rules.walk_hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
+  }
+  if (config.harness_speed_kmh > 0.0F) {
+    rules.harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  }
+  rules.post_shift.reserve(config.professions.size());
+  for (const ProfessionDef& profession : config.professions) {
+    rules.post_shift.push_back(profession.shift);
+  }
+  return rules;
+}
+
 class LaborSystem final : public ILaborSystem {
  public:
-  explicit LaborSystem(LaborConfig config) : config_(std::move(config)) {}
+  explicit LaborSystem(LaborConfig config)
+      : config_(std::move(config)), activity_rules_(ActivityRulesOfConfig(config_)) {}
 
   void RunAssignmentDecisions(const WorldState& /*previous*/, WorldState& current) override {
     const std::uint32_t hour = HourFromTick(current.calendar.tick);
@@ -166,22 +196,37 @@ class LaborSystem final : public ILaborSystem {
 
   WorkforceCount CountWorkforce(const WorldState& state) const override {
     WorkforceCount count;
-    for (const ResidentRow& resident : state.residents.rows) {
+    for (std::uint32_t row = 0; row < state.residents.rows.size(); ++row) {
+      const ResidentRow& resident = state.residents.rows[row];
       if (!Employable(state, resident)) {
         continue;
       }
       ++count.employable;
-      count.idle += resident.work.kind == WorkKind::kNone ? 1U : 0U;
+      // IDLE IS kIdle — no order, of working age and fit, IN WORKING HOURS
+      // (boss-core-epoch1-queue-2026-09-29 [28]–[30]): the count read "no
+      // order at this moment", so at midnight, the day's assignments
+      // cleared, it was the whole workforce — «Работают 0 · Без дела 50» in
+      // the office at 00:00 (ue). One answer with the office's list, which
+      // filters by ActivityOf. A man with an order is never kIdle: asked
+      // only of the unordered, so the road to a workplace is not priced for a
+      // count the layer asks every frame (static review of 0.37.20).
+      if (resident.work.kind != WorkKind::kNone) {
+        continue;
+      }
+      count.idle +=
+          ActivityOfResident(state, row, activity_rules_).activity == ResidentActivity::kIdle ? 1U
+                                                                                              : 0U;
     }
     return count;
   }
 
-  /// STUB (0.37.19, the contract): no answer — not "idle" — until the
-  /// thresholds are filled from this subsystem's config (the implementation,
-  /// next).
-  std::optional<ResidentActivityState> ActivityOf(const WorldState& /*state*/,
-                                                  ResidentId /*resident*/) const override {
-    return std::nullopt;
+  std::optional<ResidentActivityState> ActivityOf(const WorldState& state,
+                                                  ResidentId resident) const override {
+    const std::uint32_t row = FindRow(state.residents, resident);
+    if (row == kNoRow) {
+      return std::nullopt;
+    }
+    return ActivityOfResident(state, row, activity_rules_);
   }
 
   std::vector<WorkbookLine> OfficeWorkbook(const WorldState& state) const override {
@@ -1821,6 +1866,9 @@ class LaborSystem final : public ILaborSystem {
   // are still alive. One writer, one place of truth.
 
   LaborConfig config_;
+
+  /// The activity's thresholds, filled once from config_ (ActivityRulesOfConfig).
+  ActivityRules activity_rules_;
 };
 
 }  // namespace

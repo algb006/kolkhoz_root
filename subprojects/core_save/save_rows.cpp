@@ -198,7 +198,9 @@ static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
 // 2026-09-19, save 65: the avral's step, a byte beside the phase — 16 + amounts
 // stays (measured), 7 fields. Save 80: winter_works, a byte after max_crew —
 // predicted into the padding before `reserved`, 16 + amounts and 8 fields.
-static_assert(AggregateArity<ConstructionState>() == 8,
+// Save 115: crewless_days, a u16 after winter_works — predicted into the same
+// padding (offset 14), 16 + amounts and 9 fields, before the build.
+static_assert(AggregateArity<ConstructionState>() == 9,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields.
 static_assert(AggregateArity<UnitRow>() == 18,
@@ -985,8 +987,9 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteFloat(row.construction.labor_days_total);
   out.WriteFloat(row.construction.labor_days_remaining);
   out.WriteU8(row.construction.max_crew);
-  out.WriteU8(row.construction.rush_step);     // save 65: the avral on the step
-  out.WriteU8(row.construction.winter_works);  // save 80: the site's winter class
+  out.WriteU8(row.construction.rush_step);       // save 65: the avral on the step
+  out.WriteU8(row.construction.winter_works);    // save 80: the site's winter class
+  out.WriteU16(row.construction.crewless_days);  // save 115: days in a row with nobody on it
   // What the works hold back of a standing unit's stock (2026-09-14,
   // VERSION_SAVE 37): the upgrade's carried-in recipe, which the stock
   // alone cannot tell from the store's own goods.
@@ -1038,6 +1041,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   // the open UB-002's shape, and this one decides whether a crew is sent.
   row.construction.winter_works =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site's winter class"));
+  row.construction.crewless_days = in.ReadU16();  // save 115
   row.construction.reserved = source.ReadAmounts(DefKind::kResource);
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();

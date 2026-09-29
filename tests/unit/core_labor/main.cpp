@@ -26,6 +26,7 @@
 #include "../../common/fake_tables.h"
 #include "assignment.h"
 #include "core_common/alarm_state.h"
+#include "core_common/day_off.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -2408,10 +2409,48 @@ int TestWorkforceIsTheLaborRule() {
   day.world.residents.rows[1].birth_day = -10;            // an infant
   day.world.residents.rows[2].family = core::FamilyId{};  // nobody's household
 
-  const core::WorkforceCount before = labor->CountWorkforce(day.world);
-  failures += Expect(before.employable == 1,
+  // IDLE IS kIdle, IN WORKING HOURS (0.37.20; boss [28]–[30]): at midnight,
+  // nothing placed, he is at home — the count read "no order" and called the
+  // whole village idle at 00:00; at noon with no order he stands about.
+  const core::WorkforceCount midnight = labor->CountWorkforce(day.world);
+  failures += Expect(midnight.employable == 1,
                      "the count is the labor rule: an adult with a home, and nobody else");
-  failures += Expect(before.idle == 1, "and before the day is placed he is standing about");
+  failures += Expect(midnight.idle == 0, "at midnight, no order, he is at home and not idle");
+  core::WorldState noon = day.world;
+  noon.calendar.tick = 12;
+  core::RefreshCalendarCaches(noon.calendar);
+  const core::WorkforceCount before = labor->CountWorkforce(noon);
+  failures += Expect(before.idle == 1, "and at noon, no order, he is standing about");
+  const std::optional<core::ResidentActivityState> at_noon =
+      labor->ActivityOf(noon, noon.residents.row_ids[0]);
+  const std::optional<core::ResidentActivityState> at_midnight =
+      labor->ActivityOf(day.world, day.world.residents.row_ids[0]);
+  failures +=
+      Expect(at_noon.has_value() && at_noon->activity == core::ResidentActivity::kIdle &&
+                 at_midnight.has_value() && at_midnight->activity != core::ResidentActivity::kIdle,
+             "the door says the same: idle at noon, not at midnight");
+  failures += Expect(!labor->ActivityOf(noon, core::ResidentId{999}).has_value(),
+                     "and for a man who does not exist it says nothing — not idle");
+  // AND ON A DAY OFF NOBODY IS IDLE (static review of 0.37.20): the
+  // accountant places nobody by rule, and a man at home on his Sunday is not
+  // standing about. The first working day after it is the control.
+  core::WorldState rest = noon;
+  core::SimDay day_off = 0;
+  while (!core::IsDayOffIn(rest, day_off)) {
+    ++day_off;
+  }
+  rest.calendar.tick = (static_cast<core::Tick>(day_off) * core::kTicksPerDay) + 12;
+  core::RefreshCalendarCaches(rest.calendar);
+  core::WorldState next_working = rest;
+  core::SimDay work_day = day_off + 1;
+  while (core::IsDayOffIn(next_working, work_day)) {
+    ++work_day;
+  }
+  next_working.calendar.tick = (static_cast<core::Tick>(work_day) * core::kTicksPerDay) + 12;
+  core::RefreshCalendarCaches(next_working.calendar);
+  failures +=
+      Expect(labor->CountWorkforce(rest).idle == 0 && labor->CountWorkforce(next_working).idle == 1,
+             "at noon on a day off, no order, he is not idle; on the next working day he is");
   failures += Expect(labor->CanBeOrdered(day.world, day.world.residents.row_ids[0]),
                      "the man himself answers yes");
   failures += Expect(!labor->CanBeOrdered(day.world, day.world.residents.row_ids[1]),

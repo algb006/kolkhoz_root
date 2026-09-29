@@ -479,7 +479,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectFieldAlarms(config_, completed, alarms);
     CollectSeedRoomAlarms(config_, completed, alarms);
     CollectMilkDebtAlarms(config_, completed, alarms);
-    CollectGoodsLoanAlarms(completed, alarms);
+    CollectGoodsLoanAlarms(config_, completed, alarms);
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);
@@ -488,6 +488,9 @@ class ProductionSystem final : public IProductionSystem {
     CollectTimberAlarms(config_, completed, alarms);
     CollectProcessingAlarms(config_, completed, alarms);
     CollectDemolitionAlarms(completed, alarms);
+    CollectMeadowAdvice(config_, completed, alarms);
+    // Last: a full store's lamp reads the refusals appended above.
+    LightStoreFullLamps(config_, completed, alarms);
   }
 
  private:

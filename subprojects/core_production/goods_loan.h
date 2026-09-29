@@ -69,8 +69,12 @@ OrderRefusal TakeGoodsLoan(const ProductionConfig& config,
 void RepayGoodsLoans(const ProductionConfig& config, WorldState& current);
 
 /// @brief kGoodsLoanOwed for every resource PlanState::goods_loan_owed holds
-///        above nought. A pure read.
-void CollectGoodsLoanAlarms(const WorldState& world, std::vector<Alarm>& alarms);
+///        above nought. A pure read. Its lamp (Alarm::lamp): a debt that has
+///        crossed a turn unpaid — it grows by the markup (the design's «долг
+///        накапливается и душит») — and not this year's own loan.
+void CollectGoodsLoanAlarms(const ProductionConfig& config,
+                            const WorldState& world,
+                            std::vector<Alarm>& alarms);
 
 }  // namespace core
 

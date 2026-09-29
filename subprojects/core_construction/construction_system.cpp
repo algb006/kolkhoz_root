@@ -23,6 +23,7 @@
 
 #include "construction_config.h"
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/ids.h"
@@ -74,6 +75,12 @@ void Emit(WorldState& current, EventKind kind, EventSeverity severity, UnitId un
 ///
 /// The assignment is the fact, and the order that made it is not: an order
 /// given a year ago says nothing about who is on the site this morning.
+/// Days in a row a site stands crewless at noon before its kSiteWithoutCrew
+/// lights the player's lamp (Alarm::lamp). STUB, core's number (boss-core-
+/// epoch1-queue-2026-09-29 [36]): three months of four days — longer than
+/// the spring's field work, which takes the hands by the accountant's rule.
+constexpr std::uint16_t kSiteCrewlessLampDays = 12;
+
 std::uint32_t CrewOnSite(const WorldState& completed, UnitId site) {
   std::uint32_t crew = 0;
   for (const ResidentRow& resident : completed.residents.rows) {
@@ -191,6 +198,17 @@ class ConstructionSystem final : public IConstructionSystem {
         alarm.kind = AlarmKind::kSiteWithoutCrew;
         alarm.unit = completed.units.row_ids[row];
         alarm.amount = static_cast<std::int64_t>(site.construction.labor_days_remaining);
+        // THE LAMP WHEN THE SITE HAS STOOD, NOT WHEN IT WAITS A DAY
+        // (Alarm::lamp; boss-core-epoch1-queue-2026-09-29 [36]): the
+        // accountant sends a site the hands left over after the work with a
+        // window, so in the spring and at the harvest a site waits by the
+        // farm's rule — a line for the window. Red once it has stood
+        // kSiteCrewlessLampDays noons in a row: the four hundred days this
+        // kind was written for. Measured before the lamp (0.37.18, canon KD):
+        // 113.9 days a run with the chairman, 16.1 of days 0-30.
+        // Paused by the chairman: his move, never the lamp.
+        alarm.lamp =
+            site.paused == 0 && site.construction.crewless_days >= kSiteCrewlessLampDays ? 1U : 0U;
         alarms.push_back(alarm);
       }
       // OUT OF REACH: twice the road from the nearest house does not fit in
@@ -265,10 +283,43 @@ class ConstructionSystem final : public IConstructionSystem {
       // or leave the network (7e; road_laying.h).
       SettleRoadWorks(current);
     }
+    if (HourFromTick(current.calendar.tick) == kCrewCountHour) {
+      CountCrewlessDays(current);
+    }
     FinishSites(current);
   }
 
  private:
+  /// The hour a site's crew is counted for its crewless days: noon, when the
+  /// day's placement stands (the assignments are wiped at the day's close).
+  static constexpr std::uint32_t kCrewCountHour = 12;
+
+  /// ConstructionState::crewless_days (save 115): +1 a noon a site in
+  /// kBuilding has nobody on it, 0 a noon it has anybody; a day off and a
+  /// day the winter stops it by rule neither count nor reset — nobody is
+  /// sent on either, and neither is the site standing unasked.
+  void CountCrewlessDays(WorldState& current) const {
+    if (IsDayOffIn(current, current.calendar.day)) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      ConstructionState& site = current.units.rows[row].construction;
+      // THE CHAIRMAN'S PAUSE IS HIS OWN MOVE (static review of 0.37.20): the
+      // accountant sends nobody to a paused site (labor_system.cpp), and the
+      // site's standing is his decision — neither counted nor reset, as the
+      // winter's stop.
+      if (site.phase != ConstructionPhase::kBuilding || current.units.rows[row].paused != 0 ||
+          WinterStopsSite(current.calendar.season, site.winter_works)) {
+        continue;
+      }
+      if (CrewOnSite(current, current.units.row_ids[row]) > 0) {
+        site.crewless_days = 0;
+      } else if (site.crewless_days < std::numeric_limits<std::uint16_t>::max()) {
+        ++site.crewless_days;
+      }
+    }
+  }
+
   // -- orders ---------------------------------------------------------------
 
   /// @brief Wear of a day (task A5, manual/73-wear-and-repair.md §2).

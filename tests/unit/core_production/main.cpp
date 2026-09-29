@@ -995,6 +995,25 @@ int CheckTheTeamOnHayAndTooFewHorses() {
       Expect(on_hay.has_value() && on_hay->amount == 3 * kKilo && on_hay->resource.value == 1 &&
                  on_hay->herd.value == world.herds.row_ids[0].value,
              "on hay: lit on the third working day, 3 kg of oats short, the team's row");
+  // THE LAMP WHEN THE OATS ARE NOT THERE (0.37.20; boss [36]): no oat in the
+  // barn — red; the same streak beside 100 kg in the barn (held, say, for the
+  // plough by rule) stands with no lamp.
+  failures += Expect(on_hay.has_value() && on_hay->lamp == 1,
+                     "on hay, the lamp: no oats in the barn — lit");
+  core::WorldState oats_in_barn = world;
+  oats_in_barn.units.rows[0].stock[1] = 100 * kKilo;
+  const std::optional<core::Alarm> held = lit(oats_in_barn, core::AlarmKind::kTeamOnHay);
+  failures += Expect(held.has_value() && held->lamp == 0,
+                     "on hay, the lamp: the streak beside oats in the barn stands unlit");
+  // AGAINST A DAY'S LACK, NOT THE STREAK'S SUM (static review of 0.37.20):
+  // 2 kg in the barn — more than a day's 1 kg, less than the streak's 3 kg —
+  // is oat there to give: unlit.
+  core::WorldState some_oats = world;
+  some_oats.units.rows[0].stock[1] = 2 * kKilo;
+  const std::optional<core::Alarm> day_covered = lit(some_oats, core::AlarmKind::kTeamOnHay);
+  failures += Expect(day_covered.has_value() && day_covered->lamp == 0,
+                     "on hay, the lamp: a day's lack in the barn, less than the streak's sum — "
+                     "unlit");
   world.units.rows[0].stock[1] = 100 * kKilo;
   day(5);
   failures +=
@@ -2247,6 +2266,28 @@ int CheckStoreCeilingAndAlarms() {
     }
     failures += Expect(full_alarm && said_capacity == 1000 * core::kGramsPerKilogram,
                        "and a store filled to its ceiling says so, with the ceiling in the alarm");
+    // THE LAMP WHEN THE FULLNESS REFUSES (0.37.20; boss [24], [36]): beside
+    // the 10 t lying that will not fit, the full barn is red; with nothing
+    // lying to take in, it stands with no lamp.
+    const auto full_lamp = [&](const core::WorldState& state) {
+      std::vector<core::Alarm> alarms;
+      system->CollectAlarms(state, alarms);
+      bool refused = false;
+      int lamp = -1;
+      for (const core::Alarm& alarm : alarms) {
+        refused = refused || alarm.kind == core::AlarmKind::kHarvestWillNotFit;
+        lamp = alarm.kind == core::AlarmKind::kStoreFull ? static_cast<int>(alarm.lamp) : lamp;
+      }
+      return std::pair{refused, lamp};
+    };
+    failures += Expect(full_lamp(full) == std::pair{true, 1},
+                       "a full store beside a harvest that will not fit is red");
+    core::WorldState nothing_lying = full;
+    for (core::FieldRow& lying : nothing_lying.fields.rows) {
+      lying.reaped_grams = 0;
+    }
+    failures += Expect(full_lamp(nothing_lying) == std::pair{false, 0},
+                       "and full with nothing refused, it stands with no lamp");
   }
 
   // ROOM ALONE NO LONGER EMPTIES THE FIELD. Until task A4 a daily retry
@@ -2856,6 +2897,19 @@ int CheckSeedHeldFieldByField() {
   failures += Expect(seed_short_of(1) == 1 && seed_short_of(0) == 0,
                      "seed held, the alarm: the autumn rye's seed short on its field, the "
                      "covered potato silent");
+  // THE LAMP (0.37.20; farming design, «только когда не покрыт БЛИЖАЙШИЙ
+  // сев»): the rye after the potato is the field's second sowing — a line of
+  // the layout, no lamp; the condition stands all the same.
+  const auto lamp_of = [&after_alarms](std::uint16_t resource) {
+    for (const core::Alarm& alarm : after_alarms) {
+      if (alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == resource) {
+        return static_cast<int>(alarm.lamp);
+      }
+    }
+    return -1;
+  };
+  failures +=
+      Expect(lamp_of(1) == 0, "seed short, the lamp: the rye after the potato stands with no lamp");
   // Short of both: ONE alarm on the field, the nearer sowing's (a kind and a
   // subject are one alarm, alarm_state.h).
   spring_then_rye.units.rows[0].stock[0] = 0;
@@ -2864,6 +2918,54 @@ int CheckSeedHeldFieldByField() {
   failures += Expect(seed_short_of(0) == 1 && seed_short_of(1) == 0,
                      "seed held, the alarm: short of both, one alarm on the field — the "
                      "spring potato's");
+  failures += Expect(lamp_of(0) == 1,
+                     "seed short, the lamp: the potato, the next sowing, "
+                     "short of it all, lights it");
+  // And a shortfall of 2 % of the potato's own need is the rot's arithmetic,
+  // not a loss (kSeedShortLampShare, 5 %); 10 % lights it. The need with its
+  // rot is read off the alarm at an empty store (the whole of it short).
+  core::Grams need_with_rot = 0;
+  for (const core::Alarm& alarm : after_alarms) {
+    need_with_rot = alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0
+                        ? alarm.amount
+                        : need_with_rot;
+  }
+  for (const auto& [percent, lit] : {std::pair{2, 0}, std::pair{10, 1}}) {
+    spring_then_rye.units.rows[0].stock[0] =
+        need_with_rot - (25 * kTonne * static_cast<core::Grams>(percent) / 100);
+    after_alarms.clear();
+    core::CollectFieldAlarms(config, spring_then_rye, after_alarms);
+    failures += Expect(seed_short_of(0) == 1 && lamp_of(0) == lit,
+                       lit != 0 ? "seed short, the lamp: 10 % of the need short lights it"
+                                : "seed short, the lamp: 2 % of the need short stands unlit");
+  }
+  // AND NEAR IN TIME (the design: «Семена под сев, до которого ещё год, —
+  // строка окна раскладки»): the same 10 % short, the potato's window moved
+  // to month 5 (day 20) — on day 0 it opens in 20 days, beyond a season: no
+  // lamp; on day 8, in 12: lit.
+  {
+    core::ProductionConfig later = config;
+    later.crops[0].sow_from_month = 5;
+    later.crops[0].sow_to_month = 6;
+    core::WorldState away = spring_then_rye;  // 10 % of the need short, from the loop above
+    const auto potato_lamp = [&](core::SimDay day) {
+      away.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(away.calendar);
+      std::vector<core::Alarm> alarms;
+      core::CollectFieldAlarms(later, away, alarms);
+      int found = -1;
+      for (const core::Alarm& alarm : alarms) {
+        found = alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0
+                    ? static_cast<int>(alarm.lamp)
+                    : found;
+      }
+      return found;
+    };
+    failures += Expect(potato_lamp(0) == 0,
+                       "seed short, the lamp: a sowing 20 days away stands unlit — the layout's");
+    failures += Expect(potato_lamp(8) == 1, "seed short, the lamp: 12 days away, a season: lit");
+  }
+  spring_then_rye.units.rows[0].stock[0] = 0;
   // AT THE TURN (static review of 0.37.13): as of the closing year's last
   // day the layout is still the old one — the potato reaped this year in
   // slot 0, next year's potato in slot 1, that autumn's rye in slot 2. The
@@ -5009,10 +5111,25 @@ int CheckTheTeamWithoutARoofSaysSo() {
   world.herds.rows[3].adult_age_max_game_years = 4.0F;
   failures += Expect(aging(world).first == -1,
                      "a team whose oldest head is short of old age is not said to age");
+  // THE LAMP ONCE THE LOSS BEGINS (0.37.20; boss [24], [36]): the stableless
+  // team stands in the list either way; red only from old age on.
+  const auto stable_lamp = [&](const core::WorldState& state) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(state, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHerdWithoutStable) {
+        return static_cast<int>(alarm.lamp);
+      }
+    }
+    return -1;
+  };
+  failures +=
+      Expect(stable_lamp(world) == 0, "the stableless team short of old age stands with no lamp");
   world.herds.rows[3].adult_age_max_game_years = 6.0F;
   failures += Expect(
       aging(world) == std::pair<std::int64_t, std::uint32_t>{9, world.herds.row_ids[3].value},
       "the first head at old age lights one line, on its row, with the team's heads");
+  failures += Expect(stable_lamp(world) == 1, "and from old age on the lamp is lit");
   world.herds.rows[2].adult_age_max_game_years = 6.0F;
   failures +=
       Expect(aging(world).second == first.value, "two rows as old: the first of them in row order");
@@ -7253,6 +7370,54 @@ int CheckTheFarmRulesZyab() {
   } else {
     failures += Expect(false, "zyab: the shipped tables parse for the ration check");
   }
+  return failures;
+}
+
+/// THE ELDER'S ADVICE ON GRASS STANDING UNMOWN (0.37.20; boss-core-epoch1-
+/// queue-2026-09-29 [25]), the default config (the first snow's day 40):
+///   * two meadows of 20 ha, one mown this year and one not, on day 37 of
+///     year 2 — half the grass standing, the month before the snow: the
+///     advice, 20 ha, lamp 0;
+///   * the same on day 30 — before the month: none; on day 40 — the snow's
+///     day: none;
+///   * a quarter standing (one of four meadows): under the 30 %: none;
+///   * a meadow mown LAST year counts as standing this year.
+int CheckTheElderSpeaksOfGrassBeforeTheSnow() {
+  int failures = 0;
+  const core::ProductionConfig config;
+  const core::SimDay year2 = core::kDaysPerYear;
+  const auto world_on = [&](core::SimDay day_of_year, std::uint32_t meadows, std::uint32_t mown) {
+    core::WorldState world;
+    world.calendar.tick = (year2 + day_of_year) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    for (std::uint32_t i = 0; i < meadows; ++i) {
+      core::FieldRow meadow;
+      meadow.kind = core::LandKind::kMeadow;
+      meadow.area_ga = 20.0F;
+      meadow.last_mown_day = i < mown ? year2 + 20 : core::kNeverMownDay;
+      core::AppendRow(world.fields, meadow);
+    }
+    return world;
+  };
+  const auto advice = [&](const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    core::CollectMeadowAdvice(config, world, alarms);
+    return alarms;
+  };
+  const std::vector<core::Alarm> half = advice(world_on(37, 2, 1));
+  failures += Expect(half.size() == 1 && half[0].kind == core::AlarmKind::kMeadowUncutBeforeSnow &&
+                         half[0].amount == 20 && half[0].lamp == 0,
+                     "meadow advice: half the grass standing the month before the snow — the "
+                     "elder speaks, 20 ha, no lamp");
+  failures += Expect(advice(world_on(30, 2, 1)).empty() && advice(world_on(40, 2, 1)).empty(),
+                     "meadow advice: not before the month, and not from the snow's day");
+  failures += Expect(advice(world_on(37, 4, 3)).empty(),
+                     "meadow advice: a quarter standing is under the 30 % — silent");
+  core::WorldState last_year = world_on(37, 2, 2);
+  last_year.fields.rows[1].last_mown_day = 20;  // mown in year 1, not this year
+  const std::vector<core::Alarm> stale = advice(last_year);
+  failures += Expect(stale.size() == 1 && stale[0].amount == 20,
+                     "meadow advice: a meadow mown last year stands this year");
   return failures;
 }
 
@@ -11091,10 +11256,10 @@ int CheckTheGoodsLoan() {
       Expect(core::AmountOf(capped.plan.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne,
              "loan: an amount above the ceiling is lent up to the ceiling");
   std::vector<core::Alarm> alarms;
-  core::CollectGoodsLoanAlarms(world, alarms);
+  core::CollectGoodsLoanAlarms(config, world, alarms);
   failures += Expect(alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kGoodsLoanOwed &&
-                         alarms[0].amount == 12 * kTonne,
-                     "loan: the alarm stands with the 12 t owed");
+                         alarms[0].amount == 12 * kTonne && alarms[0].lamp == 0,
+                     "loan: the alarm stands with the 12 t owed — this year's own loan, no lamp");
 
   // -- repaying at the turn: above the seed only, the rest with the markup ---
   // 30 t in the barn, 10 t held for the sowing: 20 t may go, the 12 t owed
@@ -11110,7 +11275,7 @@ int CheckTheGoodsLoan() {
                          core::AmountOf(rich.plan.goods_loan_taken, core::ResourceId{0}) == 0,
                      "repay: 12 t paid from above the seed, nothing owed, the year's mark cleared");
   alarms.clear();
-  core::CollectGoodsLoanAlarms(rich, alarms);
+  core::CollectGoodsLoanAlarms(config, rich, alarms);
   failures += Expect(alarms.empty(), "repay: paid off, no alarm");
   // 15 t in the barn, 10 t held: 5 t go, 7 t left, owed 7 x 1.2 = 8.4 t.
   core::WorldState poor = make_world(15 * kTonne);
@@ -11119,6 +11284,20 @@ int CheckTheGoodsLoan() {
   failures += Expect(core::AmountOf(poor.plan.goods_loan_owed, core::ResourceId{0}) == 8'400'000 &&
                          poor.units.rows[0].stock[0] == 10 * kTonne,
                      "repay: 5 t paid, the seed's 10 t stay, the 7 t left owe 8.4 t");
+  // THE LAMP ONCE THE DEBT HAS CROSSED THE TURN (0.37.20): the 8.4 t carried
+  // with the markup again and nothing borrowed this year is the growing debt.
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(config, poor, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].amount == 8'400'000 && alarms[0].lamp == 1,
+                     "repay: the debt carried over the turn lights the lamp");
+  // A new loan this year beside the carried debt keeps it lit: the carried
+  // part stands above this year's loan with its markup (static review).
+  poor.plan.goods_loan_taken = {1 * kTonne};
+  poor.plan.goods_loan_owed = {8'400'000 + 1'200'000};
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(config, poor, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].lamp == 1,
+                     "repay: carried debt and a new loan this year — still lit");
   // A HEAP LYING IN THE FIELD does not pay from the barn (static review of
   // 0.35.0): 10 t in the barn, all of it the sowing's seed, and 5 t lying in
   // a heap. Above the seed stands 5 t, and all of it is the heap's — the
@@ -12354,6 +12533,7 @@ int main() {
   failures += CheckTheHeapsManurePaysItsFurrow();
   failures += CheckTheCapBitesAfterTheDelta();
   failures += CheckTheFarmRulesZyab();
+  failures += CheckTheElderSpeaksOfGrassBeforeTheSnow();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();

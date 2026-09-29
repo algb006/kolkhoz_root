@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "core_common/day_off.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -376,6 +377,82 @@ int TestTheWinterSiteIsNoAlarm(const core::ITableSet& tables) {
                      "winter alarm: a log site with nobody on it in January still calls");
   failures += Expect(alarms_of(25, 0) == 1,
                      "winter alarm: the same brick site with nobody on it in July calls");
+  return failures;
+}
+
+/// THE SITE'S LAMP IS ITS STANDING, NOT ITS DAY (0.37.20; boss-core-epoch1-
+/// queue-2026-09-29 [36]): a log site in July with nobody on it counts a day
+/// a noon — days off neither count nor reset — and its kSiteWithoutCrew
+/// stands from the first noon with no lamp, red from the twelfth counted
+/// one; a man on it at a noon resets the count.
+int TestCrewlessDaysLightTheSiteLamp(const core::ITableSet& tables) {
+  int failures = 0;
+  const auto system = core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (!system) {
+    return Expect(false, "site lamp: the subsystem accepts its tables");
+  }
+  core::WorldState world;
+  core::UnitRow site;
+  site.construction.phase = core::ConstructionPhase::kBuilding;
+  site.construction.labor_days_remaining = 10.0F;
+  site.construction.winter_works = 1;
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+  const auto noon_of = [&](core::SimDay day) {
+    world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + 12;
+    core::RefreshCalendarCaches(world.calendar);
+    const core::WorldState previous = world;
+    system->RunConstructionDecisions(previous, world);
+  };
+  const auto lamp = [&]() {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    int found = -1;
+    for (const core::Alarm& alarm : alarms) {
+      found = alarm.kind == core::AlarmKind::kSiteWithoutCrew ? alarm.lamp : found;
+    }
+    return found;
+  };
+  std::uint16_t counted = 0;
+  core::SimDay day = 25;  // July
+  while (counted < 11) {
+    noon_of(day);
+    counted += core::IsDayOffIn(world, day) ? 0U : 1U;
+    ++day;
+  }
+  failures += Expect(world.units.rows[0].construction.crewless_days == 11 && lamp() == 0,
+                     "site lamp: eleven working noons with nobody — counted, standing, no lamp");
+  while (core::IsDayOffIn(world, day)) {
+    noon_of(day);
+    ++day;
+  }
+  noon_of(day);
+  ++day;
+  failures += Expect(world.units.rows[0].construction.crewless_days == 12 && lamp() == 1,
+                     "site lamp: the twelfth — red");
+  core::ResidentRow builder;
+  builder.work.kind = core::WorkKind::kConstruction;
+  builder.work.unit = site_id;
+  core::AppendRow(world.residents, builder);
+  while (core::IsDayOffIn(world, day)) {
+    noon_of(day);
+    ++day;
+  }
+  noon_of(day);
+  failures += Expect(world.units.rows[0].construction.crewless_days == 0,
+                     "site lamp: a man on it at noon resets the count");
+  // THE CHAIRMAN'S PAUSE IS HIS MOVE (static review of 0.37.20): the man
+  // gone and the site paused, noons neither count nor light; twenty days
+  // written on it still light nothing while it is paused.
+  world.residents.rows.clear();
+  world.residents.row_ids.clear();
+  world.units.rows[0].paused = 1;
+  for (int noon = 0; noon < 20; ++noon) {
+    noon_of(++day);
+  }
+  failures += Expect(world.units.rows[0].construction.crewless_days == 0,
+                     "site lamp: a paused site's noons are not counted");
+  world.units.rows[0].construction.crewless_days = 20;
+  failures += Expect(lamp() == 0, "site lamp: a paused site is never red");
   return failures;
 }
 
@@ -2402,6 +2479,7 @@ int main() {
   failures += TestCapacityNeedsALadder();
   failures += TestMarkAndBuild(tables);
   failures += TestTheWinterSiteIsNoAlarm(tables);
+  failures += TestCrewlessDaysLightTheSiteLamp(tables);
   failures += TestStartChecksTheRecipe(tables);
   failures += TestAnUpgradeHoldsItsRecipe(tables);
   failures += TestRefusals(tables);
