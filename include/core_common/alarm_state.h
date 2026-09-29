@@ -498,6 +498,19 @@ enum class AlarmKind : std::uint8_t {
   /// assignments without a horse on a mean working day of the week, rounded — the teams short.
   kTooFewHorses,
 
+  /// «ТРАВА НА КОРНЮ — НЕ ЗИМНИЙ ЗАПАС» — THE ELDER'S ADVICE, NOT A LAMP
+  /// (boss-core-epoch1-queue-2026-09-29 [25]; rpg carries the line: «Трава на
+  /// корню — не зимний запас. Скосите до снега: сено и в кучах сохранится»):
+  /// a month before the first snow by the climate, a share of the farm's
+  /// meadow grass is still standing unmown. Hay lying in heaps is a store
+  /// (0.37.11) and is not counted. Always `lamp = 0`: one line a season for
+  /// the farm, and the "once" is the layer's — the core raises it for as long
+  /// as the condition holds. Subject: none (the farm); `amount` = the unmown
+  /// meadow, whole hectares. STUB: the share (30 %) and the date (the first
+  /// snow's day, world_params `gather_alarm_snow_day`, and not a steady
+  /// cover's) — core's numbers, measured by the alarm-days instrument.
+  kMeadowUncutBeforeSnow,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.
@@ -563,6 +576,22 @@ struct Alarm {
   /// kProcessingStopped only: why the shop stands. kNone for every other
   /// kind.
   ProcessingStopReason stop_reason = ProcessingStopReason::kNone;
+
+  /// THE PLAYER'S RED LAMP, 0 or 1 (boss-core-epoch1-queue-2026-09-29 [23]–
+  /// [25], [35]–[36]; econ's complexity review, option «а»): 1 when the
+  /// condition is a loss that comes without the player's move AND he has a
+  /// move against it; 0 when it is a line for a window, the elder's advice,
+  /// or the farm's own rule at work. The layer lights red for `lamp = 1`
+  /// only and shows the rest where it belongs.
+  ///
+  /// THE CONDITION STAYS IN THE LIST WHOLE, with the same `amount`, whatever
+  /// the lamp: the list has other readers — the canon chairman sizes his seed
+  /// loan by kSeedShort's amounts (tests/run/common/limit_policy.h), host's
+  /// probes and the core's own guards read the kinds — and a condition
+  /// silenced to dim a lamp would have moved them (core [35]: two doors to
+  /// one action). Each kind's rule is at its kind; a kind that names none
+  /// keeps the default, 1.
+  std::uint8_t lamp = 1;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id

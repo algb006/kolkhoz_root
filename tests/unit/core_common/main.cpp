@@ -2611,6 +2611,20 @@ int CheckAlarmSubjectValue() {
                          subject(core::AlarmKind::kFellingUnreachable, unit_id) == 0,
                      "and none of them answers with a unit that is not their subject");
 
+  // THE ELDER'S ADVICE IS THE FARM'S (0.37.19): no subject, whatever id the
+  // alarm happens to carry — and its lamp is a field, not a subject.
+  core::Alarm advice;
+  advice.kind = core::AlarmKind::kMeadowUncutBeforeSnow;
+  unit_id(advice);
+  field_id(advice);
+  herd_id(advice);
+  family_id(advice);
+  stand_id(advice);
+  advice.amount = 12;
+  advice.lamp = 0;
+  failures += Expect(core::AlarmSubjectValue(advice) == 0,
+                     "the meadow advice answers with no subject, whatever ids it carries");
+
   core::Alarm position;
   position.kind = core::AlarmKind::kPlanPositionUncovered;
   position.resource = core::ResourceId{4};

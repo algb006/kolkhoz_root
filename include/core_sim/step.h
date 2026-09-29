@@ -64,6 +64,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -75,6 +76,7 @@
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
+#include "core_common/resident_activity.h"
 #include "core_common/road_draft.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
@@ -271,6 +273,21 @@ class ISimulation {
   /// those are standing about at this moment.
   /// @note Called between steps on the sim thread, like its neighbours.
   virtual WorkforceCount Workforce() const = 0;
+
+  /// @brief What `resident` is doing at this moment, asked of the subsystem
+  /// that owns the thresholds (ILaborSystem::ActivityOf).
+  /// @note Called between steps on the sim thread, like its neighbours.
+  /// @return Empty for a resident that does not exist, and from a simulation
+  ///         with no labour subsystem to answer (the bare engine).
+  /// @note NOT PURE, and on purpose: every method of this interface is
+  ///       forwarded by host's proxy (plan700's ablate::CountingSim), and a
+  ///       new pure one made it abstract — plan700 stopped building against
+  ///       the contract's first draft (0.37.19). The default answers nothing;
+  ///       a proxy that does not forward it yet answers nothing too, which is
+  ///       true of it.
+  virtual std::optional<ResidentActivityState> ActivityOf(ResidentId /*resident*/) const {
+    return std::nullopt;
+  }
 
   /// @brief Appends every stock light the wired subsystems own, in the
   /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms

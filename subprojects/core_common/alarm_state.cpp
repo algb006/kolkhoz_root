@@ -18,6 +18,8 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     // stays a build error here — which is exactly where a new kind must
     // declare whose it is.
     case AlarmKind::kAlarmKindCount:
+    // The farm's, with no subject of its own (the elder's advice, [25]).
+    case AlarmKind::kMeadowUncutBeforeSnow:
       return 0;
     case AlarmKind::kStoreFull:
     case AlarmKind::kSiteWithoutMaterials:

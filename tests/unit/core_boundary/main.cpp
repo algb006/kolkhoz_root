@@ -104,6 +104,11 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::WorkforceCount Workforce() const override { return {}; }
 
+  std::optional<core::ResidentActivityState> ActivityOf(
+      core::ResidentId /*resident*/) const override {
+    return std::nullopt;
+  }
+
   /// The scripted simulation owns no subsystem, so it forecasts nothing —
   /// which is exactly the case the session's kNoData filling is for.
   void CollectStockForecast(std::vector<core::StockForecast>& /*lights*/) const override {}

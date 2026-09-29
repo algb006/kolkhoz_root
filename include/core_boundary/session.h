@@ -22,12 +22,12 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — thirty-eight methods, counting
+/// concrete, and it is deliberately small — thirty-nine methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
-///               WhereaboutsOf, ActiveAlarms, CanBeOrdered, Workforce,
+///               WhereaboutsOf, ActivityOf, ActiveAlarms, CanBeOrdered, Workforce,
 ///               StockLights, WeatherForecast, WearDeadline,
 ///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
 ///               StinkNowAt, ResidentHeightMeters
@@ -117,6 +117,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -131,6 +132,7 @@
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
+#include "core_common/resident_activity.h"
 #include "core_common/stink.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -568,6 +570,16 @@ class ISession {
   /// @brief The two workforce numbers over the whole settlement, derived
   /// from State() now.
   virtual WorkforceCount Workforce() const = 0;
+
+  /// @brief What `resident` is doing at this moment, derived from State() now
+  /// (core_common/resident_activity.h): working, idle, blocked, at home, at
+  /// school, away... — the office's list filters "idle now" by it (boss-core-
+  /// epoch1-queue-2026-09-29 [28]–[30]; ue found the list reading "no order"
+  /// as idle at midnight).
+  /// @return Empty for a resident that does not exist — and empty is not
+  ///         idle: the default state's activity is kIdle, and "nobody" read
+  ///         as "idle" is the defect this door exists against.
+  virtual std::optional<ResidentActivityState> ActivityOf(ResidentId resident) const = 0;
 
   /// @brief The conditions standing in the completed state — the roster
   /// and the fields each kind fills are core_common/alarm_state.h.

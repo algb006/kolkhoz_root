@@ -54,6 +54,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "core_common/alarm_state.h"
@@ -61,6 +62,7 @@
 #include "core_common/labor_state.h"
 #include "core_common/office_views.h"
 #include "core_common/rain_stops_work.h"
+#include "core_common/resident_activity.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 
@@ -98,6 +100,18 @@ class ILaborSystem {
   /// @brief The two workforce numbers over the whole settlement: how many
   /// could be put to work, and how many of those have no work right now.
   virtual WorkforceCount CountWorkforce(const WorldState& state) const = 0;
+
+  /// @brief What `resident` is doing at the hour `state` stands at
+  /// (core_common/resident_activity.h, ActivityOfResident), with the
+  /// thresholds this subsystem owns — working age, the walk-off rest, the
+  /// road rates, the speed of life, the posts' shifts (boss-core-epoch1-
+  /// queue-2026-09-29 [28]–[30]: the office's list filters "idle now" by
+  /// it). ONE HOME for those thresholds: the runs filled their own copies.
+  /// @return Empty for a resident that does not exist. NOT the default
+  ///         state: its activity is kIdle, and "nobody" read as "idle" is the
+  ///         defect the door exists against (static review of 0.37.19).
+  virtual std::optional<ResidentActivityState> ActivityOf(const WorldState& state,
+                                                          ResidentId resident) const = 0;
 
   /// @brief The office's workbook off `state` (office_views.h, WorkbookLine):
   /// one line a living resident, in row order — the age at this world's speed

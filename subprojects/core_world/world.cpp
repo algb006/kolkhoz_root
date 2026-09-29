@@ -518,6 +518,10 @@ class StandardSimulation final : public ISimulation {
     return labor_->CountWorkforce(engine_->CompletedState());
   }
 
+  std::optional<ResidentActivityState> ActivityOf(ResidentId resident) const override {
+    return labor_->ActivityOf(engine_->CompletedState(), resident);
+  }
+
   /// ONE CROSSING, AND THE ASSEMBLY CARRIES IT. The food light needs the
   /// harvest date, which core_production owns, and core_residents may not
   /// reach into another module for it (CLAUDE.md §7). So the assembly — the

@@ -176,6 +176,14 @@ class LaborSystem final : public ILaborSystem {
     return count;
   }
 
+  /// STUB (0.37.19, the contract): no answer — not "idle" — until the
+  /// thresholds are filled from this subsystem's config (the implementation,
+  /// next).
+  std::optional<ResidentActivityState> ActivityOf(const WorldState& /*state*/,
+                                                  ResidentId /*resident*/) const override {
+    return std::nullopt;
+  }
+
   std::vector<WorkbookLine> OfficeWorkbook(const WorldState& state) const override {
     std::vector<WorkbookLine> lines;
     lines.reserve(state.residents.rows.size());

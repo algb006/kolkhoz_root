@@ -405,6 +405,10 @@ class Session final : public ISession {
 
   WorkforceCount Workforce() const override { return simulation_->Workforce(); }
 
+  std::optional<ResidentActivityState> ActivityOf(ResidentId resident) const override {
+    return simulation_->ActivityOf(resident);
+  }
+
   ResidentWhereabouts WhereaboutsOf(ResidentId resident) const override {
     return DeriveWhereabouts(config_, State(), resident);
   }
