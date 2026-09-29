@@ -925,6 +925,10 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   if (!layout_error.empty()) {
     return nullptr;
   }
+  // THE START'S DERIVED FAMILY METRICS, before the first tick (0.37.23;
+  // boss-core-layers-doors-2026-09-29 [4]): genesis draws the components,
+  // and the satisfaction they make read the struct's 55 until the first day.
+  residents->SettleStartMetrics(start);
   return std::make_unique<StandardSimulation>(config,
                                               std::move(start),
                                               std::move(time),

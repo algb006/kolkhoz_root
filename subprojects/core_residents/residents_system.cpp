@@ -125,6 +125,21 @@ class FamilyMetricsPhase final : public IParallelPhase {
       // yet, but the garden it pays out feeds tomorrow's meal, and both
       // belong to the same owned row.
       RunHouseholdPlot(*food_, config_->life_speedup, current, item);
+      SettleFamily(weights, current, item);
+      // THE LOOK'S MEMORY, off the satisfaction just set and the members'
+      // satiety the needs phase set this step (appearance_memory.h; 0.37.17).
+      RememberWellbeing(*config_, current, item, new_day);
+    }
+  }
+
+  /// The family's satiety and rest components and its satisfaction — the
+  /// metrics' reckoning, without the day's acts: the step's pass above, and
+  /// a start world before its first tick (SettleStartMetrics, 0.37.23), ask
+  /// this one body.
+  void SettleFamily(const SatisfactionWeights& weights,
+                    WorldState& current,
+                    std::uint32_t item) const {
+    {
       FamilyRow& family = current.families.rows[item];
       family.component_satiety = SatietyComponent(*food_, current, item);
       UpdateRestComponent(current, item, family);
@@ -149,9 +164,6 @@ class FamilyMetricsPhase final : public IParallelPhase {
       // in one house, both of them (family_state.h, lodging_penalty).
       const float after_overwork = capped - family.overwork_penalty - family.lodging_penalty;
       family.satisfaction = after_overwork > 0.0F ? after_overwork : 0.0F;
-      // THE LOOK'S MEMORY, off the satisfaction just set and the members'
-      // satiety the needs phase set this step (appearance_memory.h; 0.37.17).
-      RememberWellbeing(*config_, current, item, new_day);
     }
   }
 
@@ -260,9 +272,12 @@ class ResidentsSystem final : public IResidentsSystem {
 
   /// kFamilyGoingHungry, one per hungry family, in family row order — the
   /// session sorts by id.
-  /// STUB (0.37.22, the contract): settles nothing yet — the start world's
-  /// families keep the struct's default until the implementation, next.
-  void SettleStartMetrics(WorldState& /*current*/) const override {}
+  void SettleStartMetrics(WorldState& current) const override {
+    const SatisfactionWeights& weights = config_.weights[EpochIndex(current.epoch)];
+    for (std::uint32_t item = 0; item < current.families.rows.size(); ++item) {
+      metrics_phase_.SettleFamily(weights, current, item);
+    }
+  }
 
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     std::vector<FamilyId> hungry;

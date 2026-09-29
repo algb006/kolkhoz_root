@@ -1041,6 +1041,52 @@ int CheckStartRoads() {
 /// roads.csv, the axis whole with `s` ending at the graph's length, the wear
 /// of every stretch, no work. core_boundary's session test runs on fake
 /// tables with no roads, where this check would pass with nothing to check.
+/// THE START'S SATISFACTION BEFORE THE FIRST TICK (0.37.23; boss-core-layers-
+/// doors-2026-09-29 [4]): the shipped start, not one family at the struct's
+/// 55 — genesis draws the components and the assembly settles what they
+/// make; and the first step moves it little (the same reckoning, plus what
+/// one hour does), where a default of 55 against the drawn components
+/// jumped at the first day.
+int CheckTheStartSettlesSatisfaction() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "start satisfaction: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "start satisfaction: the shipped set assembles") != 0) {
+    return 1;
+  }
+  const std::vector<core::FamilyRow> before = simulation->CompletedState().families.rows;
+  std::uint32_t at_default = 0;
+  for (const core::FamilyRow& family : before) {
+    at_default += family.satisfaction == core::FamilyRow{}.satisfaction ? 1U : 0U;
+  }
+  simulation->AdvanceStep();
+  const std::vector<core::FamilyRow>& after = simulation->CompletedState().families.rows;
+  float sum = 0.0F;
+  float worst = 0.0F;
+  const std::size_t n = std::min(before.size(), after.size());
+  for (std::size_t i = 0; i < n; ++i) {
+    const float moved = std::fabs(after[i].satisfaction - before[i].satisfaction);
+    sum += moved;
+    worst = std::max(worst, moved);
+  }
+  const float mean = n > 0 ? sum / static_cast<float>(n) : 0.0F;
+  std::cout << "start satisfaction: " << before.size() << " families, " << at_default
+            << " at the default; the first step moved it by " << mean << " on the mean, " << worst
+            << " at most\n";
+  failures += Expect(!before.empty() && at_default == 0,
+                     "start satisfaction: not one family at the struct's default before a tick");
+  failures += Expect(mean < 1.0F && worst < 5.0F,
+                     "start satisfaction: the first step moves it little — it was settled");
+  return failures;
+}
+
 int CheckRoadsDoor() {
   const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
   if (Expect(shipped != nullptr, "roads door: the shipped tables load") != 0) {
@@ -2054,6 +2100,7 @@ int main() {
   failures += CheckStartRoads();
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();
+  failures += CheckTheStartSettlesSatisfaction();
   failures += CheckRoadTracer();
   failures += CheckRoadLaying();
   failures += CheckRoadPiecesOnStart();
