@@ -263,6 +263,12 @@ bool ShapeIsValid(const OrderRow& order) {
       return order.resource.value != kInvalidDefIdValue && order.amount >= 0 &&
              order.amount <= kMaxIssueNormGrams && !has_resident && !has_unit && !has_field &&
              !has_herd && !has_stand && !has_site;
+    case OrderKind::kResetIssueNorm:
+      // A position and nothing else; no amount — the rule is the default's.
+      // Whether the resource is food, and whether it is not already under
+      // the default, is the consumer's.
+      return order.resource.value != kInvalidDefIdValue && order.amount == 0 && !has_resident &&
+             !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kDeliverPlan:
       // One position or all of them (resource invalid); no other subject. A
       // quantity names its position: "this many of everything" means nothing.
@@ -430,6 +436,12 @@ class Session final : public ISession {
   PlanBook OfficePlan() const override { return simulation_->OfficePlan(); }
 
   LimitBook OfficeLimit() const override { return simulation_->OfficeLimit(); }
+
+  std::vector<IssueNormLine> IssueNorms() const override { return simulation_->IssueNorms(); }
+
+  std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const override {
+    return simulation_->NeedUntilHarvest(resource);
+  }
 
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return simulation_->MaterialsShortFor(unit);

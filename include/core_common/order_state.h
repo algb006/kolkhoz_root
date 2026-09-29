@@ -547,7 +547,10 @@ enum class OrderKind : std::uint8_t {
   /// THE ISSUE NORM OF ONE POSITION OF THE BUNDLE (labor-payment §3; econ's
   /// audit M1, Л1): `resource` is the position, `amount` its grams per
   /// trudoden from the next distribution on; 0 strikes the position out of
-  /// the bundle. The other positions keep theirs (WorldState::issue_norms).
+  /// the bundle. The other positions keep theirs (WorldState::issue_norms)
+  /// — since 0.37.28 whatever rule they stand under, the default one
+  /// (a share of the remainder) included: the order moves one position and
+  /// no other becomes the chairman's by it.
   ///
   /// WHY IT EXISTS: the norm was a table constant, and the table's own
   /// comment called it «нормы председателя». Without it none of the three
@@ -811,6 +814,20 @@ enum class OrderKind : std::uint8_t {
   /// such road), kNoConsumer (a paved road until road work, 7e). Seam key
   /// `demolish_road`. Consumer: core_construction since 7d (road_laying.h).
   kDemolishRoad,
+
+  /// THE ISSUE NORM OF ONE POSITION BACK TO THE DEFAULT RULE (labor-payment
+  /// §7, «отменил — снова доля остатка»; 0.37.28, boss-core-issue-norm-
+  /// share-2026-09-29 [7]): `resource` is the position; from the next
+  /// distribution it is issued by the default rule again — a share of the
+  /// remainder for a position a field's harvest gives, the table's grams
+  /// for the rest (milk). The chairman's kSetIssueNorm on it is forgotten.
+  ///
+  /// Refusals: kNotEligible (the resource is not food, as kSetIssueNorm),
+  /// kRuleForbids (the position stands under the default rule already — a
+  /// repeat means the chairman is looking at something stale). Seam key
+  /// `reset_issue_norm`. Consumer: core_residents FROM 0.37.29; until then
+  /// none, and the sweep refuses it kNoConsumer.
+  kResetIssueNorm,
 
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
@@ -1195,6 +1212,14 @@ enum class OrderRefusal : std::uint8_t {
 /// the table that feeds it; food_config.cpp static_asserts that its parse
 /// ceiling for `issue_kg_per_trudoden` passes this bound.
 inline constexpr Grams kMaxIssueNormGrams = 1000 * kGramsPerKilogram;
+
+/// A position of WorldState::issue_norms that stands under the DEFAULT rule
+/// (labor-payment §7; 0.37.28): a share of the remainder for a position a
+/// field's harvest gives, the table's grams for the rest. Never on the seam
+/// — the boundary refuses a negative kSetIssueNorm by shape, and
+/// kResetIssueNorm is how the chairman asks for it; a door answers the
+/// norm in force and its basis (IssueNormLine), never this marker.
+inline constexpr Grams kIssueNormByDefault = -1;
 
 /// The avral's step and its ceiling (unit rules §7: «Шаг 5 %, максимум
 /// +25 %»). The step's percent is a table knob (labor.csv

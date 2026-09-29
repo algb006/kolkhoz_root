@@ -28,11 +28,13 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "core_common/issue_norm_view.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
 
@@ -132,6 +134,23 @@ class IResidentsSystem {
   /// is valid at every age and is on the row for whoever wants it.
   /// @note Called between steps on the sim thread. A pure read.
   virtual float HeightMeters(const WorldState& completed, ResidentId resident) const = 0;
+
+  /// @brief Every position of the bundle as the next distribution issues
+  /// it (issue_norm_view.h; labor-payment §7): the norm in force, its basis
+  /// and, under the default share of the remainder, the two halves of the
+  /// division. BY THE DISTRIBUTION'S OWN CODE: a second estimate of the norm
+  /// would be a second answer.
+  /// @note Between steps on the sim thread. A pure read; it calls the
+  ///       production callbacks bound at creation (fodder fund, next year's
+  ///       hold, days to harvest), as the distribution does.
+  virtual std::vector<IssueNormLine> IssueNorms(const WorldState& completed) const = 0;
+
+  /// @brief The village's daily need in kilocalories and `resource`'s free
+  /// remainder, with the days to its next harvest (HarvestNeed). Empty when
+  /// `resource` is no food position of the bundle.
+  /// @note Between steps on the sim thread. A pure read, as IssueNorms.
+  virtual std::optional<HarvestNeed> NeedUntilHarvest(const WorldState& completed,
+                                                      ResourceId resource) const = 0;
 };
 
 /// @brief Creates the people subsystem.
@@ -152,11 +171,21 @@ class IResidentsSystem {
 ///        assembly (0.37.2; boss-core-epoch1-queue [60], (г)). The people's
 ///        issue stays above it as the herds do. Empty: nothing held for next
 ///        year, as before 0.37.2.
+/// @param days_to_harvest_of Whole game days to the next opening of the
+///        harvest window of the field crop that gives `resource` — or that
+///        gives what it is made of (sauerkraut: the vegetables) — during the
+///        window, next year's; -1 when no field crop does —
+///        IProductionSystem::DaysToHarvestOf, bound by the assembly (0.37.28;
+///        labor-payment §7). The default issue norm divides a position's
+///        remainder among the trudodni to that day. Empty: no position has
+///        a harvest, and every one is issued at the table's grams, as before
+///        0.37.28.
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::function<ResourceAmounts(const WorldState&)> fodder_fund = {},
-    std::function<ResourceAmounts(const WorldState&)> next_year_hold = {});
+    std::function<ResourceAmounts(const WorldState&)> next_year_hold = {},
+    std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of = {});
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
 /// figure a newborn is given, and the organizations' and ideology's numbers).

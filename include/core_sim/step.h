@@ -72,6 +72,7 @@
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/ids.h"
+#include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
@@ -297,6 +298,21 @@ class ISimulation {
   ///       method, and a new pure one made it abstract. The default answers
   ///       none.
   virtual std::vector<JunctionView> Junctions() const { return {}; }
+
+  /// @brief Every position of the bundle as the next distribution issues
+  /// it: the norm in force and its basis (issue_norm_view.h; labor-payment
+  /// §7). Computed off CompletedState() by the same code the distribution
+  /// runs, so the answer is the norm, not a second estimate of it.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers none.
+  virtual std::vector<IssueNormLine> IssueNorms() const { return {}; }
+
+  /// @brief The village's need until `resource`'s next harvest against its
+  /// free remainder (issue_norm_view.h, HarvestNeed). Empty when the
+  /// resource is not a food position of the bundle.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers empty.
+  virtual std::optional<HarvestNeed> NeedUntilHarvest(ResourceId /*resource*/) const {
+    return std::nullopt;
+  }
 
   /// @brief Appends every stock light the wired subsystems own, in the
   /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms

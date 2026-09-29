@@ -390,6 +390,13 @@ class ProductionSystem final : public IProductionSystem {
     return DaysToHarvest(config_, completed);
   }
 
+  /// STUB until 0.37.29 (the contract, 0.37.28): no resource has a harvest,
+  /// which is the answer every position had before the default share.
+  std::int32_t DaysToHarvestOf(const WorldState& /*completed*/,
+                               ResourceId /*resource*/) const override {
+    return -1;
+  }
+
   DeliveryTerm LimitDeliveryTerm(const WorldState& completed) const override {
     const std::uint32_t base = LimitBaseDeliveryDays(config_, completed);
     return DeliveryTerm{.days_min = base, .days_max = base + config_.limit.delivery_delay_days_max};

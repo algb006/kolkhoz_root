@@ -154,6 +154,21 @@ class IProductionSystem {
   /// @note Called between steps on the sim thread. A pure read.
   virtual std::int32_t DaysToNextHarvest(const WorldState& completed) const = 0;
 
+  /// @brief Whole game days to the next OPENING of the harvest window of the
+  /// field crop that gives `resource` — or, for a product of processing,
+  /// of the crop that gives its input (sauerkraut: the vegetables); during
+  /// the window, next year's opening, so the answer is never nought.
+  ///
+  /// Exposed for the default issue norm (labor-payment §7; 0.37.28), which
+  /// lives in core_residents and divides a position's remainder among the
+  /// trudodni to that day: "until the next harvest" is this module's
+  /// calendar.
+  /// @return -1 when no field crop gives the resource or its input (milk).
+  ///         Several crops giving one resource: the nearest opening.
+  /// @note A pure read. Called from the decisions slot (the distribution)
+  ///       and between steps, as FodderFund.
+  virtual std::int32_t DaysToHarvestOf(const WorldState& completed, ResourceId resource) const = 0;
+
   /// @brief The district cart's term for a lot ordered on `completed`'s day:
   /// LimitBaseDeliveryDays, and that plus limit_delivery_delay_days_max.
   /// @note Called between steps on the sim thread. A pure read.

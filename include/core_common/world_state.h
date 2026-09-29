@@ -868,10 +868,14 @@ struct WorldState {
   /// THE CHAIRMAN'S ISSUE NORMS, grams per trudoden, by ResourceId — the
   /// bundle's positions of labor-payment §3 as the chairman set them
   /// (kSetIssueNorm; econ's audit M1, Л1). EMPTY until his first order, and
-  /// empty means the table's norms stand (food.csv `issue_kg_per_trudoden`):
-  /// the first order copies the whole bundle out of the table and moves one
-  /// position, so the table is read in one place and the world holds only
-  /// what the chairman decided. Read through IssueNormOf (family_exchange).
+  /// empty means every position stands under the default rule. A position
+  /// holding kIssueNormByDefault (order_state.h) stands under it too: since
+  /// 0.37.28 the first order marks the whole bundle so and moves one
+  /// position, and kResetIssueNorm puts one back. The default rule
+  /// (labor-payment §7): a share of the remainder for a position a field's
+  /// harvest gives, food.csv `issue_kg_per_trudoden` grams for the rest.
+  /// Read through IssueNormKg (family_exchange); the norm in force and its
+  /// basis cross the seam as IssueNormLine, never this vector.
   ResourceAmounts issue_norms;
 
   /// What the chairman has taken out of the sealed funds this economic year

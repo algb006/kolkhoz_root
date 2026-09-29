@@ -1471,7 +1471,10 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // +39 a row before the build, held.
     // Save 104 (7e): +24 — road_work on each of six orders, predicted before
     // the build, held.
-    {"orders", 788, 0x2a66356052872f67ULL},
+    // Save 116 (0.37.28): kResetIssueNorm became the top OrderKind — same
+    // 788 bytes, the hash moved. NOT predicted: this fixture found it, the
+    // sixth time the top of the enum has moved here unannounced.
+    {"orders", 788, 0x314ee9eecd402476ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.

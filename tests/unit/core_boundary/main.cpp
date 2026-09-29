@@ -191,6 +191,19 @@ class ScriptedSimulation final : public core::ISimulation {
 
   std::vector<core::JunctionView> Junctions() const override { return junctions_; }
 
+  std::vector<core::IssueNormLine> IssueNorms() const override { return norms_; }
+
+  std::optional<core::HarvestNeed> NeedUntilHarvest(core::ResourceId resource) const override {
+    if (!need_.has_value() || need_->resource.value != resource.value) {
+      return std::nullopt;
+    }
+    return need_;
+  }
+
+  /// What IssueNorms() and NeedUntilHarvest() hand back.
+  std::vector<core::IssueNormLine> norms_;
+  std::optional<core::HarvestNeed> need_;
+
   std::vector<core::DayForecast> forecast_;
 
   /// What Junctions() hands back.
@@ -453,6 +466,18 @@ int TestOrdersThroughTheEngine(const core::ITableSet& tables) {
   talk.unit = core::UnitId{4};
   failures +=
       Expect(session->IssueOrder(talk).value == 0, "a talk that also names a unit is refused");
+  // THE NORM BACK TO THE DEFAULT (0.37.28): a position and nothing else.
+  core::OrderRow reset;
+  reset.kind = core::OrderKind::kResetIssueNorm;
+  failures += Expect(session->IssueOrder(reset).value == 0, "a reset of no position is refused");
+  reset.resource = core::ResourceId{1};
+  reset.amount = 3000;
+  failures += Expect(session->IssueOrder(reset).value == 0,
+                     "a reset that carries a norm is refused — the default has none to carry");
+  reset.amount = 0;
+  reset.unit = core::UnitId{4};
+  failures +=
+      Expect(session->IssueOrder(reset).value == 0, "a reset that also names a unit is refused");
 
   work.herd = core::HerdId{3};
   const core::OrderId first = session->IssueOrder(work);
@@ -1119,6 +1144,33 @@ int TestSignals(const core::ITableSet& tables) {
                            answered[0].neighbor_role == core::NeighborRole::kPoor,
                        "junctions: the session forwards the simulation's answer");
     script->junctions_.clear();
+  }
+
+  // The issue norms and the need until the harvest (0.37.28): forwarded,
+  // the resource asked for reaching the simulation.
+  {
+    core::IssueNormLine potato;
+    potato.resource = core::ResourceId{3};
+    potato.grams_per_trudoden = 2400;
+    potato.basis = core::IssueNormBasis::kShareOfRemainder;
+    potato.days_to_harvest = 17;
+    script->norms_ = {potato};
+    core::HarvestNeed need;
+    need.resource = core::ResourceId{3};
+    need.days_to_harvest = 17;
+    need.village_need_kcal_per_day = 250000.0F;
+    script->need_ = need;
+    const std::vector<core::IssueNormLine> norms = session->IssueNorms();
+    failures += Expect(
+        norms.size() == 1 && norms[0].grams_per_trudoden == 2400 && norms[0].days_to_harvest == 17,
+        "issue norms: the session forwards the simulation's answer");
+    const std::optional<core::HarvestNeed> asked = session->NeedUntilHarvest(core::ResourceId{3});
+    const std::optional<core::HarvestNeed> other = session->NeedUntilHarvest(core::ResourceId{4});
+    failures += Expect(
+        asked.has_value() && asked->village_need_kcal_per_day == 250000.0F && !other.has_value(),
+        "need until harvest: forwarded with the resource asked for");
+    script->norms_.clear();
+    script->need_.reset();
   }
 
   // After dark everyone is home, assignment or not: the STUB whereabouts

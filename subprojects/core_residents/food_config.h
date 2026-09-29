@@ -307,6 +307,13 @@ struct FoodConfig {
   /// slot and between steps only. Empty: nothing held.
   std::function<ResourceAmounts(const WorldState&)> next_year_hold;
 
+  /// Whole game days to the next opening of the harvest window that gives a
+  /// resource, -1 when none (IProductionSystem::DaysToHarvestOf; 0.37.28,
+  /// labor-payment §7): the default issue norm's "until the next harvest".
+  /// A CALL INTO core_production on the same terms as `fodder_fund` above.
+  /// Empty: no position has a harvest — every one at the table's grams.
+  std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of;
+
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
   /// seal it from the issue — its share of the day has left at the milking

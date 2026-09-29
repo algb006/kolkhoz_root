@@ -331,6 +331,18 @@ class ResidentsSystem final : public IResidentsSystem {
   /// other age rule in this module — calendar years against a biological
   /// threshold is the mistake that once read a village of adults as a village
   /// of children.
+  /// STUB until 0.37.29 (the contract, 0.37.28): no line — a door that
+  /// answers nothing rather than a norm the distribution does not issue.
+  std::vector<IssueNormLine> IssueNorms(const WorldState& /*completed*/) const override {
+    return {};
+  }
+
+  /// STUB until 0.37.29, as IssueNorms.
+  std::optional<HarvestNeed> NeedUntilHarvest(const WorldState& /*completed*/,
+                                              ResourceId /*resource*/) const override {
+    return std::nullopt;
+  }
+
   float HeightMeters(const WorldState& completed, ResidentId resident) const override {
     const std::uint32_t row = FindRow(completed.residents, resident);
     if (row == kNoRow) {
@@ -474,7 +486,8 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::function<ResourceAmounts(const WorldState&)> fodder_fund,
-    std::function<ResourceAmounts(const WorldState&)> next_year_hold) {
+    std::function<ResourceAmounts(const WorldState&)> next_year_hold,
+    std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -529,6 +542,7 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
   }
   food.fodder_fund = std::move(fodder_fund);
   food.next_year_hold = std::move(next_year_hold);
+  food.days_to_harvest_of = std::move(days_to_harvest_of);
   // The cold metric is not "zero cold", it is "cold is not counted": phase 1
   // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
   // never moves. Said out loud at world creation so that a run showing

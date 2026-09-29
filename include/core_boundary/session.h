@@ -22,7 +22,7 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — forty methods, counting
+/// concrete, and it is deliberately small — forty-two methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
@@ -31,7 +31,8 @@
 ///               StockLights, WeatherForecast, WearDeadline,
 ///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
 ///               StinkNowAt, ResidentHeightMeters
-///     office    OfficeWorkbook, OfficePlan, OfficeLimit
+///     office    OfficeWorkbook, OfficePlan, OfficeLimit, IssueNorms,
+///               NeedUntilHarvest
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
 ///               Junctions
 ///     orders    IssueOrder, CancelOrder
@@ -49,7 +50,8 @@
 /// the office's three doors, 0.37.0 (counted by name: a count of the lines
 /// ending "= 0;" said 36 and missed two declarations wrapped over two lines);
 /// thirty-nine with a resident's activity, 0.37.19; forty with the map's
-/// junctions, 0.37.26 — all additions, which is what the
+/// junctions, 0.37.26; forty-two with the issue norms and the need until
+/// the harvest, 0.37.28 — all additions, which is what the
 /// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -130,6 +132,7 @@
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/issue_norm_view.h"
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
@@ -696,6 +699,21 @@ class ISession {
   /// price and today's answer, the carts on the way (office_views.h).
   /// Through core_production.
   virtual LimitBook OfficeLimit() const = 0;
+
+  /// @brief The issue norms in force: every position of the bundle, the
+  ///        grams per trudoden the next distribution issues and why — a
+  ///        share of the remainder, the table's grams, or the chairman's
+  ///        (issue_norm_view.h; labor-payment §7). Through core_residents,
+  ///        by the distribution's own code; empty for a table-less world.
+  /// @note Between steps; the answer describes State().
+  virtual std::vector<IssueNormLine> IssueNorms() const = 0;
+
+  /// @brief The village's need until `resource`'s next harvest, in
+  ///        kilocalories a day, against the position's free remainder
+  ///        (issue_norm_view.h, HarvestNeed). Empty when `resource` is no
+  ///        food position of the bundle.
+  /// @note Between steps; the answer describes State().
+  virtual std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const = 0;
 
   /// @brief What the village lacks to START the works on `unit`, line by line:
   /// the resource, needed, held (construction design §6, "старт проверяет
