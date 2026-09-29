@@ -22,7 +22,7 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — thirty-nine methods, counting
+/// concrete, and it is deliberately small — forty methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
@@ -32,7 +32,8 @@
 ///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
 ///               StinkNowAt, ResidentHeightMeters
 ///     office    OfficeWorkbook, OfficePlan, OfficeLimit
-///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads
+///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
+///               Junctions
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -46,8 +47,9 @@
 /// deadline; thirty-five by the roads, the smell, the heights and the
 /// district's term, which this list did not keep up with; thirty-eight with
 /// the office's three doors, 0.37.0 (counted by name: a count of the lines
-/// ending "= 0;" said 36 and missed two declarations wrapped over two lines)
-/// — all additions, which is what the
+/// ending "= 0;" said 36 and missed two declarations wrapped over two lines);
+/// thirty-nine with a resident's activity, 0.37.19; forty with the map's
+/// junctions, 0.37.26 — all additions, which is what the
 /// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -134,6 +136,7 @@
 #include "core_common/quantities.h"
 #include "core_common/resident_activity.h"
 #include "core_common/stink.h"
+#include "core_common/world_junction.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
@@ -790,6 +793,13 @@ class ISession {
   ///        by the time the event is read, already answers the change.
   /// @note Between steps; the answer describes State().
   virtual std::vector<RoadView> Roads() const = 0;
+
+  /// @brief The map's junctions with the world beyond it (world_junction.h;
+  ///        layers design §15а, register 300): the arrows at the map's edge —
+  ///        which road, its border vertex, where it leads, the neighbour's
+  ///        role. The same answer before the first tick and after.
+  /// @note Between steps; read once at assembly, never changed by a step.
+  virtual std::vector<JunctionView> Junctions() const = 0;
 
   // -- orders -----------------------------------------------------------------
 

@@ -456,6 +456,8 @@ class Session final : public ISession {
 
   std::vector<RoadView> Roads() const override { return simulation_->Roads(); }
 
+  std::vector<JunctionView> Junctions() const override { return simulation_->Junctions(); }
+
   // -- orders ---------------------------------------------------------------
 
   OrderId IssueOrder(const OrderRow& order) override {

@@ -189,7 +189,12 @@ class ScriptedSimulation final : public core::ISimulation {
 
   std::vector<core::RoadView> Roads() const override { return {}; }
 
+  std::vector<core::JunctionView> Junctions() const override { return junctions_; }
+
   std::vector<core::DayForecast> forecast_;
+
+  /// What Junctions() hands back.
+  std::vector<core::JunctionView> junctions_;
 
   /// What the next CollectAlarms will hand back, in the order given.
   std::vector<core::Alarm> alarms_;
@@ -1097,6 +1102,23 @@ int TestSignals(const core::ITableSet& tables) {
     script->alarms_.clear();
     session->AdvanceStep();
     failures += Expect(session->ActiveAlarms().empty(), "and a condition that passed is gone");
+  }
+
+  // The junctions door (0.37.26) is the simulation's answer, forwarded: a
+  // session answering none of its own would pass every world-side check.
+  {
+    core::JunctionView west;
+    west.key = "neighbor_west";
+    west.road_key = "road_west";
+    west.border = core::BorderSide::kWest;
+    west.leads_to = core::JunctionLeadsTo::kNeighbor;
+    west.neighbor_role = core::NeighborRole::kPoor;
+    script->junctions_ = {west};
+    const std::vector<core::JunctionView> answered = session->Junctions();
+    failures += Expect(answered.size() == 1 && answered[0].key == "neighbor_west" &&
+                           answered[0].neighbor_role == core::NeighborRole::kPoor,
+                       "junctions: the session forwards the simulation's answer");
+    script->junctions_.clear();
   }
 
   // After dark everyone is home, assignment or not: the STUB whereabouts

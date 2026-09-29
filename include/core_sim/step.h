@@ -80,6 +80,7 @@
 #include "core_common/road_draft.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
+#include "core_common/world_junction.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -288,6 +289,14 @@ class ISimulation {
   virtual std::optional<ResidentActivityState> ActivityOf(ResidentId /*resident*/) const {
     return std::nullopt;
   }
+
+  /// @brief The map's junctions with the world beyond it (world_junction.h):
+  /// which road, which border vertex, where it leads. Read off the tables,
+  /// the same in every step.
+  /// @note NOT PURE, for ActivityOf's reason: host's proxy forwards every
+  ///       method, and a new pure one made it abstract. The default answers
+  ///       none.
+  virtual std::vector<JunctionView> Junctions() const { return {}; }
 
   /// @brief Appends every stock light the wired subsystems own, in the
   /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms
