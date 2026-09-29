@@ -32,7 +32,8 @@ float HomePlacesFree(const ProductionConfig& config, const WorldState& world, Li
 /// @brief Puts every kolkhoz herd that stands under no roof into its kind's
 ///        house, the first standing unit of the type with a free place. A herd
 ///        larger than the free places moves in all the same, and the rest of it
-///        is billeted by the herd day (RunBilleting) until room appears.
+///        is billeted by the herd day (BilletHerds) until room appears — its
+///        own house first, then any other house of the type (0.37.30).
 ///
 /// NOT THE HORSES: their door is StableHorses — the groom's post, the team
 /// gathered from the yards and its stallion — and a second door here would

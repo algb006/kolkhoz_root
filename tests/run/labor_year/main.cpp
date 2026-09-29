@@ -624,7 +624,13 @@ int main(int argc, char** argv) {
   // TAKEN AWAY BY DELIVERY 5: the start's trodden path to the cattle yard
   // (people walked to it for years before the first morning), not a path in
   // the map. When it lands, this band goes back to 0..2.
-  failures += ExpectBand(care_left, 3.0, 8.0, "the barn is served, day in and day out");
+  // AND WITH THE START HERD YOUNG AND HOUSED BY EVERY YARD (0.37.30; boss-
+  // core-herd-defects [1]): the cows drawn short of old age live and calve,
+  // more heads stand in the winter's short days, and more of their care is
+  // left: 6.5 -> 10.11 measured, the year's care still inside its band
+  // above. The ceiling re-recorded with the same room as before (6.5 -> 8,
+  // +23 %): 12.5. The floor keeps its purpose.
+  failures += ExpectBand(care_left, 3.0, 12.5, "the barn is served, day in and day out");
 
   // Trudodni are the same quantity seen from the pay side: the rate is 1.0
   // across Epoch-I hand work, so the accounts on the last evening of the year

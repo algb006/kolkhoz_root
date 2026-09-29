@@ -123,7 +123,7 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current);
 /// the village has none, a new herd row is made. A head with no roof is
 /// BILLETED at the private yards like any other, which is not a failure
 /// state: it is what the start canon does with all sixteen horses from the
-/// first morning (herd_system.cpp, RunBilleting), and it costs yield rather
+/// first morning (herd_system.cpp, BilletHerds), and it costs yield rather
 /// than the animal.
 ///
 /// WHAT IT ADDS TO. kAdultStart goes to `adult_count`, to

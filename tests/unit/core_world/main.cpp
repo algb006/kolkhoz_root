@@ -2273,6 +2273,25 @@ int main() {
     }
     failures += Expect(horses == 16 && young,
                        "the start's sixteen horses are between one and four years old");
+    // AND THE START HERD (0.37.30; boss-core-herd-defects [1] p. 2): the
+    // thirty-nine cows from adulthood (eight months) to a year short of old
+    // age (3 - 1 = 2). Thirty-nine draws over 0.67..4 would put the band's
+    // top past two all but surely.
+    const std::uint32_t cow = shipped == nullptr
+                                  ? core::kNoTableRow
+                                  : shipped->FindTable("livestock")->FindRowByKey("cow");
+    std::uint32_t cows = 0;
+    bool calf_young = true;
+    for (const core::HerdRow& herd : start.herds.rows) {
+      if (herd.kind.value != cow || herd.household_owned != 0) {
+        continue;
+      }
+      cows += herd.adult_count;
+      calf_young = calf_young && herd.adult_age_min_game_years >= 0.66F &&
+                   herd.adult_age_max_game_years <= 2.0F;
+    }
+    failures += Expect(cows == 39 && calf_young,
+                       "the start's thirty-nine cows are between eight months and two years old");
   }
 
   // THE DRINKING VILLAGE (start §13; register 223; boss seq 121): the men

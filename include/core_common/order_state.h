@@ -1071,7 +1071,7 @@ enum class OrderRefusal : std::uint8_t {
   ///
   /// THE YARDS COUNT TOWARDS IT, which is what makes this refusal narrow
   /// enough to be safe. A head with no roof is billeted at the private yards
-  /// and always was (herd_system.cpp, RunBilleting) — that is what the start
+  /// and always was (herd_system.cpp, BilletHerds) — that is what the start
   /// canon does with all sixteen horses — so the village runs out of room
   /// only when the roofs AND the yards are full together. A ceiling that
   /// counted roofs alone would refuse the first horse of a farm that had just

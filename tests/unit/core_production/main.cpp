@@ -483,6 +483,38 @@ int CheckBilletingAndProduce() {
     failures += Expect(herd.birth_progress == 0.0F, "and a full roof stops the offspring");
   }
 
+  // A SECOND BARN OF THE TYPE SHELTERS THE REST (0.37.30; boss-core-herd-
+  // defects [1] p. 3): the same twenty, two barns for ten each — none on
+  // billet; the herd stays one row at its own barn.
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    core::UnitRow second;
+    second.type = core::UnitTypeId{0};
+    AppendRow(world.units, second);
+    AddHerd(world, 0, 20, 10, true);
+    core::RunHerdDay(config, world);
+    failures += Expect(world.herds.rows[0].billeted_count == 0 &&
+                           world.herds.rows[0].unit.value == world.units.row_ids[0].value,
+                       "a second barn of the type shelters what the first cannot");
+  }
+  // AND ITS OWN HERD FIRST: fifteen at the first barn, eight at the second
+  // (a later row). The eight keep their barn; the fifteen take the two
+  // places left there, and three stand on billet. One pass in row order
+  // would have let the fifteen take five and put three of the eight out.
+  {
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    core::UnitRow second;
+    second.type = core::UnitTypeId{0};
+    const core::UnitId second_id = AppendRow(world.units, second);
+    AddHerd(world, 0, 15, 5, true);
+    const core::HerdId later = AddHerd(world, 0, 8, 3, false);
+    world.herds.rows[core::FindRow(world.herds, later)].unit = second_id;
+    core::RunHerdDay(config, world);
+    failures +=
+        Expect(world.herds.rows[0].billeted_count == 3 && world.herds.rows[1].billeted_count == 0,
+               "a barn's own herd is housed before another herd's overflow");
+  }
+
   // A HUNGRY HERD DOES NOT CALVE (boss seq 19, B): the same ten under the
   // same roof, one with hay in the store and one with none. The pair.
   {

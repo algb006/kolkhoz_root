@@ -49,6 +49,15 @@ constexpr std::uint64_t kWorldRngStream = 0;
 /// livestock design, the start's team). A number of the design, not a knob.
 constexpr float kStartTeamYearsShortOfOldAge = 2.0F;
 
+/// THE START HERD'S AGES STOP THIS MANY GAME YEARS SHORT OF OLD AGE (0.37.30;
+/// boss-core-herd-defects-2026-09-29 [1] p. 2, host's herd trace): the cows
+/// were drawn up to the top of their lifespan, four years, while age deaths
+/// start at three — 208 and 293 fell of old age in the first two years of
+/// host's 27 x 5, none calving. STUB, the team's proportion: the horses'
+/// ages end at two thirds of their old age (4 of 6), the cows' at 3 - 1 = 2
+/// of 3, so the herd is drawn between eight months and two years.
+constexpr float kStartHerdYearsShortOfOldAge = 1.0F;
+
 /// Start pyramid shares, the reference run's distribution (demography.py).
 constexpr float kShareUnderSeven = 0.152F;
 constexpr float kShareSchool = 0.220F;
@@ -737,7 +746,16 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
   RngState& rng = world.rng;
   // Two bulls to 37 cows is the 4% the design keeps; without a sire the barn
   // could never grow, and growing it is the whole first-epoch arc.
-  AddHerd(world, *livestock, rng, "cow", 39, 2, stock_yard, FamilyId{}, false);
+  AddHerd(world,
+          *livestock,
+          rng,
+          "cow",
+          39,
+          2,
+          stock_yard,
+          FamilyId{},
+          false,
+          kStartHerdYearsShortOfOldAge);
   const auto yards = static_cast<std::uint32_t>(world.families.rows.size());
   const std::uint32_t horse_yards = yards < 16 ? yards : 16U;
   for (std::uint32_t yard = 0; yard < horse_yards; ++yard) {

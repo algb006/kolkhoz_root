@@ -230,10 +230,10 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
 
 // -- the day, step by step ---------------------------------------------------
 
-/// Room under the roof, per unit, spent by the herds standing there in row
-/// order. Phase 1 keeps one herd per unit, so the order never decides
-/// anything; it is fixed all the same, because determinism is not allowed to
-/// depend on that staying true.
+/// Room under the roof, per unit, spent by BilletHerds: each herd's own unit
+/// first, then in row order the other units of its type. Since 0.37.30 the
+/// order can decide which herd a second yard shelters first; it is fixed,
+/// because determinism is not allowed to depend on it deciding nothing.
 std::vector<float> RoofRoom(const WorldState& world, const ProductionConfig& config) {
   std::vector<float> room(world.units.rows.size(), 0.0F);
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
@@ -250,26 +250,59 @@ std::vector<float> RoofRoom(const WorldState& world, const ProductionConfig& con
 /// (livestock design §6). A herd at a family yard has no numeric limit at
 /// all — the yard holds what it holds, and phase 1 puts no ceiling on
 /// private livestock.
-void RunBilleting(const HerdRow& herd,
-                  std::vector<float>& room,
-                  const WorldState& world,
-                  std::uint16_t& billeted) {
-  billeted = 0;
-  if (herd.household_owned != 0) {
-    return;  // a family's own animals are home; there is nothing to billet
+///
+/// Billeted heads per herd row, for the whole day, IN TWO PASSES (0.37.30;
+/// boss-core-herd-defects [1] p. 3; livestock design: «свободное место
+/// появилось — голову заводят под крышу»): every kolkhoz herd first takes
+/// the room of its own unit; then, in row order, what is left of it takes
+/// the room left at every other unit of the SAME TYPE. Until then a herd took
+/// its own unit's room alone: the canon's chairman built a second yard by
+/// year 2 on 27 seeds of 27, and the cows stood at 24 places all the same,
+/// the rest on billet, where nothing calves. Two passes, because one would
+/// let a herd earlier in the rows fill a yard whose own herd comes later.
+/// The herd stays one row at its own unit; the heads another yard shelters
+/// are housed, not moved.
+std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<float> room) {
+  const auto herds = static_cast<std::uint32_t>(world.herds.rows.size());
+  std::vector<std::uint16_t> billeted(herds, 0);
+  std::vector<float> left(herds, 0.0F);
+  std::vector<std::uint32_t> unit_rows(herds, kNoRow);
+  const auto take = [&room, &left](std::uint32_t herd_row, std::uint32_t unit_row) {
+    const float housed = left[herd_row] < room[unit_row] ? left[herd_row] : room[unit_row];
+    room[unit_row] -= housed;
+    left[herd_row] -= housed;
+  };
+  for (std::uint32_t row = 0; row < herds; ++row) {
+    const HerdRow& herd = world.herds.rows[row];
+    if (herd.household_owned != 0) {
+      continue;  // a family's own animals are home; there is nothing to billet
+    }
+    left[row] = static_cast<float>(TotalHeads(herd));
+    const std::uint32_t unit_row =
+        herd.unit.value == kInvalidEntityIdValue ? kNoRow : FindRow(world.units, herd.unit);
+    // A kolkhoz herd with no roof of its own — the sixteen start horses — is
+    // billeted whole. That is the start canon, not a failure state.
+    if (unit_row != kNoRow && unit_row < room.size()) {
+      unit_rows[row] = unit_row;
+      take(row, unit_row);
+    }
   }
-  const auto heads = static_cast<float>(TotalHeads(herd));
-  const std::uint32_t unit_row =
-      herd.unit.value == kInvalidEntityIdValue ? kNoRow : FindRow(world.units, herd.unit);
-  if (unit_row == kNoRow || unit_row >= room.size() || !(room[unit_row] > 0.0F)) {
-    // A kolkhoz herd with no roof of its own — the sixteen start horses —
-    // is billeted whole. That is the start canon, not a failure state.
-    billeted = AsHeads(heads);
-    return;
+  for (std::uint32_t row = 0; row < herds; ++row) {
+    const std::uint32_t own = unit_rows[row];
+    if (own == kNoRow) {
+      billeted[row] = AsHeads(left[row]);
+      continue;
+    }
+    const UnitTypeId type = world.units.rows[own].type;
+    for (std::uint32_t unit_row = 0; unit_row < room.size() && left[row] > 0.0F; ++unit_row) {
+      if (unit_row != own && world.units.rows[unit_row].type.value == type.value &&
+          room[unit_row] > 0.0F) {
+        take(row, unit_row);
+      }
+    }
+    billeted[row] = AsHeads(left[row]);
   }
-  const float housed = heads < room[unit_row] ? heads : room[unit_row];
-  room[unit_row] -= housed;
-  billeted = AsHeads(heads - housed);
+  return billeted;
 }
 
 /// @brief Share of the draught animals that went out to work today, 0..1.
@@ -890,7 +923,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // limit lot founded stood billeted for good, and billeted it never bred.
   HouseHomelessHerds(config, current);
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
-  std::vector<float> room = RoofRoom(current, config);
+  // The day's billet, every herd at once, before any herd's day moves a head
+  // (BilletHerds: its own yard first, then the others of its type).
+  const std::vector<std::uint16_t> billet = BilletHerds(current, RoofRoom(current, config));
   float horse_backed_days = 0.0F;
   float harnessed_days = 0.0F;
   const float working_share = WorkingShare(current, config, &horse_backed_days, &harnessed_days);
@@ -954,7 +989,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     HerdPlace place = PlaceOf(current, config, herd);
     place.feed_allowance = &feed_allowance;
     place.peoples_foods = &peoples_foods;
-    RunBilleting(herd, room, current, herd.billeted_count);
+    herd.billeted_count = row < billet.size() ? billet[row] : 0;
     // The yard's hens, ducks and pig feed themselves (question Q1): range,
     // scraps and the garden, and the winter handful of grain out of the
     // family's own ration, which the meal already counts. They are FED, not
