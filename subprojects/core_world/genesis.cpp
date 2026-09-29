@@ -35,6 +35,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "start_layout.h"
+#include "start_literacy.h"
 #include "start_roads.h"
 
 namespace core {
@@ -416,11 +417,13 @@ ResidentRow RollPerson(RngState& rng,
   // reddened food_year on the spot — the precedent was three lines up.
   person.hygiene = hygiene_min + CounterHashUnitFloat(world_seed, 0, person_id, 0x48594700ULL) *
                                      (hygiene_max - hygiene_min);
-  // Most Epoch-I adults are illiterate; some finished primary school
-  // (education design §2; the exact share is an ASSUMPTION until playtests).
+  // THE LOT'S DRAWS, TAKEN AND THROWN AWAY (0.37.33; start_literacy.h): who
+  // reads is given by counts once the yards are made (SeedStartLiteracy).
+  // Until then every founder of sixteen read on a draw of 0.3. The draws stay
+  // so that every later draw of the village falls where it fell, and the
+  // before/after pair measures the schooling alone.
   if (age_years >= 16.0F && NextRandomUnitFloat(rng) < 0.3F) {
-    person.education_stage = EducationStage::kPrimary;
-    person.education_grade = DrawInRange(rng, 3.0F, 5.0F);
+    static_cast<void>(DrawInRange(rng, 3.0F, 5.0F));
   }
   return person;
 }
@@ -1677,6 +1680,8 @@ WorldState CreateStartWorld(const ITableSet& tables,
   SeedStartDrinking(
       ReadStartDrinking(tables), body.age_adult_from_years, life_speedup, world_seed, world);
   SeedStartSportiness(ReadStartSportiness(tables), life_speedup, world_seed, world);
+  // Who reads, once the yards are made (register 301; education §2).
+  SeedStartLiteracy(ReadStartLiteracy(tables), life_speedup, world_seed, world);
   MakeTimberStands(tables, world, error);
   MakeExtractionSites(tables, world, error);
   return world;

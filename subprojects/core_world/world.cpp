@@ -46,6 +46,7 @@
 #include "core_time/time_system.h"
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
+#include "start_literacy.h"
 
 namespace core {
 
@@ -908,6 +909,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // The road tools' own (road_tools.h): the clearing's man-days a hectare.
       const std::span<const std::string_view> from_road_tools = RoadToolWorldParamKeys();
       known.insert(known.end(), from_road_tools.begin(), from_road_tools.end());
+      // The founders' schooling (start_literacy.h; register 301).
+      const std::span<const std::string_view> from_literacy = StartLiteracyWorldParamKeys();
+      known.insert(known.end(), from_literacy.begin(), from_literacy.end());
       // The ice's two fulls: read by the month's ice door (month_ice.h), not
       // by the simulation — the door is the core's all the same.
       const std::span<const std::string_view> from_ice = IceWorldParamKeys();

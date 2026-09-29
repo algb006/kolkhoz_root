@@ -1030,8 +1030,18 @@ int main(int argc, char** argv) {
   // years 7 / 14 / 33 against 257 / 516 / 345 on 0.34.50). The district's
   // seed loan of 0.35.0 gave it back — the gap printed CLOSED — and the
   // median stands at 202 / 406 / 441.
-  failures +=
-      run::Expect(walks.front().epoch >= core::Epoch::kTwo, "Epoch II is reached on the way");
+  // ASKED OF THE NINE, NOT OF THE FIRST SEED (0.37.33). The founders' schooling
+  // by counts reshuffled which villages open the era and which do not: on
+  // 0.37.32 (aedaeea) 6 of 9 opened, 1933, 1937 and 1938 never; on 0.37.33
+  // 7 of 9, 1931 and 1934 never; the median year 21 on both. The claim on
+  // seed 1931 alone held by the luck of which three missed. The floor is the
+  // lower of the two trees' counts; two or three villages of nine never
+  // opening in 33 years is the finding, sent to boss with 0.37.33.
+  constexpr std::size_t kEraOpenedAtLeast = 6;
+  const std::string era_claim =
+      "Epoch II is reached on the way in " + std::to_string(kEraOpenedAtLeast) + " villages of " +
+      std::to_string(walks.size()) + " or more (" + std::to_string(opened_years.size()) + ")";
+  failures += run::Expect(opened_years.size() >= kEraOpenedAtLeast, era_claim.c_str());
   failures += run::KnownGap(walks.front().epoch == core::Epoch::kThree,
                             "Epoch III has come by year 33",
                             "epoch " + std::to_string(static_cast<int>(walks.front().epoch)));

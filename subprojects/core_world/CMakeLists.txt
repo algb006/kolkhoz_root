@@ -12,6 +12,7 @@ kolkhoz_add_module(core_world
     genesis.cpp
     road_tools.cpp
     start_layout.cpp
+    start_literacy.cpp
     start_roads.cpp
     world.cpp)
 

@@ -37,6 +37,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/world.h"
+#include "start_literacy.h"
 
 namespace {
 
@@ -2234,6 +2235,138 @@ int CheckRoadDemolition() {
   return failures;
 }
 
+/// THE GUARANTEES WHERE THE VILLAGE CANNOT PAY THE COUNTS (0.37.33;
+/// start_literacy.h): three yards, one man of thirty, five women of thirty,
+/// four young women. The bands give 1 + 2 + 2; the minimum of ten asks for
+/// more from anybody of sixteen, and the ceiling of two a yard stops it at
+/// six — a shortfall logged, not forced past the ceiling.
+int CheckStartLiteracyGuarantees() {
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  std::array<core::FamilyId, 3> yards{};
+  for (core::FamilyId& yard : yards) {
+    yard = core::AppendRow(world.families, core::FamilyRow{});
+  }
+  const auto add = [&world](core::Sex sex, float bio_years, core::FamilyId yard) {
+    core::ResidentRow person;
+    person.sex = sex;
+    person.family = yard;
+    // Speedup 4: a biological year is a quarter of a game year of 48 days.
+    person.birth_day = -static_cast<std::int32_t>(bio_years * 12.0F);
+    core::AppendRow(world.residents, person);
+  };
+  add(core::Sex::kMale, 40.0F, yards[0]);
+  for (std::uint32_t index = 0; index < 5; ++index) {
+    add(core::Sex::kFemale, 35.0F, yards[index % 3]);
+  }
+  for (std::uint32_t index = 0; index < 4; ++index) {
+    add(core::Sex::kFemale, 20.0F, yards[index % 3]);
+  }
+  core::SeedStartLiteracy(core::StartLiteracy{}, 4.0F, 1929, world);
+  std::uint32_t total = 0;
+  std::array<std::uint32_t, 3> per_yard{};
+  bool the_man = false;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    if (person.education_stage == core::EducationStage::kPrimary) {
+      ++total;
+      ++per_yard[core::FindRow(world.families, person.family)];
+      the_man = the_man || person.sex == core::Sex::kMale;
+    }
+  }
+  return Expect(total == 6 && per_yard[0] == 2 && per_yard[1] == 2 && per_yard[2] == 2 && the_man,
+                "start literacy: a poor village is filled to two a yard and no further, its one "
+                "man of thirty among them");
+}
+
+/// THE YARD WITH THE FEWEST READERS FIRST, AND THE MEN'S GUARANTEE ABOVE ITS
+/// BAND (0.37.33; start_literacy.h). Two yards, five men of forty in one and
+/// one in the other: two readers go one to each yard on every seed — by the
+/// counter hash alone both would land in the big yard on some two seeds in
+/// three. And a band count of one under a guarantee of three men of thirty
+/// gives three.
+int CheckStartLiteracyOrder() {
+  const auto make_village = [](std::uint32_t big_yard_men, std::uint32_t small_yard_men) {
+    core::WorldState world;
+    core::RefreshCalendarCaches(world.calendar);
+    const core::FamilyId big = core::AppendRow(world.families, core::FamilyRow{});
+    const core::FamilyId small = core::AppendRow(world.families, core::FamilyRow{});
+    const auto add = [&world](core::FamilyId yard) {
+      core::ResidentRow person;
+      person.sex = core::Sex::kMale;
+      person.family = yard;
+      person.birth_day = -static_cast<std::int32_t>(40.0F * 12.0F);  // forty at speedup 4
+      core::AppendRow(world.residents, person);
+    };
+    for (std::uint32_t index = 0; index < big_yard_men; ++index) {
+      add(big);
+    }
+    for (std::uint32_t index = 0; index < small_yard_men; ++index) {
+      add(small);
+    }
+    return world;
+  };
+  const auto readers_per_yard = [](const core::WorldState& world) {
+    std::array<std::uint32_t, 2> per_yard{};
+    for (const core::ResidentRow& person : world.residents.rows) {
+      if (person.education_stage == core::EducationStage::kPrimary) {
+        ++per_yard[core::FindRow(world.families, person.family)];
+      }
+    }
+    return per_yard;
+  };
+  const core::StartLiteracy two_men{.men_30plus = 2,
+                                    .women_30plus = 0,
+                                    .men_16_29 = 0,
+                                    .women_16_29 = 0,
+                                    .min_total = 0,
+                                    .min_men_30plus = 0,
+                                    .min_yards = 0,
+                                    .max_per_yard = 2};
+  std::uint32_t spread = 0;
+  constexpr std::uint32_t kSeeds = 64;
+  for (std::uint32_t seed = 0; seed < kSeeds; ++seed) {
+    core::WorldState world = make_village(5, 1);
+    core::SeedStartLiteracy(two_men, 4.0F, 1000 + seed, world);
+    const std::array<std::uint32_t, 2> per_yard = readers_per_yard(world);
+    spread += per_yard[0] == 1 && per_yard[1] == 1 ? 1U : 0U;
+  }
+  int failures = Expect(spread == kSeeds,
+                        "start literacy: of two readers, one goes to each yard on every seed — "
+                        "the yard with the fewest readers first, not the counter hash first");
+  core::StartLiteracy one_man_three_guaranteed = two_men;
+  one_man_three_guaranteed.men_30plus = 1;
+  one_man_three_guaranteed.min_men_30plus = 3;
+  core::WorldState world = make_village(2, 2);
+  core::SeedStartLiteracy(one_man_three_guaranteed, 4.0F, 1929, world);
+  const std::array<std::uint32_t, 2> per_yard = readers_per_yard(world);
+  failures += Expect(per_yard[0] + per_yard[1] == 3,
+                     "start literacy: a band count of one under a guarantee of three men of "
+                     "thirty gives three");
+  // The yards' guarantee is filled, not only checked: two men of a band of
+  // two land in the two yards that have men, and a guarantee of three yards
+  // takes the third yard's young woman — whom no band asked for.
+  core::StartLiteracy two_men_three_yards = two_men;
+  two_men_three_yards.min_yards = 3;
+  core::WorldState three_yards = make_village(2, 1);
+  const core::FamilyId third = core::AppendRow(three_yards.families, core::FamilyRow{});
+  core::ResidentRow young_woman;
+  young_woman.sex = core::Sex::kFemale;
+  young_woman.family = third;
+  young_woman.birth_day = -static_cast<std::int32_t>(20.0F * 12.0F);
+  core::AppendRow(three_yards.residents, young_woman);
+  core::SeedStartLiteracy(two_men_three_yards, 4.0F, 1929, three_yards);
+  std::array<std::uint32_t, 3> readers_by_yard{};
+  for (const core::ResidentRow& person : three_yards.residents.rows) {
+    if (person.education_stage == core::EducationStage::kPrimary) {
+      ++readers_by_yard[core::FindRow(three_yards.families, person.family)];
+    }
+  }
+  failures += Expect(readers_by_yard[0] == 1 && readers_by_yard[1] == 1 && readers_by_yard[2] == 1,
+                     "start literacy: a guarantee of three yards takes a reader from the yard "
+                     "the bands left empty");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -2245,6 +2378,8 @@ int main() {
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();
   failures += CheckTheEraReadinessDoor();
+  failures += CheckStartLiteracyGuarantees();
+  failures += CheckStartLiteracyOrder();
   failures += CheckTheIssueNormDoors();
   failures += CheckTheStartSettlesSatisfaction();
   failures += CheckRoadTracer();
@@ -2339,6 +2474,37 @@ int main() {
     }
     failures += Expect(cows == 39 && calf_young,
                        "the start's thirty-nine cows are between eight months and two years old");
+    // WHO READS ON THE FIRST DAY (0.37.33; register 301; education §2): the
+    // counts by sex and age band, 6 / 4 / 2 / 2, in 9 yards or more, never
+    // three in one. The lot of 0.3 gave 9..20 and a yard in three with none.
+    std::array<std::uint32_t, 4> by_band{};  // men 30+, men 16-29, women 30+, women 16-29
+    std::vector<std::uint32_t> per_yard(start.families.rows.size(), 0);
+    for (const core::ResidentRow& person : start.residents.rows) {
+      if (person.education_stage != core::EducationStage::kPrimary) {
+        continue;
+      }
+      const float age = core::BiologicalAgeYears(4.0F, person.birth_day, start.calendar.day);
+      const bool older = age >= 30.0F;
+      const std::size_t band =
+          person.sex == core::Sex::kMale ? (older ? 0U : 1U) : (older ? 2U : 3U);
+      by_band[band] += age >= 16.0F ? 1U : 0U;
+      const std::uint32_t yard = core::FindRow(start.families, person.family);
+      if (yard != core::kNoRow) {
+        ++per_yard[yard];
+      }
+    }
+    std::uint32_t yards = 0;
+    std::uint32_t crowded = 0;
+    for (const std::uint32_t readers : per_yard) {
+      yards += readers > 0 ? 1U : 0U;
+      crowded += readers > 2 ? 1U : 0U;
+    }
+    std::cout << "start literacy: " << by_band[0] << " / " << by_band[1] << " / " << by_band[2]
+              << " / " << by_band[3] << " in " << yards << " yards\n";
+    failures += Expect(by_band[0] == 6 && by_band[1] == 4 && by_band[2] == 2 && by_band[3] == 2 &&
+                           yards >= 9 && crowded == 0,
+                       "the founders read by the counts: 6 men and 2 women of thirty, 4 men and "
+                       "2 women under, in nine yards or more, never three in one");
   }
 
   // THE DRINKING VILLAGE (start §13; register 223; boss seq 121): the men

@@ -277,3 +277,11 @@ ice_freeze_full_degree_days,30,core
 ice_thaw_full_degree_days,40,core
 district_center_km,25,core
 clearing_trudodni_per_ha,150,core
+start_literate_men_30plus,6,core
+start_literate_women_30plus,2,core
+start_literate_men_16_29,4,core
+start_literate_women_16_29,2,core
+start_literate_min_total,10,core
+start_literate_min_men_30plus,4,core
+start_literate_min_yards,9,core
+start_literate_max_per_yard,2,core
