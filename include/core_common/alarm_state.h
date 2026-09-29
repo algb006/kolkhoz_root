@@ -512,6 +512,17 @@ enum class AlarmKind : std::uint8_t {
   /// cover's) — core's numbers, measured by the alarm-days instrument.
   kMeadowUncutBeforeSnow,
 
+  /// «ОКНО СЕВА ЗАКРЫВАЕТСЯ» — THE ELDER'S ADVICE, NOT A LAMP (boss-core-
+  /// elder-facts-2026-09-29 [1]-[3]; fact `elder_warn_sowing_window`, rpg's
+  /// line): a crop the chain names for this field's next sowing has its
+  /// sowing window near its end and the field's work has not begun — the
+  /// field idle, no plough, harrow or drill opened on it. Always `lamp = 0`;
+  /// the "once" is the layer's. Subject: `field`; `resource` the crop's
+  /// produce; `amount` = the whole days left to the window's end. STUB: how
+  /// near is "near" — core's number (0.37.25). Beside kSowingWillNotFit, which
+  /// speaks of a field whose preparation is under way and will not finish.
+  kSowingWindowClosing,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.
