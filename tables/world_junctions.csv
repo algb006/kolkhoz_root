@@ -1,0 +1,9 @@
+# generated from db/design.db — do not edit by hand
+# where a map road meets the outside world: road_key is the road in roads.csv, border names which of its border vertices is the junction (trunk_road has two: north to the district, south to a neighbour)
+# neighbor_role: strong / poor / middling (neighbors.md §2); empty for the district
+# the arrow's label is not here: the district is «Районный центр», a neighbour's kolkhoz name is drawn at game start
+key,road_key,border,leads_to,neighbor_role
+district,trunk_road,north,district,
+neighbor_west,road_west,west,neighbor,poor
+neighbor_east,road_east,east,neighbor,strong
+neighbor_south,trunk_road,south,neighbor,middling

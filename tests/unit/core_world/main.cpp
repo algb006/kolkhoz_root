@@ -1036,11 +1036,6 @@ int CheckStartRoads() {
   return failures;
 }
 
-/// THE ROADS DOOR ON THE START NETWORK (delivery 7a; road_view.h): the full
-/// simulation answers Roads() off its completed world — one view a road of
-/// roads.csv, the axis whole with `s` ending at the graph's length, the wear
-/// of every stretch, no work. core_boundary's session test runs on fake
-/// tables with no roads, where this check would pass with nothing to check.
 /// THE START'S SATISFACTION BEFORE THE FIRST TICK (0.37.23; boss-core-layers-
 /// doors-2026-09-29 [4]): the shipped start, not one family at the struct's
 /// 55 — genesis draws the components and the assembly settles what they
@@ -1087,6 +1082,11 @@ int CheckTheStartSettlesSatisfaction() {
   return failures;
 }
 
+/// THE ROADS DOOR ON THE START NETWORK (delivery 7a; road_view.h): the full
+/// simulation answers Roads() off its completed world — one view a road of
+/// roads.csv, the axis whole with `s` ending at the graph's length, the wear
+/// of every stretch, no work. core_boundary's session test runs on fake
+/// tables with no roads, where this check would pass with nothing to check.
 int CheckRoadsDoor() {
   const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
   if (Expect(shipped != nullptr, "roads door: the shipped tables load") != 0) {
@@ -1114,6 +1114,57 @@ int CheckRoadsDoor() {
             view.wear_pct.front() == road.stretches.front().wear_pct && view.works.empty();
   }
   return Expect(whole, "roads door: Roads() answers every start road whole, no work on any");
+}
+
+/// THE JUNCTIONS DOOR ON THE SHIPPED MAP (0.37.27; layers §15а, register
+/// 300): before the first tick the world answers every row of
+/// world_junctions.csv, each on a vertex of its own road that lies on the
+/// map's edge of its side — the district north, three neighbours. The count
+/// is printed: on none, every per-junction check would pass.
+int CheckJunctionsDoor() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "junctions door: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "junctions door: the shipped set assembles") != 0) {
+    return 1;
+  }
+  const std::vector<core::JunctionView> junctions = simulation->Junctions();
+  // The shipped map's side (root CLAUDE.md §9, 12 × 12 km); the world has
+  // no door for it — the session carries it in its config.
+  const float map_side_m = 12000.0F;
+  std::size_t districts = 0;
+  bool on_edges = true;
+  for (const core::JunctionView& junction : junctions) {
+    districts += junction.leads_to == core::JunctionLeadsTo::kDistrict ? 1 : 0;
+    switch (junction.border) {
+      case core::BorderSide::kNorth:
+        on_edges = on_edges && junction.position.y == map_side_m;
+        break;
+      case core::BorderSide::kSouth:
+        on_edges = on_edges && junction.position.y == 0.0F;
+        break;
+      case core::BorderSide::kEast:
+        on_edges = on_edges && junction.position.x == map_side_m;
+        break;
+      case core::BorderSide::kWest:
+        on_edges = on_edges && junction.position.x == 0.0F;
+        break;
+      case core::BorderSide::kBorderSideCount:
+        on_edges = false;
+        break;
+    }
+  }
+  std::cout << "junctions door: " << junctions.size() << " junctions, " << districts
+            << " to the district\n";
+  return Expect(junctions.size() == 4 && districts == 1 && on_edges,
+                "junctions door: four junctions before a tick, one to the district, each on "
+                "the edge of its side");
 }
 
 /// THE TRACER ON THE SHIPPED MAP (delivery 7b; road_tools.h). Three
@@ -2100,6 +2151,7 @@ int main() {
   failures += CheckStartRoads();
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();
+  failures += CheckJunctionsDoor();
   failures += CheckTheStartSettlesSatisfaction();
   failures += CheckRoadTracer();
   failures += CheckRoadLaying();

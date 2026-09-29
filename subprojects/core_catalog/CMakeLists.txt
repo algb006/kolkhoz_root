@@ -25,7 +25,8 @@ kolkhoz_add_module(core_catalog
     road_cost_catalog.cpp
     road_rules_catalog.cpp
     seed_norm_catalog.cpp
-    world_conventions.cpp)
+    world_conventions.cpp
+    world_junctions.cpp)
 
 target_link_libraries(core_catalog
     PUBLIC core_common core_tables)

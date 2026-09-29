@@ -26,6 +26,7 @@
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
+#include "core_catalog/world_junctions.h"
 #include "core_tables/tables.h"
 
 namespace {
@@ -857,8 +858,92 @@ int TestDistrictVisitKnobs() {
   return failures;
 }
 
+/// The map's junctions (0.37.27; layers §15а): each row is matched to its
+/// road's border vertex in roads.csv, and every word the core does not know
+/// refuses, naming the row.
+int TestWorldJunctions() {
+  int failures = 0;
+  const test::FakeTable roads({"road", "seq", "x_m", "y_m", "mark"},
+                              {{"trunk_road", "0", "8150", "12000", "border_north"},
+                               {"trunk_road", "1", "7800", "6000", ""},
+                               {"trunk_road", "2", "7430", "0", "border_south"},
+                               {"road_west", "0", "0", "2065", "border_west"}});
+  // A refusal must say why and leave the caller's list as it was, so every
+  // "refuses" below also asks for both.
+  const auto read = [&roads](std::vector<std::vector<std::string>> rows,
+                             std::vector<core::JunctionView>& out) {
+    const test::FakeTable table({"key", "road_key", "border", "leads_to", "neighbor_role"},
+                                std::move(rows));
+    const test::FakeTableSet set({{"world_junctions", &table}, {"roads", &roads}});
+    const std::size_t before = out.size();
+    std::string trouble;
+    if (core::ReadWorldJunctions(set, out, trouble)) {
+      return true;
+    }
+    // A refusal that says nothing, or that touched the list, counts as a
+    // read: the "refuses" checks below go red.
+    return trouble.empty() || out.size() != before;
+  };
+  std::vector<core::JunctionView> good;
+  failures += Expect(read({{"district", "trunk_road", "north", "district", ""},
+                           {"neighbor_south", "trunk_road", "south", "neighbor", "middling"},
+                           {"neighbor_west", "road_west", "west", "neighbor", "poor"}},
+                          good) &&
+                         good.size() == 3 && good[0].border == core::BorderSide::kNorth &&
+                         good[0].leads_to == core::JunctionLeadsTo::kDistrict &&
+                         good[0].neighbor_role == core::NeighborRole::kNone &&
+                         good[0].position.x == 8150.0F && good[0].position.y == 12000.0F &&
+                         good[1].road_key == "trunk_road" && good[1].position.x == 7430.0F &&
+                         good[1].position.y == 0.0F &&
+                         good[1].neighbor_role == core::NeighborRole::kMiddling &&
+                         good[2].key == "neighbor_west" && good[2].position.y == 2065.0F &&
+                         good[2].neighbor_role == core::NeighborRole::kPoor,
+                     "junctions: read in row order, each at its road's own border vertex");
+  std::vector<core::JunctionView> bad{core::JunctionView{}};
+  failures += Expect(!read({{"", "trunk_road", "north", "district", ""}}, bad),
+                     "junctions: an empty key refuses");
+  failures += Expect(!read({{"x", "trunk_road", "up", "district", ""}}, bad),
+                     "junctions: an unknown border refuses");
+  failures += Expect(!read({{"x", "trunk_road", "north", "city", ""}}, bad),
+                     "junctions: an unknown destination refuses");
+  failures += Expect(!read({{"x", "road_west", "west", "neighbor", "rich"}}, bad),
+                     "junctions: an unknown neighbour's role refuses");
+  failures += Expect(!read({{"x", "trunk_road", "north", "district", "strong"}}, bad),
+                     "junctions: the district with a neighbour's role refuses");
+  failures += Expect(!read({{"x", "road_west", "west", "neighbor", ""}}, bad),
+                     "junctions: a neighbour without a role refuses");
+  failures += Expect(!read({{"x", "road_west", "east", "neighbor", "poor"}}, bad),
+                     "junctions: a road with no vertex marked for that border refuses");
+  failures += Expect(!read({{"x", "trunk_road", "north", "district", ""},
+                            {"x", "road_west", "west", "neighbor", "poor"}},
+                           bad),
+                     "junctions: a key listed twice refuses");
+  // The vertex's metres, and the roads table itself.
+  const test::FakeTable junction_row({"key", "road_key", "border", "leads_to", "neighbor_role"},
+                                     {{"district", "trunk_road", "north", "district", ""}});
+  const test::FakeTable blotted({"road", "seq", "x_m", "y_m", "mark"},
+                                {{"trunk_road", "0", "abc", "12000", "border_north"}});
+  const test::FakeTableSet blotted_set({{"world_junctions", &junction_row}, {"roads", &blotted}});
+  const test::FakeTableSet roadless("world_junctions", junction_row);
+  std::string blot_error;
+  std::string roadless_error;
+  failures +=
+      Expect(!core::ReadWorldJunctions(blotted_set, bad, blot_error) && !blot_error.empty() &&
+                 bad.size() == 1 && !core::ReadWorldJunctions(roadless, bad, roadless_error) &&
+                 !roadless_error.empty() && bad.size() == 1,
+             "junctions: a vertex with unreadable metres, or no roads table, refuses");
+  const test::FakeTableSet empty;
+  std::string error;
+  std::vector<core::JunctionView> none{core::JunctionView{}};
+  failures += Expect(core::ReadWorldJunctions(empty, none, error) && none.empty(),
+                     "junctions: a set without the table reads as none (the assembly's "
+                     "required list refuses it)");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += TestWorldJunctions();
   failures += TestLifeSpeedupDoor();
   failures += TestRoadRules();
   failures += TestDistrictVisitKnobs();

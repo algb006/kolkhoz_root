@@ -24,6 +24,7 @@
 #include "core_catalog/table_value.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_catalog/world_conventions.h"
+#include "core_catalog/world_junctions.h"
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
 #include "core_common/emit_event.h"
@@ -466,8 +467,10 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<IProductionSystem> production,
                      std::unique_ptr<ILaborSystem> labor,
                      std::unique_ptr<IConstructionSystem> construction,
-                     std::shared_ptr<const RoadTools> road_tools)
+                     std::shared_ptr<const RoadTools> road_tools,
+                     std::vector<JunctionView> junctions)
       : road_tools_(std::move(road_tools)),
+        junctions_(std::move(junctions)),
         time_(std::move(time)),
         residents_(std::move(residents)),
         production_(std::move(production)),
@@ -612,6 +615,10 @@ class StandardSimulation final : public ISimulation {
     return RoadViews(engine_->CompletedState().roads);
   }
 
+  /// Read once at assembly (core_catalog/world_junctions.h): the tables'
+  /// junctions do not change with the world.
+  std::vector<JunctionView> Junctions() const override { return junctions_; }
+
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
     const WorldState& completed = engine_->CompletedState();
     labor_->CollectAlarms(completed, alarms);
@@ -624,6 +631,9 @@ class StandardSimulation final : public ISimulation {
   /// Declared first so the constructor's list can fill it first. Shared
   /// with construction's tracer (the factory below).
   std::shared_ptr<const RoadTools> road_tools_;
+
+  /// The map's junctions with the world beyond it (0.37.27; layers §15а).
+  std::vector<JunctionView> junctions_;
 
   std::unique_ptr<ITimeSystem> time_;
 
@@ -749,6 +759,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                       "start_layout",
                       "start_stock",
                       "unit_types",
+                      "world_junctions",
                       "world_params"},
                      nullptr)) {
     return nullptr;
@@ -929,6 +940,14 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // boss-core-layers-doors-2026-09-29 [4]): genesis draws the components,
   // and the satisfaction they make read the struct's 55 until the first day.
   residents->SettleStartMetrics(start);
+  // THE MAP'S JUNCTIONS (0.37.27; layers design §15а, register 300): refused
+  // on the same terms as the layout — the reader names the row.
+  std::vector<JunctionView> junctions;
+  std::string junctions_error;
+  if (!ReadWorldJunctions(*config.tables, junctions, junctions_error)) {
+    LogError(junctions_error);
+    return nullptr;
+  }
   return std::make_unique<StandardSimulation>(config,
                                               std::move(start),
                                               std::move(time),
@@ -936,7 +955,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(production),
                                               std::move(labor),
                                               std::move(construction),
-                                              road_tools);
+                                              road_tools,
+                                              std::move(junctions));
 }
 
 }  // namespace core
