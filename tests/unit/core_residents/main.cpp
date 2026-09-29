@@ -42,6 +42,7 @@
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
+#include "issue_norm.h"
 #include "life_config.h"
 #include "membership.h"
 #include "night_trade.h"
@@ -744,6 +745,194 @@ int CheckIssueNorms() {
   core::RunFamilyExchange(config, 4.0F, struck);
   failures += Expect(PantryOf(struck, 0) == 0 && PantryOf(struck, 1) == 4 * kKilo,
                      "a norm of nought strikes the position out, and only that one");
+  return failures;
+}
+
+/// THE DEFAULT NORM IS A SHARE OF THE REMAINDER (0.37.29; labor-payment §7,
+/// register 302): a position a field's harvest gives is issued its free
+/// remainder divided among the trudodni earned and not issued and those last
+/// year's same days earned until the harvest; milk and whatever no harvest
+/// gives, at the table's grams. The chairman's norm stands above it, one
+/// position at a time, and a reset puts the position back.
+int CheckTheDefaultShareOfTheRemainder() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::FoodConfig config = MakeExchangeConfig();
+  // The potato's harvest opens in ten days; bread's crop is not in this
+  // world, so bread stands on the table's grams.
+  config.days_to_harvest_of = [](const core::WorldState& /*world*/, core::ResourceId resource) {
+    return resource.value == 1 ? 10 : -1;
+  };
+  const auto with_last_year = [](core::WorldState world) {
+    world.ledger.closed.year = 1;
+    world.ledger.closed.trudodni_by_day.fill(100);  // a trudoden a day
+    world.ledger.closed.trudodni_accrued = 100 * static_cast<std::int32_t>(core::kDaysPerYear);
+    return world;
+  };
+  // 300 kg of potato free, two trudodni owed, ten forecast: 25 kg a trudoden.
+  core::WorldState world = with_last_year(MakeExchangeWorld(100.0F, 300.0F, 200, 70.0F));
+  const std::vector<core::IssueNormLine> lines =
+      core::ResolveIssueNorms(config, core::SealedFunds(config, world), world, 4.0F);
+  failures +=
+      Expect(lines.size() == 4 && lines[1].basis == core::IssueNormBasis::kShareOfRemainder &&
+                 lines[1].free_grams == 300 * kKilo && lines[1].trudodni == 12.0F &&
+                 lines[1].days_to_harvest == 10 && !lines[1].forecast_fallback &&
+                 lines[1].grams_per_trudoden == 25 * kKilo,
+             "default norm: 300 kg over 2 owed and 10 forecast trudodni is 25 kg");
+  failures += Expect(lines[0].basis == core::IssueNormBasis::kTableGrams &&
+                         lines[0].grams_per_trudoden == 1 * kKilo,
+                     "default norm: a position no harvest gives stands on the table's grams");
+  core::RunFamilyExchange(config, 4.0F, world);
+  failures += Expect(PantryOf(world, 1) == 50 * kKilo && PantryOf(world, 0) == 2 * kKilo,
+                     "default norm: the two trudodni take 50 kg of potato and 2 kg of bread");
+
+  // THE FORECAST: last year's same days, across the year's end.
+  core::WorldState late = with_last_year(MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F));
+  late.ledger.closed.trudodni_by_day[46] = 300;
+  late.ledger.closed.trudodni_by_day[0] = 500;
+  late.calendar.tick = 45 * core::kTicksPerDay;
+  core::RefreshCalendarCaches(late.calendar);
+  bool fallback = true;
+  failures += Expect(core::ForecastTrudodni(config, late, 4.0F, 4, fallback) == 10.0F && !fallback,
+                     "forecast: days 45, 46, 47 and 0 of last year - 1 + 3 + 1 + 5");
+  // The first year: no last year. The adults at the canon's rate, on the
+  // working days only.
+  const core::WorldState first = MakeExchangeWorld(0.0F, 300.0F, 200, 70.0F);
+  const float first_forecast = core::ForecastTrudodni(config, first, 4.0F, 10, fallback);
+  failures += Expect(fallback && first_forecast > 0.0F &&
+                         first_forecast <= 10.0F * core::kFirstYearTrudodniPerAdultDay,
+                     "forecast: the first year says it fell back, one adult at the canon's "
+                     "rate on at most ten working days");
+
+  // THE SUBSTITUTE'S STOCK JOINS ITS CATEGORY: 5 kg of vegetables and 115 of
+  // sauerkraut, both to the vegetables' harvest in ten days — a norm of
+  // 120 kg over 12 trudodni, 10 kg; the vegetables give their 5, the
+  // sauerkraut the other 15.
+  core::FoodConfig pickled = config;
+  pickled.resources[3].issue_kg_per_trudoden = 5.0F;
+  pickled.resources.push_back({.kcal_per_gram = 0.2F,
+                               .category = core::FoodCategory::kVegetables,
+                               .issue_kg_per_trudoden = 5.0F,
+                               .ration_kg_per_day = 0.0F});
+  pickled.spoil_days = {600.0F, 120.0F, 30.0F, 120.0F, 600.0F};
+  pickled.days_to_harvest_of = [](const core::WorldState& /*world*/, core::ResourceId resource) {
+    return resource.value == 3 || resource.value == 4 ? 10 : -1;
+  };
+  core::WorldState cellar = with_last_year(MakeExchangeWorld(0.0F, 0.0F, 200, 70.0F));
+  cellar.units.rows[0].stock.resize(5, 0);
+  cellar.units.rows[0].stock[3] = 5 * kKilo;
+  cellar.units.rows[0].stock[4] = 115 * kKilo;
+  const std::vector<core::IssueNormLine> cellar_lines =
+      core::ResolveIssueNorms(pickled, core::SealedFunds(pickled, cellar), cellar, 4.0F);
+  failures += Expect(cellar_lines[3].grams_per_trudoden == 10 * kKilo &&
+                         cellar_lines[4].grams_per_trudoden == 10 * kKilo,
+                     "substitute: the vegetables share their and the sauerkraut's stock, and "
+                     "the sauerkraut takes their norm");
+  core::RunFamilyExchange(pickled, 4.0F, cellar);
+  failures += Expect(PantryOf(cellar, 3) == 5 * kKilo && PantryOf(cellar, 4) == 15 * kKilo,
+                     "substitute: the fresh go first, the sauerkraut covers the rest");
+  // THE CHAIRMAN'S VEGETABLES: 20 kg a trudoden on 5 kg of them, a
+  // shortfall of 35 kg for the two trudodni. The sauerkraut shares its own
+  // 115 kg over 12 trudodni (9583 g) and covers the shortfall up to that —
+  // 19.166 kg, not the 35 (a static review of 0.37.29 read it as never
+  // issued; it is issued, capped by its share, as its table norm capped it
+  // before).
+  core::WorldState his_cellar = cellar;
+  his_cellar.units.rows[0].stock[3] = 5 * kKilo;
+  his_cellar.units.rows[0].stock[4] = 115 * kKilo;
+  his_cellar.families.rows[0].trudodni_redeemed = 0;
+  his_cellar.families.rows[0].pantry.assign(5, 0);
+  his_cellar.issue_norms.assign(5, core::kIssueNormByDefault);
+  his_cellar.issue_norms[3] = 20 * kKilo;
+  const std::vector<core::IssueNormLine> his_lines =
+      core::ResolveIssueNorms(pickled, core::SealedFunds(pickled, his_cellar), his_cellar, 4.0F);
+  failures +=
+      Expect(his_lines[3].basis == core::IssueNormBasis::kChairman &&
+                 his_lines[3].days_to_harvest == 10 && his_lines[4].grams_per_trudoden == 9583,
+             "substitute: under the chairman's vegetables the sauerkraut shares its "
+             "own remainder");
+  core::RunFamilyExchange(pickled, 4.0F, his_cellar);
+  failures += Expect(PantryOf(his_cellar, 3) == 5 * kKilo && PantryOf(his_cellar, 4) >= 19'160 &&
+                         PantryOf(his_cellar, 4) <= 19'170,
+                     "substitute: and covers his shortfall up to its share, not past it");
+
+  // THE YEAR'S FIRST DAY reads the book still open (the books rotate after
+  // the distribution of that tick): day 48, the first year's book not yet
+  // closed — no fallback.
+  core::WorldState turn = MakeExchangeWorld(0.0F, 300.0F, 200, 70.0F);
+  turn.ledger.current.trudodni_by_day.fill(100);
+  turn.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(turn.calendar);
+  failures += Expect(core::ForecastTrudodni(config, turn, 4.0F, 10, fallback) == 10.0F && !fallback,
+                     "forecast: on the year's first day, the year just ended - still the open "
+                     "book");
+
+  // THE CAP: 300 kg shared among a hundredth of a trudoden would be 30 t a
+  // trudoden; the norm stops at what an order may carry.
+  core::WorldState eve = with_last_year(MakeExchangeWorld(0.0F, 300.0F, 1, 70.0F));
+  eve.ledger.closed.trudodni_by_day.fill(0);
+  eve.ledger.closed.trudodni_by_day[47] = 1;
+  eve.ledger.closed.trudodni_accrued = 1;
+  const std::vector<core::IssueNormLine> eve_lines =
+      core::ResolveIssueNorms(config, core::SealedFunds(config, eve), eve, 4.0F);
+  failures += Expect(eve_lines[1].grams_per_trudoden == core::kMaxIssueNormGrams,
+                     "cap: the norm never passes the bound a chairman's order may carry");
+
+  // NOT FOOD rides along at the table's grams, as it always did; the first
+  // order marks the food positions only.
+  core::FoodConfig with_hay = config;
+  with_hay.resources[2].kcal_per_gram = 0.0F;
+  with_hay.resources[2].issue_kg_per_trudoden = 2.0F;
+  core::WorldState barn = with_last_year(MakeExchangeWorld(100.0F, 300.0F, 200, 70.0F));
+  const std::vector<core::IssueNormLine> barn_lines =
+      core::ResolveIssueNorms(with_hay, core::SealedFunds(with_hay, barn), barn, 4.0F);
+  core::OrderRow potato_norm;
+  potato_norm.kind = core::OrderKind::kSetIssueNorm;
+  potato_norm.status = core::OrderStatus::kPending;
+  potato_norm.resource = core::ResourceId{1};
+  potato_norm.amount = 3 * kKilo;
+  AppendRow(barn.orders, potato_norm);
+  core::ConsumeIssueNormOrders(with_hay, barn);
+  failures +=
+      Expect(barn_lines[2].basis == core::IssueNormBasis::kTableGrams &&
+                 barn_lines[2].grams_per_trudoden == 2 * kKilo && barn.issue_norms.size() == 4 &&
+                 barn.issue_norms[2] == 0 && barn.issue_norms[0] == core::kIssueNormByDefault,
+             "not food: at the table's grams; the first order marks food positions "
+             "only");
+
+  // THE CHAIRMAN'S NORM, ONE POSITION; AND BACK.
+  core::WorldState ordered = with_last_year(MakeExchangeWorld(100.0F, 300.0F, 200, 70.0F));
+  const auto order = [&ordered](core::OrderKind kind, std::uint16_t resource, core::Grams grams) {
+    core::OrderRow row;
+    row.kind = kind;
+    row.status = core::OrderStatus::kPending;
+    row.resource = core::ResourceId{resource};
+    row.amount = grams;
+    return AppendRow(ordered.orders, row);
+  };
+  const auto status_of = [&ordered](core::OrderId id) {
+    return ordered.orders.rows[core::FindRow(ordered.orders, id)];
+  };
+  const core::OrderId bread_reset = order(core::OrderKind::kResetIssueNorm, 0, 0);
+  core::ConsumeIssueNormOrders(config, ordered);
+  failures += Expect(status_of(bread_reset).refusal == core::OrderRefusal::kRuleForbids,
+                     "reset: a position already under the default rule is refused");
+  order(core::OrderKind::kSetIssueNorm, 1, 3 * kKilo);
+  core::ConsumeIssueNormOrders(config, ordered);
+  std::vector<core::IssueNormLine> set =
+      core::ResolveIssueNorms(config, core::SealedFunds(config, ordered), ordered, 4.0F);
+  failures += Expect(set[1].basis == core::IssueNormBasis::kChairman &&
+                         set[1].grams_per_trudoden == 3 * kKilo &&
+                         set[0].basis == core::IssueNormBasis::kTableGrams,
+                     "set: the chairman's 3 kg on the potato, and the bread stays under the "
+                     "default rule - no other position becomes his");
+  const core::OrderId potato_reset = order(core::OrderKind::kResetIssueNorm, 1, 0);
+  core::ConsumeIssueNormOrders(config, ordered);
+  set = core::ResolveIssueNorms(config, core::SealedFunds(config, ordered), ordered, 4.0F);
+  failures += Expect(status_of(potato_reset).status == core::OrderStatus::kDone &&
+                         set[1].basis == core::IssueNormBasis::kShareOfRemainder &&
+                         set[1].grams_per_trudoden == 25 * kKilo,
+                     "reset: the potato is back on the share of the remainder");
   return failures;
 }
 
@@ -3824,6 +4013,7 @@ int main() {
   failures += CheckExchange();
   failures += CheckRationSwitch();
   failures += CheckIssueNorms();
+  failures += CheckTheDefaultShareOfTheRemainder();
   failures += CheckLockedRationFood();
   failures += CheckSamogonPurchase();
   failures += CheckVitals();

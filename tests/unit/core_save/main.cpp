@@ -669,6 +669,13 @@ core::WorldState MakeWorld() {
   world.ledger.current.plan_delivered = Amounts({5'000});
   world.ledger.closed.zyab_ha_dec1 = 17.5F;  // save 114; the current book keeps nought
   world.ledger.closed.zyab_fields_dec1 = 3;
+  // Save 117: the trudodni by day of the year, adding up to the year's —
+  // the reader refuses a book whose days do not.
+  world.ledger.closed.trudodni_by_day[20] = 41'500;
+  world.ledger.closed.trudodni_by_day[29] = 60'250;
+  world.ledger.closed.trudodni_accrued = 101'750;
+  world.ledger.current.trudodni_by_day[3] = 900;
+  world.ledger.current.trudodni_accrued = 900;
   // Save 86: the milk debt of each book, two different values, so a codec
   // that swapped the books could not round-trip them.
   world.ledger.closed.milk_debt = 200'000;
@@ -1572,7 +1579,10 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // -> 1984, predicted before the build, held.
     // Save 114: +12 — the zyab on 1 December, a float and a u16 a book, two
     // books; predicted 1984 -> 1996 before the build, held.
-    {"ledger", 1996, 0xa61b3e7befcbd886ULL},
+    // Save 117: +384 — the trudodni by day of the year, 48 i32 a book, two
+    // books; predicted 1996 -> 2380 before the build, held. The fixture's
+    // books carry days of trudodni since (the reader's sum check).
+    {"ledger", 2380, 0xeeb9b17716263f25ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -1862,6 +1872,27 @@ int main() {
     failures += Expect(
         !core::DecodeWorld(core::EncodeWorld(owing, *tables), *tables, &refused, &owing_error),
         "a save owing a negative goods loan is refused");
+  }
+
+  // TRUDODNI BY DAY THAT DO NOT ADD UP to the year's (save 117): a book the
+  // issue norm's forecast would read wrong. Two ways — a day negative, and
+  // a day moved off the total; the control is the fixture itself, whose
+  // books add up.
+  {
+    core::WorldState negative = MakeWorld();
+    negative.ledger.closed.trudodni_by_day[5] = -100;
+    negative.ledger.closed.trudodni_by_day[29] += 100;
+    core::WorldState astray = MakeWorld();
+    astray.ledger.current.trudodni_by_day[4] = 100;
+    core::WorldState refused;
+    std::string by_day_error;
+    failures +=
+        Expect(!core::DecodeWorld(
+                   core::EncodeWorld(negative, *tables), *tables, &refused, &by_day_error) &&
+                   !core::DecodeWorld(
+                       core::EncodeWorld(astray, *tables), *tables, &refused, &by_day_error),
+               "a book whose trudodni by day are negative, or do not add up to the "
+               "year's, is refused");
   }
 
   // -- the round trip ------------------------------------------------------

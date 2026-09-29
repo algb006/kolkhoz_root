@@ -805,6 +805,21 @@ int TestWholeWorkingDay() {
       day.world.families.rows[core::FindRow(day.world.families, day.family)];
   failures += Expect(household.trudodni_account >= 95 && household.trudodni_account <= 110,
                      "one norm day of sowing paid about one trudoden to the family");
+  // And the year's book has it on its day (save 117): next year's issue norm
+  // forecasts from the days, so a trudoden booked to the year alone is one
+  // the forecast never sees.
+  const core::YearLedger& book = day.world.ledger.current;
+  const std::uint32_t worked_on = day.world.calendar.day % core::kDaysPerYear;
+  std::int64_t by_day = 0;
+  for (const core::TrudodniHundredths hundredths : book.trudodni_by_day) {
+    by_day += hundredths;
+  }
+  failures += Expect(
+      book.trudodni_accrued == household.trudodni_account && by_day == book.trudodni_accrued &&
+          (book.trudodni_by_day[worked_on] == book.trudodni_accrued ||
+           book.trudodni_by_day[(worked_on + core::kDaysPerYear - 1) % core::kDaysPerYear] ==
+               book.trudodni_accrued),
+      "the trudodni are booked on the day they were earned, and the days add up");
   bool cleared = true;
   for (const core::ResidentRow& resident : day.world.residents.rows) {
     cleared = cleared && resident.work.kind == core::WorkKind::kNone &&

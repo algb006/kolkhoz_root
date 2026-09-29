@@ -45,6 +45,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/quantities.h"
@@ -453,6 +454,15 @@ struct YearLedger {
   std::array<Grams, kCartLoadSourceCountValue> cart_grams_off_road = {};
 
   TrudodniHundredths trudodni_accrued = 0;
+
+  /// THE SAME, DAY BY DAY OF THE YEAR (save 117; labor-payment §7, the
+  /// default issue norm): hundredths accrued on each of the year's days,
+  /// indexed by the day of the year. Summed over the year it is
+  /// `trudodni_accrued`. The CLOSED book's copy is the forecast of what the
+  /// village will earn from today to a position's next harvest — last
+  /// year's same calendar days, the strada where the strada was
+  /// (core_residents, issue_norm.h). All nought in the first year.
+  std::array<TrudodniHundredths, kDaysPerYear> trudodni_by_day = {};
 
   /// Unspent trudodni burned at the year turn — the turn that CLOSES this
   /// book, see the file header.

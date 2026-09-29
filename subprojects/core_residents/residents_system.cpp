@@ -48,6 +48,7 @@
 #include "food_config.h"
 #include "household_plot.h"
 #include "housing_ladder.h"
+#include "issue_norm.h"
 #include "life_config.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
@@ -331,16 +332,42 @@ class ResidentsSystem final : public IResidentsSystem {
   /// other age rule in this module — calendar years against a biological
   /// threshold is the mistake that once read a village of adults as a village
   /// of children.
-  /// STUB until 0.37.29 (the contract, 0.37.28): no line — a door that
-  /// answers nothing rather than a norm the distribution does not issue.
-  std::vector<IssueNormLine> IssueNorms(const WorldState& /*completed*/) const override {
-    return {};
+  /// The food positions of the roster, by the distribution's own resolver
+  /// (issue_norm.h) over the same sealed funds it stays above.
+  std::vector<IssueNormLine> IssueNorms(const WorldState& completed) const override {
+    std::vector<IssueNormLine> food_lines;
+    if (food_.resources.empty()) {
+      return food_lines;
+    }
+    const std::vector<IssueNormLine> lines =
+        ResolveIssueNorms(food_, SealedFunds(food_, completed), completed, config_.life_speedup);
+    for (std::uint32_t index = 0; index < lines.size(); ++index) {
+      if (food_.resources[index].kcal_per_gram > 0.0F) {
+        food_lines.push_back(lines[index]);
+      }
+    }
+    return food_lines;
   }
 
-  /// STUB until 0.37.29, as IssueNorms.
-  std::optional<HarvestNeed> NeedUntilHarvest(const WorldState& /*completed*/,
-                                              ResourceId /*resource*/) const override {
-    return std::nullopt;
+  /// The settlement's need as the meal counts it (family_meal.h), in the
+  /// grain equivalent's kilocalories; the position's remainder over the same
+  /// funds the distribution stays above.
+  std::optional<HarvestNeed> NeedUntilHarvest(const WorldState& completed,
+                                              ResourceId resource) const override {
+    const std::size_t index = resource.value;
+    if (index >= food_.resources.size() || !(food_.resources[index].kcal_per_gram > 0.0F)) {
+      return std::nullopt;
+    }
+    HarvestNeed need;
+    need.resource = resource;
+    need.days_to_harvest =
+        food_.days_to_harvest_of ? food_.days_to_harvest_of(completed, resource) : -1;
+    need.village_need_kcal_per_day =
+        SettlementDailyNeedKilograms(food_, config_.life_speedup, completed) *
+        static_cast<float>(kGramsPerKilogram) * food_.consumption.grain_reference_kcal_per_gram;
+    need.free_grams = FreeIssueStock(completed, SealedFunds(food_, completed), resource);
+    need.free_kcal = static_cast<float>(need.free_grams) * food_.resources[index].kcal_per_gram;
+    return need;
   }
 
   float HeightMeters(const WorldState& completed, ResidentId resident) const override {

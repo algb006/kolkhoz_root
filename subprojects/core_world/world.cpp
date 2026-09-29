@@ -566,6 +566,14 @@ class StandardSimulation final : public ISimulation {
     return production_->OfficeLimit(engine_->CompletedState());
   }
 
+  std::vector<IssueNormLine> IssueNorms() const override {
+    return residents_->IssueNorms(engine_->CompletedState());
+  }
+
+  std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const override {
+    return residents_->NeedUntilHarvest(engine_->CompletedState(), resource);
+  }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
   }
@@ -811,6 +819,12 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       },
       [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->NextYearHold(world);
+      },
+      // AND THE DAYS TO A POSITION'S HARVEST (0.37.29; labor-payment §7):
+      // the default issue norm shares a remainder to that day, and the
+      // farming calendar is production's.
+      [estimate](const WorldState& world, ResourceId resource) -> std::int32_t {
+        return estimate == nullptr ? -1 : estimate->DaysToHarvestOf(world, resource);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its

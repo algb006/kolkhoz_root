@@ -1116,6 +1116,52 @@ int CheckRoadsDoor() {
   return Expect(whole, "roads door: Roads() answers every start road whole, no work on any");
 }
 
+/// THE ISSUE NORMS ON THE SHIPPED TABLES (0.37.29; labor-payment §7): the
+/// harvest positions stand on the share of the remainder — in the first
+/// year on the fallback forecast, and saying so — the milk on the table's
+/// grams; the need until a harvest answers the same days as the norm.
+int CheckTheIssueNormDoors() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "issue norms: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "issue norms: the shipped set assembles") != 0) {
+    return 1;
+  }
+  int failures = 0;
+  const std::vector<core::IssueNormLine> lines = simulation->IssueNorms();
+  std::size_t shares = 0;
+  std::size_t table = 0;
+  bool shares_whole = true;
+  for (const core::IssueNormLine& line : lines) {
+    // A share position out of the default bundle (nought in food.csv) is
+    // issued nothing and forecasts nothing; the bundle's carry trudodni.
+    if (line.basis == core::IssueNormBasis::kShareOfRemainder && line.trudodni > 0.0F) {
+      ++shares;
+      shares_whole = shares_whole && line.days_to_harvest > 0 && line.forecast_fallback;
+      const std::optional<core::HarvestNeed> need = simulation->NeedUntilHarvest(line.resource);
+      shares_whole = shares_whole && need.has_value() &&
+                     need->days_to_harvest == line.days_to_harvest &&
+                     need->village_need_kcal_per_day > 0.0F;
+    } else if (line.basis == core::IssueNormBasis::kTableGrams) {
+      table += line.grams_per_trudoden > 0 ? 1 : 0;
+    }
+  }
+  std::cout << "issue norms: " << lines.size() << " food positions, " << shares
+            << " on the share of the remainder, " << table << " on the table's grams\n";
+  failures += Expect(shares >= 5 && table >= 1 && shares_whole,
+                     "issue norms: the harvest positions share their remainder to a harvest "
+                     "days ahead, on the first year's fallback; milk on the table's grams");
+  failures += Expect(!simulation->NeedUntilHarvest(core::ResourceId{}).has_value(),
+                     "need until harvest: nothing for a resource that is no position");
+  return failures;
+}
+
 /// THE JUNCTIONS DOOR ON THE SHIPPED MAP (0.37.27; layers §15а, register
 /// 300): before the first tick the world answers every row of
 /// world_junctions.csv, each on a vertex of its own road that lies on the
@@ -2152,6 +2198,7 @@ int main() {
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();
+  failures += CheckTheIssueNormDoors();
   failures += CheckTheStartSettlesSatisfaction();
   failures += CheckRoadTracer();
   failures += CheckRoadLaying();

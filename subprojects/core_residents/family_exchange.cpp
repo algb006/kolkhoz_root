@@ -27,6 +27,7 @@
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
+#include "issue_norm.h"
 
 namespace core {
 namespace {
@@ -232,31 +233,11 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   return reserve;
 }
 
-/// The issue norm of one position, kilograms per trudoden: the chairman's
-/// (WorldState::issue_norms) once he has set any, the table's until then.
-/// ONE READER for both distribution passes, so they cannot disagree about a
-/// norm (econ's audit M1; kSetIssueNorm).
-float IssueNormKg(const FoodConfig& config, const WorldState& world, std::uint32_t index) {
-  if (!world.issue_norms.empty()) {
-    return index < world.issue_norms.size() ? static_cast<float>(world.issue_norms[index]) /
-                                                  static_cast<float>(kGramsPerKilogram)
-                                            : 0.0F;
-  }
-  return index < config.resources.size() ? config.resources[index].issue_kg_per_trudoden : 0.0F;
-}
-
 /// @brief What is free to hand out: what lies in the stores minus the funds.
 Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
   const Grams free_stock = VillageStock(world, resource) - held;
   return free_stock > 0 ? free_stock : 0;
-}
-
-/// Days a resource keeps, for the order of the issue: zero in the table is
-/// "does not go bad", the longest there is.
-float KeepsDays(const FoodConfig& config, std::uint32_t index) {
-  const float days = index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;
-  return days > 0.0F ? days : std::numeric_limits<float>::infinity();
 }
 
 /// Per food category, what the positions served so far that keep SHORTER
@@ -281,7 +262,7 @@ struct ShortfallByCategory {
   }
 };
 
-/// What the monthly bundle can cover, position by position.
+/// What the day's bundle can cover, position by position.
 struct BundleCover {
   /// Share of each position's norm that is issued, 0..1.
   std::vector<float> coverage;
@@ -373,10 +354,15 @@ BundleCover CoverBundle(const FoodConfig& config,
   return cover;
 }
 
-/// The monthly distribution (labor-payment §3, §7): the family trades its
-/// outstanding trudodni for a basket of goods.
+/// The distribution (labor-payment §3, §7), DAILY (food.csv
+/// distribution_period_days; the monthly one was withdrawn on 15 September
+/// 2026 — the milk did not live to it): the family trades its outstanding
+/// trudodni for a basket of goods, at the norms in force (issue_norm.h:
+/// the chairman's, or the default share of the remainder, or the table's
+/// grams for milk), resolved ONCE for both passes below so they cannot
+/// disagree about a norm.
 ///
-/// HOW A SHORT MONTH SETTLES, canon since 2026-08-30 and rewritten because
+/// HOW A SHORT DAY SETTLES, canon since 2026-08-30 and rewritten because
 /// the run showed what the older wording did. The rule used to be "the
 /// bundle advances by its worst position", whose purpose is sound — a family
 /// must not clear its whole debt for half a bundle. Taken literally, one
@@ -388,8 +374,8 @@ BundleCover CoverBundle(const FoodConfig& config,
 /// is redeemed by the share of the bundle's VALUE that was handed over,
 /// counted in the same grain equivalent as everything else. A family that
 /// received two thirds of what its trudodni were worth redeems two thirds of
-/// them; the rest waits for next month. The old rule's purpose survives
-/// whole, its accident does not.
+/// them; the rest waits for the next distribution. The old rule's purpose
+/// survives whole, its accident does not.
 ///
 /// Fodder rides along without touching that share: it has no calories, it is
 /// for the yard's animals (livestock design §11), and an empty hayloft has
@@ -400,9 +386,16 @@ BundleCover CoverBundle(const FoodConfig& config,
 /// would let the first rows eat and the last rows starve, and nothing in the
 /// design says the accountant's list is a queue.
 void RunDistribution(const FoodConfig& config,
+                     float life_speedup,
                      const std::vector<Grams>& reserve,
                      WorldState& current) {
   const auto roster = static_cast<std::uint32_t>(config.resources.size());
+  const std::vector<IssueNormLine> norms =
+      ResolveIssueNorms(config, reserve, current, life_speedup);
+  const auto norm_kg = [&norms](std::uint32_t index) {
+    return static_cast<float>(norms[index].grams_per_trudoden) /
+           static_cast<float>(kGramsPerKilogram);
+  };
   std::vector<Grams> wanted(roster, 0);
   TrudodniHundredths outstanding_total = 0;
   for (const FamilyRow& family : current.families.rows) {
@@ -413,7 +406,7 @@ void RunDistribution(const FoodConfig& config,
     outstanding_total += outstanding;
     const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
     for (std::uint32_t index = 0; index < roster; ++index) {
-      const float norm = IssueNormKg(config, current, index);
+      const float norm = norm_kg(index);
       if (norm > 0.0F) {
         wanted[index] += KilogramsToGrams(norm * trudodni);
       }
@@ -434,7 +427,7 @@ void RunDistribution(const FoodConfig& config,
     }
     const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
     for (std::uint32_t index = 0; index < roster; ++index) {
-      const float norm = IssueNormKg(config, current, index);
+      const float norm = norm_kg(index);
       if (norm <= 0.0F || !(coverage[index] > 0.0F)) {
         continue;
       }
@@ -561,6 +554,18 @@ void BurnTrudodni(WorldState& current) {
 
 }  // namespace
 
+Grams FreeIssueStock(const WorldState& world,
+                     const std::vector<Grams>& reserve,
+                     ResourceId resource) {
+  return FreeStock(world, reserve, resource);
+}
+
+/// Zero in the table is "does not go bad", the longest there is.
+float KeepsDays(const FoodConfig& config, std::uint32_t index) {
+  const float days = index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;
+  return days > 0.0F ? days : std::numeric_limits<float>::infinity();
+}
+
 std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world) {
   if (config.resources.empty()) {
     return {};
@@ -603,7 +608,7 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
   const SimDay day = current.calendar.day;
   if (config.distribution.period_days > 0 && day % config.distribution.period_days == 0) {
     const std::vector<Grams> reserve = IssueReserve(config, current);
-    RunDistribution(config, reserve, current);
+    RunDistribution(config, life_speedup, reserve, current);
     RunRation(config, life_speedup, reserve, current);
   }
   if (day > 0 && day % kDaysPerYear == 0) {
@@ -665,7 +670,9 @@ void ConsumeRationOrders(WorldState& current) {
 
 void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current) {
   for (OrderRow& order : current.orders.rows) {
-    if (order.status != OrderStatus::kPending || order.kind != OrderKind::kSetIssueNorm) {
+    const bool set = order.kind == OrderKind::kSetIssueNorm;
+    const bool reset = order.kind == OrderKind::kResetIssueNorm;
+    if (order.status != OrderStatus::kPending || !(set || reset)) {
       continue;
     }
     const std::size_t index = order.resource.value;
@@ -677,16 +684,34 @@ void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current) {
       order.refusal = OrderRefusal::kNotEligible;
       continue;
     }
-    // The first order copies the whole bundle out of the table, so every
-    // position the chairman did not touch keeps the table's norm.
-    if (current.issue_norms.empty()) {
-      current.issue_norms.assign(config.resources.size(), 0);
-      for (std::size_t position = 0; position < config.resources.size(); ++position) {
-        current.issue_norms[position] =
-            KilogramsToGrams(config.resources[position].issue_kg_per_trudoden);
+    // A RESET of a position already under the default rule changes nothing:
+    // the chairman is looking at something stale (order_state.h).
+    const bool under_default = current.issue_norms.empty() || index >= current.issue_norms.size() ||
+                               current.issue_norms[index] == kIssueNormByDefault;
+    if (reset && under_default) {
+      order.status = OrderStatus::kRefused;
+      order.refusal = OrderRefusal::kRuleForbids;
+      continue;
+    }
+    // The first order marks the whole bundle "the default rule", so every
+    // position the chairman did not touch stays under it (0.37.29; until
+    // then it copied the table's grams, and one order made every position
+    // his).
+    // THE MARKER ON THE FOOD POSITIONS ONLY (static review of 0.37.29): a
+    // non-food row is no position, and a marker on it is a nought the save
+    // must carry — a load against a table without that row refuses a
+    // non-zero column. Grown the same way when the roster is longer than
+    // the vector (a save from a shorter table).
+    if (current.issue_norms.size() < config.resources.size()) {
+      const std::size_t known = current.issue_norms.empty() ? 0 : current.issue_norms.size();
+      current.issue_norms.resize(config.resources.size(), 0);
+      for (std::size_t position = known; position < config.resources.size(); ++position) {
+        if (config.resources[position].kcal_per_gram > 0.0F) {
+          current.issue_norms[position] = kIssueNormByDefault;
+        }
       }
     }
-    current.issue_norms[index] = order.amount;
+    current.issue_norms[index] = reset ? kIssueNormByDefault : order.amount;
     order.status = OrderStatus::kDone;
   }
 }

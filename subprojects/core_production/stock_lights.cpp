@@ -2,6 +2,7 @@
 
 #include "stock_lights.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -85,6 +86,63 @@ std::int32_t DaysToHarvest(const ProductionConfig& config, const WorldState& wor
   for (const CropDef& crop : config.crops) {
     const std::int32_t days = DaysToWindow(world, crop.harvest_from_month, crop.harvest_to_month);
     best = days < best ? days : best;
+  }
+  return best;
+}
+
+namespace {
+
+/// Days from today to the next opening of the harvest window of a crop that
+/// gives `resource` itself, -1 when none does. To the DAY, not the month:
+/// the norm divides by the trudodni of those days, and a month is four of
+/// them.
+std::int32_t DaysToOwnHarvest(const ProductionConfig& config,
+                              const WorldState& world,
+                              ResourceId resource) {
+  const auto day_of_year = static_cast<std::int32_t>(world.calendar.day % kDaysPerYear);
+  const auto today = static_cast<std::uint8_t>(world.calendar.date.month);
+  const auto year = static_cast<std::int32_t>(kDaysPerYear);
+  std::int32_t best = -1;
+  for (const CropDef& crop : config.crops) {
+    if (crop.resource.value != resource.value || crop.harvest_from_month >= kMonthsPerYear) {
+      continue;
+    }
+    const std::int32_t opening = static_cast<std::int32_t>(crop.harvest_from_month) *
+                                 static_cast<std::int32_t>(kDaysPerMonth);
+    // Inside the window the next harvest is next year's: the one reaping
+    // now is what the stores are filling with, not a date to share it to.
+    // The band does not wrap the year (calendar.h, MonthInRange), so an
+    // open window opened this year, at or before today.
+    const bool open_now = MonthInRange(today, crop.harvest_from_month, crop.harvest_to_month);
+    const std::int32_t days =
+        open_now ? opening + year - day_of_year : ((opening - day_of_year) % year + year) % year;
+    best = best < 0 || days < best ? days : best;
+  }
+  return best;
+}
+
+}  // namespace
+
+std::int32_t DaysToHarvestOf(const ProductionConfig& config,
+                             const WorldState& world,
+                             ResourceId resource) {
+  std::int32_t best = DaysToOwnHarvest(config, world, resource);
+  if (best >= 0) {
+    return best;
+  }
+  // Made, not grown: the harvest of what it is made of (one step — a
+  // product of a product is not in the tables).
+  for (const ProcessingRecipe& recipe : config.processing.recipes) {
+    const bool makes_it = std::ranges::any_of(recipe.outputs, [&](const ProcessingAmount& out) {
+      return out.resource.value == resource.value;
+    });
+    if (!makes_it) {
+      continue;
+    }
+    for (const ProcessingAmount& input : recipe.inputs) {
+      const std::int32_t days = DaysToOwnHarvest(config, world, input.resource);
+      best = days >= 0 && (best < 0 || days < best) ? days : best;
+    }
   }
   return best;
 }

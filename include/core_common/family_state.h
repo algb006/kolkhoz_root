@@ -22,7 +22,7 @@
 ///
 /// Stage-6 write map (manual/66-food-model.md). The pantry is written from
 /// THREE places, and no two of them can overlap in time:
-///   * the sequential decisions slot — the monthly distribution, the ration,
+///   * the sequential decisions slot — the daily distribution, the ration,
 ///     the nets, and the produce of the family's own herd;
 ///   * the parallel NEEDS phase, hour 23 — the family eating from its OWN
 ///     row;
@@ -212,7 +212,7 @@ struct FamilyRow {
   /// The family's trudodni account, hundredths. Accrues since stage 5.
   TrudodniHundredths trudodni_account = 0;
 
-  /// How much of the account the monthly distribution has already covered
+  /// How much of the account the daily distribution has already covered
   /// with goods, hundredths. Issue covers account - redeemed; both burn to
   /// zero at the economic year's turn (labor-payment design §3).
   TrudodniHundredths trudodni_redeemed = 0;

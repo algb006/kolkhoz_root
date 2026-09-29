@@ -41,6 +41,8 @@
 #include "core_common/day_off.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/order_state.h"
+#include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
@@ -232,7 +234,8 @@ core::UnitId BuildShop(core::WorldState& world,
             << std::sqrt((dx * dx) + (dy * dy)) << " m from the house of resident row "
             << master_row
             << ", appointed food master; 40 t vegetables, 500 kg grocery, 200 barrels in the "
-               "store\n";
+               "store; the chairman's issue norm of 5 kg a trudoden on the vegetables and the "
+               "sauerkraut (0.37.29)\n";
   return shop_id;
 }
 
@@ -277,6 +280,17 @@ int main(int argc, char** argv) {
     return 1;
   }
   const core::UnitId shop_id = BuildShop(fixture, keys, master_row, far);
+  // THE CHAIRMAN HOLDS THE VEGETABLES AT THE OLD 5 KG A TRUDODEN (0.37.29).
+  // Under the default share of the remainder they go out to the yards to
+  // the next harvest, the store fell under a tonne by December, the shop
+  // asked nothing, and --far never met the short day it is about — the
+  // run's subject is the road and the shop, not the issue. His order is the
+  // world this run was recorded on: food.csv's grams, both positions.
+  const std::size_t kraut_row = keys.sauerkraut.value;
+  const std::size_t vegetables_row = keys.vegetables.value;
+  fixture.issue_norms.assign(std::max(kraut_row, vegetables_row) + 1, core::kIssueNormByDefault);
+  fixture.issue_norms[vegetables_row] = 5 * core::kGramsPerKilogram;
+  fixture.issue_norms[kraut_row] = 5 * core::kGramsPerKilogram;
   if (std::ranges::find(args, "--smoke") != args.end()) {
     AddSmokehouse(fixture, keys, shop_id);
     world->ResetWorld(fixture);

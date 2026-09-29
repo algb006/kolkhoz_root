@@ -83,7 +83,7 @@ enum class EventKind : std::uint8_t {
   kWalkOff,  ///< resident — left work under the fatigue limit (unit rules §8).
 
   // -- the family exchange and the year ---------------------------------------
-  kDistributionIssued,  ///< The monthly distribution went out (labor-payment §3).
+  kDistributionIssued,  ///< The day's distribution went out (labor-payment §3, §7).
   kRationIssued,        ///< family — the safety ration below the floor (§5).
   kYearClosed,          ///< The ledger rotated; amount = the year that closed.
 

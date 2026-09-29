@@ -12479,8 +12479,45 @@ int CheckTheChairmanRemovesAField() {
   return failures;
 }
 
+/// THE DAYS TO A POSITION'S HARVEST (0.37.29; labor-payment §7, the default
+/// issue norm): to the opening day of the window of the crop that gives it;
+/// inside the window, next year's opening; a product through what it is
+/// made of; nothing for what no field gives.
+int CheckTheDaysToAPositionsHarvest() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{1};  // potato, reaped months 7-8
+  config.crops[0].harvest_from_month = 7;
+  config.crops[0].harvest_to_month = 8;
+  core::ProcessingRecipe pickling;
+  pickling.inputs.push_back(core::ProcessingAmount{.resource = core::ResourceId{1}, .grams = 1});
+  pickling.outputs.push_back(core::ProcessingAmount{.resource = core::ResourceId{4}, .grams = 1});
+  config.processing.recipes.push_back(pickling);
+  const auto days_on = [&config](core::SimDay day, std::uint16_t resource) {
+    core::WorldState world;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    return core::DaysToHarvestOf(config, world, core::ResourceId{resource});
+  };
+  // The window opens on day 28 of the year (month 7 x 4).
+  failures += Expect(days_on(10, 1) == 18, "harvest days: 18 from day 10 to day 28");
+  failures += Expect(days_on(28, 1) == 48,
+                     "harvest days: on the opening day itself, next year's - never nought");
+  failures += Expect(days_on(30, 1) == 46,
+                     "harvest days: inside the window, next year's opening (48 + 28 - 30)");
+  failures += Expect(days_on(40, 1) == 36,
+                     "harvest days: after the window, next year's opening (48 + 28 - 40)");
+  failures += Expect(days_on(48 + 10, 1) == 18, "harvest days: the same in the second year");
+  failures += Expect(days_on(10, 4) == 18,
+                     "harvest days: the product of a recipe, through its input's harvest");
+  failures += Expect(days_on(10, 2) == -1, "harvest days: nothing for what no field gives");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += CheckTheDaysToAPositionsHarvest();
   failures += CheckTheChairmanRemovesAField();
   failures += CheckAnUncoveredPlanPositionIsAnAlarm();
   failures += CheckTheStoresCoverAPlanPosition();

@@ -8,7 +8,7 @@
 ///
 /// Model: manual/66-food-model.md §2. Design sources: labor-payment §3
 /// (the trudodni account and its yearly burn), §5 (the minimum ration), §7
-/// (the once-a-month auto-rule), resources design §2 (the seed fund is
+/// (the daily auto-rule and its default norm, issue_norm.h), resources design §2 (the seed fund is
 /// off-limits to automatic issue), household design §2 (net fishing).
 ///
 /// Where goods come from: the exchange takes food out of UNIT STOCKS in row
@@ -19,6 +19,7 @@
 #ifndef CORE_RESIDENTS_FAMILY_EXCHANGE_H_
 #define CORE_RESIDENTS_FAMILY_EXCHANGE_H_
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -27,7 +28,7 @@
 
 namespace core {
 
-/// @brief Runs one day of the exchange: the monthly distribution against
+/// @brief Runs one day of the exchange: the daily distribution against
 /// outstanding trudodni, the minimum ration for the hungry, the nets, and —
 /// on the first day of the economic year — the burning of both counters.
 /// @param life_speedup Biological years per game year (life.csv), needed to
@@ -65,11 +66,27 @@ std::vector<std::pair<ResourceId, Grams>> LockedRationFood(const FoodConfig& con
 /// Side effects: ChairmanState::ration_auto, FamilyRow::ration_granted.
 void ConsumeRationOrders(WorldState& current);
 
-/// @brief Settles every pending kSetIssueNorm (order_state.h): the position's
-/// grams per trudoden from the next distribution on. The first such order
-/// copies the whole bundle out of `config` into WorldState::issue_norms.
-/// Refusal: kNotEligible (not food). Side effect: WorldState::issue_norms.
+/// @brief Settles every pending kSetIssueNorm and kResetIssueNorm
+/// (order_state.h): the position's grams per trudoden, or the default rule
+/// again, from the next distribution on. The first such order marks the
+/// whole bundle kIssueNormByDefault in WorldState::issue_norms and moves one
+/// position; no other becomes the chairman's by it (0.37.29).
+/// Refusals: kNotEligible (not food); kRuleForbids (a reset of a position
+/// already under the default rule). Side effect: WorldState::issue_norms.
 void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current);
+
+/// @brief What is free to hand out of `resource`: what lies in the stores,
+/// less what standing works hold back, minus `reserve` (SealedFunds).
+/// Never negative. THE one reading of "free" for the distribution, the
+/// ration and the default issue norm.
+Grams FreeIssueStock(const WorldState& world,
+                     const std::vector<Grams>& reserve,
+                     ResourceId resource);
+
+/// @brief Game days a food position keeps, for the order of the issue and
+/// its substitutes (resources.csv `spoil_days`); a position that does not
+/// go bad keeps forever (infinity).
+float KeepsDays(const FoodConfig& config, std::uint32_t index);
 
 }  // namespace core
 

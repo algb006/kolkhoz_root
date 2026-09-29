@@ -12,6 +12,7 @@ kolkhoz_add_module(core_residents
     housing.cpp
     housing_ladder.cpp
     family_exchange.cpp
+    issue_norm.cpp
     family_meal.cpp
     household_plot.cpp
     specialist_arrival.cpp

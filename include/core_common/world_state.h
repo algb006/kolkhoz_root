@@ -874,7 +874,8 @@ struct WorldState {
   /// position, and kResetIssueNorm puts one back. The default rule
   /// (labor-payment §7): a share of the remainder for a position a field's
   /// harvest gives, food.csv `issue_kg_per_trudoden` grams for the rest.
-  /// Read through IssueNormKg (family_exchange); the norm in force and its
+  /// The marker stands on food positions only; a non-food row holds nought.
+  /// Read through ResolveIssueNorms (core_residents/issue_norm.h); the norm in force and its
   /// basis cross the seam as IssueNormLine, never this vector.
   ResourceAmounts issue_norms;
 

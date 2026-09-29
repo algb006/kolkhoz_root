@@ -52,7 +52,12 @@ struct IssueNormLine {
   /// kShareOfRemainder only — the two halves of the division, so the norm
   /// can be checked and a zero told apart from an empty store:
   /// what is free to share (the stock over the funds, times the table's
-  /// issue share), grams...
+  /// issue share), grams. A position with a SUBSTITUTE in its category
+  /// (vegetables and sauerkraut) counts the substitute's free stock in its
+  /// own — summing the lines counts it twice; the substitute's line shows
+  /// its own stock, and its norm is the one it covers the shorter ones at,
+  /// not its stock over its trudodni. The norm is capped at
+  /// kMaxIssueNormGrams...
   Grams free_grams = 0;
 
   /// ...and the trudodni it is shared among: earned and not yet issued,
@@ -61,6 +66,7 @@ struct IssueNormLine {
 
   /// Whole game days to the next opening of the position's harvest window
   /// — during the window, next year's; -1 for a position no harvest gives.
+  /// Answered on every basis, the chairman's included.
   std::int32_t days_to_harvest = -1;
 
   /// True when the forecast had no last year to read (the first year) and

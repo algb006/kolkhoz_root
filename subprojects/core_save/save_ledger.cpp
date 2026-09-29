@@ -91,9 +91,13 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 114: the zyab on 1 December, a float and a u16 at the end, after the
 // last vector (which ends the struct unpadded) — 91 -> 93 fields, the size
 // 712 + 32 A -> 720 + 32 A (1486 rounded to 8), predicted before the build.
-static_assert(sizeof(YearLedger) == 720 + (32 * kAmountsSize),
+// Save 117 (0.37.29): the trudodni by day of the year, 48 i32 between the two
+// trudodni i32 — 93 -> 94 fields, the size 720 + 32 A -> 912 + 32 A (192
+// bytes, 4-aligned among 4-aligned, nothing after it moves its padding),
+// the wire +192 a book; predicted before the build.
+static_assert(sizeof(YearLedger) == 912 + (32 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 93,
+static_assert(AggregateArity<YearLedger>() == 94,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -189,6 +193,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
     out.WriteI64(grams);
   }
   out.WriteI32(book.trudodni_accrued);
+  for (const TrudodniHundredths hundredths : book.trudodni_by_day) {  // save 117
+    out.WriteI32(hundredths);
+  }
   out.WriteI32(book.trudodni_burned);
   // The season's reaping pace (save 63; the best day's bytes carry the last
   // day since 2026-09-19 — same place, same width).
@@ -344,6 +351,19 @@ YearLedger ReadYearLedger(LoadSource& source) {
     }
   }
   book.trudodni_accrued = in.ReadI32();
+  // Save 117: the same by day. Each day is a count of hundredths earned, so
+  // none is negative, and together they are the year's total — a book whose
+  // days do not add up is a book the forecast would read wrong.
+  std::int64_t by_day_total = 0;
+  bool by_day_negative = false;
+  for (TrudodniHundredths& hundredths : book.trudodni_by_day) {
+    hundredths = in.ReadI32();
+    by_day_negative = by_day_negative || hundredths < 0;
+    by_day_total += hundredths;
+  }
+  if (by_day_negative || by_day_total != book.trudodni_accrued) {
+    source.Fail("the book's trudodni by day are negative or do not add up to the year's");
+  }
   book.trudodni_burned = in.ReadI32();
   book.reaping_today = in.ReadFloat();
   book.reaping_last_day = in.ReadFloat();

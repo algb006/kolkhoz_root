@@ -62,11 +62,11 @@ class IResidentsSystem {
   /// fixed order of that slot (manual/54-modules.md, §3). The only place
   /// where resident and family rows are appended or removed — births,
   /// deaths, marriages, migration — and, per manual/66-food-model.md, where
-  /// warehouse stock moves into family pantries (the monthly distribution
+  /// warehouse stock moves into family pantries (the daily distribution
   /// against trudodni, the minimum ration) and the settlement vitals
   /// (life expectancy) are maintained. The name keeps its stage-3 form for
   /// interface stability; the contract is the whole sub-step. Runs every
-  /// tick; the implementation itself gates daily and monthly work.
+  /// tick; the implementation itself gates the daily work.
   virtual void RunDemographyDecisions(const WorldState& previous, WorldState& current) = 0;
 
   /// @brief Settles the families' derived metrics of a world that has not

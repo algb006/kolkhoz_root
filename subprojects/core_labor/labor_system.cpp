@@ -1850,6 +1850,9 @@ class LaborSystem final : public ILaborSystem {
             static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
         current.families.rows[family_row].trudodni_account += hundredths;
         current.ledger.current.trudodni_accrued += hundredths;
+        // And on its day of the year: next year's issue norm forecasts the
+        // trudodni to a harvest from these (ledger_state.h, save 117).
+        current.ledger.current.trudodni_by_day[current.calendar.day % kDaysPerYear] += hundredths;
       }
     }
     resident.work.kind = WorkKind::kNone;
