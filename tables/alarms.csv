@@ -33,3 +33,4 @@ goods_loan_owed,resource,25
 winter_crop_unsowable,field,26
 team_on_hay,herd,27
 too_few_horses,herd,28
+meadow_uncut_before_snow,resource,29

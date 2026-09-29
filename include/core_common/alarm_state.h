@@ -505,7 +505,8 @@ enum class AlarmKind : std::uint8_t {
   /// meadow grass is still standing unmown. Hay lying in heaps is a store
   /// (0.37.11) and is not counted. Always `lamp = 0`: one line a season for
   /// the farm, and the "once" is the layer's — the core raises it for as long
-  /// as the condition holds. Subject: none (the farm); `amount` = the unmown
+  /// as the condition holds. Subject: `resource`, the hay (the registry's
+  /// word — it has none for "the farm"; 0.37.21); `amount` = the unmown
   /// meadow, whole hectares. STUB: the share (30 %) and the date (the first
   /// snow's day, world_params `gather_alarm_snow_day`, and not a steady
   /// cover's) — core's numbers, measured by the alarm-days instrument.

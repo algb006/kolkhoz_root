@@ -94,6 +94,24 @@ void HoldCrewShare(const ProductionConfig& config, const WorldState& current, Fi
   field.work_days_remaining = std::min(field.work_days_remaining, owed);
 }
 
+/// THE HECTARES A CREW HAS ALREADY WORKED on the field the column takes
+/// (boss-core-epoch1-queue-2026-09-29 [34]): the phase's work done, as a
+/// share of its whole, over the field's area. The column counted from nought
+/// on any field a crew had begun — and on an autumn furrow the spring only
+/// finishes (0.37.18, option «г») — and spent its hectare limit on ground
+/// already turned; HoldCrewShare then held the crew at the column's share
+/// of the whole phase, and the two ends disagreed. Clamped to the area.
+float HectaresAlreadyDone(const ProductionConfig& config,
+                          const WorldState& current,
+                          const FieldRow& field) {
+  const float total = PhaseTotalDays(config, current, field);
+  if (!(total > 0.0F) || !(field.area_ga > 0.0F)) {
+    return 0.0F;
+  }
+  const float done_share = std::clamp(1.0F - (field.work_days_remaining / total), 0.0F, 1.0F);
+  return done_share * field.area_ga;
+}
+
 void ForgetField(MtsColumnState& column) {
   column.field = FieldId{};
   column.field_ha = 0.0F;
@@ -213,7 +231,7 @@ void WorkColumnDay(const ProductionConfig& config, WorldState& current) {
         return;  // no field is owed the season's work today
       }
       column.field = current.fields.row_ids[row];
-      column.field_ha = 0.0F;
+      column.field_ha = HectaresAlreadyDone(config, current, current.fields.rows[row]);
     }
     FieldRow& field = current.fields.rows[row];
     // RAIN STOPS THE COMBINE AND THE DRILL (farming design §5, «Дождь

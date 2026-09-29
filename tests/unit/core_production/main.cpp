@@ -7384,7 +7384,8 @@ int CheckTheFarmRulesZyab() {
 ///   * a meadow mown LAST year counts as standing this year.
 int CheckTheElderSpeaksOfGrassBeforeTheSnow() {
   int failures = 0;
-  const core::ProductionConfig config;
+  core::ProductionConfig config;
+  config.hay_resource = core::ResourceId{3};  // the registry's subject: the hay
   const core::SimDay year2 = core::kDaysPerYear;
   const auto world_on = [&](core::SimDay day_of_year, std::uint32_t meadows, std::uint32_t mown) {
     core::WorldState world;
@@ -7406,9 +7407,9 @@ int CheckTheElderSpeaksOfGrassBeforeTheSnow() {
   };
   const std::vector<core::Alarm> half = advice(world_on(37, 2, 1));
   failures += Expect(half.size() == 1 && half[0].kind == core::AlarmKind::kMeadowUncutBeforeSnow &&
-                         half[0].amount == 20 && half[0].lamp == 0,
+                         half[0].amount == 20 && half[0].lamp == 0 && half[0].resource.value == 3,
                      "meadow advice: half the grass standing the month before the snow — the "
-                     "elder speaks, 20 ha, no lamp");
+                     "elder speaks, 20 ha, of the hay, no lamp");
   failures += Expect(advice(world_on(30, 2, 1)).empty() && advice(world_on(40, 2, 1)).empty(),
                      "meadow advice: not before the month, and not from the snow's day");
   failures += Expect(advice(world_on(37, 4, 3)).empty(),
@@ -10985,6 +10986,32 @@ int CheckTheMtsColumn() {
 /// one — WITHOUT the column coming back to spend the field's hectares a second
 /// time against its limit. The static loop of 23 September found the first
 /// shape of this rule doing exactly that: 10 ha worked, 20 ha booked.
+/// THE COLUMN TAKES A CREW'S FIELD WHERE THE CREW LEFT IT (boss-core-epoch1-
+/// queue-2026-09-29 [34]): a 20 ha field half ploughed by a crew (10 man-days
+/// of 20 left) — the column's 10 ha a day finish it, and the field goes to
+/// the harrow; counted from nought, the column spent its 10 ha on the half
+/// already turned and left the field in the plough.
+int CheckTheColumnTakesACrewsField() {
+  int failures = 0;
+  const core::ProductionConfig config = MakeColumnConfig();
+  core::WorldState world = MakeColumnWorld(8);
+  world.mts_column.phase = core::MtsColumnPhase::kWorking;
+  world.mts_column.lot = core::LimitLotId{0};
+  world.mts_column.camp = world.units.row_ids[1];
+  const core::FieldId half =
+      core::AppendRow(world.fields, ColumnField(100.0F, 20.0F, core::FieldPhase::kPlowing, 10.0F));
+  core::SimDay day = 8;
+  while (core::IsRestDay(day, world.calendar.day_zero_weekday, world.epoch)) {
+    ++day;
+  }
+  EndColumnDay(config, world, day);
+  const core::FieldRow& field = world.fields.rows[core::FindRow(world.fields, half)];
+  failures += Expect(field.phase != core::FieldPhase::kPlowing &&
+                         world.mts_column.worked_ha > 9.99F && world.mts_column.worked_ha < 10.01F,
+                     "mts: a field half ploughed by a crew is finished by the column's 10 ha");
+  return failures;
+}
+
 int CheckTheColumnDrillInTheRain() {
   int failures = 0;
   core::ProductionConfig config = MakeColumnConfig();
@@ -12437,6 +12464,7 @@ int main() {
   failures += CheckTheAccumulationLimit();
   failures += CheckTheLimitKeepsTheTeamsOats();
   failures += CheckTheMtsColumn();
+  failures += CheckTheColumnTakesACrewsField();
   failures += CheckTheColumnDrillInTheRain();
   failures += CheckTheRationRepricesTheHorseWork();
   failures += CheckTheGoodsLoan();

@@ -550,6 +550,10 @@ void CollectMeadowAdvice(const ProductionConfig& config,
   }
   Alarm advice;
   advice.kind = AlarmKind::kMeadowUncutBeforeSnow;
+  // The registry's subject (alarms.csv `meadow_uncut_before_snow`,
+  // `resource`): the hay the standing grass is — there is no word for "the
+  // farm" among the subjects (boss-core-epoch1-queue [38]).
+  advice.resource = config.hay_resource;
   advice.amount = static_cast<std::int64_t>(std::lround(unmown));
   advice.lamp = 0;  // the elder's advice, never a lamp
   alarms.push_back(advice);
