@@ -220,12 +220,38 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // above this hold; one hold, the same grams, rot margin included. The
   // chairman's release of the plan reserve opens it past this year's plan
   // (fund_ladder.h, NextYearRungLeft; static review of 0.37.2).
-  if (config.next_year_hold) {
+  //
+  // AND WHAT THE TURN WILL SEAL, WHERE THE NORM'S HORIZON CROSSES IT (0.37.37;
+  // labor-payment §7, «Что делится»; boss-core-epoch1-resume [16], option
+  // (2)). The hold above asks whether next year's harvest pays next year's
+  // plan, and in a year with no winter rye it does — July's rye. But the
+  // rung holds what lies from the January letter, the carry-over first, and
+  // the norm shared the rye out to that July: 0.37.35 gave it to the
+  // families until the turn and the turn sealed the rest, `--bare` year 2
+  // 880 -> 2115 hungry family-days, February to June. A position whose next
+  // harvest comes after the turn is held at the larger of the two, so the
+  // norm divides only what the district is not already promised; hungry, it
+  // is the chairman's move — «Еда заперта в фондах», unseal and answer for
+  // the plan (the release opens this as it opens the hold).
+  if (config.next_year_hold || config.turn_plan_seal) {
+    ResourceAmounts ahead =
+        config.next_year_hold ? config.next_year_hold(world) : ResourceAmounts{};
+    if (config.turn_plan_seal && config.days_to_harvest_of) {
+      const ResourceAmounts seal = config.turn_plan_seal(world);
+      const auto days_to_turn = static_cast<std::int32_t>(DaysToPlanTurn(world));
+      ahead.resize(std::max(ahead.size(), seal.size()), 0);
+      for (std::size_t index = 0; index < seal.size(); ++index) {
+        if (seal[index] > ahead[index] &&
+            config.days_to_harvest_of(world, DefIdFromIndex<ResourceIdTag>(index)) > days_to_turn) {
+          ahead[index] = seal[index];
+        }
+      }
+    }
     const ResourceAmounts next_year = NextYearRungLeft(world,
                                                        config.seed_norms,
                                                        config.distribution.reserve_seed_fund != 0,
                                                        config.carted_daily,
-                                                       config.next_year_hold(world));
+                                                       ahead);
     for (std::size_t index = 0; index < reserve.size() && index < next_year.size(); ++index) {
       reserve[index] += next_year[index];
     }

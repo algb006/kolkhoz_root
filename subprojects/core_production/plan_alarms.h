@@ -60,6 +60,27 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           ResourceId resource,
                           SimDay as_of);
 
+/// @brief Grams of `resource` next year's district positions will ask: each
+/// position of it priced off the area next spring's figure will be
+/// (NextPlanAreaHa), as the January letter prices it. No rot margin. The
+/// first half of NextYearUnpaidGrams, and what the turn seals
+/// (TurnPlanSealOf below).
+/// @param as_of The day `next year` is counted from.
+Grams NextPlanOwedGrams(const ProductionConfig& config,
+                        const WorldState& world,
+                        ResourceId resource,
+                        SimDay as_of);
+
+/// @brief What next year's plan reserve will seal at the coming turn
+/// (IProductionSystem::TurnPlanSeal; 0.37.37; labor-payment §7, «Что
+/// делится»): for every produce of a crop, next year's positions of it
+/// (NextPlanOwedGrams) with the rot of their wait to the end of next year,
+/// as NextYearHold holds its grams (HeldForDeliveryGrams). Dense by
+/// ResourceId. Unconditional: whether next year's harvest will pay the
+/// positions is NextYearHold's question, and the rung asks it of nobody —
+/// it holds what lies, the carry-over first, from the January letter on.
+ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_PLAN_ALARMS_H_

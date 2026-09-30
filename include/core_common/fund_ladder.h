@@ -303,6 +303,20 @@ ResourceAmounts NextYearRungLeft(const WorldState& world,
                                  ResourceId carted_daily,
                                  const ResourceAmounts& next_year_hold);
 
+/// @brief Whole game days until the plan rung next takes a new year's plan
+///        (the January letter, production's RunYearStart), as a reader of
+///        `world` sees it: 0 on the turn's own day before the turn has run.
+///
+/// ON THE TURN'S DAY THE ISSUE RUNS FIRST (0.37.37; the static review of
+/// it): residents' decisions precede production's in the same tick, so the
+/// day's distribution reads the stores before the rung seals next year's
+/// plan out of them, and `kDaysPerYear - day % kDaysPerYear` told it the
+/// turn was a year away. The books rotate after both, in the events slot,
+/// so a book not yet rotated is the turn not yet run (issue_norm.cpp reads
+/// the same sign for last year's trudodni). Read between steps on that day,
+/// the turn has run: the next is a year away.
+std::uint32_t DaysToPlanTurn(const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_FUND_LADDER_H_

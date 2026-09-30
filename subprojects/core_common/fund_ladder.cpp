@@ -433,6 +433,14 @@ ResourceAmounts NextYearRungLeft(const WorldState& world,
   return left;
 }
 
+std::uint32_t DaysToPlanTurn(const WorldState& world) {
+  const SimDay today = world.calendar.day;
+  const SimDay into_year = today % kDaysPerYear;
+  const bool turn_pending =
+      today > 0 && into_year == 0 && world.ledger.closed.year + 1U != world.calendar.date.year;
+  return turn_pending ? 0U : static_cast<std::uint32_t>(kDaysPerYear - into_year);
+}
+
 namespace {
 
 /// Days from today to the end of the latest sowing window among the crops

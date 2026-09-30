@@ -424,14 +424,7 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           SimDay as_of) {
   // What next year owes out of this produce: the district's positions,
   // priced as next spring's figure will be (NextPlanAreaHa)...
-  Grams owed = 0;
-  const float next_area = NextPlanAreaHa(world, as_of);
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
-    if (PositionCounts(config, position) &&
-        config.crops[position.crop.value].resource.value == resource.value) {
-      owed += PlanPositionGrams(config, position, next_area);
-    }
-  }
+  const Grams owed = NextPlanOwedGrams(config, world, resource, as_of);
   // ...and the seed of the year after's crops of it, which next year's
   // harvest gives: a spring crop of year 2 is sown from it that spring, a
   // winter crop of year 2 that autumn.
@@ -469,6 +462,39 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
   const Grams needed = owed + GramsFromKilograms(seed_kg);
   const Grams harvest = GramsFromKilograms(harvest_kg);
   return needed > harvest ? needed - harvest : 0;
+}
+
+Grams NextPlanOwedGrams(const ProductionConfig& config,
+                        const WorldState& world,
+                        ResourceId resource,
+                        SimDay as_of) {
+  Grams owed = 0;
+  const float next_area = NextPlanAreaHa(world, as_of);
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (PositionCounts(config, position) &&
+        config.crops[position.crop.value].resource.value == resource.value) {
+      owed += PlanPositionGrams(config, position, next_area);
+    }
+  }
+  return owed;
+}
+
+ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState& world) {
+  // THE SAME WAIT AS NextYearHold's (herd_system.cpp): to the end of next
+  // year, where the positions are delivered. The issue holds the larger of
+  // the two, and they must be weighed in the same grams to be compared. On
+  // the turn's own day, before it has run, next year begins today
+  // (DaysToPlanTurn; NextYearHold still counts two years there).
+  ResourceAmounts seal(config.feed_values.size(), 0);
+  const std::uint32_t days_to_next_turn = DaysToPlanTurn(world) + kDaysPerYear;
+  for (std::size_t index = 0; index < seal.size(); ++index) {
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams owed = NextPlanOwedGrams(config, world, resource, world.calendar.day);
+    if (owed > 0) {
+      seal[index] = HeldForDeliveryGrams(config, resource, owed, days_to_next_turn);
+    }
+  }
+  return seal;
 }
 
 void CollectPlanAlarms(const ProductionConfig& config,

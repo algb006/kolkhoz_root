@@ -700,6 +700,76 @@ int CheckLockedRationFood() {
   failures += Expect(core::LockedRationFood(with_hold, opened).empty(),
                      "next year's hold: the plan reserve's release of 100 kg opens it to the "
                      "people");
+
+  // WHAT THE TURN WILL SEAL (0.37.37; labor-payment §7, «Что делится»): a
+  // position whose next harvest comes after the turn is held at the larger
+  // of next year's hold and next year's plan the turn seals — the norm does
+  // not share out grain the district is already promised. Day 0: the turn is
+  // 48 days away.
+  core::FoodConfig with_seal = MakeExchangeConfig();
+  core::Grams sealed = 100 * kKilo;
+  core::Grams hold_ahead = 0;
+  std::int32_t to_harvest = 60;
+  with_seal.next_year_hold = [&hold_ahead](const core::WorldState& /*world*/) {
+    return core::ResourceAmounts{hold_ahead};
+  };
+  with_seal.turn_plan_seal = [&sealed](const core::WorldState& /*world*/) {
+    return core::ResourceAmounts{sealed};
+  };
+  with_seal.days_to_harvest_of = [&to_harvest](const core::WorldState& /*world*/,
+                                               core::ResourceId resource) {
+    return resource.value == 0 ? to_harvest : -1;
+  };
+  const core::WorldState carry = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  failures += Expect(core::LockedRationFood(with_seal, carry).size() == 1,
+                     "the turn's seal: the harvest 60 days away, past the turn - the 100 kg "
+                     "next year's plan takes are held from the people");
+  to_harvest = 10;
+  failures += Expect(core::LockedRationFood(with_seal, carry).empty(),
+                     "the turn's seal: the harvest 10 days away, before the turn, refills the "
+                     "stores first - nothing held ahead");
+  to_harvest = -1;
+  failures += Expect(core::LockedRationFood(with_seal, carry).empty(),
+                     "the turn's seal: a position no harvest gives has no horizon to cross");
+  to_harvest = 48;
+  failures += Expect(core::LockedRationFood(with_seal, carry).empty(),
+                     "the turn's seal: a horizon that ends on the turn's day does not cross it");
+  to_harvest = 60;
+  sealed = 60 * kKilo;
+  hold_ahead = 40 * kKilo;
+  failures += Expect(core::LockedRationFood(with_seal, carry).empty(),
+                     "the turn's seal: 60 kg sealed and 40 held for next year are one claim "
+                     "on next year - the larger is held, and 40 of 100 are free");
+  sealed = 40 * kKilo;
+  hold_ahead = 100 * kKilo;
+  failures += Expect(core::LockedRationFood(with_seal, carry).size() == 1,
+                     "the turn's seal: and where next year's hold is the larger, the hold "
+                     "stands - the seal does not replace it");
+  sealed = 100 * kKilo;
+  hold_ahead = 0;
+  // ON THE TURN'S OWN DAY the issue runs before the turn (DaysToPlanTurn):
+  // with the books not yet rotated a harvest 10 days away is past it; read
+  // after the turn, the next turn is a year away and the harvest before it.
+  to_harvest = 10;
+  core::WorldState turn_day = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  turn_day.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(turn_day.calendar);
+  failures += Expect(core::DaysToPlanTurn(turn_day) == 0 &&
+                         core::LockedRationFood(with_seal, turn_day).size() == 1,
+                     "the turn's seal: on the turn's day, before the turn, the harvest 10 days "
+                     "away comes after it - the 100 kg are held");
+  turn_day.ledger.closed.year = static_cast<std::uint16_t>(turn_day.calendar.date.year - 1);
+  failures += Expect(core::DaysToPlanTurn(turn_day) == core::kDaysPerYear &&
+                         core::LockedRationFood(with_seal, turn_day).empty(),
+                     "the turn's seal: the books rotated, the turn has run - the harvest comes "
+                     "before the next");
+  sealed = 100 * kKilo;
+  hold_ahead = 0;
+  core::WorldState released = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  released.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {100 * kKilo};
+  failures += Expect(core::LockedRationFood(with_seal, released).empty(),
+                     "the turn's seal: the plan reserve's release of 100 kg opens it - "
+                     "«распечатать и отвечать за план»");
   return failures;
 }
 

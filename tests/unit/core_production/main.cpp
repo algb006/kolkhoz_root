@@ -1255,6 +1255,79 @@ int CheckNextYearsHoldDoesNotCountTheSeedRung() {
   return failures;
 }
 
+/// WHAT THE TURN WILL SEAL IS NEXT YEAR'S PLAN, WHOEVER PAYS IT (0.37.37;
+/// labor-payment §7, «Что делится»): the positions priced off the area next
+/// spring's figure will be, with the rot of the wait to next year's delivery
+/// — and not less where next year's harvest will pay them, for the rung holds
+/// what lies from the January letter on. A crop of 100 kg/ha, a tenth of the
+/// area owed, day 40: the turn in 8 days, next year's delivery in 56.
+int CheckTheTurnsSealIsNextYearsPlan() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config;
+  config.feed_values.assign(2, 0.0F);
+  core::CropDef crop;
+  crop.resource = core::ResourceId{0};
+  crop.yield_kg_per_ha = 100.0F;
+  crop.harvest_from_month = 6;
+  crop.harvest_to_month = 7;
+  config.crops = {crop};
+  config.plan_grain_share = 1.0F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F}};
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(40) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  world.plan.worked_ha_last_year = 1.0F;
+  core::FieldRow next_year;  // next year's crop on a hectare: 100 kg against 10 owed
+  next_year.kind = core::LandKind::kArable;
+  next_year.area_ga = 1.0F;
+  next_year.rotation_assigned = 1;
+  next_year.rotation_year1 = core::CropId{0};
+  core::AppendRow(world.fields, next_year);
+
+  const core::ResourceAmounts seal = core::TurnPlanSealOf(config, world);
+  const core::Grams unpaid =
+      core::NextYearUnpaidGrams(config, world, core::ResourceId{0}, world.calendar.day);
+  std::cout << "the turn's seal: " << core::AmountOf(seal, core::ResourceId{0})
+            << " g of the crop, next year's harvest leaves unpaid " << unpaid << " g\n";
+  failures += Expect(seal.size() == 2 && core::AmountOf(seal, core::ResourceId{0}) == 10 * kKilo &&
+                         core::AmountOf(seal, core::ResourceId{1}) == 0,
+                     "the turn's seal: next year's 10 kg of the crop, none of what no crop "
+                     "gives");
+  failures += Expect(unpaid == 0,
+                     "the turn's seal: the world is one where next year's harvest pays them "
+                     "(NextYearUnpaidGrams, the hold, is nought)");
+
+  world.plan.worked_ha_this_year = 2.0F;
+  failures +=
+      Expect(core::AmountOf(core::TurnPlanSealOf(config, world), core::ResourceId{0}) == 20 * kKilo,
+             "the turn's seal: priced off next spring's area, this year's 2 ha");
+
+  config.spoil_days = {600.0F, 0.0F};
+  config.keeping_factor = 1.0F;
+  const core::ResourceId produce{0};
+  const core::Grams rotting = core::AmountOf(core::TurnPlanSealOf(config, world), produce);
+  std::cout << "the turn's seal with the rot: " << rotting << " g\n";
+  failures += Expect(
+      rotting == core::HeldForDeliveryGrams(config, produce, 20 * kKilo, 56) &&
+          rotting > core::HeldForDeliveryGrams(config, produce, 20 * kKilo, 8),
+      "the turn's seal: with the rot of 56 days to next year's delivery, not of 8 to the turn");
+
+  // The turn's own day: before the turn has run (the books not rotated),
+  // next year begins today and is delivered in 48 days; after it, the next
+  // year's delivery is 96 away.
+  world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  const core::Grams pending = core::AmountOf(core::TurnPlanSealOf(config, world), produce);
+  world.ledger.closed.year = static_cast<std::uint16_t>(world.calendar.date.year - 1);
+  const core::Grams run = core::AmountOf(core::TurnPlanSealOf(config, world), produce);
+  failures += Expect(
+      pending == core::HeldForDeliveryGrams(config, produce, 20 * kKilo, core::kDaysPerYear) &&
+          run == core::HeldForDeliveryGrams(config, produce, 20 * kKilo, 2 * core::kDaysPerYear),
+      "the turn's seal: on the turn's day the rot of a year before the turn, of two after it");
+  return failures;
+}
+
 /// THE PLOUGH KEEPS ITS OATS (0.37.2; boss-core-epoch1-queue [59]-[60], (а)):
 /// on a day nobody ploughs, the herd leaves the ploughing's oats in the store
 /// — last year's ploughing horse-days at a working horse's oats; on a
@@ -12683,6 +12756,7 @@ int main() {
   failures += CheckTheCartHorseEatsOats();
   failures += CheckThePloughKeepsItsOats();
   failures += CheckNextYearsHoldDoesNotCountTheSeedRung();
+  failures += CheckTheTurnsSealIsNextYearsPlan();
   failures += CheckTheReserveLeavesThePeoplesBarley();
   failures += CheckTheHerdsHayAndShortfallByKind();
   failures += CheckTheTeamOnHayAndTooFewHorses();
