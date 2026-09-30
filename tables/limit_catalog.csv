@@ -36,7 +36,7 @@ combine_unit,500,2,vehicle
 milking_rig_unit,200,2,vehicle
 workshop_rig_unit,180,2,vehicle
 imported_machine_unit,700,3,vehicle
-grocery_lot,20,1,goods
+grocery_lot,20,2,goods
 glass_container_lot,25,1,goods
 lime_gravel_lot,15,1,goods
 tool_lot,20,1,goods
@@ -50,3 +50,5 @@ mts_column_autumn,150,1,service
 light_bulb_lot,,1,goods
 wire_lot,,2,goods
 electrician_call,,1,service
+salt_lot,10,1,goods
+sugar_lot,10,1,goods

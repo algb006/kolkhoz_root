@@ -3106,36 +3106,28 @@ int main() {
       failures += Expect(reserves == 1 && reserve_area == layout_reserve_area,
                          "genesis marks exactly one field, the layout's reserve, as the start's "
                          "reserve");
-      // THE FIRST MORNING'S BILLET (2026-09-14; look, boss parcel 245): the
-      // cows take the cattle yard's room and the rest stand on billet, and
-      // the horses, with no roof of their own, are billeted whole — before
-      // any step, because the prologue's first frame reads this world.
-      const core::ITable* const levels = shipped->FindTable("unit_levels");
-      float cattle_room = 0.0F;
-      for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
-        if (levels->CellText(row, levels->FindColumn("unit")) == "cattle_yard" &&
-            levels->CellText(row, levels->FindColumn("level")) == "1") {
-          cattle_room =
-              levels->CellReal(row, levels->FindColumn("livestock_capacity_head")).value_or(0.0F);
-        }
-      }
-      bool cows_billeted = false;
-      bool horses_billeted = true;
+      // THE FIRST MORNING'S BILLET (2026-09-14; look, boss parcel 245), and
+      // SINCE THE START WITHOUT TWO YARDS (boss's export of 01.10; the
+      // human's «Скот находится во дворах»): no cattle yard stands, so every
+      // kolkhoz head — the cows as the horses — is billeted whole in the
+      // families' barns before any step, because the prologue's first frame
+      // reads this world.
+      std::uint32_t kolkhoz_herds = 0;
+      bool all_billeted = true;
       for (const core::HerdRow& herd : morning.herds.rows) {
         if (herd.household_owned != 0) {
           continue;
         }
+        ++kolkhoz_herds;
         const auto heads =
             static_cast<float>(herd.adult_count + herd.juvenile_count + herd.newborn_count);
-        if (herd.unit.value != core::kInvalidEntityIdValue) {
-          cows_billeted =
-              heads > cattle_room && static_cast<float>(herd.billeted_count) == heads - cattle_room;
-        } else {
-          horses_billeted = horses_billeted && static_cast<float>(herd.billeted_count) == heads;
-        }
+        all_billeted = all_billeted && herd.unit.value == core::kInvalidEntityIdValue &&
+                       static_cast<float>(herd.billeted_count) == heads;
       }
-      failures += Expect(cattle_room > 0.0F && cows_billeted,
-                         "genesis billets the cows the cattle yard has no room for");
+      const bool horses_billeted = all_billeted;
+      failures += Expect(kolkhoz_herds > 0 && all_billeted,
+                         "genesis billets every kolkhoz head, the cows as the horses: no cattle "
+                         "yard stands at the start");
       failures += Expect(horses_billeted, "and the roofless start horses whole");
       const std::uint32_t wear_col = layout->FindColumn("start_wear_pct");
       failures += Expect(wear_col != core::kNoTableColumn,
@@ -3532,7 +3524,11 @@ int main() {
     // (163dc7d3; boss-core-epoch1-resume [55], [56]) until the road tracer
     // of delivery 7b read them the same day (core_world/road_tools.h). The
     // list stays empty for the next table in that position.
-    const std::array<std::string_view, 0> not_read_yet = {};
+    // suggestions.csv came with boss's export of 01.10 (the start without two
+    // yards; boss-core-start-no-yards [9]) a delivery ahead of its reader, the
+    // canon's bot (fixture_policy.h) that marks the cattle yard's pen on
+    // suggest_cattle_yard. Out of this list with that delivery.
+    const std::array<std::string_view, 1> not_read_yet = {"suggestions"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {

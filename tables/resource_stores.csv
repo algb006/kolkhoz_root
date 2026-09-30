@@ -116,6 +116,9 @@ roofing,build_yard,build_yard
 rye,church_store,church_store
 rye,elevator,elevator
 rye,food_yard,granary
+salt,food_yard,food_store
+salted_fish,food_yard,food_store
+salted_meat,food_yard,food_store
 sand,build_yard,build_yard
 sauerkraut,church_store,church_store
 sauerkraut,food_yard,food_store
@@ -137,6 +140,7 @@ steel,build_yard,build_yard
 steel,utility_yard,goods_store
 stone,stone_pile,stone_pile
 straw,hay_stack,stack
+sugar,food_yard,food_store
 television,selpo,selpo
 television,utility_yard,goods_store
 tool,utility_yard,goods_store

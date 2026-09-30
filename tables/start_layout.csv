@@ -10,8 +10,6 @@
 # traffic: whether anyone drives this road -- regular, rare, almost_none, none. THE SECOND AXIS, and not a softer wear: a road is often both broken and abandoned, broken while it worked and abandoned since. Empty on everything that is not a road: a yard is not driven along, and «не ездят» about it is not an answer
 # the graphics layer grows grass by this column and not by wear: grass on the verges and between the tracks at almost_none, the track barely visible at none. It kept that list in code until 20 September 2026, hand-edited for every new road
 key,kind,unit_type,x_m,y_m,area_ha,rotation_year0,rotation_year1,rotation_year2,is_derelict,meadow_kind,fill_pct,start_wear_pct,start_dead,traffic
-build_yard,unit,build_yard,7560,9200,,,,,0,,-1,40,0,
-cattle_yard,unit,cattle_yard,7801.8,9015.4,,,,,0,,-1,55,0,
 church_store,unit,church_store,9250,9330,,,,,0,,-1,70,0,
 clay_pile,unit,clay_pile,7380,8560,,,,,0,,-1,-1,0,
 field_barley,field,,9501.2,9924.3,7.5,barley,pea,wheat_spring,0,,-1,-1,0,

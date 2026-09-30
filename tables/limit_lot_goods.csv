@@ -40,3 +40,5 @@ coal_lot,coal,5
 textile_lot,factory_textile,
 light_bulb_lot,light_bulb,
 wire_lot,wire,
+salt_lot,salt,1000
+sugar_lot,sugar,200

@@ -37,3 +37,5 @@ meadow_uncut_before_snow,resource,29
 sowing_window_closing,field,30
 seed_area_short,resource,31
 herd_hay_short_ahead,herd,32
+herd_freezing,herd,33
+herd_cold_ahead,herd,34

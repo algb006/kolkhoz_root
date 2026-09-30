@@ -1,0 +1,19 @@
+# generated from db/design.db — do not edit by hand
+# the former elder's suggested layout: points the player may accept one by one, move or reject; nothing of it stands on the first morning (map-db, kind suggestion)
+# a built unit of unit_type stands ON the suggestion when its centre is within match_radius_m of the point — the unit's own plot radius. A moved unit is not on the suggestion, and the scene that trusts the elder's words must not fire for it
+# an empty match_radius_m is a unit without a plot (the well): it has no own ground to stand on, and no scene asks about it today
+# metres from the map's south-west corner, like start_layout.csv
+key,unit_type,x_m,y_m,match_radius_m
+suggest_barrack_01,barrack,9185,9085,25
+suggest_barrack_02,barrack,9115,8895,25
+suggest_barrack_03,barrack,9075,8805,25
+suggest_barrack_04,barrack,9205,8905,25
+suggest_barrack_05,barrack,9145,8765,25
+suggest_barrack_06,barrack,9255,9035,25
+suggest_cattle_yard,cattle_yard,7960,8910,60
+suggest_farm_office,farm_office,9120,9020,60
+suggest_food_store,food_yard,9185,8835,45
+suggest_horse_yard,horse_yard,9280,9090,45
+suggest_manure_pile,manure_pile,7865,8905,25
+suggest_utility_yard,utility_yard,9235,8965,35
+suggest_well,well,9125,8935,

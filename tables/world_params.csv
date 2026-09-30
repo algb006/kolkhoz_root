@@ -285,3 +285,7 @@ start_literate_min_total,10,core
 start_literate_min_men_30plus,4,core
 start_literate_min_yards,9,core
 start_literate_max_per_yard,2,core
+quest_presence_radius_m,30,host
+elder_age_min_years,45,core
+elder_age_max_years,60,core
+elder_spared_through_year,3,core

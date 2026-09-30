@@ -6,3 +6,5 @@ smoking_meat,smokehouse,1,1
 smoking_fish,smokehouse,1,1
 cooperage,workshops,0.125,1
 pickling,sauerkraut_shop,0.1667,1
+salting_meat,smokehouse,0.5,1
+salting_fish,smokehouse,0.5,1

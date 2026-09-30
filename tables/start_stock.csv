@@ -4,18 +4,19 @@
 # a placement with no row here starts EMPTY, and that is a statement: the stone heap is empty because the manor ruins are the only stone until a quarry is opened (start design §7)
 # the numbers are the NORMAL difficulty; how the other levels scale them is the difficulty design's business, not this table's
 place,resource,amount,kg_per_unit
-build_yard,board,70,600
-build_yard,brick,2000,3.5
-build_yard,glass,60,8
-build_yard,steel,2,1000
-build_yard,spare_part,20,5
-build_yard,tool,120,3
 church_store,rye,8,1000
 church_store,wheat,2.5,1000
 church_store,oat,8.75,1000
 church_store,barley,3.5,1000
-church_store,potato,35,1000
+church_store,potato,34.4,1000
+church_store,board,70,600
+church_store,glass,60,8
+church_store,steel,2,1000
+church_store,spare_part,20,5
 church_store,barrel,150,15
+church_store,tool,120,3
+church_store,salt,500,1
+church_store,sugar,100,1
 clay_pile,clay,40,1000
 hay_stack,hay,165,1000
 hay_stack,straw,40,1000
@@ -27,4 +28,11 @@ manor_ruins,stone,60,1000
 manor_ruins,brick,4000,3.5
 manor_ruins,tool,25,3
 manure_pile,manure,250,1000
+stone_pile,brick,2000,3.5
 silage_trench,silage,150,1000
+count_lodge,honey,0.04,1000
+count_lodge,barrel,6,15
+count_lodge,tool,25,3
+count_lodge,salt,200,1
+count_lodge,salted_meat,0.1,1000
+count_lodge,salted_fish,0.08,1000
